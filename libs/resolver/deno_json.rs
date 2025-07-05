@@ -983,6 +983,37 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
   }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum CompilerOptionsKey {
+  WorkspaceConfig(Option<UrlRc>),
+  TsConfig(usize),
+}
+
+impl Default for CompilerOptionsKey {
+  fn default() -> Self {
+    Self::WorkspaceConfig(None)
+  }
+}
+
+impl std::fmt::Display for CompilerOptionsKey {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::WorkspaceConfig(None) => write!(f, "workspace-root"),
+      Self::WorkspaceConfig(Some(s)) => write!(f, "workspace({s})"),
+      Self::TsConfig(i) => write!(f, "ts-config({i})"),
+    }
+  }
+}
+
+impl Serialize for CompilerOptionsKey {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    self.to_string().serialize(serializer)
+  }
+}
+
 #[derive(Debug)]
 pub struct CompilerOptionsResolver {
   workspace_configs: FolderScopedMap<CompilerOptionsData>,
@@ -1087,21 +1118,58 @@ impl CompilerOptionsResolver {
     self.workspace_configs.get_for_specifier(specifier)
   }
 
-  pub fn all(
+  pub fn entry_for_specifier(
+    &self,
+    specifier: &Url,
+  ) -> (CompilerOptionsKey, &CompilerOptionsData) {
+    if let Ok(path) = url_to_file_path(specifier) {
+      for (i, ts_config) in self.ts_configs.iter().enumerate() {
+        if ts_config.filter.includes_path(&path) {
+          return (
+            CompilerOptionsKey::TsConfig(i),
+            &ts_config.compiler_options,
+          );
+        }
+      }
+    }
+    let (scope, data) = self.workspace_configs.entry_for_specifier(specifier);
+    (CompilerOptionsKey::WorkspaceConfig(scope.cloned()), data)
+  }
+
+  pub fn for_key(
+    &self,
+    key: &CompilerOptionsKey,
+  ) -> Option<&CompilerOptionsData> {
+    match key {
+      CompilerOptionsKey::WorkspaceConfig(scope) => {
+        self.workspace_configs.get_for_scope(scope.as_deref())
+      }
+      CompilerOptionsKey::TsConfig(i) => {
+        self.ts_configs.get(*i).map(|d| &d.compiler_options)
+      }
+    }
+  }
+
+  pub fn entries(
     &self,
   ) -> impl Iterator<
-    Item = (&CompilerOptionsData, Option<(&UrlRc, &Vec<TsConfigFile>)>),
+    Item = (
+      CompilerOptionsKey,
+      &CompilerOptionsData,
+      Option<(&UrlRc, &Vec<TsConfigFile>)>,
+    ),
   > {
     self
       .workspace_configs
       .entries()
-      .map(|(_, r)| (r, None))
-      .chain(
-        self
-          .ts_configs
-          .iter()
-          .map(|t| (&t.compiler_options, t.files())),
-      )
+      .map(|(s, r)| (CompilerOptionsKey::WorkspaceConfig(s.cloned()), r, None))
+      .chain(self.ts_configs.iter().enumerate().map(|(i, t)| {
+        (
+          CompilerOptionsKey::TsConfig(i),
+          &t.compiler_options,
+          t.files(),
+        )
+      }))
   }
 
   pub fn size(&self) -> usize {
@@ -1291,11 +1359,12 @@ fn check_warn_compiler_options(
   logged_warnings: &LoggedWarnings,
 ) {
   for ignored_options in &compiler_options.ignored_options {
-    if ignored_options
-      .maybe_specifier
-      .as_ref()
-      .map(|s| logged_warnings.folders.insert(s.clone()))
-      .unwrap_or(true)
+    if !ignored_options.items.is_empty()
+      && ignored_options
+        .maybe_specifier
+        .as_ref()
+        .map(|s| logged_warnings.folders.insert(s.clone()))
+        .unwrap_or(true)
     {
       log::warn!("{}", ignored_options);
     }

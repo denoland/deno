@@ -9,6 +9,7 @@ use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_lint::linter::LintConfig;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_runtime::tokio_util::create_basic_runtime;
 use once_cell::sync::Lazy;
 
@@ -34,7 +35,7 @@ pub struct LspLinter {
 pub struct LspLinterResolver {
   config: Config,
   compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
-  linters: DashMap<(String, Option<Arc<Url>>), Arc<LspLinter>>,
+  linters: DashMap<(CompilerOptionsKey, Option<Arc<Url>>), Arc<LspLinter>>,
 }
 
 impl LspLinterResolver {
@@ -85,14 +86,8 @@ impl LspLinterResolver {
             .unwrap_or_default();
         let compiler_options = self
           .compiler_options_resolver
-          .for_specifier(
-            if module.specifier.scheme() != "file" && module.scope.is_some() {
-              #[allow(clippy::unnecessary_unwrap)]
-              module.scope.as_deref().unwrap()
-            } else {
-              &module.specifier
-            },
-          )
+          .for_key(&module.compiler_options_key)
+          .expect("Key should be in sync with resolver.")
           .compiler_options();
         let deno_lint_config =
           if compiler_options.0.get("jsx").and_then(|v| v.as_str())

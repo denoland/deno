@@ -45,6 +45,7 @@ use deno_graph::source::Resolver;
 use deno_lib::util::result::InfallibleResultExt;
 use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::url_to_file_path;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -121,7 +122,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 
 type Request = (
   TscRequest,
-  String,
+  CompilerOptionsKey,
   Option<Arc<Url>>,
   Option<Arc<Uri>>,
   Arc<StateSnapshot>,
@@ -300,8 +301,8 @@ pub struct PendingChange {
   pub modified_scripts: Vec<(String, ChangeKind)>,
   pub project_version: usize,
   pub new_compiler_options_by_key:
-    Option<BTreeMap<String, Arc<CompilerOptions>>>,
-  pub new_notebook_keys: Option<BTreeMap<Arc<Uri>, String>>,
+    Option<BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>>,
+  pub new_notebook_keys: Option<BTreeMap<Arc<Uri>, CompilerOptionsKey>>,
 }
 
 impl<'a> ToV8<'a> for PendingChange {
@@ -370,8 +371,10 @@ impl PendingChange {
     &mut self,
     new_version: usize,
     modified_scripts: Vec<(String, ChangeKind)>,
-    new_compiler_options_by_key: Option<BTreeMap<String, Arc<CompilerOptions>>>,
-    new_notebook_keys: Option<BTreeMap<Arc<Uri>, String>>,
+    new_compiler_options_by_key: Option<
+      BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>,
+    >,
+    new_notebook_keys: Option<BTreeMap<Arc<Uri>, CompilerOptionsKey>>,
   ) {
     use ChangeKind::*;
     self.project_version = self.project_version.max(new_version);
@@ -496,8 +499,10 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     documents: &[(Document, ChangeKind)],
-    new_compiler_options_by_key: Option<BTreeMap<String, Arc<CompilerOptions>>>,
-    new_notebook_keys: Option<BTreeMap<Arc<Uri>, String>>,
+    new_compiler_options_by_key: Option<
+      BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>,
+    >,
+    new_notebook_keys: Option<BTreeMap<Arc<Uri>, CompilerOptionsKey>>,
   ) {
     let modified_scripts = documents
       .iter()
@@ -540,7 +545,7 @@ impl TsServer {
     let Some((compiler_options_key, scope, notebook_uri)) =
       modules.first().map(|m| {
         (
-          m.compiler_options_key.as_str(),
+          &m.compiler_options_key,
           m.scope.as_ref(),
           m.notebook_uri.as_ref(),
         )
@@ -585,7 +590,7 @@ impl TsServer {
       .request::<()>(
         snapshot.clone(),
         req,
-        ".",
+        &Default::default(),
         None,
         None,
         &Default::default(),
@@ -662,7 +667,14 @@ impl TsServer {
   ) -> Result<Vec<String>, LspError> {
     let req = TscRequest::GetSupportedCodeFixes;
     self
-      .request(snapshot, req, ".", None, None, &Default::default())
+      .request(
+        snapshot,
+        req,
+        &Default::default(),
+        None,
+        None,
+        &Default::default(),
+      )
       .await
       .map_err(|err| {
         log::error!("Unable to get fixable diagnostics: {}", err);
@@ -1419,7 +1431,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     search: String,
     max_result_count: Option<u32>,
-    compiler_options_key: &str,
+    compiler_options_key: &CompilerOptionsKey,
     scope: Option<&Arc<Url>>,
     notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
@@ -1481,7 +1493,7 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     req: TscRequest,
-    compiler_options_key: &str,
+    compiler_options_key: &CompilerOptionsKey,
     scope: Option<&Arc<Url>>,
     notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
@@ -1502,7 +1514,7 @@ impl TsServer {
       .sender
       .send((
         req,
-        compiler_options_key.to_string(),
+        compiler_options_key.clone(),
         scope.cloned(),
         notebook_uri.cloned(),
         snapshot,
@@ -4600,7 +4612,7 @@ struct State {
   response_tx: Option<oneshot::Sender<Result<String, AnyError>>>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
-  last_compiler_options_key: String,
+  last_compiler_options_key: CompilerOptionsKey,
   last_scope: Option<Arc<Url>>,
   last_notebook_uri: Option<Arc<Uri>>,
   token: CancellationToken,
@@ -4624,7 +4636,7 @@ impl State {
       response_tx: None,
       state_snapshot,
       specifier_map,
-      last_compiler_options_key: ".".to_string(),
+      last_compiler_options_key: Default::default(),
       last_scope: None,
       last_notebook_uri: None,
       token: Default::default(),
@@ -4779,7 +4791,7 @@ fn op_resolve(
 
 struct TscRequestArray {
   request: TscRequest,
-  compiler_options_key: String,
+  compiler_options_key: CompilerOptionsKey,
   notebook_uri: Option<Arc<Uri>>,
   id: Smi<usize>,
   change: convert::OptionNull<PendingChange>,
@@ -4922,7 +4934,7 @@ fn op_respond(
   let _span = super::logging::lsp_tracing_info_span!("op_respond").entered();
   let state = state.borrow_mut::<State>();
   state.performance.measure(state.mark.take().unwrap());
-  state.last_compiler_options_key = ".".to_string();
+  state.last_compiler_options_key = Default::default();
   state.last_scope = None;
   state.last_notebook_uri = None;
   let response = if !error.is_empty() {
@@ -5006,7 +5018,7 @@ fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScriptNames {
-  by_compiler_options_key: BTreeMap<String, IndexSet<String>>,
+  by_compiler_options_key: BTreeMap<CompilerOptionsKey, IndexSet<String>>,
   by_notebook_uri: BTreeMap<Arc<Uri>, IndexSet<String>>,
 }
 
@@ -5028,13 +5040,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     .scopes_with_node_specifier();
 
   // Insert global scripts.
-  for (compiler_options_data, maybe_files) in
-    state.state_snapshot.compiler_options_resolver.all()
+  for (compiler_options_key, compiler_options_data, maybe_files) in
+    state.state_snapshot.compiler_options_resolver.entries()
   {
-    let compiler_options_key = compiler_options_data.key();
     let script_names = result
       .by_compiler_options_key
-      .entry(compiler_options_key.to_string())
+      .entry(compiler_options_key)
       .or_default();
     let scope = compiler_options_data
       .workspace_dir_or_source_url()
@@ -5135,12 +5146,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     let compiler_options_key = state
       .state_snapshot
       .compiler_options_resolver
-      .for_specifier(&uri_to_url(notebook_uri))
-      .key();
+      .entry_for_specifier(&uri_to_url(notebook_uri))
+      .0;
 
     // Copy over the globals from the containing regular scopes.
     if let Some(global_script_names) =
-      result.by_compiler_options_key.get(compiler_options_key)
+      result.by_compiler_options_key.get(&compiler_options_key)
     {
       script_names.extend(global_script_names.iter().cloned());
     }
@@ -6065,8 +6076,8 @@ mod tests {
       Some(
         snapshot
           .compiler_options_resolver
-          .all()
-          .map(|(d, _)| (d.key().to_string(), d.compiler_options()))
+          .entries()
+          .map(|(k, d, _)| (k, d.compiler_options()))
           .collect(),
       ),
       None,
@@ -6975,7 +6986,7 @@ mod tests {
       project_version: usize,
       scripts: impl IntoIterator<Item = (S, ChangeKind)>,
       new_compiler_options_by_key: Option<
-        BTreeMap<String, Arc<CompilerOptions>>,
+        BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>,
       >,
     ) -> PendingChange {
       PendingChange {

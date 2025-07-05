@@ -6,6 +6,7 @@ use deno_config::deno_json::CompilerOptions;
 use deno_config::workspace::TsTypeLib;
 use deno_core::url::Url;
 use deno_resolver::deno_json::CompilerOptionsData;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::CompilerOptionsType;
 use deno_resolver::deno_json::JsxImportSourceConfig;
@@ -23,13 +24,6 @@ pub struct LspCompilerOptionsData<'a> {
 }
 
 impl<'a> LspCompilerOptionsData<'a> {
-  pub fn key(&self) -> &'a str {
-    self
-      .workspace_dir_or_source_url()
-      .map(|s| s.as_str())
-      .unwrap_or(".")
-  }
-
   pub fn workspace_dir_or_source_url(&self) -> Option<&'a Arc<Url>> {
     self.inner.workspace_dir_or_source_url()
   }
@@ -111,18 +105,37 @@ impl LspCompilerOptionsResolver {
     }
   }
 
+  pub fn entry_for_specifier(
+    &self,
+    specifier: &Url,
+  ) -> (CompilerOptionsKey, LspCompilerOptionsData<'_>) {
+    let (key, data) = self.inner.entry_for_specifier(specifier);
+    let data = LspCompilerOptionsData { inner: data };
+    (key, data)
+  }
+
+  pub fn for_key(
+    &self,
+    key: &CompilerOptionsKey,
+  ) -> Option<LspCompilerOptionsData<'_>> {
+    Some(LspCompilerOptionsData {
+      inner: self.inner.for_key(key)?,
+    })
+  }
+
   #[allow(clippy::type_complexity)]
-  pub fn all(
+  pub fn entries(
     &self,
   ) -> impl Iterator<
     Item = (
+      CompilerOptionsKey,
       LspCompilerOptionsData<'_>,
       Option<(&Arc<Url>, &Vec<TsConfigFile>)>,
     ),
   > {
     self
       .inner
-      .all()
-      .map(|(d, f)| (LspCompilerOptionsData { inner: d }, f))
+      .entries()
+      .map(|(k, d, f)| (k, LspCompilerOptionsData { inner: d }, f))
   }
 }

@@ -73,6 +73,13 @@ impl<TValue> FolderScopedMap<TValue> {
       .unwrap_or((None, &self.unscoped))
   }
 
+  pub fn get_for_scope(&self, scope: Option<&Url>) -> Option<&TValue> {
+    let Some(scope) = scope else {
+      return Some(&self.unscoped);
+    };
+    self.scoped.get(scope)
+  }
+
   pub fn entries(&self) -> impl Iterator<Item = (Option<&UrlRc>, &TValue)> {
     [(None, &self.unscoped)]
       .into_iter()

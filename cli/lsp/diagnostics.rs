@@ -26,6 +26,7 @@ use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::source::ResolveError;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_resolver::graph::enhanced_resolution_error_message;
 use deno_resolver::workspace::sloppy_imports_resolve;
 use deno_runtime::deno_node;
@@ -65,7 +66,7 @@ use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::path::to_percent_decoded_str;
 
 pub type AmbientModulesByKey =
-  HashMap<(String, Option<Arc<Url>>), MaybeAmbientModules>;
+  HashMap<(CompilerOptionsKey, Option<Arc<Url>>), MaybeAmbientModules>;
 
 #[derive(Debug)]
 pub struct DiagnosticServerUpdateMessage {
@@ -372,7 +373,8 @@ struct AmbientModules {
 #[derive(Debug, Default)]
 struct DeferredDiagnostics {
   diagnostics: Option<Vec<DeferredDiagnosticRecord>>,
-  ambient_modules_by_key: HashMap<(String, Option<Arc<Url>>), AmbientModules>,
+  ambient_modules_by_key:
+    HashMap<(CompilerOptionsKey, Option<Arc<Url>>), AmbientModules>,
 }
 
 impl DeferredDiagnostics {
@@ -1834,7 +1836,7 @@ fn diagnose_dependency(
 struct DeferredDiagnosticRecord {
   uri: Arc<Uri>,
   version: i32,
-  compiler_options_key: String,
+  compiler_options_key: CompilerOptionsKey,
   scope: Option<Arc<Url>>,
   diagnostics: Vec<(String, lsp::Diagnostic)>,
 }

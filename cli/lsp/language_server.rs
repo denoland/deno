@@ -1182,8 +1182,8 @@ impl Inner {
   fn dispatch_cache_jsx_import_sources(&self) {
     for specifier_config in self
       .compiler_options_resolver
-      .all()
-      .filter_map(|(d, _)| d.jsx_import_source_config())
+      .entries()
+      .filter_map(|(_, d, _)| d.jsx_import_source_config())
       .flat_map(|c| c.import_source.iter().chain(c.import_source_types.iter()))
     {
       let referrer = specifier_config.base.clone();
@@ -3757,7 +3757,9 @@ impl Inner {
 
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
     let mut items_with_scopes = IndexMap::new();
-    for (compiler_options_data, _) in self.compiler_options_resolver.all() {
+    for (compiler_options_key, compiler_options_data, _) in
+      self.compiler_options_resolver.entries()
+    {
       let scope = compiler_options_data
         .workspace_dir_or_source_url()
         .and_then(|s| self.config.tree.scope_for_specifier(s));
@@ -3771,7 +3773,7 @@ impl Inner {
           params.query.clone(),
           // this matches vscode's hard coded result count
           Some(256),
-          compiler_options_data.key(),
+          &compiler_options_key,
           scope,
           // TODO(nayeemrmn): Support notebook scopes here.
           None,
@@ -3821,8 +3823,8 @@ impl Inner {
       matches!(scopes_change, ProjectScopesChange::Config).then(|| {
         self
           .compiler_options_resolver
-          .all()
-          .map(|(d, _)| (d.key().to_string(), d.compiler_options()))
+          .entries()
+          .map(|(k, d, _)| (k, d.compiler_options()))
           .collect()
       }),
       matches!(
@@ -3838,9 +3840,9 @@ impl Inner {
           .map(|u| {
             let compiler_options_key = self
               .compiler_options_resolver
-              .for_specifier(&uri_to_url(u))
-              .key();
-            (u.clone(), compiler_options_key.to_string())
+              .entry_for_specifier(&uri_to_url(u))
+              .0;
+            (u.clone(), compiler_options_key)
           })
           .collect()
       }),

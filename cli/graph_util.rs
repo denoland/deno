@@ -824,8 +824,8 @@ impl ModuleGraphBuilder {
           let mut imports_by_referrer = IndexMap::<_, Vec<_>>::with_capacity(
             self.compiler_options_resolver.size(),
           );
-          for (compiler_options_data, maybe_files) in
-            self.compiler_options_resolver.all()
+          for (_, compiler_options_data, maybe_files) in
+            self.compiler_options_resolver.entries()
           {
             if let Some((referrer, files)) = maybe_files {
               imports_by_referrer

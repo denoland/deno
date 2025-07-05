@@ -31,6 +31,7 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::TypesDependency;
 use deno_path_util::url_to_file_path;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_runtime::deno_node;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -844,7 +845,7 @@ pub struct DocumentModule {
   pub script_version: String,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
-  pub compiler_options_key: String,
+  pub compiler_options_key: CompilerOptionsKey,
   pub media_type: MediaType,
   pub headers: Option<HashMap<String, String>>,
   pub text: DocumentText,
@@ -859,9 +860,11 @@ pub struct DocumentModule {
 }
 
 impl DocumentModule {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     document: &Document,
     specifier: Arc<Url>,
+    compiler_options_key: CompilerOptionsKey,
     compiler_options_data: LspCompilerOptionsData<'_>,
     scope: Option<Arc<Url>>,
     resolver: &LspResolver,
@@ -877,7 +880,6 @@ impl DocumentModule {
         Some(cache_entry.metadata.headers)
       })
       .flatten();
-    let compiler_options_key = compiler_options_data.key().to_string();
     let open_document = document.open();
     let media_type = resolve_media_type(
       &specifier,
@@ -1207,17 +1209,19 @@ impl DocumentModules {
     let specifier = specifier
       .cloned()
       .or_else(|| self.infer_specifier(document))?;
-    let compiler_options_data = self.compiler_options_resolver.for_specifier(
-      if specifier.scheme() != "file" && scope.is_some() {
-        #[allow(clippy::unnecessary_unwrap)]
-        scope.unwrap()
-      } else {
-        &specifier
-      },
-    );
+    let (compiler_options_key, compiler_options_data) =
+      self.compiler_options_resolver.entry_for_specifier(
+        if specifier.scheme() != "file" && scope.is_some() {
+          #[allow(clippy::unnecessary_unwrap)]
+          scope.unwrap()
+        } else {
+          &specifier
+        },
+      );
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
+      compiler_options_key,
       compiler_options_data,
       scope.cloned().map(Arc::new),
       &self.resolver,
@@ -1378,21 +1382,23 @@ impl DocumentModules {
   pub fn inspect_or_temp_modules_by_compiler_options_key(
     &self,
     document: &Document,
-  ) -> BTreeMap<String, Arc<DocumentModule>> {
+  ) -> BTreeMap<CompilerOptionsKey, Arc<DocumentModule>> {
     let Some(primary_module) = self.primary_module(document) else {
       return Default::default();
     };
     let mut result = BTreeMap::new();
-    for (compiler_options_data, _) in self.compiler_options_resolver.all() {
-      let key = compiler_options_data.key();
-      if key == primary_module.compiler_options_key {
+    for (compiler_options_key, compiler_options_data, _) in
+      self.compiler_options_resolver.entries()
+    {
+      if compiler_options_key == primary_module.compiler_options_key {
         continue;
       }
       result.insert(
-        key.to_string(),
+        compiler_options_key.clone(),
         Arc::new(DocumentModule::new(
           document,
           primary_module.specifier.clone(),
+          compiler_options_key,
           compiler_options_data,
           primary_module.scope.clone(),
           &self.resolver,
