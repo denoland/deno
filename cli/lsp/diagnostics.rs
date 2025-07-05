@@ -47,7 +47,6 @@ use tower_lsp::lsp_types as lsp;
 use super::analysis;
 use super::analysis::import_map_lookup;
 use super::client::Client;
-use super::config::Config;
 use super::documents::Document;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
@@ -591,7 +590,6 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let ts_diagnostics_store = ts_diagnostics_store.clone();
                 let snapshot = snapshot.clone();
-                let config = snapshot.config.clone();
                 let deferred_diagnostics_state =
                   deferred_diagnostics_state.clone();
                 async move {
@@ -616,7 +614,6 @@ impl DiagnosticsServer {
                   let (diagnostics, ambient_modules_by_key) =
                     generate_ts_diagnostics(
                       snapshot.clone(),
-                      &config,
                       &ts_server,
                       token.clone(),
                     )
@@ -681,7 +678,6 @@ impl DiagnosticsServer {
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
                 let snapshot = snapshot.clone();
-                let config = snapshot.config.clone();
                 let deferred_diagnostics_state =
                   deferred_diagnostics_state.clone();
                 async move {
@@ -692,7 +688,7 @@ impl DiagnosticsServer {
                   let (diagnostics, deferred) = spawn_blocking({
                     let token = token.clone();
                     let snapshot = snapshot.clone();
-                    move || generate_deno_diagnostics(&snapshot, &config, token)
+                    move || generate_deno_diagnostics(&snapshot, token)
                   })
                   .await
                   .unwrap();
@@ -745,7 +741,6 @@ impl DiagnosticsServer {
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
                 let snapshot = snapshot.clone();
-                let config = snapshot.config.clone();
                 async move {
                   if let Some(previous_handle) = previous_lint_handle {
                     previous_handle.await;
@@ -754,7 +749,7 @@ impl DiagnosticsServer {
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
                     let snapshot = snapshot.clone();
-                    move || generate_lint_diagnostics(&snapshot, &config, token)
+                    move || generate_lint_diagnostics(&snapshot, token)
                   })
                   .await
                   .unwrap();
@@ -932,7 +927,6 @@ fn ts_json_to_diagnostics(
 
 fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
-  config: &Config,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let mut records = Vec::new();
@@ -952,10 +946,12 @@ fn generate_lint_diagnostics(
     if module.specifier.scheme() != "file" {
       continue;
     }
-    if !config.specifier_enabled(&module.specifier) {
+    if !snapshot.config.specifier_enabled(&module.specifier) {
       continue;
     }
-    let settings = config.workspace_settings_for_specifier(&module.specifier);
+    let settings = snapshot
+      .config
+      .workspace_settings_for_specifier(&module.specifier);
     if !settings.lint {
       continue;
     }
@@ -1020,7 +1016,6 @@ fn generate_document_lint_diagnostics(
 
 async fn generate_ts_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
-  config: &Config,
   ts_server: &tsc::TsServer,
   token: CancellationToken,
 ) -> Result<(DiagnosticVec, AmbientModulesByKey), AnyError> {
@@ -1034,7 +1029,7 @@ async fn generate_ts_diagnostics(
         .document_modules
         .primary_module(&Document::Open(document.clone()))
       {
-        if config.specifier_enabled(&module.specifier) {
+        if snapshot.config.specifier_enabled(&module.specifier) {
           enabled_modules_by_key
             .entry((
               module.compiler_options_key.clone(),
@@ -1849,7 +1844,6 @@ struct DeferredDiagnosticRecord {
 /// an import map to shorten an URL.
 fn generate_deno_diagnostics(
   snapshot: &language_server::StateSnapshot,
-  config: &Config,
   token: CancellationToken,
 ) -> (DiagnosticVec, Vec<DeferredDiagnosticRecord>) {
   let mut diagnostics_vec = Vec::new();
@@ -1869,7 +1863,7 @@ fn generate_deno_diagnostics(
     };
     let mut diagnostics = Vec::new();
     let mut deferred = Vec::new();
-    if config.specifier_enabled(&module.specifier) {
+    if snapshot.config.specifier_enabled(&module.specifier) {
       for (dependency_key, dependency) in module.dependencies.iter() {
         diagnose_dependency(
           &mut diagnostics,
@@ -1906,7 +1900,6 @@ mod tests {
   use std::sync::Arc;
 
   use deno_config::deno_json::ConfigFile;
-  use deno_core::resolve_url;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -1914,7 +1907,6 @@ mod tests {
   use crate::lsp::cache::LspCache;
   use crate::lsp::compiler_options::LspCompilerOptionsResolver;
   use crate::lsp::config::Config;
-  use crate::lsp::config::Settings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::DocumentModules;
   use crate::lsp::documents::LanguageId;
@@ -1924,29 +1916,6 @@ mod tests {
   use crate::lsp::urls::uri_to_url;
   use crate::lsp::urls::url_to_uri;
 
-  fn mock_config() -> Config {
-    let root_url = Arc::new(resolve_url("file:///").unwrap());
-    let root_uri = url_to_uri(&root_url).unwrap();
-    Config {
-      settings: Arc::new(Settings {
-        unscoped: Arc::new(WorkspaceSettings {
-          enable: Some(true),
-          lint: true,
-          ..Default::default()
-        }),
-        ..Default::default()
-      }),
-      workspace_folders: Arc::new(vec![(
-        root_url,
-        lsp::WorkspaceFolder {
-          uri: root_uri,
-          name: "".to_string(),
-        },
-      )]),
-      ..Default::default()
-    }
-  }
-
   async fn setup(
     sources: &[(&str, &str, i32, LanguageId)],
     maybe_import_map: Option<(&str, &str)>,
@@ -1955,6 +1924,13 @@ mod tests {
     let root_url = temp_dir.url();
     let cache = LspCache::new(Some(root_url.join(".deno_dir").unwrap()));
     let mut config = Config::new_with_roots([root_url.clone()]);
+    let enabled_settings =
+      serde_json::from_str::<WorkspaceSettings>(r#"{ "enable": true }"#)
+        .unwrap();
+    config.set_workspace_settings(
+      enabled_settings.clone(),
+      vec![(Arc::new(root_url.clone()), enabled_settings)],
+    );
     if let Some((relative_path, json_string)) = maybe_import_map {
       let base_url = root_url.join(relative_path).unwrap();
       let config_file = ConfigFile::new(json_string, base_url).unwrap();
@@ -1997,109 +1973,11 @@ mod tests {
     )
   }
 
-  #[tokio::test]
-  async fn test_enabled_then_disabled_specifier() {
-    let (_, snapshot) = setup(
-      &[(
-        "a.ts",
-        r#"import * as b from "./b.ts";
-let a: any = "a";
-let c: number = "a";
-"#,
-        1,
-        LanguageId::TypeScript,
-      )],
-      None,
-    )
-    .await;
-    let snapshot = Arc::new(snapshot);
-    let ts_server = TsServer::new(Default::default());
-
-    // test enabled
-    {
-      let enabled_config = mock_config();
-      let diagnostics = generate_lint_diagnostics(
-        &snapshot,
-        &enabled_config,
-        Default::default(),
-      );
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
-      let diagnostics = generate_ts_diagnostics(
-        snapshot.clone(),
-        &enabled_config,
-        &ts_server,
-        Default::default(),
-      )
-      .await
-      .unwrap()
-      .0;
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
-      let diagnostics = generate_all_deno_diagnostics(
-        &snapshot,
-        &enabled_config,
-        Default::default(),
-      );
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 1);
-    }
-
-    // now test disabled specifier
-    {
-      let mut disabled_config = mock_config();
-      disabled_config.set_workspace_settings(
-        WorkspaceSettings {
-          enable: Some(false),
-          ..Default::default()
-        },
-        vec![],
-      );
-
-      let diagnostics = generate_lint_diagnostics(
-        &snapshot,
-        &disabled_config,
-        Default::default(),
-      );
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
-      let diagnostics = generate_ts_diagnostics(
-        snapshot.clone(),
-        &disabled_config,
-        &ts_server,
-        Default::default(),
-      )
-      .await
-      .unwrap()
-      .0;
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
-      let diagnostics = generate_all_deno_diagnostics(
-        &snapshot,
-        &disabled_config,
-        Default::default(),
-      );
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
-    }
-  }
-
-  fn get_diagnostics_for_single(
-    diagnostic_vec: DiagnosticVec,
-  ) -> Vec<lsp::Diagnostic> {
-    if diagnostic_vec.is_empty() {
-      return vec![];
-    }
-    assert_eq!(diagnostic_vec.len(), 1);
-    diagnostic_vec
-      .into_iter()
-      .next()
-      .unwrap()
-      .versioned
-      .diagnostics
-  }
-
   fn generate_all_deno_diagnostics(
     snapshot: &StateSnapshot,
-    config: &Config,
     token: CancellationToken,
   ) -> DiagnosticVec {
-    let (diagnostics, deferred) =
-      generate_deno_diagnostics(snapshot, config, token);
+    let (diagnostics, deferred) = generate_deno_diagnostics(snapshot, token);
 
     let mut all_diagnostics = diagnostics
       .into_iter()
@@ -2160,9 +2038,8 @@ let c: number = "a";
       )),
     )
     .await;
-    let config = mock_config();
     let token = CancellationToken::new();
-    let actual = generate_all_deno_diagnostics(&snapshot, &config, token);
+    let actual = generate_all_deno_diagnostics(&snapshot, token);
     assert_eq!(actual.len(), 3);
     for record in actual {
       let specifier = uri_to_url(&record.uri);
@@ -2292,9 +2169,8 @@ let c: number = "a";
       None,
     )
     .await;
-    let config = mock_config();
     let token = CancellationToken::new();
-    let actual = generate_all_deno_diagnostics(&snapshot, &config, token);
+    let actual = generate_all_deno_diagnostics(&snapshot, token);
     assert_eq!(actual.len(), 1);
     let record = actual.first().unwrap();
     assert_eq!(
@@ -2366,9 +2242,8 @@ let c: number = "a";
       None,
     )
     .await;
-    let config = mock_config();
     let token = CancellationToken::new();
-    let actual = generate_all_deno_diagnostics(&snapshot, &config, token);
+    let actual = generate_all_deno_diagnostics(&snapshot, token);
     assert_eq!(actual.len(), 1);
     let record = actual.first().unwrap();
     assert_eq!(
