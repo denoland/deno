@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
@@ -16,7 +15,9 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
+use deno_resolver::deno_json::CompilerOptionsParseError;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::graph::maybe_additional_sloppy_imports_message;
 use deno_semver::npm::NpmPackageNvReference;
@@ -65,9 +66,7 @@ pub enum CheckError {
   FailedTypeChecking(#[from] FailedTypeCheckingError),
   #[class(inherit)]
   #[error(transparent)]
-  ToMaybeJsxImportSourceConfig(
-    #[from] deno_config::workspace::ToMaybeJsxImportSourceConfigError,
-  ),
+  ToMaybeJsxImportSourceConfig(#[from] ToMaybeJsxImportSourceConfigError),
   #[class(inherit)]
   #[error(transparent)]
   TscExec(#[from] tsc::ExecError),
@@ -76,7 +75,7 @@ pub enum CheckError {
   CompilerOptionTypesDeserialize(#[from] CompilerOptionTypesDeserializeError),
   #[class(inherit)]
   #[error(transparent)]
-  CompilerOptionsParse(#[from] deno_json::CompilerOptionsParseError),
+  CompilerOptionsParse(#[from] CompilerOptionsParseError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -314,7 +313,7 @@ fn resolve_graph_imports_for_compiler_options_data(
     .sources
     .iter()
     .map(|s| &s.specifier)
-    .filter_map(|s| graph.imports.get(s))
+    .filter_map(|s| graph.imports.get(s.as_ref()))
     .flat_map(|i| i.dependencies.values())
     .filter_map(|d| Some(graph.resolve(d.get_type().or_else(|| d.get_code())?)))
     .cloned()

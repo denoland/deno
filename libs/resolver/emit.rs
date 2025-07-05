@@ -27,6 +27,7 @@ use crate::cache::EmitCacheRc;
 use crate::cache::EmitCacheSys;
 use crate::cache::ParsedSourceCacheRc;
 use crate::cjs::CjsTrackerRc;
+use crate::deno_json::CompilerOptionsParseError;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::deno_json::TranspileAndEmitOptions;
 use crate::sync::MaybeSend;
@@ -455,9 +456,7 @@ enum PreEmitResult {
 pub enum EmitParsedSourceHelperError {
   #[class(inherit)]
   #[error(transparent)]
-  CompilerOptionsParse(
-    #[from] deno_config::deno_json::CompilerOptionsParseError,
-  ),
+  CompilerOptionsParse(#[from] CompilerOptionsParseError),
   #[class(inherit)]
   #[error(transparent)]
   ParseDiagnostic(#[from] deno_ast::ParseDiagnostic),

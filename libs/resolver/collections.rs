@@ -52,14 +52,11 @@ impl<TValue> FolderScopedMap<TValue> {
   }
 
   pub fn get_for_specifier(&self, specifier: &Url) -> &TValue {
-    self.get_for_specifier_str(specifier.as_str())
-  }
-
-  pub fn get_for_specifier_str(&self, specifier: &str) -> &TValue {
+    let specifier_str = specifier.as_str();
     self
       .scoped
       .iter()
-      .rfind(|(s, _)| specifier.starts_with(s.as_str()))
+      .rfind(|(s, _)| specifier_str.starts_with(s.as_str()))
       .map(|(_, v)| v)
       .unwrap_or(&self.unscoped)
   }
@@ -74,6 +71,13 @@ impl<TValue> FolderScopedMap<TValue> {
       .rfind(|(s, _)| specifier.as_str().starts_with(s.as_str()))
       .map(|(s, v)| (Some(s), v))
       .unwrap_or((None, &self.unscoped))
+  }
+
+  pub fn get_for_scope(&self, scope: Option<&Url>) -> Option<&TValue> {
+    let Some(scope) = scope else {
+      return Some(&self.unscoped);
+    };
+    self.scoped.get(scope)
   }
 
   pub fn entries(&self) -> impl Iterator<Item = (Option<&UrlRc>, &TValue)> {
