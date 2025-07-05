@@ -1416,7 +1416,6 @@ impl ConfigData {
       member_dir.dir_path(),
       WorkspaceFactoryOptions {
         additional_config_file_names: &[],
-        compiler_options_overrides: Default::default(),
         config_discovery: ConfigDiscoveryOption::DiscoverCwd,
         maybe_custom_deno_dir_root: None,
         is_package_manager_subcommand: false,
@@ -1439,6 +1438,7 @@ impl ConfigData {
       ResolverFactoryOptions {
         // these default options are fine because we don't use this for
         // anything other than resolving the lockfile at the moment
+        compiler_options_overrides: Default::default(),
         is_cjs_resolution_mode: Default::default(),
         npm_system_info: Default::default(),
         node_code_translator_mode: Default::default(),

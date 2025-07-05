@@ -1108,6 +1108,11 @@ impl CliFactory {
       Ok(Arc::new(CliResolverFactory::new(
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
+          compiler_options_overrides: CompilerOptionsOverrides {
+            no_transpile: false,
+            source_map_base: None,
+            preserve_jsx: false,
+          },
           is_cjs_resolution_mode: if options.is_node_main()
             || options.unstable_detect_cjs()
           {
@@ -1207,9 +1212,6 @@ fn new_workspace_factory_options(
       &["jsr.json", "jsr.jsonc"]
     } else {
       &[]
-    },
-    compiler_options_overrides: CompilerOptionsOverrides {
-      preserve_jsx: false,
     },
     config_discovery: match &flags.config_flag {
       ConfigFlag::Discover => {

@@ -1141,6 +1141,7 @@ impl ConfigFile {
     sys: &impl FsRead,
     config_path: &Path,
   ) -> Result<Self, ConfigFileReadError> {
+    #[cfg(not(target_arch = "wasm32"))]
     debug_assert!(config_path.is_absolute());
     let specifier = url_from_file_path(config_path).map_err(|_| {
       ConfigFileReadErrorKind::PathToUrl(config_path.to_path_buf()).into_box()
