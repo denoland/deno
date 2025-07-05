@@ -1786,8 +1786,6 @@ dependencies = [
  "indexmap 2.9.0",
  "jsonc-parser",
  "log",
- "percent-encoding",
- "phf",
  "pretty_assertions",
  "serde",
  "serde_json",
