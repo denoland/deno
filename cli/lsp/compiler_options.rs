@@ -14,7 +14,6 @@ use deno_resolver::deno_json::TsConfigFile;
 use deno_resolver::deno_json::get_base_compiler_options_for_emit;
 
 use crate::lsp::config::Config;
-use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::LspResolver;
 use crate::sys::CliSys;
 
