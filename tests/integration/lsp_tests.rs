@@ -17140,6 +17140,82 @@ fn lsp_workspace_compiler_options_root_dirs() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_tsconfig_scopes() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write(
+    "project1/tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["deno.window"],
+      },
+    })
+    .to_string(),
+  );
+  let file1 = temp_dir.source_file("project1/file.ts", "Deno;\ndocument;\n");
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  temp_dir.write(
+    "project2/tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  let file2 = temp_dir.source_file("project2/file.ts", "Deno;\ndocument;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file1);
+  let diagnostics = client.did_open_file(&file2);
+  let mut messages = diagnostics.all_messages();
+  messages.sort_by_key(|d| d.uri.to_string());
+  assert_eq!(
+    json!(&messages),
+    json!([
+      {
+        "uri": file1.uri(),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 8 },
+            },
+            "severity": 1,
+            "code": 2584,
+            "source": "deno-ts",
+            "message": "Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.",
+          },
+        ],
+        "version": 1,
+      },
+      {
+        "uri": file2.uri(),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 4 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib=\"deno.ns\" />",
+          },
+        ],
+        "version": 1,
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
