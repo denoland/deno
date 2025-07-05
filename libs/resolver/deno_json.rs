@@ -181,7 +181,7 @@ pub fn parse_compiler_options(
 }
 
 #[allow(clippy::disallowed_types)]
-pub type SerdeJsonErrorRc = crate::sync::MaybeArc<serde_json::Error>;
+pub type SerdeJsonErrorArc = std::sync::Arc<serde_json::Error>;
 
 #[derive(Debug, Clone, Error, JsError)]
 #[class(type)]
@@ -189,7 +189,7 @@ pub type SerdeJsonErrorRc = crate::sync::MaybeArc<serde_json::Error>;
 pub struct CompilerOptionsParseError {
   pub specifier: Url,
   #[source]
-  pub source: SerdeJsonErrorRc,
+  pub source: SerdeJsonErrorArc,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -451,7 +451,7 @@ impl CompilerOptionsData {
         let object = serde_json::from_value(compiler_options.0.clone())
           .map_err(|err| CompilerOptionsParseError {
             specifier: source.specifier.as_ref().clone(),
-            source: new_rc(err),
+            source: SerdeJsonErrorArc::new(err),
           })?;
         let parsed =
           parse_compiler_options(object, Some(source.specifier.as_ref()));
@@ -487,7 +487,7 @@ impl CompilerOptionsData {
           .expect(
             "Compiler options parse errors must come from a user source.",
           ),
-        source: new_rc(source),
+        source: SerdeJsonErrorArc::new(source),
       })
     });
     result.as_ref().map_err(Clone::clone)
