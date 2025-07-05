@@ -32,9 +32,10 @@ impl<'a> LspCompilerOptionsData<'a> {
     self
       .inner
       .compiler_options_for_lib(TsTypeLib::DenoWindow)
-      .inspect_err(|err| {
-        lsp_warn!("{err:#}");
-      })
+      // TODO(nayeemrmn): Only print this once.
+      // .inspect_err(|err| {
+      //   lsp_warn!("{err:#}");
+      // })
       .ok()
       .cloned()
       .unwrap_or_else(|| {
@@ -57,9 +58,10 @@ impl<'a> LspCompilerOptionsData<'a> {
     self
       .inner
       .jsx_import_source_config()
-      .inspect_err(|err| {
-        lsp_warn!("{err:#}");
-      })
+      // TODO(nayeemrmn): Only print this once.
+      // .inspect_err(|err| {
+      //   lsp_warn!("{err:#}");
+      // })
       .ok()
       .flatten()
   }
@@ -78,7 +80,7 @@ impl Default for LspCompilerOptionsResolver {
 
 impl LspCompilerOptionsResolver {
   pub fn new(config: &Config, resolver: &LspResolver) -> Self {
-    Self::from_inner(CompilerOptionsResolver::new_for_lsp(
+    Self::from_inner(CompilerOptionsResolver::new_for_dirs_by_scope(
       &CliSys::default(),
       config
         .tree

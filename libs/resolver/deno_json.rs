@@ -1176,7 +1176,7 @@ impl CompilerOptionsResolver {
     self.workspace_configs.count() + self.ts_configs.len()
   }
 
-  pub fn new_for_lsp<TSys: FsRead, NSys: NpmResolverSys>(
+  pub fn new_for_dirs_by_scope<TSys: FsRead, NSys: NpmResolverSys>(
     sys: &TSys,
     dirs_by_scope: BTreeMap<&UrlRc, &WorkspaceDirectory>,
     get_node_resolver: GetNodeResolverFn<'_, NSys>,
