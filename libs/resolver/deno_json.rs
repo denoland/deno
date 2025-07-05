@@ -180,13 +180,16 @@ pub fn parse_compiler_options(
   }
 }
 
-#[derive(Debug, Error, JsError)]
+#[allow(clippy::disallowed_types)]
+pub type SerdeJsonErrorRc = crate::sync::MaybeArc<serde_json::Error>;
+
+#[derive(Debug, Clone, Error, JsError)]
 #[class(type)]
 #[error("compilerOptions should be an object at '{specifier}'")]
 pub struct CompilerOptionsParseError {
   pub specifier: Url,
   #[source]
-  pub source: serde_json::Error,
+  pub source: SerdeJsonErrorRc,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -205,7 +208,7 @@ pub struct JsxImportSourceConfig {
 #[allow(clippy::disallowed_types)]
 pub type JsxImportSourceConfigRc = crate::sync::MaybeArc<JsxImportSourceConfig>;
 
-#[derive(Debug, Error, JsError)]
+#[derive(Debug, Clone, Error, JsError)]
 #[class(type)]
 pub enum ToMaybeJsxImportSourceConfigError {
   #[error(
@@ -345,13 +348,19 @@ type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
 
 #[derive(Default, Debug)]
 struct MemoizedValues {
-  deno_window_check_compiler_options: OnceCell<CompilerOptionsRc>,
-  deno_worker_check_compiler_options: OnceCell<CompilerOptionsRc>,
-  emit_compiler_options: OnceCell<CompilerOptionsRc>,
+  deno_window_check_compiler_options:
+    OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
+  deno_worker_check_compiler_options:
+    OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
+  emit_compiler_options:
+    OnceCell<Result<CompilerOptionsRc, CompilerOptionsParseError>>,
   #[cfg(feature = "deno_ast")]
-  transpile_options: OnceCell<TranspileAndEmitOptionsRc>,
+  transpile_options:
+    OnceCell<Result<TranspileAndEmitOptionsRc, CompilerOptionsParseError>>,
   compiler_options_types: OnceCell<CompilerOptionsTypesRc>,
-  jsx_import_source_config: OnceCell<Option<JsxImportSourceConfigRc>>,
+  jsx_import_source_config: OnceCell<
+    Result<Option<JsxImportSourceConfigRc>, ToMaybeJsxImportSourceConfigError>,
+  >,
   check_js: OnceCell<bool>,
 }
 
@@ -427,7 +436,7 @@ impl CompilerOptionsData {
       } => &self.memoized.deno_worker_check_compiler_options,
       CompilerOptionsType::Emit => &self.memoized.emit_compiler_options,
     };
-    cell.get_or_try_init(|| {
+    let result = cell.get_or_init(|| {
       let mut result = CompilerOptionsWithIgnoredOptions {
         compiler_options: get_base_compiler_options_for_emit(
           typ,
@@ -442,7 +451,7 @@ impl CompilerOptionsData {
         let object = serde_json::from_value(compiler_options.0.clone())
           .map_err(|err| CompilerOptionsParseError {
             specifier: source.specifier.as_ref().clone(),
-            source: err,
+            source: new_rc(err),
           })?;
         let parsed =
           parse_compiler_options(object, Some(source.specifier.as_ref()));
@@ -455,14 +464,15 @@ impl CompilerOptionsData {
         check_warn_compiler_options(&result, &self.logged_warnings);
       }
       Ok(new_rc(result.compiler_options))
-    })
+    });
+    result.as_ref().map_err(Clone::clone)
   }
 
   #[cfg(feature = "deno_ast")]
   pub fn transpile_options(
     &self,
   ) -> Result<&TranspileAndEmitOptionsRc, CompilerOptionsParseError> {
-    self.memoized.transpile_options.get_or_try_init(|| {
+    let result = self.memoized.transpile_options.get_or_init(|| {
       let compiler_options = self.compiler_options_for_emit()?;
       compiler_options_to_transpile_and_emit_options(
         compiler_options.as_ref().clone(),
@@ -477,9 +487,10 @@ impl CompilerOptionsData {
           .expect(
             "Compiler options parse errors must come from a user source.",
           ),
-        source,
+        source: new_rc(source),
       })
-    })
+    });
+    result.as_ref().map_err(Clone::clone)
   }
 
   pub fn compiler_options_types(&self) -> &CompilerOptionsTypesRc {
@@ -509,7 +520,7 @@ impl CompilerOptionsData {
     &self,
   ) -> Result<Option<&JsxImportSourceConfigRc>, ToMaybeJsxImportSourceConfigError>
   {
-    self.memoized.jsx_import_source_config.get_or_try_init(|| {
+    let result = self.memoized.jsx_import_source_config.get_or_init(|| {
       let jsx = self.sources.iter().rev().find_map(|s| Some((s.compiler_options.as_ref()?.0.as_object()?.get("jsx")?.as_str()?, &s.specifier)));
       let is_jsx_automatic = matches!(
         jsx,
@@ -570,7 +581,8 @@ impl CompilerOptionsData {
         import_source,
         import_source_types,
       })))
-    }).map(|c| c.as_ref())
+    });
+    result.as_ref().map(|c| c.as_ref()).map_err(Clone::clone)
   }
 
   pub fn check_js(&self) -> bool {

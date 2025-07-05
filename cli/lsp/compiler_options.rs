@@ -13,6 +13,7 @@ use deno_resolver::deno_json::TsConfigFile;
 use deno_resolver::deno_json::get_base_compiler_options_for_emit;
 
 use crate::lsp::config::Config;
+use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::LspResolver;
 use crate::sys::CliSys;
 
@@ -37,10 +38,9 @@ impl<'a> LspCompilerOptionsData<'a> {
     self
       .inner
       .compiler_options_for_lib(TsTypeLib::DenoWindow)
-      // TODO(nayeemrmn): Only show this once.
-      // .inspect_err(|err| {
-      //   lsp_warn!("{err:#}");
-      // })
+      .inspect_err(|err| {
+        lsp_warn!("{err:#}");
+      })
       .ok()
       .cloned()
       .unwrap_or_else(|| {
@@ -63,10 +63,9 @@ impl<'a> LspCompilerOptionsData<'a> {
     self
       .inner
       .jsx_import_source_config()
-      // TODO(nayeemrmn): Only show this once.
-      // .inspect_err(|err| {
-      //   lsp_warn!("{err:#}");
-      // })
+      .inspect_err(|err| {
+        lsp_warn!("{err:#}");
+      })
       .ok()
       .flatten()
   }
