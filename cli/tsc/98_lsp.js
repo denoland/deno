@@ -325,28 +325,6 @@ export async function serverMainLoop(enableDebugLogging) {
     throw new Error("The language server has already been initialized.");
   }
   hasStarted = true;
-  LANGUAGE_SERVICE_ENTRIES.unscoped = {
-    ls: createLs(),
-    compilerOptions: lspToTsCompilerOptions({
-      "allowJs": true,
-      "esModuleInterop": true,
-      "experimentalDecorators": false,
-      "isolatedModules": true,
-      "lib": ["deno.ns", "deno.window", "deno.unstable"],
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "moduleDetection": "force",
-      "noEmit": true,
-      "noImplicitOverride": true,
-      "resolveJsonModule": true,
-      "strict": true,
-      "target": "esnext",
-      "useDefineForClassFields": true,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-    }),
-  };
   setLogDebug(enableDebugLogging, "TSLS");
   debug("serverInit()");
 
@@ -475,10 +453,13 @@ function serverRequestInner(
           notebookUri,
         );
         const ls = oldEntry ? oldEntry.ls : createLs();
-        const compilerOptions =
-          LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(compilerOptionsKey)
-            ?.compilerOptions ??
-            LANGUAGE_SERVICE_ENTRIES.unscoped.compilerOptions;
+        const compilerOptions = LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey
+          .get(compilerOptionsKey)?.compilerOptions;
+        if (!compilerOptions) {
+          throw new Error(
+            `Couldn't find language service entry for key: ${compilerOptionsKey}`,
+          );
+        }
         newByNotebookUri.set(notebookUri, { ls, compilerOptions });
         LANGUAGE_SERVICE_ENTRIES.byNotebookUri.delete(notebookUri);
       }
@@ -514,16 +495,16 @@ function serverRequestInner(
     (notebookUri
       ? LANGUAGE_SERVICE_ENTRIES.byNotebookUri.get(notebookUri)?.ls
       : null) ??
-      (compilerOptionsKey
-        ? LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(compilerOptionsKey)
-          ?.ls
-        : null) ??
-      LANGUAGE_SERVICE_ENTRIES.unscoped.ls;
+      LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(compilerOptionsKey)?.ls;
+  if (!ls) {
+    throw new Error(
+      `Couldn't find language service entry for key: ${compilerOptionsKey}`,
+    );
+  }
   switch (method) {
     case "$cleanupSemanticCache": {
       for (
         const ls of [
-          LANGUAGE_SERVICE_ENTRIES.unscoped.ls,
           ...[...LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.values()].map((
             e,
           ) => e.ls),

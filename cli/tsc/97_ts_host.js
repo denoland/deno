@@ -375,10 +375,8 @@ class CancellationToken {
  *    ls: ts.LanguageService & { [k:string]: any },
  *    compilerOptions: ts.CompilerOptions,
  *  }} LanguageServiceEntry */
-/** @type {{ unscoped: LanguageServiceEntry, byCompilerOptionsKey: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
+/** @type {{ byCompilerOptionsKey: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
 export const LANGUAGE_SERVICE_ENTRIES = {
-  // @ts-ignore Will be set later.
-  unscoped: null,
   byCompilerOptionsKey: new Map(),
   byNotebookUri: new Map(),
 };
@@ -674,12 +672,18 @@ const hostImpl = {
     }
     const lastRequestCompilerOptionsKey = LAST_REQUEST_COMPILER_OPTIONS_KEY
       .get();
-    return (lastRequestCompilerOptionsKey
-      ? LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(
-        lastRequestCompilerOptionsKey,
-      )
-        ?.compilerOptions
-      : null) ?? LANGUAGE_SERVICE_ENTRIES.unscoped.compilerOptions;
+    if (lastRequestCompilerOptionsKey == null) {
+      throw new Error(`No compiler options key was set.`);
+    }
+    const compilerOptions = LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(
+      lastRequestCompilerOptionsKey,
+    )?.compilerOptions;
+    if (!compilerOptions) {
+      throw new Error(
+        `Couldn't find language service entry for key: ${lastRequestCompilerOptionsKey}`,
+      );
+    }
+    return compilerOptions;
   },
   getScriptFileNames() {
     if (logDebug) {
