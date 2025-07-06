@@ -25,13 +25,23 @@
 // - https://github.com/nodejs/node/blob/master/src/util.cc
 // - https://github.com/nodejs/node/blob/master/src/util.h
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import {
   op_node_guess_handle_type,
   op_node_view_has_buffer,
 } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayIsArray,
+  ArrayBufferIsView,
+  ArrayPrototypeFilter,
+  ArrayPrototypePush,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectGetOwnPropertyNames,
+  ObjectGetOwnPropertySymbols,
+  SafeArrayIterator,
+  StringPrototypeCharCodeAt,
+  SymbolFor,
+} = primordials;
 
 const handleTypes = ["TCP", "TTY", "UDP", "FILE", "PIPE", "UNKNOWN"];
 export function guessHandleType(fd: number): string {
@@ -74,7 +84,7 @@ export function isArrayIndex(value: unknown): value is number | string {
       let ch = 0;
       let i = 0;
       for (; i < length; ++i) {
-        ch = value.charCodeAt(i);
+        ch = StringPrototypeCharCodeAt(value, i);
         if (
           i === 0 && ch === 0x30 && length > 1 /* must not start with 0 */ ||
           ch < 0x30 /* 0 */ || ch > 0x39 /* 9 */
@@ -94,12 +104,15 @@ export function getOwnNonIndexProperties(
   filter: number,
 ): (string | symbol)[] {
   let allProperties = [
-    ...Object.getOwnPropertyNames(obj),
-    ...Object.getOwnPropertySymbols(obj),
+    ...new SafeArrayIterator(ObjectGetOwnPropertyNames(obj)),
+    ...new SafeArrayIterator(ObjectGetOwnPropertySymbols(obj)),
   ];
 
-  if (Array.isArray(obj) || ArrayBuffer.isView(obj)) {
-    allProperties = allProperties.filter((k) => !isArrayIndex(k));
+  if (ArrayIsArray(obj) || ArrayBufferIsView(obj)) {
+    allProperties = ArrayPrototypeFilter(
+      allProperties,
+      (k) => !isArrayIndex(k),
+    );
   }
 
   if (filter === ALL_PROPERTIES) {
@@ -107,8 +120,8 @@ export function getOwnNonIndexProperties(
   }
 
   const result: (string | symbol)[] = [];
-  for (const key of allProperties) {
-    const desc = Object.getOwnPropertyDescriptor(obj, key);
+  for (const key of new SafeArrayIterator(allProperties)) {
+    const desc = ObjectGetOwnPropertyDescriptor(obj, key);
     if (desc === undefined) {
       continue;
     }
@@ -127,7 +140,7 @@ export function getOwnNonIndexProperties(
     if (filter & SKIP_SYMBOLS && typeof key === "symbol") {
       continue;
     }
-    result.push(key);
+    ArrayPrototypePush(result, key);
   }
   return result;
 }
@@ -138,6 +151,6 @@ export function arrayBufferViewHasBuffer(
   return op_node_view_has_buffer(view);
 }
 
-export const untransferableSymbol = Symbol.for(
+export const untransferableSymbol = SymbolFor(
   "nodejs.worker_threads.untransferable",
 );
