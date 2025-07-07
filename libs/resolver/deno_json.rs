@@ -1136,20 +1136,6 @@ impl CompilerOptionsResolver {
     (CompilerOptionsKey::WorkspaceConfig(scope.cloned()), data)
   }
 
-  pub fn for_key(
-    &self,
-    key: &CompilerOptionsKey,
-  ) -> Option<&CompilerOptionsData> {
-    match key {
-      CompilerOptionsKey::WorkspaceConfig(scope) => {
-        self.workspace_configs.get_for_scope(scope.as_deref())
-      }
-      CompilerOptionsKey::TsConfig(i) => {
-        self.ts_configs.get(*i).map(|d| &d.compiler_options)
-      }
-    }
-  }
-
   pub fn entries(
     &self,
   ) -> impl Iterator<
