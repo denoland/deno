@@ -949,6 +949,7 @@ async fn initialize_tunnel(
       use deno_runtime::deno_net::tunnel::Event;
       match event {
         Event::Routed => {
+          // using eprintln because logging is not yet initialized
           eprintln!(
             "{}",
             colors::green(format!("You are connected to {endpoint}!"))
@@ -967,7 +968,6 @@ async fn initialize_tunnel(
       std::env::set_var(k, v);
     }
   }
-  log::debug!("Endpoint is being routed");
 
   deno_runtime::deno_net::tunnel::set_tunnel(tunnel);
 
