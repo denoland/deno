@@ -97,27 +97,27 @@ fn setup_signal_handlers() {
 
 #[cfg(windows)]
 fn setup_signal_handlers() {
-  let handlers = [
-    tokio::signal::windows::ctrl_break,
-    tokio::signal::windows::ctrl_c,
-    tokio::signal::windows::ctrl_close,
-    tokio::signal::windows::ctrl_logoff,
-    tokio::signal::windows::ctrl_shutdown,
-  ];
-
-  for handler in handlers {
-    tokio::spawn(async {
-      let Ok(mut signal_fut) = handler() else {
-        return;
-      };
-      loop {
-        signal_fut.recv().await;
-        if let Some(tunnel) = get_tunnel() {
-          tunnel.connection.close(1u32.into(), b"");
+  macro_rules! handle_signal {
+    ($handler:expr) => {
+      tokio::spawn(async {
+        let Ok(mut signal_fut) = $handler() else {
+          return;
+        };
+        loop {
+          signal_fut.recv().await;
+          if let Some(tunnel) = get_tunnel() {
+            tunnel.connection.close(1u32.into(), b"");
+          }
         }
-      }
-    });
+      });
+    };
   }
+
+  handle_signal!(tokio::signal::windows::ctrl_break);
+  handle_signal!(tokio::signal::windows::ctrl_c);
+  handle_signal!(tokio::signal::windows::ctrl_close);
+  handle_signal!(tokio::signal::windows::ctrl_logoff);
+  handle_signal!(tokio::signal::windows::ctrl_shutdown);
 }
 
 /// Essentially a SocketAddr, except we prefer a human

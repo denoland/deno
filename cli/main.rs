@@ -624,8 +624,8 @@ async fn resolve_flags_and_init(
 
   // Tunnel is initialized before OTEL since
   // OTEL data is submitted via the tunnel.
-  if let Some(host) = &flags.connected {
-    if let Err(err) = initialize_tunnel(host, &flags).await {
+  if let Some(host) = flags.connected.clone().or_else(|| env::var("DENO_CONNECTED").ok()) {
+    if let Err(err) = initialize_tunnel(&host, &flags).await {
       init_logging(None, None);
       exit_for_error(AnyError::from(err))
     }

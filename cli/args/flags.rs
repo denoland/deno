@@ -3461,6 +3461,7 @@ Start a server defined in server.ts, watching for changes and running on port 50
     )
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
+    .arg(connected_arg())
 }
 
 fn task_subcommand() -> Command {

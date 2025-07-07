@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::env;
 use std::ffi::OsString;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -176,8 +177,8 @@ pub async fn execute_script(
   let node_resolver = factory.node_resolver().await?;
   let mut env_vars = task_runner::real_env_vars();
 
-  if let Some(connected) = &flags.connected {
-    env_vars.insert("DENO_CONNECTED".into(), connected.clone().into());
+  if let Some(connected) = flags.connected.clone().or_else(|| env::var("DENO_CONNECTED").ok()) {
+    env_vars.insert("DENO_CONNECTED".into(), connected.into());
   }
 
   let no_of_concurrent_tasks = if let Ok(value) = std::env::var("DENO_JOBS") {
