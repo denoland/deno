@@ -1,11 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use deno_config::deno_json::CompilerOptions;
 use deno_config::workspace::TsTypeLib;
 use deno_core::url::Url;
-use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::CompilerOptionsType;
@@ -14,61 +14,23 @@ use deno_resolver::deno_json::TsConfigFile;
 use deno_resolver::deno_json::get_base_compiler_options_for_emit;
 
 use crate::lsp::config::Config;
+use crate::lsp::logging::lsp_warn;
 use crate::lsp::resolver::LspResolver;
 use crate::sys::CliSys;
 
-#[derive(Debug, Copy, Clone)]
-pub struct LspCompilerOptionsData<'a> {
-  inner: &'a CompilerOptionsData,
-}
-
-impl<'a> LspCompilerOptionsData<'a> {
-  pub fn workspace_dir_or_source_url(&self) -> Option<&'a Arc<Url>> {
-    self.inner.workspace_dir_or_source_url()
-  }
-
-  pub fn compiler_options(&self) -> Arc<CompilerOptions> {
-    self
-      .inner
-      .compiler_options_for_lib(TsTypeLib::DenoWindow)
-      // TODO(nayeemrmn): Only print this once.
-      // .inspect_err(|err| {
-      //   lsp_warn!("{err:#}");
-      // })
-      .ok()
-      .cloned()
-      .unwrap_or_else(|| {
-        Arc::new(get_base_compiler_options_for_emit(
-          CompilerOptionsType::Check {
-            lib: TsTypeLib::DenoWindow,
-          },
-          self.inner.defaults,
-        ))
-      })
-  }
-
-  pub fn compiler_options_types(&self) -> &'a Arc<Vec<(Url, Vec<String>)>> {
-    self.inner.compiler_options_types()
-  }
-
-  pub fn jsx_import_source_config(
-    &self,
-  ) -> Option<&'a Arc<JsxImportSourceConfig>> {
-    self
-      .inner
-      .jsx_import_source_config()
-      // TODO(nayeemrmn): Only print this once.
-      // .inspect_err(|err| {
-      //   lsp_warn!("{err:#}");
-      // })
-      .ok()
-      .flatten()
-  }
+#[derive(Debug, Clone)]
+pub struct LspCompilerOptionsData {
+  pub workspace_dir_or_source_url: Option<Arc<Url>>,
+  pub compiler_options: Arc<CompilerOptions>,
+  pub compiler_options_types: Arc<Vec<(Url, Vec<String>)>>,
+  pub jsx_import_source_config: Option<Arc<JsxImportSourceConfig>>,
+  pub ts_config_files: Option<(Arc<Url>, Vec<TsConfigFile>)>,
 }
 
 #[derive(Debug)]
 pub struct LspCompilerOptionsResolver {
   inner: CompilerOptionsResolver,
+  data: BTreeMap<CompilerOptionsKey, LspCompilerOptionsData>,
 }
 
 impl Default for LspCompilerOptionsResolver {
@@ -97,46 +59,75 @@ impl LspCompilerOptionsResolver {
   }
 
   fn from_inner(inner: CompilerOptionsResolver) -> Self {
-    Self { inner }
+    let data = inner
+      .entries()
+      .map(|(k, d, f)| {
+        (
+          k,
+          LspCompilerOptionsData {
+            workspace_dir_or_source_url: d
+              .workspace_dir_or_source_url()
+              .cloned(),
+            compiler_options: d
+              .compiler_options_for_lib(TsTypeLib::DenoWindow)
+              .inspect_err(|err| {
+                lsp_warn!("{err:#}");
+              })
+              .ok()
+              .cloned()
+              .unwrap_or_else(|| {
+                Arc::new(get_base_compiler_options_for_emit(
+                  CompilerOptionsType::Check {
+                    lib: TsTypeLib::DenoWindow,
+                  },
+                  d.defaults,
+                ))
+              }),
+            compiler_options_types: d.compiler_options_types().clone(),
+            jsx_import_source_config: d
+              .jsx_import_source_config()
+              .inspect_err(|err| {
+                lsp_warn!("{err:#}");
+              })
+              .ok()
+              .flatten()
+              .cloned(),
+            ts_config_files: f.map(|(r, f)| (r.clone(), f.clone())),
+          },
+        )
+      })
+      .collect();
+    Self { inner, data }
   }
 
-  pub fn for_specifier(&self, specifier: &Url) -> LspCompilerOptionsData<'_> {
-    LspCompilerOptionsData {
-      inner: self.inner.for_specifier(specifier),
-    }
+  pub fn for_specifier(&self, specifier: &Url) -> &LspCompilerOptionsData {
+    self
+      .data
+      .get(&self.inner.entry_for_specifier(specifier).0)
+      .expect("Stored key should be mapped.")
   }
 
   pub fn entry_for_specifier(
     &self,
     specifier: &Url,
-  ) -> (CompilerOptionsKey, LspCompilerOptionsData<'_>) {
-    let (key, data) = self.inner.entry_for_specifier(specifier);
-    let data = LspCompilerOptionsData { inner: data };
-    (key, data)
+  ) -> (&CompilerOptionsKey, &LspCompilerOptionsData) {
+    self
+      .data
+      .get_key_value(&self.inner.entry_for_specifier(specifier).0)
+      .expect("Stored key should be mapped.")
   }
 
   pub fn for_key(
     &self,
     key: &CompilerOptionsKey,
-  ) -> Option<LspCompilerOptionsData<'_>> {
-    Some(LspCompilerOptionsData {
-      inner: self.inner.for_key(key)?,
-    })
+  ) -> Option<&LspCompilerOptionsData> {
+    self.data.get(key)
   }
 
   #[allow(clippy::type_complexity)]
   pub fn entries(
     &self,
-  ) -> impl Iterator<
-    Item = (
-      CompilerOptionsKey,
-      LspCompilerOptionsData<'_>,
-      Option<(&Arc<Url>, &Vec<TsConfigFile>)>,
-    ),
-  > {
-    self
-      .inner
-      .entries()
-      .map(|(k, d, f)| (k, LspCompilerOptionsData { inner: d }, f))
+  ) -> impl Iterator<Item = (&CompilerOptionsKey, &LspCompilerOptionsData)> {
+    self.data.iter()
   }
 }

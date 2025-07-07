@@ -84,34 +84,38 @@ impl LspLinterResolver {
             })
             .ok()
             .unwrap_or_default();
-        let compiler_options = self
+        let compiler_options_data = self
           .compiler_options_resolver
           .for_key(&module.compiler_options_key)
-          .expect("Key should be in sync with resolver.")
-          .compiler_options();
-        let deno_lint_config =
-          if compiler_options.0.get("jsx").and_then(|v| v.as_str())
-            == Some("react")
-          {
-            let default_jsx_factory = compiler_options
-              .0
-              .get("jsxFactory")
-              .and_then(|v| v.as_str());
-            let default_jsx_fragment_factory = compiler_options
-              .0
-              .get("jsxFragmentFactory")
-              .and_then(|v| v.as_str());
-            LintConfig {
-              default_jsx_factory: default_jsx_factory.map(String::from),
-              default_jsx_fragment_factory: default_jsx_fragment_factory
-                .map(String::from),
-            }
-          } else {
-            LintConfig {
-              default_jsx_factory: None,
-              default_jsx_fragment_factory: None,
-            }
-          };
+          .expect("Key should be in sync with resolver.");
+        let deno_lint_config = if compiler_options_data
+          .compiler_options
+          .0
+          .get("jsx")
+          .and_then(|v| v.as_str())
+          == Some("react")
+        {
+          let default_jsx_factory = compiler_options_data
+            .compiler_options
+            .0
+            .get("jsxFactory")
+            .and_then(|v| v.as_str());
+          let default_jsx_fragment_factory = compiler_options_data
+            .compiler_options
+            .0
+            .get("jsxFragmentFactory")
+            .and_then(|v| v.as_str());
+          LintConfig {
+            default_jsx_factory: default_jsx_factory.map(String::from),
+            default_jsx_fragment_factory: default_jsx_fragment_factory
+              .map(String::from),
+          }
+        } else {
+          LintConfig {
+            default_jsx_factory: None,
+            default_jsx_fragment_factory: None,
+          }
+        };
         let mut plugin_runner = None;
         if !lint_options.plugins.is_empty() {
           let load_plugins_result = LOAD_PLUGINS_THREAD.load_plugins(

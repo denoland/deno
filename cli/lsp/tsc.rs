@@ -5040,15 +5040,16 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     .scopes_with_node_specifier();
 
   // Insert global scripts.
-  for (compiler_options_key, compiler_options_data, maybe_files) in
+  for (compiler_options_key, compiler_options_data) in
     state.state_snapshot.compiler_options_resolver.entries()
   {
     let script_names = result
       .by_compiler_options_key
-      .entry(compiler_options_key)
+      .entry(compiler_options_key.clone())
       .or_default();
     let scope = compiler_options_data
-      .workspace_dir_or_source_url()
+      .workspace_dir_or_source_url
+      .as_ref()
       .and_then(|s| state.state_snapshot.config.tree.scope_for_specifier(s))
       .cloned();
     if scopes_with_node_specifier.contains(&scope) {
@@ -5058,10 +5059,9 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .state_snapshot
       .resolver
       .get_scoped_resolver(scope.as_deref());
-    let jsx_import_source_config =
-      compiler_options_data.jsx_import_source_config();
-    for (referrer, relative_specifiers) in maybe_files
-      .into_iter()
+    for (referrer, relative_specifiers) in compiler_options_data
+      .ts_config_files
+      .iter()
       .map(|(r, f)| {
         let relative_specifiers =
           Box::new(f.iter().map(|f| &f.relative_specifier))
@@ -5070,7 +5070,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       })
       .chain(
         compiler_options_data
-          .compiler_options_types()
+          .compiler_options_types
           .iter()
           .map(|(r, t)| (r, Box::new(t.iter()) as _)),
       )
@@ -5079,7 +5079,9 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         valid_referrer: referrer,
         module_resolution_mode: ResolutionMode::Import,
         cli_resolver: scoped_resolver.as_cli_resolver(),
-        jsx_import_source_config: jsx_import_source_config.map(|c| c.as_ref()),
+        jsx_import_source_config: compiler_options_data
+          .jsx_import_source_config
+          .as_deref(),
       };
       for relative_specifier in relative_specifiers {
         let Ok(mut specifier) = resolver
@@ -5151,7 +5153,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
 
     // Copy over the globals from the containing regular scopes.
     if let Some(global_script_names) =
-      result.by_compiler_options_key.get(&compiler_options_key)
+      result.by_compiler_options_key.get(compiler_options_key)
     {
       script_names.extend(global_script_names.iter().cloned());
     }
@@ -6077,7 +6079,7 @@ mod tests {
         snapshot
           .compiler_options_resolver
           .entries()
-          .map(|(k, d, _)| (k, d.compiler_options()))
+          .map(|(k, d)| (k.clone(), d.compiler_options.clone()))
           .collect(),
       ),
       None,

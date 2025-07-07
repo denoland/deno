@@ -865,7 +865,7 @@ impl DocumentModule {
     document: &Document,
     specifier: Arc<Url>,
     compiler_options_key: CompilerOptionsKey,
-    compiler_options_data: LspCompilerOptionsData<'_>,
+    compiler_options_data: &LspCompilerOptionsData,
     scope: Option<Arc<Url>>,
     resolver: &LspResolver,
     config: &Config,
@@ -1221,7 +1221,7 @@ impl DocumentModules {
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
-      compiler_options_key,
+      compiler_options_key.clone(),
       compiler_options_data,
       scope.cloned().map(Arc::new),
       &self.resolver,
@@ -1379,7 +1379,7 @@ impl DocumentModules {
   /// This will not store any module entries, only retrieve existing entries or
   /// create temporary entries for other keys.
   // TODO(nayeemrmn): Support notebook scopes here.
-  pub fn inspect_or_temp_modules_by_compiler_options_key(
+  pub fn get_or_temp_modules_by_compiler_options_key(
     &self,
     document: &Document,
   ) -> BTreeMap<CompilerOptionsKey, Arc<DocumentModule>> {
@@ -1387,10 +1387,10 @@ impl DocumentModules {
       return Default::default();
     };
     let mut result = BTreeMap::new();
-    for (compiler_options_key, compiler_options_data, _) in
+    for (compiler_options_key, compiler_options_data) in
       self.compiler_options_resolver.entries()
     {
-      if compiler_options_key == primary_module.compiler_options_key {
+      if compiler_options_key == &primary_module.compiler_options_key {
         continue;
       }
       result.insert(
@@ -1398,7 +1398,7 @@ impl DocumentModules {
         Arc::new(DocumentModule::new(
           document,
           primary_module.specifier.clone(),
-          compiler_options_key,
+          compiler_options_key.clone(),
           compiler_options_data,
           primary_module.scope.clone(),
           &self.resolver,
@@ -1510,9 +1510,16 @@ impl DocumentModules {
           let compiler_options_data = self
             .compiler_options_resolver
             .for_specifier(&config_data.scope);
-          let jsx_config = compiler_options_data.jsx_import_source_config()?;
-          let import_source_types = jsx_config.import_source_types.as_ref()?;
-          let import_source = jsx_config.import_source.as_ref()?;
+          let import_source_types = compiler_options_data
+            .jsx_import_source_config
+            .as_ref()?
+            .import_source_types
+            .as_ref()?;
+          let import_source = compiler_options_data
+            .jsx_import_source_config
+            .as_ref()?
+            .import_source
+            .as_ref()?;
           let scoped_resolver =
             self.resolver.get_scoped_resolver(scope.map(|s| s.as_ref()));
           let cli_resolver = scoped_resolver.as_cli_resolver();
@@ -1935,7 +1942,7 @@ fn parse_and_analyze_module(
   maybe_headers: Option<&HashMap<String, String>>,
   media_type: MediaType,
   scope: Option<&Url>,
-  compiler_options_data: LspCompilerOptionsData<'_>,
+  compiler_options_data: &LspCompilerOptionsData,
   resolver: &LspResolver,
 ) -> (
   Option<ParsedSourceResult>,
@@ -1979,7 +1986,7 @@ fn analyze_module(
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
   scope: Option<&Url>,
-  compiler_options_data: LspCompilerOptionsData<'_>,
+  compiler_options_data: &LspCompilerOptionsData,
   resolver: &LspResolver,
 ) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
@@ -1988,8 +1995,6 @@ fn analyze_module(
       let cli_resolver = scoped_resolver.as_cli_resolver();
       let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
       let valid_referrer = specifier.clone();
-      let jsx_import_source_config =
-        compiler_options_data.jsx_import_source_config();
       let module_resolution_mode = is_cjs_resolver.get_lsp_resolution_mode(
         &specifier,
         Some(parsed_source.compute_is_script()),
@@ -1998,7 +2003,9 @@ fn analyze_module(
         valid_referrer: &valid_referrer,
         module_resolution_mode,
         cli_resolver,
-        jsx_import_source_config: jsx_import_source_config.map(|c| c.as_ref()),
+        jsx_import_source_config: compiler_options_data
+          .jsx_import_source_config
+          .as_deref(),
       };
       (
         Ok(deno_graph::parse_module_from_ast(

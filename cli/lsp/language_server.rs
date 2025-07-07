@@ -1183,7 +1183,7 @@ impl Inner {
     for specifier_config in self
       .compiler_options_resolver
       .entries()
-      .filter_map(|(_, d, _)| d.jsx_import_source_config())
+      .filter_map(|(_, d)| d.jsx_import_source_config.as_ref())
       .flat_map(|c| c.import_source.iter().chain(c.import_source_types.iter()))
     {
       let referrer = specifier_config.base.clone();
@@ -2636,7 +2636,7 @@ impl Inner {
     let mut locations = IndexSet::new();
     for module in self
       .document_modules
-      .inspect_or_temp_modules_by_compiler_options_key(&document)
+      .get_or_temp_modules_by_compiler_options_key(&document)
       .into_values()
     {
       if token.is_cancelled() {
@@ -3029,7 +3029,7 @@ impl Inner {
     let mut implementations_with_modules = IndexMap::new();
     for module in self
       .document_modules
-      .inspect_or_temp_modules_by_compiler_options_key(&document)
+      .get_or_temp_modules_by_compiler_options_key(&document)
       .into_values()
     {
       if token.is_cancelled() {
@@ -3159,7 +3159,7 @@ impl Inner {
     let mut incoming_calls_with_modules = IndexMap::new();
     for module in self
       .document_modules
-      .inspect_or_temp_modules_by_compiler_options_key(&document)
+      .get_or_temp_modules_by_compiler_options_key(&document)
       .into_values()
     {
       if token.is_cancelled() {
@@ -3370,7 +3370,7 @@ impl Inner {
     let mut locations_with_modules = IndexMap::new();
     for module in self
       .document_modules
-      .inspect_or_temp_modules_by_compiler_options_key(&document)
+      .get_or_temp_modules_by_compiler_options_key(&document)
       .into_values()
     {
       if token.is_cancelled() {
@@ -3701,7 +3701,7 @@ impl Inner {
       };
       for module in self
         .document_modules
-        .inspect_or_temp_modules_by_compiler_options_key(&document)
+        .get_or_temp_modules_by_compiler_options_key(&document)
         .into_values()
       {
         if token.is_cancelled() {
@@ -3757,11 +3757,12 @@ impl Inner {
 
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
     let mut items_with_scopes = IndexMap::new();
-    for (compiler_options_key, compiler_options_data, _) in
+    for (compiler_options_key, compiler_options_data) in
       self.compiler_options_resolver.entries()
     {
       let scope = compiler_options_data
-        .workspace_dir_or_source_url()
+        .workspace_dir_or_source_url
+        .as_ref()
         .and_then(|s| self.config.tree.scope_for_specifier(s));
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
@@ -3773,7 +3774,7 @@ impl Inner {
           params.query.clone(),
           // this matches vscode's hard coded result count
           Some(256),
-          &compiler_options_key,
+          compiler_options_key,
           scope,
           // TODO(nayeemrmn): Support notebook scopes here.
           None,
@@ -3824,7 +3825,7 @@ impl Inner {
         self
           .compiler_options_resolver
           .entries()
-          .map(|(k, d, _)| (k, d.compiler_options()))
+          .map(|(k, d)| (k.clone(), d.compiler_options.clone()))
           .collect()
       }),
       matches!(
@@ -3842,7 +3843,7 @@ impl Inner {
               .compiler_options_resolver
               .entry_for_specifier(&uri_to_url(u))
               .0;
-            (u.clone(), compiler_options_key)
+            (u.clone(), compiler_options_key.clone())
           })
           .collect()
       }),
