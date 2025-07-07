@@ -833,7 +833,7 @@ fn wait_for_start(
 }
 
 async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
-  let mut child = tokio::process::Command::new(std::env::current_exe()?)
+  let mut child = tokio::process::Command::new(env::current_exe()?)
     .args(["deploy", "tunnel-login"])
     .spawn()?;
   let out = child.wait().await?;
@@ -842,7 +842,7 @@ async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
     deno_runtime::exit(1);
   }
 
-  Ok(keyring::Entry::new("Deno Deploy Token", "Deno Deploy")?.get_password()?)
+  Ok(tools::deploy::get_token_entry()?.get_password()?)
 }
 
 #[allow(clippy::print_stderr)]
