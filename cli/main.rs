@@ -847,6 +847,7 @@ async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
   Ok(tools::deploy::get_token_entry()?.get_password()?)
 }
 
+#[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
   host: &str,
   flags: &Flags,
@@ -895,8 +896,6 @@ async fn initialize_tunnel(
 
     (deploy_config.org, deploy_config.app)
   };
-
-  log::debug!("Tunneling to {host}...");
 
   let Some(addr) = tokio::net::lookup_host(&host).await?.next() else {
     return Ok(());
@@ -950,7 +949,7 @@ async fn initialize_tunnel(
       use deno_runtime::deno_net::tunnel::Event;
       match event {
         Event::Routed => {
-          log::info!(
+          eprintln!(
             "{}",
             colors::green(format!("You are connected to {endpoint}!"))
           );

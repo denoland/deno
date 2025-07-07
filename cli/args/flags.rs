@@ -5808,6 +5808,8 @@ fn serve_parse(
   }
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
+  flags.connected = matches.remove_one("connected");
+
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
       let mut app = app;
@@ -5858,6 +5860,8 @@ fn task_parse(
   } else {
     None
   };
+
+  flags.connected = matches.remove_one("connected");
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
