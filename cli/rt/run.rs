@@ -608,7 +608,7 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   fn load_text_file_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<Cow<'static, str>, JsErrorBox> {
+  ) -> Result<FastString, JsErrorBox> {
     let file_entry = self
       .shared
       .vfs
@@ -621,7 +621,10 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
         file_entry.transpiled_offset.unwrap_or(file_entry.offset),
       )
       .map_err(JsErrorBox::from_err)?;
-    Ok(from_utf8_lossy_cow(file_bytes))
+    Ok(match from_utf8_lossy_cow(file_bytes) {
+      Cow::Borrowed(s) => FastString::from_static(s),
+      Cow::Owned(s) => s.into(),
+    })
   }
 
   fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError> {

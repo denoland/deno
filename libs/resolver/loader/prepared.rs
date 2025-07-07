@@ -177,7 +177,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
       }) => {
         let transpile_result = self
           .emitter
-          .emit_parsed_source(specifier, media_type, ModuleKind::Esm, source)
+          .maybe_emit_source(specifier, media_type, ModuleKind::Esm, source)
           .await?;
 
         // at this point, we no longer need the parsed source in memory, so free it
@@ -229,7 +229,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         media_type,
         source,
       }) => {
-        let transpile_result = self.emitter.emit_parsed_source_sync(
+        let transpile_result = self.emitter.maybe_emit_source_sync(
           specifier,
           media_type,
           ModuleKind::Esm,
@@ -241,7 +241,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
 
         Ok(Some(PreparedModule {
           // note: it's faster to provide a string if we know it's a string
-          source: PreparedModuleSource::ArcStr(transpile_result.into()),
+          source: PreparedModuleSource::ArcStr(transpile_result),
           specifier,
           media_type,
         }))
@@ -412,19 +412,15 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
     media_type: MediaType,
     original_source: &ArcStr,
   ) -> Result<ArcStr, LoadMaybeCjsError> {
-    let js_source = if media_type.is_emittable() {
-      self
-        .emitter
-        .emit_parsed_source(
-          specifier,
-          media_type,
-          ModuleKind::Cjs,
-          original_source,
-        )
-        .await?
-    } else {
-      original_source.clone()
-    };
+    let js_source = self
+      .emitter
+      .maybe_emit_source(
+        specifier,
+        media_type,
+        ModuleKind::Cjs,
+        original_source,
+      )
+      .await?;
     let text = self
       .node_code_translator
       .translate_cjs_to_esm(specifier, Some(Cow::Borrowed(js_source.as_ref())))

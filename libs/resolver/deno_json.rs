@@ -56,6 +56,7 @@ pub type CompilerOptionsTypesRc =
 #[cfg(feature = "deno_ast")]
 #[derive(Debug)]
 pub struct TranspileAndEmitOptions {
+  pub no_transpile: bool,
   pub transpile: deno_ast::TranspileOptions,
   pub emit: deno_ast::EmitOptions,
   // stored ahead of time so we don't have to recompute this a lot
@@ -90,6 +91,11 @@ struct MemoizedValues {
 
 #[derive(Debug, Clone, Default)]
 pub struct CompilerOptionsOverrides {
+  /// Skip transpiling in the loaders.
+  pub no_transpile: bool,
+  /// Base to use for the source map. This is useful when bundling
+  /// and you want to make file urls relative.
+  pub source_map_base: Option<Url>,
   /// Preserve JSX instead of transforming it.
   ///
   /// This may be useful when bundling.
@@ -870,6 +876,7 @@ fn compiler_options_to_transpile_and_emit_options(
     hasher.finish()
   };
   Ok(TranspileAndEmitOptions {
+    no_transpile: overrides.no_transpile,
     transpile,
     emit,
     pre_computed_hash: transpile_and_emit_options_hash,

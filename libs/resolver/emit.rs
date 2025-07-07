@@ -6,6 +6,7 @@ use std::hash::Hasher;
 use anyhow::Error as AnyError;
 use deno_ast::EmittedSourceText;
 use deno_ast::ModuleKind;
+use deno_ast::ParsedSource;
 use deno_ast::SourceMapOption;
 use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
@@ -24,11 +25,12 @@ use url::Url;
 
 use crate::cache::EmitCacheRc;
 use crate::cache::EmitCacheSys;
-use crate::cache::ParsedSourceCache;
 use crate::cache::ParsedSourceCacheRc;
 use crate::cjs::CjsTrackerRc;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::deno_json::TranspileAndEmitOptions;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 #[allow(clippy::disallowed_types)] // ok because we always store source text as Arc<str>
 type ArcStr = std::sync::Arc<str>;
@@ -79,7 +81,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       if module.media_type.is_emittable() {
         futures.push(
           self
-            .emit_parsed_source(
+            .maybe_emit_source(
               &module.specifier,
               module.media_type,
               ModuleKind::from_is_cjs(
@@ -119,50 +121,80 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     Ok(self.emit_cache.get_emit_code(specifier, source_hash))
   }
 
-  pub async fn emit_parsed_source(
+  pub async fn maybe_emit_source(
     &self,
     specifier: &Url,
     media_type: MediaType,
     module_kind: ModuleKind,
     source: &ArcStr,
   ) -> Result<ArcStr, EmitParsedSourceHelperError> {
-    if !media_type.is_emittable() {
-      return Ok(source.clone());
+    self
+      .maybe_emit_parsed_source_provider(
+        ParsedSourceCacheParsedSourceProvider {
+          parsed_source_cache: self.parsed_source_cache.clone(),
+          specifier: specifier.clone(),
+          media_type,
+          source: source.clone(),
+        },
+        module_kind,
+      )
+      .await
+  }
+
+  pub async fn maybe_emit_parsed_source(
+    &self,
+    parsed_source: deno_ast::ParsedSource,
+    module_kind: ModuleKind,
+  ) -> Result<ArcStr, EmitParsedSourceHelperError> {
+    // note: this method is used in deno-js-loader
+    self
+      .maybe_emit_parsed_source_provider(parsed_source, module_kind)
+      .await
+  }
+
+  async fn maybe_emit_parsed_source_provider<
+    TProvider: ParsedSourceProvider,
+  >(
+    &self,
+    provider: TProvider,
+    module_kind: ModuleKind,
+  ) -> Result<ArcStr, EmitParsedSourceHelperError> {
+    // Note: keep this in sync with the sync version below
+    if !provider.media_type().is_emittable() {
+      return Ok(provider.into_source());
     }
     let transpile_and_emit_options = self
       .compiler_options_resolver
-      .for_specifier(specifier)
+      .for_specifier(provider.specifier())
       .transpile_options()?;
+    if transpile_and_emit_options.no_transpile {
+      return Ok(provider.into_source());
+    }
     let transpile_options = &transpile_and_emit_options.transpile;
-    if matches!(media_type, MediaType::Jsx)
+    if matches!(provider.media_type(), MediaType::Jsx)
       && !transpile_options.transform_jsx
       && !transpile_options.precompile_jsx
     {
       // jsx disabled, so skip
-      return Ok(source.clone());
+      return Ok(provider.into_source());
     }
-    // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(
-      specifier,
+      provider.specifier(),
       module_kind,
       transpile_and_emit_options,
-      source,
+      provider.source(),
     ) {
       PreEmitResult::Cached(emitted_text) => Ok(emitted_text.into()),
       PreEmitResult::NotCached { source_hash } => {
+        let specifier = provider.specifier().clone();
         let emit = {
-          let parsed_source_cache = self.parsed_source_cache.clone();
           let transpile_and_emit_options = transpile_and_emit_options.clone();
-          let specifier = specifier.clone();
-          let source = source.clone();
           move || {
+            let parsed_source = provider.parsed_source()?;
             transpile(
-              &parsed_source_cache,
-              &specifier,
-              media_type,
+              parsed_source,
               module_kind,
-              source.clone(),
               &transpile_and_emit_options.transpile,
               &transpile_and_emit_options.emit,
             )
@@ -175,7 +207,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
         #[cfg(not(feature = "sync"))]
         let transpiled_source = emit()?;
         helper.post_emit_parsed_source(
-          specifier,
+          &specifier,
           &transpiled_source,
           source_hash,
         );
@@ -185,18 +217,32 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
   }
 
   #[allow(clippy::result_large_err)]
-  pub fn emit_parsed_source_sync(
+  pub fn maybe_emit_source_sync(
     &self,
     specifier: &Url,
     media_type: MediaType,
     module_kind: deno_ast::ModuleKind,
     source: &ArcStr,
-  ) -> Result<String, EmitParsedSourceHelperError> {
+  ) -> Result<ArcStr, EmitParsedSourceHelperError> {
+    // Note: keep this in sync with the async version above
+    if !media_type.is_emittable() {
+      return Ok(source.clone());
+    }
     let transpile_and_emit_options = self
       .compiler_options_resolver
       .for_specifier(specifier)
       .transpile_options()?;
-    // Note: keep this in sync with the async version above
+    if transpile_and_emit_options.no_transpile {
+      return Ok(source.clone());
+    }
+    let transpile_options = &transpile_and_emit_options.transpile;
+    if matches!(media_type, MediaType::Jsx)
+      && !transpile_options.transform_jsx
+      && !transpile_options.precompile_jsx
+    {
+      // jsx disabled, so skip
+      return Ok(source.clone());
+    }
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(
       specifier,
@@ -204,14 +250,16 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       transpile_and_emit_options,
       source,
     ) {
-      PreEmitResult::Cached(emitted_text) => Ok(emitted_text),
+      PreEmitResult::Cached(emitted_text) => Ok(emitted_text.into()),
       PreEmitResult::NotCached { source_hash } => {
-        let transpiled_source = transpile(
-          &self.parsed_source_cache,
+        let parsed_source = self.parsed_source_cache.remove_or_parse_module(
           specifier,
           media_type,
-          module_kind,
           source.clone(),
+        )?;
+        let transpiled_source = transpile(
+          parsed_source,
+          module_kind,
           &transpile_and_emit_options.transpile,
           &transpile_and_emit_options.emit,
         )?
@@ -221,12 +269,12 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
           &transpiled_source,
           source_hash,
         );
-        Ok(transpiled_source)
+        Ok(transpiled_source.into())
       }
     }
   }
 
-  pub fn emit_parsed_source_for_deno_compile(
+  pub fn emit_source_for_deno_compile(
     &self,
     specifier: &Url,
     media_type: MediaType,
@@ -243,12 +291,14 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     // strip off the path to have more deterministic builds as we don't care
     // about the source name because we manually provide the source map to v8
     emit_options.source_map_base = Some(deno_path_util::url_parent(specifier));
-    let source = transpile(
-      &self.parsed_source_cache,
+    let parsed_source = self.parsed_source_cache.remove_or_parse_module(
       specifier,
       media_type,
-      module_kind,
       source.clone(),
+    )?;
+    let source = transpile(
+      parsed_source,
+      module_kind,
       &transpile_and_emit_options.transpile,
       &emit_options,
     )?;
@@ -271,7 +321,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
         let source_arc: ArcStr = source_code.into();
         let parsed_source = self
           .parsed_source_cache
-          .remove_or_parse_module(specifier, source_arc, media_type)
+          .remove_or_parse_module(specifier, media_type, source_arc)
           .map_err(JsErrorBox::from_err)?;
         // HMR doesn't work with embedded source maps for some reason, so set
         // the option to not use them (though you should test this out because
@@ -337,6 +387,62 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     transpile_and_emit.pre_computed_hash.hash(&mut hasher);
     module_kind.hash(&mut hasher);
     hasher.finish()
+  }
+}
+
+trait ParsedSourceProvider: MaybeSend + MaybeSync + Clone + 'static {
+  fn specifier(&self) -> &Url;
+  fn media_type(&self) -> MediaType;
+  fn source(&self) -> &ArcStr;
+  fn into_source(self) -> ArcStr;
+  fn parsed_source(self) -> Result<ParsedSource, deno_ast::ParseDiagnostic>;
+}
+
+#[derive(Clone)]
+struct ParsedSourceCacheParsedSourceProvider {
+  parsed_source_cache: ParsedSourceCacheRc,
+  specifier: Url,
+  media_type: MediaType,
+  source: ArcStr,
+}
+
+impl ParsedSourceProvider for ParsedSourceCacheParsedSourceProvider {
+  fn specifier(&self) -> &Url {
+    &self.specifier
+  }
+  fn media_type(&self) -> MediaType {
+    self.media_type
+  }
+  fn source(&self) -> &ArcStr {
+    &self.source
+  }
+  fn into_source(self) -> ArcStr {
+    self.source
+  }
+  fn parsed_source(self) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
+    self.parsed_source_cache.remove_or_parse_module(
+      &self.specifier,
+      self.media_type,
+      self.source.clone(),
+    )
+  }
+}
+
+impl ParsedSourceProvider for ParsedSource {
+  fn specifier(&self) -> &Url {
+    ParsedSource::specifier(self)
+  }
+  fn media_type(&self) -> MediaType {
+    ParsedSource::media_type(self)
+  }
+  fn source(&self) -> &ArcStr {
+    self.text()
+  }
+  fn into_source(self) -> ArcStr {
+    self.text().clone()
+  }
+  fn parsed_source(self) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
+    Ok(self)
   }
 }
 
@@ -410,18 +516,11 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
 
 #[allow(clippy::result_large_err)]
 fn transpile(
-  parsed_source_cache: &ParsedSourceCache,
-  specifier: &Url,
-  media_type: MediaType,
+  parsed_source: ParsedSource,
   module_kind: deno_ast::ModuleKind,
-  source: ArcStr,
   transpile_options: &deno_ast::TranspileOptions,
   emit_options: &deno_ast::EmitOptions,
 ) -> Result<EmittedSourceText, EmitParsedSourceHelperError> {
-  // nothing else needs the parsed source at this point, so remove from
-  // the cache in order to not transpile owned
-  let parsed_source = parsed_source_cache
-    .remove_or_parse_module(specifier, source, media_type)?;
   ensure_no_import_assertion(&parsed_source)?;
   let transpile_result = parsed_source.transpile(
     transpile_options,

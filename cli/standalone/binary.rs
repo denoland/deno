@@ -464,7 +464,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               _ => ModuleKind::Esm,
             };
             let (source, source_map) =
-              self.emitter.emit_parsed_source_for_deno_compile(
+              self.emitter.emit_source_for_deno_compile(
                 &m.specifier,
                 m.media_type,
                 module_kind,
