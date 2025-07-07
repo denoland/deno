@@ -1,5 +1,6 @@
 Tunneling to localhost:[WILDCARD]...
-Connected! Your endpoint is https://localhost:[WILDCARD]
+Endpoint assigned: https://localhost:[WILDCARD]
+Routing...
 HTTP/1.1 200 OK
 content-type: application/json
 vary: Accept-Encoding

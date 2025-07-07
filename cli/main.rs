@@ -135,9 +135,9 @@ async fn run_subcommand(
       );
       tools::bundle::bundle(flags, bundle_flags).await
     }),
-    DenoSubcommand::Deploy => {
-      spawn_subcommand(async { tools::deploy::deploy(Arc::unwrap_or_clone(flags)).await })
-    }
+    DenoSubcommand::Deploy => spawn_subcommand(async {
+      tools::deploy::deploy(Arc::unwrap_or_clone(flags)).await
+    }),
     DenoSubcommand::Doc(doc_flags) => {
       spawn_subcommand(async { tools::doc::doc(flags, doc_flags).await })
     }
@@ -817,10 +817,8 @@ fn wait_for_start(
     std::env::set_current_dir(cmd.cwd)?;
 
     for (k, v) in cmd.env {
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe {
-        std::env::set_var(k, v)
-      };
+      // SAFETY: We're doing this before any threads are created.
+      unsafe { std::env::set_var(k, v) };
     }
 
     let args = [argv0]
@@ -859,21 +857,35 @@ async fn initialize_tunnel(
     let _ = tools::deploy::get_token_entry()?.delete_credential();
   }
 
-  let token = match tools::deploy::get_token_entry()?.get_password() {
-    Ok(token) => token,
-    Err(keyring::Error::NoEntry) => auth_tunnel().await?,
-    Err(e) => {
-      init_logging(None, None);
-      exit_for_error(e.into());
+  let token = if let Ok(token) = std::env::var("DENO_UNSTABLE_TUNNEL_TOKEN") {
+    token
+  } else {
+    match tools::deploy::get_token_entry()?.get_password() {
+      Ok(token) => token,
+      Err(keyring::Error::NoEntry) => auth_tunnel().await?,
+      Err(e) => {
+        init_logging(None, None);
+        exit_for_error(e.into());
+      }
     }
   };
 
   let factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let cli_options = factory.cli_options()?;
-  let deploy_config = cli_options
-    .start_dir
-    .to_deploy_config()?
-    .expect("auth to be called");
+
+  let (org, app) = if let (Ok(org), Ok(app)) = (
+    std::env::var("DENO_UNSTABLE_TUNNEL_ORG"),
+    std::env::var("DENO_UNSTABLE_TUNNEL_APP"),
+  ) {
+    (org, app)
+  } else {
+    let deploy_config = cli_options
+      .start_dir
+      .to_deploy_config()?
+      .expect("auth to be called");
+
+    (deploy_config.org, deploy_config.app)
+  };
 
   eprintln!(
     "{}{}{}",
@@ -895,14 +907,14 @@ async fn initialize_tunnel(
     flags.ca_data.to_owned(),
   )?;
 
-  let (tunnel, metadata, routed) =
+  let (tunnel, metadata, mut events) =
     match deno_runtime::deno_net::tunnel::TunnelListener::connect(
       addr,
       hostname,
       Some(root_cert_store.clone()),
       token,
-      deploy_config.org.clone(),
-      deploy_config.app.clone(),
+      org.clone(),
+      app.clone(),
     )
     .await
     {
@@ -916,8 +928,8 @@ async fn initialize_tunnel(
           hostname,
           Some(root_cert_store),
           token,
-          deploy_config.org,
-          deploy_config.app,
+          org,
+          app,
         )
         .await?
       }
@@ -925,13 +937,24 @@ async fn initialize_tunnel(
     };
 
   tokio::spawn(async move {
-    if routed.await.is_ok() {
-      eprintln!("{}", colors::green("Your endpoint is now routed!"),);
+    while let Some(event) = events.next().await {
+      use deno_runtime::deno_net::tunnel::Event;
+      match event {
+        Event::Routed => {
+          eprintln!("{}", colors::green("Your endpoint is now routed!"),);
+        }
+        Event::Migrate => {
+          // TODO: reconnect
+        }
+      }
     }
   });
 
   for (k, v) in metadata.env {
-    std::env::set_var(k, v);
+    // SAFETY: We're doing this before any threads are created.
+    unsafe {
+      std::env::set_var(k, v);
+    }
   }
 
   let addr = tunnel.local_addr()?;

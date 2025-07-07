@@ -6,11 +6,11 @@ use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_path_util::ResolveUrlOrPathError;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
+use deno_runtime::deno_permissions::PermissionsContainer;
 
-use crate::args::jsr_api_url;
 use crate::args::Flags;
+use crate::args::jsr_api_url;
 use crate::factory::CliFactory;
 use crate::ops;
 use crate::registry;
@@ -67,6 +67,7 @@ pub async fn deploy(mut flags: Flags) -> Result<i32, AnyError> {
     .create_custom_worker(
       WorkerExecutionMode::Deploy,
       specifier,
+      vec![],
       PermissionsContainer::allow_all(
         factory.permission_desc_parser()?.clone(),
       ),

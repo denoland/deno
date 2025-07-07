@@ -16,12 +16,12 @@ const child = new Deno.Command(Deno.execPath(), {
   args: [
     "run",
     "-A",
+    `--connected=localhost:${server.addr.port}`,
     "--cert",
     "../../../testdata/tls/RootCA.crt",
     "client.ts",
   ],
   env: {
-    DENO_UNSTABLE_TUNNEL_HOST: `localhost:${server.addr.port}`,
     DENO_UNSTABLE_TUNNEL_TOKEN: "token",
     DENO_UNSTABLE_TUNNEL_ORG: "org",
     DENO_UNSTABLE_TUNNEL_APP: "app",
@@ -54,12 +54,12 @@ async function handleConnection(conn: Deno.QuicConn) {
     const writer = bi.writable.getWriter();
     await writeUint32LE(writer, VERSION);
     const header = await readStreamHeader(reader);
-    if (header.headerType !== "ControlRequest") {
+    if (header.headerType !== "Control") {
       conn.close();
       return;
     }
     await writeStreamHeader(writer, {
-      headerType: "ControlResponse",
+      headerType: "Authenticated",
       hostnames: ["localhost"],
       addr: `${
         server.addr.hostname.includes(":")
@@ -67,6 +67,7 @@ async function handleConnection(conn: Deno.QuicConn) {
           : server.addr.hostname
       }:${server.addr.port}`,
       env: {},
+      metadata: {},
     });
 
     reader.releaseLock();

@@ -815,9 +815,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       13: otelConfig,
       15: standalone,
       16: autoServe,
-      17: tunnel,
     } = runtimeOptions;
-    Object.assign(internals, { tunnel: tunnel });
 
     denoNs.build.standalone = standalone;
 

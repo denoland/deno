@@ -8,7 +8,6 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use deno_core::futures::TryFutureExt;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -16,13 +15,14 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::futures::TryFutureExt;
 use deno_error::JsErrorBox;
-use deno_tls::create_client_config;
-use deno_tls::rustls::RootCertStore;
 use deno_tls::SocketUse;
 use deno_tls::TlsKeys;
-use quinn::crypto::rustls::QuicClientConfig;
+use deno_tls::create_client_config;
+use deno_tls::rustls::RootCertStore;
 use quinn::ConnectionError;
+use quinn::crypto::rustls::QuicClientConfig;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
@@ -152,20 +152,19 @@ pub struct Metadata {
 }
 
 #[derive(Debug)]
-pub struct Routed {
-  routed_rx: tokio::sync::oneshot::Receiver<()>,
+pub enum Event {
+  Routed,
+  Migrate,
 }
 
-impl std::future::Future for Routed {
-  type Output = Result<(), ()>;
-  fn poll(
-    self: std::pin::Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Self::Output> {
-    // SAFETY: We are not moving.
-    unsafe { self.map_unchecked_mut(|t| &mut t.routed_rx) }
-      .poll(cx)
-      .map_err(|_| ())
+#[derive(Debug)]
+pub struct Events {
+  event_rx: tokio::sync::mpsc::Receiver<Event>,
+}
+
+impl Events {
+  pub async fn next(&mut self) -> Option<Event> {
+    self.event_rx.recv().await
   }
 }
 
@@ -184,7 +183,7 @@ impl TunnelListener {
     token: String,
     org: String,
     app: String,
-  ) -> Result<(Self, Metadata, Routed), Error> {
+  ) -> Result<(Self, Metadata, Events), Error> {
     let config = quinn::EndpointConfig::default();
     let socket = std::net::UdpSocket::bind(("::", 0))?;
     let endpoint = quinn::Endpoint::new(
@@ -238,13 +237,20 @@ impl TunnelListener {
       return Err(Error::UnexpectedHeader);
     };
 
-    let (routed_tx, routed_rx) = tokio::sync::oneshot::channel();
+    let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
     tokio::spawn(async move {
-      let Ok(ControlMessage::Routed {}) = read_message(&mut control.1).await
-      else {
-        return;
-      };
-      let _ = routed_tx.send(());
+      while let Ok(message) = read_message(&mut control.1).await {
+        let event = match message {
+          ControlMessage::Routed {} => Event::Routed,
+          ControlMessage::Migrate {} => Event::Migrate,
+          _ => {
+            continue;
+          }
+        };
+        if event_tx.send(event).await.is_err() {
+          break;
+        }
+      }
     });
 
     log::debug!("tunnel connected: {metadata:?}");
@@ -255,7 +261,7 @@ impl TunnelListener {
     };
 
     let metadata = Metadata { hostnames, env };
-    let routed = Routed { routed_rx };
+    let routed = Events { event_rx };
 
     Ok((
       Self {
@@ -301,7 +307,7 @@ impl TunnelListener {
     ))
   }
 
-  pub async fn create_stream(&self) -> Result<TunnelStream, Error> {
+  pub async fn create_agent_stream(&self) -> Result<TunnelStream, Error> {
     let (mut tx, rx) = self.connection.open_bi().await?;
     write_message(&mut tx, StreamHeader::Agent {}).await?;
     Ok(TunnelStream {
@@ -508,6 +514,7 @@ enum ControlMessage {
     env: HashMap<String, String>,
   },
   Routed {},
+  Migrate {},
 }
 
 async fn write_message<T: serde::Serialize>(
