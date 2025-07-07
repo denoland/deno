@@ -42,12 +42,12 @@ pub use prompter::set_prompter;
 
 use self::which::WhichSys;
 
-#[derive(Debug, thiserror::Error)]
-pub enum PermissionDeniedError {
-  #[error("Requires {access}, {}", format_permission_error(.name))]
-  Retryable { access: String, name: &'static str },
-  #[error("Requires {access}, which cannot be granted in this environment")]
-  Fatal { access: String },
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[error("Requires {access}, {}", format_permission_error(.name))]
+#[class("NotCapable")]
+pub struct PermissionDeniedError {
+  pub access: String,
+  pub name: &'static str,
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -142,11 +142,11 @@ impl PermissionState {
     )
   }
 
-  fn retryable_error(
+  fn permission_denied_error(
     name: &'static str,
     info: impl FnOnce() -> Option<String>,
   ) -> PermissionDeniedError {
-    PermissionDeniedError::Retryable {
+    PermissionDeniedError {
       access: Self::fmt_access(name, info),
       name,
     }
@@ -200,11 +200,11 @@ impl PermissionState {
             (Ok(()), true, true)
           }
           PromptResponse::Deny => {
-            (Err(Self::retryable_error(name, info)), true, false)
+            (Err(Self::permission_denied_error(name, info)), true, false)
           }
         }
       }
-      _ => (Err(Self::retryable_error(name, info)), false, false),
+      _ => (Err(Self::permission_denied_error(name, info)), false, false),
     }
   }
 }
@@ -2593,7 +2593,7 @@ pub enum ChildPermissionError {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PermissionCheckError {
-  #[class("NotCapable")]
+  #[class(inherit)]
   #[error(transparent)]
   PermissionDenied(#[from] PermissionDeniedError),
   #[class(uri)]
@@ -2611,9 +2611,6 @@ pub enum PermissionCheckError {
   #[class(uri)]
   #[error(transparent)]
   HostParse(#[from] HostParseError),
-  #[class("NotCapable")]
-  #[error("Permission denied {0}")]
-  NotCapable(&'static str),
 }
 
 impl PermissionCheckError {
@@ -2627,15 +2624,11 @@ impl PermissionCheckError {
         std::io::ErrorKind::Other
       }
       PermissionCheckError::PathResolve(e) => e.kind(),
-      PermissionCheckError::NotCapable(_) => std::io::ErrorKind::Other,
     }
   }
 
   pub fn into_io_error(self) -> std::io::Error {
     match self {
-      Self::NotCapable(err) => {
-        std::io::Error::new(self.kind(), format!("requires {err} access"))
-      }
       Self::PermissionDenied(_)
       | Self::InvalidFilePath(_)
       | Self::NetDescriptorForUrlParse(_)
@@ -2860,9 +2853,7 @@ impl PermissionsContainer {
       inner.check(&desc, api_name)?;
       let path = desc.0;
       let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-      let path = self
-        .check_special_file(path, api_name)
-        .map_err(PermissionCheckError::NotCapable)?;
+      let path = self.check_special_file(path, api_name)?;
       Ok(path)
     }
   }
@@ -2911,10 +2902,7 @@ impl PermissionsContainer {
     };
 
     let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-    self
-      .check_special_file(path, api_name)
-      .map(Cow::Owned)
-      .map_err(PermissionCheckError::NotCapable)
+    self.check_special_file(path, api_name).map(Cow::Owned)
   }
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -2967,10 +2955,7 @@ impl PermissionsContainer {
       }
     };
     let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-    self
-      .check_special_file(path, api_name)
-      .map(Cow::Owned)
-      .map_err(PermissionCheckError::NotCapable)
+    self.check_special_file(path, api_name).map(Cow::Owned)
   }
 
   #[inline(always)]
@@ -3163,8 +3148,7 @@ impl PermissionsContainer {
     &self,
     path: SpecialFilePathDescriptor,
     _api_name: Option<&str>,
-  ) -> Result<PathBuf, &'static str> {
-    let error_all = |_| "all";
+  ) -> Result<PathBuf, PermissionCheckError> {
     let path = path.0;
 
     // Safe files with no major additional side-effects. While there's a small risk of someone
@@ -3224,14 +3208,14 @@ impl PermissionsContainer {
         || path.starts_with("/sys")
       {
         if path.ends_with("/environ") {
-          self.check_env_all().map_err(|_| "env")?;
+          self.check_env_all()?;
         } else {
-          self.check_was_allow_all_flag_passed().map_err(error_all)?;
+          self.check_was_allow_all_flag_passed()?;
         }
       }
     } else if cfg!(unix) {
       if path.starts_with("/dev") {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
+        self.check_was_allow_all_flag_passed()?;
       }
     } else if cfg!(target_os = "windows") {
       // \\.\nul is allowed
@@ -3258,7 +3242,7 @@ impl PermissionsContainer {
 
       // If this is a normalized drive path, accept it
       if !is_normalized_windows_drive_path(&path) {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
+        self.check_was_allow_all_flag_passed()?;
       }
     } else {
       unimplemented!()

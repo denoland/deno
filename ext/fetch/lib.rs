@@ -931,21 +931,23 @@ fn sync_permission_check<'a, P: FetchPermissions + 'static>(
 #[allow(clippy::result_large_err)]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  #[serde] args: CreateHttpClientArgs,
+  #[serde] mut args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
 ) -> Result<ResourceId, FetchError>
 where
   FP: FetchPermissions + 'static,
 {
-  if let Some(proxy) = &args.proxy {
+  if let Some(proxy) = &mut args.proxy {
     let permissions = state.borrow_mut::<FP>();
     match proxy {
       Proxy::Http { url, .. } => {
         let url = Url::parse(url)?;
         permissions.check_net_url(&url, "Deno.createHttpClient()")?;
       }
-      Proxy::Unix { path } => {
-        let path = Path::new(path);
+      Proxy::Unix {
+        path: original_path,
+      } => {
+        let path = Path::new(original_path);
         let mut access_check = sync_permission_check::<PermissionsContainer>(
           state.borrow_mut(),
           "Deno.createHttpClient()",
@@ -960,9 +962,7 @@ where
           Some(&mut access_check),
         )?;
         if path != resolved_path {
-          return Err(FetchError::PermissionCheck(
-            PermissionCheckError::NotCapable("write"),
-          ));
+          *original_path = resolved_path.to_string_lossy().into_owned();
         }
       }
       Proxy::Vsock { cid, port } => {

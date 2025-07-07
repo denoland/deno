@@ -138,7 +138,7 @@ fn map_permission_error(
   path: &Path,
 ) -> FsOpsError {
   match error {
-    FsError::PermissionCheck(PermissionCheckError::NotCapable(err)) => {
+    FsError::PermissionCheck(PermissionCheckError::PermissionDenied(err)) => {
       let path = format!("{path:?}");
       let (path, truncated) = if path.len() > 1024 {
         (&path[0..1024], "...(truncated)")
@@ -148,7 +148,7 @@ fn map_permission_error(
 
       FsOpsErrorKind::NotCapableAccess {
         standalone: deno_permissions::is_standalone(),
-        err,
+        err: err.name,
         path: format!("{path}{truncated}"),
       }
       .into_box()
