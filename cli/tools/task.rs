@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::env;
 use std::ffi::OsString;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
