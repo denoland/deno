@@ -1834,12 +1834,14 @@ impl ConfigFile {
     &self,
   ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
     match &self.json.deploy {
-      Some(config) => Ok(Some(serde_json::from_value(config.clone()).map_err(|error| {
-        ToInvalidConfigError::Parse {
-          config: "deploy",
-          source: error,
-        }
-      })?)),
+      Some(config) => {
+        Ok(Some(serde_json::from_value(config.clone()).map_err(
+          |error| ToInvalidConfigError::Parse {
+            config: "deploy",
+            source: error,
+          },
+        )?))
+      }
       None => Ok(None),
     }
   }

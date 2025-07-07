@@ -2000,7 +2000,9 @@ impl WorkspaceDirectory {
     })
   }
 
-  pub fn to_deploy_config(&self) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
+  pub fn to_deploy_config(
+    &self,
+  ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
     let config = if let Some(deno_json) = self.deno_json.as_ref() {
       if let Some(config) = deno_json.member.to_deploy_config()? {
         Some(config)

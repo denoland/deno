@@ -787,7 +787,10 @@ async fn initialize_tunnel(
 
   let factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let cli_options = factory.cli_options()?;
-  let deploy_config = cli_options.start_dir.to_deploy_config()?.expect("auth to be called");
+  let deploy_config = cli_options
+    .start_dir
+    .to_deploy_config()?
+    .expect("auth to be called");
 
   eprintln!(
     "{}{}{}",
