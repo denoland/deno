@@ -1149,6 +1149,7 @@ mod tests {
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use deno_core::futures::FutureExt;
+  use deno_permissions::CheckedPath;
   use deno_permissions::PermissionCheckError;
   use hickory_proto::rr::Name;
   use hickory_proto::rr::rdata::SOA;
@@ -1356,12 +1357,15 @@ mod tests {
       Ok(())
     }
 
-    fn check_read(
+    fn check_read<'a>(
       &mut self,
-      p: &str,
+      p: &'a str,
       _api_name: &str,
-    ) -> Result<PathBuf, PermissionCheckError> {
-      Ok(PathBuf::from(p))
+    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+      Ok(CheckedPath {
+        path: Cow::Borrowed(Path::new(p)),
+        canonicalized: false,
+      })
     }
 
     fn check_write(

@@ -516,8 +516,7 @@ where
     let to = permissions.check_write(&to, "Deno.copyFile()")?;
     (state.borrow::<FileSystemRc>().clone(), from, to)
   };
-
-  fs.copy_file_async(from.clone(), to.clone())
+  fs.copy_file_async(from.to_path_buf(), to.clone())
     .await
     .context_two_path("copy", &from, &to)?;
 
@@ -559,7 +558,7 @@ where
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   let stat = fs
-    .stat_async(path.clone())
+    .stat_async(path.to_path_buf())
     .await
     .context_path("stat", &path)?;
   Ok(SerializableStat::from(stat))
@@ -600,7 +599,7 @@ where
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   let stat = fs
-    .lstat_async(path.clone())
+    .lstat_async(path.to_path_buf())
     .await
     .context_path("lstat", &path)?;
   Ok(SerializableStat::from(stat))
@@ -657,7 +656,7 @@ where
     (fs, path)
   };
   let resolved_path = fs
-    .realpath_async(path.clone())
+    .realpath_async(path.to_path_buf())
     .await
     .context_path("realpath", &path)?;
 
@@ -702,7 +701,7 @@ where
   };
 
   let entries = fs
-    .read_dir_async(path.clone())
+    .read_dir_async(path.to_path_buf())
     .await
     .context_path("readdir", &path)?;
 
@@ -893,7 +892,7 @@ where
   };
 
   let target = fs
-    .read_link_async(path.clone())
+    .read_link_async(path.to_path_buf())
     .await
     .context_path("readlink", &path)?;
   let target_string = path_into_string(target.into_os_string())?;

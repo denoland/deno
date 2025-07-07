@@ -371,7 +371,8 @@ where
       Some(
         permissions
           .check_read(path, "Deno.connectTls()")
-          .map_err(NetError::Permission)?,
+          .map_err(NetError::Permission)?
+          .path,
       )
     } else {
       None

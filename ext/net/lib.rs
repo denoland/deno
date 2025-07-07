@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use deno_core::OpState;
 use deno_features::FeatureChecker;
+use deno_permissions::CheckedPath;
 use deno_permissions::PermissionCheckError;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::rustls::RootCertStore;
@@ -31,11 +32,11 @@ pub trait NetPermissions {
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    p: &str,
+    p: &'a str,
     api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write(
     &mut self,
@@ -68,11 +69,11 @@ impl NetPermissions for deno_permissions::PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    path: &str,
+    path: &'a str,
     api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read(self, path, api_name)
   }
 

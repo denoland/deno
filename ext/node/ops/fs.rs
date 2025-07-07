@@ -67,10 +67,10 @@ where
     let path = state
       .borrow_mut::<P>()
       .check_read_with_api_name(&path, Some("node:fs.exists()"))?;
-    (state.borrow::<FileSystemRc>().clone(), path)
+    (state.borrow::<FileSystemRc>().clone(), path.path)
   };
 
-  Ok(fs.exists_async(path).await?)
+  Ok(fs.exists_async(path.into_owned()).await?)
 }
 
 #[op2(fast, stack_trace)]
@@ -107,14 +107,15 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_read_with_api_name(&path, Some("node:fs.cpSync"))?;
+      .check_read_with_api_name(&path, Some("node:fs.cpSync"))?
+      .path;
     let new_path = state
       .borrow_mut::<P>()
       .check_write_with_api_name(&new_path, Some("node:fs.cpSync"))?;
     (state.borrow::<FileSystemRc>().clone(), path, new_path)
   };
 
-  fs.cp_async(path, new_path).await?;
+  fs.cp_async(path.into_owned(), new_path).await?;
   Ok(())
 }
 

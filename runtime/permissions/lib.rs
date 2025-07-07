@@ -8,6 +8,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::net::Ipv6Addr;
+use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
 use std::string::ToString;
@@ -83,6 +84,41 @@ pub enum PermissionState {
   #[default]
   Prompt = 2,
   Denied = 3,
+}
+
+pub struct CheckedPath<'a> {
+  pub path: Cow<'a, Path>,
+  pub canonicalized: bool,
+}
+
+impl CheckedPath<'_> {
+  pub fn into_owned(self) -> OwnedCheckedPath {
+    OwnedCheckedPath {
+      path: self.path.into_owned(),
+      canonicalized: self.canonicalized,
+    }
+  }
+}
+
+impl Deref for CheckedPath<'_> {
+  type Target = Path;
+
+  fn deref(&self) -> &Self::Target {
+    &self.path
+  }
+}
+
+pub struct OwnedCheckedPath {
+  pub path: PathBuf,
+  pub canonicalized: bool,
+}
+
+impl Deref for OwnedCheckedPath {
+  type Target = Path;
+
+  fn deref(&self) -> &Self::Target {
+    &self.path
+  }
 }
 
 /// `AllowPartial` prescribes how to treat a permission which is partially
@@ -1811,7 +1847,10 @@ fn denies_run_name(name: &str, cmd_path: &PathQueryDescriptor) -> bool {
   suffix.is_empty() || suffix.starts_with('.')
 }
 
-pub struct SpecialFilePathDescriptor(PathBuf);
+pub struct SpecialFilePathDescriptor {
+  path: PathBuf,
+  canonicalized: bool,
+}
 
 impl SpecialFilePathDescriptor {
   pub fn parse(
@@ -1830,17 +1869,21 @@ impl SpecialFilePathDescriptor {
       !is_windows_device_path && !is_linux_special_path;
     if needs_canonicalization {
       match sys.fs_canonicalize(&path) {
-        Ok(path) => Ok(Self(path)),
+        Ok(path) => Ok(Self {
+          path,
+          canonicalized: true,
+        }),
         Err(_) => {
           if let (Some(parent), Some(filename)) =
             (path.parent(), path.file_name())
           {
-            Ok(Self(
-              sys
+            Ok(Self {
+              path: sys
                 .fs_canonicalize(parent)
                 .map_err(PathResolveError::Canonicalize)?
                 .join(filename),
-            ))
+              canonicalized: true,
+            })
           } else {
             Err(PathResolveError::NotFound(
               std::io::ErrorKind::NotFound.into(),
@@ -1849,7 +1892,10 @@ impl SpecialFilePathDescriptor {
         }
       }
     } else {
-      Ok(Self(path))
+      Ok(Self {
+        path,
+        canonicalized: false,
+      })
     }
   }
 }
@@ -2843,32 +2889,34 @@ impl PermissionsContainer {
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  pub fn check_read(
+  pub fn check_read<'a>(
     &self,
-    path: &str,
+    path: &'a str,
     api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     self.check_read_with_api_name(path, Some(api_name))
   }
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  pub fn check_read_with_api_name(
+  pub fn check_read_with_api_name<'a>(
     &self,
-    path: &str,
+    path: &'a str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.read;
     if inner.is_allow_all() {
-      Ok(PathBuf::from(path))
+      Ok(CheckedPath {
+        path: Cow::Borrowed(Path::new(path)),
+        canonicalized: false,
+      })
     } else {
       let desc = self.descriptor_parser.parse_path_query(path)?.into_read();
       inner.check(&desc, api_name)?;
       let path = desc.0;
       let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-      let path = self.check_special_file(path, api_name)?;
-      Ok(path)
+      self.check_special_file(path, api_name)
     }
   }
 
@@ -2880,14 +2928,17 @@ impl PermissionsContainer {
     read: bool,
     write: bool,
     api_name: Option<&str>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     // If somehow read or write aren't specified, use read
     let read = read || !write;
 
     let path = {
       let mut inner = self.inner.lock();
       if matches!(inner.all.state, PermissionState::Granted) {
-        return Ok(path);
+        return Ok(CheckedPath {
+          path,
+          canonicalized: false,
+        });
       }
       let should_check_read = read && !inner.read.is_allow_all();
       let should_check_write = write && !inner.write.is_allow_all();
@@ -2916,7 +2967,7 @@ impl PermissionsContainer {
     };
 
     let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-    self.check_special_file(path, api_name).map(Cow::Owned)
+    self.check_special_file(path, api_name)
   }
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -2925,7 +2976,7 @@ impl PermissionsContainer {
     &self,
     path: Cow<'a, Path>,
     api_name: Option<&str>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     self.check_read_path_with_requested(path, None, api_name)
   }
 
@@ -2937,7 +2988,7 @@ impl PermissionsContainer {
     path: Cow<'a, Path>,
     display: &str,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     self.check_read_path_with_requested(path, Some(display), Some(api_name))
   }
 
@@ -2948,11 +2999,14 @@ impl PermissionsContainer {
     path: Cow<'a, Path>,
     blind_requested: Option<&str>,
     api_name: Option<&str>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     let path = {
       let mut inner = self.inner.lock();
       if matches!(inner.all.state, PermissionState::Granted) {
-        return Ok(path);
+        return Ok(CheckedPath {
+          path,
+          canonicalized: false,
+        });
       }
       let inner = &mut inner.read;
       let path = self.descriptor_parser.parse_path_query_from_path(path)?;
@@ -2969,7 +3023,7 @@ impl PermissionsContainer {
       }
     };
     let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-    self.check_special_file(path, api_name).map(Cow::Owned)
+    self.check_special_file(path, api_name)
   }
 
   #[inline(always)]
@@ -3158,12 +3212,13 @@ impl PermissionsContainer {
   /// Checks special file access, returning the failed permission type if
   /// not successful.
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  pub fn check_special_file(
+  pub fn check_special_file<'a>(
     &self,
     path: SpecialFilePathDescriptor,
     _api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    let path = path.0;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    let canonicalized = path.canonicalized;
+    let path = path.path;
 
     // Safe files with no major additional side-effects. While there's a small risk of someone
     // draining system entropy by just reading one of these files constantly, that's not really
@@ -3174,7 +3229,10 @@ impl PermissionsContainer {
         || path == OsStr::new("/dev/zero")
         || path == OsStr::new("/dev/null"))
     {
-      return Ok(path);
+      return Ok(CheckedPath {
+        path: Cow::Owned(path),
+        canonicalized,
+      });
     }
 
     /// We'll allow opening /proc/self/fd/{n} without additional permissions under the following conditions:
@@ -3207,7 +3265,10 @@ impl PermissionsContainer {
     // are pipes.
     #[cfg(unix)]
     if path.starts_with("/dev/fd") && is_fd_file_is_pipe(&path) {
-      return Ok(path);
+      return Ok(CheckedPath {
+        path: Cow::Owned(path),
+        canonicalized,
+      });
     }
 
     if cfg!(target_os = "linux") {
@@ -3215,7 +3276,10 @@ impl PermissionsContainer {
       // are pipes.
       #[cfg(unix)]
       if path.starts_with("/proc/self/fd") && is_fd_file_is_pipe(&path) {
-        return Ok(path);
+        return Ok(CheckedPath {
+          path: Cow::Owned(path),
+          canonicalized,
+        });
       }
       if path.starts_with("/dev")
         || path.starts_with("/proc")
@@ -3235,7 +3299,10 @@ impl PermissionsContainer {
       // \\.\nul is allowed
       let s = path.as_os_str().as_encoded_bytes();
       if s.eq_ignore_ascii_case(br#"\\.\nul"#) {
-        return Ok(path);
+        return Ok(CheckedPath {
+          path: Cow::Owned(path),
+          canonicalized,
+        });
       }
 
       fn is_normalized_windows_drive_path(path: &Path) -> bool {
@@ -3261,7 +3328,10 @@ impl PermissionsContainer {
     } else {
       unimplemented!()
     }
-    Ok(path)
+    Ok(CheckedPath {
+      path: Cow::Owned(path),
+      canonicalized,
+    })
   }
 
   #[inline(always)]
@@ -4299,7 +4369,10 @@ mod tests {
       &self,
       path: PathQueryDescriptor,
     ) -> Result<SpecialFilePathDescriptor, PathResolveError> {
-      Ok(SpecialFilePathDescriptor(path.path))
+      Ok(SpecialFilePathDescriptor {
+        path: path.path,
+        canonicalized: false,
+      })
     }
   }
 

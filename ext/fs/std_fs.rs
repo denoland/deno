@@ -17,6 +17,7 @@ use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_permissions::CheckedPath;
 use deno_permissions::PermissionCheckError;
 
 use crate::FileSystem;
@@ -1113,13 +1114,15 @@ pub fn open_options_with_access_check(
 ) -> Result<(PathBuf, fs::OpenOptions), PermissionCheckError> {
   if let Some(access_check) = access_check {
     let path = Cow::Borrowed(path);
-    let maybe_resolved = (*access_check)(path, &options)?;
-
-    let path = maybe_resolved;
+    let CheckedPath {
+      path,
+      canonicalized: resolved,
+    } = (*access_check)(path, &options)?;
 
     let mut opts: fs::OpenOptions = open_options(options);
     #[cfg(windows)]
     {
+      _ = resolved; // not used on Windows
       // allow opening directories
       use std::os::windows::fs::OpenOptionsExt;
       opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
@@ -1131,7 +1134,7 @@ pub fn open_options_with_access_check(
       // with the exception of /proc/ which is too special, and /dev/std* which might point to
       // proc.
       use std::os::unix::fs::OpenOptionsExt;
-      if _resolved {
+      if resolved {
         opts.custom_flags(libc::O_NOFOLLOW);
       }
     }

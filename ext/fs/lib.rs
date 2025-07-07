@@ -10,6 +10,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub use deno_io::fs::FsError;
+use deno_permissions::CheckedPath;
 use deno_permissions::PermissionCheckError;
 
 pub use crate::interface::AccessCheckCb;
@@ -35,19 +36,19 @@ pub trait FsPermissions {
     write: bool,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    path: &str,
+    path: &'a str,
     api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_path<'a>(
     &mut self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn check_read_all(
     &mut self,
     api_name: &str,
@@ -58,7 +59,7 @@ pub trait FsPermissions {
     p: Cow<'a, Path>,
     display: &str,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write(
     &mut self,
@@ -93,7 +94,7 @@ pub trait FsPermissions {
     open_options: &OpenOptions,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     self.check_open(
       open_options.read,
       open_options.write || open_options.append,
@@ -114,15 +115,15 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     write: bool,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     self.check_open_path(path, read, write, Some(api_name))
   }
 
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    path: &str,
+    path: &'a str,
     api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read(self, path, api_name)
   }
 
@@ -130,7 +131,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(
       self,
       path,
@@ -143,7 +144,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     path: Cow<'a, Path>,
     display: &str,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_blind(
       self, path, display, api_name,
     )

@@ -18,6 +18,7 @@ use deno_core::OpState;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
 use deno_path_util::normalize_path;
+use deno_permissions::CheckedPath;
 use deno_permissions::PermissionCheckError;
 pub use denokv_sqlite::SqliteBackendError;
 use denokv_sqlite::SqliteConfig;
@@ -38,11 +39,11 @@ pub struct SqliteDbHandler<P: SqliteDbHandlerPermissions + 'static> {
 
 pub trait SqliteDbHandlerPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    p: &str,
+    p: &'a str,
     api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write<'a>(
     &mut self,
@@ -53,11 +54,11 @@ pub trait SqliteDbHandlerPermissions {
 
 impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    p: &str,
+    p: &'a str,
     api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read(self, p, api_name)
   }
 
@@ -131,7 +132,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
           .check_read(&path, "Deno.openKv")
           .map_err(JsErrorBox::from_err)?;
         let path = permissions
-          .check_write(Cow::Owned(path), "Deno.openKv")
+          .check_write(path.path, "Deno.openKv")
           .map_err(JsErrorBox::from_err)?;
         Ok(Some(path.to_string_lossy().to_string()))
       }

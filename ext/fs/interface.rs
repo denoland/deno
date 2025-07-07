@@ -9,6 +9,7 @@ use std::rc::Rc;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_permissions::CheckedPath;
 use deno_permissions::PermissionCheckError;
 use serde::Deserialize;
 use serde::Serialize;
@@ -87,14 +88,15 @@ pub trait AccessCheckFn:
   for<'a> FnMut(
   Cow<'a, Path>,
   &'a OpenOptions,
-) -> Result<Cow<'a, Path>, PermissionCheckError>
+) -> Result<CheckedPath<'a>, PermissionCheckError>
 {
 }
+
 impl<T> AccessCheckFn for T where
   T: for<'a> FnMut(
     Cow<'a, Path>,
     &'a OpenOptions,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>
 {
 }
 

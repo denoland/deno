@@ -53,6 +53,7 @@ pub use deno_fs::FsError;
 use deno_fs::OpenOptions;
 use deno_fs::open_options_with_access_check;
 use deno_path_util::PathToUrlError;
+use deno_permissions::CheckedPath;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 use deno_tls::Proxy;
@@ -410,13 +411,13 @@ pub trait FetchPermissions {
     &mut self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_open_read_write<'a>(
     &mut self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn check_net_vsock(
     &mut self,
     cid: u32,
@@ -440,7 +441,7 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     self.check_read_path(path, Some(api_name))
   }
 
@@ -449,7 +450,7 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     self.check_open_path(path, true, true, Some(api_name))
   }
 

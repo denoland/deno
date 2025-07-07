@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::Extension;
+use deno_permissions::CheckedPath;
 use deno_permissions::PermissionCheckError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
@@ -45,7 +46,7 @@ impl deno_fetch::FetchPermissions for Permissions {
     &mut self,
     _p: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -53,7 +54,7 @@ impl deno_fetch::FetchPermissions for Permissions {
     &mut self,
     _path: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -104,14 +105,14 @@ impl deno_node::NodePermissions for Permissions {
   fn check_read_path<'a>(
     &mut self,
     _path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
-  fn check_read_with_api_name(
+  fn check_read_with_api_name<'a>(
     &mut self,
-    _p: &str,
+    _p: &'a str,
     _api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
   fn query_read_all(&mut self) -> bool {
@@ -142,11 +143,11 @@ impl deno_net::NetPermissions for Permissions {
     unreachable!("snapshotting!")
   }
 
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    _p: &str,
+    _p: &'a str,
     _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -183,15 +184,15 @@ impl deno_fs::FsPermissions for Permissions {
     _write: bool,
     _path: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    _path: &str,
+    _path: &'a str,
     _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -207,7 +208,7 @@ impl deno_fs::FsPermissions for Permissions {
     _path: Cow<'a, Path>,
     _display: &str,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -247,7 +248,7 @@ impl deno_fs::FsPermissions for Permissions {
     &mut self,
     _path: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -261,11 +262,11 @@ impl deno_fs::FsPermissions for Permissions {
 }
 
 impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    _path: &str,
+    _path: &'a str,
     _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 

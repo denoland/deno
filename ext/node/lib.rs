@@ -16,6 +16,7 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
+use deno_permissions::CheckedPath;
 use deno_permissions::PermissionsContainer;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
@@ -63,23 +64,23 @@ pub trait NodePermissions {
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  fn check_read(
+  fn check_read<'a>(
     &mut self,
-    path: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+    path: &'a str,
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     self.check_read_with_api_name(path, None)
   }
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read_with_api_name(
+  fn check_read_with_api_name<'a>(
     &mut self,
-    path: &str,
+    path: &'a str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read_path<'a>(
     &mut self,
     path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn query_read_all(&mut self) -> bool;
   fn check_sys(
     &mut self,
@@ -113,11 +114,11 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read_with_api_name(
+  fn check_read_with_api_name<'a>(
     &mut self,
-    path: &str,
+    path: &'a str,
     api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_with_api_name(
       self, path, api_name,
     )
@@ -126,7 +127,7 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
   fn check_read_path<'a>(
     &mut self,
     path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_path(self, path, None)
   }
 
