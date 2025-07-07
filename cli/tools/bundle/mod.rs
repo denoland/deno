@@ -390,17 +390,16 @@ fn replace_require_shim(contents: &str, minified: bool) -> String {
       format!("import{{createRequire}} from \"node:module\";var {var_name}=createRequire(import.meta.url);")
     }).into_owned()
   } else {
-    contents.replace(
-    r#"var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});"#,
-    r#"import { createRequire } from "node:module";
+    let re = lazy_regex::regex!(
+      r#"var __require = (/\* @__PURE__ \*/)?\s*\(\(\w+\) => typeof require !== "undefined" \? require : typeof Proxy !== "undefined" \? new Proxy\(\w+, \{\s*  get: \(\w+, \w+\) => \(typeof require !== "undefined" \? require : \w+\)\[\w+\]\s*\}\) : \w+\)\(function\(\w+\) \{\s*  if \(typeof require !== "undefined"\) return require\.apply\(this, arguments\);\s*  throw Error\('Dynamic require of "' \+ \w+ \+ '" is not supported'\);\s*\}\);"#
+    );
+    re.replace_all(
+      contents,
+      r#"import { createRequire } from "node:module";
 var __require = createRequire(import.meta.url);
 "#,
-  )
+    )
+    .into_owned()
   }
 }
 
