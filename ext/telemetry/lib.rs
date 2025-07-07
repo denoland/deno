@@ -11,9 +11,9 @@ use std::ffi::c_void;
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
 use std::task::Context;
 use std::task::Poll;
 use std::thread;
@@ -21,22 +21,27 @@ use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
 
+use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
-use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::DataError;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
+use opentelemetry::InstrumentationScope;
+pub use opentelemetry::Key;
+pub use opentelemetry::KeyValue;
+pub use opentelemetry::StringValue;
+pub use opentelemetry::Value;
 use opentelemetry::logs::AnyValue;
 use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
@@ -57,32 +62,27 @@ use opentelemetry::trace::Status as SpanStatus;
 use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
 use opentelemetry::trace::TraceState;
-use opentelemetry::InstrumentationScope;
-pub use opentelemetry::Key;
-pub use opentelemetry::KeyValue;
-pub use opentelemetry::StringValue;
-pub use opentelemetry::Value;
 use opentelemetry_otlp::HttpExporterBuilder;
 use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_otlp::WithHttpConfig;
+use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::export::trace::SpanData;
 use opentelemetry_sdk::logs::BatchLogProcessor;
 use opentelemetry_sdk::logs::LogProcessor;
 use opentelemetry_sdk::logs::LogRecord;
-use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
-use opentelemetry_sdk::metrics::reader::MetricReader;
 use opentelemetry_sdk::metrics::ManualReader;
 use opentelemetry_sdk::metrics::MetricResult;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::metrics::Temporality;
+use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
+use opentelemetry_sdk::metrics::reader::MetricReader;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::IdGenerator;
 use opentelemetry_sdk::trace::RandomIdGenerator;
 use opentelemetry_sdk::trace::SpanEvents;
 use opentelemetry_sdk::trace::SpanLinks;
 use opentelemetry_sdk::trace::SpanProcessor as _;
-use opentelemetry_sdk::Resource;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME;
 use opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION;
 use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_LANGUAGE;
@@ -495,122 +495,233 @@ impl DenoPeriodicReader {
   }
 }
 
-mod tunnel_client {
-  use deno_net::tunnel::get_tunnel;
-  use deno_net::tunnel::TunnelListener;
+mod hyper_client {
+  use std::fmt::Debug;
+  use std::pin::Pin;
+  use std::task::Poll;
+
+  use deno_tls::SocketUse;
+  use deno_tls::TlsKey;
+  use deno_tls::TlsKeys;
+  use deno_tls::create_client_config;
+  use deno_tls::load_certs;
+  use deno_tls::load_private_keys;
   use http_body_util::BodyExt;
   use http_body_util::Full;
-  use hyper_util::rt::tokio::TokioIo;
+  use hyper::Uri;
+  use hyper_rustls::HttpsConnector;
+  use hyper_rustls::MaybeHttpsStream;
+  use hyper_util::client::legacy::Client;
+  use hyper_util::client::legacy::connect::Connected;
+  use hyper_util::client::legacy::connect::HttpConnector;
+  use hyper_util::rt::TokioIo;
   use opentelemetry_http::Bytes;
   use opentelemetry_http::HttpError;
   use opentelemetry_http::Request;
   use opentelemetry_http::Response;
   use opentelemetry_http::ResponseExt;
-  use opentelemetry_sdk::runtime::Runtime;
+  use tokio::net::TcpStream;
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  use tokio_vsock::VsockAddr;
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  use tokio_vsock::VsockStream;
 
   use super::OtelSharedRuntime;
 
-  #[derive(Debug, Clone)]
-  pub struct TunnelClient {
-    listener: TunnelListener,
+  #[derive(Debug, thiserror::Error)]
+  enum Error {
+    #[error(transparent)]
+    StdIo(#[from] std::io::Error),
+    #[error(transparent)]
+    Box(#[from] Box<dyn std::error::Error + Send + Sync>),
   }
 
-  impl TunnelClient {
-    pub fn new() -> Option<Self> {
-      let listener = get_tunnel()?;
-      Some(Self {
-        listener: listener.clone(),
+  #[derive(Debug, Clone)]
+  enum Connector {
+    Http(HttpsConnector<HttpConnector>),
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    Vsock(VsockAddr),
+  }
+
+  #[pin_project::pin_project(project = IOProj)]
+  enum IO {
+    Tls(#[pin] TokioIo<MaybeHttpsStream<TokioIo<TcpStream>>>),
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    Vsock(#[pin] VsockStream),
+  }
+
+  impl tokio::io::AsyncRead for IO {
+    fn poll_read(
+      self: std::pin::Pin<&mut Self>,
+      cx: &mut std::task::Context<'_>,
+      buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+      match self.project() {
+        IOProj::Tls(stream) => stream.poll_read(cx, buf),
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        IOProj::Vsock(stream) => stream.poll_read(cx, buf),
+      }
+    }
+  }
+
+  impl tokio::io::AsyncWrite for IO {
+    fn poll_write(
+      self: std::pin::Pin<&mut Self>,
+      cx: &mut std::task::Context<'_>,
+      buf: &[u8],
+    ) -> Poll<Result<usize, std::io::Error>> {
+      match self.project() {
+        IOProj::Tls(stream) => stream.poll_write(cx, buf),
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        IOProj::Vsock(stream) => stream.poll_write(cx, buf),
+      }
+    }
+
+    fn poll_flush(
+      self: std::pin::Pin<&mut Self>,
+      cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+      match self.project() {
+        IOProj::Tls(stream) => stream.poll_flush(cx),
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        IOProj::Vsock(stream) => stream.poll_flush(cx),
+      }
+    }
+
+    fn poll_shutdown(
+      self: std::pin::Pin<&mut Self>,
+      cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+      match self.project() {
+        IOProj::Tls(stream) => stream.poll_shutdown(cx),
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        IOProj::Vsock(stream) => stream.poll_shutdown(cx),
+      }
+    }
+
+    fn is_write_vectored(&self) -> bool {
+      match self {
+        IO::Tls(stream) => stream.is_write_vectored(),
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        IO::Vsock(stream) => stream.is_write_vectored(),
+      }
+    }
+
+    fn poll_write_vectored(
+      self: std::pin::Pin<&mut Self>,
+      cx: &mut std::task::Context<'_>,
+      bufs: &[std::io::IoSlice<'_>],
+    ) -> Poll<Result<usize, std::io::Error>> {
+      match self.project() {
+        IOProj::Tls(stream) => stream.poll_write_vectored(cx, bufs),
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        IOProj::Vsock(stream) => stream.poll_write_vectored(cx, bufs),
+      }
+    }
+  }
+
+  impl hyper_util::client::legacy::connect::Connection for IO {
+    fn connected(&self) -> Connected {
+      match self {
+        Self::Tls(stream) => stream.connected(),
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        Self::Vsock(_) => Connected::new().proxy(true),
+      }
+    }
+  }
+
+  impl tower_service::Service<Uri> for Connector {
+    type Response = TokioIo<IO>;
+    type Error = Error;
+    type Future = Pin<
+      Box<
+        dyn std::future::Future<Output = Result<Self::Response, Self::Error>>
+          + Send,
+      >,
+    >;
+
+    fn poll_ready(
+      &mut self,
+      cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+      match self {
+        Self::Http(c) => c.poll_ready(cx).map_err(Into::into),
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        Self::Vsock(_) => Poll::Ready(Ok(())),
+      }
+    }
+
+    fn call(&mut self, dst: Uri) -> Self::Future {
+      let this = self.clone();
+      Box::pin(async move {
+        match this {
+          Self::Http(mut connector) => {
+            let stream = connector.call(dst).await?;
+            Ok(TokioIo::new(IO::Tls(TokioIo::new(stream))))
+          }
+          #[cfg(any(target_os = "linux", target_os = "macos"))]
+          Self::Vsock(addr) => {
+            let stream = VsockStream::connect(addr).await?;
+            Ok(TokioIo::new(IO::Vsock(stream)))
+          }
+        }
       })
     }
   }
 
-  #[async_trait::async_trait]
-  impl opentelemetry_http::HttpClient for TunnelClient {
-    async fn send(
-      &self,
-      request: Request<Vec<u8>>,
-    ) -> Result<Response<Bytes>, HttpError> {
-      let stream = self.listener.create_stream().await?;
-      let io = TokioIo::new(stream);
-      let (mut send_request, c) =
-        hyper::client::conn::http1::handshake(io).await?;
-      OtelSharedRuntime.spawn(Box::pin(async move {
-        let _ = c.await;
-      }));
-      let (mut parts, body) = request.into_parts();
-      if !parts.headers.contains_key("host") {
-        if let Some(host) = parts.uri.host() {
-          if let Ok(host) = hyper::header::HeaderValue::from_str(host) {
-            parts.headers.insert("host", host);
-          }
-        }
-      }
-      let request = Request::from_parts(parts, Full::<Bytes>::from(body));
-      let response = send_request.send_request(request).await?;
-      let (parts, body) = response.into_parts();
-      let body = body.collect().await?.to_bytes();
-      let response = Response::from_parts(parts, body);
-      Ok(response.error_for_status()?)
-    }
-  }
-}
-
-mod hyper_client {
-  use std::fmt::Debug;
-
-  use deno_tls::create_client_config;
-  use deno_tls::load_certs;
-  use deno_tls::load_private_keys;
-  use deno_tls::SocketUse;
-  use deno_tls::TlsKey;
-  use deno_tls::TlsKeys;
-  use http_body_util::BodyExt;
-  use http_body_util::Full;
-  use hyper_rustls::HttpsConnector;
-  use hyper_util::client::legacy::connect::HttpConnector;
-  use hyper_util::client::legacy::Client;
-  use opentelemetry_http::Bytes;
-  use opentelemetry_http::HttpError;
-  use opentelemetry_http::Request;
-  use opentelemetry_http::Response;
-  use opentelemetry_http::ResponseExt;
-
-  use super::OtelSharedRuntime;
-
-  // same as opentelemetry_http::HyperClient except it uses OtelSharedRuntime
   #[derive(Debug, Clone)]
   pub struct HyperClient {
-    inner: Client<HttpsConnector<HttpConnector>, Full<Bytes>>,
+    inner: Client<Connector, Full<Bytes>>,
   }
 
   impl HyperClient {
     pub fn new() -> deno_core::anyhow::Result<Self> {
-      let ca_certs = match std::env::var("OTEL_EXPORTER_OTLP_CERTIFICATE") {
-        Ok(path) => vec![std::fs::read(path)?],
-        _ => vec![],
-      };
-
-      let keys = match (
-        std::env::var("OTEL_EXPORTER_OTLP_CLIENT_KEY"),
-        std::env::var("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"),
-      ) {
-        (Ok(key_path), Ok(cert_path)) => {
-          let key = std::fs::read(key_path)?;
-          let cert = std::fs::read(cert_path)?;
-
-          let certs = load_certs(&mut std::io::Cursor::new(cert))?;
-          let key = load_private_keys(&key)?.into_iter().next().unwrap();
-
-          TlsKeys::Static(TlsKey(certs, key))
+      let connector = if let Ok(addr) = std::env::var("OTEL_DENO_VSOCK") {
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+          let _ = addr;
+          deno_core::anyhow::bail!("vsock is not supported on this platform")
         }
-        _ => TlsKeys::Null,
-      };
 
-      let tls_config =
-        create_client_config(None, ca_certs, None, keys, SocketUse::Http)?;
-      let mut http_connector = HttpConnector::new();
-      http_connector.enforce_http(false);
-      let connector = HttpsConnector::from((http_connector, tls_config));
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+          let Some((cid, port)) = addr.split_once(':') else {
+            deno_core::anyhow::bail!("invalid vsock addr");
+          };
+          let cid = if cid == "-1" { u32::MAX } else { cid.parse()? };
+          let port = port.parse()?;
+          let addr = VsockAddr::new(cid, port);
+          Connector::Vsock(addr)
+        }
+      } else {
+        let ca_certs = match std::env::var("OTEL_EXPORTER_OTLP_CERTIFICATE") {
+          Ok(path) => vec![std::fs::read(path)?],
+          _ => vec![],
+        };
+
+        let keys = match (
+          std::env::var("OTEL_EXPORTER_OTLP_CLIENT_KEY"),
+          std::env::var("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"),
+        ) {
+          (Ok(key_path), Ok(cert_path)) => {
+            let key = std::fs::read(key_path)?;
+            let cert = std::fs::read(cert_path)?;
+
+            let certs = load_certs(&mut std::io::Cursor::new(cert))?;
+            let key = load_private_keys(&key)?.into_iter().next().unwrap();
+
+            TlsKeys::Static(TlsKey(certs, key))
+          }
+          _ => TlsKeys::Null,
+        };
+
+        let tls_config =
+          create_client_config(None, ca_certs, None, keys, SocketUse::Http)?;
+        let mut http_connector = HttpConnector::new();
+        http_connector.enforce_http(false);
+        let connector = HttpsConnector::from((http_connector, tls_config));
+        Connector::Http(connector)
+      };
 
       Ok(Self {
         inner: Client::builder(OtelSharedRuntime).build(connector),
@@ -730,17 +841,10 @@ pub fn init(
   // `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Additional headers can
   // be specified using `OTEL_EXPORTER_OTLP_HEADERS`.
 
-  let tunnel_client = tunnel_client::TunnelClient::new();
-  let hyper_client = hyper_client::HyperClient::new()?;
+  let client = hyper_client::HyperClient::new()?;
 
-  let span_exporter = HttpExporterBuilder::default();
-
-  let span_exporter = if let Some(tunnel_client) = &tunnel_client {
-    span_exporter.with_http_client(tunnel_client.clone())
-  } else {
-    span_exporter.with_http_client(hyper_client.clone())
-  };
-  let span_exporter = span_exporter
+  let span_exporter = HttpExporterBuilder::default()
+    .with_http_client(client.clone())
     .with_protocol(protocol)
     .build_span_exporter()?;
   let mut span_processor =
@@ -762,13 +866,8 @@ pub fn init(
       ));
     }
   };
-  let metric_exporter = HttpExporterBuilder::default();
-  let metric_exporter = if let Some(tunnel_client) = &tunnel_client {
-    metric_exporter.with_http_client(tunnel_client.clone())
-  } else {
-    metric_exporter.with_http_client(hyper_client.clone())
-  };
-  let metric_exporter = metric_exporter
+  let metric_exporter = HttpExporterBuilder::default()
+    .with_http_client(client.clone())
     .with_protocol(protocol)
     .build_metrics_exporter(temporality)?;
   let metric_reader = DenoPeriodicReader::new(metric_exporter);
@@ -777,14 +876,10 @@ pub fn init(
     .with_resource(resource.clone())
     .build();
 
-  let log_exporter = HttpExporterBuilder::default();
-  let log_exporter = if let Some(tunnel_client) = tunnel_client {
-    log_exporter.with_http_client(tunnel_client)
-  } else {
-    log_exporter.with_http_client(hyper_client)
-  };
-  let log_exporter =
-    log_exporter.with_protocol(protocol).build_log_exporter()?;
+  let log_exporter = HttpExporterBuilder::default()
+    .with_http_client(client)
+    .with_protocol(protocol)
+    .build_log_exporter()?;
   let log_processor =
     BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
   log_processor.set_resource(&resource);
@@ -811,55 +906,7 @@ pub fn init(
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
-  setup_signal_handlers();
   Ok(())
-}
-
-#[cfg(unix)]
-fn setup_signal_handlers() {
-  use tokio::signal::unix::SignalKind;
-
-  let signals_to_handle = [
-    SignalKind::hangup(),
-    SignalKind::interrupt(),
-    SignalKind::terminate(),
-  ];
-
-  for signal_kind in signals_to_handle {
-    tokio::spawn(async move {
-      let Ok(mut signal_fut) = tokio::signal::unix::signal(signal_kind) else {
-        return;
-      };
-
-      loop {
-        signal_fut.recv().await;
-        flush();
-      }
-    });
-  }
-}
-
-#[cfg(windows)]
-fn setup_signal_handlers() {
-  let handlers = [
-    tokio::signal::windows::ctrl_break,
-    tokio::signal::windows::ctrl_c,
-    tokio::signal::windows::ctrl_close,
-    tokio::signal::windows::ctrl_logoff,
-    tokio::signal::windows::ctrl_shutdown,
-  ];
-
-  for handler in handlers {
-    tokio::spawn(async {
-      let Ok(mut signal_fut) = handler() else {
-        return;
-      };
-      loop {
-        signal_fut.recv().await;
-        flush();
-      }
-    });
-  }
 }
 
 /// This function is called by the runtime whenever it is about to call
@@ -2365,11 +2412,12 @@ async fn op_otel_metric_wait_to_observe(state: Rc<RefCell<OpState>>) -> bool {
       .expect("mutex poisoned")
       .push(tx);
   }
-  if let Ok(done) = rx.await {
-    state.borrow_mut().put(ObservationDone(done));
-    true
-  } else {
-    false
+  match rx.await {
+    Ok(done) => {
+      state.borrow_mut().put(ObservationDone(done));
+      true
+    }
+    _ => false,
   }
 }
 

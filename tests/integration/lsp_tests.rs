@@ -6,17 +6,17 @@ use ntest_timeout::timeout;
 use pretty_assertions::assert_eq;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
+use test_util::TestContextBuilder;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
+use test_util::lsp::LspClient;
 use test_util::lsp::range_of;
 use test_util::lsp::source_file;
-use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::url_to_notebook_cell_uri;
 use test_util::url_to_uri;
-use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
 use url::Url;
 
@@ -228,9 +228,11 @@ fn unadded_dependency_message_with_import_map() {
     }
   }));
   // expected lsp_messages don't include the file path
-  let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
-  "'x' is declared but its value is never read.",
-  "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency."]);
+  let mut expected_lsp_messages = Vec::from([
+    "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
+    "'x' is declared but its value is never read.",
+    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency.",
+  ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
   let mut correct_lsp_messages = all_diagnostics
@@ -289,9 +291,11 @@ fn unadded_dependency_message() {
     }
   }));
   // expected lsp_messages don't include the file path
-  let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
-  "'x' is declared but its value is never read.",
-  "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency."]);
+  let mut expected_lsp_messages = Vec::from([
+    "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
+    "'x' is declared but its value is never read.",
+    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency.",
+  ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
   let mut correct_lsp_messages = all_diagnostics
@@ -424,11 +428,12 @@ fn lsp_import_map_data_url() {
   }));
 
   // This indicates that the import map is applied correctly.
-  assert!(diagnostics.all().iter().any(|diagnostic| diagnostic.code
-    == Some(lsp::NumberOrString::String("no-cache".to_string()))
-    && diagnostic
-      .message
-      .contains("https://deno.land/x/example/mod.ts")));
+  assert!(diagnostics.all().iter().any(|diagnostic| {
+    diagnostic.code == Some(lsp::NumberOrString::String("no-cache".to_string()))
+      && diagnostic
+        .message
+        .contains("https://deno.land/x/example/mod.ts")
+  }));
   client.shutdown();
 }
 
@@ -6579,6 +6584,36 @@ fn lsp_npm_managed_no_export_diagnostic() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/29548.
+#[test]
+#[timeout(300_000)]
+fn lsp_npm_managed_type_only_export_no_diagnostic() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"npm:@minecraft/common\";\n",
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], "file:///a/file.ts"],
+    }),
+  );
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/29177.
 #[test]
 #[timeout(300_000)]
@@ -9059,13 +9094,15 @@ fn lsp_npm_reexport_from_non_export() {
     .filter(|i| i.label == "getValue")
     .collect::<Vec<_>>();
   assert_eq!(
-    json!(items
-      .iter()
-      .map(|i| i
-        .label_details
-        .as_ref()
-        .and_then(|d| d.description.as_ref()))
-      .collect::<Vec<_>>()),
+    json!(
+      items
+        .iter()
+        .map(|i| i
+          .label_details
+          .as_ref()
+          .and_then(|d| d.description.as_ref()))
+        .collect::<Vec<_>>()
+    ),
     json!(["npm:@denotest/reexport-from-non-export"]),
   );
   client.shutdown();
@@ -11569,8 +11606,10 @@ fn lsp_diagnostics_refresh_dependents() {
     }
   }));
   assert_eq!(
-    json!(diagnostics
-      .messages_with_file_and_source("file:///a/file_02.ts", "deno-ts")),
+    json!(
+      diagnostics
+        .messages_with_file_and_source("file:///a/file_02.ts", "deno-ts")
+    ),
     json!({
       "uri": "file:///a/file_02.ts",
       "diagnostics": [
@@ -12782,7 +12821,10 @@ fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}\n");
-  let scss_file = source_file(temp_dir.path().join("file.scss"), "  $font-stack: Helvetica, sans-serif;\n\nbody {\n  font: 100% $font-stack;\n}\n");
+  let scss_file = source_file(
+    temp_dir.path().join("file.scss"),
+    "  $font-stack: Helvetica, sans-serif;\n\nbody {\n  font: 100% $font-stack;\n}\n",
+  );
   let sass_file = source_file(
     temp_dir.path().join("file.sass"),
     "  $font-stack: Helvetica, sans-serif\n\nbody\n  font: 100% $font-stack\n",
@@ -15230,19 +15272,23 @@ fn lsp_vendor_dir() {
     ]
   );
 
-  assert!(!temp_dir
-    .path()
-    .join("vendor/http_localhost_4545/subdir/mod1.ts")
-    .exists());
+  assert!(
+    !temp_dir
+      .path()
+      .join("vendor/http_localhost_4545/subdir/mod1.ts")
+      .exists()
+  );
 
   // now cache
   cache(&mut client);
   let diagnostics = client.read_diagnostics();
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
-  assert!(temp_dir
-    .path()
-    .join("vendor/http_localhost_4545/subdir/mod1.ts")
-    .exists());
+  assert!(
+    temp_dir
+      .path()
+      .join("vendor/http_localhost_4545/subdir/mod1.ts")
+      .exists()
+  );
 
   // the declaration should be found in the vendor directory
   let res = client.write_request(
@@ -18155,7 +18201,9 @@ fn lsp_ts_code_fix_any_param() {
     }
   }
 
-  panic!("failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}");
+  panic!(
+    "failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}"
+  );
 }
 
 #[test]

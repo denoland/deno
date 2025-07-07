@@ -411,8 +411,9 @@ fn show_prefix_hint_on_global_install() {
     output.assert_exit_code(1);
 
     let output_text = output.combined_output();
-    let expected_text =
-      format!("error: {pkg} is missing a prefix. Did you mean `deno install -g {pkg_req}`?");
+    let expected_text = format!(
+      "error: {pkg} is missing a prefix. Did you mean `deno install -g {pkg_req}`?"
+    );
     assert_contains!(output_text, &expected_text);
   }
 

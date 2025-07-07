@@ -4,18 +4,18 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::cppgc::SameObject;
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
+use deno_core::cppgc::SameObject;
+use deno_core::op2;
+use deno_core::v8;
 use tokio::sync::Mutex;
 
 use super::device::GPUDevice;
-use crate::webidl::features_to_feature_names;
-use crate::webidl::GPUFeatureName;
 use crate::Instance;
+use crate::webidl::GPUFeatureName;
+use crate::webidl::features_to_feature_names;
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]

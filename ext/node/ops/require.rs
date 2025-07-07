@@ -7,25 +7,25 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use boxed_error::Boxed;
-use deno_core::op2;
-use deno_core::url::Url;
-use deno_core::v8;
 use deno_core::FastString;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_core::url::Url;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
-use node_resolver::cache::NodeResolutionThreadLocalCache;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::errors::ClosestPkgJsonError;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
@@ -558,10 +558,6 @@ where
   let loader = state.borrow::<NodeRequireLoaderRc>();
   loader
     .load_text_file_lossy(&file_path)
-    .map(|s| match s {
-      Cow::Borrowed(s) => FastString::from_static(s),
-      Cow::Owned(s) => s.into(),
-    })
     .map_err(|e| RequireErrorKind::ReadModule(e).into_box())
 }
 

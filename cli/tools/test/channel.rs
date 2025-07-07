@@ -1,30 +1,30 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::fmt::Display;
-use std::future::poll_fn;
 use std::future::Future;
+use std::future::poll_fn;
 use std::io::Write;
 use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::task::ready;
 use std::task::Poll;
+use std::task::ready;
 use std::time::Duration;
 
 use deno_core::parking_lot;
 use deno_core::parking_lot::lock_api::RawMutex;
 use deno_core::parking_lot::lock_api::RawMutexTimed;
-use deno_runtime::deno_io::pipe;
 use deno_runtime::deno_io::AsyncPipeRead;
 use deno_runtime::deno_io::PipeRead;
 use deno_runtime::deno_io::PipeWrite;
+use deno_runtime::deno_io::pipe;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::ReadBuf;
-use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::WeakUnboundedSender;
+use tokio::sync::mpsc::error::SendError;
 
 use super::TestEvent;
 
@@ -85,8 +85,8 @@ pub fn create_test_event_channel() -> (TestEventSenderFactory, TestEventReceiver
 
 /// Create a [`TestEventWorkerSender`] and [`TestEventReceiver`] pair.The [`TestEventReceiver`]
 /// will be kept alive until the [`TestEventSender`] is dropped.
-pub fn create_single_test_event_channel(
-) -> (TestEventWorkerSender, TestEventReceiver) {
+pub fn create_single_test_event_channel()
+-> (TestEventWorkerSender, TestEventReceiver) {
   let (factory, receiver) = create_test_event_channel();
   (factory.worker(), receiver)
 }

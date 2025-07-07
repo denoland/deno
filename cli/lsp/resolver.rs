@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
-use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::HttpCache;
+use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::JsxImportSourceConfig;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
@@ -20,27 +20,27 @@ use deno_graph::ModuleSpecifier;
 use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::TarballCache;
+use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::initializer::NpmResolutionInitializer;
 use deno_npm_installer::initializer::NpmResolverManagedSnapshotOption;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::package_json::NpmInstallDepsProvider;
 use deno_npm_installer::resolution::NpmResolutionInstaller;
-use deno_npm_installer::LifecycleScriptsConfig;
 use deno_path_util::url_to_file_path;
+use deno_resolver::DenoResolverOptions;
+use deno_resolver::NodeAndNpmResolvers;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
-use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
-use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
-use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
+use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npmrc::create_default_npmrc;
 use deno_resolver::workspace::PackageJsonDepResolution;
 use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_resolver::workspace::WorkspaceResolver;
-use deno_resolver::DenoResolverOptions;
-use deno_resolver::NodeAndNpmResolvers;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -48,14 +48,14 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use indexmap::IndexMap;
-use node_resolver::cache::NodeResolutionSys;
-use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolverOptions;
 use node_resolver::PackageJson;
 use node_resolver::PackageJsonThreadLocalCache;
 use node_resolver::ResolutionMode;
+use node_resolver::cache::NodeResolutionSys;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
 
 use super::cache::LspCache;
@@ -78,10 +78,10 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
-use crate::resolver::on_resolve_diagnostic;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
+use crate::resolver::on_resolve_diagnostic;
 use crate::sys::CliSys;
 use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
@@ -950,7 +950,7 @@ impl<'a> ResolverFactory<'a> {
         Arc::new(NullLifecycleScriptsExecutor),
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
-        Arc::new(registry_info_provider.as_npm_registry_api()),
+        registry_info_provider.clone(),
         self.services.npm_resolution.clone(),
         npm_resolution_initializer.clone(),
         npm_resolution_installer,

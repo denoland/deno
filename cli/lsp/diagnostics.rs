@@ -5,13 +5,14 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 use std::thread;
 
 use deno_ast::MediaType;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirLintConfig;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -20,17 +21,16 @@ use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
-use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolutionKind;
-use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_graph::source::ResolveError;
 use deno_lint::linter::LintConfig as DenoLintConfig;
+use deno_resolver::graph::enhanced_resolution_error_message;
 use deno_resolver::workspace::sloppy_imports_resolve;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -42,8 +42,8 @@ use import_map::ImportMapErrorKind;
 use log::error;
 use lsp_types::Uri;
 use node_resolver::NodeResolutionKind;
-use tokio::sync::mpsc;
 use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
@@ -61,8 +61,6 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::MaybeAmbientModules;
 use super::tsc::TsServer;
-use crate::graph_util;
-use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::sys::CliSys;
@@ -460,13 +458,13 @@ impl DeferredDiagnostics {
         }
         let mut regex_string = ambient_modules_to_regex_string(&value);
         regex_string.push('$');
-        if let Ok(regex) = regex::Regex::new(&regex_string).inspect_err(|e| {
+        match regex::Regex::new(&regex_string).inspect_err(|e| {
           lsp_warn!("failed to compile ambient modules pattern: {e} (pattern is {regex_string:?})");
-        }) {
+        }) { Ok(regex) => {
           ambient.regex = Some(regex);
-        } else {
+        } _ => {
           ambient.regex = None;
-        }
+        }}
       }
     }
   }
@@ -1030,15 +1028,12 @@ fn generate_document_lint_diagnostics(
     .and_then(|d| d.parsed_source.as_ref())
   {
     Some(Ok(parsed_source)) => {
-      if let Ok(references) =
-        analysis::get_lint_references(parsed_source, linter, token)
-      {
-        references
+      match analysis::get_lint_references(parsed_source, linter, token) {
+        Ok(references) => references
           .into_iter()
           .map(|r| r.to_diagnostic())
-          .collect::<Vec<_>>()
-      } else {
-        Vec::new()
+          .collect::<Vec<_>>(),
+        _ => Vec::new(),
       }
     }
     Some(Err(_)) => Vec::new(),
@@ -1201,7 +1196,9 @@ impl DenoDiagnostic {
       Self::NoExportNpm(_) => "no-export-npm",
       Self::NoLocal(_) => "no-local",
       Self::ResolutionError(err) => {
-        if graph_util::get_resolution_error_bare_node_specifier(err).is_some() {
+        if deno_resolver::graph::get_resolution_error_bare_node_specifier(err)
+          .is_some()
+        {
           "import-node-prefix-missing"
         } else {
           match err {
@@ -1384,7 +1381,7 @@ impl DenoDiagnostic {
           return Err(anyhow!(
             "Unsupported diagnostic code (\"{}\") provided.",
             code
-          ))
+          ));
         }
       };
       Ok(code_action)
@@ -1469,7 +1466,7 @@ impl DenoDiagnostic {
         (
         lsp::DiagnosticSeverity::ERROR,
         message,
-        graph_util::get_resolution_error_bare_node_specifier(err)
+        deno_resolver::graph::get_resolution_error_bare_node_specifier(err)
           .map(|specifier| json!({ "specifier": specifier }))
       )},
       Self::UnknownNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("No such built-in module: node:{}", specifier.path()), None),
@@ -1568,7 +1565,6 @@ fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
   dependency_key: &str,
   resolution: &Resolution,
-  resolution_kind: ResolutionKind,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
   referrer_module: &DocumentModule,
@@ -1589,100 +1585,127 @@ fn diagnose_resolution(
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }
       }
-      if let Some(module) = snapshot
+      match snapshot
         .document_modules
         .module_for_specifier(specifier, referrer_module.scope.as_deref())
       {
-        if let Some(headers) = &module.headers {
-          if let Some(message) = headers.get("x-deno-warning") {
-            diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
+        Some(module) => {
+          if let Some(headers) = &module.headers {
+            if let Some(message) = headers.get("x-deno-warning") {
+              diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
+            }
+          }
+          if module.media_type == MediaType::Json {
+            match maybe_assert_type {
+              // The module has the correct assertion type, no diagnostic
+              Some("json") => (),
+              // The dynamic import statement is missing an attribute type, which
+              // we might not be able to statically detect, therefore we will
+              // not provide a potentially incorrect diagnostic.
+              None if is_dynamic => (),
+              // The module has an incorrect assertion type, diagnostic
+              Some(assert_type) => diagnostics.push(
+                DenoDiagnostic::InvalidAttributeType(assert_type.to_string()),
+              ),
+              // The module is missing an attribute type, diagnostic
+              None => diagnostics.push(DenoDiagnostic::NoAttributeType),
+            }
           }
         }
-        if module.media_type == MediaType::Json {
-          match maybe_assert_type {
-            // The module has the correct assertion type, no diagnostic
-            Some("json") => (),
-            // The dynamic import statement is missing an attribute type, which
-            // we might not be able to statically detect, therefore we will
-            // not provide a potentially incorrect diagnostic.
-            None if is_dynamic => (),
-            // The module has an incorrect assertion type, diagnostic
-            Some(assert_type) => diagnostics.push(
-              DenoDiagnostic::InvalidAttributeType(assert_type.to_string()),
-            ),
-            // The module is missing an attribute type, diagnostic
-            None => diagnostics.push(DenoDiagnostic::NoAttributeType),
-          }
-        }
-      } else if let Ok(pkg_ref) =
-        JsrPackageReqReference::from_specifier(specifier)
-      {
-        let req = pkg_ref.into_inner().req;
-        diagnostics
-          .push(DenoDiagnostic::NotInstalledJsr(req, specifier.clone()));
-      } else if let Ok(pkg_ref) =
-        NpmPackageReqReference::from_specifier(specifier)
-      {
-        if let Some(npm_resolver) = managed_npm_resolver {
-          // show diagnostics for npm package references that aren't cached
-          let req = pkg_ref.req();
-          if !npm_resolver.is_pkg_req_folder_cached(req) {
-            diagnostics.push(DenoDiagnostic::NotInstalledNpm(
-              req.clone(),
-              specifier.clone(),
-            ));
-          } else if scoped_resolver
-            .npm_to_file_url(
-              &pkg_ref,
-              &referrer_module.specifier,
-              NodeResolutionKind::from_deno_graph(resolution_kind),
-              referrer_module.resolution_mode,
-            )
-            .is_none()
-          {
-            diagnostics.push(DenoDiagnostic::NoExportNpm(pkg_ref.clone()));
-          }
-        }
-      } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
-      {
-        if !deno_node::is_builtin_node_module(module_name) {
-          diagnostics
-            .push(DenoDiagnostic::UnknownNodeSpecifier(specifier.clone()));
-        } else if module_name == dependency_key {
-          let mut is_mapped = false;
-          if let Some(import_map) = import_map {
-            if let Resolution::Ok(resolved) = &resolution {
-              if import_map.resolve(module_name, &resolved.specifier).is_ok() {
-                is_mapped = true;
+        _ => {
+          match JsrPackageReqReference::from_specifier(specifier) {
+            Ok(pkg_ref) => {
+              let req = pkg_ref.into_inner().req;
+              diagnostics
+                .push(DenoDiagnostic::NotInstalledJsr(req, specifier.clone()));
+            }
+            _ => {
+              match NpmPackageReqReference::from_specifier(specifier) {
+                Ok(pkg_ref) => {
+                  if let Some(npm_resolver) = managed_npm_resolver {
+                    // show diagnostics for npm package references that aren't cached
+                    let req = pkg_ref.req();
+                    if !npm_resolver.is_pkg_req_folder_cached(req) {
+                      diagnostics.push(DenoDiagnostic::NotInstalledNpm(
+                        req.clone(),
+                        specifier.clone(),
+                      ));
+                    } else {
+                      let resolution_kinds = [
+                        NodeResolutionKind::Types,
+                        NodeResolutionKind::Execution,
+                      ];
+                      if resolution_kinds.into_iter().all(|k| {
+                        scoped_resolver
+                          .npm_to_file_url(
+                            &pkg_ref,
+                            &referrer_module.specifier,
+                            k,
+                            referrer_module.resolution_mode,
+                          )
+                          .is_none()
+                      }) {
+                        diagnostics
+                          .push(DenoDiagnostic::NoExportNpm(pkg_ref.clone()));
+                      }
+                    }
+                  }
+                }
+                _ => {
+                  if let Some(module_name) =
+                    specifier.as_str().strip_prefix("node:")
+                  {
+                    if !deno_node::is_builtin_node_module(module_name) {
+                      diagnostics.push(DenoDiagnostic::UnknownNodeSpecifier(
+                        specifier.clone(),
+                      ));
+                    } else if module_name == dependency_key {
+                      let mut is_mapped = false;
+                      if let Some(import_map) = import_map {
+                        if let Resolution::Ok(resolved) = &resolution {
+                          if import_map
+                            .resolve(module_name, &resolved.specifier)
+                            .is_ok()
+                          {
+                            is_mapped = true;
+                          }
+                        }
+                      }
+                      // show diagnostics for bare node specifiers that aren't mapped by import map
+                      if !is_mapped {
+                        diagnostics.push(DenoDiagnostic::BareNodeSpecifier(
+                          module_name.to_string(),
+                        ));
+                      }
+                    } else if let Some(npm_resolver) = managed_npm_resolver {
+                      // check that a @types/node package exists in the resolver
+                      let types_node_req =
+                        PackageReq::from_str("@types/node").unwrap();
+                      if !npm_resolver.is_pkg_req_folder_cached(&types_node_req)
+                      {
+                        diagnostics.push(DenoDiagnostic::NotInstalledNpm(
+                          types_node_req,
+                          ModuleSpecifier::parse("npm:@types/node").unwrap(),
+                        ));
+                      }
+                    }
+                  } else {
+                    // When the document is not available, it means that it cannot be found
+                    // in the cache or locally on the disk, so we want to issue a diagnostic
+                    // about that.
+                    // these may be invalid, however, if this is an ambient module with
+                    // no real source (as in the case of a virtual module).
+                    let deno_diagnostic = match specifier.scheme() {
+                      "file" => DenoDiagnostic::NoLocal(specifier.clone()),
+                      _ => DenoDiagnostic::NoCache(specifier.clone()),
+                    };
+                    deferred_diagnostics.push(deno_diagnostic);
+                  }
+                }
               }
             }
           }
-          // show diagnostics for bare node specifiers that aren't mapped by import map
-          if !is_mapped {
-            diagnostics
-              .push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
-          }
-        } else if let Some(npm_resolver) = managed_npm_resolver {
-          // check that a @types/node package exists in the resolver
-          let types_node_req = PackageReq::from_str("@types/node").unwrap();
-          if !npm_resolver.is_pkg_req_folder_cached(&types_node_req) {
-            diagnostics.push(DenoDiagnostic::NotInstalledNpm(
-              types_node_req,
-              ModuleSpecifier::parse("npm:@types/node").unwrap(),
-            ));
-          }
         }
-      } else {
-        // When the document is not available, it means that it cannot be found
-        // in the cache or locally on the disk, so we want to issue a diagnostic
-        // about that.
-        // these may be invalid, however, if this is an ambient module with
-        // no real source (as in the case of a virtual module).
-        let deno_diagnostic = match specifier.scheme() {
-          "file" => DenoDiagnostic::NoLocal(specifier.clone()),
-          _ => DenoDiagnostic::NoCache(specifier.clone()),
-        };
-        deferred_diagnostics.push(deno_diagnostic);
       }
     }
     // The specifier resolution resulted in an error, so we want to issue a
@@ -1763,9 +1786,7 @@ fn diagnose_dependency(
         .includes(i.specifier_range.range.start)
         .is_some()
     });
-  let resolution;
-  let resolution_kind;
-  if dependency.maybe_code.is_none()
+  let resolution = if dependency.maybe_code.is_none()
   // If not @ts-types, diagnose the types if the code errored because
   // it's likely resolving into the node_modules folder, which might be
   // erroring correctly due to resolution only being for bundlers. Let this
@@ -1773,17 +1794,14 @@ fn diagnose_dependency(
   || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
     && matches!(dependency.maybe_code, Resolution::Err(_))
   {
-    resolution = &dependency.maybe_type;
-    resolution_kind = ResolutionKind::Types;
+    &dependency.maybe_type
   } else {
-    resolution = &dependency.maybe_code;
-    resolution_kind = ResolutionKind::Execution;
+    &dependency.maybe_code
   };
   let (resolution_diagnostics, deferred) = diagnose_resolution(
     snapshot,
     dependency_key,
     resolution,
-    resolution_kind,
     dependency.is_dynamic,
     dependency.maybe_attribute_type.as_deref(),
     referrer_module,
@@ -1819,7 +1837,6 @@ fn diagnose_dependency(
       snapshot,
       dependency_key,
       &dependency.maybe_type,
-      ResolutionKind::Types,
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
       referrer_module,

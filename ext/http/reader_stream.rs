@@ -1,9 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::pin::Pin;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 

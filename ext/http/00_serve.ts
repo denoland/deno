@@ -1143,6 +1143,12 @@ function registerDeclarativeServer(exports) {
     throw new TypeError("Invalid type for fetch: must be a function");
   }
 
+  if (
+    exports.onListen !== undefined && typeof exports.onListen !== "function"
+  ) {
+    throw new TypeError("Invalid type for onListen: must be a function");
+  }
+
   return ({
     servePort,
     serveHost,
@@ -1154,24 +1160,31 @@ function registerDeclarativeServer(exports) {
       [kLoadBalanced]: workerCountWhenMain == null
         ? true
         : workerCountWhenMain > 0,
-      onListen: ({ transport, port, hostname, path, cid }) => {
+      onListen: (localAddr) => {
         if (workerCountWhenMain != null) {
+          if (exports.onListen) {
+            exports.onListen(localAddr);
+            return;
+          }
+
+          let target;
+          switch (localAddr.transport) {
+            case "tcp":
+              target = `http://${
+                formatHostName(localAddr.hostname)
+              }:${localAddr.port}/`;
+              break;
+            case "unix":
+              target = localAddr.path;
+              break;
+            case "vsock":
+              target = `vsock:${localAddr.cid}:${localAddr.port}`;
+              break;
+          }
+
           const nThreads = workerCountWhenMain > 0
             ? ` with ${workerCountWhenMain + 1} threads`
             : "";
-
-          let target;
-          switch (transport) {
-            case "tcp":
-              target = `http://${formatHostName(hostname)}:${port}/`;
-              break;
-            case "unix":
-              target = path;
-              break;
-            case "vsock":
-              target = `vsock:${cid}:${port}`;
-              break;
-          }
 
           import.meta.log(
             "info",

@@ -15,14 +15,14 @@ use deno_config::workspace::TaskOrScript;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceMemberTasksConfig;
 use deno_config::workspace::WorkspaceTasksConfig;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::stream::futures_unordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::futures::future::LocalBoxFuture;
+use deno_core::futures::stream::futures_unordered;
 use deno_core::url::Url;
 use deno_npm_installer::PackageCaching;
 use deno_path_util::normalize_path;
@@ -59,15 +59,21 @@ pub async fn execute_script(
   let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() && !task_flags.eval {
-    bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
+    bail!(
+      "deno task couldn't find deno.json(c). See https://docs.deno.com/go/config"
+    )
   }
   let force_use_pkg_json =
     std::env::var_os(crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
       .map(|v| {
         // always remove so sub processes don't inherit this env var
-        std::env::remove_var(
-          crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME,
-        );
+
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+          std::env::remove_var(
+            crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME,
+          )
+        };
         v == "1"
       })
       .unwrap_or(false);
@@ -388,10 +394,13 @@ impl<'a> TaskRunner<'a> {
 
     while context.has_remaining_tasks() {
       while queue.len() < self.concurrency {
-        if let Some(task) = context.get_next_task(self, kill_signal, args) {
-          queue.push(task);
-        } else {
-          break;
+        match context.get_next_task(self, kill_signal, args) {
+          Some(task) => {
+            queue.push(task);
+          }
+          _ => {
+            break;
+          }
         }
       }
 
@@ -752,7 +761,10 @@ fn print_available_tasks_workspace(
   if !matched {
     log::warn!(
       "{}",
-      colors::red(format!("No package name matched the filter '{}' in available 'deno.json' or 'package.json' files.", filter))
+      colors::red(format!(
+        "No package name matched the filter '{}' in available 'deno.json' or 'package.json' files.",
+        filter
+      ))
     );
   }
 

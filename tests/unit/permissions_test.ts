@@ -226,3 +226,11 @@ Deno.test(function permissionStatusObjectsNotEqualSync() {
       Deno.permissions.querySync({ name: "env", variable: "B" }),
   );
 });
+
+Deno.test(
+  { permissions: { import: ["jsr.io:443"] } },
+  async function permissionQueryImport() {
+    await Deno.permissions.query({ name: "import", host: "jsr.io:443" });
+    await Deno.permissions.query({ name: "import", host: "deno.test:443" });
+  },
+);

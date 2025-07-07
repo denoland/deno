@@ -1,8 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 use std::io::ErrorKind;
 use std::pin::Pin;
-use std::task::ready;
 use std::task::Poll;
+use std::task::ready;
 
 use bytes::Buf;
 use bytes::Bytes;

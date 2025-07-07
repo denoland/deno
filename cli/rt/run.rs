@@ -8,12 +8,6 @@ use std::sync::OnceLock;
 
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_core::error::AnyError;
-use deno_core::error::ModuleLoaderError;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::FutureExt;
-use deno_core::url::Url;
-use deno_core::v8_set_flags;
 use deno_core::FastString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
@@ -21,15 +15,21 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
+use deno_core::error::AnyError;
+use deno_core::error::ModuleLoaderError;
+use deno_core::futures::FutureExt;
+use deno_core::futures::future::LocalBoxFuture;
+use deno_core::url::Url;
+use deno_core::v8_set_flags;
 use deno_error::JsErrorBox;
-use deno_lib::args::get_root_cert_store;
-use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::args::CaData;
 use deno_lib::args::RootCertStoreLoadError;
+use deno_lib::args::get_root_cert_store;
+use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::loader::NpmModuleLoader;
-use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
+use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::standalone::binary::NodeModules;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::util::text_encoding::from_utf8_lossy_cow;
@@ -44,11 +44,9 @@ use deno_media_type::MediaType;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_package_json::PackageJsonDepValue;
+use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::cjs::CjsTracker;
 use deno_resolver::cjs::IsCjsResolutionMode;
-use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
-use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
-use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -56,35 +54,36 @@ use deno_resolver::npm::NpmReqResolver;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npm::NpmResolver;
 use deno_resolver::npm::NpmResolverCreateOptions;
+use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::MappedResolution;
 use deno_resolver::workspace::SloppyImportsOptions;
 use deno_resolver::workspace::WorkspaceResolver;
-use deno_resolver::DenoResolveErrorKind;
-use deno_runtime::code_cache::CodeCache;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::create_host_defined_options;
-use deno_runtime::deno_node::NodeRequireLoader;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
-use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::FeatureChecker;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
+use deno_runtime::code_cache::CodeCache;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::NodeRequireLoader;
+use deno_runtime::deno_node::create_host_defined_options;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_web::BlobStore;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::analyze::CjsModuleExportAnalyzer;
-use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::cache::NodeResolutionSys;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolver;
 use node_resolver::PackageJsonResolver;
 use node_resolver::PackageJsonThreadLocalCache;
 use node_resolver::ResolutionMode;
+use node_resolver::analyze::CjsModuleExportAnalyzer;
+use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::cache::NodeResolutionSys;
+use node_resolver::errors::ClosestPkgJsonError;
 
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
@@ -372,7 +371,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     original_specifier: &Url,
     maybe_referrer: Option<&Url>,
     _is_dynamic: bool,
-    _requested_module_type: RequestedModuleType,
+    requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
     if original_specifier.scheme() == "data" {
       let data_url_text =
@@ -412,10 +411,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             code_source.code.as_bytes(),
           );
           Ok(deno_core::ModuleSource::new_with_redirect(
-            match code_source.media_type {
-              MediaType::Json => ModuleType::Json,
-              _ => ModuleType::JavaScript,
-            },
+            code_source.module_type,
             code_source.code,
             &original_specifier,
             &code_source.found_url,
@@ -428,6 +424,36 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     match self.shared.modules.read(original_specifier) {
       Ok(Some(module)) => {
+        match requested_module_type {
+          RequestedModuleType::Text | RequestedModuleType::Bytes => {
+            let module_source = DenoCompileModuleSource::Bytes(module.data);
+            return deno_core::ModuleLoadResponse::Sync(Ok(
+              deno_core::ModuleSource::new_with_redirect(
+                match requested_module_type {
+                  RequestedModuleType::Text => ModuleType::Text,
+                  RequestedModuleType::Bytes => ModuleType::Bytes,
+                  _ => unreachable!(),
+                },
+                match requested_module_type {
+                  RequestedModuleType::Text => module_source.into_for_v8(),
+                  RequestedModuleType::Bytes => {
+                    ModuleSourceCode::Bytes(module_source.into_bytes_for_v8())
+                  }
+                  _ => unreachable!(),
+                },
+                original_specifier,
+                module.specifier,
+                None,
+              ),
+            ));
+          }
+          RequestedModuleType::Other(_)
+          | RequestedModuleType::None
+          | RequestedModuleType::Json => {
+            // ignore
+          }
+        }
+
         let media_type = module.media_type;
         let (module_specifier, module_type, module_source) =
           module.into_parts();
@@ -552,7 +578,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
     if line_number >= lines.len() {
       Some(format!(
         "{} Couldn't format source line: Line {} is out of bounds (source may have changed at runtime)",
-        crate::colors::yellow("Warning"), line_number + 1,
+        crate::colors::yellow("Warning"),
+        line_number + 1,
       ))
     } else {
       Some(lines[line_number].to_string())
@@ -581,7 +608,7 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   fn load_text_file_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<Cow<'static, str>, JsErrorBox> {
+  ) -> Result<FastString, JsErrorBox> {
     let file_entry = self
       .shared
       .vfs
@@ -594,7 +621,10 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
         file_entry.transpiled_offset.unwrap_or(file_entry.offset),
       )
       .map_err(JsErrorBox::from_err)?;
-    Ok(from_utf8_lossy_cow(file_bytes))
+    Ok(match from_utf8_lossy_cow(file_bytes) {
+      Cow::Borrowed(s) => FastString::from_static(s),
+      Cow::Owned(s) => s.into(),
+    })
   }
 
   fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError> {
@@ -933,14 +963,8 @@ pub async fn run(
       }
     }
 
-    let desc_parser = Arc::new(RuntimePermissionDescriptorParser::new(
-      sys.clone(),
-      if metadata.unstable_config.subdomain_wildcards {
-        UnstableSubdomainWildcards::Enabled
-      } else {
-        UnstableSubdomainWildcards::Disabled
-      },
-    ));
+    let desc_parser =
+      Arc::new(RuntimePermissionDescriptorParser::new(sys.clone()));
     let permissions =
       Permissions::from_options(desc_parser.as_ref(), &permissions)?;
     PermissionsContainer::new(desc_parser, permissions)
@@ -984,6 +1008,7 @@ pub async fn run(
     otel_config: metadata.otel_config,
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+    enable_raw_imports: metadata.unstable_config.raw_imports,
     tunnel: false,
   };
   let worker_factory = LibMainWorkerFactory::new(
@@ -1033,6 +1058,8 @@ pub async fn run(
     WorkerExecutionMode::Run,
     permissions,
     main_module,
+    // TODO(bartlomieju): support preload modules in `deno compile`
+    vec![],
   )?;
 
   let exit_code = worker.run().await?;

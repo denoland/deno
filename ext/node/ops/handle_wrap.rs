@@ -4,12 +4,12 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::ResourceError;
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
+use deno_core::op2;
+use deno_core::v8;
 
 pub struct AsyncId(i64);
 

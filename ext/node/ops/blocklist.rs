@@ -7,8 +7,8 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use ipnetwork::IpNetwork;
 use ipnetwork::Ipv4Network;
 use ipnetwork::Ipv6Network;

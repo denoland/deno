@@ -4,20 +4,20 @@ use std::io::BufReader;
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use base64::prelude::Engine;
 use base64::prelude::BASE64_STANDARD;
+use base64::prelude::Engine;
 use deno_npm::resolution::PackageIdNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm_installer::process_state::NpmProcessState;
 use deno_npm_installer::process_state::NpmProcessStateFromEnvVarSys;
 use deno_npm_installer::process_state::NpmProcessStateKind;
+use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
-use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_semver::npm::NpmPackageReqReference;
 use serde::Deserialize;
 use serde::Serialize;
@@ -170,7 +170,11 @@ pub fn npm_process_state(
     .get_or_init(|| {
       use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
       let fd_or_path = std::env::var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
-      std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
+
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)
+      };
       if fd_or_path.is_empty() {
         return None;
       }
@@ -201,10 +205,10 @@ pub fn resolve_npm_resolution_snapshot(
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
-  pub subdomain_wildcards: bool,
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
   pub lazy_dynamic_imports: bool,
+  pub raw_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
@@ -219,10 +223,6 @@ impl UnstableConfig {
     }
 
     maybe_set(
-      &mut self.subdomain_wildcards,
-      UNSTABLE_ENV_VAR_NAMES.subdomain_wildcards,
-    );
-    maybe_set(
       &mut self.bare_node_builtins,
       UNSTABLE_ENV_VAR_NAMES.bare_node_builtins,
     );
@@ -234,9 +234,16 @@ impl UnstableConfig {
       &mut self.npm_lazy_caching,
       UNSTABLE_ENV_VAR_NAMES.npm_lazy_caching,
     );
+    maybe_set(&mut self.raw_imports, UNSTABLE_ENV_VAR_NAMES.raw_imports);
     maybe_set(
       &mut self.sloppy_imports,
       UNSTABLE_ENV_VAR_NAMES.sloppy_imports,
     );
+  }
+
+  pub fn enable_node_compat(&mut self) {
+    self.bare_node_builtins = true;
+    self.sloppy_imports = true;
+    self.detect_cjs = true;
   }
 }

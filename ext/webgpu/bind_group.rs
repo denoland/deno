@@ -2,6 +2,8 @@
 
 use std::borrow::Cow;
 
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::v8::HandleScope;
@@ -11,13 +13,11 @@ use deno_core::webidl::ContextFn;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlInterfaceConverter;
-use deno_core::GarbageCollected;
-use deno_core::WebIDL;
 
+use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::sampler::GPUSampler;
 use crate::texture::GPUTextureView;
-use crate::Instance;
 
 pub struct GPUBindGroup {
   pub instance: Instance,

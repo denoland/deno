@@ -12,9 +12,6 @@ use deno_error::JsError;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::errors::NodeResolveError;
-use node_resolver::errors::PackageSubpathResolveError;
-use node_resolver::errors::UnknownBuiltInNodeModuleError;
 pub use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
@@ -25,6 +22,9 @@ use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
+use node_resolver::errors::NodeResolveError;
+use node_resolver::errors::PackageSubpathResolveError;
+use node_resolver::errors::UnknownBuiltInNodeModuleError;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolverRc;
 use npm::ResolveIfForNpmPackageErrorKind;
@@ -41,19 +41,25 @@ use crate::workspace::MappedResolutionError;
 use crate::workspace::WorkspaceResolvePkgJsonFolderError;
 use crate::workspace::WorkspaceResolver;
 
+pub mod cache;
 pub mod cjs;
 pub mod collections;
 pub mod deno_json;
 pub mod display;
+#[cfg(feature = "deno_ast")]
+pub mod emit;
 pub mod factory;
 #[cfg(feature = "graph")]
 pub mod file_fetcher;
 #[cfg(feature = "graph")]
 pub mod graph;
 pub mod import_map;
+pub mod loader;
 pub mod lockfile;
 pub mod npm;
 pub mod npmrc;
+#[cfg(feature = "sync")]
+mod rt;
 mod sync;
 pub mod workspace;
 
@@ -122,10 +128,14 @@ impl DenoResolveError {
 #[derive(Debug, Error, JsError)]
 pub enum DenoResolveErrorKind {
   #[class(type)]
-  #[error("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")]
+  #[error(
+    "Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring."
+  )]
   InvalidVendorFolderImport,
   #[class(type)]
-  #[error("Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual")]
+  #[error(
+    "Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual"
+  )]
   UnsupportedPackageJsonFileSpecifier,
   #[class(type)]
   #[error("JSR specifiers are not yet supported in package.json")]
@@ -265,11 +275,11 @@ pub struct RawDenoResolver<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: DenoResolverSys,
-  >
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: DenoResolverSys,
+>
   RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -579,7 +589,7 @@ impl<
                   url: res.into_url()?,
                   maybe_diagnostic,
                   found_package_json_dep,
-                })
+                });
               }
               NodeResolution::BuiltIn(ref _module) => {
                 if self.bare_node_builtins {

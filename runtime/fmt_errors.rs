@@ -4,8 +4,8 @@ use std::fmt::Write as _;
 
 use color_print::cformat;
 use color_print::cstr;
-use deno_core::error::format_frame;
 use deno_core::error::JsError;
+use deno_core::error::format_frame;
 use deno_terminal::colors;
 
 #[derive(Debug, Clone)]
@@ -122,7 +122,8 @@ fn format_maybe_source_line(
   if column_number as usize > source_line.len() {
     return format!(
       "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
-      colors::yellow("Warning"), column_number,
+      colors::yellow("Warning"),
+      column_number,
     );
   }
 
@@ -318,14 +319,22 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
       }
       return vec![
         FixSuggestion::info_multiline(&[
-          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when the closest"),
-          cstr!("<u>package.json</> has a <i>\"type\": \"commonjs\"</> option.")
+          cstr!(
+            "Deno supports CommonJS modules in <u>.cjs</> files, or when the closest"
+          ),
+          cstr!(
+            "<u>package.json</> has a <i>\"type\": \"commonjs\"</> option."
+          ),
         ]),
         FixSuggestion::hint_multiline(&[
           "Rewrite this module to ESM,",
           cstr!("or change the file extension to <u>.cjs</u>,"),
-          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option,"),
-          cstr!("or pass <i>--unstable-detect-cjs</> flag to detect CommonJS when loading."),
+          cstr!(
+            "or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option,"
+          ),
+          cstr!(
+            "or pass <i>--unstable-detect-cjs</> flag to detect CommonJS when loading."
+          ),
         ]),
         FixSuggestion::docs("https://docs.deno.com/go/commonjs"),
       ];
@@ -342,26 +351,6 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "<u>__dirname</> global is not available in ES modules."
         )),
         FixSuggestion::hint(cstr!("Use <u>import.meta.dirname</> instead.")),
-      ];
-    } else if msg.contains("clearImmediate is not defined") {
-      return vec![
-        FixSuggestion::info(cstr!(
-          "<u>clearImmediate</> is not available in the global scope in Deno."
-        )),
-        FixSuggestion::hint_multiline(&[
-          cstr!("Import it explicitly with <u>import { clearImmediate } from \"node:timers\";</>,"),
-          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
-        ]),
-      ];
-    } else if msg.contains("setImmediate is not defined") {
-      return vec![
-        FixSuggestion::info(cstr!(
-          "<u>setImmediate</> is not available in the global scope in Deno."
-        )),
-        FixSuggestion::hint_multiline(
-          &[cstr!("Import it explicitly with <u>import { setImmediate } from \"node:timers\";</>,"),
-          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
-        ]),
       ];
     } else if msg.contains("openKv is not a function") {
       return vec![
@@ -425,11 +414,9 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         ),
       ];
     } else if msg.contains("client error (Connect): invalid peer certificate") {
-      return vec![
-        FixSuggestion::hint(
-          "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
-        ),
-      ];
+      return vec![FixSuggestion::hint(
+        "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
+      )];
     // Try to capture errors like:
     // ```
     // Uncaught Error: Cannot find module '../build/Release/canvas.node'
@@ -442,18 +429,14 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
       && msg.contains(".node'")
     {
       return vec![
-        FixSuggestion::info_multiline(
-          &[
-            "Trying to execute an npm package using Node-API addons,",
-            "these packages require local `node_modules` directory to be present."
-          ]
-        ),
-        FixSuggestion::hint_multiline(
-          &[
-            "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
-            "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory."
-          ]
-        )
+        FixSuggestion::info_multiline(&[
+          "Trying to execute an npm package using Node-API addons,",
+          "these packages require local `node_modules` directory to be present.",
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
+          "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory.",
+        ]),
       ];
     } else if msg.contains("document is not defined") {
       return vec![
@@ -461,8 +444,12 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "<u>document</> global is not available in Deno."
         )),
         FixSuggestion::hint_multiline(&[
-          cstr!("Use a library like <u>happy-dom</>, <u>deno_dom</>, <u>linkedom</> or <u>JSDom</>"),
-          cstr!("and setup the <u>document</> global according to the library documentation."),
+          cstr!(
+            "Use a library like <u>happy-dom</>, <u>deno_dom</>, <u>linkedom</> or <u>JSDom</>"
+          ),
+          cstr!(
+            "and setup the <u>document</> global according to the library documentation."
+          ),
         ]),
       ];
     }

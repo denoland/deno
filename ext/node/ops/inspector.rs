@@ -3,14 +3,14 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::futures::channel::mpsc;
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
+use deno_core::futures::channel::mpsc;
+use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 
 use crate::NodePermissions;

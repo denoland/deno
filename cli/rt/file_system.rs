@@ -39,11 +39,11 @@ use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 #[cfg(windows)]
 use deno_subprocess_windows::Stdio as StdStdio;
+use sys_traits::FsCopy;
 use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
 use sys_traits::boxed::FsReadDirBoxed;
-use sys_traits::FsCopy;
 use url::Url;
 
 #[derive(Debug, Clone)]
@@ -193,6 +193,16 @@ impl FileSystem for DenoRtSys {
   ) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.chown_async(path, uid, gid).await
+  }
+
+  fn lchmod_sync(&self, path: &Path, mode: u32) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.lchmod_sync(path, mode)
+  }
+
+  async fn lchmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.lchmod_async(path, mode).await
   }
 
   fn lchown_sync(
@@ -1080,7 +1090,10 @@ impl FileBackedVfsFile {
         if offset >= 0 {
           *current_pos += offset as u64;
         } else if -offset as u64 > *current_pos {
-          return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file."));
+          return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "An attempt was made to move the file pointer before the beginning of the file.",
+          ));
         } else {
           *current_pos -= -offset as u64;
         }
@@ -1397,7 +1410,7 @@ impl FileBackedVfs {
   pub fn read_dir_with_metadata(
     &self,
     path: &Path,
-  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry>> {
+  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry> + use<>> {
     let dir = self.dir_entry(path)?;
     let path = path.to_path_buf();
     Ok(
@@ -1528,8 +1541,8 @@ mod test {
   use std::io::Write;
 
   use deno_lib::standalone::virtual_fs::VfsBuilder;
-  use test_util::assert_contains;
   use test_util::TempDir;
+  use test_util::assert_contains;
 
   use super::*;
 
@@ -1763,10 +1776,7 @@ mod test {
     file.read_to_buf(&mut buf).unwrap();
     assert_eq!(buf, b"23");
     assert_eq!(
-      file
-        .seek(SeekFrom::Current(-5))
-        .unwrap_err()
-        .to_string(),
+      file.seek(SeekFrom::Current(-5)).unwrap_err().to_string(),
       "An attempt was made to move the file pointer before the beginning of the file."
     );
     // go beyond the file length, then back

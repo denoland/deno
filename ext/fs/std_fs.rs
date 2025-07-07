@@ -13,20 +13,20 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::unsync::spawn_blocking;
+use deno_io::StdFileResourceInner;
 use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
-use deno_io::StdFileResourceInner;
 use deno_path_util::normalize_path;
 
+use crate::FileSystem;
+use crate::GetPath;
+use crate::OpenOptions;
 use crate::interface::AccessCheckCb;
 use crate::interface::CheckedPath;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
-use crate::FileSystem;
-use crate::GetPath;
-use crate::OpenOptions;
 
 #[derive(Debug, Default, Clone)]
 pub struct RealFs;
@@ -55,9 +55,9 @@ impl FileSystem for RealFs {
 
   #[cfg(unix)]
   fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
+    use nix::sys::stat::Mode;
     use nix::sys::stat::mode_t;
     use nix::sys::stat::umask;
-    use nix::sys::stat::Mode;
     let r = if let Some(mask) = mask {
       // If mask provided, return previous.
       umask(Mode::from_bits_truncate(mask as mode_t))
@@ -210,6 +210,14 @@ impl FileSystem for RealFs {
     spawn_blocking(move || fs::rename(oldpath, newpath))
       .await?
       .map_err(Into::into)
+  }
+
+  fn lchmod_sync(&self, path: &Path, mode: u32) -> FsResult<()> {
+    lchmod(path, mode)
+  }
+
+  async fn lchmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()> {
+    spawn_blocking(move || lchmod(&path, mode)).await?
   }
 
   fn link_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
@@ -442,9 +450,9 @@ fn chmod(path: &Path, _mode: u32) -> FsResult<()> {
 
 #[cfg(unix)]
 fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
-  use nix::unistd::chown;
   use nix::unistd::Gid;
   use nix::unistd::Uid;
+  use nix::unistd::chown;
   let owner = uid.map(Uid::from_raw);
   let group = gid.map(Gid::from_raw);
   let res = chown(path, owner, group);
@@ -457,6 +465,26 @@ fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
 // TODO: implement chown for Windows
 #[cfg(not(unix))]
 fn chown(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
+  Err(FsError::NotSupported)
+}
+
+#[cfg(target_os = "macos")]
+fn lchmod(path: &Path, mode: u32) -> FsResult<()> {
+  use std::os::unix::fs::OpenOptionsExt;
+  use std::os::unix::fs::PermissionsExt;
+
+  use libc::O_SYMLINK;
+
+  let file = fs::OpenOptions::new()
+    .write(true)
+    .custom_flags(O_SYMLINK)
+    .open(path)?;
+  file.set_permissions(fs::Permissions::from_mode(mode))?;
+  Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn lchmod(_path: &Path, _mode: u32) -> FsResult<()> {
   Err(FsError::NotSupported)
 }
 
@@ -810,20 +838,23 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     handle: winapi::shared::ntdef::HANDLE,
   ) -> std::io::Result<u64> {
     use winapi::shared::minwindef::FALSE;
-    use winapi::um::fileapi::GetFileInformationByHandle;
     use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
+    use winapi::um::fileapi::GetFileInformationByHandle;
 
-    let info = {
-      let mut info =
-        std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
-      if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
-        return Err(std::io::Error::last_os_error());
-      }
+    // SAFETY: winapi calls
+    unsafe {
+      let info = {
+        let mut info =
+          std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+        if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
+          return Err(std::io::Error::last_os_error());
+        }
 
-      info.assume_init()
-    };
+        info.assume_init()
+      };
 
-    Ok(info.dwVolumeSerialNumber as u64)
+      Ok(info.dwVolumeSerialNumber as u64)
+    }
   }
 
   const WINDOWS_TICK: i64 = 10_000; // 100-nanosecond intervals in a millisecond
@@ -841,34 +872,37 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     handle: winapi::shared::ntdef::HANDLE,
   ) -> Result<FILE_ALL_INFORMATION, NTSTATUS> {
     use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
-    use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
     use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
+    use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
     use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 
-    let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
-    let mut io_status_block =
-      std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
-    let status = NtQueryInformationFile(
-      handle as _,
-      io_status_block.as_mut_ptr(),
-      info.as_mut_ptr() as *mut _,
-      std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
-      18, /* FileAllInformation */
-    );
+    // SAFETY: winapi calls
+    unsafe {
+      let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
+      let mut io_status_block =
+        std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
+      let status = NtQueryInformationFile(
+        handle as _,
+        io_status_block.as_mut_ptr(),
+        info.as_mut_ptr() as *mut _,
+        std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
+        18, /* FileAllInformation */
+      );
 
-    if status < 0 {
-      let converted_status = RtlNtStatusToDosError(status);
+      if status < 0 {
+        let converted_status = RtlNtStatusToDosError(status);
 
-      // If error more data is returned, then it means that the buffer is too small to get full filename information
-      // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
-      // since struct is populated with other data anyway.
-      // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
-      if converted_status != ERROR_MORE_DATA {
-        return Err(converted_status as NTSTATUS);
+        // If error more data is returned, then it means that the buffer is too small to get full filename information
+        // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
+        // since struct is populated with other data anyway.
+        // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
+        if converted_status != ERROR_MORE_DATA {
+          return Err(converted_status as NTSTATUS);
+        }
       }
-    }
 
-    Ok(info.assume_init())
+      Ok(info.assume_init())
+    }
   }
 
   // SAFETY: winapi calls
@@ -921,8 +955,8 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
 fn exists(path: &Path) -> bool {
   #[cfg(unix)]
   {
-    use nix::unistd::access;
     use nix::unistd::AccessFlags;
+    use nix::unistd::access;
     access(path, AccessFlags::F_OK).is_ok()
   }
 
@@ -1013,7 +1047,7 @@ fn symlink(
           return Err(FsError::Io(io::Error::new(
             io::ErrorKind::InvalidInput,
             "On Windows an `options` argument is required if the target does not exist",
-          )))
+          )));
         }
         Err(err) => return Err(err.into()),
       }

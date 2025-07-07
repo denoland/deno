@@ -55,12 +55,30 @@ fn macos_shared_libraries() {
 
   // path and whether its weak or not
   const EXPECTED: [(&str, bool); 9] = [
-    ("/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation", false),
-    ("/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices", false),
-    ("/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore", true),
-    ("/System/Library/Frameworks/Metal.framework/Versions/A/Metal", true),
-    ("/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics", true),
-    ("/System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/MetalPerformanceShaders", true),
+    (
+      "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+      false,
+    ),
+    (
+      "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+      false,
+    ),
+    (
+      "/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+      true,
+    ),
+    (
+      "/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+      true,
+    ),
+    (
+      "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+      true,
+    ),
+    (
+      "/System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/MetalPerformanceShaders",
+      true,
+    ),
     ("/usr/lib/libiconv.2.dylib", false),
     ("/usr/lib/libSystem.B.dylib", false),
     ("/usr/lib/libobjc.A.dylib", false),

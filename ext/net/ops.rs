@@ -8,7 +8,6 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -19,17 +18,18 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::op2;
+use hickory_proto::ProtoError;
+use hickory_proto::ProtoErrorKind;
 use hickory_proto::rr::rdata::caa::Value;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
-use hickory_proto::ProtoError;
-use hickory_proto::ProtoErrorKind;
+use hickory_resolver::ResolveError;
+use hickory_resolver::ResolveErrorKind;
 use hickory_resolver::config::NameServerConfigGroup;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
 use hickory_resolver::system_conf;
-use hickory_resolver::ResolveError;
-use hickory_resolver::ResolveErrorKind;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -39,13 +39,13 @@ use socket2::Type;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
+use crate::NetPermissions;
 use crate::io::TcpStreamResource;
 use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
 use crate::tunnel::TunnelAddr;
-use crate::NetPermissions;
 
 pub type Fd = u32;
 
@@ -1204,14 +1204,16 @@ mod tests {
   use std::sync::Arc;
   use std::sync::Mutex;
 
-  use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
+  use deno_core::futures::FutureExt;
   use deno_permissions::PermissionCheckError;
+  use hickory_proto::rr::Name;
+  use hickory_proto::rr::rdata::SOA;
   use hickory_proto::rr::rdata::a::A;
   use hickory_proto::rr::rdata::aaaa::AAAA;
-  use hickory_proto::rr::rdata::caa::KeyValue;
   use hickory_proto::rr::rdata::caa::CAA;
+  use hickory_proto::rr::rdata::caa::KeyValue;
   use hickory_proto::rr::rdata::mx::MX;
   use hickory_proto::rr::rdata::name::ANAME;
   use hickory_proto::rr::rdata::name::CNAME;
@@ -1220,9 +1222,7 @@ mod tests {
   use hickory_proto::rr::rdata::naptr::NAPTR;
   use hickory_proto::rr::rdata::srv::SRV;
   use hickory_proto::rr::rdata::txt::TXT;
-  use hickory_proto::rr::rdata::SOA;
   use hickory_proto::rr::record_data::RData;
-  use hickory_proto::rr::Name;
   use socket2::SockRef;
 
   use super::*;
