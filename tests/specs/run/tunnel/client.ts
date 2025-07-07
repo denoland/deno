@@ -1,7 +1,6 @@
 let serveAddr;
 
 Deno.serve({
-  tunnel: true,
   onListen(addr) {
     serveAddr = addr;
   },
