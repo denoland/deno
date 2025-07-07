@@ -843,15 +843,12 @@ async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
   Ok(tools::deploy::get_token_entry()?.get_password()?)
 }
 
-#[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
   host: &str,
   flags: &Flags,
 ) -> Result<(), deno_core::anyhow::Error> {
-  use deno_lib::args::get_root_cert_store;
-
-  let factory = CliFactory::from_flags(Arc::new(flags.clone()));
-  let cli_options = factory.cli_options()?;
+  let mut factory = CliFactory::from_flags(Arc::new(flags.clone()));
+  let mut cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
   if deploy_config.is_none() {
     let _ = tools::deploy::get_token_entry()?.delete_credential();
@@ -862,16 +859,24 @@ async fn initialize_tunnel(
   } else {
     match tools::deploy::get_token_entry()?.get_password() {
       Ok(token) => token,
-      Err(keyring::Error::NoEntry) => auth_tunnel().await?,
+      Err(keyring::Error::NoEntry) => {
+        let token = auth_tunnel().await?;
+
+        if deploy_config.is_none() {
+          // we regenerate the factory & CliOptions since auth_tunnel updates
+          // the config file with the deploy config, only if it was not set previously.
+          factory = CliFactory::from_flags(Arc::new(flags.clone()));
+          cli_options = factory.cli_options()?;
+        }
+
+        token
+      }
       Err(e) => {
         init_logging(None, None);
         exit_for_error(e.into());
       }
     }
   };
-
-  let factory = CliFactory::from_flags(Arc::new(flags.clone()));
-  let cli_options = factory.cli_options()?;
 
   let (org, app) = if let (Ok(org), Ok(app)) = (
     std::env::var("DENO_UNSTABLE_TUNNEL_ORG"),
@@ -887,12 +892,7 @@ async fn initialize_tunnel(
     (deploy_config.org, deploy_config.app)
   };
 
-  eprintln!(
-    "{}{}{}",
-    colors::green("Tunneling to "),
-    colors::bold(colors::green(&host)),
-    colors::green("..."),
-  );
+  log::debug!("Tunneling to {host}...");
 
   let Some(addr) = tokio::net::lookup_host(&host).await?.next() else {
     return Ok(());
@@ -901,11 +901,8 @@ async fn initialize_tunnel(
     return Ok(());
   };
 
-  let root_cert_store = get_root_cert_store(
-    None,
-    flags.ca_stores.to_owned(),
-    flags.ca_data.to_owned(),
-  )?;
+  let cert_store_provider = factory.root_cert_store_provider();
+  let root_cert_store = cert_store_provider.get_or_try_init()?.clone();
 
   let (tunnel, metadata, mut events) =
     match deno_runtime::deno_net::tunnel::TunnelListener::connect(
@@ -936,12 +933,23 @@ async fn initialize_tunnel(
       Err(e) => return Err(e.into()),
     };
 
+  let addr = tunnel.local_addr()?;
+
+  let endpoint = if addr.port() == 443 {
+    format!("https://{}", addr.hostname())
+  } else {
+    format!("https://{}:{}", addr.hostname(), addr.port())
+  };
+
   tokio::spawn(async move {
     while let Some(event) = events.next().await {
       use deno_runtime::deno_net::tunnel::Event;
       match event {
         Event::Routed => {
-          eprintln!("{}", colors::green("Your endpoint is now routed!"),);
+          log::info!(
+            "{}",
+            colors::green(format!("You are connected to {endpoint}!"))
+          );
         }
         Event::Migrate => {
           // TODO: reconnect
@@ -956,20 +964,7 @@ async fn initialize_tunnel(
       std::env::set_var(k, v);
     }
   }
-
-  let addr = tunnel.local_addr()?;
-
-  let endpoint = if addr.port() == 443 {
-    format!("https://{}", addr.hostname())
-  } else {
-    format!("https://{}:{}", addr.hostname(), addr.port())
-  };
-  eprintln!(
-    "{}{}{}",
-    colors::green("Endpoint assigned: "),
-    colors::bold(colors::green(endpoint)),
-    colors::green("\nRouting..."),
-  );
+  log::debug!("Endpoint is being routed");
 
   deno_runtime::deno_net::tunnel::set_tunnel(tunnel);
 

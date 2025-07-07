@@ -4641,7 +4641,7 @@ fn no_check_arg() -> Arg {
 fn connected_arg() -> Arg {
   Arg::new("connected")
     .long("connected")
-    .env("DENO_CONNECTED")
+    .hide(true)
     .num_args(0..=1)
     .require_equals(true)
     .default_missing_value("tunnel.global.prod.deno-cluster.net:443")
