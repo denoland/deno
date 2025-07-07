@@ -177,7 +177,11 @@ pub async fn execute_script(
   let node_resolver = factory.node_resolver().await?;
   let mut env_vars = task_runner::real_env_vars();
 
-  if let Some(connected) = flags.connected.clone().or_else(|| env::var("DENO_CONNECTED").ok()) {
+  if let Some(connected) = flags
+    .connected
+    .clone()
+    .or_else(|| env::var("DENO_CONNECTED").ok())
+  {
     env_vars.insert("DENO_CONNECTED".into(), connected.into());
   }
 
