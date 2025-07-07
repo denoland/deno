@@ -45,6 +45,7 @@ use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
 use crate::args::BundleFormat;
+use crate::args::BundlePlatform;
 use crate::args::Flags;
 use crate::args::PackageHandling;
 use crate::args::SourceMapType;
@@ -154,15 +155,25 @@ pub async fn bundle(
   let response = bundler.build().await?;
 
   if bundle_flags.watch {
-    return bundle_watch(flags, bundler, bundle_flags.minify).await;
+    return bundle_watch(
+      flags,
+      bundler,
+      bundle_flags.minify,
+      bundle_flags.platform,
+    )
+    .await;
   }
 
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
   if response.errors.is_empty() {
     let metafile = metafile_from_response(&response)?;
-    let output_infos =
-      process_result(&response, &init_cwd, *DISABLE_HACK, bundle_flags.minify)?;
+    let output_infos = process_result(
+      &response,
+      &init_cwd,
+      *DISABLE_HACK && matches!(bundle_flags.platform, BundlePlatform::Deno),
+      bundle_flags.minify,
+    )?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
       print_finished_message(&metafile, &output_infos, start.elapsed())?;
@@ -190,6 +201,7 @@ async fn bundle_watch(
   flags: Arc<Flags>,
   bundler: EsbuildBundler,
   minified: bool,
+  platform: BundlePlatform,
 ) -> Result<(), AnyError> {
   let initial_roots = bundler
     .roots
@@ -227,8 +239,12 @@ async fn bundle_watch(
         handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
         if response.errors.is_empty() {
           let metafile = metafile_from_response(&response)?;
-          let output_infos =
-            process_result(&response, &bundler.cwd, *DISABLE_HACK, minified)?;
+          let output_infos = process_result(
+            &response,
+            &bundler.cwd,
+            *DISABLE_HACK && matches!(platform, BundlePlatform::Deno),
+            minified,
+          )?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
           let new_watched = get_input_paths_for_watch(&response);
@@ -374,17 +390,16 @@ fn replace_require_shim(contents: &str, minified: bool) -> String {
       format!("import{{createRequire}} from \"node:module\";var {var_name}=createRequire(import.meta.url);")
     }).into_owned()
   } else {
-    contents.replace(
-    r#"var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});"#,
-    r#"import { createRequire } from "node:module";
+    let re = lazy_regex::regex!(
+      r#"var __require = (/\* @__PURE__ \*/)?\s*\(\(\w+\) => typeof require !== "undefined" \? require : typeof Proxy !== "undefined" \? new Proxy\(\w+, \{\s*  get: \(\w+, \w+\) => \(typeof require !== "undefined" \? require : \w+\)\[\w+\]\s*\}\) : \w+\)\(function\(\w+\) \{\s*  if \(typeof require !== "undefined"\) return require\.apply\(this, arguments\);\s*  throw Error\('Dynamic require of "' \+ \w+ \+ '" is not supported'\);\s*\}\);"#
+    );
+    re.replace_all(
+      contents,
+      r#"import { createRequire } from "node:module";
 var __require = createRequire(import.meta.url);
 "#,
-  )
+    )
+    .into_owned()
   }
 }
 
