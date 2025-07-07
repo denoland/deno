@@ -2000,7 +2000,7 @@ impl WorkspaceDirectory {
     })
   }
 
-  pub fn to_deploy_config(&self) -> Result<DeployConfig, ToInvalidConfigError> {
+  pub fn to_deploy_config(&self) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
     let config = if let Some(deno_json) = self.deno_json.as_ref() {
       if let Some(config) = deno_json.member.to_deploy_config()? {
         Some(config)
@@ -2014,7 +2014,7 @@ impl WorkspaceDirectory {
       None
     };
 
-    Ok(config.unwrap())
+    Ok(config)
   }
 
   /// Removes any "include" patterns from the root files that have

@@ -769,6 +769,13 @@ async fn initialize_tunnel(
 ) -> Result<(), deno_core::anyhow::Error> {
   use deno_lib::args::get_root_cert_store;
 
+  let factory = CliFactory::from_flags(Arc::new(flags.clone()));
+  let cli_options = factory.cli_options()?;
+  let deploy_config = cli_options.start_dir.to_deploy_config()?;
+  if deploy_config.is_none() {
+    let _ = tools::deploy::get_token_entry()?.delete_credential();
+  }
+
   let token = match tools::deploy::get_token_entry()?.get_password() {
     Ok(token) => token,
     Err(keyring::Error::NoEntry) => auth_tunnel().await?,
@@ -777,6 +784,10 @@ async fn initialize_tunnel(
       exit_for_error(e.into());
     }
   };
+
+  let factory = CliFactory::from_flags(Arc::new(flags.clone()));
+  let cli_options = factory.cli_options()?;
+  let deploy_config = cli_options.start_dir.to_deploy_config()?.expect("auth to be called");
 
   eprintln!(
     "{}{}{}",
@@ -797,10 +808,6 @@ async fn initialize_tunnel(
     flags.ca_stores.to_owned(),
     flags.ca_data.to_owned(),
   )?;
-
-  let factory = CliFactory::from_flags(Arc::new(flags.clone()));
-  let cli_options = factory.cli_options()?;
-  let deploy_config = cli_options.start_dir.to_deploy_config()?;
 
   let (tunnel, metadata, routed) =
     match deno_runtime::deno_net::tunnel::TunnelListener::connect(

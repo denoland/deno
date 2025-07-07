@@ -1833,30 +1833,13 @@ impl ConfigFile {
   pub fn to_deploy_config(
     &self,
   ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
-    match self.json.deploy.clone() {
-      Some(config) => match config {
-        Value::Null => Ok(None),
-        Value::Object(config) => {
-          let org: String = serde_json::from_value(
-            config.get("org").cloned().unwrap_or_default(),
-          )
-          .map_err(|error| ToInvalidConfigError::Parse {
-            config: "deploy",
-            source: error,
-          })?;
-          let app: String = serde_json::from_value(
-            config.get("app").cloned().unwrap_or_default(),
-          )
-          .map_err(|error| ToInvalidConfigError::Parse {
-            config: "deploy",
-            source: error,
-          })?;
-          Ok(Some(DeployConfig { org, app }))
+    match &self.json.deploy {
+      Some(config) => Ok(Some(serde_json::from_value(config.clone()).map_err(|error| {
+        ToInvalidConfigError::Parse {
+          config: "deploy",
+          source: error,
         }
-        _ => {
-          unreachable!()
-        }
-      },
+      })?)),
       None => Ok(None),
     }
   }
