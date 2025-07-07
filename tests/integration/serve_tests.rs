@@ -370,9 +370,9 @@ async fn deno_run_serve_with_duplicate_env_addr() {
   let port_regex = Regex::new(r"https?:[^:]+:(\d+)").unwrap();
   let port = port_regex
     .captures(&msg)
-    .unwrap()
-    .get(1)
     .unwrap_or_else(|| panic!("Could not find regex in text:\n{}", msg))
+    .get(1)
+    .unwrap()
     .as_str();
 
   {
