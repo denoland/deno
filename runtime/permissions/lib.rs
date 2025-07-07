@@ -3206,7 +3206,7 @@ impl PermissionsContainer {
     // On unixy systems, we allow opening /dev/fd/XXX for valid FDs that
     // are pipes.
     #[cfg(unix)]
-    if path.starts_with("/dev/fd") && is_fd_file_is_pipe(path) {
+    if path.starts_with("/dev/fd") && is_fd_file_is_pipe(&path) {
       return Ok(path);
     }
 
@@ -3214,7 +3214,7 @@ impl PermissionsContainer {
       // On Linux, we also allow opening /proc/self/fd/XXX for valid FDs that
       // are pipes.
       #[cfg(unix)]
-      if path.starts_with("/proc/self/fd") && is_fd_file_is_pipe(path) {
+      if path.starts_with("/proc/self/fd") && is_fd_file_is_pipe(&path) {
         return Ok(path);
       }
       if path.starts_with("/dev")
