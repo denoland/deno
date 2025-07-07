@@ -41,14 +41,6 @@ impl<TSys: RuntimePermissionDescriptorParserSys>
     Self { sys }
   }
 
-  fn resolve_from_cwd(
-    &self,
-    path: &str,
-  ) -> Result<PathQueryDescriptor, PathResolveError> {
-    let path = Path::new(path);
-    PathQueryDescriptor::new(&self.sys, Cow::Borrowed(path))
-  }
-
   fn resolve_cwd(&self) -> Result<PathBuf, PathResolveError> {
     self
       .sys
@@ -65,14 +57,14 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     &self,
     text: &str,
   ) -> Result<ReadDescriptor, PathResolveError> {
-    Ok(ReadDescriptor(self.resolve_from_cwd(text)?))
+    Ok(ReadDescriptor(self.parse_path_query(text)?))
   }
 
   fn parse_write_descriptor(
     &self,
     text: &str,
   ) -> Result<WriteDescriptor, PathResolveError> {
-    Ok(WriteDescriptor(self.resolve_from_cwd(text)?))
+    Ok(WriteDescriptor(self.parse_path_query(text)?))
   }
 
   fn parse_net_descriptor(
@@ -133,7 +125,7 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     &self,
     text: &str,
   ) -> Result<FfiDescriptor, PathResolveError> {
-    Ok(FfiDescriptor(self.resolve_from_cwd(text)?))
+    Ok(FfiDescriptor(self.parse_path_query(text)?))
   }
 
   // queries
