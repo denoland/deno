@@ -665,12 +665,26 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub struct PathQueryDescriptor {
   path: PathBuf,
   /// Custom requested display name when differs from resolved.
   requested: Option<String>,
   is_windows_device_path: bool,
+}
+
+impl PartialEq for PathQueryDescriptor {
+  fn eq(&self, other: &Self) -> bool {
+    self.path == other.path
+  }
+}
+
+impl Eq for PathQueryDescriptor {}
+
+impl Hash for PathQueryDescriptor {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    self.path.hash(state);
+  }
 }
 
 impl PathQueryDescriptor {
