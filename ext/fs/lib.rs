@@ -89,7 +89,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_open(
-      &self,
+      self,
       path,
       access_kind,
       Some(api_name),
@@ -104,7 +104,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_open_blind(
-      &self,
+      self,
       path,
       access_kind,
       display,

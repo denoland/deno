@@ -279,8 +279,8 @@ pub fn op_require_resolve_deno_dir<
   Ok(
     resolver
       .resolve_package_folder_from_package(
-        &request,
-        &UrlOrPathRef::from_path(&path),
+        request,
+        &UrlOrPathRef::from_path(path),
       )
       .ok()
       .map(|p| p.to_string_lossy().into_owned()),
@@ -301,7 +301,7 @@ pub fn op_require_is_deno_dir_package<
     TNpmPackageFolderResolver,
     TSys,
   >>();
-  match deno_path_util::url_from_file_path(&Path::new(path)) {
+  match deno_path_util::url_from_file_path(Path::new(path)) {
     Ok(specifier) => resolver.in_npm_package(&specifier),
     Err(_) => false,
   }
@@ -564,7 +564,7 @@ where
 #[op2]
 #[string]
 pub fn op_require_as_file_path(#[string] file_or_url: &str) -> Option<String> {
-  if let Ok(url) = Url::parse(&file_or_url) {
+  if let Ok(url) = Url::parse(file_or_url) {
     if let Ok(p) = url.to_file_path() {
       return Some(p.to_string_lossy().into_owned());
     }
@@ -598,7 +598,7 @@ pub fn op_require_resolve_exports<
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
 
   let modules_path = Path::new(&modules_path_str);
-  let modules_specifier = deno_path_util::url_from_file_path(&modules_path)?;
+  let modules_specifier = deno_path_util::url_from_file_path(modules_path)?;
   let pkg_path = if node_resolver.in_npm_package(&modules_specifier)
     && !uses_local_node_modules_dir
   {
@@ -653,7 +653,7 @@ pub fn op_require_is_maybe_cjs(
   #[string] filename: &str,
 ) -> Result<bool, JsClosestPkgJsonError> {
   let filename = Path::new(filename);
-  let Ok(url) = url_from_file_path(&filename) else {
+  let Ok(url) = url_from_file_path(filename) else {
     return Ok(false);
   };
   let loader = state.borrow::<NodeRequireLoaderRc>();
@@ -676,7 +676,7 @@ pub fn op_require_read_package_scope<
     return None;
   }
   pkg_json_resolver
-    .load_package_json(&package_json_path)
+    .load_package_json(package_json_path)
     .ok()
     .flatten()
 }

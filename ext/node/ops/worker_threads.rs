@@ -85,7 +85,7 @@ pub fn op_worker_threads_filename<
     return Ok(None); // use input
   }
   let url: Url = if specifier.starts_with("file:") {
-    Url::parse(&specifier)?
+    Url::parse(specifier)?
   } else {
     let path = Path::new(specifier);
     if path.is_relative() && !specifier.starts_with('.') {

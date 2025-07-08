@@ -233,7 +233,7 @@ fn op_fs_events_open(
     let watcher = state.borrow_mut::<WatcherState>();
     watcher
       .watcher
-      .watch(&path, recursive_mode)
+      .watch(path, recursive_mode)
       .map_err(|e| FsEventsError::Notify(JsNotifyError(e)))?;
   }
   let resource = FsEventsResource {
