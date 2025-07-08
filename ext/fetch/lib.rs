@@ -50,13 +50,10 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 pub use deno_fs::FsError;
-use deno_fs::OpenOptions;
-use deno_fs::open_options_with_access_check;
 use deno_path_util::PathToUrlError;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
-use deno_permissions::PermissionsContainer;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKey;
@@ -911,15 +908,6 @@ fn default_true() -> bool {
   true
 }
 
-fn sync_permission_check<'a, P: FetchPermissions + 'static>(
-  permissions: &'a mut P,
-  api_name: &'static str,
-) -> impl deno_fs::AccessCheckFn + 'a {
-  move |path, _options| {
-    permissions.check_open(path.clone(), OpenAccessKind::ReadWrite, api_name)
-  }
-}
-
 #[op2(stack_trace)]
 #[smi]
 #[allow(clippy::result_large_err)]
@@ -942,19 +930,14 @@ where
         path: original_path,
       } => {
         let path = Path::new(original_path);
-        let mut access_check = sync_permission_check::<PermissionsContainer>(
-          state.borrow_mut(),
-          "Deno.createHttpClient()",
-        );
-        let (resolved_path, _) = open_options_with_access_check(
-          OpenOptions {
-            read: true,
-            write: true,
-            ..Default::default()
-          },
-          path,
-          Some(&mut access_check),
-        )?;
+        let resolved_path = permissions
+          .check_open(
+            Cow::Borrowed(path),
+            OpenAccessKind::ReadWriteNoFollow,
+            "Deno.createHttpClient()",
+          )?
+          .path
+          .path;
         if path != resolved_path {
           *original_path = resolved_path.to_string_lossy().into_owned();
         }
