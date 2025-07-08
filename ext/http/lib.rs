@@ -1692,6 +1692,13 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
       Err(x) => x,
     };
   let upgraded =
+    match maybe_extract_network_stream::<deno_net::tunnel::TunnelStream, _>(
+      upgraded,
+    ) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
     match maybe_extract_network_stream::<NetworkStream, _>(upgraded) {
       Ok(res) => return res,
       Err(x) => x,
@@ -1705,10 +1712,15 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
 #[op2]
 #[serde]
 pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
-  match std::env::var("DENO_SERVE_ADDRESS") {
-    Ok(val) => parse_serve_address(&val),
-    Err(_) => (0, String::new(), 0, false),
+  if let Ok(val) = std::env::var("DENO_SERVE_ADDRESS") {
+    return parse_serve_address(&val);
+  };
+
+  if deno_net::tunnel::get_tunnel().is_some() {
+    return (4, String::new(), 0, true);
   }
+
+  (0, String::new(), 0, false)
 }
 
 fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
@@ -1768,6 +1780,7 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
         None => (0, String::new(), 0, false),
       }
     }
+    Some(("tunnel", _)) => (4, String::new(), 0, duplicate),
     Some((_, _)) | None => {
       log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
       (0, String::new(), 0, false)

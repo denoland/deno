@@ -500,6 +500,9 @@ mod hyper_client {
   use std::pin::Pin;
   use std::task::Poll;
 
+  use deno_net::tunnel::TunnelListener;
+  use deno_net::tunnel::TunnelStream;
+  use deno_net::tunnel::get_tunnel;
   use deno_tls::SocketUse;
   use deno_tls::TlsKey;
   use deno_tls::TlsKeys;
@@ -534,11 +537,14 @@ mod hyper_client {
     StdIo(#[from] std::io::Error),
     #[error(transparent)]
     Box(#[from] Box<dyn std::error::Error + Send + Sync>),
+    #[error(transparent)]
+    Tunnel(#[from] deno_net::tunnel::Error),
   }
 
   #[derive(Debug, Clone)]
   enum Connector {
     Http(HttpsConnector<HttpConnector>),
+    Tunnel(TunnelListener),
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     Vsock(VsockAddr),
   }
@@ -546,6 +552,7 @@ mod hyper_client {
   #[pin_project::pin_project(project = IOProj)]
   enum IO {
     Tls(#[pin] TokioIo<MaybeHttpsStream<TokioIo<TcpStream>>>),
+    Tunnel(#[pin] TunnelStream),
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     Vsock(#[pin] VsockStream),
   }
@@ -558,6 +565,7 @@ mod hyper_client {
     ) -> Poll<std::io::Result<()>> {
       match self.project() {
         IOProj::Tls(stream) => stream.poll_read(cx, buf),
+        IOProj::Tunnel(stream) => stream.poll_read(cx, buf),
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         IOProj::Vsock(stream) => stream.poll_read(cx, buf),
       }
@@ -572,6 +580,7 @@ mod hyper_client {
     ) -> Poll<Result<usize, std::io::Error>> {
       match self.project() {
         IOProj::Tls(stream) => stream.poll_write(cx, buf),
+        IOProj::Tunnel(stream) => stream.poll_write(cx, buf),
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         IOProj::Vsock(stream) => stream.poll_write(cx, buf),
       }
@@ -583,6 +592,7 @@ mod hyper_client {
     ) -> Poll<Result<(), std::io::Error>> {
       match self.project() {
         IOProj::Tls(stream) => stream.poll_flush(cx),
+        IOProj::Tunnel(stream) => stream.poll_flush(cx),
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         IOProj::Vsock(stream) => stream.poll_flush(cx),
       }
@@ -594,6 +604,7 @@ mod hyper_client {
     ) -> Poll<Result<(), std::io::Error>> {
       match self.project() {
         IOProj::Tls(stream) => stream.poll_shutdown(cx),
+        IOProj::Tunnel(stream) => stream.poll_shutdown(cx),
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         IOProj::Vsock(stream) => stream.poll_shutdown(cx),
       }
@@ -602,6 +613,7 @@ mod hyper_client {
     fn is_write_vectored(&self) -> bool {
       match self {
         IO::Tls(stream) => stream.is_write_vectored(),
+        IO::Tunnel(stream) => stream.is_write_vectored(),
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         IO::Vsock(stream) => stream.is_write_vectored(),
       }
@@ -614,6 +626,7 @@ mod hyper_client {
     ) -> Poll<Result<usize, std::io::Error>> {
       match self.project() {
         IOProj::Tls(stream) => stream.poll_write_vectored(cx, bufs),
+        IOProj::Tunnel(stream) => stream.poll_write_vectored(cx, bufs),
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         IOProj::Vsock(stream) => stream.poll_write_vectored(cx, bufs),
       }
@@ -624,6 +637,7 @@ mod hyper_client {
     fn connected(&self) -> Connected {
       match self {
         Self::Tls(stream) => stream.connected(),
+        Self::Tunnel(_) => Connected::new().proxy(true),
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         Self::Vsock(_) => Connected::new().proxy(true),
       }
@@ -646,6 +660,7 @@ mod hyper_client {
     ) -> Poll<Result<(), Self::Error>> {
       match self {
         Self::Http(c) => c.poll_ready(cx).map_err(Into::into),
+        Self::Tunnel(_) => Poll::Ready(Ok(())),
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         Self::Vsock(_) => Poll::Ready(Ok(())),
       }
@@ -658,6 +673,10 @@ mod hyper_client {
           Self::Http(mut connector) => {
             let stream = connector.call(dst).await?;
             Ok(TokioIo::new(IO::Tls(TokioIo::new(stream))))
+          }
+          Self::Tunnel(listener) => {
+            let stream = listener.create_agent_stream().await?;
+            Ok(TokioIo::new(IO::Tunnel(stream)))
           }
           #[cfg(any(target_os = "linux", target_os = "macos"))]
           Self::Vsock(addr) => {
@@ -676,7 +695,9 @@ mod hyper_client {
 
   impl HyperClient {
     pub fn new() -> deno_core::anyhow::Result<Self> {
-      let connector = if let Ok(addr) = std::env::var("OTEL_DENO_VSOCK") {
+      let connector = if let Some(tunnel) = get_tunnel() {
+        Connector::Tunnel(tunnel.clone())
+      } else if let Ok(addr) = std::env::var("OTEL_DENO_VSOCK") {
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         {
           let _ = addr;
