@@ -526,6 +526,8 @@ pub fn main() {
 
   setup_panic_hook();
 
+  init_logging(None, None);
+
   util::unix::raise_fd_limit();
   util::windows::ensure_stdio_open();
   #[cfg(windows)]
@@ -598,14 +600,10 @@ async fn resolve_flags_and_init(
       if err.kind() == clap::error::ErrorKind::DisplayVersion =>
     {
       // Ignore results to avoid BrokenPipe errors.
-      init_logging(None, None);
       let _ = err.print();
       deno_runtime::exit(0);
     }
-    Err(err) => {
-      init_logging(None, None);
-      exit_for_error(AnyError::from(err))
-    }
+    Err(err) => exit_for_error(AnyError::from(err)),
   };
 
   load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
@@ -630,7 +628,6 @@ async fn resolve_flags_and_init(
     .or_else(|| env::var("DENO_CONNECTED").ok())
   {
     if let Err(err) = initialize_tunnel(&host, &flags).await {
-      init_logging(None, None);
       exit_for_error(AnyError::from(err))
     }
   }
@@ -877,7 +874,6 @@ async fn initialize_tunnel(
         token
       }
       Err(e) => {
-        init_logging(None, None);
         exit_for_error(e.into());
       }
     }
@@ -949,8 +945,7 @@ async fn initialize_tunnel(
       use deno_runtime::deno_net::tunnel::Event;
       match event {
         Event::Routed => {
-          // using eprintln because logging is not yet initialized
-          eprintln!(
+          log::info!(
             "{}",
             colors::green(format!("You are connected to {endpoint}!"))
           );
