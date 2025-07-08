@@ -2361,6 +2361,7 @@ dependencies = [
  "deno_error",
  "deno_features",
  "deno_permissions",
+ "deno_signals",
  "deno_tls",
  "hickory-proto",
  "hickory-resolver",
@@ -2604,14 +2605,12 @@ dependencies = [
  "deno_error",
  "deno_path_util",
  "deno_permissions",
- "deno_telemetry",
+ "deno_signals",
  "libc",
  "netif",
  "ntapi",
  "once_cell",
  "serde",
- "signal-hook",
- "signal-hook-registry",
  "thiserror 2.0.12",
  "tokio",
  "winapi",
@@ -2837,6 +2836,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_signals"
+version = "0.1.0"
+dependencies = [
+ "signal-hook",
+ "winapi",
+]
+
+[[package]]
 name = "deno_snapshots"
 version = "0.25.0"
 dependencies = [
@@ -2882,6 +2889,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_net",
+ "deno_signals",
  "deno_tls",
  "http-body-util",
  "hyper 1.6.0",

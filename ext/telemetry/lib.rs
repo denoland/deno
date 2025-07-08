@@ -927,6 +927,8 @@ pub fn init(
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
+  deno_signals::before_exit(flush);
+
   Ok(())
 }
 

@@ -18,6 +18,7 @@ async-trait.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 deno_net.workspace = true
+deno_signals.workspace = true
 deno_tls.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true

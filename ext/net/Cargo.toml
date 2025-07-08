@@ -18,6 +18,7 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_features.workspace = true
 deno_permissions.workspace = true
+deno_signals.workspace = true
 deno_tls.workspace = true
 hickory-proto.workspace = true
 hickory-resolver.workspace = true
