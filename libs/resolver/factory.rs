@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::bail;
 use boxed_error::Boxed;
@@ -1053,6 +1054,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       .workspace_resolver
       .get_or_try_init(
         async {
+          let compiler_options_resolver =
+            self.compiler_options_resolver()?.clone();
           let directory = self.workspace_factory.workspace_directory()?;
           let workspace = &directory.workspace;
           let specified_import_map = match &self.options.specified_import_map {
@@ -1082,6 +1085,29 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               || workspace.has_unstable("sloppy-imports")
             {
               SloppyImportsOptions::Enabled
+            } else if compiler_options_resolver
+              .entries()
+              .any(|(_, _, e)| e.is_some())
+            {
+              let compiler_options_resolver = compiler_options_resolver.clone();
+              SloppyImportsOptions::Dynamic(Arc::new(move |referrer| {
+                if let Some(referrer) = referrer {
+                  let options =
+                    compiler_options_resolver.for_specifier(referrer);
+                  let lib = options
+                    .compiler_options_for_lib(
+                      deno_config::workspace::TsTypeLib::DenoWindow,
+                    )
+                    .unwrap();
+                  lib.0.get("moduleResolution").is_some_and(|v| {
+                    v.as_str()
+                      .map(|v| v.to_lowercase() == "bundler")
+                      .unwrap_or(false)
+                  })
+                } else {
+                  panic!()
+                }
+              }))
             } else {
               SloppyImportsOptions::Disabled
             },

@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileError;
@@ -94,13 +95,24 @@ pub enum PackageJsonDepResolution {
   Disabled,
 }
 
-#[derive(
-  Debug, Default, Serialize, Deserialize, Copy, Clone, PartialEq, Eq,
-)]
+#[derive(Default, Serialize, Deserialize, Clone)]
 pub enum SloppyImportsOptions {
   Enabled,
   #[default]
   Disabled,
+  #[serde(skip)]
+  /// Use a dynamic function to determine if sloppy imports are enabled.
+  Dynamic(Arc<dyn Fn(Option<&Url>) -> bool + Send + Sync>),
+}
+
+impl fmt::Debug for SloppyImportsOptions {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::Enabled => write!(f, "Enabled"),
+      Self::Disabled => write!(f, "Disabled"),
+      Self::Dynamic(_) => write!(f, "Dynamic"),
+    }
+  }
 }
 
 /// Toggle FS metadata caching when probing files for sloppy imports and
@@ -373,16 +385,42 @@ impl SloppyImportsResolutionReason {
 #[derive(Debug)]
 struct SloppyImportsResolver<TSys: FsMetadata> {
   fs: CachedMetadataFs<TSys>,
-  enabled: bool,
+  enabled: SloppyImportsEnabled,
+}
+
+enum SloppyImportsEnabled {
+  Static(bool),
+  Dynamic(Arc<dyn Fn(Option<&Url>) -> bool + Send + Sync>),
+}
+
+impl SloppyImportsEnabled {
+  fn is_enabled(&self, referrer: Option<&Url>) -> bool {
+    match self {
+      Self::Static(enabled) => *enabled,
+      Self::Dynamic(f) => f(referrer),
+    }
+  }
+}
+
+impl fmt::Debug for SloppyImportsEnabled {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::Static(arg0) => f.debug_tuple("Static").field(arg0).finish(),
+      Self::Dynamic(_) => f.debug_tuple("Dynamic").finish(),
+    }
+  }
 }
 
 impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
-  fn new(fs: CachedMetadataFs<TSys>, options: SloppyImportsOptions) -> Self {
+  fn new(fs: CachedMetadataFs<TSys>, options: &SloppyImportsOptions) -> Self {
     Self {
       fs,
       enabled: match options {
-        SloppyImportsOptions::Enabled => true,
-        SloppyImportsOptions::Disabled => false,
+        SloppyImportsOptions::Enabled => SloppyImportsEnabled::Static(true),
+        SloppyImportsOptions::Disabled => SloppyImportsEnabled::Static(false),
+        SloppyImportsOptions::Dynamic(f) => {
+          SloppyImportsEnabled::Dynamic(f.clone())
+        }
       },
     }
   }
@@ -390,9 +428,10 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
   fn resolve(
     &self,
     specifier: &Url,
+    referrer: Option<&Url>,
     resolution_kind: ResolutionKind,
   ) -> Option<(Url, SloppyImportsResolutionReason)> {
-    if !self.enabled {
+    if !self.enabled.is_enabled(referrer) {
       return None;
     }
 
@@ -636,9 +675,9 @@ pub fn sloppy_imports_resolve<TSys: FsMetadata>(
 ) -> Option<(Url, SloppyImportsResolutionReason)> {
   SloppyImportsResolver::new(
     CachedMetadataFs::new(sys, FsCacheOptions::Enabled),
-    SloppyImportsOptions::Enabled,
+    &SloppyImportsOptions::Enabled,
   )
-  .resolve(specifier, resolution_kind)
+  .resolve(specifier, None, resolution_kind)
 }
 
 #[allow(clippy::disallowed_types)]
@@ -841,7 +880,7 @@ impl<TSys: FsMetadata> CompilerOptionsRootDirsResolver<TSys> {
         return Some((candidate_specifier, None));
       } else if let Some((candidate_specifier, sloppy_reason)) = self
         .sloppy_imports_resolver
-        .resolve(&candidate_specifier, ResolutionKind::Types)
+        .resolve(&candidate_specifier, Some(referrer), ResolutionKind::Types)
       {
         return Some((candidate_specifier, Some(sloppy_reason)));
       }
@@ -1021,7 +1060,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     let fs = CachedMetadataFs::new(sys, options.fs_cache_options);
     let sloppy_imports_resolver = new_rc(SloppyImportsResolver::new(
       fs,
-      options.sloppy_imports_options,
+      &options.sloppy_imports_options,
     ));
     let compiler_options_root_dirs_resolver =
       CompilerOptionsRootDirsResolver::from_workspace(
@@ -1080,7 +1119,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       .collect::<BTreeMap<_, _>>();
     let fs = CachedMetadataFs::new(sys, fs_cache_options);
     let sloppy_imports_resolver =
-      new_rc(SloppyImportsResolver::new(fs, sloppy_imports_options));
+      new_rc(SloppyImportsResolver::new(fs, &sloppy_imports_options));
     let compiler_options_root_dirs_resolver =
       CompilerOptionsRootDirsResolver::new_raw(
         root_dirs_from_root,
@@ -1138,7 +1177,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         })
         .collect(),
       pkg_json_resolution: self.pkg_json_dep_resolution(),
-      sloppy_imports_options: self.sloppy_imports_options,
+      sloppy_imports_options: self.sloppy_imports_options.clone(),
       fs_cache_options: self.fs_cache_options,
       root_dirs_from_root: self
         .compiler_options_root_dirs_resolver
@@ -1299,7 +1338,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         let mut sloppy_reason = None;
         if let Some((probed_specifier, probed_sloppy_reason)) = self
           .sloppy_imports_resolver
-          .resolve(&specifier, resolution_kind)
+          .resolve(&specifier, Some(referrer), resolution_kind)
         {
           specifier = probed_specifier;
           sloppy_reason = Some(probed_sloppy_reason);
@@ -1589,6 +1628,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     match self.sloppy_imports_options {
       SloppyImportsOptions::Enabled => true,
       SloppyImportsOptions::Disabled => false,
+      SloppyImportsOptions::Dynamic(_) => true,
     }
   }
 
@@ -2216,7 +2256,7 @@ mod test {
     .unwrap();
     let fs = CachedMetadataFs::new(sys.clone(), FsCacheOptions::Enabled);
     let sloppy_imports_resolver =
-      SloppyImportsResolver::new(fs, SloppyImportsOptions::Enabled);
+      SloppyImportsResolver::new(fs, &SloppyImportsOptions::Enabled);
 
     // scenarios like resolving ./example.js to ./example.ts
     for (file_from, file_to) in [
@@ -2228,12 +2268,19 @@ mod test {
       sys.fs_insert(url_to_file_path(&specifier).unwrap(), "");
       let sloppy_specifier = root_url.join(file_from).unwrap();
       assert_eq!(
-        sloppy_imports_resolver.resolve(&specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &specifier,
+          None,
+          ResolutionKind::Execution
+        ),
         None,
       );
       assert_eq!(
-        sloppy_imports_resolver
-          .resolve(&sloppy_specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &sloppy_specifier,
+          None,
+          ResolutionKind::Execution
+        ),
         Some((specifier, SloppyImportsResolutionReason::JsToTs)),
       );
     }
@@ -2253,12 +2300,19 @@ mod test {
       let sloppy_specifier =
         root_url.join(file.split_once('.').unwrap().0).unwrap();
       assert_eq!(
-        sloppy_imports_resolver.resolve(&specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &specifier,
+          None,
+          ResolutionKind::Execution
+        ),
         None,
       );
       assert_eq!(
-        sloppy_imports_resolver
-          .resolve(&sloppy_specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &sloppy_specifier,
+          None,
+          ResolutionKind::Execution
+        ),
         Some((specifier, SloppyImportsResolutionReason::NoExtension)),
       );
     }
@@ -2270,8 +2324,11 @@ mod test {
       let js_specifier = root_url.join("ts_and_js.js").unwrap();
       sys.fs_insert(url_to_file_path(&js_specifier).unwrap(), "");
       assert_eq!(
-        sloppy_imports_resolver
-          .resolve(&js_specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &js_specifier,
+          None,
+          ResolutionKind::Execution
+        ),
         None,
       );
     }
@@ -2281,11 +2338,19 @@ mod test {
       let specifier = root_url.join("js_only.js").unwrap();
       sys.fs_insert(url_to_file_path(&specifier).unwrap(), "");
       assert_eq!(
-        sloppy_imports_resolver.resolve(&specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &specifier,
+          None,
+          ResolutionKind::Execution
+        ),
         None,
       );
       assert_eq!(
-        sloppy_imports_resolver.resolve(&specifier, ResolutionKind::Types),
+        sloppy_imports_resolver.resolve(
+          &specifier,
+          None,
+          ResolutionKind::Types
+        ),
         None,
       );
     }
@@ -2296,8 +2361,11 @@ mod test {
       sys.fs_insert(url_to_file_path(&specifier).unwrap(), "");
       let sloppy_specifier = root_url.join("routes").unwrap();
       assert_eq!(
-        sloppy_imports_resolver
-          .resolve(&sloppy_specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &sloppy_specifier,
+          None,
+          ResolutionKind::Execution
+        ),
         Some((specifier, SloppyImportsResolutionReason::Directory)),
       );
     }
@@ -2310,8 +2378,11 @@ mod test {
       sys.fs_insert(url_to_file_path(&bar_specifier).unwrap(), "");
       let sloppy_specifier = root_url.join("api").unwrap();
       assert_eq!(
-        sloppy_imports_resolver
-          .resolve(&sloppy_specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &sloppy_specifier,
+          None,
+          ResolutionKind::Execution
+        ),
         Some((specifier, SloppyImportsResolutionReason::NoExtension)),
       );
     }

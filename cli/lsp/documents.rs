@@ -67,7 +67,7 @@ use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsData;
-use crate::lsp::compiler_options::LspCompilerOptionsResolver;
+use crate::lsp::compiler_options::LspCompilerOptionsResolverRc;
 
 #[derive(Debug)]
 pub struct OpenDocument {
@@ -1041,7 +1041,7 @@ impl WeakDocumentModuleMap {
 pub struct DocumentModules {
   pub documents: Documents,
   config: Arc<Config>,
-  compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
+  compiler_options_resolver: LspCompilerOptionsResolverRc,
   resolver: Arc<LspResolver>,
   cache: Arc<LspCache>,
   workspace_files: Arc<IndexSet<PathBuf>>,
@@ -1054,7 +1054,7 @@ impl DocumentModules {
   pub fn update_config(
     &mut self,
     config: &Config,
-    compiler_options_resolver: &Arc<LspCompilerOptionsResolver>,
+    compiler_options_resolver: &LspCompilerOptionsResolverRc,
     resolver: &Arc<LspResolver>,
     cache: &LspCache,
     workspace_files: &Arc<IndexSet<PathBuf>>,
@@ -1209,8 +1209,9 @@ impl DocumentModules {
     let specifier = specifier
       .cloned()
       .or_else(|| self.infer_specifier(document))?;
-    let (compiler_options_key, compiler_options_data) =
-      self.compiler_options_resolver.entry_for_specifier(
+    let resolver = self.compiler_options_resolver.load();
+    let (compiler_options_key, compiler_options_data) = resolver
+      .entry_for_specifier(
         if specifier.scheme() != "file" && scope.is_some() {
           #[allow(clippy::unnecessary_unwrap)]
           scope.unwrap()
@@ -1386,10 +1387,9 @@ impl DocumentModules {
     let Some(primary_module) = self.primary_module(document) else {
       return Default::default();
     };
+    let resolver = self.compiler_options_resolver.load();
     let mut result = BTreeMap::new();
-    for (compiler_options_key, compiler_options_data) in
-      self.compiler_options_resolver.entries()
-    {
+    for (compiler_options_key, compiler_options_data) in resolver.entries() {
       if compiler_options_key == &primary_module.compiler_options_key {
         continue;
       }
@@ -1507,9 +1507,9 @@ impl DocumentModules {
         scope.and_then(|s| self.config.tree.data_by_scope().get(s));
       if let Some(config_data) = config_data {
         (|| {
-          let compiler_options_data = self
-            .compiler_options_resolver
-            .for_specifier(&config_data.scope);
+          let resolver = self.compiler_options_resolver.load();
+          let compiler_options_data =
+            resolver.for_specifier(&config_data.scope);
           let import_source_types = compiler_options_data
             .jsx_import_source_config
             .as_ref()?
@@ -2076,8 +2076,11 @@ mod tests {
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
-    let compiler_options_resolver =
-      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    let compiler_options_resolver = Arc::new(arc_swap::ArcSwap::new(Arc::new(
+      crate::lsp::compiler_options::LspCompilerOptionsResolver::new(
+        &config, &resolver,
+      ),
+    )));
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
@@ -2225,7 +2228,11 @@ console.log(b, "hello deno");
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
       let compiler_options_resolver =
-        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+        Arc::new(arc_swap::ArcSwap::new(Arc::new(
+          crate::lsp::compiler_options::LspCompilerOptionsResolver::new(
+            &config, &resolver,
+          ),
+        )));
       document_modules.update_config(
         &config,
         &compiler_options_resolver,
@@ -2270,7 +2277,11 @@ console.log(b, "hello deno");
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
       let compiler_options_resolver =
-        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+        Arc::new(arc_swap::ArcSwap::new(Arc::new(
+          crate::lsp::compiler_options::LspCompilerOptionsResolver::new(
+            &config, &resolver,
+          ),
+        )));
       document_modules.update_config(
         &config,
         &compiler_options_resolver,

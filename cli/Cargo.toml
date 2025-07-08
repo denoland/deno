@@ -98,6 +98,7 @@ libsui.workspace = true
 node_resolver = { workspace = true, features = ["graph", "sync"] }
 
 anstream.workspace = true
+arc-swap.workspace = true
 async-trait.workspace = true
 aws-lc-rs.workspace = true
 base64.workspace = true
