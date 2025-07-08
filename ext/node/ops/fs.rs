@@ -1,11 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
+use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::OpState;
 use deno_core::op2;
 use deno_fs::FileSystemRc;
+use deno_permissions::OpenAccessKind;
 use serde::Serialize;
 
 use crate::NodePermissions;
@@ -42,14 +46,16 @@ pub enum FsError {
 #[op2(fast, stack_trace)]
 pub fn op_node_fs_exists_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
 ) -> Result<bool, deno_permissions::PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_read_with_api_name(&path, Some("node:fs.existsSync()"))?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::Read,
+    Some("node:fs.existsSync()"),
+  )?;
   let fs = state.borrow::<FileSystemRc>();
   Ok(fs.exists_sync(&path))
 }
@@ -64,9 +70,11 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_read_with_api_name(&path, Some("node:fs.exists()"))?;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::Read,
+      Some("node:fs.exists()"),
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path.path)
   };
 
@@ -82,12 +90,16 @@ pub fn op_node_cp_sync<P>(
 where
   P: NodePermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_read_with_api_name(path, Some("node:fs.cpSync"))?;
-  let new_path = state
-    .borrow_mut::<P>()
-    .check_write_with_api_name(new_path, Some("node:fs.cpSync"))?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::Read,
+    Some("node:fs.cpSync"),
+  )?;
+  let new_path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(new_path)),
+    OpenAccessKind::Write,
+    Some("node:fs.cpSync"),
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.cp_sync(&path, &new_path)?;
@@ -107,15 +119,25 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_read_with_api_name(&path, Some("node:fs.cpSync"))?
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::Read,
+        Some("node:fs.cpSync"),
+      )?
       .path;
     let new_path = state
       .borrow_mut::<P>()
-      .check_write_with_api_name(&new_path, Some("node:fs.cpSync"))?;
+      .check_open(
+        Cow::Owned(PathBuf::from(new_path)),
+        OpenAccessKind::Write,
+        Some("node:fs.cpSync"),
+      )?
+      .path;
     (state.borrow::<FileSystemRc>().clone(), path, new_path)
   };
 
-  fs.cp_async(path.into_owned(), new_path).await?;
+  fs.cp_async(path.into_owned(), new_path.into_owned())
+    .await?;
   Ok(())
 }
 
@@ -135,7 +157,7 @@ pub struct StatFs {
 #[serde]
 pub fn op_node_statfs<P>(
   state: Rc<RefCell<OpState>>,
-  #[string] path: String,
+  #[string] path: &str,
   bigint: bool,
 ) -> Result<StatFs, FsError>
 where
@@ -143,9 +165,11 @@ where
 {
   let path = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_read_with_api_name(&path, Some("node:fs.statfs"))?;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::Read,
+      Some("node:fs.statfs"),
+    )?;
     state
       .borrow_mut::<P>()
       .check_sys("statfs", "node:fs.statfs")?;
@@ -285,9 +309,11 @@ pub fn op_node_lutimes_sync<P>(
 where
   P: NodePermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_write_with_api_name(path, Some("node:fs.lutimes"))?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::Write,
+    Some("node:fs.lutimes"),
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.lutime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
@@ -310,12 +336,23 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_write_with_api_name(&path, Some("node:fs.lutimesSync"))?;
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::Write,
+        Some("node:fs.lutimesSync"),
+      )?
+      .path;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  fs.lutime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
-    .await?;
+  fs.lutime_async(
+    path.into_owned(),
+    atime_secs,
+    atime_nanos,
+    mtime_secs,
+    mtime_nanos,
+  )
+  .await?;
 
   Ok(())
 }
@@ -323,16 +360,18 @@ where
 #[op2(stack_trace)]
 pub fn op_node_lchown_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
   uid: Option<u32>,
   gid: Option<u32>,
 ) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_write_with_api_name(&path, Some("node:fs.lchownSync"))?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::Write,
+    Some("node:fs.lchownSync"),
+  )?;
   let fs = state.borrow::<FileSystemRc>();
   fs.lchown_sync(&path, uid, gid)?;
   Ok(())
@@ -352,25 +391,32 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_write_with_api_name(&path, Some("node:fs.lchown"))?;
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::Write,
+        Some("node:fs.lchown"),
+      )?
+      .path;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
-  fs.lchown_async(path, uid, gid).await?;
+  fs.lchown_async(path.into_owned(), uid, gid).await?;
   Ok(())
 }
 
 #[op2(fast, stack_trace)]
 pub fn op_node_lchmod_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
   #[smi] mode: u32,
 ) -> Result<(), FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_write_with_api_name(&path, Some("node:fs.lchmodSync"))?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::Write,
+    Some("node:fs.lchmodSync"),
+  )?;
   let fs = state.borrow::<FileSystemRc>();
   fs.lchmod_sync(&path, mode)?;
   Ok(())
@@ -389,9 +435,14 @@ where
     let mut state = state.borrow_mut();
     let path = state
       .borrow_mut::<P>()
-      .check_write_with_api_name(&path, Some("node:fs.lchmod"))?;
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::Write,
+        Some("node:fs.lchmod"),
+      )?
+      .path;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
-  fs.lchmod_async(path, mode).await?;
+  fs.lchmod_async(path.into_owned(), mode).await?;
   Ok(())
 }

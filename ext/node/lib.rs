@@ -130,7 +130,7 @@ pub trait NodeRequireLoader {
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &'a Path,
+    path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox>;
 
   fn load_text_file_lossy(&self, path: &Path)

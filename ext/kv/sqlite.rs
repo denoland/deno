@@ -175,7 +175,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
             let path = path.clone();
             (
               Arc::new(move || {
-                rusqlite::Connection::open_with_flags(path, flags)
+                rusqlite::Connection::open_with_flags(&path, flags)
               }) as ConnGen,
               Some(resolved_path),
             )
