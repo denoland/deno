@@ -36,6 +36,8 @@ pub enum WorkerExecutionMode {
   },
   /// `deno jupyter`
   Jupyter,
+  /// `deno deploy`
+  Deploy,
 }
 
 impl WorkerExecutionMode {
@@ -51,6 +53,7 @@ impl WorkerExecutionMode {
       WorkerExecutionMode::ServeMain { .. }
       | WorkerExecutionMode::ServeWorker { .. } => 7,
       WorkerExecutionMode::Jupyter => 8,
+      WorkerExecutionMode::Deploy => 9,
     }
   }
 }

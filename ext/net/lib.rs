@@ -9,6 +9,7 @@ mod quic;
 pub mod raw;
 pub mod resolve_addr;
 pub mod tcp;
+pub mod tunnel;
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -164,6 +165,8 @@ deno_core::extension!(deno_net,
     ops::op_net_listen_vsock<P>,
     ops::op_net_accept_vsock,
     ops::op_net_connect_vsock<P>,
+    ops::op_net_listen_tunnel,
+    ops::op_net_accept_tunnel,
 
     ops_tls::op_tls_key_null,
     ops_tls::op_tls_key_static,
