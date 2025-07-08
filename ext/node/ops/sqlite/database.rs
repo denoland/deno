@@ -1,11 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ffi::c_char;
 use std::ffi::c_void;
+use std::path::Path;
 use std::ptr::null;
 use std::rc::Rc;
 
@@ -17,6 +19,7 @@ use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8_static_strings;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use rusqlite::ffi as libsqlite3_sys;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DDL;
@@ -294,7 +297,16 @@ fn open_db(
     return Ok(conn);
   }
 
-  perms.check_read_with_api_name(location, Some("node:sqlite"))?;
+  let location = perms
+    .check_open(
+      Cow::Borrowed(Path::new(location)),
+      match readonly {
+        true => OpenAccessKind::Read,
+        false => OpenAccessKind::ReadWrite,
+      },
+      Some("node:sqlite"),
+    )?
+    .path;
 
   if readonly {
     let conn = rusqlite::Connection::open_with_flags(
@@ -320,8 +332,6 @@ fn open_db(
     conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     return Ok(conn);
   }
-
-  perms.check_write_with_api_name(location, Some("node:sqlite"))?;
 
   let conn = rusqlite::Connection::open(location)?;
 

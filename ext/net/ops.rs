@@ -1142,7 +1142,6 @@ mod tests {
   use std::net::Ipv6Addr;
   use std::net::ToSocketAddrs;
   use std::path::Path;
-  use std::path::PathBuf;
   use std::sync::Arc;
   use std::sync::Mutex;
 
@@ -1150,6 +1149,7 @@ mod tests {
   use deno_core::RuntimeOptions;
   use deno_core::futures::FutureExt;
   use deno_permissions::CheckedPath;
+  use deno_permissions::OpenAccessKind;
   use deno_permissions::PermissionCheckError;
   use hickory_proto::rr::Name;
   use hickory_proto::rr::rdata::SOA;
@@ -1357,31 +1357,16 @@ mod tests {
       Ok(())
     }
 
-    fn check_read<'a>(
+    fn check_open<'a>(
       &mut self,
-      p: &'a str,
+      path: Cow<'a, Path>,
+      _access_kind: OpenAccessKind,
       _api_name: &str,
     ) -> Result<CheckedPath<'a>, PermissionCheckError> {
       Ok(CheckedPath {
-        path: Cow::Borrowed(Path::new(p)),
+        path,
         canonicalized: false,
       })
-    }
-
-    fn check_write(
-      &mut self,
-      p: &str,
-      _api_name: &str,
-    ) -> Result<PathBuf, PermissionCheckError> {
-      Ok(PathBuf::from(p))
-    }
-
-    fn check_write_path<'a>(
-      &mut self,
-      p: Cow<'a, Path>,
-      _api_name: &str,
-    ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-      Ok(p)
     }
 
     fn check_vsock(

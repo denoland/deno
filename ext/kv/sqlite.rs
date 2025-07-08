@@ -19,6 +19,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
 use deno_path_util::normalize_path;
 use deno_permissions::CheckedPath;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
 pub use denokv_sqlite::SqliteBackendError;
 use denokv_sqlite::SqliteConfig;
@@ -39,36 +40,28 @@ pub struct SqliteDbHandler<P: SqliteDbHandlerPermissions + 'static> {
 
 pub trait SqliteDbHandlerPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read<'a>(
-    &mut self,
-    p: &'a str,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_write<'a>(
+  fn check_open<'a>(
     &mut self,
     p: Cow<'a, Path>,
+    open_access: OpenAccessKind,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
 }
 
 impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_read<'a>(
-    &mut self,
-    p: &'a str,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read(self, p, api_name)
-  }
-
-  #[inline(always)]
-  fn check_write<'a>(
+  fn check_open<'a>(
     &mut self,
     p: Cow<'a, Path>,
+    open_access: OpenAccessKind,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write_path(self, p, api_name)
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_open(
+      self,
+      p,
+      open_access,
+      Some(api_name),
+    )
   }
 }
 
@@ -106,16 +99,21 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
   ) -> Result<Self::DB, JsErrorBox> {
+    enum PathOrInMemory {
+      InMemory,
+      Path(PathBuf),
+    }
+
     #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
     fn validate_path<P: SqliteDbHandlerPermissions + 'static>(
       state: &RefCell<OpState>,
       path: Option<String>,
-    ) -> Result<Option<String>, JsErrorBox> {
+    ) -> Result<Option<PathOrInMemory>, JsErrorBox> {
       let Some(path) = path else {
         return Ok(None);
       };
       if path == ":memory:" {
-        return Ok(Some(path));
+        return Ok(Some(PathOrInMemory::InMemory));
       }
       if path.is_empty() {
         return Err(JsErrorBox::type_error("Filename cannot be empty"));
@@ -129,12 +127,13 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
         let mut state = state.borrow_mut();
         let permissions = state.borrow_mut::<P>();
         let path = permissions
-          .check_read(&path, "Deno.openKv")
+          .check_open(
+            Cow::Owned(PathBuf::from(path)),
+            OpenAccessKind::ReadWrite,
+            "Deno.openKv",
+          )
           .map_err(JsErrorBox::from_err)?;
-        let path = permissions
-          .check_write(path.path, "Deno.openKv")
-          .map_err(JsErrorBox::from_err)?;
-        Ok(Some(path.to_string_lossy().to_string()))
+        Ok(Some(PathOrInMemory::Path(path.path.into_owned())))
       }
     }
 
@@ -143,7 +142,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     type ConnGen =
       Arc<dyn Fn() -> rusqlite::Result<rusqlite::Connection> + Send + Sync>;
     let (conn_gen, notifier_key): (ConnGen, _) = spawn_blocking(move || {
-      denokv_sqlite::sqlite_retry_loop(|| {
+      denokv_sqlite::sqlite_retry_loop(move || {
         let mode = match std::env::var("DENO_KV_DB_MODE")
           .unwrap_or_default()
           .as_str()
@@ -163,21 +162,20 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
           ));
         }
 
-        let (conn, notifier_key) = match (path.as_deref(), &default_storage_dir)
-        {
-          (Some(":memory:"), _) | (None, None) => (
+        let (conn, notifier_key) = match (path.as_ref(), &default_storage_dir) {
+          (Some(PathOrInMemory::InMemory), _) | (None, None) => (
             Arc::new(rusqlite::Connection::open_in_memory) as ConnGen,
             None,
           ),
-          (Some(path), _) => {
+          (Some(PathOrInMemory::Path(path)), _) => {
             let flags =
               OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
-            let resolved_path = canonicalize_path(&PathBuf::from(path))
-              .map_err(JsErrorBox::from_err)?;
-            let path = path.to_string();
+            let resolved_path =
+              canonicalize_path(path).map_err(JsErrorBox::from_err)?;
+            let path = path.clone();
             (
               Arc::new(move || {
-                rusqlite::Connection::open_with_flags(&path, flags)
+                rusqlite::Connection::open_with_flags(path, flags)
               }) as ConnGen,
               Some(resolved_path),
             )

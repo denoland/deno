@@ -86,6 +86,37 @@ pub enum PermissionState {
   Denied = 3,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenAccessKind {
+  Read,
+  Write,
+  ReadWrite,
+}
+
+impl OpenAccessKind {
+  pub fn from_read_write(read: bool, write: bool) -> Self {
+    match (read, write) {
+      (true, true) => Self::ReadWrite,
+      (false, true) => Self::Write,
+      (true, false) | (false, false) => Self::Read,
+    }
+  }
+
+  pub fn is_read(&self) -> bool {
+    match self {
+      OpenAccessKind::Read | OpenAccessKind::ReadWrite => true,
+      OpenAccessKind::Write => false,
+    }
+  }
+
+  pub fn is_write(&self) -> bool {
+    match self {
+      OpenAccessKind::Read => false,
+      OpenAccessKind::Write | OpenAccessKind::ReadWrite => true,
+    }
+  }
+}
+
 pub struct CheckedPath<'a> {
   pub path: Cow<'a, Path>,
   pub canonicalized: bool,
@@ -2889,49 +2920,38 @@ impl PermissionsContainer {
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  pub fn check_read<'a>(
-    &self,
-    path: &'a str,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    self.check_read_with_api_name(path, Some(api_name))
-  }
-
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  #[inline(always)]
-  pub fn check_read_with_api_name<'a>(
-    &self,
-    path: &'a str,
-    api_name: Option<&str>,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    let mut inner = self.inner.lock();
-    let inner = &mut inner.read;
-    if inner.is_allow_all() {
-      Ok(CheckedPath {
-        path: Cow::Borrowed(Path::new(path)),
-        canonicalized: false,
-      })
-    } else {
-      let desc = self.descriptor_parser.parse_path_query(path)?.into_read();
-      inner.check(&desc, api_name)?;
-      let path = desc.0;
-      let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-      self.check_special_file(path, api_name)
-    }
-  }
-
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  #[inline(always)]
-  pub fn check_open_path<'a>(
+  pub fn check_open<'a>(
     &self,
     path: Cow<'a, Path>,
-    read: bool,
-    write: bool,
+    access_kind: OpenAccessKind,
+    api_name: Option<&str>,
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    self.check_open_with_requested(path, access_kind, None, api_name)
+  }
+
+  /// As `check_open()`, but permission error messages will anonymize the path
+  /// by replacing it with the given `display`.
+  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
+  #[inline(always)]
+  pub fn check_open_blind<'a>(
+    &self,
+    path: Cow<'a, Path>,
+    access_kind: OpenAccessKind,
+    display: &str,
+    api_name: Option<&str>,
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    self.check_open_with_requested(path, access_kind, Some(display), api_name)
+  }
+
+  #[inline(always)]
+  fn check_open_with_requested<'a>(
+    &self,
+    path: Cow<'a, Path>,
+    access_kind: OpenAccessKind,
+    blind_requested: Option<&str>,
     api_name: Option<&str>,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     // If somehow read or write aren't specified, use read
-    let read = read || !write;
-
     let path = {
       let mut inner = self.inner.lock();
       if matches!(inner.all.state, PermissionState::Granted) {
@@ -2940,9 +2960,15 @@ impl PermissionsContainer {
           canonicalized: false,
         });
       }
-      let should_check_read = read && !inner.read.is_allow_all();
-      let should_check_write = write && !inner.write.is_allow_all();
+      let should_check_read =
+        access_kind.is_read() && !inner.read.is_allow_all();
+      let should_check_write =
+        access_kind.is_write() && !inner.write.is_allow_all();
       let path = self.descriptor_parser.parse_path_query_from_path(path)?;
+      let path = match blind_requested {
+        Some(display) => path.with_requested(format!("<{}>", display)),
+        None => path,
+      };
       if !should_check_read && !should_check_write {
         drop(inner);
         path
@@ -2970,62 +2996,6 @@ impl PermissionsContainer {
     self.check_special_file(path, api_name)
   }
 
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  #[inline(always)]
-  pub fn check_read_path<'a>(
-    &self,
-    path: Cow<'a, Path>,
-    api_name: Option<&str>,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    self.check_read_path_with_requested(path, None, api_name)
-  }
-
-  /// As `check_read()`, but permission error messages will anonymize the path
-  /// by replacing it with the given `display`.
-  #[inline(always)]
-  pub fn check_read_blind<'a>(
-    &self,
-    path: Cow<'a, Path>,
-    display: &str,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    self.check_read_path_with_requested(path, Some(display), Some(api_name))
-  }
-
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  #[inline(always)]
-  fn check_read_path_with_requested<'a>(
-    &self,
-    path: Cow<'a, Path>,
-    blind_requested: Option<&str>,
-    api_name: Option<&str>,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    let path = {
-      let mut inner = self.inner.lock();
-      if matches!(inner.all.state, PermissionState::Granted) {
-        return Ok(CheckedPath {
-          path,
-          canonicalized: false,
-        });
-      }
-      let inner = &mut inner.read;
-      let path = self.descriptor_parser.parse_path_query_from_path(path)?;
-      if inner.is_allow_all() {
-        path
-      } else {
-        let path = match blind_requested {
-          Some(display) => path.with_requested(format!("<{}>", display)),
-          None => path,
-        };
-        let desc = path.into_read();
-        inner.check(&desc, api_name)?;
-        desc.0
-      }
-    };
-    let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-    self.check_special_file(path, api_name)
-  }
-
   #[inline(always)]
   pub fn check_read_all(
     &self,
@@ -3040,37 +3010,17 @@ impl PermissionsContainer {
     self.inner.lock().read.query(None) == PermissionState::Granted
   }
 
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  pub fn check_write(
+  pub fn check_write_all(
     &self,
-    path: &str,
     api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    self.check_write_with_api_name(path, Some(api_name))
+  ) -> Result<(), PermissionCheckError> {
+    self.inner.lock().write.check_all(Some(api_name))?;
+    Ok(())
   }
 
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  pub fn check_write_with_api_name(
-    &self,
-    path: &str,
-    api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    let mut inner = self.inner.lock();
-    let inner = &mut inner.write;
-    if inner.is_allow_all() {
-      Ok(PathBuf::from(path))
-    } else {
-      let desc = self.descriptor_parser.parse_path_query(path)?.into_write();
-      inner.check(&desc, api_name)?;
-      Ok(desc.0.path)
-    }
-  }
-
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  #[inline(always)]
-  pub fn check_write_path<'a>(
+  pub fn check_write_partial<'a>(
     &self,
     path: Cow<'a, Path>,
     api_name: &str,
@@ -3084,57 +3034,8 @@ impl PermissionsContainer {
         .descriptor_parser
         .parse_path_query_from_path(path)?
         .into_write();
-      inner.check(&desc, Some(api_name))?;
-      Ok(Cow::Owned(desc.0.path))
-    }
-  }
-
-  #[inline(always)]
-  pub fn check_write_all(
-    &self,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    self.inner.lock().write.check_all(Some(api_name))?;
-    Ok(())
-  }
-
-  /// As `check_write()`, but permission error messages will anonymize the path
-  /// by replacing it with the given `display`.
-  #[inline(always)]
-  pub fn check_write_blind(
-    &self,
-    path: &Path,
-    display: &str,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    let mut inner = self.inner.lock();
-    let inner = &mut inner.write;
-    skip_check_if_is_permission_fully_granted!(inner);
-    inner.check(
-      &self
-        .descriptor_parser
-        .parse_path_query_from_path(Cow::Borrowed(path))?
-        .with_requested(format!("<{}>", display))
-        .into_write(),
-      Some(api_name),
-    )?;
-    Ok(())
-  }
-
-  #[inline(always)]
-  pub fn check_write_partial(
-    &self,
-    path: &str,
-    api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    let mut inner = self.inner.lock();
-    let inner = &mut inner.write;
-    if inner.is_allow_all() {
-      Ok(PathBuf::from(path))
-    } else {
-      let desc = self.descriptor_parser.parse_path_query(path)?.into_write();
       inner.check_partial(&desc, Some(api_name))?;
-      Ok(desc.0.path)
+      Ok(Cow::Owned(desc.0.path))
     }
   }
 
@@ -4416,8 +4317,26 @@ mod tests {
     ];
 
     for (path, is_ok) in cases {
-      assert_eq!(perms.check_read(path, "api").is_ok(), is_ok);
-      assert_eq!(perms.check_write(path, "api").is_ok(), is_ok);
+      assert_eq!(
+        perms
+          .check_open(
+            Cow::Borrowed(Path::new(path)),
+            OpenAccessKind::Read,
+            Some("api")
+          )
+          .is_ok(),
+        is_ok
+      );
+      assert_eq!(
+        perms
+          .check_open(
+            Cow::Borrowed(Path::new(path)),
+            OpenAccessKind::Write,
+            Some("api")
+          )
+          .is_ok(),
+        is_ok
+      );
       assert_eq!(perms.check_ffi(path).is_ok(), is_ok);
     }
   }

@@ -54,6 +54,7 @@ use deno_fs::OpenOptions;
 use deno_fs::open_options_with_access_check;
 use deno_path_util::PathToUrlError;
 use deno_permissions::CheckedPath;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 use deno_tls::Proxy;
@@ -407,15 +408,10 @@ pub trait FetchPermissions {
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read<'a>(
+  fn check_open<'a>(
     &mut self,
     path: Cow<'a, Path>,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_open_read_write<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
+    open_access: OpenAccessKind,
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn check_net_vsock(
@@ -437,21 +433,18 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read<'a>(
+  fn check_open<'a>(
     &mut self,
     path: Cow<'a, Path>,
+    open_access: OpenAccessKind,
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    self.check_read_path(path, Some(api_name))
-  }
-
-  #[inline(always)]
-  fn check_open_read_write<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    self.check_open_path(path, true, true, Some(api_name))
+    deno_permissions::PermissionsContainer::check_open(
+      self,
+      path,
+      open_access,
+      Some(api_name),
+    )
   }
 
   #[inline(always)]
@@ -923,7 +916,7 @@ fn sync_permission_check<'a, P: FetchPermissions + 'static>(
   api_name: &'static str,
 ) -> impl deno_fs::AccessCheckFn + 'a {
   move |path, _options| {
-    permissions.check_open_read_write(path.clone(), api_name)
+    permissions.check_open(path.clone(), OpenAccessKind::ReadWrite, api_name)
   }
 }
 

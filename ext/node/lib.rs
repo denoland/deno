@@ -6,7 +6,6 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
-use std::path::PathBuf;
 
 use deno_core::FastString;
 use deno_core::OpState;
@@ -17,6 +16,7 @@ use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
 use deno_permissions::CheckedPath;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
@@ -63,23 +63,11 @@ pub trait NodePermissions {
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  #[inline(always)]
-  fn check_read<'a>(
-    &mut self,
-    path: &'a str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    self.check_read_with_api_name(path, None)
-  }
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read_with_api_name<'a>(
-    &mut self,
-    path: &'a str,
-    api_name: Option<&str>,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read_path<'a>(
+  fn check_open<'a>(
     &mut self,
     path: Cow<'a, Path>,
+    open_access: OpenAccessKind,
+    api_name: Option<&str>,
   ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn query_read_all(&mut self) -> bool;
   fn check_sys(
@@ -87,12 +75,6 @@ pub trait NodePermissions {
     kind: &str,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_write_with_api_name(
-    &mut self,
-    path: &str,
-    api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError>;
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -113,37 +95,22 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     deno_permissions::PermissionsContainer::check_net(self, &host, api_name)
   }
 
-  #[inline(always)]
-  fn check_read_with_api_name<'a>(
-    &mut self,
-    path: &'a str,
-    api_name: Option<&str>,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read_with_api_name(
-      self, path, api_name,
-    )
-  }
-
-  fn check_read_path<'a>(
+  fn check_open<'a>(
     &mut self,
     path: Cow<'a, Path>,
+    open_access: OpenAccessKind,
+    api_name: Option<&str>,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read_path(self, path, None)
+    deno_permissions::PermissionsContainer::check_open(
+      self,
+      path,
+      open_access,
+      api_name,
+    )
   }
 
   fn query_read_all(&mut self) -> bool {
     deno_permissions::PermissionsContainer::query_read_all(self)
-  }
-
-  #[inline(always)]
-  fn check_write_with_api_name(
-    &mut self,
-    path: &str,
-    api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write_with_api_name(
-      self, path, api_name,
-    )
   }
 
   fn check_sys(
@@ -228,10 +195,15 @@ fn op_node_load_env_file(
   state: &mut OpState,
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
-  state
+  let path = state
     .borrow::<PermissionsContainer>()
-    .check_read_with_api_name(path, Some("process.loadEnvFile"))
-    .map_err(DotEnvLoadErr::Permission)?;
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::Read,
+      Some("process.loadEnvFile"),
+    )
+    .map_err(DotEnvLoadErr::Permission)?
+    .path;
 
   dotenvy::from_filename(path).map_err(DotEnvLoadErr::DotEnv)?;
 

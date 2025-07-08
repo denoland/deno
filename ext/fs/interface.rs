@@ -102,6 +102,10 @@ impl<T> AccessCheckFn for T where
 
 pub type AccessCheckCb<'a> = &'a mut (dyn AccessCheckFn + 'a);
 
+// todo(dsherret): the paths on this trait should be of type CheckedPath
+// and OwnedCheckedPath in order to ensure a path is always checked for
+// permissions before being passed here
+
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn cwd(&self) -> FsResult<PathBuf>;

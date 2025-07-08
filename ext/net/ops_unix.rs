@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::AsyncRefCell;
@@ -14,6 +15,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
+use deno_permissions::OpenAccessKind;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::net::UnixDatagram;
@@ -97,19 +99,18 @@ where
   NP: NetPermissions + 'static,
 {
   let address_path = {
-    let mut state_ = state.borrow_mut();
-    let address_path = state_
+    let mut state = state.borrow_mut();
+    state
       .borrow_mut::<NP>()
-      .check_read(&address_path, "Deno.connect()")
+      .check_open(
+        Cow::Owned(PathBuf::from(address_path)),
+        OpenAccessKind::ReadWrite,
+        "Deno.connect()",
+      )
       .map_err(NetError::Permission)?
-      .path;
-
-    state_
-      .borrow_mut::<NP>()
-      .check_write_path(address_path, "Deno.connect()")
-      .map_err(NetError::Permission)?
+      .path
   };
-  let unix_stream = UnixStream::connect(&address_path).await?;
+  let unix_stream = UnixStream::connect(address_path).await?;
   let local_addr = unix_stream.local_addr()?;
   let remote_addr = unix_stream.peer_addr()?;
   let local_addr_path = local_addr.as_pathname().map(pathstring).transpose()?;
@@ -157,8 +158,13 @@ where
   let address_path = {
     let mut s = state.borrow_mut();
     s.borrow_mut::<NP>()
-      .check_write(&address_path, "Deno.DatagramConn.send()")
+      .check_open(
+        Cow::Owned(PathBuf::from(address_path)),
+        OpenAccessKind::Write,
+        "Deno.DatagramConn.send()",
+      )
       .map_err(NetError::Permission)?
+      .path
   };
 
   let resource = state
@@ -187,12 +193,13 @@ where
   let permissions = state.borrow_mut::<NP>();
   let api_call_expr = format!("{}()", api_name);
   let address_path = permissions
-    .check_read(&address_path, &api_call_expr)
+    .check_open(
+      Cow::Owned(PathBuf::from(address_path)),
+      OpenAccessKind::ReadWrite,
+      &api_call_expr,
+    )
     .map_err(NetError::Permission)?
     .path;
-  let address_path = permissions
-    .check_write_path(address_path, &api_call_expr)
-    .map_err(NetError::Permission)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
@@ -210,12 +217,13 @@ where
 {
   let permissions = state.borrow_mut::<NP>();
   let address_path = permissions
-    .check_read(&address_path, "Deno.listenDatagram()")
+    .check_open(
+      Cow::Owned(PathBuf::from(address_path)),
+      OpenAccessKind::ReadWrite,
+      "Deno.listenDatagram()",
+    )
     .map_err(NetError::Permission)?
     .path;
-  let address_path = permissions
-    .check_write_path(address_path, "Deno.listenDatagram()")
-    .map_err(NetError::Permission)?;
   let socket = UnixDatagram::bind(address_path)?;
   let local_addr = socket.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
