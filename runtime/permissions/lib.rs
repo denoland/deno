@@ -135,7 +135,14 @@ pub struct PathWithRequested<'a> {
   pub requested: Option<String>,
 }
 
-impl PathWithRequested<'_> {
+impl<'a> PathWithRequested<'a> {
+  pub fn only_path(path: Cow<'a, Path>) -> Self {
+    Self {
+      path,
+      requested: None,
+    }
+  }
+
   pub fn display(&self) -> std::path::Display<'_> {
     match &self.requested {
       Some(requested) => Path::new(requested).display(),

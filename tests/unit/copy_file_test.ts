@@ -64,8 +64,7 @@ Deno.test(
   { permissions: { write: true, read: true } },
   function copyFileSyncFailure() {
     const tempDir = Deno.makeTempDirSync();
-    const canonTempDir = Deno.realPathSync(tempDir);
-    const fromFilename = canonTempDir + "/from.txt";
+    const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
     // We skip initial writing here, from.txt does not exist
     assertThrows(
@@ -159,8 +158,7 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function copyFileFailure() {
     const tempDir = Deno.makeTempDirSync();
-    const canonTempDir = Deno.realPathSync(tempDir);
-    const fromFilename = canonTempDir + "/from.txt";
+    const fromFilename = tempDir + "/from.txt";
     const toFilename = tempDir + "/to.txt";
     // We skip initial writing here, from.txt does not exist
     await assertRejects(

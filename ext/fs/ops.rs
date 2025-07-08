@@ -926,7 +926,11 @@ where
 
   let fs = state.borrow::<FileSystemRc>();
   fs.symlink_sync(&oldpath, &newpath, file_type)
-    .context_two_path("symlink", &oldpath, &newpath)?;
+    .context_two_path(
+      "symlink",
+      &PathWithRequested::only_path(Cow::Borrowed(&oldpath)),
+      &PathWithRequested::only_path(Cow::Borrowed(&newpath)),
+    )?;
 
   Ok(())
 }
@@ -954,7 +958,11 @@ where
 
   fs.symlink_async(oldpath.clone(), newpath.clone(), file_type)
     .await
-    .context_two_path("symlink", &oldpath, &newpath)?;
+    .context_two_path(
+      "symlink",
+      &PathWithRequested::only_path(Cow::Borrowed(&oldpath)),
+      &PathWithRequested::only_path(Cow::Borrowed(&newpath)),
+    )?;
 
   Ok(())
 }
@@ -1886,7 +1894,7 @@ impl std::fmt::Display for OperationError {
       OperationErrorKind::Bare => Ok(()),
       OperationErrorKind::WithPath(path) => write!(f, " '{}'", path),
       OperationErrorKind::WithTwoPaths(from, to) => {
-        write!(f, " '{}' -> '{}'", from.display(), to.display())
+        write!(f, " '{}' -> '{}'", from, to)
       }
     }
   }
@@ -1906,7 +1914,7 @@ impl std::error::Error for OperationError {
 pub enum OperationErrorKind {
   Bare,
   WithPath(String),
-  WithTwoPaths(PathBuf, PathBuf),
+  WithTwoPaths(String, String),
 }
 
 trait MapErrContext {
@@ -1924,11 +1932,11 @@ trait MapErrContext {
     path: impl AsRef<PathWithRequested<'a>>,
   ) -> Self::R;
 
-  fn context_two_path(
+  fn context_two_path<'a>(
     self,
     operation: &'static str,
-    from: &Path,
-    to: &Path,
+    from: impl AsRef<PathWithRequested<'a>>,
+    to: impl AsRef<PathWithRequested<'a>>,
   ) -> Self::R;
 }
 
@@ -1962,17 +1970,17 @@ impl<T> MapErrContext for Result<T, FsError> {
     })
   }
 
-  fn context_two_path(
+  fn context_two_path<'a>(
     self,
     operation: &'static str,
-    oldpath: &Path,
-    newpath: &Path,
+    oldpath: impl AsRef<PathWithRequested<'a>>,
+    newpath: impl AsRef<PathWithRequested<'a>>,
   ) -> Self::R {
     self.context_fn(|err| OperationError {
       operation,
       kind: OperationErrorKind::WithTwoPaths(
-        oldpath.to_path_buf(),
-        newpath.to_path_buf(),
+        oldpath.as_ref().display().to_string(),
+        newpath.as_ref().display().to_string(),
       ),
       err,
     })
