@@ -546,7 +546,7 @@ where
   let permissions = state.borrow_mut::<P>();
   let from = permissions.check_open(
     Cow::Borrowed(Path::new(from)),
-    OpenAccessKind::ReadNoFollow,
+    OpenAccessKind::Read,
     "Deno.copyFileSync()",
   )?;
   let to = permissions.check_open(
@@ -576,7 +576,7 @@ where
     let permissions = state.borrow_mut::<P>();
     let from = permissions.check_open(
       Cow::Owned(PathBuf::from(from)),
-      OpenAccessKind::ReadNoFollow,
+      OpenAccessKind::Read,
       "Deno.copyFile()",
     )?;
     let to = permissions.check_open(

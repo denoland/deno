@@ -129,7 +129,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
         let path = permissions
           .check_open(
             Cow::Owned(PathBuf::from(path)),
-            OpenAccessKind::ReadWrite,
+            OpenAccessKind::ReadWriteNoFollow,
             "Deno.openKv",
           )
           .map_err(JsErrorBox::from_err)?;

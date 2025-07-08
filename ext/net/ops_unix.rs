@@ -104,7 +104,7 @@ where
       .borrow_mut::<NP>()
       .check_open(
         Cow::Owned(PathBuf::from(address_path)),
-        OpenAccessKind::ReadWrite,
+        OpenAccessKind::ReadWriteNoFollow,
         "Deno.connect()",
       )
       .map_err(NetError::Permission)?
@@ -194,7 +194,7 @@ where
   let address_path = permissions
     .check_open(
       Cow::Owned(PathBuf::from(address_path)),
-      OpenAccessKind::ReadWrite,
+      OpenAccessKind::ReadWriteNoFollow,
       &api_call_expr,
     )
     .map_err(NetError::Permission)?
@@ -218,7 +218,7 @@ where
   let address_path = permissions
     .check_open(
       Cow::Owned(PathBuf::from(address_path)),
-      OpenAccessKind::ReadWrite,
+      OpenAccessKind::ReadWriteNoFollow,
       "Deno.listenDatagram()",
     )
     .map_err(NetError::Permission)?;

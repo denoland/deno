@@ -302,7 +302,7 @@ fn open_db(
       Cow::Borrowed(Path::new(location)),
       match readonly {
         true => OpenAccessKind::ReadNoFollow,
-        false => OpenAccessKind::ReadWrite,
+        false => OpenAccessKind::ReadWriteNoFollow,
       },
       Some("node:sqlite"),
     )?
