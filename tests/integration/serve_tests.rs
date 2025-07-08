@@ -344,14 +344,12 @@ async fn deno_run_serve_with_unix_socket_from_env() {
 #[tokio::test]
 #[cfg(unix)]
 async fn deno_run_serve_with_duplicate_env_addr() {
-  use test_util::TempDir;
   use tokio::io::AsyncReadExt;
   use tokio::io::AsyncWriteExt;
   use tokio::net::UnixStream;
 
-  let temp_dir = TempDir::default();
-  let dir = TempDir::new_symlinked(temp_dir);
-  let sock = dir.path().join("listen.sock").to_path_buf();
+  let dir = tempfile::TempDir::new().unwrap();
+  let sock = dir.path().join("listen.sock");
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
