@@ -8,7 +8,6 @@ use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
-use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -35,6 +34,7 @@ use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfigResolver;
+use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::graph::EnhanceGraphErrorMode;
 use deno_resolver::graph::enhance_graph_error;
 use deno_resolver::graph::enhanced_integrity_error_message;
@@ -873,26 +873,23 @@ impl ModuleGraphBuilder {
           let mut imports_by_referrer = IndexMap::<_, Vec<_>>::with_capacity(
             self.compiler_options_resolver.size(),
           );
-          for (referrer, files) in self
-            .compiler_options_resolver
-            .ts_configs()
-            .iter()
-            .filter_map(|t| t.files())
+          for (_, compiler_options_data, maybe_files) in
+            self.compiler_options_resolver.entries()
           {
-            imports_by_referrer
-              .entry(referrer)
-              .or_default()
-              .extend(files.iter().map(|f| f.relative_specifier.clone()));
-          }
-          for (referrer, types) in self
-            .compiler_options_resolver
-            .all()
-            .flat_map(|d| d.compiler_options_types().as_ref())
-          {
-            imports_by_referrer
-              .entry(referrer)
-              .or_default()
-              .extend(types.clone());
+            if let Some((referrer, files)) = maybe_files {
+              imports_by_referrer
+                .entry(referrer.as_ref())
+                .or_default()
+                .extend(files.iter().map(|f| f.relative_specifier.clone()));
+            }
+            for (referrer, types) in
+              compiler_options_data.compiler_options_types().as_ref()
+            {
+              imports_by_referrer
+                .entry(referrer)
+                .or_default()
+                .extend(types.iter().cloned());
+            }
           }
           imports_by_referrer
             .into_iter()
