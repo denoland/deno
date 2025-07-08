@@ -131,6 +131,7 @@ test_util = { package = "test_server", path = "./tests/util/server" }
 
 # widely used libraries
 anyhow = "1.0.57"
+arc-swap = "1.7"
 async-compression = "0.4"
 async-once-cell = "0.5.4"
 async-stream = "0.3"
