@@ -202,8 +202,7 @@ fn op_node_load_env_file(
       OpenAccessKind::Read,
       Some("process.loadEnvFile"),
     )
-    .map_err(DotEnvLoadErr::Permission)?
-    .path;
+    .map_err(DotEnvLoadErr::Permission)?;
 
   dotenvy::from_filename(path).map_err(DotEnvLoadErr::DotEnv)?;
 

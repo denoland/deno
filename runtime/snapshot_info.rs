@@ -8,6 +8,7 @@ use std::sync::Arc;
 use deno_core::Extension;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
+use deno_permissions::PathWithRequested;
 use deno_permissions::PermissionCheckError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
@@ -175,7 +176,7 @@ impl deno_fs::FsPermissions for Permissions {
     &mut self,
     _path: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<PathWithRequested<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 

@@ -377,8 +377,7 @@ where
             OpenAccessKind::Read,
             "Deno.connectTls()",
           )
-          .map_err(NetError::Permission)?
-          .path,
+          .map_err(NetError::Permission)?,
       )
     } else {
       None

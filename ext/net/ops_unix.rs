@@ -164,7 +164,6 @@ where
         "Deno.DatagramConn.send()",
       )
       .map_err(NetError::Permission)?
-      .path
   };
 
   let resource = state
@@ -222,8 +221,7 @@ where
       OpenAccessKind::ReadWrite,
       "Deno.listenDatagram()",
     )
-    .map_err(NetError::Permission)?
-    .path;
+    .map_err(NetError::Permission)?;
   let socket = UnixDatagram::bind(address_path)?;
   let local_addr = socket.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;

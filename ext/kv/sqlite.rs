@@ -133,7 +133,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
             "Deno.openKv",
           )
           .map_err(JsErrorBox::from_err)?;
-        Ok(Some(PathOrInMemory::Path(path.path.into_owned())))
+        Ok(Some(PathOrInMemory::Path(path.into_owned_path())))
       }
     }
 

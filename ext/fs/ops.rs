@@ -25,7 +25,9 @@ use deno_error::JsErrorBox;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
+use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
+use deno_permissions::PathWithRequested;
 use deno_permissions::PermissionCheckError;
 use rand::Rng;
 use rand::rngs::ThreadRng;
@@ -140,7 +142,7 @@ fn map_permission_error(
 ) -> FsOpsError {
   match error {
     FsError::PermissionCheck(PermissionCheckError::PermissionDenied(err)) => {
-      let path = format!("{path:?}");
+      let path = format!("\"{}\"", path.display());
       let (path, truncated) = if path.len() > 1024 {
         (&path[0..1024], "...(truncated)")
       } else {
@@ -155,7 +157,16 @@ fn map_permission_error(
       .into_box()
     }
     err => Err::<(), _>(err)
-      .context_path(operation, path)
+      .context_path(
+        operation,
+        // todo(dsherret): this is temporary and we should remove
+        // this entire method and the access callback methods
+        &PathWithRequested {
+          path: Cow::Borrowed(path),
+          // ok because path will always be the requested path in this case
+          requested: None,
+        },
+      )
       .err()
       .unwrap(),
   }
@@ -183,7 +194,7 @@ where
 {
   let d = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(directory)),
-    OpenAccessKind::Read,
+    OpenAccessKind::ReadNoFollow,
     "Deno.chdir()",
   )?;
   state
@@ -271,7 +282,7 @@ where
 
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     "Deno.mkdirSync()",
   )?;
 
@@ -298,7 +309,7 @@ where
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Write,
+      OpenAccessKind::WriteNoFollow,
       "Deno.mkdir()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
@@ -322,7 +333,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     "Deno.chmodSync()",
   )?;
   let fs = state.borrow::<FileSystemRc>();
@@ -343,7 +354,7 @@ where
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Write,
+      OpenAccessKind::WriteNoFollow,
       "Deno.chmod()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
@@ -366,7 +377,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     "Deno.chownSync()",
   )?;
   let fs = state.borrow::<FileSystemRc>();
@@ -389,7 +400,7 @@ where
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Write,
+      OpenAccessKind::WriteNoFollow,
       "Deno.chown()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
@@ -463,7 +474,7 @@ where
   let path = if recursive {
     state
       .borrow_mut::<P>()
-      .check_open(path, OpenAccessKind::Write, "Deno.removeSync()")?
+      .check_open(path, OpenAccessKind::WriteNoFollow, "Deno.removeSync()")?
       .path
   } else {
     state
@@ -493,7 +504,7 @@ where
     let path = if recursive {
       state
         .borrow_mut::<P>()
-        .check_open(path, OpenAccessKind::Write, "Deno.remove()")?
+        .check_open(path, OpenAccessKind::WriteNoFollow, "Deno.remove()")?
         .path
     } else {
       state
@@ -581,7 +592,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Read,
+    OpenAccessKind::ReadNoFollow,
     "Deno.statSync()",
   )?;
   let fs = state.borrow::<FileSystemRc>();
@@ -605,7 +616,7 @@ where
     let permissions = state.borrow_mut::<P>();
     let path = permissions.check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Read,
+      OpenAccessKind::ReadNoFollow,
       "Deno.stat()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
@@ -628,7 +639,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Read,
+    OpenAccessKind::ReadNoFollow,
     "Deno.lstatSync()",
   )?;
   let fs = state.borrow::<FileSystemRc>();
@@ -652,7 +663,7 @@ where
     let permissions = state.borrow_mut::<P>();
     let path = permissions.check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Read,
+      OpenAccessKind::ReadNoFollow,
       "Deno.lstat()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
@@ -677,7 +688,7 @@ where
   let permissions = state.borrow_mut::<P>();
   let path = permissions.check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Read,
+    OpenAccessKind::ReadNoFollow,
     "Deno.realPathSync()",
   )?;
   let resolved_path =
@@ -702,7 +713,7 @@ where
     let permissions = state.borrow_mut::<P>();
     let path = permissions.check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Read,
+      OpenAccessKind::ReadNoFollow,
       "Deno.realPath()",
     )?;
     (fs, path)
@@ -727,7 +738,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Read,
+    OpenAccessKind::ReadNoFollow,
     "Deno.readDirSync()",
   )?;
 
@@ -750,7 +761,7 @@ where
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Read,
+      OpenAccessKind::ReadNoFollow,
       "Deno.readDir()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
@@ -776,12 +787,12 @@ where
   let permissions = state.borrow_mut::<P>();
   let oldpath = permissions.check_open(
     Cow::Borrowed(Path::new(oldpath)),
-    OpenAccessKind::ReadWrite,
+    OpenAccessKind::ReadWriteNoFollow,
     "Deno.renameSync()",
   )?;
   let newpath = permissions.check_open(
     Cow::Borrowed(Path::new(newpath)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     "Deno.renameSync()",
   )?;
 
@@ -806,12 +817,12 @@ where
     let permissions = state.borrow_mut::<P>();
     let oldpath = permissions.check_open(
       Cow::Owned(PathBuf::from(oldpath)),
-      OpenAccessKind::ReadWrite,
+      OpenAccessKind::ReadWriteNoFollow,
       "Deno.rename()",
     )?;
     let newpath = permissions.check_open(
       Cow::Owned(PathBuf::from(newpath)),
-      OpenAccessKind::Write,
+      OpenAccessKind::WriteNoFollow,
       "Deno.rename()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), oldpath, newpath)
@@ -836,12 +847,12 @@ where
   let permissions = state.borrow_mut::<P>();
   let oldpath = permissions.check_open(
     Cow::Borrowed(Path::new(oldpath)),
-    OpenAccessKind::ReadWrite,
+    OpenAccessKind::ReadWriteNoFollow,
     "Deno.linkSync()",
   )?;
   let newpath = permissions.check_open(
     Cow::Borrowed(Path::new(newpath)),
-    OpenAccessKind::ReadWrite,
+    OpenAccessKind::WriteNoFollow,
     "Deno.linkSync()",
   )?;
 
@@ -866,12 +877,12 @@ where
     let permissions = state.borrow_mut::<P>();
     let oldpath = permissions.check_open(
       Cow::Owned(PathBuf::from(oldpath)),
-      OpenAccessKind::ReadWrite,
+      OpenAccessKind::ReadWriteNoFollow,
       "Deno.link()",
     )?;
     let newpath = permissions.check_open(
       Cow::Owned(PathBuf::from(newpath)),
-      OpenAccessKind::ReadWrite,
+      OpenAccessKind::WriteNoFollow,
       "Deno.link()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), oldpath, newpath)
@@ -947,7 +958,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Read,
+    OpenAccessKind::ReadNoFollow,
     "Deno.readLink()",
   )?;
 
@@ -971,7 +982,7 @@ where
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Read,
+      OpenAccessKind::ReadNoFollow,
       "Deno.readLink()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
@@ -1047,7 +1058,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     "Deno.utime()",
   )?;
 
@@ -1074,7 +1085,7 @@ where
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Write,
+      OpenAccessKind::WriteNoFollow,
       "Deno.utime()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
@@ -1298,7 +1309,7 @@ fn make_temp_check_sync<'a, P>(
   state: &mut OpState,
   dir: Option<&'a str>,
   api_name: &str,
-) -> Result<(Cow<'a, Path>, FileSystemRc), FsOpsError>
+) -> Result<(CheckedPath<'a>, FileSystemRc), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1306,55 +1317,46 @@ where
   let dir = match dir {
     Some(dir) => state.borrow_mut::<P>().check_open(
       Cow::Borrowed(Path::new(dir)),
-      OpenAccessKind::Write,
+      OpenAccessKind::WriteNoFollow,
       api_name,
     )?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
       state.borrow_mut::<P>().check_open_blind(
         Cow::Owned(dir),
-        OpenAccessKind::Write,
+        OpenAccessKind::WriteNoFollow,
         "TMP",
         api_name,
       )?
     }
   };
-  Ok((dir.path, fs))
+  Ok((dir, fs))
 }
 
-// todo(dsherret): shouldn't this create the dir async?
 fn make_temp_check_async<'a, P>(
   state: Rc<RefCell<OpState>>,
   dir: Option<&'a str>,
   api_name: &str,
-) -> Result<(Cow<'a, Path>, FileSystemRc), FsOpsError>
+) -> Result<(CheckedPath<'a>, FileSystemRc), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
   let mut state = state.borrow_mut();
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => {
-      state
-        .borrow_mut::<P>()
-        .check_open(
-          Cow::Borrowed(Path::new(dir)),
-          OpenAccessKind::Write,
-          api_name,
-        )?
-        .path
-    }
+    Some(dir) => state.borrow_mut::<P>().check_open(
+      Cow::Borrowed(Path::new(dir)),
+      OpenAccessKind::WriteNoFollow,
+      api_name,
+    )?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
-      state
-        .borrow_mut::<P>()
-        .check_open_blind(
-          Cow::Owned(dir),
-          OpenAccessKind::Write,
-          "TMP",
-          api_name,
-        )?
-        .path
+      state.borrow_mut::<P>().check_open_blind(
+        Cow::Owned(dir),
+        OpenAccessKind::WriteNoFollow,
+        "TMP",
+        api_name,
+      )?
     }
   };
   Ok((dir, fs))
@@ -1870,7 +1872,7 @@ impl std::fmt::Display for OperationError {
 
     match &self.kind {
       OperationErrorKind::Bare => Ok(()),
-      OperationErrorKind::WithPath(path) => write!(f, " '{}'", path.display()),
+      OperationErrorKind::WithPath(path) => write!(f, " '{}'", path),
       OperationErrorKind::WithTwoPaths(from, to) => {
         write!(f, " '{}' -> '{}'", from.display(), to.display())
       }
@@ -1891,7 +1893,7 @@ impl std::error::Error for OperationError {
 #[derive(Debug)]
 pub enum OperationErrorKind {
   Bare,
-  WithPath(PathBuf),
+  WithPath(String),
   WithTwoPaths(PathBuf, PathBuf),
 }
 
@@ -1904,7 +1906,11 @@ trait MapErrContext {
 
   fn context(self, desc: &'static str) -> Self::R;
 
-  fn context_path(self, operation: &'static str, path: &Path) -> Self::R;
+  fn context_path<'a>(
+    self,
+    operation: &'static str,
+    path: impl AsRef<PathWithRequested<'a>>,
+  ) -> Self::R;
 
   fn context_two_path(
     self,
@@ -1932,10 +1938,14 @@ impl<T> MapErrContext for Result<T, FsError> {
     })
   }
 
-  fn context_path(self, operation: &'static str, path: &Path) -> Self::R {
+  fn context_path<'a>(
+    self,
+    operation: &'static str,
+    path: impl AsRef<PathWithRequested<'a>>,
+  ) -> Self::R {
     self.context_fn(|err| OperationError {
       operation,
-      kind: OperationErrorKind::WithPath(path.to_path_buf()),
+      kind: OperationErrorKind::WithPath(path.as_ref().display().to_string()),
       err,
     })
   }

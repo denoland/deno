@@ -18,6 +18,7 @@ use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 use deno_permissions::CheckedPath;
+use deno_permissions::PathWithRequested;
 use deno_permissions::PermissionCheckError;
 
 use crate::FileSystem;
@@ -1115,7 +1116,7 @@ pub fn open_options_with_access_check(
   if let Some(access_check) = access_check {
     let path = Cow::Borrowed(path);
     let CheckedPath {
-      path,
+      path: PathWithRequested { path, requested: _ },
       canonicalized: resolved,
     } = (*access_check)(path, &options)?;
 

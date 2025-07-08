@@ -1208,6 +1208,7 @@ mod tests {
   use deno_core::futures::FutureExt;
   use deno_permissions::CheckedPath;
   use deno_permissions::OpenAccessKind;
+  use deno_permissions::PathWithRequested;
   use deno_permissions::PermissionCheckError;
   use hickory_proto::rr::Name;
   use hickory_proto::rr::rdata::SOA;
@@ -1422,7 +1423,10 @@ mod tests {
       _api_name: &str,
     ) -> Result<CheckedPath<'a>, PermissionCheckError> {
       Ok(CheckedPath {
-        path,
+        path: PathWithRequested {
+          path,
+          requested: None,
+        },
         canonicalized: false,
       })
     }

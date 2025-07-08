@@ -211,11 +211,10 @@ fn op_fs_events_open(
         permissions_container
           .check_open(
             Cow::Owned(PathBuf::from(path)),
-            deno_permissions::OpenAccessKind::Read,
+            deno_permissions::OpenAccessKind::ReadNoFollow,
             Some("Deno.watchFs()"),
           )?
-          .path
-          .into_owned(),
+          .into_owned_path(),
       );
     }
   }

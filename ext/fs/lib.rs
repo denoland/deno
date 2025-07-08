@@ -11,6 +11,7 @@ use std::path::Path;
 pub use deno_io::fs::FsError;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
+use deno_permissions::PathWithRequested;
 use deno_permissions::PermissionCheckError;
 
 pub use crate::interface::AccessCheckCb;
@@ -54,7 +55,7 @@ pub trait FsPermissions {
     &mut self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<PathWithRequested<'a>, PermissionCheckError>;
   fn check_write_all(
     &mut self,
     api_name: &str,
@@ -116,7 +117,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<PathWithRequested<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_partial(
       self, path, api_name,
     )

@@ -89,8 +89,11 @@ pub enum PermissionState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenAccessKind {
   Read,
+  ReadNoFollow,
   Write,
+  WriteNoFollow,
   ReadWrite,
+  ReadWriteNoFollow,
 }
 
 impl OpenAccessKind {
@@ -102,32 +105,91 @@ impl OpenAccessKind {
     }
   }
 
+  pub fn is_no_follow(&self) -> bool {
+    match self {
+      OpenAccessKind::ReadNoFollow
+      | OpenAccessKind::WriteNoFollow
+      | OpenAccessKind::ReadWriteNoFollow => true,
+      OpenAccessKind::Read
+      | OpenAccessKind::Write
+      | OpenAccessKind::ReadWrite => false,
+    }
+  }
+
   pub fn is_read(&self) -> bool {
     match self {
-      OpenAccessKind::Read | OpenAccessKind::ReadWrite => true,
-      OpenAccessKind::Write => false,
+      OpenAccessKind::Read
+      | OpenAccessKind::ReadNoFollow
+      | OpenAccessKind::ReadWrite
+      | OpenAccessKind::ReadWriteNoFollow => true,
+      OpenAccessKind::Write | OpenAccessKind::WriteNoFollow => false,
     }
   }
 
   pub fn is_write(&self) -> bool {
     match self {
-      OpenAccessKind::Read => false,
-      OpenAccessKind::Write | OpenAccessKind::ReadWrite => true,
+      OpenAccessKind::Read | OpenAccessKind::ReadNoFollow => false,
+      OpenAccessKind::Write
+      | OpenAccessKind::WriteNoFollow
+      | OpenAccessKind::ReadWrite
+      | OpenAccessKind::ReadWriteNoFollow => true,
     }
   }
 }
 
-pub struct CheckedPath<'a> {
+pub struct PathWithRequested<'a> {
   pub path: Cow<'a, Path>,
+  /// Custom requested display name when differs from resolved.
+  pub requested: Option<String>,
+}
+
+impl PathWithRequested<'_> {
+  pub fn display(&self) -> std::path::Display<'_> {
+    match &self.requested {
+      Some(requested) => Path::new(requested).display(),
+      None => self.path.display(),
+    }
+  }
+}
+
+impl Deref for PathWithRequested<'_> {
+  type Target = Path;
+
+  fn deref(&self) -> &Self::Target {
+    &self.path
+  }
+}
+
+impl AsRef<Path> for PathWithRequested<'_> {
+  fn as_ref(&self) -> &Path {
+    &self.path
+  }
+}
+
+impl<'a> AsRef<PathWithRequested<'a>> for PathWithRequested<'a> {
+  fn as_ref(&self) -> &PathWithRequested<'a> {
+    self
+  }
+}
+
+pub struct CheckedPath<'a> {
+  pub path: PathWithRequested<'a>,
   pub canonicalized: bool,
 }
 
 impl CheckedPath<'_> {
-  pub fn into_owned(self) -> OwnedCheckedPath {
-    OwnedCheckedPath {
-      path: self.path.into_owned(),
-      canonicalized: self.canonicalized,
-    }
+  pub fn display(&self) -> std::path::Display<'_> {
+    self.path.display()
+  }
+
+  pub fn into_owned_path(self) -> PathBuf {
+    self.path.path.into_owned()
+  }
+}
+
+impl<'a> AsRef<PathWithRequested<'a>> for CheckedPath<'a> {
+  fn as_ref(&self) -> &PathWithRequested<'a> {
+    &self.path
   }
 }
 
@@ -135,20 +197,13 @@ impl Deref for CheckedPath<'_> {
   type Target = Path;
 
   fn deref(&self) -> &Self::Target {
-    &self.path
+    &self.path.path
   }
 }
 
-pub struct OwnedCheckedPath {
-  pub path: PathBuf,
-  pub canonicalized: bool,
-}
-
-impl Deref for OwnedCheckedPath {
-  type Target = Path;
-
-  fn deref(&self) -> &Self::Target {
-    &self.path
+impl AsRef<Path> for CheckedPath<'_> {
+  fn as_ref(&self) -> &Path {
+    &self.path.path
   }
 }
 
@@ -1880,6 +1935,7 @@ fn denies_run_name(name: &str, cmd_path: &PathQueryDescriptor) -> bool {
 
 pub struct SpecialFilePathDescriptor {
   path: PathBuf,
+  requested: Option<String>,
   canonicalized: bool,
 }
 
@@ -1891,7 +1947,7 @@ impl SpecialFilePathDescriptor {
     let PathQueryDescriptor {
       is_windows_device_path,
       path,
-      requested: _,
+      requested,
     } = path;
     // On Linux, /proc may contain magic links that we don't want to resolve
     let is_linux_special_path = cfg!(target_os = "linux")
@@ -1899,32 +1955,18 @@ impl SpecialFilePathDescriptor {
     let needs_canonicalization =
       !is_windows_device_path && !is_linux_special_path;
     if needs_canonicalization {
-      match sys.fs_canonicalize(&path) {
-        Ok(path) => Ok(Self {
-          path,
-          canonicalized: true,
-        }),
-        Err(_) => {
-          if let (Some(parent), Some(filename)) =
-            (path.parent(), path.file_name())
-          {
-            Ok(Self {
-              path: sys
-                .fs_canonicalize(parent)
-                .map_err(PathResolveError::Canonicalize)?
-                .join(filename),
-              canonicalized: true,
-            })
-          } else {
-            Err(PathResolveError::NotFound(
-              std::io::ErrorKind::NotFound.into(),
-            ))
-          }
-        }
-      }
+      let path =
+        deno_path_util::fs::canonicalize_path_maybe_not_exists(sys, &path)
+          .map_err(PathResolveError::Canonicalize)?;
+      Ok(Self {
+        path,
+        requested,
+        canonicalized: true,
+      })
     } else {
       Ok(Self {
         path,
+        requested,
         canonicalized: false,
       })
     }
@@ -2956,7 +2998,10 @@ impl PermissionsContainer {
       let mut inner = self.inner.lock();
       if matches!(inner.all.state, PermissionState::Granted) {
         return Ok(CheckedPath {
-          path,
+          path: PathWithRequested {
+            path,
+            requested: None,
+          },
           canonicalized: false,
         });
       }
@@ -2992,8 +3037,18 @@ impl PermissionsContainer {
       }
     };
 
-    let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-    self.check_special_file(path, api_name)
+    if access_kind.is_no_follow() {
+      Ok(CheckedPath {
+        path: PathWithRequested {
+          path: Cow::Owned(path.path),
+          requested: path.requested,
+        },
+        canonicalized: false,
+      })
+    } else {
+      let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
+      self.check_special_file(path, api_name)
+    }
   }
 
   #[inline(always)]
@@ -3024,18 +3079,24 @@ impl PermissionsContainer {
     &self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<PathWithRequested<'a>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     if inner.is_allow_all() {
-      Ok(path)
+      Ok(PathWithRequested {
+        path,
+        requested: None,
+      })
     } else {
       let desc = self
         .descriptor_parser
         .parse_path_query_from_path(path)?
         .into_write();
       inner.check_partial(&desc, Some(api_name))?;
-      Ok(Cow::Owned(desc.0.path))
+      Ok(PathWithRequested {
+        path: Cow::Owned(desc.0.path),
+        requested: desc.0.requested,
+      })
     }
   }
 
@@ -3118,6 +3179,7 @@ impl PermissionsContainer {
     path: SpecialFilePathDescriptor,
     _api_name: Option<&str>,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    let requested = path.requested;
     let canonicalized = path.canonicalized;
     let path = path.path;
 
@@ -3131,7 +3193,10 @@ impl PermissionsContainer {
         || path == OsStr::new("/dev/null"))
     {
       return Ok(CheckedPath {
-        path: Cow::Owned(path),
+        path: PathWithRequested {
+          path: Cow::Owned(path),
+          requested,
+        },
         canonicalized,
       });
     }
@@ -3167,7 +3232,10 @@ impl PermissionsContainer {
     #[cfg(unix)]
     if path.starts_with("/dev/fd") && is_fd_file_is_pipe(&path) {
       return Ok(CheckedPath {
-        path: Cow::Owned(path),
+        path: PathWithRequested {
+          path: Cow::Owned(path),
+          requested,
+        },
         canonicalized,
       });
     }
@@ -3178,7 +3246,10 @@ impl PermissionsContainer {
       #[cfg(unix)]
       if path.starts_with("/proc/self/fd") && is_fd_file_is_pipe(&path) {
         return Ok(CheckedPath {
-          path: Cow::Owned(path),
+          path: PathWithRequested {
+            path: Cow::Owned(path),
+            requested,
+          },
           canonicalized,
         });
       }
@@ -3201,7 +3272,10 @@ impl PermissionsContainer {
       let s = path.as_os_str().as_encoded_bytes();
       if s.eq_ignore_ascii_case(br#"\\.\nul"#) {
         return Ok(CheckedPath {
-          path: Cow::Owned(path),
+          path: PathWithRequested {
+            path: Cow::Owned(path),
+            requested,
+          },
           canonicalized,
         });
       }
@@ -3230,7 +3304,10 @@ impl PermissionsContainer {
       unimplemented!()
     }
     Ok(CheckedPath {
-      path: Cow::Owned(path),
+      path: PathWithRequested {
+        path: Cow::Owned(path),
+        requested,
+      },
       canonicalized,
     })
   }
@@ -4272,6 +4349,7 @@ mod tests {
     ) -> Result<SpecialFilePathDescriptor, PathResolveError> {
       Ok(SpecialFilePathDescriptor {
         path: path.path,
+        requested: None,
         canonicalized: false,
       })
     }

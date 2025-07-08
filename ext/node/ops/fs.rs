@@ -53,7 +53,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Read,
+    OpenAccessKind::ReadNoFollow,
     Some("node:fs.existsSync()"),
   )?;
   let fs = state.borrow::<FileSystemRc>();
@@ -72,13 +72,13 @@ where
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Read,
+      OpenAccessKind::ReadNoFollow,
       Some("node:fs.exists()"),
     )?;
-    (state.borrow::<FileSystemRc>().clone(), path.path)
+    (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  Ok(fs.exists_async(path.into_owned()).await?)
+  Ok(fs.exists_async(path.into_owned_path()).await?)
 }
 
 #[op2(fast, stack_trace)]
@@ -117,26 +117,20 @@ where
 {
   let (fs, path, new_path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_open(
-        Cow::Owned(PathBuf::from(path)),
-        OpenAccessKind::Read,
-        Some("node:fs.cpSync"),
-      )?
-      .path;
-    let new_path = state
-      .borrow_mut::<P>()
-      .check_open(
-        Cow::Owned(PathBuf::from(new_path)),
-        OpenAccessKind::Write,
-        Some("node:fs.cpSync"),
-      )?
-      .path;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::Read,
+      Some("node:fs.cpSync"),
+    )?;
+    let new_path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(new_path)),
+      OpenAccessKind::Write,
+      Some("node:fs.cpSync"),
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path, new_path)
   };
 
-  fs.cp_async(path.into_owned(), new_path.into_owned())
+  fs.cp_async(path.into_owned_path(), new_path.into_owned_path())
     .await?;
   Ok(())
 }
@@ -167,7 +161,7 @@ where
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
       Cow::Borrowed(Path::new(path)),
-      OpenAccessKind::Read,
+      OpenAccessKind::ReadNoFollow,
       Some("node:fs.statfs"),
     )?;
     state
@@ -311,7 +305,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     Some("node:fs.lutimes"),
   )?;
 
@@ -334,19 +328,16 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_open(
-        Cow::Owned(PathBuf::from(path)),
-        OpenAccessKind::Write,
-        Some("node:fs.lutimesSync"),
-      )?
-      .path;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("node:fs.lutimesSync"),
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   fs.lutime_async(
-    path.into_owned(),
+    path.into_owned_path(),
     atime_secs,
     atime_nanos,
     mtime_secs,
@@ -369,7 +360,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     Some("node:fs.lchownSync"),
   )?;
   let fs = state.borrow::<FileSystemRc>();
@@ -389,17 +380,14 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_open(
-        Cow::Owned(PathBuf::from(path)),
-        OpenAccessKind::Write,
-        Some("node:fs.lchown"),
-      )?
-      .path;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("node:fs.lchown"),
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
-  fs.lchown_async(path.into_owned(), uid, gid).await?;
+  fs.lchown_async(path.into_owned_path(), uid, gid).await?;
   Ok(())
 }
 
@@ -414,7 +402,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     Some("node:fs.lchmodSync"),
   )?;
   let fs = state.borrow::<FileSystemRc>();
@@ -433,16 +421,13 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_open(
-        Cow::Owned(PathBuf::from(path)),
-        OpenAccessKind::Write,
-        Some("node:fs.lchmod"),
-      )?
-      .path;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("node:fs.lchmod"),
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
-  fs.lchmod_async(path.into_owned(), mode).await?;
+  fs.lchmod_async(path.into_owned_path(), mode).await?;
   Ok(())
 }
