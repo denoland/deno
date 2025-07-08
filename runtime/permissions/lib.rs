@@ -1954,12 +1954,16 @@ impl SpecialFilePathDescriptor {
     let needs_canonicalization =
       !is_windows_device_path && !is_linux_special_path;
     if needs_canonicalization {
-      let path =
-        deno_path_util::fs::canonicalize_path_maybe_not_exists(sys, &path)
-          .map_err(PathResolveError::Canonicalize)?;
+      let original_path = path;
+      let new_path = deno_path_util::fs::canonicalize_path_maybe_not_exists(
+        sys,
+        &original_path,
+      )
+      .map_err(PathResolveError::Canonicalize)?;
       Ok(Self {
-        path,
-        requested,
+        requested: requested
+          .or_else(|| Some(original_path.to_string_lossy().into_owned())),
+        path: new_path,
         canonicalized: true,
       })
     } else {
