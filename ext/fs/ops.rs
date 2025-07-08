@@ -928,8 +928,8 @@ where
   fs.symlink_sync(&oldpath, &newpath, file_type)
     .context_two_path(
       "symlink",
-      &PathWithRequested::only_path(Cow::Borrowed(&oldpath)),
-      &PathWithRequested::only_path(Cow::Borrowed(&newpath)),
+      PathWithRequested::only_path(Cow::Borrowed(&oldpath)),
+      PathWithRequested::only_path(Cow::Borrowed(&newpath)),
     )?;
 
   Ok(())
@@ -960,8 +960,8 @@ where
     .await
     .context_two_path(
       "symlink",
-      &PathWithRequested::only_path(Cow::Borrowed(&oldpath)),
-      &PathWithRequested::only_path(Cow::Borrowed(&newpath)),
+      PathWithRequested::only_path(Cow::Borrowed(&oldpath)),
+      PathWithRequested::only_path(Cow::Borrowed(&newpath)),
     )?;
 
   Ok(())
