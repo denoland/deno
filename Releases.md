@@ -12,7 +12,7 @@ https://github.com/denoland/deno_install
   (#30018)
 - Revert "fix(otel): flush data when terminating signal is received (#2…
   (#30019)
-- feat(otel): support vsock transport for telemetry (#30001)
+- feat(unstable/otel): support vsock transport for telemetry (#30001)
 - feat(unstable): tunnelling (#30022)
 - fix(bundle): don't use createRequire when targeting browser, make hack not
   depend on variable names (#30023)
