@@ -940,12 +940,15 @@ Deno.test(
     permissions: { read: true, write: true },
   },
   function netUnixAbstractPathShouldNotPanic() {
-    const listener = Deno.listen({
-      path: "\0aaa",
-      transport: "unix",
-    });
-    assert("not panic");
-    listener.close();
+    assertThrows(
+      () =>
+        Deno.listen({
+          path: "\0aaa",
+          transport: "unix",
+        }),
+      Error,
+      "file name contained an unexpected NUL byte",
+    );
   },
 );
 
