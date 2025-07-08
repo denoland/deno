@@ -8,10 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.4.1 / 2025.07.08
 
-- Revert "fix(ext/napi): ensure the finalizer callback will be called (…
-  (#30018)
-- Revert "fix(otel): flush data when terminating signal is received (#2…
-  (#30019)
 - feat(unstable/otel): support vsock transport for telemetry (#30001)
 - feat(unstable): tunnelling (#30022)
 - fix(bundle): don't use createRequire when targeting browser, make hack not
@@ -23,6 +19,10 @@ https://github.com/denoland/deno_install
   serve (#29974)
 - fix(unstable): bytes and text imports from npm dependencies should require
   `--allow-read` (#29990)
+- Revert "fix(ext/napi): ensure the finalizer callback will be called (…
+  (#30018)
+- Revert "fix(otel): flush data when terminating signal is received (#2…
+  (#30019)
 - perf: bust emit cache only on deno_ast version change (#29984)
 - perf: skip jsx transpile when disabled (#29995)
 
