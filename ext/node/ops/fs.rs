@@ -92,12 +92,12 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Read,
+    OpenAccessKind::ReadNoFollow,
     Some("node:fs.cpSync"),
   )?;
   let new_path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(new_path)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     Some("node:fs.cpSync"),
   )?;
 
@@ -119,12 +119,12 @@ where
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Read,
+      OpenAccessKind::ReadNoFollow,
       Some("node:fs.cpSync"),
     )?;
     let new_path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(new_path)),
-      OpenAccessKind::Write,
+      OpenAccessKind::WriteNoFollow,
       Some("node:fs.cpSync"),
     )?;
     (state.borrow::<FileSystemRc>().clone(), path, new_path)

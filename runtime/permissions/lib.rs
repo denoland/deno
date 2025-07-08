@@ -97,14 +97,6 @@ pub enum OpenAccessKind {
 }
 
 impl OpenAccessKind {
-  pub fn from_read_write(read: bool, write: bool) -> Self {
-    match (read, write) {
-      (true, true) => Self::ReadWrite,
-      (false, true) => Self::Write,
-      (true, false) | (false, false) => Self::Read,
-    }
-  }
-
   pub fn is_no_follow(&self) -> bool {
     match self {
       OpenAccessKind::ReadNoFollow

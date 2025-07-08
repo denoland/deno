@@ -61,22 +61,6 @@ pub trait FsPermissions {
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
 
-  fn check<'a>(
-    &mut self,
-    open_options: &OpenOptions,
-    path: Cow<'a, Path>,
-    api_name: &str,
-  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    self.check_open(
-      path,
-      OpenAccessKind::from_read_write(
-        open_options.read,
-        open_options.write || open_options.append,
-      ),
-      api_name,
-    )
-  }
-
   fn allows_all(&self) -> bool {
     false
   }

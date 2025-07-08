@@ -199,7 +199,7 @@ fn op_node_load_env_file(
     .borrow::<PermissionsContainer>()
     .check_open(
       Cow::Borrowed(Path::new(path)),
-      OpenAccessKind::Read,
+      OpenAccessKind::ReadNoFollow,
       Some("process.loadEnvFile"),
     )
     .map_err(DotEnvLoadErr::Permission)?;

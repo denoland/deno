@@ -121,7 +121,9 @@ fn sync_permission_check<'a, P: FsPermissions + 'static>(
   permissions: &'a mut P,
   api_name: &'static str,
 ) -> impl AccessCheckFn + 'a {
-  move |path, options| permissions.check(options, path, api_name)
+  move |path, options| {
+    permissions.check_open(path, open_options_to_access_kind(options), api_name)
+  }
 }
 
 fn async_permission_check<P: FsPermissions + 'static>(
@@ -131,7 +133,17 @@ fn async_permission_check<P: FsPermissions + 'static>(
   move |path, options| {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    permissions.check(options, path, api_name)
+    permissions.check_open(path, open_options_to_access_kind(options), api_name)
+  }
+}
+
+fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
+  let read = open_options.read;
+  let write = open_options.write || open_options.append;
+  match (read, write) {
+    (true, true) => OpenAccessKind::ReadWrite,
+    (false, true) => OpenAccessKind::Write,
+    (true, false) | (false, false) => OpenAccessKind::Read,
   }
 }
 
@@ -534,12 +546,12 @@ where
   let permissions = state.borrow_mut::<P>();
   let from = permissions.check_open(
     Cow::Borrowed(Path::new(from)),
-    OpenAccessKind::Read,
+    OpenAccessKind::ReadNoFollow,
     "Deno.copyFileSync()",
   )?;
   let to = permissions.check_open(
     Cow::Borrowed(Path::new(to)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     "Deno.copyFileSync()",
   )?;
 
@@ -564,12 +576,12 @@ where
     let permissions = state.borrow_mut::<P>();
     let from = permissions.check_open(
       Cow::Owned(PathBuf::from(from)),
-      OpenAccessKind::Read,
+      OpenAccessKind::ReadNoFollow,
       "Deno.copyFile()",
     )?;
     let to = permissions.check_open(
       Cow::Owned(PathBuf::from(to)),
-      OpenAccessKind::Write,
+      OpenAccessKind::WriteNoFollow,
       "Deno.copyFile()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), from, to)
@@ -1007,7 +1019,7 @@ where
 {
   let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Write,
+    OpenAccessKind::WriteNoFollow,
     "Deno.truncateSync()",
   )?;
 
@@ -1031,7 +1043,7 @@ where
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Write,
+      OpenAccessKind::WriteNoFollow,
       "Deno.truncate()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)

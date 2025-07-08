@@ -160,7 +160,7 @@ where
     s.borrow_mut::<NP>()
       .check_open(
         Cow::Owned(PathBuf::from(address_path)),
-        OpenAccessKind::Write,
+        OpenAccessKind::WriteNoFollow,
         "Deno.DatagramConn.send()",
       )
       .map_err(NetError::Permission)?

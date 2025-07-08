@@ -374,7 +374,7 @@ where
         permissions
           .check_open(
             Cow::Borrowed(Path::new(path)),
-            OpenAccessKind::Read,
+            OpenAccessKind::ReadNoFollow,
             "Deno.connectTls()",
           )
           .map_err(NetError::Permission)?,
