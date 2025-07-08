@@ -21,6 +21,7 @@ deno_permissions.workspace = true
 deno_tls.workspace = true
 hickory-proto.workspace = true
 hickory-resolver.workspace = true
+log.workspace = true
 pin-project.workspace = true
 quinn = { workspace = true, features = ["runtime-tokio", "rustls", "aws-lc-rs"] }
 rustls-tokio-stream.workspace = true

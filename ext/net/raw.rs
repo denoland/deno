@@ -290,6 +290,14 @@ network_stream!(
     tokio_vsock::VsockListener,
     tokio_vsock::VsockAddr,
     crate::io::VsockStreamResource
+  ],
+  [
+    Tunnel,
+    tunnel,
+    crate::tunnel::TunnelStream,
+    crate::tunnel::TunnelListener,
+    crate::tunnel::TunnelAddr,
+    crate::tunnel::TunnelStreamResource
   ]
 );
 
@@ -319,6 +327,14 @@ network_stream!(
     tokio::net::UnixListener,
     tokio::net::unix::SocketAddr,
     crate::io::UnixStreamResource
+  ],
+  [
+    Tunnel,
+    tunnel,
+    crate::tunnel::TunnelStream,
+    crate::tunnel::TunnelListener,
+    crate::tunnel::TunnelAddr,
+    crate::tunnel::TunnelStreamResource
   ]
 );
 
@@ -339,6 +355,14 @@ network_stream!(
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
     TlsStreamResource
+  ],
+  [
+    Tunnel,
+    tunnel,
+    crate::tunnel::TunnelStream,
+    crate::tunnel::TunnelListener,
+    crate::tunnel::TunnelAddr,
+    crate::tunnel::TunnelStreamResource
   ]
 );
 
@@ -348,6 +372,7 @@ pub enum NetworkStreamAddress {
   Unix(tokio::net::unix::SocketAddr),
   #[cfg(any(target_os = "linux", target_os = "macos"))]
   Vsock(tokio_vsock::VsockAddr),
+  Tunnel(crate::tunnel::TunnelAddr),
 }
 
 impl From<std::net::SocketAddr> for NetworkStreamAddress {
@@ -370,6 +395,12 @@ impl From<tokio_vsock::VsockAddr> for NetworkStreamAddress {
   }
 }
 
+impl From<crate::tunnel::TunnelAddr> for NetworkStreamAddress {
+  fn from(value: crate::tunnel::TunnelAddr) -> Self {
+    NetworkStreamAddress::Tunnel(value)
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TakeNetworkStreamError {
   #[class("Busy")]
@@ -386,6 +417,9 @@ pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("Vsock socket is currently in use")]
   VsockBusy,
+  #[class("Busy")]
+  #[error("Tunnel socket is currently in use")]
+  TunnelBusy,
   #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
@@ -457,6 +491,15 @@ pub fn take_network_stream_resource(
     }
     let vsock_stream = read_half.unsplit(write_half);
     return Ok(NetworkStream::Vsock(vsock_stream));
+  }
+
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::tunnel::TunnelStreamResource>(stream_rid)
+  {
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| TakeNetworkStreamError::TunnelBusy)?;
+    let stream = resource.into_inner();
+    return Ok(NetworkStream::Tunnel(stream));
   }
 
   Err(TakeNetworkStreamError::Resource(

@@ -862,6 +862,13 @@ impl NodeModulesDirMode {
   }
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct DeployConfig {
+  pub org: String,
+  pub app: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
@@ -880,6 +887,7 @@ pub struct ConfigFileJson {
   pub vendor: Option<bool>,
   pub license: Option<Value>,
   pub publish: Option<Value>,
+  pub deploy: Option<Value>,
 
   pub name: Option<String>,
   pub version: Option<String>,
@@ -1845,6 +1853,22 @@ impl ConfigFile {
         .ok()
       })
       .unwrap_or_default()
+  }
+
+  pub fn to_deploy_config(
+    &self,
+  ) -> Result<Option<DeployConfig>, ToInvalidConfigError> {
+    match &self.json.deploy {
+      Some(config) => {
+        Ok(Some(serde_json::from_value(config.clone()).map_err(
+          |error| ToInvalidConfigError::Parse {
+            config: "deploy",
+            source: error,
+          },
+        )?))
+      }
+      None => Ok(None),
+    }
   }
 
   pub fn resolve_tasks_config(

@@ -135,6 +135,7 @@ indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 jupyter-protocol = "0.8.0"
 jupyter_runtime = { package = "runtimelib", version = "=0.28.0", default-features = false, features = ["tokio-runtime", "aws-lc-rs"] }
+keyring = { version = "4.0.0-rc.1", features = ["vendored"] }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
