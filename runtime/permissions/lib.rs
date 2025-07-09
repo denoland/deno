@@ -129,10 +129,11 @@ impl OpenAccessKind {
   }
 }
 
+#[derive(Debug)]
 pub struct PathWithRequested<'a> {
   pub path: Cow<'a, Path>,
   /// Custom requested display name when differs from resolved.
-  pub requested: Option<String>,
+  pub requested: Option<Cow<'a, str>>,
 }
 
 impl<'a> PathWithRequested<'a> {
@@ -145,8 +146,22 @@ impl<'a> PathWithRequested<'a> {
 
   pub fn display(&self) -> std::path::Display<'_> {
     match &self.requested {
-      Some(requested) => Path::new(requested).display(),
+      Some(requested) => Path::new(requested.as_ref()).display(),
       None => self.path.display(),
+    }
+  }
+
+  pub fn as_owned(&self) -> PathBufWithRequested {
+    PathBufWithRequested {
+      path: self.path.to_path_buf(),
+      requested: self.requested.as_ref().map(|r| r.to_string()),
+    }
+  }
+
+  pub fn into_owned(self) -> PathBufWithRequested {
+    PathBufWithRequested {
+      path: self.path.into_owned(),
+      requested: self.requested.map(|r| r.into_owned()),
     }
   }
 }
@@ -171,14 +186,83 @@ impl<'a> AsRef<PathWithRequested<'a>> for PathWithRequested<'a> {
   }
 }
 
-pub struct CheckedPath<'a> {
-  pub path: PathWithRequested<'a>,
-  pub canonicalized: bool,
+#[derive(Debug, Clone)]
+pub struct PathBufWithRequested {
+  pub path: PathBuf,
+  /// Custom requested display name when differs from resolved.
+  pub requested: Option<String>,
 }
 
-impl CheckedPath<'_> {
+impl PathBufWithRequested {
+  pub fn only_path(path: PathBuf) -> Self {
+    Self {
+      path,
+      requested: None,
+    }
+  }
+
+  pub fn as_path_with_requested(&self) -> PathWithRequested {
+    PathWithRequested {
+      path: Cow::Borrowed(self.path.as_path()),
+      requested: self.requested.as_deref().map(Cow::Borrowed),
+    }
+  }
+}
+
+impl Deref for PathBufWithRequested {
+  type Target = Path;
+
+  fn deref(&self) -> &Self::Target {
+    &self.path
+  }
+}
+
+#[derive(Debug)]
+pub struct CheckedPath<'a> {
+  // these are private to prevent someone constructing this outside the crate
+  path: PathWithRequested<'a>,
+  canonicalized: bool,
+}
+
+impl<'a> CheckedPath<'a> {
+  pub fn unsafe_new(path: Cow<'a, Path>) -> Self {
+    Self {
+      path: PathWithRequested {
+        path,
+        requested: None,
+      },
+      canonicalized: false,
+    }
+  }
+
+  pub fn canonicalized(&self) -> bool {
+    self.canonicalized
+  }
+
   pub fn display(&self) -> std::path::Display<'_> {
     self.path.display()
+  }
+
+  pub fn into_path_with_requested(self) -> PathWithRequested<'a> {
+    self.path
+  }
+
+  pub fn as_owned(&self) -> CheckedPathBuf {
+    CheckedPathBuf {
+      path: self.path.as_owned(),
+      canonicalized: self.canonicalized,
+    }
+  }
+
+  pub fn into_owned(self) -> CheckedPathBuf {
+    CheckedPathBuf {
+      path: self.path.into_owned(),
+      canonicalized: self.canonicalized,
+    }
+  }
+
+  pub fn into_path(self) -> Cow<'a, Path> {
+    self.path.path
   }
 
   pub fn into_owned_path(self) -> PathBuf {
@@ -201,6 +285,46 @@ impl Deref for CheckedPath<'_> {
 }
 
 impl AsRef<Path> for CheckedPath<'_> {
+  fn as_ref(&self) -> &Path {
+    &self.path.path
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct CheckedPathBuf {
+  path: PathBufWithRequested,
+  canonicalized: bool,
+}
+
+impl CheckedPathBuf {
+  pub fn unsafe_new(path: PathBuf) -> Self {
+    Self {
+      path: PathBufWithRequested::only_path(path),
+      canonicalized: false,
+    }
+  }
+
+  pub fn as_checked_path(&self) -> CheckedPath<'_> {
+    CheckedPath {
+      path: self.path.as_path_with_requested(),
+      canonicalized: self.canonicalized,
+    }
+  }
+
+  pub fn into_path_buf(self) -> PathBuf {
+    self.path.path
+  }
+}
+
+impl Deref for CheckedPathBuf {
+  type Target = Path;
+
+  fn deref(&self) -> &Self::Target {
+    &self.path.path
+  }
+}
+
+impl AsRef<Path> for CheckedPathBuf {
   fn as_ref(&self) -> &Path {
     &self.path.path
   }
@@ -3044,7 +3168,7 @@ impl PermissionsContainer {
       Ok(CheckedPath {
         path: PathWithRequested {
           path: Cow::Owned(path.path),
-          requested: path.requested,
+          requested: path.requested.map(Cow::Owned),
         },
         canonicalized: false,
       })
@@ -3082,13 +3206,16 @@ impl PermissionsContainer {
     &self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<PathWithRequested<'a>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.write;
     if inner.is_allow_all() {
-      Ok(PathWithRequested {
-        path,
-        requested: None,
+      Ok(CheckedPath {
+        path: PathWithRequested {
+          path,
+          requested: None,
+        },
+        canonicalized: false,
       })
     } else {
       let desc = self
@@ -3096,9 +3223,15 @@ impl PermissionsContainer {
         .parse_path_query_from_path(path)?
         .into_write();
       inner.check_partial(&desc, Some(api_name))?;
-      Ok(PathWithRequested {
-        path: Cow::Owned(desc.0.path),
-        requested: desc.0.requested,
+      // skip checking for special permissions because we consider
+      // write_partial as WriteNoFollow because it's only used for
+      // fs::remove
+      Ok(CheckedPath {
+        path: PathWithRequested {
+          path: Cow::Owned(desc.0.path),
+          requested: desc.0.requested.map(Cow::Owned),
+        },
+        canonicalized: false,
       })
     }
   }
@@ -3198,7 +3331,7 @@ impl PermissionsContainer {
       return Ok(CheckedPath {
         path: PathWithRequested {
           path: Cow::Owned(path),
-          requested,
+          requested: requested.map(Cow::Owned),
         },
         canonicalized,
       });
@@ -3277,7 +3410,7 @@ impl PermissionsContainer {
         return Ok(CheckedPath {
           path: PathWithRequested {
             path: Cow::Owned(path),
-            requested,
+            requested: requested.map(Cow::Owned),
           },
           canonicalized,
         });
@@ -3309,7 +3442,7 @@ impl PermissionsContainer {
     Ok(CheckedPath {
       path: PathWithRequested {
         path: Cow::Owned(path),
-        requested,
+        requested: requested.map(Cow::Owned),
       },
       canonicalized,
     })

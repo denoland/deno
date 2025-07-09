@@ -11,11 +11,8 @@ use std::path::Path;
 pub use deno_io::fs::FsError;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
-use deno_permissions::PathWithRequested;
 use deno_permissions::PermissionCheckError;
 
-pub use crate::interface::AccessCheckCb;
-pub use crate::interface::AccessCheckFn;
 pub use crate::interface::FileSystem;
 pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;
@@ -26,7 +23,7 @@ pub use crate::ops::FsOpsErrorKind;
 pub use crate::ops::OperationError;
 use crate::ops::*;
 pub use crate::std_fs::RealFs;
-pub use crate::std_fs::open_options_with_access_check;
+pub use crate::std_fs::open_options_for_checked_path;
 pub use crate::sync::MaybeSend;
 pub use crate::sync::MaybeSync;
 
@@ -55,7 +52,7 @@ pub trait FsPermissions {
     &mut self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<PathWithRequested<'a>, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn check_write_all(
     &mut self,
     api_name: &str,
@@ -101,7 +98,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<PathWithRequested<'a>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_partial(
       self, path, api_name,
     )
