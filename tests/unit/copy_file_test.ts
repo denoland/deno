@@ -251,7 +251,7 @@ Deno.test(
 
 Deno.test(
   {
-    ignore: Deno.build.os === "windows",
+    ignore: Deno.build.os !== "linux",
     permissions: { read: true, write: true },
   },
   async function copyFileProc() {
