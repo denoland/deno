@@ -1321,7 +1321,7 @@ fn compiler_options_to_transpile_and_emit_options(
     inline_sources: options.inline_sources,
     remove_comments: false,
     source_map,
-    source_map_base: None,
+    source_map_base: overrides.source_map_base.clone(),
     source_map_file: None,
   };
   let transpile_and_emit_options_hash = {
