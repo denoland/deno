@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -591,11 +592,11 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
-    path: &'a std::path::Path,
-  ) -> Result<Cow<'a, std::path::Path>, JsErrorBox> {
-    if self.shared.modules.has_file(path) {
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, JsErrorBox> {
+    if self.shared.modules.has_file(&path) {
       // allow reading if the file is in the snapshot
-      return Ok(Cow::Borrowed(path));
+      return Ok(path);
     }
 
     self

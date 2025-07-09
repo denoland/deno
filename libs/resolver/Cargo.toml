@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_resolver"
-version = "0.40.0"
+version = "0.41.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -49,6 +49,7 @@ log.workspace = true
 node_resolver.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true
+phf = { workspace = true, features = ["macros"] }
 serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true

@@ -6,7 +6,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::Extension;
-use deno_io::fs::FsError;
+use deno_permissions::CheckedPath;
+use deno_permissions::OpenAccessKind;
+use deno_permissions::PathWithRequested;
 use deno_permissions::PermissionCheckError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
@@ -42,21 +44,12 @@ impl deno_fetch::FetchPermissions for Permissions {
     unreachable!("snapshotting!")
   }
 
-  fn check_read<'a>(
+  fn check_open<'a>(
     &mut self,
-    _p: Cow<'a, Path>,
+    _path: Cow<'a, Path>,
+    _open_access: OpenAccessKind,
     _api_name: &str,
-    _get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write<'a>(
-    &mut self,
-    _p: Cow<'a, Path>,
-    _api_name: &str,
-    _get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -104,27 +97,15 @@ impl deno_node::NodePermissions for Permissions {
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
-  fn check_read_path<'a>(
+  fn check_open<'a>(
     &mut self,
     _path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-  fn check_read_with_api_name(
-    &mut self,
-    _p: &str,
+    _open_access: OpenAccessKind,
     _api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
   fn query_read_all(&mut self) -> bool {
-    unreachable!("snapshotting!")
-  }
-  fn check_write_with_api_name(
-    &mut self,
-    _p: &str,
-    _api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
   fn check_sys(
@@ -145,27 +126,12 @@ impl deno_net::NetPermissions for Permissions {
     unreachable!("snapshotting!")
   }
 
-  fn check_read(
+  fn check_open<'a>(
     &mut self,
-    _p: &str,
+    _path: Cow<'a, Path>,
+    _open_access: OpenAccessKind,
     _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write(
-    &mut self,
-    _p: &str,
-    _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write_path<'a>(
-    &mut self,
-    _p: Cow<'a, Path>,
-    _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -182,20 +148,20 @@ impl deno_net::NetPermissions for Permissions {
 impl deno_fs::FsPermissions for Permissions {
   fn check_open<'a>(
     &mut self,
-    _read: bool,
-    _write: bool,
     _path: Cow<'a, Path>,
+    _access_kind: OpenAccessKind,
     _api_name: &str,
-    _get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
-  fn check_read(
+  fn check_open_blind<'a>(
     &mut self,
-    _path: &str,
+    _path: Cow<'a, Path>,
+    _access_kind: OpenAccessKind,
+    _display: &str,
     _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -206,28 +172,11 @@ impl deno_fs::FsPermissions for Permissions {
     unreachable!("snapshotting!")
   }
 
-  fn check_read_blind(
+  fn check_write_partial<'a>(
     &mut self,
-    _path: &Path,
-    _display: &str,
+    _path: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write(
-    &mut self,
-    _path: &str,
-    _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write_partial(
-    &mut self,
-    _path: &str,
-    _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+  ) -> Result<PathWithRequested<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
@@ -237,48 +186,16 @@ impl deno_fs::FsPermissions for Permissions {
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
-
-  fn check_write_blind(
-    &mut self,
-    _path: &Path,
-    _display: &str,
-    _api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_read_path<'a>(
-    &mut self,
-    _path: Cow<'a, Path>,
-    _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write_path<'a>(
-    &mut self,
-    _path: Cow<'a, Path>,
-    _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
 }
 
 impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
-  fn check_read(
+  fn check_open<'a>(
     &mut self,
-    _path: &str,
+    _p: Cow<'a, Path>,
+    _open_access: OpenAccessKind,
     _api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    unreachable!("snapshotting!")
-  }
-
-  fn check_write<'a>(
-    &mut self,
-    _path: Cow<'a, Path>,
-    _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    unreachable!("snapshotting!")
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    unreachable!("snapshotting!");
   }
 }
 
