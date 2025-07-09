@@ -587,26 +587,10 @@ pub trait QueryDescriptor: Debug {
 }
 
 fn format_display_name(display_name: Cow<str>) -> Cow<str> {
-  fn truncate_to_n(s: &mut String, n: usize) -> bool {
-    for (char_count, (idx, _)) in s.char_indices().enumerate() {
-      if char_count == n {
-        s.truncate(idx);
-        return true;
-      }
-    }
-    false
-  }
-
   if display_name.starts_with('<') && display_name.ends_with('>') {
     display_name
   } else {
-    let mut display = display_name.into_owned();
-    let truncated = if truncate_to_n(&mut display, 1024) {
-      "...(truncated)"
-    } else {
-      ""
-    };
-    Cow::Owned(format!("\"{}{}\"", display, truncated))
+    Cow::Owned(format!("\"{}\"", display_name))
   }
 }
 
@@ -6179,9 +6163,5 @@ mod tests {
   fn test_format_display_name() {
     assert_eq!(format_display_name(Cow::Borrowed("123")), "\"123\"");
     assert_eq!(format_display_name(Cow::Borrowed("<other>")), "<other>");
-    assert_eq!(
-      format_display_name(Cow::Owned("0".repeat(1080))),
-      format!("\"{}...(truncated)\"", "0".repeat(1024))
-    );
   }
 }
