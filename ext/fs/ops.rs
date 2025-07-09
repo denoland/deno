@@ -30,7 +30,6 @@ use deno_permissions::CheckedPathBuf;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PathWithRequested;
 use deno_permissions::PermissionCheckError;
-use deno_permissions::PermissionsContainer;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
@@ -81,14 +80,6 @@ pub enum FsOpsErrorKind {
   #[class(generic)]
   #[error("Invalid trailing character in suffix")]
   InvalidTrailingCharacter,
-  #[class("NotCapable")]
-  #[error("Requires {err} access to {path}, {}", print_not_capable_info(*.standalone, .err))]
-  NotCapableAccess {
-    // NotCapable
-    standalone: bool,
-    err: &'static str,
-    path: String,
-  },
   #[class(inherit)]
   #[error(transparent)]
   Other(JsErrorBox),
@@ -108,16 +99,6 @@ impl From<FsError> for FsOpsError {
   }
 }
 
-fn print_not_capable_info(standalone: bool, err: &'static str) -> String {
-  if standalone {
-    format!(
-      "specify the required permissions during compilation using `deno compile --allow-{err}`"
-    )
-  } else {
-    format!("run again with the --allow-{err} flag")
-  }
-}
-
 fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
   let read = open_options.read;
   let write = open_options.write || open_options.append;
@@ -125,34 +106,6 @@ fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
     (true, true) => OpenAccessKind::ReadWrite,
     (false, true) => OpenAccessKind::Write,
     (true, false) | (false, false) => OpenAccessKind::Read,
-  }
-}
-
-fn map_permission_error(
-  operation: &'static str,
-  error: FsError,
-  path: &CheckedPath,
-) -> FsOpsError {
-  match error {
-    FsError::PermissionCheck(PermissionCheckError::PermissionDenied(err)) => {
-      let path = format!("\"{}\"", path.display());
-      let (path, truncated) = if path.len() > 1024 {
-        (&path[0..1024], "...(truncated)")
-      } else {
-        (path.as_str(), "")
-      };
-
-      FsOpsErrorKind::NotCapableAccess {
-        standalone: deno_permissions::is_standalone(),
-        err: err.name,
-        path: format!("{path}{truncated}"),
-      }
-      .into_box()
-    }
-    err => Err::<(), _>(err)
-      .context_path(operation, path)
-      .err()
-      .unwrap(),
   }
 }
 
@@ -212,14 +165,12 @@ where
   let options = options.unwrap_or_else(OpenOptions::read);
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let path = state.borrow_mut::<PermissionsContainer>().check_open(
+  let path = state.borrow_mut::<P>().check_open(
     Cow::Borrowed(path),
     open_options_to_access_kind(&options),
     "Deno.openSync()",
   )?;
-  let file = fs
-    .open_sync(&path, options)
-    .map_err(|error| map_permission_error("open", error, &path))?;
+  let file = fs.open_sync(&path, options).context_path("open", &path)?;
   let rid = state
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
@@ -243,7 +194,7 @@ where
     let mut state = state.borrow_mut();
     (
       state.borrow::<FileSystemRc>().clone(),
-      state.borrow_mut::<PermissionsContainer>().check_open(
+      state.borrow_mut::<P>().check_open(
         Cow::Owned(path),
         open_options_to_access_kind(&options),
         "Deno.open()",
@@ -253,7 +204,7 @@ where
   let file = fs
     .open_async(path.as_owned(), options)
     .await
-    .map_err(|error| map_permission_error("open", error, &path))?;
+    .context_path("open", &path)?;
 
   let rid = state
     .borrow_mut()
@@ -1455,14 +1406,14 @@ where
 
   let options = OpenOptions::write(create, append, create_new, mode);
   let fs = state.borrow::<FileSystemRc>().clone();
-  let path = state.borrow::<PermissionsContainer>().check_open(
+  let path = state.borrow::<P>().check_open(
     Cow::Borrowed(path),
     OpenAccessKind::Write,
-    Some("Deno.writeFileSync()"),
+    "Deno.writeFileSync()",
   )?;
 
   fs.write_file_sync(&path, options, &data)
-    .map_err(|error| map_permission_error("writefile", error, &path))?;
+    .context_path("writefile", &path)?;
 
   Ok(())
 }
@@ -1490,10 +1441,10 @@ where
     let state = state.borrow_mut();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    let path = state.borrow::<PermissionsContainer>().check_open(
+    let path = state.borrow::<P>().check_open(
       Cow::Owned(path),
       OpenAccessKind::Write,
-      Some("Deno.writeFile()"),
+      "Deno.writeFile()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
@@ -1509,11 +1460,9 @@ where
       }
     };
 
-    res?.map_err(|error| map_permission_error("writefile", error, &path))?;
+    res?.context_path("writefile", &path)?;
   } else {
-    fut
-      .await
-      .map_err(|error| map_permission_error("writefile", error, &path))?;
+    fut.await.context_path("writefile", &path)?;
   }
 
   Ok(())
@@ -1531,14 +1480,12 @@ where
   let path = Path::new(path);
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let path = state.borrow::<PermissionsContainer>().check_open(
+  let path = state.borrow::<P>().check_open(
     Cow::Borrowed(path),
     OpenAccessKind::Read,
-    Some("Deno.readFileSync()"),
+    "Deno.readFileSync()",
   )?;
-  let buf = fs
-    .read_file_sync(&path)
-    .map_err(|error| map_permission_error("readfile", error, &path))?;
+  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
   Ok(buf.into_owned().into_boxed_slice().into())
@@ -1560,10 +1507,10 @@ where
     let state = state.borrow();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    let path = state.borrow::<PermissionsContainer>().check_open(
+    let path = state.borrow::<P>().check_open(
       Cow::Owned(path),
       OpenAccessKind::Read,
-      Some("Deno.readFile()"),
+      "Deno.readFile()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
@@ -1579,11 +1526,9 @@ where
       }
     };
 
-    res?.map_err(|error| map_permission_error("readfile", error, &path))?
+    res?.context_path("readfile", &path)?
   } else {
-    fut
-      .await
-      .map_err(|error| map_permission_error("readfile", error, &path))?
+    fut.await.context_path("readfile", &path)?
   };
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
@@ -1602,14 +1547,14 @@ where
   let path = Path::new(path);
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let path = state.borrow::<PermissionsContainer>().check_open(
+  let path = state.borrow::<P>().check_open(
     Cow::Borrowed(path),
     OpenAccessKind::Read,
-    Some("Deno.readFileSync()"),
+    "Deno.readFileSync()",
   )?;
   let str = fs
     .read_text_file_lossy_sync(&path)
-    .map_err(|error| map_permission_error("readfile", error, &path))?;
+    .context_path("readfile", &path)?;
   Ok(match str {
     Cow::Borrowed(text) => FastString::from_static(text),
     Cow::Owned(value) => value.into(),
@@ -1632,10 +1577,10 @@ where
     let state = state.borrow_mut();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    let path = state.borrow::<PermissionsContainer>().check_open(
+    let path = state.borrow::<P>().check_open(
       Cow::Owned(path),
       OpenAccessKind::Read,
-      Some("Deno.readFile()"),
+      "Deno.readFile()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
@@ -1651,11 +1596,9 @@ where
       }
     };
 
-    res?.map_err(|error| map_permission_error("readfile", error, &path))?
+    res?.context_path("readfile", &path)?
   } else {
-    fut
-      .await
-      .map_err(|error| map_permission_error("readfile", error, &path))?
+    fut.await.context_path("readfile", &path)?
   };
 
   Ok(match str {

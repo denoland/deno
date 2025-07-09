@@ -397,20 +397,8 @@ impl PermissionState {
     }
   }
 
-  /// Check the permission state. bool is whether a prompt was issued.
   #[inline]
   fn check(
-    self,
-    name: &'static str,
-    api_name: Option<&str>,
-    info: Option<&str>,
-    prompt: bool,
-  ) -> (Result<(), PermissionDeniedError>, bool, bool) {
-    self.check2(name, api_name, || info.map(|s| s.to_string()), prompt)
-  }
-
-  #[inline]
-  fn check2(
     self,
     name: &'static str,
     api_name: Option<&str>,
@@ -503,9 +491,12 @@ impl UnitPermission {
     self.state
   }
 
-  pub fn check(&mut self) -> Result<(), PermissionDeniedError> {
+  pub fn check(
+    &mut self,
+    info: impl Fn() -> Option<String>,
+  ) -> Result<(), PermissionDeniedError> {
     let (result, prompted, _is_allow_all) =
-      self.state.check(self.name, None, None, self.prompt);
+      self.state.check(self.name, None, info, self.prompt);
     if prompted {
       if result.is_ok() {
         self.state = PermissionState::Granted;
@@ -526,7 +517,7 @@ impl UnitPermission {
         // copy
       }
       ChildUnitPermissionArg::Granted => {
-        if self.check().is_err() {
+        if self.check(|| None).is_err() {
           return Err(ChildPermissionError::Escalation);
         }
         perm.state = PermissionState::Granted;
@@ -596,10 +587,26 @@ pub trait QueryDescriptor: Debug {
 }
 
 fn format_display_name(display_name: Cow<str>) -> Cow<str> {
+  fn truncate_to_n(s: &mut String, n: usize) -> bool {
+    for (char_count, (idx, _)) in s.char_indices().enumerate() {
+      if char_count == n {
+        s.truncate(idx);
+        return true;
+      }
+    }
+    false
+  }
+
   if display_name.starts_with('<') && display_name.ends_with('>') {
     display_name
   } else {
-    Cow::Owned(format!("\"{}\"", display_name))
+    let mut display = display_name.into_owned();
+    let truncated = if truncate_to_n(&mut display, 1024) {
+      "...(truncated)"
+    } else {
+      ""
+    };
+    Cow::Owned(format!("\"{}{}\"", display, truncated))
   }
 }
 
@@ -674,7 +681,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
   ) -> Result<(), PermissionDeniedError> {
     let (result, prompted, is_allow_all) = self
       .query_desc(desc, AllowPartial::from(!assert_non_partial))
-      .check2(
+      .check(
         TQuery::flag_name(),
         api_name,
         || desc.map(|d| format_display_name(d.display_name()).into_owned()),
@@ -2499,7 +2506,7 @@ impl UnaryPermission<RunQueryDescriptor> {
       return true;
     }
     let (result, _prompted, _is_allow_all) =
-      self.query_desc(None, AllowPartial::TreatAsDenied).check2(
+      self.query_desc(None, AllowPartial::TreatAsDenied).check(
         RunQueryDescriptor::flag_name(),
         api_name,
         || None,
@@ -3300,10 +3307,13 @@ impl PermissionsContainer {
   /// This checks to see if the allow-all flag was passed, not whether all
   /// permissions are enabled!
   #[inline(always)]
-  pub fn check_was_allow_all_flag_passed(
+  fn check_was_allow_all_flag_passed(
     &self,
+    context_path: &Path,
   ) -> Result<(), PermissionCheckError> {
-    self.inner.lock().all.check()?;
+    self.inner.lock().all.check(|| {
+      Some(format_display_name(context_path.to_string_lossy()).into_owned())
+    })?;
     Ok(())
   }
 
@@ -3396,12 +3406,12 @@ impl PermissionsContainer {
         if path.ends_with("/environ") {
           self.check_env_all()?;
         } else {
-          self.check_was_allow_all_flag_passed()?;
+          self.check_was_allow_all_flag_passed(&path)?;
         }
       }
     } else if cfg!(unix) {
       if path.starts_with("/dev") {
-        self.check_was_allow_all_flag_passed()?;
+        self.check_was_allow_all_flag_passed(&path)?;
       }
     } else if cfg!(target_os = "windows") {
       // \\.\nul is allowed
@@ -3434,7 +3444,7 @@ impl PermissionsContainer {
 
       // If this is a normalized drive path, accept it
       if !is_normalized_windows_drive_path(&path) {
-        self.check_was_allow_all_flag_passed()?;
+        self.check_was_allow_all_flag_passed(&path)?;
       }
     } else {
       unimplemented!()
@@ -6163,5 +6173,15 @@ mod tests {
     .unwrap();
 
     assert!(perms.env.check_all().is_err());
+  }
+
+  #[test]
+  fn test_format_display_name() {
+    assert_eq!(format_display_name(Cow::Borrowed("123")), "\"123\"");
+    assert_eq!(format_display_name(Cow::Borrowed("<other>")), "<other>");
+    assert_eq!(
+      format_display_name(Cow::Owned("0".repeat(1080))),
+      format!("\"{}...(truncated)\"", "0".repeat(1024))
+    );
   }
 }

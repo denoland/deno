@@ -146,7 +146,7 @@ impl deno_net::NetPermissions for Permissions {
 
 impl deno_fs::FsPermissions for Permissions {
   fn check_open<'a>(
-    &mut self,
+    &self,
     _path: Cow<'a, Path>,
     _access_kind: OpenAccessKind,
     _api_name: &str,
@@ -155,7 +155,7 @@ impl deno_fs::FsPermissions for Permissions {
   }
 
   fn check_open_blind<'a>(
-    &mut self,
+    &self,
     _path: Cow<'a, Path>,
     _access_kind: OpenAccessKind,
     _display: &str,
@@ -165,14 +165,14 @@ impl deno_fs::FsPermissions for Permissions {
   }
 
   fn check_read_all(
-    &mut self,
+    &self,
     _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
   fn check_write_partial<'a>(
-    &mut self,
+    &self,
     _path: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
@@ -180,7 +180,7 @@ impl deno_fs::FsPermissions for Permissions {
   }
 
   fn check_write_all(
-    &mut self,
+    &self,
     _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")

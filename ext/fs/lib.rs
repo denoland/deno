@@ -30,33 +30,28 @@ pub use crate::sync::MaybeSync;
 pub trait FsPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_open<'a>(
-    &mut self,
+    &self,
     path: Cow<'a, Path>,
     access_kind: OpenAccessKind,
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_open_blind<'a>(
-    &mut self,
+    &self,
     path: Cow<'a, Path>,
     access_kind: OpenAccessKind,
     display: &str,
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  fn check_read_all(
-    &mut self,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
+  fn check_read_all(&self, api_name: &str) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_write_partial<'a>(
-    &mut self,
+    &self,
     path: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  fn check_write_all(
-    &mut self,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError>;
+  fn check_write_all(&self, api_name: &str)
+  -> Result<(), PermissionCheckError>;
 
   fn allows_all(&self) -> bool {
     false
@@ -65,7 +60,7 @@ pub trait FsPermissions {
 
 impl FsPermissions for deno_permissions::PermissionsContainer {
   fn check_open<'a>(
-    &mut self,
+    &self,
     path: Cow<'a, Path>,
     access_kind: OpenAccessKind,
     api_name: &str,
@@ -79,7 +74,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
   }
 
   fn check_open_blind<'a>(
-    &mut self,
+    &self,
     path: Cow<'a, Path>,
     access_kind: OpenAccessKind,
     display: &str,
@@ -95,7 +90,7 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
   }
 
   fn check_write_partial<'a>(
-    &mut self,
+    &self,
     path: Cow<'a, Path>,
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
@@ -104,15 +99,12 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     )
   }
 
-  fn check_read_all(
-    &mut self,
-    api_name: &str,
-  ) -> Result<(), PermissionCheckError> {
+  fn check_read_all(&self, api_name: &str) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_read_all(self, api_name)
   }
 
   fn check_write_all(
-    &mut self,
+    &self,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_all(self, api_name)
