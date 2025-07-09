@@ -248,3 +248,21 @@ Deno.test(
     }, TypeError);
   },
 );
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  async function copyFileProc() {
+    // should not be able to copy from /proc without --allow-all permissions
+    assertThrows(
+      () => Deno.copyFileSync("/proc/self/status", "data.txt"),
+      Deno.errors.NotCapable,
+    );
+    await assertRejects(
+      () => Deno.copyFile("/proc/self/status", "data.txt"),
+      Deno.errors.NotCapable,
+    );
+  },
+);
