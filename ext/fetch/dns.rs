@@ -8,21 +8,36 @@ use std::task::Poll;
 use std::task::{self};
 use std::vec;
 
+use deno_core::url::Url;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
 use tokio::task::JoinHandle;
 use tower::Service;
 
+use crate::FetchPermissions;
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
-pub enum Resolver {
-  /// A resolver using blocking `getaddrinfo` calls in a threadpool.
+pub enum ResolverKind {
   Gai(GaiResolver),
-  /// hickory-resolver's userspace resolver.
   Hickory(hickory_resolver::Resolver<TokioConnectionProvider>),
-  /// A custom resolver that implements `Resolve`.
   Custom(Arc<dyn Resolve>),
+}
+
+#[derive(Clone)]
+pub struct Resolver {
+  pub kind: ResolverKind,
+  pub permissions: Arc<dyn FetchPermissions + 'static>,
+}
+
+impl std::fmt::Debug for Resolver {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Resolver")
+      .field("kind", &self.kind)
+      .field("permissions", &"...")
+      .finish()
+  }
 }
 
 /// Alias for the `Future` type returned by a custom DNS resolver.
@@ -41,28 +56,48 @@ pub trait Resolve: Send + Sync + std::fmt::Debug {
   fn resolve(&self, name: Name) -> Resolving;
 }
 
-impl Default for Resolver {
-  fn default() -> Self {
-    Self::gai()
-  }
-}
-
 impl Resolver {
-  pub fn gai() -> Self {
-    Self::Gai(GaiResolver::new())
+  pub fn default(permissions: Arc<dyn FetchPermissions + 'static>) -> Self {
+    Self::gai(permissions)
+  }
+
+  pub fn gai(permissions: Arc<dyn FetchPermissions + 'static>) -> Self {
+    Self {
+      kind: ResolverKind::Gai(GaiResolver::new()),
+      permissions,
+    }
+  }
+
+  pub fn custom(
+    permissions: Arc<dyn FetchPermissions + 'static>,
+    resolver: Arc<dyn Resolve>,
+  ) -> Self {
+    Self {
+      kind: ResolverKind::Custom(resolver),
+      permissions,
+    }
   }
 
   /// Create a [`AsyncResolver`] from system conf.
-  pub fn hickory() -> Result<Self, hickory_resolver::ResolveError> {
-    Ok(Self::Hickory(
-      hickory_resolver::Resolver::tokio_from_system_conf()?,
-    ))
+  pub fn hickory(
+    permissions: Arc<dyn FetchPermissions + 'static>,
+  ) -> Result<Self, hickory_resolver::ResolveError> {
+    Ok(Self {
+      kind: ResolverKind::Hickory(
+        hickory_resolver::Resolver::tokio_from_system_conf()?,
+      ),
+      permissions,
+    })
   }
 
   pub fn hickory_from_resolver(
+    permissions: Arc<dyn FetchPermissions + 'static>,
     resolver: hickory_resolver::Resolver<TokioConnectionProvider>,
   ) -> Self {
-    Self::Hickory(resolver)
+    Self {
+      kind: ResolverKind::Hickory(resolver),
+      permissions,
+    }
   }
 }
 
@@ -106,17 +141,26 @@ impl Service<Name> for Resolver {
   }
 
   fn call(&mut self, name: Name) -> Self::Future {
-    let task = match self {
-      Resolver::Gai(gai_resolver) => {
+    let permissions = self.permissions.clone();
+    let task = match &mut self.kind {
+      ResolverKind::Gai(gai_resolver) => {
         let mut resolver = gai_resolver.clone();
         tokio::spawn(async move {
           let result = resolver.call(name).await?;
           let x: Vec<_> = result.into_iter().collect();
+          for addr in &x {
+            permissions
+              .check_net_url(
+                &Url::parse(&format!("http://{}", addr)).unwrap(),
+                "Deno.openKv",
+              )
+              .unwrap();
+          }
           let iter: SocketAddrs = x.into_iter();
           Ok(iter)
         })
       }
-      Resolver::Hickory(async_resolver) => {
+      ResolverKind::Hickory(async_resolver) => {
         let resolver = async_resolver.clone();
         tokio::spawn(async move {
           let result = resolver.lookup_ip(name.as_str()).await?;
@@ -127,7 +171,7 @@ impl Service<Name> for Resolver {
           Ok(iter)
         })
       }
-      Resolver::Custom(resolver) => {
+      ResolverKind::Custom(resolver) => {
         let resolver = resolver.clone();
         tokio::spawn(async move { resolver.resolve(name).await })
       }
@@ -138,9 +182,52 @@ impl Service<Name> for Resolver {
 
 #[cfg(test)]
 mod tests {
+  use std::borrow::Cow;
+  use std::path::Path;
   use std::str::FromStr;
 
+  use deno_core::url::Url;
+  use deno_fs::FsError;
+  use deno_permissions::PermissionCheckError;
+
   use super::*;
+
+  impl FetchPermissions for () {
+    fn check_net_url(
+      &self,
+      _url: &Url,
+      _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+      Ok(())
+    }
+
+    fn check_read<'a>(
+      &mut self,
+      _path: Cow<'a, Path>,
+      _api_name: &str,
+      _get_path: &'a dyn deno_fs::GetPath,
+    ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+      Ok(deno_fs::CheckedPath::Unresolved(_path))
+    }
+
+    fn check_write<'a>(
+      &mut self,
+      _path: Cow<'a, Path>,
+      _api_name: &str,
+      _get_path: &'a dyn deno_fs::GetPath,
+    ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+      Ok(deno_fs::CheckedPath::Unresolved(_path))
+    }
+
+    fn check_net_vsock(
+      &mut self,
+      _cid: u32,
+      _port: u32,
+      _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+      Ok(())
+    }
+  }
 
   // A resolver that resolves any name into the same address.
   #[derive(Debug)]
@@ -155,9 +242,10 @@ mod tests {
 
   #[tokio::test]
   async fn custom_dns_resolver() {
-    let mut resolver = Resolver::Custom(Arc::new(DebugResolver(
-      "127.0.0.1:8080".parse().unwrap(),
-    )));
+    let mut resolver = Resolver::custom(
+      Arc::new(()),
+      Arc::new(DebugResolver("127.0.0.1:8080".parse().unwrap())),
+    );
     let mut addr = resolver
       .call(Name::from_str("foo.com").unwrap())
       .await
