@@ -3370,7 +3370,7 @@ impl PermissionsContainer {
       return Ok(CheckedPath {
         path: PathWithRequested {
           path: Cow::Owned(path),
-          requested,
+          requested: requested.map(Cow::Owned),
         },
         canonicalized,
       });
@@ -3384,7 +3384,7 @@ impl PermissionsContainer {
         return Ok(CheckedPath {
           path: PathWithRequested {
             path: Cow::Owned(path),
-            requested,
+            requested: requested.map(Cow::Owned),
           },
           canonicalized,
         });

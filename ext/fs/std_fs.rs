@@ -1142,14 +1142,12 @@ pub fn open_options_for_checked_path(
   }
 
   #[cfg(unix)]
-  if path.canonicalized {
+  if path.canonicalized() {
     // Don't follow symlinks on open -- we must always pass fully-resolved files
     // with the exception of /proc/ which is too special, and /dev/std* which might point to
     // proc.
     use std::os::unix::fs::OpenOptionsExt;
-    if resolved {
-      opts.custom_flags(libc::O_NOFOLLOW);
-    }
+    opts.custom_flags(libc::O_NOFOLLOW);
   }
 
   opts
