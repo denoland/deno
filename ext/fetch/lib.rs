@@ -122,8 +122,8 @@ impl Options {
   }
 }
 
-impl Default for Options {
-  fn default() -> Self {
+impl Options {
+  pub fn default(permissions: Arc<dyn FetchPermissions>) -> Self {
     Self {
       user_agent: "".to_string(),
       root_cert_store_provider: None,
@@ -133,7 +133,7 @@ impl Default for Options {
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
-      resolver: dns::Resolver::default(),
+      resolver: dns::Resolver::default(permissions),
     }
   }
 }
@@ -398,9 +398,11 @@ impl Drop for ResourceToBodyAdapter {
   }
 }
 
-pub trait FetchPermissions {
+pub trait FetchPermissions:
+  dyn_clone::DynClone + Send + Sync + 'static
+{
   fn check_net_url(
-    &mut self,
+    &self,
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
@@ -419,10 +421,12 @@ pub trait FetchPermissions {
   ) -> Result<(), PermissionCheckError>;
 }
 
+dyn_clone::clone_trait_object!(FetchPermissions);
+
 impl FetchPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_net_url(
-    &mut self,
+    &self,
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
@@ -963,7 +967,10 @@ where
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
-      dns_resolver: dns::Resolver::default(),
+      dns_resolver: {
+        let permissions = Arc::new(dyn_clone::clone(state.borrow::<FP>()));
+        dns::Resolver::default(permissions)
+      },
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -1008,13 +1015,13 @@ pub struct CreateHttpClientOptions {
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
 }
 
-impl Default for CreateHttpClientOptions {
-  fn default() -> Self {
+impl CreateHttpClientOptions {
+  pub fn default(permissions: Arc<dyn FetchPermissions>) -> Self {
     CreateHttpClientOptions {
       root_cert_store: None,
       ca_certs: vec![],
       proxy: None,
-      dns_resolver: dns::Resolver::default(),
+      dns_resolver: dns::Resolver::default(permissions),
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,

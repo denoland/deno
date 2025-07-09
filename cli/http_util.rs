@@ -17,6 +17,7 @@ use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
+use deno_runtime::deno_fetch::FetchPermissions;
 use deno_runtime::deno_fetch::ResBody;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -55,6 +56,46 @@ impl std::fmt::Debug for HttpClientProvider {
   }
 }
 
+#[derive(Clone)]
+struct Noop;
+
+impl FetchPermissions for Noop {
+  fn check_net_url(
+    &self,
+    _url: &Url,
+    _api_name: &str,
+  ) -> Result<(), deno_runtime::deno_permissions::PermissionCheckError> {
+    Ok(())
+  }
+
+  fn check_open<'a>(
+    &mut self,
+    path: std::borrow::Cow<'a, std::path::Path>,
+    _open_access: deno_runtime::deno_permissions::OpenAccessKind,
+    _api_name: &str,
+  ) -> Result<
+    deno_runtime::deno_permissions::CheckedPath<'a>,
+    deno_runtime::deno_permissions::PermissionCheckError,
+  > {
+    Ok(deno_runtime::deno_permissions::CheckedPath {
+      path: deno_runtime::deno_permissions::PathWithRequested {
+        path,
+        requested: None,
+      },
+      canonicalized: false,
+    })
+  }
+
+  fn check_net_vsock(
+    &mut self,
+    _cid: u32,
+    _port: u32,
+    _api_name: &str,
+  ) -> Result<(), deno_runtime::deno_permissions::PermissionCheckError> {
+    Ok(())
+  }
+}
+
 impl HttpClientProvider {
   pub fn new(
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -63,7 +104,7 @@ impl HttpClientProvider {
     Self {
       options: CreateHttpClientOptions {
         unsafely_ignore_certificate_errors,
-        ..Default::default()
+        ..CreateHttpClientOptions::default(Arc::new(Noop))
       },
       root_cert_store_provider,
       clients_by_thread_id: Default::default(),

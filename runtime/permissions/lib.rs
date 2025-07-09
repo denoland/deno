@@ -3444,7 +3444,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_net_url(
-    &mut self,
+    &self,
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
