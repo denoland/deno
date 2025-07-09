@@ -30,6 +30,7 @@ use deno_core::serde_v8::from_v8;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
 use deno_core::v8;
+use deno_error::JsErrorClass;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
@@ -1296,6 +1297,23 @@ pub async fn op_http_wait(
     if let HttpNextError::Io(err) = &err {
       if err.kind() == io::ErrorKind::NotConnected {
         return Ok(null());
+      }
+    }
+
+    if let HttpNextError::Other(err) = &err {
+      if let Some(err) = err.as_any().downcast_ref::<std::io::Error>() {
+        if let Some(err) = err.get_ref() {
+          if let Some(err) =
+            err.downcast_ref::<deno_net::tunnel::quinn::ConnectionError>()
+          {
+            if matches!(
+              err,
+              deno_net::tunnel::quinn::ConnectionError::LocallyClosed
+            ) {
+              return Ok(null());
+            }
+          }
+        }
       }
     }
 

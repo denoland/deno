@@ -8,7 +8,6 @@ use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
-use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -31,9 +30,11 @@ use deno_graph::source::ResolveError;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
+use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfigResolver;
+use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::graph::EnhanceGraphErrorMode;
 use deno_resolver::graph::enhance_graph_error;
 use deno_resolver::graph::enhanced_integrity_error_message;
@@ -43,6 +44,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
 use indexmap::IndexMap;
+use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
 
 use crate::args::CliLockfile;
@@ -161,6 +163,53 @@ pub fn graph_walk_errors<'a>(
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions<'a>,
 ) -> impl Iterator<Item = JsErrorBox> + 'a {
+  fn should_ignore_node_js_error_code_for_types(code: NodeJsErrorCode) -> bool {
+    match code {
+      NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
+      | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
+      | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+      | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
+      | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+      | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
+      | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH => false,
+      NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
+      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
+      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+      | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => true,
+    }
+  }
+
+  fn should_ignore_resolve_error_for_types(err: &JsErrorBox) -> bool {
+    if let Some(err) = err.as_any().downcast_ref::<DenoResolveErrorKind>() {
+      match err {
+        DenoResolveErrorKind::InvalidVendorFolderImport
+        | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+        | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+        | DenoResolveErrorKind::MappedResolution { .. }
+        | DenoResolveErrorKind::NodeModulesOutOfDate { .. }
+        | DenoResolveErrorKind::PackageJsonDepValueParse { .. }
+        | DenoResolveErrorKind::PackageJsonDepValueUrlParse { .. }
+        | DenoResolveErrorKind::PathToUrl { .. }
+        | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq { .. }
+        | DenoResolveErrorKind::WorkspaceResolvePkgJsonFolder { .. } => false,
+        DenoResolveErrorKind::ResolveNpmReqRef(err) => err
+          .err
+          .as_kind()
+          .maybe_code()
+          .map(should_ignore_node_js_error_code_for_types)
+          .unwrap_or(false),
+        DenoResolveErrorKind::Node(err) => err
+          .as_kind()
+          .maybe_code()
+          .map(should_ignore_node_js_error_code_for_types)
+          .unwrap_or(false),
+      }
+    } else {
+      false
+    }
+  }
+
   fn should_ignore_resolution_error_for_types(err: &ResolutionError) -> bool {
     match err {
       ResolutionError::ResolverError { error, .. } => match error.as_ref() {
@@ -169,7 +218,7 @@ pub fn graph_walk_errors<'a>(
           err.as_kind(),
           import_map::ImportMapErrorKind::UnmappedBareSpecifier { .. }
         ),
-        ResolveError::Other(_) => false,
+        ResolveError::Other(err) => should_ignore_resolve_error_for_types(err),
       },
       _ => false,
     }
@@ -824,26 +873,23 @@ impl ModuleGraphBuilder {
           let mut imports_by_referrer = IndexMap::<_, Vec<_>>::with_capacity(
             self.compiler_options_resolver.size(),
           );
-          for (referrer, files) in self
-            .compiler_options_resolver
-            .ts_configs()
-            .iter()
-            .filter_map(|t| t.files())
+          for (_, compiler_options_data, maybe_files) in
+            self.compiler_options_resolver.entries()
           {
-            imports_by_referrer
-              .entry(referrer)
-              .or_default()
-              .extend(files.iter().map(|f| f.relative_specifier.clone()));
-          }
-          for (referrer, types) in self
-            .compiler_options_resolver
-            .all()
-            .flat_map(|d| d.compiler_options_types().as_ref())
-          {
-            imports_by_referrer
-              .entry(referrer)
-              .or_default()
-              .extend(types.clone());
+            if let Some((referrer, files)) = maybe_files {
+              imports_by_referrer
+                .entry(referrer.as_ref())
+                .or_default()
+                .extend(files.iter().map(|f| f.relative_specifier.clone()));
+            }
+            for (referrer, types) in
+              compiler_options_data.compiler_options_types().as_ref()
+            {
+              imports_by_referrer
+                .entry(referrer)
+                .or_default()
+                .extend(types.iter().cloned());
+            }
           }
           imports_by_referrer
             .into_iter()

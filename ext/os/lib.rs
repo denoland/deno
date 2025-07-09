@@ -42,7 +42,7 @@ impl ExitCode {
 }
 
 pub fn exit(code: i32) -> ! {
-  deno_telemetry::flush();
+  deno_signals::run_exit();
   #[allow(clippy::disallowed_methods)]
   std::process::exit(code);
 }
@@ -80,10 +80,6 @@ deno_core::extension!(
   state = |state, options| {
     if let Some(exit_code) = options.exit_code {
       state.put::<ExitCode>(exit_code);
-    }
-    #[cfg(unix)]
-    {
-      state.put(ops::signal::SignalState::default());
     }
   }
 );

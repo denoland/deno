@@ -21,6 +21,7 @@ use deno_tls::SocketUse;
 use deno_tls::TlsKeys;
 use deno_tls::create_client_config;
 use deno_tls::rustls::RootCertStore;
+pub use quinn;
 use quinn::ConnectionError;
 use quinn::crypto::rustls::QuicClientConfig;
 use tokio::io::AsyncRead;
@@ -61,63 +62,21 @@ static TUNNEL: OnceLock<crate::tunnel::TunnelListener> = OnceLock::new();
 
 pub fn set_tunnel(tunnel: crate::tunnel::TunnelListener) {
   if TUNNEL.set(tunnel).is_ok() {
-    setup_signal_handlers();
+    deno_signals::before_exit(before_exit);
+  }
+}
+
+fn before_exit() {
+  if let Some(tunnel) = get_tunnel() {
+    tunnel.connection.close(1u32.into(), b"");
+    // stay alive long enough to actually send the close frame, since
+    // we can't rely on the linux kernel to close this like with tcp.
+    deno_core::futures::executor::block_on(tunnel.endpoint.wait_idle());
   }
 }
 
 pub fn get_tunnel() -> Option<&'static crate::tunnel::TunnelListener> {
   TUNNEL.get()
-}
-
-#[cfg(unix)]
-fn setup_signal_handlers() {
-  use tokio::signal::unix::SignalKind;
-
-  let signals_to_handle = [
-    SignalKind::hangup(),
-    SignalKind::interrupt(),
-    SignalKind::terminate(),
-  ];
-
-  for signal_kind in signals_to_handle {
-    tokio::spawn(async move {
-      let Ok(mut signal_fut) = tokio::signal::unix::signal(signal_kind) else {
-        return;
-      };
-
-      loop {
-        signal_fut.recv().await;
-        if let Some(tunnel) = get_tunnel() {
-          tunnel.connection.close(1u32.into(), b"");
-        }
-      }
-    });
-  }
-}
-
-#[cfg(windows)]
-fn setup_signal_handlers() {
-  macro_rules! handle_signal {
-    ($handler:expr) => {
-      tokio::spawn(async {
-        let Ok(mut signal_fut) = $handler() else {
-          return;
-        };
-        loop {
-          signal_fut.recv().await;
-          if let Some(tunnel) = get_tunnel() {
-            tunnel.connection.close(1u32.into(), b"");
-          }
-        }
-      });
-    };
-  }
-
-  handle_signal!(tokio::signal::windows::ctrl_break);
-  handle_signal!(tokio::signal::windows::ctrl_c);
-  handle_signal!(tokio::signal::windows::ctrl_close);
-  handle_signal!(tokio::signal::windows::ctrl_logoff);
-  handle_signal!(tokio::signal::windows::ctrl_shutdown);
 }
 
 /// Essentially a SocketAddr, except we prefer a human
