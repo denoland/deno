@@ -1422,12 +1422,12 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
-    path: &'a Path,
+    path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox> {
-    if let Ok(url) = deno_path_util::url_from_file_path(path) {
+    if let Ok(url) = deno_path_util::url_from_file_path(&path) {
       // allow reading if it's in the module graph
       if self.graph_container.graph().get(&url).is_some() {
-        return Ok(Cow::Borrowed(path));
+        return Ok(path);
       }
     }
     self

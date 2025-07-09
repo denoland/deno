@@ -2189,6 +2189,7 @@ dependencies = [
  "async-trait",
  "deno_core",
  "deno_error",
+ "deno_permissions",
  "deno_subprocess_windows",
  "filetime",
  "fs3",
