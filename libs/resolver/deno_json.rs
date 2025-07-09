@@ -295,10 +295,16 @@ pub fn get_base_compiler_options_for_emit(
       "moduleResolution": "NodeNext",
       "moduleDetection": "force",
       "noEmit": true,
-      "noImplicitOverride": true,
+      "noImplicitOverride": match defaults {
+        CompilerOptionsDefaults::Deno => true,
+        CompilerOptionsDefaults::TscCompatible => false,
+      },
       "resolveJsonModule": true,
       "sourceMap": false,
-      "strict": true,
+      "strict": match defaults {
+        CompilerOptionsDefaults::Deno => true,
+        CompilerOptionsDefaults::TscCompatible => false,
+      },
       "target": "esnext",
       "tsBuildInfoFile": "internal:///.tsbuildinfo",
       "useDefineForClassFields": true,
