@@ -167,6 +167,7 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
       NetworkStreamAddress::Unix(_) => None,
       #[cfg(any(target_os = "linux", target_os = "macos"))]
       NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
+      NetworkStreamAddress::Tunnel(ref addr) => Some(addr.port() as _),
     };
     let peer_address = match peer_address {
       NetworkStreamAddress::Ip(addr) => Rc::from(addr.ip().to_string()),
@@ -176,6 +177,7 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
       NetworkStreamAddress::Vsock(addr) => {
         Rc::from(format!("vsock:{}", addr.cid()))
       }
+      NetworkStreamAddress::Tunnel(ref addr) => Rc::from(addr.hostname()),
     };
     let local_port = listen_properties.local_port;
     let stream_type = listen_properties.stream_type;
@@ -216,6 +218,7 @@ fn listener_properties(
     NetworkStreamAddress::Unix(_) => None,
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     NetworkStreamAddress::Vsock(vsock) => Some(vsock.port()),
+    NetworkStreamAddress::Tunnel(addr) => Some(addr.port() as _),
   };
   Ok(HttpListenProperties {
     scheme,
@@ -264,13 +267,20 @@ fn req_host_from_addr(
     NetworkStreamAddress::Vsock(vsock) => {
       format!("{}:{}", vsock.cid(), vsock.port())
     }
+    NetworkStreamAddress::Tunnel(addr) => {
+      if addr.port() == 443 {
+        addr.hostname()
+      } else {
+        format!("{}:{}", addr.hostname(), addr.port())
+      }
+    }
   }
 }
 
 fn req_scheme_from_stream_type(stream_type: NetworkStreamType) -> &'static str {
   match stream_type {
     NetworkStreamType::Tcp => "http://",
-    NetworkStreamType::Tls => "https://",
+    NetworkStreamType::Tls | NetworkStreamType::Tunnel => "https://",
     #[cfg(unix)]
     NetworkStreamType::Unix => "http+unix://",
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -292,7 +302,7 @@ fn req_host<'a>(
           return Some(Cow::Borrowed(auth.host()));
         }
       }
-      NetworkStreamType::Tls => {
+      NetworkStreamType::Tls | NetworkStreamType::Tunnel => {
         if port == 443 {
           return Some(Cow::Borrowed(auth.host()));
         }

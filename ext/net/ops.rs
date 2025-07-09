@@ -45,6 +45,7 @@ use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
+use crate::tunnel::TunnelAddr;
 
 pub type Fd = u32;
 
@@ -64,6 +65,15 @@ impl From<SocketAddr> for IpAddr {
   fn from(addr: SocketAddr) -> Self {
     Self {
       hostname: addr.ip().to_string(),
+      port: addr.port(),
+    }
+  }
+}
+
+impl From<TunnelAddr> for IpAddr {
+  fn from(addr: TunnelAddr) -> Self {
+    Self {
+      hostname: addr.hostname(),
       port: addr.port(),
     }
   }
@@ -155,6 +165,9 @@ pub enum NetError {
   #[class(generic)]
   #[error("VSOCK is not supported on this platform")]
   VsockUnsupported,
+  #[class(generic)]
+  #[error("Tunnel is not open")]
+  TunnelMissing,
 }
 
 pub(crate) fn accept_err(e: std::io::Error) -> NetError {
@@ -826,6 +839,51 @@ pub fn op_net_accept_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
 
+#[op2]
+#[serde]
+pub fn op_net_listen_tunnel(
+  state: &mut OpState,
+) -> Result<(ResourceId, IpAddr), NetError> {
+  let Some(listener) = super::tunnel::get_tunnel() else {
+    return Err(NetError::TunnelMissing);
+  };
+  let listener = listener.clone();
+  let local_addr = listener.local_addr()?.into();
+  let rid = state
+    .resource_table
+    .add(crate::raw::NetworkListenerResource::new(listener));
+  Ok((rid, local_addr))
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_net_accept_tunnel(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<NetworkListenerResource<crate::tunnel::TunnelListener>>(rid)
+    .map_err(|_| NetError::ListenerClosed)?;
+  let listener = RcRef::map(&resource, |r| &r.listener)
+    .try_borrow_mut()
+    .ok_or_else(|| NetError::AcceptTaskOngoing)?;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let (stream, _) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(accept_err)?;
+  let local_addr = stream.local_addr()?;
+  let remote_addr = stream.peer_addr()?;
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(crate::tunnel::TunnelStreamResource::new(stream));
+  Ok((rid, local_addr.into(), remote_addr.into()))
+}
+
 #[derive(Serialize, Eq, PartialEq, Debug)]
 #[serde(untagged)]
 pub enum DnsRecordData {
@@ -1142,13 +1200,15 @@ mod tests {
   use std::net::Ipv6Addr;
   use std::net::ToSocketAddrs;
   use std::path::Path;
-  use std::path::PathBuf;
   use std::sync::Arc;
   use std::sync::Mutex;
 
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use deno_core::futures::FutureExt;
+  use deno_permissions::CheckedPath;
+  use deno_permissions::OpenAccessKind;
+  use deno_permissions::PathWithRequested;
   use deno_permissions::PermissionCheckError;
   use hickory_proto::rr::Name;
   use hickory_proto::rr::rdata::SOA;
@@ -1356,28 +1416,19 @@ mod tests {
       Ok(())
     }
 
-    fn check_read(
+    fn check_open<'a>(
       &mut self,
-      p: &str,
+      path: Cow<'a, Path>,
+      _access_kind: OpenAccessKind,
       _api_name: &str,
-    ) -> Result<PathBuf, PermissionCheckError> {
-      Ok(PathBuf::from(p))
-    }
-
-    fn check_write(
-      &mut self,
-      p: &str,
-      _api_name: &str,
-    ) -> Result<PathBuf, PermissionCheckError> {
-      Ok(PathBuf::from(p))
-    }
-
-    fn check_write_path<'a>(
-      &mut self,
-      p: Cow<'a, Path>,
-      _api_name: &str,
-    ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-      Ok(p)
+    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+      Ok(CheckedPath {
+        path: PathWithRequested {
+          path,
+          requested: None,
+        },
+        canonicalized: false,
+      })
     }
 
     fn check_vsock(

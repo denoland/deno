@@ -424,6 +424,8 @@
 "parallel/test-fs-close.js" = {}
 "parallel/test-fs-constants.js" = {}
 "parallel/test-fs-empty-readStream.js" = {}
+"parallel/test-fs-exists.js" = {}
+"parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
 "parallel/test-fs-long-path.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
