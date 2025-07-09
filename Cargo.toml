@@ -25,6 +25,7 @@ members = [
   "ext/net",
   "ext/node",
   "ext/rt_helper",
+  "ext/signals",
   "ext/telemetry",
   "ext/url",
   "ext/web",
@@ -101,6 +102,7 @@ deno_net = { version = "0.202.0", path = "./ext/net" }
 deno_node = { version = "0.148.0", path = "./ext/node" }
 deno_os = { version = "0.27.0", path = "./ext/os" }
 deno_process = { version = "0.25.0", path = "./ext/process" }
+deno_signals = { version = "0.1.0", path = "./ext/signals" }
 deno_telemetry = { version = "0.32.0", path = "./ext/telemetry" }
 deno_tls = { version = "0.197.0", path = "./ext/tls" }
 deno_url = { version = "0.210.0", path = "./ext/url" }
@@ -242,6 +244,7 @@ serde-value = "0.7"
 serde_bytes = "0.11"
 serde_json = "1.0.85"
 serde_repr = "=0.1.19"
+signal-hook = "0.3"
 simd-json = "0.14.0"
 slab = "0.4"
 smallvec = "1.8"
