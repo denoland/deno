@@ -5,6 +5,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
+import { join } from "@std/path";
 
 Deno.test(
   { permissions: { read: true, write: true } },
@@ -49,8 +50,8 @@ Deno.test(
   { permissions: { read: true, write: true } },
   function linkSyncExists() {
     const testDir = Deno.makeTempDirSync();
-    const oldName = testDir + "/oldname";
-    const newName = testDir + "/newname";
+    const oldName = join(testDir, "oldname");
+    const newName = join(testDir, "newname");
     Deno.writeFileSync(oldName, new TextEncoder().encode("oldName"));
     // newname is already created.
     Deno.writeFileSync(newName, new TextEncoder().encode("newName"));
@@ -69,8 +70,8 @@ Deno.test(
   { permissions: { read: true, write: true } },
   function linkSyncNotFound() {
     const testDir = Deno.makeTempDirSync();
-    const oldName = testDir + "/oldname";
-    const newName = testDir + "/newname";
+    const oldName = join(testDir, "oldname");
+    const newName = join(testDir, "newname");
 
     assertThrows(
       () => {
@@ -143,8 +144,8 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function linkExists() {
     const testDir = Deno.makeTempDirSync();
-    const oldName = testDir + "/oldname";
-    const newName = testDir + "/newname";
+    const oldName = join(testDir, "oldname");
+    const newName = join(testDir, "newname");
     Deno.writeFileSync(oldName, new TextEncoder().encode("oldName"));
     // newname is already created.
     Deno.writeFileSync(newName, new TextEncoder().encode("newName"));
@@ -163,8 +164,8 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function linkNotFound() {
     const testDir = Deno.makeTempDirSync();
-    const oldName = testDir + "/oldname";
-    const newName = testDir + "/newname";
+    const oldName = join(testDir, "oldname");
+    const newName = join(testDir, "newname");
 
     await assertRejects(
       async () => {

@@ -55,7 +55,7 @@ pub async fn execute_script(
   flags: Arc<Flags>,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() && !task_flags.eval {
@@ -174,7 +174,11 @@ pub async fn execute_script(
   let npm_installer = factory.npm_installer_if_managed().await?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
-  let env_vars = task_runner::real_env_vars();
+  let mut env_vars = task_runner::real_env_vars();
+
+  if let Some(connected) = &flags.connected {
+    env_vars.insert("DENO_CONNECTED".into(), connected.into());
+  }
 
   let no_of_concurrent_tasks = if let Ok(value) = std::env::var("DENO_JOBS") {
     value.parse::<NonZeroUsize>().ok()

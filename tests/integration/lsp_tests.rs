@@ -32,7 +32,7 @@ fn lsp_startup_shutdown() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_init_tsconfig() {
+fn lsp_config_setting() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
@@ -66,7 +66,7 @@ fn lsp_init_tsconfig() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_tsconfig_types() {
+fn lsp_config_setting_compiler_options_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
@@ -110,7 +110,7 @@ fn lsp_tsconfig_types() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_tsconfig_types_config_sub_dir() {
+fn lsp_config_setting_compiler_options_types_config_sub_dir() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
@@ -17135,6 +17135,177 @@ fn lsp_workspace_compiler_options_root_dirs() {
   assert_eq!(json!(diagnostics.all()), json!([]));
   let diagnostics = client.did_open_file(&file2);
   assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_tsconfig_scopes() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write(
+    "project1/tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["deno.window"],
+      },
+    })
+    .to_string(),
+  );
+  let file1 = temp_dir.source_file("project1/file.ts", "Deno;\ndocument;\n");
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  temp_dir.write(
+    "project2/tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  let file2 = temp_dir.source_file("project2/file.ts", "Deno;\ndocument;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file1);
+  let diagnostics = client.did_open_file(&file2);
+  let mut messages = diagnostics.all_messages();
+  messages.sort_by_key(|d| d.uri.to_string());
+  assert_eq!(
+    json!(&messages),
+    json!([
+      {
+        "uri": file1.uri(),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 8 },
+            },
+            "severity": 1,
+            "code": 2584,
+            "source": "deno-ts",
+            "message": "Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.",
+          },
+        ],
+        "version": 1,
+      },
+      {
+        "uri": file2.uri(),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 4 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib=\"deno.ns\" />",
+          },
+        ],
+        "version": 1,
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_tsconfig_references_extends_include() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "exclude": ["file3.ts"],
+      "compilerOptions": {
+        "lib": ["deno.window"],
+      },
+      "references": [
+        { "path": "tsconfig.dom.json" },
+      ],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "tsconfig.dom.json",
+    json!({
+      "extends": "./tsconfig.dom_include.json",
+      "compilerOptions": {
+        "composite": true,
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "tsconfig.dom_include.json",
+    json!({
+      "include": ["file2.ts"],
+    })
+    .to_string(),
+  );
+  // This file is scoped for `tsconfig.json`.
+  let file1 = temp_dir.source_file("file1.ts", "Deno;\ndocument;\n");
+  // This file is scoped for `tsconfig.dom.json`.
+  let file2 = temp_dir.source_file("file2.ts", "Deno;\ndocument;\n");
+  // This file is scoped for `deno.json`. Since no compiler options are
+  // specified, it will use the default. Since there are tsconfigs in the
+  // workspace, the defaults will be tsc-compatible (`[ "deno.window", "dom"]`).
+  let file3 = temp_dir.source_file("file2.ts", "Deno;\ndocument;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file1);
+  client.did_open_file(&file2);
+  let diagnostics = client.did_open_file(&file3);
+  let mut messages = diagnostics.all_messages();
+  messages.sort_by_key(|d| d.uri.to_string());
+  assert_eq!(
+    json!(&messages),
+    json!([
+      {
+        "uri": file1.uri(),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 8 },
+            },
+            "severity": 1,
+            "code": 2584,
+            "source": "deno-ts",
+            "message": "Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.",
+          },
+        ],
+        "version": 1,
+      },
+      {
+        "uri": file2.uri(),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 4 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib=\"deno.ns\" />",
+          },
+        ],
+        "version": 1,
+      },
+    ]),
+  );
   client.shutdown();
 }
 

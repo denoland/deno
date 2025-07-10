@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -591,11 +592,11 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
-    path: &'a std::path::Path,
-  ) -> Result<Cow<'a, std::path::Path>, JsErrorBox> {
-    if self.shared.modules.has_file(path) {
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, JsErrorBox> {
+    if self.shared.modules.has_file(&path) {
       // allow reading if the file is in the snapshot
-      return Ok(Cow::Borrowed(path));
+      return Ok(path);
     }
 
     self
@@ -608,7 +609,7 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   fn load_text_file_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<Cow<'static, str>, JsErrorBox> {
+  ) -> Result<FastString, JsErrorBox> {
     let file_entry = self
       .shared
       .vfs
@@ -621,7 +622,10 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
         file_entry.transpiled_offset.unwrap_or(file_entry.offset),
       )
       .map_err(JsErrorBox::from_err)?;
-    Ok(from_utf8_lossy_cow(file_bytes))
+    Ok(match from_utf8_lossy_cow(file_bytes) {
+      Cow::Borrowed(s) => FastString::from_static(s),
+      Cow::Owned(s) => s.into(),
+    })
   }
 
   fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError> {

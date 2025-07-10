@@ -284,6 +284,7 @@ mod test {
 
   use deno_config::workspace::WorkspaceDiscoverStart;
   use deno_path_util::url_from_file_path;
+  use deno_resolver::deno_json::CompilerOptionsOverrides;
   use deno_resolver::factory::ConfigDiscoveryOption;
   use deno_resolver::factory::WorkspaceDirectoryProvider;
   use deno_resolver::npm::ByonmNpmResolverCreateOptions;
@@ -426,7 +427,7 @@ mod test {
     let specifier_unfurler = SpecifierUnfurler::new(resolver, false);
     let package_json_resolver =
       Arc::new(PackageJsonResolver::new(sys.clone(), None));
-    let node_resolver = NodeResolver::new(
+    let node_resolver = Arc::new(NodeResolver::new(
       DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm),
       DenoIsBuiltInNodeModuleChecker,
       CliNpmResolver::new(NpmResolverCreateOptions::Byonm(
@@ -439,12 +440,13 @@ mod test {
       package_json_resolver,
       NodeResolutionSys::new(sys.clone(), None),
       NodeResolverOptions::default(),
-    );
+    ));
     let compiler_options_resolver = Arc::new(CompilerOptionsResolver::new(
       &sys,
       &WorkspaceDirectoryProvider::from_initial_dir(&Arc::new(workspace_dir)),
       &node_resolver,
       &ConfigDiscoveryOption::DiscoverCwd,
+      &CompilerOptionsOverrides::default(),
     ));
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),

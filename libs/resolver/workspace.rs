@@ -856,6 +856,8 @@ pub enum ResolutionKind {
   Execution,
   /// Resolving for code that will be used for type information.
   Types,
+  /// Resolving for code that will be bundled.
+  Bundling,
 }
 
 impl ResolutionKind {
@@ -869,6 +871,7 @@ impl From<NodeResolutionKind> for ResolutionKind {
     match value {
       NodeResolutionKind::Execution => Self::Execution,
       NodeResolutionKind::Types => Self::Types,
+      NodeResolutionKind::Bundling => Self::Bundling,
     }
   }
 }

@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -11,8 +10,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
-use deno_config::deno_json::CompilerOptions;
-use deno_config::deno_json::CompilerOptionsWithIgnoredOptions;
 use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
@@ -20,11 +17,9 @@ use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceCache;
-use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
@@ -37,11 +32,9 @@ use deno_core::serde::Serialize;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
-use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::LifecycleScriptsConfig;
@@ -75,17 +68,12 @@ use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::CliLockfile;
 use crate::args::ConfigFile;
-use crate::args::LintFlags;
-use crate::args::LintOptions;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::sys::CliSys;
-use crate::tools::lint::CliLinter;
-use crate::tools::lint::CliLinterOptions;
-use crate::tools::lint::LintRuleProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -1223,50 +1211,6 @@ impl Config {
   }
 }
 
-#[derive(Debug, Serialize)]
-pub struct LspCompilerOptions {
-  #[serde(flatten)]
-  inner: CompilerOptions,
-}
-
-impl Default for LspCompilerOptions {
-  fn default() -> Self {
-    Self {
-      inner: CompilerOptions::new(json!({
-        "allowJs": true,
-        "esModuleInterop": true,
-        "experimentalDecorators": false,
-        "isolatedModules": true,
-        "lib": ["deno.ns", "deno.window", "deno.unstable"],
-        "module": "esnext",
-        "moduleDetection": "force",
-        "noEmit": true,
-        "noImplicitOverride": true,
-        "resolveJsonModule": true,
-        "strict": true,
-        "target": "esnext",
-        "useDefineForClassFields": true,
-        "jsx": "react",
-        "jsxFactory": "React.createElement",
-        "jsxFragmentFactory": "React.Fragment",
-      })),
-    }
-  }
-}
-
-impl LspCompilerOptions {
-  pub fn new(raw_compiler_options: CompilerOptionsWithIgnoredOptions) -> Self {
-    let mut base_compiler_options = Self::default();
-    for ignored_options in &raw_compiler_options.ignored_options {
-      lsp_warn!("{}", ignored_options)
-    }
-    base_compiler_options
-      .inner
-      .merge_mut(raw_compiler_options.compiler_options);
-    base_compiler_options
-  }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigWatchedFileType {
   DenoJson,
@@ -1283,11 +1227,8 @@ pub struct ConfigData {
   pub canonicalized_scope: Option<Arc<ModuleSpecifier>>,
   pub member_dir: Arc<WorkspaceDirectory>,
   pub fmt_config: Arc<FmtConfig>,
-  pub lint_config: Arc<WorkspaceDirLintConfig>,
   pub test_config: Arc<TestConfig>,
   pub exclude_files: Arc<PathOrPatternSet>,
-  pub linter: Arc<CliLinter>,
-  pub compiler_options: Arc<LspCompilerOptions>,
   pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
   pub vendor_dir: Option<PathBuf>,
@@ -1478,9 +1419,6 @@ impl ConfigData {
         config_discovery: ConfigDiscoveryOption::DiscoverCwd,
         maybe_custom_deno_dir_root: None,
         is_package_manager_subcommand: false,
-        emit_cache_version: Cow::Borrowed(
-          deno_lib::version::DENO_VERSION_INFO.deno,
-        ),
         frozen_lockfile: None,
         lock_arg: None,
         lockfile_skip_write: false,
@@ -1500,6 +1438,7 @@ impl ConfigData {
       ResolverFactoryOptions {
         // these default options are fine because we don't use this for
         // anything other than resolving the lockfile at the moment
+        compiler_options_overrides: Default::default(),
         is_cjs_resolution_mode: Default::default(),
         npm_system_info: Default::default(),
         node_code_translator_mode: Default::default(),
@@ -1564,19 +1503,6 @@ impl ConfigData {
           FmtConfig::new_with_base(default_file_pattern_base.clone())
         }),
     );
-    let lint_config = Arc::new(
-      member_dir
-        .to_lint_config(FilePatterns::new_with_base(member_dir.dir_path()))
-        .inspect_err(|err| {
-          lsp_warn!("  Couldn't read lint configuration: {}", err)
-        })
-        .ok()
-        .unwrap_or_else(|| WorkspaceDirLintConfig {
-          rules: Default::default(),
-          plugins: Default::default(),
-          files: FilePatterns::new_with_base(default_file_pattern_base.clone()),
-        }),
-    );
 
     let test_config = Arc::new(
       member_dir
@@ -1599,37 +1525,6 @@ impl ConfigData {
         .ok()
         .unwrap_or_default(),
     );
-
-    let compiler_options = member_dir
-      .to_raw_user_provided_compiler_options(&CliSys::default())
-      .map(LspCompilerOptions::new)
-      .unwrap_or_default();
-
-    let deno_lint_config =
-      if compiler_options.inner.0.get("jsx").and_then(|v| v.as_str())
-        == Some("react")
-      {
-        let default_jsx_factory = compiler_options
-          .inner
-          .0
-          .get("jsxFactory")
-          .and_then(|v| v.as_str());
-        let default_jsx_fragment_factory = compiler_options
-          .inner
-          .0
-          .get("jsxFragmentFactory")
-          .and_then(|v| v.as_str());
-        DenoLintConfig {
-          default_jsx_factory: default_jsx_factory.map(String::from),
-          default_jsx_fragment_factory: default_jsx_fragment_factory
-            .map(String::from),
-        }
-      } else {
-        DenoLintConfig {
-          default_jsx_factory: None,
-          default_jsx_fragment_factory: None,
-        }
-      };
 
     let vendor_dir = member_dir.workspace.vendor_dir_path().cloned();
     // todo(dsherret): maybe add caching so we don't load this so many times
@@ -1807,47 +1702,6 @@ impl ConfigData {
       );
     }
     let resolver = Arc::new(resolver);
-    let lint_rule_provider = LintRuleProvider::new(Some(resolver.clone()));
-
-    let lint_options =
-      LintOptions::resolve((*lint_config).clone(), &LintFlags::default())
-        .inspect_err(|err| {
-          lsp_warn!("  Failed to resolve linter options: {}", err)
-        })
-        .ok()
-        .unwrap_or_default();
-    let mut plugin_runner = None;
-    if !lint_options.plugins.is_empty() {
-      fn logger_printer(msg: &str, _is_err: bool) {
-        lsp_log!("pluggin runner - {}", msg);
-      }
-      let logger = crate::tools::lint::PluginLogger::new(logger_printer);
-      let plugin_load_result =
-        crate::tools::lint::create_runner_and_load_plugins(
-          lint_options.plugins.clone(),
-          logger,
-          lint_options.rules.exclude.clone(),
-        )
-        .await;
-      match plugin_load_result {
-        Ok(runner) => {
-          plugin_runner = Some(Arc::new(runner));
-        }
-        Err(err) => {
-          lsp_warn!("Failed to load lint plugins: {}", err);
-        }
-      }
-    }
-
-    let linter = Arc::new(CliLinter::new(CliLinterOptions {
-      configured_rules: lint_rule_provider.resolve_lint_rules(
-        lint_options.rules,
-        member_dir.maybe_deno_json().map(|c| c.as_ref()),
-      ),
-      fix: false,
-      deno_lint_config,
-      maybe_plugin_runner: plugin_runner,
-    }));
 
     ConfigData {
       scope,
@@ -1855,11 +1709,8 @@ impl ConfigData {
       member_dir,
       resolver,
       fmt_config,
-      lint_config,
       test_config,
-      linter,
       exclude_files,
-      compiler_options: Arc::new(compiler_options),
       byonm,
       node_modules_dir,
       vendor_dir,
@@ -1879,16 +1730,6 @@ impl ConfigData {
 
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
     self.member_dir.maybe_pkg_json()
-  }
-
-  pub fn maybe_jsx_import_source_config(
-    &self,
-  ) -> Option<JsxImportSourceConfig> {
-    self
-      .member_dir
-      .to_maybe_jsx_import_source_config()
-      .ok()
-      .flatten()
   }
 
   pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {

@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -32,6 +31,7 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::TypesDependency;
 use deno_path_util::url_to_file_path;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_runtime::deno_node;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -66,6 +66,8 @@ use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::graph_util::CliJsrUrlProvider;
+use crate::lsp::compiler_options::LspCompilerOptionsData;
+use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 
 #[derive(Debug)]
 pub struct OpenDocument {
@@ -843,6 +845,7 @@ pub struct DocumentModule {
   pub script_version: String,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
+  pub compiler_options_key: CompilerOptionsKey,
   pub media_type: MediaType,
   pub headers: Option<HashMap<String, String>>,
   pub text: DocumentText,
@@ -857,9 +860,12 @@ pub struct DocumentModule {
 }
 
 impl DocumentModule {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     document: &Document,
     specifier: Arc<Url>,
+    compiler_options_key: CompilerOptionsKey,
+    compiler_options_data: &LspCompilerOptionsData,
     scope: Option<Arc<Url>>,
     resolver: &LspResolver,
     config: &Config,
@@ -888,6 +894,7 @@ impl DocumentModule {
           headers.as_ref(),
           media_type,
           scope.as_deref(),
+          compiler_options_data,
           resolver,
         )
       } else {
@@ -913,6 +920,7 @@ impl DocumentModule {
       script_version: document.script_version(),
       specifier,
       scope,
+      compiler_options_key,
       media_type,
       headers,
       text,
@@ -1033,6 +1041,7 @@ impl WeakDocumentModuleMap {
 pub struct DocumentModules {
   pub documents: Documents,
   config: Arc<Config>,
+  compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
   resolver: Arc<LspResolver>,
   cache: Arc<LspCache>,
   workspace_files: Arc<IndexSet<PathBuf>>,
@@ -1045,11 +1054,13 @@ impl DocumentModules {
   pub fn update_config(
     &mut self,
     config: &Config,
+    compiler_options_resolver: &Arc<LspCompilerOptionsResolver>,
     resolver: &Arc<LspResolver>,
     cache: &LspCache,
     workspace_files: &Arc<IndexSet<PathBuf>>,
   ) {
     self.config = Arc::new(config.clone());
+    self.compiler_options_resolver = compiler_options_resolver.clone();
     self.cache = Arc::new(cache.clone());
     self.resolver = resolver.clone();
     self.workspace_files = workspace_files.clone();
@@ -1198,9 +1209,20 @@ impl DocumentModules {
     let specifier = specifier
       .cloned()
       .or_else(|| self.infer_specifier(document))?;
+    let (compiler_options_key, compiler_options_data) =
+      self.compiler_options_resolver.entry_for_specifier(
+        if specifier.scheme() != "file" && scope.is_some() {
+          #[allow(clippy::unnecessary_unwrap)]
+          scope.unwrap()
+        } else {
+          &specifier
+        },
+      );
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
+      compiler_options_key.clone(),
+      compiler_options_data,
       scope.cloned().map(Arc::new),
       &self.resolver,
       &self.config,
@@ -1355,37 +1377,37 @@ impl DocumentModules {
   }
 
   /// This will not store any module entries, only retrieve existing entries or
-  /// create temporary entries for scopes where one doesn't exist.
+  /// create temporary entries for other keys.
   // TODO(nayeemrmn): Support notebook scopes here.
-  pub fn inspect_or_temp_modules_by_scope(
+  pub fn get_or_temp_modules_by_compiler_options_key(
     &self,
     document: &Document,
-  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
+  ) -> BTreeMap<CompilerOptionsKey, Arc<DocumentModule>> {
+    let Some(primary_module) = self.primary_module(document) else {
+      return Default::default();
+    };
     let mut result = BTreeMap::new();
-    for (scope, modules) in self.modules_by_scope.iter() {
-      let module = modules.get(document).unwrap_or_else(|| {
+    for (compiler_options_key, compiler_options_data) in
+      self.compiler_options_resolver.entries()
+    {
+      if compiler_options_key == &primary_module.compiler_options_key {
+        continue;
+      }
+      result.insert(
+        compiler_options_key.clone(),
         Arc::new(DocumentModule::new(
           document,
-          Arc::new(uri_to_url(document.uri())),
-          Some(scope.clone()),
+          primary_module.specifier.clone(),
+          compiler_options_key.clone(),
+          compiler_options_data,
+          primary_module.scope.clone(),
           &self.resolver,
           &self.config,
           &self.cache,
-        ))
-      });
-      result.insert(Some(scope.clone()), module);
+        )),
+      );
     }
-    let module = self.modules_unscoped.get(document).unwrap_or_else(|| {
-      Arc::new(DocumentModule::new(
-        document,
-        Arc::new(uri_to_url(document.uri())),
-        None,
-        &self.resolver,
-        &self.config,
-        &self.cache,
-      ))
-    });
-    result.insert(None, module);
+    result.insert(primary_module.compiler_options_key.clone(), primary_module);
     result
   }
 
@@ -1427,16 +1449,6 @@ impl DocumentModules {
     for modules in self.modules_by_scope.values() {
       modules.remove_expired();
     }
-  }
-
-  pub fn scopes(&self) -> BTreeSet<Option<Arc<Url>>> {
-    self
-      .modules_by_scope
-      .keys()
-      .cloned()
-      .map(Some)
-      .chain([None])
-      .collect()
   }
 
   pub fn specifier_exists(&self, specifier: &Url, scope: Option<&Url>) -> bool {
@@ -1495,11 +1507,19 @@ impl DocumentModules {
         scope.and_then(|s| self.config.tree.data_by_scope().get(s));
       if let Some(config_data) = config_data {
         (|| {
-          let member_dir = &config_data.member_dir;
-          let jsx_config =
-            member_dir.to_maybe_jsx_import_source_config().ok()??;
-          let import_source_types = jsx_config.import_source_types.as_ref()?;
-          let import_source = jsx_config.import_source.as_ref()?;
+          let compiler_options_data = self
+            .compiler_options_resolver
+            .for_specifier(&config_data.scope);
+          let import_source_types = compiler_options_data
+            .jsx_import_source_config
+            .as_ref()?
+            .import_source_types
+            .as_ref()?;
+          let import_source = compiler_options_data
+            .jsx_import_source_config
+            .as_ref()?
+            .import_source
+            .as_ref()?;
           let scoped_resolver =
             self.resolver.get_scoped_resolver(scope.map(|s| s.as_ref()));
           let cli_resolver = scoped_resolver.as_cli_resolver();
@@ -1921,7 +1941,8 @@ fn parse_and_analyze_module(
   text: Arc<str>,
   maybe_headers: Option<&HashMap<String, String>>,
   media_type: MediaType,
-  file_referrer: Option<&ModuleSpecifier>,
+  scope: Option<&Url>,
+  compiler_options_data: &LspCompilerOptionsData,
   resolver: &LspResolver,
 ) -> (
   Option<ParsedSourceResult>,
@@ -1933,7 +1954,8 @@ fn parse_and_analyze_module(
     specifier,
     &parsed_source_result,
     maybe_headers,
-    file_referrer,
+    scope,
+    compiler_options_data,
     resolver,
   );
   (
@@ -1963,18 +1985,16 @@ fn analyze_module(
   specifier: ModuleSpecifier,
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
-  file_referrer: Option<&ModuleSpecifier>,
+  scope: Option<&Url>,
+  compiler_options_data: &LspCompilerOptionsData,
   resolver: &LspResolver,
 ) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
     Ok(parsed_source) => {
-      let scoped_resolver = resolver.get_scoped_resolver(file_referrer);
+      let scoped_resolver = resolver.get_scoped_resolver(scope);
       let cli_resolver = scoped_resolver.as_cli_resolver();
       let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
-      let config_data = scoped_resolver.as_config_data();
       let valid_referrer = specifier.clone();
-      let jsx_import_source_config =
-        config_data.and_then(|d| d.maybe_jsx_import_source_config());
       let module_resolution_mode = is_cjs_resolver.get_lsp_resolution_mode(
         &specifier,
         Some(parsed_source.compute_is_script()),
@@ -1983,7 +2003,9 @@ fn analyze_module(
         valid_referrer: &valid_referrer,
         module_resolution_mode,
         cli_resolver,
-        jsx_import_source_config: jsx_import_source_config.as_ref(),
+        jsx_import_source_config: compiler_options_data
+          .jsx_import_source_config
+          .as_deref(),
       };
       (
         Ok(deno_graph::parse_module_from_ast(
@@ -2054,9 +2076,12 @@ mod tests {
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
+    let compiler_options_resolver =
+      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
+      &compiler_options_resolver,
       &resolver,
       &cache,
       &Default::default(),
@@ -2199,8 +2224,11 @@ console.log(b, "hello deno");
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
+      let compiler_options_resolver =
+        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
       document_modules.update_config(
         &config,
+        &compiler_options_resolver,
         &resolver,
         &cache,
         &workspace_files,
@@ -2241,8 +2269,11 @@ console.log(b, "hello deno");
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
+      let compiler_options_resolver =
+        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
       document_modules.update_config(
         &config,
+        &compiler_options_resolver,
         &resolver,
         &cache,
         &workspace_files,
