@@ -200,7 +200,7 @@ pub enum PackageJsonLoadError {
     source: serde_json::Error,
   },
   #[error(
-    "\"exports\" cannot contains some keys starting with '.' and some not.\nThe exports object must either be an object of package subpath keys\nor an object of main entry condition name keys only."
+    "\"exports\" cannot contain some keys starting with '.' and some not.\nThe exports object must either be an object of package subpath keys\nor an object of main entry condition name keys only."
   )]
   #[class(type)]
   InvalidExports,

@@ -1,0 +1,6 @@
+{
+  "extends": ["./tsconfig.dom_files.json", "./tsconfig.dom.json"],
+  "compilerOptions": {
+    "composite": true
+  }
+}
