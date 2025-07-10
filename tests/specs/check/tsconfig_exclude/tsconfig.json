@@ -1,6 +1,8 @@
 {
-  "exclude": ["*.deno.ts"],
   "compilerOptions": {
-    "lib": ["esnext", "dom"]
-  }
+    "lib": ["deno.window"]
+  },
+  "references": [
+    { "path": "tsconfig.dom.json" }
+  ]
 }
