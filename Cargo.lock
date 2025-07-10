@@ -945,17 +945,14 @@ dependencies = [
  "async-trait",
  "bytes",
  "chrono",
- "deno_bench_util",
  "deno_cache_dir",
  "deno_lockfile 0.30.2",
  "deno_semver",
- "deno_terminal 0.2.2",
  "deno_tower_lsp",
  "deno_unsync",
  "fastwebsockets",
  "file_test_runner",
  "flaky_test",
- "hickory-client",
  "hickory-proto",
  "hickory-server",
  "http 1.1.0",
@@ -1596,7 +1593,6 @@ dependencies = [
  "faster-hex",
  "flate2",
  "fs3",
- "glibc_version",
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
@@ -1922,7 +1918,6 @@ dependencies = [
  "curve25519-dalek",
  "deno_core",
  "deno_error",
- "deno_web",
  "ecdsa",
  "ed448-goldilocks",
  "elliptic-curve",
@@ -1949,7 +1944,6 @@ dependencies = [
 name = "deno_crypto_provider"
 version = "0.4.0"
 dependencies = [
- "aws-lc-rs",
  "aws-lc-sys",
 ]
 
@@ -2413,7 +2407,6 @@ dependencies = [
  "deno_permissions",
  "deno_process",
  "deno_subprocess_windows",
- "deno_whoami",
  "der",
  "digest",
  "dotenvy",
@@ -2699,7 +2692,6 @@ dependencies = [
  "deno_os",
  "deno_path_util",
  "deno_permissions",
- "deno_subprocess_windows",
  "libc",
  "log",
  "memchr",
@@ -2847,7 +2839,6 @@ name = "deno_signals"
 version = "0.1.0"
 dependencies = [
  "signal-hook",
- "winapi",
 ]
 
 [[package]]
@@ -2861,10 +2852,7 @@ dependencies = [
 name = "deno_subprocess_windows"
 version = "0.5.0"
 dependencies = [
- "fastrand",
- "futures-channel",
  "libc",
- "pretty_assertions",
  "windows-sys 0.59.0",
 ]
 
@@ -3079,16 +3067,6 @@ dependencies = [
  "deno_error",
  "rusqlite",
  "thiserror 2.0.12",
-]
-
-[[package]]
-name = "deno_whoami"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e75e4caa92b98a27f09c671d1399aee0f5970aa491b9a598523aac000a2192e3"
-dependencies = [
- "libc",
- "whoami",
 ]
 
 [[package]]
@@ -4275,15 +4253,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glibc_version"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "803ff7635f1ab4e2c064b68a0c60da917d3d18dc8d086130f689d62ce4f1c33e"
-dependencies = [
- "regex",
-]
-
-[[package]]
 name = "glob"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4564,25 +4533,6 @@ name = "hexf-parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfa686283ad6dd069f105e5ab091b04c62850d3e4cf5d67debad1933f55023df"
-
-[[package]]
-name = "hickory-client"
-version = "0.25.0-alpha.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83536dab9a159b2b5cf2c20c47ecf188cee35316f96be028e63e8e1340d2724d"
-dependencies = [
- "cfg-if",
- "data-encoding",
- "futures-channel",
- "futures-util",
- "hickory-proto",
- "once_cell",
- "radix_trie",
- "rand",
- "thiserror 2.0.12",
- "tokio",
- "tracing",
-]
 
 [[package]]
 name = "hickory-proto"
@@ -5943,7 +5893,6 @@ dependencies = [
  "async-trait",
  "boxed_error",
  "dashmap",
- "deno_config",
  "deno_error",
  "deno_graph",
  "deno_media_type",
@@ -9764,12 +9713,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
-name = "wasite"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8dad83b4f25e74f184f64c43b150b91efe7647395b42289f38e50566d82855b"
-
-[[package]]
 name = "wasm-bindgen"
 version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10025,17 +9968,6 @@ dependencies = [
  "home",
  "rustix",
  "winsafe",
-]
-
-[[package]]
-name = "whoami"
-version = "1.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a44ab49fad634e88f55bf8f9bb3abd2f27d7204172a112c7c9987e01c1c94ea9"
-dependencies = [
- "redox_syscall",
- "wasite",
- "web-sys",
 ]
 
 [[package]]

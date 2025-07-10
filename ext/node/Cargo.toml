@@ -40,7 +40,6 @@ deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_process.workspace = true
-deno_whoami.workspace = true
 der = { workspace = true, features = ["derive"] }
 digest = { workspace = true, features = ["core-api", "std"] }
 dotenvy.workspace = true
@@ -94,7 +93,6 @@ tokio-eld.workspace = true
 tower-service.workspace = true
 url.workspace = true
 webpki-root-certs.workspace = true
-winapi.workspace = true
 x25519-dalek = { workspace = true, features = ["static_secrets"] }
 x509-parser.workspace = true
 yoke.workspace = true

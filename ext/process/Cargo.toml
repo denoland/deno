@@ -21,7 +21,6 @@ deno_io.workspace = true
 deno_os.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
-deno_subprocess_windows.workspace = true
 libc.workspace = true
 log.workspace = true
 memchr.workspace = true

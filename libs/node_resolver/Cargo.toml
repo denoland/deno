@@ -22,7 +22,6 @@ anyhow.workspace = true
 async-trait.workspace = true
 boxed_error.workspace = true
 dashmap.workspace = true
-deno_config.workspace = true
 deno_error.workspace = true
 deno_graph = { workspace = true, optional = true }
 deno_media_type.workspace = true

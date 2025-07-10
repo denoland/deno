@@ -25,7 +25,6 @@ ctr.workspace = true
 curve25519-dalek.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
-deno_web.workspace = true
 ecdsa.workspace = true
 ed448-goldilocks = { workspace = true, features = ["zeroize"] }
 elliptic-curve = { workspace = true, features = ["std", "pem", "arithmetic"] }
