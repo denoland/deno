@@ -8,7 +8,6 @@ use std::task::Poll;
 use std::task::{self};
 use std::vec;
 
-use deno_core::url::Url;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
@@ -150,11 +149,11 @@ impl Service<Name> for Resolver {
           let x: Vec<_> = result.into_iter().collect();
           for addr in &x {
             permissions
-              .check_net_url(
-                &Url::parse(&format!("http://{}", addr)).unwrap(),
-                "Deno.openKv",
+              .check_net(
+                &(&addr.ip().to_string(), Some(addr.port())),
+                "Deno.fetch()",
               )
-              .unwrap();
+              .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
           }
           let iter: SocketAddrs = x.into_iter();
           Ok(iter)
@@ -167,13 +166,35 @@ impl Service<Name> for Resolver {
 
           let x: Vec<_> =
             result.into_iter().map(|x| SocketAddr::new(x, 0)).collect();
+
+          for addr in &x {
+            permissions
+              .check_net(
+                &(&addr.ip().to_string(), Some(addr.port())),
+                "Deno.fetch()",
+              )
+              .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+          }
           let iter: SocketAddrs = x.into_iter();
           Ok(iter)
         })
       }
       ResolverKind::Custom(resolver) => {
         let resolver = resolver.clone();
-        tokio::spawn(async move { resolver.resolve(name).await })
+        tokio::spawn(async move {
+          let result = resolver.resolve(name).await?;
+          let x: Vec<_> = result.into_iter().collect();
+          for addr in &x {
+            permissions
+              .check_net(
+                &(&addr.ip().to_string(), Some(addr.port())),
+                "Deno.fetch()",
+              )
+              .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+          }
+          let iter: SocketAddrs = x.into_iter();
+          Ok(iter)
+        })
       }
     };
     ResolveFut { inner: task }
@@ -187,7 +208,6 @@ mod tests {
   use std::str::FromStr;
 
   use deno_core::url::Url;
-  use deno_fs::FsError;
   use deno_permissions::PermissionCheckError;
 
   use super::*;
@@ -201,28 +221,33 @@ mod tests {
       Ok(())
     }
 
-    fn check_read<'a>(
-      &mut self,
-      _path: Cow<'a, Path>,
-      _api_name: &str,
-      _get_path: &'a dyn deno_fs::GetPath,
-    ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
-      Ok(deno_fs::CheckedPath::Unresolved(_path))
-    }
-
-    fn check_write<'a>(
-      &mut self,
-      _path: Cow<'a, Path>,
-      _api_name: &str,
-      _get_path: &'a dyn deno_fs::GetPath,
-    ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
-      Ok(deno_fs::CheckedPath::Unresolved(_path))
-    }
-
     fn check_net_vsock(
       &mut self,
       _cid: u32,
       _port: u32,
+      _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+      Ok(())
+    }
+
+    fn check_open<'a>(
+      &mut self,
+      path: Cow<'a, Path>,
+      _open_access: deno_permissions::OpenAccessKind,
+      _api_name: &str,
+    ) -> Result<deno_permissions::CheckedPath<'a>, PermissionCheckError> {
+      Ok(deno_permissions::CheckedPath {
+        path: deno_permissions::PathWithRequested {
+          path,
+          requested: None,
+        },
+        canonicalized: false,
+      })
+    }
+
+    fn check_net(
+      &self,
+      _addr: &(&str, Option<u16>),
       _api_name: &str,
     ) -> Result<(), PermissionCheckError> {
       Ok(())
