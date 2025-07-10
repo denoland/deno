@@ -10,6 +10,8 @@ repository.workspace = true
 description = "Subprocess API implementation for Windows"
 
 [dependencies]
+fastrand = "2.3.0"
+futures-channel = "0.3.31"
 libc = "0.2.172"
 
 [target.x86_64-pc-windows-gnu.dependencies]
