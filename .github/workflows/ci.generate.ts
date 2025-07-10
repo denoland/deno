@@ -8,7 +8,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 const cacheVersion = 65;
 
 const ubuntuX86Runner = "ubuntu-24.04";
-const ubuntuX86XlRunner = "ubuntu-24.04-xl";
+const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04-md";
 const ubuntuARMRunner = "ubicloud-standard-16-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
