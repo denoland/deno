@@ -498,6 +498,9 @@ impl sys_traits::BaseFsHardLink for DenoRtSys {
   fn base_fs_hard_link(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
     self
       .link_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
         &CheckedPath::unsafe_new(Cow::Borrowed(src)),
         &CheckedPath::unsafe_new(Cow::Borrowed(dst)),
       )
@@ -509,7 +512,12 @@ impl sys_traits::BaseFsRead for DenoRtSys {
   #[inline]
   fn base_fs_read(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>> {
     self
-      .read_file_sync(&CheckedPath::unsafe_new(Cow::Borrowed(path)))
+      .read_file_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(path)),
+      )
       .map_err(|err| err.into_io_error())
   }
 }
@@ -651,7 +659,12 @@ impl sys_traits::BaseFsCanonicalize for DenoRtSys {
   #[inline]
   fn base_fs_canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
     self
-      .realpath_sync(&CheckedPath::unsafe_new(Cow::Borrowed(path)))
+      .realpath_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(path)),
+      )
       .map_err(|err| err.into_io_error())
   }
 }
@@ -691,6 +704,9 @@ impl sys_traits::BaseFsCopy for DenoRtSys {
       .map_err(|err| err.into_io_error())?;
     if self.0.is_path_within(from) {
       self.copy_to_real_path(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
         &CheckedPath::unsafe_new(Cow::Borrowed(from)),
         &CheckedPath::unsafe_new(Cow::Borrowed(to)),
       )
@@ -721,6 +737,9 @@ impl sys_traits::BaseFsCreateDir for DenoRtSys {
   ) -> std::io::Result<()> {
     self
       .mkdir_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
         &CheckedPath::unsafe_new(Cow::Borrowed(path)),
         options.recursive,
         options.mode,
@@ -733,7 +752,13 @@ impl sys_traits::BaseFsRemoveFile for DenoRtSys {
   #[inline]
   fn base_fs_remove_file(&self, path: &Path) -> std::io::Result<()> {
     self
-      .remove_sync(&CheckedPath::unsafe_new(Cow::Borrowed(path)), false)
+      .remove_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(path)),
+        false,
+      )
       .map_err(|err| err.into_io_error())
   }
 }
@@ -743,6 +768,9 @@ impl sys_traits::BaseFsRename for DenoRtSys {
   fn base_fs_rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
     self
       .rename_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
         &CheckedPath::unsafe_new(Cow::Borrowed(from)),
         &CheckedPath::unsafe_new(Cow::Borrowed(to)),
       )
@@ -939,6 +967,9 @@ impl sys_traits::BaseFsSymlinkDir for DenoRtSys {
   fn base_fs_symlink_dir(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
     self
       .symlink_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
         &CheckedPath::unsafe_new(Cow::Borrowed(src)),
         &CheckedPath::unsafe_new(Cow::Borrowed(dst)),
         Some(FsFileType::Directory),
