@@ -4409,9 +4409,9 @@ interface WorkerOptions {
    * have. By default it will inherit permissions. Note that the permissions
    * of a worker can't be extended beyond its parent's permissions reach.
    *
-   * - `"inherit"` will take the permissions of the thread the worker is created
-   *   in.
-   * - `"none"` will use the default behavior and have no permission
+   * - `"inherit"` will use the default behavior and take the permissions of the
+   *   thread the worker is created in
+   * - `"none"` will have no permissions
    * - A list of routes can be provided that are relative to the file the worker
    *   is created in to limit the access of the worker (read/write permissions
    *   only)
