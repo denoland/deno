@@ -2839,6 +2839,7 @@ name = "deno_signals"
 version = "0.1.0"
 dependencies = [
  "signal-hook",
+ "winapi",
 ]
 
 [[package]]

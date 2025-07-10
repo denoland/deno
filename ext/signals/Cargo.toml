@@ -15,3 +15,4 @@ path = "lib.rs"
 
 [dependencies]
 signal-hook.workspace = true
+winapi.workspace = true
