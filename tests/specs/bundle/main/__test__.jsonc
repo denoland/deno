@@ -81,6 +81,18 @@
         }
       ]
     },
+    "requires_node_builtin_minified": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js --minify uses_node_builtin.cjs",
+          "output": "requires_node_builtin.out"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "{ a: 1, b: 'hello' }\n"
+        }
+      ]
+    },
     "json_import": {
       "steps": [
         {

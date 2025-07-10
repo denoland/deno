@@ -1118,7 +1118,7 @@ Module._extensions[".node"] = function (module, filename) {
 };
 
 function createRequireFromPath(filename) {
-  const proxyPath = op_require_proxy_path(filename);
+  const proxyPath = op_require_proxy_path(filename) ?? filename;
   const mod = new Module(proxyPath);
   mod.filename = proxyPath;
   mod.paths = Module._nodeModulePaths(mod.path);
@@ -1181,7 +1181,7 @@ function createRequire(filenameOrUrl) {
       `The argument 'filename' must be a file URL object, file URL string, or absolute path string. Received ${filenameOrUrl}`,
     );
   }
-  const filename = op_require_as_file_path(fileUrlStr);
+  const filename = op_require_as_file_path(fileUrlStr) ?? fileUrlStr;
   return createRequireFromPath(filename);
 }
 

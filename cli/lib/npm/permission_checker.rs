@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use deno_error::JsErrorBox;
 use deno_runtime::deno_node::NodePermissions;
+use deno_runtime::deno_permissions::OpenAccessKind;
 use parking_lot::Mutex;
 
 use crate::sys::DenoLibSys;
@@ -49,19 +50,20 @@ impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
   pub fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &'a Path,
+    path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox> {
     if permissions.query_read_all() {
-      return Ok(Cow::Borrowed(path)); // skip permissions checks below
+      return Ok(path); // skip permissions checks below
     }
 
     match &self.mode {
       NpmRegistryReadPermissionCheckerMode::Byonm => {
         if path.components().any(|c| c.as_os_str() == "node_modules") {
-          Ok(Cow::Borrowed(path))
+          Ok(path)
         } else {
           permissions
-            .check_read_path(Cow::Borrowed(path))
+            .check_open(path, OpenAccessKind::Read, None)
+            .map(|p| p.path.path)
             .map_err(JsErrorBox::from_err)
         }
       }
@@ -99,20 +101,21 @@ impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
               }
             };
           if let Some(registry_path_canon) = canonicalize(registry_path)? {
-            if let Some(path_canon) = canonicalize(path)? {
+            if let Some(path_canon) = canonicalize(&path)? {
               if path_canon.starts_with(registry_path_canon) {
                 return Ok(Cow::Owned(path_canon));
               }
             } else if path.starts_with(registry_path_canon)
               || path.starts_with(registry_path)
             {
-              return Ok(Cow::Borrowed(path));
+              return Ok(path);
             }
           }
         }
 
         permissions
-          .check_read_path(Cow::Borrowed(path))
+          .check_open(path, OpenAccessKind::Read, None)
+          .map(|p| p.path.path)
           .map_err(JsErrorBox::from_err)
       }
     }

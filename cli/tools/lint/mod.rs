@@ -64,6 +64,7 @@ mod rules;
 pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
+pub use plugins::PluginHostProxy;
 pub use plugins::PluginLogger;
 pub use plugins::create_runner_and_load_plugins;
 pub use rules::ConfiguredRules;

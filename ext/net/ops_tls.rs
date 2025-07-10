@@ -9,6 +9,7 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -24,6 +25,7 @@ use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
+use deno_permissions::OpenAccessKind;
 use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
 use deno_tls::TlsKey;
@@ -405,7 +407,11 @@ where
     if let Some(path) = cert_file {
       Some(
         permissions
-          .check_read(path, "Deno.connectTls()")
+          .check_open(
+            Cow::Borrowed(Path::new(path)),
+            OpenAccessKind::ReadNoFollow,
+            "Deno.connectTls()",
+          )
           .map_err(NetError::Permission)?,
       )
     } else {

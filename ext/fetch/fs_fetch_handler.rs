@@ -11,6 +11,7 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_fs::OpenOptions;
 use deno_fs::open_options_with_access_check;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use http::StatusCode;
 use http_body_util::BodyExt;
@@ -25,8 +26,8 @@ fn sync_permission_check<'a, P: FetchPermissions + 'static>(
   permissions: &'a mut P,
   api_name: &'static str,
 ) -> impl deno_fs::AccessCheckFn + 'a {
-  move |path, _options, _resolve| {
-    permissions.check_read(path, api_name, _resolve)
+  move |path, _options| {
+    permissions.check_open(path, OpenAccessKind::Read, api_name)
   }
 }
 

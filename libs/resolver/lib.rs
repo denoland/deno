@@ -23,7 +23,8 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::errors::NodeResolveError;
-use node_resolver::errors::PackageSubpathResolveError;
+use node_resolver::errors::NodeResolveErrorKind;
+use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::UnknownBuiltInNodeModuleError;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolverRc;
@@ -54,6 +55,7 @@ pub mod file_fetcher;
 #[cfg(feature = "graph")]
 pub mod graph;
 pub mod import_map;
+pub mod loader;
 pub mod lockfile;
 pub mod npm;
 pub mod npmrc;
@@ -103,14 +105,10 @@ impl DenoResolveError {
   pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
     match self.as_kind() {
       DenoResolveErrorKind::Node(err) => err.maybe_specifier(),
-      DenoResolveErrorKind::PackageSubpathResolve(err) => err.maybe_specifier(),
       DenoResolveErrorKind::PathToUrl(err) => {
         Some(Cow::Owned(UrlOrPath::Path(err.0.clone())))
       }
       DenoResolveErrorKind::ResolveNpmReqRef(err) => err.err.maybe_specifier(),
-      DenoResolveErrorKind::UnknownBuiltInNodeModule(err) => {
-        err.maybe_specifier().map(|u| Cow::Owned(UrlOrPath::Url(u)))
-      }
       DenoResolveErrorKind::MappedResolution(_)
       | DenoResolveErrorKind::WorkspaceResolvePkgJsonFolder(_)
       | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq(_)
@@ -156,9 +154,6 @@ pub enum DenoResolveErrorKind {
   PackageJsonDepValueUrlParse(url::ParseError),
   #[class(inherit)]
   #[error(transparent)]
-  PackageSubpathResolve(#[from] PackageSubpathResolveError),
-  #[class(inherit)]
-  #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
@@ -166,9 +161,6 @@ pub enum DenoResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
-  #[class(inherit)]
-  #[error(transparent)]
-  UnknownBuiltInNodeModule(#[from] UnknownBuiltInNodeModuleError),
   #[class(inherit)]
   #[error(transparent)]
   WorkspaceResolvePkgJsonFolder(#[from] WorkspaceResolvePkgJsonFolderError),
@@ -377,7 +369,15 @@ impl<
             resolution_mode,
             resolution_kind,
           )
-          .map_err(DenoResolveError::from)
+          .map_err(|e| {
+            DenoResolveErrorKind::Node(
+              NodeResolveErrorKind::PackageResolve(
+                PackageResolveErrorKind::SubpathResolve(e).into_box(),
+              )
+              .into_box(),
+            )
+            .into_box()
+          })
           .and_then(|r| Ok(r.into_url()?)),
         MappedResolution::PackageJson {
           dep_result,
@@ -443,7 +443,13 @@ impl<
                       resolution_kind,
                     )
                     .map_err(|e| {
-                      DenoResolveErrorKind::PackageSubpathResolve(e).into_box()
+                      DenoResolveErrorKind::Node(
+                        NodeResolveErrorKind::PackageResolve(
+                          PackageResolveErrorKind::SubpathResolve(e).into_box(),
+                        )
+                        .into_box(),
+                      )
+                      .into_box()
                     })
                 })
                 .and_then(|r| Ok(r.into_url()?)),
@@ -492,9 +498,12 @@ impl<
             })
           } else {
             Err(
-              UnknownBuiltInNodeModuleError {
-                module_name: module_name.to_string(),
-              }
+              NodeResolveErrorKind::UnknownBuiltInNodeModule(
+                UnknownBuiltInNodeModuleError {
+                  module_name: module_name.to_string(),
+                },
+              )
+              .into_box()
               .into(),
             )
           };
