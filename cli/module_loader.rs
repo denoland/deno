@@ -43,10 +43,9 @@ use deno_error::JsErrorBox;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use deno_graph::WalkOptions;
-use deno_lib::loader::ModuleCodeStringSource;
-use deno_lib::loader::NpmModuleLoadError;
-use deno_lib::loader::StrippingTypesNodeModulesError;
-use deno_lib::loader::module_type_from_media_type;
+use deno_lib::loader::as_deno_resolver_requested_module_type;
+use deno_lib::loader::loaded_module_source_to_module_source_code;
+use deno_lib::loader::module_type_from_media_and_requested_type;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
@@ -57,8 +56,10 @@ use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::graph::ResolveWithGraphErrorKind;
 use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::loader::LoadPreparedModuleError;
-use deno_resolver::loader::PreparedModuleOrAsset;
-use deno_resolver::loader::PreparedModuleSource;
+use deno_resolver::loader::LoadedModule;
+use deno_resolver::loader::LoadedModuleOrAsset;
+use deno_resolver::loader::NpmModuleLoadError;
+use deno_resolver::loader::StrippingTypesNodeModulesError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::ResolveNpmReqRefError;
 use deno_runtime::code_cache;
@@ -69,7 +70,6 @@ use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use eszip::EszipV2;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -92,7 +92,6 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 use crate::graph_util::ModuleGraphBuilder;
-use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliResolver;
@@ -104,13 +103,8 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
 
-pub type CliNpmModuleLoader = deno_lib::loader::NpmModuleLoader<
-  CliCjsCodeAnalyzer,
-  DenoInNpmPackageChecker,
-  DenoIsBuiltInNodeModuleChecker,
-  CliNpmResolver,
-  CliSys,
->;
+pub type CliNpmModuleLoader =
+  deno_resolver::loader::DenoNpmModuleLoader<CliSys>;
 pub type CliEmitter =
   deno_resolver::emit::Emitter<DenoInNpmPackageChecker, CliSys>;
 pub type CliPreparedModuleLoader =
@@ -336,7 +330,7 @@ struct SharedCliModuleLoaderState {
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
-  npm_module_loader: CliNpmModuleLoader,
+  npm_module_loader: Arc<CliNpmModuleLoader>,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
   npm_resolver: CliNpmResolver,
@@ -398,7 +392,7 @@ impl CliModuleLoaderFactory {
     in_npm_pkg_checker: DenoInNpmPackageChecker,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
-    npm_module_loader: CliNpmModuleLoader,
+    npm_module_loader: Arc<CliNpmModuleLoader>,
     npm_registry_permission_checker: Arc<
       NpmRegistryReadPermissionChecker<CliSys>,
     >,
@@ -528,6 +522,12 @@ impl CliModuleLoaderFactory {
       loaded_files: Default::default(),
     }))
   }
+}
+
+struct ModuleCodeStringSource {
+  pub code: ModuleSourceCode,
+  pub found_url: ModuleSpecifier,
+  pub module_type: ModuleType,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -712,63 +712,28 @@ impl<TGraphContainer: ModuleGraphContainer>
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleCodeStringSource, LoadCodeSourceError> {
-    fn as_deno_resolver_requested_module_type(
-      value: &RequestedModuleType,
-    ) -> deno_resolver::loader::RequestedModuleType<'_> {
-      match value {
-        RequestedModuleType::None => {
-          deno_resolver::loader::RequestedModuleType::None
-        }
-        RequestedModuleType::Json => {
-          deno_resolver::loader::RequestedModuleType::Json
-        }
-        RequestedModuleType::Text => {
-          deno_resolver::loader::RequestedModuleType::Text
-        }
-        RequestedModuleType::Bytes => {
-          deno_resolver::loader::RequestedModuleType::Bytes
-        }
-        RequestedModuleType::Other(text) => {
-          deno_resolver::loader::RequestedModuleType::Other(text)
-        }
-      }
-    }
-
     let graph = self.graph_container.graph();
+    let deno_resolver_requested_module_type =
+      as_deno_resolver_requested_module_type(requested_module_type);
     match self
       .shared
       .prepared_module_loader
       .load_prepared_module(
         &graph,
         specifier,
-        &as_deno_resolver_requested_module_type(requested_module_type),
+        &deno_resolver_requested_module_type,
       )
       .await
       .map_err(LoadCodeSourceError::from)?
     {
       Some(module_or_asset) => match module_or_asset {
-        PreparedModuleOrAsset::Module(prepared_module) => {
-          Ok(ModuleCodeStringSource {
-            code: match prepared_module.source {
-              PreparedModuleSource::ArcStr(text) => {
-                ModuleSourceCode::String(text.into())
-              }
-              PreparedModuleSource::ArcBytes(bytes) => {
-                ModuleSourceCode::Bytes(bytes.into())
-              }
-            },
-            found_url: prepared_module.specifier.clone(),
-            module_type: match requested_module_type {
-              RequestedModuleType::Json => ModuleType::Json,
-              RequestedModuleType::Text => ModuleType::Text,
-              RequestedModuleType::Bytes => ModuleType::Bytes,
-              RequestedModuleType::None | RequestedModuleType::Other(_) => {
-                module_type_from_media_type(prepared_module.media_type)
-              }
-            },
-          })
+        LoadedModuleOrAsset::Module(prepared_module) => {
+          Ok(self.loaded_module_to_module_code_string_source(
+            prepared_module,
+            requested_module_type,
+          ))
         }
-        PreparedModuleOrAsset::ExternalAsset { specifier } => {
+        LoadedModuleOrAsset::ExternalAsset { specifier } => {
           self.load_asset(
             specifier,
             /* do not use dynamic import permissions because this was statically analyzable */ CheckSpecifierKind::Static,
@@ -812,13 +777,22 @@ impl<TGraphContainer: ModuleGraphContainer>
         } else {
           Cow::Borrowed(specifier)
         };
+
         if self.shared.in_npm_pkg_checker.in_npm_package(&specifier) {
-          return self
+          let loaded_module = self
             .shared
             .npm_module_loader
-            .load(&specifier, maybe_referrer)
+            .load(
+              &specifier,
+              maybe_referrer,
+              &deno_resolver_requested_module_type,
+            )
             .await
-            .map_err(LoadCodeSourceError::from);
+            .map_err(LoadCodeSourceError::from)?;
+          return Ok(self.loaded_module_to_module_code_string_source(
+            loaded_module,
+            requested_module_type,
+          ));
         }
 
         match requested_module_type {
@@ -836,6 +810,21 @@ impl<TGraphContainer: ModuleGraphContainer>
           })),
         }
       }
+    }
+  }
+
+  fn loaded_module_to_module_code_string_source(
+    &self,
+    loaded_module: LoadedModule,
+    requested_module_type: &RequestedModuleType,
+  ) -> ModuleCodeStringSource {
+    ModuleCodeStringSource {
+      code: loaded_module_source_to_module_source_code(loaded_module.source),
+      found_url: loaded_module.specifier.clone(),
+      module_type: module_type_from_media_and_requested_type(
+        loaded_module.media_type,
+        requested_module_type,
+      ),
     }
   }
 
