@@ -130,8 +130,8 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   },
   UnstableFeatureDescription {
     name: "node-globals",
-    help_text: "Expose Node globals everywhere",
-    show_in_help: false,
+    help_text: "Prefer Node.js globals over Deno globals - currently this refers to `setTimeout` and `setInterval` APIs.",
+    show_in_help: true,
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
