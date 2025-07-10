@@ -36,9 +36,7 @@ const {
   ArrayPrototypeFilter,
   ArrayPrototypePush,
   ObjectGetOwnPropertyDescriptor,
-  ObjectGetOwnPropertyNames,
-  ObjectGetOwnPropertySymbols,
-  SafeArrayIterator,
+  ReflectOwnKeys,
   StringPrototypeCharCodeAt,
   SymbolFor,
 } = primordials;
@@ -103,10 +101,7 @@ export function getOwnNonIndexProperties(
   obj: object,
   filter: number,
 ): (string | symbol)[] {
-  let allProperties = [
-    ...new SafeArrayIterator(ObjectGetOwnPropertyNames(obj)),
-    ...new SafeArrayIterator(ObjectGetOwnPropertySymbols(obj)),
-  ];
+  let allProperties = ReflectOwnKeys(obj);
 
   if (ArrayIsArray(obj) || ArrayBufferIsView(obj)) {
     allProperties = ArrayPrototypeFilter(
@@ -120,7 +115,8 @@ export function getOwnNonIndexProperties(
   }
 
   const result: (string | symbol)[] = [];
-  for (const key of new SafeArrayIterator(allProperties)) {
+  for (let i = 0; i < allProperties.length; ++i) {
+    const key = allProperties[i];
     const desc = ObjectGetOwnPropertyDescriptor(obj, key);
     if (desc === undefined) {
       continue;
