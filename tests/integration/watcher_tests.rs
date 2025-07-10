@@ -2,13 +2,13 @@
 
 use flaky_test::flaky_test;
 use test_util as util;
+use test_util::TempDir;
 use test_util::assert_contains;
 use test_util::env_vars_for_npm_tests;
 use test_util::http_server;
-use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
-use util::assert_not_contains;
 use util::DenoChild;
+use util::assert_not_contains;
 
 /// Logs to stderr every time next_line() is called
 struct LoggingLines<R>

@@ -3,8 +3,8 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
+use deno_core::op2;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PerfHooksError {

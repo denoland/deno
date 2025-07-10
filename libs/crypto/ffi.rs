@@ -4,11 +4,7 @@ pub struct PKey(pub *mut aws_lc_sys::EVP_PKEY);
 
 impl PKey {
   pub fn from_ptr(ptr: *mut aws_lc_sys::EVP_PKEY) -> Option<Self> {
-    if ptr.is_null() {
-      None
-    } else {
-      Some(Self(ptr))
-    }
+    if ptr.is_null() { None } else { Some(Self(ptr)) }
   }
 
   pub fn as_ptr(&self) -> *mut aws_lc_sys::EVP_PKEY {

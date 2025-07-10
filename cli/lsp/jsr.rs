@@ -9,15 +9,15 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_graph::ModuleSpecifier;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
-use deno_graph::ModuleSpecifier;
+use deno_semver::StackString;
+use deno_semver::Version;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use deno_semver::StackString;
-use deno_semver::Version;
 use serde::Deserialize;
 
 use super::config::ConfigData;
@@ -26,8 +26,8 @@ use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
-use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::jsr::JsrFetchResolver;
+use crate::jsr::partial_jsr_package_version_info_from_slice;
 
 #[derive(Debug)]
 struct WorkspacePackage {

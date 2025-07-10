@@ -3,7 +3,6 @@
 #![allow(clippy::disallowed_methods)]
 
 use std::borrow::Cow;
-use std::env::current_dir;
 use std::fs;
 use std::io;
 use std::io::Read;
@@ -13,20 +12,20 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::unsync::spawn_blocking;
+use deno_io::StdFileResourceInner;
 use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
-use deno_io::StdFileResourceInner;
-use deno_path_util::normalize_path;
+use deno_permissions::CheckedPath;
+use deno_permissions::PathWithRequested;
+use deno_permissions::PermissionCheckError;
 
+use crate::FileSystem;
+use crate::OpenOptions;
 use crate::interface::AccessCheckCb;
-use crate::interface::CheckedPath;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
-use crate::FileSystem;
-use crate::GetPath;
-use crate::OpenOptions;
 
 #[derive(Debug, Default, Clone)]
 pub struct RealFs;
@@ -55,9 +54,9 @@ impl FileSystem for RealFs {
 
   #[cfg(unix)]
   fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
+    use nix::sys::stat::Mode;
     use nix::sys::stat::mode_t;
     use nix::sys::stat::umask;
-    use nix::sys::stat::Mode;
     let r = if let Some(mask) = mask {
       // If mask provided, return previous.
       umask(Mode::from_bits_truncate(mask as mode_t))
@@ -450,9 +449,9 @@ fn chmod(path: &Path, _mode: u32) -> FsResult<()> {
 
 #[cfg(unix)]
 fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
-  use nix::unistd::chown;
   use nix::unistd::Gid;
   use nix::unistd::Uid;
+  use nix::unistd::chown;
   let owner = uid.map(Uid::from_raw);
   let group = gid.map(Gid::from_raw);
   let res = chown(path, owner, group);
@@ -838,20 +837,23 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     handle: winapi::shared::ntdef::HANDLE,
   ) -> std::io::Result<u64> {
     use winapi::shared::minwindef::FALSE;
-    use winapi::um::fileapi::GetFileInformationByHandle;
     use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
+    use winapi::um::fileapi::GetFileInformationByHandle;
 
-    let info = {
-      let mut info =
-        std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
-      if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
-        return Err(std::io::Error::last_os_error());
-      }
+    // SAFETY: winapi calls
+    unsafe {
+      let info = {
+        let mut info =
+          std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+        if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
+          return Err(std::io::Error::last_os_error());
+        }
 
-      info.assume_init()
-    };
+        info.assume_init()
+      };
 
-    Ok(info.dwVolumeSerialNumber as u64)
+      Ok(info.dwVolumeSerialNumber as u64)
+    }
   }
 
   const WINDOWS_TICK: i64 = 10_000; // 100-nanosecond intervals in a millisecond
@@ -869,34 +871,37 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     handle: winapi::shared::ntdef::HANDLE,
   ) -> Result<FILE_ALL_INFORMATION, NTSTATUS> {
     use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
-    use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
     use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
+    use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
     use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 
-    let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
-    let mut io_status_block =
-      std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
-    let status = NtQueryInformationFile(
-      handle as _,
-      io_status_block.as_mut_ptr(),
-      info.as_mut_ptr() as *mut _,
-      std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
-      18, /* FileAllInformation */
-    );
+    // SAFETY: winapi calls
+    unsafe {
+      let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
+      let mut io_status_block =
+        std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
+      let status = NtQueryInformationFile(
+        handle as _,
+        io_status_block.as_mut_ptr(),
+        info.as_mut_ptr() as *mut _,
+        std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
+        18, /* FileAllInformation */
+      );
 
-    if status < 0 {
-      let converted_status = RtlNtStatusToDosError(status);
+      if status < 0 {
+        let converted_status = RtlNtStatusToDosError(status);
 
-      // If error more data is returned, then it means that the buffer is too small to get full filename information
-      // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
-      // since struct is populated with other data anyway.
-      // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
-      if converted_status != ERROR_MORE_DATA {
-        return Err(converted_status as NTSTATUS);
+        // If error more data is returned, then it means that the buffer is too small to get full filename information
+        // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
+        // since struct is populated with other data anyway.
+        // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
+        if converted_status != ERROR_MORE_DATA {
+          return Err(converted_status as NTSTATUS);
+        }
       }
-    }
 
-    Ok(info.assume_init())
+      Ok(info.assume_init())
+    }
   }
 
   // SAFETY: winapi calls
@@ -949,8 +954,8 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
 fn exists(path: &Path) -> bool {
   #[cfg(unix)]
   {
-    use nix::unistd::access;
     use nix::unistd::AccessFlags;
+    use nix::unistd::access;
     access(path, AccessFlags::F_OK).is_ok()
   }
 
@@ -1041,7 +1046,7 @@ fn symlink(
           return Err(FsError::Io(io::Error::new(
             io::ErrorKind::InvalidInput,
             "On Windows an `options` argument is required if the target does not exist",
-          )))
+          )));
         }
         Err(err) => return Err(err.into()),
       }
@@ -1107,21 +1112,18 @@ pub fn open_options_with_access_check(
   options: OpenOptions,
   path: &Path,
   access_check: Option<AccessCheckCb>,
-) -> FsResult<(PathBuf, fs::OpenOptions)> {
+) -> Result<(PathBuf, fs::OpenOptions), PermissionCheckError> {
   if let Some(access_check) = access_check {
     let path = Cow::Borrowed(path);
-    let maybe_resolved = (*access_check)(path, &options, &StdGetPath)?;
-
-    let path = maybe_resolved;
-
-    let (_resolved, path) = match path {
-      CheckedPath::Resolved(path) => (true, path),
-      CheckedPath::Unresolved(path) => (false, path),
-    };
+    let CheckedPath {
+      path: PathWithRequested { path, requested: _ },
+      canonicalized: resolved,
+    } = (*access_check)(path, &options)?;
 
     let mut opts: fs::OpenOptions = open_options(options);
     #[cfg(windows)]
     {
+      _ = resolved; // not used on Windows
       // allow opening directories
       use std::os::windows::fs::OpenOptionsExt;
       opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
@@ -1133,7 +1135,7 @@ pub fn open_options_with_access_check(
       // with the exception of /proc/ which is too special, and /dev/std* which might point to
       // proc.
       use std::os::unix::fs::OpenOptionsExt;
-      if _resolved {
+      if resolved {
         opts.custom_flags(libc::O_NOFOLLOW);
       }
     }
@@ -1150,50 +1152,5 @@ pub fn open_options_with_access_check(
       opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
     }
     Ok((path.to_path_buf(), opts))
-  }
-}
-
-struct StdGetPath;
-
-impl GetPath for StdGetPath {
-  fn normalized<'a>(
-    &self,
-    path: Cow<'a, Path>,
-  ) -> FsResult<(bool, Cow<'a, Path>)> {
-    let path_bytes = path.as_os_str().as_encoded_bytes();
-    let is_windows_device_path = cfg!(windows)
-      && path_bytes.starts_with(br"\\.\")
-      && !path_bytes.contains(&b':');
-    let path = if is_windows_device_path {
-      // On Windows, normalize_path doesn't work with device-prefix-style
-      // paths. We pass these through.
-      path
-    } else if path.is_absolute() {
-      Cow::Owned(normalize_path(path))
-    } else {
-      let cwd = current_dir()?;
-      Cow::Owned(normalize_path(cwd.join(path)))
-    };
-    // On Linux, /proc may contain magic links that we don't want to resolve
-    let is_linux_special_path = cfg!(target_os = "linux")
-      && (path.starts_with("/proc") || path.starts_with("/dev"));
-    let needs_canonicalization =
-      !is_windows_device_path && !is_linux_special_path;
-    Ok((needs_canonicalization, path))
-  }
-
-  fn resolved(&self, path: &Path) -> Result<PathBuf, FsError> {
-    match path.canonicalize() {
-      Ok(path) => Ok(path),
-      Err(_) => {
-        if let (Some(parent), Some(filename)) =
-          (path.parent(), path.file_name())
-        {
-          Ok(parent.canonicalize()?.join(filename))
-        } else {
-          Err(std::io::ErrorKind::NotFound.into())
-        }
-      }
-    }
   }
 }

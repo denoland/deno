@@ -9,6 +9,8 @@ use std::rc::Rc;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_permissions::CheckedPath;
+use deno_permissions::PermissionCheckError;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -86,25 +88,23 @@ pub trait AccessCheckFn:
   for<'a> FnMut(
   Cow<'a, Path>,
   &'a OpenOptions,
-  &'a dyn crate::GetPath,
-) -> FsResult<CheckedPath<'a>>
+) -> Result<CheckedPath<'a>, PermissionCheckError>
 {
 }
+
 impl<T> AccessCheckFn for T where
   T: for<'a> FnMut(
     Cow<'a, Path>,
     &'a OpenOptions,
-    &'a dyn crate::GetPath,
-  ) -> FsResult<CheckedPath<'a>>
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>
 {
 }
 
-pub enum CheckedPath<'a> {
-  Resolved(Cow<'a, Path>),
-  Unresolved(Cow<'a, Path>),
-}
-
 pub type AccessCheckCb<'a> = &'a mut (dyn AccessCheckFn + 'a);
+
+// todo(dsherret): the paths on this trait should be of type CheckedPath
+// and OwnedCheckedPath in order to ensure a path is always checked for
+// permissions before being passed here
 
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {

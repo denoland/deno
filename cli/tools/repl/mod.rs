@@ -26,10 +26,10 @@ mod channel;
 mod editor;
 mod session;
 
-use channel::rustyline_channel;
 use channel::RustylineSyncMessage;
 use channel::RustylineSyncMessageHandler;
 use channel::RustylineSyncResponse;
+use channel::rustyline_channel;
 use editor::EditorHelper;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
@@ -188,6 +188,8 @@ pub async fn run(
     .create_custom_worker(
       WorkerExecutionMode::Repl,
       main_module.clone(),
+      // `deno repl` doesn't support preloading modules
+      vec![],
       permissions.clone(),
       vec![crate::ops::testing::deno_test::init(test_event_sender)],
       Default::default(),

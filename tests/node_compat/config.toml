@@ -50,18 +50,6 @@
 "es-module/test-vm-compile-function-lineoffset.js" = {}
 "es-module/test-wasm-memory-out-of-bound.js" = {}
 "es-module/test-wasm-simple.js" = {}
-"internet/test-dgram-connect.js" = {}
-"internet/test-dns-lookup.js" = {}
-"internet/test-dns-promises-resolve.js" = {}
-"internet/test-dns-regress-6244.js" = {}
-"internet/test-dns-setserver-in-callback-of-resolve4.js" = {}
-"internet/test-http-dns-fail.js" = {}
-"internet/test-http-https-default-ports.js" = {}
-"internet/test-https-autoselectfamily-slow-timeout.js" = {}
-"internet/test-inspector-help-page.js" = {}
-"internet/test-net-autoselectfamily-events-timeout.js" = {}
-"internet/test-net-connect-unref.js" = {}
-"internet/test-tls-autoselectfamily-servername.js" = {}
 "parallel/test-arm-math-illegal-instruction.js" = {}
 "parallel/test-assert-async.js" = {}
 "parallel/test-assert-calltracker-calls.js" = {}
@@ -285,7 +273,6 @@
 "parallel/test-dgram-connect-send-default-host.js" = {}
 "parallel/test-dgram-connect-send-empty-array.js" = {}
 "parallel/test-dgram-connect-send-empty-buffer.js" = {}
-"parallel/test-dgram-connect-send-empty-packet.js" = {}
 "parallel/test-dgram-connect-send-multi-buffer-copy.js" = {}
 "parallel/test-dgram-connect-send-multi-string-array.js" = {}
 "parallel/test-dgram-connect.js" = {}
@@ -437,13 +424,14 @@
 "parallel/test-fs-close.js" = {}
 "parallel/test-fs-constants.js" = {}
 "parallel/test-fs-empty-readStream.js" = {}
+"parallel/test-fs-exists.js" = {}
+"parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
 "parallel/test-fs-long-path.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-read-file-sync-hostname.js" = {}
 "parallel/test-fs-read-stream-autoClose.js" = {}
-"parallel/test-fs-read-stream-concurrent-reads.js" = {}
 "parallel/test-fs-read-stream-double-close.js" = {}
 "parallel/test-fs-read-stream-encoding.js" = {}
 "parallel/test-fs-read-stream-fd-leak.js" = {}
@@ -487,7 +475,6 @@
 "parallel/test-http-addrequest-localaddress.js" = {}
 "parallel/test-http-agent-close.js" = {}
 "parallel/test-http-agent-getname.js" = {}
-"parallel/test-http-agent-maxtotalsockets.js" = {}
 "parallel/test-http-agent-no-protocol.js" = {}
 "parallel/test-http-agent-null.js" = {}
 "parallel/test-http-allow-req-after-204-res.js" = {}
@@ -1369,7 +1356,8 @@
 "sequential/test-debugger-pid.js" = {}
 "sequential/test-diagnostic-dir-cpu-prof.js" = {}
 "sequential/test-diagnostic-dir-heap-prof.js" = {}
-"sequential/test-fs-readdir-recursive.js" = {}
+# TODO(kt3k): Enable this when node_test is updated to v24.x
+# "sequential/test-fs-readdir-recursive.js" = {}
 "sequential/test-fs-stat-sync-overflow.js" = {}
 "sequential/test-http-server-keep-alive-timeout-slow-server.js" = {}
 "sequential/test-inspector-open-dispose.mjs" = {}

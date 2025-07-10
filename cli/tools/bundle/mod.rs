@@ -17,33 +17,35 @@ use deno_ast::EmitOptions;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::TsTypeLib;
+use deno_core::RequestedModuleType;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_core::RequestedModuleType;
 use deno_error::JsError;
 use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
+use deno_resolver::loader::LoadPreparedModuleError;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
-use esbuild_client::protocol;
-use esbuild_client::protocol::BuildResponse;
 use esbuild_client::EsbuildFlags;
 use esbuild_client::EsbuildFlagsBuilder;
 use esbuild_client::EsbuildService;
+use esbuild_client::protocol;
+use esbuild_client::protocol::BuildResponse;
 use indexmap::IndexMap;
-use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::errors::PackageSubpathResolveError;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
 use crate::args::BundleFormat;
+use crate::args::BundlePlatform;
 use crate::args::Flags;
 use crate::args::PackageHandling;
 use crate::args::SourceMapType;
@@ -55,7 +57,6 @@ use crate::module_loader::CliModuleLoader;
 use crate::module_loader::CliModuleLoaderError;
 use crate::module_loader::LoadCodeSourceError;
 use crate::module_loader::LoadCodeSourceErrorKind;
-use crate::module_loader::LoadPreparedModuleError;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
@@ -154,14 +155,25 @@ pub async fn bundle(
   let response = bundler.build().await?;
 
   if bundle_flags.watch {
-    return bundle_watch(flags, bundler).await;
+    return bundle_watch(
+      flags,
+      bundler,
+      bundle_flags.minify,
+      bundle_flags.platform,
+    )
+    .await;
   }
 
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
   if response.errors.is_empty() {
     let metafile = metafile_from_response(&response)?;
-    let output_infos = process_result(&response, &init_cwd, *DISABLE_HACK)?;
+    let output_infos = process_result(
+      &response,
+      &init_cwd,
+      *DISABLE_HACK && matches!(bundle_flags.platform, BundlePlatform::Deno),
+      bundle_flags.minify,
+    )?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
       print_finished_message(&metafile, &output_infos, start.elapsed())?;
@@ -188,6 +200,8 @@ fn metafile_from_response(
 async fn bundle_watch(
   flags: Arc<Flags>,
   bundler: EsbuildBundler,
+  minified: bool,
+  platform: BundlePlatform,
 ) -> Result<(), AnyError> {
   let initial_roots = bundler
     .roots
@@ -225,8 +239,12 @@ async fn bundle_watch(
         handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
         if response.errors.is_empty() {
           let metafile = metafile_from_response(&response)?;
-          let output_infos =
-            process_result(&response, &bundler.cwd, *DISABLE_HACK)?;
+          let output_infos = process_result(
+            &response,
+            &bundler.cwd,
+            *DISABLE_HACK && matches!(platform, BundlePlatform::Deno),
+            minified,
+          )?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
           let new_watched = get_input_paths_for_watch(&response);
@@ -362,18 +380,27 @@ impl EsbuildBundler {
 // TODO(nathanwhit): MASSIVE HACK
 // See tests::specs::bundle::requires_node_builtin for why this is needed.
 // Without this hack, that test would fail with "Dynamic require of "util" is not supported"
-fn replace_require_shim(contents: &str) -> String {
-  contents.replace(
-    r#"var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});"#,
-    r#"import { createRequire } from "node:module";
+fn replace_require_shim(contents: &str, minified: bool) -> String {
+  if minified {
+    let re = lazy_regex::regex!(
+      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[l\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
+    );
+    re.replace(contents, |c: &regex::Captures<'_>| {
+      let var_name = c.get(1).unwrap().as_str();
+      format!("import{{createRequire}} from \"node:module\";var {var_name}=createRequire(import.meta.url);")
+    }).into_owned()
+  } else {
+    let re = lazy_regex::regex!(
+      r#"var __require = (/\* @__PURE__ \*/)?\s*\(\(\w+\) => typeof require !== "undefined" \? require : typeof Proxy !== "undefined" \? new Proxy\(\w+, \{\s*  get: \(\w+, \w+\) => \(typeof require !== "undefined" \? require : \w+\)\[\w+\]\s*\}\) : \w+\)\(function\(\w+\) \{\s*  if \(typeof require !== "undefined"\) return require\.apply\(this, arguments\);\s*  throw Error\('Dynamic require of "' \+ \w+ \+ '" is not supported'\);\s*\}\);"#
+    );
+    re.replace_all(
+      contents,
+      r#"import { createRequire } from "node:module";
 var __require = createRequire(import.meta.url);
 "#,
-  )
+    )
+    .into_owned()
+  }
 }
 
 fn format_message(
@@ -640,10 +667,10 @@ impl BundleLoadError {
   pub fn is_unsupported_media_type(&self) -> bool {
     match self {
       BundleLoadError::CliModuleLoader(
-        CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(ref e)),
+        CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(e)),
       ) => match &**e {
         LoadCodeSourceErrorKind::LoadPreparedModule(
-          LoadPreparedModuleError::Graph(ref e),
+          LoadPreparedModuleError::Graph(e),
         ) => matches!(
           e.error.as_kind(),
           ModuleErrorKind::UnsupportedMediaType { .. },
@@ -730,7 +757,7 @@ impl DenoPluginHandler {
       Position::new(0, 0),
       ResolveWithGraphOptions {
         mode: import_kind_to_resolution_mode(kind),
-        kind: NodeResolutionKind::Execution,
+        kind: NodeResolutionKind::Bundling,
         maintain_npm_specifiers: false,
       },
     );
@@ -1041,19 +1068,20 @@ fn resolve_roots(
   let mut roots = Vec::with_capacity(entrypoints.len());
 
   for url in entrypoints {
-    let root = if let Ok(v) = NpmPackageReqReference::from_specifier(&url) {
-      let referrer =
-        ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
+    let root = match NpmPackageReqReference::from_specifier(&url) {
+      Ok(v) => {
+        let referrer =
+          ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
+            .unwrap();
+        let package_folder = npm_resolver
+          .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
           .unwrap();
-      let package_folder = npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
-        .unwrap();
-      let main_module = node_resolver
-        .resolve_binary_export(&package_folder, v.sub_path())
-        .unwrap();
-      Url::from_file_path(&main_module).unwrap()
-    } else {
-      url
+        let main_module = node_resolver
+          .resolve_binary_export(&package_folder, v.sub_path())
+          .unwrap();
+        Url::from_file_path(&main_module).unwrap()
+      }
+      _ => url,
     };
     roots.push(root)
   }
@@ -1089,7 +1117,7 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   let mut builder = EsbuildFlagsBuilder::default();
 
   builder
-    .bundle(bundle_flags.one_file)
+    .bundle(bundle_flags.inline_imports)
     .minify(bundle_flags.minify)
     .splitting(bundle_flags.code_splitting)
     .external(bundle_flags.external.clone())
@@ -1170,6 +1198,7 @@ fn process_result(
   response: &BuildResponse,
   cwd: &Path,
   should_replace_require_shim: bool,
+  minified: bool,
 ) -> Result<Vec<OutputFileInfo>, AnyError> {
   let mut exists_cache = std::collections::HashSet::new();
   let output_files = response
@@ -1186,7 +1215,7 @@ fn process_result(
     let bytes = if is_js || file.path.ends_with("<stdout>") {
       let string = String::from_utf8(file.contents.clone())?;
       let string = if should_replace_require_shim {
-        replace_require_shim(&string)
+        replace_require_shim(&string, minified)
       } else {
         string
       };

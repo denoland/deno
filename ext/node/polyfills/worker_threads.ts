@@ -136,7 +136,7 @@ class NodeWorker extends EventEmitter {
     ) {
       // deno-lint-ignore prefer-primordials
       specifier = specifier.toString();
-      specifier = op_worker_threads_filename(specifier);
+      specifier = op_worker_threads_filename(specifier) ?? specifier;
     }
 
     // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be

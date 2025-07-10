@@ -5,8 +5,8 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::io::stdin;
 use std::io::Read;
+use std::io::stdin;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -20,8 +20,8 @@ use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
+use deno_core::futures::future::LocalBoxFuture;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::unsync::future::LocalFutureExt;
@@ -31,8 +31,8 @@ use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use log::debug;
-use reporters::create_reporter;
 use reporters::LintReporter;
+use reporters::create_reporter;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -64,11 +64,12 @@ mod rules;
 pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
-pub use plugins::create_runner_and_load_plugins;
+pub use plugins::PluginHostProxy;
 pub use plugins::PluginLogger;
-pub use rules::collect_no_slow_type_diagnostics;
+pub use plugins::create_runner_and_load_plugins;
 pub use rules::ConfiguredRules;
 pub use rules::LintRuleProvider;
+pub use rules::collect_no_slow_type_diagnostics;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 

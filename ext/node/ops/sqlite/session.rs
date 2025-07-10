@@ -5,15 +5,15 @@ use std::cell::RefCell;
 use std::ffi::c_void;
 use std::rc::Weak;
 
+use deno_core::FromV8;
+use deno_core::GarbageCollected;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8_static_strings;
-use deno_core::FromV8;
-use deno_core::GarbageCollected;
 use rusqlite::ffi;
 
-use super::validators;
 use super::SqliteError;
+use super::validators;
 
 #[derive(Default)]
 pub struct SessionOptions {

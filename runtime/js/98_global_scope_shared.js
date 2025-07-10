@@ -145,11 +145,7 @@ const windowOrWorkerGlobalScope = {
   setImmediate: core.propWritable(setImmediate),
   clearImmediate: core.propWritable(clearImmediate),
   Buffer: core.propWritable(Buffer),
-  global: {
-    enumerable: true,
-    configurable: true,
-    get: () => globalThis,
-  },
+  global: core.propWritable(globalThis),
   reportError: core.propWritable(event.reportError),
   setInterval: core.propWritable(timers.setInterval),
   setTimeout: core.propWritable(timers.setTimeout),

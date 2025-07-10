@@ -9,6 +9,7 @@ use ::tokio_util::sync::CancellationToken;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
@@ -17,14 +18,13 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
 use deno_core::v8;
-use deno_core::PollEventLoopOptions;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_path_util::url_from_file_path;
+use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
 use deno_runtime::worker::MainWorker;
-use deno_runtime::WorkerExecutionMode;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -163,6 +163,8 @@ async fn create_plugin_runner_inner(
       // TODO(bartlomieju): add "lint" execution mode
       WorkerExecutionMode::Run,
       main_module.clone(),
+      // `deno lint` doesn't support preloading modules
+      vec![],
       permissions,
       vec![crate::ops::lint::deno_lint_ext::init(logger.clone())],
       Default::default(),

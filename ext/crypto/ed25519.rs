@@ -2,16 +2,16 @@
 
 use aws_lc_rs::signature::Ed25519KeyPair;
 use aws_lc_rs::signature::KeyPair;
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
-use deno_core::op2;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
-use rand::rngs::OsRng;
 use rand::RngCore;
-use spki::der::asn1::BitString;
+use rand::rngs::OsRng;
 use spki::der::Decode;
 use spki::der::Encode;
+use spki::der::asn1::BitString;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Ed25519Error {

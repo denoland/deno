@@ -3,12 +3,12 @@
 use std::process::Command;
 
 use serde_json::json;
+use test_util::TestContextBuilder;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
 use test_util::env_vars_for_jsr_provenance_tests;
 use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_jsr_tests_with_git_check;
-use test_util::TestContextBuilder;
 
 #[test]
 fn publish_non_exported_files_using_import_map() {
@@ -36,12 +36,16 @@ fn publish_non_exported_files_using_import_map() {
   output.assert_exit_code(0);
   let lines = output.combined_output().split('\n').collect::<Vec<_>>();
   eprintln!("{}", output.combined_output());
-  assert!(lines
-    .iter()
-    .any(|l| l.contains("Unfurling") && l.ends_with("mod.ts")));
-  assert!(lines
-    .iter()
-    .any(|l| l.contains("Unfurling") && l.ends_with("other.ts")));
+  assert!(
+    lines
+      .iter()
+      .any(|l| l.contains("Unfurling") && l.ends_with("mod.ts"))
+  );
+  assert!(
+    lines
+      .iter()
+      .any(|l| l.contains("Unfurling") && l.ends_with("other.ts"))
+  );
 }
 
 #[test]
@@ -504,7 +508,10 @@ fn allow_dirty_dry_run() {
     .run();
   output.assert_exit_code(1);
   let output = output.combined_output();
-  assert_contains!(output, "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+  assert_contains!(
+    output,
+    "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty"
+  );
 }
 
 fn publish_context_builder() -> TestContextBuilder {
