@@ -4406,7 +4406,7 @@ interface WorkerOptions {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Configure permissions options to change the level of access the worker will
-   * have. By default it will have no permissions. Note that the permissions
+   * have. By default it will inherit permissions. Note that the permissions
    * of a worker can't be extended beyond its parent's permissions reach.
    *
    * - `"inherit"` will take the permissions of the thread the worker is created
