@@ -15,6 +15,8 @@ use node_resolver::errors::ClosestPkgJsonError;
 use thiserror::Error;
 use url::Url;
 
+use super::LoadedModule;
+use super::LoadedModuleSource;
 use super::RequestedModuleType;
 use crate::cache::ParsedSourceCacheRc;
 use crate::cjs::CjsTrackerRc;
@@ -29,22 +31,6 @@ use crate::npm::NpmResolverSys;
 
 #[allow(clippy::disallowed_types)]
 type ArcStr = std::sync::Arc<str>;
-#[allow(clippy::disallowed_types)]
-type ArcBytes = std::sync::Arc<[u8]>;
-
-pub enum PreparedModuleSource {
-  ArcStr(ArcStr),
-  ArcBytes(ArcBytes),
-}
-
-impl PreparedModuleSource {
-  pub fn as_bytes(&self) -> &[u8] {
-    match self {
-      PreparedModuleSource::ArcStr(text) => text.as_bytes(),
-      PreparedModuleSource::ArcBytes(bytes) => bytes,
-    }
-  }
-}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[error("{message}")]
@@ -91,14 +77,8 @@ pub trait PreparedModuleLoaderSys:
 {
 }
 
-pub struct PreparedModule<'graph> {
-  pub specifier: &'graph Url,
-  pub media_type: MediaType,
-  pub source: PreparedModuleSource,
-}
-
-pub enum PreparedModuleOrAsset<'graph> {
-  Module(PreparedModule<'graph>),
+pub enum LoadedModuleOrAsset<'graph> {
+  Module(LoadedModule<'graph>),
   /// A module that the graph knows about, but the data
   /// is not stored in the graph itself. It's up to the caller
   /// to fetch this data.
@@ -108,7 +88,7 @@ pub enum PreparedModuleOrAsset<'graph> {
 }
 
 enum CodeOrDeferredEmit<'a> {
-  Source(PreparedModule<'a>),
+  Source(LoadedModule<'a>),
   DeferredEmit {
     specifier: &'a Url,
     media_type: MediaType,
@@ -159,8 +139,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
     graph: &'graph ModuleGraph,
     specifier: &Url,
     requested_module_type: &RequestedModuleType<'_>,
-  ) -> Result<Option<PreparedModuleOrAsset<'graph>>, LoadPreparedModuleError>
-  {
+  ) -> Result<Option<LoadedModuleOrAsset<'graph>>, LoadPreparedModuleError> {
     // Note: keep this in sync with the sync version below
     match self.load_prepared_module_or_defer_emit(
       graph,
@@ -168,7 +147,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
       requested_module_type,
     )? {
       Some(CodeOrDeferredEmit::Source(source)) => {
-        Ok(Some(PreparedModuleOrAsset::Module(source)))
+        Ok(Some(LoadedModuleOrAsset::Module(source)))
       }
       Some(CodeOrDeferredEmit::DeferredEmit {
         specifier,
@@ -183,9 +162,9 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
 
-        Ok(Some(PreparedModuleOrAsset::Module(PreparedModule {
+        Ok(Some(LoadedModuleOrAsset::Module(LoadedModule {
           // note: it's faster to provide a string to v8 if we know it's a string
-          source: PreparedModuleSource::ArcStr(transpile_result),
+          source: LoadedModuleSource::ArcStr(transpile_result),
           specifier,
           media_type,
         })))
@@ -198,15 +177,15 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         .load_maybe_cjs(specifier, media_type, source)
         .await
         .map(|text| {
-          Some(PreparedModuleOrAsset::Module(PreparedModule {
+          Some(LoadedModuleOrAsset::Module(LoadedModule {
             specifier,
             media_type,
-            source: PreparedModuleSource::ArcStr(text),
+            source: LoadedModuleSource::ArcStr(text),
           }))
         })
         .map_err(LoadPreparedModuleError::LoadMaybeCjs),
       Some(CodeOrDeferredEmit::ExternalAsset { specifier }) => {
-        Ok(Some(PreparedModuleOrAsset::ExternalAsset { specifier }))
+        Ok(Some(LoadedModuleOrAsset::ExternalAsset { specifier }))
       }
       None => Ok(None),
     }
@@ -216,7 +195,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
     &self,
     graph: &'graph ModuleGraph,
     specifier: &Url,
-  ) -> Result<Option<PreparedModule<'graph>>, anyhow::Error> {
+  ) -> Result<Option<LoadedModule<'graph>>, anyhow::Error> {
     // Note: keep this in sync with the async version above
     match self.load_prepared_module_or_defer_emit(
       graph,
@@ -239,9 +218,9 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         // at this point, we no longer need the parsed source in memory, so free it
         self.parsed_source_cache.free(specifier);
 
-        Ok(Some(PreparedModule {
+        Ok(Some(LoadedModule {
           // note: it's faster to provide a string if we know it's a string
-          source: PreparedModuleSource::ArcStr(transpile_result),
+          source: LoadedModuleSource::ArcStr(transpile_result),
           specifier,
           media_type,
         }))
@@ -282,22 +261,22 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         ..
       })) => match requested_module_type {
         RequestedModuleType::Bytes => match source.try_get_original_bytes() {
-          Some(bytes) => Ok(Some(CodeOrDeferredEmit::Source(PreparedModule {
-            source: PreparedModuleSource::ArcBytes(bytes),
+          Some(bytes) => Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
+            source: LoadedModuleSource::ArcBytes(bytes),
             specifier,
             media_type: *media_type,
           }))),
           None => Ok(Some(CodeOrDeferredEmit::ExternalAsset { specifier })),
         },
         RequestedModuleType::Text => {
-          Ok(Some(CodeOrDeferredEmit::Source(PreparedModule {
-            source: PreparedModuleSource::ArcStr(source.text.clone()),
+          Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
+            source: LoadedModuleSource::ArcStr(source.text.clone()),
             specifier,
             media_type: *media_type,
           })))
         }
-        _ => Ok(Some(CodeOrDeferredEmit::Source(PreparedModule {
-          source: PreparedModuleSource::ArcStr(source.text.clone()),
+        _ => Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
+          source: LoadedModuleSource::ArcStr(source.text.clone()),
           specifier,
           media_type: *media_type,
         }))),
@@ -310,16 +289,16 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         ..
       })) => match requested_module_type {
         RequestedModuleType::Bytes => match source.try_get_original_bytes() {
-          Some(bytes) => Ok(Some(CodeOrDeferredEmit::Source(PreparedModule {
-            source: PreparedModuleSource::ArcBytes(bytes),
+          Some(bytes) => Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
+            source: LoadedModuleSource::ArcBytes(bytes),
             specifier,
             media_type: *media_type,
           }))),
           None => Ok(Some(CodeOrDeferredEmit::ExternalAsset { specifier })),
         },
         RequestedModuleType::Text => {
-          Ok(Some(CodeOrDeferredEmit::Source(PreparedModule {
-            source: PreparedModuleSource::ArcStr(source.text.clone()),
+          Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
+            source: LoadedModuleSource::ArcStr(source.text.clone()),
             specifier,
             media_type: *media_type,
           })))
@@ -373,8 +352,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
           // at this point, we no longer need the parsed source in memory, so free it
           self.parsed_source_cache.free(specifier);
 
-          Ok(Some(CodeOrDeferredEmit::Source(PreparedModule {
-            source: PreparedModuleSource::ArcStr(code),
+          Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
+            source: LoadedModuleSource::ArcStr(code),
             specifier,
             media_type: *media_type,
           })))
@@ -382,8 +361,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
       },
       Some(deno_graph::Module::Wasm(WasmModule {
         source, specifier, ..
-      })) => Ok(Some(CodeOrDeferredEmit::Source(PreparedModule {
-        source: PreparedModuleSource::ArcBytes(source.clone()),
+      })) => Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
+        source: LoadedModuleSource::ArcBytes(source.clone()),
         specifier,
         media_type: MediaType::Wasm,
       }))),

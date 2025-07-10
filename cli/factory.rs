@@ -18,7 +18,6 @@ use deno_error::JsErrorBox;
 use deno_lib::args::CaData;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::npm_process_state;
-use deno_lib::loader::NpmModuleLoader;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::npm::create_npm_process_state_provider;
@@ -915,7 +914,6 @@ impl CliFactory {
     let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
     let workspace_factory = self.workspace_factory()?;
     let resolver_factory = self.resolver_factory()?;
-    let node_code_translator = resolver_factory.node_code_translator()?;
     let cjs_tracker = self.cjs_tracker()?.clone();
     let npm_registry_permission_checker = {
       let mode = if resolver_factory.use_byonm()? {
@@ -949,11 +947,7 @@ impl CliFactory {
       in_npm_pkg_checker.clone(),
       self.main_module_graph_container().await?.clone(),
       self.module_load_preparer().await?.clone(),
-      NpmModuleLoader::new(
-        self.cjs_tracker()?.clone(),
-        node_code_translator.clone(),
-        self.sys(),
-      ),
+      resolver_factory.npm_module_loader()?.clone(),
       npm_registry_permission_checker,
       cli_npm_resolver.clone(),
       resolver_factory.parsed_source_cache().clone(),
@@ -1222,7 +1216,7 @@ fn new_workspace_factory_options(
         }
       }
       ConfigFlag::Path(path) => {
-        ConfigDiscoveryOption::Path(PathBuf::from(path))
+        ConfigDiscoveryOption::Path(initial_cwd.join(path))
       }
       ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
     },
@@ -1246,7 +1240,7 @@ fn new_workspace_factory_options(
           | DenoSubcommand::Uninstall(_)
       ),
     frozen_lockfile: flags.frozen_lockfile,
-    lock_arg: flags.lock.clone(),
+    lock_arg: flags.lock.as_ref().map(|l| initial_cwd.join(l)),
     lockfile_skip_write: flags.internal.lockfile_skip_write,
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,

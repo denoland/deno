@@ -1,4 +1,8 @@
 {
-  "extends": "foo/tsconfig.dom",
-  "files": ["main.dom.ts"]
+  "compilerOptions": {
+    "lib": ["deno.window"]
+  },
+  "references": [
+    { "path": "tsconfig.dom.json" }
+  ]
 }
