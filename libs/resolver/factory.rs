@@ -22,7 +22,6 @@ use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
 pub use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_path_util::normalize_path;
 use futures::future::FutureExt;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -596,7 +595,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           debug_assert!(path.is_absolute());
           WorkspaceDirectory::discover(
             &self.sys,
-            WorkspaceDiscoverStart::ConfigFile(&path),
+            WorkspaceDiscoverStart::ConfigFile(path),
             &resolve_workspace_discover_options(),
           )?
         }
