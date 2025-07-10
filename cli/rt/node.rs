@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
-use deno_lib::loader::NpmModuleLoader;
 use deno_lib::standalone::binary::CjsExportAnalysisEntry;
 use deno_media_type::MediaType;
+use deno_resolver::loader::NpmModuleLoader;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolver;
 use deno_runtime::deno_fs::FileSystem;

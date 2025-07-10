@@ -62,6 +62,8 @@ use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::import_map::WorkspaceExternalImportMapLoader;
 use crate::import_map::WorkspaceExternalImportMapLoaderRc;
+use crate::loader::DenoNpmModuleLoaderRc;
+use crate::loader::NpmModuleLoader;
 use crate::lockfile::LockfileLock;
 use crate::lockfile::LockfileLockRc;
 use crate::npm::ByonmNpmResolverCreateOptions;
@@ -225,6 +227,7 @@ pub trait WorkspaceFactorySys:
   + crate::npm::NpmResolverSys
   + deno_cache_dir::GlobalHttpCacheSys
   + deno_cache_dir::LocalHttpCacheSys
+  + crate::loader::NpmModuleLoaderSys
 {
 }
 
@@ -693,6 +696,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   found_package_json_dep_flag: crate::graph::FoundPackageJsonDepFlagRc,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_code_translator: Deferred<DenoNodeCodeTranslatorRc<TSys>>,
+  npm_module_loader: Deferred<DenoNpmModuleLoaderRc<TSys>>,
   node_resolver: Deferred<
     NodeResolverRc<
       DenoInNpmPackageChecker,
@@ -746,6 +750,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       in_npm_package_checker: Default::default(),
       node_code_translator: Default::default(),
       node_resolver: Default::default(),
+      npm_module_loader: Default::default(),
       npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
@@ -945,6 +950,18 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.pkg_json_resolver().clone(),
         self.sys.clone(),
         self.options.node_resolver_options.clone(),
+      )))
+    })
+  }
+
+  pub fn npm_module_loader(
+    &self,
+  ) -> Result<&DenoNpmModuleLoaderRc<TSys>, anyhow::Error> {
+    self.npm_module_loader.get_or_try_init(|| {
+      Ok(new_rc(NpmModuleLoader::new(
+        self.cjs_tracker()?.clone(),
+        self.node_code_translator()?.clone(),
+        self.workspace_factory.sys.clone(),
       )))
     })
   }

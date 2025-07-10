@@ -1,0 +1,10 @@
+[WILDCARD]
+
+Embedded Files
+
+bin[WILDLINE]
+├── main.ts [WILDLINE]
+├── node_modules/* [WILDLINE]
+└── package.json [WILDLINE]
+
+[WILDCARD]
