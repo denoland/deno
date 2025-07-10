@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { assert, assertEquals } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 
 const cert = Deno.readTextFileSync("tests/testdata/tls/localhost.crt");
 const key = Deno.readTextFileSync("tests/testdata/tls/localhost.key");
