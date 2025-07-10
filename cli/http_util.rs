@@ -57,7 +57,7 @@ impl std::fmt::Debug for HttpClientProvider {
 }
 
 #[derive(Clone)]
-struct Noop;
+pub struct Noop;
 
 impl FetchPermissions for Noop {
   fn check_net_url(
@@ -90,6 +90,14 @@ impl FetchPermissions for Noop {
     &mut self,
     _cid: u32,
     _port: u32,
+    _api_name: &str,
+  ) -> Result<(), deno_runtime::deno_permissions::PermissionCheckError> {
+    Ok(())
+  }
+
+  fn check_net(
+    &self,
+    _addr: &(&str, Option<u16>),
     _api_name: &str,
   ) -> Result<(), deno_runtime::deno_permissions::PermissionCheckError> {
     Ok(())
@@ -513,6 +521,10 @@ mod test {
 
   use super::*;
 
+  fn default_options() -> CreateHttpClientOptions {
+    CreateHttpClientOptions::default(Arc::new(Noop))
+  }
+
   #[tokio::test]
   async fn test_http_client_download_redirect() {
     let _http_server_guard = test_util::http_server();
@@ -553,7 +565,7 @@ mod test {
             std::fs::read(test_util::testdata_path().join("tls/RootCA.pem"))
               .unwrap(),
           ],
-          ..Default::default()
+          ..default_options()
         },
       )
       .unwrap(),
@@ -590,11 +602,8 @@ mod test {
       eprintln!("Attempting to fetch {url}...");
 
       let client = HttpClient::new(
-        create_http_client(
-          DENO_VERSION_INFO.user_agent,
-          CreateHttpClientOptions::default(),
-        )
-        .unwrap(),
+        create_http_client(DENO_VERSION_INFO.user_agent, default_options())
+          .unwrap(),
       );
 
       let result = client.send(&url, Default::default()).await;
@@ -637,7 +646,7 @@ mod test {
         DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           root_cert_store: Some(root_cert_store),
-          ..Default::default()
+          ..default_options()
         },
       )
       .unwrap(),
@@ -665,7 +674,7 @@ mod test {
             )
             .unwrap(),
           ],
-          ..Default::default()
+          ..default_options()
         },
       )
       .unwrap(),
@@ -700,7 +709,7 @@ mod test {
             )
             .unwrap(),
           ],
-          ..Default::default()
+          ..default_options()
         },
       )
       .unwrap(),
@@ -743,7 +752,7 @@ mod test {
             )
             .unwrap(),
           ],
-          ..Default::default()
+          ..default_options()
         },
       )
       .unwrap(),

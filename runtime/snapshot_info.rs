@@ -60,6 +60,14 @@ impl deno_fetch::FetchPermissions for Permissions {
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
+
+  fn check_net(
+    &self,
+    _addr: &(&str, Option<u16>),
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
 }
 
 impl deno_ffi::FfiPermissions for Permissions {

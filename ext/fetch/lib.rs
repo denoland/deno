@@ -419,6 +419,12 @@ pub trait FetchPermissions:
     port: u32,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
+
+  fn check_net(
+    &self,
+    addr: &(&str, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
 }
 
 dyn_clone::clone_trait_object!(FetchPermissions);
@@ -458,6 +464,14 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     deno_permissions::PermissionsContainer::check_net_vsock(
       self, cid, port, api_name,
     )
+  }
+
+  fn check_net(
+    &self,
+    addr: &(&str, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net(self, addr, api_name)
   }
 }
 

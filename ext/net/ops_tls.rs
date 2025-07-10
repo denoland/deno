@@ -446,6 +446,16 @@ where
     .await?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  {
+    let mut s = state.borrow_mut();
+    let permissions = s.borrow_mut::<NP>();
+    permissions
+      .check_net(
+        &(&connect_addr.ip().to_string(), Some(connect_addr.port())),
+        "Deno.connectTls()",
+      )
+      .map_err(NetError::Permission)?;
+  }
   let tcp_stream = TcpStream::connect(connect_addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -515,6 +525,16 @@ where
   let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
+
+  {
+    let permissions = state.borrow_mut::<NP>();
+    permissions
+      .check_net(
+        &(&bind_addr.ip().to_string(), Some(bind_addr.port())),
+        "Deno.listenTls()",
+      )
+      .map_err(NetError::Permission)?;
+  }
 
   let tcp_listener = if args.load_balanced {
     TcpListener::bind_load_balanced(bind_addr)

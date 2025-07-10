@@ -265,6 +265,14 @@ where
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
 
+  {
+    let mut s = state.borrow_mut();
+    s.borrow_mut::<NP>().check_net(
+      &(&addr.ip().to_string(), Some(addr.port())),
+      "Deno.DatagramConn.send()",
+    )?;
+  }
+
   let resource = state
     .borrow_mut()
     .resource_table
@@ -512,6 +520,14 @@ where
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
 
+  {
+    let mut s = state.borrow_mut();
+    s.borrow_mut::<NP>().check_net(
+      &(&addr.ip().to_string(), Some(addr.port())),
+      "Deno.connect()",
+    )?;
+  }
+
   let cancel_handle = resource_abort_id.and_then(|rid| {
     state
       .borrow_mut()
@@ -612,6 +628,12 @@ where
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
 
+  {
+    state.borrow_mut::<NP>().check_net(
+      &(&addr.ip().to_string(), Some(addr.port())),
+      "Deno.listenDatagram()",
+    )?;
+  }
   let domain = if addr.is_ipv4() {
     Domain::IPV4
   } else {
