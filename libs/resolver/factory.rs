@@ -200,7 +200,7 @@ pub struct WorkspaceFactoryOptions {
   pub config_discovery: ConfigDiscoveryOption,
   pub is_package_manager_subcommand: bool,
   pub frozen_lockfile: Option<bool>,
-  pub lock_arg: Option<String>,
+  pub lock_arg: Option<PathBuf>,
   /// Whether to skip writing to the lockfile.
   pub lockfile_skip_write: bool,
   pub maybe_custom_deno_dir_root: Option<PathBuf>,
@@ -485,11 +485,11 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           crate::lockfile::LockfileFlags {
             no_lock: self.options.no_lock,
             frozen_lockfile: self.options.frozen_lockfile,
-            lock: self
-              .options
-              .lock_arg
-              .as_ref()
-              .map(|p| self.initial_cwd.join(p)),
+            lock: self.options.lock_arg.as_ref().map(|path| {
+              #[cfg(not(target_arch = "wasm32"))]
+              debug_assert!(path.is_absolute());
+              path.clone()
+            }),
             skip_write: self.options.lockfile_skip_write,
             no_config: matches!(
               self.options.config_discovery,
@@ -592,10 +592,11 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           )?
         }
         ConfigDiscoveryOption::Path(path) => {
-          let config_path = normalize_path(self.initial_cwd.join(path));
+          #[cfg(not(target_arch = "wasm32"))]
+          debug_assert!(path.is_absolute());
           WorkspaceDirectory::discover(
             &self.sys,
-            WorkspaceDiscoverStart::ConfigFile(&config_path),
+            WorkspaceDiscoverStart::ConfigFile(&path),
             &resolve_workspace_discover_options(),
           )?
         }

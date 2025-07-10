@@ -1222,7 +1222,7 @@ fn new_workspace_factory_options(
         }
       }
       ConfigFlag::Path(path) => {
-        ConfigDiscoveryOption::Path(PathBuf::from(path))
+        ConfigDiscoveryOption::Path(initial_cwd.join(path))
       }
       ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
     },
@@ -1246,7 +1246,7 @@ fn new_workspace_factory_options(
           | DenoSubcommand::Uninstall(_)
       ),
     frozen_lockfile: flags.frozen_lockfile,
-    lock_arg: flags.lock.clone(),
+    lock_arg: flags.lock.as_ref().map(|l| initial_cwd.join(l)),
     lockfile_skip_write: flags.internal.lockfile_skip_write,
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,
