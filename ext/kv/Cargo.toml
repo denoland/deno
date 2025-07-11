@@ -30,6 +30,7 @@ deno_tls.workspace = true
 denokv_proto.workspace = true
 denokv_remote.workspace = true
 denokv_sqlite.workspace = true
+dyn-clone.workspace = true
 faster-hex.workspace = true
 http.workspace = true
 http-body-util.workspace = true
