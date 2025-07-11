@@ -102,6 +102,14 @@ impl FetchPermissions for Noop {
   ) -> Result<(), deno_runtime::deno_permissions::PermissionCheckError> {
     Ok(())
   }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &self,
+    _addr: &std::net::SocketAddr,
+    _api_name: &str,
+  ) -> Result<(), deno_runtime::deno_permissions::PermissionCheckError> {
+    Ok(())
+  }
 }
 
 impl HttpClientProvider {

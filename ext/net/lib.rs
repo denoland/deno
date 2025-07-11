@@ -12,6 +12,7 @@ pub mod tcp;
 pub mod tunnel;
 
 use std::borrow::Cow;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -39,11 +40,15 @@ pub trait NetPermissions {
     open_access: OpenAccessKind,
     api_name: &str,
   ) -> Result<CheckedPath<'a>, PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_vsock(
     &mut self,
     cid: u32,
     port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    addr: &SocketAddr,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
 }
@@ -83,6 +88,15 @@ impl NetPermissions for deno_permissions::PermissionsContainer {
     deno_permissions::PermissionsContainer::check_net_vsock(
       self, cid, port, api_name,
     )
+  }
+
+  #[inline(always)]
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    addr: &SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net_resolved_addr_is_not_denied(self, addr, api_name)
   }
 }
 
