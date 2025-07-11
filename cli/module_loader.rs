@@ -502,23 +502,6 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   }
 }
 
-impl CliModuleLoaderFactory {
-  pub fn create_cli_module_loader(
-    &self,
-    root_permissions: PermissionsContainer,
-  ) -> CliModuleLoader<MainModuleGraphContainer> {
-    CliModuleLoader(Rc::new(CliModuleLoaderInner {
-      lib: self.shared.lib_window,
-      is_worker: false,
-      parent_permissions: root_permissions.clone(),
-      permissions: root_permissions,
-      graph_container: (*self.shared.main_module_graph_container).clone(),
-      shared: self.shared.clone(),
-      loaded_files: Default::default(),
-    }))
-  }
-}
-
 struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,
   pub found_url: ModuleSpecifier,
@@ -555,7 +538,7 @@ pub enum ResolveReferrerError {
 pub enum CliModuleLoaderError {
   #[class(inherit)]
   #[error(transparent)]
-  Fetch(deno_resolver::file_fetcher::FetchError),
+  Fetch(#[from] deno_resolver::file_fetcher::FetchError),
   #[class(inherit)]
   #[error(transparent)]
   LoadCodeSource(#[from] LoadCodeSourceError),
@@ -578,50 +561,9 @@ pub enum CliModuleLoaderError {
   ResolveReferrer(#[from] ResolveReferrerError),
 }
 
-impl<TGraphContainer: ModuleGraphContainer> CliModuleLoader<TGraphContainer> {
-  pub async fn load_module_source(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    requested_module_type: &RequestedModuleType,
-  ) -> Result<ModuleSource, CliModuleLoaderError> {
-    self
-      .0
-      .load_module_source(specifier, maybe_referrer, requested_module_type)
-      .await
-  }
-}
-
 impl<TGraphContainer: ModuleGraphContainer>
   CliModuleLoaderInner<TGraphContainer>
 {
-  async fn load_module_source(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    requested_module_type: &RequestedModuleType,
-  ) -> Result<ModuleSource, CliModuleLoaderError> {
-    let code_source = self
-      .load_code_source(specifier, maybe_referrer, requested_module_type)
-      .await?;
-
-    // If we loaded a JSON file, but the "requested_module_type" (that is computed from
-    // import attributes) is not JSON we need to fail.
-    if code_source.module_type == ModuleType::Json
-      && *requested_module_type != RequestedModuleType::Json
-    {
-      return Err(CliModuleLoaderError::MissingJsonAttribute);
-    }
-
-    Ok(ModuleSource::new_with_redirect(
-      code_source.module_type,
-      code_source.code,
-      specifier,
-      &code_source.found_url,
-      None,
-    ))
-  }
-
   async fn load_inner(
     &self,
     specifier: &ModuleSpecifier,
@@ -633,13 +575,6 @@ impl<TGraphContainer: ModuleGraphContainer>
       .await
       .map_err(JsErrorBox::from_err)?;
 
-    // If we loaded a JSON file, but the "requested_module_type" (that is computed from
-    // import attributes) is not JSON we need to fail.
-    if code_source.module_type == ModuleType::Json
-      && *requested_module_type != RequestedModuleType::Json
-    {
-      return Err(JsErrorBox::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
-    }
     let code = if self.shared.is_inspecting
       || code_source.module_type == ModuleType::Wasm
     {
@@ -722,7 +657,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     let graph = self.graph_container.graph();
     let deno_resolver_requested_module_type =
       as_deno_resolver_requested_module_type(requested_module_type);
-    match self
+    let code_source = match self
       .shared
       .module_loader
       .load(
@@ -733,12 +668,11 @@ impl<TGraphContainer: ModuleGraphContainer>
       )
       .await?
     {
-      LoadedModuleOrAsset::Module(prepared_module) => {
-        Ok(self.loaded_module_to_module_code_string_source(
+      LoadedModuleOrAsset::Module(prepared_module) => self
+        .loaded_module_to_module_code_string_source(
           prepared_module,
           requested_module_type,
-        ))
-      }
+        ),
       LoadedModuleOrAsset::ExternalAsset {
         specifier,
         statically_analyzable,
@@ -754,9 +688,17 @@ impl<TGraphContainer: ModuleGraphContainer>
             },
             requested_module_type,
           )
-          .await
-          .map_err(CliModuleLoaderError::Fetch)
+          .await?
       }
+    };
+    // If we loaded a JSON file, but the "requested_module_type" (that is computed from
+    // import attributes) is not JSON we need to fail.
+    if code_source.module_type == ModuleType::Json
+      && *requested_module_type != RequestedModuleType::Json
+    {
+      Err(CliModuleLoaderError::MissingJsonAttribute)
+    } else {
+      Ok(code_source)
     }
   }
 
