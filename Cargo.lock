@@ -2681,9 +2681,9 @@ dependencies = [
  "serde",
  "serde_json",
  "sys_traits",
- "temp_deno_which",
  "thiserror 2.0.12",
  "url",
+ "which 8.0.0",
  "winapi",
  "windows-sys 0.59.0",
 ]
@@ -2870,9 +2870,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.24.0"
+version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71ebb5abcf453e2a2eb19d316706fd06b9f79688e6aedc4bda1f1767f53ec8c7"
+checksum = "38caeb310ffd21fdd263c8e9cccd590c0a6fb19d385ebc234bc95bd33cddcda2"
 dependencies = [
  "anyhow",
  "deno_path_util",
@@ -2885,6 +2885,7 @@ dependencies = [
  "sys_traits",
  "thiserror 2.0.12",
  "tokio",
+ "which 8.0.0",
  "windows-sys 0.59.0",
 ]
 
@@ -8903,15 +8904,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e502f78cdbb8ba4718f566c418c52bc729126ffd16baee5baa718cf25dd5a69a"
 
 [[package]]
-name = "temp_deno_which"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "366c5ccd670145885feb6efd6bbf2478ed236c4c3839046fcc8e2a1a84c51091"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "tempfile"
 version = "3.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10125,6 +10117,12 @@ dependencies = [
  "rustix",
  "winsafe",
 ]
+
+[[package]]
+name = "which"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3fabb953106c3c8eea8306e4393700d7657561cb43122571b172bbfb7c7ba1d"
 
 [[package]]
 name = "whoami"
