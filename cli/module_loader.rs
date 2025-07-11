@@ -68,6 +68,7 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
@@ -568,6 +569,12 @@ pub enum CliModuleLoaderError {
   MissingJsonAttribute,
   #[class(inherit)]
   #[error(transparent)]
+  PathToUrl(#[from] PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolveNpmReqRef(#[from] deno_resolver::npm::ResolveNpmReqRefError),
+  #[class(inherit)]
+  #[error(transparent)]
   ResolveReferrer(#[from] ResolveReferrerError),
 }
 
@@ -682,24 +689,46 @@ impl<TGraphContainer: ModuleGraphContainer>
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleCodeStringSource, CliModuleLoaderError> {
+    // this loader maintains npm specifiers in dynamic imports when resolving
+    // so that they can be properly preloaded, but now we might receive them
+    // here, so we need to actually resolve them to a file: specifier here
+    let specifier = if let Ok(reference) =
+      NpmPackageReqReference::from_specifier(specifier)
+    {
+      let referrer = match maybe_referrer {
+        // if we're here, it means it was importing from a dynamic import
+        // and so there will be a referrer
+        Some(r) => Cow::Borrowed(r),
+        // but the repl may also end up here and it won't have
+        // a referrer so create a referrer for it here
+        None => Cow::Owned(self.resolve_referrer("")?),
+      };
+      Cow::Owned(
+        self
+          .shared
+          .resolver
+          .resolve_non_workspace_npm_req_ref_to_file(
+            &reference,
+            &referrer,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
+          )?
+          .into_url()?,
+      )
+    } else {
+      Cow::Borrowed(specifier)
+    };
+
     let graph = self.graph_container.graph();
     let deno_resolver_requested_module_type =
       as_deno_resolver_requested_module_type(requested_module_type);
-    let referrer = match maybe_referrer {
-      // if we're here, it means it was importing from a dynamic import
-      // and so there will be a referrer
-      Some(r) => Cow::Borrowed(r),
-      // but the repl may also end up here and it won't have
-      // a referrer so create a referrer for it here
-      None => Cow::Owned(self.resolve_referrer("")?),
-    };
     match self
       .shared
       .module_loader
       .load(
         &graph,
-        specifier,
-        &referrer,
+        &specifier,
+        maybe_referrer,
         &deno_resolver_requested_module_type,
       )
       .await?

@@ -950,7 +950,7 @@ impl CliFactory {
       npm_registry_permission_checker,
       cli_npm_resolver.clone(),
       resolver_factory.parsed_source_cache().clone(),
-      resolver_factory.module_loader().await?.clone(),
+      resolver_factory.module_loader()?.clone(),
       self.resolver().await?.clone(),
       self.sys(),
       maybe_eszip_loader,

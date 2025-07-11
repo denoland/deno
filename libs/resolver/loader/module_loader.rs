@@ -9,11 +9,7 @@ use deno_graph::JsonModule;
 use deno_graph::ModuleGraph;
 use deno_graph::WasmModule;
 use deno_media_type::MediaType;
-use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
 use node_resolver::errors::ClosestPkgJsonError;
 use url::Url;
 
@@ -28,12 +24,9 @@ use crate::cjs::CjsTrackerRc;
 use crate::emit::EmitParsedSourceHelperError;
 use crate::emit::EmitterRc;
 use crate::factory::DenoNodeCodeTranslatorRc;
-use crate::graph::DenoResolverRc;
 use crate::graph::EnhanceGraphErrorMode;
 use crate::graph::enhance_graph_error;
 use crate::npm::DenoInNpmPackageChecker;
-use crate::npm::NpmResolver;
-use crate::npm::ResolveNpmReqRefError;
 
 #[allow(clippy::disallowed_types)]
 type ArcStr = std::sync::Arc<str>;
@@ -91,9 +84,6 @@ pub enum LoadCodeSourceErrorKind {
   NpmModuleLoad(#[from] NpmModuleLoadError),
   #[class(inherit)]
   #[error(transparent)]
-  ResolveNpmReqRef(#[from] ResolveNpmReqRefError),
-  #[class(inherit)]
-  #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
@@ -102,10 +92,10 @@ pub enum LoadCodeSourceErrorKind {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
-#[error("Loading unprepared module: {}, imported from: {}", .specifier, referrer)]
+#[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {}", r)).unwrap_or_default())]
 pub struct LoadUnpreparedModuleError {
   specifier: Url,
-  referrer: Url,
+  maybe_referrer: Option<Url>,
 }
 
 #[allow(clippy::disallowed_types)]
@@ -139,12 +129,6 @@ enum CodeOrDeferredEmit<'a> {
 }
 
 pub struct ModuleLoader<TSys: ModuleLoaderSys> {
-  deno_resolver: DenoResolverRc<
-    DenoInNpmPackageChecker,
-    DenoIsBuiltInNodeModuleChecker,
-    NpmResolver<TSys>,
-    TSys,
-  >,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   npm_module_loader: DenoNpmModuleLoaderRc<TSys>,
   prepared_module_loader: PreparedModuleLoader<TSys>,
@@ -154,12 +138,6 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     cjs_tracker: CjsTrackerRc<DenoInNpmPackageChecker, TSys>,
-    deno_resolver: DenoResolverRc<
-      DenoInNpmPackageChecker,
-      DenoIsBuiltInNodeModuleChecker,
-      NpmResolver<TSys>,
-      TSys,
-    >,
     emitter: EmitterRc<DenoInNpmPackageChecker, TSys>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
     node_code_translator: DenoNodeCodeTranslatorRc<TSys>,
@@ -168,7 +146,6 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     sys: TSys,
   ) -> Self {
     Self {
-      deno_resolver,
       in_npm_pkg_checker,
       npm_module_loader,
       prepared_module_loader: PreparedModuleLoader {
@@ -181,11 +158,17 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     }
   }
 
+  /// Loads a module using the graph or file system.
+  ///
+  /// Note that the referrer is only used to enhance error messages and
+  /// doesn't need to be provided.
   pub async fn load<'a>(
     &self,
     graph: &'a ModuleGraph,
     specifier: &'a Url,
-    referrer: &Url,
+    // todo(#30074): we should remove passing the referrer in here and remove the
+    // referrer from all error messages. This should be up to deno_core to display.
+    maybe_referrer: Option<&Url>,
     requested_module_type: &RequestedModuleType<'_>,
   ) -> Result<LoadedModuleOrAsset<'a>, LoadCodeSourceError> {
     match self
@@ -196,31 +179,14 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     {
       Some(module_or_asset) => Ok(module_or_asset),
       None => {
-        let specifier = if let Ok(reference) =
-          NpmPackageReqReference::from_specifier(specifier)
-        {
-          Cow::Owned(
-            self
-              .deno_resolver
-              .resolve_non_workspace_npm_req_ref_to_file(
-                &reference,
-                referrer,
-                ResolutionMode::Import,
-                NodeResolutionKind::Execution,
-              )
-              .map_err(LoadCodeSourceError::from)?
-              .unwrap()
-              .into_url()
-              .map_err(LoadCodeSourceError::from)?,
-          )
-        } else {
-          Cow::Borrowed(specifier)
-        };
-
-        if self.in_npm_pkg_checker.in_npm_package(&specifier) {
+        if self.in_npm_pkg_checker.in_npm_package(specifier) {
           let loaded_module = self
             .npm_module_loader
-            .load(specifier, Some(referrer), requested_module_type)
+            .load(
+              Cow::Borrowed(specifier),
+              maybe_referrer,
+              requested_module_type,
+            )
             .await
             .map_err(LoadCodeSourceError::from)?;
           return Ok(LoadedModuleOrAsset::Module(loaded_module));
@@ -229,13 +195,13 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
         match requested_module_type {
           RequestedModuleType::Text | RequestedModuleType::Bytes => {
             Ok(LoadedModuleOrAsset::ExternalAsset {
-              specifier,
+              specifier: Cow::Borrowed(specifier),
               statically_analyzable: false,
             })
           }
           _ => Err(LoadCodeSourceError::from(LoadUnpreparedModuleError {
-            specifier: specifier.into_owned(),
-            referrer: referrer.clone(),
+            specifier: specifier.clone(),
+            maybe_referrer: maybe_referrer.cloned(),
           })),
         }
       }

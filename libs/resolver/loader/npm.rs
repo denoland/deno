@@ -82,11 +82,11 @@ fn format_dir_import_message(
   if let Some(referrer) = maybe_referrer {
     msg.push_str(" is not supported resolving import from ");
     msg.push_str(referrer.as_str());
-    if let Some(entrypoint_name) = suggestion {
-      msg.push_str("\nDid you mean to import ");
-      msg.push_str(entrypoint_name);
-      msg.push_str(" within the directory?");
-    }
+  }
+  if let Some(entrypoint_name) = suggestion {
+    msg.push_str("\nDid you mean to import ");
+    msg.push_str(entrypoint_name);
+    msg.push_str(" within the directory?");
   }
   msg
 }
