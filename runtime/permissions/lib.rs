@@ -44,7 +44,7 @@ pub use prompter::set_prompter;
 
 use self::which::WhichSys;
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError, Clone)]
 #[error("Requires {access}, {}", format_permission_error(.name))]
 #[class("NotCapable")]
 pub struct PermissionDeniedError {

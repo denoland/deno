@@ -69,6 +69,14 @@ impl deno_fetch::FetchPermissions for Permissions {
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &self,
+    _addr: &std::net::SocketAddr,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
 }
 
 impl deno_ffi::FfiPermissions for Permissions {
@@ -123,6 +131,14 @@ impl deno_node::NodePermissions for Permissions {
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    _addr: &std::net::SocketAddr,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
 }
 
 impl deno_net::NetPermissions for Permissions {
@@ -147,6 +163,14 @@ impl deno_net::NetPermissions for Permissions {
     &mut self,
     _cid: u32,
     _port: u32,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    _addr: &std::net::SocketAddr,
     _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")

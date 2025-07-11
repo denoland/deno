@@ -39,10 +39,23 @@ impl std::fmt::Debug for Resolver {
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum DnsResolveError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(type)]
+  #[error(transparent)]
+  Hickory(#[from] hickory_resolver::ResolveError),
+}
+
 /// Alias for the `Future` type returned by a custom DNS resolver.
 // The future has to be `Send` as `tokio::spawn` is used to execute the future.
 pub type Resolving =
-  Pin<Box<dyn Future<Output = Result<SocketAddrs, io::Error>> + Send>>;
+  Pin<Box<dyn Future<Output = Result<SocketAddrs, DnsResolveError>> + Send>>;
 
 /// A trait for customizing DNS resolution in ext/fetch.
 // The resolver needs to be `Send` and `Sync` for two reasons. One is it is
@@ -103,11 +116,11 @@ impl Resolver {
 type SocketAddrs = vec::IntoIter<SocketAddr>;
 
 pub struct ResolveFut {
-  inner: JoinHandle<Result<SocketAddrs, io::Error>>,
+  inner: JoinHandle<Result<SocketAddrs, DnsResolveError>>,
 }
 
 impl Future for ResolveFut {
-  type Output = Result<SocketAddrs, io::Error>;
+  type Output = Result<SocketAddrs, DnsResolveError>;
 
   fn poll(
     mut self: Pin<&mut Self>,
@@ -118,9 +131,9 @@ impl Future for ResolveFut {
       Ok(Err(e)) => Err(e),
       Err(join_err) => {
         if join_err.is_cancelled() {
-          Err(io::Error::new(io::ErrorKind::Interrupted, join_err))
+          Err(io::Error::new(io::ErrorKind::Interrupted, join_err).into())
         } else {
-          Err(io::Error::other(join_err))
+          Err(io::Error::other(join_err).into())
         }
       }
     })
@@ -129,13 +142,13 @@ impl Future for ResolveFut {
 
 impl Service<Name> for Resolver {
   type Response = SocketAddrs;
-  type Error = io::Error;
+  type Error = DnsResolveError;
   type Future = ResolveFut;
 
   fn poll_ready(
     &mut self,
     _cx: &mut task::Context<'_>,
-  ) -> Poll<Result<(), io::Error>> {
+  ) -> Poll<Result<(), DnsResolveError>> {
     Poll::Ready(Ok(()))
   }
 
@@ -149,11 +162,7 @@ impl Service<Name> for Resolver {
           let x: Vec<_> = result.into_iter().collect();
           for addr in &x {
             permissions
-              .check_net(
-                &(&addr.ip().to_string(), Some(addr.port())),
-                "Deno.fetch()",
-              )
-              .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+              .check_net_resolved_addr_is_not_denied(&addr, "Deno.fetch()")?;
           }
           let iter: SocketAddrs = x.into_iter();
           Ok(iter)
@@ -169,11 +178,7 @@ impl Service<Name> for Resolver {
 
           for addr in &x {
             permissions
-              .check_net(
-                &(&addr.ip().to_string(), Some(addr.port())),
-                "Deno.fetch()",
-              )
-              .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+              .check_net_resolved_addr_is_not_denied(&addr, "Deno.fetch()")?;
           }
           let iter: SocketAddrs = x.into_iter();
           Ok(iter)
@@ -186,11 +191,7 @@ impl Service<Name> for Resolver {
           let x: Vec<_> = result.into_iter().collect();
           for addr in &x {
             permissions
-              .check_net(
-                &(&addr.ip().to_string(), Some(addr.port())),
-                "Deno.fetch()",
-              )
-              .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+              .check_net_resolved_addr_is_not_denied(&addr, "Deno.fetch()")?;
           }
           let iter: SocketAddrs = x.into_iter();
           Ok(iter)
@@ -248,6 +249,14 @@ mod tests {
     fn check_net(
       &self,
       _addr: &(&str, Option<u16>),
+      _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+      Ok(())
+    }
+
+    fn check_net_resolved_addr_is_not_denied(
+      &self,
+      _addr: &SocketAddr,
       _api_name: &str,
     ) -> Result<(), PermissionCheckError> {
       Ok(())

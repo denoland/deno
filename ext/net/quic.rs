@@ -543,6 +543,11 @@ where
     .next()
     .ok_or_else(|| QuicError::UnableToResolve)?;
 
+  state
+    .borrow_mut()
+    .borrow_mut::<NP>()
+    .check_net_resolved_addr_is_not_denied(&sock_addr, "Deno.connectQuic()")?;
+
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()

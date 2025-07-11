@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
+use std::error::Error;
 use std::future;
 use std::future::Future;
 use std::net::IpAddr;
@@ -88,6 +89,8 @@ use serde::Serialize;
 use tower::ServiceExt;
 use tower::retry;
 use tower_http::decompression::Decompression;
+
+use crate::dns::DnsResolveError;
 
 #[derive(Clone)]
 pub struct Options {
@@ -221,7 +224,7 @@ pub enum FetchError {
   Method(#[from] http::method::InvalidMethod),
   #[class(inherit)]
   #[error(transparent)]
-  ClientSend(#[from] ClientSendError),
+  ClientSend(ClientSendError),
   #[class(inherit)]
   #[error(transparent)]
   RequestBuilderHook(JsErrorBox),
@@ -231,9 +234,33 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   Dns(hickory_resolver::ResolveError),
-  #[class(generic)]
-  #[error(transparent)]
-  PermissionCheck(PermissionCheckError),
+}
+
+impl From<ClientSendError> for FetchError {
+  fn from(value: ClientSendError) -> Self {
+    // The way that hyper_util errors are set up, when dns resolution fails
+    // with a permission error the error source ends up being a `ConnectError`, which is
+    // defined in hyper_util and not publically accessible. Then our actual DnsResolveError is the source of the
+    // `ConnectError`. Since we can't downcast to `ConnectError`, just
+    // try checking the source of the source.
+    if let Some(source) = value.source.source() {
+      if let Some(source) = source.source() {
+        if let Some(dns_error) = source.downcast_ref::<DnsResolveError>() {
+          match dns_error {
+            DnsResolveError::Permission(
+              PermissionCheckError::PermissionDenied(denied),
+            ) => {
+              return FetchError::Permission(
+                PermissionCheckError::PermissionDenied(denied.clone()),
+              );
+            }
+            _ => {}
+          }
+        }
+      }
+    }
+    FetchError::ClientSend(value)
+  }
 }
 
 impl From<deno_fs::FsError> for FetchError {
@@ -242,9 +269,7 @@ impl From<deno_fs::FsError> for FetchError {
       deno_fs::FsError::Io(_)
       | deno_fs::FsError::FileBusy
       | deno_fs::FsError::NotSupported => FetchError::NetworkError,
-      deno_fs::FsError::PermissionCheck(err) => {
-        FetchError::PermissionCheck(err)
-      }
+      deno_fs::FsError::PermissionCheck(err) => FetchError::Permission(err),
     }
   }
 }
@@ -425,6 +450,12 @@ pub trait FetchPermissions:
     addr: &(&str, Option<u16>),
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
+
+  fn check_net_resolved_addr_is_not_denied(
+    &self,
+    addr: &std::net::SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
 }
 
 dyn_clone::clone_trait_object!(FetchPermissions);
@@ -472,6 +503,14 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net(self, addr, api_name)
+  }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &self,
+    addr: &std::net::SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net_resolved_addr_is_not_denied(self, addr, api_name)
   }
 }
 
