@@ -37,6 +37,7 @@ const {
   Symbol,
   TypedArrayPrototypeSlice,
   Uint8Array,
+  Uint8ArrayPrototype,
 } = primordials;
 import { op_can_write_vectored, op_raw_write_vectored } from "ext:core/ops";
 
@@ -51,6 +52,7 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { _readWithCancelHandle } from "ext:deno_io/12_io.js";
+import { NodeTypeError } from "ext:deno_node/internal/errors.ts";
 
 export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -201,6 +203,13 @@ export class LibuvStreamWrap extends HandleWrap {
    * @return An error status code.
    */
   writeBuffer(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array): number {
+    if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data)) {
+      throw new NodeTypeError(
+        "ERR_INVALID_ARG_TYPE",
+        "Second argument must be a buffer",
+      );
+    }
+
     this.#write(req, data);
 
     return 0;

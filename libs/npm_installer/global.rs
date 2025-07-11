@@ -14,15 +14,15 @@ use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::TarballCache;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_terminal::colors;
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use sys_traits::OpenOptions;
 
-use crate::lifecycle_scripts::LifecycleScripts;
-use crate::lifecycle_scripts::LifecycleScriptsStrategy;
 use crate::LifecycleScriptsConfig;
 use crate::NpmPackageFsInstaller;
 use crate::PackageCaching;
+use crate::lifecycle_scripts::LifecycleScripts;
+use crate::lifecycle_scripts::LifecycleScriptsStrategy;
 
 /// Resolves packages from the global npm cache.
 pub struct GlobalNpmPackageInstaller<
@@ -196,7 +196,11 @@ impl<TSys: NpmCacheSys> LifecycleScriptsStrategy
     &self,
     packages: &[(&NpmResolutionPackage, PathBuf)],
   ) -> std::result::Result<(), std::io::Error> {
-    log::warn!("{} The following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
+    log::warn!(
+      "{} The following packages contained npm lifecycle scripts ({}) that were not executed:",
+      colors::yellow("Warning"),
+      colors::gray("preinstall/install/postinstall")
+    );
     for (package, _) in packages {
       log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
     }
@@ -205,7 +209,12 @@ impl<TSys: NpmCacheSys> LifecycleScriptsStrategy
       "┠─ {}",
       colors::italic("This may cause the packages to not work correctly.")
     );
-    log::warn!("┠─ {}", colors::italic("Lifecycle scripts are only supported when using a `node_modules` directory."));
+    log::warn!(
+      "┠─ {}",
+      colors::italic(
+        "Lifecycle scripts are only supported when using a `node_modules` directory."
+      )
+    );
     log::warn!(
       "┠─ {}",
       colors::italic("Enable it in your deno config file:")

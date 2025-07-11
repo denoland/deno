@@ -6,13 +6,13 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
-use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
-use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_core::futures::stream::FuturesUnordered;
 use deno_npm_installer::PackageCaching;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_semver::Version;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::Version;
 
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;

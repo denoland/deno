@@ -10,7 +10,7 @@
       "output": "no_condition.out"
     },
     {
-      "args": "run --unstable-conditions react-server -A main.js",
+      "args": "run --conditions react-server -A main.js",
       "output": "condition.out",
       "exitCode": 1
     },

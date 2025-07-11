@@ -10,16 +10,16 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
-use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
+use std::task::ready;
 
-use deno_core::serde;
-use deno_core::serde_json;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::ExternalOpsTracker;
 use deno_core::RcRef;
+use deno_core::serde;
+use deno_core::serde_json;
 use deno_io::BiPipe;
 use deno_io::BiPipeRead;
 use deno_io::BiPipeWrite;
@@ -369,11 +369,11 @@ impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgInner<'_, R> {
 mod tests {
   use std::rc::Rc;
 
-  use deno_core::serde_json::json;
-  use deno_core::v8;
   use deno_core::JsRuntime;
   use deno_core::RcRef;
   use deno_core::RuntimeOptions;
+  use deno_core::serde_json::json;
+  use deno_core::v8;
 
   use super::IpcJsonStreamResource;
 

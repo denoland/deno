@@ -6,6 +6,7 @@ use capacity_builder::StringBuilder;
 use deno_error::JsErrorBox;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
+use deno_npm::NpmResolutionPackage;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
@@ -13,7 +14,6 @@ use deno_npm::resolution::AddPkgReqsOptions;
 use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::NpmResolutionPackage;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::RegistryInfoProvider;
@@ -22,12 +22,12 @@ use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::WorkspaceNpmLinkPackages;
-use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
 use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 use deno_unsync::sync::TaskQueue;
 
@@ -57,10 +57,8 @@ pub struct NpmResolutionInstaller<
   update_queue: TaskQueue,
 }
 
-impl<
-    TNpmCacheHttpClient: NpmCacheHttpClient,
-    TSys: NpmResolutionInstallerSys,
-  > NpmResolutionInstaller<TNpmCacheHttpClient, TSys>
+impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
+  NpmResolutionInstaller<TNpmCacheHttpClient, TSys>
 {
   pub fn new(
     registry_info_provider: Arc<

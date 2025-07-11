@@ -6,6 +6,84 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.4.1 / 2025.07.08
+
+- feat(unstable/otel): support vsock transport for telemetry (#30001)
+- feat(unstable): tunnelling (#30022)
+- fix(bundle): don't use createRequire when targeting browser, make hack not
+  depend on variable names (#30023)
+- fix(bundle): make the "dynamic require" hack work on minified output (#29997)
+- fix(bundle): resolve "sloppy imports" in npm packages when bundling (#29989)
+- fix(ext/http2): fix oob buffer reads in http2 requests (#29969)
+- fix(serve): actually wire up resolving main module with import map for deno
+  serve (#29974)
+- fix(unstable): bytes and text imports from npm dependencies should require
+  `--allow-read` (#29990)
+- Revert "fix(ext/napi): ensure the finalizer callback will be called (…
+  (#30018)
+- Revert "fix(otel): flush data when terminating signal is received (#2…
+  (#30019)
+- perf: bust emit cache only on deno_ast version change (#29984)
+- perf: skip jsx transpile when disabled (#29995)
+
+### 2.4.0 / 2025.07.01
+
+- feat(bundle): support text and bytes imports in bundle (#29908)
+- feat(check): tsconfig "references", "extends", "files", "include" and
+  "exclude" (#29843)
+- feat(cli): add `--coverage` flag to `deno run` command (#29329)
+- feat(cli): alias --unstable-sloppy-imports to --sloppy-imports (#29780)
+- feat(ext/http): support `onListen()` callback in `deno serve` (#29449)
+- feat(fmt): add support for .xml, .svg and .mustache files (#29851)
+- feat(fmt): remove UTF-8 BOM instead of maintaining it (#29796)
+- feat(node API): add `fs.glob`, `fs.globSync`, `fs.promises.glob` (#28972)
+- feat(otel): stabilize OpenTelemetry support (#29822)
+- feat(process): add detached option to `Deno.Command` (#29933)
+- feat(run): resolve main module with workspace resolver (#29928)
+- feat(signals): support listening for ctrl+close on Windows (#27880)
+- feat(unstable): add DENO_NODE_CONDITIONS env var (#29848)
+- feat(unstable): bytes and text imports (#29855)
+- feat(unstable): support bytes and text imports in `deno compile` (#29924)
+- feat: --allow-net supports CIDR ranges (#29704)
+- feat: Add --deny-import flag (#29702)
+- feat: Deno.execPath() no longer requires --allow-read permission (#29620)
+- feat: add 'deno update' subcommand (#29187)
+- feat: add `DENO_AUTO_SERVE` env var (#29852)
+- feat: add `DENO_COMPAT` env var (#29889)
+- feat: add support for --preload/--import flag (#29626)
+- feat: deprecate --unstable-node-globals flag (#29887)
+- feat: make 'Buffer' and 'global' available as globals (#29416)
+- feat: make `setImmediate` and `clearImmediate` as globals (#29877)
+- feat: rename --unstable-node-conditions to --unstable-conditions (#29885)
+- feat: stabilize --allow-net subdomain wildcards (#29902)
+- feat: stabilize --node-conditions flag (#29628)
+- feat: unflag the deploy subcommand (#29863)
+- fix(bench): Make output table markdown compatible (#29532)
+- fix(bundle): only replace require shim in js files, spruce up output (#29892)
+- fix(check): don't detect tsconfigs with no deno.json/package.json or
+  --no-config (#29925)
+- fix(coverage): Make output table markdown compatible (#29533)
+- fix(ext/node): add `lchmod`, `lchmod` promise, `lchmodSync` to `node:fs`
+  (#29833)
+- fix(ext/node): add type check to LibuvStreamWrap.writeBuffer (#29879)
+- fix(ext/node): don't show deprecation warnings for dependencies (#29909)
+- fix(ext/node): export promise based `lchown` and `lutimes` from
+  `node:fs/promises` (#29870)
+- fix(ext/node): fix reference error in node:stream (#29894)
+- fix(ext/node): improve assert.fail (#29850)
+- fix(ext/node): improve input validations of stream/consumers (#29880)
+- fix(ext/node): keep BOM in buffer.toString('utf8') (#29896)
+- fix(ext/node): remove duplicated stream classes (#29860)
+- fix(fmt/css): prefer collapsing font-family values (#29864)
+- fix(install): purge more packages from lockfile on config change (#29953)
+- fix(install/global): resolve bin name from npm packument (#29884)
+- fix(lsp): don't show no-export diagnostics for type-only npm imports (#29888)
+- fix(node): use primordials more consistently in `_events.mjs` (#29930)
+- fix(publish): disallow publishing with bytes or text imports (#29954)
+- fix: support `Deno.permissions.query({name:"import"})` (#29610)
+- perf: skip loading bytes and text imports into memory when already cached and
+  building module graph (#29931)
+
 ### 2.3.7 / 2025.06.23
 
 - feat(unstable): add `--platform` flag to deno bundle (#29697)

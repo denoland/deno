@@ -2,9 +2,9 @@
 
 use std::cell::OnceCell;
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
 
 use crate::Instance;
 

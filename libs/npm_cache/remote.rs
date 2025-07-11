@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use deno_npm::npm_rc::RegistryConfig;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

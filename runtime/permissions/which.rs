@@ -4,8 +4,8 @@ use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use temp_deno_which::sys::Sys;
 pub use temp_deno_which::Error;
+use temp_deno_which::sys::Sys;
 
 pub fn which_in(
   sys: impl WhichSys,
@@ -110,8 +110,8 @@ impl<TSys: WhichSys> Sys for WhichSysAdapter<TSys> {
     &self,
     path: &std::path::Path,
   ) -> std::io::Result<bool> {
-    use nix::unistd::access;
     use nix::unistd::AccessFlags;
+    use nix::unistd::access;
 
     match access(path, AccessFlags::X_OK) {
       Ok(()) => Ok(true),

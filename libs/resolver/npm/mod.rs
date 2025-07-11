@@ -11,15 +11,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
-use node_resolver::errors::NodeResolveError;
-use node_resolver::errors::NodeResolveErrorKind;
-use node_resolver::errors::PackageFolderResolveErrorKind;
-use node_resolver::errors::PackageFolderResolveIoError;
-use node_resolver::errors::PackageNotFoundError;
-use node_resolver::errors::PackageResolveErrorKind;
-use node_resolver::errors::PackageSubpathResolveError;
-use node_resolver::errors::TypesNotFoundError;
-use node_resolver::types_package_name;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
@@ -29,6 +20,17 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
+use node_resolver::errors::NodeJsErrorCode;
+use node_resolver::errors::NodeJsErrorCoded;
+use node_resolver::errors::NodeResolveError;
+use node_resolver::errors::NodeResolveErrorKind;
+use node_resolver::errors::PackageFolderResolveErrorKind;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::errors::PackageNotFoundError;
+use node_resolver::errors::PackageResolveErrorKind;
+use node_resolver::errors::PackageSubpathResolveError;
+use node_resolver::errors::TypesNotFoundError;
+use node_resolver::types_package_name;
 use thiserror::Error;
 use url::Url;
 
@@ -39,15 +41,15 @@ pub use self::byonm::ByonmNpmResolverRc;
 pub use self::byonm::ByonmResolvePkgFolderFromDenoReqError;
 pub use self::local::get_package_folder_id_folder_name;
 pub use self::local::normalize_pkg_name_for_node_modules_deno_folder;
-use self::managed::create_managed_in_npm_pkg_checker;
 use self::managed::ManagedInNpmPackageChecker;
 use self::managed::ManagedInNpmPkgCheckerCreateOptions;
 pub use self::managed::ManagedNpmResolver;
 use self::managed::ManagedNpmResolverCreateOptions;
 pub use self::managed::ManagedNpmResolverRc;
-use crate::sync::new_rc;
+use self::managed::create_managed_in_npm_pkg_checker;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
+use crate::sync::new_rc;
 
 mod byonm;
 mod local;
@@ -91,7 +93,10 @@ impl InNpmPackageChecker for DenoInNpmPackageChecker {
 
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
-#[error("Could not resolve \"{}\", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", specifier)]
+#[error(
+  "Could not resolve \"{}\", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?",
+  specifier
+)]
 pub struct NodeModulesOutOfDateError {
   pub specifier: String,
 }
@@ -182,6 +187,18 @@ impl ResolveReqWithSubPathErrorKind {
       ResolveReqWithSubPathErrorKind::PackageSubpathResolve(
         package_subpath_resolve_error,
       ) => package_subpath_resolve_error.as_types_not_found(),
+    }
+  }
+
+  pub fn maybe_code(&self) -> Option<NodeJsErrorCode> {
+    match self {
+      ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_) => {
+        None
+      }
+      ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
+      ResolveReqWithSubPathErrorKind::PackageSubpathResolve(e) => {
+        Some(e.code())
+      }
     }
   }
 }
@@ -364,11 +381,11 @@ pub struct NpmReqResolver<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: NpmResolverSys,
-  >
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: NpmResolverSys,
+>
   NpmReqResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,

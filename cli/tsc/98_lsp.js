@@ -1,8 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
-  ASSET_SCOPES,
-  ASSETS_URL_PREFIX,
   clearScriptNamesCache,
   debug,
   error,
@@ -12,9 +10,9 @@ import {
   host,
   IS_NODE_SOURCE_FILE_CACHE,
   LANGUAGE_SERVICE_ENTRIES,
+  LAST_REQUEST_COMPILER_OPTIONS_KEY,
   LAST_REQUEST_METHOD,
   LAST_REQUEST_NOTEBOOK_URI,
-  LAST_REQUEST_SCOPE,
   OperationCanceledError,
   PROJECT_VERSION_CACHE,
   SCRIPT_SNAPSHOT_CACHE,
@@ -27,8 +25,8 @@ import {
 const core = globalThis.Deno.core;
 const ops = core.ops;
 
-/** @type {Map<string | null, string[]>} */
-const ambientModulesCacheByScope = new Map();
+/** @type {Map<string, string[]>} */
+const ambientModulesCache = new Map();
 
 const ChangeKind = {
   Opened: 0,
@@ -327,28 +325,6 @@ export async function serverMainLoop(enableDebugLogging) {
     throw new Error("The language server has already been initialized.");
   }
   hasStarted = true;
-  LANGUAGE_SERVICE_ENTRIES.unscoped = {
-    ls: createLs(),
-    compilerOptions: lspToTsCompilerOptions({
-      "allowJs": true,
-      "esModuleInterop": true,
-      "experimentalDecorators": false,
-      "isolatedModules": true,
-      "lib": ["deno.ns", "deno.window", "deno.unstable"],
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "moduleDetection": "force",
-      "noEmit": true,
-      "noImplicitOverride": true,
-      "resolveJsonModule": true,
-      "strict": true,
-      "target": "esnext",
-      "useDefineForClassFields": true,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-    }),
-  };
   setLogDebug(enableDebugLogging, "TSLS");
   debug("serverInit()");
 
@@ -414,49 +390,76 @@ function arraysEqual(a, b) {
  * @param {number} id
  * @param {string} method
  * @param {any[]} args
- * @param {string | null} scope
+ * @param {string} compilerOptionsKey
  * @param {string | null} notebookUri
  * @param {PendingChange | null} maybeChange
  */
-function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
-  debug(`serverRequest()`, id, method, args, scope, notebookUri, maybeChange);
+function serverRequestInner(
+  id,
+  method,
+  args,
+  compilerOptionsKey,
+  notebookUri,
+  maybeChange,
+) {
+  debug(
+    `serverRequest()`,
+    id,
+    method,
+    args,
+    compilerOptionsKey,
+    notebookUri,
+    maybeChange,
+  );
   if (maybeChange !== null) {
     const changedScripts = maybeChange[0];
     const newProjectVersion = maybeChange[1];
-    const newCompilerOptionsByScope = maybeChange[2];
-    const newNotebookScopes = maybeChange[3];
-    if (newCompilerOptionsByScope) {
+    const newCompilerOptionsByKey = maybeChange[2];
+    const newNotebookKeys = maybeChange[3];
+    if (newCompilerOptionsByKey) {
       IS_NODE_SOURCE_FILE_CACHE.clear();
-      ASSET_SCOPES.clear();
-      /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byScope } */
-      const newByScope = new Map();
-      for (const [scope, config] of newCompilerOptionsByScope) {
-        LAST_REQUEST_SCOPE.set(scope);
+      /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey } */
+      const newByCompilerOptionsKey = new Map();
+      for (const [compilerOptionsKey, options] of newCompilerOptionsByKey) {
+        LAST_REQUEST_COMPILER_OPTIONS_KEY.set(compilerOptionsKey);
         LAST_REQUEST_NOTEBOOK_URI.set(null);
-        const oldEntry = LANGUAGE_SERVICE_ENTRIES.byScope.get(scope);
+        const oldEntry = LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(
+          compilerOptionsKey,
+        );
         const ls = oldEntry ? oldEntry.ls : createLs();
-        const compilerOptions = lspToTsCompilerOptions(config);
-        newByScope.set(scope, { ls, compilerOptions });
-        LANGUAGE_SERVICE_ENTRIES.byScope.delete(scope);
+        const compilerOptions = lspToTsCompilerOptions(options);
+        newByCompilerOptionsKey.set(compilerOptionsKey, {
+          ls,
+          compilerOptions,
+        });
+        LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.delete(
+          compilerOptionsKey,
+        );
       }
-      for (const oldEntry of LANGUAGE_SERVICE_ENTRIES.byScope.values()) {
+      for (
+        const oldEntry of LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.values()
+      ) {
         oldEntry.ls.dispose();
       }
-      LANGUAGE_SERVICE_ENTRIES.byScope = newByScope;
+      LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey = newByCompilerOptionsKey;
     }
-    if (newNotebookScopes) {
+    if (newNotebookKeys) {
       /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byNotebookUri } */
       const newByNotebookUri = new Map();
-      for (const [notebookUri, scope] of newNotebookScopes) {
-        LAST_REQUEST_SCOPE.set(scope);
+      for (const [notebookUri, compilerOptionsKey] of newNotebookKeys) {
+        LAST_REQUEST_COMPILER_OPTIONS_KEY.set(compilerOptionsKey);
         LAST_REQUEST_NOTEBOOK_URI.set(notebookUri);
         const oldEntry = LANGUAGE_SERVICE_ENTRIES.byNotebookUri.get(
           notebookUri,
         );
         const ls = oldEntry ? oldEntry.ls : createLs();
-        const compilerOptions =
-          LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.compilerOptions ??
-            LANGUAGE_SERVICE_ENTRIES.unscoped.compilerOptions;
+        const compilerOptions = LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey
+          .get(compilerOptionsKey)?.compilerOptions;
+        if (!compilerOptions) {
+          throw new Error(
+            `Couldn't find language service entry for key: ${compilerOptionsKey}`,
+          );
+        }
         newByNotebookUri.set(notebookUri, { ls, compilerOptions });
         LANGUAGE_SERVICE_ENTRIES.byNotebookUri.delete(notebookUri);
       }
@@ -480,32 +483,31 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
       SCRIPT_SNAPSHOT_CACHE.delete(script);
     }
 
-    if (newCompilerOptionsByScope || newNotebookScopes || opened || closed) {
+    if (newCompilerOptionsByKey || newNotebookKeys || opened || closed) {
       clearScriptNamesCache();
     }
   }
 
-  // For requests pertaining to an asset document, we make it so that the
-  // passed scope is just its own specifier. We map it to an actual scope here
-  // based on the first scope that the asset was loaded into.
-  if (scope?.startsWith(ASSETS_URL_PREFIX)) {
-    scope = ASSET_SCOPES.get(scope) ?? null;
-  }
   LAST_REQUEST_METHOD.set(method);
-  LAST_REQUEST_SCOPE.set(scope);
+  LAST_REQUEST_COMPILER_OPTIONS_KEY.set(compilerOptionsKey);
   LAST_REQUEST_NOTEBOOK_URI.set(notebookUri);
   const ls =
     (notebookUri
       ? LANGUAGE_SERVICE_ENTRIES.byNotebookUri.get(notebookUri)?.ls
       : null) ??
-      (scope ? LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.ls : null) ??
-      LANGUAGE_SERVICE_ENTRIES.unscoped.ls;
+      LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(compilerOptionsKey)?.ls;
+  if (!ls) {
+    throw new Error(
+      `Couldn't find language service entry for key: ${compilerOptionsKey}`,
+    );
+  }
   switch (method) {
     case "$cleanupSemanticCache": {
       for (
         const ls of [
-          LANGUAGE_SERVICE_ENTRIES.unscoped.ls,
-          ...[...LANGUAGE_SERVICE_ENTRIES.byScope.values()].map((e) => e.ls),
+          ...[...LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.values()].map((
+            e,
+          ) => e.ls),
           ...[...LANGUAGE_SERVICE_ENTRIES.byNotebookUri.values()].map((e) =>
             e.ls
           ),
@@ -545,13 +547,13 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
           ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
             symbol.getName()
           ) ?? [];
-        const previousAmbient = ambientModulesCacheByScope.get(scope);
+        const previousAmbient = ambientModulesCache.get(compilerOptionsKey);
         if (
           ambient && previousAmbient && arraysEqual(ambient, previousAmbient)
         ) {
           ambient = null; // null => use previous value
         } else {
-          ambientModulesCacheByScope.set(scope, ambient);
+          ambientModulesCache.set(compilerOptionsKey, ambient);
         }
         return respond(id, [diagnosticsList, ambient]);
       } catch (e) {
@@ -565,7 +567,7 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
               id,
               method,
               args,
-              scope,
+              compilerOptionsKey,
               notebookUri,
               maybeChange,
             ]),
@@ -592,7 +594,7 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
                 id,
                 method,
                 args,
-                scope,
+                compilerOptionsKey,
                 notebookUri,
                 maybeChange,
               ]),
@@ -612,14 +614,28 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
  * @param {number} id
  * @param {string} method
  * @param {any[]} args
- * @param {string | null} scope
+ * @param {string} compilerOptionsKey
  * @param {string | null} notebookUri
  * @param {PendingChange | null} maybeChange
  */
-function serverRequest(id, method, args, scope, notebookUri, maybeChange) {
+function serverRequest(
+  id,
+  method,
+  args,
+  compilerOptionsKey,
+  notebookUri,
+  maybeChange,
+) {
   const span = ops.op_make_span(`serverRequest(${method})`, true);
   try {
-    serverRequestInner(id, method, args, scope, notebookUri, maybeChange);
+    serverRequestInner(
+      id,
+      method,
+      args,
+      compilerOptionsKey,
+      notebookUri,
+      maybeChange,
+    );
   } finally {
     ops.op_exit_span(span, true);
   }

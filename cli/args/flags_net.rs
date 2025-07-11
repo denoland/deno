@@ -5,7 +5,6 @@ use std::str::FromStr;
 
 use deno_core::url::Url;
 use deno_runtime::deno_permissions::NetDescriptor;
-use deno_runtime::deno_permissions::UnstableSubdomainWildcards;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParsePortError(String);
@@ -33,11 +32,7 @@ pub fn validator(host_and_port: &str) -> Result<String, String> {
   if Url::parse(&format!("internal://{host_and_port}")).is_ok()
     || host_and_port.parse::<IpAddr>().is_ok()
     || host_and_port.parse::<BarePort>().is_ok()
-    || NetDescriptor::parse_for_list(
-      host_and_port,
-      UnstableSubdomainWildcards::Enabled,
-    )
-    .is_ok()
+    || NetDescriptor::parse_for_list(host_and_port).is_ok()
   {
     Ok(host_and_port.to_string())
   } else {
@@ -57,11 +52,7 @@ pub fn parse(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
         out.push(format!("{}:{}", host, port.0));
       }
     } else {
-      NetDescriptor::parse_for_list(
-        &host_and_port,
-        UnstableSubdomainWildcards::Enabled,
-      )
-      .map_err(|e| {
+      NetDescriptor::parse_for_list(&host_and_port).map_err(|e| {
         clap::Error::raw(clap::error::ErrorKind::InvalidValue, e.to_string())
       })?;
       out.push(host_and_port)
@@ -146,7 +137,10 @@ mod tests {
       "localhost:8000",
       "0.0.0.0:4545",
       "127.0.0.1:4545",
-      "999.0.88.1:80"
+      "999.0.88.1:80",
+      "127.0.0.0/24",
+      "192.168.1.0/24",
+      "10.0.0.0/8"
     ];
     let expected = svec![
       "deno.land",
@@ -168,7 +162,10 @@ mod tests {
       "localhost:8000",
       "0.0.0.0:4545",
       "127.0.0.1:4545",
-      "999.0.88.1:80"
+      "999.0.88.1:80",
+      "127.0.0.0/24",
+      "192.168.1.0/24",
+      "10.0.0.0/8"
     ];
     let actual = parse(entries).unwrap();
     assert_eq!(actual, expected);

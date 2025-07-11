@@ -815,6 +815,17 @@ function serve(arg1, arg2) {
         delete envOptions.path;
         break;
       }
+      case 4: {
+        // Tunnel
+        envOptions = {
+          ...envOptions,
+          tunnel: true,
+        };
+        delete envOptions.hostname;
+        delete envOptions.cid;
+        delete envOptions.port;
+        delete envOptions.path;
+      }
     }
 
     if (duplicateListener) {
@@ -857,6 +868,7 @@ function serveInner(options, handler) {
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
   const wantsVsock = ObjectHasOwn(options, "cid");
+  const wantsTunnel = options.tunnel === true;
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
@@ -893,6 +905,28 @@ function serveInner(options, handler) {
         options.onListen(listener.addr);
       } else {
         import.meta.log("info", `Listening on vsock:${cid}:${port}`);
+      }
+    });
+  }
+
+  if (wantsTunnel) {
+    const listener = listen({
+      transport: "tunnel",
+      [listenOptionApiName]: "Deno.serve",
+    });
+    return serveHttpOnListener(listener, signal, handler, onError, () => {
+      if (options.onListen) {
+        options.onListen(listener.addr);
+      } else {
+        const additional = listener.addr.port === 443
+          ? ""
+          : `:${listener.addr.port}`;
+        import.meta.log(
+          "info",
+          `Listening on https://${
+            formatHostName(listener.addr.hostname)
+          }${additional}`,
+        );
       }
     });
   }

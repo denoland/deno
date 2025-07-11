@@ -1460,6 +1460,11 @@ export class ERR_HTTP_TRAILER_INVALID extends NodeError {
     );
   }
 }
+export class ERR_ILLEGAL_CONSTRUCTOR extends NodeTypeError {
+  constructor() {
+    super("ERR_ILLEGAL_CONSTRUCTOR", "Illegal constructor");
+  }
+}
 export class ERR_INCOMPATIBLE_OPTION_PAIR extends NodeTypeError {
   constructor(x: string, y: string) {
     super(

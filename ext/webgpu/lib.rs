@@ -6,11 +6,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
 pub use wgpu_core;
 pub use wgpu_types;
 use wgpu_types::PowerPreference;

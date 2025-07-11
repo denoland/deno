@@ -12,12 +12,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_core::unsync::spawn;
 use deno_core::unsync::JoinHandle;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::WeakSender;
+use deno_core::unsync::spawn;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::WeakSender;
 
 use crate::CronError;
 use crate::CronHandle;

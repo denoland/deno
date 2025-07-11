@@ -13,7 +13,7 @@ type UrlRc = crate::sync::MaybeArc<Url>;
 /// The root directory is considered "unscoped" so values that
 /// fall outside the other directories land here (ex. remote modules).
 pub struct FolderScopedMap<TValue> {
-  unscoped: TValue,
+  pub unscoped: TValue,
   scoped: BTreeMap<UrlRc, TValue>,
 }
 
@@ -52,21 +52,57 @@ impl<TValue> FolderScopedMap<TValue> {
   }
 
   pub fn get_for_specifier(&self, specifier: &Url) -> &TValue {
-    self.get_for_specifier_str(specifier.as_str())
-  }
-
-  pub fn get_for_specifier_str(&self, specifier: &str) -> &TValue {
+    let specifier_str = specifier.as_str();
     self
       .scoped
       .iter()
-      .rfind(|(s, _)| specifier.starts_with(s.as_str()))
+      .rfind(|(s, _)| specifier_str.starts_with(s.as_str()))
       .map(|(_, v)| v)
       .unwrap_or(&self.unscoped)
+  }
+
+  pub fn entry_for_specifier(
+    &self,
+    specifier: &Url,
+  ) -> (Option<&UrlRc>, &TValue) {
+    self
+      .scoped
+      .iter()
+      .rfind(|(s, _)| specifier.as_str().starts_with(s.as_str()))
+      .map(|(s, v)| (Some(s), v))
+      .unwrap_or((None, &self.unscoped))
+  }
+
+  pub fn get_for_scope(&self, scope: Option<&Url>) -> Option<&TValue> {
+    let Some(scope) = scope else {
+      return Some(&self.unscoped);
+    };
+    self.scoped.get(scope)
+  }
+
+  pub fn entries(&self) -> impl Iterator<Item = (Option<&UrlRc>, &TValue)> {
+    [(None, &self.unscoped)]
+      .into_iter()
+      .chain(self.scoped.iter().map(|(s, v)| (Some(s), v)))
   }
 
   pub fn insert(&mut self, dir_url: UrlRc, value: TValue) {
     debug_assert!(dir_url.path().ends_with("/")); // must be a dir url
     debug_assert_eq!(dir_url.scheme(), "file");
     self.scoped.insert(dir_url, value);
+  }
+
+  pub fn try_map<B, E>(
+    &self,
+    mut f: impl FnMut(&TValue) -> Result<B, E>,
+  ) -> Result<FolderScopedMap<B>, E> {
+    Ok(FolderScopedMap {
+      unscoped: f(&self.unscoped)?,
+      scoped: self
+        .scoped
+        .iter()
+        .map(|(s, v)| Ok((s.clone(), f(v)?)))
+        .collect::<Result<_, _>>()?,
+    })
   }
 }

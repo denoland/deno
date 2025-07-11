@@ -18,6 +18,8 @@ use std::rc::Rc;
 
 use os_pipe::pipe;
 
+use crate::HttpServerGuard;
+use crate::TempDir;
 use crate::assertions::assert_wildcard_match;
 use crate::assertions::assert_wildcard_match_with_logger;
 use crate::deno_exe_path;
@@ -34,8 +36,6 @@ use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
 use crate::tests_path;
-use crate::HttpServerGuard;
-use crate::TempDir;
 
 // Gives the developer a nice error message if they have a deno configuration
 // file that will be auto-discovered by the tests and cause a lot of failures.
@@ -399,12 +399,14 @@ impl StdioContainer {
 
   pub fn take(&self) -> Stdio {
     match self {
-      StdioContainer::Cloned => panic!("Cannot run a command after it was cloned. You need to reset the stdio value."),
-      StdioContainer::Inner(inner) => {
-        match inner.borrow_mut().take() {
-          Some(value) => value,
-          None => panic!("Cannot run a command that was previously run. You need to reset the stdio value between runs."),
-        }
+      StdioContainer::Cloned => panic!(
+        "Cannot run a command after it was cloned. You need to reset the stdio value."
+      ),
+      StdioContainer::Inner(inner) => match inner.borrow_mut().take() {
+        Some(value) => value,
+        None => panic!(
+          "Cannot run a command that was previously run. You need to reset the stdio value between runs."
+        ),
       },
     }
   }
@@ -1046,8 +1048,7 @@ impl TestCommandOutput {
       if let Some(signal) = self.signal() {
         panic!(
           "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-          actual_exit_code,
-          signal,
+          actual_exit_code, signal,
         );
       } else {
         panic!(

@@ -155,9 +155,9 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
       Ok(None) => {}
       Err(err) if err.source.kind() == std::io::ErrorKind::PermissionDenied => {
         log::debug!(
-            "Skipping .npmrc in home directory due to permission denied error. {:#}",
-            err
-          );
+          "Skipping .npmrc in home directory due to permission denied error. {:#}",
+          err
+        );
       }
       Err(err) => {
         return Err(err.into());

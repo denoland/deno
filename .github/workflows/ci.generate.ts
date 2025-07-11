@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 63;
+const cacheVersion = 65;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -479,7 +479,7 @@ const ci = {
         },
         {
           ...submoduleStep("./tests/node_compat/runner/suite"),
-          if: "matrix.job == 'lint' && matrix.os == 'linux'",
+          if: "matrix.job == 'test'",
         },
         {
           ...submoduleStep("./cli/bench/testdata/lsp_benchdata"),
@@ -710,12 +710,6 @@ const ci = {
           if: "matrix.job == 'lint'",
           run:
             "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
-        },
-        {
-          name: "node_compat/setup.ts --check",
-          if: "matrix.job == 'lint' && matrix.os == 'linux'",
-          run:
-            "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
         },
         {
           name: "Check tracing build",

@@ -37,8 +37,8 @@ fn code_action_capabilities(
     .unwrap_or(CodeActionProviderCapability::Simple(true))
 }
 
-pub fn semantic_tokens_registration_options(
-) -> SemanticTokensRegistrationOptions {
+pub fn semantic_tokens_registration_options()
+-> SemanticTokensRegistrationOptions {
   const LANGUAGES: [&str; 4] = [
     "javascript",
     "javascriptreact",
