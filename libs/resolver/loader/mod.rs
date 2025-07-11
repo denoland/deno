@@ -28,12 +28,11 @@ type ArcBytes = std::sync::Arc<[u8]>;
 
 pub enum LoadedModuleOrAsset<'a> {
   Module(LoadedModule<'a>),
-  /// A module that the graph knows about, but the data
-  /// is not stored in the graph itself. It's up to the caller
-  /// to fetch this data.
+  /// An external asset that the caller must fetch.
   ExternalAsset {
-    statically_analyzable: bool,
     specifier: Cow<'a, Url>,
+    /// Whether this was a module the graph knows about.
+    statically_analyzable: bool,
   },
 }
 
