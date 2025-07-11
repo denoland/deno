@@ -306,7 +306,7 @@ fn open_db(
       },
       Some("node:sqlite"),
     )?
-    .path;
+    .into_path();
 
   if readonly {
     let conn = rusqlite::Connection::open_with_flags(
