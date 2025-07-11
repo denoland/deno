@@ -310,7 +310,7 @@ impl PackageSubpathResolveErrorKind {
     )
   ).unwrap_or_default(),
   match resolution_kind {
-    NodeResolutionKind::Execution  => "",
+    NodeResolutionKind::Execution => "",
     NodeResolutionKind::Types => " for types",
   }
 )]
