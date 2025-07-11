@@ -871,7 +871,6 @@ impl From<NodeResolutionKind> for ResolutionKind {
     match value {
       NodeResolutionKind::Execution => Self::Execution,
       NodeResolutionKind::Types => Self::Types,
-      NodeResolutionKind::Bundling => Self::Bundling,
     }
   }
 }
