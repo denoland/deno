@@ -633,20 +633,22 @@ impl<
     referrer: &Url,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-  ) -> Result<Option<node_resolver::UrlOrPath>, npm::ResolveNpmReqRefError> {
+  ) -> Result<node_resolver::UrlOrPath, npm::ResolveNpmReqRefError> {
     let Some(NodeAndNpmResolvers {
       npm_req_resolver, ..
     }) = &self.node_and_npm_resolver
     else {
-      return Ok(None);
+      return Err(npm::ResolveNpmReqRefError {
+        npm_req_ref: npm_req_ref.clone(),
+        err: npm::ResolveReqWithSubPathErrorKind::NoNpm(npm::NoNpmError)
+          .into_box(),
+      });
     };
-    npm_req_resolver
-      .resolve_req_reference(
-        npm_req_ref,
-        referrer,
-        resolution_mode,
-        resolution_kind,
-      )
-      .map(Some)
+    npm_req_resolver.resolve_req_reference(
+      npm_req_ref,
+      referrer,
+      resolution_mode,
+      resolution_kind,
+    )
   }
 }
