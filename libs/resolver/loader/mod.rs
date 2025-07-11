@@ -3,14 +3,14 @@
 mod npm;
 
 #[cfg(all(feature = "graph", feature = "deno_ast"))]
-mod prepared;
+mod module_loader;
 
 use std::borrow::Cow;
 
 use deno_media_type::MediaType;
-pub use npm::*;
 #[cfg(all(feature = "graph", feature = "deno_ast"))]
-pub use prepared::*;
+pub use module_loader::*;
+pub use npm::*;
 use url::Url;
 
 pub enum RequestedModuleType<'a> {
@@ -26,8 +26,19 @@ type ArcStr = std::sync::Arc<str>;
 #[allow(clippy::disallowed_types)]
 type ArcBytes = std::sync::Arc<[u8]>;
 
+pub enum LoadedModuleOrAsset<'a> {
+  Module(LoadedModule<'a>),
+  /// A module that the graph knows about, but the data
+  /// is not stored in the graph itself. It's up to the caller
+  /// to fetch this data.
+  ExternalAsset {
+    statically_analyzable: bool,
+    specifier: Cow<'a, Url>,
+  },
+}
+
 pub struct LoadedModule<'a> {
-  pub specifier: &'a Url,
+  pub specifier: Cow<'a, Url>,
   pub media_type: MediaType,
   pub source: LoadedModuleSource,
 }

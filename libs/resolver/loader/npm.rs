@@ -160,11 +160,11 @@ impl<
 
   pub async fn load<'a>(
     &self,
-    specifier: &'a Url,
+    specifier: Cow<'a, Url>,
     maybe_referrer: Option<&Url>,
     requested_module_type: &RequestedModuleType<'_>,
   ) -> Result<LoadedModule<'a>, NpmModuleLoadError> {
-    let file_path = deno_path_util::url_to_file_path(specifier)?;
+    let file_path = deno_path_util::url_to_file_path(&specifier)?;
     let code = self.sys.fs_read(&file_path).map_err(|source| {
       if self.sys.fs_is_dir_no_err(&file_path) {
         let suggestion = ["index.mjs", "index.js", "index.cjs"]
@@ -185,7 +185,7 @@ impl<
       }
     })?;
 
-    let media_type = MediaType::from_specifier(specifier);
+    let media_type = MediaType::from_specifier(&specifier);
     match requested_module_type {
       RequestedModuleType::Text | RequestedModuleType::Bytes => {
         Ok(LoadedModule {
@@ -200,18 +200,18 @@ impl<
         if media_type.is_emittable() {
           return Err(NpmModuleLoadError::StrippingTypesNodeModules(
             StrippingTypesNodeModulesError {
-              specifier: specifier.clone(),
+              specifier: specifier.into_owned(),
             },
           ));
         }
 
-        let source = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? {
+        let source = if self.cjs_tracker.is_maybe_cjs(&specifier, media_type)? {
           // translate cjs to esm if it's cjs and inject node globals
           let code = from_utf8_lossy_cow(code);
           LoadedModuleSource::String(
             self
               .node_code_translator
-              .translate_cjs_to_esm(specifier, Some(code))
+              .translate_cjs_to_esm(&specifier, Some(code))
               .await?
               .into_owned()
               .into(),
