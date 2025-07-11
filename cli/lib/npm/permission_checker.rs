@@ -63,7 +63,7 @@ impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
         } else {
           permissions
             .check_open(path, OpenAccessKind::Read, None)
-            .map(|p| p.path.path)
+            .map(|p| p.into_path())
             .map_err(JsErrorBox::from_err)
         }
       }
@@ -115,7 +115,7 @@ impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
 
         permissions
           .check_open(path, OpenAccessKind::Read, None)
-          .map(|p| p.path.path)
+          .map(|p| p.into_path())
           .map_err(JsErrorBox::from_err)
       }
     }
