@@ -856,8 +856,6 @@ pub enum ResolutionKind {
   Execution,
   /// Resolving for code that will be used for type information.
   Types,
-  /// Resolving for code that will be bundled.
-  Bundling,
 }
 
 impl ResolutionKind {

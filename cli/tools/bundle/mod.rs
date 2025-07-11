@@ -28,7 +28,9 @@ use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
-use deno_resolver::loader::LoadPreparedModuleError;
+use deno_resolver::loader::LoadCodeSourceError;
+use deno_resolver::loader::LoadCodeSourceErrorKind;
+use deno_resolver::loader::LoadPreparedModuleErrorKind;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -55,8 +57,6 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::module_loader::CliModuleLoader;
 use crate::module_loader::CliModuleLoaderError;
-use crate::module_loader::LoadCodeSourceError;
-use crate::module_loader::LoadCodeSourceErrorKind;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
@@ -669,12 +669,13 @@ impl BundleLoadError {
       BundleLoadError::CliModuleLoader(
         CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(e)),
       ) => match &**e {
-        LoadCodeSourceErrorKind::LoadPreparedModule(
-          LoadPreparedModuleError::Graph(e),
-        ) => matches!(
-          e.error.as_kind(),
-          ModuleErrorKind::UnsupportedMediaType { .. },
-        ),
+        LoadCodeSourceErrorKind::LoadPreparedModule(e) => match e.as_kind() {
+          LoadPreparedModuleErrorKind::Graph(e) => matches!(
+            e.error.as_kind(),
+            ModuleErrorKind::UnsupportedMediaType { .. },
+          ),
+          _ => false,
+        },
         _ => false,
       },
       _ => false,
