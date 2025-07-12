@@ -895,7 +895,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       });
     }
 
-    removeImportedOps();
+    // removeImportedOps();
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
@@ -1153,7 +1153,7 @@ event.defineEventHandler(globalThis, "unhandledrejection");
 // Nothing listens to this, but it warms up the code paths for event dispatch
 (new event.EventTarget()).dispatchEvent(new Event("warmup"));
 
-removeImportedOps();
+// removeImportedOps();
 
 // Run the warmup path through node and runtime/worker bootstrap functions
 bootstrapMainRuntime(undefined, true);

@@ -1540,6 +1540,7 @@ name = "deno"
 version = "2.4.1"
 dependencies = [
  "anstream",
+ "arc-swap",
  "async-trait",
  "aws-lc-rs",
  "base64 0.22.1",

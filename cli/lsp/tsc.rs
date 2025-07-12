@@ -6040,8 +6040,9 @@ mod tests {
       .await;
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
-    let compiler_options_resolver =
-      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    let compiler_options_resolver = Arc::new(arc_swap::ArcSwap::new(Arc::new(
+      LspCompilerOptionsResolver::new(&config, &resolver),
+    )));
     let linter_resolver =
       Arc::new(LspLinterResolver::new(&config, &compiler_options_resolver));
     let mut document_modules = DocumentModules::default();
@@ -6066,7 +6067,7 @@ mod tests {
       project_version: 0,
       document_modules,
       config: Arc::new(config),
-      compiler_options_resolver,
+      compiler_options_resolver: compiler_options_resolver.load().clone(),
       linter_resolver,
       resolver,
     });

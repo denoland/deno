@@ -158,7 +158,18 @@ pub fn parse_compiler_options(
     // know about this option. It will still take this option into account
     // because the graph resolves the JSX import source to the types for TSC.
     if key != "types" && key != "jsxImportSourceTypes" {
-      if ALLOWED_COMPILER_OPTIONS.contains(key.as_str()) {
+     if (key == "module"
+        && value
+          .as_str()
+          .map(|s| s == "nodenext" || s == "esnext" || s == "preserve")
+          .unwrap_or(false))
+        || (key == "moduleResolution"
+          && value
+            .as_str()
+            .map(|s| s == "nodenext" || s == "bundler")
+            .unwrap_or(false))
+        || ALLOWED_COMPILER_OPTIONS.contains(key.as_str())
+      {
         allowed.insert(key, value.to_owned());
       } else {
         ignored.push(key);

@@ -71,6 +71,7 @@ use crate::args::ConfigFile;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
+use crate::lsp::compiler_options::LspCompilerOptionsResolverRc;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::sys::CliSys;
@@ -1252,6 +1253,7 @@ impl ConfigData {
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
+    compiler_options_resolver: &LspCompilerOptionsResolverRc,
   ) -> Self {
     let scope = scope.clone();
     let discover_result = match scope.to_file_path() {
@@ -1291,6 +1293,7 @@ impl ConfigData {
           settings,
           Some(file_fetcher),
           Some(http_client_provider),
+          compiler_options_resolver,
         )
         .await
       }
@@ -1307,6 +1310,7 @@ impl ConfigData {
           settings,
           Some(file_fetcher),
           Some(http_client_provider),
+          compiler_options_resolver,
         )
         .await;
         // check if any of these need to be added to the workspace
@@ -1350,6 +1354,7 @@ impl ConfigData {
     settings: &Settings,
     file_fetcher: Option<&Arc<CliFileFetcher>>,
     http_client_provider: Option<&Arc<HttpClientProvider>>,
+    compiler_options_resolver: &LspCompilerOptionsResolverRc,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1644,6 +1649,7 @@ impl ConfigData {
         None
       }
     };
+
     let unstable = member_dir
       .workspace
       .unstable_features()
@@ -1663,7 +1669,21 @@ impl ConfigData {
         sloppy_imports_options: if unstable_sloppy_imports {
           SloppyImportsOptions::Enabled
         } else {
-          SloppyImportsOptions::Disabled
+          let compiler_options_resolver = compiler_options_resolver.clone();
+          SloppyImportsOptions::Dynamic(Arc::new(move |referrer| {
+            if let Some(referrer) = referrer {
+              let resolver = compiler_options_resolver.load();
+              let options = resolver.for_specifier(referrer);
+              let lib = options.compiler_options.0.get("moduleResolution");
+              lib.is_some_and(|v| {
+                v.as_str()
+                  .map(|v| v.to_lowercase() == "bundler")
+                  .unwrap_or(false)
+              })
+            } else {
+              todo!()
+            }
+          }))
         },
         fs_cache_options: FsCacheOptions::Disabled,
       },
@@ -1894,6 +1914,7 @@ impl ConfigTree {
     file_fetcher: &Arc<CliFileFetcher>,
     http_client_provider: &Arc<HttpClientProvider>,
     deno_dir: &DenoDir,
+    compiler_options_resolver: &LspCompilerOptionsResolverRc,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -1935,6 +1956,7 @@ impl ConfigTree {
                 &deno_json_cache,
                 &pkg_json_cache,
                 &workspace_cache,
+                compiler_options_resolver,
               )
               .await,
             ),
@@ -1969,6 +1991,7 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
+          compiler_options_resolver,
         )
         .await,
       );
@@ -1986,6 +2009,7 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
+          compiler_options_resolver,
         )
         .await;
         scopes.insert(member_scope.clone(), Arc::new(member_data));
@@ -2024,6 +2048,9 @@ impl ConfigTree {
       )
       .unwrap(),
     );
+    let compiler_options_resolver = Arc::new(arc_swap::ArcSwap::new(Arc::new(
+      crate::lsp::compiler_options::LspCompilerOptionsResolver::default(),
+    )));
     let data = Arc::new(
       ConfigData::load_inner(
         workspace_dir,
@@ -2031,6 +2058,7 @@ impl ConfigTree {
         &Default::default(),
         None,
         None,
+        &compiler_options_resolver,
       )
       .await,
     );

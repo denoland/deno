@@ -15,7 +15,7 @@ use once_cell::sync::Lazy;
 
 use crate::args::LintFlags;
 use crate::args::LintOptions;
-use crate::lsp::compiler_options::LspCompilerOptionsResolver;
+use crate::lsp::compiler_options::LspCompilerOptionsResolverRc;
 use crate::lsp::config::Config;
 use crate::lsp::documents::DocumentModule;
 use crate::lsp::logging::lsp_log;
@@ -34,14 +34,14 @@ pub struct LspLinter {
 #[derive(Debug, Default)]
 pub struct LspLinterResolver {
   config: Config,
-  compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
+  compiler_options_resolver: LspCompilerOptionsResolverRc,
   linters: DashMap<(CompilerOptionsKey, Option<Arc<Url>>), Arc<LspLinter>>,
 }
 
 impl LspLinterResolver {
   pub fn new(
     config: &Config,
-    compiler_options_resolver: &Arc<LspCompilerOptionsResolver>,
+    compiler_options_resolver: &LspCompilerOptionsResolverRc,
   ) -> Self {
     Self {
       config: config.clone(),
@@ -77,15 +77,15 @@ impl LspLinterResolver {
             plugins: Default::default(),
             files: FilePatterns::new_with_base(PathBuf::from("/")),
           });
-        let lint_options =
+        let mut lint_options =
           LintOptions::resolve(lint_config.clone(), &LintFlags::default())
             .inspect_err(|err| {
               lsp_warn!("Failed to resolve linter options: {}", err)
             })
             .ok()
             .unwrap_or_default();
-        let compiler_options_data = self
-          .compiler_options_resolver
+        let resolver = self.compiler_options_resolver.load();
+        let compiler_options_data = resolver
           .for_key(&module.compiler_options_key)
           .expect("Key should be in sync with resolver.");
         let deno_lint_config = if compiler_options_data
@@ -130,6 +130,22 @@ impl LspLinterResolver {
               lsp_warn!("Failed to load lint plugins: {}", err);
             }
           }
+        }
+        if compiler_options_data
+          .compiler_options
+          .0
+          .get("moduleResolution")
+          .is_some_and(|v| {
+            v.as_str()
+              .map(|v| v.to_lowercase() == "bundler")
+              .unwrap_or(false)
+          })
+        {
+          lint_options
+            .rules
+            .exclude
+            .get_or_insert_default()
+            .push("no-sloppy-imports".to_string());
         }
         let inner = CliLinter::new(CliLinterOptions {
           configured_rules: lint_rule_provider.resolve_lint_rules(
