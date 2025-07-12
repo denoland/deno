@@ -324,6 +324,7 @@ const ci = {
     push: {
       branches: ["main"],
       tags: ["*"],
+      "paths-ignore": ["**/*.md"],
     },
     pull_request: {
       types: [
