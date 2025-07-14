@@ -171,7 +171,6 @@ impl ResolutionMode {
 pub enum NodeResolutionKind {
   Execution,
   Types,
-  Bundling,
 }
 
 impl NodeResolutionKind {
@@ -590,7 +589,7 @@ impl<
       _ => {
         if let Err(e) = maybe_file_type {
           if (resolution_mode == ResolutionMode::Require
-            || resolution_kind == NodeResolutionKind::Bundling)
+            || self.resolution_config.bundle_mode)
             && e.kind() == std::io::ErrorKind::NotFound
           {
             let file_with_ext = with_known_extension(&path, "js");

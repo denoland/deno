@@ -270,7 +270,7 @@ network_stream!(
   [
     Tls,
     tls,
-    crate::ops_tls::TlsStream,
+    crate::ops_tls::TlsStream<tokio::net::TcpStream>,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
     TlsStreamResource
@@ -295,7 +295,7 @@ network_stream!(
     Tunnel,
     tunnel,
     crate::tunnel::TunnelStream,
-    crate::tunnel::TunnelListener,
+    crate::tunnel::TunnelConnection,
     crate::tunnel::TunnelAddr,
     crate::tunnel::TunnelStreamResource
   ]
@@ -315,7 +315,7 @@ network_stream!(
   [
     Tls,
     tls,
-    crate::ops_tls::TlsStream,
+    crate::ops_tls::TlsStream<tokio::net::TcpStream>,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
     TlsStreamResource
@@ -332,7 +332,7 @@ network_stream!(
     Tunnel,
     tunnel,
     crate::tunnel::TunnelStream,
-    crate::tunnel::TunnelListener,
+    crate::tunnel::TunnelConnection,
     crate::tunnel::TunnelAddr,
     crate::tunnel::TunnelStreamResource
   ]
@@ -351,7 +351,7 @@ network_stream!(
   [
     Tls,
     tls,
-    crate::ops_tls::TlsStream,
+    crate::ops_tls::TlsStream<tokio::net::TcpStream>,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
     TlsStreamResource
@@ -360,7 +360,7 @@ network_stream!(
     Tunnel,
     tunnel,
     crate::tunnel::TunnelStream,
-    crate::tunnel::TunnelListener,
+    crate::tunnel::TunnelConnection,
     crate::tunnel::TunnelAddr,
     crate::tunnel::TunnelStreamResource
   ]
@@ -461,8 +461,7 @@ pub fn take_network_stream_resource(
     // This TLS connection might be used somewhere else.
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| TakeNetworkStreamError::TlsBusy)?;
-    let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.unsplit(write_half);
+    let tls_stream = resource.into_tls_stream();
     return Ok(NetworkStream::Tls(tls_stream));
   }
 
