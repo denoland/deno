@@ -2,32 +2,31 @@
 
 use std::borrow::Cow;
 
-use deno_ast::MediaType;
+use boxed_error::Boxed;
 use deno_ast::ModuleKind;
-use deno_error::JsError;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
 use deno_graph::ModuleGraph;
 use deno_graph::WasmModule;
+use deno_media_type::MediaType;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::analyze::NodeCodeTranslatorSys;
 use node_resolver::errors::ClosestPkgJsonError;
-use thiserror::Error;
 use url::Url;
 
+use super::DenoNpmModuleLoaderRc;
 use super::LoadedModule;
+use super::LoadedModuleOrAsset;
 use super::LoadedModuleSource;
+use super::NpmModuleLoadError;
 use super::RequestedModuleType;
 use crate::cache::ParsedSourceCacheRc;
 use crate::cjs::CjsTrackerRc;
-use crate::cjs::analyzer::DenoCjsCodeAnalyzerSys;
 use crate::emit::EmitParsedSourceHelperError;
 use crate::emit::EmitterRc;
-use crate::emit::EmitterSys;
 use crate::factory::DenoNodeCodeTranslatorRc;
 use crate::graph::EnhanceGraphErrorMode;
 use crate::graph::enhance_graph_error;
-use crate::npm::NpmResolverSys;
+use crate::npm::DenoInNpmPackageChecker;
 
 #[allow(clippy::disallowed_types)]
 type ArcStr = std::sync::Arc<str>;
@@ -41,8 +40,12 @@ pub struct EnhancedGraphError {
   pub message: String,
 }
 
-#[derive(Debug, Error, JsError)]
-pub enum LoadPreparedModuleError {
+#[derive(Debug, deno_error::JsError, Boxed)]
+#[class(inherit)]
+pub struct LoadPreparedModuleError(pub Box<LoadPreparedModuleErrorKind>);
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum LoadPreparedModuleErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   Graph(#[from] EnhancedGraphError),
@@ -67,24 +70,45 @@ pub enum LoadMaybeCjsError {
   TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),
 }
 
-#[allow(clippy::disallowed_types)]
-pub type PreparedModuleLoaderRc<TInNpmPackageChecker, TSys> =
-  crate::sync::MaybeArc<PreparedModuleLoader<TInNpmPackageChecker, TSys>>;
+#[derive(Debug, deno_error::JsError, Boxed)]
+#[class(inherit)]
+pub struct LoadCodeSourceError(pub Box<LoadCodeSourceErrorKind>);
 
-#[sys_traits::auto_impl]
-pub trait PreparedModuleLoaderSys:
-  EmitterSys + NodeCodeTranslatorSys + DenoCjsCodeAnalyzerSys + NpmResolverSys
-{
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum LoadCodeSourceErrorKind {
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadPreparedModule(#[from] LoadPreparedModuleError),
+  #[class(inherit)]
+  #[error(transparent)]
+  NpmModuleLoad(#[from] NpmModuleLoadError),
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadUnpreparedModule(#[from] LoadUnpreparedModuleError),
 }
 
-pub enum LoadedModuleOrAsset<'graph> {
-  Module(LoadedModule<'graph>),
-  /// A module that the graph knows about, but the data
-  /// is not stored in the graph itself. It's up to the caller
-  /// to fetch this data.
-  ExternalAsset {
-    specifier: &'graph Url,
-  },
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {}", r)).unwrap_or_default())]
+pub struct LoadUnpreparedModuleError {
+  specifier: Url,
+  maybe_referrer: Option<Url>,
+}
+
+#[allow(clippy::disallowed_types)]
+pub type ModuleLoaderRc<TSys> = crate::sync::MaybeArc<ModuleLoader<TSys>>;
+
+#[sys_traits::auto_impl]
+pub trait ModuleLoaderSys:
+  super::NpmModuleLoaderSys
+  + crate::emit::EmitterSys
+  + node_resolver::analyze::NodeCodeTranslatorSys
+  + crate::cjs::analyzer::DenoCjsCodeAnalyzerSys
+  + crate::npm::NpmResolverSys
+{
 }
 
 enum CodeOrDeferredEmit<'a> {
@@ -104,36 +128,106 @@ enum CodeOrDeferredEmit<'a> {
   },
 }
 
-pub struct PreparedModuleLoader<
-  TInNpmPackageChecker: InNpmPackageChecker,
-  TSys: PreparedModuleLoaderSys,
-> {
-  cjs_tracker: CjsTrackerRc<TInNpmPackageChecker, TSys>,
-  emitter: EmitterRc<TInNpmPackageChecker, TSys>,
+pub struct ModuleLoader<TSys: ModuleLoaderSys> {
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
+  npm_module_loader: DenoNpmModuleLoaderRc<TSys>,
+  prepared_module_loader: PreparedModuleLoader<TSys>,
+}
+
+impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
+  #[allow(clippy::too_many_arguments)]
+  pub fn new(
+    cjs_tracker: CjsTrackerRc<DenoInNpmPackageChecker, TSys>,
+    emitter: EmitterRc<DenoInNpmPackageChecker, TSys>,
+    in_npm_pkg_checker: DenoInNpmPackageChecker,
+    node_code_translator: DenoNodeCodeTranslatorRc<TSys>,
+    npm_module_loader: DenoNpmModuleLoaderRc<TSys>,
+    parsed_source_cache: ParsedSourceCacheRc,
+    sys: TSys,
+  ) -> Self {
+    Self {
+      in_npm_pkg_checker,
+      npm_module_loader,
+      prepared_module_loader: PreparedModuleLoader {
+        cjs_tracker,
+        emitter,
+        node_code_translator,
+        parsed_source_cache,
+        sys,
+      },
+    }
+  }
+
+  /// Loads a module using the graph or file system.
+  ///
+  /// Note that the referrer is only used to enhance error messages and
+  /// doesn't need to be provided.
+  pub async fn load<'a>(
+    &self,
+    graph: &'a ModuleGraph,
+    specifier: &'a Url,
+    // todo(#30074): we should remove passing the referrer in here and remove the
+    // referrer from all error messages. This should be up to deno_core to display.
+    maybe_referrer: Option<&Url>,
+    requested_module_type: &RequestedModuleType<'_>,
+  ) -> Result<LoadedModuleOrAsset<'a>, LoadCodeSourceError> {
+    match self
+      .prepared_module_loader
+      .load_prepared_module(graph, specifier, requested_module_type)
+      .await
+      .map_err(LoadCodeSourceError::from)?
+    {
+      Some(module_or_asset) => Ok(module_or_asset),
+      None => {
+        if self.in_npm_pkg_checker.in_npm_package(specifier) {
+          let loaded_module = self
+            .npm_module_loader
+            .load(
+              Cow::Borrowed(specifier),
+              maybe_referrer,
+              requested_module_type,
+            )
+            .await
+            .map_err(LoadCodeSourceError::from)?;
+          return Ok(LoadedModuleOrAsset::Module(loaded_module));
+        }
+
+        match requested_module_type {
+          RequestedModuleType::Text | RequestedModuleType::Bytes => {
+            Ok(LoadedModuleOrAsset::ExternalAsset {
+              specifier: Cow::Borrowed(specifier),
+              statically_analyzable: false,
+            })
+          }
+          _ => Err(LoadCodeSourceError::from(LoadUnpreparedModuleError {
+            specifier: specifier.clone(),
+            maybe_referrer: maybe_referrer.cloned(),
+          })),
+        }
+      }
+    }
+  }
+
+  pub fn load_prepared_module_for_source_map_sync<'graph>(
+    &self,
+    graph: &'graph ModuleGraph,
+    specifier: &Url,
+  ) -> Result<Option<LoadedModule<'graph>>, anyhow::Error> {
+    self
+      .prepared_module_loader
+      .load_prepared_module_for_source_map_sync(graph, specifier)
+  }
+}
+
+struct PreparedModuleLoader<TSys: ModuleLoaderSys> {
+  cjs_tracker: CjsTrackerRc<DenoInNpmPackageChecker, TSys>,
+  emitter: EmitterRc<DenoInNpmPackageChecker, TSys>,
   node_code_translator: DenoNodeCodeTranslatorRc<TSys>,
   parsed_source_cache: ParsedSourceCacheRc,
   sys: TSys,
 }
 
-impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
-  PreparedModuleLoader<TInNpmPackageChecker, TSys>
-{
-  pub fn new(
-    cjs_tracker: CjsTrackerRc<TInNpmPackageChecker, TSys>,
-    emitter: EmitterRc<TInNpmPackageChecker, TSys>,
-    node_code_translator: DenoNodeCodeTranslatorRc<TSys>,
-    parsed_source_cache: ParsedSourceCacheRc,
-    sys: TSys,
-  ) -> Self {
-    Self {
-      cjs_tracker,
-      emitter,
-      node_code_translator,
-      parsed_source_cache,
-      sys,
-    }
-  }
-
+impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
   pub async fn load_prepared_module<'graph>(
     &self,
     graph: &'graph ModuleGraph,
@@ -165,7 +259,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         Ok(Some(LoadedModuleOrAsset::Module(LoadedModule {
           // note: it's faster to provide a string to v8 if we know it's a string
           source: LoadedModuleSource::ArcStr(transpile_result),
-          specifier,
+          specifier: Cow::Borrowed(specifier),
           media_type,
         })))
       }
@@ -178,14 +272,18 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         .await
         .map(|text| {
           Some(LoadedModuleOrAsset::Module(LoadedModule {
-            specifier,
+            specifier: Cow::Borrowed(specifier),
             media_type,
             source: LoadedModuleSource::ArcStr(text),
           }))
         })
-        .map_err(LoadPreparedModuleError::LoadMaybeCjs),
+        .map_err(|e| LoadPreparedModuleErrorKind::LoadMaybeCjs(e).into_box()),
       Some(CodeOrDeferredEmit::ExternalAsset { specifier }) => {
-        Ok(Some(LoadedModuleOrAsset::ExternalAsset { specifier }))
+        Ok(Some(LoadedModuleOrAsset::ExternalAsset {
+          specifier: Cow::Borrowed(specifier),
+          // came from graph, so yes
+          statically_analyzable: true,
+        }))
       }
       None => Ok(None),
     }
@@ -221,7 +319,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         Ok(Some(LoadedModule {
           // note: it's faster to provide a string if we know it's a string
           source: LoadedModuleSource::ArcStr(transpile_result),
-          specifier,
+          specifier: Cow::Borrowed(specifier),
           media_type,
         }))
       }
@@ -263,7 +361,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         RequestedModuleType::Bytes => match source.try_get_original_bytes() {
           Some(bytes) => Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
             source: LoadedModuleSource::ArcBytes(bytes),
-            specifier,
+            specifier: Cow::Borrowed(specifier),
             media_type: *media_type,
           }))),
           None => Ok(Some(CodeOrDeferredEmit::ExternalAsset { specifier })),
@@ -271,13 +369,13 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         RequestedModuleType::Text => {
           Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
             source: LoadedModuleSource::ArcStr(source.text.clone()),
-            specifier,
+            specifier: Cow::Borrowed(specifier),
             media_type: *media_type,
           })))
         }
         _ => Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
           source: LoadedModuleSource::ArcStr(source.text.clone()),
-          specifier,
+          specifier: Cow::Borrowed(specifier),
           media_type: *media_type,
         }))),
       },
@@ -291,7 +389,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         RequestedModuleType::Bytes => match source.try_get_original_bytes() {
           Some(bytes) => Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
             source: LoadedModuleSource::ArcBytes(bytes),
-            specifier,
+            specifier: Cow::Borrowed(specifier),
             media_type: *media_type,
           }))),
           None => Ok(Some(CodeOrDeferredEmit::ExternalAsset { specifier })),
@@ -299,7 +397,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         RequestedModuleType::Text => {
           Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
             source: LoadedModuleSource::ArcStr(source.text.clone()),
-            specifier,
+            specifier: Cow::Borrowed(specifier),
             media_type: *media_type,
           })))
         }
@@ -354,7 +452,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
 
           Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
             source: LoadedModuleSource::ArcStr(code),
-            specifier,
+            specifier: Cow::Borrowed(specifier),
             media_type: *media_type,
           })))
         }
@@ -363,7 +461,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: PreparedModuleLoaderSys>
         source, specifier, ..
       })) => Ok(Some(CodeOrDeferredEmit::Source(LoadedModule {
         source: LoadedModuleSource::ArcBytes(source.clone()),
-        specifier,
+        specifier: Cow::Borrowed(specifier),
         media_type: MediaType::Wasm,
       }))),
       Some(deno_graph::Module::External(module))
