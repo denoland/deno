@@ -81,13 +81,18 @@ pub enum LoadCodeSourceErrorKind {
   LoadPreparedModule(#[from] LoadPreparedModuleError),
   #[class(inherit)]
   #[error(transparent)]
+  LoadUnpreparedModule(#[from] LoadUnpreparedModuleError),
+  #[class(generic)]
+  #[error(
+    "Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."
+  )]
+  MissingJsonAttribute,
+  #[class(inherit)]
+  #[error(transparent)]
   NpmModuleLoad(#[from] NpmModuleLoadError),
   #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
-  #[class(inherit)]
-  #[error(transparent)]
-  LoadUnpreparedModule(#[from] LoadUnpreparedModuleError),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -171,13 +176,13 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     maybe_referrer: Option<&Url>,
     requested_module_type: &RequestedModuleType<'_>,
   ) -> Result<LoadedModuleOrAsset<'a>, LoadCodeSourceError> {
-    match self
+    let source = match self
       .prepared_module_loader
       .load_prepared_module(graph, specifier, requested_module_type)
       .await
       .map_err(LoadCodeSourceError::from)?
     {
-      Some(module_or_asset) => Ok(module_or_asset),
+      Some(module_or_asset) => module_or_asset,
       None => {
         if self.in_npm_pkg_checker.in_npm_package(specifier) {
           let loaded_module = self
@@ -189,21 +194,44 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
             )
             .await
             .map_err(LoadCodeSourceError::from)?;
-          return Ok(LoadedModuleOrAsset::Module(loaded_module));
-        }
-
-        match requested_module_type {
-          RequestedModuleType::Text | RequestedModuleType::Bytes => {
-            Ok(LoadedModuleOrAsset::ExternalAsset {
-              specifier: Cow::Borrowed(specifier),
-              statically_analyzable: false,
-            })
+          LoadedModuleOrAsset::Module(loaded_module)
+        } else {
+          match requested_module_type {
+            RequestedModuleType::Text | RequestedModuleType::Bytes => {
+              LoadedModuleOrAsset::ExternalAsset {
+                specifier: Cow::Borrowed(specifier),
+                statically_analyzable: false,
+              }
+            }
+            _ => {
+              return Err(LoadCodeSourceError::from(
+                LoadUnpreparedModuleError {
+                  specifier: specifier.clone(),
+                  maybe_referrer: maybe_referrer.cloned(),
+                },
+              ));
+            }
           }
-          _ => Err(LoadCodeSourceError::from(LoadUnpreparedModuleError {
-            specifier: specifier.clone(),
-            maybe_referrer: maybe_referrer.cloned(),
-          })),
         }
+      }
+    };
+
+    match &source {
+      LoadedModuleOrAsset::Module(loaded_module) => {
+        // If we loaded a JSON file, but the "requested_module_type" (that is computed from
+        // import attributes) is not JSON we need to fail.
+        if loaded_module.media_type == MediaType::Json
+          && !matches!(requested_module_type, RequestedModuleType::Json)
+        {
+          Err(LoadCodeSourceErrorKind::MissingJsonAttribute.into_box())
+        } else {
+          Ok(source)
+        }
+      }
+      LoadedModuleOrAsset::ExternalAsset { .. } => {
+        // these are never type: "json"
+
+        Ok(source)
       }
     }
   }

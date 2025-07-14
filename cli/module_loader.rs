@@ -545,11 +545,6 @@ pub enum CliModuleLoaderError {
   #[class(inherit)]
   #[error(transparent)]
   LoadPreparedModule(#[from] LoadPreparedModuleError),
-  #[class(generic)]
-  #[error(
-    "Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."
-  )]
-  MissingJsonAttribute,
   #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] PathToUrlError),
@@ -657,7 +652,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     let graph = self.graph_container.graph();
     let deno_resolver_requested_module_type =
       as_deno_resolver_requested_module_type(requested_module_type);
-    let code_source = match self
+    match self
       .shared
       .module_loader
       .load(
@@ -668,37 +663,31 @@ impl<TGraphContainer: ModuleGraphContainer>
       )
       .await?
     {
-      LoadedModuleOrAsset::Module(prepared_module) => self
-        .loaded_module_to_module_code_string_source(
+      LoadedModuleOrAsset::Module(prepared_module) => {
+        Ok(self.loaded_module_to_module_code_string_source(
           prepared_module,
           requested_module_type,
-        ),
+        ))
+      }
       LoadedModuleOrAsset::ExternalAsset {
         specifier,
         statically_analyzable,
       } => {
-        self
-          .load_asset(
-            &specifier,
-            if statically_analyzable {
-              CheckSpecifierKind::Static
-            } else {
-              // force permissions
-              CheckSpecifierKind::Dynamic
-            },
-            requested_module_type,
-          )
-          .await?
+        Ok(
+          self
+            .load_asset(
+              &specifier,
+              if statically_analyzable {
+                CheckSpecifierKind::Static
+              } else {
+                // force permissions
+                CheckSpecifierKind::Dynamic
+              },
+              requested_module_type,
+            )
+            .await?,
+        )
       }
-    };
-    // If we loaded a JSON file, but the "requested_module_type" (that is computed from
-    // import attributes) is not JSON we need to fail.
-    if code_source.module_type == ModuleType::Json
-      && *requested_module_type != RequestedModuleType::Json
-    {
-      Err(CliModuleLoaderError::MissingJsonAttribute)
-    } else {
-      Ok(code_source)
     }
   }
 
