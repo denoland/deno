@@ -46,6 +46,7 @@ use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
+use tokio::net::UnixStream;
 
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
@@ -55,6 +56,7 @@ use crate::ops::IpAddr;
 use crate::ops::NetError;
 use crate::ops::TlsHandshakeInfo;
 use crate::raw::NetworkListenerResource;
+use crate::raw::take_network_stream_resource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
@@ -99,6 +101,81 @@ enum TlsStreamInner {
     rd: AsyncRefCell<TlsStreamRead<TcpStream>>,
     wr: AsyncRefCell<TlsStreamWrite<TcpStream>>,
   },
+  Unix {
+    rd: AsyncRefCell<TlsStreamRead<UnixStream>>,
+    wr: AsyncRefCell<TlsStreamWrite<UnixStream>>,
+  },
+}
+
+#[derive(Debug)]
+#[pin_project::pin_project(project = TlsStreamReunitedProject)]
+pub enum TlsStreamReunited {
+  Tcp(#[pin] TlsStream<TcpStream>),
+  Unix(#[pin] TlsStream<UnixStream>),
+}
+
+impl tokio::io::AsyncRead for TlsStreamReunited {
+  fn poll_read(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+    buf: &mut tokio::io::ReadBuf<'_>,
+  ) -> std::task::Poll<std::io::Result<()>> {
+    match self.project() {
+      TlsStreamReunitedProject::Tcp(s) => s.poll_read(cx, buf),
+      TlsStreamReunitedProject::Unix(s) => s.poll_read(cx, buf),
+    }
+  }
+}
+
+impl tokio::io::AsyncWrite for TlsStreamReunited {
+  fn poll_write(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+    buf: &[u8],
+  ) -> std::task::Poll<Result<usize, std::io::Error>> {
+    match self.project() {
+      TlsStreamReunitedProject::Tcp(s) => s.poll_write(cx, buf),
+      TlsStreamReunitedProject::Unix(s) => s.poll_write(cx, buf),
+    }
+  }
+
+  fn poll_flush(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    match self.project() {
+      TlsStreamReunitedProject::Tcp(s) => s.poll_flush(cx),
+      TlsStreamReunitedProject::Unix(s) => s.poll_flush(cx),
+    }
+  }
+
+  fn poll_shutdown(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    match self.project() {
+      TlsStreamReunitedProject::Tcp(s) => s.poll_shutdown(cx),
+      TlsStreamReunitedProject::Unix(s) => s.poll_shutdown(cx),
+    }
+  }
+
+  fn is_write_vectored(&self) -> bool {
+    match self {
+      TlsStreamReunited::Tcp(s) => s.is_write_vectored(),
+      TlsStreamReunited::Unix(s) => s.is_write_vectored(),
+    }
+  }
+
+  fn poll_write_vectored(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+    bufs: &[std::io::IoSlice<'_>],
+  ) -> std::task::Poll<Result<usize, std::io::Error>> {
+    match self.project() {
+      TlsStreamReunitedProject::Tcp(s) => s.poll_write_vectored(cx, bufs),
+      TlsStreamReunitedProject::Unix(s) => s.poll_write_vectored(cx, bufs),
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -123,12 +200,30 @@ impl TlsStreamResource {
     }
   }
 
-  pub fn into_tls_stream(self) -> TlsStream<TcpStream> {
+  pub fn new_unix(
+    (rd, wr): (TlsStreamRead<UnixStream>, TlsStreamWrite<UnixStream>),
+  ) -> Self {
+    Self {
+      inner: TlsStreamInner::Unix {
+        rd: AsyncRefCell::new(rd),
+        wr: AsyncRefCell::new(wr),
+      },
+      handshake_info: RefCell::new(None),
+      cancel_handle: Default::default(),
+    }
+  }
+
+  pub fn into_tls_stream(self) -> TlsStreamReunited {
     match self.inner {
       TlsStreamInner::Tcp { rd, wr } => {
         let read_half = rd.into_inner();
         let write_half = wr.into_inner();
-        read_half.unsplit(write_half)
+        TlsStreamReunited::Tcp(read_half.unsplit(write_half))
+      }
+      TlsStreamInner::Unix { rd, wr } => {
+        let read_half = rd.into_inner();
+        let write_half = wr.into_inner();
+        TlsStreamReunited::Unix(read_half.unsplit(write_half))
       }
     }
   }
@@ -139,6 +234,7 @@ impl TlsStreamResource {
   ) -> Result<usize, std::io::Error> {
     let mut rd = RcRef::map(&self, |r| match r.inner {
       TlsStreamInner::Tcp { ref rd, .. } => rd,
+      _ => todo!(),
     })
     .borrow_mut()
     .await;
@@ -152,6 +248,7 @@ impl TlsStreamResource {
   ) -> Result<usize, std::io::Error> {
     let mut wr = RcRef::map(&self, |r| match r.inner {
       TlsStreamInner::Tcp { ref wr, .. } => wr,
+      _ => todo!(),
     })
     .borrow_mut()
     .await;
@@ -163,6 +260,7 @@ impl TlsStreamResource {
   pub async fn shutdown(self: Rc<Self>) -> Result<(), std::io::Error> {
     let mut wr = RcRef::map(&self, |r| match r.inner {
       TlsStreamInner::Tcp { ref wr, .. } => wr,
+      _ => todo!(),
     })
     .borrow_mut()
     .await;
@@ -179,6 +277,7 @@ impl TlsStreamResource {
 
     let mut wr = RcRef::map(self, |r| match r.inner {
       TlsStreamInner::Tcp { ref wr, .. } => wr,
+      _ => todo!(),
     })
     .borrow_mut()
     .await;
@@ -333,22 +432,6 @@ where
     .root_cert_store()
     .map_err(NetError::RootCertStore)?;
 
-  let resource_rc = state
-    .borrow_mut()
-    .resource_table
-    .take::<TcpStreamResource>(rid)
-    .map_err(NetError::Resource)?;
-  // This TCP connection might be used somewhere else. If it's the case, we cannot proceed with the
-  // process of starting a TLS connection on top of this TCP connection, so we just return a Busy error.
-  // See also: https://github.com/denoland/deno/pull/16242
-  let resource =
-    Rc::try_unwrap(resource_rc).map_err(|_| NetError::TcpStreamBusy)?;
-  let (read_half, write_half) = resource.into_inner();
-  let tcp_stream = read_half.reunite(write_half).map_err(NetError::Reunite)?;
-
-  let local_addr = tcp_stream.local_addr()?;
-  let remote_addr = tcp_stream.peer_addr()?;
-
   let tls_null = TlsKeysHolder::from(TlsKeys::Null);
   let key_pair = key_pair.unwrap_or(&tls_null);
   let mut tls_config = create_client_config(
@@ -365,20 +448,66 @@ where
   }
 
   let tls_config = Arc::new(tls_config);
-  let tls_stream = TlsStream::new_client_side(
-    tcp_stream,
-    ClientConnection::new(tls_config, hostname_dns)?,
-    TLS_BUFFER_SIZE,
-  );
+  let resource_table = &mut state.borrow_mut().resource_table;
 
-  let rid = {
-    let mut state_ = state.borrow_mut();
-    state_
-      .resource_table
-      .add(TlsStreamResource::new_tcp(tls_stream.into_split()))
-  };
+  if let Ok(resource_rc) = resource_table
+    .take::<TcpStreamResource>(rid)
+    .map_err(NetError::Resource)
+  {
+    // This TCP connection might be used somewhere else. If it's the case, we cannot proceed with the
+    // process of starting a TLS connection on top of this TCP connection, so we just return a Busy error.
+    // See also: https://github.com/denoland/deno/pull/16242
+    let resource =
+      Rc::try_unwrap(resource_rc).map_err(|_| NetError::TcpStreamBusy)?;
+    let (read_half, write_half) = resource.into_inner();
+    let tcp_stream = read_half
+      .reunite(write_half)
+      .map_err(NetError::ReuniteTcp)?;
 
-  Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
+    let local_addr = tcp_stream.local_addr()?;
+    let remote_addr = tcp_stream.peer_addr()?;
+
+    let tls_stream = TlsStream::new_client_side(
+      tcp_stream,
+      ClientConnection::new(tls_config, hostname_dns)?,
+      TLS_BUFFER_SIZE,
+    );
+
+    let rid = {
+      resource_table.add(TlsStreamResource::new_tcp(tls_stream.into_split()))
+    };
+
+    return Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)));
+  }
+
+  #[cfg(unix)]
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::io::UnixStreamResource>(rid)
+  {
+    // This UNIX socket might be used somewhere else.
+    let resource =
+      Rc::try_unwrap(resource_rc).map_err(|_| NetError::UnixStreamBusy)?;
+    let (read_half, write_half) = resource.into_inner();
+    let unix_stream = read_half
+      .reunite(write_half)
+      .map_err(NetError::ReuniteUnix)?;
+    let local_addr = unix_stream.local_addr()?;
+    let remote_addr = unix_stream.peer_addr()?;
+
+    let tls_stream = TlsStream::new_client_side(
+      unix_stream,
+      ClientConnection::new(tls_config, hostname_dns)?,
+      TLS_BUFFER_SIZE,
+    );
+
+    let rid = {
+      resource_table.add(TlsStreamResource::new_unix(tls_stream.into_split()))
+    };
+
+    return Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)));
+  }
+
+  unreachable!()
 }
 
 #[op2(async, stack_trace)]

@@ -146,6 +146,7 @@ export class Pipe extends ConnectionWrap {
       transport: "unix",
     };
 
+    console.log(new Error().stack);
     Deno.connect(connectOptions).then(
       (conn: Deno.UnixConn) => {
         const localAddr = conn.localAddr as Deno.UnixAddr;

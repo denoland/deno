@@ -1439,6 +1439,7 @@ export class Socket extends Duplex {
    * @return The socket itself.
    */
   override resume(): this {
+	  console.log(this.connecting, this._handle, this._handle?.reading);
     if (
       !this.connecting &&
       this._handle &&
