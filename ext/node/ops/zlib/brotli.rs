@@ -285,6 +285,7 @@ pub fn op_brotli_decompress_stream(
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 
+  println!("{:02X?}", &input[..16.min(input.len())]);
   let result = BrotliDecompressStream(
     &mut input.len(),
     &mut 0,
@@ -295,7 +296,16 @@ pub fn op_brotli_decompress_stream(
     &mut 0,
     &mut inst,
   );
+  println!(
+    "input.len={} output_offset={} result={:?}",
+    input.len(),
+    output_offset,
+    result
+  );
+
   if matches!(result, BrotliResult::ResultFailure) {
+    let err_code = inst.error_code as i32;
+    println!("Brotli decompression error code: {}", err_code);
     return Err(BrotliError::DecompressFailed);
   }
 

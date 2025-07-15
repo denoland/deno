@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 
 use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use libc::c_ulong;
 use zlib::*;
@@ -41,6 +42,7 @@ struct ZlibInner {
   write_in_progress: bool,
   pending_close: bool,
   gzib_id_bytes_read: u32,
+  result_buffer: Option<*mut u32>,
   strm: StreamWrapper,
 }
 
@@ -229,7 +231,7 @@ impl ZlibInner {
   }
 }
 
-struct Zlib {
+pub struct Zlib {
   inner: RefCell<Option<ZlibInner>>,
 }
 
@@ -246,18 +248,151 @@ impl deno_core::Resource for Zlib {
 }
 
 #[op2]
-#[cppgc]
-pub fn op_zlib_new(#[smi] mode: i32) -> Result<Zlib, mode::ModeError> {
-  let mode = Mode::try_from(mode)?;
+impl Zlib {
+  #[constructor]
+  #[cppgc]
+  fn new(#[smi] mode: Option<i32>) -> Result<Zlib, mode::ModeError> {
+    let mode = mode.unwrap_or(Mode::Deflate as i32);
+    let mode = Mode::try_from(mode)?;
 
-  let inner = ZlibInner {
-    mode,
-    ..Default::default()
-  };
+    let inner = ZlibInner {
+      mode,
+      ..Default::default()
+    };
 
-  Ok(Zlib {
-    inner: RefCell::new(Some(inner)),
-  })
+    Ok(Zlib {
+      inner: RefCell::new(Some(inner)),
+    })
+  }
+
+  #[fast]
+  pub fn close(&self) -> Result<(), ZlibError> {
+    let mut resource = self.inner.borrow_mut();
+    let zlib = resource.as_mut().ok_or(ZlibError::NotInitialized)?;
+
+    // If there is a pending write, defer the close until the write is done.
+    zlib.close()?;
+
+    Ok(())
+  }
+
+  #[fast]
+  #[smi]
+  pub fn reset(&self) -> Result<i32, ZlibError> {
+    let mut zlib = self.inner.borrow_mut();
+    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+
+    zlib.reset_stream();
+
+    Ok(zlib.err)
+  }
+
+  #[smi]
+  pub fn init(
+    &self,
+    #[smi] window_bits: i32,
+    #[smi] level: i32,
+    #[smi] mem_level: i32,
+    #[smi] strategy: i32,
+    #[buffer] write_result: &mut [u32],
+    #[global] callback: v8::Global<v8::Function>,
+    #[buffer] dictionary: Option<&[u8]>,
+  ) -> Result<i32, ZlibError> {
+    let mut zlib = self.inner.borrow_mut();
+    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+
+    check((8..=15).contains(&window_bits), "invalid windowBits")?;
+    check((-1..=9).contains(&level), "invalid level")?;
+
+    check((1..=9).contains(&mem_level), "invalid memLevel")?;
+
+    check(
+      strategy == Z_DEFAULT_STRATEGY
+        || strategy == Z_FILTERED
+        || strategy == Z_HUFFMAN_ONLY
+        || strategy == Z_RLE
+        || strategy == Z_FIXED,
+      "invalid strategy",
+    )?;
+
+    zlib.level = level;
+    zlib.window_bits = window_bits;
+    zlib.mem_level = mem_level;
+    zlib.strategy = strategy;
+
+    zlib.flush = Flush::None;
+    zlib.err = Z_OK;
+
+    zlib.init_stream()?;
+
+    zlib.dictionary = if let Some(buf) = dictionary {
+      Some(buf.to_vec())
+    } else {
+      None
+    };
+
+    zlib.result_buffer = Some(write_result.as_mut_ptr());
+
+    Ok(zlib.err)
+  }
+
+  #[fast]
+  #[smi]
+  pub fn write_sync(
+    &self,
+    #[smi] flush: i32,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) -> Result<i32, ZlibError> {
+    let mut zlib = self.inner.borrow_mut();
+    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+
+    let flush = Flush::try_from(flush)?;
+    zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
+    zlib.do_write(flush)?;
+
+    let result =
+      unsafe { std::slice::from_raw_parts_mut(zlib.result_buffer.unwrap(), 2) };
+    result[0] = zlib.strm.avail_out;
+    result[1] = zlib.strm.avail_in;
+
+    Ok(zlib.err)
+  }
+
+  #[fast]
+  fn write(
+    &self,
+    #[smi] flush: i32,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) -> Result<(), ZlibError> {
+    let mut zlib = self.inner.borrow_mut();
+    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+
+    let flush = Flush::try_from(flush)?;
+    zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
+    zlib.do_write(flush)?;
+
+    let result =
+      unsafe { std::slice::from_raw_parts_mut(zlib.result_buffer.unwrap(), 2) };
+    result[0] = zlib.strm.avail_out;
+    result[1] = zlib.strm.avail_in;
+
+    Ok(())
+  }
+
+  #[fast]
+  fn params(&self) {
+    todo!()
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -279,17 +414,6 @@ pub enum ZlibError {
     #[inherit]
     JsErrorBox,
   ),
-}
-
-#[op2(fast)]
-pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), ZlibError> {
-  let mut resource = resource.inner.borrow_mut();
-  let zlib = resource.as_mut().ok_or(ZlibError::NotInitialized)?;
-
-  // If there is a pending write, defer the close until the write is done.
-  zlib.close()?;
-
-  Ok(())
 }
 
 #[op2]
@@ -314,90 +438,6 @@ pub fn op_zlib_err_msg(
   };
 
   Ok(Some(msg))
-}
-
-#[allow(clippy::too_many_arguments)]
-#[op2(fast)]
-#[smi]
-pub fn op_zlib_write(
-  #[cppgc] resource: &Zlib,
-  #[smi] flush: i32,
-  #[buffer] input: &[u8],
-  #[smi] in_off: u32,
-  #[smi] in_len: u32,
-  #[buffer] out: &mut [u8],
-  #[smi] out_off: u32,
-  #[smi] out_len: u32,
-  #[buffer] result: &mut [u32],
-) -> Result<i32, ZlibError> {
-  let mut zlib = resource.inner.borrow_mut();
-  let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
-
-  let flush = Flush::try_from(flush)?;
-  zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
-  zlib.do_write(flush)?;
-
-  result[0] = zlib.strm.avail_out;
-  result[1] = zlib.strm.avail_in;
-
-  Ok(zlib.err)
-}
-
-#[op2(fast)]
-#[smi]
-pub fn op_zlib_init(
-  #[cppgc] resource: &Zlib,
-  #[smi] level: i32,
-  #[smi] window_bits: i32,
-  #[smi] mem_level: i32,
-  #[smi] strategy: i32,
-  #[buffer] dictionary: &[u8],
-) -> Result<i32, ZlibError> {
-  let mut zlib = resource.inner.borrow_mut();
-  let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
-
-  check((8..=15).contains(&window_bits), "invalid windowBits")?;
-  check((-1..=9).contains(&level), "invalid level")?;
-
-  check((1..=9).contains(&mem_level), "invalid memLevel")?;
-
-  check(
-    strategy == Z_DEFAULT_STRATEGY
-      || strategy == Z_FILTERED
-      || strategy == Z_HUFFMAN_ONLY
-      || strategy == Z_RLE
-      || strategy == Z_FIXED,
-    "invalid strategy",
-  )?;
-
-  zlib.level = level;
-  zlib.window_bits = window_bits;
-  zlib.mem_level = mem_level;
-  zlib.strategy = strategy;
-
-  zlib.flush = Flush::None;
-  zlib.err = Z_OK;
-
-  zlib.init_stream()?;
-
-  zlib.dictionary = if !dictionary.is_empty() {
-    Some(dictionary.to_vec())
-  } else {
-    None
-  };
-
-  Ok(zlib.err)
-}
-
-#[op2(fast)]
-#[smi]
-pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, ZlibError> {
-  let mut zlib = resource.inner.borrow_mut();
-  let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
-
-  zlib.reset_stream();
-
-  Ok(zlib.err)
 }
 
 #[op2(fast)]

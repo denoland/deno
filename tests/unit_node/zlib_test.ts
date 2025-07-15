@@ -121,13 +121,10 @@ Deno.test(
 Deno.test(
   "zlib flush i32",
   function () {
-    const handle = createDeflate({
+    assertThrows(() => createDeflate({
       // @ts-expect-error: passing non-int flush value
       flush: "",
-    });
-
-    handle.end();
-    handle.destroy();
+    }), TypeError);
   },
 );
 
