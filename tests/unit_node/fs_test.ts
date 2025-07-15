@@ -456,7 +456,7 @@ Deno.test("[node/fs] constants are correct across platforms", () => {
   if (Deno.build.os === "linux") {
     assert(constants.UV_FS_O_FILEMAP === 0);
     assert(constants.O_CREAT === 0x40);
-    assert(constants.O_DIRECT === 0x4000);
+    assert(constants.O_DIRECT !== undefined); // O_DIRECT has different values between architectures
     assert(constants.O_NOATIME === 0x40000);
     assert(constants.O_SYMLINK === undefined);
   }
