@@ -13,6 +13,7 @@ pub use module_loader::*;
 pub use npm::*;
 use url::Url;
 
+#[derive(Debug)]
 pub enum RequestedModuleType<'a> {
   None,
   Json,
