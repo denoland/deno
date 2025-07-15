@@ -11,6 +11,7 @@ use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
+use deno_core::error::CoreErrorKind;
 use deno_core::error::JsError;
 use deno_core::futures::StreamExt;
 use deno_core::futures::future;
@@ -169,13 +170,16 @@ async fn bench_specifier(
   .await
   {
     Ok(()) => Ok(()),
-    Err(CreateCustomWorkerError::Core(CoreError::Js(error))) => {
-      sender.send(BenchEvent::UncaughtError(
-        specifier.to_string(),
-        Box::new(error),
-      ))?;
-      Ok(())
-    }
+    Err(CreateCustomWorkerError::Core(error)) => match error.into_kind() {
+      CoreErrorKind::Js(error) => {
+        sender.send(BenchEvent::UncaughtError(
+          specifier.to_string(),
+          Box::new(error),
+        ))?;
+        Ok(())
+      }
+      error => Err(error.into_box().into()),
+    },
     Err(e) => Err(e.into()),
   }
 }
@@ -210,7 +214,9 @@ async fn bench_specifier_inner(
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  worker.dispatch_load_event().map_err(CoreError::Js)?;
+  worker
+    .dispatch_load_event()
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
 
   let benchmarks = {
     let state_rc = worker.js_runtime.op_state();
@@ -246,12 +252,12 @@ async fn bench_specifier_inner(
       names: benchmarks.iter().map(|(d, _)| d.name.clone()).collect(),
     }))
     .map_err(JsErrorBox::from_err)
-    .map_err(CoreError::JsBox)?;
+    .map_err(|e| CoreErrorKind::JsBox(e).into_box())?;
   for (desc, function) in benchmarks {
     sender
       .send(BenchEvent::Wait(desc.id))
       .map_err(JsErrorBox::from_err)
-      .map_err(CoreError::JsBox)?;
+      .map_err(|e| CoreErrorKind::JsBox(e).into_box())?;
     let call = worker.js_runtime.call(&function);
     let result = worker
       .js_runtime
@@ -261,25 +267,27 @@ async fn bench_specifier_inner(
     let result = v8::Local::new(scope, result);
     let result = serde_v8::from_v8::<BenchResult>(scope, result)
       .map_err(JsErrorBox::from_err)
-      .map_err(CoreError::JsBox)?;
+      .map_err(|e| CoreErrorKind::JsBox(e).into_box())?;
     sender
       .send(BenchEvent::Result(desc.id, result))
       .map_err(JsErrorBox::from_err)
-      .map_err(CoreError::JsBox)?;
+      .map_err(|e| CoreErrorKind::JsBox(e).into_box())?;
   }
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
   // event loop to continue beyond what's needed to await results.
   worker
     .dispatch_beforeunload_event()
-    .map_err(CoreError::Js)?;
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   worker
     .dispatch_process_beforeexit_event()
-    .map_err(CoreError::Js)?;
-  worker.dispatch_unload_event().map_err(CoreError::Js)?;
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  worker
+    .dispatch_unload_event()
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   worker
     .dispatch_process_exit_event()
-    .map_err(CoreError::Js)?;
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.

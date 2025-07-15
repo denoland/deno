@@ -8,6 +8,7 @@ use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_runtime::deno_core::error::AnyError;
 use deno_runtime::deno_core::error::CoreError;
+use deno_runtime::deno_core::error::CoreErrorKind;
 
 pub trait InfallibleResultExt<T> {
   fn unwrap_infallible(self) -> T;
@@ -35,9 +36,11 @@ pub fn any_and_jserrorbox_downcast_ref<
         .and_then(|e| e.as_any().downcast_ref::<E>())
     })
     .or_else(|| {
-      err.downcast_ref::<CoreError>().and_then(|e| match e {
-        CoreError::JsBox(e) => e.as_any().downcast_ref::<E>(),
-        _ => None,
-      })
+      err
+        .downcast_ref::<CoreError>()
+        .and_then(|e| match e.as_kind() {
+          CoreErrorKind::JsBox(e) => e.as_any().downcast_ref::<E>(),
+          _ => None,
+        })
     })
 }

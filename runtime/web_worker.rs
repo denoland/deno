@@ -27,6 +27,7 @@ use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::error::CoreError;
+use deno_core::error::CoreErrorKind;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
@@ -147,8 +148,8 @@ impl Serialize for WorkerControlEvent {
 
     match self {
       WorkerControlEvent::TerminalError(error) => {
-        let value = match error {
-          CoreError::Js(js_error) => {
+        let value = match error.as_kind() {
+          CoreErrorKind::Js(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
               Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
@@ -1018,8 +1019,8 @@ fn print_worker_error(
   format_js_error_fn: Option<&FormatJsErrorFn>,
 ) {
   let error_str = match format_js_error_fn {
-    Some(format_js_error_fn) => match error {
-      CoreError::Js(js_error) => format_js_error_fn(js_error),
+    Some(format_js_error_fn) => match error.as_kind() {
+      CoreErrorKind::Js(js_error) => format_js_error_fn(js_error),
       _ => error.to_string(),
     },
     None => error.to_string(),

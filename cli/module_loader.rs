@@ -1510,9 +1510,9 @@ impl EszipModuleLoader {
         );
         deno_core::ModuleLoadResponse::Sync(Ok(module_source))
       }
-      None => {
-        deno_core::ModuleLoadResponse::Sync(Err(ModuleLoaderError::NotFound))
-      }
+      None => deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::generic(
+        "Module not found",
+      ))),
     }
   }
 }

@@ -1277,7 +1277,7 @@ pub enum ExecError {
   ResponseNotSet,
   #[class(inherit)]
   #[error(transparent)]
-  Core(deno_core::error::CoreError),
+  Js(deno_core::error::JsError),
 }
 
 #[derive(Clone)]
@@ -1485,7 +1485,7 @@ pub fn exec(
 
   runtime
     .execute_script(located_script_name!(), exec_source)
-    .map_err(ExecError::Core)?;
+    .map_err(ExecError::Js)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();

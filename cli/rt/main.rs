@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
+use deno_core::error::CoreErrorKind;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_lib::version::otel_runtime_config;
 use deno_runtime::deno_telemetry::OtelConfig;
@@ -46,8 +47,9 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
     Err(error) => {
       let mut error_string = format!("{:?}", error);
 
-      if let Some(CoreError::Js(js_error)) =
+      if let Some(CoreErrorKind::Js(js_error)) =
         any_and_jserrorbox_downcast_ref::<CoreError>(&error)
+          .map(|e| e.as_kind())
       {
         error_string = format_js_error(js_error);
       }
