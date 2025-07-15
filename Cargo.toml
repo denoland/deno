@@ -176,7 +176,6 @@ fs3 = "0.5.0"
 futures = "0.3.31"
 glob = "0.3.1"
 h2 = "0.4.6"
-hickory-client = "0.25.0-alpha.4"
 hickory-proto = "0.25.0-alpha.4"
 hickory-resolver = { version = "0.25.0-alpha.4", features = ["tokio-runtime", "serde"] }
 hickory-server = "0.25.0-alpha.4"
