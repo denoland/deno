@@ -10,7 +10,6 @@ use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::error::CoreErrorKind;
 use deno_core::error::JsError;
 use deno_core::futures::StreamExt;

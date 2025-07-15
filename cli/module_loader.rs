@@ -638,7 +638,9 @@ impl<TGraphContainer: ModuleGraphContainer>
     if code_source.module_type == ModuleType::Json
       && *requested_module_type != RequestedModuleType::Json
     {
-      return Err(JsErrorBox::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
+      return Err(JsErrorBox::generic(
+        "Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.",
+      ));
     }
     let code = if self.shared.is_inspecting
       || code_source.module_type == ModuleType::Wasm
@@ -1001,15 +1003,12 @@ impl<TGraphContainer: ModuleGraphContainer>
           match err.into_kind() {
             ResolveWithGraphErrorKind::Resolution(err) => {
               // todo(dsherret): why do we have a newline here? Document it.
-              return Err(
-                JsErrorBox::type_error(format!(
-                  "{}\n",
-                  err.to_string_with_range()
-                ))
-                .into(),
-              );
+              return Err(JsErrorBox::type_error(format!(
+                "{}\n",
+                err.to_string_with_range()
+              )));
             }
-            err => return Err(JsErrorBox::from_err(err).into()),
+            err => return Err(JsErrorBox::from_err(err)),
           }
         }
       }

@@ -57,7 +57,6 @@ use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;

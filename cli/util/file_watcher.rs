@@ -11,11 +11,9 @@ use std::time::Duration;
 
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
-use deno_core::error::CoreErrorKind;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
-use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_lib::util::result::js_error_downcast_ref;
 use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use notify::Error as NotifyError;
@@ -84,13 +82,9 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let error_string = match any_and_jserrorbox_downcast_ref::<CoreError>(&err)
-      .and_then(|e| match e.as_kind() {
-        CoreErrorKind::Js(e) => Some(e),
-        _ => None,
-      }) {
+    let error_string = match js_error_downcast_ref(&err) {
       Some(e) => format_js_error(e),
-      _ => format!("{err:?}"),
+      None => format!("{err:?}"),
     };
     log::error!(
       "{}: {}",

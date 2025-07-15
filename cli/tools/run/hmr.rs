@@ -251,13 +251,10 @@ impl HmrRunner {
       )
       .await?;
 
-    Ok(
-      serde_json::from_value::<cdp::SetScriptSourceResponse>(result).map_err(
-        |e| {
-          InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e))
-            .into_box()
-        },
-      )?,
+    serde_json::from_value::<cdp::SetScriptSourceResponse>(result).map_err(
+      |e| {
+        InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
+      },
     )
   }
 

@@ -39,11 +39,10 @@ use std::sync::Arc;
 use args::TaskFlags;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
-use deno_core::error::CoreErrorKind;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
@@ -503,12 +502,10 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 }
 
 fn exit_for_error(error: AnyError) -> ! {
-  let mut error_string = format!("{error:?}");
-  if let Some(CoreErrorKind::Js(e)) =
-    any_and_jserrorbox_downcast_ref::<CoreError>(&error).map(|e| e.as_kind())
-  {
-    error_string = format_js_error(e);
-  }
+  let error_string = match js_error_downcast_ref(&error) {
+    Some(e) => format_js_error(e),
+    None => format!("{error:?}"),
+  };
 
   exit_with_message(&error_string, 1);
 }
