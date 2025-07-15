@@ -20,10 +20,14 @@ pub struct FsConstants {
   uv_dirent_socket: i32,
   uv_dirent_char: i32,
   uv_dirent_block: i32,
-  s_ifmt: i32,
-  s_ifreg: i32,
-  s_ifdir: i32,
-  s_ifchr: i32,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  s_ifmt: Option<i32>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  s_ifreg: Option<i32>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  s_ifdir: Option<i32>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  s_ifchr: Option<i32>,
   #[serde(skip_serializing_if = "Option::is_none")]
   s_ifblk: Option<i32>,
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -137,10 +141,10 @@ impl Default for FsConstants {
       uv_dirent_socket: UV_DIRENT_SOCKET,
       uv_dirent_char: UV_DIRENT_CHAR,
       uv_dirent_block: UV_DIRENT_BLOCK,
-      s_ifmt: libc::S_IFMT as i32,
-      s_ifreg: libc::S_IFREG as i32,
-      s_ifdir: libc::S_IFDIR as i32,
-      s_ifchr: libc::S_IFCHR as i32,
+      s_ifmt: None,
+      s_ifreg: None,
+      s_ifdir: None,
+      s_ifchr: None,
       s_ifblk: None,
       s_ififo: None,
       s_iflnk: None,
@@ -188,6 +192,10 @@ impl Default for FsConstants {
 #[cfg(unix)]
 fn common_unix_fs_constants() -> FsConstants {
   FsConstants {
+    s_ifmt: Some(libc::S_IFMT as i32),
+    s_ifreg: Some(libc::S_IFREG as i32),
+    s_ifdir: Some(libc::S_IFDIR as i32),
+    s_ifchr: Some(libc::S_IFCHR as i32),
     s_ifblk: Some(libc::S_IFBLK as i32),
     s_ififo: Some(libc::S_IFIFO as i32),
     s_iflnk: Some(libc::S_IFLNK as i32),
@@ -257,6 +265,10 @@ pub fn op_node_fs_constants() -> FsConstants {
   constants.s_irusr = Some(libc::S_IREAD);
   constants.s_iwusr = Some(libc::S_IWRITE);
 
+  constants.s_ifmt = Some(libc::S_IFMT);
+  constants.s_ifreg = Some(libc::S_IFREG);
+  constants.s_ifdir = Some(libc::S_IFDIR);
+  constants.s_ifchr = Some(libc::S_IFCHR);
   constants.f_ok = Some(F_OK);
   constants.r_ok = Some(R_OK);
   constants.w_ok = Some(W_OK);
