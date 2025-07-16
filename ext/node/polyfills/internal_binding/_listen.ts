@@ -1,14 +1,14 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+import { primordials } from "ext:core/mod.js";
+const { MathClz32 } = primordials;
 
 /**
  * @param n Number to act on.
  * @return The number rounded up to the nearest power of 2.
  */
 export function ceilPowOf2(n: number) {
-  const roundPowOf2 = 1 << (31 - Math.clz32(n));
+  const roundPowOf2 = 1 << (31 - MathClz32(n));
 
   return roundPowOf2 < n ? roundPowOf2 * 2 : roundPowOf2;
 }
