@@ -6,6 +6,10 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.14 / 2025.07.16
+
+- fix: upgrade deno_core to 0.344.1 (#30118)
+
 ### 2.2.13 / 2025.05.13
 
 - fix: handling of contradictory global permission flags (#29213)
