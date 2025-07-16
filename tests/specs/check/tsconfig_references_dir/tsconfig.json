@@ -1,6 +1,8 @@
 {
-  "files": [],
+  "compilerOptions": {
+    "lib": ["deno.window"]
+  },
   "references": [
-    { "path": "tsconfig_dom" }
+    { "path": "tsconfig.dom.json" }
   ]
 }

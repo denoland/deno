@@ -864,7 +864,7 @@ pub async fn op_net_accept_tunnel(
   let resource = state
     .borrow()
     .resource_table
-    .get::<NetworkListenerResource<crate::tunnel::TunnelListener>>(rid)
+    .get::<NetworkListenerResource<crate::tunnel::TunnelConnection>>(rid)
     .map_err(|_| NetError::ListenerClosed)?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
@@ -1200,13 +1200,14 @@ mod tests {
   use std::net::Ipv6Addr;
   use std::net::ToSocketAddrs;
   use std::path::Path;
-  use std::path::PathBuf;
   use std::sync::Arc;
   use std::sync::Mutex;
 
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use deno_core::futures::FutureExt;
+  use deno_permissions::CheckedPath;
+  use deno_permissions::OpenAccessKind;
   use deno_permissions::PermissionCheckError;
   use hickory_proto::rr::Name;
   use hickory_proto::rr::rdata::SOA;
@@ -1414,28 +1415,13 @@ mod tests {
       Ok(())
     }
 
-    fn check_read(
+    fn check_open<'a>(
       &mut self,
-      p: &str,
+      path: Cow<'a, Path>,
+      _access_kind: OpenAccessKind,
       _api_name: &str,
-    ) -> Result<PathBuf, PermissionCheckError> {
-      Ok(PathBuf::from(p))
-    }
-
-    fn check_write(
-      &mut self,
-      p: &str,
-      _api_name: &str,
-    ) -> Result<PathBuf, PermissionCheckError> {
-      Ok(PathBuf::from(p))
-    }
-
-    fn check_write_path<'a>(
-      &mut self,
-      p: Cow<'a, Path>,
-      _api_name: &str,
-    ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-      Ok(p)
+    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+      Ok(CheckedPath::unsafe_new(path))
     }
 
     fn check_vsock(

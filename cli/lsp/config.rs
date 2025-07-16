@@ -49,12 +49,7 @@ use deno_resolver::factory::ResolverFactory;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::WorkspaceFactory;
 use deno_resolver::factory::WorkspaceFactoryOptions;
-use deno_resolver::workspace::CreateResolverOptions;
-use deno_resolver::workspace::FsCacheOptions;
-use deno_resolver::workspace::PackageJsonDepResolution;
-use deno_resolver::workspace::SloppyImportsOptions;
 use deno_resolver::workspace::SpecifiedImportMap;
-use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
@@ -71,7 +66,6 @@ use crate::args::ConfigFile;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
-use crate::lsp::compiler_options::LspCompilerOptionsResolverRc;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::sys::CliSys;
@@ -1235,8 +1229,8 @@ pub struct ConfigData {
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
-  pub resolver: Arc<WorkspaceResolver<CliSys>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
+  pub specified_import_map: Option<SpecifiedImportMap>,
   pub unstable: BTreeSet<String>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
@@ -1253,7 +1247,6 @@ impl ConfigData {
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
-    compiler_options_resolver: &LspCompilerOptionsResolverRc,
   ) -> Self {
     let scope = scope.clone();
     let discover_result = match scope.to_file_path() {
@@ -1293,7 +1286,6 @@ impl ConfigData {
           settings,
           Some(file_fetcher),
           Some(http_client_provider),
-          compiler_options_resolver,
         )
         .await
       }
@@ -1310,7 +1302,6 @@ impl ConfigData {
           settings,
           Some(file_fetcher),
           Some(http_client_provider),
-          compiler_options_resolver,
         )
         .await;
         // check if any of these need to be added to the workspace
@@ -1354,7 +1345,6 @@ impl ConfigData {
     settings: &Settings,
     file_fetcher: Option<&Arc<CliFileFetcher>>,
     http_client_provider: Option<&Arc<HttpClientProvider>>,
-    compiler_options_resolver: &LspCompilerOptionsResolverRc,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1573,13 +1563,6 @@ impl ConfigData {
         ConfigWatchedFileType::ImportMap,
       );
     }
-    // attempt to create a resolver for the workspace
-    let pkg_json_dep_resolution = if byonm {
-      PackageJsonDepResolution::Disabled
-    } else {
-      // todo(dsherret): this should be false for nodeModulesDir: true
-      PackageJsonDepResolution::Enabled
-    };
     let mut import_map_from_settings = {
       let is_config_import_map = member_dir
         .maybe_deno_json()
@@ -1657,77 +1640,11 @@ impl ConfigData {
       .chain(settings.unstable.as_deref())
       .cloned()
       .collect::<BTreeSet<_>>();
-    let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
-      .is_ok()
-      || unstable.contains("sloppy-imports");
-    let resolver = WorkspaceResolver::from_workspace(
-      &member_dir.workspace,
-      CliSys::default(),
-      CreateResolverOptions {
-        pkg_json_dep_resolution,
-        specified_import_map,
-        sloppy_imports_options: if unstable_sloppy_imports {
-          SloppyImportsOptions::Enabled
-        } else {
-          let compiler_options_resolver = compiler_options_resolver.clone();
-          SloppyImportsOptions::Dynamic(Arc::new(move |referrer| {
-            if let Some(referrer) = referrer {
-              let resolver = compiler_options_resolver.load();
-              let options = resolver.for_specifier(referrer);
-              let lib = options.compiler_options.0.get("moduleResolution");
-              lib.is_some_and(|v| {
-                v.as_str()
-                  .map(|v| v.to_lowercase() == "bundler")
-                  .unwrap_or(false)
-              })
-            } else {
-              todo!()
-            }
-          }))
-        },
-        fs_cache_options: FsCacheOptions::Disabled,
-      },
-    )
-    .inspect_err(|err| {
-      lsp_warn!(
-        "  Failed to load resolver: {}",
-        err // will contain the specifier
-      );
-    })
-    .ok()
-    .unwrap_or_else(|| {
-      // create a dummy resolver
-      WorkspaceResolver::new_raw(
-        scope.clone(),
-        None,
-        member_dir.workspace.resolver_jsr_pkgs().collect(),
-        member_dir.workspace.package_jsons().cloned().collect(),
-        pkg_json_dep_resolution,
-        Default::default(),
-        Default::default(),
-        Default::default(),
-        Default::default(),
-        CliSys::default(),
-      )
-    });
-    if !resolver.diagnostics().is_empty() {
-      lsp_warn!(
-        "  Resolver diagnostics:\n{}",
-        resolver
-          .diagnostics()
-          .iter()
-          .map(|d| format!("    - {d}"))
-          .collect::<Vec<_>>()
-          .join("\n")
-      );
-    }
-    let resolver = Arc::new(resolver);
 
     ConfigData {
       scope,
       canonicalized_scope,
       member_dir,
-      resolver,
       fmt_config,
       test_config,
       exclude_files,
@@ -1737,6 +1654,7 @@ impl ConfigData {
       lockfile,
       npmrc,
       import_map_from_settings,
+      specified_import_map,
       unstable,
       watched_files,
     }
@@ -1914,7 +1832,6 @@ impl ConfigTree {
     file_fetcher: &Arc<CliFileFetcher>,
     http_client_provider: &Arc<HttpClientProvider>,
     deno_dir: &DenoDir,
-    compiler_options_resolver: &LspCompilerOptionsResolverRc,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -1956,7 +1873,6 @@ impl ConfigTree {
                 &deno_json_cache,
                 &pkg_json_cache,
                 &workspace_cache,
-                compiler_options_resolver,
               )
               .await,
             ),
@@ -1991,7 +1907,6 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
-          compiler_options_resolver,
         )
         .await,
       );
@@ -2009,7 +1924,6 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
-          compiler_options_resolver,
         )
         .await;
         scopes.insert(member_scope.clone(), Arc::new(member_data));
@@ -2048,9 +1962,6 @@ impl ConfigTree {
       )
       .unwrap(),
     );
-    let compiler_options_resolver = Arc::new(arc_swap::ArcSwap::new(Arc::new(
-      crate::lsp::compiler_options::LspCompilerOptionsResolver::default(),
-    )));
     let data = Arc::new(
       ConfigData::load_inner(
         workspace_dir,
@@ -2058,7 +1969,6 @@ impl ConfigTree {
         &Default::default(),
         None,
         None,
-        &compiler_options_resolver,
       )
       .await,
     );

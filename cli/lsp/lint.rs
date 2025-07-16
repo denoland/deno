@@ -20,6 +20,7 @@ use crate::lsp::config::Config;
 use crate::lsp::documents::DocumentModule;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
+use crate::lsp::resolver::LspResolver;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
@@ -35,6 +36,7 @@ pub struct LspLinter {
 pub struct LspLinterResolver {
   config: Config,
   compiler_options_resolver: LspCompilerOptionsResolverRc,
+  resolver: Arc<LspResolver>,
   linters: DashMap<(CompilerOptionsKey, Option<Arc<Url>>), Arc<LspLinter>>,
 }
 
@@ -42,10 +44,12 @@ impl LspLinterResolver {
   pub fn new(
     config: &Config,
     compiler_options_resolver: &LspCompilerOptionsResolverRc,
+    resolver: &Arc<LspResolver>,
   ) -> Self {
     Self {
       config: config.clone(),
       compiler_options_resolver: compiler_options_resolver.clone(),
+      resolver: resolver.clone(),
       linters: Default::default(),
     }
   }
@@ -59,8 +63,13 @@ impl LspLinterResolver {
           .scope
           .as_ref()
           .and_then(|s| self.config.tree.data_for_specifier(s));
+        let workspace_resolver = self
+          .resolver
+          .get_scoped_resolver(config_data.map(|d| d.scope.as_ref()))
+          .as_workspace_resolver()
+          .clone();
         let lint_rule_provider =
-          LintRuleProvider::new(config_data.map(|d| d.resolver.clone()));
+          LintRuleProvider::new(Some(workspace_resolver));
         let lint_config = config_data
           .and_then(|d| {
             d.member_dir

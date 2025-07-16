@@ -158,7 +158,7 @@ pub fn parse_compiler_options(
     // know about this option. It will still take this option into account
     // because the graph resolves the JSX import source to the types for TSC.
     if key != "types" && key != "jsxImportSourceTypes" {
-     if (key == "module"
+      if (key == "module"
         && value
           .as_str()
           .map(|s| s == "nodenext" || s == "esnext" || s == "preserve")
@@ -306,10 +306,16 @@ pub fn get_base_compiler_options_for_emit(
       "moduleResolution": "NodeNext",
       "moduleDetection": "force",
       "noEmit": true,
-      "noImplicitOverride": true,
+      "noImplicitOverride": match defaults {
+        CompilerOptionsDefaults::Deno => true,
+        CompilerOptionsDefaults::TscCompatible => false,
+      },
       "resolveJsonModule": true,
       "sourceMap": false,
-      "strict": true,
+      "strict": match defaults {
+        CompilerOptionsDefaults::Deno => true,
+        CompilerOptionsDefaults::TscCompatible => false,
+      },
       "target": "esnext",
       "tsBuildInfoFile": "internal:///.tsbuildinfo",
       "useDefineForClassFields": true,
@@ -1119,32 +1125,49 @@ impl CompilerOptionsResolver {
   }
 
   pub fn for_specifier(&self, specifier: &Url) -> &CompilerOptionsData {
-    if let Ok(path) = url_to_file_path(specifier) {
-      for ts_config in &self.ts_configs {
-        if ts_config.filter.includes_path(&path) {
-          return &ts_config.compiler_options;
+    let workspace_data = self.workspace_configs.get_for_specifier(specifier);
+    if !workspace_data
+      .sources
+      .iter()
+      .any(|s| s.compiler_options.is_some())
+    {
+      if let Ok(path) = url_to_file_path(specifier) {
+        for ts_config in &self.ts_configs {
+          if ts_config.filter.includes_path(&path) {
+            return &ts_config.compiler_options;
+          }
         }
       }
     }
-    self.workspace_configs.get_for_specifier(specifier)
+    workspace_data
   }
 
   pub fn entry_for_specifier(
     &self,
     specifier: &Url,
   ) -> (CompilerOptionsKey, &CompilerOptionsData) {
-    if let Ok(path) = url_to_file_path(specifier) {
-      for (i, ts_config) in self.ts_configs.iter().enumerate() {
-        if ts_config.filter.includes_path(&path) {
-          return (
-            CompilerOptionsKey::TsConfig(i),
-            &ts_config.compiler_options,
-          );
+    let (scope, workspace_data) =
+      self.workspace_configs.entry_for_specifier(specifier);
+    if !workspace_data
+      .sources
+      .iter()
+      .any(|s| s.compiler_options.is_some())
+    {
+      if let Ok(path) = url_to_file_path(specifier) {
+        for (i, ts_config) in self.ts_configs.iter().enumerate() {
+          if ts_config.filter.includes_path(&path) {
+            return (
+              CompilerOptionsKey::TsConfig(i),
+              &ts_config.compiler_options,
+            );
+          }
         }
       }
     }
-    let (scope, data) = self.workspace_configs.entry_for_specifier(specifier);
-    (CompilerOptionsKey::WorkspaceConfig(scope.cloned()), data)
+    (
+      CompilerOptionsKey::WorkspaceConfig(scope.cloned()),
+      workspace_data,
+    )
   }
 
   pub fn entries(
@@ -1332,7 +1355,7 @@ fn compiler_options_to_transpile_and_emit_options(
     inline_sources: options.inline_sources,
     remove_comments: false,
     source_map,
-    source_map_base: None,
+    source_map_base: overrides.source_map_base.clone(),
     source_map_file: None,
   };
   let transpile_and_emit_options_hash = {

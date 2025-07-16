@@ -500,7 +500,7 @@ mod hyper_client {
   use std::pin::Pin;
   use std::task::Poll;
 
-  use deno_net::tunnel::TunnelListener;
+  use deno_net::tunnel::TunnelConnection;
   use deno_net::tunnel::TunnelStream;
   use deno_net::tunnel::get_tunnel;
   use deno_tls::SocketUse;
@@ -544,7 +544,7 @@ mod hyper_client {
   #[derive(Debug, Clone)]
   enum Connector {
     Http(HttpsConnector<HttpConnector>),
-    Tunnel(TunnelListener),
+    Tunnel(TunnelConnection),
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     Vsock(VsockAddr),
   }
@@ -926,6 +926,8 @@ pub fn init(
       config,
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
+
+  deno_signals::before_exit(flush);
 
   Ok(())
 }

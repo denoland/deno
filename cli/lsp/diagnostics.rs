@@ -1719,11 +1719,11 @@ fn diagnose_dependency(
     return; // ignore, surface typescript errors instead
   }
 
-  let config_data = referrer_module
-    .scope
-    .as_ref()
-    .and_then(|s| snapshot.config.tree.data_for_specifier(s));
-  let import_map = config_data.and_then(|d| d.resolver.maybe_import_map());
+  let import_map = snapshot
+    .resolver
+    .get_scoped_resolver(referrer_module.scope.as_deref())
+    .as_workspace_resolver()
+    .maybe_import_map();
   if let Some(import_map) = import_map {
     let resolved = dependency
       .maybe_code
@@ -1938,13 +1938,24 @@ mod tests {
       let config_file = ConfigFile::new(json_string, base_url).unwrap();
       config.tree.inject_config_file(config_file).await;
     }
-    let resolver =
-      Arc::new(LspResolver::from_config(&config, &cache, None).await);
-    let compiler_options_resolver = Arc::new(arc_swap::ArcSwap::new(Arc::new(
-      LspCompilerOptionsResolver::new(&config, &resolver),
+    let compiler_options_resolver = Default::default();
+    let resolver = Arc::new(
+      LspResolver::from_config(
+        &config,
+        &compiler_options_resolver,
+        &cache,
+        None,
+      )
+      .await,
+    );
+    compiler_options_resolver.store(Arc::new(LspCompilerOptionsResolver::new(
+      &config, &resolver,
     )));
-    let linter_resolver =
-      Arc::new(LspLinterResolver::new(&config, &compiler_options_resolver));
+    let linter_resolver = Arc::new(LspLinterResolver::new(
+      &config,
+      &compiler_options_resolver,
+      &resolver,
+    ));
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,

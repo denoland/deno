@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -26,7 +27,9 @@ use deno_lib::args::CaData;
 use deno_lib::args::RootCertStoreLoadError;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
-use deno_lib::loader::NpmModuleLoader;
+use deno_lib::loader::as_deno_resolver_requested_module_type;
+use deno_lib::loader::loaded_module_source_to_module_source_code;
+use deno_lib::loader::module_type_from_media_and_requested_type;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::npm::create_npm_process_state_provider;
@@ -47,6 +50,7 @@ use deno_package_json::PackageJsonDepValue;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::cjs::CjsTracker;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::loader::NpmModuleLoader;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -403,18 +407,31 @@ impl ModuleLoader for EmbeddedModuleLoader {
         async move {
           let code_source = shared
             .npm_module_loader
-            .load(&original_specifier, maybe_referrer.as_ref())
+            .load(
+              Cow::Borrowed(&original_specifier),
+              maybe_referrer.as_ref(),
+              &as_deno_resolver_requested_module_type(&requested_module_type),
+            )
             .await
             .map_err(JsErrorBox::from_err)?;
-          let code_cache_entry = shared.get_code_cache(
-            &code_source.found_url,
-            code_source.code.as_bytes(),
-          );
+          let code_cache_entry = match requested_module_type {
+            RequestedModuleType::None => shared.get_code_cache(
+              &code_source.specifier,
+              code_source.source.as_bytes(),
+            ),
+            RequestedModuleType::Other(_)
+            | RequestedModuleType::Json
+            | RequestedModuleType::Text
+            | RequestedModuleType::Bytes => None,
+          };
           Ok(deno_core::ModuleSource::new_with_redirect(
-            code_source.module_type,
-            code_source.code,
+            module_type_from_media_and_requested_type(
+              code_source.media_type,
+              &requested_module_type,
+            ),
+            loaded_module_source_to_module_source_code(code_source.source),
             &original_specifier,
-            &code_source.found_url,
+            &code_source.specifier,
             code_cache_entry,
           ))
         }
@@ -591,11 +608,11 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
-    path: &'a std::path::Path,
-  ) -> Result<Cow<'a, std::path::Path>, JsErrorBox> {
-    if self.shared.modules.has_file(path) {
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, JsErrorBox> {
+    if self.shared.modules.has_file(&path) {
       // allow reading if the file is in the snapshot
-      return Ok(Cow::Borrowed(path));
+      return Ok(path);
     }
 
     self
