@@ -108,7 +108,6 @@ where
         "Deno.connect()",
       )
       .map_err(NetError::Permission)?
-      .path
   };
   let unix_stream = UnixStream::connect(address_path).await?;
   let local_addr = unix_stream.local_addr()?;
@@ -197,8 +196,7 @@ where
       OpenAccessKind::ReadWriteNoFollow,
       &api_call_expr,
     )
-    .map_err(NetError::Permission)?
-    .path;
+    .map_err(NetError::Permission)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;

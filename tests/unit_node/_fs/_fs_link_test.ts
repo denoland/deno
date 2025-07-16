@@ -3,6 +3,7 @@ import * as path from "@std/path";
 import { assert, assertEquals, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { link, linkSync } from "node:fs";
+import { Buffer } from "node:buffer";
 
 Deno.test({
   name: "ASYNC: hard linking files works as expected",
@@ -74,4 +75,46 @@ Deno.test("[std/node/fs] link callback isn't called twice if error is thrown", a
       await Deno.remove(tempDir, { recursive: true });
     },
   });
+});
+
+Deno.test("[std/node/fs] link accepts Buffer", async () => {
+  const tempDir = await Deno.makeTempDir();
+  const tempFile = path.join(tempDir, "file.txt");
+  const linkedFile = path.join(tempDir, "file.link");
+  const tempFileBuffer = Buffer.from(tempFile, "utf8");
+  const linkedFileBuffer = Buffer.from(linkedFile, "utf8");
+  await Deno.writeTextFile(tempFile, "hello world");
+
+  await new Promise<void>((resolve, reject) => {
+    link(tempFileBuffer, linkedFileBuffer, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  })
+    .then(() => {
+      assertEquals(Deno.statSync(tempFile), Deno.statSync(linkedFile));
+    }, () => {
+      fail("Expected to succeed");
+    })
+    .finally(() => {
+      Deno.removeSync(tempFile);
+      Deno.removeSync(linkedFile);
+      Deno.removeSync(tempDir);
+    });
+});
+
+Deno.test("[std/node/fs] linkSync accepts Buffer", () => {
+  const tempDir = Deno.makeTempDirSync();
+  const tempFile = path.join(tempDir, "file.txt");
+  const linkedFile = path.join(tempDir, "file.link");
+  const tempFileBuffer = Buffer.from(tempFile, "utf8");
+  const linkedFileBuffer = Buffer.from(linkedFile, "utf8");
+  Deno.writeTextFileSync(tempFile, "hello world");
+
+  linkSync(tempFileBuffer, linkedFileBuffer);
+  assertEquals(Deno.statSync(tempFile), Deno.statSync(linkedFile));
+
+  Deno.removeSync(linkedFile);
+  Deno.removeSync(tempFile);
+  Deno.removeSync(tempDir);
 });
