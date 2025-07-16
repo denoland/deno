@@ -936,8 +936,7 @@ where
             OpenAccessKind::ReadWriteNoFollow,
             "Deno.createHttpClient()",
           )?
-          .path
-          .path;
+          .into_path();
         if path != resolved_path {
           *original_path = resolved_path.to_string_lossy().into_owned();
         }

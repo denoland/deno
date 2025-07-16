@@ -32,12 +32,10 @@ use deno_npm::NpmPackageId;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_fs::RealFs;
-use deno_runtime::deno_io::fs::FsError;
 use deno_semver::StackString;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use sys_traits::FsRead;
 use thiserror::Error;
 
 use crate::file_system::FileBackedVfs;
@@ -369,9 +367,11 @@ impl StandaloneModules {
           bytes
         }
         Err(err) if err.kind() == ErrorKind::NotFound => {
-          match RealFs.read_file_sync(&path, None) {
+          // actually use the real file system here
+          #[allow(clippy::disallowed_types)]
+          match sys_traits::impls::RealSys.fs_read(&path) {
             Ok(bytes) => bytes,
-            Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
+            Err(err) if err.kind() == ErrorKind::NotFound => {
               return Ok(None);
             }
             Err(err) => return Err(JsErrorBox::from_err(err)),

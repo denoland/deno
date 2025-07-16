@@ -8,7 +8,6 @@ use std::sync::Arc;
 use deno_core::Extension;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
-use deno_permissions::PathWithRequested;
 use deno_permissions::PermissionCheckError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
@@ -147,7 +146,7 @@ impl deno_net::NetPermissions for Permissions {
 
 impl deno_fs::FsPermissions for Permissions {
   fn check_open<'a>(
-    &mut self,
+    &self,
     _path: Cow<'a, Path>,
     _access_kind: OpenAccessKind,
     _api_name: &str,
@@ -156,7 +155,7 @@ impl deno_fs::FsPermissions for Permissions {
   }
 
   fn check_open_blind<'a>(
-    &mut self,
+    &self,
     _path: Cow<'a, Path>,
     _access_kind: OpenAccessKind,
     _display: &str,
@@ -166,22 +165,22 @@ impl deno_fs::FsPermissions for Permissions {
   }
 
   fn check_read_all(
-    &mut self,
+    &self,
     _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
   fn check_write_partial<'a>(
-    &mut self,
+    &self,
     _path: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<PathWithRequested<'a>, PermissionCheckError> {
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 
   fn check_write_all(
-    &mut self,
+    &self,
     _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
