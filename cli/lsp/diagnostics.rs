@@ -1938,10 +1938,19 @@ mod tests {
       let config_file = ConfigFile::new(json_string, base_url).unwrap();
       config.tree.inject_config_file(config_file).await;
     }
-    let resolver =
-      Arc::new(LspResolver::from_config(&config, &cache, None).await);
-    let compiler_options_resolver =
-      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    let compiler_options_resolver = Default::default();
+    let resolver = Arc::new(
+      LspResolver::from_config(
+        &config,
+        &compiler_options_resolver,
+        &cache,
+        None,
+      )
+      .await,
+    );
+    compiler_options_resolver.store(Arc::new(LspCompilerOptionsResolver::new(
+      &config, &resolver,
+    )));
     let linter_resolver = Arc::new(LspLinterResolver::new(
       &config,
       &compiler_options_resolver,
@@ -1971,7 +1980,7 @@ mod tests {
         project_version: 0,
         document_modules,
         config: Arc::new(config),
-        compiler_options_resolver,
+        compiler_options_resolver: compiler_options_resolver.load().clone(),
         linter_resolver,
         resolver,
       },

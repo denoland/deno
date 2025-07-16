@@ -1632,6 +1632,7 @@ impl ConfigData {
         None
       }
     };
+
     let unstable = member_dir
       .workspace
       .unstable_features()
