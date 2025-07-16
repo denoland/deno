@@ -60,8 +60,13 @@ export const Z_MIN_LEVEL = -1;
 export const Z_MAX_LEVEL = 9;
 export const Z_DEFAULT_LEVEL = Z_DEFAULT_COMPRESSION;
 
-import { Zlib } from "ext:core/ops";
+export const BROTLI_OPERATION_PROCESS = 0;
+export const BROTLI_OPERATION_FLUSH = 1;
+export const BROTLI_OPERATION_FINISH = 2;
+export const BROTLI_OPERATION_EMIT_METADATA = 3;
 
-export { Zlib };
+import { BrotliDecoder, BrotliEncoder, Zlib } from "ext:core/ops";
 
-export default { Zlib };
+export { BrotliDecoder, BrotliEncoder, Zlib };
+
+export default { BrotliDecoder, BrotliEncoder, Zlib };

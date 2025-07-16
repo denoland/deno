@@ -2,7 +2,10 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::rc::Rc;
 
+use brotli::ffi;
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -10,7 +13,6 @@ use libc::c_ulong;
 use zlib::*;
 
 mod alloc;
-pub mod brotli;
 pub mod mode;
 mod stream;
 
@@ -458,6 +460,410 @@ pub fn op_zlib_close_if_pending(
   }
 
   Ok(())
+}
+
+struct BrotliContext {
+  next_in: *const u8,
+  next_out: *mut u8,
+  avail_in: usize,
+  avail_out: usize,
+  flush: i32,
+  write_in_progress: bool,
+}
+
+impl Default for BrotliContext {
+  fn default() -> Self {
+    Self {
+      next_in: std::ptr::null(),
+      next_out: std::ptr::null_mut(),
+      avail_in: 0,
+      avail_out: 0,
+      flush: ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_PROCESS
+        as i32,
+      write_in_progress: false,
+    }
+  }
+}
+
+impl BrotliContext {
+  #[allow(clippy::too_many_arguments)]
+  fn start_write(
+    &mut self,
+    input: &[u8],
+    in_off: u32,
+    in_len: u32,
+    out: &mut [u8],
+    out_off: u32,
+    out_len: u32,
+    flush: i32,
+  ) -> Result<(), JsErrorBox> {
+    // check(self.init_done, "write before init")?;
+    check(!self.write_in_progress, "write already in progress")?;
+    // check(!self.pending_close, "close already in progress")?;
+
+    self.write_in_progress = true;
+
+    let next_in = input
+      .get(in_off as usize..in_off as usize + in_len as usize)
+      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?
+      .as_ptr() as *mut _;
+    let next_out = out
+      .get_mut(out_off as usize..out_off as usize + out_len as usize)
+      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?
+      .as_mut_ptr();
+
+    self.avail_in = in_len as usize;
+    self.next_in = next_in;
+    self.avail_out = out_len as usize;
+    self.next_out = next_out;
+
+    self.flush = flush;
+    Ok(())
+  }
+}
+
+struct BrotliEncoderCtx {
+  inst: *mut ffi::compressor::BrotliEncoderState,
+  write_result: *mut u32,
+  ctx: BrotliContext,
+  callback: v8::Global<v8::Function>,
+}
+
+pub struct BrotliEncoder {
+  ctx: Rc<RefCell<Option<BrotliEncoderCtx>>>,
+}
+
+impl deno_core::GarbageCollected for BrotliEncoder {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"BrotliEncoder"
+  }
+}
+
+fn encoder_param(i: u32) -> brotli::enc::encode::BrotliEncoderParameter {
+  unsafe { std::mem::transmute(i) }
+}
+
+#[op2]
+impl BrotliEncoder {
+  #[constructor]
+  #[cppgc]
+  fn new(#[smi] mode: i32) -> BrotliEncoder {
+    BrotliEncoder {
+      ctx: Rc::new(RefCell::new(None)),
+    }
+  }
+
+  fn init(
+    &self,
+    #[buffer] params: &[u32],
+    #[buffer] write_result: &mut [u32],
+    #[global] callback: v8::Global<v8::Function>,
+  ) {
+    let inst = unsafe {
+      let state = ffi::compressor::BrotliEncoderCreateInstance(
+        None,
+        None,
+        std::ptr::null_mut(),
+      );
+      for (i, &value) in params.iter().enumerate() {
+        ffi::compressor::BrotliEncoderSetParameter(
+          state,
+          encoder_param(i as u32),
+          value,
+        );
+      }
+
+      state
+    };
+
+    self.ctx.borrow_mut().replace(BrotliEncoderCtx {
+      inst,
+      write_result: write_result.as_mut_ptr(),
+      ctx: BrotliContext::default(),
+      callback,
+    });
+  }
+
+  #[fast]
+  fn params(&self) {
+    // no-op
+  }
+
+  #[fast]
+  fn reset(&self) {}
+
+  #[fast]
+  #[smi]
+  pub fn write(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    state: &mut OpState,
+    #[smi] flush: i32,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) {
+    let mut ctx = self.ctx.borrow_mut();
+    let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
+    ctx
+      .ctx
+      .start_write(input, in_off, in_len, out, out_off, out_len, flush);
+
+    let ctx = self.ctx.clone();
+    state
+      .borrow::<deno_core::V8TaskSpawner>()
+      .spawn(move |scope| unsafe {
+        let callback = {
+          let mut ctx = ctx.borrow_mut();
+          let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
+
+          let result = ffi::compressor::BrotliEncoderCompressStream(
+            ctx.inst,
+            std::mem::transmute(ctx.ctx.flush),
+            &mut ctx.ctx.avail_in,
+            &mut ctx.ctx.next_in,
+            &mut ctx.ctx.avail_out,
+            &mut ctx.ctx.next_out,
+            std::ptr::null_mut(),
+          );
+          let result =
+            unsafe { std::slice::from_raw_parts_mut(ctx.write_result, 2) };
+          result[0] = ctx.ctx.avail_out as u32;
+          result[1] = ctx.ctx.avail_in as u32;
+
+          v8::Local::new(scope, &ctx.callback)
+        };
+        let this = v8::Local::new(scope, &this);
+        let _ = callback.call(scope, this.into(), &[]);
+      });
+  }
+
+  #[fast]
+  #[smi]
+  pub fn write_sync(
+    &self,
+    #[smi] flush: i32,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) {
+    let mut ctx = self.ctx.borrow_mut();
+    let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
+
+    let next_in = input
+      .get(in_off as usize..in_off as usize + in_len as usize)
+      .expect("invalid input range")
+      .as_ptr();
+    ctx
+      .ctx
+      .start_write(input, in_off, in_len, out, out_off, out_len, flush);
+    unsafe {
+      let result = ffi::compressor::BrotliEncoderCompressStream(
+        ctx.inst,
+        std::mem::transmute(ctx.ctx.flush),
+        &mut ctx.ctx.avail_in,
+        &mut ctx.ctx.next_in,
+        &mut ctx.ctx.avail_out,
+        &mut ctx.ctx.next_out,
+        std::ptr::null_mut(),
+      );
+
+      println!("BrotliEncoderCompressStream result: {}", result);
+      // ctx.ctx.next_in = ctx.ctx.next_in.add(next_in as usize - ctx.ctx.next_in as usize);
+      let result =
+        unsafe { std::slice::from_raw_parts_mut(ctx.write_result, 2) };
+      result[0] = ctx.ctx.avail_out as u32;
+      result[1] = ctx.ctx.avail_in as u32;
+    }
+  }
+
+  #[fast]
+  fn close(&self) {
+    let mut ctx = self.ctx.borrow_mut();
+    if let Some(mut ctx) = ctx.take() {
+      unsafe {
+        ffi::compressor::BrotliEncoderDestroyInstance(ctx.inst);
+      }
+    }
+  }
+}
+
+struct BrotliDecoderCtx {
+  inst: *mut ffi::decompressor::ffi::BrotliDecoderState,
+  write_result: *mut u32,
+  ctx: BrotliContext,
+  callback: v8::Global<v8::Function>,
+}
+
+pub struct BrotliDecoder {
+  ctx: Rc<RefCell<Option<BrotliDecoderCtx>>>,
+}
+
+impl deno_core::GarbageCollected for BrotliDecoder {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"BrotliDecoder"
+  }
+}
+
+fn decoder_param(
+  i: u32,
+) -> ffi::decompressor::ffi::interface::BrotliDecoderParameter {
+  unsafe { std::mem::transmute(i) }
+}
+
+#[op2]
+impl BrotliDecoder {
+  #[constructor]
+  #[cppgc]
+  fn new(#[smi] mode: i32) -> BrotliDecoder {
+    BrotliDecoder {
+      ctx: Rc::new(RefCell::new(None)),
+    }
+  }
+
+  fn init(
+    &self,
+    #[buffer] params: &[u32],
+    #[buffer] write_result: &mut [u32],
+    #[global] callback: v8::Global<v8::Function>,
+  ) {
+    let inst = unsafe {
+      let state = ffi::decompressor::ffi::BrotliDecoderCreateInstance(
+        None,
+        None,
+        std::ptr::null_mut(),
+      );
+      for (i, &value) in params.iter().enumerate() {
+        ffi::decompressor::ffi::BrotliDecoderSetParameter(
+          state,
+          decoder_param(i as u32),
+          value,
+        );
+      }
+
+      state
+    };
+
+    self.ctx.borrow_mut().replace(BrotliDecoderCtx {
+      inst,
+      write_result: write_result.as_mut_ptr(),
+      ctx: BrotliContext::default(),
+      callback,
+    });
+  }
+
+  #[fast]
+  fn params(&self) {
+    // no-op
+  }
+
+  #[fast]
+  fn reset(&self) {}
+
+  #[fast]
+  #[smi]
+  pub fn write(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    state: &mut OpState,
+    #[smi] flush: i32,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) {
+    let mut ctx = self.ctx.borrow_mut();
+    let ctx = ctx.as_mut().expect("BrotliDecoder not initialized");
+    ctx
+      .ctx
+      .start_write(input, in_off, in_len, out, out_off, out_len, flush);
+
+    let ctx = self.ctx.clone();
+    state
+      .borrow::<deno_core::V8TaskSpawner>()
+      .spawn(move |scope| unsafe {
+        let callback = {
+          let mut ctx = ctx.borrow_mut();
+          let ctx = ctx.as_mut().expect("BrotliDecoder not initialized");
+
+          let result = ffi::decompressor::ffi::BrotliDecoderDecompressStream(
+            ctx.inst,
+            &mut ctx.ctx.avail_in,
+            &mut ctx.ctx.next_in,
+            &mut ctx.ctx.avail_out,
+            &mut ctx.ctx.next_out,
+            std::ptr::null_mut(),
+          );
+
+          let result =
+            unsafe { std::slice::from_raw_parts_mut(ctx.write_result, 2) };
+          result[0] = ctx.ctx.avail_out as u32;
+          result[1] = ctx.ctx.avail_in as u32;
+
+          v8::Local::new(scope, &ctx.callback)
+        };
+
+        let this = v8::Local::new(scope, &this);
+        let _ = callback.call(scope, this.into(), &[]);
+      });
+  }
+
+  #[fast]
+  #[smi]
+  pub fn write_sync(
+    &self,
+    #[smi] flush: i32,
+    #[buffer] input: &[u8],
+    #[smi] in_off: u32,
+    #[smi] in_len: u32,
+    #[buffer] out: &mut [u8],
+    #[smi] out_off: u32,
+    #[smi] out_len: u32,
+  ) {
+    let mut ctx = self.ctx.borrow_mut();
+    let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
+
+    let next_in = input
+      .get(in_off as usize..in_off as usize + in_len as usize)
+      .expect("invalid input range")
+      .as_ptr();
+    ctx
+      .ctx
+      .start_write(input, in_off, in_len, out, out_off, out_len, flush);
+    unsafe {
+      let result = ffi::decompressor::ffi::BrotliDecoderDecompressStream(
+        ctx.inst,
+        &mut ctx.ctx.avail_in,
+        &mut ctx.ctx.next_in,
+        &mut ctx.ctx.avail_out,
+        &mut ctx.ctx.next_out,
+        std::ptr::null_mut(),
+      );
+
+      let result =
+        unsafe { std::slice::from_raw_parts_mut(ctx.write_result, 2) };
+      result[0] = ctx.ctx.avail_out as u32;
+      result[1] = ctx.ctx.avail_in as u32;
+    }
+  }
+
+  #[fast]
+  fn close(&self) {
+    let mut ctx = self.ctx.borrow_mut();
+    if let Some(mut ctx) = ctx.take() {
+      unsafe {
+        ffi::decompressor::ffi::BrotliDecoderDestroyInstance(ctx.inst);
+      }
+    }
+  }
 }
 
 #[op2(fast)]
