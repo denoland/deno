@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -10,6 +11,7 @@ use deno_error::JsError;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_parent;
 use deno_path_util::url_to_file_path;
+use deno_semver::jsr::JsrDepPackageReq;
 use import_map::ImportMapWithDiagnostics;
 use indexmap::IndexMap;
 use jsonc_parser::ParseResult;
@@ -28,6 +30,10 @@ use url::Url;
 use crate::UrlToFilePathError;
 use crate::glob::FilePatterns;
 use crate::glob::PathOrPatternSet;
+use crate::import_map::imports_values;
+use crate::import_map::scope_values;
+use crate::import_map::value_to_dep_req;
+use crate::import_map::values_to_set;
 use crate::util::is_skippable_io_error;
 
 mod ts;
@@ -1849,6 +1855,48 @@ impl ConfigFile {
         Ok(Some(path))
       }
     }
+  }
+
+  pub fn dependencies(&self) -> HashSet<JsrDepPackageReq> {
+    let values = imports_values(self.json.imports.as_ref())
+      .into_iter()
+      .chain(scope_values(self.json.scopes.as_ref()));
+    let mut set = values_to_set(values);
+
+    if let Some(serde_json::Value::Object(compiler_options)) =
+      &self.json.compiler_options
+    {
+      // add jsxImportSource
+      if let Some(serde_json::Value::String(value)) =
+        compiler_options.get("jsxImportSource")
+      {
+        if let Some(dep_req) = value_to_dep_req(value) {
+          set.insert(dep_req);
+        }
+      }
+      // add jsxImportSourceTypes
+      if let Some(serde_json::Value::String(value)) =
+        compiler_options.get("jsxImportSourceTypes")
+      {
+        if let Some(dep_req) = value_to_dep_req(value) {
+          set.insert(dep_req);
+        }
+      }
+      // add the dependencies in the types array
+      if let Some(serde_json::Value::Array(types)) =
+        compiler_options.get("types")
+      {
+        for value in types {
+          if let serde_json::Value::String(value) = value {
+            if let Some(dep_req) = value_to_dep_req(value) {
+              set.insert(dep_req);
+            }
+          }
+        }
+      }
+    }
+
+    set
   }
 }
 

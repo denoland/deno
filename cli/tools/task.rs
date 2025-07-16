@@ -99,14 +99,16 @@ pub async fn execute_script(
     let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
     let workspace = cli_options.workspace();
-    for folder in workspace.config_folders() {
+    for (folder_url, folder) in
+      workspace.config_folders_sorted_by_dependencies()
+    {
       if !task_flags.recursive
-        && !matches_package(folder.1, force_use_pkg_json, &package_regex)
+        && !matches_package(folder, force_use_pkg_json, &package_regex)
       {
         continue;
       }
 
-      let member_dir = workspace.resolve_member_dir(folder.0);
+      let member_dir = workspace.resolve_member_dir(folder_url);
       let mut tasks_config = member_dir.to_tasks_config()?;
       if force_use_pkg_json {
         tasks_config = tasks_config.with_only_pkg_json();
@@ -727,27 +729,26 @@ fn print_available_tasks_workspace(
   let workspace = cli_options.workspace();
 
   let mut matched = false;
-  for folder in workspace.config_folders() {
-    if !recursive
-      && !matches_package(folder.1, force_use_pkg_json, package_regex)
+  for (folder_url, folder) in workspace.config_folders_sorted_by_dependencies()
+  {
+    if !recursive && !matches_package(folder, force_use_pkg_json, package_regex)
     {
       continue;
     }
     matched = true;
 
-    let member_dir = workspace.resolve_member_dir(folder.0);
+    let member_dir = workspace.resolve_member_dir(folder_url);
     let mut tasks_config = member_dir.to_tasks_config()?;
 
     let mut pkg_name = folder
-      .1
       .deno_json
       .as_ref()
       .and_then(|deno| deno.json.name.clone())
-      .or(folder.1.pkg_json.as_ref().and_then(|pkg| pkg.name.clone()));
+      .or(folder.pkg_json.as_ref().and_then(|pkg| pkg.name.clone()));
 
     if force_use_pkg_json {
       tasks_config = tasks_config.with_only_pkg_json();
-      pkg_name = folder.1.pkg_json.as_ref().and_then(|pkg| pkg.name.clone());
+      pkg_name = folder.pkg_json.as_ref().and_then(|pkg| pkg.name.clone());
     }
 
     print_available_tasks(
