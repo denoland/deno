@@ -31,7 +31,6 @@ pub use deno_webstorage;
 
 pub mod code_cache;
 pub mod fmt_errors;
-pub mod fs_util;
 pub mod inspector_server;
 pub mod js;
 pub mod ops;
