@@ -1175,6 +1175,7 @@ impl Inner {
     self.linter_resolver = Arc::new(LspLinterResolver::new(
       &self.config,
       &self.compiler_options_resolver,
+      &self.resolver,
     ));
   }
 
@@ -1227,7 +1228,7 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn refresh_documents_config(&mut self) {
+  fn refresh_documents_config(&mut self) {
     self.document_modules.update_config(
       &self.config,
       &self.compiler_options_resolver,
@@ -1238,13 +1239,13 @@ impl Inner {
 
     // refresh the npm specifiers because it might have discovered
     // a @types/node package and now's a good time to do that anyway
-    self.refresh_dep_info().await;
+    self.refresh_dep_info();
 
     self.project_changed(vec![], ProjectScopesChange::Config);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
+  fn did_open(&mut self, params: DidOpenTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
     // `deno:` documents are read-only and should only be handled as server
     // documents.
@@ -1281,7 +1282,7 @@ impl Inner {
     );
     if document.is_diagnosable() {
       self.check_semantic_tokens_capabilities();
-      self.refresh_dep_info().await;
+      self.refresh_dep_info();
       self.diagnostics_server.invalidate(&[document.uri.as_ref()]);
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Opened)],
@@ -1294,7 +1295,7 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
+  fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_change", &params);
     // `deno:` documents are read-only and should only be handled as server
     // documents.
@@ -1320,7 +1321,7 @@ impl Inner {
     if document.is_diagnosable() {
       let old_scopes_with_node_specifier =
         self.document_modules.scopes_with_node_specifier();
-      self.refresh_dep_info().await;
+      self.refresh_dep_info();
       let mut config_changed = false;
       if !self
         .document_modules
@@ -1400,13 +1401,13 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn refresh_dep_info(&mut self) {
+  fn refresh_dep_info(&mut self) {
     let dep_info_by_scope = self.document_modules.dep_info_by_scope();
     self.resolver.set_dep_info_by_scope(&dep_info_by_scope);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
+  fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_close", &params);
     // `deno:` documents are read-only and should only be handled as server
     // documents.
@@ -1430,7 +1431,7 @@ impl Inner {
       }
     };
     if document.is_diagnosable() {
-      self.refresh_dep_info().await;
+      self.refresh_dep_info();
       self.diagnostics_server.invalidate(&[&document.uri]);
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Closed)],
@@ -1442,7 +1443,7 @@ impl Inner {
     self.performance.measure(mark);
   }
 
-  async fn notebook_did_open(&mut self, params: DidOpenNotebookDocumentParams) {
+  fn notebook_did_open(&mut self, params: DidOpenNotebookDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.notebook_did_open");
     let documents = self.document_modules.open_notebook_document(
       params.notebook_document.uri,
@@ -1454,7 +1455,7 @@ impl Inner {
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
       self.check_semantic_tokens_capabilities();
-      self.refresh_dep_info().await;
+      self.refresh_dep_info();
       self.diagnostics_server.invalidate(
         &diagnosable_documents
           .iter()
@@ -1472,10 +1473,7 @@ impl Inner {
     }
   }
 
-  async fn notebook_did_change(
-    &mut self,
-    params: DidChangeNotebookDocumentParams,
-  ) {
+  fn notebook_did_change(&mut self, params: DidChangeNotebookDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.notebook_did_change");
     let Some(cells) = params.change.cells else {
       return;
@@ -1492,7 +1490,7 @@ impl Inner {
     if !diagnosable_documents.is_empty() {
       let old_scopes_with_node_specifier =
         self.document_modules.scopes_with_node_specifier();
-      self.refresh_dep_info().await;
+      self.refresh_dep_info();
       let mut config_changed = false;
       if !self
         .document_modules
@@ -1547,10 +1545,7 @@ impl Inner {
     }
   }
 
-  async fn notebook_did_close(
-    &mut self,
-    params: DidCloseNotebookDocumentParams,
-  ) {
+  fn notebook_did_close(&mut self, params: DidCloseNotebookDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.notebook_did_close");
     let documents = self
       .document_modules
@@ -1560,7 +1555,7 @@ impl Inner {
       .filter(|d| d.is_diagnosable())
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
-      self.refresh_dep_info().await;
+      self.refresh_dep_info();
       self.diagnostics_server.invalidate(
         &diagnosable_documents
           .iter()
@@ -1609,7 +1604,7 @@ impl Inner {
     self.refresh_compiler_options_resolver();
     self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
-    self.refresh_documents_config().await;
+    self.refresh_documents_config();
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
     self.send_testing_update();
@@ -1669,7 +1664,7 @@ impl Inner {
         self.dispatch_cache_jsx_import_sources();
       }
       self.refresh_linter_resolver();
-      self.refresh_documents_config().await;
+      self.refresh_documents_config();
       self.diagnostics_server.invalidate_all();
       self.project_changed(
         changes
@@ -2431,13 +2426,6 @@ impl Inner {
     TsResponseImportMapper::new(
       &self.document_modules,
       module.scope.clone(),
-      self
-        .config
-        .tree
-        .data_for_specifier(&module.specifier)
-        // todo(dsherret): this should probably just take the resolver itself
-        // as the import map is an implementation detail
-        .and_then(|d| d.resolver.maybe_import_map()),
       &self.resolver,
       &self.ts_server.specifier_map,
     )
@@ -2855,13 +2843,6 @@ impl Inner {
         &self.npm_search_api,
         &self.document_modules,
         self.resolver.as_ref(),
-        self
-          .config
-          .tree
-          .data_for_specifier(&module.specifier)
-          // todo(dsherret): this should probably just take the resolver itself
-          // as the import map is an implementation detail
-          .and_then(|d| d.resolver.maybe_import_map()),
       )
       .await;
     }
@@ -3965,12 +3946,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.did_open(params).await;
+    self.inner.write().await.did_open(params);
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.did_change(params).await;
+    self.inner.write().await.did_change(params);
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
@@ -3980,17 +3961,17 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.did_close(params).await;
+    self.inner.write().await.did_close(params);
   }
 
   async fn notebook_did_open(&self, params: DidOpenNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.notebook_did_open(params).await
+    self.inner.write().await.notebook_did_open(params)
   }
 
   async fn notebook_did_change(&self, params: DidChangeNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.notebook_did_change(params).await
+    self.inner.write().await.notebook_did_change(params)
   }
 
   async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
@@ -4000,7 +3981,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn notebook_did_close(&self, params: DidCloseNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.notebook_did_close(params).await
+    self.inner.write().await.notebook_did_close(params)
   }
 
   async fn did_change_configuration(
@@ -4377,7 +4358,7 @@ impl Inner {
     self.refresh_compiler_options_resolver();
     self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
-    self.refresh_documents_config().await;
+    self.refresh_documents_config();
 
     if self.config.did_change_watched_files_capable() {
       // we are going to watch all the JSON files in the workspace, and the
@@ -4550,7 +4531,7 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn post_cache(&mut self) {
     self.resolver.did_cache();
-    self.refresh_dep_info().await;
+    self.refresh_dep_info();
     self.diagnostics_server.invalidate_all();
     self.project_changed(vec![], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
@@ -4596,7 +4577,7 @@ impl Inner {
     self.refresh_compiler_options_resolver();
     self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
-    self.refresh_documents_config().await;
+    self.refresh_documents_config();
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
     self.send_testing_update();
