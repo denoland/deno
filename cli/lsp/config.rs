@@ -49,12 +49,7 @@ use deno_resolver::factory::ResolverFactory;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::WorkspaceFactory;
 use deno_resolver::factory::WorkspaceFactoryOptions;
-use deno_resolver::workspace::CreateResolverOptions;
-use deno_resolver::workspace::FsCacheOptions;
-use deno_resolver::workspace::PackageJsonDepResolution;
-use deno_resolver::workspace::SloppyImportsOptions;
 use deno_resolver::workspace::SpecifiedImportMap;
-use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
@@ -1234,8 +1229,8 @@ pub struct ConfigData {
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
-  pub resolver: Arc<WorkspaceResolver<CliSys>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
+  pub specified_import_map: Option<SpecifiedImportMap>,
   pub unstable: BTreeSet<String>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
@@ -1568,13 +1563,6 @@ impl ConfigData {
         ConfigWatchedFileType::ImportMap,
       );
     }
-    // attempt to create a resolver for the workspace
-    let pkg_json_dep_resolution = if byonm {
-      PackageJsonDepResolution::Disabled
-    } else {
-      // todo(dsherret): this should be false for nodeModulesDir: true
-      PackageJsonDepResolution::Enabled
-    };
     let mut import_map_from_settings = {
       let is_config_import_map = member_dir
         .maybe_deno_json()
@@ -1651,63 +1639,11 @@ impl ConfigData {
       .chain(settings.unstable.as_deref())
       .cloned()
       .collect::<BTreeSet<_>>();
-    let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
-      .is_ok()
-      || unstable.contains("sloppy-imports");
-    let resolver = WorkspaceResolver::from_workspace(
-      &member_dir.workspace,
-      CliSys::default(),
-      CreateResolverOptions {
-        pkg_json_dep_resolution,
-        specified_import_map,
-        sloppy_imports_options: if unstable_sloppy_imports {
-          SloppyImportsOptions::Enabled
-        } else {
-          SloppyImportsOptions::Disabled
-        },
-        fs_cache_options: FsCacheOptions::Disabled,
-      },
-    )
-    .inspect_err(|err| {
-      lsp_warn!(
-        "  Failed to load resolver: {}",
-        err // will contain the specifier
-      );
-    })
-    .ok()
-    .unwrap_or_else(|| {
-      // create a dummy resolver
-      WorkspaceResolver::new_raw(
-        scope.clone(),
-        None,
-        member_dir.workspace.resolver_jsr_pkgs().collect(),
-        member_dir.workspace.package_jsons().cloned().collect(),
-        pkg_json_dep_resolution,
-        Default::default(),
-        Default::default(),
-        Default::default(),
-        Default::default(),
-        CliSys::default(),
-      )
-    });
-    if !resolver.diagnostics().is_empty() {
-      lsp_warn!(
-        "  Resolver diagnostics:\n{}",
-        resolver
-          .diagnostics()
-          .iter()
-          .map(|d| format!("    - {d}"))
-          .collect::<Vec<_>>()
-          .join("\n")
-      );
-    }
-    let resolver = Arc::new(resolver);
 
     ConfigData {
       scope,
       canonicalized_scope,
       member_dir,
-      resolver,
       fmt_config,
       test_config,
       exclude_files,
@@ -1717,6 +1653,7 @@ impl ConfigData {
       lockfile,
       npmrc,
       import_map_from_settings,
+      specified_import_map,
       unstable,
       watched_files,
     }
