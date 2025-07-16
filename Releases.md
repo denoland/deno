@@ -22,7 +22,6 @@ https://github.com/denoland/deno_install
 - fix: `global` global should be writeable (#30032)
 - fix: early init logging (#30034)
 - fix: new signal handling (#30029)
-- fix: remove unused functions from jsdocs (#30016)
 - fix: upgrade deno_core to 0.352.1 (#30119)
 
 ### 2.4.1 / 2025.07.08
