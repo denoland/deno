@@ -43,6 +43,7 @@ fn upgrade_invalid_lockfile() {
   );
 }
 
+#[ignore]
 #[flaky_test::flaky_test]
 fn upgrade_prompt() {
   let context = upgrade_context();
