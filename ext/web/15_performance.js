@@ -7,6 +7,7 @@ const {
   ArrayPrototypePush,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   ReflectHas,
   Symbol,
   SymbolFor,
@@ -298,6 +299,7 @@ class PerformanceMark extends PerformanceEntry {
 }
 webidl.configureInterface(PerformanceMark);
 const PerformanceMarkPrototype = PerformanceMark.prototype;
+
 class PerformanceMeasure extends PerformanceEntry {
   [_detail] = null;
 
@@ -360,13 +362,13 @@ class PerformanceMeasure extends PerformanceEntry {
 }
 webidl.configureInterface(PerformanceMeasure);
 const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
-class Performance extends EventTarget {
+
+class Performance {
   constructor(key = null) {
     if (key != illegalConstructorKey) {
       webidl.illegalConstructor();
     }
 
-    super();
     this[webidl.brand] = webidl.brand;
   }
 
@@ -600,6 +602,12 @@ class Performance extends EventTarget {
     );
   }
 }
+
+// Prevent the execution of the EventTarget constructor and make it possible
+// to initialize during bootstrap.
+ObjectSetPrototypeOf(Performance, EventTarget);
+ObjectSetPrototypeOf(Performance.prototype, EventTarget.prototype);
+
 webidl.configureInterface(Performance);
 const PerformancePrototype = Performance.prototype;
 

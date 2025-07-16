@@ -898,6 +898,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     removeImportedOps();
 
     performance.setTimeOrigin();
+    event.setEventTargetData(performance.performance);
     globalThis_ = globalThis;
 
     // Remove bootstrapping data from the global scope
@@ -935,6 +936,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       core.wrapConsole(globalThis.console, core.v8Console);
     }
 
+    event.setEventTargetData(globalThis);
     event.defineEventHandler(globalThis, "error");
     event.defineEventHandler(globalThis, "load");
     event.defineEventHandler(globalThis, "beforeunload");
@@ -1033,6 +1035,7 @@ function bootstrapWorkerRuntime(
     closeOnIdle = runtimeOptions[14];
 
     performance.setTimeOrigin();
+    event.setEventTargetData(performance.performance);
     globalThis_ = globalThis;
 
     // Remove bootstrapping data from the global scope
@@ -1065,6 +1068,7 @@ function bootstrapWorkerRuntime(
 
     core.wrapConsole(globalThis.console, core.v8Console);
 
+    event.setEventTargetData(globalThis);
     event.defineEventHandler(globalThis, "message");
     event.defineEventHandler(globalThis, "error", undefined, true);
 
@@ -1152,12 +1156,8 @@ globalThis.bootstrap = {
   dispatchProcessBeforeExitEvent,
 };
 
-event.setEventTargetData(globalThis);
 event.saveGlobalThisReference(globalThis);
 event.defineEventHandler(globalThis, "unhandledrejection");
-
-// Nothing listens to this, but it warms up the code paths for event dispatch
-(new event.EventTarget()).dispatchEvent(new Event("warmup"));
 
 removeImportedOps();
 

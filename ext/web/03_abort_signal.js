@@ -30,7 +30,7 @@ import {
   defineEventHandler,
   Event,
   EventTarget,
-  listenerCount,
+  getListenerCount,
   setIsTrusted,
 } from "./02_event.js";
 import { clearTimeout, refTimer, unrefTimer } from "./02_timers.js";
@@ -183,7 +183,7 @@ class AbortSignal extends EventTarget {
       }
     }
 
-    if (listenerCount(this, "abort") > 0) {
+    if (getListenerCount(this, "abort") > 0) {
       const event = new Event("abort");
       setIsTrusted(event, true);
       super.dispatchEvent(event);
@@ -225,7 +225,7 @@ class AbortSignal extends EventTarget {
   // ops which would block the event loop.
   addEventListener() {
     FunctionPrototypeApply(super.addEventListener, this, arguments);
-    if (listenerCount(this, "abort") > 0) {
+    if (getListenerCount(this, "abort") > 0) {
       if (this[timerId] !== null) {
         refTimer(this[timerId]);
       } else if (this[sourceSignals] !== null) {
@@ -242,7 +242,7 @@ class AbortSignal extends EventTarget {
 
   removeEventListener() {
     FunctionPrototypeApply(super.removeEventListener, this, arguments);
-    if (listenerCount(this, "abort") === 0) {
+    if (getListenerCount(this, "abort") === 0) {
       if (this[timerId] !== null) {
         unrefTimer(this[timerId]);
       } else if (this[sourceSignals] !== null) {
@@ -256,7 +256,7 @@ class AbortSignal extends EventTarget {
                 sourceSignal[dependentSignals].toArray(),
                 (dependentSignal) =>
                   dependentSignal === this ||
-                  listenerCount(dependentSignal, "abort") === 0,
+                  getListenerCount(dependentSignal, "abort") === 0,
               )
             ) {
               unrefTimer(sourceSignal[timerId]);
