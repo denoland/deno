@@ -1,0 +1,4 @@
+Task build echo b
+b
+Task build echo a
+a

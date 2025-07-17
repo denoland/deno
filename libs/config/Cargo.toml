@@ -13,10 +13,10 @@ path = "lib.rs"
 
 [features]
 default = ["workspace"]
-deno_json = ["jsonc-parser", "glob", "ignore", "import_map"]
+deno_json = ["deno_semver", "jsonc-parser", "glob", "ignore", "import_map"]
 package_json = ["deno_package_json"]
 sync = ["deno_package_json/sync"]
-workspace = ["deno_json", "deno_semver", "package_json"]
+workspace = ["deno_json", "package_json"]
 
 [dependencies]
 boxed_error.workspace = true
