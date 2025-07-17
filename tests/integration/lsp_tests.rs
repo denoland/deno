@@ -18945,11 +18945,11 @@ fn lsp_import_json_module_import_attribute_variations() {
           "line": 0,
           "character": 30,
         },
-        "severity": 1,
-        "code": "no-attribute-type",
-        "source": "deno",
-        "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
-      }
+      },
+      "severity": 1,
+      "code": "no-attribute-type",
+      "source": "deno",
+      "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
     }])
   );
 }
