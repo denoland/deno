@@ -1941,6 +1941,7 @@ impl WorkspaceDirectory {
               tasks.map(|tasks| WorkspaceMemberTasksConfigFile {
                 folder_url: url_parent(&deno_json.specifier),
                 tasks,
+                package_name: deno_json.json.name.clone(),
               })
             })
             .map_err(|error| ToTasksConfigError {
@@ -1954,6 +1955,7 @@ impl WorkspaceDirectory {
             WorkspaceMemberTasksConfigFile {
               folder_url: url_parent(&pkg_json.specifier()),
               tasks: scripts,
+              package_name: pkg_json.name.clone(),
             }
           }),
           None => None,
@@ -2110,13 +2112,36 @@ impl WorkspaceDirectory {
 
 pub enum TaskOrScript<'a> {
   /// A task from a deno.json.
-  Task(&'a IndexMap<String, TaskDefinition>, &'a TaskDefinition),
+  Task {
+    details: &'a WorkspaceMemberTasksConfigFile<TaskDefinition>,
+    task: &'a TaskDefinition,
+  },
   /// A script from a package.json.
-  Script(&'a IndexMap<String, String>, &'a str),
+  Script {
+    details: &'a WorkspaceMemberTasksConfigFile<String>,
+    task: &'a str,
+  },
+}
+
+impl<'a> TaskOrScript<'a> {
+  pub fn package_name(&self) -> Option<&'a str> {
+    match self {
+      TaskOrScript::Task { details, .. } => details.package_name.as_deref(),
+      TaskOrScript::Script { details, .. } => details.package_name.as_deref(),
+    }
+  }
+
+  pub fn folder_url(&self) -> &'a Url {
+    match self {
+      TaskOrScript::Task { details, .. } => &details.folder_url,
+      TaskOrScript::Script { details, .. } => &details.folder_url,
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceMemberTasksConfigFile<TValue> {
+  pub package_name: Option<String>,
   pub folder_url: Url,
   pub tasks: IndexMap<String, TValue>,
 }
@@ -2180,23 +2205,21 @@ impl WorkspaceMemberTasksConfig {
         .unwrap_or(0)
   }
 
-  pub fn task(&self, name: &str) -> Option<(&Url, TaskOrScript)> {
+  pub fn task(&self, name: &str) -> Option<TaskOrScript> {
     self
       .deno_json
       .as_ref()
       .and_then(|config| {
-        config
-          .tasks
-          .get(name)
-          .map(|t| (&config.folder_url, TaskOrScript::Task(&config.tasks, t)))
+        config.tasks.get(name).map(|task| TaskOrScript::Task {
+          details: config,
+          task,
+        })
       })
       .or_else(|| {
         self.package_json.as_ref().and_then(|config| {
-          config.tasks.get(name).map(|task| {
-            (
-              &config.folder_url,
-              TaskOrScript::Script(&config.tasks, task),
-            )
+          config.tasks.get(name).map(|script| TaskOrScript::Script {
+            details: config,
+            task: script,
           })
         })
       })
@@ -2239,7 +2262,7 @@ impl WorkspaceTasksConfig {
       )
   }
 
-  pub fn task(&self, name: &str) -> Option<(&Url, TaskOrScript)> {
+  pub fn task(&self, name: &str) -> Option<TaskOrScript> {
     self
       .member
       .as_ref()
@@ -2699,6 +2722,7 @@ pub mod test {
     assert_eq!(workspace_dir.workspace.diagnostics(), vec![]);
     let root_deno_json = Some(WorkspaceMemberTasksConfigFile {
       folder_url: url_from_directory_path(&root_dir()).unwrap(),
+      package_name: None,
       tasks: IndexMap::from([
         ("hi".to_string(), "echo hi".into()),
         ("overwrite".to_string(), "echo overwrite".into()),
@@ -2738,6 +2762,7 @@ pub mod test {
             deno_json: Some(WorkspaceMemberTasksConfigFile {
               folder_url: url_from_directory_path(&root_dir().join("member"))
                 .unwrap(),
+              package_name: None,
               tasks: IndexMap::from([
                 ("overwrite".to_string(), "echo overwritten".into()),
                 ("bye".to_string(), "echo bye".into()),
@@ -2768,6 +2793,7 @@ pub mod test {
             package_json: Some(WorkspaceMemberTasksConfigFile {
               folder_url: url_from_directory_path(&root_dir().join("pkg_json"))
                 .unwrap(),
+              package_name: None,
               tasks: IndexMap::from([(
                 "script".to_string(),
                 "echo 1".to_string()
