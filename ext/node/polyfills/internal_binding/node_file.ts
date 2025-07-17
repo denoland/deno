@@ -25,13 +25,18 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file.cc
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import * as io from "ext:deno_io/12_io.js";
 import { op_fs_seek_sync } from "ext:core/ops";
-
+import { primordials } from "ext:core/mod.js";
+const {
+  ErrorPrototype,
+  ObjectPrototypeIsPrototypeOf,
+  SafeRegExp,
+  StringPrototypeMatch,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeSubarray,
+} = primordials;
 /**
  * Write to the given file from the given buffer synchronously.
  *
@@ -55,8 +60,10 @@ export function writeBuffer(
 ) {
   assert(offset >= 0, "offset should be greater or equal to 0");
   assert(
-    offset + length <= buffer.byteLength,
-    `buffer doesn't have enough data: byteLength = ${buffer.byteLength}, offset + length = ${
+    offset + length <= TypedArrayPrototypeGetByteLength(buffer),
+    `buffer doesn't have enough data: byteLength = ${
+      TypedArrayPrototypeGetByteLength(buffer)
+    }, offset + length = ${
       offset +
       length
     }`,
@@ -66,7 +73,7 @@ export function writeBuffer(
     op_fs_seek_sync(fd, position, io.SeekMode.Current);
   }
 
-  const subarray = buffer.subarray(offset, offset + length);
+  const subarray = TypedArrayPrototypeSubarray(buffer, offset, offset + length);
 
   try {
     return io.writeSync(fd, subarray);
@@ -77,8 +84,8 @@ export function writeBuffer(
 }
 
 function extractOsErrorNumberFromErrorMessage(e: unknown): number {
-  const match = e instanceof Error
-    ? e.message.match(/\(os error (\d+)\)/)
+  const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
+    ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
     : false;
 
   if (match) {
