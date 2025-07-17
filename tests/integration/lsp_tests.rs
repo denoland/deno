@@ -18902,3 +18902,54 @@ fn do_not_auto_import_from_definitely_typed() {
     client.shutdown();
   }
 }
+
+#[test]
+#[timeout(300_000)]
+fn lsp_import_json_module_import_attribute_variations() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "unstable": ["raw-imports"]
+  }));
+  temp_dir.join("file.json").write_json(&json!({}));
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  for type_text in ["bytes", "text", "json"] {
+    let diagnostics = client.did_open(json!({
+      "textDocument": {
+        "uri": temp_dir.join(format!("{}.ts", type_text)).uri_file(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": format!("import data from './file.json' with {{ type: '{}' }};\nconsole.log(data);\n", type_text)
+      }
+    }));
+    assert_eq!(json!(diagnostics.all()), json!([]));
+  }
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("missing.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import data from './file.json';\nconsole.log(data);\n",
+    }
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 17,
+        },
+        "end": {
+          "line": 0,
+          "character": 30,
+        },
+        "severity": 1,
+        "code": "no-attribute-type",
+        "source": "deno",
+        "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
+      }
+    }])
+  );
+}
