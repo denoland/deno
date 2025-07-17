@@ -206,6 +206,7 @@ pub async fn execute_script(
       return task_runner
         .run_deno_task(
           &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
+          None,
           "",
           &TaskDefinition {
             command: Some(task_flags.task.as_ref().unwrap().to_string()),
@@ -234,6 +235,7 @@ pub async fn execute_script(
 
 struct RunSingleOptions<'a> {
   task_name: &'a str,
+  package_name: Option<&'a str>,
   script: &'a str,
   cwd: PathBuf,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
@@ -357,7 +359,8 @@ impl<'a> TaskRunner<'a> {
                 TaskOrScript::Task(_, def) => {
                   runner
                     .run_deno_task(
-                      task.folder_url,
+                      task.task_or_script.folder_url(),
+                      task.task_or_script.package_name(),
                       task.name,
                       def,
                       kill_signal,
@@ -368,9 +371,10 @@ impl<'a> TaskRunner<'a> {
                 TaskOrScript::Script(scripts, _) => {
                   runner
                     .run_npm_script(
-                      task.folder_url,
+                      task.task_or_script.folder_url(),
+                      task.task_or_script.package_name(),
                       task.name,
-                      scripts,
+                      &scripts.tasks,
                       kill_signal,
                       args,
                     )
@@ -426,17 +430,17 @@ impl<'a> TaskRunner<'a> {
   pub async fn run_deno_task(
     &self,
     dir_url: &Url,
+    package_name: Option<&str>,
     task_name: &str,
     definition: &TaskDefinition,
     kill_signal: KillSignal,
     argv: &'a [String],
   ) -> Result<i32, deno_core::anyhow::Error> {
     let Some(command) = &definition.command else {
-      log::info!(
-        "{} {} {}",
-        colors::green("Task"),
-        colors::cyan(task_name),
-        colors::gray("(no command)")
+      self.output_task(
+        task_name,
+        package_name,
+        &colors::gray("(no command)").to_string(),
       );
       return Ok(0);
     };
@@ -457,6 +461,7 @@ impl<'a> TaskRunner<'a> {
     self
       .run_single(RunSingleOptions {
         task_name,
+        package_name,
         script: command,
         cwd,
         custom_commands,
@@ -469,6 +474,7 @@ impl<'a> TaskRunner<'a> {
   pub async fn run_npm_script(
     &self,
     dir_url: &Url,
+    package_name: Option<&str>,
     task_name: &str,
     scripts: &IndexMap<String, String>,
     kill_signal: KillSignal,
@@ -500,6 +506,7 @@ impl<'a> TaskRunner<'a> {
         let exit_code = self
           .run_single(RunSingleOptions {
             task_name,
+            package_name,
             script,
             cwd: cwd.clone(),
             custom_commands: custom_commands.clone(),
@@ -522,6 +529,7 @@ impl<'a> TaskRunner<'a> {
   ) -> Result<i32, AnyError> {
     let RunSingleOptions {
       task_name,
+      package_name,
       script,
       cwd,
       custom_commands,
@@ -529,8 +537,9 @@ impl<'a> TaskRunner<'a> {
       argv,
     } = opts;
 
-    output_task(
-      opts.task_name,
+    self.output_task(
+      task_name,
+      package_name,
       &task_runner::get_script_with_args(script, argv),
     );
 
@@ -564,6 +573,26 @@ impl<'a> TaskRunner<'a> {
     }
     Ok(())
   }
+
+  fn output_task(
+    &self,
+    task_name: &str,
+    package_name: Option<&str>,
+    script: &str,
+  ) {
+    log::info!(
+      "{} {}{} {}",
+      colors::green("Task"),
+      colors::cyan(task_name),
+      package_name
+        .filter(
+          |_| self.task_flags.recursive || self.task_flags.filter.is_some()
+        )
+        .map(|p| format!(" ({})", colors::gray(p)))
+        .unwrap_or_default(),
+      script,
+    );
+  }
 }
 
 #[derive(Debug)]
@@ -575,7 +604,6 @@ enum TaskError {
 struct ResolvedTask<'a> {
   id: usize,
   name: &'a str,
-  folder_url: &'a Url,
   task_or_script: TaskOrScript<'a>,
   dependencies: Vec<usize>,
 }
@@ -585,26 +613,20 @@ fn sort_tasks_topo<'a>(
   task_name: &str,
 ) -> Result<Vec<ResolvedTask<'a>>, TaskError> {
   trait TasksConfig {
-    fn task(
-      &self,
-      name: &str,
-    ) -> Option<(&Url, TaskOrScript, &dyn TasksConfig)>;
+    fn task(&self, name: &str) -> Option<(TaskOrScript, &dyn TasksConfig)>;
   }
 
   impl TasksConfig for WorkspaceTasksConfig {
-    fn task(
-      &self,
-      name: &str,
-    ) -> Option<(&Url, TaskOrScript, &dyn TasksConfig)> {
+    fn task(&self, name: &str) -> Option<(TaskOrScript, &dyn TasksConfig)> {
       if let Some(member) = &self.member {
-        if let Some((dir_url, task_or_script)) = member.task(name) {
-          return Some((dir_url, task_or_script, self as &dyn TasksConfig));
+        if let Some(task_or_script) = member.task(name) {
+          return Some((task_or_script, self as &dyn TasksConfig));
         }
       }
       if let Some(root) = &self.root {
-        if let Some((dir_url, task_or_script)) = root.task(name) {
+        if let Some(task_or_script) = root.task(name) {
           // switch to only using the root tasks for the dependencies
-          return Some((dir_url, task_or_script, root as &dyn TasksConfig));
+          return Some((task_or_script, root as &dyn TasksConfig));
         }
       }
       None
@@ -612,13 +634,10 @@ fn sort_tasks_topo<'a>(
   }
 
   impl TasksConfig for WorkspaceMemberTasksConfig {
-    fn task(
-      &self,
-      name: &str,
-    ) -> Option<(&Url, TaskOrScript, &dyn TasksConfig)> {
-      self.task(name).map(|(dir_url, task_or_script)| {
-        (dir_url, task_or_script, self as &dyn TasksConfig)
-      })
+    fn task(&self, name: &str) -> Option<(TaskOrScript, &dyn TasksConfig)> {
+      self
+        .task(name)
+        .map(|task_or_script| (task_or_script, self as &dyn TasksConfig))
     }
   }
 
@@ -628,16 +647,14 @@ fn sort_tasks_topo<'a>(
     mut path: Vec<(&'a Url, &'a str)>,
     tasks_config: &'a dyn TasksConfig,
   ) -> Result<usize, TaskError> {
-    let Some((folder_url, task_or_script, tasks_config)) =
-      tasks_config.task(name)
-    else {
+    let Some((task_or_script, tasks_config)) = tasks_config.task(name) else {
       return Err(TaskError::NotFound(name.to_string()));
     };
 
-    if let Some(existing_task) = sorted
-      .iter()
-      .find(|task| task.name == name && task.folder_url == folder_url)
-    {
+    let folder_url = task_or_script.folder_url();
+    if let Some(existing_task) = sorted.iter().find(|task| {
+      task.name == name && task.task_or_script.folder_url() == folder_url
+    }) {
       // already exists
       return Ok(existing_task.id);
     }
@@ -663,7 +680,6 @@ fn sort_tasks_topo<'a>(
     sorted.push(ResolvedTask {
       id,
       name,
-      folder_url,
       task_or_script,
       dependencies,
     });
@@ -710,15 +726,6 @@ fn matches_package(
   false
 }
 
-fn output_task(task_name: &str, script: &str) {
-  log::info!(
-    "{} {} {}",
-    colors::green("Task"),
-    colors::cyan(task_name),
-    script,
-  );
-}
-
 fn print_available_tasks_workspace(
   cli_options: &Arc<CliOptions>,
   package_regex: &Regex,
@@ -729,8 +736,7 @@ fn print_available_tasks_workspace(
   let workspace = cli_options.workspace();
 
   let mut matched = false;
-  for (folder_url, folder) in workspace.config_folders_sorted_by_dependencies()
-  {
+  for (folder_url, folder) in workspace.config_folders() {
     if !recursive && !matches_package(folder, force_use_pkg_json, package_regex)
     {
       continue;
@@ -927,7 +933,7 @@ fn visit_task_and_dependencies(
 
   visited.insert(name.to_string());
 
-  if let Some((_, TaskOrScript::Task(_, task))) = &tasks_config.task(name) {
+  if let Some(TaskOrScript::Task(_, task)) = &tasks_config.task(name) {
     for dep in &task.dependencies {
       visit_task_and_dependencies(tasks_config, visited, dep);
     }
