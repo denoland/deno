@@ -2112,26 +2112,29 @@ impl WorkspaceDirectory {
 
 pub enum TaskOrScript<'a> {
   /// A task from a deno.json.
-  Task(
-    &'a WorkspaceMemberTasksConfigFile<TaskDefinition>,
-    &'a TaskDefinition,
-  ),
+  Task {
+    details: &'a WorkspaceMemberTasksConfigFile<TaskDefinition>,
+    task: &'a TaskDefinition,
+  },
   /// A script from a package.json.
-  Script(&'a WorkspaceMemberTasksConfigFile<String>, &'a str),
+  Script {
+    details: &'a WorkspaceMemberTasksConfigFile<String>,
+    task: &'a str,
+  },
 }
 
 impl<'a> TaskOrScript<'a> {
   pub fn package_name(&self) -> Option<&'a str> {
     match self {
-      TaskOrScript::Task(t, _) => t.package_name.as_deref(),
-      TaskOrScript::Script(t, _) => t.package_name.as_deref(),
+      TaskOrScript::Task { details, .. } => details.package_name.as_deref(),
+      TaskOrScript::Script { details, .. } => details.package_name.as_deref(),
     }
   }
 
   pub fn folder_url(&self) -> &'a Url {
     match self {
-      TaskOrScript::Task(t, _) => &t.folder_url,
-      TaskOrScript::Script(t, _) => &t.folder_url,
+      TaskOrScript::Task { details, .. } => &details.folder_url,
+      TaskOrScript::Script { details, .. } => &details.folder_url,
     }
   }
 }
@@ -2207,17 +2210,17 @@ impl WorkspaceMemberTasksConfig {
       .deno_json
       .as_ref()
       .and_then(|config| {
-        config
-          .tasks
-          .get(name)
-          .map(|t| TaskOrScript::Task(config, t))
+        config.tasks.get(name).map(|task| TaskOrScript::Task {
+          details: config,
+          task,
+        })
       })
       .or_else(|| {
         self.package_json.as_ref().and_then(|config| {
-          config
-            .tasks
-            .get(name)
-            .map(|task| TaskOrScript::Script(config, task))
+          config.tasks.get(name).map(|script| TaskOrScript::Script {
+            details: config,
+            task: script,
+          })
         })
       })
   }

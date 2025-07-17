@@ -356,7 +356,7 @@ impl<'a> TaskRunner<'a> {
           return Some(
             async move {
               match task.task_or_script {
-                TaskOrScript::Task(_, def) => {
+                TaskOrScript::Task { task: def, .. } => {
                   runner
                     .run_deno_task(
                       task.task_or_script.folder_url(),
@@ -368,13 +368,13 @@ impl<'a> TaskRunner<'a> {
                     )
                     .await
                 }
-                TaskOrScript::Script(scripts, _) => {
+                TaskOrScript::Script { details, .. } => {
                   runner
                     .run_npm_script(
                       task.task_or_script.folder_url(),
                       task.task_or_script.package_name(),
                       task.name,
-                      &scripts.tasks,
+                      &details.tasks,
                       kill_signal,
                       args,
                     )
@@ -667,7 +667,7 @@ fn sort_tasks_topo<'a>(
     }
 
     let mut dependencies: Vec<usize> = Vec::new();
-    if let TaskOrScript::Task(_, task) = task_or_script {
+    if let TaskOrScript::Task { task, .. } = task_or_script {
       dependencies.reserve(task.dependencies.len());
       for dep in &task.dependencies {
         let mut path = path.clone();
@@ -933,7 +933,7 @@ fn visit_task_and_dependencies(
 
   visited.insert(name.to_string());
 
-  if let Some(TaskOrScript::Task(_, task)) = &tasks_config.task(name) {
+  if let Some(TaskOrScript::Task { task, .. }) = &tasks_config.task(name) {
     for dep in &task.dependencies {
       visit_task_and_dependencies(tasks_config, visited, dep);
     }
