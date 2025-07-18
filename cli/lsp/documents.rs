@@ -1596,14 +1596,6 @@ impl DocumentModules {
         true => ResolutionMode::Require,
         false => ResolutionMode::Import,
       };
-      let maybe_stripped =
-        crate::tsc::StrippedSpecifierWithRawImportKind::try_strip(
-          raw_specifier,
-        );
-      let raw_specifier = maybe_stripped
-        .as_ref()
-        .map(|s| &s.specifier)
-        .unwrap_or(raw_specifier);
       let result = if raw_specifier.starts_with("asset:") {
         if let Ok(specifier) = resolve_url(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
@@ -1638,17 +1630,6 @@ impl DocumentModules {
           _ => None,
         }
       };
-      let result = match maybe_stripped {
-        Some(stripped) => result.map(|(mut specifier, _media_type)| {
-          let mut fragment =
-            specifier.fragment().unwrap_or_default().to_string();
-          stripped.append_to_fragment(&mut fragment);
-          specifier.set_fragment(Some(&fragment));
-          (specifier, MediaType::TypeScript)
-        }),
-        None => result,
-      };
-
       results.push(result);
     }
     results

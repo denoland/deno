@@ -600,23 +600,13 @@ const hostImpl = {
   ) {
     const specifiers = moduleLiterals.map((literal) => {
       const rawKind = getModuleLiteralImportKind(literal);
+      let lookupSpecifier = literal.text;
       if (rawKind != null) {
-        // hack to get the specifier keyed differently until
-        // https://github.com/microsoft/TypeScript/issues/61941 is resolved
-        const fragmentIndex = literal.text.indexOf("#");
-        if (fragmentIndex === -1) {
-          literal.text += `#denoRawImport=${rawKind}`;
-        } else if (
-          !literal.text.substring(fragmentIndex).includes(
-            `denoRawImport=${rawKind}`,
-          )
-        ) {
-          literal.text += `&denoRawImport=${rawKind}`;
+        if ((/** @type any */ (literal)).__originalText == null) {
+          (/** @type any */ (literal)).__originalText = literal.text;
+          literal.text = appendRawImportFragment(literal.text, rawKind);
         }
-        return [
-          false,
-          literal.text,
-        ];
+        lookupSpecifier = (/** @type any */ (literal)).__originalText;
       }
       return [
         ts.getModeForUsageLocation(
@@ -624,7 +614,7 @@ const hostImpl = {
           literal,
           compilerOptions,
         ) === ts.ModuleKind.CommonJS,
-        literal.text,
+        lookupSpecifier,
       ];
     });
     if (logDebug) {
@@ -639,17 +629,29 @@ const hostImpl = {
     );
     if (resolved) {
       /** @type {Array<ts.ResolvedModuleWithFailedLookupLocations>} */
-      const result = resolved.map((item) => {
-        if (item && item[1]) {
-          const [resolvedFileName, extension] = item;
-          return {
-            resolvedModule: {
+      const result = resolved.map((item, i) => {
+        if (item) {
+          let [resolvedFileName, extension] = item;
+          // hack to get the specifier keyed differently until
+          // https://github.com/microsoft/TypeScript/issues/61941 is resolved
+          const rawKind = getModuleLiteralImportKind(moduleLiterals[i]);
+          if (rawKind != null) {
+            resolvedFileName = appendRawImportFragment(
               resolvedFileName,
-              extension,
-              // todo(dsherret): we should probably be setting this
-              isExternalLibraryImport: false,
-            },
-          };
+              rawKind,
+            );
+            extension = ts.Extension.Ts;
+          }
+          if (extension) {
+            return {
+              resolvedModule: {
+                resolvedFileName,
+                extension,
+                // todo(dsherret): we should probably be setting this
+                isExternalLibraryImport: false,
+              },
+            };
+          }
         }
         return {
           resolvedModule: undefined,
@@ -990,6 +992,24 @@ function getModuleLiteralImportKind(node) {
   } else {
     return undefined;
   }
+}
+
+/**
+ * @param {string} specifier
+ * @param {"bytes" | "text"} rawKind
+ */
+function appendRawImportFragment(specifier, rawKind) {
+  const fragmentIndex = specifier.indexOf("#");
+  if (fragmentIndex === -1) {
+    specifier += `#denoRawImport=${rawKind}.ts`;
+  } else if (
+    !specifier.substring(fragmentIndex).includes(
+      `denoRawImport=${rawKind}.ts`,
+    )
+  ) {
+    specifier += `&denoRawImport=${rawKind}.ts`;
+  }
+  return specifier;
 }
 
 /** @param {ts.ImportAttribute} node */

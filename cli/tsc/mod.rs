@@ -843,93 +843,6 @@ pub enum RawImportKind {
   Text,
 }
 
-impl RawImportKind {
-  pub fn as_str(&self) -> &'static str {
-    match self {
-      RawImportKind::Bytes => "bytes",
-      RawImportKind::Text => "text",
-    }
-  }
-}
-
-pub struct StrippedSpecifierWithRawImportKind {
-  pub kind: RawImportKind,
-  pub specifier: String,
-}
-
-impl StrippedSpecifierWithRawImportKind {
-  pub fn try_strip(text: &str) -> Option<Self> {
-    let hash_idx = text.find('#')?;
-    let fragment = &text[hash_idx + 1..];
-
-    let key = "denoRawImport=";
-    let idx = fragment.find(key)?;
-
-    // must be preceded by '&' or be at start of fragment
-    if idx > 0 {
-      let prev = fragment.as_bytes()[idx - 1];
-      if prev != b'&' {
-        return None;
-      }
-    }
-
-    let value_start = idx + key.len();
-    let value = &fragment[value_start..];
-
-    let (kind, value_len) = if value.starts_with("bytes") {
-      (RawImportKind::Bytes, 5)
-    } else if value.starts_with("text") {
-      (RawImportKind::Text, 4)
-    } else {
-      return None;
-    };
-
-    // must be end of fragment or followed by '&'
-    if value.len() > value_len && !value[value_len..].starts_with('&') {
-      return None;
-    }
-
-    let mut new = String::with_capacity(text.len());
-    let start = if idx > 0 && &fragment[idx - 1..idx] == "&" {
-      idx - 1
-    } else {
-      idx
-    };
-    let end = value_start + value_len;
-
-    new.push_str(&text[..hash_idx]);
-    if fragment.len() > 0 {
-      let before = &fragment[..start];
-      let after =
-        &fragment[end + (fragment[end..].starts_with('&') as usize)..];
-
-      if !before.is_empty() || !after.is_empty() {
-        new.push('#');
-        if !before.is_empty() {
-          new.push_str(before);
-          if !after.is_empty() {
-            new.push('&');
-          }
-        }
-        if !after.is_empty() {
-          new.push_str(after);
-        }
-      }
-    }
-
-    Some(StrippedSpecifierWithRawImportKind {
-      kind,
-      specifier: new,
-    })
-  }
-
-  pub fn append_to_fragment(&self, specifier_str: &mut String) {
-    specifier_str.push_str("denoRawImport=");
-    specifier_str.push_str(self.kind.as_str());
-    specifier_str.push_str(".ts");
-  }
-}
-
 /// We store the raw import kind in the fragment of the Url
 /// like `#denoRawImport=text`. This is necessary because
 /// TypeScript can't handle different modules at the same
@@ -1053,18 +966,11 @@ fn op_resolve_inner(
       resolved.push((specifier, Some(ext)));
       continue;
     }
-    let maybe_stripped =
-      StrippedSpecifierWithRawImportKind::try_strip(&specifier);
-    let specifier = maybe_stripped
-      .as_ref()
-      .map(|s| &s.specifier)
-      .unwrap_or(&specifier);
-
     let resolved_dep = referrer_module
       .and_then(|m| match m {
-        Module::Js(m) => m.dependencies_prefer_fast_check().get(specifier),
+        Module::Js(m) => m.dependencies_prefer_fast_check().get(&specifier),
         Module::Json(_) => None,
-        Module::Wasm(m) => m.dependencies.get(specifier),
+        Module::Wasm(m) => m.dependencies.get(&specifier),
         Module::Npm(_) | Module::Node(_) | Module::External(_) => None,
       })
       .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
@@ -1112,7 +1018,7 @@ fn op_resolve_inner(
     };
     let result = match maybe_result {
       Some((specifier, media_type)) => {
-        let mut specifier_str = match specifier.scheme() {
+        let specifier_str = match specifier.scheme() {
           "data" | "blob" => {
             let specifier_str = hash_url(&specifier, media_type);
             state
@@ -1133,24 +1039,13 @@ fn op_resolve_inner(
             }
           }
         };
-        if let Some(stripped) = &maybe_stripped {
-          specifier_str.push(if specifier_str.contains('#') {
-            '&'
-          } else {
-            '#'
-          });
-          stripped.append_to_fragment(&mut specifier_str);
-        }
 
         (
           specifier_str,
-          match maybe_stripped.is_some() {
-            true => Some(".ts"),
-            false => match media_type {
-              MediaType::Css => Some(".js"), // surface these as .js for typescript
-              MediaType::Unknown => None,
-              media_type => Some(media_type.as_ts_extension()),
-            },
+          match media_type {
+            MediaType::Css => Some(".js"), // surface these as .js for typescript
+            MediaType::Unknown => None,
+            media_type => Some(media_type.as_ts_extension()),
           },
         )
       }
