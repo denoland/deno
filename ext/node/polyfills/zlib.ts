@@ -543,18 +543,8 @@ function processChunk(self, chunk, flushFlag, cb) {
   handle.inOff = 0;
   handle.flushFlag = flushFlag;
 
-  console.log(
-    flushFlag,
-    chunk, // in
-    0, // in_off
-    handle.availInBefore, // in_len
-    self._outBuffer, // out
-    self._outOffset, // out_off
-    handle.availOutBefore,
-  );
-
   handle.write(
-    flushFlag ?? 0,
+    flushFlag,
     chunk, // in
     0, // in_off
     handle.availInBefore, // in_len

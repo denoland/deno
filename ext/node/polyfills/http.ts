@@ -1033,7 +1033,7 @@ export class IncomingMessageForClient extends NodeReadable {
     this._dumped = false;
 
     this.on("close", () => {
-      this.socket.emit("close");
+      //      this.socket.emit("close");
     });
   }
 
