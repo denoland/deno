@@ -1,3 +1,4 @@
+// deno-lint-ignore-file
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 // Copyright Joyent, Inc. and other Node contributors.

@@ -726,7 +726,7 @@ deno_core::extension!(deno_node,
     "node:vm" = "vm.js",
     "node:wasi" = "wasi.ts",
     "node:worker_threads" = "worker_threads.ts",
-    "node:zlib" = "zlib.ts",
+    "node:zlib" = "zlib.js",
   ],
   lazy_loaded_esm = [
     dir "polyfills",
