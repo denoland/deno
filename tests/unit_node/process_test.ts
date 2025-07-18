@@ -945,6 +945,28 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process._rawDebug",
+  async fn() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--quiet",
+        "./testdata/process_raw_debug.ts",
+      ],
+      cwd: testDir,
+    });
+    const { stdout, stderr } = await command.output();
+
+    assertEquals(stdout.length, 0);
+    const decoder = new TextDecoder();
+    assertEquals(
+      stripAnsiCode(decoder.decode(stderr).trim()),
+      "this should go to stderr { a: 1, b: [ 'a', 2 ] }",
+    );
+  },
+});
+
+Deno.test({
   name: "process.stdout isn't closed when source stream ended",
   async fn() {
     const source = Readable.from(["foo", "bar"]);
