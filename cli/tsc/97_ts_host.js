@@ -603,19 +603,19 @@ const hostImpl = {
       if (rawKind != null) {
         // hack to get the specifier keyed differently until
         // https://github.com/microsoft/TypeScript/issues/61941 is resolved
-        if (!literal.text.includes("?")) {
-          literal.text += `?${rawKind}`;
+        const fragmentIndex = literal.text.indexOf("#");
+        if (fragmentIndex === -1) {
+          literal.text += `#denoRawImport=${rawKind}`;
         } else if (
-          !literal.text.includes(`?${rawKind}`) &&
-          !literal.text.includes(`&${rawKind}`)
+          !literal.text.substring(fragmentIndex).includes(
+            `denoRawImport=${rawKind}`,
+          )
         ) {
-          literal.text += `&${rawKind}`;
+          literal.text += `&denoRawImport=${rawKind}`;
         }
         return [
           false,
-          rawKind === "text"
-            ? "asset:///text_import.d.ts"
-            : "asset:///bytes_import.d.ts",
+          literal.text,
         ];
       }
       return [

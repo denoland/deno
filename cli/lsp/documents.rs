@@ -1596,32 +1596,30 @@ impl DocumentModules {
         true => ResolutionMode::Require,
         false => ResolutionMode::Import,
       };
-      if raw_specifier.starts_with("asset:") {
+      let maybe_stripped =
+        crate::tsc::StrippedSpecifierWithRawImportKind::try_strip(
+          raw_specifier,
+        );
+      let raw_specifier = maybe_stripped
+        .as_ref()
+        .map(|s| &s.specifier)
+        .unwrap_or(raw_specifier);
+      let result = if raw_specifier.starts_with("asset:") {
         if let Ok(specifier) = resolve_url(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
-          results.push(Some((specifier, media_type)));
+          Some((specifier, media_type))
         } else {
-          results.push(None);
+          None
         }
       } else if let Some(dep) =
         dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            scope,
-          ));
+          self.resolve_dependency(specifier, referrer, resolution_mode, scope)
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            scope,
-          ));
+          self.resolve_dependency(specifier, referrer, resolution_mode, scope)
         } else {
-          results.push(None);
+          None
         }
       } else {
         match scoped_resolver.as_cli_resolver().resolve(
@@ -1631,19 +1629,27 @@ impl DocumentModules {
           resolution_mode,
           NodeResolutionKind::Types,
         ) {
-          Ok(specifier) => {
-            results.push(self.resolve_dependency(
-              &specifier,
-              referrer,
-              resolution_mode,
-              scope,
-            ));
-          }
-          _ => {
-            results.push(None);
-          }
+          Ok(specifier) => self.resolve_dependency(
+            &specifier,
+            referrer,
+            resolution_mode,
+            scope,
+          ),
+          _ => None,
         }
-      }
+      };
+      let result = match maybe_stripped {
+        Some(stripped) => result.map(|(mut specifier, _media_type)| {
+          let mut fragment =
+            specifier.fragment().unwrap_or_default().to_string();
+          stripped.append_to_fragment(&mut fragment);
+          specifier.set_fragment(Some(&fragment));
+          (specifier, MediaType::TypeScript)
+        }),
+        None => result,
+      };
+
+      results.push(result);
     }
     results
   }
