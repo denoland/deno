@@ -44,6 +44,7 @@ struct ZlibInner {
   pending_close: bool,
   gzib_id_bytes_read: u32,
   result_buffer: Option<*mut u32>,
+  callback: Option<v8::Global<v8::Function>>,
   strm: StreamWrapper,
 }
 
@@ -296,7 +297,7 @@ impl Zlib {
     #[smi] mem_level: i32,
     #[smi] strategy: i32,
     #[buffer] write_result: &mut [u32],
-    #[global] _callback: v8::Global<v8::Function>,
+    #[global] callback: v8::Global<v8::Function>,
     #[buffer] dictionary: Option<&[u8]>,
   ) -> Result<i32, ZlibError> {
     let mut zlib = self.inner.borrow_mut();
@@ -329,6 +330,7 @@ impl Zlib {
     zlib.dictionary = dictionary.map(|buf| buf.to_vec());
 
     zlib.result_buffer = Some(write_result.as_mut_ptr());
+    zlib.callback = Some(callback);
 
     Ok(zlib.err)
   }
@@ -362,8 +364,11 @@ impl Zlib {
   }
 
   #[fast]
+  #[reentrant]
   fn write(
     &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::HandleScope,
     #[smi] flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -372,18 +377,26 @@ impl Zlib {
     #[smi] out_off: u32,
     #[smi] out_len: u32,
   ) -> Result<(), ZlibError> {
-    let mut zlib = self.inner.borrow_mut();
-    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+    let callback = {
+      let mut zlib = self.inner.borrow_mut();
+      let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
-    let flush = Flush::try_from(flush)?;
-    zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
-    zlib.do_write(flush)?;
+      let flush = Flush::try_from(flush)?;
+      zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
+      zlib.do_write(flush)?;
 
-    // SAFETY: `zlib.result_buffer` is a valid pointer to a mutable slice of u32 of length 2.
-    let result =
-      unsafe { std::slice::from_raw_parts_mut(zlib.result_buffer.unwrap(), 2) };
-    result[0] = zlib.strm.avail_out;
-    result[1] = zlib.strm.avail_in;
+      // SAFETY: `zlib.result_buffer` is a valid pointer to a mutable slice of u32 of length 2.
+      let result = unsafe {
+        std::slice::from_raw_parts_mut(zlib.result_buffer.unwrap(), 2)
+      };
+      result[0] = zlib.strm.avail_out;
+      result[1] = zlib.strm.avail_in;
+
+      v8::Local::new(scope, zlib.callback.as_ref().expect("callback not set"))
+    };
+
+    let this = v8::Local::new(scope, &this);
+    let _ = callback.call(scope, this.into(), &[]);
 
     Ok(())
   }
@@ -837,6 +850,14 @@ impl BrotliDecoder {
         ffi::decompressor::ffi::BrotliDecoderDestroyInstance(ctx.inst);
       }
     }
+  }
+}
+
+#[op2(fast)]
+pub fn op_zlib_crc32_string(#[string] data: &str, #[smi] value: u32) -> u32 {
+  // SAFETY: `data` is a valid buffer.
+  unsafe {
+    zlib::crc32(value as c_ulong, data.as_ptr(), data.len() as u32) as u32
   }
 }
 

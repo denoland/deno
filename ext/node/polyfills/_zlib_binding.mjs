@@ -65,8 +65,24 @@ export const BROTLI_OPERATION_FLUSH = 1;
 export const BROTLI_OPERATION_FINISH = 2;
 export const BROTLI_OPERATION_EMIT_METADATA = 3;
 
-import { BrotliDecoder, BrotliEncoder, Zlib } from "ext:core/ops";
+import {
+  BrotliDecoder,
+  BrotliEncoder,
+  op_zlib_crc32,
+  op_zlib_crc32_string,
+  Zlib,
+} from "ext:core/ops";
 
-export { BrotliDecoder, BrotliEncoder, Zlib };
+function crc32(buf, crc) {
+  if (typeof buf === "string") {
+    return op_zlib_crc32_string(buf, crc);
+  }
+  if (buf instanceof DataView) {
+    buf = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  }
+  return op_zlib_crc32(buf, crc);
+}
 
-export default { BrotliDecoder, BrotliEncoder, Zlib };
+export { BrotliDecoder, BrotliEncoder, crc32, Zlib };
+
+export default { BrotliDecoder, BrotliEncoder, Zlib, crc32 };
