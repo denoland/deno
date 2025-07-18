@@ -534,7 +534,9 @@ impl MainWorker {
               .clone(),
             file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
             resolver: services.fetch_dns_resolver,
-            ..Default::default()
+            ..deno_fetch::Options::default(Arc::new(
+              services.permissions.clone(),
+            ))
           },
         ),
         deno_cache::deno_cache::args(create_cache),

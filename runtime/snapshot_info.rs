@@ -36,7 +36,7 @@ impl deno_web::TimersPermission for Permissions {
 
 impl deno_fetch::FetchPermissions for Permissions {
   fn check_net_url(
-    &mut self,
+    &self,
     _url: &deno_core::url::Url,
     _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
@@ -56,6 +56,22 @@ impl deno_fetch::FetchPermissions for Permissions {
     &mut self,
     _cid: u32,
     _port: u32,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
+
+  fn check_net(
+    &self,
+    _addr: &(&str, Option<u16>),
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &self,
+    _addr: &std::net::SocketAddr,
     _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -114,6 +130,14 @@ impl deno_node::NodePermissions for Permissions {
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    _addr: &std::net::SocketAddr,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
 }
 
 impl deno_net::NetPermissions for Permissions {
@@ -138,6 +162,14 @@ impl deno_net::NetPermissions for Permissions {
     &mut self,
     _cid: u32,
     _port: u32,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    _addr: &std::net::SocketAddr,
     _api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -214,7 +246,9 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     ),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
-    deno_fetch::deno_fetch::init::<Permissions>(Default::default()),
+    deno_fetch::deno_fetch::init::<Permissions>(deno_fetch::Options::default(
+      Arc::new(Permissions),
+    )),
     deno_cache::deno_cache::init(None),
     deno_websocket::deno_websocket::init::<Permissions>(
       "".to_owned(),
