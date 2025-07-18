@@ -838,7 +838,7 @@ pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
   Some(source)
 }
 
-pub enum RawImportKind {
+enum RawImportKind {
   Bytes,
   Text,
 }
