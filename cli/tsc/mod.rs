@@ -828,7 +828,7 @@ fn op_load_inner(
 }
 
 pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
-  let raw_import = get_specifier_raw_import(&specifier)?;
+  let raw_import = get_specifier_raw_import(specifier)?;
   let source = match raw_import {
     RawImportKind::Bytes => {
       "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n"
