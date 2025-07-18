@@ -2790,8 +2790,7 @@ impl FileTextChanges {
     &mut self,
     specifier_map: &TscSpecifierMap,
   ) -> Result<(), AnyError> {
-    let url = specifier_map.normalize(&self.file_name)?;
-    self.file_name = url.to_string();
+    self.file_name = specifier_map.normalize(&self.file_name)?.to_string();
     Ok(())
   }
 
