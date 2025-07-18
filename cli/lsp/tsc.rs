@@ -4569,7 +4569,7 @@ impl TscSpecifierMap {
     }
     // If the module's media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
-    if MediaType::from_path(Path::new(specifier.as_str())) != media_type {
+    if MediaType::from_path(Path::new(&specifier)) != media_type {
       specifier += media_type.as_ts_extension();
     }
     if specifier != original.as_str() {
@@ -4733,26 +4733,38 @@ fn op_load<'s>(
     .performance
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
-  let module = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
-    None
-  } else {
-    state.get_module(&specifier)
-  };
-  let maybe_load_response = module.as_ref().map(|m| {
-    let data = if m.media_type == MediaType::Json && m.text.len() > 10_000_000 {
-      // VSCode's TS server types large JSON files this way.
-      DocumentText::Static("{}\n")
+  let maybe_load_response =
+    if let Some(source) = crate::tsc::load_raw_import_source(&specifier) {
+      Some(LoadResponse {
+        data: DocumentText::Static(source),
+        script_kind: crate::tsc::as_ts_script_kind(MediaType::TypeScript),
+        version: Some("1".to_string()),
+        is_cjs: false,
+        is_classic_script: false,
+      })
     } else {
-      m.text.clone()
+      let module = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
+        None
+      } else {
+        state.get_module(&specifier)
+      };
+      module.as_ref().map(|m| {
+        let data =
+          if m.media_type == MediaType::Json && m.text.len() > 10_000_000 {
+            // VSCode's TS server types large JSON files this way.
+            DocumentText::Static("{}\n")
+          } else {
+            m.text.clone()
+          };
+        LoadResponse {
+          data,
+          script_kind: crate::tsc::as_ts_script_kind(m.media_type),
+          version: state.script_version(&specifier),
+          is_cjs: m.resolution_mode == ResolutionMode::Require,
+          is_classic_script: m.notebook_uri.is_some(),
+        }
+      })
     };
-    LoadResponse {
-      data,
-      script_kind: crate::tsc::as_ts_script_kind(m.media_type),
-      version: state.script_version(&specifier),
-      is_cjs: m.resolution_mode == ResolutionMode::Require,
-      is_classic_script: m.notebook_uri.is_some(),
-    }
-  });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
   Ok(serialized)
