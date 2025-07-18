@@ -966,6 +966,7 @@ fn op_resolve_inner(
       resolved.push((specifier, Some(ext)));
       continue;
     }
+
     let resolved_dep = referrer_module
       .and_then(|m| match m {
         Module::Js(m) => m.dependencies_prefer_fast_check().get(&specifier),
@@ -1039,7 +1040,6 @@ fn op_resolve_inner(
             }
           }
         };
-
         (
           specifier_str,
           match media_type {
