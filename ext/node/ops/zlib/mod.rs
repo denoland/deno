@@ -326,11 +326,7 @@ impl Zlib {
 
     zlib.init_stream()?;
 
-    zlib.dictionary = if let Some(buf) = dictionary {
-      Some(buf.to_vec())
-    } else {
-      None
-    };
+    zlib.dictionary = dictionary.map(|buf| buf.to_vec());
 
     zlib.result_buffer = Some(write_result.as_mut_ptr());
 
@@ -566,7 +562,10 @@ impl BrotliEncoder {
     let callback = unsafe {
       ffi::compressor::BrotliEncoderCompressStream(
         ctx.inst,
-        std::mem::transmute(flush),
+        std::mem::transmute::<
+          i32,
+          brotli::ffi::compressor::BrotliEncoderOperation,
+        >(flush),
         &mut avail_in,
         &mut next_in,
         &mut avail_out,
@@ -617,7 +616,10 @@ impl BrotliEncoder {
     unsafe {
       ffi::compressor::BrotliEncoderCompressStream(
         ctx.inst,
-        std::mem::transmute(flush),
+        std::mem::transmute::<
+          i32,
+          brotli::ffi::compressor::BrotliEncoderOperation,
+        >(flush),
         &mut avail_in,
         &mut next_in,
         &mut avail_out,

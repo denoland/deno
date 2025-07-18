@@ -2,6 +2,7 @@
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
+#![allow(clippy::too_many_arguments)]
 
 use std::borrow::Cow;
 use std::collections::HashSet;

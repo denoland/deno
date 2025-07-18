@@ -73,6 +73,7 @@ import {
   validateFunction,
   validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
+import { zlib as zlibConstants } from "ext:deno_node/internal_binding/constants.ts";
 
 const kFlushFlag = Symbol("kFlushFlag");
 const kError = Symbol("kError");
@@ -120,9 +121,9 @@ const {
   ZSTD_e_continue,
   ZSTD_e_flush,
   ZSTD_e_end,
-} = binding;
+} = zlibConstants;
 
-export const constants = binding;
+export const constants = zlibConstants;
 
 // Translation table for return codes.
 export const codes = {
