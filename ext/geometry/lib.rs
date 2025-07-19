@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+#![allow(clippy::too_many_arguments)]
+
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -70,6 +72,12 @@ impl State {
       enable_window_features,
     }
   }
+}
+
+#[op2(fast)]
+fn op_geometry_get_enable_window_features(state: &mut OpState) -> bool {
+  let state = state.borrow_mut::<State>();
+  state.enable_window_features
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -1048,7 +1056,7 @@ impl DOMMatrixReadOnly {
     seq: &[f64],
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
     if let [a, b, c, d, e, f] = seq {
-      return Ok(DOMMatrixReadOnly {
+      Ok(DOMMatrixReadOnly {
         #[rustfmt::skip]
         inner: RefCell::new(Matrix4::new(
            *a,  *c, 0.0,  *e,
@@ -1057,12 +1065,12 @@ impl DOMMatrixReadOnly {
           0.0, 0.0, 0.0, 1.0,
         )),
         is_2d: Cell::new(true),
-      });
+      })
     } else if seq.len() == 16 {
-      return Ok(DOMMatrixReadOnly {
+      Ok(DOMMatrixReadOnly {
         inner: RefCell::new(Matrix4::from_column_slice(seq)),
         is_2d: Cell::new(false),
-      });
+      })
     } else {
       Err(GeometryError::InvalidSequenceSize)
     }
@@ -2949,8 +2957,8 @@ pub fn op_geometry_matrix_to_buffer<'a>(
     return Err(GeometryError::IllegalInvocation);
   };
   let inner = matrix.inner.borrow();
-  // SAFETY: in-range access
   Ok(
+    // SAFETY: in-range access
     unsafe {
       slice::from_raw_parts(
         inner.as_slice().as_ptr() as *mut u8,
@@ -3022,10 +3030,4 @@ pub fn op_geometry_matrix_set_matrix_value<'a>(
   };
   matrix.set_matrix_value_inner(&transform_list)?;
   Ok(input)
-}
-
-#[op2(fast)]
-fn op_geometry_get_enable_window_features(state: &mut OpState) -> bool {
-  let state = state.borrow_mut::<State>();
-  state.enable_window_features
 }
