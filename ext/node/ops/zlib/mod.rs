@@ -303,7 +303,12 @@ impl Zlib {
     let mut zlib = self.inner.borrow_mut();
     let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
-    check((8..=15).contains(&window_bits), "invalid windowBits")?;
+    if !((window_bits == 0)
+      && matches!(zlib.mode, Mode::Inflate | Mode::Gunzip | Mode::Unzip))
+    {
+      check((8..=15).contains(&window_bits), "invalid windowBits")?;
+    }
+
     check((-1..=9).contains(&level), "invalid level")?;
 
     check((1..=9).contains(&mem_level), "invalid memLevel")?;
