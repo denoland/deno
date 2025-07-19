@@ -7658,8 +7658,6 @@ dependencies = [
 [[package]]
 name = "rustls-tokio-stream"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bfea10cd4c8ef885ef3bbae654045440e4d25346f00b997749a55a31a90c140"
 dependencies = [
  "derive-io",
  "futures",

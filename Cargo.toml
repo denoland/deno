@@ -233,7 +233,8 @@ reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-t
 rusqlite = { version = "0.34.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
 rustls = { version = "=0.23.28", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
 rustls-pemfile = "2"
-rustls-tokio-stream = "=0.7.0"
+# rustls-tokio-stream = "=0.7.0"
+rustls-tokio-stream = { path = "../rustls-tokio-stream" }
 rustls-webpki = "0.102"
 rustyline = "=13.0.0"
 rustyline-derive = "=0.7.0"
