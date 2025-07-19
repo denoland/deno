@@ -19,6 +19,7 @@ import {
 const {
   ObjectDefineProperty,
   TypeError,
+  Symbol,
   SymbolFor,
 } = primordials;
 

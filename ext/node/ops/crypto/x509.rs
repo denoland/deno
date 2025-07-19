@@ -382,29 +382,22 @@ fn extract_subject_or_issuer(name: &X509Name) -> SubjectOrIssuer {
       if let Ok(value_str) =
         attribute_value_to_string(attr.attr_value(), attr.attr_type())
       {
-        // Map common OIDs to their field names
         match attr.attr_type() {
-          // Country Name (C)
           oid if oid == &x509_parser::oid_registry::OID_X509_COUNTRY_NAME => {
             result.c = Some(value_str);
           }
-          // State or Province Name (ST)
           oid if oid == &x509_parser::oid_registry::OID_X509_STATE_OR_PROVINCE_NAME => {
             result.st = Some(value_str);
           }
-          // Locality Name (L)
           oid if oid == &x509_parser::oid_registry::OID_X509_LOCALITY_NAME => {
             result.l = Some(value_str);
           }
-          // Organization Name (O)
           oid if oid == &x509_parser::oid_registry::OID_X509_ORGANIZATION_NAME => {
             result.o = Some(value_str);
           }
-          // Organizational Unit Name (OU)
           oid if oid == &x509_parser::oid_registry::OID_X509_ORGANIZATIONAL_UNIT => {
             result.ou = Some(value_str);
           }
-          // Common Name (CN)
           oid if oid == &x509_parser::oid_registry::OID_X509_COMMON_NAME => {
             result.cn = Some(value_str);
           }
