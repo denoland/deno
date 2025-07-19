@@ -1034,7 +1034,7 @@ export class IncomingMessageForClient extends NodeReadable {
 
     this.on("close", () => {
       // Let the final data flush before closing the socket.
-      nextTick(() => {
+      this.socket.once("drain", () => {
         this.socket.emit("close");
       });
     });
