@@ -952,7 +952,7 @@ Deno.test(function prototypeOverwrite() {
       point.x = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMPoint",
   );
   assertThrows(
     () => {
@@ -960,7 +960,7 @@ Deno.test(function prototypeOverwrite() {
       point.y = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMPoint",
   );
   assertThrows(
     () => {
@@ -968,7 +968,7 @@ Deno.test(function prototypeOverwrite() {
       point.z = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMPoint",
   );
   assertThrows(
     () => {
@@ -976,7 +976,7 @@ Deno.test(function prototypeOverwrite() {
       point.w = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMPoint",
   );
 
   const rect = new DOMRectReadOnly();
@@ -987,7 +987,7 @@ Deno.test(function prototypeOverwrite() {
       rect.x = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMRect",
   );
   assertThrows(
     () => {
@@ -995,7 +995,7 @@ Deno.test(function prototypeOverwrite() {
       rect.y = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMRect",
   );
   assertThrows(
     () => {
@@ -1003,7 +1003,7 @@ Deno.test(function prototypeOverwrite() {
       rect.width = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMRect",
   );
   assertThrows(
     () => {
@@ -1011,7 +1011,7 @@ Deno.test(function prototypeOverwrite() {
       rect.height = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMRect",
   );
 
   const matrix = new DOMMatrixReadOnly();
@@ -1022,7 +1022,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.a = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1030,7 +1030,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.b = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1038,7 +1038,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.c = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1046,7 +1046,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.d = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1054,7 +1054,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.e = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1062,7 +1062,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.f = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1070,7 +1070,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m11 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1078,7 +1078,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m12 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1086,7 +1086,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m13 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1094,7 +1094,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m14 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1102,7 +1102,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m21 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1110,7 +1110,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m22 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1118,7 +1118,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m23 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1126,7 +1126,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m24 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1134,7 +1134,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m31 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1142,7 +1142,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m32 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1150,7 +1150,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m33 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1158,7 +1158,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m34 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1166,7 +1166,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m41 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1174,7 +1174,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m42 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1182,7 +1182,7 @@ Deno.test(function prototypeOverwrite() {
       matrix.m43 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
   assertThrows(
     () => {
@@ -1190,6 +1190,6 @@ Deno.test(function prototypeOverwrite() {
       matrix.m44 = 1;
     },
     TypeError,
-    "Illegal invocation",
+    "expected DOMMatrix",
   );
 });

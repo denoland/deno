@@ -6,6 +6,7 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::mem;
+use std::ptr;
 use std::slice;
 
 use deno_core::GarbageCollected;
@@ -2842,7 +2843,11 @@ impl DOMMatrix {
     if let Some(other) =
       cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, other)
     {
-      ro.multiply_self_inner(&lhs, &other);
+      if ptr::eq(ro, &*other) {
+        ro.multiply_self_inner(&lhs, &other.clone());
+      } else {
+        ro.multiply_self_inner(&lhs, &other);
+      };
     } else {
       let other = DOMMatrixInit::convert(
         scope,
@@ -2869,7 +2874,11 @@ impl DOMMatrix {
     if let Some(other) =
       cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, other)
     {
-      ro.multiply_self_inner(&other, &rhs);
+      if ptr::eq(ro, &*other) {
+        ro.multiply_self_inner(&other.clone(), &rhs);
+      } else {
+        ro.multiply_self_inner(&other, &rhs);
+      }
     } else {
       let other = DOMMatrixInit::convert(
         scope,
