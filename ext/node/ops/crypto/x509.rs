@@ -182,8 +182,14 @@ impl Certificate {
     let subject = extract_subject_or_issuer(cert.subject());
     let issuer = extract_subject_or_issuer(cert.issuer());
 
-    let (bits, exponent, modulus, pubkey, asn1_curve, nist_curve) =
-      extract_key_info(&cert.tbs_certificate.subject_pki);
+    let KeyInfo {
+      bits,
+      exponent,
+      modulus,
+      pubkey,
+      asn1_curve,
+      nist_curve,
+    } = extract_key_info(&cert.tbs_certificate.subject_pki);
 
     Ok(CertificateObject {
       ca: cert.is_ca(),
@@ -508,16 +514,17 @@ pub fn op_node_x509_key_usage(#[cppgc] cert: &Certificate) -> u16 {
   key_usage.map(|k| k.flags).unwrap_or(0)
 }
 
-fn extract_key_info(
-  spki: &x509_parser::x509::SubjectPublicKeyInfo,
-) -> (
-  Option<u32>,     // bits
-  Option<String>,  // exponent
-  Option<String>,  // modulus
-  Option<Vec<u8>>, // pubkey
-  Option<String>,  // asn1_curve
-  Option<String>,  // nist_curve
-) {
+#[derive(Default)]
+struct KeyInfo {
+  bits: Option<u32>,
+  exponent: Option<String>,
+  modulus: Option<String>,
+  pubkey: Option<Vec<u8>>,
+  asn1_curve: Option<String>,
+  nist_curve: Option<String>,
+}
+
+fn extract_key_info(spki: &x509_parser::x509::SubjectPublicKeyInfo) -> KeyInfo {
   use x509_parser::der_parser::asn1_rs::oid;
   use x509_parser::public_key::PublicKey;
 
@@ -531,7 +538,14 @@ fn extract_key_info(
       let exponent = Some(data_encoding::HEXUPPER.encode(exponent_bytes));
       let pubkey = Some(spki.raw.to_vec());
 
-      (bits, exponent, modulus, pubkey, None, None)
+      KeyInfo {
+        bits,
+        exponent,
+        modulus,
+        pubkey,
+        asn1_curve: None,
+        nist_curve: None,
+      }
     }
     Ok(PublicKey::EC(point)) => {
       let pubkey = Some(point.data().to_vec());
@@ -568,8 +582,15 @@ fn extract_key_info(
         }
       }
 
-      (bits, None, None, pubkey, asn1_curve, nist_curve)
+      KeyInfo {
+        bits,
+        exponent: None,
+        modulus: None,
+        pubkey,
+        asn1_curve,
+        nist_curve,
+      }
     }
-    _ => (None, None, None, None, None, None),
+    _ => KeyInfo::default(),
   }
 }
