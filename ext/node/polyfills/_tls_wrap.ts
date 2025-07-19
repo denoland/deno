@@ -32,6 +32,7 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { startTlsInternal } from "ext:deno_net/02_tls.js";
+import { internals } from "ext:core/mod.js";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -244,12 +245,9 @@ export class TLSSocket extends net.Socket {
     // TODO(kt3k): implement this
   }
 
-  getPeerCertificate(_detailed: boolean) {
-    // TODO(kt3k): implement this
-    return {
-      subject: "localhost",
-      subjectaltname: "IP Address:127.0.0.1, IP Address:::1",
-    };
+  getPeerCertificate(detailed: boolean = false) {
+    const conn = this[kHandle]?.[kStreamBaseField];
+    if (conn) return conn[internals.getPeerCertificate](detailed);
   }
 }
 

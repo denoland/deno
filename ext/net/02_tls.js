@@ -13,15 +13,19 @@ import {
   op_tls_handshake,
   op_tls_key_null,
   op_tls_key_static,
+  op_tls_peer_certificate,
   op_tls_start,
 } from "ext:core/ops";
 const {
   ObjectDefineProperty,
   TypeError,
+  Symbol,
   SymbolFor,
 } = primordials;
 
 import { Conn, Listener, validatePort } from "ext:deno_net/01_net.js";
+
+const _getPeerCertificate = Symbol("getPeerCertificate");
 
 class TlsConn extends Conn {
   #rid = 0;
@@ -38,6 +42,10 @@ class TlsConn extends Conn {
 
   handshake() {
     return op_tls_handshake(this.#rid);
+  }
+
+  [_getPeerCertificate](detailed = false) {
+    return op_tls_peer_certificate(this.#rid, detailed);
   }
 }
 
@@ -238,6 +246,7 @@ function createTlsKeyResolver(callback) {
 internals.resolverSymbol = resolverSymbol;
 internals.serverNameSymbol = serverNameSymbol;
 internals.createTlsKeyResolver = createTlsKeyResolver;
+internals.getPeerCertificate = _getPeerCertificate;
 
 export {
   connectTls,
