@@ -212,6 +212,7 @@ impl DOMPointReadOnly {
     obj
   }
 
+  #[reentrant]
   pub fn matrix_transform<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
@@ -421,20 +422,10 @@ impl DOMRectReadOnly {
     self.x.get()
   }
 
-  #[setter]
-  pub fn x(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    self.x.set(*value)
-  }
-
   #[fast]
   #[getter]
   pub fn y(&self) -> f64 {
     self.y.get()
-  }
-
-  #[setter]
-  pub fn y(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    self.y.set(*value)
   }
 
   #[fast]
@@ -443,20 +434,10 @@ impl DOMRectReadOnly {
     self.width.get()
   }
 
-  #[setter]
-  pub fn width(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    self.width.set(*value)
-  }
-
   #[fast]
   #[getter]
   pub fn height(&self) -> f64 {
     self.height.get()
-  }
-
-  #[setter]
-  pub fn height(&self, #[webidl] value: webidl::UnrestrictedDouble) {
-    self.height.set(*value)
   }
 
   #[fast]
@@ -769,8 +750,11 @@ impl DOMQuad {
       value: &v8::Global<v8::Object>,
     ) -> cppgc::Ptr<DOMPointReadOnly> {
       let value = v8::Local::new(scope, value);
-      cppgc::try_unwrap_cppgc_object::<DOMPointReadOnly>(scope, value.cast())
-        .unwrap()
+      cppgc::try_unwrap_cppgc_proto_object::<DOMPointReadOnly>(
+        scope,
+        value.cast(),
+      )
+      .unwrap()
     }
 
     let p1 = get_ptr(scope, &self.p1);
@@ -939,27 +923,39 @@ impl DOMMatrixReadOnly {
       return Ok(DOMMatrixReadOnly::identity());
     }
 
+    // sequence
+    if !value.is_string() {
+      if let Ok(seq) = Vec::<webidl::UnrestrictedDouble>::convert(
+        scope,
+        value,
+        prefix,
+        context,
+        &Default::default(),
+      ) {
+        let seq = seq.into_iter().map(|f| *f).collect::<Vec<f64>>();
+        return DOMMatrixReadOnly::from_sequence_inner(&seq);
+      }
+    }
+
     // DOMString
-    if value.is_string() {
+    if let Some(value) = value.to_string(scope) {
       let state = state.borrow_mut::<State>();
       if !state.enable_window_features {
         return Err(GeometryError::DisallowWindowFeatures);
       }
-      let value = value.to_string(scope).unwrap();
+
       let matrix = DOMMatrixReadOnly::identity();
-      let Ok(transform_list) =
-        TransformList::parse_string(&value.to_rust_string_lossy(scope))
-      else {
-        return Err(GeometryError::FailedToParse);
-      };
-      matrix.set_matrix_value_inner(&transform_list)?;
+      let string = value.to_rust_string_lossy(scope);
+      if !string.is_empty() {
+        let Ok(transform_list) = TransformList::parse_string(&string) else {
+          return Err(GeometryError::FailedToParse);
+        };
+        matrix.set_matrix_value_inner(&transform_list)?;
+      }
       return Ok(matrix);
     }
 
-    // sequence
-    let seq =
-      Vec::<f64>::convert(scope, value, prefix, context, &Default::default())?;
-    DOMMatrixReadOnly::from_sequence_inner(&seq)
+    Err(GeometryError::FailedToParse)
   }
 
   fn from_matrix_inner(
@@ -1605,6 +1601,7 @@ impl DOMMatrixReadOnly {
 #[op2(base)]
 impl DOMMatrixReadOnly {
   #[constructor]
+  #[reentrant]
   #[cppgc]
   pub fn constructor<'a>(
     state: &mut OpState,
@@ -1640,13 +1637,14 @@ impl DOMMatrixReadOnly {
     if !value.is_float32_array() {
       return Err(GeometryError::TypeMismatch);
     }
-    let seq = Vec::<f64>::convert(
+    let seq = Vec::<webidl::UnrestrictedDouble>::convert(
       scope,
       value,
       "Failed to execute 'DOMMatrixReadOnly.fromFloat32Array'".into(),
       (|| Cow::Borrowed("Argument 1")).into(),
       &Default::default(),
     )?;
+    let seq = seq.into_iter().map(|f| *f).collect::<Vec<f64>>();
     DOMMatrixReadOnly::from_sequence_inner(&seq)
   }
 
@@ -1661,13 +1659,14 @@ impl DOMMatrixReadOnly {
     if !value.is_float64_array() {
       return Err(GeometryError::TypeMismatch);
     }
-    let seq = Vec::<f64>::convert(
+    let seq = Vec::<webidl::UnrestrictedDouble>::convert(
       scope,
       value,
       "Failed to execute 'DOMMatrixReadOnly.fromFloat64Array'".into(),
       (|| Cow::Borrowed("Argument 1")).into(),
       &Default::default(),
     )?;
+    let seq = seq.into_iter().map(|f| *f).collect::<Vec<f64>>();
     DOMMatrixReadOnly::from_sequence_inner(&seq)
   }
 
@@ -2036,6 +2035,7 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
+  #[reentrant]
   pub fn transform_point<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
@@ -2129,6 +2129,7 @@ impl GarbageCollected for DOMMatrix {
 #[op2(inherit = DOMMatrixReadOnly)]
 impl DOMMatrix {
   #[constructor]
+  #[reentrant]
   #[cppgc]
   pub fn constructor<'a>(
     state: &mut OpState,
@@ -2168,13 +2169,14 @@ impl DOMMatrix {
     if !value.is_float32_array() {
       return Err(GeometryError::TypeMismatch);
     }
-    let float64 = Vec::<f64>::convert(
+    let float64 = Vec::<webidl::UnrestrictedDouble>::convert(
       scope,
       value,
       "Failed to execute 'DOMMatrixReadOnly.fromFloat32Array'".into(),
       (|| Cow::Borrowed("Argument 1")).into(),
       &Default::default(),
     )?;
+    let float64 = float64.into_iter().map(|f| *f).collect::<Vec<f64>>();
 
     let ro = if let [a, b, c, d, e, f] = float64.as_slice() {
       DOMMatrixReadOnly {
@@ -2210,13 +2212,14 @@ impl DOMMatrix {
     if !value.is_float64_array() {
       return Err(GeometryError::TypeMismatch);
     }
-    let float64 = Vec::<f64>::convert(
+    let float64 = Vec::<webidl::UnrestrictedDouble>::convert(
       scope,
       value,
       "Failed to execute 'DOMMatrixReadOnly.fromFloat64Array'".into(),
       (|| Cow::Borrowed("Argument 1")).into(),
       &Default::default(),
     )?;
+    let float64 = float64.into_iter().map(|f| *f).collect::<Vec<f64>>();
 
     let ro = if let [a, b, c, d, e, f] = float64.as_slice() {
       DOMMatrixReadOnly {
@@ -2829,7 +2832,7 @@ impl DOMMatrix {
   ) -> Result<v8::Global<v8::Object>, GeometryError> {
     let lhs = ro.clone();
     if let Some(other) =
-      cppgc::try_unwrap_cppgc_object::<DOMMatrixReadOnly>(scope, other)
+      cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, other)
     {
       ro.multiply_self_inner(&lhs, &other);
     } else {
@@ -2856,7 +2859,7 @@ impl DOMMatrix {
   ) -> Result<v8::Global<v8::Object>, GeometryError> {
     let rhs = ro.clone();
     if let Some(other) =
-      cppgc::try_unwrap_cppgc_object::<DOMMatrixReadOnly>(scope, other)
+      cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, other)
     {
       ro.multiply_self_inner(&other, &rhs);
     } else {

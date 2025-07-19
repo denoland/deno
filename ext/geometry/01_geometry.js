@@ -15,22 +15,16 @@ import {
   op_geometry_matrix_to_string,
 } from "ext:core/ops";
 const {
-  ArrayPrototypeJoin,
   Float32Array,
   Float64Array,
   ObjectDefineProperties,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
-  Symbol,
   SymbolFor,
-  SymbolIterator,
-  TypeError,
-  TypedArrayPrototypeJoin,
 } = primordials;
 
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const DOMPointPrototype = DOMPoint.prototype;
 const DOMPointReadOnlyPrototype = DOMPointReadOnly.prototype;

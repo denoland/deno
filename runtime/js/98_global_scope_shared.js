@@ -59,7 +59,7 @@ const windowOrWorkerGlobalScope = {
   CustomEvent: core.propNonEnumerable(event.CustomEvent),
   DecompressionStream: core.propNonEnumerable(compression.DecompressionStream),
   DOMException: core.propNonEnumerable(DOMException),
-    DOMMatrix: core.propNonEnumerableLazyLoaded(
+  DOMMatrix: core.propNonEnumerableLazyLoaded(
     (geometry) => geometry.DOMMatrix,
     loadGeometry,
   ),
