@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.217.0"
+version = "0.219.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -36,11 +36,6 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 [lib]
 name = "deno_runtime"
 path = "lib.rs"
-
-[[example]]
-name = "extension"
-path = "examples/extension/main.rs"
-required-features = ["transpile"]
 
 [dependencies]
 deno_ast = { workspace = true, optional = true }

@@ -40,13 +40,10 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
     disk_cache: DiskCache<TSys>,
     cache_version: Cow<'static, str>,
   ) -> Self {
-    let mode = match sys
-      .env_var("DENO_EMIT_CACHE_MODE")
-      .unwrap_or_default()
-      .as_str()
-    {
-      "normal" | "" => Mode::Normal,
-      "disable" => Mode::Disable,
+    let emit_cache_mode = sys.env_var_os("DENO_EMIT_CACHE_MODE");
+    let mode = match emit_cache_mode.as_ref().and_then(|s| s.to_str()) {
+      Some("normal") | Some("") | None => Mode::Normal,
+      Some("disable") => Mode::Disable,
       _ => {
         log::warn!("Unknown DENO_EMIT_CACHE_MODE value, defaulting to normal");
         Mode::Normal

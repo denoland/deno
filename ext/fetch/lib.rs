@@ -49,13 +49,11 @@ use deno_core::url;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_error::JsErrorBox;
-use deno_fs::CheckedPath;
 pub use deno_fs::FsError;
-use deno_fs::OpenOptions;
-use deno_fs::open_options_with_access_check;
 use deno_path_util::PathToUrlError;
+use deno_permissions::CheckedPath;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
-use deno_permissions::PermissionsContainer;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKey;
@@ -233,9 +231,9 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   Dns(hickory_resolver::ResolveError),
-  #[class("NotCapable")]
-  #[error("requires {0} access")]
-  NotCapable(&'static str),
+  #[class(generic)]
+  #[error(transparent)]
+  PermissionCheck(PermissionCheckError),
 }
 
 impl From<deno_fs::FsError> for FetchError {
@@ -244,7 +242,9 @@ impl From<deno_fs::FsError> for FetchError {
       deno_fs::FsError::Io(_)
       | deno_fs::FsError::FileBusy
       | deno_fs::FsError::NotSupported => FetchError::NetworkError,
-      deno_fs::FsError::NotCapable(err) => FetchError::NotCapable(err),
+      deno_fs::FsError::PermissionCheck(err) => {
+        FetchError::PermissionCheck(err)
+      }
     }
   }
 }
@@ -405,18 +405,12 @@ pub trait FetchPermissions {
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read<'a>(
+  fn check_open<'a>(
     &mut self,
     path: Cow<'a, Path>,
+    open_access: OpenAccessKind,
     api_name: &str,
-    get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError>;
-  fn check_write<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    api_name: &str,
-    get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn check_net_vsock(
     &mut self,
     cid: u32,
@@ -436,77 +430,18 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read<'a>(
+  fn check_open<'a>(
     &mut self,
     path: Cow<'a, Path>,
+    open_access: OpenAccessKind,
     api_name: &str,
-    get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
-    if self.allows_all() {
-      return Ok(deno_fs::CheckedPath::Unresolved(path));
-    }
-
-    let (needs_canonicalize, normalized_path) = get_path.normalized(path)?;
-
-    let path = deno_permissions::PermissionsContainer::check_read_path(
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_open(
       self,
-      normalized_path,
+      path,
+      open_access,
       Some(api_name),
     )
-    .map_err(|_| FsError::NotCapable("read"))?;
-
-    let path = if needs_canonicalize {
-      let path = get_path.resolved(&path)?;
-
-      Cow::Owned(path)
-    } else {
-      path
-    };
-    self
-      .check_special_file(&path, api_name)
-      .map_err(FsError::NotCapable)?;
-
-    if needs_canonicalize {
-      Ok(CheckedPath::Resolved(path))
-    } else {
-      Ok(CheckedPath::Unresolved(path))
-    }
-  }
-
-  fn check_write<'a>(
-    &mut self,
-    path: Cow<'a, Path>,
-    api_name: &str,
-    get_path: &'a dyn deno_fs::GetPath,
-  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
-    if self.allows_all() {
-      return Ok(deno_fs::CheckedPath::Unresolved(path));
-    }
-
-    let (needs_canonicalize, normalized_path) = get_path.normalized(path)?;
-    let path = deno_permissions::PermissionsContainer::check_write_path(
-      self,
-      normalized_path,
-      api_name,
-    )
-    .map_err(|_| FsError::NotCapable("write"))?;
-
-    let path = if needs_canonicalize {
-      let path = get_path.resolved(&path)?;
-
-      Cow::Owned(path)
-    } else {
-      path
-    };
-    self
-      .check_special_file(&path, api_name)
-      .map_err(FsError::NotCapable)?;
-
-    if needs_canonicalize {
-      Ok(CheckedPath::Resolved(path))
-    } else {
-      Ok(CheckedPath::Unresolved(path))
-    }
   }
 
   #[inline(always)]
@@ -973,62 +908,37 @@ fn default_true() -> bool {
   true
 }
 
-fn sync_permission_check<'a, P: FetchPermissions + 'static>(
-  permissions: &'a mut P,
-  api_name: &'static str,
-) -> impl deno_fs::AccessCheckFn + 'a {
-  move |path, _options, _resolve| {
-    let read_path = permissions.check_read(path.clone(), api_name, _resolve)?;
-    let write_path = permissions.check_write(path, api_name, _resolve)?;
-    match (&read_path, &write_path) {
-      (CheckedPath::Resolved(a), CheckedPath::Resolved(b))
-      | (CheckedPath::Unresolved(a), CheckedPath::Resolved(b))
-      | (CheckedPath::Resolved(a), CheckedPath::Unresolved(b))
-      | (CheckedPath::Unresolved(a), CheckedPath::Unresolved(b))
-        if a == b =>
-      {
-        Ok(write_path)
-      }
-      _ => Err(FsError::NotCapable("write")),
-    }
-  }
-}
-
 #[op2(stack_trace)]
 #[smi]
 #[allow(clippy::result_large_err)]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  #[serde] args: CreateHttpClientArgs,
+  #[serde] mut args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
 ) -> Result<ResourceId, FetchError>
 where
   FP: FetchPermissions + 'static,
 {
-  if let Some(proxy) = &args.proxy {
+  if let Some(proxy) = &mut args.proxy {
     let permissions = state.borrow_mut::<FP>();
     match proxy {
       Proxy::Http { url, .. } => {
         let url = Url::parse(url)?;
         permissions.check_net_url(&url, "Deno.createHttpClient()")?;
       }
-      Proxy::Unix { path } => {
-        let path = Path::new(path);
-        let mut access_check = sync_permission_check::<PermissionsContainer>(
-          state.borrow_mut(),
-          "Deno.createHttpClient()",
-        );
-        let (resolved_path, _) = open_options_with_access_check(
-          OpenOptions {
-            read: true,
-            write: true,
-            ..Default::default()
-          },
-          path,
-          Some(&mut access_check),
-        )?;
+      Proxy::Unix {
+        path: original_path,
+      } => {
+        let path = Path::new(original_path);
+        let resolved_path = permissions
+          .check_open(
+            Cow::Borrowed(path),
+            OpenAccessKind::ReadWriteNoFollow,
+            "Deno.createHttpClient()",
+          )?
+          .into_path();
         if path != resolved_path {
-          return Err(FetchError::NotCapable("write"));
+          *original_path = resolved_path.to_string_lossy().into_owned();
         }
       }
       Proxy::Vsock { cid, port } => {

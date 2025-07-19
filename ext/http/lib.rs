@@ -82,6 +82,7 @@ use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 use tokio::sync::Notify;
 
 use crate::network_buffered_stream::NetworkBufferedStream;
@@ -1671,13 +1672,14 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
       Ok(res) => return res,
       Err(x) => x,
     };
-  let upgraded =
-    match maybe_extract_network_stream::<deno_net::ops_tls::TlsStream, _>(
-      upgraded,
-    ) {
-      Ok(res) => return res,
-      Err(x) => x,
-    };
+  let upgraded = match maybe_extract_network_stream::<
+    deno_net::ops_tls::TlsStream<TcpStream>,
+    _,
+  >(upgraded)
+  {
+    Ok(res) => return res,
+    Err(x) => x,
+  };
   #[cfg(unix)]
   let upgraded =
     match maybe_extract_network_stream::<tokio::net::UnixStream, _>(upgraded) {
@@ -1688,6 +1690,13 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
   let upgraded =
     match maybe_extract_network_stream::<tokio_vsock::VsockStream, _>(upgraded)
     {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<deno_net::tunnel::TunnelStream, _>(
+      upgraded,
+    ) {
       Ok(res) => return res,
       Err(x) => x,
     };
@@ -1705,10 +1714,15 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
 #[op2]
 #[serde]
 pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
-  match std::env::var("DENO_SERVE_ADDRESS") {
-    Ok(val) => parse_serve_address(&val),
-    Err(_) => (0, String::new(), 0, false),
+  if let Ok(val) = std::env::var("DENO_SERVE_ADDRESS") {
+    return parse_serve_address(&val);
+  };
+
+  if deno_net::tunnel::get_tunnel().is_some() {
+    return (4, String::new(), 0, true);
   }
+
+  (0, String::new(), 0, false)
 }
 
 fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
@@ -1768,6 +1782,7 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
         None => (0, String::new(), 0, false),
       }
     }
+    Some(("tunnel", _)) => (4, String::new(), 0, duplicate),
     Some((_, _)) | None => {
       log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
       (0, String::new(), 0, false)

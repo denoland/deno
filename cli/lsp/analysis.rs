@@ -279,10 +279,13 @@ impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     document_modules: &'a DocumentModules,
     scope: Option<Arc<ModuleSpecifier>>,
-    maybe_import_map: Option<&'a ImportMap>,
     resolver: &'a LspResolver,
     tsc_specifier_map: &'a tsc::TscSpecifierMap,
   ) -> Self {
+    let maybe_import_map = resolver
+      .get_scoped_resolver(scope.as_deref())
+      .as_workspace_resolver()
+      .maybe_import_map();
     Self {
       document_modules,
       scope,

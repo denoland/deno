@@ -722,6 +722,11 @@ const NOT_IMPORTED_OPS = [
   // to not depend on them.
   "op_set_exit_code",
   "op_napi_open",
+
+  // deno deploy subcommand
+  "op_deploy_token_get",
+  "op_deploy_token_set",
+  "op_deploy_token_delete",
 ];
 
 function removeImportedOps() {

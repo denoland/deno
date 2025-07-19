@@ -6,6 +6,44 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.4.2 / 2025.07.16
+
+- fix(bundle): default "jsxImportSource" to "react" (#30082)
+- fix(check): temporarily ignore ERR_TYPES_NOT_FOUND (#29926)
+- fix(ext/node): don't throw error on invalid path input on `exists` and
+  `existsSync` (#29971)
+- fix(ext/node): validate path parameters on `link` and `linkSync` (#30061)
+- fix(lint): do not panic for many overlapping lint fixes (#30104)
+- fix(lsp): tsconfig features for 'deno check' parity (#30007)
+- fix(tsconfig): prioritize deno.json if it has compiler options (#30056)
+- fix(tsconfig): use tsc defaults for 'strict' and 'noImplicitOverride' (#30045)
+- fix(unstable): support importing files in npm packages as bytes and text
+  (#30065)
+- fix: `global` global should be writeable (#30032)
+- fix: early init logging (#30034)
+- fix: new signal handling (#30029)
+- fix: upgrade deno_core to 0.352.1 (#30119)
+
+### 2.4.1 / 2025.07.08
+
+- feat(unstable/otel): support vsock transport for telemetry (#30001)
+- feat(unstable): tunnelling (#30022)
+- fix(bundle): don't use createRequire when targeting browser, make hack not
+  depend on variable names (#30023)
+- fix(bundle): make the "dynamic require" hack work on minified output (#29997)
+- fix(bundle): resolve "sloppy imports" in npm packages when bundling (#29989)
+- fix(ext/http2): fix oob buffer reads in http2 requests (#29969)
+- fix(serve): actually wire up resolving main module with import map for deno
+  serve (#29974)
+- fix(unstable): bytes and text imports from npm dependencies should require
+  `--allow-read` (#29990)
+- Revert "fix(ext/napi): ensure the finalizer callback will be called (…
+  (#30018)
+- Revert "fix(otel): flush data when terminating signal is received (#2…
+  (#30019)
+- perf: bust emit cache only on deno_ast version change (#29984)
+- perf: skip jsx transpile when disabled (#29995)
+
 ### 2.4.0 / 2025.07.01
 
 - feat(bundle): support text and bytes imports in bundle (#29908)

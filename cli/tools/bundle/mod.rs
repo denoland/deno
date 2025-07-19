@@ -17,7 +17,6 @@ use deno_ast::EmitOptions;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::TsTypeLib;
-use deno_core::RequestedModuleType;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::resolve_url_or_path;
@@ -28,6 +27,12 @@ use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
+use deno_resolver::loader::LoadCodeSourceError;
+use deno_resolver::loader::LoadCodeSourceErrorKind;
+use deno_resolver::loader::LoadPreparedModuleErrorKind;
+use deno_resolver::loader::LoadedModuleOrAsset;
+use deno_resolver::loader::LoadedModuleSource;
+use deno_resolver::loader::RequestedModuleType;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -44,18 +49,16 @@ use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
 use crate::args::BundleFormat;
+use crate::args::BundlePlatform;
 use crate::args::Flags;
 use crate::args::PackageHandling;
 use crate::args::SourceMapType;
 use crate::factory::CliFactory;
+use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::module_loader::CliModuleLoader;
-use crate::module_loader::CliModuleLoaderError;
-use crate::module_loader::LoadCodeSourceError;
-use crate::module_loader::LoadCodeSourceErrorKind;
-use crate::module_loader::LoadPreparedModuleError;
+use crate::module_loader::CliDenoResolverModuleLoader;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
@@ -86,10 +89,7 @@ pub async fn bundle(
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let cli_options = factory.cli_options()?;
-  let module_loader = factory
-    .create_module_loader_factory()
-    .await?
-    .create_cli_module_loader(root_permissions.clone());
+  let module_loader = factory.resolver_factory()?.module_loader()?;
   let sys = factory.sys();
   let init_cwd = cli_options.initial_cwd().to_path_buf();
   let module_graph_container =
@@ -98,6 +98,7 @@ pub async fn bundle(
   let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
+    file_fetcher: factory.file_fetcher()?.clone(),
     resolver: resolver.clone(),
     module_load_preparer,
     module_graph_container,
@@ -154,14 +155,25 @@ pub async fn bundle(
   let response = bundler.build().await?;
 
   if bundle_flags.watch {
-    return bundle_watch(flags, bundler).await;
+    return bundle_watch(
+      flags,
+      bundler,
+      bundle_flags.minify,
+      bundle_flags.platform,
+    )
+    .await;
   }
 
   handle_esbuild_errors_and_warnings(&response, &init_cwd);
 
   if response.errors.is_empty() {
     let metafile = metafile_from_response(&response)?;
-    let output_infos = process_result(&response, &init_cwd, *DISABLE_HACK)?;
+    let output_infos = process_result(
+      &response,
+      &init_cwd,
+      *DISABLE_HACK && matches!(bundle_flags.platform, BundlePlatform::Deno),
+      bundle_flags.minify,
+    )?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
       print_finished_message(&metafile, &output_infos, start.elapsed())?;
@@ -188,6 +200,8 @@ fn metafile_from_response(
 async fn bundle_watch(
   flags: Arc<Flags>,
   bundler: EsbuildBundler,
+  minified: bool,
+  platform: BundlePlatform,
 ) -> Result<(), AnyError> {
   let initial_roots = bundler
     .roots
@@ -225,8 +239,12 @@ async fn bundle_watch(
         handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
         if response.errors.is_empty() {
           let metafile = metafile_from_response(&response)?;
-          let output_infos =
-            process_result(&response, &bundler.cwd, *DISABLE_HACK)?;
+          let output_infos = process_result(
+            &response,
+            &bundler.cwd,
+            *DISABLE_HACK && matches!(platform, BundlePlatform::Deno),
+            minified,
+          )?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
           let new_watched = get_input_paths_for_watch(&response);
@@ -362,18 +380,27 @@ impl EsbuildBundler {
 // TODO(nathanwhit): MASSIVE HACK
 // See tests::specs::bundle::requires_node_builtin for why this is needed.
 // Without this hack, that test would fail with "Dynamic require of "util" is not supported"
-fn replace_require_shim(contents: &str) -> String {
-  contents.replace(
-    r#"var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});"#,
-    r#"import { createRequire } from "node:module";
+fn replace_require_shim(contents: &str, minified: bool) -> String {
+  if minified {
+    let re = lazy_regex::regex!(
+      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[l\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
+    );
+    re.replace(contents, |c: &regex::Captures<'_>| {
+      let var_name = c.get(1).unwrap().as_str();
+      format!("import{{createRequire}} from \"node:module\";var {var_name}=createRequire(import.meta.url);")
+    }).into_owned()
+  } else {
+    let re = lazy_regex::regex!(
+      r#"var __require = (/\* @__PURE__ \*/)?\s*\(\(\w+\) => typeof require !== "undefined" \? require : typeof Proxy !== "undefined" \? new Proxy\(\w+, \{\s*  get: \(\w+, \w+\) => \(typeof require !== "undefined" \? require : \w+\)\[\w+\]\s*\}\) : \w+\)\(function\(\w+\) \{\s*  if \(typeof require !== "undefined"\) return require\.apply\(this, arguments\);\s*  throw Error\('Dynamic require of "' \+ \w+ \+ '" is not supported'\);\s*\}\);"#
+    );
+    re.replace_all(
+      contents,
+      r#"import { createRequire } from "node:module";
 var __require = createRequire(import.meta.url);
 "#,
-  )
+    )
+    .into_owned()
+  }
 }
 
 fn format_message(
@@ -443,23 +470,24 @@ enum BundleError {
 
 fn requested_type_from_map(
   map: &IndexMap<String, String>,
-) -> RequestedModuleType {
+) -> RequestedModuleType<'_> {
   let type_ = map.get("type").map(|s| s.as_str());
   match type_ {
     Some("json") => RequestedModuleType::Json,
     Some("bytes") => RequestedModuleType::Bytes,
     Some("text") => RequestedModuleType::Text,
-    Some(other) => RequestedModuleType::Other(other.to_string().into()),
+    Some(other) => RequestedModuleType::Other(other),
     None => RequestedModuleType::None,
   }
 }
 
 pub struct DenoPluginHandler {
+  file_fetcher: Arc<CliFileFetcher>,
   resolver: Arc<CliResolver>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   module_graph_container: Arc<MainModuleGraphContainer>,
   permissions: PermissionsContainer,
-  module_loader: CliModuleLoader<MainModuleGraphContainer>,
+  module_loader: Arc<CliDenoResolverModuleLoader>,
   externals_matcher: Option<ExternalsMatcher>,
   on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
 }
@@ -615,7 +643,10 @@ fn import_kind_to_resolution_mode(
 pub enum BundleLoadError {
   #[class(inherit)]
   #[error(transparent)]
-  CliModuleLoader(#[from] CliModuleLoaderError),
+  Fetch(#[from] deno_resolver::file_fetcher::FetchError),
+  #[class(inherit)]
+  #[error(transparent)]
+  LoadCodeSource(#[from] LoadCodeSourceError),
   #[class(inherit)]
   #[error(transparent)]
   ResolveUrlOrPath(#[from] deno_path_util::ResolveUrlOrPathError),
@@ -639,15 +670,14 @@ pub enum BundleLoadError {
 impl BundleLoadError {
   pub fn is_unsupported_media_type(&self) -> bool {
     match self {
-      BundleLoadError::CliModuleLoader(
-        CliModuleLoaderError::LoadCodeSource(LoadCodeSourceError(e)),
-      ) => match &**e {
-        LoadCodeSourceErrorKind::LoadPreparedModule(
-          LoadPreparedModuleError::Graph(e),
-        ) => matches!(
-          e.error.as_kind(),
-          ModuleErrorKind::UnsupportedMediaType { .. },
-        ),
+      BundleLoadError::LoadCodeSource(e) => match e.as_kind() {
+        LoadCodeSourceErrorKind::LoadPreparedModule(e) => match e.as_kind() {
+          LoadPreparedModuleErrorKind::Graph(e) => matches!(
+            e.error.as_kind(),
+            ModuleErrorKind::UnsupportedMediaType { .. },
+          ),
+          _ => false,
+        },
         _ => false,
       },
       _ => false,
@@ -675,6 +705,7 @@ impl DenoPluginHandler {
     graph_permit.commit();
     Ok(())
   }
+
   fn bundle_resolve(
     &self,
     path: &str,
@@ -779,7 +810,7 @@ impl DenoPluginHandler {
   async fn bundle_load(
     &self,
     specifier: &str,
-    requested_type: &RequestedModuleType,
+    requested_type: &RequestedModuleType<'_>,
   ) -> Result<Option<(Vec<u8>, esbuild_client::BuiltinLoader)>, BundleLoadError>
   {
     log::debug!(
@@ -833,10 +864,24 @@ impl DenoPluginHandler {
         }
         (specifier, media_type, media_type_to_loader(media_type))
       };
-    let loaded = self
+    let graph = self.module_graph_container.graph();
+    let module_or_asset = self
       .module_loader
-      .load_module_source(&specifier, None, requested_type)
+      .load(&graph, &specifier, None, requested_type)
       .await?;
+    let loaded_code = match module_or_asset {
+      LoadedModuleOrAsset::Module(loaded_module) => loaded_module.source,
+      LoadedModuleOrAsset::ExternalAsset {
+        specifier,
+        statically_analyzable: _,
+      } => LoadedModuleSource::ArcBytes(
+        self
+          .file_fetcher
+          .fetch(&specifier, &self.permissions)
+          .await?
+          .source,
+      ),
+    };
 
     if matches!(
       media_type,
@@ -848,20 +893,16 @@ impl DenoPluginHandler {
         | MediaType::Cts
         | MediaType::Jsx
         | MediaType::Tsx
-    ) && !self
-      .module_graph_container
-      .graph()
-      .roots
-      .contains(&specifier)
+    ) && !graph.roots.contains(&specifier)
     {
       let code = self.apply_transform(
         &specifier,
         media_type,
-        std::str::from_utf8(loaded.code.as_bytes())?,
+        std::str::from_utf8(loaded_code.as_bytes())?,
       )?;
       Ok(Some((code.into_bytes(), loader)))
     } else {
-      Ok(Some((loaded.code.as_bytes().to_vec(), loader)))
+      Ok(Some((loaded_code.as_bytes().to_vec(), loader)))
     }
   }
 
@@ -1171,6 +1212,7 @@ fn process_result(
   response: &BuildResponse,
   cwd: &Path,
   should_replace_require_shim: bool,
+  minified: bool,
 ) -> Result<Vec<OutputFileInfo>, AnyError> {
   let mut exists_cache = std::collections::HashSet::new();
   let output_files = response
@@ -1187,7 +1229,7 @@ fn process_result(
     let bytes = if is_js || file.path.ends_with("<stdout>") {
       let string = String::from_utf8(file.contents.clone())?;
       let string = if should_replace_require_shim {
-        replace_require_shim(&string)
+        replace_require_shim(&string, minified)
       } else {
         string
       };

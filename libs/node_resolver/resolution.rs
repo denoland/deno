@@ -588,7 +588,8 @@ impl<
       }
       _ => {
         if let Err(e) = maybe_file_type {
-          if resolution_mode == ResolutionMode::Require
+          if (resolution_mode == ResolutionMode::Require
+            || self.resolution_config.bundle_mode)
             && e.kind() == std::io::ErrorKind::NotFound
           {
             let file_with_ext = with_known_extension(&path, "js");

@@ -18,7 +18,6 @@ use deno_error::JsErrorBox;
 use deno_lib::args::CaData;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::npm_process_state;
-use deno_lib::loader::NpmModuleLoader;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::npm::create_npm_process_state_provider;
@@ -33,6 +32,7 @@ use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_npm_installer::process_state::NpmProcessStateKind;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::deno_json::CompilerOptionsOverrides;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::NpmProcessStateOptions;
@@ -914,7 +914,6 @@ impl CliFactory {
     let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
     let workspace_factory = self.workspace_factory()?;
     let resolver_factory = self.resolver_factory()?;
-    let node_code_translator = resolver_factory.node_code_translator()?;
     let cjs_tracker = self.cjs_tracker()?.clone();
     let npm_registry_permission_checker = {
       let mode = if resolver_factory.use_byonm()? {
@@ -948,15 +947,10 @@ impl CliFactory {
       in_npm_pkg_checker.clone(),
       self.main_module_graph_container().await?.clone(),
       self.module_load_preparer().await?.clone(),
-      node_code_translator.clone(),
-      NpmModuleLoader::new(
-        self.cjs_tracker()?.clone(),
-        node_code_translator.clone(),
-        self.sys(),
-      ),
       npm_registry_permission_checker,
       cli_npm_resolver.clone(),
       resolver_factory.parsed_source_cache().clone(),
+      resolver_factory.module_loader()?.clone(),
       self.resolver().await?.clone(),
       self.sys(),
       maybe_eszip_loader,
@@ -1107,6 +1101,11 @@ impl CliFactory {
       Ok(Arc::new(CliResolverFactory::new(
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
+          compiler_options_overrides: CompilerOptionsOverrides {
+            no_transpile: false,
+            source_map_base: None,
+            preserve_jsx: false,
+          },
           is_cjs_resolution_mode: if options.is_node_main()
             || options.unstable_detect_cjs()
           {
@@ -1216,13 +1215,10 @@ fn new_workspace_factory_options(
         }
       }
       ConfigFlag::Path(path) => {
-        ConfigDiscoveryOption::Path(PathBuf::from(path))
+        ConfigDiscoveryOption::Path(initial_cwd.join(path))
       }
       ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
     },
-    emit_cache_version: Cow::Borrowed(
-      deno_lib::version::DENO_VERSION_INFO.deno,
-    ),
     maybe_custom_deno_dir_root: flags.internal.cache_path.clone(),
     // For `deno install/add/remove/init` we want to force the managed
     // resolver so it can set up the `node_modules/` directory.
@@ -1243,7 +1239,7 @@ fn new_workspace_factory_options(
           | DenoSubcommand::Uninstall(_)
       ),
     frozen_lockfile: flags.frozen_lockfile,
-    lock_arg: flags.lock.clone(),
+    lock_arg: flags.lock.as_ref().map(|l| initial_cwd.join(l)),
     lockfile_skip_write: flags.internal.lockfile_skip_write,
     no_npm: flags.no_npm,
     node_modules_dir: flags.node_modules_dir,

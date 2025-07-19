@@ -368,7 +368,12 @@ async fn deno_run_serve_with_duplicate_env_addr() {
   let msg = stderr.lines().next().unwrap().unwrap();
 
   let port_regex = Regex::new(r"https?:[^:]+:(\d+)").unwrap();
-  let port = port_regex.captures(&msg).unwrap().get(1).unwrap().as_str();
+  let port = port_regex
+    .captures(&msg)
+    .unwrap_or_else(|| panic!("Could not find regex in text:\n{}", msg))
+    .get(1)
+    .unwrap()
+    .as_str();
 
   {
     let client = reqwest::Client::builder().build().unwrap();
