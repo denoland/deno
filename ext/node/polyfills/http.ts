@@ -24,7 +24,6 @@ import {
   Socket,
 } from "node:net";
 import { Buffer } from "node:buffer";
-import { setImmediate } from "node:timers";
 import { ERR_SERVER_NOT_RUNNING } from "ext:deno_node/internal/errors.ts";
 import { EventEmitter } from "node:events";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
@@ -1035,7 +1034,7 @@ export class IncomingMessageForClient extends NodeReadable {
 
     this.on("close", () => {
       // Let the final data flush before closing the socket.
-      setImmediate(() => {
+      nextTick(() => {
         this.socket.emit("close");
       });
     });
