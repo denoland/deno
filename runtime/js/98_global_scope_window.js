@@ -124,34 +124,6 @@ const mainRuntimeGlobalProperties = {
   localStorage: core.propGetterOnly(webStorage.localStorage),
   sessionStorage: core.propGetterOnly(webStorage.sessionStorage),
   Storage: core.propNonEnumerable(webStorage.Storage),
-  DOMMatrix: core.propNonEnumerableLazyLoaded(
-    (geometry) => geometry.DOMMatrix,
-    loadGeometry,
-  ),
-  DOMMatrixReadOnly: core.propNonEnumerableLazyLoaded(
-    (geometry) => geometry.DOMMatrixReadOnly,
-    loadGeometry,
-  ),
-  DOMPoint: core.propNonEnumerableLazyLoaded(
-    (geometry) => geometry.DOMPoint,
-    loadGeometry,
-  ),
-  DOMPointReadOnly: core.propNonEnumerableLazyLoaded(
-    (geometry) => geometry.DOMPointReadOnly,
-    loadGeometry,
-  ),
-  DOMQuad: core.propNonEnumerableLazyLoaded(
-    (geometry) => geometry.DOMQuad,
-    loadGeometry,
-  ),
-  DOMRect: core.propNonEnumerableLazyLoaded(
-    (geometry) => geometry.DOMRect,
-    loadGeometry,
-  ),
-  DOMRectReadOnly: core.propNonEnumerableLazyLoaded(
-    (geometry) => geometry.DOMRectReadOnly,
-    loadGeometry,
-  ),
 };
 
 export { mainRuntimeGlobalProperties, memoizeLazy };

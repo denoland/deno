@@ -35,6 +35,7 @@ import process from "node:process";
 import { Buffer } from "node:buffer";
 import { clearImmediate, setImmediate } from "node:timers";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+import { loadGeometry } from "ext:deno_geometry/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
@@ -58,6 +59,34 @@ const windowOrWorkerGlobalScope = {
   CustomEvent: core.propNonEnumerable(event.CustomEvent),
   DecompressionStream: core.propNonEnumerable(compression.DecompressionStream),
   DOMException: core.propNonEnumerable(DOMException),
+    DOMMatrix: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMMatrix,
+    loadGeometry,
+  ),
+  DOMMatrixReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMMatrixReadOnly,
+    loadGeometry,
+  ),
+  DOMPoint: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMPoint,
+    loadGeometry,
+  ),
+  DOMPointReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMPointReadOnly,
+    loadGeometry,
+  ),
+  DOMQuad: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMQuad,
+    loadGeometry,
+  ),
+  DOMRect: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMRect,
+    loadGeometry,
+  ),
+  DOMRectReadOnly: core.propNonEnumerableLazyLoaded(
+    (geometry) => geometry.DOMRectReadOnly,
+    loadGeometry,
+  ),
   ErrorEvent: core.propNonEnumerable(event.ErrorEvent),
   Event: core.propNonEnumerable(event.Event),
   EventTarget: core.propNonEnumerable(event.EventTarget),
