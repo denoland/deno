@@ -48,8 +48,8 @@ Object.defineProperties(globalThis, {
 });
 ```
 
-Then from rust, provide: `deno_geometry::deno_geometry::init(bool)`
-in the `extensions` field of your `RuntimeOptions`
+Then from rust, provide: `deno_geometry::deno_geometry::init(bool)` in the
+`extensions` field of your `RuntimeOptions`
 
 Where `bool` indicates whether window features are enabled at initialization.
 

@@ -61,7 +61,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.48.2", features = ["transpiling"] }
-deno_core = { version = "0.352.1" }
+deno_core = { git = "https://github.com/petamoriken/deno_core", branch = "feat/make_cppgc_empty_object" }
 
 deno_cache_dir = "=0.23.0"
 deno_doc = "=0.179.0"
@@ -382,7 +382,7 @@ napi-build = "1"
 napi-sys = { version = "=2.2.2", default-features = false }
 
 # geometry
-lightningcss = { version = "1.0.0-alpha.66", default-features = false }
+lightningcss = { version = "1.0.0-alpha.67", default-features = false }
 nalgebra = { version = "0.33.2", default-features = false, features = ["std"] }
 
 # webgpu

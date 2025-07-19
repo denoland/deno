@@ -6,17 +6,16 @@ use std::cell::RefCell;
 use std::mem;
 use std::slice;
 
+use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_core::WebIDL;
 use deno_core::cppgc;
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
-use deno_core::WebIDL;
 use lightningcss::properties::transform::Matrix as CSSMatrix;
 use lightningcss::properties::transform::Matrix3d as CSSMatrix3d;
 use lightningcss::properties::transform::Transform;
@@ -85,7 +84,9 @@ pub enum GeometryError {
   #[error("Inconsistent 2d matrix value")]
   Inconsistent2DMatrix,
   #[class(type)]
-  #[error("The sequence must contain 6 elements for a 2D matrix or 16 elements for a 3D matrix")]
+  #[error(
+    "The sequence must contain 6 elements for a 2D matrix or 16 elements for a 3D matrix"
+  )]
   InvalidSequenceSize,
   #[class(type)]
   #[error("Mismatched types")]
@@ -123,7 +124,7 @@ pub struct DOMPointReadOnly {
 }
 
 impl GarbageCollected for DOMPointReadOnly {
-    fn get_name(&self) -> &'static std::ffi::CStr {
+  fn get_name(&self) -> &'static std::ffi::CStr {
     c"DOMPointReadOnly"
   }
 }
@@ -211,18 +212,18 @@ impl DOMPointReadOnly {
     obj
   }
 
-  // TODO(petamoriken): returns (DOMPointReadOnly, DOMPoint)
-  #[cppgc]
-  pub fn matrix_transform(
+  pub fn matrix_transform<'a>(
     &self,
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] value: DOMMatrixInit,
-  ) -> Result<DOMPointReadOnly, GeometryError> {
+  ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     let matrix = DOMMatrixReadOnly::from_matrix_inner(&value)?;
     let ro = DOMPointReadOnly {
       inner: RefCell::new(Vector4::zeros()),
     };
     matrix_transform_point(&matrix, self, &ro);
-    Ok(ro)
+    let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
+    Ok(cppgc::wrap_object2(scope, obj, (ro, DOMPoint {})))
   }
 }
 
@@ -255,13 +256,15 @@ impl DOMPoint {
     (ro, DOMPoint {})
   }
 
-  // TODO(petamoriken): returns (DOMPointReadOnly, DOMPoint)
   #[reentrant]
   #[static_method]
-  #[cppgc]
-  pub fn from_point(#[webidl] init: DOMPointInit) -> DOMPointReadOnly {
+  pub fn from_point<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    #[webidl] init: DOMPointInit,
+  ) -> v8::Local<'a, v8::Object> {
     let ro = DOMPointReadOnly::from_point_inner(init);
-    ro
+    let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
+    cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}))
   }
 
   #[fast]
@@ -536,13 +539,15 @@ impl DOMRect {
     (ro, DOMRect {})
   }
 
-  // TODO(petamoriken): returns (DOMRectReadOnly, DOMRect)
   #[reentrant]
   #[static_method]
-  #[cppgc]
-  pub fn from_rect(#[webidl] init: DOMRectInit) -> DOMRectReadOnly {
+  pub fn from_rect<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    #[webidl] init: DOMRectInit,
+  ) -> v8::Local<'a, v8::Object> {
     let ro = DOMRectReadOnly::from_rect_inner(init);
-    ro
+    let obj = cppgc::make_cppgc_empty_object::<DOMRect>(scope);
+    cppgc::wrap_object2(scope, obj, (ro, DOMRect {}))
   }
 
   #[fast]
@@ -615,12 +620,11 @@ pub struct DOMQuadInit {
   p4: DOMPointInit,
 }
 
-// TODO(petamoriken): store SameObject<(DOMPointReadOnly, DOMPoint)>
 pub struct DOMQuad {
-  p1: SameObject<DOMPointReadOnly>,
-  p2: SameObject<DOMPointReadOnly>,
-  p3: SameObject<DOMPointReadOnly>,
-  p4: SameObject<DOMPointReadOnly>,
+  p1: v8::Global<v8::Object>,
+  p2: v8::Global<v8::Object>,
+  p3: v8::Global<v8::Object>,
+  p4: v8::Global<v8::Object>,
 }
 
 impl GarbageCollected for DOMQuad {
@@ -645,19 +649,15 @@ impl DOMQuad {
     fn from_point(
       scope: &mut v8::HandleScope,
       point: DOMPointInit,
-    ) -> SameObject<DOMPointReadOnly> {
-      let obj = SameObject::new();
-      obj
-        .set(
-          scope,
-          DOMPointReadOnly {
-            inner: RefCell::new(Vector4::new(
-              *point.x, *point.y, *point.z, *point.w,
-            )),
-          },
-        )
-        .unwrap();
-      obj
+    ) -> v8::Global<v8::Object> {
+      let ro = DOMPointReadOnly {
+        inner: RefCell::new(Vector4::new(
+          *point.x, *point.y, *point.z, *point.w,
+        )),
+      };
+      let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
+      cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}));
+      v8::Global::new(scope, obj)
     }
 
     DOMQuad {
@@ -682,17 +682,13 @@ impl DOMQuad {
       y: f64,
       z: f64,
       w: f64,
-    ) -> SameObject<DOMPointReadOnly> {
-      let obj = SameObject::new();
-      obj
-        .set(
-          scope,
-          DOMPointReadOnly {
-            inner: RefCell::new(Vector4::new(x, y, z, w)),
-          },
-        )
-        .unwrap();
-      obj
+    ) -> v8::Global<v8::Object> {
+      let ro = DOMPointReadOnly {
+        inner: RefCell::new(Vector4::new(x, y, z, w)),
+      };
+      let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
+      cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}));
+      v8::Global::new(scope, obj)
     }
 
     let DOMRectInit {
@@ -720,19 +716,15 @@ impl DOMQuad {
     fn from_point(
       scope: &mut v8::HandleScope,
       point: DOMPointInit,
-    ) -> SameObject<DOMPointReadOnly> {
-      let obj = SameObject::new();
-      obj
-        .set(
-          scope,
-          DOMPointReadOnly {
-            inner: RefCell::new(Vector4::new(
-              *point.x, *point.y, *point.z, *point.w,
-            )),
-          },
-        )
-        .unwrap();
-      obj
+    ) -> v8::Global<v8::Object> {
+      let ro = DOMPointReadOnly {
+        inner: RefCell::new(Vector4::new(
+          *point.x, *point.y, *point.z, *point.w,
+        )),
+      };
+      let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
+      cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}));
+      v8::Global::new(scope, obj)
     }
 
     DOMQuad {
@@ -745,37 +737,37 @@ impl DOMQuad {
 
   #[getter]
   #[global]
-  pub fn p1(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
-    self.p1.get(scope, |_| unreachable!())
+  pub fn p1(&self) -> v8::Global<v8::Object> {
+    self.p1.clone()
   }
 
   #[getter]
   #[global]
-  pub fn p2(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
-    self.p2.get(scope, |_| unreachable!())
+  pub fn p2(&self) -> v8::Global<v8::Object> {
+    self.p2.clone()
   }
 
   #[getter]
   #[global]
-  pub fn p3(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
-    self.p3.get(scope, |_| unreachable!())
+  pub fn p3(&self) -> v8::Global<v8::Object> {
+    self.p3.clone()
   }
 
   #[getter]
   #[global]
-  pub fn p4(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
-    self.p4.get(scope, |_| unreachable!())
+  pub fn p4(&self) -> v8::Global<v8::Object> {
+    self.p4.clone()
   }
 
-  // TODO(petamoriken): returns (DOMRectReadOnly, DOMRect)
-  #[cppgc]
-  pub fn get_bounds(&self, scope: &mut v8::HandleScope) -> DOMRectReadOnly {
+  pub fn get_bounds<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Object> {
     #[inline]
     fn get_ptr(
       scope: &mut v8::HandleScope,
-      value: &SameObject<DOMPointReadOnly>,
+      value: &v8::Global<v8::Object>,
     ) -> cppgc::Ptr<DOMPointReadOnly> {
-      let value = value.get(scope, |_| unreachable!());
       let value = v8::Local::new(scope, value);
       cppgc::try_unwrap_cppgc_object::<DOMPointReadOnly>(scope, value.cast())
         .unwrap()
@@ -799,7 +791,8 @@ impl DOMQuad {
       width: Cell::new(right - left),
       height: Cell::new(bottom - top),
     };
-    ro
+    let obj = cppgc::make_cppgc_empty_object::<DOMRect>(scope);
+    cppgc::wrap_object2(scope, obj, (ro, DOMRect {}))
   }
 
   #[rename("toJSON")]
@@ -820,14 +813,10 @@ impl DOMQuad {
     }
 
     let mut obj = v8::Object::new(scope);
-    let p1 = self.p1.get(scope, |_| unreachable!());
-    let p2 = self.p2.get(scope, |_| unreachable!());
-    let p3 = self.p3.get(scope, |_| unreachable!());
-    let p4 = self.p4.get(scope, |_| unreachable!());
-    set(scope, &mut obj, "p1", p1);
-    set(scope, &mut obj, "p2", p2);
-    set(scope, &mut obj, "p3", p3);
-    set(scope, &mut obj, "p4", p4);
+    set(scope, &mut obj, "p1", self.p1.clone());
+    set(scope, &mut obj, "p2", self.p2.clone());
+    set(scope, &mut obj, "p3", self.p3.clone());
+    set(scope, &mut obj, "p4", self.p4.clone());
     obj
   }
 }
@@ -1826,33 +1815,32 @@ impl DOMMatrixReadOnly {
     self.is_identity_inner()
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn translate(
+  pub fn translate<'a>(
     &self,
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] tx: Option<webidl::UnrestrictedDouble>,
     #[webidl] ty: Option<webidl::UnrestrictedDouble>,
     #[webidl] tz: Option<webidl::UnrestrictedDouble>,
-  ) -> DOMMatrixReadOnly {
+  ) -> v8::Local<'a, v8::Object> {
     let tx = *tx.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let ty = *ty.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let tz = *tz.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
     out.translate_self_inner(tx, ty, tz);
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn scale(
+  pub fn scale<'a>(
     &self,
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] sx: Option<webidl::UnrestrictedDouble>,
     #[webidl] sy: Option<webidl::UnrestrictedDouble>,
     #[webidl] sz: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
-  ) -> DOMMatrixReadOnly {
+  ) -> v8::Local<'a, v8::Object> {
     let sx = *sx.unwrap_or(webidl::UnrestrictedDouble(1.0));
     let sy = *sy.unwrap_or(webidl::UnrestrictedDouble(sx));
     let sz = *sz.unwrap_or(webidl::UnrestrictedDouble(1.0));
@@ -1866,32 +1854,33 @@ impl DOMMatrixReadOnly {
       out
         .scale_with_origin_self_inner(sx, sy, sz, origin_x, origin_y, origin_z);
     }
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn scale_non_uniform(
+  pub fn scale_non_uniform<'a>(
     &self,
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] sx: Option<webidl::UnrestrictedDouble>,
     #[webidl] sy: Option<webidl::UnrestrictedDouble>,
-  ) -> DOMMatrixReadOnly {
+  ) -> v8::Local<'a, v8::Object> {
     let sx = *sx.unwrap_or(webidl::UnrestrictedDouble(1.0));
     let sy = *sy.unwrap_or(webidl::UnrestrictedDouble(1.0));
     let out = self.clone();
     out.scale_without_origin_self_inner(sx, sy, 1.0);
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn scale3d(
+  #[rename("scale3d")]
+  pub fn scale3d<'a>(
     &self,
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] scale: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_z: Option<webidl::UnrestrictedDouble>,
-  ) -> DOMMatrixReadOnly {
+  ) -> v8::Local<'a, v8::Object> {
     let scale = *scale.unwrap_or(webidl::UnrestrictedDouble(1.0));
     let origin_x = *origin_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let origin_y = *origin_y.unwrap_or(webidl::UnrestrictedDouble(0.0));
@@ -1904,17 +1893,17 @@ impl DOMMatrixReadOnly {
         scale, scale, scale, origin_x, origin_y, origin_z,
       );
     }
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn rotate(
+  pub fn rotate<'a>(
     &self,
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] rotate_x: Option<webidl::UnrestrictedDouble>,
     #[webidl] rotate_y: Option<webidl::UnrestrictedDouble>,
     #[webidl] rotate_z: Option<webidl::UnrestrictedDouble>,
-  ) -> DOMMatrixReadOnly {
+  ) -> v8::Local<'a, v8::Object> {
     let rotate_x = *rotate_x.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let (roll_deg, pitch_deg, yaw_deg) =
       if rotate_y.is_none() && rotate_z.is_none() {
@@ -1932,72 +1921,71 @@ impl DOMMatrixReadOnly {
       pitch_deg.to_radians(),
       yaw_deg.to_radians(),
     );
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn rotate_from_vector(
+  pub fn rotate_from_vector<'a>(
     &self,
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
-  ) -> DOMMatrixReadOnly {
+  ) -> v8::Local<'a, v8::Object> {
     let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
     out.rotate_from_vector_self_inner(x, y);
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn rotate_axis_angle(
+  pub fn rotate_axis_angle<'a>(
     &self,
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] z: Option<webidl::UnrestrictedDouble>,
     #[webidl] angle_deg: Option<webidl::UnrestrictedDouble>,
-  ) -> DOMMatrixReadOnly {
+  ) -> v8::Local<'a, v8::Object> {
     let x = *x.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let y = *y.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let z = *z.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let angle_deg = *angle_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
     out.rotate_axis_angle_self_inner(x, y, z, angle_deg.to_radians());
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn skew_x(
+  pub fn skew_x<'a>(
     &self,
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] x_deg: Option<webidl::UnrestrictedDouble>,
-  ) -> DOMMatrixReadOnly {
+  ) -> v8::Local<'a, v8::Object> {
     let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
     out.skew_self_inner(x_deg.to_radians(), 0.0);
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn skew_y(
+  pub fn skew_y<'a>(
     &self,
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] y_deg: Option<webidl::UnrestrictedDouble>,
-  ) -> DOMMatrixReadOnly {
+  ) -> v8::Local<'a, v8::Object> {
     let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
     let out = self.clone();
     out.skew_self_inner(0.0, y_deg.to_radians());
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
   pub fn multiply<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     other: v8::Local<'a, v8::Value>,
-  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+  ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     let out = self.clone();
     if let Some(other) =
       cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, other)
@@ -2014,40 +2002,45 @@ impl DOMMatrixReadOnly {
       let other = DOMMatrixReadOnly::from_matrix_inner(&other)?;
       out.multiply_self_inner(self, &other);
     }
-    Ok(out)
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    Ok(cppgc::wrap_object2(scope, obj, (out, DOMMatrix {})))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn flip_x(&self) -> DOMMatrixReadOnly {
+  pub fn flip_x<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Object> {
     let out = self.clone();
     out.flip_x_inner();
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn flip_y(&self) -> DOMMatrixReadOnly {
+  pub fn flip_y<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Object> {
     let out = self.clone();
     out.flip_y_inner();
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
-  pub fn inverse(&self) -> DOMMatrixReadOnly {
+  pub fn inverse<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Object> {
     let out = self.clone();
     out.invert_self_inner();
-    out
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
-  #[cppgc]
   pub fn transform_point<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     point: v8::Local<'a, v8::Value>,
-  ) -> Result<DOMPointReadOnly, GeometryError> {
+  ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     let out = DOMPointReadOnly {
       inner: RefCell::new(Vector4::zeros()),
     };
@@ -2066,7 +2059,8 @@ impl DOMMatrixReadOnly {
       let point = DOMPointReadOnly::from_point_inner(point);
       matrix_transform_point(self, &point, &out);
     }
-    Ok(out)
+    let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
+    Ok(cppgc::wrap_object2(scope, obj, (out, DOMPoint {})))
   }
 
   #[rename("toJSON")]
@@ -2141,7 +2135,7 @@ impl DOMMatrix {
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
     // TODO(petamoriken): Error when deleting next line. proc-macro bug?
-    #[webidl] _: Option<webidl::UnrestrictedDouble>,
+    #[webidl] _: bool,
   ) -> Result<(DOMMatrixReadOnly, DOMMatrix), GeometryError> {
     let ro = DOMMatrixReadOnly::new(
       state,
@@ -2153,25 +2147,24 @@ impl DOMMatrix {
     Ok((ro, DOMMatrix {}))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[reentrant]
   #[static_method]
-  #[cppgc]
-  pub fn from_matrix(
+  pub fn from_matrix<'a>(
+    scope: &mut v8::HandleScope<'a>,
     #[webidl] init: DOMMatrixInit,
-  ) -> Result<DOMMatrixReadOnly, GeometryError> {
-    DOMMatrixReadOnly::from_matrix_inner(&init)
+  ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
+    let ro = DOMMatrixReadOnly::from_matrix_inner(&init)?;
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    Ok(cppgc::wrap_object2(scope, obj, (ro, DOMMatrix {})))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[rename("fromFloat32Array")]
   #[required(1)]
   #[static_method]
-  #[cppgc]
   pub fn from_float32_array<'a>(
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
-  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+  ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     if !value.is_float32_array() {
       return Err(GeometryError::TypeMismatch);
     }
@@ -2183,8 +2176,8 @@ impl DOMMatrix {
       &Default::default(),
     )?;
 
-    if let [a, b, c, d, e, f] = float64.as_slice() {
-      return Ok(DOMMatrixReadOnly {
+    let ro = if let [a, b, c, d, e, f] = float64.as_slice() {
+      DOMMatrixReadOnly {
         #[rustfmt::skip]
         inner: RefCell::new(Matrix4::new(
            *a,  *c, 0.0,  *e,
@@ -2193,26 +2186,27 @@ impl DOMMatrix {
           0.0, 0.0, 0.0, 1.0,
         )),
         is_2d: Cell::new(true),
-      });
+      }
     } else if float64.len() == 16 {
-      return Ok(DOMMatrixReadOnly {
+      DOMMatrixReadOnly {
         inner: RefCell::new(Matrix4::from_column_slice(float64.as_slice())),
         is_2d: Cell::new(false),
-      });
+      }
     } else {
-      Err(GeometryError::InvalidSequenceSize)
-    }
+      return Err(GeometryError::InvalidSequenceSize);
+    };
+
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    Ok(cppgc::wrap_object2(scope, obj, (ro, DOMMatrix {})))
   }
 
-  // TODO(petamoriken): returns (DOMMatrixReadOnly, DOMMatrix)
   #[rename("fromFloat64Array")]
   #[required(1)]
   #[static_method]
-  #[cppgc]
   pub fn from_float64_array<'a>(
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
-  ) -> Result<DOMMatrixReadOnly, GeometryError> {
+  ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     if !value.is_float64_array() {
       return Err(GeometryError::TypeMismatch);
     }
@@ -2224,8 +2218,8 @@ impl DOMMatrix {
       &Default::default(),
     )?;
 
-    if let [a, b, c, d, e, f] = float64.as_slice() {
-      return Ok(DOMMatrixReadOnly {
+    let ro = if let [a, b, c, d, e, f] = float64.as_slice() {
+      DOMMatrixReadOnly {
         #[rustfmt::skip]
         inner: RefCell::new(Matrix4::new(
            *a,  *c, 0.0,  *e,
@@ -2234,15 +2228,18 @@ impl DOMMatrix {
           0.0, 0.0, 0.0, 1.0,
         )),
         is_2d: Cell::new(true),
-      });
+      }
     } else if float64.len() == 16 {
-      return Ok(DOMMatrixReadOnly {
+      DOMMatrixReadOnly {
         inner: RefCell::new(Matrix4::from_column_slice(float64.as_slice())),
         is_2d: Cell::new(false),
-      });
+      }
     } else {
-      Err(GeometryError::InvalidSequenceSize)
-    }
+      return Err(GeometryError::InvalidSequenceSize);
+    };
+
+    let obj = cppgc::make_cppgc_empty_object::<DOMMatrix>(scope);
+    Ok(cppgc::wrap_object2(scope, obj, (ro, DOMMatrix {})))
   }
 
   #[fast]
@@ -2713,6 +2710,7 @@ impl DOMMatrix {
     this
   }
 
+  #[rename("scale3dSelf")]
   #[global]
   pub fn scale3d_self(
     &self,

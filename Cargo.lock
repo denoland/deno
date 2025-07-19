@@ -98,7 +98,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e89da841a80418a9b391ebaea17f5c112ffaaa96f621d2c285b5174da76b9011"
 dependencies = [
  "cfg-if",
- "getrandom",
+ "getrandom 0.2.14",
  "once_cell",
  "version_check",
  "zerocopy",
@@ -1923,8 +1923,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.352.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf78f3f72ac8e09b18a588bc26a1b3c5ab853e7fb489889b2f5000654d34db5d"
+source = "git+https://github.com/petamoriken/deno_core?branch=feat%2Fmake_cppgc_empty_object#8e0e03692d6948b3d9cc7179e262ca3f285a4f75"
 dependencies = [
  "anyhow",
  "az",
@@ -2672,8 +2671,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.228.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bf8dbe5abf37d270bb853c5dfe45fbe3b1b6c453877cc11d7fe84e9862a6dbc"
+source = "git+https://github.com/petamoriken/deno_core?branch=feat%2Fmake_cppgc_empty_object#8e0e03692d6948b3d9cc7179e262ca3f285a4f75"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro-rules",
@@ -5385,6 +5383,15 @@ checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 
 [[package]]
 name = "itertools"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
@@ -5732,9 +5739,9 @@ dependencies = [
 
 [[package]]
 name = "lightningcss"
-version = "1.0.0-alpha.66"
+version = "1.0.0-alpha.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a73ffa17de66534e4b527232f44aa0a89fad22c4f4e0735f9be35494f058e54"
+checksum = "798fba4e1205eed356b8ed7754cc3f7f04914e27855ca641409f4a532e992149"
 dependencies = [
  "ahash",
  "bitflags 2.8.0",
@@ -5742,8 +5749,8 @@ dependencies = [
  "cssparser",
  "cssparser-color",
  "data-encoding",
- "getrandom",
- "indexmap 2.8.0",
+ "getrandom 0.2.14",
+ "indexmap 2.9.0",
  "itertools 0.10.5",
  "lazy_static",
  "lightningcss-derive",
@@ -8169,8 +8176,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.261.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3495190857461e87a2716141043218aad5281f219f54a03b7ebbe605b3b931df"
+source = "git+https://github.com/petamoriken/deno_core?branch=feat%2Fmake_cppgc_empty_object#8e0e03692d6948b3d9cc7179e262ca3f285a4f75"
 dependencies = [
  "deno_error",
  "num-bigint",
