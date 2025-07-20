@@ -448,6 +448,7 @@
 "parallel/test-fs-readfile-unlink.js" = {}
 "parallel/test-fs-readfile-zero-byte-liar.js" = {}
 "parallel/test-fs-readfilesync-enoent.js" = {}
+"parallel/test-fs-readv-promisify.js" = {}
 "parallel/test-fs-ready-event-stream.js" = {}
 "parallel/test-fs-rmdir-type-check.js" = {}
 "parallel/test-fs-stream-fs-options.js" = {}
