@@ -149,8 +149,9 @@ impl DOMPointReadOnly {
 #[op2(base)]
 impl DOMPointReadOnly {
   #[constructor]
+  #[required(0)]
   #[cppgc]
-  pub fn constructor(
+  fn constructor(
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] z: Option<webidl::UnrestrictedDouble>,
@@ -167,38 +168,39 @@ impl DOMPointReadOnly {
   }
 
   #[reentrant]
+  #[required(0)]
   #[static_method]
   #[cppgc]
-  pub fn from_point(#[webidl] init: DOMPointInit) -> DOMPointReadOnly {
+  fn from_point(#[webidl] init: DOMPointInit) -> DOMPointReadOnly {
     DOMPointReadOnly::from_point_inner(init)
   }
 
   #[fast]
   #[getter]
-  pub fn x(&self) -> f64 {
+  fn x(&self) -> f64 {
     self.inner.borrow().x
   }
 
   #[fast]
   #[getter]
-  pub fn y(&self) -> f64 {
+  fn y(&self) -> f64 {
     self.inner.borrow().y
   }
 
   #[fast]
   #[getter]
-  pub fn z(&self) -> f64 {
+  fn z(&self) -> f64 {
     self.inner.borrow().z
   }
 
   #[fast]
   #[getter]
-  pub fn w(&self) -> f64 {
+  fn w(&self) -> f64 {
     self.inner.borrow().w
   }
 
   #[rename("toJSON")]
-  pub fn to_json<'a>(
+  fn to_json<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
@@ -222,7 +224,8 @@ impl DOMPointReadOnly {
   }
 
   #[reentrant]
-  pub fn matrix_transform<'a>(
+  #[required(0)]
+  fn matrix_transform<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl] value: DOMMatrixInit,
@@ -248,8 +251,9 @@ impl GarbageCollected for DOMPoint {
 #[op2(inherit = DOMPointReadOnly)]
 impl DOMPoint {
   #[constructor]
+  #[required(0)]
   #[cppgc]
-  pub fn constructor(
+  fn constructor(
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] z: Option<webidl::UnrestrictedDouble>,
@@ -267,8 +271,9 @@ impl DOMPoint {
   }
 
   #[reentrant]
+  #[required(0)]
   #[static_method]
-  pub fn from_point<'a>(
+  fn from_point<'a>(
     scope: &mut v8::HandleScope<'a>,
     #[webidl] init: DOMPointInit,
   ) -> v8::Local<'a, v8::Object> {
@@ -279,12 +284,12 @@ impl DOMPoint {
 
   #[fast]
   #[getter]
-  pub fn x(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
+  fn x(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
     ro.inner.borrow().x
   }
 
   #[setter]
-  pub fn x(
+  fn x(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMPointReadOnly,
@@ -294,12 +299,12 @@ impl DOMPoint {
 
   #[fast]
   #[getter]
-  pub fn y(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
+  fn y(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
     ro.inner.borrow().y
   }
 
   #[setter]
-  pub fn y(
+  fn y(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMPointReadOnly,
@@ -309,12 +314,12 @@ impl DOMPoint {
 
   #[fast]
   #[getter]
-  pub fn z(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
+  fn z(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
     ro.inner.borrow().z
   }
 
   #[setter]
-  pub fn z(
+  fn z(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMPointReadOnly,
@@ -324,12 +329,12 @@ impl DOMPoint {
 
   #[fast]
   #[getter]
-  pub fn w(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
+  fn w(&self, #[proto] ro: &DOMPointReadOnly) -> f64 {
     ro.inner.borrow().w
   }
 
   #[setter]
-  pub fn w(
+  fn w(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMPointReadOnly,
@@ -403,8 +408,9 @@ impl DOMRectReadOnly {
 #[op2(base)]
 impl DOMRectReadOnly {
   #[constructor]
+  #[required(0)]
   #[cppgc]
-  pub fn constructor(
+  fn constructor(
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] width: Option<webidl::UnrestrictedDouble>,
@@ -419,62 +425,63 @@ impl DOMRectReadOnly {
   }
 
   #[reentrant]
+  #[required(0)]
   #[static_method]
   #[cppgc]
-  pub fn from_rect(#[webidl] init: DOMRectInit) -> DOMRectReadOnly {
+  fn from_rect(#[webidl] init: DOMRectInit) -> DOMRectReadOnly {
     DOMRectReadOnly::from_rect_inner(init)
   }
 
   #[fast]
   #[getter]
-  pub fn x(&self) -> f64 {
+  fn x(&self) -> f64 {
     self.x.get()
   }
 
   #[fast]
   #[getter]
-  pub fn y(&self) -> f64 {
+  fn y(&self) -> f64 {
     self.y.get()
   }
 
   #[fast]
   #[getter]
-  pub fn width(&self) -> f64 {
+  fn width(&self) -> f64 {
     self.width.get()
   }
 
   #[fast]
   #[getter]
-  pub fn height(&self) -> f64 {
+  fn height(&self) -> f64 {
     self.height.get()
   }
 
   #[fast]
   #[getter]
-  pub fn top(&self) -> f64 {
+  fn top(&self) -> f64 {
     self.get_top()
   }
 
   #[fast]
   #[getter]
-  pub fn right(&self) -> f64 {
+  fn right(&self) -> f64 {
     self.get_right()
   }
 
   #[fast]
   #[getter]
-  pub fn bottom(&self) -> f64 {
+  fn bottom(&self) -> f64 {
     self.get_bottom()
   }
 
   #[fast]
   #[getter]
-  pub fn left(&self) -> f64 {
+  fn left(&self) -> f64 {
     self.get_left()
   }
 
   #[rename("toJSON")]
-  pub fn to_json<'a>(
+  fn to_json<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
@@ -513,8 +520,9 @@ impl GarbageCollected for DOMRect {
 #[op2(inherit = DOMRectReadOnly)]
 impl DOMRect {
   #[constructor]
+  #[required(0)]
   #[cppgc]
-  pub fn constructor(
+  fn constructor(
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] width: Option<webidl::UnrestrictedDouble>,
@@ -530,8 +538,9 @@ impl DOMRect {
   }
 
   #[reentrant]
+  #[required(0)]
   #[static_method]
-  pub fn from_rect<'a>(
+  fn from_rect<'a>(
     scope: &mut v8::HandleScope<'a>,
     #[webidl] init: DOMRectInit,
   ) -> v8::Local<'a, v8::Object> {
@@ -542,12 +551,12 @@ impl DOMRect {
 
   #[fast]
   #[getter]
-  pub fn x(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
+  fn x(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
     ro.x.get()
   }
 
   #[setter]
-  pub fn x(
+  fn x(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMRectReadOnly,
@@ -557,12 +566,12 @@ impl DOMRect {
 
   #[fast]
   #[getter]
-  pub fn y(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
+  fn y(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
     ro.y.get()
   }
 
   #[setter]
-  pub fn y(
+  fn y(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMRectReadOnly,
@@ -572,12 +581,12 @@ impl DOMRect {
 
   #[fast]
   #[getter]
-  pub fn width(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
+  fn width(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
     ro.width.get()
   }
 
   #[setter]
-  pub fn width(
+  fn width(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMRectReadOnly,
@@ -587,12 +596,12 @@ impl DOMRect {
 
   #[fast]
   #[getter]
-  pub fn height(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
+  fn height(&self, #[proto] ro: &DOMRectReadOnly) -> f64 {
     ro.height.get()
   }
 
   #[setter]
-  pub fn height(
+  fn height(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMRectReadOnly,
@@ -627,8 +636,9 @@ impl GarbageCollected for DOMQuad {
 impl DOMQuad {
   #[constructor]
   #[reentrant]
+  #[required(0)]
   #[cppgc]
-  pub fn constructor(
+  fn constructor(
     scope: &mut v8::HandleScope,
     #[webidl] p1: DOMPointInit,
     #[webidl] p2: DOMPointInit,
@@ -659,9 +669,10 @@ impl DOMQuad {
   }
 
   #[reentrant]
+  #[required(0)]
   #[static_method]
   #[cppgc]
-  pub fn from_rect(
+  fn from_rect(
     scope: &mut v8::HandleScope,
     #[webidl] rect: DOMRectInit,
   ) -> DOMQuad {
@@ -696,9 +707,10 @@ impl DOMQuad {
   }
 
   #[reentrant]
+  #[required(0)]
   #[static_method]
   #[cppgc]
-  pub fn from_quad(
+  fn from_quad(
     scope: &mut v8::HandleScope,
     #[webidl] quad: DOMQuadInit,
   ) -> DOMQuad {
@@ -727,29 +739,29 @@ impl DOMQuad {
 
   #[getter]
   #[global]
-  pub fn p1(&self) -> v8::Global<v8::Object> {
+  fn p1(&self) -> v8::Global<v8::Object> {
     self.p1.clone()
   }
 
   #[getter]
   #[global]
-  pub fn p2(&self) -> v8::Global<v8::Object> {
+  fn p2(&self) -> v8::Global<v8::Object> {
     self.p2.clone()
   }
 
   #[getter]
   #[global]
-  pub fn p3(&self) -> v8::Global<v8::Object> {
+  fn p3(&self) -> v8::Global<v8::Object> {
     self.p3.clone()
   }
 
   #[getter]
   #[global]
-  pub fn p4(&self) -> v8::Global<v8::Object> {
+  fn p4(&self) -> v8::Global<v8::Object> {
     self.p4.clone()
   }
 
-  pub fn get_bounds<'a>(
+  fn get_bounds<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
@@ -789,7 +801,7 @@ impl DOMQuad {
   }
 
   #[rename("toJSON")]
-  pub fn to_json<'a>(
+  fn to_json<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
@@ -1611,8 +1623,9 @@ impl DOMMatrixReadOnly {
 impl DOMMatrixReadOnly {
   #[constructor]
   #[reentrant]
+  #[required(0)]
   #[cppgc]
-  pub fn constructor<'a>(
+  fn constructor<'a>(
     state: &mut OpState,
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
@@ -1627,9 +1640,10 @@ impl DOMMatrixReadOnly {
   }
 
   #[reentrant]
+  #[required(0)]
   #[static_method]
   #[cppgc]
-  pub fn from_matrix(
+  fn from_matrix(
     #[webidl] init: DOMMatrixInit,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
     DOMMatrixReadOnly::from_matrix_inner(&init)
@@ -1639,7 +1653,7 @@ impl DOMMatrixReadOnly {
   #[required(1)]
   #[static_method]
   #[cppgc]
-  pub fn from_float32_array<'a>(
+  fn from_float32_array<'a>(
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
@@ -1661,7 +1675,7 @@ impl DOMMatrixReadOnly {
   #[required(1)]
   #[static_method]
   #[cppgc]
-  pub fn from_float64_array<'a>(
+  fn from_float64_array<'a>(
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
@@ -1681,149 +1695,150 @@ impl DOMMatrixReadOnly {
 
   #[fast]
   #[getter]
-  pub fn a(&self) -> f64 {
+  fn a(&self) -> f64 {
     self.a_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn b(&self) -> f64 {
+  fn b(&self) -> f64 {
     self.b_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn c(&self) -> f64 {
+  fn c(&self) -> f64 {
     self.c_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn d(&self) -> f64 {
+  fn d(&self) -> f64 {
     self.d_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn e(&self) -> f64 {
+  fn e(&self) -> f64 {
     self.e_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn f(&self) -> f64 {
+  fn f(&self) -> f64 {
     self.f_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m11(&self) -> f64 {
+  fn m11(&self) -> f64 {
     self.m11_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m12(&self) -> f64 {
+  fn m12(&self) -> f64 {
     self.m12_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m13(&self) -> f64 {
+  fn m13(&self) -> f64 {
     self.m13_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m14(&self) -> f64 {
+  fn m14(&self) -> f64 {
     self.m14_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m21(&self) -> f64 {
+  fn m21(&self) -> f64 {
     self.m21_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m22(&self) -> f64 {
+  fn m22(&self) -> f64 {
     self.m22_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m23(&self) -> f64 {
+  fn m23(&self) -> f64 {
     self.m23_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m24(&self) -> f64 {
+  fn m24(&self) -> f64 {
     self.m24_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m31(&self) -> f64 {
+  fn m31(&self) -> f64 {
     self.m31_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m32(&self) -> f64 {
+  fn m32(&self) -> f64 {
     self.m32_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m33(&self) -> f64 {
+  fn m33(&self) -> f64 {
     self.m33_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m34(&self) -> f64 {
+  fn m34(&self) -> f64 {
     self.m34_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m41(&self) -> f64 {
+  fn m41(&self) -> f64 {
     self.m41_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m42(&self) -> f64 {
+  fn m42(&self) -> f64 {
     self.m42_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m43(&self) -> f64 {
+  fn m43(&self) -> f64 {
     self.m43_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn m44(&self) -> f64 {
+  fn m44(&self) -> f64 {
     self.m44_inner()
   }
 
   #[fast]
   #[getter]
-  pub fn is_2d(&self) -> bool {
+  fn is_2d(&self) -> bool {
     self.is_2d.get()
   }
 
   #[fast]
   #[getter]
-  pub fn is_identity(&self) -> bool {
+  fn is_identity(&self) -> bool {
     self.is_identity_inner()
   }
 
-  pub fn translate<'a>(
+  #[required(0)]
+  fn translate<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl] tx: Option<webidl::UnrestrictedDouble>,
@@ -1839,7 +1854,8 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  pub fn scale<'a>(
+  #[required(0)]
+  fn scale<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl] sx: Option<webidl::UnrestrictedDouble>,
@@ -1866,7 +1882,8 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  pub fn scale_non_uniform<'a>(
+  #[required(0)]
+  fn scale_non_uniform<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl] sx: Option<webidl::UnrestrictedDouble>,
@@ -1881,7 +1898,8 @@ impl DOMMatrixReadOnly {
   }
 
   #[rename("scale3d")]
-  pub fn scale3d<'a>(
+  #[required(0)]
+  fn scale3d<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl] scale: Option<webidl::UnrestrictedDouble>,
@@ -1905,7 +1923,8 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  pub fn rotate<'a>(
+  #[required(0)]
+  fn rotate<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl] rotate_x: Option<webidl::UnrestrictedDouble>,
@@ -1933,7 +1952,8 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  pub fn rotate_from_vector<'a>(
+  #[required(0)]
+  fn rotate_from_vector<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
@@ -1947,7 +1967,8 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  pub fn rotate_axis_angle<'a>(
+  #[required(0)]
+  fn rotate_axis_angle<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
@@ -1965,7 +1986,8 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  pub fn skew_x<'a>(
+  #[required(0)]
+  fn skew_x<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl] x_deg: Option<webidl::UnrestrictedDouble>,
@@ -1977,7 +1999,8 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  pub fn skew_y<'a>(
+  #[required(0)]
+  fn skew_y<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl] y_deg: Option<webidl::UnrestrictedDouble>,
@@ -1989,7 +2012,8 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  pub fn multiply<'a>(
+  #[required(0)]
+  fn multiply<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     other: v8::Local<'a, v8::Value>,
@@ -2014,7 +2038,8 @@ impl DOMMatrixReadOnly {
     Ok(cppgc::wrap_object2(scope, obj, (out, DOMMatrix {})))
   }
 
-  pub fn flip_x<'a>(
+  #[required(0)]
+  fn flip_x<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
@@ -2024,7 +2049,8 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  pub fn flip_y<'a>(
+  #[required(0)]
+  fn flip_y<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
@@ -2034,7 +2060,7 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
-  pub fn inverse<'a>(
+  fn inverse<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
@@ -2045,7 +2071,8 @@ impl DOMMatrixReadOnly {
   }
 
   #[reentrant]
-  pub fn transform_point<'a>(
+  #[required(0)]
+  fn transform_point<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
     point: v8::Local<'a, v8::Value>,
@@ -2073,7 +2100,7 @@ impl DOMMatrixReadOnly {
   }
 
   #[rename("toJSON")]
-  pub fn to_json<'a>(
+  fn to_json<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
@@ -2139,8 +2166,9 @@ impl GarbageCollected for DOMMatrix {
 impl DOMMatrix {
   #[constructor]
   #[reentrant]
+  #[required(0)]
   #[cppgc]
-  pub fn constructor<'a>(
+  fn constructor<'a>(
     state: &mut OpState,
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
@@ -2158,8 +2186,9 @@ impl DOMMatrix {
   }
 
   #[reentrant]
+  #[required(0)]
   #[static_method]
-  pub fn from_matrix<'a>(
+  fn from_matrix<'a>(
     scope: &mut v8::HandleScope<'a>,
     #[webidl] init: DOMMatrixInit,
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
@@ -2171,7 +2200,7 @@ impl DOMMatrix {
   #[rename("fromFloat32Array")]
   #[required(1)]
   #[static_method]
-  pub fn from_float32_array<'a>(
+  fn from_float32_array<'a>(
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
@@ -2214,7 +2243,7 @@ impl DOMMatrix {
   #[rename("fromFloat64Array")]
   #[required(1)]
   #[static_method]
-  pub fn from_float64_array<'a>(
+  fn from_float64_array<'a>(
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
@@ -2256,12 +2285,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn a(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn a(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.a_inner()
   }
 
   #[setter]
-  pub fn a(
+  fn a(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2274,12 +2303,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn b(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn b(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.b_inner()
   }
 
   #[setter]
-  pub fn b(
+  fn b(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2292,12 +2321,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn c(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn c(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.c_inner()
   }
 
   #[setter]
-  pub fn c(
+  fn c(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2310,12 +2339,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn d(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn d(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.d_inner()
   }
 
   #[setter]
-  pub fn d(
+  fn d(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2328,12 +2357,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn e(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn e(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.e_inner()
   }
 
   #[setter]
-  pub fn e(
+  fn e(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2346,12 +2375,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn f(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn f(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.f_inner()
   }
 
   #[setter]
-  pub fn f(
+  fn f(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2364,12 +2393,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m11(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m11(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m11_inner()
   }
 
   #[setter]
-  pub fn m11(
+  fn m11(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2382,12 +2411,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m12(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m12(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m12_inner()
   }
 
   #[setter]
-  pub fn m12(
+  fn m12(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2400,12 +2429,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m13(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m13(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m13_inner()
   }
 
   #[setter]
-  pub fn m13(
+  fn m13(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2421,12 +2450,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m14(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m14(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m14_inner()
   }
 
   #[setter]
-  pub fn m14(
+  fn m14(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2442,12 +2471,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m21(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m21(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m21_inner()
   }
 
   #[setter]
-  pub fn m21(
+  fn m21(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2460,12 +2489,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m22(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m22(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m22_inner()
   }
 
   #[setter]
-  pub fn m22(
+  fn m22(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2478,12 +2507,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m23(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m23(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m23_inner()
   }
 
   #[setter]
-  pub fn m23(
+  fn m23(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2499,12 +2528,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m24(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m24(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m24_inner()
   }
 
   #[setter]
-  pub fn m24(
+  fn m24(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2520,12 +2549,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m31(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m31(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m31_inner()
   }
 
   #[setter]
-  pub fn m31(
+  fn m31(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2541,12 +2570,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m32(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m32(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m32_inner()
   }
 
   #[setter]
-  pub fn m32(
+  fn m32(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2562,12 +2591,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m33(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m33(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m33_inner()
   }
 
   #[setter]
-  pub fn m33(
+  fn m33(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2583,12 +2612,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m34(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m34(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m34_inner()
   }
 
   #[setter]
-  pub fn m34(
+  fn m34(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2604,12 +2633,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m41(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m41(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m41_inner()
   }
 
   #[setter]
-  pub fn m41(
+  fn m41(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2622,12 +2651,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m42(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m42(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m42_inner()
   }
 
   #[setter]
-  pub fn m42(
+  fn m42(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2640,12 +2669,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m43(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m43(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m43_inner()
   }
 
   #[setter]
-  pub fn m43(
+  fn m43(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2661,12 +2690,12 @@ impl DOMMatrix {
 
   #[fast]
   #[getter]
-  pub fn m44(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
+  fn m44(&self, #[proto] ro: &DOMMatrixReadOnly) -> f64 {
     ro.m44_inner()
   }
 
   #[setter]
-  pub fn m44(
+  fn m44(
     &self,
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
@@ -2680,8 +2709,9 @@ impl DOMMatrix {
     }
   }
 
+  #[required(0)]
   #[global]
-  pub fn translate_self(
+  fn translate_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[webidl] tx: Option<webidl::UnrestrictedDouble>,
@@ -2696,8 +2726,9 @@ impl DOMMatrix {
     this
   }
 
+  #[required(0)]
   #[global]
-  pub fn scale_self(
+  fn scale_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[webidl] sx: Option<webidl::UnrestrictedDouble>,
@@ -2723,8 +2754,9 @@ impl DOMMatrix {
   }
 
   #[rename("scale3dSelf")]
+  #[required(0)]
   #[global]
-  pub fn scale3d_self(
+  fn scale3d_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[webidl] scale: Option<webidl::UnrestrictedDouble>,
@@ -2747,8 +2779,9 @@ impl DOMMatrix {
     this
   }
 
+  #[required(0)]
   #[global]
-  pub fn rotate_self(
+  fn rotate_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[webidl] rotate_x: Option<webidl::UnrestrictedDouble>,
@@ -2775,8 +2808,9 @@ impl DOMMatrix {
     this
   }
 
+  #[required(0)]
   #[global]
-  pub fn rotate_from_vector_self(
+  fn rotate_from_vector_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
@@ -2789,8 +2823,9 @@ impl DOMMatrix {
     this
   }
 
+  #[required(0)]
   #[global]
-  pub fn rotate_axis_angle_self(
+  fn rotate_axis_angle_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
@@ -2807,8 +2842,9 @@ impl DOMMatrix {
     this
   }
 
+  #[required(0)]
   #[global]
-  pub fn skew_x_self(
+  fn skew_x_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[webidl] x_deg: Option<webidl::UnrestrictedDouble>,
@@ -2819,8 +2855,9 @@ impl DOMMatrix {
     this
   }
 
+  #[required(0)]
   #[global]
-  pub fn skew_y_self(
+  fn skew_y_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[webidl] y_deg: Option<webidl::UnrestrictedDouble>,
@@ -2831,8 +2868,9 @@ impl DOMMatrix {
     this
   }
 
+  #[required(0)]
   #[global]
-  pub fn multiply_self<'a>(
+  fn multiply_self<'a>(
     &self,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::HandleScope<'a>,
@@ -2862,8 +2900,9 @@ impl DOMMatrix {
     Ok(this)
   }
 
+  #[required(0)]
   #[global]
-  pub fn pre_multiply_self<'a>(
+  fn pre_multiply_self<'a>(
     &self,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::HandleScope<'a>,
@@ -2894,7 +2933,7 @@ impl DOMMatrix {
   }
 
   #[global]
-  pub fn invert_self(
+  fn invert_self(
     &self,
     #[this] this: v8::Global<v8::Object>,
     #[proto] ro: &DOMMatrixReadOnly,
