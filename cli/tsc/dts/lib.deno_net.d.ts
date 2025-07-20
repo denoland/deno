@@ -757,7 +757,7 @@ declare namespace Deno {
    * @experimental
    * @category Network
    */
-  export interface QuicListener extends AsyncIterable<QuicConn> {
+  export interface QuicListener extends AsyncIterable<QuicIncoming> {
     /** Waits for and resolves to the next incoming connection. */
     incoming(): Promise<QuicIncoming>;
 
@@ -767,7 +767,7 @@ declare namespace Deno {
     /** Stops the listener. This does not close the endpoint. */
     stop(): void;
 
-    [Symbol.asyncIterator](): AsyncIterableIterator<QuicConn>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<QuicIncoming>;
 
     /** The endpoint for this listener. */
     readonly endpoint: QuicEndpoint;
