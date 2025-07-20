@@ -54,3 +54,18 @@ pub fn op_tls_peer_certificate(
   let cert = Certificate::from_der(cert_der.as_ref()).ok()?;
   cert.to_object(detailed).ok()
 }
+
+#[op2]
+#[string]
+pub fn op_tls_canonicalize_ipv4_address(
+  #[string] hostname: String,
+) -> Option<String> {
+  let ip = hostname.parse::<std::net::IpAddr>().ok()?;
+
+  let canonical_ip = match ip {
+    std::net::IpAddr::V4(ipv4) => ipv4.to_string(),
+    std::net::IpAddr::V6(ipv6) => ipv6.to_string(),
+  };
+
+  Some(canonical_ip)
+}
