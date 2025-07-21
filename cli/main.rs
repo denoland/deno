@@ -911,10 +911,10 @@ async fn initialize_tunnel(
     deno_runtime::deno_tls::SocketUse::GeneralSsl,
   )?;
 
-  let (tunnel, metadata, mut events) =
+  let (tunnel, mut events) =
     match deno_runtime::deno_net::tunnel::TunnelConnection::connect(
       addr,
-      hostname,
+      hostname.to_owned(),
       tls_config.clone(),
       deno_runtime::deno_net::tunnel::Authentication::App {
         token,
@@ -931,7 +931,7 @@ async fn initialize_tunnel(
         let token = auth_tunnel().await?;
         deno_runtime::deno_net::tunnel::TunnelConnection::connect(
           addr,
-          hostname,
+          hostname.to_owned(),
           tls_config,
           deno_runtime::deno_net::tunnel::Authentication::App {
             token,
@@ -962,17 +962,26 @@ async fn initialize_tunnel(
             colors::green(format!("You are connected to {endpoint}!"))
           );
         }
-        Event::Migrate => {
-          // TODO: reconnect
+        Event::Reconnect(d) => {
+          log::info!(
+            "{}",
+            colors::green(format!(
+              "Reconnecting tunnel in {}s...",
+              d.as_secs()
+            ))
+          );
         }
+        _ => {}
       }
     }
   });
 
-  for (k, v) in metadata.env {
-    // SAFETY: We're doing this before any threads are created.
-    unsafe {
-      std::env::set_var(k, v);
+  if let Some(metadata) = tunnel.metadata() {
+    for (k, v) in metadata.env {
+      // SAFETY: We're doing this before any threads are created.
+      unsafe {
+        std::env::set_var(k, v);
+      }
     }
   }
 

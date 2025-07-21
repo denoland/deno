@@ -2981,9 +2981,9 @@ dependencies = [
 
 [[package]]
 name = "deno_tunnel"
-version = "0.2.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38d54bc70cc874c19c3703d3b3b7d5fe709cbf98ff0aa7e9298825bf0e7c6f74"
+checksum = "ebd372577d6c2f4f5906c495ef6fee4119a0891c3848b13ef4db6af07505c8c3"
 dependencies = [
  "pin-project",
  "quinn",
