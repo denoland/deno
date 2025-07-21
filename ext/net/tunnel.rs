@@ -36,9 +36,13 @@ pub fn set_tunnel(tunnel: TunnelConnection) {
 
 fn before_exit() {
   if let Some(tunnel) = get_tunnel() {
+    log::trace!("deno_net::tunnel::before_exit >");
+
     // stay alive long enough to actually send the close frame, since
     // we can't rely on the linux kernel to close this like with tcp.
     deno_core::futures::executor::block_on(tunnel.close(1u32, b""));
+
+    log::trace!("deno_net::tunnel::before_exit <");
   }
 }
 

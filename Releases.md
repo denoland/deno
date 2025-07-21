@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.4.2 / 2025.07.16
+
+- fix(bundle): default "jsxImportSource" to "react" (#30082)
+- fix(check): temporarily ignore ERR_TYPES_NOT_FOUND (#29926)
+- fix(ext/node): don't throw error on invalid path input on `exists` and
+  `existsSync` (#29971)
+- fix(ext/node): validate path parameters on `link` and `linkSync` (#30061)
+- fix(lint): do not panic for many overlapping lint fixes (#30104)
+- fix(lsp): tsconfig features for 'deno check' parity (#30007)
+- fix(tsconfig): prioritize deno.json if it has compiler options (#30056)
+- fix(tsconfig): use tsc defaults for 'strict' and 'noImplicitOverride' (#30045)
+- fix(unstable): support importing files in npm packages as bytes and text
+  (#30065)
+- fix: `global` global should be writeable (#30032)
+- fix: early init logging (#30034)
+- fix: new signal handling (#30029)
+- fix: upgrade deno_core to 0.352.1 (#30119)
+
 ### 2.4.1 / 2025.07.08
 
 - feat(unstable/otel): support vsock transport for telemetry (#30001)

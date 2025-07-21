@@ -29,6 +29,7 @@ pub mod sys {
   pub type CliSys = sys_traits::impls::RealSys;
 }
 
+use std::collections::HashMap;
 use std::env;
 use std::future::Future;
 use std::io::IsTerminal;
@@ -909,16 +910,32 @@ async fn initialize_tunnel(
     deno_runtime::deno_tls::SocketUse::GeneralSsl,
   )?;
 
-  let (tunnel, metadata, mut events) =
+  let mut metadata = HashMap::new();
+  metadata.insert(
+    "hostname".into(),
+    deno_runtime::deno_os::sys_info::hostname(),
+  );
+  if let Some(entrypoint) = match &flags.subcommand {
+    DenoSubcommand::Run(run_flags) => Some(run_flags.script.to_owned()),
+    DenoSubcommand::Serve(serve_flags) => Some(serve_flags.script.to_owned()),
+    DenoSubcommand::Repl(_) => Some("<repl>".into()),
+    DenoSubcommand::Eval(_) => Some("<eval>".into()),
+    _ => None,
+  } {
+    metadata.insert("entrypoint".into(), entrypoint);
+  }
+
+  let (tunnel, mut events) =
     match deno_runtime::deno_net::tunnel::TunnelConnection::connect(
       addr,
-      hostname,
+      hostname.to_owned(),
       tls_config.clone(),
       deno_runtime::deno_net::tunnel::Authentication::App {
         token,
         org: org.clone(),
         app: app.clone(),
       },
+      metadata.clone(),
     )
     .await
     {
@@ -929,13 +946,14 @@ async fn initialize_tunnel(
         let token = auth_tunnel().await?;
         deno_runtime::deno_net::tunnel::TunnelConnection::connect(
           addr,
-          hostname,
+          hostname.to_owned(),
           tls_config,
           deno_runtime::deno_net::tunnel::Authentication::App {
             token,
             org,
             app,
           },
+          metadata.clone(),
         )
         .await?
       }
@@ -960,17 +978,26 @@ async fn initialize_tunnel(
             colors::green(format!("You are connected to {endpoint}!"))
           );
         }
-        Event::Migrate => {
-          // TODO: reconnect
+        Event::Reconnect(d) => {
+          log::info!(
+            "{}",
+            colors::green(format!(
+              "Reconnecting tunnel in {}s...",
+              d.as_secs()
+            ))
+          );
         }
+        _ => {}
       }
     }
   });
 
-  for (k, v) in metadata.env {
-    // SAFETY: We're doing this before any threads are created.
-    unsafe {
-      std::env::set_var(k, v);
+  if let Some(metadata) = tunnel.metadata() {
+    for (k, v) in metadata.env {
+      // SAFETY: We're doing this before any threads are created.
+      unsafe {
+        std::env::set_var(k, v);
+      }
     }
   }
 
