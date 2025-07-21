@@ -93,13 +93,18 @@ pub struct TaskResult {
 }
 
 pub async fn run_task(
-  opts: RunTaskOptions<'_>,
+  mut opts: RunTaskOptions<'_>,
 ) -> Result<TaskResult, AnyError> {
   let script = get_script_with_args(opts.script, opts.argv);
   let seq_list = deno_task_shell::parser::parse(&script)
     .with_context(|| format!("Error parsing script '{}'.", opts.task_name))?;
   let env_vars =
     prepare_env_vars(opts.env_vars, opts.init_cwd, opts.root_node_modules_dir);
+  if !opts.custom_commands.contains_key("deno") {
+    opts
+      .custom_commands
+      .insert("deno".to_string(), Rc::new(DenoCommand::default()));
+  }
   let state = deno_task_shell::ShellState::new(
     env_vars,
     opts.cwd,
@@ -262,6 +267,26 @@ impl ShellCommand for NpmCommand {
       }
     };
     ExecutableCommand::new("npm".to_string(), npm_path).execute(context)
+  }
+}
+
+pub struct DenoCommand(ExecutableCommand);
+
+impl Default for DenoCommand {
+  fn default() -> Self {
+    Self(ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe().unwrap(),
+    ))
+  }
+}
+
+impl ShellCommand for DenoCommand {
+  fn execute(
+    &self,
+    context: ShellCommandContext,
+  ) -> LocalBoxFuture<'static, ExecuteResult> {
+    self.0.execute(context)
   }
 }
 

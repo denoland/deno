@@ -903,29 +903,41 @@ async fn initialize_tunnel(
   let cert_store_provider = factory.root_cert_store_provider();
   let root_cert_store = cert_store_provider.get_or_try_init()?.clone();
 
-  let (tunnel, metadata, mut events) =
-    match deno_runtime::deno_net::tunnel::TunnelListener::connect(
+  let tls_config = deno_runtime::deno_tls::create_client_config(
+    Some(root_cert_store),
+    vec![],
+    None,
+    deno_runtime::deno_tls::TlsKeys::Null,
+    deno_runtime::deno_tls::SocketUse::GeneralSsl,
+  )?;
+
+  let (tunnel, mut events) =
+    match deno_runtime::deno_net::tunnel::TunnelConnection::connect(
       addr,
-      hostname,
-      Some(root_cert_store.clone()),
-      token,
-      org.clone(),
-      app.clone(),
+      hostname.to_owned(),
+      tls_config.clone(),
+      deno_runtime::deno_net::tunnel::Authentication::App {
+        token,
+        org: org.clone(),
+        app: app.clone(),
+      },
     )
     .await
     {
       Ok(res) => res,
-      Err(deno_runtime::deno_net::tunnel::Error::InvalidToken) => {
+      Err(deno_runtime::deno_net::tunnel::Error::Unauthorized) => {
         tools::deploy::get_token_entry()?.delete_credential()?;
 
         let token = auth_tunnel().await?;
-        deno_runtime::deno_net::tunnel::TunnelListener::connect(
+        deno_runtime::deno_net::tunnel::TunnelConnection::connect(
           addr,
-          hostname,
-          Some(root_cert_store),
-          token,
-          org,
-          app,
+          hostname.to_owned(),
+          tls_config,
+          deno_runtime::deno_net::tunnel::Authentication::App {
+            token,
+            org,
+            app,
+          },
         )
         .await?
       }
@@ -950,17 +962,26 @@ async fn initialize_tunnel(
             colors::green(format!("You are connected to {endpoint}!"))
           );
         }
-        Event::Migrate => {
-          // TODO: reconnect
+        Event::Reconnect(d) => {
+          log::info!(
+            "{}",
+            colors::green(format!(
+              "Reconnecting tunnel in {}s...",
+              d.as_secs()
+            ))
+          );
         }
+        _ => {}
       }
     }
   });
 
-  for (k, v) in metadata.env {
-    // SAFETY: We're doing this before any threads are created.
-    unsafe {
-      std::env::set_var(k, v);
+  if let Some(metadata) = tunnel.metadata() {
+    for (k, v) in metadata.env {
+      // SAFETY: We're doing this before any threads are created.
+      unsafe {
+        std::env::set_var(k, v);
+      }
     }
   }
 

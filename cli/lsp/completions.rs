@@ -161,8 +161,11 @@ pub async fn get_import_completions(
   npm_search_api: &CliNpmSearchApi,
   document_modules: &DocumentModules,
   resolver: &LspResolver,
-  maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
+  let maybe_import_map = resolver
+    .get_scoped_resolver(module.scope.as_deref())
+    .as_workspace_resolver()
+    .maybe_import_map();
   let (text, _, graph_range) = module.dependency_at_position(position)?;
   let resolution_mode = graph_range
     .resolution_mode
