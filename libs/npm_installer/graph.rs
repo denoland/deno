@@ -125,9 +125,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
         }
       }
       None => {
-        let err = Arc::new(JsErrorBox::generic(
-          "npm specifiers were requested; but --no-npm is specified",
-        ));
+        let err =
+          Arc::new(JsErrorBox::from_err(deno_resolver::npm::NoNpmError));
         NpmResolvePkgReqsResult {
           results: package_reqs
             .iter()

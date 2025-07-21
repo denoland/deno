@@ -302,18 +302,14 @@ impl<
         } else {
           match NpmPackageReqReference::from_specifier(&specifier) {
             Ok(reference) => {
-              if let Some(url) =
+              let url =
                 self.resolver.resolve_non_workspace_npm_req_ref_to_file(
                   &reference,
                   referrer,
                   options.mode,
                   options.kind,
-                )?
-              {
-                url.into_url()?
-              } else {
-                specifier.into_owned()
-              }
+                )?;
+              url.into_url()?
             }
             _ => specifier.into_owned(),
           }
@@ -329,7 +325,7 @@ impl<
     referrer: &Url,
     resolution_mode: node_resolver::ResolutionMode,
     resolution_kind: node_resolver::NodeResolutionKind,
-  ) -> Result<Option<node_resolver::UrlOrPath>, npm::ResolveNpmReqRefError> {
+  ) -> Result<node_resolver::UrlOrPath, npm::ResolveNpmReqRefError> {
     self.resolver.resolve_non_workspace_npm_req_ref_to_file(
       npm_req_ref,
       referrer,
