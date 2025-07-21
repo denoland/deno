@@ -29,6 +29,7 @@ pub mod sys {
   pub type CliSys = sys_traits::impls::RealSys;
 }
 
+use std::collections::HashMap;
 use std::env;
 use std::future::Future;
 use std::io::IsTerminal;
@@ -911,6 +912,21 @@ async fn initialize_tunnel(
     deno_runtime::deno_tls::SocketUse::GeneralSsl,
   )?;
 
+  let mut metadata = HashMap::new();
+  metadata.insert(
+    "hostname".into(),
+    deno_runtime::deno_os::sys_info::hostname(),
+  );
+  if let Some(entrypoint) = match &flags.subcommand {
+    DenoSubcommand::Run(run_flags) => Some(run_flags.script.to_owned()),
+    DenoSubcommand::Serve(serve_flags) => Some(serve_flags.script.to_owned()),
+    DenoSubcommand::Repl(_) => Some("<repl>".into()),
+    DenoSubcommand::Eval(_) => Some("<eval>".into()),
+    _ => None,
+  } {
+    metadata.insert("entrypoint".into(), entrypoint);
+  }
+
   let (tunnel, mut events) =
     match deno_runtime::deno_net::tunnel::TunnelConnection::connect(
       addr,
@@ -921,6 +937,7 @@ async fn initialize_tunnel(
         org: org.clone(),
         app: app.clone(),
       },
+      metadata.clone(),
     )
     .await
     {
@@ -938,6 +955,7 @@ async fn initialize_tunnel(
             org,
             app,
           },
+          metadata.clone(),
         )
         .await?
       }

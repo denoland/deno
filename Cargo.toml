@@ -131,7 +131,7 @@ napi_sym = { version = "0.141.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.49.0", path = "./libs/node_resolver" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
-deno_tunnel = "0.4.0"
+deno_tunnel = "0.5.0"
 
 # widely used libraries
 anyhow = "1.0.57"
