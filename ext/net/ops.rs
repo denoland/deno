@@ -864,7 +864,7 @@ pub async fn op_net_accept_tunnel(
   let resource = state
     .borrow()
     .resource_table
-    .get::<NetworkListenerResource<crate::tunnel::TunnelListener>>(rid)
+    .get::<NetworkListenerResource<crate::tunnel::TunnelConnection>>(rid)
     .map_err(|_| NetError::ListenerClosed)?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()

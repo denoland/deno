@@ -408,7 +408,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           let code_source = shared
             .npm_module_loader
             .load(
-              &original_specifier,
+              Cow::Borrowed(&original_specifier),
               maybe_referrer.as_ref(),
               &as_deno_resolver_requested_module_type(&requested_module_type),
             )
@@ -416,7 +416,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .map_err(JsErrorBox::from_err)?;
           let code_cache_entry = match requested_module_type {
             RequestedModuleType::None => shared.get_code_cache(
-              code_source.specifier,
+              &code_source.specifier,
               code_source.source.as_bytes(),
             ),
             RequestedModuleType::Other(_)
@@ -431,7 +431,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             ),
             loaded_module_source_to_module_source_code(code_source.source),
             &original_specifier,
-            code_source.specifier,
+            &code_source.specifier,
             code_cache_entry,
           ))
         }

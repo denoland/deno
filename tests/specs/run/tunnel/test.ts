@@ -58,6 +58,11 @@ async function handleConnection(conn: Deno.QuicConn) {
       conn.close();
       return;
     }
+    const auth = await readStreamHeader(reader);
+    if (auth.headerType !== "AuthenticateApp") {
+      conn.close();
+      return;
+    }
     await writeStreamHeader(writer, {
       headerType: "Authenticated",
       hostnames: ["localhost"],
