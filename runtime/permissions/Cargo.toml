@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.69.0"
+version = "0.70.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -29,9 +29,9 @@ percent-encoding = { workspace = true, features = [] }
 serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
-temp_deno_which.workspace = true
 thiserror.workspace = true
 url.workspace = true
+which.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }

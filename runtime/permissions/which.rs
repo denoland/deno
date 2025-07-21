@@ -4,8 +4,8 @@ use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-pub use temp_deno_which::Error;
-use temp_deno_which::sys::Sys;
+pub use which::Error;
+use which::sys::Sys;
 
 pub fn which_in(
   sys: impl WhichSys,
@@ -14,7 +14,7 @@ pub fn which_in(
   cwd: PathBuf,
 ) -> Result<PathBuf, Error> {
   let sys = WhichSysAdapter(sys);
-  let config = temp_deno_which::WhichConfig::new_with_sys(sys)
+  let config = which::WhichConfig::new_with_sys(sys)
     .custom_cwd(cwd)
     .binary_name(OsString::from(binary_name));
   let config = match path {
@@ -69,8 +69,12 @@ impl<TSys: WhichSys> Sys for WhichSysAdapter<TSys> {
     }
   }
 
-  fn env_var_os(&self, name: &OsStr) -> Option<std::ffi::OsString> {
-    self.0.env_var_os(name)
+  fn env_path(&self) -> Option<OsString> {
+    self.0.env_var_os("PATH")
+  }
+
+  fn env_path_ext(&self) -> Option<OsString> {
+    self.0.env_var_os("PATHEXT")
   }
 
   fn metadata(
@@ -157,7 +161,7 @@ pub struct WhichReadDirEntrySysAdapter<TFsDirEntry: sys_traits::FsDirEntry>(
   TFsDirEntry,
 );
 
-impl<TFsDirEntry: sys_traits::FsDirEntry> temp_deno_which::sys::SysReadDirEntry
+impl<TFsDirEntry: sys_traits::FsDirEntry> which::sys::SysReadDirEntry
   for WhichReadDirEntrySysAdapter<TFsDirEntry>
 {
   fn file_name(&self) -> std::ffi::OsString {
@@ -173,7 +177,7 @@ pub struct WhichMetadataSysAdapter<TMetadata: sys_traits::FsMetadataValue>(
   TMetadata,
 );
 
-impl<TMetadata: sys_traits::FsMetadataValue> temp_deno_which::sys::SysMetadata
+impl<TMetadata: sys_traits::FsMetadataValue> which::sys::SysMetadata
   for WhichMetadataSysAdapter<TMetadata>
 {
   fn is_symlink(&self) -> bool {
