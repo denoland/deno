@@ -42,6 +42,7 @@ const {
   StringPrototypeReplace,
   StringPrototypeToLowerCase,
   StringPrototypeTrim,
+  StringFromCodePoint,
   SymbolFor,
   SymbolSpecies,
   SymbolToPrimitive,
@@ -666,12 +667,56 @@ Buffer.prototype.swap64 = function swap64() {
   return this;
 };
 
+function isContinuation(v) {
+  return (v & 0xC0) === 0x80;
+}
+
+function decodeCodePoint(buffer, end, index) {
+  const v = buffer[index];
+  if (v <= 0x7F) {
+    return [v, index + 1];
+  }
+  let k = v ? Math.clz32(~(v << 24)) : 32;
+  const mask = (1 << (8 - k)) - 1;
+  let value = v & mask;
+  index++; k--;
+  while (index < end && k > 0 && isContinuation(buffer[index])) {
+    value = (value << 6);
+    value += (buffer[index] & 0x3F);
+    index++; k--;
+  }
+  return [value, index];
+}
+
+function decodeUtf8Fast(buffer, start, end) {
+  let index = start;
+  let result = "";
+  while (index < end) {
+    const [v, newIndex] = decodeCodePoint(buffer, end, index);
+    index = newIndex;
+    result += StringFromCodePoint(v);
+  }
+  return result;
+}
+
+function decodeUtf8(buffer, start, end) {
+  if (end - start >= 0 && end - start <= 10) {
+    return decodeUtf8Fast(buffer, start, end);
+  } else {
+    return op_node_decode_utf8(
+      TypedArrayPrototypeGetBuffer(buffer),
+      TypedArrayPrototypeGetByteOffset(buffer),
+      TypedArrayPrototypeGetByteLength(buffer),
+      start ?? 0,
+      end ?? TypedArrayPrototypeGetByteLength(buffer),
+    );
+  }
+}
+
 Buffer.prototype.toString = function toString(encoding, start, end) {
   if (arguments.length === 0) {
-    return op_node_decode_utf8(
-      TypedArrayPrototypeGetBuffer(this),
-      TypedArrayPrototypeGetByteOffset(this),
-      TypedArrayPrototypeGetByteLength(this),
+    return decodeUtf8(
+      this,
       0,
       this.length,
     );
@@ -698,20 +743,16 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
   }
 
   if (encoding === undefined) {
-    return op_node_decode_utf8(
-      TypedArrayPrototypeGetBuffer(this),
-      TypedArrayPrototypeGetByteOffset(this),
-      TypedArrayPrototypeGetByteLength(this),
+    return decodeUtf8(
+      this,
       start,
       end,
     );
   }
   
   if (encoding === "utf8") {
-    return op_node_decode_utf8(
-      TypedArrayPrototypeGetBuffer(this),
-      TypedArrayPrototypeGetByteOffset(this),
-      TypedArrayPrototypeGetByteLength(this),
+    return decodeUtf8(
+      this,
       start,
       end,
     );
@@ -1067,10 +1108,8 @@ Buffer.prototype.ucs2Write = function ucs2Write(string, offset, length) {
 Buffer.prototype.utf8Slice = utf8Slice;
 
 function utf8Slice(start, end) {
-  return op_node_decode_utf8(
-    TypedArrayPrototypeGetBuffer(this),
-    TypedArrayPrototypeGetByteOffset(this),
-    TypedArrayPrototypeGetByteLength(this),
+  return decodeUtf8(
+    this,
     start,
     end,
   );
