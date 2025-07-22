@@ -422,12 +422,19 @@ pub const fn op_node_decode_utf8() -> ::deno_core::_ops::OpDecl {
       } else if end > byte_length {
         return Err(JsErrorBox::generic("Invalid end"));
       }
-      v8::String::new_from_utf8(
-        scope,
-        &zero_copy[start..end],
-        v8::NewStringType::Normal,
-      )
-      .ok_or_else(|| JsErrorBox::generic("Invalid UTF-8 sequence"))
+      let zero_copy = &zero_copy[start..end];
+
+      if zero_copy.len() <= 256 && zero_copy.is_ascii() {
+        v8::String::new_from_one_byte(
+          scope,
+          zero_copy,
+          v8::NewStringType::Normal,
+        )
+        .ok_or_else(|| JsErrorBox::generic("Invalid ASCII sequence"))
+      } else {
+        v8::String::new_from_utf8(scope, &zero_copy, v8::NewStringType::Normal)
+          .ok_or_else(|| JsErrorBox::generic("Invalid UTF-8 sequence"))
+      }
     }
   }
   <op_node_decode_utf8 as ::deno_core::_ops::Op>::DECL
