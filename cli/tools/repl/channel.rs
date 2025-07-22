@@ -2,9 +2,9 @@
 
 use std::cell::RefCell;
 
+use deno_core::InspectorPostMessageError;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_error::JsErrorBox;
@@ -49,7 +49,7 @@ pub enum RustylineSyncMessage {
 }
 
 pub enum RustylineSyncResponse {
-  PostMessage(Result<Value, CoreError>),
+  PostMessage(Result<Value, InspectorPostMessageError>),
   LspCompletions(Vec<ReplCompletionItem>),
 }
 
@@ -64,7 +64,7 @@ impl RustylineSyncMessageSender {
     &self,
     method: &str,
     params: Option<T>,
-  ) -> Result<Value, CoreError> {
+  ) -> Result<Value, InspectorPostMessageError> {
     match self
       .message_tx
       .blocking_send(RustylineSyncMessage::PostMessage {

@@ -1062,11 +1062,7 @@ impl CliFactory {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
       let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
-        Box::new(HmrRunner::new(
-          emitter.clone(),
-          session,
-          watcher_communicator.clone(),
-        ))
+        HmrRunner::new(emitter.clone(), session, watcher_communicator.clone())
       });
       Some(fn_)
     } else {
@@ -1077,7 +1073,7 @@ impl CliFactory {
         let coverage_dir = PathBuf::from(coverage_dir);
         let fn_: crate::worker::CreateCoverageCollectorCb =
           Box::new(move |session| {
-            Box::new(CoverageCollector::new(coverage_dir.clone(), session))
+            CoverageCollector::new(coverage_dir.clone(), session)
           });
         Some(fn_)
       } else {
