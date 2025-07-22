@@ -331,25 +331,25 @@ pub const fn op_node_decode_utf8() -> ::deno_core::_ops::OpDecl {
         };
         let arg1 = arg1;
         let arg2 = args.get(1usize as i32);
-        let Some(arg2) = to_f64_option(&mut scope, &arg2) else {
+        let Some(arg2) = to_f64_option(&arg2) else {
           deno_core::_ops::throw_error_one_byte_info(&info, "expected f64");
           return 1;
         };
         let arg2 = arg2 as _;
         let arg3 = args.get(2usize as i32);
-        let Some(arg3) = to_f64_option(&mut scope, &arg3) else {
+        let Some(arg3) = to_f64_option(&arg3) else {
           deno_core::_ops::throw_error_one_byte_info(&info, "expected f64");
           return 1;
         };
         let arg3 = arg3 as _;
         let arg4 = args.get(3usize as i32);
-        let Some(arg4) = to_f64_option(&mut scope, &arg4) else {
+        let Some(arg4) = to_f64_option(&arg4) else {
           deno_core::_ops::throw_error_one_byte_info(&info, "expected f64");
           return 1;
         };
         let arg4 = arg4 as _;
         let arg5 = args.get(4usize as i32);
-        let Some(arg5) = to_f64_option(&mut scope, &arg5) else {
+        let Some(arg5) = to_f64_option(&arg5) else {
           deno_core::_ops::throw_error_one_byte_info(&info, "expected f64");
           return 1;
         };
@@ -360,12 +360,6 @@ pub const fn op_node_decode_utf8() -> ::deno_core::_ops::OpDecl {
       match result {
         Ok(result) => rv.set(deno_core::_ops::RustToV8NoScope::to_v8(result)),
         Err(err) => {
-          let opctx: &'s _ = unsafe {
-            &*(deno_core::v8::Local::<deno_core::v8::External>::cast_unchecked(
-              args.data(),
-            )
-            .value() as *const deno_core::_ops::OpCtx)
-          };
           let exception = deno_core::error::to_v8_error(&mut scope, &err);
           scope.throw_exception(exception);
           return 1;
@@ -421,8 +415,7 @@ pub const fn op_node_decode_utf8() -> ::deno_core::_ops::OpDecl {
       start: usize,
       end: usize,
     ) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
-      let backing_store = buf.get_backing_store();
-      let zero_copy = buffer_to_slice(&backing_store, byte_offset, byte_length);
+      let zero_copy = buffer_to_slice(&buf, byte_offset, byte_length);
       // eprintln!("start: {}, end: {}", start, end);
       if start > end {
         return Err(JsErrorBox::generic("Invalid start and end"));
@@ -440,10 +433,7 @@ pub const fn op_node_decode_utf8() -> ::deno_core::_ops::OpDecl {
   <op_node_decode_utf8 as ::deno_core::_ops::Op>::DECL
 }
 
-fn to_f64_option(
-  scope: &mut v8::HandleScope,
-  arg: &v8::Local<v8::Value>,
-) -> Option<f64> {
+fn to_f64_option(arg: &v8::Local<v8::Value>) -> Option<f64> {
   // if arg.is_number() {
   // let arg = arg.to_number(scope).unwrap().value();
   let arg = unsafe {
@@ -455,11 +445,11 @@ fn to_f64_option(
   // }
 }
 
-fn buffer_to_slice(
-  buf: &v8::SharedRef<v8::BackingStore>,
+fn buffer_to_slice<'a>(
+  buf: &'a v8::Local<v8::ArrayBuffer>,
   byte_offset: usize,
   byte_length: usize,
-) -> &[u8] {
+) -> &'a [u8] {
   let Some(ptr) = buf.data() else {
     return &[];
   };

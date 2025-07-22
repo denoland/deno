@@ -700,7 +700,7 @@ function decodeUtf8Fast(buffer, start, end) {
 }
 
 function decodeUtf8(buffer, start, end) {
-  if (end - start >= 0 && end - start <= 10) {
+  if (end - start >= 0 && end - start <= 6) {
     return decodeUtf8Fast(buffer, start, end);
   } else {
     return op_node_decode_utf8(
