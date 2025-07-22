@@ -550,9 +550,12 @@ impl MainWorker {
         deno_broadcast_channel::deno_broadcast_channel::args(
           services.broadcast_channel.clone(),
         ),
+        #[cfg(feature = "ffi")]
         deno_ffi::deno_ffi::args::<PermissionsContainer>(
           services.deno_rt_native_addon_loader.clone(),
         ),
+        #[cfg(not(feature = "ffi"))]
+        crate::shared::deno_ffi::args(),
         deno_net::deno_net::args::<PermissionsContainer>(
           services.root_cert_store_provider.clone(),
           options.unsafely_ignore_certificate_errors.clone(),
@@ -1055,7 +1058,10 @@ fn common_extensions<
     deno_broadcast_channel::deno_broadcast_channel::lazy_init::<
       InMemoryBroadcastChannel,
     >(),
+    #[cfg(feature = "ffi")]
     deno_ffi::deno_ffi::lazy_init::<PermissionsContainer>(),
+    #[cfg(not(feature = "ffi"))]
+    crate::shared::deno_ffi::lazy_init(),
     deno_net::deno_net::lazy_init::<PermissionsContainer>(),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::lazy_init::<MultiBackendDbHandler>(),
