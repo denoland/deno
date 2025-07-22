@@ -594,3 +594,41 @@ fn extract_key_info(spki: &x509_parser::x509::SubjectPublicKeyInfo) -> KeyInfo {
     _ => KeyInfo::default(),
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_extract_subject_or_issuer() {
+    let cert_pem = b"-----BEGIN CERTIFICATE-----
+MIICljCCAX4CCQCKmSl7UdG4tjANBgkqhkiG9w0BAQsFADANMQswCQYDVQQDDAJD
+TjAeFw0yNTAxMjIxNzQyNDFaFw0yNjAxMjIxNzQyNDFaMA0xCzAJBgNVBAMMAkNO
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0K/qV+9PQH3Kg2g6tK6X
+VxY7F8/2YKi8cKnX0YT5g9QnKjS1v8R9kKvR+LLx0Y1+pT8zFZr7BjU1cKxz8fmY
+7P+vKH1R3O5p2qKvOxY4GlO6U3cQ1HtQ9TjIGiXn7T6v9BkKH6k8zL4m5W6Kp4s4
+tR9J9n4rGY3j6TxC9h3W3d/dW9H6nF9r3oF9F5KvG0p8H0R7WXoO6h4J5m8J5k6b
+5K3E7j9O9J1V9R8h4I5k8h0x7P2s1J8F1c5Z5T8l8e0K8N9J0x8Z8r9m0O0k6F0r
+9B3G4e2j8d6F8r0t8I2W4K2v4g1g8N6f4j8c9w2r6m8O3J5I5h5E5i7n8d9v3QAU
+lQIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQAWOKj9Z7ZuY8fz8N3bYh8G4kFh2J7R
+B6QFzT4M6gF3jl6oJ5E3K0k5z7n9L9T5c4p8x5X8f2w8T2r4N8b4y2B8W6z4N5S8
+y8M7R4H0t4R8y6S9c8o8r8g8Y8b8J8t6N8p4M3O4K8f8Z7w8P8T8G8N8q8b8H6H8
+r6C3V5F4Z9y8o8i9E4j5V8O5Q7Y8Z4W8n7R8B8l8H8L4P4F8r8c8A4v3O4g8L8S6
+8r8t3C6h8Y6k8b3F8w8z8H8g8k8m8B3R6K8C6P4R8f8M6g8Z2N8B8x8Z8F3A2N8R
+8r8H8x2F8J2h8c8Y8x8H8g8n4l8x4E8r8p8j8S8m6F3k8L8S8z6A8F8k8B9U8L3R
+-----END CERTIFICATE-----";
+
+    let pem = pem::parse_x509_pem(cert_pem).unwrap().1;
+    let cert = Certificate::from_der(&pem.contents).unwrap();
+    let cert_inner = cert.inner.get().deref();
+
+    let result = extract_subject_or_issuer(cert_inner.subject());
+
+    assert_eq!(result.cn, Some("CN".to_string()));
+    assert_eq!(result.c, None);
+    assert_eq!(result.st, None);
+    assert_eq!(result.l, None);
+    assert_eq!(result.o, None);
+    assert_eq!(result.ou, None);
+  }
+}
