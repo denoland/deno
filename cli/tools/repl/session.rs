@@ -16,6 +16,7 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_core::InspectorPostMessageError;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
@@ -322,7 +323,7 @@ impl ReplSession {
     &mut self,
     method: &str,
     params: Option<T>,
-  ) -> Result<Value, CoreError> {
+  ) -> Result<Value, InspectorPostMessageError> {
     self
       .worker
       .js_runtime
@@ -782,7 +783,7 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<cdp::EvaluateResponse, CoreError> {
+  ) -> Result<cdp::EvaluateResponse, InspectorPostMessageError> {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",
