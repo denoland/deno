@@ -32,6 +32,7 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { startTlsInternal } from "ext:deno_net/02_tls.js";
+import console from "node:console";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -80,7 +81,11 @@ export class TLSSocket extends net.Socket {
   ssl: any;
 
   _start() {
-    this[kHandle].afterConnectTls();
+    this.connecting = true;
+    if (this[kHandle] && this[kHandle][kStreamBaseField]) {
+      console.log("in _start", this[kHandle][kStreamBaseField]);
+      this[kHandle].afterConnectTls();
+    }
   }
 
   constructor(socket: any, opts: any = kEmptyObject) {
@@ -145,6 +150,7 @@ export class TLSSocket extends net.Socket {
       }
 
       const options = tlsOptions;
+      console.log("_wrapHandle", handle);
       if (!handle) {
         handle = options.pipe
           ? new Pipe(PipeConstants.SOCKET)
@@ -155,6 +161,11 @@ export class TLSSocket extends net.Socket {
 
       // Set `afterConnectTls` hook. This is called in the `afterConnect` method of net.Socket
       handle.afterConnectTls = async () => {
+        console.log(
+          "afterConnectTls called",
+          !!handle[kStreamBaseField],
+          (new Error()).stack,
+        );
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
         if (tlssock._needsSockInitWorkaround) {
           // skips the TLS handshake for @npmcli/agent as it's handled by
@@ -184,6 +195,7 @@ export class TLSSocket extends net.Socket {
           // Assign the TLS connection to the handle and resume reading.
           handle[kStreamBaseField] = conn;
           handle.upgrading = false;
+          handle.connecting = false;
           if (!handle.pauseOnCreate) {
             handle.readStart();
           }
@@ -192,8 +204,9 @@ export class TLSSocket extends net.Socket {
 
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-        } catch {
+        } catch (e) {
           // TODO(kt3k): Handle this
+          console.log("caught in startTlsInternal", e);
         }
       };
 

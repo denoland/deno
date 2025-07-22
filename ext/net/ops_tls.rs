@@ -232,40 +232,80 @@ impl TlsStreamResource {
     self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
-    let mut rd = RcRef::map(&self, |r| match r.inner {
-      TlsStreamInner::Tcp { ref rd, .. } => rd,
-      _ => todo!(),
-    })
-    .borrow_mut()
-    .await;
-    let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
-    rd.read(data).try_or_cancel(cancel_handle).await
+    if matches!(self.inner, TlsStreamInner::Tcp { .. }) {
+      let mut rd = RcRef::map(&self, |r| match r.inner {
+        TlsStreamInner::Tcp { ref rd, .. } => rd,
+        _ => unreachable!(),
+      })
+      .borrow_mut()
+      .await;
+      let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+      rd.read(data).try_or_cancel(cancel_handle).await
+    } else if matches!(self.inner, TlsStreamInner::Unix { .. }) {
+      let mut rd = RcRef::map(&self, |r| match r.inner {
+        TlsStreamInner::Unix { ref rd, .. } => rd,
+        _ => unreachable!(),
+      })
+      .borrow_mut()
+      .await;
+      let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+      rd.read(data).try_or_cancel(cancel_handle).await
+    } else {
+      unreachable!()
+    }
   }
 
   pub async fn write(
     self: Rc<Self>,
     data: &[u8],
   ) -> Result<usize, std::io::Error> {
-    let mut wr = RcRef::map(&self, |r| match r.inner {
-      TlsStreamInner::Tcp { ref wr, .. } => wr,
-      _ => todo!(),
-    })
-    .borrow_mut()
-    .await;
-    let nwritten = wr.write(data).await?;
-    wr.flush().await?;
-    Ok(nwritten)
+    if matches!(self.inner, TlsStreamInner::Tcp { .. }) {
+      let mut wr = RcRef::map(&self, |r| match r.inner {
+        TlsStreamInner::Tcp { ref wr, .. } => wr,
+        _ => unreachable!(),
+      })
+      .borrow_mut()
+      .await;
+      let nwritten = wr.write(data).await?;
+      wr.flush().await?;
+      Ok(nwritten)
+    } else if matches!(self.inner, TlsStreamInner::Unix { .. }) {
+      let mut wr = RcRef::map(&self, |r| match r.inner {
+        TlsStreamInner::Unix { ref wr, .. } => wr,
+        _ => unreachable!(),
+      })
+      .borrow_mut()
+      .await;
+      let nwritten = wr.write(data).await?;
+      wr.flush().await?;
+      Ok(nwritten)
+    } else {
+      unreachable!()
+    }
   }
 
   pub async fn shutdown(self: Rc<Self>) -> Result<(), std::io::Error> {
-    let mut wr = RcRef::map(&self, |r| match r.inner {
-      TlsStreamInner::Tcp { ref wr, .. } => wr,
-      _ => todo!(),
-    })
-    .borrow_mut()
-    .await;
-    wr.shutdown().await?;
-    Ok(())
+    if matches!(self.inner, TlsStreamInner::Tcp { .. }) {
+      let mut wr = RcRef::map(&self, |r| match r.inner {
+        TlsStreamInner::Tcp { ref wr, .. } => wr,
+        _ => unreachable!(),
+      })
+      .borrow_mut()
+      .await;
+      wr.shutdown().await?;
+      Ok(())
+    } else if matches!(self.inner, TlsStreamInner::Tcp { .. }) {
+      let mut wr = RcRef::map(&self, |r| match r.inner {
+        TlsStreamInner::Unix { ref wr, .. } => wr,
+        _ => unreachable!(),
+      })
+      .borrow_mut()
+      .await;
+      wr.shutdown().await?;
+      Ok(())
+    } else {
+      unreachable!()
+    }
   }
 
   pub async fn handshake(
@@ -275,19 +315,37 @@ impl TlsStreamResource {
       return Ok(tls_info.clone());
     }
 
-    let mut wr = RcRef::map(self, |r| match r.inner {
-      TlsStreamInner::Tcp { ref wr, .. } => wr,
-      _ => todo!(),
-    })
-    .borrow_mut()
-    .await;
-    let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
-    let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
+    if matches!(self.inner, TlsStreamInner::Tcp { .. }) {
+      let mut wr = RcRef::map(self, |r| match r.inner {
+        TlsStreamInner::Tcp { ref wr, .. } => wr,
+        _ => unreachable!(),
+      })
+      .borrow_mut()
+      .await;
+      let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
+      let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
 
-    let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
-    let tls_info = TlsHandshakeInfo { alpn_protocol };
-    self.handshake_info.replace(Some(tls_info.clone()));
-    Ok(tls_info)
+      let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
+      let tls_info = TlsHandshakeInfo { alpn_protocol };
+      self.handshake_info.replace(Some(tls_info.clone()));
+      return Ok(tls_info);
+    } else if matches!(self.inner, TlsStreamInner::Unix { .. }) {
+      let mut wr = RcRef::map(self, |r| match r.inner {
+        TlsStreamInner::Unix { ref wr, .. } => wr,
+        _ => unreachable!(),
+      })
+      .borrow_mut()
+      .await;
+      let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
+      let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
+
+      let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
+      let tls_info = TlsHandshakeInfo { alpn_protocol };
+      self.handshake_info.replace(Some(tls_info.clone()));
+      return Ok(tls_info);
+    }
+
+    unreachable!();
   }
 }
 
@@ -400,6 +458,7 @@ pub fn op_tls_start<NP>(
 where
   NP: NetPermissions + 'static,
 {
+  eprintln!("op_tls_start");
   let rid = args.rid;
   let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
   let hostname = match &*args.hostname {
@@ -454,6 +513,7 @@ where
     .take::<TcpStreamResource>(rid)
     .map_err(NetError::Resource)
   {
+    eprintln!("op_tls_start TCP stream");
     // This TCP connection might be used somewhere else. If it's the case, we cannot proceed with the
     // process of starting a TLS connection on top of this TCP connection, so we just return a Busy error.
     // See also: https://github.com/denoland/deno/pull/16242
@@ -484,6 +544,7 @@ where
   if let Ok(resource_rc) =
     resource_table.take::<crate::io::UnixStreamResource>(rid)
   {
+    eprintln!("op_tls_start Unix stream");
     // This UNIX socket might be used somewhere else.
     let resource =
       Rc::try_unwrap(resource_rc).map_err(|_| NetError::UnixStreamBusy)?;

@@ -41,6 +41,7 @@ import {
   newAsyncId,
   ownerSymbol,
 } from "ext:deno_node/internal/async_hooks.ts";
+import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import {
   ERR_INVALID_ADDRESS_FAMILY,
   ERR_INVALID_ARG_TYPE,
@@ -360,6 +361,7 @@ function _afterConnect(
 
   assert(socket.connecting);
 
+  console.log("connecting false 1");
   socket.connecting = false;
   socket._sockname = null;
 
@@ -375,14 +377,17 @@ function _afterConnect(
 
     socket._unrefTimer();
 
-    socket.emit("connect");
-    socket.emit("ready");
-
     // Deno specific: run tls handshake if it's from a tls socket
     // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
-    if (typeof handle.afterConnectTls === "function") {
+    if (
+      typeof handle.afterConnectTls === "function" && handle[kStreamBaseField]
+    ) {
+      console.log("in _afterconnect", (new Error()).stack);
       handle.afterConnectTls();
     }
+
+    socket.emit("connect");
+    socket.emit("ready");
 
     // Start the first read, or get an immediate EOF.
     // this doesn't actually consume any bytes, because len=0.
@@ -390,6 +395,7 @@ function _afterConnect(
       socket.read(0);
     }
   } else {
+    console.log("connecting false 2");
     socket.connecting = false;
     let details;
 
@@ -1390,6 +1396,7 @@ export class Socket extends Duplex {
 
     this._unrefTimer();
 
+    console.log("connecting set to true");
     this.connecting = true;
 
     if (pipe) {
@@ -1439,7 +1446,7 @@ export class Socket extends Duplex {
    * @return The socket itself.
    */
   override resume(): this {
-	  console.log(this.connecting, this._handle, this._handle?.reading);
+    console.log(this.connecting, this._handle, this._handle?.reading);
     if (
       !this.connecting &&
       this._handle &&
@@ -1863,6 +1870,7 @@ export class Socket extends Duplex {
 
   override _destroy(exception: Error | null, cb: (err: Error | null) => void) {
     debug("destroy");
+    console.log("connecting false 3");
     this.connecting = false;
 
     // deno-lint-ignore no-this-alias
