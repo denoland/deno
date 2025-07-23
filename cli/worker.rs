@@ -530,6 +530,7 @@ mod tests {
         module_loader: Rc::new(FsModuleLoader),
         permissions: PermissionsContainer::new(
           permission_desc_parser,
+          None,
           Permissions::none_without_prompt(),
         ),
         blob_store: Default::default(),
