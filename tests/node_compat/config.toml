@@ -1163,6 +1163,7 @@
 "parallel/test-tls-invoke-queued.js" = {}
 "parallel/test-tls-no-sslv3.js" = {}
 "parallel/test-tls-pause.js" = {}
+"parallel/test-tls-peer-certificate-encoding.js" = {}
 "parallel/test-tls-psk-server.js" = {}
 "parallel/test-tls-securepair-server.js" = {}
 "parallel/test-tls-server-verify.js" = {}
