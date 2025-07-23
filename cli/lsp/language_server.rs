@@ -342,7 +342,7 @@ impl LanguageServer {
         inner_loader: &mut inner_loader,
         open_modules: &open_modules,
       };
-      let _graph = module_graph_creator
+      let graph = module_graph_creator
         .create_graph_with_loader(
           GraphKind::All,
           roots.clone(),
@@ -350,6 +350,18 @@ impl LanguageServer {
           NpmCachingStrategy::Eager,
         )
         .await?;
+      crate::graph_util::graph_valid(
+        &graph,
+        &CliSys::default(),
+        &roots,
+        graph_util::GraphValidOptions {
+          kind: GraphKind::All,
+          check_js: CheckJsOption::False,
+          exit_integrity_errors: false,
+          allow_unknown_media_types: true,
+          allow_unknown_jsr_exports: false,
+        },
+      )?;
 
       // Update the lockfile on the file system with anything new
       // found after caching
