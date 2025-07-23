@@ -63,9 +63,9 @@ deno_ast = { version = "=0.48.2", features = ["transpiling"] }
 deno_core = { version = "0.353.0" }
 
 deno_cache_dir = "=0.23.0"
-deno_doc = "=0.179.0"
+deno_doc = "=0.180.0"
 deno_error = "=0.6.1"
-deno_graph = { version = "=0.96.2", default-features = false }
+deno_graph = { version = "=0.97.0", default-features = false }
 deno_lint = "=0.76.0"
 deno_lockfile = "=0.30.2"
 deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
@@ -77,7 +77,7 @@ deno_task_shell = "=0.25.2"
 deno_terminal = "=0.2.2"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.93.0"
+eszip = "=0.94.0"
 
 denokv_proto = "0.11.0"
 denokv_remote = "0.11.0"

@@ -157,7 +157,6 @@ pub async fn doc(
           check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
           allow_unknown_media_types: false,
-          ignore_graph_errors: true,
           allow_unknown_jsr_exports: false,
         },
       );
