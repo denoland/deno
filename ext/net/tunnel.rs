@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -27,14 +29,25 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
 static TUNNEL: OnceLock<TunnelConnection> = OnceLock::new();
+static RUN_BEFORE_EXIT: AtomicBool = AtomicBool::new(true);
 
 pub fn set_tunnel(tunnel: TunnelConnection) {
   if TUNNEL.set(tunnel).is_ok() {
-    deno_signals::before_exit(before_exit);
+    deno_signals::before_exit(before_exit_internal);
   }
 }
 
-fn before_exit() {
+fn before_exit_internal() {
+  if RUN_BEFORE_EXIT.load(Ordering::Relaxed) {
+    before_exit();
+  }
+}
+
+pub fn disable_before_exit() {
+  RUN_BEFORE_EXIT.store(false, Ordering::Relaxed);
+}
+
+pub fn before_exit() {
   if let Some(tunnel) = get_tunnel() {
     log::trace!("deno_net::tunnel::before_exit >");
 
