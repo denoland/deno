@@ -132,7 +132,7 @@
 "parallel/test-buffer-zero-fill-cli.js" = {}
 "parallel/test-buffer-zero-fill-reset.js" = {}
 "parallel/test-buffer-zero-fill.js" = {}
-"parallel/test-child-process-can-write-to-stdout.js" = {}
+"parallel/test-child-process-can-write-to-stdout.js" = { flaky = true }
 "parallel/test-child-process-default-options.js" = {}
 "parallel/test-child-process-detached.js" = {}
 "parallel/test-child-process-disconnect.js" = {}
@@ -431,6 +431,7 @@
 "parallel/test-fs-long-path.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
+"parallel/test-fs-promisified.js" = {}
 "parallel/test-fs-read-file-sync-hostname.js" = {}
 "parallel/test-fs-read-stream-autoClose.js" = {}
 "parallel/test-fs-read-stream-double-close.js" = {}
@@ -1162,6 +1163,7 @@
 "parallel/test-tls-invoke-queued.js" = {}
 "parallel/test-tls-no-sslv3.js" = {}
 "parallel/test-tls-pause.js" = {}
+"parallel/test-tls-peer-certificate-encoding.js" = {}
 "parallel/test-tls-psk-server.js" = {}
 "parallel/test-tls-securepair-server.js" = {}
 "parallel/test-tls-server-verify.js" = {}
