@@ -1429,18 +1429,7 @@ impl DenoDiagnostic {
         (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution.as_ref().map(|(resolved, sloppy_reason)| sloppy_reason.suggestion_message_for_specifier(resolved))), data)
       },
       Self::ResolutionError(err) => {
-        let mut message;
-        message = enhanced_resolution_error_message(err);
-        if let deno_graph::ResolutionError::ResolverError {error, ..} = err{
-          if let ResolveError::ImportMap(importmap) = (*error).as_ref() {
-            if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) = &**importmap {
-              if specifier.chars().next().unwrap_or('\0') == '@'{
-                let hint = format!("\nHint: Use [deno add {}] to add the dependency.", specifier);
-                message.push_str(hint.as_str());
-              }
-            }
-          }
-        }
+        let message = enhanced_resolution_error_message(err);
         (
         lsp::DiagnosticSeverity::ERROR,
         message,
