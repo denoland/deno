@@ -19,6 +19,7 @@ use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
+use import_map::ImportMapErrorKind;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
@@ -783,7 +784,15 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
             maybe_specifier = Some(specifier);
           }
         }
-        ResolveError::ImportMap(_) => {}
+        ResolveError::ImportMap(import_map_err) => {
+          if let ImportMapErrorKind::UnmappedBareSpecifier(
+            specifier,
+            _referrer,
+          ) = import_map_err.as_kind()
+          {
+            maybe_specifier = Some(specifier);
+          }
+        }
       }
     }
   }

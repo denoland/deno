@@ -25,7 +25,6 @@ use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
 use deno_core::url;
 use deno_core::url::Url;
-use deno_graph::CheckJsOption;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
 use deno_lib::args::CaData;
@@ -102,7 +101,6 @@ use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
-use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::config::ConfigWatchedFileType;
@@ -344,7 +342,7 @@ impl LanguageServer {
         inner_loader: &mut inner_loader,
         open_modules: &open_modules,
       };
-      let graph = module_graph_creator
+      let _graph = module_graph_creator
         .create_graph_with_loader(
           GraphKind::All,
           roots.clone(),
@@ -352,19 +350,6 @@ impl LanguageServer {
           NpmCachingStrategy::Eager,
         )
         .await?;
-      graph_util::graph_valid(
-        &graph,
-        &CliSys::default(),
-        &roots,
-        graph_util::GraphValidOptions {
-          kind: GraphKind::All,
-          check_js: CheckJsOption::False,
-          exit_integrity_errors: false,
-          allow_unknown_media_types: true,
-          ignore_graph_errors: true,
-          allow_unknown_jsr_exports: false,
-        },
-      )?;
 
       // Update the lockfile on the file system with anything new
       // found after caching

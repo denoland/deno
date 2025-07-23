@@ -6,6 +6,8 @@ use std::fmt::Display;
 
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
+use deno_resolver::DenoResolveError;
+use deno_resolver::DenoResolveErrorKind;
 use deno_runtime::deno_core::error::AnyError;
 use deno_runtime::deno_core::error::CoreError;
 use deno_runtime::deno_core::error::CoreErrorKind;
@@ -56,4 +58,14 @@ pub fn any_and_jserrorbox_downcast_ref<
           _ => None,
         })
     })
+}
+
+pub fn downcast_ref_deno_resolve_error(
+  err: &JsErrorBox,
+) -> Option<&DenoResolveErrorKind> {
+  err
+    .as_any()
+    .downcast_ref::<DenoResolveError>()
+    .map(|e| e.as_kind())
+    .or_else(|| err.as_any().downcast_ref::<DenoResolveErrorKind>())
 }
