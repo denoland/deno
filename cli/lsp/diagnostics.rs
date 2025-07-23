@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::thread;
 
+use console_static_text::ansi::strip_ansi_codes;
 use deno_ast::MediaType;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
@@ -1429,7 +1430,7 @@ impl DenoDiagnostic {
         (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution.as_ref().map(|(resolved, sloppy_reason)| sloppy_reason.suggestion_message_for_specifier(resolved))), data)
       },
       Self::ResolutionError(err) => {
-        let message = enhanced_resolution_error_message(err);
+        let message = strip_ansi_codes(&enhanced_resolution_error_message(err)).into_owned();
         (
         lsp::DiagnosticSeverity::ERROR,
         message,
