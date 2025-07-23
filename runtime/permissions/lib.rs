@@ -694,7 +694,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
   ) -> Result<(), PermissionDeniedError> {
     let (result, prompted, is_allow_all) = self
       .query_desc_denied(desc, AllowPartial::from(!assert_non_partial))
-      .check2(
+      .check(
         TQuery::flag_name(),
         api_name,
         || desc.map(|d| format_display_name(d.display_name()).into_owned()),

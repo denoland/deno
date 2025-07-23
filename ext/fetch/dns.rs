@@ -237,13 +237,7 @@ mod tests {
       _open_access: deno_permissions::OpenAccessKind,
       _api_name: &str,
     ) -> Result<deno_permissions::CheckedPath<'a>, PermissionCheckError> {
-      Ok(deno_permissions::CheckedPath {
-        path: deno_permissions::PathWithRequested {
-          path,
-          requested: None,
-        },
-        canonicalized: false,
-      })
+      Ok(deno_permissions::CheckedPath::unsafe_new(path))
     }
 
     fn check_net(

@@ -77,13 +77,9 @@ impl FetchPermissions for Noop {
     deno_runtime::deno_permissions::CheckedPath<'a>,
     deno_runtime::deno_permissions::PermissionCheckError,
   > {
-    Ok(deno_runtime::deno_permissions::CheckedPath {
-      path: deno_runtime::deno_permissions::PathWithRequested {
-        path,
-        requested: None,
-      },
-      canonicalized: false,
-    })
+    Ok(deno_runtime::deno_permissions::CheckedPath::unsafe_new(
+      path,
+    ))
   }
 
   fn check_net_vsock(
