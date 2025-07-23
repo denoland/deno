@@ -25,6 +25,7 @@ use deno_core::serde_json::json;
 use deno_core::unsync::spawn;
 use deno_core::url;
 use deno_core::url::Url;
+use deno_graph::CheckJsOption;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
 use deno_lib::args::CaData;
@@ -101,6 +102,7 @@ use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
+use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::config::ConfigWatchedFileType;
@@ -350,7 +352,7 @@ impl LanguageServer {
           NpmCachingStrategy::Eager,
         )
         .await?;
-      crate::graph_util::graph_valid(
+      graph_util::graph_valid(
         &graph,
         &CliSys::default(),
         &roots,
