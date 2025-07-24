@@ -879,10 +879,7 @@ impl CliFactory {
           &self.cli_options()?.permissions_options(),
         )?;
 
-        Ok(PermissionsContainer::new(
-          desc_parser,
-          permissions,
-        ))
+        Ok(PermissionsContainer::new(desc_parser, permissions))
       })
   }
 
