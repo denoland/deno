@@ -17,11 +17,11 @@ use deno_runtime::WorkerExecutionMode;
 use eszip::EszipV2;
 use jsonc_parser::ParseOptions;
 
-use crate::args::load_env_variables_from_env_file;
 use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
+use crate::args::load_env_variables_from_env_file;
 use crate::factory::CliFactory;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -182,7 +182,10 @@ async fn run_with_watch(
         );
         let cli_options = factory.cli_options()?;
 
-        load_env_variables_from_env_file(cli_options.env_file_name(), log_level);
+        load_env_variables_from_env_file(
+          cli_options.env_file_name(),
+          log_level,
+        );
 
         let main_module = cli_options.resolve_main_module()?;
         let preload_modules = cli_options.preload_modules()?;
