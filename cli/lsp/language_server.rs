@@ -105,6 +105,7 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
+use crate::lsp::compiler_options::LspCompilerOptionsResolverRc;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::lint::LspLinterResolver;
 use crate::lsp::logging::init_log_file;
@@ -240,7 +241,7 @@ pub struct Inner {
   pub cache: LspCache,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
-  compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
+  compiler_options_resolver: LspCompilerOptionsResolverRc,
   /// Configuration information.
   pub config: Config,
   diagnostics_state: Arc<diagnostics::DiagnosticsState>,
@@ -694,7 +695,7 @@ impl Inner {
     Arc::new(StateSnapshot {
       project_version: self.project_version,
       config: Arc::new(self.config.clone()),
-      compiler_options_resolver: self.compiler_options_resolver.clone(),
+      compiler_options_resolver: self.compiler_options_resolver.load().clone(),
       linter_resolver: self.linter_resolver.clone(),
       document_modules: self.document_modules.clone(),
       resolver: self.resolver.snapshot(),
@@ -1163,9 +1164,8 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn refresh_compiler_options_resolver(&mut self) {
-    self.compiler_options_resolver = Arc::new(LspCompilerOptionsResolver::new(
-      &self.config,
-      &self.resolver,
+    self.compiler_options_resolver.store(Arc::new(
+      LspCompilerOptionsResolver::new(&self.config, &self.resolver),
     ));
   }
 
@@ -1182,6 +1182,7 @@ impl Inner {
   fn dispatch_cache_jsx_import_sources(&self) {
     for specifier_config in self
       .compiler_options_resolver
+      .load()
       .entries()
       .filter_map(|(_, d)| d.jsx_import_source_config.as_ref())
       .flat_map(|c| c.import_source.iter().chain(c.import_source_types.iter()))
@@ -1219,6 +1220,7 @@ impl Inner {
     self.resolver = Arc::new(
       LspResolver::from_config(
         &self.config,
+        &self.compiler_options_resolver,
         &self.cache,
         Some(&self.http_client_provider),
       )
@@ -3738,7 +3740,7 @@ impl Inner {
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
     let mut items_with_scopes = IndexMap::new();
     for (compiler_options_key, compiler_options_data) in
-      self.compiler_options_resolver.entries()
+      self.compiler_options_resolver.load().entries()
     {
       let scope = compiler_options_data
         .workspace_dir_or_source_url
@@ -3804,6 +3806,7 @@ impl Inner {
       matches!(scopes_change, ProjectScopesChange::Config).then(|| {
         self
           .compiler_options_resolver
+          .load()
           .entries()
           .map(|(k, d)| (k.clone(), d.compiler_options.clone()))
           .collect()
@@ -3819,10 +3822,9 @@ impl Inner {
           .cells_by_notebook_uri()
           .keys()
           .map(|u| {
-            let compiler_options_key = self
-              .compiler_options_resolver
-              .entry_for_specifier(&uri_to_url(u))
-              .0;
+            let resolver = self.compiler_options_resolver.load();
+            let compiler_options_key =
+              resolver.entry_for_specifier(&uri_to_url(u)).0;
             (u.clone(), compiler_options_key.clone())
           })
           .collect()
