@@ -91,7 +91,6 @@ export class TLSSocket extends net.Socket {
   _start() {
     this.connecting = true;
     if (this[kHandle] && this[kHandle][kStreamBaseField]) {
-      console.log("in _start", this[kHandle][kStreamBaseField]);
       this[kHandle].afterConnectTls();
     }
   }
@@ -158,7 +157,6 @@ export class TLSSocket extends net.Socket {
       }
 
       const options = tlsOptions;
-      console.log("_wrapHandle", handle);
       if (!handle) {
         handle = options.pipe
           ? new Pipe(PipeConstants.SOCKET)
@@ -169,11 +167,6 @@ export class TLSSocket extends net.Socket {
 
       // Set `afterConnectTls` hook. This is called in the `afterConnect` method of net.Socket
       handle.afterConnectTls = async () => {
-        console.log(
-          "afterConnectTls called",
-          !!handle[kStreamBaseField],
-          (new Error()).stack,
-        );
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
         if (tlssock._needsSockInitWorkaround) {
           // skips the TLS handshake for @npmcli/agent as it's handled by
@@ -212,9 +205,8 @@ export class TLSSocket extends net.Socket {
 
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-        } catch (e) {
+        } catch {
           // TODO(kt3k): Handle this
-          console.log("caught in startTlsInternal", e);
         }
       };
 

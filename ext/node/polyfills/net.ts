@@ -361,7 +361,6 @@ function _afterConnect(
 
   assert(socket.connecting);
 
-  console.log("connecting false 1");
   socket.connecting = false;
   socket._sockname = null;
 
@@ -382,7 +381,6 @@ function _afterConnect(
     if (
       typeof handle.afterConnectTls === "function" && handle[kStreamBaseField]
     ) {
-      console.log("in _afterconnect", (new Error()).stack);
       handle.afterConnectTls();
     }
 
@@ -395,7 +393,6 @@ function _afterConnect(
       socket.read(0);
     }
   } else {
-    console.log("connecting false 2");
     socket.connecting = false;
     let details;
 
@@ -1396,7 +1393,6 @@ export class Socket extends Duplex {
 
     this._unrefTimer();
 
-    console.log("connecting set to true");
     this.connecting = true;
 
     if (pipe) {
@@ -1446,7 +1442,6 @@ export class Socket extends Duplex {
    * @return The socket itself.
    */
   override resume(): this {
-    console.log(this.connecting, this._handle, this._handle?.reading);
     if (
       !this.connecting &&
       this._handle &&
@@ -1870,7 +1865,6 @@ export class Socket extends Duplex {
 
   override _destroy(exception: Error | null, cb: (err: Error | null) => void) {
     debug("destroy");
-    console.log("connecting false 3");
     this.connecting = false;
 
     // deno-lint-ignore no-this-alias
