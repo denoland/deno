@@ -947,11 +947,10 @@ impl CliFactory {
       in_npm_pkg_checker.clone(),
       self.main_module_graph_container().await?.clone(),
       self.module_load_preparer().await?.clone(),
-      resolver_factory.npm_module_loader()?.clone(),
       npm_registry_permission_checker,
       cli_npm_resolver.clone(),
       resolver_factory.parsed_source_cache().clone(),
-      resolver_factory.prepared_module_loader()?.clone(),
+      resolver_factory.module_loader()?.clone(),
       self.resolver().await?.clone(),
       self.sys(),
       maybe_eszip_loader,
@@ -1063,11 +1062,7 @@ impl CliFactory {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
       let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
-        Box::new(HmrRunner::new(
-          emitter.clone(),
-          session,
-          watcher_communicator.clone(),
-        ))
+        HmrRunner::new(emitter.clone(), session, watcher_communicator.clone())
       });
       Some(fn_)
     } else {
@@ -1078,7 +1073,7 @@ impl CliFactory {
         let coverage_dir = PathBuf::from(coverage_dir);
         let fn_: crate::worker::CreateCoverageCollectorCb =
           Box::new(move |session| {
-            Box::new(CoverageCollector::new(coverage_dir.clone(), session))
+            CoverageCollector::new(coverage_dir.clone(), session)
           });
         Some(fn_)
       } else {

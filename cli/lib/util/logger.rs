@@ -91,6 +91,7 @@ pub fn init(options: InitLoggingOptions) {
   .filter_module("swc_ecma_codegen", log::LevelFilter::Off)
   .filter_module("swc_ecma_transforms_optimization", log::LevelFilter::Off)
   .filter_module("swc_ecma_parser", log::LevelFilter::Error)
+  .filter_module("swc_ecma_lexer", log::LevelFilter::Error)
   // Suppress span lifecycle logs since they are too verbose
   .filter_module("tracing::span", log::LevelFilter::Off)
   .filter_module("tower_lsp", log::LevelFilter::Trace)

@@ -805,7 +805,7 @@ impl MainWorker {
     &mut self,
     script_name: &'static str,
     source_code: ModuleCodeString,
-  ) -> Result<v8::Global<v8::Value>, CoreError> {
+  ) -> Result<v8::Global<v8::Value>, JsError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
 

@@ -500,7 +500,7 @@ mod hyper_client {
   use std::pin::Pin;
   use std::task::Poll;
 
-  use deno_net::tunnel::TunnelListener;
+  use deno_net::tunnel::TunnelConnection;
   use deno_net::tunnel::TunnelStream;
   use deno_net::tunnel::get_tunnel;
   use deno_tls::SocketUse;
@@ -544,7 +544,7 @@ mod hyper_client {
   #[derive(Debug, Clone)]
   enum Connector {
     Http(HttpsConnector<HttpConnector>),
-    Tunnel(TunnelListener),
+    Tunnel(TunnelConnection),
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     Vsock(VsockAddr),
   }
@@ -927,26 +927,32 @@ pub fn init(
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
-  deno_signals::before_exit(flush);
+  deno_signals::before_exit(before_exit);
 
   Ok(())
 }
 
-/// This function is called by the runtime whenever it is about to call
-/// `process::exit()`, to ensure that all OpenTelemetry logs are properly
-/// flushed before the process terminates.
-pub fn flush() {
-  if let Some(OtelGlobals {
+fn before_exit() {
+  let Some(OtelGlobals {
     span_processor: spans,
     log_processor: logs,
     meter_provider,
     ..
   }) = OTEL_GLOBALS.get()
-  {
-    let _ = spans.force_flush();
-    let _ = logs.force_flush();
-    let _ = meter_provider.force_flush();
-  }
+  else {
+    return;
+  };
+
+  log::trace!("deno_telemetry::before_exit");
+
+  let r = spans.shutdown();
+  log::trace!("spans={:?}", r);
+
+  let r = logs.shutdown();
+  log::trace!("logs={:?}", r);
+
+  let r = meter_provider.shutdown();
+  log::trace!("meters={:?}", r);
 }
 
 pub fn handle_log(record: &log::Record) {

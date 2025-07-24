@@ -228,6 +228,18 @@ impl TlsStreamResource {
     }
   }
 
+  pub fn peer_certificates(
+    &self,
+  ) -> Option<
+    Vec<rustls_tokio_stream::rustls::pki_types::CertificateDer<'static>>,
+  > {
+    self
+      .handshake_info
+      .borrow()
+      .as_ref()
+      .and_then(|info| info.peer_certificates.clone())
+  }
+
   pub async fn read(
     self: Rc<Self>,
     data: &mut [u8],
@@ -326,7 +338,12 @@ impl TlsStreamResource {
       let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
 
       let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
-      let tls_info = TlsHandshakeInfo { alpn_protocol };
+
+      let peer_certificates = handshake.peer_certificates.clone();
+      let tls_info = TlsHandshakeInfo {
+        alpn_protocol,
+        peer_certificates,
+      };
       self.handshake_info.replace(Some(tls_info.clone()));
       return Ok(tls_info);
     } else if matches!(self.inner, TlsStreamInner::Unix { .. }) {
@@ -339,8 +356,12 @@ impl TlsStreamResource {
       let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
       let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
 
+      let peer_certificates = handshake.peer_certificates.clone();
       let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
-      let tls_info = TlsHandshakeInfo { alpn_protocol };
+      let tls_info = TlsHandshakeInfo {
+        alpn_protocol,
+        peer_certificates,
+      };
       self.handshake_info.replace(Some(tls_info.clone()));
       return Ok(tls_info);
     }

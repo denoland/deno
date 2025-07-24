@@ -231,7 +231,7 @@ fn unadded_dependency_message_with_import_map() {
   let mut expected_lsp_messages = Vec::from([
     "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
     "'x' is declared but its value is never read.",
-    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency.",
+    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
   ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
@@ -294,7 +294,7 @@ fn unadded_dependency_message() {
   let mut expected_lsp_messages = Vec::from([
     "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
     "'x' is declared but its value is never read.",
-    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency.",
+    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
   ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
@@ -10745,7 +10745,7 @@ fn lsp_completions_node_builtin() {
           "severity": 1,
           "code": "import-node-prefix-missing",
           "source": "deno",
-          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\n  \u{1b}[0m\u{1b}[36mhint:\u{1b}[0m If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
+          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\n  hint: If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
           "data": {
             "specifier": "fs"
           },
@@ -18901,4 +18901,295 @@ fn do_not_auto_import_from_definitely_typed() {
     );
     client.shutdown();
   }
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_import_json_module_import_attribute_variations() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "unstable": ["raw-imports"]
+  }));
+  temp_dir.join("file.json").write_json(&json!({}));
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  for type_text in ["bytes", "text", "json"] {
+    let diagnostics = client.did_open(json!({
+      "textDocument": {
+        "uri": temp_dir.join(format!("{}.ts", type_text)).uri_file(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": format!("import data from './file.json' with {{ type: '{}' }};\nconsole.log(data);\n", type_text)
+      }
+    }));
+    assert_eq!(json!(diagnostics.all()), json!([]));
+  }
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("missing.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import data from './file.json';\nconsole.log(data);\n",
+    }
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 17,
+        },
+        "end": {
+          "line": 0,
+          "character": 30,
+        },
+      },
+      "severity": 1,
+      "code": "no-attribute-type",
+      "source": "deno",
+      "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
+    }])
+  );
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_import_raw_imports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "unstable": ["raw-imports"]
+  }));
+  temp_dir.join("data.txt").write("");
+  temp_dir
+    .join("hello.ts")
+    .write("export function hello() { return 'Hello'; }\n");
+  let text = r#"import { hello } from "./hello.ts";
+import helloBytes from "./hello.ts" with { type: "bytes" };
+import helloText from "./hello.ts" with { type: "text" };
+import dataBytes from "./data.txt" with { type: "bytes" };
+import dataText from "./data.txt" with { type: "text" };
+
+const { default: dynamicHelloBytes } = await import("./hello.ts", {
+  with: { "type": "bytes" },
+});
+const { default: dynamicHelloText } = await import("./hello.ts", {
+  with: { "type": "text" },
+});
+const { default: dynamicDataBytes } = await import("./data.txt", {
+  with: { "type": "bytes" },
+});
+const { default: dynamicDataText } = await import("./data.txt", {
+  with: { "type": "text" },
+});
+
+let validBytes: Uint8Array<ArrayBuffer>;
+let validText: string;
+
+validBytes = helloBytes;
+validBytes = dataBytes;
+validBytes = dynamicHelloBytes;
+validBytes = dynamicDataBytes;
+
+validText = helloText;
+validText = hello();
+validText = dataText;
+validText = dynamicHelloText;
+validText = dynamicDataText;
+
+let invalid: number;
+invalid = helloBytes;
+invalid = dataBytes;
+invalid = dynamicHelloBytes;
+invalid = dynamicDataBytes;
+invalid = helloText;
+invalid = hello();
+invalid = dataText;
+invalid = dynamicHelloText;
+invalid = dynamicDataText;
+
+console.log(invalid, validBytes, validText);
+"#;
+  temp_dir.join("main.ts").write(text);
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("main.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": text,
+    }
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+      "range": {
+        "start": {
+          "line": 34,
+          "character": 0
+        },
+        "end": {
+          "line": 34,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 35,
+          "character": 0
+        },
+        "end": {
+          "line": 35,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 36,
+          "character": 0
+        },
+        "end": {
+          "line": 36,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 37,
+          "character": 0
+        },
+        "end": {
+          "line": 37,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 38,
+          "character": 0
+        },
+        "end": {
+          "line": 38,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'string' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 39,
+          "character": 0
+        },
+        "end": {
+          "line": 39,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'string' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 40,
+          "character": 0
+        },
+        "end": {
+          "line": 40,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'string' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 41,
+          "character": 0
+        },
+        "end": {
+          "line": 41,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'string' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 42,
+          "character": 0
+        },
+        "end": {
+          "line": 42,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'string' is not assignable to type 'number'."
+    }
+    ])
+  );
+
+  // ensure the specifiers aren't modified when renaming
+  let res = client.write_request(
+    "workspace/willRenameFiles",
+    json!({
+      "files": [
+        {
+          "oldUri": temp_dir.join("main.ts").uri_file(),
+          "newUri": temp_dir.join("renamed.ts").uri_file(),
+        },
+      ],
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [],
+    }),
+  );
+  client.shutdown();
 }

@@ -12,7 +12,6 @@ use deno_ast::SourceTextInfo;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -360,8 +359,7 @@ impl PluginHost {
 
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(&mut tc_scope, exception);
-      let core_err = CoreError::Js(error);
-      return Err(core_err.into());
+      return Err(error.into());
     }
     drop(tc_scope);
     Ok(())

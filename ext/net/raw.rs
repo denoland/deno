@@ -296,7 +296,7 @@ network_stream!(
     Tunnel,
     tunnel,
     crate::tunnel::TunnelStream,
-    crate::tunnel::TunnelListener,
+    crate::tunnel::TunnelConnection,
     crate::tunnel::TunnelAddr,
     crate::tunnel::TunnelStreamResource
   ]
@@ -333,7 +333,7 @@ network_stream!(
     Tunnel,
     tunnel,
     crate::tunnel::TunnelStream,
-    crate::tunnel::TunnelListener,
+    crate::tunnel::TunnelConnection,
     crate::tunnel::TunnelAddr,
     crate::tunnel::TunnelStreamResource
   ]
@@ -361,7 +361,7 @@ network_stream!(
     Tunnel,
     tunnel,
     crate::tunnel::TunnelStream,
-    crate::tunnel::TunnelListener,
+    crate::tunnel::TunnelConnection,
     crate::tunnel::TunnelAddr,
     crate::tunnel::TunnelStreamResource
   ]
