@@ -43,12 +43,6 @@ pub use prompter::set_prompter;
 
 use self::which::WhichSys;
 
-pub trait PermissionsInNpmPackageChecker:
-  std::fmt::Debug + Send + Sync
-{
-  fn in_npm_package(&self, specifier: &Url) -> bool;
-}
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[error("Requires {access}, {}", format_permission_error(.name))]
 #[class("NotCapable")]
@@ -2907,19 +2901,16 @@ impl PermissionCheckError {
 #[derive(Clone, Debug)]
 pub struct PermissionsContainer {
   descriptor_parser: Arc<dyn PermissionDescriptorParser>,
-  in_npm_package_checker: Option<Arc<dyn PermissionsInNpmPackageChecker>>,
   inner: Arc<Mutex<Permissions>>,
 }
 
 impl PermissionsContainer {
   pub fn new(
     descriptor_parser: Arc<dyn PermissionDescriptorParser>,
-    in_npm_package_checker: Option<Arc<dyn PermissionsInNpmPackageChecker>>,
     perms: Permissions,
   ) -> Self {
     Self {
       descriptor_parser,
-      in_npm_package_checker,
       inner: Arc::new(Mutex::new(perms)),
     }
   }
@@ -2927,7 +2918,6 @@ impl PermissionsContainer {
   pub fn deep_clone(&self) -> PermissionsContainer {
     Self {
       descriptor_parser: self.descriptor_parser.clone(),
-      in_npm_package_checker: self.in_npm_package_checker.clone(),
       inner: Arc::new(Mutex::new(self.inner.lock().clone())),
     }
   }
@@ -2935,7 +2925,7 @@ impl PermissionsContainer {
   pub fn allow_all(
     descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   ) -> Self {
-    Self::new(descriptor_parser, None, Permissions::allow_all())
+    Self::new(descriptor_parser, Permissions::allow_all())
   }
 
   pub fn create_child_permissions(
@@ -3047,7 +3037,6 @@ impl PermissionsContainer {
 
     Ok(PermissionsContainer::new(
       self.descriptor_parser.clone(),
-      self.in_npm_package_checker.clone(),
       worker_perms,
     ))
   }
@@ -3063,13 +3052,6 @@ impl PermissionsContainer {
       "file" => {
         if inner.read.is_allow_all() || kind == CheckSpecifierKind::Static {
           return Ok(());
-        }
-
-        if let Some(in_npm_package_checker) = &self.in_npm_package_checker {
-          // allow importing assets in npm packages
-          if in_npm_package_checker.in_npm_package(specifier) {
-            return Ok(());
-          }
         }
 
         match url_to_file_path(specifier) {
@@ -4526,7 +4508,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(Arc::new(parser), None, perms);
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let cases = [
       // Inside of /a/specific and /a/specific/dir/name
@@ -4744,7 +4726,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(Arc::new(parser), None, perms);
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let url_tests = vec![
       // Any protocol + port for localhost should be ok, since we don't specify
@@ -4809,7 +4791,7 @@ mod tests {
       },
     )
     .unwrap();
-    let perms = PermissionsContainer::new(Arc::new(parser), None, perms);
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let mut fixtures = vec![
       (
@@ -5582,7 +5564,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(Arc::new(parser), None, perms);
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
     let cases = [
       ("allowed.domain.", true),
       ("1.1.1.1", true),
@@ -5608,7 +5590,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(Arc::new(parser), None, perms);
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
     let cases = [
       ("10.0.0.1", true),
       ("192.168.1.1", false),
@@ -5771,8 +5753,7 @@ mod tests {
       },
     )
     .unwrap();
-    let main_perms =
-      PermissionsContainer::new(Arc::new(parser), None, main_perms);
+    let main_perms = PermissionsContainer::new(Arc::new(parser), main_perms);
     assert_eq!(
       main_perms
         .create_child_permissions(ChildPermissionsArg {
@@ -5837,7 +5818,6 @@ mod tests {
     .unwrap();
     let main_perms = PermissionsContainer::new(
       Arc::new(TestPermissionDescriptorParser),
-      None,
       main_perms,
     );
     prompt_value.set(true);
@@ -5879,7 +5859,7 @@ mod tests {
     )
     .unwrap();
     let main_perms =
-      PermissionsContainer::new(Arc::new(parser.clone()), None, main_perms);
+      PermissionsContainer::new(Arc::new(parser.clone()), main_perms);
     prompt_value.set(false);
     assert!(
       main_perms

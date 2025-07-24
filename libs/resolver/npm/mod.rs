@@ -91,15 +91,6 @@ impl InNpmPackageChecker for DenoInNpmPackageChecker {
   }
 }
 
-#[cfg(feature = "graph")]
-impl deno_permissions::PermissionsInNpmPackageChecker
-  for DenoInNpmPackageChecker
-{
-  fn in_npm_package(&self, specifier: &Url) -> bool {
-    InNpmPackageChecker::in_npm_package(self, specifier)
-  }
-}
-
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
 #[error(

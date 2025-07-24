@@ -881,7 +881,6 @@ impl CliFactory {
 
         Ok(PermissionsContainer::new(
           desc_parser,
-          Some(Arc::new(self.in_npm_pkg_checker()?.clone())),
           permissions,
         ))
       })
