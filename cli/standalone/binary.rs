@@ -392,14 +392,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
-        let snapshot = managed
-          .resolution()
-          .serialized_valid_snapshot_for_system(&self.npm_system_info);
-        if !snapshot.as_serialized().packages.is_empty() {
-          self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
-          Some(snapshot)
-        } else {
+        if graph.npm_packages.is_empty() {
           None
+        } else {
+          let snapshot = managed
+            .resolution()
+            .serialized_valid_snapshot_for_system(&self.npm_system_info);
+          if !snapshot.as_serialized().packages.is_empty() {
+            self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
+            Some(snapshot)
+          } else {
+            None
+          }
         }
       }
       CliNpmResolver::Byonm(_) => {
