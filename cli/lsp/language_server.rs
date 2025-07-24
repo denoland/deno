@@ -361,7 +361,6 @@ impl LanguageServer {
           check_js: CheckJsOption::False,
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
-          ignore_graph_errors: true,
           allow_unknown_jsr_exports: false,
         },
       )?;

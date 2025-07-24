@@ -63,9 +63,9 @@ deno_ast = { version = "=0.48.2", features = ["transpiling"] }
 deno_core = { version = "0.353.0" }
 
 deno_cache_dir = "=0.23.0"
-deno_doc = "=0.179.0"
+deno_doc = "=0.180.0"
 deno_error = "=0.6.1"
-deno_graph = { version = "=0.96.2", default-features = false }
+deno_graph = { version = "=0.97.0", default-features = false }
 deno_lint = "=0.76.0"
 deno_lockfile = "=0.30.2"
 deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
@@ -77,7 +77,7 @@ deno_task_shell = "=0.25.2"
 deno_terminal = "=0.2.2"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.93.0"
+eszip = "=0.94.0"
 
 denokv_proto = "0.11.0"
 denokv_remote = "0.11.0"
@@ -233,7 +233,7 @@ reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-t
 rusqlite = { version = "0.34.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
 rustls = { version = "=0.23.28", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
 rustls-pemfile = "2"
-rustls-tokio-stream = "=0.7.0"
+rustls-tokio-stream = "=0.8.0"
 rustls-webpki = "0.102"
 rustyline = "=13.0.0"
 rustyline-derive = "=0.7.0"
