@@ -851,7 +851,7 @@ pub async fn run(
     CjsCodeAnalyzer::new(cjs_tracker.clone(), modules.clone(), sys.clone());
   let cjs_module_export_analyzer = Arc::new(CjsModuleExportAnalyzer::new(
     cjs_esm_code_analyzer,
-    in_npm_pkg_checker.clone(),
+    in_npm_pkg_checker,
     node_resolver.clone(),
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
@@ -971,11 +971,7 @@ pub async fn run(
       Arc::new(RuntimePermissionDescriptorParser::new(sys.clone()));
     let permissions =
       Permissions::from_options(desc_parser.as_ref(), &permissions)?;
-    PermissionsContainer::new(
-      desc_parser,
-      Some(Arc::new(in_npm_pkg_checker)),
-      permissions,
-    )
+    PermissionsContainer::new(desc_parser, permissions)
   };
   let feature_checker = Arc::new({
     let mut checker = FeatureChecker::default();

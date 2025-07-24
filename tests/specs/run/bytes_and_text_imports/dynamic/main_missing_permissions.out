@@ -1,9 +1,4 @@
-Requires read access to "[WILDLINE]hello.txt", run again with the --allow-read flag
-Requires read access to "[WILDLINE]hello.txt", run again with the --allow-read flag
-Requires read access to "[WILDLINE]non_analyzable.txt", run again with the --allow-read flag
-utf8 bom
-Requires read access to "[WILDLINE]utf8_bom.txt", run again with the --allow-read flag
-Requires read access to "[WILDLINE]utf8_bom.txt", run again with the --allow-read flag
-utf8 bom non-analyzable
-Requires read access to "[WILDLINE]non_analyzable_utf8_bom.txt", run again with the --allow-read flag
-Requires read access to "[WILDLINE]non_analyzable_utf8_bom.txt", run again with the --allow-read flag
+error: Uncaught (in promise) TypeError: Requires read access to "[WILDLINE]non_analyzable.txt", run again with the --allow-read flag
+const { default: nonAnalyzableText } = await import(nonAnalyzablePath(), {
+                                       ^
+    at async file:///[WILDLINE]/main.ts:[WILDLINE]
