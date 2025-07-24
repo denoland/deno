@@ -20,8 +20,6 @@ use deno_core::v8;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_path_util::url_from_file_path;
 use deno_runtime::WorkerExecutionMode;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
 use deno_runtime::worker::MainWorker;
 use tokio::sync::mpsc;
@@ -147,12 +145,7 @@ async fn create_plugin_runner_inner(
   let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$lint.mts", cli_options.initial_cwd()).unwrap();
-  let perm_parser = factory.permission_desc_parser()?;
-  let permissions = Permissions::from_options(
-    perm_parser.as_ref(),
-    &cli_options.permissions_options(),
-  )?;
-  let permissions = PermissionsContainer::new(perm_parser.clone(), permissions);
+  let permissions = factory.root_permissions_container()?.clone();
   // let npm_resolver = factory.npm_resolver().await?.clone();
   // let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;

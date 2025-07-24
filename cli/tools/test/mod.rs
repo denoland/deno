@@ -55,9 +55,7 @@ use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
-use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
 use indexmap::IndexMap;
@@ -82,7 +80,6 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
-use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
@@ -1265,8 +1262,7 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: &Permissions,
-  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
+  root_permissions_container: &PermissionsContainer,
   specifiers: Vec<ModuleSpecifier>,
   preload_modules: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
@@ -1295,10 +1291,10 @@ async fn test_specifiers(
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    let permissions_container = PermissionsContainer::new(
-      permission_desc_parser.clone(),
-      permissions.clone(),
-    );
+    // Various test files should not share the same permissions in terms of
+    // `PermissionsContainer` - otherwise granting/revoking permissions in one
+    // file would have impact on other files, which is undesirable.
+    let permissions_container = root_permissions_container.deep_clone();
     let preload_modules = preload_modules.clone();
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
@@ -1621,14 +1617,6 @@ pub async fn run_tests(
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
   let file_fetcher = factory.file_fetcher()?;
-  // Various test files should not share the same permissions in terms of
-  // `PermissionsContainer` - otherwise granting/revoking permissions in one
-  // file would have impact on other files, which is undesirable.
-  let permission_desc_parser = factory.permission_desc_parser()?;
-  let permissions = Permissions::from_options(
-    permission_desc_parser.as_ref(),
-    &cli_options.permissions_options(),
-  )?;
   let log_level = cli_options.log_level();
 
   let members_with_test_options =
@@ -1677,8 +1665,7 @@ pub async fn run_tests(
   // Run tests
   test_specifiers(
     worker_factory,
-    &permissions,
-    permission_desc_parser,
+    factory.root_permissions_container()?,
     specifiers_for_typecheck_and_test,
     preload_modules,
     TestSpecifiersOptions {
@@ -1816,11 +1803,6 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
-        let permission_desc_parser = factory.permission_desc_parser()?;
-        let permissions = Permissions::from_options(
-          permission_desc_parser.as_ref(),
-          &cli_options.permissions_options(),
-        )?;
         let graph = module_graph_creator
           .create_graph(graph_kind, test_modules, NpmCachingStrategy::Eager)
           .await?;
@@ -1888,8 +1870,7 @@ pub async fn run_tests_with_watch(
 
         test_specifiers(
           worker_factory,
-          &permissions,
-          permission_desc_parser,
+          factory.root_permissions_container()?,
           specifiers_for_typecheck_and_test,
           preload_modules,
           TestSpecifiersOptions {

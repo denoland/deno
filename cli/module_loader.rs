@@ -671,23 +671,8 @@ impl<TGraphContainer: ModuleGraphContainer>
       }
       LoadedModuleOrAsset::ExternalAsset {
         specifier,
-        statically_analyzable,
-      } => {
-        Ok(
-          self
-            .load_asset(
-              &specifier,
-              if statically_analyzable {
-                CheckSpecifierKind::Static
-              } else {
-                // force permissions
-                CheckSpecifierKind::Dynamic
-              },
-              requested_module_type,
-            )
-            .await?,
-        )
-      }
+        statically_analyzable: _,
+      } => Ok(self.load_asset(&specifier, requested_module_type).await?),
     }
   }
 
@@ -709,7 +694,6 @@ impl<TGraphContainer: ModuleGraphContainer>
   async fn load_asset(
     &self,
     specifier: &ModuleSpecifier,
-    check_specifier_kind: CheckSpecifierKind,
     requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleCodeStringSource, deno_resolver::file_fetcher::FetchError>
   {
@@ -719,11 +703,9 @@ impl<TGraphContainer: ModuleGraphContainer>
       .fetch_with_options(
         specifier,
         FetchPermissionsOptionRef::Restricted(
-          match check_specifier_kind {
-            CheckSpecifierKind::Static => &self.permissions,
-            CheckSpecifierKind::Dynamic => &self.parent_permissions,
-          },
-          check_specifier_kind,
+          // always force permissions for loading assets
+          &self.parent_permissions,
+          CheckSpecifierKind::Dynamic,
         ),
         FetchOptions {
           local: FetchLocalOptions {
