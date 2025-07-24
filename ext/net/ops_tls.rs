@@ -56,7 +56,6 @@ use crate::ops::IpAddr;
 use crate::ops::NetError;
 use crate::ops::TlsHandshakeInfo;
 use crate::raw::NetworkListenerResource;
-use crate::raw::take_network_stream_resource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
@@ -186,6 +185,31 @@ pub struct TlsStreamResource {
   cancel_handle: CancelHandle, // Only read and handshake ops get canceled.
 }
 
+macro_rules! match_stream_inner {
+  ($self:expr, $field:ident, $action:block) => {
+    match &$self.inner {
+      TlsStreamInner::Tcp { .. } => {
+        let mut $field = RcRef::map($self, |r| match &r.inner {
+          TlsStreamInner::Tcp { $field, .. } => $field,
+          _ => unreachable!(),
+        })
+        .borrow_mut()
+        .await;
+        $action
+      }
+      TlsStreamInner::Unix { .. } => {
+        let mut $field = RcRef::map($self, |r| match &r.inner {
+          TlsStreamInner::Unix { $field, .. } => $field,
+          _ => unreachable!(),
+        })
+        .borrow_mut()
+        .await;
+        $action
+      }
+    }
+  };
+}
+
 impl TlsStreamResource {
   pub fn new_tcp(
     (rd, wr): (TlsStreamRead<TcpStream>, TlsStreamWrite<TcpStream>),
@@ -244,80 +268,28 @@ impl TlsStreamResource {
     self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
-    if matches!(self.inner, TlsStreamInner::Tcp { .. }) {
-      let mut rd = RcRef::map(&self, |r| match r.inner {
-        TlsStreamInner::Tcp { ref rd, .. } => rd,
-        _ => unreachable!(),
-      })
-      .borrow_mut()
-      .await;
-      let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+    let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
+    match_stream_inner!(self, rd, {
       rd.read(data).try_or_cancel(cancel_handle).await
-    } else if matches!(self.inner, TlsStreamInner::Unix { .. }) {
-      let mut rd = RcRef::map(&self, |r| match r.inner {
-        TlsStreamInner::Unix { ref rd, .. } => rd,
-        _ => unreachable!(),
-      })
-      .borrow_mut()
-      .await;
-      let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
-      rd.read(data).try_or_cancel(cancel_handle).await
-    } else {
-      unreachable!()
-    }
+    })
   }
 
   pub async fn write(
     self: Rc<Self>,
     data: &[u8],
   ) -> Result<usize, std::io::Error> {
-    if matches!(self.inner, TlsStreamInner::Tcp { .. }) {
-      let mut wr = RcRef::map(&self, |r| match r.inner {
-        TlsStreamInner::Tcp { ref wr, .. } => wr,
-        _ => unreachable!(),
-      })
-      .borrow_mut()
-      .await;
+    match_stream_inner!(self, wr, {
       let nwritten = wr.write(data).await?;
       wr.flush().await?;
       Ok(nwritten)
-    } else if matches!(self.inner, TlsStreamInner::Unix { .. }) {
-      let mut wr = RcRef::map(&self, |r| match r.inner {
-        TlsStreamInner::Unix { ref wr, .. } => wr,
-        _ => unreachable!(),
-      })
-      .borrow_mut()
-      .await;
-      let nwritten = wr.write(data).await?;
-      wr.flush().await?;
-      Ok(nwritten)
-    } else {
-      unreachable!()
-    }
+    })
   }
 
   pub async fn shutdown(self: Rc<Self>) -> Result<(), std::io::Error> {
-    if matches!(self.inner, TlsStreamInner::Tcp { .. }) {
-      let mut wr = RcRef::map(&self, |r| match r.inner {
-        TlsStreamInner::Tcp { ref wr, .. } => wr,
-        _ => unreachable!(),
-      })
-      .borrow_mut()
-      .await;
+    match_stream_inner!(self, wr, {
       wr.shutdown().await?;
       Ok(())
-    } else if matches!(self.inner, TlsStreamInner::Tcp { .. }) {
-      let mut wr = RcRef::map(&self, |r| match r.inner {
-        TlsStreamInner::Unix { ref wr, .. } => wr,
-        _ => unreachable!(),
-      })
-      .borrow_mut()
-      .await;
-      wr.shutdown().await?;
-      Ok(())
-    } else {
-      unreachable!()
-    }
+    })
   }
 
   pub async fn handshake(
@@ -327,46 +299,20 @@ impl TlsStreamResource {
       return Ok(tls_info.clone());
     }
 
-    if matches!(self.inner, TlsStreamInner::Tcp { .. }) {
-      let mut wr = RcRef::map(self, |r| match r.inner {
-        TlsStreamInner::Tcp { ref wr, .. } => wr,
-        _ => unreachable!(),
-      })
-      .borrow_mut()
-      .await;
-      let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
+    let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
+    let tls_info = match_stream_inner!(self, wr, {
       let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
 
       let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
-
       let peer_certificates = handshake.peer_certificates.clone();
-      let tls_info = TlsHandshakeInfo {
+      TlsHandshakeInfo {
         alpn_protocol,
         peer_certificates,
-      };
-      self.handshake_info.replace(Some(tls_info.clone()));
-      return Ok(tls_info);
-    } else if matches!(self.inner, TlsStreamInner::Unix { .. }) {
-      let mut wr = RcRef::map(self, |r| match r.inner {
-        TlsStreamInner::Unix { ref wr, .. } => wr,
-        _ => unreachable!(),
-      })
-      .borrow_mut()
-      .await;
-      let cancel_handle = RcRef::map(self, |r| &r.cancel_handle);
-      let handshake = wr.handshake().try_or_cancel(cancel_handle).await?;
+      }
+    });
 
-      let peer_certificates = handshake.peer_certificates.clone();
-      let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
-      let tls_info = TlsHandshakeInfo {
-        alpn_protocol,
-        peer_certificates,
-      };
-      self.handshake_info.replace(Some(tls_info.clone()));
-      return Ok(tls_info);
-    }
-
-    unreachable!();
+    self.handshake_info.replace(Some(tls_info.clone()));
+    Ok(tls_info)
   }
 }
 

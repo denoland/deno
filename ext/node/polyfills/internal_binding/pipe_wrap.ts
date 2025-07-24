@@ -149,6 +149,7 @@ export class Pipe extends ConnectionWrap {
     Deno.connect(connectOptions).then(
       (conn: Deno.UnixConn) => {
         const localAddr = conn.localAddr as Deno.UnixAddr;
+
         this.#address = req.address = localAddr.path;
         this[kStreamBaseField] = conn;
 
