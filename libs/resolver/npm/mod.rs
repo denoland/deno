@@ -91,6 +91,15 @@ impl InNpmPackageChecker for DenoInNpmPackageChecker {
   }
 }
 
+#[cfg(feature = "graph")]
+impl deno_permissions::PermissionsInNpmPackageChecker
+  for DenoInNpmPackageChecker
+{
+  fn in_npm_package(&self, specifier: &Url) -> bool {
+    InNpmPackageChecker::in_npm_package(self, specifier)
+  }
+}
+
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
 #[error(
@@ -125,6 +134,11 @@ pub enum ResolveIfForNpmPackageErrorKind {
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
 }
 
+#[derive(Debug, Error, JsError)]
+#[error("npm specifiers were requested; but --no-npm is specified")]
+#[class("generic")]
+pub struct NoNpmError;
+
 #[derive(Debug, JsError)]
 #[class(inherit)]
 pub struct ResolveNpmReqRefError {
@@ -151,6 +165,7 @@ pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
 impl ResolveReqWithSubPathError {
   pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
     match self.as_kind() {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
       ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(err) => {
         err.inner.maybe_specifier()
       }
@@ -171,6 +186,9 @@ pub enum ResolveReqWithSubPathErrorKind {
   MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
   #[class(inherit)]
   #[error(transparent)]
+  NoNpm(NoNpmError),
+  #[class(inherit)]
+  #[error(transparent)]
   ResolvePkgFolderFromDenoReq(
     #[from] ContextedResolvePkgFolderFromDenoReqError,
   ),
@@ -182,6 +200,7 @@ pub enum ResolveReqWithSubPathErrorKind {
 impl ResolveReqWithSubPathErrorKind {
   pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
     match self {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
       ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_)
       | ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
       ResolveReqWithSubPathErrorKind::PackageSubpathResolve(
@@ -192,6 +211,7 @@ impl ResolveReqWithSubPathErrorKind {
 
   pub fn maybe_code(&self) -> Option<NodeJsErrorCode> {
     match self {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
       ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_) => {
         None
       }
