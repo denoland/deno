@@ -49,6 +49,7 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
+use crate::collections::FolderScopedMap;
 use crate::sync::MaybeDashMap;
 use crate::sync::new_rc;
 
@@ -187,6 +188,9 @@ pub enum MappedResolution<'a> {
     alias: &'a str,
     sub_path: Option<String>,
     dep_result: &'a Result<PackageJsonDepValue, PackageJsonDepValueParseError>,
+  },
+  PackageJsonImport {
+    pkg_json: &'a PackageJsonRc,
   },
 }
 
@@ -893,7 +897,7 @@ pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   workspace_root: UrlRc,
   jsr_pkgs: Vec<ResolverWorkspaceJsrPackage>,
   maybe_import_map: Option<ImportMapWithDiagnostics>,
-  pkg_jsons: BTreeMap<UrlRc, PkgJsonResolverFolderConfig>,
+  pkg_jsons: FolderScopedMap<PkgJsonResolverFolderConfig>,
   pkg_json_dep_resolution: PackageJsonDepResolution,
   sloppy_imports_options: SloppyImportsOptions,
   fs_cache_options: FsCacheOptions,
@@ -1031,7 +1035,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_dep_resolution: options.pkg_json_dep_resolution,
       jsr_pkgs,
       maybe_import_map,
-      pkg_jsons,
+      pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       sloppy_imports_options: options.sloppy_imports_options,
       fs_cache_options: options.fs_cache_options,
       sloppy_imports_resolver,
@@ -1088,7 +1092,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       workspace_root,
       jsr_pkgs,
       maybe_import_map,
-      pkg_jsons,
+      pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       pkg_json_dep_resolution,
       sloppy_imports_options,
       fs_cache_options,
@@ -1352,38 +1356,41 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       }
     }
 
-    // 3. Attempt to resolve from the package.json dependencies.
+    // 3. Attempt to resolve from the package.json dependencies or imports.
     if self.pkg_json_dep_resolution == PackageJsonDepResolution::Enabled {
-      let mut previously_found_dir = false;
-      for (dir_url, pkg_json_folder) in self.pkg_jsons.iter().rev() {
-        if !referrer.as_str().starts_with(dir_url.as_str()) {
-          if previously_found_dir {
-            break;
-          } else {
-            continue;
-          }
-        }
-        previously_found_dir = true;
-
-        for (bare_specifier, dep_result) in pkg_json_folder
-          .deps
-          .dependencies
-          .iter()
-          .chain(pkg_json_folder.deps.dev_dependencies.iter())
+      if specifier.starts_with('#') && specifier.len() > 1 {
+        if let Some((_, pkg_json_folder)) =
+          self.pkg_jsons.entry_for_specifier(referrer)
         {
-          if let Some(path) = specifier.strip_prefix(bare_specifier.as_str()) {
-            if path.is_empty() || path.starts_with('/') {
-              let sub_path = path.strip_prefix('/').unwrap_or(path);
-              return Ok(MappedResolution::PackageJson {
-                pkg_json: &pkg_json_folder.pkg_json,
-                alias: bare_specifier,
-                sub_path: if sub_path.is_empty() {
-                  None
-                } else {
-                  Some(sub_path.to_string())
-                },
-                dep_result,
-              });
+          return Ok(MappedResolution::PackageJsonImport {
+            pkg_json: &pkg_json_folder.pkg_json,
+          });
+        }
+      } else {
+        for (_dir_url, pkg_json_folder) in
+          self.pkg_jsons.entries_for_specifier(referrer)
+        {
+          for (bare_specifier, dep_result) in pkg_json_folder
+            .deps
+            .dependencies
+            .iter()
+            .chain(pkg_json_folder.deps.dev_dependencies.iter())
+          {
+            if let Some(path) = specifier.strip_prefix(bare_specifier.as_str())
+            {
+              if path.is_empty() || path.starts_with('/') {
+                let sub_path = path.strip_prefix('/').unwrap_or(path);
+                return Ok(MappedResolution::PackageJson {
+                  pkg_json: &pkg_json_folder.pkg_json,
+                  alias: bare_specifier,
+                  sub_path: if sub_path.is_empty() {
+                    None
+                  } else {
+                    Some(sub_path.to_string())
+                  },
+                  dep_result,
+                });
+              }
             }
           }
         }
