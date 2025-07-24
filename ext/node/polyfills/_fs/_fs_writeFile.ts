@@ -88,7 +88,7 @@ export function writeFile(
   (async () => {
     try {
       const rid = await getRid(pathOrRid, flag);
-      file = new FsFile(rid as number, Symbol.for("Deno.internal.FsFile"));
+      file = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
 
       // ignore mode because it's not supported on windows
       // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
