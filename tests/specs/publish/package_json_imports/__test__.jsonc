@@ -1,0 +1,4 @@
+{
+  "args": "publish --token 'sadfasdf'",
+  "output": "package_json.out"
+}
