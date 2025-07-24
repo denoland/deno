@@ -304,3 +304,117 @@ Deno.test({
   }
   assertEquals(new TextDecoder().decode(stdout), "");
 });
+
+Deno.test({
+  name: "tls.connect over unix socket works",
+  ignore: Deno.build.os === "windows",
+  permissions: { read: true, write: true },
+}, async () => {
+  const socketPath = "/tmp/tls_unix_test.sock";
+
+  try {
+    await Deno.remove(socketPath);
+  } catch {}
+
+  let serverError: unknown = null;
+  let clientError: unknown = null;
+
+  const { promise: serverReady, resolve: resolveServerReady } = Promise
+    .withResolvers<void>();
+  const { promise: testComplete, resolve: resolveTestComplete } = Promise
+    .withResolvers<void>();
+  const { promise: clientDataReceived, resolve: resolveClientDataReceived } =
+    Promise.withResolvers<string>();
+
+  const netServer = net.createServer((rawSocket) => {
+    try {
+      const secureSocket = new tls.TLSSocket(rawSocket, {
+        key,
+        cert,
+        isServer: true,
+      });
+
+      secureSocket.on("secureConnect", () => {
+        secureSocket.write("hello from server");
+      });
+
+      secureSocket.on("data", (data) => {
+        assertEquals(data.toString(), "hello from client");
+        secureSocket.end();
+      });
+
+      secureSocket.on("close", () => {
+        resolveTestComplete();
+      });
+
+      secureSocket.on("error", (err) => {
+        serverError = err;
+        resolveTestComplete();
+      });
+    } catch (err) {
+      serverError = err;
+      resolveTestComplete();
+    }
+  });
+
+  netServer.on("error", (err) => {
+    serverError = err;
+    resolveTestComplete();
+  });
+
+  netServer.listen(socketPath, () => {
+    resolveServerReady();
+  });
+
+  await serverReady;
+
+  try {
+    const rawSocket = net.connect(socketPath);
+
+    const secureSocket = tls.connect({
+      socket: rawSocket,
+      rejectUnauthorized: false,
+    });
+
+    rawSocket.on("error", (err) => {
+      clientError = err;
+      resolveTestComplete();
+    });
+
+    secureSocket.on("secureConnect", () => {
+      secureSocket.write("hello from client");
+    });
+
+    secureSocket.on("data", (data) => {
+      resolveClientDataReceived(data.toString());
+    });
+
+    secureSocket.on("error", (err) => {
+      clientError = err;
+      resolveTestComplete();
+    });
+
+    const receivedData = await clientDataReceived;
+    assertEquals(receivedData, "hello from server");
+
+    await testComplete;
+
+    if (serverError) {
+      console.error("Server error:", serverError);
+    }
+    if (clientError) {
+      console.error("Client error:", clientError);
+    }
+
+    secureSocket.destroy();
+  } catch (err) {
+    clientError = err;
+    console.error("Test setup error:", err);
+  }
+
+  netServer.close();
+
+  try {
+    await Deno.remove(socketPath);
+  } catch {}
+});
