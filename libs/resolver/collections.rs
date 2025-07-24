@@ -99,7 +99,7 @@ impl<TValue> FolderScopedMap<TValue> {
 
     ValueIter {
       previously_found_dir: false,
-      iter: self.scoped.iter(),
+      iter: self.scoped.iter().rev(),
       specifier,
     }
   }

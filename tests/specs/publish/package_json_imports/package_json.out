@@ -1,6 +1,2 @@
-Check file:///[WILDCARD]/mod.ts
-Checking for slow types in the public API...
-Check file:///[WILDCARD]/mod.ts
-Publishing @foo/package-json-imports@1.0.0 ...
-Successfully published @foo/package-json-imports@1.0.0
-Visit http://127.0.0.1:4250/@foo/package-json-imports@1.0.0 for details
+[WILDCARD]Unfurled specifier: #add from file:///[WILDLINE]/mod.ts -> ./add.ts
+[WILDCARD]
