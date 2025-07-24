@@ -1357,40 +1357,38 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     }
 
     // 3. Attempt to resolve from the package.json dependencies or imports.
-    if self.pkg_json_dep_resolution == PackageJsonDepResolution::Enabled {
-      if specifier.starts_with('#') && specifier.len() > 1 {
-        if let Some((_, pkg_json_folder)) =
-          self.pkg_jsons.entry_for_specifier(referrer)
+    if specifier.starts_with('#') && specifier.len() > 1 {
+      if let Some((_, pkg_json_folder)) =
+        self.pkg_jsons.entry_for_specifier(referrer)
+      {
+        return Ok(MappedResolution::PackageJsonImport {
+          pkg_json: &pkg_json_folder.pkg_json,
+        });
+      }
+    } else if self.pkg_json_dep_resolution == PackageJsonDepResolution::Enabled
+    {
+      for (_dir_url, pkg_json_folder) in
+        self.pkg_jsons.entries_for_specifier(referrer)
+      {
+        for (bare_specifier, dep_result) in pkg_json_folder
+          .deps
+          .dependencies
+          .iter()
+          .chain(pkg_json_folder.deps.dev_dependencies.iter())
         {
-          return Ok(MappedResolution::PackageJsonImport {
-            pkg_json: &pkg_json_folder.pkg_json,
-          });
-        }
-      } else {
-        for (_dir_url, pkg_json_folder) in
-          self.pkg_jsons.entries_for_specifier(referrer)
-        {
-          for (bare_specifier, dep_result) in pkg_json_folder
-            .deps
-            .dependencies
-            .iter()
-            .chain(pkg_json_folder.deps.dev_dependencies.iter())
-          {
-            if let Some(path) = specifier.strip_prefix(bare_specifier.as_str())
-            {
-              if path.is_empty() || path.starts_with('/') {
-                let sub_path = path.strip_prefix('/').unwrap_or(path);
-                return Ok(MappedResolution::PackageJson {
-                  pkg_json: &pkg_json_folder.pkg_json,
-                  alias: bare_specifier,
-                  sub_path: if sub_path.is_empty() {
-                    None
-                  } else {
-                    Some(sub_path.to_string())
-                  },
-                  dep_result,
-                });
-              }
+          if let Some(path) = specifier.strip_prefix(bare_specifier.as_str()) {
+            if path.is_empty() || path.starts_with('/') {
+              let sub_path = path.strip_prefix('/').unwrap_or(path);
+              return Ok(MappedResolution::PackageJson {
+                pkg_json: &pkg_json_folder.pkg_json,
+                alias: bare_specifier,
+                sub_path: if sub_path.is_empty() {
+                  None
+                } else {
+                  Some(sub_path.to_string())
+                },
+                dep_result,
+              });
             }
           }
         }
