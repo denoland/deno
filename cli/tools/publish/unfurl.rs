@@ -518,7 +518,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
             self.node_resolver.as_ref().and_then(|resolver| {
               resolver
                 .resolve_package_import(
-                  &specifier,
+                  specifier,
                   Some(&node_resolver::UrlOrPathRef::from_url(referrer)),
                   Some(pkg_json),
                   node_resolver::ResolutionMode::Import,

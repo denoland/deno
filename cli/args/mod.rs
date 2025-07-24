@@ -457,7 +457,7 @@ impl WorkspaceMainModuleResolver {
       } => self
         .node_resolver
         .resolve_package_import(
-          &specifier,
+          specifier,
           Some(&node_resolver::UrlOrPathRef::from_url(cwd)),
           Some(pkg_json),
           node_resolver::ResolutionMode::Import,

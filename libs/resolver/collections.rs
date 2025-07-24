@@ -60,9 +60,9 @@ impl<TValue> FolderScopedMap<TValue> {
       .rfind(|(s, _)| specifier.as_str().starts_with(s.as_str()))
   }
 
-  pub fn entries_for_specifier<'a, 'b>(
+  pub fn entries_for_specifier<'a>(
     &'a self,
-    specifier: &'b Url,
+    specifier: &Url,
   ) -> impl Iterator<Item = (&'a UrlRc, &'a TValue)> {
     struct ValueIter<
       'a,
@@ -75,13 +75,13 @@ impl<TValue> FolderScopedMap<TValue> {
       specifier: &'b Url,
     }
 
-    impl<'a, 'b, TValue, Iter: Iterator<Item = (&'a UrlRc, &'a TValue)>>
-      Iterator for ValueIter<'a, 'b, TValue, Iter>
+    impl<'a, TValue, Iter: Iterator<Item = (&'a UrlRc, &'a TValue)>> Iterator
+      for ValueIter<'a, '_, TValue, Iter>
     {
       type Item = (&'a UrlRc, &'a TValue);
 
       fn next(&mut self) -> Option<Self::Item> {
-        while let Some((dir_url, value)) = self.iter.next() {
+        for (dir_url, value) in self.iter.by_ref() {
           if !self.specifier.as_str().starts_with(dir_url.as_str()) {
             if self.previously_found_dir {
               break;
