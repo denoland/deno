@@ -627,7 +627,11 @@ async fn resolve_flags_and_init(
     .or_else(|| env::var("DENO_CONNECTED").ok())
   {
     if let Err(err) = initialize_tunnel(&host, &flags).await {
-      exit_for_error(AnyError::from(err))
+      exit_for_error(err.context("Failed to start with --connected"));
+    }
+    // SAFETY: We're doing this before any threads are created.
+    unsafe {
+      std::env::set_var("DENO_CONNECTED", &host);
     }
   }
 
