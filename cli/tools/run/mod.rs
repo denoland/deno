@@ -17,6 +17,7 @@ use deno_runtime::WorkerExecutionMode;
 use eszip::EszipV2;
 use jsonc_parser::ParseOptions;
 
+use crate::args::load_env_variables_from_env_file;
 use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
@@ -162,6 +163,8 @@ async fn run_with_watch(
   flags: Arc<Flags>,
   watch_flags: WatchFlagsWithPaths,
 ) -> Result<i32, AnyError> {
+  let log_level = flags.log_level;
+
   util::file_watcher::watch_recv(
     flags,
     util::file_watcher::PrintConfig::new_with_banner(
@@ -178,6 +181,9 @@ async fn run_with_watch(
           watcher_communicator.clone(),
         );
         let cli_options = factory.cli_options()?;
+
+        load_env_variables_from_env_file(cli_options.env_file_name(), log_level);
+
         let main_module = cli_options.resolve_main_module()?;
         let preload_modules = cli_options.preload_modules()?;
 

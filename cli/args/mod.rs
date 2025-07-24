@@ -51,7 +51,7 @@ use deno_semver::StackString;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
-use dotenvy::from_filename;
+use dotenvy::from_filename_override;
 pub use flags::*;
 use once_cell::sync::Lazy;
 use thiserror::Error;
@@ -1263,6 +1263,17 @@ impl CliOptions {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
     }
 
+    // Add environment files to watch paths
+    if let Some(env_files) = &self.flags.env_file {
+      for env_file in env_files {
+        let env_path = self.initial_cwd.join(env_file);
+        if env_path.exists() {
+          full_paths.push(env_path);
+        }
+      }
+    }
+
+
     if let Ok(Some(import_map_path)) = self
       .resolve_specified_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
@@ -1415,7 +1426,7 @@ pub fn load_env_variables_from_env_file(
   };
 
   for env_file_name in env_file_names.iter().rev() {
-    match from_filename(env_file_name) {
+    match from_filename_override(env_file_name) {
       Ok(_) => (),
       Err(error) => {
         #[allow(clippy::print_stderr)]
