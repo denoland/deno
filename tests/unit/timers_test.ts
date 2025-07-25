@@ -786,7 +786,10 @@ Deno.test(async function setTimeoutWithStringCallback() {
   };
   global.timeoutStringTest = 0;
   global.timeoutStringPromise = Promise.withResolvers<void>();
-  setTimeout("globalThis.timeoutStringTest = 42; globalThis.timeoutStringPromise.resolve();", 10);
+  setTimeout(
+    "globalThis.timeoutStringTest = 42; globalThis.timeoutStringPromise.resolve();",
+    10,
+  );
   await global.timeoutStringPromise.promise;
   assertEquals(global.timeoutStringTest, 42);
   Reflect.deleteProperty(global, "timeoutStringTest");
@@ -801,7 +804,10 @@ Deno.test(async function setIntervalWithStringCallback() {
   global.intervalStringTest = 0;
   global.intervalStringPromise = Promise.withResolvers<void>();
   let count = 0;
-  const id = setInterval("globalThis.intervalStringTest += 10; if (globalThis.intervalStringTest >= 20) globalThis.intervalStringPromise.resolve();", 10);
+  const id = setInterval(
+    "globalThis.intervalStringTest += 10; if (globalThis.intervalStringTest >= 20) globalThis.intervalStringPromise.resolve();",
+    10,
+  );
   global.intervalStringPromise.promise.then(() => clearInterval(id));
   await global.intervalStringPromise.promise;
   assert(global.intervalStringTest >= 20);
