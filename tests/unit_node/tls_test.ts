@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+// deno-lint-ignore no-console
+
 import {
   assert,
   assertEquals,
@@ -314,7 +316,9 @@ Deno.test({
 
   try {
     await Deno.remove(socketPath);
-  } catch {}
+  } catch {
+    // pass
+  }
 
   let serverError: unknown = null;
   let clientError: unknown = null;
@@ -416,5 +420,7 @@ Deno.test({
 
   try {
     await Deno.remove(socketPath);
-  } catch {}
+  } catch {
+    // pass
+  }
 });
