@@ -19,7 +19,7 @@ use ctr::Ctr128BE;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_optional;
 use rand::rngs::OsRng;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use serde::Deserialize;
@@ -126,7 +126,7 @@ pub async fn op_crypto_encrypt(
       key_length,
     } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
   };
-  let buf = spawn_blocking(fun).await.unwrap()?;
+  let buf = spawn_blocking_optional(fun).await.unwrap()?;
   Ok(buf.into())
 }
 

@@ -19,7 +19,7 @@ pub fn spawn_blocking<
   }
   #[cfg(not(target_arch = "wasm32"))]
   {
-    deno_unsync::spawn_blocking(f)
+    deno_unsync::spawn_blocking_optional(f)
   }
 }
 

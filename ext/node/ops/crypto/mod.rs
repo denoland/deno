@@ -8,7 +8,7 @@ use deno_core::OpState;
 use deno_core::StringOrBuffer;
 use deno_core::ToJsBuffer;
 use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_optional;
 use deno_error::JsErrorBox;
 use elliptic_curve::sec1::ToEncodedPoint;
 use hkdf::Hkdf;
@@ -67,8 +67,10 @@ pub async fn op_node_check_prime_async(
   #[number] checks: usize,
 ) -> Result<bool, tokio::task::JoinError> {
   // TODO(@littledivy): use rayon for CPU-bound tasks
-  spawn_blocking(move || primes::is_probably_prime(&BigInt::from(num), checks))
-    .await
+  spawn_blocking_optional(move || {
+    primes::is_probably_prime(&BigInt::from(num), checks)
+  })
+  .await
 }
 
 #[op2(async)]
@@ -79,7 +81,10 @@ pub fn op_node_check_prime_bytes_async(
   let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
   // TODO(@littledivy): use rayon for CPU-bound tasks
   async move {
-    spawn_blocking(move || primes::is_probably_prime(&candidate, checks)).await
+    spawn_blocking_optional(move || {
+      primes::is_probably_prime(&candidate, checks)
+    })
+    .await
   }
 }
 
@@ -506,7 +511,7 @@ pub async fn op_node_pbkdf2_async(
   #[string] digest: String,
   #[number] keylen: usize,
 ) -> Result<ToJsBuffer, Pbkdf2Error> {
-  spawn_blocking(move || {
+  spawn_blocking_optional(move || {
     let mut derived_key = vec![0; keylen];
     pbkdf2_sync(&password, &salt, iterations, &digest, &mut derived_key)
       .map(|_| derived_key.into())
@@ -522,7 +527,7 @@ pub fn op_node_fill_random(#[buffer] buf: &mut [u8]) {
 #[op2(async)]
 #[serde]
 pub async fn op_node_fill_random_async(#[smi] len: i32) -> ToJsBuffer {
-  spawn_blocking(move || {
+  spawn_blocking_optional(move || {
     let mut buf = vec![0u8; len as usize];
     rand::thread_rng().fill(&mut buf[..]);
     buf.into()
@@ -592,7 +597,7 @@ pub async fn op_node_hkdf_async(
   #[number] okm_len: usize,
 ) -> Result<ToJsBuffer, HkdfError> {
   let handle = handle.clone();
-  spawn_blocking(move || {
+  spawn_blocking_optional(move || {
     let mut okm = vec![0u8; okm_len];
     hkdf_sync(&digest_algorithm, &handle, &salt, &info, &mut okm)?;
     Ok(okm.into())
@@ -701,7 +706,7 @@ pub async fn op_node_scrypt_async(
   #[smi] parallelization: u32,
   #[smi] maxmem: u32,
 ) -> Result<ToJsBuffer, ScryptAsyncError> {
-  spawn_blocking(move || {
+  spawn_blocking_optional(move || {
     let mut output_buffer = vec![0u8; keylen as usize];
 
     scrypt(
@@ -978,7 +983,7 @@ pub fn op_node_gen_prime(#[number] size: usize) -> ToJsBuffer {
 pub async fn op_node_gen_prime_async(
   #[number] size: usize,
 ) -> Result<ToJsBuffer, tokio::task::JoinError> {
-  spawn_blocking(move || gen_prime(size)).await
+  spawn_blocking_optional(move || gen_prime(size)).await
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
