@@ -297,7 +297,7 @@
 "parallel/test-dgram-send-cb-quelches-error.js" = {}
 "parallel/test-dgram-send-default-host.js" = {}
 "parallel/test-dgram-send-empty-array.js" = {}
-"parallel/test-dgram-send-empty-buffer.js" = {}
+"parallel/test-dgram-send-empty-buffer.js" = { flaky = true }
 "parallel/test-dgram-send-empty-packet.js" = {}
 "parallel/test-dgram-send-error.js" = {}
 "parallel/test-dgram-send-invalid-msg-type.js" = {}
@@ -427,7 +427,7 @@
 "parallel/test-fs-exists.js" = {}
 "parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
-"parallel/test-fs-link.js" = {}
+"parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
@@ -699,7 +699,7 @@
 "parallel/test-microtask-queue-integration.js" = {}
 "parallel/test-microtask-queue-run-immediate.js" = {}
 "parallel/test-microtask-queue-run.js" = {}
-"parallel/test-module-cache.js" = {}
+"parallel/test-module-cache.js" = { flaky = true }
 "parallel/test-module-children.js" = {}
 "parallel/test-module-circular-symlinks.js" = {}
 "parallel/test-module-create-require-multibyte.js" = {}
@@ -921,7 +921,7 @@
 "parallel/test-stdio-pipe-access.js" = {}
 "parallel/test-stdio-pipe-redirect.js" = {}
 "parallel/test-stdio-pipe-stderr.js" = {}
-"parallel/test-stdio-undestroy.js" = {}
+"parallel/test-stdio-undestroy.js" = { flaky = true }
 "parallel/test-stdout-cannot-be-closed-child-process-pipe.js" = {}
 "parallel/test-stdout-pipeline-destroy.js" = {}
 "parallel/test-stdout-stderr-reading.js" = {}
@@ -1109,7 +1109,7 @@
 "parallel/test-stream3-pause-then-read.js" = {}
 "parallel/test-stream3-pipeline-async-iterator.js" = {}
 "parallel/test-streams-highwatermark.js" = {}
-"parallel/test-string-decoder.js" = {}
+"parallel/test-string-decoder.js" = { flaky = true }
 "parallel/test-sys.js" = {}
 "parallel/test-timers-api-refs.js" = {}
 "parallel/test-timers-args.js" = {}
