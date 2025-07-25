@@ -7,7 +7,7 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_always;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
@@ -100,7 +100,7 @@ async fn read_line_and_poll(
   message_handler: &mut RustylineSyncMessageHandler,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
-  let mut line_fut = spawn_blocking(move || editor.readline());
+  let mut line_fut = spawn_blocking_always(move || editor.readline());
   let mut poll_worker = true;
   let notifications_rc = repl_session.notifications.clone();
   let mut notifications = notifications_rc.lock().await;

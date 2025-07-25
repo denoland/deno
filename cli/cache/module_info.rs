@@ -262,7 +262,7 @@ impl deno_graph::analysis::ModuleAnalyzer
     }
 
     // otherwise, get the module info from the parsed source cache
-    let module_info = deno_core::unsync::spawn_blocking({
+    let module_info = deno_core::unsync::spawn_blocking_always({
       let cache = self.parsed_source_cache.clone();
       let specifier = specifier.clone();
       move || {
