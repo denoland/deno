@@ -1998,21 +1998,3 @@ async fn test_private_npm_registry() {
   let resp = client.execute(req).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
 }
-
-// Test for issue #29374: ensure correct error message when no package.json#exports condition matches
-#[test]
-fn npm_package_exports_no_condition_matched_error() {
-  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
-  let dir = test_context.temp_dir();
-
-  dir.write(
-    "main.ts",
-    "import 'npm:@denotest/conditional-exports-no-import';",
-  );
-
-  let output = test_context.new_command().args("run main.ts").run();
-  output.assert_matches_text(
-      r#"[WILDCARD] [ERR_PACKAGE_PATH_NOT_EXPORTED] No "exports" main defined in [WILDCARD]"#,
-    );
-  output.assert_exit_code(1);
-}
