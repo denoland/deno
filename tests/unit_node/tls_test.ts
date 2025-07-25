@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// deno-lint-ignore no-console
+// deno-lint-ignore-file no-console
 
 import {
   assert,
