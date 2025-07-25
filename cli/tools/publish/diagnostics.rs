@@ -435,9 +435,12 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => {
         Some(Cow::Borrowed("remove the triple slash directive"))
       }
-      RelativePackageImport { .. } => Some(Cow::Borrowed(
-        "replace the relative import with a bare specifier that imports from the other package by name and optionally an export (ex. \"@scope/pkg/export\")",
-      )),
+      RelativePackageImport {
+        to_package_name, ..
+      } => Some(Cow::Owned(format!(
+        "replace the relative import with a bare specifier that imports from the other package by name and optionally an export (ex. \"{}\")",
+        to_package_name
+      ))),
       SyntaxError(diagnostic) => diagnostic.hint(),
       MissingLicense { .. } => Some(Cow::Borrowed(
         "add a \"license\" field. Alternatively, add a LICENSE file to the package and ensure it is not ignored from being published",

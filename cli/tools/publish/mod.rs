@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::IsTerminal;
@@ -1102,7 +1101,7 @@ fn collect_excluded_module_diagnostics(
       | deno_graph::Module::External(_) => None,
     })
     .filter(|s| s.as_str().starts_with(root_dir.as_str()));
-  let mut outside_specifiers = HashMap::new();
+  let mut outside_specifiers = Vec::new();
   let mut had_excluded_specifier = false;
   for specifier in graph_specifiers {
     if !publish_specifiers.contains(specifier) {
@@ -1111,7 +1110,7 @@ fn collect_excluded_module_diagnostics(
         .filter(|pkg| pkg.member_dir.dir_url().as_ref() != root_dir);
       match other_jsr_pkg {
         Some(other_jsr_pkg) => {
-          outside_specifiers.insert(specifier, other_jsr_pkg);
+          outside_specifiers.push((specifier, other_jsr_pkg));
         }
         None => {
           had_excluded_specifier = true;
@@ -1123,22 +1122,31 @@ fn collect_excluded_module_diagnostics(
     }
   }
 
-  if !had_excluded_specifier && !outside_specifiers.is_empty() {
+  if !had_excluded_specifier {
     let mut found_outside_specifier = false;
-    let mut publish_specifiers = publish_specifiers.iter().collect::<Vec<_>>();
-    publish_specifiers.sort(); // determinism
-    for publish_specifier in publish_specifiers {
-      let Some(module) = graph.get(publish_specifier) else {
+    // ensure no path being published references another package
+    // via a relative import
+    for publish_path in publish_paths {
+      let Some(module) = graph.get(&publish_path.specifier) else {
         continue;
       };
-      for (_specifier_text, dep) in module.dependencies() {
+      for (specifier_text, dep) in module.dependencies() {
+        if !deno_path_util::is_relative_specifier(&specifier_text) {
+          continue;
+        }
         let resolutions = dep
           .maybe_code
           .ok()
           .into_iter()
           .chain(dep.maybe_type.ok().into_iter());
-        let mut maybe_res = resolutions
-          .filter_map(|r| Some((r, outside_specifiers.get(&r.specifier)?)));
+        let mut maybe_res = resolutions.filter_map(|r| {
+          let pkg = all_jsr_packages.get_for_specifier(&r.specifier)?;
+          if pkg.member_dir.dir_url().as_ref() != root_dir {
+            Some((r, pkg))
+          } else {
+            None
+          }
+        });
         if let Some((outside_res, package)) = maybe_res.next() {
           found_outside_specifier = true;
           diagnostics_collector.push(
@@ -1162,9 +1170,7 @@ fn collect_excluded_module_diagnostics(
     if !found_outside_specifier {
       // just in case we didn't find an outside specifier above, add
       // diagnostics for all the specifiers found outside the package
-      let sorted_outside_specifiers =
-        outside_specifiers.into_iter().collect::<BTreeMap<_, _>>(); // determinism
-      for (specifier, to_package) in sorted_outside_specifiers {
+      for (specifier, to_package) in outside_specifiers {
         diagnostics_collector.push(PublishDiagnostic::RelativePackageImport {
           specifier: specifier.clone(),
           from_package_name: current_package_name.to_string(),
