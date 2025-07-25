@@ -392,14 +392,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
-        let snapshot = managed
-          .resolution()
-          .serialized_valid_snapshot_for_system(&self.npm_system_info);
-        if !snapshot.as_serialized().packages.is_empty() {
-          self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
-          Some(snapshot)
-        } else {
+        if graph.npm_packages.is_empty() {
           None
+        } else {
+          let snapshot = managed
+            .resolution()
+            .serialized_valid_snapshot_for_system(&self.npm_system_info);
+          if !snapshot.as_serialized().packages.is_empty() {
+            self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
+            Some(snapshot)
+          } else {
+            None
+          }
         }
       }
       CliNpmResolver::Byonm(_) => {
@@ -867,10 +871,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             .resolution()
             .all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
+          let current_system = NpmSystemInfo::default();
           for package in packages {
             let folder =
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
-            builder.add_dir_recursive(&folder)?;
+            if !package.system.matches_system(&current_system)
+              && !folder.exists()
+            {
+              log::warn!(
+                "{} Ignoring 'npm:{}' because it was not present on the current system.",
+                crate::colors::yellow("Warning"),
+                package.id
+              );
+            } else {
+              builder.add_dir_recursive(&folder)?;
+            }
           }
           Ok(())
         }

@@ -879,11 +879,7 @@ impl CliFactory {
           &self.cli_options()?.permissions_options(),
         )?;
 
-        Ok(PermissionsContainer::new(
-          desc_parser,
-          Some(Arc::new(self.in_npm_pkg_checker()?.clone())),
-          permissions,
-        ))
+        Ok(PermissionsContainer::new(desc_parser, permissions))
       })
   }
 
