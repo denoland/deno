@@ -136,7 +136,7 @@ mod inner {
                 // runtime and this is time sensitive so we don't want it to update
                 // at the whims of whatever is occurring on the runtime thread.
                 let sys = sys.clone();
-                deno_unsync::spawn_blocking({
+                deno_unsync::spawn_blocking_always({
                   let poll_file = poll_file.clone();
                   move || loop {
                     sys

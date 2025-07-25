@@ -29,7 +29,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_always;
 use deno_core::url::Url;
 use log::debug;
 use log::info;
@@ -1657,7 +1657,7 @@ where
   let handles = file_paths.iter().map(|file_path| {
     let f = f.clone();
     let file_path = file_path.clone();
-    spawn_blocking(move || f(file_path))
+    spawn_blocking_always(move || f(file_path))
   });
   let join_results = futures::future::join_all(handles).await;
 
