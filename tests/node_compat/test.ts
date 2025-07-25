@@ -27,7 +27,7 @@ const [sequentialTests, parallelTests] = partition(
 );
 
 async function run(name: string, testConfig: SingleFileConfig) {
-  const result = await runSingle(generateTestSerialId(), name, testConfig);
+  const result = await runSingle(name, testConfig);
   let msg = "";
   const error = result.error;
   if (error && "message" in error) {
