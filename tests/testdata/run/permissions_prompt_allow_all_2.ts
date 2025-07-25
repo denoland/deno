@@ -5,4 +5,4 @@ Deno.loadavg();
 Deno.hostname();
 
 Deno.cwd();
-Deno.lstatSync(new URL("../", import.meta.url));
+Deno.lstatSync(new URL("..", import.meta.url));
