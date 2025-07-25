@@ -667,50 +667,30 @@ Buffer.prototype.swap64 = function swap64() {
   return this;
 };
 
-function isContinuation(v) {
-  return (v & 0xC0) === 0x80;
-}
-
-function decodeCodePoint(buffer, end, index) {
-  const v = buffer[index];
-  if (v <= 0x7F) {
-    return [v, index + 1];
-  }
-  let k = v ? Math.clz32(~(v << 24)) : 32;
-  const mask = (1 << (8 - k)) - 1;
-  let value = v & mask;
-  index++; k--;
-  while (index < end && k > 0 && isContinuation(buffer[index])) {
-    value = (value << 6);
-    value += (buffer[index] & 0x3F);
-    index++; k--;
-  }
-  return [value, index];
-}
-
-function decodeUtf8Fast(buffer, start, end) {
-  let index = start;
-  let result = "";
-  while (index < end) {
-    const [v, newIndex] = decodeCodePoint(buffer, end, index);
-    index = newIndex;
-    result += StringFromCodePoint(v);
-  }
-  return result;
-}
-
 function decodeUtf8(buffer, start, end) {
-  if (end - start >= 0 && end - start <= 6) {
-    return decodeUtf8Fast(buffer, start, end);
-  } else {
-    return op_node_decode_utf8(
-      TypedArrayPrototypeGetBuffer(buffer),
-      TypedArrayPrototypeGetByteOffset(buffer),
-      TypedArrayPrototypeGetByteLength(buffer),
-      start ?? 0,
-      end ?? TypedArrayPrototypeGetByteLength(buffer),
-    );
+  if (!isArrayBufferView(buffer)) {
+    throw new ERR_INVALID_ARG_TYPE("buffer", ["buffer"], buffer);
   }
+  const length = TypedArrayPrototypeGetByteLength(buffer);
+
+  start = Number(start ?? 0);
+  end = Number(end ?? length);
+  if (start < 0 || start > length) {
+    throw new codes.ERR_OUT_OF_RANGE("start", ">= 0 and <= length", start);
+  }
+  if (end < 0 || end > length) {
+    throw new codes.ERR_OUT_OF_RANGE("end", ">= 0 and <= length", end);
+  }
+  if (start > end) {
+    end = start;
+  }
+  return op_node_decode_utf8(
+    TypedArrayPrototypeGetBuffer(buffer),
+    TypedArrayPrototypeGetByteOffset(buffer),
+    length,
+    start,
+    end,
+  );
 }
 
 Buffer.prototype.toString = function toString(encoding, start, end) {
@@ -742,21 +722,14 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
     return "";
   }
 
-  if (encoding === undefined) {
+  if (encoding === undefined || encoding === "utf8") {
     return decodeUtf8(
       this,
       start,
       end,
     );
   }
-  
-  if (encoding === "utf8") {
-    return decodeUtf8(
-      this,
-      start,
-      end,
-    );
-  }
+
 
   const ops = getEncodingOps(encoding);
   if (ops === undefined) {
@@ -1113,7 +1086,7 @@ function utf8Slice(start, end) {
     start,
     end,
   );
-};
+}
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
   // deno-lint-ignore prefer-primordials
