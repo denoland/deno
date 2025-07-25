@@ -835,36 +835,38 @@ impl BrotliDecoder {
     #[smi] out_off: u32,
     #[smi] out_len: u32,
   ) -> Result<(), JsErrorBox> {
-    let ctx = self.ctx.borrow();
-    let ctx = ctx.as_ref().expect("BrotliDecoder not initialized");
+    let callback = {
+      let ctx = self.ctx.borrow();
+      let ctx = ctx.as_ref().expect("BrotliDecoder not initialized");
 
-    let mut next_in = input
-      .get(in_off as usize..in_off as usize + in_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?
-      .as_ptr();
-    let mut next_out = out
-      .get_mut(out_off as usize..out_off as usize + out_len as usize)
-      .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?
-      .as_mut_ptr();
+      let mut next_in = input
+        .get(in_off as usize..in_off as usize + in_len as usize)
+        .ok_or_else(|| JsErrorBox::type_error("invalid input range"))?
+        .as_ptr();
+      let mut next_out = out
+        .get_mut(out_off as usize..out_off as usize + out_len as usize)
+        .ok_or_else(|| JsErrorBox::type_error("invalid output range"))?
+        .as_mut_ptr();
 
-    let mut avail_in = in_len as usize;
-    let mut avail_out = out_len as usize;
+      let mut avail_in = in_len as usize;
+      let mut avail_out = out_len as usize;
 
-    // SAFETY: `inst`, `next_in`, `next_out`, `avail_in`, and `avail_out` are valid pointers.
-    let callback = unsafe {
-      ffi::decompressor::ffi::BrotliDecoderDecompressStream(
-        ctx.inst,
-        &mut avail_in,
-        &mut next_in,
-        &mut avail_out,
-        &mut next_out,
-        std::ptr::null_mut(),
-      );
+      // SAFETY: `inst`, `next_in`, `next_out`, `avail_in`, and `avail_out` are valid pointers.
+      unsafe {
+        ffi::decompressor::ffi::BrotliDecoderDecompressStream(
+          ctx.inst,
+          &mut avail_in,
+          &mut next_in,
+          &mut avail_out,
+          &mut next_out,
+          std::ptr::null_mut(),
+        );
 
-      // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
-      let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
-      result[0] = avail_out as u32;
-      result[1] = avail_in as u32;
+        // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
+        let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
+        result[0] = avail_out as u32;
+        result[1] = avail_in as u32;
+      }
 
       v8::Local::new(scope, &ctx.callback)
     };
