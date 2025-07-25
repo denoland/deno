@@ -1131,7 +1131,7 @@ fn collect_excluded_module_diagnostics(
         continue;
       };
       for (specifier_text, dep) in module.dependencies() {
-        if !deno_path_util::is_relative_specifier(&specifier_text) {
+        if !deno_path_util::is_relative_specifier(specifier_text) {
           continue;
         }
         let resolutions = dep
