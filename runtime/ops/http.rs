@@ -78,6 +78,8 @@ fn op_http_start(
     let tls_stream = resource.into_tls_stream();
     let addr = match tls_stream {
       TlsStreamReunited::Tcp(ref s) => s.local_addr()?,
+      // TODO(bartlomieju): handle Unix socket
+      #[allow(unreachable_patterns)]
       _ => todo!(),
     };
 
