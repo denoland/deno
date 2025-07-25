@@ -4,8 +4,8 @@ use std::borrow::Cow;
 
 use deno_cache_dir::npm::mixed_case_package_name_decode;
 use deno_npm::NpmPackageCacheFolderId;
-use deno_semver::package::PackageNv;
 use deno_semver::StackString;
+use deno_semver::package::PackageNv;
 
 #[inline]
 pub fn get_package_folder_id_folder_name(

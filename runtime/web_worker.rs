@@ -3,10 +3,10 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
@@ -14,16 +14,6 @@ use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::error::CoreError;
-use deno_core::futures::channel::mpsc;
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::stream::StreamExt;
-use deno_core::futures::task::AtomicWaker;
-use deno_core::located_script_name;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
-use deno_core::serde_json::json;
-use deno_core::v8;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
@@ -36,7 +26,19 @@ use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::error::CoreError;
+use deno_core::error::CoreErrorKind;
+use deno_core::futures::channel::mpsc;
+use deno_core::futures::future::poll_fn;
+use deno_core::futures::stream::StreamExt;
+use deno_core::futures::task::AtomicWaker;
+use deno_core::located_script_name;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
+use deno_core::serde_json::json;
+use deno_core::v8;
 use deno_cron::local::LocalCronHandler;
+use deno_error::JsErrorClass;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -48,28 +50,28 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::create_entangled_message_port;
-use deno_web::serialize_transferables;
 use deno_web::BlobStore;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use deno_web::Transferable;
+use deno_web::create_entangled_message_port;
+use deno_web::serialize_transferables;
 use log::debug;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
+use crate::BootstrapOptions;
+use crate::FeatureChecker;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::shared::runtime;
-use crate::worker::create_op_metrics;
-use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
 #[cfg(target_os = "linux")]
 use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
 #[cfg(target_os = "linux")]
 use crate::worker::SIGUSR2_RX;
-use crate::BootstrapOptions;
-use crate::FeatureChecker;
+use crate::worker::create_op_metrics;
+use crate::worker::create_validate_import_attributes_callback;
 
 pub struct WorkerMetadata {
   pub buffer: DetachedBuffer,
@@ -147,8 +149,8 @@ impl Serialize for WorkerControlEvent {
 
     match self {
       WorkerControlEvent::TerminalError(error) => {
-        let value = match error {
-          CoreError::Js(js_error) => {
+        let value = match error.as_kind() {
+          CoreErrorKind::Js(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
               Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
@@ -406,6 +408,7 @@ pub struct WebWorkerOptions {
   pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
 }
 
@@ -645,14 +648,20 @@ impl WebWorker {
       extension_transpiler: None,
       inspector: true,
       op_metrics_factory_fn,
-      validate_import_attributes_cb: Some(Box::new(
-        validate_import_attributes_callback,
-      )),
+      validate_import_attributes_cb: Some(
+        create_validate_import_attributes_callback(options.enable_raw_imports),
+      ),
       import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       maybe_op_stack_trace_callback: options
         .enable_stack_trace_arg_in_ops
         .then(crate::worker::create_permissions_stack_trace_callback),
-      ..Default::default()
+      extension_code_cache: None,
+      skip_op_registration: false,
+      v8_platform: None,
+      is_main: false,
+      wait_for_inspector_disconnect_callback: None,
+      custom_module_evaluation_cb: None,
+      eval_context_code_cache_cbs: None,
     });
 
     if let Some(op_summary_metrics) = op_summary_metrics {
@@ -1010,13 +1019,19 @@ fn print_worker_error(
   name: &str,
   format_js_error_fn: Option<&FormatJsErrorFn>,
 ) {
-  let error_str = match format_js_error_fn {
-    Some(format_js_error_fn) => match error {
-      CoreError::Js(js_error) => format_js_error_fn(js_error),
-      _ => error.to_string(),
-    },
-    None => error.to_string(),
-  };
+  let error_str = format_js_error_fn
+    .as_ref()
+    .and_then(|format_js_error_fn| {
+      let err = match error.as_kind() {
+        CoreErrorKind::Js(js_error) => js_error,
+        CoreErrorKind::JsBox(err) => {
+          err.as_any().downcast_ref::<deno_core::error::JsError>()?
+        }
+        _ => return None,
+      };
+      Some(format_js_error_fn(err))
+    })
+    .unwrap_or_else(|| error.to_string());
   log::error!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),

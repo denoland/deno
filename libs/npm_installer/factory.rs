@@ -16,6 +16,9 @@ use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileNpmPackageInfoApiAdapter;
 use futures::FutureExt;
 
+use crate::LifecycleScriptsConfig;
+use crate::NpmInstaller;
+use crate::Reporter;
 use crate::graph::NpmCachingStrategy;
 use crate::graph::NpmDenoGraphResolver;
 use crate::initializer::NpmResolutionInitializer;
@@ -23,9 +26,6 @@ use crate::initializer::NpmResolverManagedSnapshotOption;
 use crate::lifecycle_scripts::LifecycleScriptsExecutor;
 use crate::package_json::NpmInstallDepsProvider;
 use crate::resolution::NpmResolutionInstaller;
-use crate::LifecycleScriptsConfig;
-use crate::NpmInstaller;
-use crate::Reporter;
 
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
 type Deferred<T> = once_cell::sync::OnceCell<T>;
@@ -80,10 +80,10 @@ pub struct NpmInstallerFactory<
 }
 
 impl<
-    TNpmCacheHttpClient: NpmCacheHttpClient,
-    TReporter: Reporter,
-    TSys: NpmInstallerFactorySys,
-  > NpmInstallerFactory<TNpmCacheHttpClient, TReporter, TSys>
+  TNpmCacheHttpClient: NpmCacheHttpClient,
+  TReporter: Reporter,
+  TSys: NpmInstallerFactorySys,
+> NpmInstallerFactory<TNpmCacheHttpClient, TReporter, TSys>
 {
   pub fn new(
     resolver_factory: Arc<ResolverFactory<TSys>>,
@@ -132,7 +132,7 @@ impl<
   ) -> Result<&LockfileNpmPackageInfoApiAdapter, anyhow::Error> {
     self.lockfile_npm_package_info_provider.get_or_try_init(|| {
       Ok(LockfileNpmPackageInfoApiAdapter::new(
-        Arc::new(self.registry_info_provider()?.as_npm_registry_api()),
+        self.registry_info_provider()?.clone(),
         self
           .workspace_factory()
           .workspace_npm_link_packages()?
@@ -261,8 +261,6 @@ impl<
           let workspace_factory = self.workspace_factory();
           let npm_cache = self.npm_cache()?;
           let registry_info_provider = self.registry_info_provider()?;
-          let registry_info_provider =
-            Arc::new(registry_info_provider.as_npm_registry_api());
           let workspace_npm_link_packages =
             workspace_factory.workspace_npm_link_packages()?;
           Ok(Arc::new(NpmInstaller::new(
@@ -271,7 +269,7 @@ impl<
             Arc::new(NpmInstallDepsProvider::from_workspace(
               &workspace_factory.workspace_directory()?.workspace,
             )),
-            registry_info_provider,
+            registry_info_provider.clone(),
             self.resolver_factory.npm_resolution().clone(),
             self.npm_resolution_initializer().await?.clone(),
             self.npm_resolution_installer().await?.clone(),

@@ -8,26 +8,26 @@ use std::io::Error;
 #[cfg(windows)]
 use std::sync::Arc;
 
-use deno_core::op2;
-#[cfg(windows)]
-use deno_core::parking_lot::Mutex;
 use deno_core::OpState;
 #[cfg(unix)]
 use deno_core::ResourceId;
-use deno_error::builtin_classes::GENERIC_ERROR;
+use deno_core::op2;
+#[cfg(windows)]
+use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
+use deno_error::builtin_classes::GENERIC_ERROR;
 #[cfg(windows)]
 use deno_io::WinTtyState;
 #[cfg(unix)]
 use nix::sys::termios;
-use rustyline::config::Configurer;
-use rustyline::error::ReadlineError;
 use rustyline::Cmd;
 use rustyline::Editor;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
+use rustyline::config::Configurer;
+use rustyline::error::ReadlineError;
 
 #[cfg(unix)]
 #[derive(Default, Clone)]

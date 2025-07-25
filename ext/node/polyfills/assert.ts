@@ -21,7 +21,15 @@ import { primordials } from "ext:core/mod.js";
 import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
 import { deprecate } from "node:util";
 
-const { ObjectPrototypeIsPrototypeOf } = primordials;
+const {
+  ArrayPrototypeIndexOf,
+  ArrayPrototypeJoin,
+  ArrayPrototypeSlice,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+} = primordials;
 
 function innerFail(obj: {
   actual?: unknown;
@@ -181,6 +189,7 @@ function throws(
       operator: "throws",
       actual: undefined,
       expected: error,
+      stackStartFn: throws,
     });
   } else if (typeof error === "string") {
     // Use case of throws(fn, message)
@@ -189,6 +198,7 @@ function throws(
       operator: "throws",
       actual: undefined,
       expected: undefined,
+      stackStartFn: throws,
     });
   } else if (typeof error === "function" && error?.prototype !== undefined) {
     throw new AssertionError({
@@ -196,6 +206,7 @@ function throws(
       operator: "throws",
       actual: undefined,
       expected: error,
+      stackStartFn: throws,
     });
   } else {
     throw new AssertionError({
@@ -203,6 +214,7 @@ function throws(
       operator: "throws",
       actual: undefined,
       expected: error,
+      stackStartFn: throws,
     });
   }
 }
@@ -408,17 +420,56 @@ function notDeepStrictEqual(
   );
 }
 
-function fail(message?: string | Error): never {
-  if (typeof message === "string" || message == null) {
-    throw createAssertionError({
-      message: message ?? "Failed",
-      operator: "fail",
-      generatedMessage: message == null,
-    });
+let warned = false;
+
+function fail(
+  actual?: string | Error,
+  expected?: unknown,
+  message?: string | Error,
+  operator?: string,
+  stackStartFn?: Function,
+): never {
+  const argsLen = arguments.length;
+
+  let internalMessage = false;
+  if (actual == null && argsLen <= 1) {
+    internalMessage = true;
+    message = "Failed";
+  } else if (argsLen === 1) {
+    message = actual;
+    actual = undefined;
   } else {
-    throw message;
+    if (warned === false) {
+      warned = true;
+      // deno-lint-ignore no-process-global
+      process.emitWarning(
+        "assert.fail() with more than one argument is deprecated. " +
+          "Please use assert.strictEqual() instead or only pass a message.",
+        "DeprecationWarning",
+        "DEP0094",
+      );
+    }
+    if (argsLen === 2) {
+      operator = "!=";
+    }
   }
+
+  if (message instanceof Error) throw message;
+
+  const errArgs = {
+    actual,
+    expected,
+    operator: operator === undefined ? "fail" : operator,
+    stackStartFn: stackStartFn || fail,
+    message,
+  };
+  const err = new AssertionError(errArgs);
+  if (internalMessage) {
+    err.generatedMessage = true;
+  }
+  throw err;
 }
+
 function match(actual: string, regexp: RegExp, message?: string | Error) {
   if (arguments.length < 2) {
     throw new ERR_MISSING_ARGS("actual", "regexp");
@@ -698,25 +749,27 @@ function ifError(err: any) {
       // This will remove any duplicated frames from the error frames taken
       // from within `ifError` and add the original error frames to the newly
       // created ones.
-      const tmp2 = origStack.split("\n");
-      tmp2.shift();
-
-      // Filter all frames existing in err.stack.
-      let tmp1 = newErr!.stack?.split("\n");
-
-      for (const errFrame of tmp2) {
-        // Find the first occurrence of the frame.
-        const pos = tmp1?.indexOf(errFrame);
-
-        if (pos !== -1) {
-          // Only keep new frames.
-          tmp1 = tmp1?.slice(0, pos);
-
-          break;
+      const origStackStart = StringPrototypeIndexOf(origStack, "\n    at");
+      if (origStackStart !== -1) {
+        const originalFrames = StringPrototypeSplit(
+          StringPrototypeSlice(origStack, origStackStart + 1),
+          "\n",
+        );
+        // Filter all frames existing in err.stack.
+        let newFrames = StringPrototypeSplit(newErr.stack, "\n");
+        for (const errFrame of originalFrames) {
+          // Find the first occurrence of the frame.
+          const pos = ArrayPrototypeIndexOf(newFrames, errFrame);
+          if (pos !== -1) {
+            // Only keep new frames.
+            newFrames = ArrayPrototypeSlice(newFrames, 0, pos);
+            break;
+          }
         }
+        const stackStart = ArrayPrototypeJoin(newFrames, "\n");
+        const stackEnd = ArrayPrototypeJoin(originalFrames, "\n");
+        newErr.stack = `${stackStart}\n${stackEnd}`;
       }
-
-      newErr.stack = `${tmp1?.join("\n")}\n${tmp2.join("\n")}`;
     }
 
     throw newErr;

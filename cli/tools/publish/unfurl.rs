@@ -3,6 +3,11 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use deno_ast::ParsedSource;
+use deno_ast::SourceRange;
+use deno_ast::SourceTextInfo;
+use deno_ast::SourceTextProvider;
+use deno_ast::TextChange;
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::diagnostics::DiagnosticLevel;
 use deno_ast::diagnostics::DiagnosticLocation;
@@ -11,13 +16,8 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlight;
 use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
-use deno_ast::ParsedSource;
-use deno_ast::SourceRange;
-use deno_ast::SourceTextInfo;
-use deno_ast::SourceTextProvider;
-use deno_ast::TextChange;
-use deno_core::anyhow;
 use deno_core::ModuleSpecifier;
+use deno_core::anyhow;
 use deno_graph::analysis::DependencyDescriptor;
 use deno_graph::analysis::DynamicTemplatePart;
 use deno_graph::analysis::StaticDependencyKind;
@@ -33,6 +33,7 @@ use deno_semver::VersionReq;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 
+use crate::node::CliNodeResolver;
 use crate::sys::CliSys;
 
 #[derive(Debug, Clone)]
@@ -256,20 +257,28 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
 
   fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
     match self {
-      SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => Cow::Borrowed(&[
-        Cow::Borrowed("after publishing this package, imports from the local import map / package.json do not work"),
-        Cow::Borrowed("dynamic imports that can not be analyzed at publish time will not be rewritten automatically"),
-        Cow::Borrowed("make sure the dynamic import is resolvable at runtime without an import map / package.json")
-      ]),
+      SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => {
+        Cow::Borrowed(&[
+          Cow::Borrowed(
+            "after publishing this package, imports from the local import map / package.json do not work",
+          ),
+          Cow::Borrowed(
+            "dynamic imports that can not be analyzed at publish time will not be rewritten automatically",
+          ),
+          Cow::Borrowed(
+            "make sure the dynamic import is resolvable at runtime without an import map / package.json",
+          ),
+        ])
+      }
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage { .. } => {
         Cow::Borrowed(&[])
-      },
-      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier { .. } => {
-        Cow::Borrowed(&[])
-      },
-      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonJsrSpecifier { .. } => {
-        Cow::Borrowed(&[])
-      },
+      }
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
+        ..
+      } => Cow::Borrowed(&[]),
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonJsrSpecifier {
+        ..
+      } => Cow::Borrowed(&[]),
     }
   }
 
@@ -292,12 +301,15 @@ enum UnfurlSpecifierError {
 }
 
 pub struct SpecifierUnfurler<TSys: FsMetadata + FsRead = CliSys> {
+  // optional for testing
+  node_resolver: Option<Arc<CliNodeResolver>>,
   workspace_resolver: Arc<WorkspaceResolver<TSys>>,
   bare_node_builtins: bool,
 }
 
 impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
   pub fn new(
+    node_resolver: Option<Arc<CliNodeResolver>>,
     workspace_resolver: Arc<WorkspaceResolver<TSys>>,
     bare_node_builtins: bool,
   ) -> Self {
@@ -306,6 +318,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
       PackageJsonDepResolution::Enabled
     );
     Self {
+      node_resolver,
       workspace_resolver,
       bare_node_builtins,
     }
@@ -381,128 +394,143 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     specifier: &str,
     resolution_kind: deno_resolver::workspace::ResolutionKind,
   ) -> Result<Option<String>, UnfurlSpecifierError> {
-    let resolved = if let Ok(resolved) =
-      self
-        .workspace_resolver
-        .resolve(specifier, referrer, resolution_kind)
-    {
-      match resolved {
-        MappedResolution::Normal { specifier, .. } => Some(specifier),
-        MappedResolution::WorkspaceJsrPackage { pkg_req_ref, .. } => {
-          Some(ModuleSpecifier::parse(&pkg_req_ref.to_string()).unwrap())
-        }
-        MappedResolution::WorkspaceNpmPackage {
-          target_pkg_json: pkg_json,
-          pkg_name,
-          sub_path,
-        } => {
-          // todo(#24612): consider warning or error when this is also a jsr package?
-          ModuleSpecifier::parse(&format!(
-            "npm:{}{}{}",
+    let resolved = match self.workspace_resolver.resolve(
+      specifier,
+      referrer,
+      resolution_kind,
+    ) {
+      Ok(resolved) => {
+        match resolved {
+          MappedResolution::Normal { specifier, .. } => Some(specifier),
+          MappedResolution::WorkspaceJsrPackage { pkg_req_ref, .. } => {
+            Some(ModuleSpecifier::parse(&pkg_req_ref.to_string()).unwrap())
+          }
+          MappedResolution::WorkspaceNpmPackage {
+            target_pkg_json: pkg_json,
             pkg_name,
-            pkg_json
-              .version
-              .as_ref()
-              .map(|v| format!("@^{}", v))
-              .unwrap_or_default(),
-            sub_path
-              .as_ref()
-              .map(|s| format!("/{}", s))
-              .unwrap_or_default()
-          ))
-          .ok()
-        }
-        MappedResolution::PackageJson {
-          alias,
-          sub_path,
-          dep_result,
-          ..
-        } => match dep_result {
-          Ok(dep) => match dep {
-            PackageJsonDepValue::File(_) => {
-              return Err(
-                UnfurlSpecifierError::UnsupportedPkgJsonFileSpecifier {
-                  package_name: alias.to_string(),
-                },
+            sub_path,
+          } => {
+            // todo(#24612): consider warning or error when this is also a jsr package?
+            ModuleSpecifier::parse(&format!(
+              "npm:{}{}{}",
+              pkg_name,
+              pkg_json
+                .version
+                .as_ref()
+                .map(|v| format!("@^{}", v))
+                .unwrap_or_default(),
+              sub_path
+                .as_ref()
+                .map(|s| format!("/{}", s))
+                .unwrap_or_default()
+            ))
+            .ok()
+          }
+          MappedResolution::PackageJson {
+            alias,
+            sub_path,
+            dep_result,
+            ..
+          } => match dep_result {
+            Ok(dep) => match dep {
+              PackageJsonDepValue::File(_) => {
+                return Err(
+                  UnfurlSpecifierError::UnsupportedPkgJsonFileSpecifier {
+                    package_name: alias.to_string(),
+                  },
+                );
+              }
+              PackageJsonDepValue::JsrReq(_) => {
+                return Err(
+                  UnfurlSpecifierError::UnsupportedPkgJsonJsrSpecifier {
+                    package_name: alias.to_string(),
+                  },
+                );
+              }
+              PackageJsonDepValue::Req(pkg_req) => {
+                // todo(#24612): consider warning or error when this is an npm workspace
+                // member that's also a jsr package?
+                ModuleSpecifier::parse(&format!(
+                  "npm:{}{}",
+                  pkg_req,
+                  sub_path
+                    .as_ref()
+                    .map(|s| format!("/{}", s))
+                    .unwrap_or_default()
+                ))
+                .ok()
+              }
+              PackageJsonDepValue::Workspace(workspace_version_req) => {
+                let version_req = match workspace_version_req {
+                  PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
+                    Cow::Borrowed(version_req)
+                  }
+                  PackageJsonDepWorkspaceReq::Caret => {
+                    let version = self
+                      .find_workspace_npm_dep_version(alias)
+                      .map_err(|err| UnfurlSpecifierError::Workspace {
+                        package_name: alias.to_string(),
+                        reason: err.to_string(),
+                      })?;
+                    // version was validated, so ok to unwrap
+                    Cow::Owned(
+                      VersionReq::parse_from_npm(&format!("^{}", version))
+                        .unwrap(),
+                    )
+                  }
+                  PackageJsonDepWorkspaceReq::Tilde => {
+                    let version = self
+                      .find_workspace_npm_dep_version(alias)
+                      .map_err(|err| UnfurlSpecifierError::Workspace {
+                        package_name: alias.to_string(),
+                        reason: err.to_string(),
+                      })?;
+                    // version was validated, so ok to unwrap
+                    Cow::Owned(
+                      VersionReq::parse_from_npm(&format!("~{}", version))
+                        .unwrap(),
+                    )
+                  }
+                };
+                // todo(#24612): warn when this is also a jsr package telling
+                // people to map the specifiers in the import map
+                ModuleSpecifier::parse(&format!(
+                  "npm:{}@{}{}",
+                  alias,
+                  version_req,
+                  sub_path
+                    .as_ref()
+                    .map(|s| format!("/{}", s))
+                    .unwrap_or_default()
+                ))
+                .ok()
+              }
+            },
+            Err(err) => {
+              log::warn!(
+                "Ignoring failed to resolve package.json dependency. {:#}",
+                err
               );
-            }
-            PackageJsonDepValue::JsrReq(_) => {
-              return Err(
-                UnfurlSpecifierError::UnsupportedPkgJsonJsrSpecifier {
-                  package_name: alias.to_string(),
-                },
-              );
-            }
-            PackageJsonDepValue::Req(pkg_req) => {
-              // todo(#24612): consider warning or error when this is an npm workspace
-              // member that's also a jsr package?
-              ModuleSpecifier::parse(&format!(
-                "npm:{}{}",
-                pkg_req,
-                sub_path
-                  .as_ref()
-                  .map(|s| format!("/{}", s))
-                  .unwrap_or_default()
-              ))
-              .ok()
-            }
-            PackageJsonDepValue::Workspace(workspace_version_req) => {
-              let version_req = match workspace_version_req {
-                PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
-                  Cow::Borrowed(version_req)
-                }
-                PackageJsonDepWorkspaceReq::Caret => {
-                  let version = self
-                    .find_workspace_npm_dep_version(alias)
-                    .map_err(|err| UnfurlSpecifierError::Workspace {
-                      package_name: alias.to_string(),
-                      reason: err.to_string(),
-                    })?;
-                  // version was validated, so ok to unwrap
-                  Cow::Owned(
-                    VersionReq::parse_from_npm(&format!("^{}", version))
-                      .unwrap(),
-                  )
-                }
-                PackageJsonDepWorkspaceReq::Tilde => {
-                  let version = self
-                    .find_workspace_npm_dep_version(alias)
-                    .map_err(|err| UnfurlSpecifierError::Workspace {
-                      package_name: alias.to_string(),
-                      reason: err.to_string(),
-                    })?;
-                  // version was validated, so ok to unwrap
-                  Cow::Owned(
-                    VersionReq::parse_from_npm(&format!("~{}", version))
-                      .unwrap(),
-                  )
-                }
-              };
-              // todo(#24612): warn when this is also a jsr package telling
-              // people to map the specifiers in the import map
-              ModuleSpecifier::parse(&format!(
-                "npm:{}@{}{}",
-                alias,
-                version_req,
-                sub_path
-                  .as_ref()
-                  .map(|s| format!("/{}", s))
-                  .unwrap_or_default()
-              ))
-              .ok()
+              None
             }
           },
-          Err(err) => {
-            log::warn!(
-              "Ignoring failed to resolve package.json dependency. {:#}",
-              err
-            );
-            None
+          MappedResolution::PackageJsonImport { pkg_json } => {
+            self.node_resolver.as_ref().and_then(|resolver| {
+              resolver
+                .resolve_package_import(
+                  specifier,
+                  Some(&node_resolver::UrlOrPathRef::from_url(referrer)),
+                  Some(pkg_json),
+                  node_resolver::ResolutionMode::Import,
+                  node_resolver::NodeResolutionKind::Execution,
+                )
+                .ok()
+                .and_then(|s| s.into_url().ok())
+            })
           }
-        },
+        }
       }
-    } else {
-      None
+      Err(_) => None,
     };
     let resolved = match resolved {
       Some(resolved) => resolved,
@@ -899,7 +927,8 @@ mod tests {
       Default::default(),
       CliSys::default(),
     );
-    let unfurler = SpecifierUnfurler::new(Arc::new(workspace_resolver), true);
+    let unfurler =
+      SpecifierUnfurler::new(None, Arc::new(workspace_resolver), true);
 
     // Unfurling TS file should apply changes.
     {
@@ -1067,7 +1096,8 @@ export type * from "./c.d.ts";
       Default::default(),
       sys.clone(),
     );
-    let unfurler = SpecifierUnfurler::new(Arc::new(workspace_resolver), true);
+    let unfurler =
+      SpecifierUnfurler::new(None, Arc::new(workspace_resolver), true);
 
     {
       let source_code = r#"import add from "add";

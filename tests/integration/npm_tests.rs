@@ -1,15 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use pretty_assertions::assert_eq;
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use test_util as util;
 use test_util::itest;
 use url::Url;
+use util::TestContextBuilder;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::http_server;
-use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
@@ -353,11 +353,13 @@ fn node_modules_dir_cache() {
   assert!(output.status.success());
 
   let node_modules = deno_dir.path().join("node_modules");
-  assert!(node_modules
-    .join(
-      ".deno/@denotest+dual-cjs-esm@1.0.0/node_modules/@denotest/dual-cjs-esm"
-    )
-    .exists());
+  assert!(
+    node_modules
+      .join(
+        ".deno/@denotest+dual-cjs-esm@1.0.0/node_modules/@denotest/dual-cjs-esm"
+      )
+      .exists()
+  );
   assert!(node_modules.join("@denotest/dual-cjs-esm").exists());
 
   // now try deleting the folder with the package source in the npm cache dir
@@ -1194,15 +1196,21 @@ fn binary_package_with_optional_dependencies() {
       output.assert_matches_text(
         "[WILDCARD]Hello from binary package on windows[WILDCARD]",
       );
-      assert!(project_path
-        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
-        .exists());
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
-        .exists());
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
-        .exists());
+      assert!(
+        project_path
+          .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+          .exists()
+      );
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+          .exists()
+      );
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+          .exists()
+      );
       assert!(project_path
         .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-windows")
         .exists());
@@ -1221,15 +1229,21 @@ fn binary_package_with_optional_dependencies() {
         "[WILDCARD]Hello from binary package on mac[WILDCARD]",
       );
 
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
-        .exists());
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
-        .exists());
-      assert!(project_path
-        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
-        .exists());
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+          .exists()
+      );
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+          .exists()
+      );
+      assert!(
+        project_path
+          .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+          .exists()
+      );
       assert!(!project_path
         .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-windows")
         .exists());
@@ -1247,15 +1261,21 @@ fn binary_package_with_optional_dependencies() {
       output.assert_matches_text(
         "[WILDCARD]Hello from binary package on linux[WILDCARD]",
       );
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
-        .exists());
-      assert!(project_path
-        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
-        .exists());
-      assert!(!project_path
-        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
-        .exists());
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+          .exists()
+      );
+      assert!(
+        project_path
+          .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+          .exists()
+      );
+      assert!(
+        !project_path
+          .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+          .exists()
+      );
       assert!(!project_path
         .join("node_modules/.deno/@denotest+binary-package@1.0.0/node_modules/@denotest/binary-package-windows")
         .exists());

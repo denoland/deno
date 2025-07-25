@@ -9,22 +9,22 @@ use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::Workspace;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::futures::future::LocalBoxFuture;
+use deno_core::futures::stream::FuturesUnordered;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_runtime::deno_fetch;
 use deno_terminal::colors;
@@ -40,11 +40,11 @@ use self::graph::GraphDiagnosticsCollector;
 use self::module_content::ModuleContentProvider;
 use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
-use crate::args::jsr_api_url;
-use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
+use crate::args::jsr_api_url;
+use crate::args::jsr_url;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
@@ -65,8 +65,8 @@ mod publish_order;
 mod tar;
 mod unfurl;
 
-use auth::get_auth_method;
 use auth::AuthMethod;
+use auth::get_auth_method;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
@@ -102,7 +102,9 @@ pub async fn publish(
 
   if let Some(version) = &publish_flags.set_version {
     if publish_configs.len() > 1 {
-      bail!("Cannot use --set-version when publishing a workspace. Change your cwd to an individual package instead.");
+      bail!(
+        "Cannot use --set-version when publishing a workspace. Change your cwd to an individual package instead."
+      );
     }
     if let Some(publish_config) = publish_configs.get_mut(0) {
       let mut config_file = publish_config.config_file.as_ref().clone();
@@ -112,19 +114,21 @@ pub async fn publish(
   }
 
   let specifier_unfurler = SpecifierUnfurler::new(
+    Some(cli_factory.node_resolver().await?.clone()),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   );
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
+  let parsed_source_cache = cli_factory.parsed_source_cache()?;
   let module_content_provider = Arc::new(ModuleContentProvider::new(
-    cli_factory.parsed_source_cache().clone(),
+    parsed_source_cache.clone(),
     specifier_unfurler,
     cli_factory.sys(),
-    cli_factory.tsconfig_resolver()?.clone(),
+    cli_factory.compiler_options_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
-    GraphDiagnosticsCollector::new(cli_factory.parsed_source_cache().clone()),
+    GraphDiagnosticsCollector::new(parsed_source_cache.clone()),
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.type_checker().await?.clone(),
     cli_options.clone(),
@@ -154,7 +158,9 @@ pub async fn publish(
       check_if_git_repo_dirty(cli_options.initial_cwd()).await
     {
       log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
-      bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+      bail!(
+        "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty"
+      );
     }
   }
 
@@ -317,7 +323,9 @@ impl PublishPreparer {
         .await
         .is_some()
       {
-        bail!("When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state.");
+        bail!(
+          "When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state."
+        );
       }
 
       for module in graph.modules() {
@@ -950,7 +958,7 @@ async fn publish_package(
           "Failed to publish @{}/{} at {}",
           package.scope, package.package, package.version
         )
-      })
+      });
     }
   };
 
@@ -1019,12 +1027,13 @@ async fn publish_package(
       provenance::generate_provenance(http_client, vec![subject]).await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
-    log::info!("{}",
+    log::info!(
+      "{}",
       colors::green(format!(
         "Provenance transparency log available at https://search.sigstore.dev/?logIndex={}",
         tlog_entry.log_index
       ))
-     );
+    );
 
     // Submit bundle to JSR
     let provenance_url = format!(

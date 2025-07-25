@@ -1591,9 +1591,6 @@ declare namespace Deno {
    * console.log(Deno.execPath());  // e.g. "/home/alice/.local/bin/deno"
    * ```
    *
-   * Requires `allow-read` permission.
-   *
-   * @tags allow-read
    * @category Runtime
    */
   export function execPath(): string;
@@ -3812,6 +3809,20 @@ declare namespace Deno {
      *
      * @default {false} */
     windowsRawArguments?: boolean;
+
+    /** Whether to detach the spawned process from the current process.
+     * This allows the spawned process to continue running after the current
+     * process exits.
+     *
+     * Note: In order to allow the current process to exit, you need to ensure
+     * you call `unref()` on the child process.
+     *
+     * In addition, the stdio streams – if inherited or piped – may keep the
+     * current process from exiting until the streams are closed.
+     *
+     * @default {false}
+     */
+    detached?: boolean;
   }
 
   /**
@@ -4072,6 +4083,21 @@ declare namespace Deno {
     path?: string | URL;
   }
 
+  /** The permission descriptor for the `allow-import` and `deny-import` permissions, which controls
+   * access to importing from remote hosts via the network. The option `host` allows scoping the
+   * permission for outbound connection to a specific host and port.
+   *
+   * @category Permissions */
+  export interface ImportPermissionDescriptor {
+    name: "import";
+    /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
+     *
+     *      "github.com"
+     *      "deno.land:8080"
+     */
+    host?: string;
+  }
+
   /** Permission descriptors which define a permission and can be queried,
    * requested, or revoked.
    *
@@ -4087,7 +4113,8 @@ declare namespace Deno {
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
     | SysPermissionDescriptor
-    | FfiPermissionDescriptor;
+    | FfiPermissionDescriptor
+    | ImportPermissionDescriptor;
 
   /** The interface which defines what event types are supported by
    * {@linkcode PermissionStatus} instances.
@@ -5079,6 +5106,12 @@ declare namespace Deno {
      * @category HTTP Server
      */
     fetch: ServeHandler;
+    /**
+     * The callback which is called when the server starts listening.
+     *
+     * @category HTTP Server
+     */
+    onListen?: (localAddr: Deno.Addr) => void;
   }
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
@@ -6285,6 +6318,89 @@ declare namespace Deno {
       | CreateHttpClientOptions
       | (CreateHttpClientOptions & TlsCertifiedKeyPem),
   ): HttpClient;
+
+  /**
+   * APIs for working with the OpenTelemetry observability framework. Deno can
+   * export traces, metrics, and logs to OpenTelemetry compatible backends via
+   * the OTLP protocol.
+   *
+   * Deno automatically instruments the runtime with OpenTelemetry traces and
+   * metrics. This data is exported via OTLP to OpenTelemetry compatible
+   * backends. User logs from the `console` API are exported as OpenTelemetry
+   * logs via OTLP.
+   *
+   * User code can also create custom traces, metrics, and logs using the
+   * OpenTelemetry API. This is done using the official OpenTelemetry package
+   * for JavaScript:
+   * [`npm:@opentelemetry/api`](https://opentelemetry.io/docs/languages/js/).
+   * Deno integrates with this package to provide tracing, metrics, and trace
+   * context propagation between native Deno APIs (like `Deno.serve` or `fetch`)
+   * and custom user code. Deno automatically registers the providers with the
+   * OpenTelemetry API, so users can start creating custom traces, metrics, and
+   * logs without any additional setup.
+   *
+   * @example Using OpenTelemetry API to create custom traces
+   * ```ts,ignore
+   * import { trace } from "npm:@opentelemetry/api@1";
+   *
+   * const tracer = trace.getTracer("example-tracer");
+   *
+   * async function doWork() {
+   *   return tracer.startActiveSpan("doWork", async (span) => {
+   *     span.setAttribute("key", "value");
+   *     await new Promise((resolve) => setTimeout(resolve, 1000));
+   *     span.end();
+   *   });
+   * }
+   *
+   * Deno.serve(async (req) => {
+   *   await doWork();
+   *   const resp = await fetch("https://example.com");
+   *   return resp;
+   * });
+   * ```
+   *
+   * @category Telemetry
+   */
+  export namespace telemetry {
+    /**
+     * A TracerProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.TracerProvider.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * TracerProvider interface.
+     *
+     * @category Telemetry
+     */
+    // deno-lint-ignore no-explicit-any
+    export const tracerProvider: any;
+
+    /**
+     * A ContextManager compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.ContextManager.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * ContextManager interface.
+     *
+     * @category Telemetry
+     */
+    // deno-lint-ignore no-explicit-any
+    export const contextManager: any;
+
+    /**
+     * A MeterProvider compatible with OpenTelemetry.js
+     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.MeterProvider.html
+     *
+     * This is a singleton object that implements the OpenTelemetry
+     * MeterProvider interface.
+     *
+     * @category Telemetry
+     */
+    // deno-lint-ignore no-explicit-any
+    export const meterProvider: any;
+
+    export {}; // only export exports
+  }
 
   export {}; // only export exports
 }

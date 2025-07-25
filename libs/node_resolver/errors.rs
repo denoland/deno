@@ -10,9 +10,9 @@ use deno_path_util::UrlToFilePathError;
 use thiserror::Error;
 use url::Url;
 
-use crate::path::UrlOrPath;
 use crate::NodeResolutionKind;
 use crate::ResolutionMode;
+use crate::path::UrlOrPath;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
@@ -740,6 +740,21 @@ impl NodeResolveErrorKind {
       | NodeResolveErrorKind::UrlToFilePath(_) => None,
     }
   }
+
+  pub fn maybe_code(&self) -> Option<NodeJsErrorCode> {
+    match self {
+      NodeResolveErrorKind::RelativeJoin(_) => None,
+      NodeResolveErrorKind::PathToUrl(_) => None,
+      NodeResolveErrorKind::UrlToFilePath(_) => None,
+      NodeResolveErrorKind::PackageImportsResolve(e) => Some(e.code()),
+      NodeResolveErrorKind::UnsupportedEsmUrlScheme(e) => Some(e.code()),
+      NodeResolveErrorKind::DataUrlReferrer(_) => None,
+      NodeResolveErrorKind::PackageResolve(e) => Some(e.code()),
+      NodeResolveErrorKind::TypesNotFound(e) => Some(e.code()),
+      NodeResolveErrorKind::UnknownBuiltInNodeModule(e) => Some(e.code()),
+      NodeResolveErrorKind::FinalizeResolution(e) => Some(e.code()),
+    }
+  }
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -1025,8 +1040,11 @@ mod test {
         subpath: "./jsx-runtime".to_string(),
         maybe_referrer: None,
         resolution_kind: NodeResolutionKind::Types
-      }.to_string(),
-      format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './jsx-runtime' is not defined for types by \"exports\" in 'test_path{separator_char}package.json'")
+      }
+      .to_string(),
+      format!(
+        "[ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './jsx-runtime' is not defined for types by \"exports\" in 'test_path{separator_char}package.json'"
+      )
     );
     assert_eq!(
       PackagePathNotExportedError {
@@ -1034,8 +1052,11 @@ mod test {
         subpath: ".".to_string(),
         maybe_referrer: None,
         resolution_kind: NodeResolutionKind::Types
-      }.to_string(),
-      format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] No \"exports\" main defined for types in 'test_path{separator_char}package.json'")
+      }
+      .to_string(),
+      format!(
+        "[ERR_PACKAGE_PATH_NOT_EXPORTED] No \"exports\" main defined for types in 'test_path{separator_char}package.json'"
+      )
     );
   }
 }

@@ -4,6 +4,11 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_ast::ParseDiagnostic;
+use deno_ast::SourcePos;
+use deno_ast::SourceRange;
+use deno_ast::SourceRanged;
+use deno_ast::SourceTextInfo;
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::diagnostics::DiagnosticLevel;
 use deno_ast::diagnostics::DiagnosticLocation;
@@ -13,11 +18,6 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_ast::swc::common::util::take::Take;
-use deno_ast::ParseDiagnostic;
-use deno_ast::SourcePos;
-use deno_ast::SourceRange;
-use deno_ast::SourceRanged;
-use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -123,6 +123,10 @@ pub enum PublishDiagnostic {
     text_info: SourceTextInfo,
     range: SourceRange,
   },
+  UnstableRawImport {
+    text_info: SourceTextInfo,
+    referrer: deno_graph::Range,
+  },
   SyntaxError(ParseDiagnostic),
   MissingLicense {
     config_specifier: Url,
@@ -176,6 +180,7 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
       SyntaxError { .. } => DiagnosticLevel::Error,
       MissingLicense { .. } => DiagnosticLevel::Error,
+      UnstableRawImport { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -195,6 +200,7 @@ impl Diagnostic for PublishDiagnostic {
       }
       SyntaxError { .. } => Cow::Borrowed("syntax-error"),
       MissingLicense { .. } => Cow::Borrowed("missing-license"),
+      UnstableRawImport { .. } => Cow::Borrowed("unstable-raw-import"),
     }
   }
 
@@ -204,18 +210,30 @@ impl Diagnostic for PublishDiagnostic {
       FastCheck(diagnostic) => diagnostic.message(),
       SpecifierUnfurl(diagnostic) => diagnostic.message(),
       InvalidPath { message, .. } => Cow::Borrowed(message.as_str()),
-      DuplicatePath { .. } => {
-        Cow::Borrowed("package path is a case insensitive duplicate of another path in the package")
-      }
+      DuplicatePath { .. } => Cow::Borrowed(
+        "package path is a case insensitive duplicate of another path in the package",
+      ),
       UnsupportedFileType { kind, .. } => {
         Cow::Owned(format!("unsupported file type '{kind}'"))
       }
-      InvalidExternalImport { kind, .. } => Cow::Owned(format!("invalid import to a {kind} specifier")),
-      ExcludedModule { .. } => Cow::Borrowed("module in package's module graph was excluded from publishing"),
-      MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{}' is missing a version constraint", specifier)),
-      BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
+      InvalidExternalImport { kind, .. } => {
+        Cow::Owned(format!("invalid import to a {kind} specifier"))
+      }
+      ExcludedModule { .. } => Cow::Borrowed(
+        "module in package's module graph was excluded from publishing",
+      ),
+      MissingConstraint { specifier, .. } => Cow::Owned(format!(
+        "specifier '{}' is missing a version constraint",
+        specifier
+      )),
+      BannedTripleSlashDirectives { .. } => Cow::Borrowed(
+        "triple slash directives that modify globals are not allowed",
+      ),
       SyntaxError(diagnostic) => diagnostic.message(),
       MissingLicense { .. } => Cow::Borrowed("missing license field or file"),
+      UnstableRawImport { .. } => {
+        Cow::Borrowed("raw imports have not been stabilized")
+      }
     }
   }
 
@@ -251,6 +269,10 @@ impl Diagnostic for PublishDiagnostic {
         referrer,
         text_info,
         ..
+      }
+      | UnstableRawImport {
+        referrer,
+        text_info,
       } => from_referrer_range(referrer, text_info),
       ExcludedModule { specifier } => DiagnosticLocation::Module {
         specifier: Cow::Borrowed(specifier),
@@ -315,6 +337,11 @@ impl Diagnostic for PublishDiagnostic {
         referrer,
         text_info,
         ..
+      }
+      | UnstableRawImport {
+        referrer,
+        text_info,
+        ..
       } => from_range(text_info, referrer),
       ExcludedModule { .. } => None,
       MissingConstraint {
@@ -345,33 +372,38 @@ impl Diagnostic for PublishDiagnostic {
     match &self {
       FastCheck(diagnostic) => diagnostic.hint(),
       SpecifierUnfurl(d) => d.hint(),
-      InvalidPath { .. } => Some(
-        Cow::Borrowed("rename or remove the file, or add it to 'publish.exclude' in the config file"),
-      ),
-      DuplicatePath { .. } => Some(
-        Cow::Borrowed("rename or remove the file"),
-      ),
-      UnsupportedFileType { .. } => Some(
-        Cow::Borrowed("remove the file, or add it to 'publish.exclude' in the config file"),
-      ),
-      InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package")),
-      ExcludedModule { .. } => Some(
-        Cow::Borrowed("remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore"),
-      ),
-      MissingConstraint { specifier_text, .. } => {
-        Some(Cow::Borrowed(if specifier_text.starts_with("jsr:") || specifier_text.starts_with("npm:") {
+      InvalidPath { .. } => Some(Cow::Borrowed(
+        "rename or remove the file, or add it to 'publish.exclude' in the config file",
+      )),
+      DuplicatePath { .. } => Some(Cow::Borrowed("rename or remove the file")),
+      UnsupportedFileType { .. } => Some(Cow::Borrowed(
+        "remove the file, or add it to 'publish.exclude' in the config file",
+      )),
+      InvalidExternalImport { .. } => Some(Cow::Borrowed(
+        "replace this import with one from jsr or npm, or vendor the dependency into your package",
+      )),
+      ExcludedModule { .. } => Some(Cow::Borrowed(
+        "remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore",
+      )),
+      MissingConstraint { specifier_text, .. } => Some(Cow::Borrowed(
+        if specifier_text.starts_with("jsr:")
+          || specifier_text.starts_with("npm:")
+        {
           "specify a version constraint for the specifier"
         } else {
           "specify a version constraint for the specifier in the import map"
-        }))
-      },
-      BannedTripleSlashDirectives { .. } => Some(
-        Cow::Borrowed("remove the triple slash directive"),
-      ),
+        },
+      )),
+      BannedTripleSlashDirectives { .. } => {
+        Some(Cow::Borrowed("remove the triple slash directive"))
+      }
       SyntaxError(diagnostic) => diagnostic.hint(),
-      MissingLicense { .. } => Some(
-        Cow::Borrowed("add a \"license\" field. Alternatively, add a LICENSE file to the package and ensure it is not ignored from being published"),
-      ),
+      MissingLicense { .. } => Some(Cow::Borrowed(
+        "add a \"license\" field. Alternatively, add a LICENSE file to the package and ensure it is not ignored from being published",
+      )),
+      UnstableRawImport { .. } => Some(Cow::Borrowed(
+        "for the time being, embed the data directly into a JavaScript file (ex. as encoded base64 text)",
+      )),
     }
   }
 
@@ -408,7 +440,8 @@ impl Diagnostic for PublishDiagnostic {
       | ExcludedModule { .. }
       | MissingConstraint { .. }
       | BannedTripleSlashDirectives { .. }
-      | MissingLicense { .. } => None,
+      | MissingLicense { .. }
+      | UnstableRawImport { .. } => None,
     }
   }
 
@@ -417,37 +450,49 @@ impl Diagnostic for PublishDiagnostic {
     match &self {
       FastCheck(d) => d.info(),
       SpecifierUnfurl(d) => d.info(),
-      InvalidPath { .. } => Cow::Borrowed(&[
-        Cow::Borrowed("to portably support all platforms, including windows, the allowed characters in package paths are limited"),
-      ]),
-      DuplicatePath { .. } => Cow::Borrowed(&[
-        Cow::Borrowed("to support case insensitive file systems, no two package paths may differ only by case"),
-      ]),
+      InvalidPath { .. } => Cow::Borrowed(&[Cow::Borrowed(
+        "to portably support all platforms, including windows, the allowed characters in package paths are limited",
+      )]),
+      DuplicatePath { .. } => Cow::Borrowed(&[Cow::Borrowed(
+        "to support case insensitive file systems, no two package paths may differ only by case",
+      )]),
       UnsupportedFileType { .. } => Cow::Borrowed(&[
         Cow::Borrowed("only files and directories are supported"),
-        Cow::Borrowed("the file was ignored and will not be published")
+        Cow::Borrowed("the file was ignored and will not be published"),
       ]),
       InvalidExternalImport { imported, .. } => Cow::Owned(vec![
         Cow::Owned(format!("the import was resolved to '{}'", imported)),
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
-        Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers"),
+        Cow::Borrowed(
+          "jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers",
+        ),
       ]),
-      ExcludedModule { .. } => Cow::Owned(vec![
-        Cow::Borrowed("excluded modules referenced via a package export will error at runtime due to not existing in the package"),
-      ]),
-      MissingConstraint { resolved_version, .. } => Cow::Owned(vec![
+      ExcludedModule { .. } => Cow::Owned(vec![Cow::Borrowed(
+        "excluded modules referenced via a package export will error at runtime due to not existing in the package",
+      )]),
+      MissingConstraint {
+        resolved_version, ..
+      } => Cow::Owned(vec![
         Cow::Owned(format!(
           "the specifier resolved to version {} today, but will resolve to a different",
-          resolved_version.as_ref().map(|v| v.to_string()).unwrap_or_else(|| "<unresolved>".to_string())),
+          resolved_version
+            .as_ref()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "<unresolved>".to_string())
+        )),
+        Cow::Borrowed(
+          "major version if one is published in the future and potentially break",
         ),
-        Cow::Borrowed("major version if one is published in the future and potentially break"),
       ]),
       BannedTripleSlashDirectives { .. } => Cow::Borrowed(&[
-        Cow::Borrowed("instead instruct the user of your package to specify these directives"),
+        Cow::Borrowed(
+          "instead instruct the user of your package to specify these directives",
+        ),
         Cow::Borrowed("or set their 'lib' compiler option appropriately"),
       ]),
       SyntaxError(diagnostic) => diagnostic.info(),
       MissingLicense { .. } => Cow::Borrowed(&[]),
+      UnstableRawImport { .. } => Cow::Borrowed(&[]),
     }
   }
 
@@ -481,6 +526,9 @@ impl Diagnostic for PublishDiagnostic {
       MissingLicense { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/missing-license"))
       }
+      UnstableRawImport { .. } => Some(Cow::Borrowed(
+        "https://github.com/denoland/deno/issues/29904",
+      )),
     }
   }
 }

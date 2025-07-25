@@ -5,7 +5,6 @@
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_TLS_CERT_ALTNAME_INVALID
  * ERR_WORKER_INVALID_EXEC_ARGV
  * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
@@ -1458,6 +1457,11 @@ export class ERR_HTTP_TRAILER_INVALID extends NodeError {
       "ERR_HTTP_TRAILER_INVALID",
       `Trailers are invalid with this transfer encoding`,
     );
+  }
+}
+export class ERR_ILLEGAL_CONSTRUCTOR extends NodeTypeError {
+  constructor() {
+    super("ERR_ILLEGAL_CONSTRUCTOR", "Illegal constructor");
   }
 }
 export class ERR_INCOMPATIBLE_OPTION_PAIR extends NodeTypeError {

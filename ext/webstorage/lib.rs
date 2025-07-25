@@ -4,13 +4,13 @@
 
 use std::path::PathBuf;
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::op2;
 pub use rusqlite;
-use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
+use rusqlite::params;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WebStorageError {

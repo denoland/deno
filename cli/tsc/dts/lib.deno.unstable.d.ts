@@ -1260,95 +1260,6 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   *
-   * APIs for working with the OpenTelemetry observability framework. Deno can
-   * export traces, metrics, and logs to OpenTelemetry compatible backends via
-   * the OTLP protocol.
-   *
-   * Deno automatically instruments the runtime with OpenTelemetry traces and
-   * metrics. This data is exported via OTLP to OpenTelemetry compatible
-   * backends. User logs from the `console` API are exported as OpenTelemetry
-   * logs via OTLP.
-   *
-   * User code can also create custom traces, metrics, and logs using the
-   * OpenTelemetry API. This is done using the official OpenTelemetry package
-   * for JavaScript:
-   * [`npm:@opentelemetry/api`](https://opentelemetry.io/docs/languages/js/).
-   * Deno integrates with this package to provide tracing, metrics, and trace
-   * context propagation between native Deno APIs (like `Deno.serve` or `fetch`)
-   * and custom user code. Deno automatically registers the providers with the
-   * OpenTelemetry API, so users can start creating custom traces, metrics, and
-   * logs without any additional setup.
-   *
-   * @example Using OpenTelemetry API to create custom traces
-   * ```ts,ignore
-   * import { trace } from "npm:@opentelemetry/api@1";
-   *
-   * const tracer = trace.getTracer("example-tracer");
-   *
-   * async function doWork() {
-   *   return tracer.startActiveSpan("doWork", async (span) => {
-   *     span.setAttribute("key", "value");
-   *     await new Promise((resolve) => setTimeout(resolve, 1000));
-   *     span.end();
-   *   });
-   * }
-   *
-   * Deno.serve(async (req) => {
-   *   await doWork();
-   *   const resp = await fetch("https://example.com");
-   *   return resp;
-   * });
-   * ```
-   *
-   * @category Telemetry
-   * @experimental
-   */
-  export namespace telemetry {
-    /**
-     * A TracerProvider compatible with OpenTelemetry.js
-     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.TracerProvider.html
-     *
-     * This is a singleton object that implements the OpenTelemetry
-     * TracerProvider interface.
-     *
-     * @category Telemetry
-     * @experimental
-     */
-    // deno-lint-ignore no-explicit-any
-    export const tracerProvider: any;
-
-    /**
-     * A ContextManager compatible with OpenTelemetry.js
-     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.ContextManager.html
-     *
-     * This is a singleton object that implements the OpenTelemetry
-     * ContextManager interface.
-     *
-     * @category Telemetry
-     * @experimental
-     */
-    // deno-lint-ignore no-explicit-any
-    export const contextManager: any;
-
-    /**
-     * A MeterProvider compatible with OpenTelemetry.js
-     * https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api.MeterProvider.html
-     *
-     * This is a singleton object that implements the OpenTelemetry
-     * MeterProvider interface.
-     *
-     * @category Telemetry
-     * @experimental
-     */
-    // deno-lint-ignore no-explicit-any
-    export const meterProvider: any;
-
-    export {}; // only export exports
-  }
-
-  /**
    * @category Linter
    * @experimental
    */
@@ -4495,12 +4406,12 @@ interface WorkerOptions {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Configure permissions options to change the level of access the worker will
-   * have. By default it will have no permissions. Note that the permissions
+   * have. By default it will inherit permissions. Note that the permissions
    * of a worker can't be extended beyond its parent's permissions reach.
    *
-   * - `"inherit"` will take the permissions of the thread the worker is created
-   *   in.
-   * - `"none"` will use the default behavior and have no permission
+   * - `"inherit"` will use the default behavior and take the permissions of the
+   *   thread the worker is created in
+   * - `"none"` will have no permissions
    * - A list of routes can be provided that are relative to the file the worker
    *   is created in to limit the access of the worker (read/write permissions
    *   only)

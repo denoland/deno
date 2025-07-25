@@ -5,8 +5,8 @@ use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
 
-use anyhow::bail;
 use anyhow::Error as AnyError;
+use anyhow::bail;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
@@ -20,6 +20,11 @@ use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
+use crate::InNpmPackageChecker;
+use crate::IsBuiltInNodeModuleChecker;
+use crate::NpmPackageFolderResolver;
+use crate::PackageJsonResolverRc;
+use crate::PathClean;
 use crate::cache::NodeResolutionSys;
 use crate::errors;
 use crate::errors::DataUrlReferrerError;
@@ -54,11 +59,6 @@ use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::path::UrlOrPath;
 use crate::path::UrlOrPathRef;
-use crate::InNpmPackageChecker;
-use crate::IsBuiltInNodeModuleChecker;
-use crate::NpmPackageFolderResolver;
-use crate::PackageJsonResolverRc;
-use crate::PathClean;
 
 pub static IMPORT_CONDITIONS: &[Cow<'static, str>] = &[
   Cow::Borrowed("deno"),
@@ -292,11 +292,11 @@ pub struct NodeResolver<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: NodeResolverSys,
-  >
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: NodeResolverSys,
+>
   NodeResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -588,7 +588,8 @@ impl<
       }
       _ => {
         if let Err(e) = maybe_file_type {
-          if resolution_mode == ResolutionMode::Require
+          if (resolution_mode == ResolutionMode::Require
+            || self.resolution_config.bundle_mode)
             && e.kind() == std::io::ErrorKind::NotFound
           {
             let file_with_ext = with_known_extension(&path, "js");
@@ -874,13 +875,12 @@ impl<
   }
 
   #[allow(clippy::too_many_arguments)]
-  pub fn package_imports_resolve(
+  pub fn resolve_package_import(
     &self,
     name: &str,
     maybe_referrer: Option<&UrlOrPathRef>,
-    resolution_mode: ResolutionMode,
     referrer_pkg_json: Option<&PackageJson>,
-    conditions: &[Cow<'static, str>],
+    resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
   ) -> Result<UrlOrPath, PackageImportsResolveError> {
     self
@@ -889,7 +889,7 @@ impl<
         maybe_referrer,
         resolution_mode,
         referrer_pkg_json,
-        conditions,
+        self.condition_resolver.resolve(resolution_mode),
         resolution_kind,
       )
       .map(|url| url.0.into_url_or_path())
@@ -917,68 +917,22 @@ impl<
       );
     }
 
-    let mut package_json_path = None;
     if let Some(pkg_json) = &referrer_pkg_json {
-      package_json_path = Some(pkg_json.path.clone());
-      if let Some(imports) = &pkg_json.imports {
-        if imports.contains_key(name) && !name.contains('*') {
-          let target = imports.get(name).unwrap();
-          let maybe_resolved = self.resolve_package_target(
-            package_json_path.as_ref().unwrap(),
-            target,
-            "",
-            name,
-            maybe_referrer,
-            resolution_mode,
-            false,
-            true,
-            conditions,
-            resolution_kind,
-          )?;
-          if let Some(resolved) = maybe_resolved {
-            return Ok(resolved);
-          }
-        } else {
-          let mut best_match = "";
-          let mut best_match_subpath = None;
-          for key in imports.keys() {
-            let pattern_index = key.find('*');
-            if let Some(pattern_index) = pattern_index {
-              let key_sub = &key[0..pattern_index];
-              if name.starts_with(key_sub) {
-                let pattern_trailer = &key[pattern_index + 1..];
-                if name.len() > key.len()
-                  && name.ends_with(&pattern_trailer)
-                  && pattern_key_compare(best_match, key) == 1
-                  && key.rfind('*') == Some(pattern_index)
-                {
-                  best_match = key;
-                  best_match_subpath = Some(
-                    &name[pattern_index..(name.len() - pattern_trailer.len())],
-                  );
-                }
-              }
-            }
-          }
-
-          if !best_match.is_empty() {
-            let target = imports.get(best_match).unwrap();
-            let maybe_resolved = self.resolve_package_target(
-              package_json_path.as_ref().unwrap(),
-              target,
-              best_match_subpath.unwrap(),
-              best_match,
-              maybe_referrer,
-              resolution_mode,
-              true,
-              true,
-              conditions,
-              resolution_kind,
-            )?;
-            if let Some(resolved) = maybe_resolved {
-              return Ok(resolved);
-            }
-          }
+      if let Some(resolved_import) = resolve_pkg_json_import(pkg_json, name) {
+        let maybe_resolved = self.resolve_package_target(
+          &pkg_json.path,
+          resolved_import.target,
+          resolved_import.sub_path,
+          resolved_import.package_sub_path,
+          maybe_referrer,
+          resolution_mode,
+          resolved_import.is_pattern,
+          true,
+          conditions,
+          resolution_kind,
+        )?;
+        if let Some(resolved) = maybe_resolved {
+          return Ok(resolved);
         }
       }
     }
@@ -986,7 +940,7 @@ impl<
     Err(
       PackageImportNotDefinedError {
         name: name.to_string(),
-        package_json_path,
+        package_json_path: referrer_pkg_json.map(|p| p.path.clone()),
         maybe_referrer: maybe_referrer.map(|r| r.display()),
       }
       .into(),
@@ -2041,6 +1995,63 @@ impl<
   }
 }
 
+struct ResolvedPkgJsonImport<'a> {
+  pub target: &'a serde_json::Value,
+  pub sub_path: &'a str,
+  pub package_sub_path: &'a str,
+  pub is_pattern: bool,
+}
+
+fn resolve_pkg_json_import<'a>(
+  pkg_json: &'a PackageJson,
+  name: &'a str,
+) -> Option<ResolvedPkgJsonImport<'a>> {
+  let imports = pkg_json.imports.as_ref()?;
+  if let Some((name, target)) =
+    imports.get_key_value(name).filter(|_| !name.contains('*'))
+  {
+    Some(ResolvedPkgJsonImport {
+      target,
+      sub_path: "",
+      package_sub_path: name,
+      is_pattern: false,
+    })
+  } else {
+    let mut best_match: &'a str = "";
+    let mut best_match_subpath: &'a str = "";
+    for key in imports.keys() {
+      let pattern_index = key.find('*');
+      if let Some(pattern_index) = pattern_index {
+        let key_sub = &key[0..pattern_index];
+        if name.starts_with(key_sub) {
+          let pattern_trailer = &key[pattern_index + 1..];
+          if name.len() > key.len()
+            && name.ends_with(&pattern_trailer)
+            && pattern_key_compare(best_match, key) == 1
+            && key.rfind('*') == Some(pattern_index)
+          {
+            best_match = key;
+            best_match_subpath =
+              &name[pattern_index..(name.len() - pattern_trailer.len())];
+          }
+        }
+      }
+    }
+
+    if !best_match.is_empty() {
+      let target = imports.get(best_match).unwrap();
+      Some(ResolvedPkgJsonImport {
+        target,
+        sub_path: best_match_subpath,
+        package_sub_path: best_match,
+        is_pattern: true,
+      })
+    } else {
+      None
+    }
+  }
+}
+
 fn resolve_bin_entry_value<'a>(
   package_json: &'a PackageJson,
   bin_name: Option<&str>,
@@ -2396,9 +2407,9 @@ impl<'a, TSys: FsMetadata> TypesVersions<'a, TSys> {
 #[cfg(test)]
 mod tests {
   use serde_json::json;
-  use sys_traits::impls::InMemorySys;
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
+  use sys_traits::impls::InMemorySys;
 
   use super::*;
 

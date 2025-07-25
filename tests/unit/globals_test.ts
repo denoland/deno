@@ -1,12 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-// deno-lint-ignore-file no-node-globals
 
-import {
-  assert,
-  assertEquals,
-  assertRejects,
-  assertThrows,
-} from "./test_util.ts";
+import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
   assert(globalThis != null);
@@ -207,9 +201,10 @@ Deno.test(function mapGroupBy() {
   }]);
 });
 
-Deno.test(function nodeGlobalsRaise() {
-  assertThrows(() => {
-    // @ts-ignore yes that's the point
-    Buffer;
-  }, ReferenceError);
+// Regression test for https://github.com/denoland/deno/issues/30012
+Deno.test(function globalGlobalIsWritable() {
+  // @ts-ignore the typings here are wrong
+  globalThis.global = "can write to `global`";
+  // @ts-ignore the typings here are wrong
+  globalThis.global = globalThis;
 });

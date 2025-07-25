@@ -7,22 +7,22 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Mutex;
 
-use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD_NO_PAD;
 use bytes::Bytes;
-use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::Empty;
 use http_body_util::Full;
-use hyper::body::Incoming;
+use http_body_util::combinators::UnsyncBoxBody;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
+use hyper::body::Incoming;
 use once_cell::sync::Lazy;
 use serde_json::json;
 
-use super::run_server;
 use super::ServerKind;
 use super::ServerOptions;
+use super::run_server;
 use crate::tests_path;
 
 pub async fn registry_server(port: u16) {

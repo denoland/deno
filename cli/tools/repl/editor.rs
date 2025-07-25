@@ -2,9 +2,9 @@
 
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
-use std::sync::Arc;
 
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::BinOpToken;
@@ -15,12 +15,6 @@ use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use rustyline::completion::Completer;
-use rustyline::error::ReadlineError;
-use rustyline::highlight::Highlighter;
-use rustyline::validate::ValidationContext;
-use rustyline::validate::ValidationResult;
-use rustyline::validate::Validator;
 use rustyline::Cmd;
 use rustyline::CompletionType;
 use rustyline::ConditionalEventHandler;
@@ -34,6 +28,12 @@ use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
 use rustyline::RepeatCount;
+use rustyline::completion::Completer;
+use rustyline::error::ReadlineError;
+use rustyline::highlight::Highlighter;
+use rustyline::validate::ValidationContext;
+use rustyline::validate::ValidationResult;
+use rustyline::validate::Validator;
 use rustyline_derive::Helper;
 use rustyline_derive::Hinter;
 

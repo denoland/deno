@@ -1,0 +1,7 @@
+preload.js starts loading
+preload.js finished loading
+import.js starts loading
+import.js finished loading
+Hello from main
+Value of __preload__ preload.js
+Value of __import__ import.js

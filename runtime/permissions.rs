@@ -1,9 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_path_util::normalize_path;
 use deno_permissions::AllowRunDescriptor;
 use deno_permissions::AllowRunDescriptorParseResult;
 use deno_permissions::DenyRunDescriptor;
@@ -16,43 +16,29 @@ use deno_permissions::PathResolveError;
 use deno_permissions::ReadDescriptor;
 use deno_permissions::RunDescriptorParseError;
 use deno_permissions::RunQueryDescriptor;
+use deno_permissions::SpecialFilePathDescriptor;
 use deno_permissions::SysDescriptor;
 use deno_permissions::SysDescriptorParseError;
-use deno_permissions::UnstableSubdomainWildcards;
 use deno_permissions::WriteDescriptor;
+
+#[sys_traits::auto_impl]
+pub trait RuntimePermissionDescriptorParserSys:
+  deno_permissions::which::WhichSys + sys_traits::FsCanonicalize + Send + Sync
+{
+}
 
 #[derive(Debug)]
 pub struct RuntimePermissionDescriptorParser<
-  TSys: deno_permissions::which::WhichSys + Send + Sync,
+  TSys: RuntimePermissionDescriptorParserSys,
 > {
   sys: TSys,
-  unstable_subdomain_wildcards: UnstableSubdomainWildcards,
 }
 
-impl<TSys: deno_permissions::which::WhichSys + Send + Sync>
+impl<TSys: RuntimePermissionDescriptorParserSys>
   RuntimePermissionDescriptorParser<TSys>
 {
-  pub fn new(
-    sys: TSys,
-    unstable_subdomain_wildcards: UnstableSubdomainWildcards,
-  ) -> Self {
-    Self {
-      sys,
-      unstable_subdomain_wildcards,
-    }
-  }
-
-  fn resolve_from_cwd(&self, path: &str) -> Result<PathBuf, PathResolveError> {
-    if path.is_empty() {
-      return Err(PathResolveError::EmptyPath);
-    }
-    let path = Path::new(path);
-    if path.is_absolute() {
-      Ok(normalize_path(path))
-    } else {
-      let cwd = self.resolve_cwd()?;
-      Ok(normalize_path(cwd.join(path)))
-    }
+  pub fn new(sys: TSys) -> Self {
+    Self { sys }
   }
 
   fn resolve_cwd(&self) -> Result<PathBuf, PathResolveError> {
@@ -63,7 +49,7 @@ impl<TSys: deno_permissions::which::WhichSys + Send + Sync>
   }
 }
 
-impl<TSys: deno_permissions::which::WhichSys + Send + Sync + std::fmt::Debug>
+impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
   deno_permissions::PermissionDescriptorParser
   for RuntimePermissionDescriptorParser<TSys>
 {
@@ -71,28 +57,28 @@ impl<TSys: deno_permissions::which::WhichSys + Send + Sync + std::fmt::Debug>
     &self,
     text: &str,
   ) -> Result<ReadDescriptor, PathResolveError> {
-    Ok(ReadDescriptor(self.resolve_from_cwd(text)?))
+    Ok(ReadDescriptor(self.parse_path_query(text)?))
   }
 
   fn parse_write_descriptor(
     &self,
     text: &str,
   ) -> Result<WriteDescriptor, PathResolveError> {
-    Ok(WriteDescriptor(self.resolve_from_cwd(text)?))
+    Ok(WriteDescriptor(self.parse_path_query(text)?))
   }
 
   fn parse_net_descriptor(
     &self,
     text: &str,
   ) -> Result<NetDescriptor, deno_permissions::NetDescriptorParseError> {
-    NetDescriptor::parse_for_list(text, self.unstable_subdomain_wildcards)
+    NetDescriptor::parse_for_list(text)
   }
 
   fn parse_import_descriptor(
     &self,
     text: &str,
   ) -> Result<ImportDescriptor, deno_permissions::NetDescriptorParseError> {
-    ImportDescriptor::parse_for_list(text, self.unstable_subdomain_wildcards)
+    ImportDescriptor::parse_for_list(text)
   }
 
   fn parse_env_descriptor(
@@ -139,19 +125,23 @@ impl<TSys: deno_permissions::which::WhichSys + Send + Sync + std::fmt::Debug>
     &self,
     text: &str,
   ) -> Result<FfiDescriptor, PathResolveError> {
-    Ok(FfiDescriptor(self.resolve_from_cwd(text)?))
+    Ok(FfiDescriptor(self.parse_path_query(text)?))
   }
 
   // queries
 
-  fn parse_path_query(
+  fn parse_path_query_from_path(
     &self,
-    path: &str,
+    path: Cow<'_, Path>,
   ) -> Result<PathQueryDescriptor, PathResolveError> {
-    Ok(PathQueryDescriptor {
-      resolved: self.resolve_from_cwd(path)?,
-      requested: path.to_string(),
-    })
+    PathQueryDescriptor::new(&self.sys, path)
+  }
+
+  fn parse_special_file_descriptor(
+    &self,
+    path: PathQueryDescriptor,
+  ) -> Result<SpecialFilePathDescriptor, PathResolveError> {
+    SpecialFilePathDescriptor::parse(&self.sys, path)
   }
 
   fn parse_net_query(
@@ -181,10 +171,8 @@ mod test {
 
   #[test]
   fn test_handle_empty_value() {
-    let parser = RuntimePermissionDescriptorParser::new(
-      sys_traits::impls::RealSys,
-      UnstableSubdomainWildcards::Enabled,
-    );
+    let parser =
+      RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys);
     assert!(parser.parse_read_descriptor("").is_err());
     assert!(parser.parse_write_descriptor("").is_err());
     assert!(parser.parse_env_descriptor("").is_err());

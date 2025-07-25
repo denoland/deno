@@ -3,7 +3,6 @@
 #![allow(clippy::disallowed_methods)]
 
 use std::borrow::Cow;
-use std::env::current_dir;
 use std::fs;
 use std::io;
 use std::io::Read;
@@ -13,20 +12,18 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::unsync::spawn_blocking;
+use deno_io::StdFileResourceInner;
 use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
-use deno_io::StdFileResourceInner;
-use deno_path_util::normalize_path;
+use deno_permissions::CheckedPath;
+use deno_permissions::CheckedPathBuf;
 
-use crate::interface::AccessCheckCb;
-use crate::interface::CheckedPath;
+use crate::FileSystem;
+use crate::OpenOptions;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
-use crate::FileSystem;
-use crate::GetPath;
-use crate::OpenOptions;
 
 #[derive(Debug, Default, Clone)]
 pub struct RealFs;
@@ -41,7 +38,7 @@ impl FileSystem for RealFs {
     Ok(std::env::temp_dir())
   }
 
-  fn chdir(&self, path: &Path) -> FsResult<()> {
+  fn chdir(&self, path: &CheckedPath) -> FsResult<()> {
     std::env::set_current_dir(path).map_err(Into::into)
   }
 
@@ -55,9 +52,9 @@ impl FileSystem for RealFs {
 
   #[cfg(unix)]
   fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
+    use nix::sys::stat::Mode;
     use nix::sys::stat::mode_t;
     use nix::sys::stat::umask;
-    use nix::sys::stat::Mode;
     let r = if let Some(mask) = mask {
       // If mask provided, return previous.
       umask(Mode::from_bits_truncate(mask as mode_t))
@@ -83,26 +80,24 @@ impl FileSystem for RealFs {
 
   fn open_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     options: OpenOptions,
-    access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn File>> {
-    let std_file = open_with_access_check(options, path, access_check)?;
+    let std_file = open_with_checked_path(options, path)?;
     Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
   async fn open_async<'a>(
     &'a self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     options: OpenOptions,
-    access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>> {
-    let std_file = open_with_access_check(options, &path, access_check)?;
+    let std_file = open_with_checked_path(options, &path.as_checked_path())?;
     Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
 
   fn mkdir_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()> {
@@ -110,23 +105,23 @@ impl FileSystem for RealFs {
   }
   async fn mkdir_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()> {
     spawn_blocking(move || mkdir(&path, recursive, mode)).await?
   }
 
-  fn chmod_sync(&self, path: &Path, mode: u32) -> FsResult<()> {
+  fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
     chmod(path, mode)
   }
-  async fn chmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()> {
+  async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()> {
     spawn_blocking(move || chmod(&path, mode)).await?
   }
 
   fn chown_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
@@ -134,91 +129,130 @@ impl FileSystem for RealFs {
   }
   async fn chown_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
     spawn_blocking(move || chown(&path, uid, gid)).await?
   }
 
-  fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()> {
+  fn remove_sync(&self, path: &CheckedPath, recursive: bool) -> FsResult<()> {
     remove(path, recursive)
   }
-  async fn remove_async(&self, path: PathBuf, recursive: bool) -> FsResult<()> {
+  async fn remove_async(
+    &self,
+    path: CheckedPathBuf,
+    recursive: bool,
+  ) -> FsResult<()> {
     spawn_blocking(move || remove(&path, recursive)).await?
   }
 
-  fn copy_file_sync(&self, from: &Path, to: &Path) -> FsResult<()> {
+  fn copy_file_sync(
+    &self,
+    from: &CheckedPath,
+    to: &CheckedPath,
+  ) -> FsResult<()> {
     copy_file(from, to)
   }
-  async fn copy_file_async(&self, from: PathBuf, to: PathBuf) -> FsResult<()> {
+  async fn copy_file_async(
+    &self,
+    from: CheckedPathBuf,
+    to: CheckedPathBuf,
+  ) -> FsResult<()> {
     spawn_blocking(move || copy_file(&from, &to)).await?
   }
 
-  fn cp_sync(&self, fro: &Path, to: &Path) -> FsResult<()> {
+  fn cp_sync(&self, fro: &CheckedPath, to: &CheckedPath) -> FsResult<()> {
     cp(fro, to)
   }
-  async fn cp_async(&self, fro: PathBuf, to: PathBuf) -> FsResult<()> {
+  async fn cp_async(
+    &self,
+    fro: CheckedPathBuf,
+    to: CheckedPathBuf,
+  ) -> FsResult<()> {
     spawn_blocking(move || cp(&fro, &to)).await?
   }
 
-  fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
+  fn stat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
     stat(path)
   }
-  async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat> {
+  async fn stat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
     spawn_blocking(move || stat(&path)).await?
   }
 
-  fn lstat_sync(&self, path: &Path) -> FsResult<FsStat> {
+  fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
     lstat(path)
   }
-  async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
+  async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
     spawn_blocking(move || lstat(&path)).await?
   }
 
-  fn exists_sync(&self, path: &Path) -> bool {
+  fn exists_sync(&self, path: &CheckedPath) -> bool {
     exists(path)
   }
-  async fn exists_async(&self, path: PathBuf) -> FsResult<bool> {
+  async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
     spawn_blocking(move || exists(&path))
       .await
       .map_err(Into::into)
   }
 
-  fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf> {
+  fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
     realpath(path)
   }
-  async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf> {
+  async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
     spawn_blocking(move || realpath(&path)).await?
   }
 
-  fn read_dir_sync(&self, path: &Path) -> FsResult<Vec<FsDirEntry>> {
+  fn read_dir_sync(&self, path: &CheckedPath) -> FsResult<Vec<FsDirEntry>> {
     read_dir(path)
   }
-  async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>> {
+  async fn read_dir_async(
+    &self,
+    path: CheckedPathBuf,
+  ) -> FsResult<Vec<FsDirEntry>> {
     spawn_blocking(move || read_dir(&path)).await?
   }
 
-  fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
+  fn rename_sync(
+    &self,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
+  ) -> FsResult<()> {
     fs::rename(oldpath, newpath).map_err(Into::into)
   }
   async fn rename_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
   ) -> FsResult<()> {
     spawn_blocking(move || fs::rename(oldpath, newpath))
       .await?
       .map_err(Into::into)
   }
 
-  fn link_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
+  fn lchmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
+    lchmod(path, mode)
+  }
+
+  async fn lchmod_async(
+    &self,
+    path: CheckedPathBuf,
+    mode: u32,
+  ) -> FsResult<()> {
+    spawn_blocking(move || lchmod(&path, mode)).await?
+  }
+
+  fn link_sync(
+    &self,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
+  ) -> FsResult<()> {
     fs::hard_link(oldpath, newpath).map_err(Into::into)
   }
   async fn link_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
   ) -> FsResult<()> {
     spawn_blocking(move || fs::hard_link(oldpath, newpath))
       .await?
@@ -227,40 +261,44 @@ impl FileSystem for RealFs {
 
   fn symlink_sync(
     &self,
-    oldpath: &Path,
-    newpath: &Path,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
     symlink(oldpath, newpath, file_type)
   }
   async fn symlink_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
     spawn_blocking(move || symlink(&oldpath, &newpath, file_type)).await?
   }
 
-  fn read_link_sync(&self, path: &Path) -> FsResult<PathBuf> {
+  fn read_link_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
     fs::read_link(path).map_err(Into::into)
   }
-  async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf> {
+  async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
     spawn_blocking(move || fs::read_link(path))
       .await?
       .map_err(Into::into)
   }
 
-  fn truncate_sync(&self, path: &Path, len: u64) -> FsResult<()> {
+  fn truncate_sync(&self, path: &CheckedPath, len: u64) -> FsResult<()> {
     truncate(path, len)
   }
-  async fn truncate_async(&self, path: PathBuf, len: u64) -> FsResult<()> {
+  async fn truncate_async(
+    &self,
+    path: CheckedPathBuf,
+    len: u64,
+  ) -> FsResult<()> {
     spawn_blocking(move || truncate(&path, len)).await?
   }
 
   fn utime_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -272,7 +310,7 @@ impl FileSystem for RealFs {
   }
   async fn utime_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -288,7 +326,7 @@ impl FileSystem for RealFs {
 
   fn lutime_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -301,7 +339,7 @@ impl FileSystem for RealFs {
 
   async fn lutime_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -317,7 +355,7 @@ impl FileSystem for RealFs {
 
   fn lchown_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
@@ -326,7 +364,7 @@ impl FileSystem for RealFs {
 
   async fn lchown_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
@@ -335,12 +373,11 @@ impl FileSystem for RealFs {
 
   fn write_file_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     options: OpenOptions,
-    access_check: Option<AccessCheckCb>,
     data: &[u8],
   ) -> FsResult<()> {
-    let mut file = open_with_access_check(options, path, access_check)?;
+    let mut file = open_with_checked_path(options, path)?;
     #[cfg(unix)]
     if let Some(mode) = options.mode {
       use std::os::unix::fs::PermissionsExt;
@@ -352,12 +389,11 @@ impl FileSystem for RealFs {
 
   async fn write_file_async<'a>(
     &'a self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     options: OpenOptions,
-    access_check: Option<AccessCheckCb<'a>>,
     data: Vec<u8>,
   ) -> FsResult<()> {
-    let mut file = open_with_access_check(options, &path, access_check)?;
+    let mut file = open_with_checked_path(options, &path.as_checked_path())?;
     spawn_blocking(move || {
       #[cfg(unix)]
       if let Some(mode) = options.mode {
@@ -370,18 +406,13 @@ impl FileSystem for RealFs {
     .await?
   }
 
-  fn read_file_sync(
-    &self,
-    path: &Path,
-    access_check: Option<AccessCheckCb>,
-  ) -> FsResult<Cow<'static, [u8]>> {
-    let mut file = open_with_access_check(
+  fn read_file_sync(&self, path: &CheckedPath) -> FsResult<Cow<'static, [u8]>> {
+    let mut file = open_with_checked_path(
       OpenOptions {
         read: true,
         ..Default::default()
       },
       path,
-      access_check,
     )?;
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)?;
@@ -389,16 +420,14 @@ impl FileSystem for RealFs {
   }
   async fn read_file_async<'a>(
     &'a self,
-    path: PathBuf,
-    access_check: Option<AccessCheckCb<'a>>,
+    path: CheckedPathBuf,
   ) -> FsResult<Cow<'static, [u8]>> {
-    let mut file = open_with_access_check(
+    let mut file = open_with_checked_path(
       OpenOptions {
         read: true,
         ..Default::default()
       },
-      &path,
-      access_check,
+      &path.as_checked_path(),
     )?;
     spawn_blocking(move || {
       let mut buf = Vec::new();
@@ -442,9 +471,9 @@ fn chmod(path: &Path, _mode: u32) -> FsResult<()> {
 
 #[cfg(unix)]
 fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
-  use nix::unistd::chown;
   use nix::unistd::Gid;
   use nix::unistd::Uid;
+  use nix::unistd::chown;
   let owner = uid.map(Uid::from_raw);
   let group = gid.map(Gid::from_raw);
   let res = chown(path, owner, group);
@@ -457,6 +486,26 @@ fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
 // TODO: implement chown for Windows
 #[cfg(not(unix))]
 fn chown(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
+  Err(FsError::NotSupported)
+}
+
+#[cfg(target_os = "macos")]
+fn lchmod(path: &Path, mode: u32) -> FsResult<()> {
+  use std::os::unix::fs::OpenOptionsExt;
+  use std::os::unix::fs::PermissionsExt;
+
+  use libc::O_SYMLINK;
+
+  let file = fs::OpenOptions::new()
+    .write(true)
+    .custom_flags(O_SYMLINK)
+    .open(path)?;
+  file.set_permissions(fs::Permissions::from_mode(mode))?;
+  Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn lchmod(_path: &Path, _mode: u32) -> FsResult<()> {
   Err(FsError::NotSupported)
 }
 
@@ -810,20 +859,23 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     handle: winapi::shared::ntdef::HANDLE,
   ) -> std::io::Result<u64> {
     use winapi::shared::minwindef::FALSE;
-    use winapi::um::fileapi::GetFileInformationByHandle;
     use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
+    use winapi::um::fileapi::GetFileInformationByHandle;
 
-    let info = {
-      let mut info =
-        std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
-      if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
-        return Err(std::io::Error::last_os_error());
-      }
+    // SAFETY: winapi calls
+    unsafe {
+      let info = {
+        let mut info =
+          std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+        if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
+          return Err(std::io::Error::last_os_error());
+        }
 
-      info.assume_init()
-    };
+        info.assume_init()
+      };
 
-    Ok(info.dwVolumeSerialNumber as u64)
+      Ok(info.dwVolumeSerialNumber as u64)
+    }
   }
 
   const WINDOWS_TICK: i64 = 10_000; // 100-nanosecond intervals in a millisecond
@@ -841,34 +893,37 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
     handle: winapi::shared::ntdef::HANDLE,
   ) -> Result<FILE_ALL_INFORMATION, NTSTATUS> {
     use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
-    use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
     use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
+    use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
     use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 
-    let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
-    let mut io_status_block =
-      std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
-    let status = NtQueryInformationFile(
-      handle as _,
-      io_status_block.as_mut_ptr(),
-      info.as_mut_ptr() as *mut _,
-      std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
-      18, /* FileAllInformation */
-    );
+    // SAFETY: winapi calls
+    unsafe {
+      let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
+      let mut io_status_block =
+        std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
+      let status = NtQueryInformationFile(
+        handle as _,
+        io_status_block.as_mut_ptr(),
+        info.as_mut_ptr() as *mut _,
+        std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
+        18, /* FileAllInformation */
+      );
 
-    if status < 0 {
-      let converted_status = RtlNtStatusToDosError(status);
+      if status < 0 {
+        let converted_status = RtlNtStatusToDosError(status);
 
-      // If error more data is returned, then it means that the buffer is too small to get full filename information
-      // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
-      // since struct is populated with other data anyway.
-      // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
-      if converted_status != ERROR_MORE_DATA {
-        return Err(converted_status as NTSTATUS);
+        // If error more data is returned, then it means that the buffer is too small to get full filename information
+        // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
+        // since struct is populated with other data anyway.
+        // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
+        if converted_status != ERROR_MORE_DATA {
+          return Err(converted_status as NTSTATUS);
+        }
       }
-    }
 
-    Ok(info.assume_init())
+      Ok(info.assume_init())
+    }
   }
 
   // SAFETY: winapi calls
@@ -921,8 +976,8 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
 fn exists(path: &Path) -> bool {
   #[cfg(unix)]
   {
-    use nix::unistd::access;
     use nix::unistd::AccessFlags;
+    use nix::unistd::access;
     access(path, AccessFlags::F_OK).is_ok()
   }
 
@@ -1013,7 +1068,7 @@ fn symlink(
           return Err(FsError::Io(io::Error::new(
             io::ErrorKind::InvalidInput,
             "On Windows an `options` argument is required if the target does not exist",
-          )))
+          )));
         }
         Err(err) => return Err(err.into()),
       }
@@ -1064,108 +1119,36 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
 }
 
 #[inline(always)]
-pub fn open_with_access_check(
+pub fn open_with_checked_path(
   options: OpenOptions,
-  path: &Path,
-  access_check: Option<AccessCheckCb>,
+  path: &CheckedPath,
 ) -> FsResult<std::fs::File> {
-  let (path, opts) =
-    open_options_with_access_check(options, path, access_check)?;
+  let opts = open_options_for_checked_path(options, path);
   Ok(opts.open(path)?)
 }
 
 #[inline(always)]
-pub fn open_options_with_access_check(
+pub fn open_options_for_checked_path(
   options: OpenOptions,
-  path: &Path,
-  access_check: Option<AccessCheckCb>,
-) -> FsResult<(PathBuf, fs::OpenOptions)> {
-  if let Some(access_check) = access_check {
-    let path = Cow::Borrowed(path);
-    let maybe_resolved = (*access_check)(path, &options, &StdGetPath)?;
-
-    let path = maybe_resolved;
-
-    let (_resolved, path) = match path {
-      CheckedPath::Resolved(path) => (true, path),
-      CheckedPath::Unresolved(path) => (false, path),
-    };
-
-    let mut opts: fs::OpenOptions = open_options(options);
-    #[cfg(windows)]
-    {
-      // allow opening directories
-      use std::os::windows::fs::OpenOptionsExt;
-      opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
-    }
-
-    #[cfg(unix)]
-    {
-      // Don't follow symlinks on open -- we must always pass fully-resolved files
-      // with the exception of /proc/ which is too special, and /dev/std* which might point to
-      // proc.
-      use std::os::unix::fs::OpenOptionsExt;
-      if _resolved {
-        opts.custom_flags(libc::O_NOFOLLOW);
-      }
-    }
-
-    Ok((path.into_owned(), opts))
-  } else {
-    // for unix
-    #[allow(unused_mut)]
-    let mut opts = open_options(options);
-    #[cfg(windows)]
-    {
-      // allow opening directories
-      use std::os::windows::fs::OpenOptionsExt;
-      opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
-    }
-    Ok((path.to_path_buf(), opts))
-  }
-}
-
-struct StdGetPath;
-
-impl GetPath for StdGetPath {
-  fn normalized<'a>(
-    &self,
-    path: Cow<'a, Path>,
-  ) -> FsResult<(bool, Cow<'a, Path>)> {
-    let path_bytes = path.as_os_str().as_encoded_bytes();
-    let is_windows_device_path = cfg!(windows)
-      && path_bytes.starts_with(br"\\.\")
-      && !path_bytes.contains(&b':');
-    let path = if is_windows_device_path {
-      // On Windows, normalize_path doesn't work with device-prefix-style
-      // paths. We pass these through.
-      path
-    } else if path.is_absolute() {
-      Cow::Owned(normalize_path(path))
-    } else {
-      let cwd = current_dir()?;
-      Cow::Owned(normalize_path(cwd.join(path)))
-    };
-    // On Linux, /proc may contain magic links that we don't want to resolve
-    let is_linux_special_path = cfg!(target_os = "linux")
-      && (path.starts_with("/proc") || path.starts_with("/dev"));
-    let needs_canonicalization =
-      !is_windows_device_path && !is_linux_special_path;
-    Ok((needs_canonicalization, path))
+  path: &CheckedPath,
+) -> fs::OpenOptions {
+  let mut opts: fs::OpenOptions = open_options(options);
+  #[cfg(windows)]
+  {
+    _ = path; // not used on windows
+    // allow opening directories
+    use std::os::windows::fs::OpenOptionsExt;
+    opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
   }
 
-  fn resolved(&self, path: &Path) -> Result<PathBuf, FsError> {
-    match path.canonicalize() {
-      Ok(path) => Ok(path),
-      Err(_) => {
-        if let (Some(parent), Some(filename)) =
-          (path.parent(), path.file_name())
-        {
-          Ok(parent.canonicalize()?.join(filename))
-        } else {
-          Err(std::io::ErrorKind::NotFound.into())
-        }
-      }
-    }
+  #[cfg(unix)]
+  if path.canonicalized() {
+    // Don't follow symlinks on open -- we must always pass fully-resolved files
+    // with the exception of /proc/ which is too special, and /dev/std* which might point to
+    // proc.
+    use std::os::unix::fs::OpenOptionsExt;
+    opts.custom_flags(libc::O_NOFOLLOW);
   }
+
+  opts
 }

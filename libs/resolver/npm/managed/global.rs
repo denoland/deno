@@ -6,18 +6,18 @@ use std::path::PathBuf;
 
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
-use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use deno_semver::Version;
+use deno_semver::package::PackageNv;
+use node_resolver::NpmPackageFolderResolver;
+use node_resolver::UrlOrPathRef;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
-use node_resolver::NpmPackageFolderResolver;
-use node_resolver::UrlOrPathRef;
 use url::Url;
 
-use super::resolution::NpmResolutionCellRc;
 use super::NpmCacheDirRc;
+use super::resolution::NpmResolutionCellRc;
 use crate::npmrc::ResolvedNpmRcRc;
 
 /// Resolves packages from the global npm cache.

@@ -1,8 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Instant;
 
 use deno_core::parking_lot::Mutex;
