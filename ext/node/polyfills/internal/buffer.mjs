@@ -667,30 +667,10 @@ Buffer.prototype.swap64 = function swap64() {
 };
 
 function decodeUtf8(buffer, start, end) {
-  if (!isArrayBufferView(buffer)) {
-    throw new ERR_INVALID_ARG_TYPE("buffer", ["buffer"], buffer);
-  }
-  const length = TypedArrayPrototypeGetByteLength(buffer);
-
-  start = Number(start ?? 0);
-  end = Number(end ?? length);
-  if (start < 0 || start > length) {
-    throw new codes.ERR_OUT_OF_RANGE("start", ">= 0 and <= length", start);
-  }
-  if (end < 0 || end > length) {
-    throw new codes.ERR_OUT_OF_RANGE("end", ">= 0 and <= length", end);
-  }
-  if (start > end) {
-    end = start;
-  }
-  // SAFETY: we have checked that buffer is an ArrayBufferView,
-  // and that start and end are numbers and in bounds.
-  // The buffer, length, and offset are all from primordials, so
-  // we know they are valid types and values.
-  return op_node_unsafe_decode_utf8(
+  return op_node_decode_utf8(
     TypedArrayPrototypeGetBuffer(buffer),
     TypedArrayPrototypeGetByteOffset(buffer),
-    length,
+    TypedArrayPrototypeGetByteLength(buffer),
     start,
     end,
   );

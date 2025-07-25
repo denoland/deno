@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -130,16 +132,38 @@ pub fn op_node_unsafe_decode_utf8<'a>(
   start: v8::Local<v8::Value>,
   end: v8::Local<v8::Value>,
 ) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
+  // if !buf.is_array_buffer_view() {
+  //   return Err(JsErrorBox::generic("Expected an ArrayBufferView"));
+  // }
+
   // SAFETY: the javascript side must guarantee that the arguments are of the correct types
   let buf = unsafe { v8::Local::<v8::ArrayBuffer>::cast_unchecked(buf) };
   // SAFETY: upheld by js
   let byte_offset = unsafe { to_usize_unchecked(byte_offset) };
   // SAFETY: upheld by js
   let byte_length = unsafe { to_usize_unchecked(byte_length) };
-  // SAFETY: upheld by js
-  let start = unsafe { to_usize_unchecked(start) };
-  // SAFETY: upheld by js
-  let end = unsafe { to_usize_unchecked(end) };
+  // let byte_offset = buf.byte_offset();
+  // let byte_length = buf.byte_length();
+  // let buf = buf.buffer(scope).unwrap();
+
+  let start =
+    parse_array_index(scope, start, 0).map_err(JsErrorBox::from_err)?;
+  let mut end =
+    parse_array_index(scope, end, byte_length).map_err(JsErrorBox::from_err)?;
+
+  if end < start {
+    end = start;
+  }
+
+  if end > byte_length {
+    return Err(JsErrorBox::from_err(DecodeUtf8Error::OutOfRange(
+      "end".into(),
+    )));
+  }
+
+  // if start > end || start > byte_length || end > byte_length {
+  //   panic!("Should be upheld by js");
+  // }
 
   // SAFETY: the javascript side must guarantee that the arguments are in bounds
   let buffer = unsafe { buffer_to_slice(&buf, byte_offset, byte_length) };
@@ -152,15 +176,6 @@ pub fn op_node_unsafe_decode_utf8<'a>(
     v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
       .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
   }
-}
-
-/// # Safety
-///
-/// The caller must guarantee that the argument is a valid `v8::Number`.
-unsafe fn to_usize_unchecked(arg: v8::Local<v8::Value>) -> usize {
-  // SAFETY: checked by caller
-  let arg = unsafe { v8::Local::<v8::Number>::cast_unchecked(arg) };
-  arg.value() as usize
 }
 
 /// # Safety
@@ -187,4 +202,37 @@ enum BufferError {
   #[class(generic)]
   #[property("code" = "ERR_STRING_TOO_LONG")]
   StringTooLong,
+}
+
+/// # Safety
+///
+/// The caller must guarantee that the argument is a valid `v8::Number`.
+unsafe fn to_usize_unchecked(arg: v8::Local<v8::Value>) -> usize {
+  // if !arg.is_number() {
+  //   panic!("Expected a number");
+  // }
+  // SAFETY: checked by caller
+  let arg = unsafe { v8::Local::<v8::Number>::cast_unchecked(arg) };
+  arg.value() as usize
+}
+
+fn parse_array_index(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+  default: usize,
+) -> Result<usize, DecodeUtf8Error> {
+  if arg.is_undefined() {
+    return Ok(default);
+  }
+
+  let Some(arg) = arg.integer_value(scope) else {
+    return Err(DecodeUtf8Error::InvalidType);
+  };
+  if arg < 0 {
+    return Err(DecodeUtf8Error::OutOfRange("index".into()));
+  }
+  if arg > isize::MAX as i64 {
+    return Err(DecodeUtf8Error::OutOfRange("index".into()));
+  }
+  Ok(arg as usize)
 }
