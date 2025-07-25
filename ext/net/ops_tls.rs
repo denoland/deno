@@ -46,6 +46,7 @@ use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
+#[cfg(unix)]
 use tokio::net::UnixStream;
 
 use crate::DefaultTlsOptions;
@@ -100,6 +101,7 @@ enum TlsStreamInner {
     rd: AsyncRefCell<TlsStreamRead<TcpStream>>,
     wr: AsyncRefCell<TlsStreamWrite<TcpStream>>,
   },
+  #[cfg(unix)]
   Unix {
     rd: AsyncRefCell<TlsStreamRead<UnixStream>>,
     wr: AsyncRefCell<TlsStreamWrite<UnixStream>>,
@@ -110,6 +112,7 @@ enum TlsStreamInner {
 #[pin_project::pin_project(project = TlsStreamReunitedProject)]
 pub enum TlsStreamReunited {
   Tcp(#[pin] TlsStream<TcpStream>),
+  #[cfg(unix)]
   Unix(#[pin] TlsStream<UnixStream>),
 }
 
@@ -121,6 +124,7 @@ impl tokio::io::AsyncRead for TlsStreamReunited {
   ) -> std::task::Poll<std::io::Result<()>> {
     match self.project() {
       TlsStreamReunitedProject::Tcp(s) => s.poll_read(cx, buf),
+      #[cfg(unix)]
       TlsStreamReunitedProject::Unix(s) => s.poll_read(cx, buf),
     }
   }
@@ -134,6 +138,7 @@ impl tokio::io::AsyncWrite for TlsStreamReunited {
   ) -> std::task::Poll<Result<usize, std::io::Error>> {
     match self.project() {
       TlsStreamReunitedProject::Tcp(s) => s.poll_write(cx, buf),
+      #[cfg(unix)]
       TlsStreamReunitedProject::Unix(s) => s.poll_write(cx, buf),
     }
   }
@@ -144,6 +149,7 @@ impl tokio::io::AsyncWrite for TlsStreamReunited {
   ) -> std::task::Poll<Result<(), std::io::Error>> {
     match self.project() {
       TlsStreamReunitedProject::Tcp(s) => s.poll_flush(cx),
+      #[cfg(unix)]
       TlsStreamReunitedProject::Unix(s) => s.poll_flush(cx),
     }
   }
@@ -154,6 +160,7 @@ impl tokio::io::AsyncWrite for TlsStreamReunited {
   ) -> std::task::Poll<Result<(), std::io::Error>> {
     match self.project() {
       TlsStreamReunitedProject::Tcp(s) => s.poll_shutdown(cx),
+      #[cfg(unix)]
       TlsStreamReunitedProject::Unix(s) => s.poll_shutdown(cx),
     }
   }
@@ -161,6 +168,7 @@ impl tokio::io::AsyncWrite for TlsStreamReunited {
   fn is_write_vectored(&self) -> bool {
     match self {
       TlsStreamReunited::Tcp(s) => s.is_write_vectored(),
+      #[cfg(unix)]
       TlsStreamReunited::Unix(s) => s.is_write_vectored(),
     }
   }
@@ -172,6 +180,7 @@ impl tokio::io::AsyncWrite for TlsStreamReunited {
   ) -> std::task::Poll<Result<usize, std::io::Error>> {
     match self.project() {
       TlsStreamReunitedProject::Tcp(s) => s.poll_write_vectored(cx, bufs),
+      #[cfg(unix)]
       TlsStreamReunitedProject::Unix(s) => s.poll_write_vectored(cx, bufs),
     }
   }
@@ -197,6 +206,7 @@ macro_rules! match_stream_inner {
         .await;
         $action
       }
+      #[cfg(unix)]
       TlsStreamInner::Unix { .. } => {
         let mut $field = RcRef::map($self, |r| match &r.inner {
           TlsStreamInner::Unix { $field, .. } => $field,
@@ -224,6 +234,7 @@ impl TlsStreamResource {
     }
   }
 
+  #[cfg(unix)]
   pub fn new_unix(
     (rd, wr): (TlsStreamRead<UnixStream>, TlsStreamWrite<UnixStream>),
   ) -> Self {
@@ -244,6 +255,7 @@ impl TlsStreamResource {
         let write_half = wr.into_inner();
         TlsStreamReunited::Tcp(read_half.unsplit(write_half))
       }
+      #[cfg(unix)]
       TlsStreamInner::Unix { rd, wr } => {
         let read_half = rd.into_inner();
         let write_half = wr.into_inner();
