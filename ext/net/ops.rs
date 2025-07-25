@@ -74,6 +74,7 @@ impl From<SocketAddr> for IpAddr {
   }
 }
 
+#[cfg(unix)]
 impl From<tokio::net::unix::SocketAddr> for IpAddr {
   fn from(addr: tokio::net::unix::SocketAddr) -> Self {
     Self {

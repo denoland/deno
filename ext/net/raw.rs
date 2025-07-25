@@ -468,6 +468,8 @@ pub fn take_network_stream_resource(
       TlsStreamReunited::Tcp(tcp_stream) => {
         return Ok(NetworkStream::Tls(tcp_stream));
       }
+      // TODO(bartlomieju): support unix sockets here
+      #[allow(unreachable_patterns)]
       _ => todo!(),
     }
   }

@@ -200,6 +200,7 @@ macro_rules! match_stream_inner {
       TlsStreamInner::Tcp { .. } => {
         let mut $field = RcRef::map($self, |r| match &r.inner {
           TlsStreamInner::Tcp { $field, .. } => $field,
+          #[allow(unreachable_patterns)]
           _ => unreachable!(),
         })
         .borrow_mut()
