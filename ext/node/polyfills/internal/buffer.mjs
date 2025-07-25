@@ -22,6 +22,7 @@ const {
   Float64Array,
   MathFloor,
   MathMin,
+  MathTrunc,
   Number,
   NumberIsInteger,
   NumberIsNaN,
@@ -42,11 +43,9 @@ const {
   StringPrototypeReplace,
   StringPrototypeToLowerCase,
   StringPrototypeTrim,
-  StringFromCodePoint,
   SymbolFor,
   SymbolSpecies,
   SymbolToPrimitive,
-  TypeError,
   TypeErrorPrototype,
   TypedArrayPrototypeCopyWithin,
   TypedArrayPrototypeFill,
@@ -64,8 +63,8 @@ import {
   op_is_ascii,
   op_is_utf8,
   op_node_call_is_from_dependency,
-  op_transcode,
   op_node_decode_utf8,
+  op_transcode,
 } from "ext:core/ops";
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
@@ -730,7 +729,6 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
     );
   }
 
-
   const ops = getEncodingOps(encoding);
   if (ops === undefined) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
@@ -1238,7 +1236,7 @@ function _hexSlice(buf, start, end) {
 function adjustOffset(offset, length) {
   // Use Math.trunc() to convert offset to an integer value that can be larger
   // than an Int32. Hence, don't use offset | 0 or similar techniques.
-  offset = Math.trunc(offset);
+  offset = MathTrunc(offset);
   if (offset === 0) {
     return 0;
   }
@@ -1257,7 +1255,11 @@ Buffer.prototype.subarray = function subarray(start, end) {
   start = adjustOffset(start, srcLength);
   end = end !== undefined ? adjustOffset(end, srcLength) : srcLength;
   const newLength = end > start ? end - start : 0;
-  return new FastBuffer(this.buffer, this.byteOffset + start, newLength);
+  return new FastBuffer(
+    TypedArrayPrototypeGetBuffer(this),
+    TypedArrayPrototypeGetByteOffset(this) + start,
+    newLength,
+  );
 };
 
 Buffer.prototype.slice = function slice(start, end) {
