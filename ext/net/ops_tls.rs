@@ -488,10 +488,11 @@ where
   let tls_config = Arc::new(tls_config);
   let resource_table = &mut state.borrow_mut().resource_table;
 
-  if let Ok(resource_rc) = resource_table
+  let r = resource_table
     .take::<TcpStreamResource>(rid)
-    .map_err(NetError::Resource)
-  {
+    .map_err(NetError::Resource);
+  eprintln!("result {:#?}", r);
+  if let Ok(resource_rc) = r {
     // This TCP connection might be used somewhere else. If it's the case, we cannot proceed with the
     // process of starting a TLS connection on top of this TCP connection, so we just return a Busy error.
     // See also: https://github.com/denoland/deno/pull/16242
@@ -545,7 +546,9 @@ where
     return Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)));
   }
 
-  unreachable!()
+  return Err(NetError::Resource(
+    deno_core::error::ResourceError::BadResourceId,
+  ));
 }
 
 #[op2(async, stack_trace)]
