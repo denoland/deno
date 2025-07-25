@@ -182,6 +182,7 @@ pub enum NetError {
   #[class(generic)]
   #[error("{0}")]
   ReuniteTcp(tokio::net::tcp::ReuniteError),
+  #[cfg(unix)]
   #[class(generic)]
   #[error("{0}")]
   ReuniteUnix(tokio::net::unix::ReuniteError),
