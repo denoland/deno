@@ -6,6 +6,9 @@ import { assert } from "@std/assert";
 import { partition } from "@std/collections/partition";
 import { pooledMap } from "@std/async/pool";
 
+let testSerialId = 0;
+export const generateTestSerialId = () => ++testSerialId;
+
 interface SingleFileConfig {
   flaky?: boolean;
 }
@@ -24,7 +27,7 @@ const [sequentialTests, parallelTests] = partition(
 );
 
 async function run(name: string, testConfig: SingleFileConfig) {
-  const result = await runSingle(name, testConfig);
+  const result = await runSingle(generateTestSerialId(), name, testConfig);
   let msg = "";
   const error = result.error;
   if (error && "message" in error) {

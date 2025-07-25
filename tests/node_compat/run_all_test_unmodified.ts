@@ -21,6 +21,7 @@ import {
   TEST_ARGS,
   usesNodeTestModule,
 } from "./common.ts";
+import { generateTestSerialId } from "./test.ts";
 
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
@@ -153,13 +154,15 @@ function getFlags(source: string): [string[], string[]] {
   return [v8Flags, nodeOptions];
 }
 
-let testSerialId = 0;
 /**
  * Run a single node test file. Retries 3 times on WouldBlock error.
  *
+ * @param testSerialId Passed to the test as `TEST_SERIAL_ID` environment variable
+ * and may be used to determine the tmp directory for the test.
  * @param testPath Relative path from test/ dir of Node.js (e.g. "parallel/test-assert.js").
  */
 export async function runSingle(
+  testSerialId: number,
   testPath: string,
   {
     flaky = false,
@@ -169,7 +172,6 @@ export async function runSingle(
     retry?: number;
   },
 ): Promise<NodeTestFileReport> {
-  testSerialId++;
   let cmd: Deno.ChildProcess | undefined;
   const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   let usesNodeTest = false;
@@ -226,9 +228,15 @@ export async function runSingle(
       };
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
-      return runSingle(testPath, { flaky, retry: retry + 1 });
+      return runSingle(generateTestSerialId(), testPath, {
+        flaky,
+        retry: retry + 1,
+      });
     } else if (flaky && retry < 3) {
-      return runSingle(testPath, { flaky, retry: retry + 1 });
+      return runSingle(generateTestSerialId(), testPath, {
+        flaky,
+        retry: retry + 1,
+      });
     } else {
       return {
         result: NodeTestFileResult.FAIL,
@@ -320,7 +328,7 @@ async function main() {
 
   async function run(testPath: string) {
     const num = String(++i).padStart(4, " ");
-    const result = await runSingle(testPath, {});
+    const result = await runSingle(generateTestSerialId(), testPath, {});
     reports[testPath] = result;
     if (result.result === NodeTestFileResult.PASS) {
       console.log(`${num} %cPASS`, "color: green", testPath);
