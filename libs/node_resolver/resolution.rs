@@ -2595,7 +2595,7 @@ mod tests {
       ("test.d.mts", "js", "test.js"),
     ];
     for (path, ext, expected) in cases {
-      let actual = with_known_extension(&PathBuf::from(path), ext);
+      let actual = with_known_extension(Path::new(path), ext);
       assert_eq!(actual.to_string_lossy(), *expected);
     }
   }
