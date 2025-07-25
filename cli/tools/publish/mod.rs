@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::IsTerminal;
@@ -12,6 +13,7 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use deno_ast::ModuleSpecifier;
+use deno_ast::SourceTextInfo;
 use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::Workspace;
@@ -26,6 +28,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_resolver::collections::FolderScopedMap;
 use deno_runtime::deno_fetch;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
@@ -36,6 +39,7 @@ use tokio::process::Command;
 
 use self::diagnostics::PublishDiagnostic;
 use self::diagnostics::PublishDiagnosticsCollector;
+use self::diagnostics::RelativePackageImportDiagnosticReferrer;
 use self::graph::GraphDiagnosticsCollector;
 use self::module_content::ModuleContentProvider;
 use self::paths::CollectedPublishPath;
@@ -428,6 +432,7 @@ impl PublishPreparer {
       let config_path = config_path.clone();
       let config_url = deno_json.specifier.clone();
       let has_license_field = package.license.is_some();
+      let current_package_name = package.name.clone();
       move || {
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
@@ -439,9 +444,18 @@ impl PublishPreparer {
             file_patterns,
             force_include_paths: vec![config_path],
           })?;
+        let all_jsr_packages = FolderScopedMap::from_map(
+          cli_options
+            .workspace()
+            .jsr_packages()
+            .map(|pkg| (pkg.member_dir.dir_url().clone(), pkg))
+            .collect(),
+        );
         collect_excluded_module_diagnostics(
           &root_specifier,
           &graph,
+          &current_package_name,
+          &all_jsr_packages,
           &publish_paths,
           &diagnostics_collector,
         );
@@ -1066,8 +1080,10 @@ async fn publish_package(
 }
 
 fn collect_excluded_module_diagnostics(
-  root: &ModuleSpecifier,
+  root_dir: &ModuleSpecifier,
   graph: &deno_graph::ModuleGraph,
+  current_package_name: &str,
+  all_jsr_packages: &FolderScopedMap<JsrPackageConfig>,
   publish_paths: &[CollectedPublishPath],
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) {
@@ -1085,12 +1101,77 @@ fn collect_excluded_module_diagnostics(
       | deno_graph::Module::Node(_)
       | deno_graph::Module::External(_) => None,
     })
-    .filter(|s| s.as_str().starts_with(root.as_str()));
+    .filter(|s| s.as_str().starts_with(root_dir.as_str()));
+  let mut outside_specifiers = HashMap::new();
+  let mut had_excluded_specifier = false;
   for specifier in graph_specifiers {
     if !publish_specifiers.contains(specifier) {
-      diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
-        specifier: specifier.clone(),
-      });
+      let other_jsr_pkg = all_jsr_packages
+        .get_for_specifier(specifier)
+        .filter(|pkg| pkg.member_dir.dir_url().as_ref() != root_dir);
+      match other_jsr_pkg {
+        Some(other_jsr_pkg) => {
+          outside_specifiers.insert(specifier, other_jsr_pkg);
+        }
+        None => {
+          had_excluded_specifier = true;
+          diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
+            specifier: specifier.clone(),
+          })
+        }
+      }
+    }
+  }
+
+  if !had_excluded_specifier && !outside_specifiers.is_empty() {
+    let mut found_outside_specifier = false;
+    let mut publish_specifiers = publish_specifiers.iter().collect::<Vec<_>>();
+    publish_specifiers.sort(); // determinism
+    for publish_specifier in publish_specifiers {
+      let Some(module) = graph.get(publish_specifier) else {
+        continue;
+      };
+      for (_specifier_text, dep) in module.dependencies() {
+        let resolutions = dep
+          .maybe_code
+          .ok()
+          .into_iter()
+          .chain(dep.maybe_type.ok().into_iter());
+        let mut maybe_res = resolutions
+          .filter_map(|r| Some((r, outside_specifiers.get(&r.specifier)?)));
+        if let Some((outside_res, package)) = maybe_res.next() {
+          found_outside_specifier = true;
+          diagnostics_collector.push(
+            PublishDiagnostic::RelativePackageImport {
+              // Wasm modules won't have a referrer
+              maybe_referrer: module.source().cloned().map(|source| {
+                RelativePackageImportDiagnosticReferrer {
+                  referrer: outside_res.range.clone(),
+                  text_info: SourceTextInfo::new(source),
+                }
+              }),
+              from_package_name: current_package_name.to_string(),
+              to_package_name: package.name.clone(),
+              specifier: outside_res.specifier.clone(),
+            },
+          );
+        }
+      }
+    }
+
+    if !found_outside_specifier {
+      // just in case we didn't find an outside specifier above, add
+      // diagnostics for all the specifiers found outside the package
+      let sorted_outside_specifiers =
+        outside_specifiers.into_iter().collect::<BTreeMap<_, _>>(); // determinism
+      for (specifier, to_package) in sorted_outside_specifiers {
+        diagnostics_collector.push(PublishDiagnostic::RelativePackageImport {
+          specifier: specifier.clone(),
+          from_package_name: current_package_name.to_string(),
+          to_package_name: to_package.name.clone(),
+          maybe_referrer: None,
+        });
+      }
     }
   }
 }
