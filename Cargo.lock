@@ -1576,6 +1576,7 @@ dependencies = [
  "deno_resolver",
  "deno_runtime",
  "deno_semver",
+ "deno_signals",
  "deno_snapshots",
  "deno_subprocess_windows",
  "deno_task_shell",
@@ -2849,6 +2850,7 @@ name = "deno_signals"
 version = "0.2.0"
 dependencies = [
  "signal-hook",
+ "tokio",
  "winapi",
 ]
 

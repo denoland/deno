@@ -632,7 +632,7 @@ pub async fn run_future_forwarding_signals<TOutput>(
 }
 
 async fn listen_ctrl_c(kill_signal: KillSignal) {
-  while let Ok(()) = tokio::signal::ctrl_c().await {
+  while let Ok(()) = deno_signals::ctrl_c().await {
     // On windows, ctrl+c is sent to the process group, so the signal would
     // have already been sent to the child process. We still want to listen
     // for ctrl+c here to keep the process alive when receiving it, but no
