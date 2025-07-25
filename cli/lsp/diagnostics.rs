@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::thread;
 
+use console_static_text::ansi::strip_ansi_codes;
 use deno_ast::MediaType;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
@@ -1429,18 +1430,7 @@ impl DenoDiagnostic {
         (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution.as_ref().map(|(resolved, sloppy_reason)| sloppy_reason.suggestion_message_for_specifier(resolved))), data)
       },
       Self::ResolutionError(err) => {
-        let mut message;
-        message = enhanced_resolution_error_message(err);
-        if let deno_graph::ResolutionError::ResolverError {error, ..} = err{
-          if let ResolveError::ImportMap(importmap) = (*error).as_ref() {
-            if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) = &**importmap {
-              if specifier.chars().next().unwrap_or('\0') == '@'{
-                let hint = format!("\nHint: Use [deno add {}] to add the dependency.", specifier);
-                message.push_str(hint.as_str());
-              }
-            }
-          }
-        }
+        let message = strip_ansi_codes(&enhanced_resolution_error_message(err)).into_owned();
         (
         lsp::DiagnosticSeverity::ERROR,
         message,
@@ -1448,7 +1438,7 @@ impl DenoDiagnostic {
           .map(|specifier| json!({ "specifier": specifier }))
       )},
       Self::UnknownNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("No such built-in module: node:{}", specifier.path()), None),
-      Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{}\" is resolved to \"node:{}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier, specifier), Some(json!({ "specifier": specifier }))),
+      Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{0}\" is resolved to \"node:{0}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier), Some(json!({ "specifier": specifier }))),
     };
     lsp::Diagnostic {
       range: *range,

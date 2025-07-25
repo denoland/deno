@@ -22,9 +22,7 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
-use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
@@ -42,7 +40,6 @@ use crate::factory::CliFactory;
 use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
-use crate::sys::CliSys;
 use crate::tools::test::TestFilter;
 use crate::tools::test::format_test_error;
 use crate::util::file_watcher;
@@ -298,8 +295,7 @@ async fn bench_specifier_inner(
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: &Permissions,
-  permissions_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
+  root_permissions_container: &PermissionsContainer,
   specifiers: Vec<ModuleSpecifier>,
   preload_modules: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
@@ -310,10 +306,10 @@ async fn bench_specifiers(
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    let permissions_container = PermissionsContainer::new(
-      permissions_desc_parser.clone(),
-      permissions.clone(),
-    );
+    // Various test files should not share the same permissions in terms of
+    // `PermissionsContainer` - otherwise granting/revoking permissions in one
+    // file would have impact on other files, which is undesirable.
+    let permissions_container = root_permissions_container.deep_clone();
     let sender = sender.clone();
     let options = option_for_handles.clone();
     let preload_modules = preload_modules.clone();
@@ -449,14 +445,6 @@ pub async fn run_benchmarks(
   let cli_options = factory.cli_options()?;
   let workspace_bench_options =
     cli_options.resolve_workspace_bench_options(&bench_flags);
-  // Various bench files should not share the same permissions in terms of
-  // `PermissionsContainer` - otherwise granting/revoking permissions in one
-  // file would have impact on other files, which is undesirable.
-  let permission_desc_parser = factory.permission_desc_parser()?.clone();
-  let permissions = Permissions::from_options(
-    permission_desc_parser.as_ref(),
-    &cli_options.permissions_options(),
-  )?;
 
   let members_with_bench_options =
     cli_options.resolve_bench_options_for_members(&bench_flags)?;
@@ -499,8 +487,7 @@ pub async fn run_benchmarks(
     Arc::new(factory.create_cli_main_worker_factory().await?);
   bench_specifiers(
     worker_factory,
-    &permissions,
-    &permission_desc_parser,
+    factory.root_permissions_container()?,
     specifiers,
     preload_modules,
     BenchSpecifierOptions {
@@ -573,15 +560,6 @@ pub async fn run_benchmarks_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
-        // Various bench files should not share the same permissions in terms of
-        // `PermissionsContainer` - otherwise granting/revoking permissions in one
-        // file would have impact on other files, which is undesirable.
-        let permission_desc_parser = factory.permission_desc_parser()?.clone();
-        let permissions = Permissions::from_options(
-          permission_desc_parser.as_ref(),
-          &cli_options.permissions_options(),
-        )?;
-
         let graph = module_graph_creator
           .create_graph(
             graph_kind,
@@ -638,8 +616,7 @@ pub async fn run_benchmarks_with_watch(
         let preload_modules = cli_options.preload_modules()?;
         bench_specifiers(
           worker_factory,
-          &permissions,
-          &permission_desc_parser,
+          factory.root_permissions_container()?,
           specifiers,
           preload_modules,
           BenchSpecifierOptions {

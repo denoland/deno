@@ -2915,6 +2915,13 @@ impl PermissionsContainer {
     }
   }
 
+  pub fn deep_clone(&self) -> PermissionsContainer {
+    Self {
+      descriptor_parser: self.descriptor_parser.clone(),
+      inner: Arc::new(Mutex::new(self.inner.lock().clone())),
+    }
+  }
+
   pub fn allow_all(
     descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   ) -> Self {

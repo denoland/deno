@@ -1,0 +1,9 @@
+[WILDCARD]
+
+Embedded Files
+
+[# this should not contain the npm packages found in the lockfile]
+[WILDLINE]
+└── main.ts ([WILDLINE])
+
+[WILDCARD]
