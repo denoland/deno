@@ -461,12 +461,16 @@ mod test {
     // first run
     {
       let code_cache = DenoCompileCodeCache::new(file_path.clone(), 1234);
-      assert!(code_cache
-        .get_sync(&url1, CodeCacheType::EsModule, 0)
-        .is_none());
-      assert!(code_cache
-        .get_sync(&url2, CodeCacheType::EsModule, 1)
-        .is_none());
+      assert!(
+        code_cache
+          .get_sync(&url1, CodeCacheType::EsModule, 0)
+          .is_none()
+      );
+      assert!(
+        code_cache
+          .get_sync(&url2, CodeCacheType::EsModule, 1)
+          .is_none()
+      );
       assert!(code_cache.enabled());
       code_cache.set_sync(url1.clone(), CodeCacheType::EsModule, 0, &[1, 2, 3]);
       assert!(code_cache.enabled());
@@ -494,12 +498,16 @@ mod test {
     // new cache key first run
     {
       let code_cache = DenoCompileCodeCache::new(file_path.clone(), 54321);
-      assert!(code_cache
-        .get_sync(&url1, CodeCacheType::EsModule, 0)
-        .is_none());
-      assert!(code_cache
-        .get_sync(&url2, CodeCacheType::EsModule, 1)
-        .is_none());
+      assert!(
+        code_cache
+          .get_sync(&url1, CodeCacheType::EsModule, 0)
+          .is_none()
+      );
+      assert!(
+        code_cache
+          .get_sync(&url2, CodeCacheType::EsModule, 1)
+          .is_none()
+      );
       code_cache.set_sync(url1.clone(), CodeCacheType::EsModule, 0, &[2, 2, 3]);
       code_cache.set_sync(url2.clone(), CodeCacheType::EsModule, 1, &[3, 2, 3]);
     }
@@ -510,9 +518,11 @@ mod test {
         .get_sync(&url1, CodeCacheType::EsModule, 0)
         .unwrap();
       assert_eq!(result1, vec![2, 2, 3]);
-      assert!(code_cache
-        .get_sync(&url2, CodeCacheType::EsModule, 5) // different hash will cause none
-        .is_none());
+      assert!(
+        code_cache
+          .get_sync(&url2, CodeCacheType::EsModule, 5) // different hash will cause none
+          .is_none()
+      );
     }
   }
 }

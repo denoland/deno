@@ -1,8 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::error::AnyError;
-use dissimilar::diff;
 use dissimilar::Chunk;
+use dissimilar::diff;
 use text_size::TextRange;
 use text_size::TextSize;
 use tower_lsp::jsonrpc;
@@ -73,10 +73,10 @@ pub fn get_edits(a: &str, b: &str, line_index: &LineIndex) -> Vec<TextEdit> {
   if a == b {
     return vec![];
   }
-  // Heuristic to detect things like minified files. `diff()` is expensive.
-  if b.chars().filter(|c| *c == '\n').count()
-    > line_index.inner.utf8_offsets_len() * 3
-  {
+  // Heuristic to detect things like large JSON or minified files. `diff()` is
+  // expensive.
+  let b_lines = b.chars().filter(|c| *c == '\n').count();
+  if b_lines > 10000 || b_lines > line_index.inner.utf8_offsets_len() * 3 {
     return vec![TextEdit {
       range: lsp::Range {
         start: lsp::Position::new(0, 0),

@@ -7,10 +7,10 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use futures::Stream;
 use futures::StreamExt;
+use rustls_tokio_stream::TlsStream;
 use rustls_tokio_stream::rustls;
 use rustls_tokio_stream::rustls::pki_types::CertificateDer;
 use rustls_tokio_stream::rustls::pki_types::PrivateKeyDer;
-use rustls_tokio_stream::TlsStream;
 use tokio::net::TcpStream;
 
 use crate::get_tcp_listener_stream;
@@ -29,7 +29,7 @@ pub enum SupportedHttpVersions {
 pub fn get_tls_listener_stream_from_tcp(
   tls_config: Arc<rustls::ServerConfig>,
   mut tcp: impl Stream<Item = Result<TcpStream, std::io::Error>> + Unpin + 'static,
-) -> impl Stream<Item = Result<TlsStream, std::io::Error>> + Unpin {
+) -> impl Stream<Item = Result<TlsStream<TcpStream>, std::io::Error>> + Unpin {
   async_stream::stream! {
     while let Some(result) = tcp.next().await {
       match result {
@@ -44,7 +44,7 @@ pub async fn get_tls_listener_stream(
   name: &'static str,
   port: u16,
   http: SupportedHttpVersions,
-) -> impl Stream<Item = Result<TlsStream, std::io::Error>> + Unpin {
+) -> impl Stream<Item = Result<TlsStream<TcpStream>, std::io::Error>> + Unpin {
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
@@ -129,6 +129,6 @@ pub fn get_tls_config(
 
       Ok(Arc::new(config))
     }
-    None => Err(io::Error::new(io::ErrorKind::Other, "Cannot find key")),
+    None => Err(io::Error::other("Cannot find key")),
   }
 }

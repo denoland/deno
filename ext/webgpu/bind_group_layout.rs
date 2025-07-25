@@ -1,11 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
 
-use crate::texture::GPUTextureViewDimension;
 use crate::Instance;
+use crate::texture::GPUTextureViewDimension;
 
 pub struct GPUBindGroupLayout {
   pub instance: Instance,
@@ -23,7 +23,11 @@ impl deno_core::webidl::WebIdlInterfaceConverter for GPUBindGroupLayout {
   const NAME: &'static str = "GPUBindGroupLayout";
 }
 
-impl GarbageCollected for GPUBindGroupLayout {}
+impl GarbageCollected for GPUBindGroupLayout {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUBindGroupLayout"
+  }
+}
 
 #[op2]
 impl GPUBindGroupLayout {

@@ -13,12 +13,12 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_lib::version::DENO_VERSION_INFO;
 
-use super::util;
 use super::CoverageReport;
+use super::util;
 use crate::args::CoverageType;
 use crate::colors;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct CoverageStats<'a> {
   pub line_hit: usize,
   pub line_miss: usize,
@@ -161,7 +161,7 @@ impl SummaryCoverageReporter {
     };
 
     println!(
-      " {file_name} | {branch_percent} | {line_percent} |",
+      "| {file_name} | {branch_percent} | {line_percent} |",
       file_name = file_name,
       branch_percent = branch_percent,
       line_percent = line_percent,
@@ -192,17 +192,19 @@ impl CoverageReporter for SummaryCoverageReporter {
       .max("All files".len());
 
     let header =
-      format!("{node:node_max$}  | Branch % | Line % |", node = "File");
-    let separator = "-".repeat(header.len());
-    println!("{}", separator);
+      format!("| {node:node_max$} | Branch % | Line % |", node = "File");
+    let separator = format!(
+      "| {} | {} | {} |",
+      "-".repeat(node_max),
+      "-".repeat(8),
+      "-".repeat(6)
+    );
     println!("{}", header);
     println!("{}", separator);
     entries.iter().for_each(|(node, stats)| {
       self.print_coverage_line(node, node_max, stats);
     });
-    println!("{}", separator);
     self.print_coverage_line("All files", node_max, root_stats);
-    println!("{}", separator);
   }
 }
 
@@ -505,7 +507,7 @@ impl HtmlCoverageReporter {
     let footer = self.create_html_footer(timestamp);
     format!(
       "<!doctype html>
-      <html>
+      <html lang='en-US'>
         {head}
         <body>
           <div class='wrapper'>
@@ -530,7 +532,7 @@ impl HtmlCoverageReporter {
         <meta charset='utf-8'>
         <title>{title}</title>
         <style>{style_css}</style>
-        <meta name='viewport' content='width=device-width, initial-scale=1' />
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
       </head>"
     )
   }
@@ -658,7 +660,7 @@ impl HtmlCoverageReporter {
   ) -> String {
     let line_num = file_text.lines().count();
     let line_count = (1..line_num + 1)
-      .map(|i| format!("<a name='L{i}'></a><a href='#L{i}'>{i}</a>"))
+      .map(|i| format!("<a href='#L{i}' id='L{i}'>{i}</a>"))
       .collect::<Vec<_>>()
       .join("\n");
     let line_coverage = (0..line_num)
@@ -667,12 +669,12 @@ impl HtmlCoverageReporter {
           report.found_lines.iter().find(|(line, _)| i == *line)
         {
           if *count == 0 {
-            "<span class='cline-any cline-no'>&nbsp</span>".to_string()
+            "<span class='cline-any cline-no'>&nbsp;</span>".to_string()
           } else {
             format!("<span class='cline-any cline-yes' title='This line is covered {count} time{}'>x{count}</span>", if *count > 1 { "s" } else { "" })
           }
         } else {
-          "<span class='cline-any cline-neutral'>&nbsp</span>".to_string()
+          "<span class='cline-any cline-neutral'>&nbsp;</span>".to_string()
         }
       })
       .collect::<Vec<_>>()

@@ -9,6 +9,8 @@ import { join } from "node:path";
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 
 // Increase the timeout for the auto select family to avoid flakiness
 net.setDefaultAutoSelectFamilyAttemptTimeout(
@@ -69,6 +71,7 @@ for (const url of ["http://localhost:4246", "https://localhost:4247"]) {
       "abc": "def",
       "opr": "stv",
       "foo": "bar",
+      "req_body_len": "5",
     });
   });
 }
@@ -117,6 +120,64 @@ Deno.test(`[node/http2 client createConnection]`, {
   await createConnDeferred.promise;
   await endPromise.promise;
   assertEquals(receivedData, "hello world\n");
+});
+
+// https://github.com/denoland/deno/issues/29956
+Deno.test(`[node/http2 client body overflow]`, {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const url = "http://127.0.0.1:4246";
+  const createConnDeferred = Promise.withResolvers<void>();
+  // Create a server to respond to the HTTP2 requests
+  const client = http2.connect(url, {
+    createConnection() {
+      const socket = net.connect({ host: "127.0.0.1", port: 4246 });
+
+      socket.on("connect", () => {
+        createConnDeferred.resolve();
+      });
+
+      return socket;
+    },
+  });
+  client.on("error", (err) => console.error(err));
+
+  const req = client.request({ ":method": "POST", ":path": "/" });
+
+  let receivedData = "";
+  let receivedTrailers;
+
+  const ab = new ArrayBuffer(100);
+  const view = new Uint8Array(ab, 0, 5);
+
+  req.write(view);
+  req.setEncoding("utf8");
+
+  req.on("data", (chunk) => {
+    receivedData += chunk;
+  });
+
+  req.on("trailers", (trailers, _flags) => {
+    receivedTrailers = trailers;
+  });
+
+  req.end();
+
+  const endPromise = Promise.withResolvers<void>();
+  setTimeout(() => {
+    try {
+      client.close();
+    } catch (_) {
+      // pass
+    }
+    endPromise.resolve();
+  }, 2000);
+
+  await createConnDeferred.promise;
+  await endPromise.promise;
+  assertEquals(receivedData, "hello world\n");
+
+  assertEquals(receivedTrailers?.["req_body_len"], "5");
 });
 
 Deno.test("[node/http2 client GET https://www.example.com]", async () => {
@@ -390,4 +451,14 @@ Deno.test("[node/http2 client] connection states", async () => {
 Deno.test("request and response exports", () => {
   assert(http2.Http2ServerRequest);
   assert(http2.Http2ServerResponse);
+});
+
+Deno.test("internal/http2/util exports", () => {
+  const util = require("internal/http2/util");
+  assert(typeof util.kAuthority === "symbol");
+  assert(typeof util.kSensitiveHeaders === "symbol");
+  assert(typeof util.kSocket === "symbol");
+  assert(typeof util.kProtocol === "symbol");
+  assert(typeof util.kProxySocket === "symbol");
+  assert(typeof util.kRequest === "symbol");
 });

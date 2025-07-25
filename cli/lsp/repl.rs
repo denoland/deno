@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
@@ -11,6 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use lsp_types::Uri;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::LanguageServer;
 use tower_lsp::lsp_types::ClientCapabilities;
 use tower_lsp::lsp_types::ClientInfo;
 use tower_lsp::lsp_types::CompletionContext;
@@ -32,7 +32,6 @@ use tower_lsp::lsp_types::TextDocumentItem;
 use tower_lsp::lsp_types::TextDocumentPositionParams;
 use tower_lsp::lsp_types::VersionedTextDocumentIdentifier;
 use tower_lsp::lsp_types::WorkDoneProgressParams;
-use tower_lsp::LanguageServer;
 
 use super::client::Client;
 use super::config::ClassMemberSnippets;
@@ -61,19 +60,13 @@ pub struct ReplLanguageServer {
 }
 
 impl ReplLanguageServer {
-  pub async fn new_initialized(
-    registry_provider: Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
-  ) -> Result<ReplLanguageServer, AnyError> {
+  pub async fn new_initialized() -> Result<ReplLanguageServer, AnyError> {
     // downgrade info and warn lsp logging to debug
     super::logging::set_lsp_log_level(log::Level::Debug);
     super::logging::set_lsp_warn_level(log::Level::Debug);
 
-    let language_server = super::language_server::LanguageServer::new(
-      Client::new_for_repl(),
-      registry_provider,
-    );
+    let language_server =
+      super::language_server::LanguageServer::new(Client::new_for_repl());
 
     let cwd_uri = get_cwd_uri()?;
 

@@ -65,7 +65,7 @@ To use a development version of the LSP in VSCode:
 In addition to the above make sure that:
 
 > To use the commands below, you need to first install the necessary tools on
-> your system as described [here](building_from_source).
+> your system as described [here](#building-from-source).
 
 1. `cargo test` passes - this will run full test suite for `deno` including unit
    tests, integration tests and Web Platform Tests
@@ -80,7 +80,7 @@ In addition to the above make sure that:
 
 Below are instructions on how to build Deno from source. If you just want to use
 Deno you can download a prebuilt executable (more information in the
-[`Getting Started`](/runtime/getting_started/installation/) chapter).
+[`Getting Started`](https://docs.deno.com/runtime) chapter).
 
 ### Cloning the Repository
 

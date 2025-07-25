@@ -8,16 +8,16 @@ use std::sync::Arc;
 use deno_error::JsErrorBox;
 pub use deno_native_certs;
 pub use rustls;
-use rustls::client::danger::HandshakeSignatureValid;
-use rustls::client::danger::ServerCertVerified;
-use rustls::client::danger::ServerCertVerifier;
-use rustls::client::WebPkiServerVerifier;
-use rustls::pki_types::CertificateDer;
-use rustls::pki_types::PrivateKeyDer;
-use rustls::pki_types::ServerName;
 use rustls::ClientConfig;
 use rustls::DigitallySignedStruct;
 use rustls::RootCertStore;
+use rustls::client::WebPkiServerVerifier;
+use rustls::client::danger::HandshakeSignatureValid;
+use rustls::client::danger::ServerCertVerified;
+use rustls::client::danger::ServerCertVerifier;
+use rustls::pki_types::CertificateDer;
+use rustls::pki_types::PrivateKeyDer;
+use rustls::pki_types::ServerName;
 pub use rustls_pemfile;
 use rustls_pemfile::certs;
 use rustls_pemfile::ec_private_keys;
@@ -158,12 +158,21 @@ impl ServerCertVerifier for NoCertificateVerification {
   }
 }
 
-#[derive(Deserialize, Default, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-pub struct Proxy {
-  pub url: String,
-  pub basic_auth: Option<BasicAuth>,
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase", tag = "transport")]
+pub enum Proxy {
+  #[serde(rename_all = "camelCase")]
+  Http {
+    url: String,
+    basic_auth: Option<BasicAuth>,
+  },
+  Unix {
+    path: String,
+  },
+  Vsock {
+    cid: u32,
+    port: u32,
+  },
 }
 
 #[derive(Deserialize, Default, Debug, Clone)]

@@ -1,8 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Instant;
 
 use deno_core::parking_lot::Mutex;
@@ -264,6 +264,23 @@ impl DrawThreadRenderer for ProgressBarInner {
 #[derive(Clone, Debug)]
 pub struct ProgressBar {
   inner: ProgressBarInner,
+}
+
+impl deno_npm_installer::Reporter for ProgressBar {
+  type Guard = UpdateGuard;
+  type ClearGuard = ClearGuard;
+
+  fn on_blocking(&self, message: &str) -> Self::Guard {
+    self.update_with_prompt(ProgressMessagePrompt::Blocking, message)
+  }
+
+  fn on_initializing(&self, message: &str) -> Self::Guard {
+    self.update_with_prompt(ProgressMessagePrompt::Initialize, message)
+  }
+
+  fn clear_guard(&self) -> Self::ClearGuard {
+    self.clear_guard()
+  }
 }
 
 impl ProgressBar {

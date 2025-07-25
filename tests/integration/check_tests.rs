@@ -126,7 +126,7 @@ fn ts_no_recheck_on_redirect() {
 
   // run again
   let output = check_command.run();
-  output.assert_matches_text("Hello\n");
+  output.assert_matches_text("Hello, World!\n");
 }
 
 #[test]

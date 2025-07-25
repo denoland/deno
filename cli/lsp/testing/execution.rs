@@ -3,23 +3,20 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
+use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::futures::StreamExt;
 use deno_core::parking_lot::RwLock;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
-use deno_core::ModuleSpecifier;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use tokio_util::sync::CancellationToken;
@@ -29,8 +26,9 @@ use super::definitions::TestDefinition;
 use super::definitions::TestModule;
 use super::lsp_custom;
 use super::server::TestServerTests;
-use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
+use crate::args::flags_from_vec;
+use crate::args::parallelism_count;
 use crate::factory::CliFactory;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
@@ -40,9 +38,10 @@ use crate::lsp::urls::uri_parse_unencoded;
 use crate::lsp::urls::uri_to_url;
 use crate::lsp::urls::url_to_uri;
 use crate::tools::test;
-use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
+use crate::tools::test::create_test_event_channel;
 
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests
@@ -102,24 +101,32 @@ fn as_queue_and_filters(
   (queue, filters)
 }
 
-fn as_test_messages<S: AsRef<str>>(
-  message: S,
-  is_markdown: bool,
-) -> Vec<lsp_custom::TestMessage> {
+fn failure_to_test_message(failure: &TestFailure) -> lsp_custom::TestMessage {
   let message = lsp::MarkupContent {
-    kind: if is_markdown {
-      lsp::MarkupKind::Markdown
-    } else {
-      lsp::MarkupKind::PlainText
-    },
-    value: message.as_ref().to_string(),
+    kind: lsp::MarkupKind::PlainText,
+    value: failure
+      .format(&TestFailureFormatOptions::default())
+      .to_string(),
   };
-  vec![lsp_custom::TestMessage {
+  let location = failure.error_location().and_then(|v| {
+    let pos = lsp::Position {
+      line: v.line_number,
+      character: v.column_number,
+    };
+    // Does not have to match the test URI
+    // since one can write `Deno.test(importedFunction)`
+    let uri = uri_parse_unencoded(&v.file_name).ok()?;
+    Some(lsp::Location {
+      uri,
+      range: lsp::Range::new(pos, pos),
+    })
+  });
+  lsp_custom::TestMessage {
     message,
     expected_output: None,
     actual_output: None,
-    location: None,
-  }]
+    location,
+  }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -225,14 +232,7 @@ impl TestRun {
     )?);
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
-    // Various test files should not share the same permissions in terms of
-    // `PermissionsContainer` - otherwise granting/revoking permissions in one
-    // file would have impact on other files, which is undesirable.
-    let permission_desc_parser = factory.permission_desc_parser()?.clone();
-    let permissions = Permissions::from_options(
-      permission_desc_parser.as_ref(),
-      &cli_options.permissions_options(),
-    )?;
+    let permissions_container = factory.root_permissions_container()?;
     let main_graph_container = factory.main_module_graph_container().await?;
     main_graph_container
       .check_specifiers(
@@ -244,10 +244,7 @@ impl TestRun {
     let (concurrent_jobs, fail_fast) =
       if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {
         (
-          test_flags
-            .concurrent_jobs
-            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
-            .into(),
+          parallelism_count(test_flags.parallel).into(),
           test_flags.fail_fast,
         )
       } else {
@@ -276,10 +273,10 @@ impl TestRun {
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
       let worker_factory = worker_factory.clone();
-      let permissions_container = PermissionsContainer::new(
-        permission_desc_parser.clone(),
-        permissions.clone(),
-      );
+      // Various test files should not share the same permissions in terms of
+      // `PermissionsContainer` - otherwise granting/revoking permissions in one
+      // file would have impact on other files, which is undesirable.
+      let permissions_container = permissions_container.deep_clone();
       let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
@@ -310,6 +307,8 @@ impl TestRun {
             worker_factory,
             permissions_container,
             specifier,
+            // Executing tests in the LSP currently doesn't support preload option
+            vec![],
             worker_sender,
             fail_fast_tracker,
             test::TestSpecifierOptions {
@@ -672,10 +671,7 @@ impl LspTestReporter {
         let desc = self.tests.get(&desc.id).unwrap();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(
-            failure.format(&TestFailureFormatOptions::default()),
-            false,
-          ),
+          messages: vec![failure_to_test_message(failure)],
           duration: Some(elapsed as u32),
         })
       }
@@ -695,9 +691,20 @@ impl LspTestReporter {
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
       origin,
-      test::fmt::format_test_error(js_error, &TestFailureFormatOptions::default())
+      test::fmt::format_test_error(
+        js_error,
+        &TestFailureFormatOptions::default()
+      )
     );
-    let messages = as_test_messages(err_string, false);
+    let messages = vec![lsp_custom::TestMessage {
+      message: lsp::MarkupContent {
+        kind: lsp::MarkupKind::PlainText,
+        value: err_string,
+      },
+      expected_output: None,
+      actual_output: None,
+      location: None,
+    }];
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
       self.progress(lsp_custom::TestRunProgressMessage::Failed {
         test: desc.as_test_identifier(&self.tests),
@@ -772,10 +779,7 @@ impl LspTestReporter {
       test::TestStepResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(
-            failure.format(&TestFailureFormatOptions::default()),
-            false,
-          ),
+          messages: vec![failure_to_test_message(failure)],
           duration: Some(elapsed as u32),
         })
       }

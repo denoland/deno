@@ -11,13 +11,13 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
+use deno_npm_installer::PackagesAllowedScripts;
 use deno_runtime::WorkerExecutionMode;
 use log::info;
 
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InitFlags;
-use crate::args::PackagesAllowedScripts;
 use crate::args::PermissionFlags;
 use crate::args::RunFlags;
 use crate::colors;
@@ -299,13 +299,22 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
   let script_name = npm_name_to_create_package(name);
 
   fn print_manual_usage(script_name: &str, args: &[String]) -> i32 {
-    log::info!("{}", cformat!("You can initialize project manually by running <u>deno run {} {}</> and applying desired permissions.", script_name, args.join(" ")));
+    log::info!(
+      "{}",
+      cformat!(
+        "You can initialize project manually by running <u>deno run {} {}</> and applying desired permissions.",
+        script_name,
+        args.join(" ")
+      )
+    );
     1
   }
 
   if std::io::stdin().is_terminal() {
     log::info!(
-      cstr!("⚠️ Do you fully trust <y>{}</> package? Deno will invoke code from it with all permissions. Do you want to continue? <p(245)>[y/n]</>"),
+      cstr!(
+        "⚠️ Do you fully trust <y>{}</> package? Deno will invoke code from it with all permissions. Do you want to continue? <p(245)>[y/n]</>"
+      ),
       script_name
     );
     loop {

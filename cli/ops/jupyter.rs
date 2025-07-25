@@ -8,11 +8,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::OpState;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
 use jupyter_runtime::InputRequest;
 use jupyter_runtime::JupyterMessage;
@@ -329,7 +329,7 @@ pub fn op_jupyter_create_png_from_texture(
       return Err(JsErrorBox::type_error(format!(
         "Unsupported texture format '{}'",
         texture.format.as_str()
-      )))
+      )));
     }
   };
 

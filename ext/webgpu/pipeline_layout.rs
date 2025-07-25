@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::webidl::WebIdlInterfaceConverter;
-use deno_core::GarbageCollected;
-use deno_core::WebIDL;
 
 use crate::Instance;
 
@@ -24,7 +24,11 @@ impl WebIdlInterfaceConverter for GPUPipelineLayout {
   const NAME: &'static str = "GPUPipelineLayout";
 }
 
-impl GarbageCollected for GPUPipelineLayout {}
+impl GarbageCollected for GPUPipelineLayout {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUPipelineLayout"
+  }
+}
 
 #[op2]
 impl GPUPipelineLayout {

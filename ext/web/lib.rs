@@ -12,12 +12,12 @@ use std::sync::Arc;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
-use deno_core::op2;
-use deno_core::url::Url;
-use deno_core::v8;
 use deno_core::ByteString;
 use deno_core::ToJsBuffer;
 use deno_core::U16String;
+use deno_core::op2;
+use deno_core::url::Url;
+use deno_core::v8;
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
 use encoding_rs::DecoderResult;
@@ -25,6 +25,10 @@ use encoding_rs::Encoding;
 pub use message_port::MessagePortError;
 pub use stream_resource::StreamResourceError;
 
+pub use crate::blob::Blob;
+pub use crate::blob::BlobPart;
+pub use crate::blob::BlobStore;
+pub use crate::blob::InMemoryBlobPart;
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
 use crate::blob::op_blob_from_object_url;
@@ -32,10 +36,9 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
-pub use crate::blob::Blob;
-pub use crate::blob::BlobPart;
-pub use crate::blob::BlobStore;
-pub use crate::blob::InMemoryBlobPart;
+pub use crate::message_port::JsMessageData;
+pub use crate::message_port::MessagePort;
+pub use crate::message_port::Transferable;
 pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::deserialize_js_transferables;
 use crate::message_port::op_message_port_create_entangled;
@@ -43,14 +46,11 @@ use crate::message_port::op_message_port_post_message;
 use crate::message_port::op_message_port_recv_message;
 use crate::message_port::op_message_port_recv_message_sync;
 pub use crate::message_port::serialize_transferables;
-pub use crate::message_port::JsMessageData;
-pub use crate::message_port::MessagePort;
-pub use crate::message_port::Transferable;
+pub use crate::timers::StartTime;
+pub use crate::timers::TimersPermission;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
-pub use crate::timers::StartTime;
-pub use crate::timers::TimersPermission;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl, deno_console, deno_url ],
@@ -353,7 +353,11 @@ struct TextDecoderResource {
   fatal: bool,
 }
 
-impl deno_core::GarbageCollected for TextDecoderResource {}
+impl deno_core::GarbageCollected for TextDecoderResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"TextDecoderResource"
+  }
+}
 
 #[op2(fast(op_encoding_encode_into_fast))]
 #[allow(deprecated)]

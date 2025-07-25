@@ -2,9 +2,9 @@
 
 use std::cell::OnceCell;
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
 
 use crate::Instance;
 
@@ -28,7 +28,11 @@ impl deno_core::webidl::WebIdlInterfaceConverter for GPUCommandBuffer {
   const NAME: &'static str = "GPUCommandBuffer";
 }
 
-impl GarbageCollected for GPUCommandBuffer {}
+impl GarbageCollected for GPUCommandBuffer {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUCommandBuffer"
+  }
+}
 
 #[op2]
 impl GPUCommandBuffer {

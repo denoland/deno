@@ -2,13 +2,15 @@
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_resolver::cjs::analyzer::DenoCjsAnalysis;
+use deno_resolver::cjs::analyzer::NodeAnalysisCache;
+use deno_resolver::cjs::analyzer::NodeAnalysisCacheSourceHash;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
+use super::CacheDBHash;
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheFailure;
-use super::CacheDBHash;
-use crate::node::CliCjsAnalysis;
 
 pub static NODE_ANALYSIS_CACHE_DB: CacheDBConfiguration =
   CacheDBConfiguration {
@@ -25,11 +27,11 @@ pub static NODE_ANALYSIS_CACHE_DB: CacheDBConfiguration =
   };
 
 #[derive(Clone)]
-pub struct NodeAnalysisCache {
+pub struct SqliteNodeAnalysisCache {
   inner: NodeAnalysisCacheInner,
 }
 
-impl NodeAnalysisCache {
+impl SqliteNodeAnalysisCache {
   pub fn new(db: CacheDB) -> Self {
     Self {
       inner: NodeAnalysisCacheInner::new(db),
@@ -52,27 +54,35 @@ impl NodeAnalysisCache {
       }
     }
   }
+}
 
-  pub fn get_cjs_analysis(
+impl NodeAnalysisCache for SqliteNodeAnalysisCache {
+  fn compute_source_hash(&self, source: &str) -> NodeAnalysisCacheSourceHash {
+    NodeAnalysisCacheSourceHash(CacheDBHash::from_hashable(source).inner())
+  }
+
+  fn get_cjs_analysis(
     &self,
-    specifier: &str,
-    expected_source_hash: CacheDBHash,
-  ) -> Option<CliCjsAnalysis> {
+    specifier: &deno_ast::ModuleSpecifier,
+    source_hash: NodeAnalysisCacheSourceHash,
+  ) -> Option<DenoCjsAnalysis> {
     Self::ensure_ok(
-      self.inner.get_cjs_analysis(specifier, expected_source_hash),
+      self
+        .inner
+        .get_cjs_analysis(specifier.as_str(), CacheDBHash::new(source_hash.0)),
     )
   }
 
-  pub fn set_cjs_analysis(
+  fn set_cjs_analysis(
     &self,
-    specifier: &str,
-    source_hash: CacheDBHash,
-    cjs_analysis: &CliCjsAnalysis,
+    specifier: &deno_ast::ModuleSpecifier,
+    source_hash: NodeAnalysisCacheSourceHash,
+    analysis: &DenoCjsAnalysis,
   ) {
     Self::ensure_ok(self.inner.set_cjs_analysis(
-      specifier,
-      source_hash,
-      cjs_analysis,
+      specifier.as_str(),
+      CacheDBHash::new(source_hash.0),
+      analysis,
     ));
   }
 }
@@ -91,7 +101,7 @@ impl NodeAnalysisCacheInner {
     &self,
     specifier: &str,
     expected_source_hash: CacheDBHash,
-  ) -> Result<Option<CliCjsAnalysis>, AnyError> {
+  ) -> Result<Option<DenoCjsAnalysis>, AnyError> {
     let query = "
       SELECT
         data
@@ -116,7 +126,7 @@ impl NodeAnalysisCacheInner {
     &self,
     specifier: &str,
     source_hash: CacheDBHash,
-    cjs_analysis: &CliCjsAnalysis,
+    cjs_analysis: &DenoCjsAnalysis,
   ) -> Result<(), AnyError> {
     let sql = "
       INSERT OR REPLACE INTO
@@ -137,7 +147,7 @@ impl NodeAnalysisCacheInner {
 
 #[cfg(test)]
 mod test {
-  use deno_ast::ModuleExportsAndReExports;
+  use deno_resolver::cjs::analyzer::ModuleExportsAndReExports;
 
   use super::*;
 
@@ -146,21 +156,25 @@ mod test {
     let conn = CacheDB::in_memory(&NODE_ANALYSIS_CACHE_DB, "1.0.0");
     let cache = NodeAnalysisCacheInner::new(conn);
 
-    assert!(cache
-      .get_cjs_analysis("file.js", CacheDBHash::new(2))
-      .unwrap()
-      .is_none());
-    let cjs_analysis = CliCjsAnalysis::Cjs(ModuleExportsAndReExports {
+    assert!(
+      cache
+        .get_cjs_analysis("file.js", CacheDBHash::new(2))
+        .unwrap()
+        .is_none()
+    );
+    let cjs_analysis = DenoCjsAnalysis::Cjs(ModuleExportsAndReExports {
       exports: vec!["export1".to_string()],
       reexports: vec!["re-export1".to_string()],
     });
     cache
       .set_cjs_analysis("file.js", CacheDBHash::new(2), &cjs_analysis)
       .unwrap();
-    assert!(cache
-      .get_cjs_analysis("file.js", CacheDBHash::new(3))
-      .unwrap()
-      .is_none()); // different hash
+    assert!(
+      cache
+        .get_cjs_analysis("file.js", CacheDBHash::new(3))
+        .unwrap()
+        .is_none()
+    ); // different hash
     let actual_cjs_analysis = cache
       .get_cjs_analysis("file.js", CacheDBHash::new(2))
       .unwrap()
@@ -184,9 +198,11 @@ mod test {
     // now changing the cli version should clear it
     let conn = cache.conn.recreate_with_version("2.0.0");
     let cache = NodeAnalysisCacheInner::new(conn);
-    assert!(cache
-      .get_cjs_analysis("file.js", CacheDBHash::new(2))
-      .unwrap()
-      .is_none());
+    assert!(
+      cache
+        .get_cjs_analysis("file.js", CacheDBHash::new(2))
+        .unwrap()
+        .is_none()
+    );
   }
 }

@@ -49,7 +49,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
         libffi::middle::Type::pointer()
       }
       NativeType::Struct(fields) => {
-        libffi::middle::Type::structure(match fields.len() > 0 {
+        libffi::middle::Type::structure(match !fields.is_empty() {
           true => fields
             .iter()
             .map(|field| field.clone().try_into())
@@ -57,7 +57,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
           false => {
             return Err(JsErrorBox::type_error(
               "Struct must have at least one field",
-            ))
+            ));
           }
         })
       }

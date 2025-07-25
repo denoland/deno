@@ -14,8 +14,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
@@ -26,8 +26,8 @@ use deno_semver::Version;
 use once_cell::sync::Lazy;
 
 use crate::args::Flags;
-use crate::args::UpgradeFlags;
 use crate::args::UPGRADE_USAGE;
+use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
@@ -158,10 +158,8 @@ struct UpdateChecker<
   maybe_file: Option<CheckVersionFile>,
 }
 
-impl<
-    TEnvironment: UpdateCheckerEnvironment,
-    TVersionProvider: VersionProvider,
-  > UpdateChecker<TEnvironment, TVersionProvider>
+impl<TEnvironment: UpdateCheckerEnvironment, TVersionProvider: VersionProvider>
+  UpdateChecker<TEnvironment, TVersionProvider>
 {
   pub fn new(env: TEnvironment, version_provider: TVersionProvider) -> Self {
     let maybe_file = CheckVersionFile::parse(env.read_check_file());
@@ -754,46 +752,22 @@ async fn find_latest_version_to_upgrade(
     }
   };
 
-  let (maybe_newer_latest_version, current_version) = match release_channel {
-    ReleaseChannel::Canary => {
-      let current_version = version::DENO_VERSION_INFO.git_hash;
-      let current_is_most_recent =
-        current_version == latest_version_found.version_or_hash;
-
-      if !force && current_is_most_recent {
-        (None, current_version)
-      } else {
-        (Some(latest_version_found), current_version)
-      }
-    }
+  let current_version = match release_channel {
+    ReleaseChannel::Canary => version::DENO_VERSION_INFO.git_hash,
     ReleaseChannel::Stable | ReleaseChannel::Lts | ReleaseChannel::Rc => {
-      let current_version = version::DENO_VERSION_INFO.deno;
-
-      // If the current binary is not the same channel, we can skip
-      // computation if we're on a newer release - we're not.
-      if version::DENO_VERSION_INFO.release_channel != release_channel {
-        (Some(latest_version_found), current_version)
-      } else {
-        let current = Version::parse_standard(current_version)?;
-        let latest =
-          Version::parse_standard(&latest_version_found.version_or_hash)?;
-        let current_is_most_recent = current >= latest;
-
-        if !force && current_is_most_recent {
-          (None, current_version)
-        } else {
-          (Some(latest_version_found), current_version)
-        }
-      }
+      version::DENO_VERSION_INFO.deno
     }
   };
+  let should_upgrade = force
+    || current_version != latest_version_found.version_or_hash
+    || version::DENO_VERSION_INFO.release_channel != release_channel;
 
   log::info!("");
-  if let Some(newer_latest_version) = maybe_newer_latest_version.as_ref() {
+  if should_upgrade {
     log::info!(
       "Found latest {} version {}",
-      newer_latest_version.release_channel.name(),
-      color_print::cformat!("<g>{}</>", newer_latest_version.display())
+      latest_version_found.release_channel.name(),
+      color_print::cformat!("<g>{}</>", latest_version_found.display())
     );
   } else {
     log::info!(
@@ -803,7 +777,7 @@ async fn find_latest_version_to_upgrade(
   }
   log::info!("");
 
-  Ok(maybe_newer_latest_version)
+  Ok(should_upgrade.then_some(latest_version_found))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1020,11 +994,14 @@ fn set_exe_permissions(
   if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
     && !nix::unistd::Uid::effective().is_root()
   {
-    bail!(concat!(
-      "You don't have write permission to {} because it's owned by root.\n",
-      "Consider updating deno through your package manager if its installed from it.\n",
-      "Otherwise run `deno upgrade` as root.",
-    ), output_exe_path.display());
+    bail!(
+      concat!(
+        "You don't have write permission to {} because it's owned by root.\n",
+        "Consider updating deno through your package manager if its installed from it.\n",
+        "Otherwise run `deno upgrade` as root.",
+      ),
+      output_exe_path.display()
+    );
   }
   Ok(permissions)
 }

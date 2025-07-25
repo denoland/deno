@@ -2,8 +2,8 @@
 
 use std::fmt::Display;
 
-use deno_ast::swc::common::Span;
 use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::common::Span;
 use indexmap::IndexMap;
 
 use crate::util::text_encoding::Utf16Map;
@@ -143,6 +143,19 @@ struct Node {
 }
 
 #[derive(Debug)]
+pub enum CommentKind {
+  Line,
+  Block,
+}
+
+#[derive(Debug)]
+struct Comment {
+  kind: CommentKind,
+  str_id: usize,
+  span_id: usize,
+}
+
+#[derive(Debug)]
 pub struct SerializeCtx {
   root_idx: Index,
 
@@ -161,6 +174,9 @@ pub struct SerializeCtx {
   kind_name_map: Vec<usize>,
   /// Maps prop id to string id
   prop_name_map: Vec<usize>,
+
+  /// Comments
+  comments: Vec<Comment>,
 }
 
 /// This is the internal context used to allocate and fill the buffer. The point
@@ -185,6 +201,7 @@ impl SerializeCtx {
       str_table: StringTable::new(),
       kind_name_map: vec![0; kind_size],
       prop_name_map: vec![0; prop_size],
+      comments: vec![],
     };
 
     let empty_str = ctx.str_table.insert("");
@@ -285,12 +302,7 @@ impl SerializeCtx {
   where
     K: Into<u8> + Display + Clone,
   {
-    let (start, end) = if *span == DUMMY_SP {
-      (0, 0)
-    } else {
-      // -1 is because swc stores spans 1-indexed
-      (span.lo.0 - 1, span.hi.0 - 1)
-    };
+    let (start, end) = span_to_value(span);
     self.append_inner(kind, start, end)
   }
 
@@ -559,6 +571,21 @@ impl SerializeCtx {
     self.write_ref_vec(prop, parent_ref, actual)
   }
 
+  pub fn write_comment(&mut self, kind: CommentKind, value: &str, span: &Span) {
+    let str_id = self.str_table.insert(value);
+
+    let span_id = self.spans.len() / 2;
+    let (span_lo, span_hi) = span_to_value(span);
+    self.spans.push(span_lo);
+    self.spans.push(span_hi);
+
+    self.comments.push(Comment {
+      kind,
+      str_id,
+      span_id,
+    });
+  }
+
   /// Serialize all information we have into a buffer that can be sent to JS.
   /// It has the following structure:
   ///
@@ -629,10 +656,24 @@ impl SerializeCtx {
     let offset_props = buf.len();
     buf.append(&mut self.field_buf);
 
+    // Serialize comments
+    let offset_comments = buf.len();
+    append_usize(&mut buf, self.comments.len());
+    for comment in &self.comments {
+      let kind = match comment.kind {
+        CommentKind::Line => 0,
+        CommentKind::Block => 1,
+      };
+      buf.push(kind);
+      append_usize(&mut buf, comment.span_id);
+      append_usize(&mut buf, comment.str_id);
+    }
+
     // Putting offsets of relevant parts of the buffer at the end. This
     // allows us to hop to the relevant part by merely looking at the last
     // for values in the message. Each value represents an offset into the
     // buffer.
+    append_usize(&mut buf, offset_comments);
     append_usize(&mut buf, offset_props);
     append_usize(&mut buf, offset_spans);
     append_usize(&mut buf, offset_kind_map);
@@ -641,5 +682,14 @@ impl SerializeCtx {
     append_u32(&mut buf, self.root_idx);
 
     buf
+  }
+}
+
+fn span_to_value(span: &Span) -> (u32, u32) {
+  if *span == DUMMY_SP {
+    (0, 0)
+  } else {
+    // -1 is because swc stores spans 1-indexed
+    (span.lo.0 - 1, span.hi.0 - 1)
   }
 }

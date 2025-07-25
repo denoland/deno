@@ -6,6 +6,7 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
+import { format } from "ext:deno_node/internal/util/inspect.mjs";
 import {
   op_getegid,
   op_geteuid,
@@ -18,6 +19,7 @@ import { warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import Module, { getBuiltinModule } from "node:module";
 import { report } from "ext:deno_node/internal/process/report.ts";
+import { onWarning } from "ext:deno_node/internal/process/warning.ts";
 import {
   validateNumber,
   validateObject,
@@ -83,13 +85,11 @@ import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
-import { setProcess } from "ext:deno_node/_events.mjs";
 
 const { NumberMAX_SAFE_INTEGER } = primordials;
 
 const notImplementedEvents = [
   "multipleResolves",
-  "worker",
 ];
 
 export const argv: string[] = ["", ""];
@@ -326,7 +326,8 @@ memoryUsage.rss = function (): number {
 // Returns a negative error code than can be recognized by errnoException
 function _kill(pid: number, sig: number): number {
   const maybeMapErrno = (res: number) =>
-    res === 0 ? res : uv.mapSysErrnoToUvErrno(res);
+    // the windows implementation is ported from libuv, so the error numbers already match libuv and don't need mapping
+    res === 0 ? res : isWindows ? res : uv.mapSysErrnoToUvErrno(res);
   // signal 0 does not exist in constants.os.signals, thats why it have to be handled explicitly
   if (sig === 0) {
     return maybeMapErrno(op_node_process_kill(pid, 0));
@@ -644,6 +645,13 @@ process.exit = exit;
 /** https://nodejs.org/api/process.html#processabort */
 process.abort = abort;
 
+// NB(bartlomieju): this is a private API in Node.js, but there are packages like
+// `aws-iot-device-sdk-v2` that depend on it
+// https://github.com/denoland/deno/issues/30115
+process._rawDebug = (...args: unknown[]) => {
+  core.print(`${format(...args)}\n`, true);
+};
+
 // Undocumented Node API that is used by `signal-exit` which in turn
 // is used by `node-tap`. It was marked for removal a couple of years
 // ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
@@ -789,9 +797,11 @@ process.getBuiltinModule = getBuiltinModule;
 // TODO(kt3k): Implement this when we added -e option to node compat mode
 process._eval = undefined;
 
-process.loadEnvFile = (path = ".env") => {
+export function loadEnvFile(path = ".env") {
   return op_node_load_env_file(path);
-};
+}
+
+process.loadEnvFile = loadEnvFile;
 
 /** https://nodejs.org/api/process.html#processexecpath */
 
@@ -997,12 +1007,6 @@ internals.__bootstrapNodeProcess = function (
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
-    // Replace stdin if it is not a terminal
-    const newStdin = initStdin();
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
-    }
-
     // Replace stdout/stderr if they are not terminals
     if (!io.stdout.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stdout */
@@ -1026,6 +1030,16 @@ internals.__bootstrapNodeProcess = function (
 
     initializeDebugEnv(nodeDebug);
 
+    if (getOptionValue("--warnings")) {
+      process.on("warning", onWarning);
+    }
+
+    // Replace stdin if it is not a terminal
+    const newStdin = initStdin();
+    if (newStdin) {
+      stdin = process.stdin = newStdin;
+    }
+
     delete internals.__bootstrapNodeProcess;
   } else {
     // Warmup, assuming stdin/stdout/stderr are all terminals
@@ -1046,7 +1060,5 @@ internals.__bootstrapNodeProcess = function (
     );
   }
 };
-
-setProcess(process);
 
 export default process;

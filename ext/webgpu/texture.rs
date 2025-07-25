@@ -1,9 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
-use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
+use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_error::JsErrorBox;
 use wgpu_types::AstcBlock;
 use wgpu_types::AstcChannel;
@@ -65,7 +65,11 @@ impl WebIdlInterfaceConverter for GPUTexture {
   const NAME: &'static str = "GPUTexture";
 }
 
-impl GarbageCollected for GPUTexture {}
+impl GarbageCollected for GPUTexture {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUTexture"
+  }
+}
 
 #[op2]
 impl GPUTexture {
@@ -248,7 +252,11 @@ impl WebIdlInterfaceConverter for GPUTextureView {
   const NAME: &'static str = "GPUTextureView";
 }
 
-impl GarbageCollected for GPUTextureView {}
+impl GarbageCollected for GPUTextureView {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUTextureView"
+  }
+}
 // TODO(@crowlKats): weakref in texture for view
 
 #[op2]

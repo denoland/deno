@@ -1,16 +1,16 @@
 {
   "name": "@types/node",
   "dist-tags": {
-    "ts5.8": "22.12.0",
-    "ts5.0": "22.12.0",
-    "ts5.4": "22.12.0",
-    "ts5.6": "22.12.0",
-    "latest": "22.12.0",
-    "ts5.3": "22.12.0",
-    "ts5.7": "22.12.0",
-    "ts5.1": "22.12.0",
-    "ts5.5": "22.12.0",
-    "ts5.2": "22.12.0"
+    "ts5.9": "22.15.15",
+    "ts5.5": "22.15.15",
+    "ts5.6": "22.15.15",
+    "ts5.1": "22.15.15",
+    "ts5.3": "22.15.15",
+    "ts5.4": "22.15.15",
+    "ts5.7": "22.15.15",
+    "ts5.2": "22.15.15",
+    "ts5.8": "22.15.15",
+    "latest": "22.15.15"
   },
   "versions": {
     "22.12.0": {
@@ -49,6 +49,43 @@
       "peerDependencies": {},
       "typeScriptVersion": "5.0",
       "typesPublisherContentHash": "d4bd811572964de73064ee6d85299d0dff56616e67d674f2ccdc3c824a4288b7"
+    },
+    "22.15.15": {
+      "name": "@types/node",
+      "version": "22.15.15",
+      "license": "MIT",
+      "_id": "@types/node@22.15.15",
+      "dist": {
+        "shasum": "8877c05c18e552e738438e477d7ba22c5d73a57c",
+        "tarball": "http://localhost:4260/@types/node/node-22.15.15.tgz",
+        "fileCount": 76,
+        "integrity": "sha512-R5muMcZob3/Jjchn5LcO8jdKwSCbzqmPB6ruBxMcf9kbxtniZHP327s6C37iOfuw8mbKK3cAQa7sEl7afLrQ8A==",
+        "unpackedSize": 2351997
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/node"
+      },
+      "description": "TypeScript definitions for node",
+      "directories": {},
+      "dependencies": {
+        "undici-types": "~6.21.0"
+      },
+      "typesVersions": {
+        "<=5.6": {
+          "*": [
+            "ts5.6/*"
+          ]
+        }
+      },
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.1",
+      "typesPublisherContentHash": "b146701cf123607334c953e05ff2160554ad05758ef53d79cbed2506e7c4b1fa"
     }
   },
   "license": "MIT",

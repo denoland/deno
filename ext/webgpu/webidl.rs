@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 
+use deno_core::WebIDL;
 use deno_core::cppgc::Ptr;
 use deno_core::v8;
 use deno_core::webidl::ContextFn;
@@ -10,7 +11,6 @@ use deno_core::webidl::IntOptions;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlErrorKind;
-use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 
 #[derive(WebIDL)]
@@ -65,7 +65,14 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
             },
           )?;
           if !(conv.len() > 1 && conv.len() <= 3) {
-            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUExtent3D must have between 1 and 3 elements, received {} elements", conv.len()))));
+            return Err(WebIdlError::other(
+              prefix,
+              context,
+              JsErrorBox::type_error(format!(
+                "A sequence of number used as a GPUExtent3D must have between 1 and 3 elements, received {} elements",
+                conv.len()
+              )),
+            ));
           }
 
           let mut iter = conv.into_iter();
@@ -168,7 +175,14 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
             },
           )?;
           if conv.len() > 3 {
-            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUOrigin3D must have at most 3 elements, received {} elements", conv.len()))));
+            return Err(WebIdlError::other(
+              prefix,
+              context,
+              JsErrorBox::type_error(format!(
+                "A sequence of number used as a GPUOrigin3D must have at most 3 elements, received {} elements",
+                conv.len()
+              )),
+            ));
           }
 
           let mut iter = conv.into_iter();
@@ -253,7 +267,14 @@ impl<'a> WebIdlConverter<'a> for GPUColor {
             options,
           )?;
           if conv.len() != 4 {
-            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUColor must have exactly 4 elements, received {} elements", conv.len()))));
+            return Err(WebIdlError::other(
+              prefix,
+              context,
+              JsErrorBox::type_error(format!(
+                "A sequence of number used as a GPUColor must have exactly 4 elements, received {} elements",
+                conv.len()
+              )),
+            ));
           }
 
           let mut iter = conv.into_iter();

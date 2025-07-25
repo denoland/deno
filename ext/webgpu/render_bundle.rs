@@ -4,6 +4,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::num::NonZeroU64;
 
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::v8;
@@ -12,13 +14,11 @@ use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlInterfaceConverter;
-use deno_core::GarbageCollected;
-use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 
+use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::texture::GPUTextureFormat;
-use crate::Instance;
 
 pub struct GPURenderBundleEncoder {
   pub instance: Instance,
@@ -28,7 +28,11 @@ pub struct GPURenderBundleEncoder {
   pub label: String,
 }
 
-impl GarbageCollected for GPURenderBundleEncoder {}
+impl GarbageCollected for GPURenderBundleEncoder {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPURenderBundleEncoder"
+  }
+}
 
 #[op2]
 impl GPURenderBundleEncoder {
@@ -399,7 +403,11 @@ impl WebIdlInterfaceConverter for GPURenderBundle {
   const NAME: &'static str = "GPURenderBundle";
 }
 
-impl GarbageCollected for GPURenderBundle {}
+impl GarbageCollected for GPURenderBundle {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPURenderBundle"
+  }
+}
 
 #[op2]
 impl GPURenderBundle {

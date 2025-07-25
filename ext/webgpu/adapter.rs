@@ -4,18 +4,18 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::cppgc::SameObject;
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
+use deno_core::cppgc::SameObject;
+use deno_core::op2;
+use deno_core::v8;
 use tokio::sync::Mutex;
 
 use super::device::GPUDevice;
-use crate::webidl::features_to_feature_names;
-use crate::webidl::GPUFeatureName;
 use crate::Instance;
+use crate::webidl::GPUFeatureName;
+use crate::webidl::features_to_feature_names;
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
@@ -60,7 +60,11 @@ impl Drop for GPUAdapter {
   }
 }
 
-impl GarbageCollected for GPUAdapter {}
+impl GarbageCollected for GPUAdapter {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUAdapter"
+  }
+}
 
 #[op2]
 impl GPUAdapter {
@@ -244,7 +248,11 @@ pub enum CreateDeviceError {
 
 pub struct GPUSupportedLimits(pub wgpu_types::Limits);
 
-impl GarbageCollected for GPUSupportedLimits {}
+impl GarbageCollected for GPUSupportedLimits {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUSupportedLimits"
+  }
+}
 
 #[op2]
 impl GPUSupportedLimits {
@@ -401,7 +409,11 @@ impl GPUSupportedLimits {
 
 pub struct GPUSupportedFeatures(v8::Global<v8::Value>);
 
-impl GarbageCollected for GPUSupportedFeatures {}
+impl GarbageCollected for GPUSupportedFeatures {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUSupportedFeatures"
+  }
+}
 
 impl GPUSupportedFeatures {
   pub fn new(
@@ -434,7 +446,11 @@ pub struct GPUAdapterInfo {
   pub subgroup_max_size: u32,
 }
 
-impl GarbageCollected for GPUAdapterInfo {}
+impl GarbageCollected for GPUAdapterInfo {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUAdapterInfo"
+  }
+}
 
 #[op2]
 impl GPUAdapterInfo {

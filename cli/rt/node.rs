@@ -5,17 +5,18 @@ use std::sync::Arc;
 
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
-use deno_lib::loader::NpmModuleLoader;
 use deno_lib::standalone::binary::CjsExportAnalysisEntry;
 use deno_media_type::MediaType;
+use deno_resolver::loader::NpmModuleLoader;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolver;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_permissions::CheckedPath;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::EsmAnalysisMode;
 use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
 use crate::binary::StandaloneModules;
 use crate::file_system::DenoRtSys;
@@ -149,9 +150,11 @@ impl node_resolver::analyze::CjsCodeAnalyzer for CjsCodeAnalyzer {
       Some(source) => source,
       None => {
         if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
+          // PERMISSIONS: This is ok because it's just being used for cjs analysis
+          let path = CheckedPath::unsafe_new(Cow::Owned(path));
           // todo(dsherret): should this use the sync method instead?
           if let Ok(source_from_file) =
-            self.sys.read_text_file_lossy_async(path, None).await
+            self.sys.read_text_file_lossy_async(path.into_owned()).await
           {
             source_from_file
           } else {

@@ -32,21 +32,17 @@ export const unstableIds = {
 use crate::structs::UnstableFeatureDefinition;
 use crate::structs::UnstableFeatureKind;
 
-pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[",
+pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[\n",
   );
 
   let mut descriptions = data::FEATURE_DESCRIPTIONS.to_vec();
   descriptions.sort_by_key(|desc| desc.name);
 
-  for (id, feature) in descriptions.into_iter().enumerate() {
+  for (id, feature) in descriptions.iter().enumerate() {
     let flag_name = format!("unstable-{}", feature.name);
     let feature_kind = match feature.kind {
       structs::UnstableFeatureKind::Cli => "UnstableFeatureKind::Cli",
       structs::UnstableFeatureKind::Runtime => "UnstableFeatureKind::Runtime",
-    };
-    let env_var = match feature.env_var {
-      Some(var_name) => format!(r#"Some("{}")"#, var_name),
-      None => "None".to_string(),
     };
 
     rs_list += &format!(
@@ -57,7 +53,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[",
     show_in_help: {},
     id: {},
     kind: {},
-    env_var: {},
     config_file_option: "{}",
   }},
 "#,
@@ -67,7 +62,6 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[",
       feature.show_in_help,
       id,
       feature_kind,
-      env_var,
       match feature.config_option {
         data::ConfigFileOption::SameAsFlagName => feature.name,
         data::ConfigFileOption::Renamed(alias) => alias,
@@ -82,6 +76,25 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[",
 
   js_list += "};\n";
   rs_list += "];\n";
+
+  let mut env_var_def = "pub struct UnstableEnvVarNames {\n".to_string();
+  let mut env_var_impl =
+    "pub static UNSTABLE_ENV_VAR_NAMES: UnstableEnvVarNames = UnstableEnvVarNames {\n"
+      .to_string();
+  for feature in &descriptions {
+    let value = match feature.env_var {
+      Some(v) => v,
+      None => continue,
+    };
+    let prop_name = feature.name.replace("-", "_");
+    env_var_def.push_str(&format!("  pub {}: &'static str,\n", prop_name));
+    env_var_impl.push_str(&format!("  {}: \"{}\",\n", prop_name, value));
+  }
+  env_var_def.push_str("}\n");
+  env_var_impl.push_str("};\n");
+
+  rs_list.push_str(&env_var_def);
+  rs_list.push_str(&env_var_impl);
 
   write_if_changed(&crate_dir.join("gen.js"), &js_list);
   write_if_changed(&crate_dir.join("gen.rs"), &rs_list);

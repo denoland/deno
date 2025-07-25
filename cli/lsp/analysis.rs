@@ -10,6 +10,7 @@ use std::sync::Arc;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
@@ -18,13 +19,15 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_npm::NpmPackageId;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_runtime::deno_node::PathClean;
+use deno_semver::SmallStackString;
+use deno_semver::StackString;
+use deno_semver::Version;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -32,9 +35,6 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageNvReference;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
-use deno_semver::SmallStackString;
-use deno_semver::StackString;
-use deno_semver::Version;
 use import_map::ImportMap;
 use lsp_types::Uri;
 use node_resolver::InNpmPackageChecker;
@@ -279,10 +279,13 @@ impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     document_modules: &'a DocumentModules,
     scope: Option<Arc<ModuleSpecifier>>,
-    maybe_import_map: Option<&'a ImportMap>,
     resolver: &'a LspResolver,
     tsc_specifier_map: &'a tsc::TscSpecifierMap,
   ) -> Self {
+    let maybe_import_map = resolver
+      .get_scoped_resolver(scope.as_deref())
+      .as_workspace_resolver()
+      .maybe_import_map();
     Self {
       document_modules,
       scope,
@@ -315,6 +318,12 @@ impl<'a> TsResponseImportMapper<'a> {
 
     let scoped_resolver =
       self.resolver.get_scoped_resolver(self.scope.as_deref());
+
+    if let Some(dep_name) =
+      scoped_resolver.resource_url_to_configured_dep_key(specifier)
+    {
+      return Some(dep_name);
+    }
 
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
@@ -461,10 +470,12 @@ impl<'a> TsResponseImportMapper<'a> {
       if let Some(result) = match_specifier() {
         return Some(result);
       }
-    } else if let Some(dep_name) =
-      scoped_resolver.file_url_to_package_json_dep(specifier)
+    }
+
+    if let Some(bare_package_specifier) =
+      scoped_resolver.jsr_lookup_bare_specifier_for_workspace_file(specifier)
     {
-      return Some(dep_name);
+      return Some(bare_package_specifier);
     }
 
     // check if the import map has this specifier
@@ -594,7 +605,16 @@ impl<'a> TsResponseImportMapper<'a> {
         resolution_mode,
         NodeResolutionKind::Types,
       )
-      .is_ok()
+      .ok()
+      .filter(|s| {
+        let specifier = self
+          .tsc_specifier_map
+          .normalize(s.as_str())
+          .map(Cow::Owned)
+          .unwrap_or(Cow::Borrowed(s));
+        !specifier.as_str().contains("/node_modules/")
+      })
+      .is_some()
   }
 }
 
@@ -615,11 +635,7 @@ fn maybe_reverse_definitely_typed(
     .filter_map(|(req, nv)| (*nv.name == package_name).then_some(req))
     .collect::<Vec<_>>();
 
-  if reqs.is_empty() {
-    None
-  } else {
-    Some(reqs)
-  }
+  if reqs.is_empty() { None } else { Some(reqs) }
 }
 
 fn try_reverse_map_package_json_exports(

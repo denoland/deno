@@ -26,16 +26,15 @@ mod channel;
 mod editor;
 mod session;
 
-use channel::rustyline_channel;
 use channel::RustylineSyncMessage;
 use channel::RustylineSyncMessageHandler;
 use channel::RustylineSyncResponse;
+use channel::rustyline_channel;
 use editor::EditorHelper;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
 pub use session::ReplSession;
 pub use session::TsEvaluateResponse;
-pub use session::REPL_INTERNALS_NAME;
 
 use super::test::create_single_test_event_channel;
 
@@ -177,7 +176,7 @@ pub async fn run(
   let npm_installer = factory.npm_installer_if_managed().await?.cloned();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let history_file_path = factory
     .deno_dir()
@@ -189,6 +188,8 @@ pub async fn run(
     .create_custom_worker(
       WorkerExecutionMode::Repl,
       main_module.clone(),
+      // `deno repl` doesn't support preloading modules
+      vec![],
       permissions.clone(),
       vec![crate::ops::testing::deno_test::init(test_event_sender)],
       Default::default(),
@@ -201,11 +202,10 @@ pub async fn run(
     cli_options,
     npm_installer,
     resolver,
-    tsconfig_resolver,
+    compiler_options_resolver,
     worker,
     main_module.clone(),
     test_event_receiver,
-    Arc::new(factory.lockfile_npm_package_info_provider()?),
   )
   .await?;
   let rustyline_channel = rustyline_channel();

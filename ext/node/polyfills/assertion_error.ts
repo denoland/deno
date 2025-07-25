@@ -348,8 +348,9 @@ export function createErrDiff(
         `${blue}...${defaultColor}`;
     }
   }
-
-  return `${msg}${skipped ? skippedMsg : ""}\n${res}${other}${end}${indicator}`;
+  return `${msg}${
+    skipped ? skippedMsg : ""
+  }\n${res}${other}${end}${indicator}\n`;
 }
 
 export interface AssertionErrorDetailsDescriptor {

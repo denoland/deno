@@ -4,12 +4,12 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::ResourceError;
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
+use deno_core::op2;
+use deno_core::v8;
 
 pub struct AsyncId(i64);
 
@@ -44,7 +44,11 @@ pub struct AsyncWrap {
   async_id: i64,
 }
 
-impl GarbageCollected for AsyncWrap {}
+impl GarbageCollected for AsyncWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"AsyncWrap"
+  }
+}
 
 impl AsyncWrap {
   pub(crate) fn create(state: &mut OpState, provider: i32) -> Self {
@@ -85,7 +89,11 @@ pub struct HandleWrap {
   state: Rc<Cell<State>>,
 }
 
-impl GarbageCollected for HandleWrap {}
+impl GarbageCollected for HandleWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"HandleWrap"
+  }
+}
 
 impl HandleWrap {
   pub(crate) fn create(handle: Option<ResourceId>) -> Self {

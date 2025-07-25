@@ -2,11 +2,11 @@
 
 use std::ptr::NonNull;
 
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::FastString;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
@@ -48,7 +48,9 @@ pub struct SerializerDelegate {
 }
 
 impl v8::cppgc::GarbageCollected for Serializer<'_> {
-  fn trace(&self, _visitor: &v8::cppgc::Visitor) {}
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Serializer"
+  }
 }
 
 impl SerializerDelegate {
@@ -225,14 +227,24 @@ pub struct Deserializer<'a> {
   inner: v8::ValueDeserializer<'a>,
 }
 
-impl deno_core::GarbageCollected for Deserializer<'_> {}
+impl deno_core::GarbageCollected for Deserializer<'_> {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Deserializer"
+  }
+}
 
 pub struct DeserializerDelegate {
-  obj: v8::Global<v8::Object>,
+  obj: v8::TracedReference<v8::Object>,
 }
 
 impl GarbageCollected for DeserializerDelegate {
-  fn trace(&self, _visitor: &v8::cppgc::Visitor) {}
+  fn trace(&self, visitor: &v8::cppgc::Visitor) {
+    visitor.trace(&self.obj);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DeserializerDelegate"
+  }
 }
 
 impl v8::ValueDeserializerImpl for DeserializerDelegate {
@@ -241,7 +253,7 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
     scope: &mut v8::HandleScope<'s>,
     _value_deserializer: &dyn v8::ValueDeserializerHelper,
   ) -> Option<v8::Local<'s, v8::Object>> {
-    let obj = v8::Local::new(scope, &self.obj);
+    let obj = self.obj.get(scope).unwrap();
     let key = FastString::from_static("_readHostObject")
       .v8_string(scope)
       .unwrap()
@@ -291,7 +303,7 @@ pub fn op_v8_new_deserializer(
   } else {
     (&[] as &[u8], None::<NonNull<u8>>)
   };
-  let obj = v8::Global::new(scope, obj);
+  let obj = v8::TracedReference::new(scope, obj);
   let inner = v8::ValueDeserializer::new(
     scope,
     Box::new(DeserializerDelegate { obj }),

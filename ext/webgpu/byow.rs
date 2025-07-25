@@ -10,14 +10,14 @@ use std::ffi::c_void;
 ))]
 use std::ptr::NonNull;
 
+use deno_core::FromV8;
+use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::Local;
 use deno_core::v8::Value;
-use deno_core::FromV8;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
 
 use crate::surface::GPUCanvasContext;
@@ -25,7 +25,9 @@ use crate::surface::GPUCanvasContext;
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ByowError {
   #[class(type)]
-  #[error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")]
+  #[error(
+    "Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?"
+  )]
   WebGPUNotInitiated,
   #[class(type)]
   #[error("Invalid parameters")]
@@ -81,7 +83,11 @@ pub struct UnsafeWindowSurface {
   pub context: SameObject<GPUCanvasContext>,
 }
 
-impl GarbageCollected for UnsafeWindowSurface {}
+impl GarbageCollected for UnsafeWindowSurface {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"UnsafeWindowSurface"
+  }
+}
 
 #[op2]
 impl UnsafeWindowSurface {
@@ -157,6 +163,18 @@ impl UnsafeWindowSurface {
 
     context.present().map_err(JsErrorBox::from_err)
   }
+
+  #[fast]
+  fn resize(&self, width: u32, height: u32, scope: &mut v8::HandleScope) {
+    self.width.replace(width);
+    self.height.replace(height);
+
+    let Some(context) = self.context.try_unwrap(scope) else {
+      return;
+    };
+
+    context.resize_configure(width, height);
+  }
 }
 
 struct UnsafeWindowSurfaceOptions {
@@ -199,7 +217,7 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
       _ => {
         return Err(JsErrorBox::type_error(format!(
           "Invalid system kind '{s}'"
-        )))
+        )));
       }
     };
 

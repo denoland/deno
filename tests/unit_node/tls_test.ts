@@ -8,7 +8,7 @@ import {
   assertThrows,
 } from "@std/assert";
 import { delay } from "@std/async/delay";
-import { fromFileUrl, join } from "@std/path";
+import { dirname, fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
@@ -71,7 +71,6 @@ Deno.test("tls.connect makes tls connection", async () => {
   await delay(200);
 
   const conn = tls.connect({
-    host: "localhost",
     port,
     secureContext: {
       ca: rootCaCert,
@@ -270,4 +269,38 @@ Deno.test("tls connect upgrade tcp", async () => {
 
   await promise;
   socket.destroy();
+});
+
+Deno.test({
+  name: "[node/tls] tls.Server.unref() works",
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "eval",
+      `
+        import * as tls from "node:tls";
+        
+        const key = Deno.readTextFileSync("${
+        join(tlsTestdataDir, "localhost.key")
+      }");
+        const cert = Deno.readTextFileSync("${
+        join(tlsTestdataDir, "localhost.crt")
+      }");
+        
+        const server = tls.createServer({ key, cert }, (socket) => {
+          socket.end("hello\\n");
+        });
+
+        server.unref();
+        server.listen(0, () => {});
+      `,
+    ],
+    cwd: dirname(fromFileUrl(import.meta.url)),
+  }).output();
+
+  if (stderr.length > 0) {
+    throw new Error(`stderr: ${new TextDecoder().decode(stderr)}`);
+  }
+  assertEquals(new TextDecoder().decode(stdout), "");
 });

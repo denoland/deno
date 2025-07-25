@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_ast::ParsedSource;
 use deno_ast::swc::ast::AssignTarget;
 use deno_ast::swc::ast::AssignTargetPat;
 use deno_ast::swc::ast::BindingIdent;
@@ -87,9 +88,9 @@ use deno_ast::view::TsTypeOperatorOp;
 use deno_ast::view::UnaryOp;
 use deno_ast::view::UpdateOp;
 use deno_ast::view::VarDeclKind;
-use deno_ast::ParsedSource;
 
 use super::buffer::AstBufSerializer;
+use super::buffer::CommentKind;
 use super::buffer::NodeRef;
 use super::ts_estree::AstNode;
 use super::ts_estree::MethodKind as TsEstreeMethodKind;
@@ -132,6 +133,14 @@ pub fn serialize_swc_to_buffer(
 
       ctx.write_program(&script.span, SourceKind::Script, children);
     }
+  }
+
+  for comment in parsed_source.comments().get_vec() {
+    let kind = match comment.kind {
+      deno_ast::swc::common::comments::CommentKind::Line => CommentKind::Line,
+      deno_ast::swc::common::comments::CommentKind::Block => CommentKind::Block,
+    };
+    ctx.write_comment(kind, &comment.text, &comment.span);
   }
 
   ctx.map_utf8_spans_to_utf16(utf16_map);

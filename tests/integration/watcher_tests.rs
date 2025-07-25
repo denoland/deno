@@ -2,12 +2,13 @@
 
 use flaky_test::flaky_test;
 use test_util as util;
+use test_util::TempDir;
 use test_util::assert_contains;
 use test_util::env_vars_for_npm_tests;
-use test_util::TempDir;
+use test_util::http_server;
 use tokio::io::AsyncBufReadExt;
-use util::assert_not_contains;
 use util::DenoChild;
+use util::assert_not_contains;
 
 /// Logs to stderr every time next_line() is called
 struct LoggingLines<R>
@@ -1952,6 +1953,105 @@ setInterval(() => {
   wait_contains("Process failed", &mut stderr_lines).await;
   wait_contains("File change detected", &mut stderr_lines).await;
   wait_contains("<h1>asd1</h1>", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[flaky_test(tokio)]
+async fn run_hmr_compile_error() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+function foo() {
+  return `<h1>asd1</h1>`;
+}
+
+let i = 0;
+setInterval(() => {
+  console.log(i++, foo());
+}, 100);
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch-hmr")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("2 <h1>asd1</h1>", &mut stdout_lines).await;
+
+  // Misspelled `function` on purpose
+  file_to_watch.write(
+    r#"
+function foo() {
+  fnction bar();
+}
+
+let i = 0;
+setInterval(() => {
+  console.log(i++, foo());
+}, 100);
+"#,
+  );
+
+  wait_contains("compile error: Uncaught SyntaxError", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+#[flaky_test(tokio)]
+async fn bundle_watch() {
+  let _server = http_server();
+
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+    console.log("hello");
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("bundle")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("-o")
+    .arg(t.path().join("output.js"))
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .envs(env_vars_for_npm_tests())
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Bundled 1 module in", &mut stderr_lines).await;
+  let contents = t.path().join("output.js").read_to_string();
+  assert_contains!(contents, "console.log(\"hello\");");
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  file_to_watch.write(
+    r#"
+    console.log("hello world");
+"#,
+  );
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Bundled 1 module in", &mut stderr_lines).await;
+  let contents = t.path().join("output.js").read_to_string();
+  assert_contains!(contents, "console.log(\"hello world\");");
 
   check_alive_then_kill(child);
 }

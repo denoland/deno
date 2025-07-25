@@ -11,23 +11,22 @@ use std::time::Duration;
 
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
-use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_lib::util::result::js_error_downcast_ref;
 use deno_runtime::fmt_errors::format_js_error;
 use log::info;
-use notify::event::Event as NotifyEvent;
-use notify::event::EventKind;
 use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
+use notify::event::Event as NotifyEvent;
+use notify::event::EventKind;
 use tokio::select;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::error::SendError;
 use tokio::time::sleep;
 
 use crate::args::Flags;
@@ -83,10 +82,9 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let error_string = match any_and_jserrorbox_downcast_ref::<CoreError>(&err)
-    {
-      Some(CoreError::Js(e)) => format_js_error(e),
-      _ => format!("{err:?}"),
+    let error_string = match js_error_downcast_ref(&err) {
+      Some(e) => format_js_error(e),
+      None => format!("{err:?}"),
     };
     log::error!(
       "{}: {}",
@@ -105,6 +103,7 @@ pub struct PrintConfig {
   job_name: &'static str,
   /// Determine whether to clear the terminal screen; applicable to TTY environments only.
   clear_screen: bool,
+  pub print_finished: bool,
 }
 
 impl PrintConfig {
@@ -116,6 +115,7 @@ impl PrintConfig {
       banner: "Watcher",
       job_name,
       clear_screen,
+      print_finished: true,
     }
   }
 
@@ -128,6 +128,7 @@ impl PrintConfig {
       banner,
       job_name,
       clear_screen,
+      print_finished: true,
     }
   }
 }
@@ -281,8 +282,8 @@ pub enum WatcherRestartMode {
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
-///    changes. For example, in the case where we would like to bundle, then `operation` would
-///    have the logic for it like bundling the code.
+///   changes. For example, in the case where we would like to bundle, then `operation` would
+///   have the logic for it like bundling the code.
 pub async fn watch_recv<O, F>(
   mut flags: Arc<Flags>,
   print_config: PrintConfig,
@@ -309,6 +310,7 @@ where
     banner,
     job_name,
     clear_screen,
+    print_finished,
   } = print_config;
 
   let print_after_restart = create_print_after_restart_fn(clear_screen);
@@ -378,17 +380,19 @@ where
       },
       success = operation_future => {
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
-        // TODO(bartlomieju): print exit code here?
-        info!(
-          "{} {} {}. Restarting on file change...",
-          colors::intense_blue(banner),
-          job_name,
-          if success {
-            "finished"
-          } else {
-            "failed"
-          }
-        );
+        if print_finished {
+          // TODO(bartlomieju): print exit code here?
+          info!(
+            "{} {} {}. Restarting on file change...",
+            colors::intense_blue(banner),
+            job_name,
+            if success {
+              "finished"
+            } else {
+              "failed"
+            }
+          );
+        }
       },
     }
     let receiver_future = async {

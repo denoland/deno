@@ -4,6 +4,14 @@
       "args": "run -A main.ts basic.ts",
       "output": "basic.out"
     },
+    "basic_vsock": {
+      "if": "linux",
+      "args": "run -A --unstable-vsock main.ts basic.ts",
+      "envs": {
+        "OTEL_DENO_VSOCK": "1:4317"
+      },
+      "output": "basic.out"
+    },
     "natural_exit": {
       "args": "run -A main.ts natural_exit.ts",
       "output": "natural_exit.out"
@@ -60,6 +68,22 @@
     "events": {
       "args": "run -A main.ts events.ts",
       "output": "events.out"
+    },
+    "metric_temporality_delta": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "delta"
+      },
+      "args": "run -A main.ts metric_temporality.ts",
+      "output": "metric_temporality_delta.out"
+    },
+    "metric_temporality_cumulative": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative"
+      },
+      "args": "run -A main.ts metric_temporality.ts",
+      "output": "metric_temporality_cumulative.out"
     }
   }
 }

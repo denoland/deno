@@ -6,28 +6,28 @@ use std::rc::Rc;
 use async_stream::try_stream;
 use base64::Engine;
 use bytes::Bytes;
-use deno_core::unsync::spawn;
 use deno_core::BufMutView;
 use deno_core::ByteString;
 use deno_core::Resource;
+use deno_core::unsync::spawn;
 use futures::StreamExt;
 use futures::TryStreamExt;
-use http::header::VARY;
 use http::HeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
+use http::header::VARY;
 use http_body_util::combinators::UnsyncBoxBody;
 use slab::Slab;
 
-use crate::get_header;
-use crate::get_headers_from_vary_header;
-use crate::lsc_shard::CacheShard;
 use crate::CacheDeleteRequest;
 use crate::CacheError;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
 use crate::CacheResponseResource;
+use crate::get_header;
+use crate::get_headers_from_vary_header;
+use crate::lsc_shard::CacheShard;
 
 const REQHDR_PREFIX: &str = "x-lsc-meta-reqhdr-";
 
@@ -247,7 +247,7 @@ impl LscBackend {
 
     let body = http_body_util::BodyDataStream::new(res.into_body())
       .into_stream()
-      .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+      .map_err(std::io::Error::other);
     let body = CacheResponseResource::lsc(body);
 
     Ok(Some((meta, Some(body))))

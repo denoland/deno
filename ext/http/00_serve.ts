@@ -14,6 +14,7 @@ import {
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_metric_handle_otel_error,
+  op_http_notify_serving,
   op_http_read_request_body,
   op_http_request_on_cancel,
   op_http_serve,
@@ -43,6 +44,8 @@ const {
   SafePromiseAll,
   PromisePrototypeThen,
   StringPrototypeIncludes,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
   Symbol,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -330,23 +333,23 @@ class InnerRequest {
   }
 
   get remoteAddr() {
-    const transport = this.#context.listener?.addr.transport;
-    if (transport === "unix" || transport === "unixpacket") {
-      return {
-        transport,
-        path: this.#context.listener.addr.path,
-      };
-    }
     if (this.#methodAndUri === undefined) {
       if (this.#external === null) {
         throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
-    if (transport === "vsock") {
+    const transport = this.#context.listener?.addr.transport;
+    if (this.#methodAndUri[3] === "unix") {
       return {
         transport,
-        cid: Number(this.#methodAndUri[3]),
+        path: this.#context.listener.addr.path,
+      };
+    }
+    if (StringPrototypeStartsWith(this.#methodAndUri[3], "vsock:")) {
+      return {
+        transport,
+        cid: Number(StringPrototypeSlice(this.#methodAndUri[3], 6)),
         port: this.#methodAndUri[4],
       };
     }
@@ -812,6 +815,17 @@ function serve(arg1, arg2) {
         delete envOptions.path;
         break;
       }
+      case 4: {
+        // Tunnel
+        envOptions = {
+          ...envOptions,
+          tunnel: true,
+        };
+        delete envOptions.hostname;
+        delete envOptions.cid;
+        delete envOptions.port;
+        delete envOptions.path;
+      }
     }
 
     if (duplicateListener) {
@@ -854,6 +868,7 @@ function serveInner(options, handler) {
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
   const wantsVsock = ObjectHasOwn(options, "cid");
+  const wantsTunnel = options.tunnel === true;
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
@@ -890,6 +905,28 @@ function serveInner(options, handler) {
         options.onListen(listener.addr);
       } else {
         import.meta.log("info", `Listening on vsock:${cid}:${port}`);
+      }
+    });
+  }
+
+  if (wantsTunnel) {
+    const listener = listen({
+      transport: "tunnel",
+      [listenOptionApiName]: "Deno.serve",
+    });
+    return serveHttpOnListener(listener, signal, handler, onError, () => {
+      if (options.onListen) {
+        options.onListen(listener.addr);
+      } else {
+        const additional = listener.addr.port === 443
+          ? ""
+          : `:${listener.addr.port}`;
+        import.meta.log(
+          "info",
+          `Listening on https://${
+            formatHostName(listener.addr.hostname)
+          }${additional}`,
+        );
       }
     });
   }
@@ -1049,6 +1086,8 @@ function serveHttpOn(context, addr, callback) {
     }
   })();
 
+  op_http_notify_serving();
+
   return {
     addr,
     finished,
@@ -1104,30 +1143,48 @@ function registerDeclarativeServer(exports) {
     throw new TypeError("Invalid type for fetch: must be a function");
   }
 
-  return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
+  if (
+    exports.onListen !== undefined && typeof exports.onListen !== "function"
+  ) {
+    throw new TypeError("Invalid type for onListen: must be a function");
+  }
+
+  return ({
+    servePort,
+    serveHost,
+    workerCountWhenMain,
+  }) => {
     Deno.serve({
       port: servePort,
       hostname: serveHost,
-      [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
-        serveWorkerCount !== null,
-      onListen: ({ transport, port, hostname, path, cid }) => {
-        if (serveIsMain) {
-          const nThreads = serveWorkerCount > 1
-            ? ` with ${serveWorkerCount} threads`
-            : "";
+      [kLoadBalanced]: workerCountWhenMain == null
+        ? true
+        : workerCountWhenMain > 0,
+      onListen: (localAddr) => {
+        if (workerCountWhenMain != null) {
+          if (exports.onListen) {
+            exports.onListen(localAddr);
+            return;
+          }
 
           let target;
-          switch (transport) {
+          switch (localAddr.transport) {
             case "tcp":
-              target = `http://${formatHostName(hostname)}:${port}/`;
+              target = `http://${
+                formatHostName(localAddr.hostname)
+              }:${localAddr.port}/`;
               break;
             case "unix":
-              target = path;
+              target = localAddr.path;
               break;
             case "vsock":
-              target = `vsock:${cid}:${port}`;
+              target = `vsock:${localAddr.cid}:${localAddr.port}`;
               break;
           }
+
+          const nThreads = workerCountWhenMain > 0
+            ? ` with ${workerCountWhenMain + 1} threads`
+            : "";
 
           import.meta.log(
             "info",

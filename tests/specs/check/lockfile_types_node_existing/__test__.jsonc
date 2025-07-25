@@ -1,0 +1,5 @@
+{
+  "args": "check --frozen=true",
+  "output": "[WILDCARD]",
+  "exitCode": 0
+}

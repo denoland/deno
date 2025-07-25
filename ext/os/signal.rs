@@ -2,13 +2,15 @@
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, thiserror::Error)]
-#[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
+#[error(
+  "Windows only supports ctrl-c (SIGINT), ctrl-break (SIGBREAK), and ctrl-close (SIGUP), but got {0}"
+)]
 pub struct InvalidSignalStrError(pub String);
 
 #[cfg(any(
   target_os = "android",
   target_os = "linux",
-  target_os = "openbsd",
+  target_os = "freebsd",
   target_os = "openbsd",
   target_os = "macos",
   target_os = "solaris",
@@ -20,13 +22,15 @@ pub struct InvalidSignalStrError(pub String);
 
 #[cfg(target_os = "windows")]
 #[derive(Debug, thiserror::Error)]
-#[error("Windows only supports ctrl-c (SIGINT) and ctrl-break (SIGBREAK), but got {0}")]
+#[error(
+  "Windows only supports ctrl-c (SIGINT), ctrl-break (SIGBREAK), and ctrl-close (SIGUP), but got {0}"
+)]
 pub struct InvalidSignalIntError(pub libc::c_int);
 
 #[cfg(any(
   target_os = "android",
   target_os = "linux",
-  target_os = "openbsd",
+  target_os = "freebsd",
   target_os = "openbsd",
   target_os = "macos",
   target_os = "solaris",
@@ -254,4 +258,4 @@ signal_dict!(
 );
 
 #[cfg(target_os = "windows")]
-signal_dict!((2, "SIGINT"), (21, "SIGBREAK"));
+signal_dict!((1, "SIGHUP"), (2, "SIGINT"), (21, "SIGBREAK"));

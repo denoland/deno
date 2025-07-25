@@ -3,31 +3,98 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
-use std::rc::Rc;
+use std::rc::Weak;
 
-use deno_core::op2;
+use deno_core::FromV8;
 use deno_core::GarbageCollected;
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8_static_strings;
 use rusqlite::ffi;
-use serde::Deserialize;
 
 use super::SqliteError;
+use super::validators;
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct SessionOptions {
   pub table: Option<String>,
   pub db: Option<String>,
+}
+
+impl FromV8<'_> for SessionOptions {
+  type Error = validators::Error;
+
+  fn from_v8(
+    scope: &mut v8::HandleScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, validators::Error> {
+    use validators::Error;
+
+    if value.is_undefined() {
+      return Ok(SessionOptions::default());
+    }
+
+    let obj = v8::Local::<v8::Object>::try_from(value).map_err(|_| {
+      Error::InvalidArgType("The \"options\" argument must be an object.")
+    })?;
+
+    let mut options = SessionOptions::default();
+
+    v8_static_strings! {
+      TABLE_STRING = "table",
+      DB_STRING = "db",
+    }
+
+    let table_string = TABLE_STRING.v8_string(scope).unwrap();
+    if let Some(table_value) = obj.get(scope, table_string.into()) {
+      if !table_value.is_undefined() {
+        if !table_value.is_string() {
+          return Err(Error::InvalidArgType(
+            "The \"options.table\" argument must be a string.",
+          ));
+        }
+        let table =
+          v8::Local::<v8::String>::try_from(table_value).map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.table\" argument must be a string.",
+            )
+          })?;
+        options.table = Some(table.to_rust_string_lossy(scope).to_string());
+      }
+    }
+
+    let db_string = DB_STRING.v8_string(scope).unwrap();
+    if let Some(db_value) = obj.get(scope, db_string.into()) {
+      if !db_value.is_undefined() {
+        if !db_value.is_string() {
+          return Err(Error::InvalidArgType(
+            "The \"options.db\" argument must be a string.",
+          ));
+        }
+        let db = v8::Local::<v8::String>::try_from(db_value).map_err(|_| {
+          Error::InvalidArgType("The \"options.db\" argument must be a string.")
+        })?;
+        options.db = Some(db.to_rust_string_lossy(scope).to_string());
+      }
+    }
+
+    Ok(options)
+  }
 }
 
 pub struct Session {
   pub(crate) inner: *mut ffi::sqlite3_session,
   pub(crate) freed: Cell<bool>,
 
-  // Hold a strong reference to the database.
-  pub(crate) db: Rc<RefCell<Option<rusqlite::Connection>>>,
+  // Hold a weak reference to the database.
+  pub(crate) db: Weak<RefCell<Option<rusqlite::Connection>>>,
 }
 
-impl GarbageCollected for Session {}
+impl GarbageCollected for Session {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Session"
+  }
+}
 
 impl Drop for Session {
   fn drop(&mut self) {
@@ -38,11 +105,7 @@ impl Drop for Session {
 impl Session {
   fn delete(&self) -> Result<(), SqliteError> {
     if self.freed.get() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::SessionClosed.to_string(),
-        None,
-      );
+      return Err(SqliteError::SessionClosed);
     }
 
     self.freed.set(true);
@@ -60,13 +123,14 @@ impl Session {
 impl Session {
   // Closes the session.
   #[fast]
+  #[undefined]
   fn close(&self) -> Result<(), SqliteError> {
-    if self.db.borrow().is_none() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::AlreadyClosed.to_string(),
-        None,
-      );
+    let db_rc = self
+      .db
+      .upgrade()
+      .ok_or_else(|| SqliteError::AlreadyClosed)?;
+    if db_rc.borrow().is_none() {
+      return Err(SqliteError::AlreadyClosed);
     }
 
     self.delete()
@@ -78,19 +142,15 @@ impl Session {
   // This method is a wrapper around `sqlite3session_changeset()`.
   #[buffer]
   fn changeset(&self) -> Result<Box<[u8]>, SqliteError> {
-    if self.db.borrow().is_none() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::AlreadyClosed.to_string(),
-        None,
-      );
+    let db_rc = self
+      .db
+      .upgrade()
+      .ok_or_else(|| SqliteError::AlreadyClosed)?;
+    if db_rc.borrow().is_none() {
+      return Err(SqliteError::AlreadyClosed);
     }
     if self.freed.get() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::SessionClosed.to_string(),
-        None,
-      );
+      return Err(SqliteError::SessionClosed);
     }
 
     session_buffer_op(self.inner, ffi::sqlite3session_changeset)
@@ -101,19 +161,15 @@ impl Session {
   // This method is a wrapper around `sqlite3session_patchset()`.
   #[buffer]
   fn patchset(&self) -> Result<Box<[u8]>, SqliteError> {
-    if self.db.borrow().is_none() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::AlreadyClosed.to_string(),
-        None,
-      );
+    let db_rc = self
+      .db
+      .upgrade()
+      .ok_or_else(|| SqliteError::AlreadyClosed)?;
+    if db_rc.borrow().is_none() {
+      return Err(SqliteError::AlreadyClosed);
     }
     if self.freed.get() {
-      return SqliteError::create_enhanced_error(
-        ffi::SQLITE_MISUSE,
-        &SqliteError::SessionClosed.to_string(),
-        None,
-      );
+      return Err(SqliteError::SessionClosed);
     }
 
     session_buffer_op(self.inner, ffi::sqlite3session_patchset)
@@ -135,11 +191,7 @@ fn session_buffer_op(
   // by sqlite3 and will be freed later.
   let r = unsafe { f(s, &mut n_buffer, &mut p_buffer) };
   if r != ffi::SQLITE_OK {
-    return SqliteError::create_enhanced_error(
-      r,
-      &SqliteError::SessionChangesetFailed.to_string(),
-      None,
-    );
+    return Err(SqliteError::SessionChangesetFailed);
   }
 
   if n_buffer == 0 {

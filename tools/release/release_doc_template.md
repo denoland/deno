@@ -28,44 +28,6 @@ Deno v$VERSION is now getting released.
 Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ```
 
-## Patch release preparation
-
-⛔ **If you are cutting a patch release**: First you need to sync commits to the
-`v$MINOR_VERSION` branch in the `deno` repo.
-
-To do that, you need to cherry-pick commits from the main branch to the
-`v$MINOR_VERSION` branch. If the branch doesn't exist yet, create one from the
-latest minor tag:
-
-```
-# checkout latest minor release
-$ git checkout v$PAST_VERSION
-
-# create a branch
-$ git checkout v$MINOR_VERSION
-
-# push the branch to the `denoland/deno` repository
-$ git push upstream v$MINOR_VERSION
-```
-
-For patch releases we want to cherry-pick all commits that do not add features
-to the CLI. This generally means to filter out `feat` commits.
-
-Check what was the last commit on `v$MINOR_VERSION` branch before the previous
-release and start cherry-picking newer commits from the `main`.
-
-<!--
-      TODO: we should add sample deno program that does that for you,
-      and then provides a complete `git` command to run.
--->
-
-Once all relevant commits are cherry-picked, push the branch to the upstream and
-verify on GitHub that everything looks correct.
-
-- ⛔ DO NOT create a `v$VERSION`-like branch! You are meant to cherry pick to
-  the `v$MINOR_VERSION` branch. If you have accidentally created then
-  `v$VERSION` branch then delete it as tagging the CLI will fail otherwise.
-
 ## Updating `deno`
 
 ### Phase 1: Bumping versions
@@ -73,8 +35,7 @@ verify on GitHub that everything looks correct.
 - [ ] Go to the "version_bump" workflow in the CLI repo's actions:
       https://github.com/denoland/deno/actions/workflows/version_bump.yml
   1. Click on the "Run workflow" button.
-  1. In the drop down, select the minor branch (`v$MINOR_VERSION`) if doing a
-     patch release or the main branch if doing a minor release.
+  1. In the drop down, select the `main` branch.
   1. For the kind of release, select either `patch` or `minor`.
   1. Run the workflow.
 
@@ -120,30 +81,26 @@ verify on GitHub that everything looks correct.
   (https://github.com/denoland/deno/releases).
 
 - ⛔ Verify that:
-  - [ ] There are 24 assets on the
-        [GitHub release draft](https://github.com/denoland/deno/releases/v$VERSION).
-  - [ ] There are 20 zip files for this version on
+  - [ ] There are 24 assets on the v$VERSION
+        [GitHub release draft](https://github.com/denoland/deno/releases/).
+  - [ ] There are 25 zip files for this version on
         [dl.deno.land](https://console.cloud.google.com/storage/browser/dl.deno.land/release/v$VERSION).
 
 - [ ] Publish the release on Github
+
+## Update https://deno.com
 
 - [ ] Run
       https://github.com/denoland/dotcom/actions/workflows/update_version.yml to
       automatically open a PR.
   - [ ] Merge the PR.
 
+## Update https://docs.deno.com
+
 - [ ] Run
       https://github.com/denoland/deno-docs/actions/workflows/update_versions.yml
       to automatically open a PR.
   - [ ] Merge the PR.
-
-- [ ] For minor releases: make sure https://github.com/mdn/browser-compat-data
-      has been updated to reflect Web API changes in this release. Usually done
-      ahead of time by @lucacasonato.
-
-- [ ] **If you are cutting a patch release**: a PR should have been
-      automatically opened that forwards the release commit back to main. If so,
-      merge it. If not and it failed, please manually create one.
 
 ## Updating `deno_docker`
 
@@ -151,6 +108,13 @@ verify on GitHub that everything looks correct.
       https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a `$VERSION` tag (_without_ `v` prefix).
+
+## Update MDN
+
+- [ ] If a new JavaScript or Web API has been added or enabled, make sure
+      https://github.com/mdn/browser-compat-data has been updated to reflect API
+      changes in this release. If in doubt message @bartlomieju and skip this
+      step.
 
 ## All done!
 
@@ -167,3 +131,12 @@ verify on GitHub that everything looks correct.
 
 Deno v$VERSION has been released.
 ```
+
+## Downgrading
+
+In case something went wrong:
+
+1. Update https://dl.deno.land/release-latest.txt to the previous release.
+1. Revert the PR to the [dotcom repo](https://github.com/denoland/dotcom/) in
+   order to prevent the [`setup-deno`](https://github.com/denoland/setup-deno)
+   GH action from pulling it in.

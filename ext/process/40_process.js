@@ -162,7 +162,6 @@ function run({
 
 export const kExtraStdio = Symbol("extraStdio");
 export const kIpc = Symbol("ipc");
-export const kDetached = Symbol("detached");
 export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
@@ -179,7 +178,7 @@ function spawnChildInner(command, apiName, {
   stdout = "piped",
   stderr = "piped",
   windowsRawArguments = false,
-  [kDetached]: detached = false,
+  detached = false,
   [kExtraStdio]: extraStdio = [],
   [kIpc]: ipc = -1,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
@@ -299,9 +298,14 @@ class ChildProcess {
       this.#stderr = readableStreamForRidUnrefable(stderrRid);
     }
 
-    const onAbort = () => this.kill("SIGTERM");
+    const onAbort = () => {
+      try {
+        this.kill("SIGTERM");
+      } catch {
+        // Ignore the error for https://github.com/denoland/deno/issues/27112
+      }
+    };
     signal?.[abortSignal.add](onAbort);
-
     const waitPromise = op_spawn_wait(this.#rid);
     this.#waitPromise = waitPromise;
     this.#status = PromisePrototypeThen(waitPromise, (res) => {

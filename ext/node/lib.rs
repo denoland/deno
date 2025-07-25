@@ -6,22 +6,24 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
-use std::path::PathBuf;
 
+use deno_core::FastString;
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
+use deno_permissions::CheckedPath;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
-use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
+use node_resolver::errors::ClosestPkgJsonError;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
@@ -31,19 +33,19 @@ pub mod ops;
 
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
-pub use node_resolver::PathClean;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
+pub use node_resolver::PathClean;
 use ops::handle_wrap::AsyncId;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
-pub use ops::vm::create_v8_context;
-pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
+pub use ops::vm::create_v8_context;
+pub use ops::vm::init_global_template;
 
+pub use crate::global::GlobalsStorage;
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
-pub use crate::global::GlobalsStorage;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -61,36 +63,18 @@ pub trait NodePermissions {
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  #[inline(always)]
-  fn check_read(
-    &mut self,
-    path: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    self.check_read_with_api_name(path, None)
-  }
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read_with_api_name(
-    &mut self,
-    path: &str,
-    api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read_path<'a>(
+  fn check_open<'a>(
     &mut self,
     path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+    open_access: OpenAccessKind,
+    api_name: Option<&str>,
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn query_read_all(&mut self) -> bool;
   fn check_sys(
     &mut self,
     kind: &str,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_write_with_api_name(
-    &mut self,
-    path: &str,
-    api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError>;
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -111,37 +95,22 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     deno_permissions::PermissionsContainer::check_net(self, &host, api_name)
   }
 
-  #[inline(always)]
-  fn check_read_with_api_name(
-    &mut self,
-    path: &str,
-    api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read_with_api_name(
-      self, path, api_name,
-    )
-  }
-
-  fn check_read_path<'a>(
+  fn check_open<'a>(
     &mut self,
     path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read_path(self, path, None)
+    open_access: OpenAccessKind,
+    api_name: Option<&str>,
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_open(
+      self,
+      path,
+      open_access,
+      api_name,
+    )
   }
 
   fn query_read_all(&mut self) -> bool {
     deno_permissions::PermissionsContainer::query_read_all(self)
-  }
-
-  #[inline(always)]
-  fn check_write_with_api_name(
-    &mut self,
-    path: &str,
-    api_name: Option<&str>,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write_with_api_name(
-      self, path, api_name,
-    )
   }
 
   fn check_sys(
@@ -161,17 +130,34 @@ pub trait NodeRequireLoader {
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn NodePermissions,
-    path: &'a Path,
+    path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox>;
 
-  fn load_text_file_lossy(
-    &self,
-    path: &Path,
-  ) -> Result<Cow<'static, str>, JsErrorBox>;
+  fn load_text_file_lossy(&self, path: &Path)
+  -> Result<FastString, JsErrorBox>;
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
   fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError>;
+
+  fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
+    default_resolve_require_node_module_paths(from)
+  }
+}
+
+pub fn default_resolve_require_node_module_paths(from: &Path) -> Vec<String> {
+  let mut paths = Vec::with_capacity(from.components().count());
+  let mut current_path = from;
+  let mut maybe_parent = Some(current_path);
+  while let Some(parent) = maybe_parent {
+    if !parent.ends_with("node_modules") {
+      paths.push(parent.join("node_modules").to_string_lossy().into_owned());
+    }
+    current_path = parent;
+    maybe_parent = current_path.parent();
+  }
+
+  paths
 }
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -204,13 +190,18 @@ enum DotEnvLoadErr {
 }
 
 #[op2(fast)]
+#[undefined]
 fn op_node_load_env_file(
   state: &mut OpState,
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
-  state
+  let path = state
     .borrow::<PermissionsContainer>()
-    .check_read_with_api_name(path, Some("process.loadEnvFile"))
+    .check_open(
+      Cow::Borrowed(Path::new(path)),
+      OpenAccessKind::ReadNoFollow,
+      Some("process.loadEnvFile"),
+    )
     .map_err(DotEnvLoadErr::Permission)?;
 
   dotenvy::from_filename(path).map_err(DotEnvLoadErr::DotEnv)?;
@@ -261,6 +252,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_decipheriv_decrypt,
     ops::crypto::op_node_decipheriv_final,
     ops::crypto::op_node_decipheriv_set_aad,
+    ops::crypto::op_node_decipheriv_auth_tag,
     ops::crypto::op_node_dh_compute_secret,
     ops::crypto::op_node_diffie_hellman,
     ops::crypto::op_node_ecdh_compute_public_key,
@@ -271,6 +263,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_fill_random,
     ops::crypto::op_node_gen_prime_async,
     ops::crypto::op_node_gen_prime,
+    ops::crypto::op_node_get_hash_size,
     ops::crypto::op_node_get_hashes,
     ops::crypto::op_node_hash_clone,
     ops::crypto::op_node_hash_digest_hex,
@@ -281,6 +274,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_hkdf,
     ops::crypto::op_node_pbkdf2_async,
     ops::crypto::op_node_pbkdf2,
+    ops::crypto::op_node_pbkdf2_validate,
     ops::crypto::op_node_private_decrypt,
     ops::crypto::op_node_private_encrypt,
     ops::crypto::op_node_public_encrypt,
@@ -291,6 +285,9 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_sign_ed25519,
     ops::crypto::op_node_verify,
     ops::crypto::op_node_verify_ed25519,
+    ops::crypto::op_node_verify_spkac,
+    ops::crypto::op_node_cert_export_public_key,
+    ops::crypto::op_node_cert_export_challenge,
     ops::crypto::keys::op_node_create_private_key,
     ops::crypto::keys::op_node_create_ed_raw,
     ops::crypto::keys::op_node_create_rsa_jwk,
@@ -350,6 +347,8 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_fs_exists<P>,
     ops::fs::op_node_cp_sync<P>,
     ops::fs::op_node_cp<P>,
+    ops::fs::op_node_lchmod_sync<P>,
+    ops::fs::op_node_lchmod<P>,
     ops::fs::op_node_lchown_sync<P>,
     ops::fs::op_node_lchown<P>,
     ops::fs::op_node_lutimes_sync<P>,
@@ -458,6 +457,8 @@ deno_core::extension!(deno_node,
     ops::require::op_require_package_imports_resolve<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
+    ops::util::op_node_view_has_buffer,
+    ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::worker_threads::op_worker_threads_filename<P, TSys>,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
@@ -467,6 +468,8 @@ deno_core::extension!(deno_node,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
     ops::tls::op_get_root_certificates,
+    ops::tls::op_tls_peer_certificate,
+    ops::tls::op_tls_canonicalize_ipv4_address,
     ops::inspector::op_inspector_open<P>,
     ops::inspector::op_inspector_close,
     ops::inspector::op_inspector_url,
@@ -483,7 +486,8 @@ deno_core::extension!(deno_node,
     ops::sqlite::Session,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
-    ops::sqlite::StatementSync
+    ops::sqlite::StatementSync,
+    ops::crypto::digest::Hasher,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -502,13 +506,16 @@ deno_core::extension!(deno_node,
     "_fs/_fs_copy.ts",
     "_fs/_fs_cp.js",
     "_fs/_fs_dir.ts",
-    "_fs/_fs_dirent.ts",
     "_fs/_fs_exists.ts",
+    "_fs/_fs_fchmod.ts",
+    "_fs/_fs_fchown.ts",
     "_fs/_fs_fdatasync.ts",
     "_fs/_fs_fstat.ts",
     "_fs/_fs_fsync.ts",
     "_fs/_fs_ftruncate.ts",
     "_fs/_fs_futimes.ts",
+    "_fs/_fs_glob.ts",
+    "_fs/_fs_lchmod.ts",
     "_fs/_fs_lchown.ts",
     "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
@@ -574,10 +581,12 @@ deno_core::extension!(deno_node,
     "internal_binding/string_decoder.ts",
     "internal_binding/symbols.ts",
     "internal_binding/tcp_wrap.ts",
+    "internal_binding/tty_wrap.ts",
     "internal_binding/types.ts",
     "internal_binding/udp_wrap.ts",
     "internal_binding/util.ts",
     "internal_binding/uv.ts",
+    "internal/assert/calltracker.js",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
     "internal/blocklist.mjs",
@@ -618,6 +627,7 @@ deno_core::extension!(deno_node,
     "internal/fs/handle.ts",
     "internal/hide_stack_frames.ts",
     "internal/http.ts",
+    "internal/http2/util.ts",
     "internal/idna.ts",
     "internal/net.ts",
     "internal/normalize_encoding.mjs",
@@ -625,6 +635,7 @@ deno_core::extension!(deno_node,
     "internal/primordials.mjs",
     "internal/process/per_thread.mjs",
     "internal/process/report.ts",
+    "internal/process/warning.ts",
     "internal/querystring.ts",
     "internal/readline/callbacks.mjs",
     "internal/readline/emitKeypressEvents.mjs",
@@ -636,7 +647,6 @@ deno_core::extension!(deno_node,
     "internal/streams/add-abort-signal.js",
     "internal/streams/compose.js",
     "internal/streams/destroy.js",
-    "internal/streams/duplex.js",
     "internal/streams/duplexify.js",
     "internal/streams/duplexpair.js",
     "internal/streams/end-of-stream.js",
@@ -644,13 +654,9 @@ deno_core::extension!(deno_node,
     "internal/streams/lazy_transform.js",
     "internal/streams/legacy.js",
     "internal/streams/operators.js",
-    "internal/streams/passthrough.js",
     "internal/streams/pipeline.js",
-    "internal/streams/readable.js",
     "internal/streams/state.js",
-    "internal/streams/transform.js",
     "internal/streams/utils.js",
-    "internal/streams/writable.js",
     "internal/test/binding.ts",
     "internal/timers.mjs",
     "internal/url.ts",
@@ -711,7 +717,7 @@ deno_core::extension!(deno_node,
     "node:path" = "path.ts",
     "node:path/posix" = "path/posix.ts",
     "node:path/win32" = "path/win32.ts",
-    "node:perf_hooks" = "perf_hooks.ts",
+    "node:perf_hooks" = "perf_hooks.js",
     "node:process" = "process.ts",
     "node:punycode" = "punycode.ts",
     "node:querystring" = "querystring.js",
@@ -739,6 +745,10 @@ deno_core::extension!(deno_node,
     "node:wasi" = "wasi.ts",
     "node:worker_threads" = "worker_threads.ts",
     "node:zlib" = "zlib.ts",
+  ],
+  lazy_loaded_esm = [
+    dir "polyfills",
+    "deps/minimatch.js",
   ],
   options = {
     maybe_init: Option<NodeExtInitServices<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>>,
@@ -873,22 +883,13 @@ deno_core::extension!(deno_node,
   },
 );
 
+#[sys_traits::auto_impl]
 pub trait ExtNodeSys:
   sys_traits::BaseFsCanonicalize
   + sys_traits::BaseFsMetadata
   + sys_traits::BaseFsRead
   + sys_traits::EnvCurrentDir
   + Clone
-{
-}
-
-impl<
-    T: sys_traits::BaseFsCanonicalize
-      + sys_traits::BaseFsMetadata
-      + sys_traits::BaseFsRead
-      + sys_traits::EnvCurrentDir
-      + Clone,
-  > ExtNodeSys for T
 {
 }
 

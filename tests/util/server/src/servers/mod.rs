@@ -9,8 +9,8 @@ use std::net::SocketAddr;
 use std::result::Result;
 use std::time::Duration;
 
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use bytes::Bytes;
 use denokv_proto::datapath::AtomicWrite;
 use denokv_proto::datapath::AtomicWriteOutput;
@@ -28,10 +28,10 @@ use http::Method;
 use http::Request;
 use http::Response;
 use http::StatusCode;
-use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::BodyExt;
 use http_body_util::Empty;
 use http_body_util::Full;
+use http_body_util::combinators::UnsyncBoxBody;
 use hyper_utils::run_server_with_remote_addr;
 use pretty_assertions::assert_eq;
 use prost::Message;
@@ -45,13 +45,13 @@ mod nodejs_org_mirror;
 mod npm_registry;
 mod ws;
 
-use hyper_utils::run_server;
-use hyper_utils::run_server_with_acceptor;
 use hyper_utils::ServerKind;
 use hyper_utils::ServerOptions;
+use hyper_utils::run_server;
+use hyper_utils::run_server_with_acceptor;
 
-use super::https::get_tls_listener_stream;
 use super::https::SupportedHttpVersions;
+use super::https::get_tls_listener_stream;
 use super::std_path;
 use super::testdata_path;
 use crate::TEST_SERVERS_COUNT;
@@ -751,7 +751,9 @@ async fn main_server(
       Ok(res)
     }
     (_, "/referenceTypes.js") => {
-      let mut res = Response::new(string_body("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
+      let mut res = Response::new(string_body(
+        "/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n",
+      ));
       res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/javascript"),
@@ -1423,7 +1425,7 @@ pub fn custom_headers(
   if p.contains("/encoding/") {
     let charset = p
       .split_terminator('/')
-      .last()
+      .next_back()
       .unwrap()
       .trim_end_matches(".ts");
 

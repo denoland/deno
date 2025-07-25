@@ -5,28 +5,29 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::op2;
-use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_core::serde::Deserialize;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
-use deno_web::deserialize_js_transferables;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
+use deno_web::deserialize_js_transferables;
 use log::debug;
 
 use crate::ops::TestingFeaturesEnabled;
-use crate::web_worker::run_web_worker;
+use crate::tokio_util::create_and_run_current_thread;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
-use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::web_worker::WorkerMetadata;
+use crate::web_worker::WorkerThreadType;
+use crate::web_worker::run_web_worker;
 use crate::worker::FormatJsErrorFn;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
@@ -37,7 +38,7 @@ pub struct CreateWebWorkerArgs {
   pub parent_permissions: PermissionsContainer,
   pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
 }
@@ -116,7 +117,7 @@ pub struct CreateWorkerArgs {
   permissions: Option<ChildPermissionsArg>,
   source_code: String,
   specifier: String,
-  worker_type: WebWorkerType,
+  worker_type: WorkerThreadType,
   close_on_idle: bool,
 }
 
@@ -155,7 +156,7 @@ fn op_create_worker(
   };
   let args_name = args.name;
   let worker_type = args.worker_type;
-  if let WebWorkerType::Classic = worker_type {
+  if let WorkerThreadType::Classic = worker_type {
     if let TestingFeaturesEnabled(false) = state.borrow() {
       return Err(CreateWorkerError::ClassicWorkers);
     }
@@ -206,33 +207,37 @@ fn op_create_worker(
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
+    let fut = async move {
+      let (worker, external_handle) =
+        (create_web_worker_cb.0)(CreateWebWorkerArgs {
+          name: worker_name,
+          worker_id,
+          parent_permissions,
+          permissions: worker_permissions,
+          main_module: module_specifier.clone(),
+          worker_type,
+          close_on_idle: args.close_on_idle,
+          maybe_worker_metadata,
+        });
 
-    let (worker, external_handle) =
-      (create_web_worker_cb.0)(CreateWebWorkerArgs {
-        name: worker_name,
-        worker_id,
-        parent_permissions,
-        permissions: worker_permissions,
-        main_module: module_specifier.clone(),
-        worker_type,
-        close_on_idle: args.close_on_idle,
-        maybe_worker_metadata,
-      });
+      // Send thread safe handle from newly created worker to host thread
+      handle_sender.send(external_handle).unwrap();
+      drop(handle_sender);
 
-    // Send thread safe handle from newly created worker to host thread
-    handle_sender.send(external_handle).unwrap();
-    drop(handle_sender);
+      // At this point the only method of communication with host
+      // is using `worker.internal_channels`.
+      //
+      // Host can already push messages and interact with worker.
+      run_web_worker(
+        worker,
+        module_specifier,
+        maybe_source_code,
+        format_js_error_fn.0,
+      )
+      .await
+    };
 
-    // At this point the only method of communication with host
-    // is using `worker.internal_channels`.
-    //
-    // Host can already push messages and interact with worker.
-    run_web_worker(
-      worker,
-      module_specifier,
-      maybe_source_code,
-      format_js_error_fn.0,
-    )
+    create_and_run_current_thread(fut)
   })?;
 
   // Receive WebWorkerHandle from newly created worker
@@ -256,10 +261,13 @@ fn op_create_worker(
 
 #[op2]
 fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
-  if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
-    worker_thread.terminate();
-  } else {
-    debug!("tried to terminate non-existent worker {}", id);
+  match state.borrow_mut::<WorkersTable>().remove(&id) {
+    Some(worker_thread) => {
+      worker_thread.terminate();
+    }
+    _ => {
+      debug!("tried to terminate non-existent worker {}", id);
+    }
   }
 }
 

@@ -20,9 +20,6 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { lookup as defaultLookup } from "node:dns";
 import {
   isInt32,
@@ -33,6 +30,8 @@ import { ERR_SOCKET_BAD_TYPE } from "ext:deno_node/internal/errors.ts";
 import { UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { primordials } from "ext:core/mod.js";
+const { FunctionPrototypeBind, MapPrototypeGet, Symbol } = primordials;
 
 export type SocketType = "udp4" | "udp6";
 
@@ -75,7 +74,7 @@ export function newHandle(
   if (type === "udp4") {
     const handle = new UDP();
 
-    handle.lookup = lookup4.bind(handle, lookup);
+    handle.lookup = FunctionPrototypeBind(lookup4, handle, lookup);
 
     return handle;
   }
@@ -83,7 +82,7 @@ export function newHandle(
   if (type === "udp6") {
     const handle = new UDP();
 
-    handle.lookup = lookup6.bind(handle, lookup);
+    handle.lookup = FunctionPrototypeBind(lookup6, handle, lookup);
     handle.bind = handle.bind6;
     handle.connect = handle.connect6;
     handle.send = handle.send6;
@@ -108,11 +107,12 @@ export function _createSocketHandle(
     const type = guessHandleType(fd);
 
     if (type !== "UDP") {
-      err = codeMap.get("EINVAL")!;
+      err = MapPrototypeGet(codeMap, "EINVAL")!;
     } else {
       err = handle.open(fd);
     }
   } else if (port || address) {
+    // deno-lint-ignore prefer-primordials
     err = handle.bind(address, port || 0, flags);
   }
 

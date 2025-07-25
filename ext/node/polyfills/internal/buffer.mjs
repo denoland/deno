@@ -15,6 +15,7 @@ const {
   ArrayBufferPrototypeGetDetached,
   ArrayIsArray,
   ArrayPrototypeSlice,
+  ArrayPrototypeForEach,
   BigInt,
   DataViewPrototypeGetByteLength,
   Float32Array,
@@ -36,11 +37,13 @@ const {
   String,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
+  StringPrototypeSlice,
   StringPrototypeIncludes,
   StringPrototypeReplace,
   StringPrototypeToLowerCase,
   StringPrototypeTrim,
   SymbolFor,
+  SymbolSpecies,
   SymbolToPrimitive,
   TypeError,
   TypeErrorPrototype,
@@ -56,7 +59,12 @@ const {
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
-import { op_is_ascii, op_is_utf8, op_transcode } from "ext:core/ops";
+import {
+  op_is_ascii,
+  op_is_utf8,
+  op_node_call_is_from_dependency,
+  op_transcode,
+} from "ext:core/ops";
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
@@ -74,24 +82,35 @@ import {
   hexToBytes,
   utf16leToBytes,
 } from "ext:deno_node/internal_binding/_utils.ts";
+import { inspect as utilInspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+import {
+  ALL_PROPERTIES,
+  getOwnNonIndexProperties,
+  ONLY_ENUMERABLE,
+} from "ext:deno_node/internal_binding/util.ts";
 import {
   validateBuffer,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import {
+  isArrayBufferView,
+  isUint8Array,
+} from "ext:deno_node/internal/util/types.ts";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,
   genericNodeError,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
+import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import {
   forgivingBase64Encode,
   forgivingBase64UrlEncode,
 } from "ext:deno_web/00_infra.js";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
 import { Blob } from "ext:deno_web/09_file.js";
+import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 
 export { atob, Blob, btoa };
 
@@ -113,18 +132,64 @@ float32Array[0] = -1; // 0xBF800000
 // check this with `os.endianness()` because that is determined at compile time.
 export const bigEndian = uInt8Float32Array[3] === 0;
 
-export const kMaxLength = 2147483647;
+export const kMaxLength = NumberMAX_SAFE_INTEGER;
 export const kStringMaxLength = 536870888;
 const MAX_UINT32 = 2 ** 32;
 
 const customInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 
-export const INSPECT_MAX_BYTES = 50;
+let INSPECT_MAX_BYTES_ = 50;
+
+export const INSPECT_MAX_BYTES = INSPECT_MAX_BYTES_;
 
 export const constants = {
   MAX_LENGTH: kMaxLength,
   MAX_STRING_LENGTH: kStringMaxLength,
 };
+
+let bufferWarningAlreadyEmitted = false;
+let nodeModulesCheckCounter = 0;
+const bufferWarning = "Buffer() is deprecated due to security and usability " +
+  "issues. Please use the Buffer.alloc(), " +
+  "Buffer.allocUnsafe(), or Buffer.from() methods instead.";
+
+function showFlaggedDeprecation() {
+  if (
+    bufferWarningAlreadyEmitted ||
+    ++nodeModulesCheckCounter > 10000 ||
+    (!getOptionValue("--pending-deprecation") &&
+      op_node_call_is_from_dependency())
+  ) {
+    // We don't emit a warning, because we either:
+    // - Already did so, or
+    // - Already checked too many times whether a call is coming
+    //   from dependencies and want to stop slowing down things, or
+    // - We aren't running with `--pending-deprecation` enabled,
+    //   and the code is inside `node_modules`.
+    return;
+  }
+
+  process.emitWarning(bufferWarning, "DeprecationWarning", "DEP0005");
+  bufferWarningAlreadyEmitted = true;
+}
+
+class FastBuffer extends Uint8Array {
+  constructor(arg0, arg1, arg2) {
+    super(arg0, arg1, arg2);
+  }
+}
+
+FastBuffer.prototype.constructor = Buffer;
+Buffer.prototype = FastBuffer.prototype;
+
+ObjectDefineProperty(Buffer, SymbolSpecies, {
+  __proto__: null,
+  enumerable: false,
+  configurable: true,
+  get() {
+    return FastBuffer;
+  },
+});
 
 ObjectDefineProperty(Buffer.prototype, "parent", {
   __proto__: null,
@@ -154,9 +219,8 @@ function createBuffer(length) {
       'The value "' + length + '" is invalid for option "size"',
     );
   }
-  const buf = new Uint8Array(length);
-  ObjectSetPrototypeOf(buf, BufferPrototype);
-  return buf;
+
+  return new FastBuffer(length);
 }
 
 /**
@@ -171,6 +235,7 @@ function isDetachedBuffer(O) {
 }
 
 export function Buffer(arg, encodingOrOffset, length) {
+  showFlaggedDeprecation();
   if (typeof arg === "number") {
     if (typeof encodingOrOffset === "string") {
       throw new codes.ERR_INVALID_ARG_TYPE(
@@ -184,7 +249,25 @@ export function Buffer(arg, encodingOrOffset, length) {
   return _from(arg, encodingOrOffset, length);
 }
 
-Buffer.poolSize = 8192;
+Buffer.poolSize = 8 * 1024;
+let poolSize, poolOffset, allocPool, allocBuffer;
+
+function createPool() {
+  poolSize = Buffer.poolSize;
+  allocBuffer = new Uint8Array(poolSize);
+  allocPool = TypedArrayPrototypeGetBuffer(allocBuffer);
+  allocPool[untransferableSymbol] = true;
+  poolOffset = 0;
+}
+createPool();
+
+function alignPool() {
+  // Ensure aligned slices
+  if (poolOffset & 0x7) {
+    poolOffset |= 0x7;
+    poolOffset++;
+  }
+}
 
 function _from(value, encodingOrOffset, length) {
   if (typeof value === "string") {
@@ -281,6 +364,21 @@ ObjectSetPrototypeOf(Buffer.prototype, Uint8ArrayPrototype);
 
 ObjectSetPrototypeOf(Buffer, Uint8Array);
 
+// Identical to the built-in %TypedArray%.of(), but avoids using the deprecated
+// Buffer() constructor. Must use arrow function syntax to avoid automatically
+// adding a `prototype` property and making the function a constructor.
+//
+// Refs: https://tc39.github.io/ecma262/#sec-%typedarray%.of
+// Refs: https://esdiscuss.org/topic/isconstructor#content-11
+const of = (...items) => {
+  const newObj = createBuffer(items.length);
+  for (let k = 0; k < items.length; k++) {
+    newObj[k] = items[k];
+  }
+  return newObj;
+};
+Buffer.of = of;
+
 function assertSize(size) {
   validateNumber(size, "size", 0, kMaxLength);
 }
@@ -327,20 +425,36 @@ function fromString(string, encoding) {
   if (!BufferIsEncoding(encoding)) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
+  const maxLength = Buffer.poolSize >>> 1;
   const length = byteLength(string, encoding) | 0;
-  let buf = createBuffer(length);
-  const actual = buf.write(string, encoding);
-  if (actual !== length) {
-    // deno-lint-ignore prefer-primordials
-    buf = buf.slice(0, actual);
+  if (length >= maxLength) {
+    let buf = createBuffer(length);
+    const actual = buf.write(string, encoding);
+    if (actual !== length) {
+      // deno-lint-ignore prefer-primordials
+      buf = buf.slice(0, actual);
+    }
+    return buf;
   }
-  return buf;
+
+  if (length > (poolSize - poolOffset)) {
+    createPool();
+  }
+  const ops = getEncodingOps(encoding);
+  let b = new FastBuffer(allocPool, poolOffset, length);
+  const actual = ops.write(b, string, 0, length);
+  if (actual !== length) {
+    // byteLength() may overestimate the length, so we slice it down.
+    b = new FastBuffer(allocPool, poolOffset, actual);
+  }
+
+  poolOffset += actual;
+  alignPool();
+  return b;
 }
 
 function fromArrayLike(obj) {
-  const buf = new Uint8Array(obj);
-  ObjectSetPrototypeOf(buf, BufferPrototype);
-  return buf;
+  return new FastBuffer(obj);
 }
 
 function fromObject(obj) {
@@ -378,29 +492,18 @@ ObjectSetPrototypeOf(SlowBuffer.prototype, Uint8ArrayPrototype);
 ObjectSetPrototypeOf(SlowBuffer, Uint8Array);
 
 const BufferIsBuffer = Buffer.isBuffer = function isBuffer(b) {
-  return b != null && b._isBuffer === true && b !== BufferPrototype;
+  return ObjectPrototypeIsPrototypeOf(Buffer.prototype, b);
 };
 
 const BufferCompare = Buffer.compare = function compare(a, b) {
-  if (isUint8Array(a)) {
-    a = BufferFrom(
-      a,
-      TypedArrayPrototypeGetByteOffset(a),
-      TypedArrayPrototypeGetByteLength(a),
-    );
+  if (!isUint8Array(a)) {
+    throw new codes.ERR_INVALID_ARG_TYPE("buf1", ["Buffer", "Uint8Array"], a);
   }
-  if (isUint8Array(b)) {
-    b = BufferFrom(
-      b,
-      TypedArrayPrototypeGetByteOffset(b),
-      TypedArrayPrototypeGetByteLength(b),
-    );
+
+  if (!isUint8Array(b)) {
+    throw new ERR_INVALID_ARG_TYPE("buf2", ["Buffer", "Uint8Array"], b);
   }
-  if (!BufferIsBuffer(a) || !BufferIsBuffer(b)) {
-    throw new TypeError(
-      'The "buf1", "buf2" arguments must be one of type Buffer or Uint8Array',
-    );
-  }
+
   if (a === b) {
     return 0;
   }
@@ -620,19 +723,45 @@ const SPACER_PATTERN = new SafeRegExp(/(.{2})/g);
 
 Buffer.prototype[customInspectSymbol] =
   Buffer.prototype.inspect =
-    function inspect() {
+    function inspect(_, ctx) {
       let str = "";
-      const max = INSPECT_MAX_BYTES;
       str = StringPrototypeTrim(
         StringPrototypeReplace(
           // deno-lint-ignore prefer-primordials
-          this.toString("hex", 0, max),
+          this.toString("hex", 0, INSPECT_MAX_BYTES_),
           SPACER_PATTERN,
           "$1 ",
         ),
       );
-      if (this.length > max) {
-        str += " ... ";
+      if (this.length > INSPECT_MAX_BYTES_) {
+        const remaining = this.length - INSPECT_MAX_BYTES_;
+        str += ` ... ${remaining} more byte${remaining > 1 ? "s" : ""}`;
+      }
+      // Inspect special properties as well, if possible.
+      if (ctx) {
+        let extras = false;
+        const filter = ctx.showHidden ? ALL_PROPERTIES : ONLY_ENUMERABLE;
+        const obj = { __proto__: null };
+        ArrayPrototypeForEach(getOwnNonIndexProperties(this, filter), (key) => {
+          extras = true;
+          obj[key] = this[key];
+        });
+        if (extras) {
+          if (this.length !== 0) {
+            str += ", ";
+          }
+          // '[Object: null prototype] {'.length === 26
+          // This is guarded with a test.
+          str += StringPrototypeSlice(
+            utilInspect(obj, {
+              ...ctx,
+              breakLength: Infinity,
+              compact: true,
+            }),
+            27,
+            -2,
+          );
+        }
       }
       return "<Buffer " + str + ">";
     };
@@ -803,6 +932,15 @@ Buffer.prototype.asciiSlice = function asciiSlice(offset, length) {
 };
 
 Buffer.prototype.asciiWrite = function asciiWrite(string, offset, length) {
+  // deno-lint-ignore prefer-primordials
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  // deno-lint-ignore prefer-primordials
+  if (length < 0 || length > this.byteLength - offset) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
   return blitBuffer(asciiToBytes(string), this, offset, length);
 };
 
@@ -874,6 +1012,15 @@ Buffer.prototype.latin1Write = function latin1Write(
   offset,
   length,
 ) {
+  // deno-lint-ignore prefer-primordials
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  // deno-lint-ignore prefer-primordials
+  if (length < 0 || length > this.byteLength - offset) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
   return blitBuffer(asciiToBytes(string), this, offset, length);
 };
 
@@ -899,6 +1046,15 @@ Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
 };
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
+  // deno-lint-ignore prefer-primordials
+  if (offset < 0 || offset > this.byteLength) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
+  }
+  // deno-lint-ignore prefer-primordials
+  if (length < 0 || length > this.byteLength - offset) {
+    throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("length");
+  }
+
   offset = offset || 0;
   const maxLength = MathMin(length || Infinity, this.length - offset);
   const buf = offset || maxLength < this.length
@@ -975,9 +1131,7 @@ function fromArrayBuffer(obj, byteOffset, length) {
     throw new codes.ERR_BUFFER_OUT_OF_BOUNDS("offset");
   }
 
-  if (length === undefined) {
-    length = maxLength;
-  } else {
+  if (length !== undefined) {
     // Convert length to non-negative integer.
     length = +length;
     if (length > 0) {
@@ -989,9 +1143,7 @@ function fromArrayBuffer(obj, byteOffset, length) {
     }
   }
 
-  const buffer = new Uint8Array(obj, byteOffset, length);
-  ObjectSetPrototypeOf(buffer, BufferPrototype);
-  return buffer;
+  return new FastBuffer(obj, byteOffset, length);
 }
 
 function _base64Slice(buf, start, end) {
@@ -1002,8 +1154,7 @@ function _base64Slice(buf, start, end) {
     return forgivingBase64Encode(buf.slice(start, end));
   }
 }
-
-const decoder = new TextDecoder();
+const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 function _utf8Slice(buf, start, end) {
   try {
@@ -1763,10 +1914,10 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
       end = this.length;
     }
     if (encoding !== void 0 && typeof encoding !== "string") {
-      throw new TypeError("encoding must be a string");
+      throw new codes.ERR_INVALID_ARG_TYPE("encoding", "string", encoding);
     }
     if (typeof encoding === "string" && !BufferIsEncoding(encoding)) {
-      throw new TypeError("Unknown encoding: " + encoding);
+      throw new codes.ERR_UNKNOWN_ENCODING(encoding);
     }
     if (val.length === 1) {
       const code = StringPrototypeCharCodeAt(val, 0);
@@ -1779,6 +1930,19 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
   } else if (typeof val === "boolean") {
     val = Number(val);
   }
+
+  if (typeof start === "string") {
+    encoding = start;
+    start = 0;
+    end = this.length;
+  }
+  if (start !== undefined) {
+    validateNumber(start, "start", 0, kMaxLength);
+    if (end !== undefined) {
+      validateNumber(end, "end", 0, this.length);
+    }
+  }
+
   if (start < 0 || this.length < start || this.length < end) {
     throw new RangeError("Out of range index");
   }
@@ -1792,10 +1956,24 @@ Buffer.prototype.fill = function fill(val, start, end, encoding) {
   }
   let i;
   if (typeof val === "number") {
+    // OOB check
+    const byteLen = TypedArrayPrototypeGetByteLength(this);
+    const fillLength = end - start;
+    if (start > end || fillLength + start > byteLen) {
+      throw new codes.ERR_BUFFER_OUT_OF_BOUNDS();
+    }
+
     for (i = start; i < end; ++i) {
       this[i] = val;
     }
   } else {
+    if (typeof val !== "string" && !isArrayBufferView(val)) {
+      val = Number(val) & 255;
+      for (i = start; i < end; ++i) {
+        this[i] = val;
+      }
+      return this;
+    }
     const bytes = BufferIsBuffer(val) ? val : BufferFrom(val, encoding);
     const len = bytes.length;
     if (len === 0) {
@@ -2777,7 +2955,7 @@ export function transcode(source, fromEnco, toEnco) {
   }
 }
 
-export default {
+const mod = {
   atob,
   btoa,
   Blob,
@@ -2785,9 +2963,21 @@ export default {
   constants,
   isAscii,
   isUtf8,
-  INSPECT_MAX_BYTES,
+  get INSPECT_MAX_BYTES() {
+    return INSPECT_MAX_BYTES_;
+  },
+  set INSPECT_MAX_BYTES(val) {
+    validateNumber(val, "INSPECT_MAX_BYTES", 0);
+    INSPECT_MAX_BYTES_ = val;
+  },
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,
   transcode,
 };
+
+// NB(bartlomieju): we want to have a default exports from this module for ES imports,
+// as well as make it work with `require` in such a way that getters/setters
+// for `INSPECT_MAX_BYTES` work correctly - using `as "module.exports"` ensures
+// that `require`ing this module does that.
+export { mod as "module.exports", mod as default };

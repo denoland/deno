@@ -15,46 +15,46 @@ use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
-use deno_config::deno_json::TsConfig;
-use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceCache;
-use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
-use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm_cache::NpmCacheSetting;
+use deno_npm_installer::LifecycleScriptsConfig;
+use deno_npm_installer::NpmInstallerFactory;
+use deno_npm_installer::NpmInstallerFactoryOptions;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
-use deno_resolver::npmrc::discover_npmrc_from_workspace;
-use deno_resolver::workspace::CreateResolverOptions;
-use deno_resolver::workspace::FsCacheOptions;
-use deno_resolver::workspace::PackageJsonDepResolution;
-use deno_resolver::workspace::SloppyImportsOptions;
+use deno_resolver::factory::ConfigDiscoveryOption;
+use deno_resolver::factory::ResolverFactory;
+use deno_resolver::factory::ResolverFactoryOptions;
+use deno_resolver::factory::WorkspaceFactory;
+use deno_resolver::factory::WorkspaceFactoryOptions;
 use deno_resolver::workspace::SpecifiedImportMap;
-use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
 use lsp_types::Uri;
+use node_resolver::NodeResolverOptions;
 use tower_lsp::lsp_types as lsp;
 
 use super::logging::lsp_log;
@@ -62,18 +62,16 @@ use super::lsp_custom;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::CliLockfile;
-use crate::args::CliLockfileReadFromPathOptions;
 use crate::args::ConfigFile;
-use crate::args::LintFlags;
-use crate::args::LintOptions;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
+use crate::http_util::HttpClientProvider;
 use crate::lsp::logging::lsp_warn;
+use crate::npm::CliNpmCacheHttpClient;
 use crate::sys::CliSys;
-use crate::tools::lint::CliLinter;
-use crate::tools::lint::CliLinterOptions;
-use crate::tools::lint::LintRuleProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
@@ -689,7 +687,9 @@ impl WorkspaceSettings {
       let inlay_hints: InlayHintsSettings =
         parse_or_default(inlay_hints, "settings under \"deno.inlayHints\"");
       if inlay_hints.parameter_names.enabled != Default::default() {
-        lsp_warn!("\"deno.inlayHints.parameterNames.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.enabled\" and \"typescript.inlayHints.parameterNames.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.parameterNames.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.enabled\" and \"typescript.inlayHints.parameterNames.enabled\"."
+        );
         settings.javascript.inlay_hints.parameter_names.enabled =
           inlay_hints.parameter_names.enabled.clone();
         settings.typescript.inlay_hints.parameter_names.enabled =
@@ -699,7 +699,9 @@ impl WorkspaceSettings {
         .parameter_names
         .suppress_when_argument_matches_name
       {
-        lsp_warn!("\"deno.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" and \"typescript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\".");
+        lsp_warn!(
+          "\"deno.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" is deprecated. Instead use \"javascript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\" and \"typescript.inlayHints.parameterNames.suppressWhenArgumentMatchesName\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -716,21 +718,27 @@ impl WorkspaceSettings {
           .suppress_when_argument_matches_name;
       }
       if inlay_hints.parameter_types.enabled {
-        lsp_warn!("\"deno.inlayHints.parameterTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterTypes.enabled\" and \"typescript.inlayHints.parameterTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.parameterTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.parameterTypes.enabled\" and \"typescript.inlayHints.parameterTypes.enabled\"."
+        );
         settings.javascript.inlay_hints.parameter_types.enabled =
           inlay_hints.parameter_types.enabled;
         settings.typescript.inlay_hints.parameter_types.enabled =
           inlay_hints.parameter_types.enabled;
       }
       if inlay_hints.variable_types.enabled {
-        lsp_warn!("\"deno.inlayHints.variableTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.enabled\" and \"typescript.inlayHints.variableTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.variableTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.enabled\" and \"typescript.inlayHints.variableTypes.enabled\"."
+        );
         settings.javascript.inlay_hints.variable_types.enabled =
           inlay_hints.variable_types.enabled;
         settings.typescript.inlay_hints.variable_types.enabled =
           inlay_hints.variable_types.enabled;
       }
       if !inlay_hints.variable_types.suppress_when_type_matches_name {
-        lsp_warn!("\"deno.inlayHints.variableTypes.suppressWhenTypeMatchesName\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.suppressWhenTypeMatchesName\" and \"typescript.inlayHints.variableTypes.suppressWhenTypeMatchesName\".");
+        lsp_warn!(
+          "\"deno.inlayHints.variableTypes.suppressWhenTypeMatchesName\" is deprecated. Instead use \"javascript.inlayHints.variableTypes.suppressWhenTypeMatchesName\" and \"typescript.inlayHints.variableTypes.suppressWhenTypeMatchesName\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -745,7 +753,9 @@ impl WorkspaceSettings {
           inlay_hints.variable_types.suppress_when_type_matches_name;
       }
       if inlay_hints.property_declaration_types.enabled {
-        lsp_warn!("\"deno.inlayHints.propertyDeclarationTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.propertyDeclarationTypes.enabled\" and \"typescript.inlayHints.propertyDeclarationTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.propertyDeclarationTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.propertyDeclarationTypes.enabled\" and \"typescript.inlayHints.propertyDeclarationTypes.enabled\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -758,7 +768,9 @@ impl WorkspaceSettings {
           .enabled = inlay_hints.property_declaration_types.enabled;
       }
       if inlay_hints.function_like_return_types.enabled {
-        lsp_warn!("\"deno.inlayHints.functionLikeReturnTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.functionLikeReturnTypes.enabled\" and \"typescript.inlayHints.functionLikeReturnTypes.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.functionLikeReturnTypes.enabled\" is deprecated. Instead use \"javascript.inlayHints.functionLikeReturnTypes.enabled\" and \"typescript.inlayHints.functionLikeReturnTypes.enabled\"."
+        );
         settings
           .javascript
           .inlay_hints
@@ -771,7 +783,9 @@ impl WorkspaceSettings {
           .enabled = inlay_hints.function_like_return_types.enabled;
       }
       if inlay_hints.enum_member_values.enabled {
-        lsp_warn!("\"deno.inlayHints.enumMemberValues.enabled\" is deprecated. Instead use \"javascript.inlayHints.enumMemberValues.enabled\" and \"typescript.inlayHints.enumMemberValues.enabled\".");
+        lsp_warn!(
+          "\"deno.inlayHints.enumMemberValues.enabled\" is deprecated. Instead use \"javascript.inlayHints.enumMemberValues.enabled\" and \"typescript.inlayHints.enumMemberValues.enabled\"."
+        );
         settings.javascript.inlay_hints.enum_member_values.enabled =
           inlay_hints.enum_member_values.enabled;
         settings.typescript.inlay_hints.enum_member_values.enabled =
@@ -782,24 +796,32 @@ impl WorkspaceSettings {
       let suggest: CompletionSettings =
         parse_or_default(suggest, "settings under \"deno.suggest\"");
       if suggest.complete_function_calls {
-        lsp_warn!("\"deno.suggest.completeFunctionCalls\" is deprecated. Instead use \"javascript.suggest.completeFunctionCalls\" and \"typescript.suggest.completeFunctionCalls\".");
+        lsp_warn!(
+          "\"deno.suggest.completeFunctionCalls\" is deprecated. Instead use \"javascript.suggest.completeFunctionCalls\" and \"typescript.suggest.completeFunctionCalls\"."
+        );
         settings.javascript.suggest.complete_function_calls =
           suggest.complete_function_calls;
         settings.typescript.suggest.complete_function_calls =
           suggest.complete_function_calls;
       }
       if !suggest.names {
-        lsp_warn!("\"deno.suggest.names\" is deprecated. Instead use \"javascript.suggest.names\" and \"typescript.suggest.names\".");
+        lsp_warn!(
+          "\"deno.suggest.names\" is deprecated. Instead use \"javascript.suggest.names\" and \"typescript.suggest.names\"."
+        );
         settings.javascript.suggest.names = suggest.names;
         settings.typescript.suggest.names = suggest.names;
       }
       if !suggest.paths {
-        lsp_warn!("\"deno.suggest.paths\" is deprecated. Instead use \"javascript.suggest.paths\" and \"typescript.suggest.paths\".");
+        lsp_warn!(
+          "\"deno.suggest.paths\" is deprecated. Instead use \"javascript.suggest.paths\" and \"typescript.suggest.paths\"."
+        );
         settings.javascript.suggest.paths = suggest.paths;
         settings.typescript.suggest.paths = suggest.paths;
       }
       if !suggest.auto_imports {
-        lsp_warn!("\"deno.suggest.autoImports\" is deprecated. Instead use \"javascript.suggest.autoImports\" and \"typescript.suggest.autoImports\".");
+        lsp_warn!(
+          "\"deno.suggest.autoImports\" is deprecated. Instead use \"javascript.suggest.autoImports\" and \"typescript.suggest.autoImports\"."
+        );
         settings.javascript.suggest.auto_imports = suggest.auto_imports;
         settings.typescript.suggest.auto_imports = suggest.auto_imports;
       }
@@ -950,7 +972,7 @@ impl Config {
     let mut folders = vec![];
     for root_url in root_urls {
       let root_uri = url_to_uri(&root_url).unwrap();
-      let name = root_url.path_segments().and_then(|s| s.last());
+      let name = root_url.path_segments().and_then(|mut s| s.next_back());
       let name = name.unwrap_or_default().to_string();
       folders.push((
         Arc::new(root_url),
@@ -1184,48 +1206,6 @@ impl Config {
   }
 }
 
-#[derive(Debug, Serialize)]
-pub struct LspTsConfig {
-  #[serde(flatten)]
-  inner: TsConfig,
-}
-
-impl Default for LspTsConfig {
-  fn default() -> Self {
-    Self {
-      inner: TsConfig::new(json!({
-        "allowJs": true,
-        "esModuleInterop": true,
-        "experimentalDecorators": false,
-        "isolatedModules": true,
-        "lib": ["deno.ns", "deno.window", "deno.unstable"],
-        "module": "esnext",
-        "moduleDetection": "force",
-        "noEmit": true,
-        "noImplicitOverride": true,
-        "resolveJsonModule": true,
-        "strict": true,
-        "target": "esnext",
-        "useDefineForClassFields": true,
-        "jsx": "react",
-        "jsxFactory": "React.createElement",
-        "jsxFragmentFactory": "React.Fragment",
-      })),
-    }
-  }
-}
-
-impl LspTsConfig {
-  pub fn new(raw_ts_config: TsConfigWithIgnoredOptions) -> Self {
-    let mut base_ts_config = Self::default();
-    for ignored_options in &raw_ts_config.ignored_options {
-      lsp_warn!("{}", ignored_options)
-    }
-    base_ts_config.inner.merge_mut(raw_ts_config.ts_config);
-    base_ts_config
-  }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigWatchedFileType {
   DenoJson,
@@ -1242,18 +1222,15 @@ pub struct ConfigData {
   pub canonicalized_scope: Option<Arc<ModuleSpecifier>>,
   pub member_dir: Arc<WorkspaceDirectory>,
   pub fmt_config: Arc<FmtConfig>,
-  pub lint_config: Arc<WorkspaceDirLintConfig>,
   pub test_config: Arc<TestConfig>,
   pub exclude_files: Arc<PathOrPatternSet>,
-  pub linter: Arc<CliLinter>,
-  pub ts_config: Arc<LspTsConfig>,
   pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
-  pub resolver: Arc<WorkspaceResolver<CliSys>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
+  pub specified_import_map: Option<SpecifiedImportMap>,
   pub unstable: BTreeSet<String>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
@@ -1265,13 +1242,11 @@ impl ConfigData {
     scope: &Arc<Url>,
     settings: &Settings,
     file_fetcher: &Arc<CliFileFetcher>,
+    http_client_provider: &Arc<HttpClientProvider>,
     // sync requirement is because the lsp requires sync
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
-    lockfile_package_info_provider: &Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
   ) -> Self {
     let scope = scope.clone();
     let discover_result = match scope.to_file_path() {
@@ -1310,7 +1285,7 @@ impl ConfigData {
           scope,
           settings,
           Some(file_fetcher),
-          lockfile_package_info_provider,
+          Some(http_client_provider),
         )
         .await
       }
@@ -1326,7 +1301,7 @@ impl ConfigData {
           scope.clone(),
           settings,
           Some(file_fetcher),
-          lockfile_package_info_provider,
+          Some(http_client_provider),
         )
         .await;
         // check if any of these need to be added to the workspace
@@ -1369,9 +1344,7 @@ impl ConfigData {
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
     file_fetcher: Option<&Arc<CliFileFetcher>>,
-    lockfile_package_info_provider: &Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
+    http_client_provider: Option<&Arc<HttpClientProvider>>,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1421,23 +1394,97 @@ impl ConfigData {
       );
     }
 
-    // todo(dsherret): cache this so we don't load this so many times
-    let npmrc =
-      discover_npmrc_from_workspace(&CliSys::default(), &member_dir.workspace)
-        .inspect(|(_, path)| {
-          if let Some(path) = path {
-            lsp_log!("  Resolved .npmrc: \"{}\"", path.display());
+    let node_modules_dir =
+      member_dir.workspace.node_modules_dir().unwrap_or_default();
+    let byonm = match node_modules_dir {
+      Some(mode) => mode == NodeModulesDirMode::Manual,
+      None => member_dir.workspace.root_pkg_json().is_some(),
+    };
+    if byonm {
+      lsp_log!("  Enabled 'bring your own node_modules'.");
+    }
 
-            if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-              add_watched_file(specifier, ConfigWatchedFileType::NpmRc);
-            }
+    // todo(dsherret): cache this so we don't load this so many times
+    // and additionally we should move this up to a higher level
+    let mut workspace_factory = WorkspaceFactory::new(
+      CliSys::default(),
+      member_dir.dir_path(),
+      WorkspaceFactoryOptions {
+        additional_config_file_names: &[],
+        config_discovery: ConfigDiscoveryOption::DiscoverCwd,
+        maybe_custom_deno_dir_root: None,
+        is_package_manager_subcommand: false,
+        frozen_lockfile: None,
+        lock_arg: None,
+        lockfile_skip_write: false,
+        node_modules_dir: Some(resolve_node_modules_dir_mode(
+          &member_dir.workspace,
+          byonm,
+        )),
+        no_lock: false,
+        no_npm: false,
+        npm_process_state: None,
+        vendor: None,
+      },
+    );
+    workspace_factory.set_workspace_directory(member_dir.clone());
+    let resolver_factory = ResolverFactory::new(
+      Arc::new(workspace_factory),
+      ResolverFactoryOptions {
+        // these default options are fine because we don't use this for
+        // anything other than resolving the lockfile at the moment
+        compiler_options_overrides: Default::default(),
+        is_cjs_resolution_mode: Default::default(),
+        npm_system_info: Default::default(),
+        node_code_translator_mode: Default::default(),
+        node_resolver_options: NodeResolverOptions::default(),
+        node_analysis_cache: None,
+        node_resolution_cache: None,
+        package_json_cache: None,
+        package_json_dep_resolution: None,
+        specified_import_map: None,
+        bare_node_builtins: false,
+        unstable_sloppy_imports: false,
+        on_mapped_resolution_diagnostic: None,
+      },
+    );
+    let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
+    let npm_installer_factory = NpmInstallerFactory::new(
+      Arc::new(resolver_factory),
+      Arc::new(CliNpmCacheHttpClient::new(
+        http_client_provider
+          .cloned()
+          // will only happen in the tests
+          .unwrap_or_else(|| Arc::new(HttpClientProvider::new(None, None))),
+        pb.clone(),
+      )),
+      Arc::new(NullLifecycleScriptsExecutor),
+      pb,
+      NpmInstallerFactoryOptions {
+        cache_setting: NpmCacheSetting::Use,
+        caching_strategy: NpmCachingStrategy::Eager,
+        lifecycle_scripts_config: LifecycleScriptsConfig::default(),
+        resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
+      },
+    );
+
+    let npmrc = npm_installer_factory
+      .workspace_factory()
+      .npmrc_with_path()
+      .inspect(|(_, path)| {
+        if let Some(path) = path {
+          lsp_log!("  Resolved .npmrc: \"{}\"", path.display());
+
+          if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+            add_watched_file(specifier, ConfigWatchedFileType::NpmRc);
           }
-        })
-        .inspect_err(|err| {
-          lsp_warn!("  Couldn't read .npmrc for \"{scope}\": {err}");
-        })
-        .map(|(r, _)| Arc::new(r))
-        .ok();
+        }
+      })
+      .inspect_err(|err| {
+        lsp_warn!("  Couldn't read .npmrc for \"{scope}\": {err}");
+      })
+      .ok()
+      .map(|value| value.0.clone());
     let default_file_pattern_base =
       scope.to_file_path().unwrap_or_else(|_| PathBuf::from("/"));
     let fmt_config = Arc::new(
@@ -1449,19 +1496,6 @@ impl ConfigData {
         .ok()
         .unwrap_or_else(|| {
           FmtConfig::new_with_base(default_file_pattern_base.clone())
-        }),
-    );
-    let lint_config = Arc::new(
-      member_dir
-        .to_lint_config(FilePatterns::new_with_base(member_dir.dir_path()))
-        .inspect_err(|err| {
-          lsp_warn!("  Couldn't read lint configuration: {}", err)
-        })
-        .ok()
-        .unwrap_or_else(|| WorkspaceDirLintConfig {
-          rules: Default::default(),
-          plugins: Default::default(),
-          files: FilePatterns::new_with_base(default_file_pattern_base.clone()),
         }),
     );
 
@@ -1487,59 +1521,34 @@ impl ConfigData {
         .unwrap_or_default(),
     );
 
-    let ts_config = member_dir
-      .to_raw_user_provided_tsconfig(&CliSys::default())
-      .map(LspTsConfig::new)
-      .unwrap_or_default();
-
-    let deno_lint_config =
-      if ts_config.inner.0.get("jsx").and_then(|v| v.as_str()) == Some("react")
-      {
-        let default_jsx_factory =
-          ts_config.inner.0.get("jsxFactory").and_then(|v| v.as_str());
-        let default_jsx_fragment_factory = ts_config
-          .inner
-          .0
-          .get("jsxFragmentFactory")
-          .and_then(|v| v.as_str());
-        DenoLintConfig {
-          default_jsx_factory: default_jsx_factory.map(String::from),
-          default_jsx_fragment_factory: default_jsx_fragment_factory
-            .map(String::from),
-        }
-      } else {
-        DenoLintConfig {
-          default_jsx_factory: None,
-          default_jsx_fragment_factory: None,
-        }
-      };
-
     let vendor_dir = member_dir.workspace.vendor_dir_path().cloned();
-    // todo(dsherret): add caching so we don't load this so many times
-    let lockfile = resolve_lockfile_from_workspace(
-      &member_dir,
-      lockfile_package_info_provider,
-    )
-    .await
-    .map(Arc::new);
+    // todo(dsherret): maybe add caching so we don't load this so many times
+    let lockfile = npm_installer_factory
+      .maybe_lockfile()
+      .await
+      .inspect_err(|err| {
+        lsp_warn!("Error loading lockfile: {:#}", err);
+      })
+      .ok()
+      .flatten()
+      .cloned();
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
+        lsp_log!("  Resolved lockfile: \"{}\"", specifier);
         add_watched_file(specifier, ConfigWatchedFileType::Lockfile);
       }
     }
 
-    let node_modules_dir =
-      member_dir.workspace.node_modules_dir().unwrap_or_default();
-    let byonm = match node_modules_dir {
-      Some(mode) => mode == NodeModulesDirMode::Manual,
-      None => member_dir.workspace.root_pkg_json().is_some(),
-    };
-    if byonm {
-      lsp_log!("  Enabled 'bring your own node_modules'.");
-    }
-    let node_modules_dir =
-      resolve_node_modules_dir(&member_dir.workspace, byonm);
+    let node_modules_dir = npm_installer_factory
+      .workspace_factory()
+      .node_modules_dir_path()
+      .inspect_err(|err| {
+        lsp_warn!("Failed resolving node_modules directory: {:#}", err);
+      })
+      .ok()
+      .flatten()
+      .map(|p| p.to_path_buf());
 
     // Mark the import map as a watched file
     if let Some(import_map_specifier) = member_dir
@@ -1554,13 +1563,6 @@ impl ConfigData {
         ConfigWatchedFileType::ImportMap,
       );
     }
-    // attempt to create a resolver for the workspace
-    let pkg_json_dep_resolution = if byonm {
-      PackageJsonDepResolution::Disabled
-    } else {
-      // todo(dsherret): this should be false for nodeModulesDir: true
-      PackageJsonDepResolution::Enabled
-    };
     let mut import_map_from_settings = {
       let is_config_import_map = member_dir
         .maybe_deno_json()
@@ -1608,7 +1610,7 @@ impl ConfigData {
           .fetch_bypass_permissions(import_map_url)
           .await;
 
-        let value_result = fetch_result.and_then(|f| {
+        let value_result = fetch_result.map_err(AnyError::from).and_then(|f| {
           serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
         });
         match value_result {
@@ -1637,116 +1639,21 @@ impl ConfigData {
       .chain(settings.unstable.as_deref())
       .cloned()
       .collect::<BTreeSet<_>>();
-    let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
-      .is_ok()
-      || unstable.contains("sloppy-imports");
-    let resolver = WorkspaceResolver::from_workspace(
-      &member_dir.workspace,
-      CliSys::default(),
-      CreateResolverOptions {
-        pkg_json_dep_resolution,
-        specified_import_map,
-        sloppy_imports_options: if unstable_sloppy_imports {
-          SloppyImportsOptions::Enabled
-        } else {
-          SloppyImportsOptions::Disabled
-        },
-        fs_cache_options: FsCacheOptions::Disabled,
-      },
-    )
-    .inspect_err(|err| {
-      lsp_warn!(
-        "  Failed to load resolver: {}",
-        err // will contain the specifier
-      );
-    })
-    .ok()
-    .unwrap_or_else(|| {
-      // create a dummy resolver
-      WorkspaceResolver::new_raw(
-        scope.clone(),
-        None,
-        member_dir.workspace.resolver_jsr_pkgs().collect(),
-        member_dir.workspace.package_jsons().cloned().collect(),
-        pkg_json_dep_resolution,
-        Default::default(),
-        Default::default(),
-        Default::default(),
-        Default::default(),
-        CliSys::default(),
-      )
-    });
-    if !resolver.diagnostics().is_empty() {
-      lsp_warn!(
-        "  Resolver diagnostics:\n{}",
-        resolver
-          .diagnostics()
-          .iter()
-          .map(|d| format!("    - {d}"))
-          .collect::<Vec<_>>()
-          .join("\n")
-      );
-    }
-    let resolver = Arc::new(resolver);
-    let lint_rule_provider = LintRuleProvider::new(Some(resolver.clone()));
-
-    let lint_options =
-      LintOptions::resolve((*lint_config).clone(), &LintFlags::default())
-        .inspect_err(|err| {
-          lsp_warn!("  Failed to resolve linter options: {}", err)
-        })
-        .ok()
-        .unwrap_or_default();
-    let mut plugin_runner = None;
-    if !lint_options.plugins.is_empty() {
-      fn logger_printer(msg: &str, _is_err: bool) {
-        lsp_log!("pluggin runner - {}", msg);
-      }
-      let logger = crate::tools::lint::PluginLogger::new(logger_printer);
-      let plugin_load_result =
-        crate::tools::lint::create_runner_and_load_plugins(
-          lint_options.plugins.clone(),
-          logger,
-          lint_options.rules.exclude.clone(),
-        )
-        .await;
-      match plugin_load_result {
-        Ok(runner) => {
-          plugin_runner = Some(Arc::new(runner));
-        }
-        Err(err) => {
-          lsp_warn!("Failed to load lint plugins: {}", err);
-        }
-      }
-    }
-
-    let linter = Arc::new(CliLinter::new(CliLinterOptions {
-      configured_rules: lint_rule_provider.resolve_lint_rules(
-        lint_options.rules,
-        member_dir.maybe_deno_json().map(|c| c.as_ref()),
-      ),
-      fix: false,
-      deno_lint_config,
-      maybe_plugin_runner: plugin_runner,
-    }));
 
     ConfigData {
       scope,
       canonicalized_scope,
       member_dir,
-      resolver,
       fmt_config,
-      lint_config,
       test_config,
-      linter,
       exclude_files,
-      ts_config: Arc::new(ts_config),
       byonm,
       node_modules_dir,
       vendor_dir,
       lockfile,
       npmrc,
       import_map_from_settings,
+      specified_import_map,
       unstable,
       watched_files,
     }
@@ -1760,16 +1667,6 @@ impl ConfigData {
 
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
     self.member_dir.maybe_pkg_json()
-  }
-
-  pub fn maybe_jsx_import_source_config(
-    &self,
-  ) -> Option<JsxImportSourceConfig> {
-    self
-      .member_dir
-      .to_maybe_jsx_import_source_config()
-      .ok()
-      .flatten()
   }
 
   pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
@@ -1932,10 +1829,8 @@ impl ConfigTree {
     settings: &Settings,
     workspace_files: &IndexSet<PathBuf>,
     file_fetcher: &Arc<CliFileFetcher>,
+    http_client_provider: &Arc<HttpClientProvider>,
     deno_dir: &DenoDir,
-    lockfile_package_info_provider: &Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -1945,7 +1840,15 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    for (folder_url, ws_settings) in &settings.by_workspace_folder {
+    let fs_root_url = std::fs::canonicalize("/")
+      .ok()
+      .and_then(|p| Url::from_directory_path(p).ok())
+      .unwrap_or_else(|| Url::parse("file:///").unwrap());
+    for (folder_url, ws_settings) in settings
+      .by_workspace_folder
+      .iter()
+      .chain([(&Arc::new(fs_root_url), &Some(settings.unscoped.clone()))])
+    {
       let mut ws_settings = ws_settings.as_ref();
       if Some(folder_url) == settings.first_folder.as_ref() {
         ws_settings = ws_settings.or(Some(&settings.unscoped));
@@ -1965,10 +1868,10 @@ impl ConfigTree {
                 folder_url,
                 settings,
                 file_fetcher,
+                http_client_provider,
                 &deno_json_cache,
                 &pkg_json_cache,
                 &workspace_cache,
-                lockfile_package_info_provider,
               )
               .await,
             ),
@@ -1999,10 +1902,10 @@ impl ConfigTree {
           &scope,
           settings,
           file_fetcher,
+          http_client_provider,
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
-          lockfile_package_info_provider,
         )
         .await,
       );
@@ -2016,10 +1919,10 @@ impl ConfigTree {
           member_scope,
           settings,
           file_fetcher,
+          http_client_provider,
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
-          lockfile_package_info_provider,
         )
         .await;
         scopes.insert(member_scope.clone(), Arc::new(member_data));
@@ -2034,13 +1937,7 @@ impl ConfigTree {
   }
 
   #[cfg(test)]
-  pub async fn inject_config_file(
-    &mut self,
-    config_file: ConfigFile,
-    lockfile_package_info_provider: &Arc<
-      dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-    >,
-  ) {
+  pub async fn inject_config_file(&mut self, config_file: ConfigFile) {
     use sys_traits::FsCreateDirAll;
     use sys_traits::FsWrite;
 
@@ -2070,7 +1967,7 @@ impl ConfigTree {
         scope.clone(),
         &Default::default(),
         None,
-        lockfile_package_info_provider,
+        None,
       )
       .await,
     );
@@ -2079,37 +1976,10 @@ impl ConfigTree {
   }
 }
 
-async fn resolve_lockfile_from_workspace(
-  workspace: &WorkspaceDirectory,
-  lockfile_package_info_provider: &Arc<
-    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-  >,
-) -> Option<CliLockfile> {
-  let lockfile_path = match workspace.workspace.resolve_lockfile_path() {
-    Ok(Some(value)) => value,
-    Ok(None) => return None,
-    Err(err) => {
-      lsp_warn!("Error resolving lockfile: {:#}", err);
-      return None;
-    }
-  };
-  let frozen = workspace
-    .workspace
-    .root_deno_json()
-    .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
-    .unwrap_or(false);
-  resolve_lockfile_from_path(
-    lockfile_path,
-    frozen,
-    lockfile_package_info_provider,
-  )
-  .await
-}
-
-fn resolve_node_modules_dir(
+fn resolve_node_modules_dir_mode(
   workspace: &Workspace,
   byonm: bool,
-) -> Option<PathBuf> {
+) -> NodeModulesDirMode {
   // For the language server, require an explicit opt-in via the
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
@@ -2117,7 +1987,7 @@ fn resolve_node_modules_dir(
   let node_modules_mode = workspace.node_modules_dir().ok().flatten();
   let explicitly_disabled = node_modules_mode == Some(NodeModulesDirMode::None);
   if explicitly_disabled {
-    return None;
+    return NodeModulesDirMode::None;
   }
   let enabled = byonm
     || node_modules_mode
@@ -2126,48 +1996,9 @@ fn resolve_node_modules_dir(
     || workspace.vendor_dir_path().is_some();
 
   if !enabled {
-    return None;
+    return NodeModulesDirMode::None;
   }
-  let node_modules_dir = workspace
-    .root_dir()
-    .to_file_path()
-    .ok()?
-    .join("node_modules");
-  canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
-}
-
-async fn resolve_lockfile_from_path(
-  lockfile_path: PathBuf,
-  frozen: bool,
-  lockfile_package_info_provider: &Arc<
-    dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync,
-  >,
-) -> Option<CliLockfile> {
-  match CliLockfile::read_from_path(
-    &CliSys::default(),
-    CliLockfileReadFromPathOptions {
-      file_path: lockfile_path,
-      frozen,
-      skip_write: false,
-    },
-    &**lockfile_package_info_provider,
-  )
-  .await
-  {
-    Ok(value) => {
-      if value.filename.exists() {
-        if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
-        {
-          lsp_log!("  Resolved lockfile: \"{}\"", specifier);
-        }
-      }
-      Some(value)
-    }
-    Err(err) => {
-      lsp_warn!("Error loading lockfile: {:#}", err);
-      None
-    }
-  }
+  node_modules_mode.unwrap_or(NodeModulesDirMode::None)
 }
 
 // todo(dsherret): switch to RefCell once the lsp no longer requires Sync
@@ -2477,26 +2308,6 @@ mod tests {
     );
   }
 
-  struct DefaultRegistry;
-
-  #[async_trait::async_trait(?Send)]
-  impl deno_lockfile::NpmPackageInfoProvider for DefaultRegistry {
-    async fn get_npm_package_info(
-      &self,
-      values: &[deno_semver::package::PackageNv],
-    ) -> Result<
-      Vec<deno_lockfile::Lockfile5NpmInfo>,
-      Box<dyn std::error::Error + Send + Sync>,
-    > {
-      Ok(values.iter().map(|_| Default::default()).collect())
-    }
-  }
-
-  fn default_registry(
-  ) -> Arc<dyn deno_lockfile::NpmPackageInfoProvider + Send + Sync> {
-    Arc::new(DefaultRegistry)
-  }
-
   #[tokio::test]
   async fn config_enable_via_config_file_detection() {
     let root_uri = root_dir();
@@ -2507,7 +2318,6 @@ mod tests {
       .tree
       .inject_config_file(
         ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
-        &default_registry(),
       )
       .await;
     assert!(config.specifier_enabled(&root_uri));
@@ -2565,7 +2375,6 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
-        &default_registry(),
       )
       .await;
     assert!(
@@ -2591,7 +2400,6 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
-        &default_registry(),
       )
       .await;
 
@@ -2609,7 +2417,6 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
-        &default_registry(),
       )
       .await;
     assert!(

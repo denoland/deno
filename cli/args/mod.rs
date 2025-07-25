@@ -1,10 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-pub mod deno_json;
 mod flags;
 mod flags_net;
-mod lockfile;
-mod package_json;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -19,6 +16,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
+pub use deno_config::deno_json::CompilerOptions;
 pub use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
@@ -26,46 +24,41 @@ pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
-pub use deno_config::deno_json::TsConfig;
-pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
+pub use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
-use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_lib::args::CaData;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
-use deno_lib::args::CaData;
-use deno_lib::args::NPM_PROCESS_STATE;
+use deno_lib::args::npm_process_state;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
+use deno_npm_installer::LifecycleScriptsConfig;
+use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::StackString;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 pub use flags::*;
-pub use lockfile::AtomicWriteFileWithRetriesError;
-pub use lockfile::CliLockfile;
-pub use lockfile::CliLockfileReadFromPathOptions;
 use once_cell::sync::Lazy;
-pub use package_json::NpmInstallDepsProvider;
-pub use package_json::PackageJsonDepValueParseWithLocationError;
-use sys_traits::FsRead;
 use thiserror::Error;
 
 use crate::sys::CliSys;
+
+pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
 
 pub fn jsr_url() -> &'static Url {
   static JSR_URL: Lazy<Url> = Lazy::new(|| resolve_jsr_url(&CliSys::default()));
@@ -81,53 +74,6 @@ pub fn jsr_api_url() -> &'static Url {
   });
 
   &JSR_API_URL
-}
-
-#[derive(Debug, Clone)]
-pub struct ExternalImportMap {
-  pub path: PathBuf,
-  pub value: serde_json::Value,
-}
-
-#[derive(Debug)]
-pub struct WorkspaceExternalImportMapLoader {
-  sys: CliSys,
-  workspace: Arc<Workspace>,
-  maybe_external_import_map:
-    once_cell::sync::OnceCell<Option<ExternalImportMap>>,
-}
-
-impl WorkspaceExternalImportMapLoader {
-  pub fn new(sys: CliSys, workspace: Arc<Workspace>) -> Self {
-    Self {
-      sys,
-      workspace,
-      maybe_external_import_map: Default::default(),
-    }
-  }
-
-  pub fn get_or_load(&self) -> Result<Option<&ExternalImportMap>, AnyError> {
-    self
-      .maybe_external_import_map
-      .get_or_try_init(|| {
-        let Some(deno_json) = self.workspace.root_deno_json() else {
-          return Ok(None);
-        };
-        if deno_json.is_an_import_map() {
-          return Ok(None);
-        }
-        let Some(path) = deno_json.to_import_map_path()? else {
-          return Ok(None);
-        };
-        let contents =
-          self.sys.fs_read_to_string(&path).with_context(|| {
-            format!("Unable to read import map at '{}'", path.display())
-          })?;
-        let value = serde_json::from_str(&contents)?;
-        Ok(Some(ExternalImportMap { path, value }))
-      })
-      .map(|v| v.as_ref())
-  }
 }
 
 pub struct WorkspaceBenchOptions {
@@ -262,9 +208,7 @@ impl WorkspaceTestOptions {
   pub fn resolve(test_flags: &TestFlags) -> Self {
     Self {
       permit_no_files: test_flags.permit_no_files,
-      concurrent_jobs: test_flags
-        .concurrent_jobs
-        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+      concurrent_jobs: parallelism_count(test_flags.parallel),
       doc: test_flags.doc,
       fail_fast: test_flags.fail_fast,
       filter: test_flags.filter.clone(),
@@ -409,6 +353,122 @@ fn resolve_lint_rules_options(
   }
 }
 
+pub struct WorkspaceMainModuleResolver {
+  workspace_resolver: Arc<deno_resolver::workspace::WorkspaceResolver<CliSys>>,
+  node_resolver: Arc<crate::node::CliNodeResolver>,
+}
+
+impl WorkspaceMainModuleResolver {
+  pub fn new(
+    workspace_resolver: Arc<
+      deno_resolver::workspace::WorkspaceResolver<CliSys>,
+    >,
+    node_resolver: Arc<crate::node::CliNodeResolver>,
+  ) -> Self {
+    Self {
+      workspace_resolver,
+      node_resolver,
+    }
+  }
+}
+impl WorkspaceMainModuleResolver {
+  fn resolve_main_module(
+    &self,
+    specifier: &str,
+    cwd: &Url,
+  ) -> Result<Url, AnyError> {
+    let resolution = self.workspace_resolver.resolve(
+      specifier,
+      cwd,
+      deno_resolver::workspace::ResolutionKind::Execution,
+    )?;
+    let url = match resolution {
+      deno_resolver::workspace::MappedResolution::Normal {
+        specifier, ..
+      } => specifier,
+      deno_resolver::workspace::MappedResolution::WorkspaceJsrPackage {
+        specifier,
+        ..
+      } => specifier,
+      deno_resolver::workspace::MappedResolution::WorkspaceNpmPackage {
+        target_pkg_json,
+        sub_path,
+        ..
+      } => self
+        .node_resolver
+        .resolve_package_subpath_from_deno_module(
+          target_pkg_json.clone().dir_path(),
+          sub_path.as_deref(),
+          Some(cwd),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Execution,
+        )?
+        .into_url()?,
+      deno_resolver::workspace::MappedResolution::PackageJson {
+        sub_path,
+        dep_result,
+        alias,
+        ..
+      } => {
+        let result = dep_result
+          .as_ref()
+          .map_err(|e| deno_core::anyhow::anyhow!("{e}"))?;
+        match result {
+          deno_package_json::PackageJsonDepValue::File(file) => {
+            let cwd_path = deno_path_util::url_to_file_path(cwd)?;
+            deno_path_util::resolve_path(file, &cwd_path)?
+          }
+          deno_package_json::PackageJsonDepValue::Req(package_req) => {
+            ModuleSpecifier::parse(&format!(
+              "npm:{}{}",
+              package_req,
+              sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+            ))?
+          }
+          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+            let pkg_folder = self
+              .workspace_resolver
+              .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+                alias,
+                version_req,
+              )?;
+            self
+              .node_resolver
+              .resolve_package_subpath_from_deno_module(
+                pkg_folder,
+                sub_path.as_deref(),
+                Some(cwd),
+                node_resolver::ResolutionMode::Import,
+                node_resolver::NodeResolutionKind::Execution,
+              )?
+              .into_url()?
+          }
+          deno_package_json::PackageJsonDepValue::JsrReq(_) => {
+            return Err(
+              deno_resolver::DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+                .into_box()
+                .into(),
+            );
+          }
+        }
+      }
+      deno_resolver::workspace::MappedResolution::PackageJsonImport {
+        pkg_json,
+      } => self
+        .node_resolver
+        .resolve_package_import(
+          specifier,
+          Some(&node_resolver::UrlOrPathRef::from_url(cwd)),
+          Some(pkg_json),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Execution,
+        )?
+        .into_url()?,
+    };
+    Ok(url)
+  }
+}
+
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 #[derive(Debug)]
@@ -442,8 +502,6 @@ impl CliOptions {
         log::error!("{}", colors::yellow(msg));
       }
     }
-
-    load_env_variables_from_env_file(flags.env_file.as_ref());
 
     Ok(Self {
       flags,
@@ -528,7 +586,11 @@ impl CliOptions {
     let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variable.
-      std::env::remove_var("NODE_CHANNEL_FD");
+
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::remove_var("NODE_CHANNEL_FD")
+      };
       node_channel_fd.parse::<i64>().ok()
     } else {
       None
@@ -555,6 +617,10 @@ impl CliOptions {
     self.flags.eszip
   }
 
+  pub fn node_conditions(&self) -> &[String] {
+    self.flags.node_conditions.as_ref()
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
   }
@@ -567,7 +633,43 @@ impl CliOptions {
     self.flags.env_file.as_ref()
   }
 
-  pub fn resolve_main_module(&self) -> Result<&ModuleSpecifier, AnyError> {
+  pub fn preload_modules(&self) -> Result<Vec<ModuleSpecifier>, AnyError> {
+    if self.flags.preload.is_empty() {
+      return Ok(vec![]);
+    }
+
+    let mut preload = Vec::with_capacity(self.flags.preload.len());
+    for preload_specifier in self.flags.preload.iter() {
+      preload.push(resolve_url_or_path(preload_specifier, self.initial_cwd())?);
+    }
+
+    Ok(preload)
+  }
+
+  fn resolve_main_module_with_resolver_if_bare(
+    &self,
+    raw_specifier: &str,
+    resolver: Option<&WorkspaceMainModuleResolver>,
+    default_resolve: impl Fn() -> Result<ModuleSpecifier, AnyError>,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    match resolver {
+      Some(resolver)
+        if !raw_specifier.starts_with('.')
+          && !Path::new(raw_specifier).is_absolute() =>
+      {
+        let cwd = deno_path_util::url_from_directory_path(self.initial_cwd())?;
+        resolver
+          .resolve_main_module(raw_specifier, &cwd)
+          .or_else(|_| default_resolve())
+      }
+      _ => default_resolve(),
+    }
+  }
+
+  pub fn resolve_main_module_with_resolver(
+    &self,
+    resolver: Option<&WorkspaceMainModuleResolver>,
+  ) -> Result<&ModuleSpecifier, AnyError> {
     self
       .main_module_cell
       .get_or_init(|| {
@@ -585,25 +687,40 @@ impl CliOptions {
             if run_flags.is_stdin() {
               resolve_url_or_path("./$deno$stdin.mts", self.initial_cwd())?
             } else {
-              let url =
-                resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
-              if self.is_node_main()
-                && url.scheme() == "file"
-                && MediaType::from_specifier(&url) == MediaType::Unknown
-              {
-                try_resolve_node_binary_main_entrypoint(
-                  &run_flags.script,
-                  self.initial_cwd(),
-                )?
-                .unwrap_or(url)
-              } else {
-                url
-              }
+              let default_resolve = || {
+                let url =
+                  resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
+                if self.is_node_main()
+                  && url.scheme() == "file"
+                  && MediaType::from_specifier(&url) == MediaType::Unknown
+                {
+                  Ok::<_, AnyError>(
+                    try_resolve_node_binary_main_entrypoint(
+                      &run_flags.script,
+                      self.initial_cwd(),
+                    )?
+                    .unwrap_or(url),
+                  )
+                } else {
+                  Ok(url)
+                }
+              };
+              self.resolve_main_module_with_resolver_if_bare(
+                &run_flags.script,
+                resolver,
+                default_resolve,
+              )?
             }
           }
-          DenoSubcommand::Serve(run_flags) => {
-            resolve_url_or_path(&run_flags.script, self.initial_cwd())?
-          }
+          DenoSubcommand::Serve(run_flags) => self
+            .resolve_main_module_with_resolver_if_bare(
+              &run_flags.script,
+              resolver,
+              || {
+                resolve_url_or_path(&run_flags.script, self.initial_cwd())
+                  .map_err(|e| e.into())
+              },
+            )?,
           _ => {
             bail!("No main module.")
           }
@@ -611,6 +728,10 @@ impl CliOptions {
       })
       .as_ref()
       .map_err(|err| deno_core::anyhow::anyhow!("{}", err))
+  }
+
+  pub fn resolve_main_module(&self) -> Result<&ModuleSpecifier, AnyError> {
+    self.resolve_main_module_with_resolver(None)
   }
 
   pub fn resolve_file_header_overrides(
@@ -654,7 +775,7 @@ impl CliOptions {
   // for functionality like child_process.fork. Users should NOT depend
   // on this functionality.
   pub fn is_node_main(&self) -> bool {
-    NPM_PROCESS_STATE.is_some()
+    npm_process_state(&CliSys::default()).is_some()
   }
 
   /// Gets the explicitly specified NodeModulesDir setting.
@@ -814,6 +935,11 @@ impl CliOptions {
         .as_ref()
         .map(ToOwned::to_owned)
         .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
+      DenoSubcommand::Run(flags) => flags
+        .coverage_dir
+        .as_ref()
+        .map(ToOwned::to_owned)
+        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
       _ => None,
     }
   }
@@ -888,10 +1014,6 @@ impl CliOptions {
     self.flags.no_remote
   }
 
-  pub fn no_npm(&self) -> bool {
-    self.flags.no_npm
-  }
-
   pub fn permissions_options(&self) -> PermissionsOptions {
     // bury this in here to ensure people use cli_options.permissions_options()
     fn flags_to_options(flags: &PermissionFlags) -> PermissionsOptions {
@@ -924,6 +1046,7 @@ impl CliOptions {
         allow_write: handle_allow(flags.allow_all, flags.allow_write.clone()),
         deny_write: flags.deny_write.clone(),
         allow_import: handle_allow(flags.allow_all, flags.allow_import.clone()),
+        deny_import: flags.deny_import.clone(),
         prompt: !resolve_no_prompt(flags),
       }
     }
@@ -938,6 +1061,7 @@ impl CliOptions {
     if !options.allow_all && options.allow_import.is_none() {
       options.allow_import = Some(self.implicit_allow_import());
     }
+    options.deny_import = options.deny_import.clone();
   }
 
   fn implicit_allow_import(&self) -> Vec<String> {
@@ -1034,12 +1158,16 @@ impl CliOptions {
         match std::env::var(NPM_CMD_NAME_ENV_VAR_NAME) {
           Ok(var) => {
             // remove the env var so that child sub processes won't pick this up
-            std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME);
+
+            #[allow(clippy::undocumented_unsafe_blocks)]
+            unsafe {
+              std::env::remove_var(NPM_CMD_NAME_ENV_VAR_NAME)
+            };
             Some(var)
           }
-          Err(_) => NpmPackageReqReference::from_str(&flags.script)
-            .ok()
-            .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref)),
+          Err(_) => NpmPackageReqReference::from_str(&flags.script).ok().map(
+            |req_ref| npm_pkg_req_ref_to_binary_command(&req_ref).to_string(),
+          ),
         }
       }
       _ => None,
@@ -1071,6 +1199,11 @@ impl CliOptions {
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
+  pub fn unstable_raw_imports(&self) -> bool {
+    self.flags.unstable_config.raw_imports
+      || self.workspace().has_unstable("raw-imports")
+  }
+
   pub fn unstable_lazy_dynamic_imports(&self) -> bool {
     self.flags.unstable_config.lazy_dynamic_imports
       || self.workspace().has_unstable("lazy-dynamic-imports")
@@ -1081,34 +1214,33 @@ impl CliOptions {
       || self.workspace().has_unstable("sloppy-imports")
   }
 
-  pub fn unstable_features(&self) -> Vec<String> {
+  pub fn unstable_features(&self) -> Vec<&str> {
     let from_config_file = self.workspace().unstable_features();
     let unstable_features = from_config_file
       .iter()
+      .map(|s| s.as_str())
       .chain(
         self
           .flags
           .unstable_config
           .features
           .iter()
-          .filter(|f| !from_config_file.contains(f)),
+          .filter(|f| !from_config_file.contains(f))
+          .map(|s| s.as_str()),
       )
-      .map(|f| f.to_owned())
       .collect::<Vec<_>>();
 
     if !unstable_features.is_empty() {
-      let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_FEATURES
+      let all_valid_unstable_flags: Vec<&str> = deno_runtime::UNSTABLE_FEATURES
         .iter()
         .map(|feature| feature.name)
-        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching", "npm-patch"])
+        .chain(["fmt-component", "fmt-sql", "npm-lazy-caching"])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
       for unstable_value_from_config_file in &unstable_features {
-        if !all_valid_unstable_flags
-          .contains(&unstable_value_from_config_file.as_str())
-        {
+        if !all_valid_unstable_flags.contains(unstable_value_from_config_file) {
           log::warn!(
             "{} '{}' isn't a valid unstable feature",
             colors::yellow("Warning"),
@@ -1286,7 +1418,10 @@ pub fn config_to_deno_graph_workspace_member(
   })
 }
 
-fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
+pub fn load_env_variables_from_env_file(
+  filename: Option<&Vec<String>>,
+  flags_log_level: Option<log::Level>,
+) {
   let Some(env_file_names) = filename else {
     return;
   };
@@ -1295,11 +1430,35 @@ fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
     match from_filename(env_file_name) {
       Ok(_) => (),
       Err(error) => {
-        match error {
-          dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}", colors::yellow("Warning"), env_file_name, index, line),
-          dotenvy::Error::Io(_)=> log::info!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.", colors::yellow("Warning"), env_file_name),
-          dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}", colors::yellow("Warning"), env_file_name),
-          _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+        #[allow(clippy::print_stderr)]
+        if flags_log_level
+          .map(|l| l >= log::Level::Info)
+          .unwrap_or(true)
+        {
+          match error {
+            dotenvy::Error::LineParse(line, index) => eprintln!(
+              "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
+              colors::yellow("Warning"),
+              env_file_name,
+              index,
+              line
+            ),
+            dotenvy::Error::Io(_) => eprintln!(
+              "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+            dotenvy::Error::EnvVar(_) => eprintln!(
+              "{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+            _ => eprintln!(
+              "{} Unknown failure occurred with the specified environment file: {}",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+          }
         }
       }
     }
@@ -1318,6 +1477,19 @@ pub fn get_default_v8_flags() -> Vec<String> {
   ]
 }
 
+pub fn parallelism_count(parallel: bool) -> NonZeroUsize {
+  parallel
+    .then(|| {
+      if let Ok(value) = env::var("DENO_JOBS") {
+        value.parse::<NonZeroUsize>().ok()
+      } else {
+        std::thread::available_parallelism().ok()
+      }
+    })
+    .flatten()
+    .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
+}
+
 /// Gets the --allow-import host from the provided url
 fn allow_import_host_from_url(url: &Url) -> Option<String> {
   let host = url.host()?;
@@ -1330,13 +1502,6 @@ fn allow_import_host_from_url(url: &Url) -> Option<String> {
       _ => None,
     }
   }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum NpmCachingStrategy {
-  Eager,
-  Lazy,
-  Manual,
 }
 
 #[cfg(test)]

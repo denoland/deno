@@ -2,9 +2,9 @@
 
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
-use std::sync::Arc;
 
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::BinOpToken;
@@ -15,12 +15,6 @@ use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use rustyline::completion::Completer;
-use rustyline::error::ReadlineError;
-use rustyline::highlight::Highlighter;
-use rustyline::validate::ValidationContext;
-use rustyline::validate::ValidationResult;
-use rustyline::validate::Validator;
 use rustyline::Cmd;
 use rustyline::CompletionType;
 use rustyline::ConditionalEventHandler;
@@ -34,11 +28,16 @@ use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
 use rustyline::RepeatCount;
+use rustyline::completion::Completer;
+use rustyline::error::ReadlineError;
+use rustyline::highlight::Highlighter;
+use rustyline::validate::ValidationContext;
+use rustyline::validate::ValidationResult;
+use rustyline::validate::Validator;
 use rustyline_derive::Helper;
 use rustyline_derive::Hinter;
 
 use super::channel::RustylineSyncMessageSender;
-use super::session::REPL_INTERNALS_NAME;
 use crate::cdp;
 use crate::colors;
 
@@ -209,11 +208,7 @@ impl Completer for EditorHelper {
       let candidates = self
         .get_expression_property_names(sub_expr)
         .into_iter()
-        .filter(|n| {
-          !n.starts_with("Symbol(")
-            && n.starts_with(prop_name)
-            && n != &*REPL_INTERNALS_NAME
-        })
+        .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
         .collect();
 
       Ok((pos - prop_name.len(), candidates))
@@ -223,7 +218,7 @@ impl Completer for EditorHelper {
         .get_expression_property_names("globalThis")
         .into_iter()
         .chain(self.get_global_lexical_scope_names())
-        .filter(|n| n.starts_with(expr) && n != &*REPL_INTERNALS_NAME)
+        .filter(|n| n.starts_with(expr))
         .collect::<Vec<_>>();
 
       // sort and remove duplicates

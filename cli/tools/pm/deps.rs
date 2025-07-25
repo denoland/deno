@@ -10,26 +10,26 @@ use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileRc;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::futures::future::try_join;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::stream::FuturesUnordered;
-use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_package_json::PackageJsonDepsMap;
 use deno_package_json::PackageJsonRc;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_semver::StackString;
+use deno_semver::Version;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
-use deno_semver::StackString;
-use deno_semver::Version;
-use deno_semver::VersionReq;
 use import_map::ImportMap;
 use import_map::ImportMapWithDiagnostics;
 use import_map::SpecifierMapEntry;
@@ -42,7 +42,7 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::jsr::JsrFetchResolver;
 use crate::module_loader::ModuleLoadPreparer;
-use crate::npm::installer::NpmInstaller;
+use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::util::sync::AtomicFlag;
@@ -302,7 +302,7 @@ fn add_deps_from_deno_json(
       _ => continue,
     };
     let req = match parse_req_reference(value.as_str(), kind) {
-      Ok(req) => req.req.clone(),
+      Ok(req) => req.req,
       Err(err) => {
         log::warn!("failed to parse package req \"{}\": {err}", value.as_str());
         continue;
@@ -351,7 +351,8 @@ fn add_deps_from_package_json(
         }
       };
       match v {
-        deno_package_json::PackageJsonDepValue::File(_) => {
+        deno_package_json::PackageJsonDepValue::File(_)
+        | deno_package_json::PackageJsonDepValue::JsrReq(_) => {
           // ignore
         }
         deno_package_json::PackageJsonDepValue::Req(req) => {
@@ -461,7 +462,7 @@ pub struct DepManager {
   pub(crate) jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub(crate) npm_fetch_resolver: Arc<NpmFetchResolver>,
   npm_resolver: CliNpmResolver,
-  npm_installer: Arc<NpmInstaller>,
+  npm_installer: Arc<CliNpmInstaller>,
   permissions_container: PermissionsContainer,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   lockfile: Option<Arc<CliLockfile>>,
@@ -471,7 +472,7 @@ pub struct DepManagerArgs {
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
   pub jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub npm_fetch_resolver: Arc<NpmFetchResolver>,
-  pub npm_installer: Arc<NpmInstaller>,
+  pub npm_installer: Arc<CliNpmInstaller>,
   pub npm_resolver: CliNpmResolver,
   pub permissions_container: PermissionsContainer,
   pub main_module_graph_container: Arc<MainModuleGraphContainer>,
@@ -583,20 +584,40 @@ impl DepManager {
           DepKind::Npm => roots.push(
             ModuleSpecifier::parse(&format!("npm:/{}/", dep.req)).unwrap(),
           ),
-          DepKind::Jsr => info_futures.push(async {
-            if let Some(nv) = self.jsr_fetch_resolver.req_to_nv(&dep.req).await
-            {
+          DepKind::Jsr => {
+            let resolved_nv = graph.packages.mappings().get(&dep.req);
+            let resolved_nv = resolved_nv
+              .and_then(|nv| {
+                let versions =
+                  graph.packages.versions_by_name(&dep.req.name)?;
+                let mut best = nv;
+                for version in versions {
+                  if version.version > best.version
+                    && dep.req.version_req.matches(&version.version)
+                  {
+                    best = version;
+                  }
+                }
+                Some(best)
+              })
+              .cloned();
+            info_futures.push(async {
+              let nv = if let Some(nv) = resolved_nv {
+                nv
+              } else {
+                self.jsr_fetch_resolver.req_to_nv(&dep.req).await?
+              };
               if let Some(info) =
                 self.jsr_fetch_resolver.package_version_info(&nv).await
               {
                 let specifier =
-                  ModuleSpecifier::parse(&format!("jsr:/{}/", dep.req))
+                  ModuleSpecifier::parse(&format!("jsr:/{}/", &dep.req))
                     .unwrap();
                 return Some((specifier, info));
               }
-            }
-            None
-          }),
+              None
+            });
+          }
         }
       }
     }
@@ -619,10 +640,11 @@ impl DepManager {
         &roots,
         crate::module_loader::PrepareModuleLoadOptions {
           is_dynamic: false,
-          lib: deno_config::deno_json::TsTypeLib::DenoWindow,
+          lib: deno_config::workspace::TsTypeLib::DenoWindow,
           permissions: self.permissions_container.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
+          skip_graph_roots_validation: false,
         },
       )
       .await?;
@@ -880,7 +902,10 @@ impl DepManager {
                   format!("npm:{first}@{version_req}")
                 }
               } else if string_value.contains(":") {
-                bail!("Unexpected package json dependency string: \"{string_value}\" in {}", arc.path.display());
+                bail!(
+                  "Unexpected package json dependency string: \"{string_value}\" in {}",
+                  arc.path.display()
+                );
               } else {
                 version_req.to_string()
               };

@@ -221,19 +221,21 @@ pub mod reporter {
   pub fn br(options: &Options) -> String {
     let mut s = String::new();
 
-    s.push_str(&"-".repeat(options.size));
+    s.push_str(&format!("| {} |", "-".repeat(options.size)));
 
     if options.avg {
-      s.push(' ');
-      s.push_str(&"-".repeat(15 + 1 + 13));
+      s.push_str(&format!(" {} | {} |", "-".repeat(15), "-".repeat(13)));
     }
     if options.min_max {
-      s.push(' ');
-      s.push_str(&"-".repeat(21));
+      s.push_str(&format!(" {} |", "-".repeat(21)));
     }
     if options.percentiles {
-      s.push(' ');
-      s.push_str(&"-".repeat(8 + 1 + 8 + 1 + 8));
+      s.push_str(&format!(
+        " {} | {} | {} |",
+        "-".repeat(8),
+        "-".repeat(8),
+        "-".repeat(8)
+      ));
     }
 
     s
@@ -259,16 +261,16 @@ pub mod reporter {
     let size = options.size;
     let mut s = String::new();
 
-    s.push_str(&format!("{:<size$}", "benchmark"));
+    s.push_str(&format!("| {:<size$} |", "benchmark"));
     if options.avg {
-      s.push_str(&format!(" {:<15}", "time/iter (avg)"));
-      s.push_str(&format!(" {:>13}", "iter/s"));
+      s.push_str(&format!(" {:<15} |", "time/iter (avg)"));
+      s.push_str(&format!(" {:>13} |", "iter/s"));
     }
     if options.min_max {
-      s.push_str(&format!(" {:^21}", "(min … max)"));
+      s.push_str(&format!(" {:^21} |", "(min … max)"));
     }
     if options.percentiles {
-      s.push_str(&format!(" {:>8} {:>8} {:>8}", "p75", "p99", "p995"));
+      s.push_str(&format!(" {:>8} | {:>8} | {:>8} |", "p75", "p99", "p995"));
     }
 
     s
@@ -282,18 +284,18 @@ pub mod reporter {
     let size = options.size;
     let mut s = String::new();
 
-    s.push_str(&format!("{:<size$}", name));
+    s.push_str(&format!("| {:<size$} |", name));
 
     if options.avg {
       s.push_str(&format!(
-        " {}",
+        " {} |",
         colors::yellow(&format!("{:>15}", fmt_duration(stats.avg)))
       ));
-      s.push_str(&format!(" {:>13}", &avg_to_iter_per_s(stats.avg)));
+      s.push_str(&format!(" {:>13} |", &avg_to_iter_per_s(stats.avg)));
     }
     if options.min_max {
       s.push_str(&format!(
-        " ({} … {})",
+        " ({} … {}) |",
         colors::cyan(format!("{:>8}", fmt_duration(stats.min))),
         colors::magenta(format!("{:>8}", fmt_duration(stats.max)))
       ));
@@ -301,7 +303,7 @@ pub mod reporter {
     if options.percentiles {
       s.push_str(
         &colors::magenta(format!(
-          " {:>8} {:>8} {:>8}",
+          " {:>8} | {:>8} | {:>8} |",
           fmt_duration(stats.p75),
           fmt_duration(stats.p99),
           fmt_duration(stats.p995)

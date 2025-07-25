@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use deno_terminal::colors::ColorLevel;
 use serde::Serialize;
 
@@ -69,7 +69,14 @@ impl Default for SnapshotOptions {
 #[op2]
 #[serde]
 pub fn op_snapshot_options(state: &mut OpState) -> SnapshotOptions {
-  state.take::<SnapshotOptions>()
+  #[cfg(feature = "hmr")]
+  {
+    state.try_take::<SnapshotOptions>().unwrap_or_default()
+  }
+  #[cfg(not(feature = "hmr"))]
+  {
+    state.take::<SnapshotOptions>()
+  }
 }
 
 #[op2]

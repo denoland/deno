@@ -11,17 +11,22 @@ use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
+use deno_runtime::BootstrapOptions;
+use deno_runtime::FeatureChecker;
+use deno_runtime::UNSTABLE_FEATURES;
+use deno_runtime::WorkerExecutionMode;
+use deno_runtime::WorkerLogLevel;
 use deno_runtime::colors;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_core;
-use deno_runtime::deno_core::error::CoreError;
-use deno_runtime::deno_core::v8;
 use deno_runtime::deno_core::CompiledWasmModuleStore;
 use deno_runtime::deno_core::Extension;
 use deno_runtime::deno_core::JsRuntime;
 use deno_runtime::deno_core::LocalInspectorSession;
 use deno_runtime::deno_core::ModuleLoader;
 use deno_runtime::deno_core::SharedArrayBufferStore;
+use deno_runtime::deno_core::error::CoreError;
+use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_node::NodeExtInitServices;
@@ -41,13 +46,8 @@ use deno_runtime::web_worker::WebWorkerServiceOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::worker::WorkerServiceOptions;
-use deno_runtime::BootstrapOptions;
-use deno_runtime::FeatureChecker;
-use deno_runtime::WorkerExecutionMode;
-use deno_runtime::WorkerLogLevel;
-use deno_runtime::UNSTABLE_FEATURES;
-use node_resolver::errors::ResolvePkgJsonBinExportError;
 use node_resolver::UrlOrPath;
+use node_resolver::errors::ResolvePkgJsonBinExportError;
 use url::Url;
 
 use crate::args::has_trace_permissions_enabled;
@@ -128,13 +128,169 @@ pub fn get_cache_storage_dir() -> PathBuf {
 
 /// By default V8 uses 1.4Gb heap limit which is meant for browser tabs.
 /// Instead probe for the total memory on the system and use it instead
-/// as a default.
-pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
-  let maybe_mem_info = deno_runtime::deno_os::sys_info::mem_info();
-  maybe_mem_info.map(|mem_info| {
-    v8::CreateParams::default()
-      .heap_limits_from_system_memory(mem_info.total, 0)
-  })
+/// as a default. In case the platform is Linux and `DENO_USE_CGROUPS` is set,
+/// parse cgroup config to get the cgroup-constrained memory limit.
+pub fn create_isolate_create_params<TSys: DenoLibSys>(
+  // This is used only in Linux to get cgroup-constrained memory limit.
+  #[allow(unused_variables)] sys: &TSys,
+) -> Option<v8::CreateParams> {
+  #[cfg(any(target_os = "android", target_os = "linux"))]
+  {
+    linux::get_memory_limit(sys).map(|memory_limit| {
+      v8::CreateParams::default()
+        .heap_limits_from_system_memory(memory_limit, 0)
+    })
+  }
+  #[cfg(not(any(target_os = "android", target_os = "linux")))]
+  {
+    let maybe_mem_info = deno_runtime::deno_os::sys_info::mem_info();
+    maybe_mem_info.map(|mem_info| {
+      v8::CreateParams::default()
+        .heap_limits_from_system_memory(mem_info.total, 0)
+    })
+  }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+mod linux {
+  /// Get memory limit with cgroup (either v1 or v2) taken into account.
+  pub(super) fn get_memory_limit<TSys: crate::sys::DenoLibSys>(
+    sys: &TSys,
+  ) -> Option<u64> {
+    let system_total_memory = deno_runtime::deno_os::sys_info::mem_info()
+      .map(|mem_info| mem_info.total);
+
+    // For performance, parse cgroup config only when DENO_USE_CGROUPS is set
+    if std::env::var("DENO_USE_CGROUPS").is_err() {
+      return system_total_memory;
+    }
+
+    let Ok(self_cgroup) = sys.fs_read_to_string("/proc/self/cgroup") else {
+      return system_total_memory;
+    };
+
+    let limit = match parse_self_cgroup(&self_cgroup) {
+      CgroupVersion::V1 { cgroup_relpath } => {
+        let limit_path = std::path::Path::new("/sys/fs/cgroup/memory")
+          .join(cgroup_relpath)
+          .join("memory.limit_in_bytes");
+        sys
+          .fs_read_to_string(limit_path)
+          .ok()
+          .and_then(|s| s.trim().parse::<u64>().ok())
+      }
+      CgroupVersion::V2 { cgroup_relpath } => {
+        let limit_path = std::path::Path::new("/sys/fs/cgroup")
+          .join(cgroup_relpath)
+          .join("memory.max");
+        sys
+          .fs_read_to_string(limit_path)
+          .ok()
+          .and_then(|s| s.trim().parse::<u64>().ok())
+      }
+      CgroupVersion::None => system_total_memory,
+    };
+
+    limit.or(system_total_memory)
+  }
+
+  enum CgroupVersion<'a> {
+    V1 { cgroup_relpath: &'a str },
+    V2 { cgroup_relpath: &'a str },
+    None,
+  }
+
+  fn parse_self_cgroup(self_cgroup_content: &str) -> CgroupVersion<'_> {
+    // Initialize the cgroup version as None. This will be updated based on the parsed lines.
+    let mut cgroup_version = CgroupVersion::None;
+
+    // Iterate through each line in the cgroup content. Each line represents a cgroup entry.
+    for line in self_cgroup_content.lines() {
+      // Split the line into parts using ":" as the delimiter. The format is typically:
+      // "<hierarchy_id>:<subsystems>:<cgroup_path>"
+      let split = line.split(":").collect::<Vec<_>>();
+
+      match &split[..] {
+        // If the line specifies "memory" as the subsystem, it indicates cgroup v1 is used
+        // for memory management. Extract the relative path and update the cgroup version.
+        [_, "memory", cgroup_v1_relpath] => {
+          cgroup_version = CgroupVersion::V1 {
+            cgroup_relpath: cgroup_v1_relpath
+              .strip_prefix("/")
+              .unwrap_or(cgroup_v1_relpath),
+          };
+          // Break early since v1 explicitly manages memory, and no further checks are needed.
+          break;
+        }
+        // If the line starts with "0::", it indicates cgroup v2 is used. However, in hybrid
+        // mode, memory might still be managed by v1. Continue checking other lines to confirm.
+        ["0", "", cgroup_v2_relpath] => {
+          cgroup_version = CgroupVersion::V2 {
+            cgroup_relpath: cgroup_v2_relpath
+              .strip_prefix("/")
+              .unwrap_or(cgroup_v2_relpath),
+          };
+        }
+        _ => {}
+      }
+    }
+
+    cgroup_version
+  }
+
+  #[test]
+  fn test_parse_self_cgroup_v2() {
+    let self_cgroup = "0::/user.slice/user-1000.slice/session-3.scope";
+    let cgroup_version = parse_self_cgroup(self_cgroup);
+    assert!(matches!(
+      cgroup_version,
+      CgroupVersion::V2 { cgroup_relpath } if cgroup_relpath == "user.slice/user-1000.slice/session-3.scope"
+    ));
+  }
+
+  #[test]
+  fn test_parse_self_cgroup_hybrid() {
+    let self_cgroup = r#"12:rdma:/
+11:blkio:/user.slice
+10:devices:/user.slice
+9:cpu,cpuacct:/user.slice
+8:pids:/user.slice/user-1000.slice/session-3.scope
+7:memory:/user.slice/user-1000.slice/session-3.scope
+6:perf_event:/
+5:freezer:/
+4:net_cls,net_prio:/
+3:hugetlb:/
+2:cpuset:/
+1:name=systemd:/user.slice/user-1000.slice/session-3.scope
+0::/user.slice/user-1000.slice/session-3.scope
+"#;
+    let cgroup_version = parse_self_cgroup(self_cgroup);
+    assert!(matches!(
+      cgroup_version,
+      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath == "user.slice/user-1000.slice/session-3.scope"
+    ));
+  }
+
+  #[test]
+  fn test_parse_self_cgroup_v1() {
+    let self_cgroup = r#"11:hugetlb:/
+10:pids:/user.slice/user-1000.slice
+9:perf_event:/
+8:devices:/user.slice
+7:net_cls,net_prio:/
+6:memory:/
+5:blkio:/
+4:cpuset:/
+3:cpu,cpuacct:/
+2:freezer:/
+1:name=systemd:/user.slice/user-1000.slice/session-2.scope
+"#;
+    let cgroup_version = parse_self_cgroup(self_cgroup);
+    assert!(matches!(
+      cgroup_version,
+      CgroupVersion::V1 { cgroup_relpath } if cgroup_relpath.is_empty()
+    ));
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -167,6 +323,7 @@ pub struct LibMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
   pub enable_op_summary_metrics: bool,
+  pub enable_raw_imports: bool,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
   pub inspect_brk: bool,
@@ -175,6 +332,8 @@ pub struct LibMainWorkerOptions {
   pub is_inspecting: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
+  // If the runtime should try to use `export default { fetch }`
+  pub auto_serve: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
@@ -266,7 +425,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         .resolve_storage_key(&args.main_module);
       let cache_storage_dir = maybe_storage_key.map(|key| {
         // TODO(@satyarohith): storage quota management
-        get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
+        get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
       });
 
       // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -318,6 +477,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
           inspect: shared.options.is_inspecting,
           is_standalone: shared.options.is_standalone,
+          auto_serve: shared.options.auto_serve,
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
@@ -331,7 +491,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
-        create_params: create_isolate_create_params(),
+        create_params: create_isolate_create_params(&shared.sys),
         unsafely_ignore_certificate_errors: shared
           .options
           .unsafely_ignore_certificate_errors
@@ -345,6 +505,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         strace_ops: shared.options.strace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
 
@@ -401,15 +562,18 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     }
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn create_main_worker(
     &self,
     mode: WorkerExecutionMode,
     permissions: PermissionsContainer,
     main_module: Url,
+    preload_modules: Vec<Url>,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
       main_module,
+      preload_modules,
       permissions,
       vec![],
       Default::default(),
@@ -417,10 +581,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     )
   }
 
+  #[allow(clippy::result_large_err)]
+  #[allow(clippy::too_many_arguments)]
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
     main_module: Url,
+    preload_modules: Vec<Url>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -442,17 +609,18 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let maybe_storage_key = shared
       .storage_key_resolver
       .resolve_storage_key(&main_module);
-    let origin_storage_dir = maybe_storage_key.as_ref().map(|key| {
-      shared
-        .options
-        .origin_data_folder_path
-        .as_ref()
-        .unwrap() // must be set if storage key resolver returns a value
-        .join(checksum::gen(&[key.as_bytes()]))
-    });
+    let origin_storage_dir: Option<PathBuf> =
+      maybe_storage_key.as_ref().map(|key| {
+        shared
+          .options
+          .origin_data_folder_path
+          .as_ref()
+          .unwrap() // must be set if storage key resolver returns a value
+          .join(checksum::r#gen(&[key.as_bytes()]))
+      });
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
-      get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
+      get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
     });
 
     let services = WorkerServiceOptions {
@@ -495,6 +663,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
         is_standalone: shared.options.is_standalone,
+        auto_serve: shared.options.auto_serve,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
@@ -508,7 +677,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       },
       extensions: custom_extensions,
       startup_snapshot: shared.options.startup_snapshot,
-      create_params: create_isolate_create_params(),
+      create_params: create_isolate_create_params(&shared.sys),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -524,19 +693,23 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       origin_storage_dir,
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
+      enable_raw_imports: shared.options.enable_raw_imports,
       enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       unconfigured_runtime,
     };
 
-    let worker =
+    let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
+    worker.setup_memory_trim_handler();
 
     Ok(LibMainWorker {
       main_module,
+      preload_modules,
       worker,
     })
   }
 
+  #[allow(clippy::result_large_err)]
   pub fn resolve_npm_binary_entrypoint(
     &self,
     package_folder: &Path,
@@ -618,6 +791,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 
 pub struct LibMainWorker {
   main_module: Url,
+  preload_modules: Vec<Url>,
   worker: MainWorker,
 }
 
@@ -640,26 +814,31 @@ impl LibMainWorker {
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
     self.worker.dispatch_load_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
     self.worker.dispatch_beforeunload_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
     self.worker.dispatch_process_beforeexit_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
     self.worker.dispatch_unload_event()
   }
 
   #[inline]
+  #[allow(clippy::result_large_err)]
   pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
     self.worker.dispatch_process_exit_event()
   }
@@ -674,8 +853,20 @@ impl LibMainWorker {
     self.worker.evaluate_module(id).await
   }
 
+  pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
+    for preload_module_url in self.preload_modules.iter() {
+      let id = self.worker.preload_side_module(preload_module_url).await?;
+      self.worker.evaluate_module(id).await?;
+      self.worker.run_event_loop(false).await?;
+    }
+    Ok(())
+  }
+
   pub async fn run(&mut self) -> Result<i32, CoreError> {
     log::debug!("main_module {}", self.main_module);
+
+    // Run preload modules first if they were defined
+    self.execute_preload_modules().await?;
 
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;

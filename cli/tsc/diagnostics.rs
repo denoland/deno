@@ -148,6 +148,8 @@ pub struct Diagnostic {
   pub reports_unnecessary: Option<bool>,
   #[serde(flatten)]
   pub other: deno_core::serde_json::Map<String, deno_core::serde_json::Value>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub missing_specifier: Option<String>,
 }
 
 impl Diagnostic {
@@ -180,6 +182,7 @@ impl Diagnostic {
       reports_deprecated: None,
       reports_unnecessary: None,
       other: Default::default(),
+      missing_specifier: Some(specifier.to_string()),
     }
   }
 
@@ -615,7 +618,10 @@ mod tests {
     ]);
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
     let actual = diagnostics.to_string();
-    assert_eq!(strip_ansi_codes(&actual), "TS2584 [ERROR]: Cannot find name \'console\'. Do you need to change your target library? Try changing the `lib` compiler option to include \'dom\'.\nconsole.log(\"a\");\n~~~~~~~\n    at test.ts:1:1");
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "TS2584 [ERROR]: Cannot find name \'console\'. Do you need to change your target library? Try changing the `lib` compiler option to include \'dom\'.\nconsole.log(\"a\");\n~~~~~~~\n    at test.ts:1:1"
+    );
   }
 
   #[test]
@@ -656,6 +662,9 @@ mod tests {
     ]);
     let diagnostics: Diagnostics = serde_json::from_value(value).unwrap();
     let actual = diagnostics.to_string();
-    assert_eq!(strip_ansi_codes(&actual), "TS2552 [ERROR]: Cannot find name \'foo_Bar\'. Did you mean \'foo_bar\'?\nfoo_Bar();\n~~~~~~~\n    at test.ts:8:1\n\n    \'foo_bar\' is declared here.\n    function foo_bar() {\n             ~~~~~~~\n        at test.ts:4:10");
+    assert_eq!(
+      strip_ansi_codes(&actual),
+      "TS2552 [ERROR]: Cannot find name \'foo_Bar\'. Did you mean \'foo_bar\'?\nfoo_Bar();\n~~~~~~~\n    at test.ts:8:1\n\n    \'foo_bar\' is declared here.\n    function foo_bar() {\n             ~~~~~~~\n        at test.ts:4:10"
+    );
   }
 }

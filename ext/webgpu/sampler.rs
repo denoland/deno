@@ -1,9 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
-use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
+use deno_core::webidl::WebIdlInterfaceConverter;
 
 use crate::Instance;
 
@@ -23,7 +23,11 @@ impl WebIdlInterfaceConverter for GPUSampler {
   const NAME: &'static str = "GPUSampler";
 }
 
-impl GarbageCollected for GPUSampler {}
+impl GarbageCollected for GPUSampler {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUSampler"
+  }
+}
 
 #[op2]
 impl GPUSampler {
