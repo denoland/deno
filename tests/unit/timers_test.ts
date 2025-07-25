@@ -803,7 +803,6 @@ Deno.test(async function setIntervalWithStringCallback() {
   };
   global.intervalStringTest = 0;
   global.intervalStringPromise = Promise.withResolvers<void>();
-  let count = 0;
   const id = setInterval(
     "globalThis.intervalStringTest += 10; if (globalThis.intervalStringTest >= 20) globalThis.intervalStringPromise.resolve();",
     10,
