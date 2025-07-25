@@ -7,6 +7,7 @@ use std::rc::Rc;
 use brotli::ffi;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8_static_strings;
 use deno_error::JsErrorBox;
 use libc::c_ulong;
 use zlib::*;
@@ -231,6 +232,64 @@ impl ZlibInner {
   fn reset_stream(&mut self) {
     self.err = self.strm.reset(self.mode);
   }
+
+  fn get_error_info(&self) -> Option<(i32, String)> {
+    let err_str = match self.err {
+      Z_OK | Z_BUF_ERROR => {
+        if self.strm.avail_out != 0 && self.flush == Flush::Finish {
+          "unexpected end of file"
+        } else {
+          return None;
+        }
+      }
+      Z_STREAM_END => return None,
+      Z_NEED_DICT => {
+        if self.dictionary.is_none() {
+          "Missing dictionary"
+        } else {
+          "Bad dictionary"
+        }
+      }
+      _ => "Zlib error",
+    };
+
+    let msg = self.strm.msg;
+    Some((
+      self.err,
+      if !msg.is_null() {
+        // SAFETY: `msg` is a valid pointer to a null-terminated string.
+        unsafe { std::ffi::CStr::from_ptr(msg).to_str().unwrap().to_string() }
+      } else {
+        err_str.to_string()
+      },
+    ))
+  }
+
+  fn check_error(
+    error_info: Option<(i32, String)>,
+    scope: &mut v8::HandleScope,
+    this: &v8::Global<v8::Object>,
+  ) -> bool {
+    let Some((err, msg)) = error_info else {
+      return true; // No error, nothing to report.
+    };
+
+    let this = v8::Local::new(scope, this);
+    v8_static_strings! {
+      ONERROR_STR = "onerror",
+    }
+
+    let onerror_str = ONERROR_STR.v8_string(scope).unwrap();
+    let onerror = this.get(scope, onerror_str.into()).unwrap();
+    let cb = v8::Local::<v8::Function>::try_from(onerror).unwrap();
+
+    let msg = v8::String::new(scope, &msg).unwrap();
+    let err = v8::Integer::new(scope, err);
+
+    cb.call(scope, this.into(), &[msg.into(), err.into()]);
+
+    false
+  }
 }
 
 pub struct Zlib {
@@ -341,9 +400,11 @@ impl Zlib {
   }
 
   #[fast]
-  #[smi]
+  #[reentrant]
   pub fn write_sync(
     &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::HandleScope,
     #[smi] flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -351,21 +412,26 @@ impl Zlib {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
-  ) -> Result<i32, ZlibError> {
-    let mut zlib = self.inner.borrow_mut();
-    let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
+  ) -> Result<(), ZlibError> {
+    let err_info = {
+      let mut zlib = self.inner.borrow_mut();
+      let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
-    let flush = Flush::try_from(flush)?;
-    zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
-    zlib.do_write(flush)?;
+      let flush = Flush::try_from(flush)?;
+      zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
+      zlib.do_write(flush)?;
 
-    // SAFETY: `zlib.result_buffer` is a valid pointer to a mutable slice of u32 of length 2.
-    let result =
-      unsafe { std::slice::from_raw_parts_mut(zlib.result_buffer.unwrap(), 2) };
-    result[0] = zlib.strm.avail_out;
-    result[1] = zlib.strm.avail_in;
+      // SAFETY: `zlib.result_buffer` is a valid pointer to a mutable slice of u32 of length 2.
+      let result = unsafe {
+        std::slice::from_raw_parts_mut(zlib.result_buffer.unwrap(), 2)
+      };
+      result[0] = zlib.strm.avail_out;
+      result[1] = zlib.strm.avail_in;
+      zlib.get_error_info()
+    };
 
-    Ok(zlib.err)
+    ZlibInner::check_error(err_info, scope, &this);
+    Ok(())
   }
 
   #[fast]
@@ -382,7 +448,7 @@ impl Zlib {
     #[smi] out_off: u32,
     #[smi] out_len: u32,
   ) -> Result<(), ZlibError> {
-    let callback = {
+    let (err_info, callback) = {
       let mut zlib = self.inner.borrow_mut();
       let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
@@ -396,9 +462,18 @@ impl Zlib {
       };
       result[0] = zlib.strm.avail_out;
       result[1] = zlib.strm.avail_in;
-
-      v8::Local::new(scope, zlib.callback.as_ref().expect("callback not set"))
+      (
+        zlib.get_error_info(),
+        v8::Local::new(
+          scope,
+          zlib.callback.as_ref().expect("callback not set"),
+        ),
+      )
     };
+
+    if !ZlibInner::check_error(err_info, scope, &this) {
+      return Ok(());
+    }
 
     let this = v8::Local::new(scope, &this);
     let _ = callback.call(scope, this.into(), &[]);

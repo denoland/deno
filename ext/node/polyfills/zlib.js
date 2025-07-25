@@ -221,6 +221,7 @@ function zlibOnError(message, errno, code) {
   // There is no way to cleanly recover.
   // Continuing only obscures problems.
 
+  code = code || codes[errno];
   const error = genericNodeError(message, { errno, code });
   error.errno = errno;
   error.code = code;
