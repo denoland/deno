@@ -6,6 +6,9 @@ import { assert } from "@std/assert";
 import { partition } from "@std/collections/partition";
 import { pooledMap } from "@std/async/pool";
 
+let testSerialId = 0;
+export const generateTestSerialId = () => ++testSerialId;
+
 interface SingleFileConfig {
   flaky?: boolean;
 }
