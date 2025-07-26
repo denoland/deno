@@ -13,6 +13,7 @@ import {
   op_require_is_deno_dir_package,
   op_require_is_maybe_cjs,
   op_require_is_request_relative,
+  op_require_maybe_cwd,
   op_require_node_module_paths,
   op_require_package_imports_resolve,
   op_require_path_basename,
@@ -28,7 +29,6 @@ import {
   op_require_resolve_lookup_paths,
   op_require_stat,
   op_require_try_self,
-  op_require_try_self_parent_path,
 } from "ext:core/ops";
 const {
   ArrayIsArray,
@@ -819,12 +819,10 @@ Module._resolveFilename = function (
   }
 
   // Try module self resolution first
-  const parentPath = op_require_try_self_parent_path(
-    !!parent,
-    parent?.filename,
-    parent?.id,
-  );
-  const selfResolved = op_require_try_self(parentPath, request);
+  const parentPath = trySelfParentPath(parent);
+  const selfResolved = parentPath != null
+    ? op_require_try_self(parentPath, request)
+    : undefined;
   if (selfResolved) {
     const cacheKey = request + "\x00" +
       (paths.length === 1 ? paths[0] : ArrayPrototypeJoin(paths, "\x00"));
@@ -880,6 +878,23 @@ Module._resolveFilename = function (
   // throw the original error
   throw err;
 };
+
+function trySelfParentPath(parent) {
+  if (parent == null) {
+    return undefined;
+  }
+  if (typeof parent.filename === "string") {
+    return parent.filename;
+  }
+  if (parent.id === "<repl>" || parent.id === "internal/preload") {
+    return op_require_maybe_cwd(
+      !!parent,
+      parent?.filename,
+      parent?.id,
+    );
+  }
+  return undefined;
+}
 
 /**
  * Internal CommonJS API to always require modules before requiring the actual
