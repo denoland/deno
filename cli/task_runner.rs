@@ -36,6 +36,7 @@ pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
     .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
     .collect::<Vec<_>>()
     .join(" ");
+
   let script = format!("{script} {additional_args}");
   script.trim().to_owned()
 }
@@ -646,7 +647,7 @@ async fn listen_ctrl_c(kill_signal: KillSignal) {
 #[cfg(unix)]
 async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
   use deno_core::futures::FutureExt;
-  use deno_runtime::deno_os::signal::SIGNAL_NUMS;
+  use deno_signals::SIGNAL_NUMS;
 
   // listen and forward every signal we support
   let mut futures = Vec::with_capacity(SIGNAL_NUMS.len());
@@ -658,11 +659,7 @@ async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
     let kill_signal = kill_signal.clone();
     futures.push(
       async move {
-        let Ok(mut stream) = tokio::signal::unix::signal(
-          tokio::signal::unix::SignalKind::from_raw(signo),
-        ) else {
-          return;
-        };
+        let mut stream = deno_signals::signal_stream(signo);
         let signal_kind: deno_task_shell::SignalKind = signo.into();
         while let Some(()) = stream.recv().await {
           kill_signal.send(signal_kind);

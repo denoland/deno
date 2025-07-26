@@ -2702,6 +2702,7 @@ dependencies = [
  "deno_os",
  "deno_path_util",
  "deno_permissions",
+ "deno_signals",
  "deno_subprocess_windows",
  "libc",
  "log",
@@ -2849,7 +2850,10 @@ dependencies = [
 name = "deno_signals"
 version = "0.2.0"
 dependencies = [
+ "deno_error",
+ "libc",
  "signal-hook",
+ "thiserror 2.0.12",
  "tokio",
  "winapi",
 ]
