@@ -12,6 +12,7 @@ const {
   NumberMIN_SAFE_INTEGER,
   NumberMAX_SAFE_INTEGER,
   NumberParseInt,
+  NumberIsFinite,
   SafeRegExp,
   String,
   StringPrototypeTrim,
@@ -362,6 +363,42 @@ function validateUnion(value, name, union) {
   }
 }
 
+const validateFiniteNumber = hideStackFrames((number, name) => {
+  // Common case
+  if (number === undefined) {
+    return false;
+  }
+
+  if (NumberIsFinite(number)) {
+    return true; // Is a valid number
+  }
+
+  if (NumberIsNaN(number)) {
+    return false;
+  }
+
+  validateNumber(number, name);
+
+  // Infinite numbers
+  throw new codes.ERR_OUT_OF_RANGE(name, "a finite number", number);
+});
+
+const checkRangesOrGetDefault = hideStackFrames(
+  (number, name, lower, upper, def) => {
+    if (!validateFiniteNumber(number, name)) {
+      return def;
+    }
+    if (number < lower || number > upper) {
+      throw new codes.ERR_OUT_OF_RANGE(
+        name,
+        `>= ${lower} and <= ${upper}`,
+        number,
+      );
+    }
+    return number;
+  },
+);
+
 export default {
   isInt32,
   isUint32,
@@ -382,8 +419,11 @@ export default {
   validateStringArray,
   validateUint32,
   validateUnion,
+  validateFiniteNumber,
+  checkRangesOrGetDefault,
 };
 export {
+  checkRangesOrGetDefault,
   isInt32,
   isUint32,
   parseFileMode,
@@ -392,6 +432,7 @@ export {
   validateBoolean,
   validateBooleanArray,
   validateBuffer,
+  validateFiniteNumber,
   validateFunction,
   validateInt32,
   validateInteger,

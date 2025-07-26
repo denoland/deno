@@ -147,7 +147,7 @@ base64 = "0.22.1"
 base64-simd = "0.8"
 bencher = "0.1"
 boxed_error = "0.2.3"
-brotli = "6.0.0"
+brotli = { version = "6.0.0", features = ["ffi-api"] }
 bytemuck = "1.17.1"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
