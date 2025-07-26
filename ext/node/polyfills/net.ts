@@ -41,6 +41,7 @@ import {
   newAsyncId,
   ownerSymbol,
 } from "ext:deno_node/internal/async_hooks.ts";
+import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import {
   ERR_INVALID_ADDRESS_FAMILY,
   ERR_INVALID_ARG_TYPE,
@@ -375,14 +376,16 @@ function _afterConnect(
 
     socket._unrefTimer();
 
-    socket.emit("connect");
-    socket.emit("ready");
-
     // Deno specific: run tls handshake if it's from a tls socket
     // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
-    if (typeof handle.afterConnectTls === "function") {
+    if (
+      typeof handle.afterConnectTls === "function" && handle[kStreamBaseField]
+    ) {
       handle.afterConnectTls();
     }
+
+    socket.emit("connect");
+    socket.emit("ready");
 
     // Start the first read, or get an immediate EOF.
     // this doesn't actually consume any bytes, because len=0.

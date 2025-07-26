@@ -74,6 +74,19 @@ impl From<SocketAddr> for IpAddr {
   }
 }
 
+#[cfg(unix)]
+impl From<tokio::net::unix::SocketAddr> for IpAddr {
+  fn from(addr: tokio::net::unix::SocketAddr) -> Self {
+    Self {
+      hostname: addr.as_pathname().map_or_else(
+        || "unix socket".to_string(),
+        |p| p.to_string_lossy().into_owned(),
+      ),
+      port: 0, // Unix sockets do not have a port
+    }
+  }
+}
+
 impl From<TunnelAddr> for IpAddr {
   fn from(addr: TunnelAddr) -> Self {
     Self {
@@ -151,6 +164,9 @@ pub enum NetError {
   #[class("Busy")]
   #[error("TCP stream is currently in use")]
   TcpStreamBusy,
+  #[class("Busy")]
+  #[error("Unix stream is currently in use")]
+  UnixStreamBusy,
   #[class(generic)]
   #[error("{0}")]
   Rustls(#[from] deno_tls::rustls::Error),
@@ -165,7 +181,11 @@ pub enum NetError {
   RootCertStore(deno_error::JsErrorBox),
   #[class(generic)]
   #[error("{0}")]
-  Reunite(tokio::net::tcp::ReuniteError),
+  ReuniteTcp(tokio::net::tcp::ReuniteError),
+  #[cfg(unix)]
+  #[class(generic)]
+  #[error("{0}")]
+  ReuniteUnix(tokio::net::unix::ReuniteError),
   #[class(generic)]
   #[error("VSOCK is not supported on this platform")]
   VsockUnsupported,

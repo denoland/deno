@@ -89,7 +89,10 @@ export class TLSSocket extends net.Socket {
   ssl: any;
 
   _start() {
-    this[kHandle].afterConnectTls();
+    this.connecting = true;
+    if (this[kHandle] && this[kHandle][kStreamBaseField]) {
+      this[kHandle].afterConnectTls();
+    }
   }
 
   constructor(socket: any, opts: any = kEmptyObject) {
@@ -193,6 +196,7 @@ export class TLSSocket extends net.Socket {
           // Assign the TLS connection to the handle and resume reading.
           handle[kStreamBaseField] = conn;
           handle.upgrading = false;
+          handle.connecting = false;
           if (!handle.pauseOnCreate) {
             handle.readStart();
           }
