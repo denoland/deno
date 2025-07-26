@@ -63,7 +63,7 @@ deno_ast = { version = "=0.48.2", features = ["transpiling"] }
 deno_core = { version = "0.353.0" }
 
 deno_cache_dir = "=0.23.1"
-deno_doc = "=0.180.0"
+deno_doc = "=0.180.1"
 deno_error = "=0.6.1"
 deno_graph = { version = "=0.97.1", default-features = false }
 deno_lint = "=0.76.0"

@@ -1956,16 +1956,16 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.180.0"
+version = "0.180.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ea005c349842626affe06bca10f6acd9dbc894e7f4d612198f61add73600a8d"
+checksum = "2b56de8f7c215b910f3609e8f679b0c58893c1ac89ebc9d3408b7d76c402dbaf"
 dependencies = [
  "anyhow",
  "cfg-if",
  "comrak",
  "deno_ast",
  "deno_graph",
- "deno_path_util 0.4.0",
+ "deno_path_util 0.5.1",
  "deno_terminal 0.2.2",
  "handlebars",
  "html-escape",
