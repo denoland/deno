@@ -2793,6 +2793,7 @@ dependencies = [
  "deno_permissions",
  "deno_process",
  "deno_resolver",
+ "deno_signals",
  "deno_telemetry",
  "deno_terminal 0.2.2",
  "deno_tls",
