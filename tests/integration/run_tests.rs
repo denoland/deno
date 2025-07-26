@@ -360,12 +360,6 @@ fn permissions_prompt_allow_all_2() {
 
       let text = console.read_until("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)");
       // "read" permissions
-      let maybe_trailing_slash = if cfg!(windows) {
-        // windows goes through a slightly different code path, which causes no trailing slash
-        ""
-      } else {
-        "/"
-      };
       test_util::assertions::assert_wildcard_match(&text, concat!(
         "\r\n",
         "┏ ⚠️  Deno requests read access to \"[WILDCARD]tests[WILDCHAR]testdata\".\r\n",
