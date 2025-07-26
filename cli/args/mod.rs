@@ -1294,6 +1294,17 @@ impl CliOptions {
         full_paths.push(pkg_json.path.clone());
       }
     }
+
+    // Add env files to watch paths when --env and --watch are used together
+    if let Some(env_files) = &self.flags.env_file {
+      for env_file in env_files {
+        let env_path = self.initial_cwd.join(env_file);
+        if env_path.exists() {
+          full_paths.push(env_path);
+        }
+      }
+    }
+
     full_paths
   }
 
