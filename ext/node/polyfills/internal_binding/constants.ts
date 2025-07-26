@@ -633,6 +633,22 @@ if (buildOs === "darwin") {
 
 export { os };
 
+// TODO(Tango992): Delete this once #30113 has landed
+let O_SYNC: number | undefined;
+if (buildOs === "darwin") {
+  // https://docs.rs/libc/latest/x86_64-apple-darwin/libc/constant.O_SYNC.html
+  // https://docs.rs/libc/latest/aarch64-apple-darwin/libc/constant.O_SYNC.html
+  O_SYNC = 0x80;
+} else if (buildOs === "linux") {
+  // https://docs.rs/libc/latest/libc/constant.O_SYNC.html
+  // https://docs.rs/libc/latest/aarch64-unknown-linux-gnu/libc/constant.O_SYNC.html
+  O_SYNC = 1052672;
+} else if (buildOs === "android") {
+  // https://docs.rs/libc/latest/x86_64-linux-android/libc/constant.O_SYNC.html
+  // https://docs.rs/libc/latest/aarch64-linux-android/libc/constant.O_SYNC.html
+  O_SYNC = 0x101000;
+}
+
 export const fs = {
   UV_FS_SYMLINK_DIR: 1,
   UV_FS_SYMLINK_JUNCTION: 2,
@@ -663,7 +679,7 @@ export const fs = {
   O_APPEND: 8,
   O_DIRECTORY: 1048576,
   O_NOFOLLOW: 256,
-  O_SYNC: 128,
+  O_SYNC,
   O_DSYNC: 4194304,
   O_SYMLINK: 2097152,
   O_NONBLOCK: 4,

@@ -95,6 +95,7 @@ impl DenoRtSys {
           truncate: true,
           append: false,
           create_new: false,
+          custom_flags: None,
           mode: None,
         },
         &old_file_bytes,
