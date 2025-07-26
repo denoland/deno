@@ -1876,9 +1876,9 @@ mod test {
     let resolve = |name: &str, referrer: &str| {
       resolver.resolve(
         name,
-        &url_from_file_path(&deno_path_util::normalize_path(
+        &url_from_file_path(&deno_path_util::normalize_path(Cow::Owned(
           root_dir().join(referrer),
-        ))
+        )))
         .unwrap(),
         ResolutionKind::Execution,
       )

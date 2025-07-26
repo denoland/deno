@@ -1211,9 +1211,9 @@ fn new_workspace_factory_options(
           ConfigDiscoveryOption::Disabled
         }
       }
-      ConfigFlag::Path(path) => ConfigDiscoveryOption::Path(
-        deno_path_util::normalize_path(initial_cwd.join(path)),
-      ),
+      ConfigFlag::Path(path) => {
+        ConfigDiscoveryOption::Path(initial_cwd.join(path))
+      }
       ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
     },
     maybe_custom_deno_dir_root: flags.internal.cache_path.clone(),

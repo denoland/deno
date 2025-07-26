@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::VecDeque;
-use std::path::PathBuf;
 
 use deno_core::anyhow::Context;
 
@@ -239,9 +238,8 @@ impl TestReporter for JunitTestReporter {
         .serialize(std::io::stdout())
         .with_context(|| "Failed to write JUnit report to stdout")?;
     } else {
-      let file =
-        crate::util::fs::create_file(&PathBuf::from(&self.output_path))
-          .context("Failed to open JUnit report file.")?;
+      let file = crate::util::fs::create_file(Path::new(&self.output_path))
+        .context("Failed to open JUnit report file.")?;
       report.serialize(file).with_context(|| {
         format!("Failed to write JUnit report to {}", self.output_path)
       })?;

@@ -38,5 +38,6 @@ num-bigint.workspace = true
 rand.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
+sys_traits = { features = ["real"], workspace = true }
 thiserror.workspace = true
 url.workspace = true

@@ -938,26 +938,26 @@ impl PathQueryDescriptor {
     let (path, requested) = if is_windows_device_path {
       // On Windows, normalize_path doesn't work with device-prefix-style
       // paths. We pass these through.
-      (path.into_owned(), None)
+      (path, None)
     } else if path.is_absolute() {
-      (normalize_path(path.as_ref()), None)
+      (normalize_path(path), None)
     } else {
       let cwd = sys
         .env_current_dir()
         .map_err(PathResolveError::CwdResolve)?;
       (
-        normalize_path(cwd.join(path.as_ref())),
+        normalize_path(Cow::Owned(cwd.join(path.as_ref()))),
         Some(path.to_string_lossy().into_owned()),
       )
     };
     Ok(Self {
-      path,
+      path: path.into_owned(),
       requested,
       is_windows_device_path,
     })
   }
 
-  pub fn new_known_cwd(path: Cow<'_, PathBuf>, cwd: &Path) -> Self {
+  pub fn new_known_cwd(path: Cow<'_, Path>, cwd: &Path) -> Self {
     let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
       && path_bytes.starts_with(br"\\.\")
@@ -965,23 +965,23 @@ impl PathQueryDescriptor {
     let (path, display) = if is_windows_device_path {
       // On Windows, normalize_path doesn't work with device-prefix-style
       // paths. We pass these through.
-      (path.into_owned(), None)
+      (path, None)
     } else if path.is_absolute() {
-      (normalize_path(path.as_ref()), None)
+      (normalize_path(path), None)
     } else {
       (
-        normalize_path(cwd.join(path.as_ref())),
+        normalize_path(Cow::Owned(cwd.join(path.as_ref()))),
         Some(path.to_string_lossy().into_owned()),
       )
     };
     Self {
-      path,
+      path: path.into_owned(),
       requested: display,
       is_windows_device_path,
     }
   }
 
-  pub fn new_known_absolute(path: Cow<'_, PathBuf>) -> Self {
+  pub fn new_known_absolute(path: Cow<'_, Path>) -> Self {
     let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
       && path_bytes.starts_with(br"\\.\")
@@ -989,12 +989,12 @@ impl PathQueryDescriptor {
     let path = if is_windows_device_path {
       // On Windows, normalize_path doesn't work with device-prefix-style
       // paths. We pass these through.
-      path.into_owned()
+      path
     } else {
-      normalize_path(path.as_ref())
+      normalize_path(path)
     };
     Self {
-      path,
+      path: path.into_owned(),
       requested: None,
       is_windows_device_path,
     }

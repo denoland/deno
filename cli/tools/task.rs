@@ -1,9 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -448,9 +450,11 @@ impl<'a> TaskRunner<'a> {
     self.maybe_npm_install().await?;
 
     let cwd = match &self.task_flags.cwd {
-      Some(path) => canonicalize_path(&PathBuf::from(path))
+      Some(path) => canonicalize_path(Path::new(path))
         .context("failed canonicalizing --cwd")?,
-      None => normalize_path(dir_url.to_file_path().unwrap()),
+      None => {
+        normalize_path(Cow::Owned(dir_url.to_file_path().unwrap())).into_owned()
+      }
     };
 
     let custom_commands = task_runner::resolve_custom_commands(
@@ -484,8 +488,8 @@ impl<'a> TaskRunner<'a> {
     self.maybe_npm_install().await?;
 
     let cwd = match &self.task_flags.cwd {
-      Some(path) => canonicalize_path(&PathBuf::from(path))?,
-      None => normalize_path(dir_url.to_file_path().unwrap()),
+      Some(path) => Cow::Owned(canonicalize_path(Path::new(path))?),
+      None => normalize_path(Cow::Owned(dir_url.to_file_path().unwrap())),
     };
 
     // At this point we already checked if the task name exists in package.json.
@@ -508,7 +512,7 @@ impl<'a> TaskRunner<'a> {
             task_name,
             package_name,
             script,
-            cwd: cwd.clone(),
+            cwd: cwd.to_path_buf(),
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
             argv,

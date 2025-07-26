@@ -636,13 +636,13 @@ impl TsConfigFile {
     };
     let path = Path::new(raw);
     let absolute_path = if path.is_absolute() {
-      normalize_path(path)
+      normalize_path(Cow::Borrowed(path))
     } else {
-      normalize_path(dir_path.as_ref().join(path))
+      normalize_path(Cow::Owned(dir_path.as_ref().join(path)))
     };
     Self {
       relative_specifier,
-      absolute_path,
+      absolute_path: absolute_path.into_owned(),
     }
   }
 }
@@ -778,7 +778,8 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
 
   fn collect(mut self) -> Vec<TsConfigData> {
     for root in std::mem::take(&mut self.roots) {
-      let Ok(ts_config) = self.read_ts_config_with_cache(root) else {
+      let Ok(ts_config) = self.read_ts_config_with_cache(Cow::Owned(root))
+      else {
         continue;
       };
       self.visit_reference(ts_config);
@@ -812,12 +813,12 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       } else {
         Cow::Owned(dir_path.join(reference_path))
       };
-      match self.read_ts_config_with_cache(&reference_path) {
+      match self.read_ts_config_with_cache(Cow::Borrowed(&reference_path)) {
         Ok(ts_config) => self.visit_reference(ts_config),
         Err(err) if is_maybe_directory_error(&err) => {
-          if let Ok(ts_config) =
-            self.read_ts_config_with_cache(reference_path.join("tsconfig.json"))
-          {
+          if let Ok(ts_config) = self.read_ts_config_with_cache(Cow::Owned(
+            reference_path.join("tsconfig.json"),
+          )) {
             self.visit_reference(ts_config)
           }
         }
@@ -829,21 +830,25 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
 
   fn read_ts_config_with_cache(
     &mut self,
-    path: impl AsRef<Path>,
+    path: Cow<Path>,
   ) -> Result<Rc<TsConfigData>, Rc<std::io::Error>> {
-    let path = normalize_path(path.as_ref());
-    self.read_cache.get(&path).cloned().unwrap_or_else(|| {
-      if !self.currently_reading.insert(path.clone()) {
-        return Err(Rc::new(std::io::Error::new(
-          ErrorKind::Other,
-          "Cycle detected while following `extends`.",
-        )));
-      }
-      let result = self.read_ts_config(&path).map(Rc::new).map_err(Rc::new);
-      self.currently_reading.pop();
-      self.read_cache.insert(path, result.clone());
-      result
-    })
+    let path = normalize_path(path);
+    self
+      .read_cache
+      .get(path.as_ref())
+      .cloned()
+      .unwrap_or_else(|| {
+        if !self.currently_reading.insert(path.to_path_buf()) {
+          return Err(Rc::new(std::io::Error::new(
+            ErrorKind::Other,
+            "Cycle detected while following `extends`.",
+          )));
+        }
+        let result = self.read_ts_config(&path).map(Rc::new).map_err(Rc::new);
+        self.currently_reading.pop();
+        self.read_cache.insert(path.to_path_buf(), result.clone());
+        result
+      })
   }
 
   fn read_ts_config(
@@ -893,7 +898,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
           .ok()?;
         let url = node_resolution.into_url().ok()?;
         let path = url_to_file_path(&url).ok()?;
-        self.read_ts_config_with_cache(&path).ok()
+        self.read_ts_config_with_cache(Cow::Owned(path)).ok()
       })
       .collect::<Vec<_>>();
     let sources = extends_targets

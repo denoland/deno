@@ -186,12 +186,12 @@ pub fn op_require_node_module_paths<
   let sys = state.borrow::<TSys>();
   // Guarantee that "from" is absolute.
   let from = if from.starts_with("file:///") {
-    url_to_file_path(&Url::parse(from)?)?
+    Cow::Owned(url_to_file_path(&Url::parse(from)?)?)
   } else {
     let current_dir = &sys
       .env_current_dir()
       .map_err(|e| RequireErrorKind::UnableToGetCwd(UnableToGetCwdError(e)))?;
-    normalize_path(current_dir.join(from))
+    normalize_path(Cow::Owned(current_dir.join(from)))
   };
 
   if cfg!(windows) {
@@ -406,7 +406,7 @@ fn path_resolve<'a>(mut parts: impl Iterator<Item = &'a str>) -> PathBuf {
   for part in parts {
     p = p.join(part);
   }
-  normalize_path(p)
+  normalize_path(Cow::Owned(p)).into_owned()
 }
 
 #[op2]
@@ -486,13 +486,13 @@ pub fn op_require_try_self<
   #[string] parent_path: Option<String>,
   #[string] request: &str,
 ) -> Result<Option<String>, RequireError> {
-  if parent_path.is_none() {
+  let Some(parent_path) = parent_path else {
     return Ok(None);
-  }
+  };
 
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
   let pkg = pkg_json_resolver
-    .get_closest_package_json(&PathBuf::from(parent_path.unwrap()))
+    .get_closest_package_json(Path::new(&parent_path))
     .ok()
     .flatten();
   if pkg.is_none() {

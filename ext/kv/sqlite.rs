@@ -3,8 +3,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::env::current_dir;
-use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::path::Path;
 use std::path::PathBuf;
@@ -17,7 +15,6 @@ use async_trait::async_trait;
 use deno_core::OpState;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
-use deno_path_util::normalize_path;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
@@ -171,7 +168,12 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
             let flags =
               OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
             let resolved_path =
-              canonicalize_path(path).map_err(JsErrorBox::from_err)?;
+              deno_path_util::fs::canonicalize_path_maybe_not_exists(
+                // todo(dsherret): probably should use the FileSystem in the op state instead
+                &sys_traits::impls::RealSys,
+                path,
+              )
+              .map_err(JsErrorBox::from_err)?;
             let path = path.clone();
             (
               Arc::new(move || {
@@ -236,34 +238,5 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       config,
     )
     .map_err(|e| JsErrorBox::generic(e.to_string()))
-  }
-}
-
-/// Same as Path::canonicalize, but also handles non-existing paths.
-fn canonicalize_path(path: &Path) -> Result<PathBuf, std::io::Error> {
-  let path = normalize_path(path);
-  let mut path = path;
-  let mut names_stack = Vec::new();
-  loop {
-    match path.canonicalize() {
-      Ok(mut canonicalized_path) => {
-        for name in names_stack.into_iter().rev() {
-          canonicalized_path = canonicalized_path.join(name);
-        }
-        return Ok(canonicalized_path);
-      }
-      Err(err) if err.kind() == ErrorKind::NotFound => {
-        let file_name = path.file_name().map(|os_str| os_str.to_os_string());
-        if let Some(file_name) = file_name {
-          names_stack.push(file_name.to_str().unwrap().to_string());
-          path = path.parent().unwrap().to_path_buf();
-        } else {
-          names_stack.push(path.to_str().unwrap().to_string());
-          let current_dir = current_dir()?;
-          path.clone_from(&current_dir);
-        }
-      }
-      Err(err) => return Err(err),
-    }
   }
 }

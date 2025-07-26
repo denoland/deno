@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -60,7 +61,7 @@ fn to_absolute_path(path: &str, cwd: &Path) -> String {
     path.to_string()
   } else {
     let path = cwd.join(path);
-    deno_path_util::normalize_path(&path)
+    deno_path_util::normalize_path(Cow::Owned(path))
       .to_string_lossy()
       .to_string()
   }

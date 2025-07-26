@@ -157,7 +157,7 @@ async fn read_eval_file(
   eval_file: &str,
 ) -> Result<Arc<str>, AnyError> {
   let specifier =
-    deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
+    deno_path_util::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
   let file = file_fetcher.fetch_bypass_permissions(&specifier).await?;
 
