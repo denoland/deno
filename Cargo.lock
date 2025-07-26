@@ -2228,6 +2228,7 @@ dependencies = [
  "denokv_proto",
  "denokv_remote",
  "denokv_sqlite",
+ "dyn-clone",
  "faster-hex",
  "http 1.1.0",
  "http-body-util",

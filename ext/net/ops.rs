@@ -269,6 +269,14 @@ where
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
 
+  {
+    let mut s = state.borrow_mut();
+    s.borrow_mut::<NP>().check_net_resolved_addr_is_not_denied(
+      &addr,
+      "Deno.DatagramConn.send()",
+    )?;
+  }
+
   let resource = state
     .borrow_mut()
     .resource_table
@@ -516,6 +524,12 @@ where
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
 
+  {
+    let mut s = state.borrow_mut();
+    s.borrow_mut::<NP>()
+      .check_net_resolved_addr_is_not_denied(&addr, "Deno.connect()")?;
+  }
+
   let cancel_handle = resource_abort_id.and_then(|rid| {
     state
       .borrow_mut()
@@ -588,6 +602,10 @@ where
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
 
+  state
+    .borrow_mut::<NP>()
+    .check_net_resolved_addr_is_not_denied(&addr, "Deno.listen()")?;
+
   let listener = if load_balanced {
     TcpListener::bind_load_balanced(addr)
   } else {
@@ -616,6 +634,11 @@ where
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
 
+  {
+    state
+      .borrow_mut::<NP>()
+      .check_net_resolved_addr_is_not_denied(&addr, "Deno.listenDatagram()")?;
+  }
   let domain = if addr.is_ipv4() {
     Domain::IPV4
   } else {
@@ -1432,6 +1455,14 @@ mod tests {
       &mut self,
       _cid: u32,
       _port: u32,
+      _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+      Ok(())
+    }
+
+    fn check_net_resolved_addr_is_not_denied(
+      &mut self,
+      _addr: &SocketAddr,
       _api_name: &str,
     ) -> Result<(), PermissionCheckError> {
       Ok(())
