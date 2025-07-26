@@ -66,7 +66,6 @@ use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use regex::Regex;
 use serde::Deserialize;
-use tokio::signal;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::args::CliOptions;
@@ -1282,7 +1281,7 @@ async fn test_specifiers(
 
   let mut cancel_sender = test_event_sender_factory.weak_sender();
   let sigint_handler_handle = spawn(async move {
-    signal::ctrl_c().await.unwrap();
+    deno_signals::ctrl_c().await.unwrap();
     cancel_sender.send(TestEvent::Sigint).ok();
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
@@ -1734,7 +1733,7 @@ pub async fn run_tests_with_watch(
   // once a user adds one.
   spawn(async move {
     loop {
-      signal::ctrl_c().await.unwrap();
+      deno_signals::ctrl_c().await.unwrap();
       if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
         #[allow(clippy::disallowed_methods)]
         std::process::exit(130);

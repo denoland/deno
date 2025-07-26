@@ -7,6 +7,10 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
 use signal_hook::consts::*;
+use tokio::sync::mpsc;
+
+mod dict;
+pub use dict::*;
 
 #[cfg(windows)]
 static SIGHUP: i32 = 1;
@@ -161,4 +165,33 @@ pub fn run_exit() {
 
 pub fn is_forbidden(signo: i32) -> bool {
   FORBIDDEN.contains(&signo)
+}
+
+pub struct SignalStream {
+  rx: mpsc::UnboundedReceiver<()>,
+}
+
+impl SignalStream {
+  pub async fn recv(&mut self) -> Option<()> {
+    self.rx.recv().await
+  }
+}
+
+pub fn signal_stream(signo: i32) -> SignalStream {
+  let (tx, rx) = mpsc::unbounded_channel();
+  let cb = Box::new(move || {
+    let _ = tx.send(());
+  });
+  register(signo, /* prevent_default */ false, cb);
+  SignalStream { rx }
+}
+
+pub async fn ctrl_c() -> std::io::Result<()> {
+  match signal_stream(libc::SIGINT).recv().await {
+    Some(_) => Ok(()),
+    None => Err(std::io::Error::new(
+      std::io::ErrorKind::Other,
+      "failed to receive SIGINT signal",
+    )),
+  }
 }

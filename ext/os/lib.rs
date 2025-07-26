@@ -17,7 +17,6 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 
 mod ops;
-pub mod signal;
 pub mod sys_info;
 
 pub use ops::signal::SignalError;

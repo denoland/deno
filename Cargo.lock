@@ -1576,6 +1576,7 @@ dependencies = [
  "deno_resolver",
  "deno_runtime",
  "deno_semver",
+ "deno_signals",
  "deno_snapshots",
  "deno_subprocess_windows",
  "deno_task_shell",
@@ -2701,6 +2702,7 @@ dependencies = [
  "deno_os",
  "deno_path_util",
  "deno_permissions",
+ "deno_signals",
  "deno_subprocess_windows",
  "libc",
  "log",
@@ -2791,6 +2793,7 @@ dependencies = [
  "deno_permissions",
  "deno_process",
  "deno_resolver",
+ "deno_signals",
  "deno_telemetry",
  "deno_terminal 0.2.2",
  "deno_tls",
@@ -2848,7 +2851,11 @@ dependencies = [
 name = "deno_signals"
 version = "0.2.0"
 dependencies = [
+ "deno_error",
+ "libc",
  "signal-hook",
+ "thiserror 2.0.12",
+ "tokio",
  "winapi",
 ]
 

@@ -313,7 +313,7 @@ impl TryFrom<ExitStatus> for ChildStatus {
         success: false,
         code: 128 + signal,
         #[cfg(unix)]
-        signal: Some(deno_os::signal::signal_int_to_str(signal)?.to_string()),
+        signal: Some(deno_signals::signal_int_to_str(signal)?.to_string()),
         #[cfg(not(unix))]
         signal: None,
       }
@@ -1263,7 +1263,7 @@ mod deprecated {
 
   #[cfg(unix)]
   pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
-    let signo = deno_os::signal::signal_str_to_int(signal)
+    let signo = deno_signals::signal_str_to_int(signal)
       .map_err(SignalError::InvalidSignalStr)?;
     use nix::sys::signal::Signal;
     use nix::sys::signal::kill as unix_kill;
@@ -1291,7 +1291,7 @@ mod deprecated {
 
     if !matches!(signal, "SIGKILL" | "SIGTERM") {
       Err(
-        SignalError::InvalidSignalStr(deno_os::signal::InvalidSignalStrError(
+        SignalError::InvalidSignalStr(deno_signals::InvalidSignalStrError(
           signal.to_string(),
         ))
         .into(),
