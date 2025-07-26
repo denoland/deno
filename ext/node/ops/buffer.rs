@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 
 #[op2(fast)]
@@ -118,4 +119,64 @@ fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
     }
   }
   ascii_bytes
+}
+
+#[op2]
+pub fn op_node_decode_utf8<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  buf: v8::Local<v8::Value>,
+  byte_offset: v8::Local<v8::Value>,
+  byte_length: v8::Local<v8::Value>,
+  start: v8::Local<v8::Value>,
+  end: v8::Local<v8::Value>,
+) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
+  // SAFETY: the javascript side must guarantee that the arguments are of the correct types
+  let buf = unsafe { v8::Local::<v8::ArrayBuffer>::cast_unchecked(buf) };
+  // SAFETY: upheld by js
+  let byte_offset = unsafe { to_usize_unchecked(byte_offset) };
+  // SAFETY: upheld by js
+  let byte_length = unsafe { to_usize_unchecked(byte_length) };
+  // SAFETY: upheld by js
+  let start = unsafe { to_usize_unchecked(start) };
+  // SAFETY: upheld by js
+  let end = unsafe { to_usize_unchecked(end) };
+
+  // SAFETY: the javascript side must guarantee that the arguments are in bounds
+  let buffer = unsafe { buffer_to_slice(&buf, byte_offset, byte_length) };
+  let buffer = &buffer[start..end];
+
+  if buffer.len() <= 256 && buffer.is_ascii() {
+    v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+      .ok_or_else(|| JsErrorBox::generic("Invalid ASCII sequence"))
+  } else {
+    v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
+      .ok_or_else(|| JsErrorBox::generic("Invalid UTF-8 sequence"))
+  }
+}
+
+/// # Safety
+///
+/// The caller must guarantee that the argument is a valid `v8::Number`.
+unsafe fn to_usize_unchecked(arg: v8::Local<v8::Value>) -> usize {
+  // SAFETY: checked by caller
+  let arg = unsafe { v8::Local::<v8::Number>::cast_unchecked(arg) };
+  arg.value() as usize
+}
+
+/// # Safety
+///
+/// The caller must guarantee that byte_offset and byte_length are valid.
+unsafe fn buffer_to_slice<'a>(
+  buf: &'a v8::Local<v8::ArrayBuffer>,
+  byte_offset: usize,
+  byte_length: usize,
+) -> &'a [u8] {
+  let Some(ptr) = buf.data() else {
+    return &[];
+  };
+  // SAFETY: caller
+  unsafe {
+    let ptr = ptr.cast::<u8>().add(byte_offset);
+    std::slice::from_raw_parts(ptr.as_ptr(), byte_length)
+  }
 }
