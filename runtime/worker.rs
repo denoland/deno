@@ -71,7 +71,7 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
     let (tx, rx) = tokio::sync::watch::channel(());
 
     tokio::spawn(async move {
-      let mut sigusr2 = deno_signals::signal_stream(libc::SIGUSR2).unwrap();
+      let mut sigusr2 = deno_signals::signal_stream(libc::SIGUSR2);
 
       loop {
         sigusr2.recv().await;
