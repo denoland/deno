@@ -361,11 +361,8 @@ declare namespace WebAssembly {
  * @category Platform
  */
 declare function setTimeout(
-  /** callback function to execute when timer expires */
-  cb: (...args: any[]) => void,
-  /** delay in ms */
+  cb: string | ((...args: any[]) => void),
   delay?: number,
-  /** arguments passed to callback function */
   ...args: any[]
 ): number;
 
@@ -379,11 +376,8 @@ declare function setTimeout(
  * @category Platform
  */
 declare function setInterval(
-  /** callback function to execute when timer expires */
-  cb: (...args: any[]) => void,
-  /** delay in ms */
+  cb: string | ((...args: any[]) => void),
   delay?: number,
-  /** arguments passed to callback function */
   ...args: any[]
 ): number;
 

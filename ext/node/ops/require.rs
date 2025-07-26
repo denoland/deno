@@ -709,12 +709,11 @@ pub fn op_require_package_imports_resolve<
       TSys,
     >>();
     NodeResolutionThreadLocalCache::clear();
-    let url = node_resolver.package_imports_resolve(
+    let url = node_resolver.resolve_package_import(
       request,
       Some(&UrlOrPathRef::from_path(&referrer_path)),
-      ResolutionMode::Require,
       Some(&pkg),
-      node_resolver.require_conditions(),
+      ResolutionMode::Require,
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(url)?))

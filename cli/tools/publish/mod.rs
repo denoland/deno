@@ -114,6 +114,7 @@ pub async fn publish(
   }
 
   let specifier_unfurler = SpecifierUnfurler::new(
+    Some(cli_factory.node_resolver().await?.clone()),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   );

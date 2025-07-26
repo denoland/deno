@@ -17,8 +17,8 @@ fn op_nop() -> usize {
 
 fn setup() -> Vec<Extension> {
   vec![Extension {
-    name: "my_ext"
-    ops: std::borrow::Cow::Borrowed(&[op_nop::DECL])
+    name: "my_ext",
+    ops: std::borrow::Cow::Borrowed(&[op_nop::DECL]),
   }]
 }
 

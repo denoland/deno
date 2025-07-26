@@ -173,7 +173,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         ))
       })?
     };
-    let referrer_kind = if self
+    let resolution_mode = if self
       .shared
       .cjs_tracker
       .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))
@@ -191,7 +191,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .resolve(
           raw_specifier,
           &referrer,
-          referrer_kind,
+          resolution_mode,
           NodeResolutionKind::Execution,
         )
         .and_then(|res| res.into_url())
@@ -220,7 +220,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             pkg_json.dir_path(),
             sub_path.as_deref(),
             Some(&referrer),
-            referrer_kind,
+            resolution_mode,
             NodeResolutionKind::Execution,
           )
           .map_err(JsErrorBox::from_err)
@@ -251,7 +251,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               req,
               sub_path.as_deref(),
               &referrer,
-              referrer_kind,
+              resolution_mode,
               NodeResolutionKind::Execution,
             )
             .map_err(JsErrorBox::from_err)
@@ -276,7 +276,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 pkg_folder,
                 sub_path.as_deref(),
                 Some(&referrer),
-                referrer_kind,
+                resolution_mode,
                 NodeResolutionKind::Execution,
               )
               .map_err(JsErrorBox::from_err)
@@ -286,6 +286,20 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
         }
       },
+      Ok(MappedResolution::PackageJsonImport { pkg_json }) => self
+        .shared
+        .node_resolver
+        .resolve_package_import(
+          raw_specifier,
+          Some(&node_resolver::UrlOrPathRef::from_url(&referrer)),
+          Some(pkg_json),
+          resolution_mode,
+          NodeResolutionKind::Execution,
+        )
+        .map_err(JsErrorBox::from_err)
+        .and_then(|url_or_path| {
+          url_or_path.into_url().map_err(JsErrorBox::from_err)
+        }),
       Ok(MappedResolution::Normal { specifier, .. }) => {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
@@ -296,7 +310,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .resolve_req_reference(
               &reference,
               &referrer,
-              referrer_kind,
+              resolution_mode,
               NodeResolutionKind::Execution,
             )
             .map_err(JsErrorBox::from_err)
@@ -333,7 +347,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           .resolve_if_for_npm_pkg(
             raw_specifier,
             &referrer,
-            referrer_kind,
+            resolution_mode,
             NodeResolutionKind::Execution,
           )
           .map_err(JsErrorBox::from_err)?;

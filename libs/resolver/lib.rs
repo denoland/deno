@@ -22,6 +22,7 @@ use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
+use node_resolver::UrlOrPathRef;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
@@ -477,6 +478,25 @@ impl<
                 .and_then(|r| Ok(r.into_url()?)),
             })
         }
+        MappedResolution::PackageJsonImport { pkg_json } => self
+          .node_and_npm_resolver
+          .as_ref()
+          .unwrap()
+          .node_resolver
+          .resolve_package_import(
+            raw_specifier,
+            Some(&UrlOrPathRef::from_url(referrer)),
+            Some(pkg_json),
+            resolution_mode,
+            resolution_kind,
+          )
+          .map_err(|e| {
+            DenoResolveErrorKind::Node(
+              NodeResolveErrorKind::PackageImportsResolve(e).into_box(),
+            )
+            .into_box()
+          })
+          .and_then(|r| Ok(r.into_url()?)),
       },
       Err(err) => Err(err.into()),
     };

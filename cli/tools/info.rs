@@ -135,8 +135,21 @@ pub async fn info(
             ))?)
           }
         },
+        deno_resolver::workspace::MappedResolution::PackageJsonImport {
+          pkg_json,
+        } => Some(
+          node_resolver
+            .resolve_package_import(
+              &specifier,
+              Some(&node_resolver::UrlOrPathRef::from_url(&cwd_url)),
+              Some(pkg_json),
+              node_resolver::ResolutionMode::Import,
+              node_resolver::NodeResolutionKind::Execution,
+            )?
+            .into_url()?,
+        ),
       },
-      _ => None,
+      Err(_) => None,
     };
 
     let specifier = match maybe_import_specifier {

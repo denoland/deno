@@ -217,7 +217,10 @@ impl deno_graph::source::Resolver for SloppyImportCaptureResolver<'_> {
       | deno_resolver::workspace::MappedResolution::WorkspaceNpmPackage {
         ..
       }
-      | deno_resolver::workspace::MappedResolution::PackageJson { .. } => {
+      | deno_resolver::workspace::MappedResolution::PackageJson { .. }
+      | deno_resolver::workspace::MappedResolution::PackageJsonImport {
+        ..
+      } => {
         // this error is ignored
         Err(ResolveError::Other(JsErrorBox::generic("")))
       }

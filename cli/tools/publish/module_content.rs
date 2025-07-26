@@ -424,7 +424,7 @@ mod test {
       )
       .unwrap(),
     );
-    let specifier_unfurler = SpecifierUnfurler::new(resolver, false);
+    let specifier_unfurler = SpecifierUnfurler::new(None, resolver, false);
     let package_json_resolver =
       Arc::new(PackageJsonResolver::new(sys.clone(), None));
     let node_resolver = Arc::new(NodeResolver::new(
