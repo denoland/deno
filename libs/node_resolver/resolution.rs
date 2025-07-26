@@ -1291,20 +1291,9 @@ impl<
           }
         }
       }
-    } else if target.is_null() {
-      return Ok(None);
     }
 
-    Err(
-      InvalidPackageTargetError {
-        pkg_json_path: package_json_path.to_path_buf(),
-        sub_path: package_subpath.to_string(),
-        target: target.to_string(),
-        is_import: internal,
-        maybe_referrer: maybe_referrer.map(|r| r.display()),
-      }
-      .into(),
-    )
+    Ok(None)
   }
 
   fn matches_types_key(&self, key: &str) -> bool {
