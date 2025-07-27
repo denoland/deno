@@ -1437,7 +1437,7 @@ pub fn load_env_variables_from_env_file(
     return;
   };
 
-  for env_file_name in env_file_names.iter().rev() {
+  for env_file_name in env_file_names.iter() {
     match from_filename_override(env_file_name) {
       Ok(_) => (),
       Err(error) => {
