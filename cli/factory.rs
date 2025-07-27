@@ -106,7 +106,7 @@ use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::type_checker::TypeChecker;
-use crate::util::env_loader::load_env_variables_from_env_files;
+use crate::util::env_manager::load_env_variables_from_env_files;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
