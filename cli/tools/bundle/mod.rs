@@ -117,7 +117,7 @@ pub async fn bundle(
     resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
   let _ = plugin_handler
     .prepare_module_load(&resolved_entrypoints)
-    .await;
+    .await?;
 
   let roots =
     resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
@@ -798,8 +798,8 @@ impl DenoPluginHandler {
           lib: TsTypeLib::default(),
           permissions: self.permissions.clone(),
           ext_overwrite: None,
-          allow_unknown_media_types: true,
-          skip_graph_roots_validation: true,
+          allow_unknown_media_types: false,
+          skip_graph_roots_validation: false,
         },
       )
       .await?;
