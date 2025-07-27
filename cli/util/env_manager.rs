@@ -66,6 +66,7 @@ impl EnvManager {
     if !file_path.as_ref().exists() {
       inner.file_variables.remove(&path_str);
       // Only show warning if logging is enabled
+      #[allow(clippy::print_stderr)]
       if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
         eprintln!(
           "{} The environment file specified '{}' was not found.",
@@ -88,6 +89,8 @@ impl EnvManager {
               match item {
                 Ok((key, value)) => {
                   // Set the environment variable
+                  // SAFETY: We're setting environment variables with valid UTF-8 strings
+                  // from the .env file. Both key and value are guaranteed to be valid strings.
                   unsafe {
                     env::set_var(&key, &value);
                   }
@@ -188,6 +191,8 @@ impl EnvManager {
 
         // Restore original value or remove entirely
         if let Some(original_value) = inner.original_env.get(&var_name) {
+          // SAFETY: We're restoring environment variables to their original values.
+          // Both var_name and original_value are valid UTF-8 strings from the original environment.
           unsafe {
             env::set_var(&var_name, original_value);
           }
@@ -202,6 +207,8 @@ impl EnvManager {
                   .get(&var_name)
                   .unwrap_or(&"".to_string())
               {
+                // SAFETY: We're removing environment variables that we previously set.
+                // var_name is a valid UTF-8 string that we tracked when loading the env file.
                 unsafe {
                   env::remove_var(&var_name);
                 }
