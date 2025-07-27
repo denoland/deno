@@ -40,10 +40,10 @@ use std::sync::Arc;
 use args::TaskFlags;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
@@ -502,12 +502,10 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 }
 
 fn exit_for_error(error: AnyError) -> ! {
-  let mut error_string = format!("{error:?}");
-  if let Some(CoreError::Js(e)) =
-    any_and_jserrorbox_downcast_ref::<CoreError>(&error)
-  {
-    error_string = format_js_error(e);
-  }
+  let error_string = match js_error_downcast_ref(&error) {
+    Some(e) => format_js_error(e),
+    None => format!("{error:?}"),
+  };
 
   exit_with_message(&error_string, 1);
 }
@@ -627,7 +625,11 @@ async fn resolve_flags_and_init(
     .or_else(|| env::var("DENO_CONNECTED").ok())
   {
     if let Err(err) = initialize_tunnel(&host, &flags).await {
-      exit_for_error(AnyError::from(err))
+      exit_for_error(err.context("Failed to start with --connected"));
+    }
+    // SAFETY: We're doing this before any threads are created.
+    unsafe {
+      std::env::set_var("DENO_CONNECTED", &host);
     }
   }
 
