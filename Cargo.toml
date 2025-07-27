@@ -533,3 +533,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
+
+[patch.crates-io]
+deno_unsync = { git = "https://github.com/lrowe/deno_unsync.git", rev = "5276ffc65928c2addec358c24d2a94f11f4fbfef" }
