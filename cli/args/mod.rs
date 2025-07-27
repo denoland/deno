@@ -51,7 +51,7 @@ use deno_semver::StackString;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
-use dotenvy::from_filename;
+use dotenvy::from_filename_override;
 pub use flags::*;
 use once_cell::sync::Lazy;
 use thiserror::Error;
@@ -1438,7 +1438,7 @@ pub fn load_env_variables_from_env_file(
   };
 
   for env_file_name in env_file_names.iter().rev() {
-    match from_filename(env_file_name) {
+    match from_filename_override(env_file_name) {
       Ok(_) => (),
       Err(error) => {
         #[allow(clippy::print_stderr)]
