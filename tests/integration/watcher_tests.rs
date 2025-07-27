@@ -2060,7 +2060,9 @@ async fn bundle_watch() {
 async fn run_watch_with_env_file() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
-  file_to_watch.write("console.log('ENV_VAR value:', Deno.env.get('ENV_VAR') || 'undefined');");
+  file_to_watch.write(
+    "console.log('ENV_VAR value:', Deno.env.get('ENV_VAR') || 'undefined');",
+  );
 
   let env_file = t.path().join(".env");
   env_file.write("ENV_VAR=initial_value");
@@ -2093,13 +2095,18 @@ async fn run_watch_with_env_file() {
   file_to_watch.write("console.log('ENV_VAR value (unchanged):', Deno.env.get('ENV_VAR') || 'undefined');");
 
   wait_contains("Restarting", &mut stderr_lines).await;
-  wait_contains("ENV_VAR value (unchanged): updated_value", &mut stdout_lines).await;
+  wait_contains(
+    "ENV_VAR value (unchanged): updated_value",
+    &mut stdout_lines,
+  )
+  .await;
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
 
   env_file.write("ENV_VAR=final_value");
 
   wait_contains("Restarting", &mut stderr_lines).await;
-  wait_contains("ENV_VAR value (unchanged): final_value", &mut stdout_lines).await;
+  wait_contains("ENV_VAR value (unchanged): final_value", &mut stdout_lines)
+    .await;
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
 
   check_alive_then_kill(child);

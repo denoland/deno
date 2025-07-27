@@ -21,10 +21,10 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
+use crate::args::load_env_variables_from_env_file;
 use crate::factory::CliFactory;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
-use crate::args::load_env_variables_from_env_file;
 
 pub mod hmr;
 
@@ -174,7 +174,9 @@ async fn run_with_watch(
     move |flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
-        if let (Some(env_files), Some(changed_paths)) = (&flags.env_file, &changed_paths) {
+        if let (Some(env_files), Some(changed_paths)) =
+          (&flags.env_file, &changed_paths)
+        {
           let should_reload_env = changed_paths.iter().any(|changed_path| {
             env_files.iter().any(|env_file| {
               let env_file_path = std::path::Path::new(env_file);
@@ -182,13 +184,16 @@ async fn run_with_watch(
               if env_file_path.file_name() == Some(env_file_path.as_os_str()) {
                 changed_path.file_name() == Some(env_file_path.as_os_str())
               } else {
-                changed_path.ends_with(env_file) ||
-                changed_path.file_name() == env_file_path.file_name()
+                changed_path.ends_with(env_file)
+                  || changed_path.file_name() == env_file_path.file_name()
               }
             })
           });
           if should_reload_env {
-            load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
+            load_env_variables_from_env_file(
+              flags.env_file.as_ref(),
+              flags.log_level,
+            );
           }
         }
 
