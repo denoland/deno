@@ -889,6 +889,7 @@ impl CliFactory {
           desc_parser.as_ref(),
           &self.cli_options()?.permissions_options(),
         )?;
+
         Ok(PermissionsContainer::new(desc_parser, permissions))
       })
   }
@@ -1073,11 +1074,7 @@ impl CliFactory {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
       let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
-        Box::new(HmrRunner::new(
-          emitter.clone(),
-          session,
-          watcher_communicator.clone(),
-        ))
+        HmrRunner::new(emitter.clone(), session, watcher_communicator.clone())
       });
       Some(fn_)
     } else {
@@ -1088,7 +1085,7 @@ impl CliFactory {
         let coverage_dir = PathBuf::from(coverage_dir);
         let fn_: crate::worker::CreateCoverageCollectorCb =
           Box::new(move |session| {
-            Box::new(CoverageCollector::new(coverage_dir.clone(), session))
+            CoverageCollector::new(coverage_dir.clone(), session)
           });
         Some(fn_)
       } else {
@@ -1225,9 +1222,9 @@ fn new_workspace_factory_options(
           ConfigDiscoveryOption::Disabled
         }
       }
-      ConfigFlag::Path(path) => {
-        ConfigDiscoveryOption::Path(initial_cwd.join(path))
-      }
+      ConfigFlag::Path(path) => ConfigDiscoveryOption::Path(
+        deno_path_util::normalize_path(initial_cwd.join(path)),
+      ),
       ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
     },
     maybe_custom_deno_dir_root: flags.internal.cache_path.clone(),
@@ -1241,7 +1238,6 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Clean(_)
-        | DenoSubcommand::Bundle(_)
     ),
     no_lock: flags.no_lock
       || matches!(
