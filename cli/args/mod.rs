@@ -452,6 +452,18 @@ impl WorkspaceMainModuleResolver {
           }
         }
       }
+      deno_resolver::workspace::MappedResolution::PackageJsonImport {
+        pkg_json,
+      } => self
+        .node_resolver
+        .resolve_package_import(
+          specifier,
+          Some(&node_resolver::UrlOrPathRef::from_url(cwd)),
+          Some(pkg_json),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Execution,
+        )?
+        .into_url()?,
     };
     Ok(url)
   }
