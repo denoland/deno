@@ -66,6 +66,7 @@ use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InstallFlags;
+use crate::args::load_env_variables_from_env_file;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
 use crate::cache::DenoDir;
@@ -105,6 +106,7 @@ use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::type_checker::TypeChecker;
+use crate::util::env_manager::load_env_variables_from_env_files;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -334,6 +336,8 @@ pub struct CliFactory {
 
 impl CliFactory {
   pub fn from_flags(flags: Arc<Flags>) -> Self {
+    load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
+
     Self {
       flags,
       watcher_communicator: None,
@@ -346,6 +350,13 @@ impl CliFactory {
     flags: Arc<Flags>,
     watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Self {
+    if let Some(env_files) = &flags.env_file {
+      let _ = load_env_variables_from_env_files(
+        env_files.as_slice(),
+        flags.log_level,
+      );
+    }
+
     CliFactory {
       watcher_communicator: Some(watcher_communicator),
       flags,
@@ -878,12 +889,7 @@ impl CliFactory {
           desc_parser.as_ref(),
           &self.cli_options()?.permissions_options(),
         )?;
-
-        Ok(PermissionsContainer::new(
-          desc_parser,
-          Some(Arc::new(self.in_npm_pkg_checker()?.clone())),
-          permissions,
-        ))
+        Ok(PermissionsContainer::new(desc_parser, permissions))
       })
   }
 
@@ -1067,7 +1073,11 @@ impl CliFactory {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
       let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
-        HmrRunner::new(emitter.clone(), session, watcher_communicator.clone())
+        Box::new(HmrRunner::new(
+          emitter.clone(),
+          session,
+          watcher_communicator.clone(),
+        ))
       });
       Some(fn_)
     } else {
@@ -1078,7 +1088,7 @@ impl CliFactory {
         let coverage_dir = PathBuf::from(coverage_dir);
         let fn_: crate::worker::CreateCoverageCollectorCb =
           Box::new(move |session| {
-            CoverageCollector::new(coverage_dir.clone(), session)
+            Box::new(CoverageCollector::new(coverage_dir.clone(), session))
           });
         Some(fn_)
       } else {

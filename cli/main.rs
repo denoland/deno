@@ -40,10 +40,10 @@ use std::sync::Arc;
 use args::TaskFlags;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
-use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
@@ -58,7 +58,6 @@ use factory::CliFactory;
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
-use self::args::load_env_variables_from_env_file;
 use self::util::draw_thread::DrawThread;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -503,10 +502,12 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 }
 
 fn exit_for_error(error: AnyError) -> ! {
-  let error_string = match js_error_downcast_ref(&error) {
-    Some(e) => format_js_error(e),
-    None => format!("{error:?}"),
-  };
+  let mut error_string = format!("{error:?}");
+  if let Some(CoreError::Js(e)) =
+    any_and_jserrorbox_downcast_ref::<CoreError>(&error)
+  {
+    error_string = format_js_error(e);
+  }
 
   exit_with_message(&error_string, 1);
 }
@@ -605,7 +606,6 @@ async fn resolve_flags_and_init(
     Err(err) => exit_for_error(AnyError::from(err)),
   };
 
-  load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
   flags.unstable_config.fill_with_env();
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
@@ -627,11 +627,7 @@ async fn resolve_flags_and_init(
     .or_else(|| env::var("DENO_CONNECTED").ok())
   {
     if let Err(err) = initialize_tunnel(&host, &flags).await {
-      exit_for_error(err.context("Failed to start with --connected"));
-    }
-    // SAFETY: We're doing this before any threads are created.
-    unsafe {
-      std::env::set_var("DENO_CONNECTED", &host);
+      exit_for_error(AnyError::from(err))
     }
   }
 
