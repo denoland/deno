@@ -878,7 +878,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
 }
 
 fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
-  deno_path_util::normalize_path(cwd.join(path))
+  deno_path_util::normalize_path(Cow::Owned(cwd.join(path))).into_owned()
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
