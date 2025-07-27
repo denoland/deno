@@ -106,7 +106,7 @@ use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::type_checker::TypeChecker;
-use crate::util::env_manager::load_env_variables_from_env_files;
+use crate::util::env_loader::load_env_variables_from_env_files;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -889,7 +889,6 @@ impl CliFactory {
           desc_parser.as_ref(),
           &self.cli_options()?.permissions_options(),
         )?;
-
         Ok(PermissionsContainer::new(desc_parser, permissions))
       })
   }
@@ -1226,9 +1225,9 @@ fn new_workspace_factory_options(
           ConfigDiscoveryOption::Disabled
         }
       }
-      ConfigFlag::Path(path) => ConfigDiscoveryOption::Path(
-        deno_path_util::normalize_path(initial_cwd.join(path)),
-      ),
+      ConfigFlag::Path(path) => {
+        ConfigDiscoveryOption::Path(initial_cwd.join(path))
+      }
       ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
     },
     maybe_custom_deno_dir_root: flags.internal.cache_path.clone(),
@@ -1242,6 +1241,7 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Clean(_)
+        | DenoSubcommand::Bundle(_)
     ),
     no_lock: flags.no_lock
       || matches!(
