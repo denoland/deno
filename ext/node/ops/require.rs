@@ -186,12 +186,12 @@ pub fn op_require_node_module_paths<
   let sys = state.borrow::<TSys>();
   // Guarantee that "from" is absolute.
   let from = if from.starts_with("file:///") {
-    url_to_file_path(&Url::parse(from)?)?
+    Cow::Owned(url_to_file_path(&Url::parse(from)?)?)
   } else {
     let current_dir = &sys
       .env_current_dir()
       .map_err(|e| RequireErrorKind::UnableToGetCwd(UnableToGetCwdError(e)))?;
-    normalize_path(current_dir.join(from))
+    normalize_path(Cow::Owned(current_dir.join(from)))
   };
 
   if cfg!(windows) {
@@ -406,7 +406,7 @@ fn path_resolve<'a>(mut parts: impl Iterator<Item = &'a str>) -> PathBuf {
   for part in parts {
     p = p.join(part);
   }
-  normalize_path(p)
+  normalize_path(Cow::Owned(p)).into_owned()
 }
 
 #[op2]

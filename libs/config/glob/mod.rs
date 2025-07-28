@@ -514,7 +514,11 @@ impl PathOrPattern {
       .map(|maybe_pattern| {
         maybe_pattern
           .map(PathOrPattern::Pattern)
-          .unwrap_or_else(|| PathOrPattern::Path(normalize_path(path)))
+          .unwrap_or_else(|| {
+            PathOrPattern::Path(
+              normalize_path(Cow::Borrowed(Path::new(path))).into_owned(),
+            )
+          })
       })
       .map_err(|err| err.into())
   }
@@ -530,9 +534,13 @@ impl PathOrPattern {
     } else if has_url_prefix(p) {
       PathOrPattern::new(p)
     } else if let Some(path) = p.strip_prefix('!') {
-      Ok(PathOrPattern::NegatedPath(normalize_path(base.join(path))))
+      Ok(PathOrPattern::NegatedPath(
+        normalize_path(Cow::Owned(base.join(path))).into_owned(),
+      ))
     } else {
-      Ok(PathOrPattern::Path(normalize_path(base.join(p))))
+      Ok(PathOrPattern::Path(
+        normalize_path(Cow::Owned(base.join(p))).into_owned(),
+      ))
     }
   }
 

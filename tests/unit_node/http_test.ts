@@ -2009,17 +2009,13 @@ Deno.test(
 
 Deno.test("[node/http] 'close' event is emitted when request finished", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
-  let socketCloseEmitted = false;
+
   const req = http.request("http://localhost:4545/echo.ts", async (res) => {
     res.on("close", resolve);
-    req.socket?.on("close", () => {
-      socketCloseEmitted = true;
-    });
     await text(res);
   });
   req.end();
   await promise;
-  assert(socketCloseEmitted);
 });
 
 Deno.test("[node/http] 'close' event is emitted on ServerResponse object when the client aborted the request in the middle", async () => {

@@ -62,18 +62,18 @@ repository = "https://github.com/denoland/deno"
 deno_ast = { version = "=0.48.2", features = ["transpiling"] }
 deno_core = { version = "0.353.0" }
 
-deno_cache_dir = "=0.23.0"
-deno_doc = "=0.180.0"
+deno_cache_dir = "=0.23.1"
+deno_doc = "=0.180.1"
 deno_error = "=0.6.1"
-deno_graph = { version = "=0.97.0", default-features = false }
+deno_graph = { version = "=0.97.1", default-features = false }
 deno_lint = "=0.76.0"
 deno_lockfile = "=0.30.2"
 deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_npm = "=0.35.0"
-deno_path_util = "=0.4.0"
+deno_path_util = "=0.5.2"
 deno_semver = "=0.8.1"
-deno_task_shell = "=0.25.2"
+deno_task_shell = "=0.25.3"
 deno_terminal = "=0.2.2"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
@@ -147,7 +147,7 @@ base64 = "0.22.1"
 base64-simd = "0.8"
 bencher = "0.1"
 boxed_error = "0.2.3"
-brotli = "6.0.0"
+brotli = { version = "6.0.0", features = ["ffi-api"] }
 bytemuck = "1.17.1"
 bytes = "1.4.0"
 cache_control = "=0.2.0"

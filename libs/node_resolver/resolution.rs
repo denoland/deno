@@ -651,8 +651,8 @@ impl<
     // todo(dsherret): don't allocate a string here (maybe use an
     // enum that says the subpath is not prefixed with a ./)
     let package_subpath = package_subpath
-      .map(|s| format!("./{s}"))
-      .unwrap_or_else(|| ".".to_string());
+      .map(|s| Cow::Owned(format!("./{s}")))
+      .unwrap_or_else(|| Cow::Borrowed("."));
     let maybe_referrer = maybe_referrer.map(UrlOrPathRef::from_url);
     let (resolved_url, resolved_method) = self.resolve_package_dir_subpath(
       package_dir,
@@ -990,11 +990,11 @@ impl<
           }
           Err(_) => {
             let export_target = if pattern {
-              pattern_re
-                .replace(target, |_caps: &regex::Captures| subpath)
-                .to_string()
+              pattern_re.replace(target, |_caps: &regex::Captures| subpath)
+            } else if subpath.is_empty() {
+              Cow::Borrowed(target)
             } else {
-              format!("{target}{subpath}")
+              Cow::Owned(format!("{target}{subpath}"))
             };
             let result = match self.package_resolve(
               &export_target,
@@ -1291,20 +1291,9 @@ impl<
           }
         }
       }
-    } else if target.is_null() {
-      return Ok(None);
     }
 
-    Err(
-      InvalidPackageTargetError {
-        pkg_json_path: package_json_path.to_path_buf(),
-        sub_path: package_subpath.to_string(),
-        target: target.to_string(),
-        is_import: internal,
-        maybe_referrer: maybe_referrer.map(|r| r.display()),
-      }
-      .into(),
-    )
+    Ok(None)
   }
 
   fn matches_types_key(&self, key: &str) -> bool {
@@ -2563,7 +2552,7 @@ mod tests {
   }
 
   #[test]
-  fn test_parse_package_name() {
+  fn test_parse_npm_pkg_name() {
     let dummy_referrer = Url::parse("http://example.com").unwrap();
     let dummy_referrer = UrlOrPathRef::from_url(&dummy_referrer);
 
@@ -2595,7 +2584,7 @@ mod tests {
       ("test.d.mts", "js", "test.js"),
     ];
     for (path, ext, expected) in cases {
-      let actual = with_known_extension(&PathBuf::from(path), ext);
+      let actual = with_known_extension(Path::new(path), ext);
       assert_eq!(actual.to_string_lossy(), *expected);
     }
   }

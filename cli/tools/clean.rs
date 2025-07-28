@@ -130,18 +130,18 @@ impl PathTrie {
     self.rewrites.push((from, to));
   }
 
-  fn rewrite(&self, s: &Path) -> PathBuf {
+  fn rewrite<'a>(&self, s: Cow<'a, Path>) -> Cow<'a, Path> {
     let normalized = deno_path_util::normalize_path(s);
     for (from, to) in &self.rewrites {
       if normalized.starts_with(from) {
-        return to.join(normalized.strip_prefix(from).unwrap());
+        return Cow::Owned(to.join(normalized.strip_prefix(from).unwrap()));
       }
     }
     normalized
   }
 
-  fn insert(&mut self, s: &Path) {
-    let normalized = self.rewrite(s);
+  fn insert(&mut self, s: PathBuf) {
+    let normalized = self.rewrite(Cow::Owned(s));
     let components = normalized.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
@@ -162,7 +162,7 @@ impl PathTrie {
   }
 
   fn find(&self, s: &Path) -> Option<Found> {
-    let normalized = self.rewrite(s);
+    let normalized = self.rewrite(Cow::Borrowed(s));
     let components = normalized.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
@@ -282,7 +282,7 @@ async fn clean_except(
   for url in &keep {
     if url.scheme() == "http" || url.scheme() == "https" {
       if let Ok(path) = http_cache.local_path_for_url(url) {
-        keep_paths_trie.insert(&path);
+        keep_paths_trie.insert(path);
       }
     }
     if let Some(path) = deno_dir
@@ -290,7 +290,7 @@ async fn clean_except(
       .get_cache_filename_with_extension(url, "js")
     {
       let path = deno_dir.gen_cache.location.join(path);
-      keep_paths_trie.insert(&path);
+      keep_paths_trie.insert(path);
     }
   }
 
@@ -299,7 +299,7 @@ async fn clean_except(
   // TODO(nathanwhit): remove once we don't need packuments for creating the snapshot from lockfile
   for package in snap.all_system_packages(&options.npm_system_info()) {
     keep_paths_trie.insert(
-      &npm_cache
+      npm_cache
         .package_name_folder(&package.id.nv.name)
         .join("registry.json"),
     );
@@ -311,7 +311,7 @@ async fn clean_except(
     if node_modules_path.is_some() {
       node_modules_keep.insert(package.get_package_cache_folder_id());
     }
-    keep_paths_trie.insert(&npm_cache.package_folder_for_id(
+    keep_paths_trie.insert(npm_cache.package_folder_for_id(
       &deno_npm::NpmPackageCacheFolderId {
         nv: package.id.nv.clone(),
         copy_index: package.copy_index,
@@ -371,7 +371,7 @@ async fn clean_except(
       for url in keep {
         if url.scheme() == "http" || url.scheme() == "https" {
           if let Ok(Some(path)) = cache.local_path_for_url(url) {
-            trie.insert(&path);
+            trie.insert(path);
           } else {
             panic!("should not happen")
           }
@@ -432,13 +432,13 @@ fn add_jsr_meta_paths(
       continue;
     };
     let keep = url_to_path(&base_url.join("meta.json").unwrap())?;
-    path_trie.insert(&keep);
+    path_trie.insert(keep);
     let keep = url_to_path(
       &base_url
         .join(&format!("{}_meta.json", package.version))
         .unwrap(),
     )?;
-    path_trie.insert(&keep);
+    path_trie.insert(keep);
   }
   Ok(())
 }
@@ -668,12 +668,12 @@ fn remove_file(
 
 #[cfg(test)]
 mod tests {
+  use std::path::Path;
+
   use super::Found::*;
 
   #[test]
   fn path_trie() {
-    use std::path::Path;
-
     let mut trie = super::PathTrie::new();
 
     #[cfg(unix)]
@@ -758,7 +758,7 @@ mod tests {
 
     for pth in paths {
       let path = Path::new(pth);
-      trie.insert(path);
+      trie.insert(path.into());
     }
 
     for (input, expect) in cases {
