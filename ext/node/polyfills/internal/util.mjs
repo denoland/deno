@@ -140,6 +140,8 @@ export function convertToValidSignal(signal) {
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
+export function deprecateInstantiation() {}
+
 export class WeakReference {
   #weak = null;
   #strong = null;
@@ -178,6 +180,7 @@ export default {
   convertToValidSignal,
   customInspectSymbol,
   customPromisifyArgs,
+  deprecateInstantiation,
   kEmptyObject,
   kEnumerableProperty,
   normalizeEncoding,

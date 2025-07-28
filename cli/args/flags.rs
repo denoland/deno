@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
@@ -28,7 +29,6 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::CaData;
@@ -37,6 +37,7 @@ use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmSystemInfo;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::normalize_path;
+use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
 use deno_runtime::deno_permissions::SysDescriptor;
@@ -1111,9 +1112,9 @@ impl Flags {
       let result = files_or_dirs
         .iter()
         .filter_map(|p| {
-          let path = normalize_path(current_dir.join(p));
+          let path = normalize_path(Cow::Owned(current_dir.join(p)));
           if seen.insert(path.clone()) {
-            Some(path)
+            Some(path.into_owned())
           } else {
             None
           }
@@ -1163,7 +1164,7 @@ impl Flags {
         // todo(dsherret): Why is this canonicalized? Document why.
         // attempt to resolve the config file from the task subcommand's
         // `--cwd` when specified
-        match canonicalize_path(&PathBuf::from(path)) {
+        match canonicalize_path(Path::new(path)) {
           Ok(path) => Some(vec![path]),
           Err(_) => Some(vec![current_dir.to_path_buf()]),
         }

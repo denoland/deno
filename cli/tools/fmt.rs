@@ -1798,7 +1798,7 @@ mod test {
   #[test]
   fn test_format_ensure_stable_unstable_format() {
     let err = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
+      Path::new("mod.ts"),
       &FileContents {
         had_bom: false,
         text: "1".into(),
@@ -1815,7 +1815,7 @@ mod test {
   #[test]
   fn test_format_ensure_stable_error_first() {
     let err = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
+      Path::new("mod.ts"),
       &FileContents {
         had_bom: false,
         text: "1".into(),
@@ -1830,7 +1830,7 @@ mod test {
   #[test]
   fn test_format_ensure_stable_error_second() {
     let err = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
+      Path::new("mod.ts"),
       &FileContents {
         had_bom: false,
         text: "1".into(),
@@ -1853,7 +1853,7 @@ mod test {
   #[test]
   fn test_format_stable_after_two() {
     let result = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
+      Path::new("mod.ts"),
       &FileContents {
         had_bom: false,
         text: "1".into(),
@@ -1876,7 +1876,7 @@ mod test {
   #[test]
   fn test_single_quote_true_prefers_single_quote() {
     let file_text = format_file(
-      &PathBuf::from("test.ts"),
+      Path::new("test.ts"),
       &FileContents {
         had_bom: false,
         text: "console.log(\"there's\");\nconsole.log('hi');\nconsole.log(\"bye\")\n".into(),
@@ -1900,7 +1900,7 @@ mod test {
   #[test]
   fn test_formated_removes_utf8_bom() {
     let file_text = format_file(
-      &PathBuf::from("test.ts"),
+      Path::new("test.ts"),
       &FileContents {
         had_bom: true,
         text: "let a = 1;".into(),
