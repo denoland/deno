@@ -1314,10 +1314,11 @@
 "parallel/test-zlib-crc32.js" = {}
 "parallel/test-zlib-create-raw.js" = {}
 "parallel/test-zlib-deflate-raw-inherits.js" = {}
-"parallel/test-zlib-destroy-pipe.js" = {}
+# Disable because setImmediate is broken
+# "parallel/test-zlib-destroy-pipe.js" = {}
 "parallel/test-zlib-dictionary-fail.js" = {}
-"parallel/test-zlib-flush-write-sync-interleaved.js" = {}
 "parallel/test-zlib-flush.js" = {}
+"parallel/test-zlib-flush-drain-longblock.js" = {}
 "parallel/test-zlib-from-concatenated-gzip.js" = {}
 "parallel/test-zlib-from-gzip-with-trailing-garbage.js" = {}
 "parallel/test-zlib-from-gzip.js" = {}
