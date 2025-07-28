@@ -109,7 +109,7 @@ fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
   }
 }
 
-#[op2(stack_trace)]
+#[op2]
 #[string]
 pub fn op_fs_cwd(state: &mut OpState) -> Result<String, FsOpsError> {
   let fs = state.borrow::<FileSystemRc>();
