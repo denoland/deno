@@ -1071,7 +1071,6 @@ impl CliFactory {
     };
     let create_coverage_collector =
       if let Some(coverage_dir) = cli_options.coverage_dir() {
-        let coverage_dir = PathBuf::from(coverage_dir);
         let fn_: crate::worker::CreateCoverageCollectorCb =
           Box::new(move |session| {
             CoverageCollector::new(coverage_dir.clone(), session)
