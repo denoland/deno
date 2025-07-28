@@ -111,10 +111,7 @@ fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
 
 #[op2(stack_trace)]
 #[string]
-pub fn op_fs_cwd<P>(state: &mut OpState) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+pub fn op_fs_cwd(state: &mut OpState) -> Result<String, FsOpsError> {
   let fs = state.borrow::<FileSystemRc>();
   let path = fs.cwd()?;
   let path_str = path_into_string(path.into_os_string())?;

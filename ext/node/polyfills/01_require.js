@@ -4,6 +4,7 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
+  op_fs_cwd,
   op_import_sync,
   op_napi_open,
   op_require_as_file_path,
@@ -13,7 +14,6 @@ import {
   op_require_is_deno_dir_package,
   op_require_is_maybe_cjs,
   op_require_is_request_relative,
-  op_require_maybe_cwd,
   op_require_node_module_paths,
   op_require_package_imports_resolve,
   op_require_path_basename,
@@ -887,11 +887,7 @@ function trySelfParentPath(parent) {
     return parent.filename;
   }
   if (parent.id === "<repl>" || parent.id === "internal/preload") {
-    return op_require_maybe_cwd(
-      !!parent,
-      parent?.filename,
-      parent?.id,
-    );
+    return op_fs_cwd();
   }
   return undefined;
 }

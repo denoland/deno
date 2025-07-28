@@ -445,22 +445,6 @@ pub fn op_require_path_basename(
 
 #[op2(stack_trace)]
 #[string]
-pub fn op_require_maybe_cwd<
-  P: NodePermissions + 'static,
-  TSys: ExtNodeSys + 'static,
->(
-  state: &mut OpState,
-) -> Option<String> {
-  let sys = state.borrow::<TSys>();
-  // permissions: no need to do a permission check for cwd
-  sys
-    .env_current_dir()
-    .map(|cwd| cwd.to_string_lossy().into_owned())
-    .ok()
-}
-
-#[op2(stack_trace)]
-#[string]
 pub fn op_require_try_self<
   P: NodePermissions + 'static,
   TInNpmPackageChecker: InNpmPackageChecker + 'static,
