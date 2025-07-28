@@ -42,153 +42,47 @@ export const GUNZIP = 4;
 export const DEFLATERAW = 5;
 export const INFLATERAW = 6;
 export const UNZIP = 7;
+export const BROTLI_DECODE = 8;
+export const BROTLI_ENCODE = 9;
+export const ZSTD_COMPRESS = 10;
+export const ZSTD_DECOMPRESS = 11;
+
+export const Z_MIN_WINDOWBITS = 8;
+export const Z_MAX_WINDOWBITS = 15;
+export const Z_DEFAULT_WINDOWBITS = 15;
+export const Z_MIN_CHUNK = 64;
+export const Z_MAX_CHUNK = 0x7fffffff;
+export const Z_DEFAULT_CHUNK = 16 * 1024;
+export const Z_MIN_MEMLEVEL = 1;
+export const Z_MAX_MEMLEVEL = 9;
+export const Z_DEFAULT_MEMLEVEL = 8;
+export const Z_MIN_LEVEL = -1;
+export const Z_MAX_LEVEL = 9;
+export const Z_DEFAULT_LEVEL = Z_DEFAULT_COMPRESSION;
+
+export const BROTLI_OPERATION_PROCESS = 0;
+export const BROTLI_OPERATION_FLUSH = 1;
+export const BROTLI_OPERATION_FINISH = 2;
+export const BROTLI_OPERATION_EMIT_METADATA = 3;
 
 import {
-  op_zlib_close,
-  op_zlib_close_if_pending,
-  op_zlib_err_msg,
-  op_zlib_init,
-  op_zlib_new,
-  op_zlib_reset,
-  op_zlib_write,
+  BrotliDecoder,
+  BrotliEncoder,
+  op_zlib_crc32,
+  op_zlib_crc32_string,
+  Zlib,
 } from "ext:core/ops";
-import process from "node:process";
 
-const writeResult = new Uint32Array(2);
-
-class Zlib {
-  #handle;
-  #dictionary;
-
-  constructor(mode) {
-    this.#handle = op_zlib_new(mode);
+function crc32(buf, crc) {
+  if (typeof buf === "string") {
+    return op_zlib_crc32_string(buf, crc);
   }
-
-  close() {
-    op_zlib_close(this.#handle);
+  if (buf instanceof DataView) {
+    buf = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
   }
-
-  writeSync(
-    flush,
-    input,
-    in_off,
-    in_len,
-    out,
-    out_off,
-    out_len,
-  ) {
-    const err = op_zlib_write(
-      this.#handle,
-      flush,
-      input,
-      in_off,
-      in_len,
-      out,
-      out_off,
-      out_len,
-      writeResult,
-    );
-
-    if (this.#checkError(err)) {
-      return [writeResult[1], writeResult[0]];
-    }
-    return;
-  }
-
-  #checkError(err) {
-    // Acceptable error states depend on the type of zlib stream.
-    switch (err) {
-      case Z_BUF_ERROR:
-        this.#error("unexpected end of file", err);
-        return false;
-      case Z_OK:
-      case Z_STREAM_END:
-        // normal statuses, not fatal
-        break;
-      case Z_NEED_DICT:
-        if (this.#dictionary && this.#dictionary.length > 0) {
-          this.#error("Bad dictionary", err);
-        } else {
-          this.#error("Missing dictionary", err);
-        }
-        return false;
-      default:
-        // something else.
-        this.#error("Zlib error", err);
-        return false;
-    }
-
-    return true;
-  }
-
-  write(
-    flush,
-    input,
-    in_off,
-    in_len,
-    out,
-    out_off,
-    out_len,
-  ) {
-    process.nextTick(() => {
-      const res = this.writeSync(
-        flush ?? Z_NO_FLUSH,
-        input,
-        in_off,
-        in_len,
-        out,
-        out_off,
-        out_len,
-      );
-
-      if (res) {
-        const [availOut, availIn] = res;
-        this.callback(availOut, availIn);
-      }
-    });
-
-    return this;
-  }
-
-  init(
-    windowBits,
-    level,
-    memLevel,
-    strategy,
-    dictionary,
-  ) {
-    const err = op_zlib_init(
-      this.#handle,
-      level,
-      windowBits,
-      memLevel,
-      strategy,
-      dictionary ?? new Uint8Array(0),
-    );
-
-    this.#dictionary = dictionary;
-
-    if (err != Z_OK) {
-      this.#error("Failed to initialize zlib", err);
-    }
-  }
-
-  params() {
-    throw new Error("deflateParams Not supported");
-  }
-
-  reset() {
-    const err = op_zlib_reset(this.#handle);
-    if (err != Z_OK) {
-      this.#error("Failed to reset stream", err);
-    }
-  }
-
-  #error(message, err) {
-    message = op_zlib_err_msg(this.#handle) ?? message;
-    this.onerror(message, err);
-    op_zlib_close_if_pending(this.#handle);
-  }
+  return op_zlib_crc32(buf, crc);
 }
 
-export { Zlib };
+export { BrotliDecoder, BrotliEncoder, crc32, Zlib };
+
+export default { BrotliDecoder, BrotliEncoder, Zlib, crc32 };
