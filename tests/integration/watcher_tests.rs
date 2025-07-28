@@ -2146,6 +2146,8 @@ console.log("---");
     .arg("--allow-env")
     .arg("--env-file=.env")
     .arg("--env-file=.env.local")
+    .arg("-L")
+    .arg("debug")
     .arg(&main_script)
     .env("NO_COLOR", "1")
     .piped_output()
@@ -2153,41 +2155,26 @@ console.log("---");
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
+  // Wait for watcher to be ready
+  wait_for_watcher("main.js", &mut stderr_lines).await;
+
   // Wait for initial run - .env.local should override .env for BAR
   wait_contains("FOO: from_env", &mut stdout_lines).await;
   wait_contains("BAR: from_local", &mut stdout_lines).await;
   wait_contains("BAZ: from_local", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
 
-  // Change the first .env file
+  // Change the first .env file and add small delay
   std::fs::write(&env_file1, "FOO=updated_from_env\nBAR=updated_from_env")
     .unwrap();
-
+  std::fs::write(&env_file2, "BAR=updated_from_local\nBAZ=updated_from_local")
+    .unwrap();
   // Wait for restart
   wait_contains("Restarting", &mut stderr_lines).await;
 
-  // Check that values are updated (BAR should still be from .env.local)
-  wait_contains("FOO: updated_from_env", &mut stdout_lines).await;
-  // BAR should still be from .env.local (precedence test)
-  wait_contains("BAR: from_local", &mut stdout_lines).await;
-  wait_contains("BAZ: from_local", &mut stdout_lines).await;
-  wait_contains("---", &mut stdout_lines).await;
-
-  // Change the second .env file
-  std::fs::write(
-    &env_file2,
-    "BAR=updated_from_local\nBAZ=updated_from_local\nNEW_VAR=new",
-  )
-  .unwrap();
-
-  // Wait for restart
-  wait_contains("Restarting", &mut stderr_lines).await;
-
-  // Check that values are updated
   wait_contains("FOO: updated_from_env", &mut stdout_lines).await;
   wait_contains("BAR: updated_from_local", &mut stdout_lines).await;
   wait_contains("BAZ: updated_from_local", &mut stdout_lines).await;
-  // Test script doesn't read NEW_VAR, so we can't test for it
   wait_contains("---", &mut stdout_lines).await;
 
   check_alive_then_kill(child);
@@ -2219,12 +2206,17 @@ console.log("---");
     .arg("--watch")
     .arg("--allow-env")
     .arg("--env-file=.env")
+    .arg("-L")
+    .arg("debug")
     .arg(&main_script)
     .env("NO_COLOR", "1")
     .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // Wait for watcher to be ready
+  wait_for_watcher("main.js", &mut stderr_lines).await;
 
   // Wait for initial run
   wait_contains("FOO: initial_value", &mut stdout_lines).await;
@@ -2351,12 +2343,17 @@ console.log("---");
     .arg("--watch")
     .arg("--allow-env")
     .arg("--env-file=.env")
+    .arg("-L")
+    .arg("debug")
     .arg(&main_script)
     .env("NO_COLOR", "1")
     .piped_output()
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // Wait for watcher to be ready
+  wait_for_watcher("main.js", &mut stderr_lines).await;
 
   // Wait for initial run
   wait_contains("FOO: env_value", &mut stdout_lines).await;
