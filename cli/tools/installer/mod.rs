@@ -746,7 +746,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -768,7 +768,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -796,7 +796,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -824,7 +824,7 @@ mod tests {
         module_url: "http://localhost:4545/subdir/main.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -848,7 +848,7 @@ mod tests {
           .to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -874,7 +874,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -905,7 +905,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec!["--foobar".to_string()],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -941,7 +941,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -973,7 +973,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -1006,7 +1006,7 @@ mod tests {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(temp_dir.to_string_lossy().to_string()),
+        root: Some(temp_dir.to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -1043,7 +1043,7 @@ mod tests {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
