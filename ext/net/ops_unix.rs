@@ -192,7 +192,7 @@ where
   let api_call_expr = format!("{}()", api_name);
   let address_path = permissions
     .check_open(
-      Cow::Owned(Path::new(address_path)),
+      Cow::Borrowed(Path::new(address_path)),
       OpenAccessKind::ReadWriteNoFollow,
       &api_call_expr,
     )
