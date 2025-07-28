@@ -63,7 +63,7 @@ import {
   op_is_ascii,
   op_is_utf8,
   op_node_call_is_from_dependency,
-  op_node_decode_utf8,
+  op_node_unsafe_decode_utf8,
   op_transcode,
 } from "ext:core/ops";
 
@@ -683,7 +683,11 @@ function decodeUtf8(buffer, start, end) {
   if (start > end) {
     end = start;
   }
-  return op_node_decode_utf8(
+  // SAFETY: we have checked that buffer is an ArrayBufferView,
+  // and that start and end are numbers and in bounds.
+  // The buffer, length, and offset are all from primordials, so
+  // we know they are valid types and values.
+  return op_node_unsafe_decode_utf8(
     TypedArrayPrototypeGetBuffer(buffer),
     TypedArrayPrototypeGetByteOffset(buffer),
     length,
@@ -709,6 +713,9 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
     return "";
   } else {
     start |= 0;
+    if (start <= 0) {
+      start = 0;
+    }
   }
 
   if (end === undefined || end > len) {

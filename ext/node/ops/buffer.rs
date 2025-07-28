@@ -122,7 +122,7 @@ fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
 }
 
 #[op2]
-pub fn op_node_decode_utf8<'a>(
+pub fn op_node_unsafe_decode_utf8<'a>(
   scope: &mut v8::HandleScope<'a>,
   buf: v8::Local<v8::Value>,
   byte_offset: v8::Local<v8::Value>,
@@ -147,10 +147,10 @@ pub fn op_node_decode_utf8<'a>(
 
   if buffer.len() <= 256 && buffer.is_ascii() {
     v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
-      .ok_or_else(|| JsErrorBox::generic("Invalid ASCII sequence"))
+      .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
   } else {
     v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
-      .ok_or_else(|| JsErrorBox::generic("Invalid UTF-8 sequence"))
+      .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
   }
 }
 
@@ -179,4 +179,12 @@ unsafe fn buffer_to_slice<'a>(
     let ptr = ptr.cast::<u8>().add(byte_offset);
     std::slice::from_raw_parts(ptr.as_ptr(), byte_length)
   }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum BufferError {
+  #[error("String too long")]
+  #[class(generic)]
+  #[property("code" = "ERR_STRING_TOO_LONG")]
+  StringTooLong,
 }
