@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "missing_type_attribute": {
+      "args": "bundle missing-type-attribute.js",
+      "exitCode": 1,
+      "output": "missing_type_attribute.out"
+    },
+    "with_type_attribute": {
+      "args": "bundle with-type-attribute.js",
+      "exitCode": 0,
+      "output": "with_type_attribute.out"
+    }
+  }
+}
