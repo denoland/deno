@@ -152,6 +152,7 @@ impl EnvManager {
           );
         }
       }
+    }
   }
 
   /// Clean up variables that are no longer present in any loaded file
