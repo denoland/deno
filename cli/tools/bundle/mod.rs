@@ -798,8 +798,8 @@ impl DenoPluginHandler {
           lib: TsTypeLib::default(),
           permissions: self.permissions.clone(),
           ext_overwrite: None,
-          allow_unknown_media_types: false,
-          skip_graph_roots_validation: false,
+          allow_unknown_media_types: true,
+          skip_graph_roots_validation: true,
         },
       )
       .await?;

@@ -1,3 +1,3 @@
-import "./data.json" with {type: "json"};
+import "./data.json" with { type: "json" };
 
 console.log(data);

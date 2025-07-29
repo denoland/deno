@@ -18,6 +18,7 @@ use deno_graph::CheckJsOption;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::GraphKind;
 use deno_graph::JsrLoadError;
+use deno_graph::MediaType;
 use deno_graph::ModuleError;
 use deno_graph::ModuleErrorKind;
 use deno_graph::ModuleGraph;
@@ -79,6 +80,7 @@ pub struct GraphValidOptions<'a> {
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
+  pub skip_graph_roots_validation: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -107,6 +109,7 @@ pub fn graph_valid(
       kind: options.kind,
       allow_unknown_media_types: options.allow_unknown_media_types,
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
+      skip_graph_roots_validation: options.skip_graph_roots_validation,
     },
   );
   match errors.next() {
@@ -149,6 +152,7 @@ pub struct GraphWalkErrorsOptions<'a> {
   pub kind: GraphKind,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
+  pub skip_graph_roots_validation: bool,
 }
 
 /// Walks the errors found in the module graph that should be surfaced to users
@@ -164,8 +168,29 @@ pub fn graph_walk_errors<'a>(
     graph_kind: GraphKind,
     allow_unknown_media_types: bool,
     error: &ModuleGraphError,
+    skip_graph_roots_validation: bool,
   ) -> bool {
-    if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
+    if skip_graph_roots_validation
+      && !matches!(
+        error.as_module_error_kind(),
+        Some(ModuleErrorKind::UnsupportedMediaType {
+          media_type: MediaType::Json,
+          ..
+        })
+      )
+    {
+      return true;
+    }
+
+    if (graph_kind == GraphKind::TypesOnly
+      || allow_unknown_media_types
+        && !matches!(
+          error.as_module_error_kind(),
+          Some(ModuleErrorKind::UnsupportedMediaType {
+            media_type: MediaType::Json,
+            ..
+          })
+        ))
       && matches!(
         error.as_module_error_kind(),
         Some(ModuleErrorKind::UnsupportedMediaType { .. })
@@ -196,6 +221,7 @@ pub fn graph_walk_errors<'a>(
         graph.graph_kind(),
         options.allow_unknown_media_types,
         &error,
+        options.skip_graph_roots_validation,
       ) {
         log::debug!("Ignoring: {}", error);
         return None;
@@ -956,6 +982,7 @@ impl ModuleGraphBuilder {
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
       false,
       false,
+      false,
     )
   }
 
@@ -965,6 +992,7 @@ impl ModuleGraphBuilder {
     roots: &[ModuleSpecifier],
     allow_unknown_media_types: bool,
     allow_unknown_jsr_exports: bool,
+    skip_graph_roots_validation: bool,
   ) -> Result<(), JsErrorBox> {
     graph_valid(
       graph,
@@ -982,6 +1010,7 @@ impl ModuleGraphBuilder {
         exit_integrity_errors: true,
         allow_unknown_media_types,
         allow_unknown_jsr_exports,
+        skip_graph_roots_validation,
       },
     )
   }
