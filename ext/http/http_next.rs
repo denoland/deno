@@ -30,7 +30,6 @@ use deno_core::serde_v8::from_v8;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
 use deno_core::v8;
-use deno_error::JsErrorClass;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
@@ -1295,33 +1294,68 @@ pub async fn op_http_wait(
 
   // Filter out shutdown (ENOTCONN) errors
   if let Err(err) = res {
-    if let HttpNextError::Io(err) = &err {
-      if err.kind() == io::ErrorKind::NotConnected {
-        return Ok(null());
-      }
-    }
-
-    if let HttpNextError::Other(err) = &err {
-      if let Some(err) = err.as_any().downcast_ref::<std::io::Error>() {
-        if let Some(err) = err.get_ref() {
-          if let Some(err) =
-            err.downcast_ref::<deno_net::tunnel::quinn::ConnectionError>()
-          {
-            if matches!(
-              err,
-              deno_net::tunnel::quinn::ConnectionError::LocallyClosed
-            ) {
-              return Ok(null());
-            }
-          }
-        }
-      }
+    if is_normal_close(&err) {
+      return Ok(null());
     }
 
     return Err(err);
   }
 
   Ok(null())
+}
+
+fn is_normal_close(err: &(dyn std::error::Error + 'static)) -> bool {
+  if let Some(err) = err.downcast_ref::<HttpNextError>() {
+    if let HttpNextError::Io(err) = &err {
+      return is_normal_close(err);
+    }
+
+    if let HttpNextError::Other(err) = &err {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) = err.downcast_ref::<deno_error::JsErrorBox>() {
+    if let Some(err) = err.get_inner_ref() {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) = err.downcast_ref::<std::io::Error>() {
+    if err.kind() == io::ErrorKind::NotConnected {
+      return true;
+    }
+
+    if let Some(err) = err.get_ref() {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) = err.downcast_ref::<deno_net::tunnel::Error>() {
+    if let deno_net::tunnel::Error::QuinnConnection(err) = err {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) =
+    err.downcast_ref::<deno_net::tunnel::quinn::ConnectionError>()
+  {
+    if matches!(err, deno_net::tunnel::quinn::ConnectionError::LocallyClosed) {
+      return true;
+    }
+
+    return false;
+  }
+
+  false
 }
 
 /// Cancels the HTTP handle.
