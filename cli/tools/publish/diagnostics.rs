@@ -88,6 +88,11 @@ impl PublishDiagnosticsCollector {
   }
 }
 
+pub struct RelativePackageImportDiagnosticReferrer {
+  pub text_info: SourceTextInfo,
+  pub referrer: deno_graph::Range,
+}
+
 pub enum PublishDiagnostic {
   FastCheck(FastCheckDiagnostic),
   SpecifierUnfurl(SpecifierUnfurlerDiagnostic),
@@ -126,6 +131,12 @@ pub enum PublishDiagnostic {
   UnstableRawImport {
     text_info: SourceTextInfo,
     referrer: deno_graph::Range,
+  },
+  RelativePackageImport {
+    specifier: Url,
+    from_package_name: String,
+    to_package_name: String,
+    maybe_referrer: Option<RelativePackageImportDiagnosticReferrer>,
   },
   SyntaxError(ParseDiagnostic),
   MissingLicense {
@@ -178,6 +189,7 @@ impl Diagnostic for PublishDiagnostic {
       ExcludedModule { .. } => DiagnosticLevel::Error,
       MissingConstraint { .. } => DiagnosticLevel::Error,
       BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
+      RelativePackageImport { .. } => DiagnosticLevel::Error,
       SyntaxError { .. } => DiagnosticLevel::Error,
       MissingLicense { .. } => DiagnosticLevel::Error,
       UnstableRawImport { .. } => DiagnosticLevel::Error,
@@ -198,6 +210,7 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => {
         Cow::Borrowed("banned-triple-slash-directives")
       }
+      RelativePackageImport { .. } => Cow::Borrowed("relative-package-import"),
       SyntaxError { .. } => Cow::Borrowed("syntax-error"),
       MissingLicense { .. } => Cow::Borrowed("missing-license"),
       UnstableRawImport { .. } => Cow::Borrowed("unstable-raw-import"),
@@ -229,6 +242,14 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => Cow::Borrowed(
         "triple slash directives that modify globals are not allowed",
       ),
+      RelativePackageImport {
+        from_package_name,
+        to_package_name,
+        ..
+      } => Cow::Owned(format!(
+        "invalid relative import from the '{}' package into the '{}' package",
+        from_package_name, to_package_name,
+      )),
       SyntaxError(diagnostic) => diagnostic.message(),
       MissingLicense { .. } => Cow::Borrowed("missing license field or file"),
       UnstableRawImport { .. } => {
@@ -291,6 +312,18 @@ impl Diagnostic for PublishDiagnostic {
         source_pos: DiagnosticSourcePos::SourcePos(range.start),
         text_info: Cow::Borrowed(text_info),
       },
+      RelativePackageImport {
+        specifier,
+        maybe_referrer,
+        ..
+      } => match maybe_referrer {
+        Some(referrer) => {
+          from_referrer_range(&referrer.referrer, &referrer.text_info)
+        }
+        None => DiagnosticLocation::Module {
+          specifier: Cow::Borrowed(specifier),
+        },
+      },
       SyntaxError(diagnostic) => diagnostic.location(),
       MissingLicense { config_specifier } => DiagnosticLocation::Module {
         specifier: Cow::Borrowed(config_specifier),
@@ -330,9 +363,9 @@ impl Diagnostic for PublishDiagnostic {
     match &self {
       FastCheck(d) => d.snippet(),
       SpecifierUnfurl(d) => d.snippet(),
-      InvalidPath { .. } => None,
-      DuplicatePath { .. } => None,
-      UnsupportedFileType { .. } => None,
+      InvalidPath { .. }
+      | DuplicatePath { .. }
+      | UnsupportedFileType { .. } => None,
       InvalidExternalImport {
         referrer,
         text_info,
@@ -362,6 +395,11 @@ impl Diagnostic for PublishDiagnostic {
           description: Some("the triple slash directive".into()),
         }],
       }),
+      RelativePackageImport { maybe_referrer, .. } => {
+        maybe_referrer.as_ref().and_then(|referrer| {
+          from_range(&referrer.text_info, &referrer.referrer)
+        })
+      }
       SyntaxError(diagnostic) => diagnostic.snippet(),
       MissingLicense { .. } => None,
     }
@@ -397,6 +435,12 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => {
         Some(Cow::Borrowed("remove the triple slash directive"))
       }
+      RelativePackageImport {
+        to_package_name, ..
+      } => Some(Cow::Owned(format!(
+        "replace the relative import with a bare specifier that imports from the other package by name and optionally an export (ex. \"{}\")",
+        to_package_name
+      ))),
       SyntaxError(diagnostic) => diagnostic.hint(),
       MissingLicense { .. } => Some(Cow::Borrowed(
         "add a \"license\" field. Alternatively, add a LICENSE file to the package and ensure it is not ignored from being published",
@@ -434,6 +478,7 @@ impl Diagnostic for PublishDiagnostic {
       SyntaxError(d) => d.snippet_fixed(),
       SpecifierUnfurl(d) => d.snippet_fixed(),
       FastCheck(_)
+      | RelativePackageImport { .. }
       | InvalidPath { .. }
       | DuplicatePath { .. }
       | UnsupportedFileType { .. }
@@ -490,6 +535,9 @@ impl Diagnostic for PublishDiagnostic {
         ),
         Cow::Borrowed("or set their 'lib' compiler option appropriately"),
       ]),
+      RelativePackageImport { .. } => Cow::Borrowed(&[Cow::Borrowed(
+        "importing modules in another package using a relative import won't work once the packages are published",
+      )]),
       SyntaxError(diagnostic) => diagnostic.info(),
       MissingLicense { .. } => Cow::Borrowed(&[]),
       UnstableRawImport { .. } => Cow::Borrowed(&[]),
@@ -522,6 +570,9 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => Some(Cow::Borrowed(
         "https://jsr.io/go/banned-triple-slash-directives",
       )),
+      RelativePackageImport { .. } => {
+        Some(Cow::Borrowed("https://jsr.io/go/relative-package-import"))
+      }
       SyntaxError(diagnostic) => diagnostic.docs_url(),
       MissingLicense { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/missing-license"))
