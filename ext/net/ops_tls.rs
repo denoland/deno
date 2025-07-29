@@ -491,7 +491,6 @@ where
   let r = resource_table
     .take::<TcpStreamResource>(rid)
     .map_err(NetError::Resource);
-  eprintln!("result {:#?}", r);
   if let Ok(resource_rc) = r {
     // This TCP connection might be used somewhere else. If it's the case, we cannot proceed with the
     // process of starting a TLS connection on top of this TCP connection, so we just return a Busy error.
@@ -546,9 +545,9 @@ where
     return Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)));
   }
 
-  return Err(NetError::Resource(
+  Err(NetError::Resource(
     deno_core::error::ResourceError::BadResourceId,
-  ));
+  ))
 }
 
 #[op2(async, stack_trace)]

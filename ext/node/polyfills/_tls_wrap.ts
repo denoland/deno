@@ -209,8 +209,9 @@ export class TLSSocket extends net.Socket {
           tlssock.emit("secureConnect");
           tlssock.removeListener("end", onConnectEnd);
         } catch (e) {
-          console.log("after connect tls error", e);
           // TODO(kt3k): Handle this
+          // deno-lint-ignore no-console
+          console.log("handle.afterConnecTls error", e);
         }
       };
 

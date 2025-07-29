@@ -1290,9 +1290,6 @@ export class Socket extends Duplex {
     }
 
     this.on("end", _onReadableStreamEnd);
-    this.on("connect", () => {
-      console.log("socket has been connected");
-    });
     _initSocketHandle(this);
 
     // If we have a handle, then start the flow of data into the
