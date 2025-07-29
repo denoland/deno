@@ -3589,7 +3589,7 @@ impl PermissionsContainer {
     if path.starts_with("/dev/fd") && is_fd_file_is_pipe(&path) {
       return Ok(CheckedPath {
         path: PathWithRequested {
-          path: Cow::Owned(path),
+          path,
           requested: requested.map(Cow::Owned),
         },
         canonicalized,
@@ -3603,7 +3603,7 @@ impl PermissionsContainer {
       if path.starts_with("/proc/self/fd") && is_fd_file_is_pipe(&path) {
         return Ok(CheckedPath {
           path: PathWithRequested {
-            path: Cow::Owned(path),
+            path,
             requested: requested.map(Cow::Owned),
           },
           canonicalized,
