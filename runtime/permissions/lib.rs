@@ -987,9 +987,9 @@ impl PartialEq for PathQueryDescriptor<'_> {
 
 impl Eq for PathQueryDescriptor<'_> {}
 
-impl Hash for PathQueryDescriptor<'_> {
-  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-    self.path.hash(state);
+impl PartialEq<PathDescriptor> for PathQueryDescriptor<'_> {
+  fn eq(&self, other: &PathDescriptor) -> bool {
+    self.path == other.path
   }
 }
 
@@ -1025,30 +1025,6 @@ impl<'a> PathQueryDescriptor<'a> {
       requested,
       is_windows_device_path,
     })
-  }
-
-  pub fn new_known_cwd(path: Cow<'a, Path>, cwd: &Path) -> Self {
-    let path_bytes = path.as_os_str().as_encoded_bytes();
-    let is_windows_device_path = cfg!(windows)
-      && path_bytes.starts_with(br"\\.\")
-      && !path_bytes.contains(&b':');
-    let (path, display) = if is_windows_device_path {
-      // On Windows, normalize_path doesn't work with device-prefix-style
-      // paths. We pass these through.
-      (path, None)
-    } else if path.is_absolute() {
-      (normalize_path(path), None)
-    } else {
-      (
-        normalize_path(Cow::Owned(cwd.join(path.as_ref()))),
-        Some(path.to_string_lossy().into_owned()),
-      )
-    };
-    Self {
-      path,
-      requested: display,
-      is_windows_device_path,
-    }
   }
 
   pub fn new_known_absolute(path: Cow<'a, Path>) -> Self {
@@ -1117,7 +1093,7 @@ impl<'a> PathQueryDescriptor<'a> {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub struct ReadQueryDescriptor<'a>(pub PathQueryDescriptor<'a>);
 
 impl QueryDescriptor for ReadQueryDescriptor<'_> {
@@ -1205,7 +1181,27 @@ impl PathDescriptor {
   }
 
   pub fn new_known_cwd(path: Cow<'_, Path>, cwd: &Path) -> Self {
-    PathQueryDescriptor::new_known_cwd(path, cwd).into_descriptor()
+    let path_bytes = path.as_os_str().as_encoded_bytes();
+    let is_windows_device_path = cfg!(windows)
+      && path_bytes.starts_with(br"\\.\")
+      && !path_bytes.contains(&b':');
+    let (path, display) = if is_windows_device_path {
+      // On Windows, normalize_path doesn't work with device-prefix-style
+      // paths. We pass these through.
+      (path, None)
+    } else if path.is_absolute() {
+      (normalize_path(path), None)
+    } else {
+      (
+        normalize_path(Cow::Owned(cwd.join(path.as_ref()))),
+        Some(path.to_string_lossy().into_owned()),
+      )
+    };
+    Self {
+      path: path.into_owned(),
+      requested: display,
+      is_windows_device_path,
+    }
   }
 
   pub fn new_known_absolute(path: Cow<'_, Path>) -> Self {
@@ -1254,7 +1250,7 @@ impl AllowDescriptor for ReadDescriptor {
 
 impl DenyDescriptor for ReadDescriptor {}
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub struct WriteQueryDescriptor<'a>(pub PathQueryDescriptor<'a>);
 
 impl QueryDescriptor for WriteQueryDescriptor<'_> {
@@ -1783,13 +1779,13 @@ impl AllowDescriptor for EnvDescriptor {
 
 impl DenyDescriptor for EnvDescriptor {}
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Debug)]
 enum EnvQueryDescriptorInner<'a> {
   Name(EnvVarNameRef<'a>),
   PrefixPattern(EnvVarNameRef<'a>),
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub struct EnvQueryDescriptor<'a>(EnvQueryDescriptorInner<'a>);
 
 impl<'a> EnvQueryDescriptor<'a> {
@@ -1949,7 +1945,7 @@ impl AsRef<str> for EnvQueryDescriptor<'_> {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub enum RunQueryDescriptor<'a> {
   Path(PathQueryDescriptor<'a>),
   /// This variant won't actually grant permissions because the path of
@@ -2080,7 +2076,7 @@ impl QueryDescriptor for RunQueryDescriptor<'_> {
 
   fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
     match self {
-      RunQueryDescriptor::Path(path) => *path.path == other.0.path,
+      RunQueryDescriptor::Path(path) => *path == other.0,
       RunQueryDescriptor::Name(_) => false,
     }
   }
@@ -2105,7 +2101,7 @@ impl QueryDescriptor for RunQueryDescriptor<'_> {
   fn revokes(&self, other: &Self::AllowDesc) -> bool {
     match self {
       RunQueryDescriptor::Path(path) => {
-        if path.path == other.0.path {
+        if *path == other.0 {
           return true;
         }
         match &path.requested {
@@ -2386,7 +2382,7 @@ impl AllowDescriptor for SysDescriptor {
 
 impl DenyDescriptor for SysDescriptor {}
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct FfiQueryDescriptor<'a>(pub PathQueryDescriptor<'a>);
 
 impl QueryDescriptor for FfiQueryDescriptor<'_> {
