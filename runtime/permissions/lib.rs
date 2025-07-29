@@ -1120,7 +1120,7 @@ impl<'a> PathQueryDescriptor<'a> {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ReadQueryDescriptor<'a>(pub PathQueryDescriptor<'a>);
 
-impl<'a> QueryDescriptor for ReadQueryDescriptor<'a> {
+impl QueryDescriptor for ReadQueryDescriptor<'_> {
   type AllowDesc = ReadDescriptor;
   type DenyDesc = ReadDescriptor;
 
@@ -1257,7 +1257,7 @@ impl DenyDescriptor for ReadDescriptor {}
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct WriteQueryDescriptor<'a>(pub PathQueryDescriptor<'a>);
 
-impl<'a> QueryDescriptor for WriteQueryDescriptor<'a> {
+impl QueryDescriptor for WriteQueryDescriptor<'_> {
   type AllowDesc = WriteDescriptor;
   type DenyDesc = WriteDescriptor;
 
@@ -1798,7 +1798,7 @@ impl<'a> EnvQueryDescriptor<'a> {
   }
 }
 
-impl<'a> QueryDescriptor for EnvQueryDescriptor<'a> {
+impl QueryDescriptor for EnvQueryDescriptor<'_> {
   type AllowDesc = EnvDescriptor;
   type DenyDesc = EnvDescriptor;
 
@@ -1815,7 +1815,6 @@ impl<'a> QueryDescriptor for EnvQueryDescriptor<'a> {
     })
   }
 
-  // TODO(THIS PR): from_allow should not clone if not necessary
   fn from_allow(allow: &Self::AllowDesc) -> Self {
     match allow {
       Self::AllowDesc::Name(s) => {
@@ -2390,7 +2389,7 @@ impl DenyDescriptor for SysDescriptor {}
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct FfiQueryDescriptor<'a>(pub PathQueryDescriptor<'a>);
 
-impl<'a> QueryDescriptor for FfiQueryDescriptor<'a> {
+impl QueryDescriptor for FfiQueryDescriptor<'_> {
   type AllowDesc = FfiDescriptor;
   type DenyDesc = FfiDescriptor;
 
