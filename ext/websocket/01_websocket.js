@@ -23,6 +23,7 @@ import {
 } from "ext:core/ops";
 const {
   ArrayBufferIsView,
+  ArrayIsArray,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -65,17 +66,35 @@ import {
 import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 
-webidl.converters["sequence<DOMString> or DOMString"] = (
+webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
+  "WebSocketInit",
+  [
+    {
+      key: "headers",
+      converter: webidl.converters["HeadersInit"],
+    },
+    {
+      key: "protocols",
+      converter: webidl.converters["sequence<DOMString>"],
+    }
+  ]
+);
+
+webidl.converters["WebSocketInit or sequence<DOMString> or DOMString"] = (
   V,
   prefix,
   context,
   opts,
 ) => {
-  // Union for (sequence<DOMString> or DOMString)
+  // Union for (WebSocketInit or sequence<DOMString> or DOMString)
+  if (V === null || V === undefined) {
+    return webidl.converters["WebSocketInit"](V, prefix, context, opts);
+  }
   if (webidl.type(V) === "Object" && V !== null) {
     if (V[SymbolIterator] !== undefined) {
       return webidl.converters["sequence<DOMString>"](V, prefix, context, opts);
     }
+    return webidl.converters["WebSocketInit"](V, prefix, context, opts);
   }
   return webidl.converters.DOMString(V, prefix, context, opts);
 };
@@ -124,7 +143,7 @@ const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
 
 class WebSocket extends EventTarget {
-  constructor(url, protocols = []) {
+  constructor(url, initOrProtocols) {
     super();
     this[webidl.brand] = webidl.brand;
     this[_rid] = undefined;
@@ -142,8 +161,8 @@ class WebSocket extends EventTarget {
     const prefix = "Failed to construct 'WebSocket'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.USVString(url, prefix, "Argument 1");
-    protocols = webidl.converters["sequence<DOMString> or DOMString"](
-      protocols,
+    initOrProtocols = webidl.converters["WebSocketInit or sequence<DOMString> or DOMString"](
+      initOrProtocols,
       prefix,
       "Argument 2",
     );
@@ -179,8 +198,15 @@ class WebSocket extends EventTarget {
     this[_url] = wsURL.href;
     this[_role] = CLIENT;
 
-    if (typeof protocols === "string") {
-      protocols = [protocols];
+    let protocols;
+    let headers;
+    if (typeof initOrProtocols === "string") {
+      protocols = [initOrProtocols];
+    } else if (ArrayIsArray(initOrProtocols)) {
+      protocols = initOrProtocols;
+    } else {
+      protocols = initOrProtocols.protocols || [];
+      headers = initOrProtocols.headers;
     }
 
     if (
@@ -224,6 +250,7 @@ class WebSocket extends EventTarget {
         wsURL.href,
         ArrayPrototypeJoin(protocols, ", "),
         cancelRid,
+        headers ? headerListFromHeaders(headers) : undefined,
       ),
       (create) => {
         this[_rid] = create.rid;
