@@ -541,20 +541,57 @@ pub struct EnvVarName {
 }
 
 impl EnvVarName {
-  pub fn new(env: impl AsRef<str>) -> Self {
-    Self {
-      inner: if cfg!(windows) {
-        env.as_ref().to_uppercase()
-      } else {
-        env.as_ref().to_string()
-      },
+  pub fn new(env: Cow<'_, str>) -> Self {
+    EnvVarNameRef::new(env).into_owned()
+  }
+
+  pub fn as_env_var_name_ref(&self) -> EnvVarNameRef<'static> {
+    EnvVarNameRef {
+      inner: Cow::Owned(self.inner.clone()),
     }
   }
 }
 
 impl AsRef<str> for EnvVarName {
   fn as_ref(&self) -> &str {
-    self.inner.as_str()
+    self.inner.as_ref()
+  }
+}
+
+/// A normalized environment variable name. On Windows this will
+/// be uppercase and on other platforms it will stay as-is.
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct EnvVarNameRef<'a> {
+  inner: Cow<'a, str>,
+}
+
+impl<'a> EnvVarNameRef<'a> {
+  pub fn new(env: Cow<'a, str>) -> Self {
+    Self {
+      inner: if cfg!(windows) {
+        Cow::Owned(env.to_uppercase())
+      } else {
+        env
+      },
+    }
+  }
+
+  pub fn into_owned(self) -> EnvVarName {
+    EnvVarName {
+      inner: self.inner.into_owned(),
+    }
+  }
+}
+
+impl AsRef<str> for EnvVarNameRef<'_> {
+  fn as_ref(&self) -> &str {
+    self.inner.as_ref()
+  }
+}
+
+impl PartialEq<EnvVarNameRef<'_>> for EnvVarName {
+  fn eq(&self, other: &EnvVarNameRef<'_>) -> bool {
+    self.inner == other.inner
   }
 }
 
@@ -1730,9 +1767,9 @@ pub enum EnvDescriptor {
 }
 
 impl EnvDescriptor {
-  pub fn new(env: impl AsRef<str>) -> Self {
+  pub fn new(env: Cow<'_, str>) -> Self {
     if let Some(prefix_pattern) = env.as_ref().strip_suffix('*') {
-      Self::PrefixPattern(EnvVarName::new(prefix_pattern))
+      Self::PrefixPattern(EnvVarName::new(Cow::Borrowed(prefix_pattern)))
     } else {
       Self::Name(EnvVarName::new(env))
     }
@@ -1740,29 +1777,28 @@ impl EnvDescriptor {
 }
 
 impl AllowDescriptor for EnvDescriptor {
-  type QueryDesc<'a> = EnvQueryDescriptor;
+  type QueryDesc<'a> = EnvQueryDescriptor<'a>;
   type DenyDesc = EnvDescriptor;
 }
 
 impl DenyDescriptor for EnvDescriptor {}
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-enum EnvQueryDescriptorInner {
-  Name(EnvVarName),
-  PrefixPattern(EnvVarName),
+enum EnvQueryDescriptorInner<'a> {
+  Name(EnvVarNameRef<'a>),
+  PrefixPattern(EnvVarNameRef<'a>),
 }
 
-// todo(THIS PR): Add a lifetime here
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct EnvQueryDescriptor(EnvQueryDescriptorInner);
+pub struct EnvQueryDescriptor<'a>(EnvQueryDescriptorInner<'a>);
 
-impl EnvQueryDescriptor {
-  pub fn new(env: impl AsRef<str>) -> Self {
-    Self(EnvQueryDescriptorInner::Name(EnvVarName::new(env)))
+impl<'a> EnvQueryDescriptor<'a> {
+  pub fn new(env: Cow<'a, str>) -> Self {
+    Self(EnvQueryDescriptorInner::Name(EnvVarNameRef::new(env)))
   }
 }
 
-impl QueryDescriptor for EnvQueryDescriptor {
+impl<'a> QueryDescriptor for EnvQueryDescriptor<'a> {
   type AllowDesc = EnvDescriptor;
   type DenyDesc = EnvDescriptor;
 
@@ -1779,24 +1815,25 @@ impl QueryDescriptor for EnvQueryDescriptor {
     })
   }
 
+  // TODO(THIS PR): from_allow should not clone if not necessary
   fn from_allow(allow: &Self::AllowDesc) -> Self {
     match allow {
       Self::AllowDesc::Name(s) => {
-        Self(EnvQueryDescriptorInner::Name(s.clone()))
+        Self(EnvQueryDescriptorInner::Name(s.as_env_var_name_ref()))
       }
-      Self::AllowDesc::PrefixPattern(s) => {
-        Self(EnvQueryDescriptorInner::PrefixPattern(s.clone()))
-      }
+      Self::AllowDesc::PrefixPattern(s) => Self(
+        EnvQueryDescriptorInner::PrefixPattern(s.as_env_var_name_ref()),
+      ),
     }
   }
 
   fn as_allow(&self) -> Option<Self::AllowDesc> {
     Some(match &self.0 {
       EnvQueryDescriptorInner::Name(env_var_name) => {
-        Self::AllowDesc::Name(env_var_name.clone())
+        Self::AllowDesc::Name(env_var_name.clone().into_owned())
       }
       EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
-        Self::AllowDesc::PrefixPattern(env_var_name.clone())
+        Self::AllowDesc::PrefixPattern(env_var_name.clone().into_owned())
       }
     })
   }
@@ -1804,10 +1841,10 @@ impl QueryDescriptor for EnvQueryDescriptor {
   fn as_deny(&self) -> Self::DenyDesc {
     match &self.0 {
       EnvQueryDescriptorInner::Name(env_var_name) => {
-        Self::DenyDesc::Name(env_var_name.clone())
+        Self::DenyDesc::Name(env_var_name.clone().into_owned())
       }
       EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
-        Self::DenyDesc::PrefixPattern(env_var_name.clone())
+        Self::DenyDesc::PrefixPattern(env_var_name.clone().into_owned())
       }
     }
   }
@@ -1902,7 +1939,7 @@ impl QueryDescriptor for EnvQueryDescriptor {
   }
 }
 
-impl AsRef<str> for EnvQueryDescriptor {
+impl AsRef<str> for EnvQueryDescriptor<'_> {
   fn as_ref(&self) -> &str {
     match &self.0 {
       EnvQueryDescriptorInner::Name(env_var_name) => env_var_name.as_ref(),
@@ -2573,17 +2610,27 @@ impl UnaryPermission<ImportDescriptor, ImportDescriptor> {
 impl UnaryPermission<EnvDescriptor, EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
     self.query_desc(
-      env.map(EnvQueryDescriptor::new).as_ref(),
+      env
+        .map(|env| EnvQueryDescriptor::new(Cow::Borrowed(env)))
+        .as_ref(),
       AllowPartial::TreatAsPartialGranted,
     )
   }
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
-    self.request_desc(env.map(EnvQueryDescriptor::new).as_ref())
+    self.request_desc(
+      env
+        .map(|env| EnvQueryDescriptor::new(Cow::Borrowed(env)))
+        .as_ref(),
+    )
   }
 
   pub fn revoke(&mut self, env: Option<&str>) -> PermissionState {
-    self.revoke_desc(env.map(EnvQueryDescriptor::new).as_ref())
+    self.revoke_desc(
+      env
+        .map(|env| EnvQueryDescriptor::new(Cow::Borrowed(env)))
+        .as_ref(),
+    )
   }
 
   pub fn check(
@@ -2592,7 +2639,11 @@ impl UnaryPermission<EnvDescriptor, EnvDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     skip_check_if_is_permission_fully_granted!(self);
-    self.check_desc(Some(&EnvQueryDescriptor::new(env)), false, api_name)
+    self.check_desc(
+      Some(&EnvQueryDescriptor::new(Cow::Borrowed(env))),
+      false,
+      api_name,
+    )
   }
 
   pub fn check_all(&mut self) -> Result<(), PermissionDeniedError> {
@@ -4610,7 +4661,7 @@ mod tests {
       &self,
       text: &str,
     ) -> Result<EnvDescriptor, EnvDescriptorParseError> {
-      Ok(EnvDescriptor::new(text))
+      Ok(EnvDescriptor::new(Cow::Borrowed(text)))
     }
 
     fn parse_sys_descriptor(
@@ -5674,7 +5725,7 @@ mod tests {
     perms.env = UnaryPermission {
       granted_global: false,
       ..Permissions::new_unary(
-        Some(HashSet::from([EnvDescriptor::new("HOME")])),
+        Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed("HOME"))])),
         None,
         false,
       )
@@ -5697,7 +5748,7 @@ mod tests {
     perms.env = UnaryPermission {
       granted_global: false,
       ..Permissions::new_unary(
-        Some(HashSet::from([EnvDescriptor::new("HOME_*")])),
+        Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed("HOME_*"))])),
         None,
         false,
       )

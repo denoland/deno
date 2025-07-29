@@ -100,7 +100,7 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     if text.is_empty() {
       Err(deno_permissions::EnvDescriptorParseError)
     } else {
-      Ok(EnvDescriptor::new(text))
+      Ok(EnvDescriptor::new(Cow::Borrowed(text)))
     }
   }
 
