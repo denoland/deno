@@ -11,12 +11,13 @@ use deno_permissions::EnvDescriptor;
 use deno_permissions::FfiDescriptor;
 use deno_permissions::ImportDescriptor;
 use deno_permissions::NetDescriptor;
+use deno_permissions::PathDescriptor;
 use deno_permissions::PathQueryDescriptor;
 use deno_permissions::PathResolveError;
 use deno_permissions::ReadDescriptor;
 use deno_permissions::RunDescriptorParseError;
 use deno_permissions::RunQueryDescriptor;
-use deno_permissions::SpecialFilePathDescriptor;
+use deno_permissions::SpecialFilePathQueryDescriptor;
 use deno_permissions::SysDescriptor;
 use deno_permissions::SysDescriptorParseError;
 use deno_permissions::WriteDescriptor;
@@ -47,6 +48,13 @@ impl<TSys: RuntimePermissionDescriptorParserSys>
       .env_current_dir()
       .map_err(PathResolveError::CwdResolve)
   }
+
+  fn parse_path_descriptor(
+    &self,
+    path: Cow<'_, Path>,
+  ) -> Result<PathDescriptor, PathResolveError> {
+    PathDescriptor::new(&self.sys, path)
+  }
 }
 
 impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
@@ -58,7 +66,7 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     text: &str,
   ) -> Result<ReadDescriptor, PathResolveError> {
     Ok(ReadDescriptor(
-      self.parse_path_query(Cow::Borrowed(Path::new(text)))?,
+      self.parse_path_descriptor(Cow::Borrowed(Path::new(text)))?,
     ))
   }
 
@@ -67,7 +75,7 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     text: &str,
   ) -> Result<WriteDescriptor, PathResolveError> {
     Ok(WriteDescriptor(
-      self.parse_path_query(Cow::Borrowed(Path::new(text)))?,
+      self.parse_path_descriptor(Cow::Borrowed(Path::new(text)))?,
     ))
   }
 
@@ -130,24 +138,24 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     text: &str,
   ) -> Result<FfiDescriptor, PathResolveError> {
     Ok(FfiDescriptor(
-      self.parse_path_query(Cow::Borrowed(Path::new(text)))?,
+      self.parse_path_descriptor(Cow::Borrowed(Path::new(text)))?,
     ))
   }
 
   // queries
 
-  fn parse_path_query(
+  fn parse_path_query<'a>(
     &self,
-    path: Cow<'_, Path>,
-  ) -> Result<PathQueryDescriptor, PathResolveError> {
+    path: Cow<'a, Path>,
+  ) -> Result<PathQueryDescriptor<'a>, PathResolveError> {
     PathQueryDescriptor::new(&self.sys, path)
   }
 
-  fn parse_special_file_descriptor(
+  fn parse_special_file_descriptor<'a>(
     &self,
-    path: PathQueryDescriptor,
-  ) -> Result<SpecialFilePathDescriptor, PathResolveError> {
-    SpecialFilePathDescriptor::parse(&self.sys, path)
+    path: PathQueryDescriptor<'a>,
+  ) -> Result<SpecialFilePathQueryDescriptor<'a>, PathResolveError> {
+    SpecialFilePathQueryDescriptor::parse(&self.sys, path)
   }
 
   fn parse_net_query(
@@ -157,10 +165,10 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     NetDescriptor::parse_for_query(text)
   }
 
-  fn parse_run_query(
+  fn parse_run_query<'a>(
     &self,
-    requested: &str,
-  ) -> Result<RunQueryDescriptor, RunDescriptorParseError> {
+    requested: &'a str,
+  ) -> Result<RunQueryDescriptor<'a>, RunDescriptorParseError> {
     if requested.is_empty() {
       return Err(RunDescriptorParseError::EmptyRunQuery);
     }
