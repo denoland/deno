@@ -351,10 +351,7 @@ impl CliFactory {
     watcher_communicator: Arc<WatcherCommunicator>,
   ) -> Self {
     if let Some(env_files) = &flags.env_file {
-      let _ = load_env_variables_from_env_files(
-        env_files.as_slice(),
-        flags.log_level,
-      );
+      load_env_variables_from_env_files(env_files.as_slice(), flags.log_level);
     }
 
     CliFactory {

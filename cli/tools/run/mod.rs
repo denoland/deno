@@ -178,7 +178,6 @@ async fn run_with_watch(
           watcher_communicator.clone(),
         );
         let cli_options = factory.cli_options()?;
-
         let main_module = cli_options.resolve_main_module()?;
         let preload_modules = cli_options.preload_modules()?;
 

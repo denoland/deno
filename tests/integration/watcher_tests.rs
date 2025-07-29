@@ -2056,7 +2056,6 @@ async fn bundle_watch() {
   check_alive_then_kill(child);
 }
 
-// nothing
 #[flaky_test(tokio)]
 async fn run_watch_env_file_basic() {
   let t = TempDir::new();
