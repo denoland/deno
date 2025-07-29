@@ -57,14 +57,18 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     &self,
     text: &str,
   ) -> Result<ReadDescriptor, PathResolveError> {
-    Ok(ReadDescriptor(self.parse_path_query(text)?))
+    Ok(ReadDescriptor(
+      self.parse_path_query(Cow::Borrowed(Path::new(text)))?,
+    ))
   }
 
   fn parse_write_descriptor(
     &self,
     text: &str,
   ) -> Result<WriteDescriptor, PathResolveError> {
-    Ok(WriteDescriptor(self.parse_path_query(text)?))
+    Ok(WriteDescriptor(
+      self.parse_path_query(Cow::Borrowed(Path::new(text)))?,
+    ))
   }
 
   fn parse_net_descriptor(
@@ -125,12 +129,14 @@ impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
     &self,
     text: &str,
   ) -> Result<FfiDescriptor, PathResolveError> {
-    Ok(FfiDescriptor(self.parse_path_query(text)?))
+    Ok(FfiDescriptor(
+      self.parse_path_query(Cow::Borrowed(Path::new(text)))?,
+    ))
   }
 
   // queries
 
-  fn parse_path_query_from_path(
+  fn parse_path_query(
     &self,
     path: Cow<'_, Path>,
   ) -> Result<PathQueryDescriptor, PathResolveError> {
@@ -178,7 +184,11 @@ mod test {
     assert!(parser.parse_env_descriptor("").is_err());
     assert!(parser.parse_net_descriptor("").is_err());
     assert!(parser.parse_ffi_descriptor("").is_err());
-    assert!(parser.parse_path_query("").is_err());
+    assert!(
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new("")))
+        .is_err()
+    );
     assert!(parser.parse_net_query("").is_err());
     assert!(parser.parse_run_query("").is_err());
   }
