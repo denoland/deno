@@ -928,18 +928,18 @@ impl CliOptions {
     &self.flags.ca_stores
   }
 
-  pub fn coverage_dir(&self) -> Option<String> {
+  pub fn coverage_dir(&self) -> Option<PathBuf> {
     match &self.flags.subcommand {
       DenoSubcommand::Test(test) => test
         .coverage_dir
         .as_ref()
-        .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
+        .map(|dir| self.initial_cwd.join(dir))
+        .or_else(|| env::var_os("DENO_COVERAGE_DIR").map(PathBuf::from)),
       DenoSubcommand::Run(flags) => flags
         .coverage_dir
         .as_ref()
-        .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
+        .map(|dir| self.initial_cwd.join(dir))
+        .or_else(|| env::var_os("DENO_COVERAGE_DIR").map(PathBuf::from)),
       _ => None,
     }
   }
