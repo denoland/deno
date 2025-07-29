@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
-
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -124,50 +122,28 @@ fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
 }
 
 #[op2]
-pub fn op_node_unsafe_decode_utf8<'a>(
+pub fn op_node_decode_utf8<'a>(
   scope: &mut v8::HandleScope<'a>,
-  buf: v8::Local<v8::Value>,
-  byte_offset: v8::Local<v8::Value>,
-  byte_length: v8::Local<v8::Value>,
+  buf: v8::Local<v8::ArrayBufferView>,
   start: v8::Local<v8::Value>,
   end: v8::Local<v8::Value>,
 ) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
-  // if !buf.is_array_buffer_view() {
-  //   return Err(JsErrorBox::generic("Expected an ArrayBufferView"));
-  // }
-
-  // SAFETY: the javascript side must guarantee that the arguments are of the correct types
-  let buf = unsafe { v8::Local::<v8::ArrayBuffer>::cast_unchecked(buf) };
-  // SAFETY: upheld by js
-  let byte_offset = unsafe { to_usize_unchecked(byte_offset) };
-  // SAFETY: upheld by js
-  let byte_length = unsafe { to_usize_unchecked(byte_length) };
-  // let byte_offset = buf.byte_offset();
-  // let byte_length = buf.byte_length();
-  // let buf = buf.buffer(scope).unwrap();
+  let buf = buf.get_contents(&mut [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP]);
 
   let start =
     parse_array_index(scope, start, 0).map_err(JsErrorBox::from_err)?;
   let mut end =
-    parse_array_index(scope, end, byte_length).map_err(JsErrorBox::from_err)?;
+    parse_array_index(scope, end, buf.len()).map_err(JsErrorBox::from_err)?;
 
   if end < start {
     end = start;
   }
 
-  if end > byte_length {
-    return Err(JsErrorBox::from_err(DecodeUtf8Error::OutOfRange(
-      "end".into(),
-    )));
+  if end > buf.len() {
+    return Err(JsErrorBox::from_err(BufferError::OutOfRange));
   }
 
-  // if start > end || start > byte_length || end > byte_length {
-  //   panic!("Should be upheld by js");
-  // }
-
-  // SAFETY: the javascript side must guarantee that the arguments are in bounds
-  let buffer = unsafe { buffer_to_slice(&buf, byte_offset, byte_length) };
-  let buffer = &buffer[start..end];
+  let buffer = &buf[start..end];
 
   if buffer.len() <= 256 && buffer.is_ascii() {
     v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
@@ -178,61 +154,39 @@ pub fn op_node_unsafe_decode_utf8<'a>(
   }
 }
 
-/// # Safety
-///
-/// The caller must guarantee that byte_offset and byte_length are valid.
-unsafe fn buffer_to_slice<'a>(
-  buf: &'a v8::Local<v8::ArrayBuffer>,
-  byte_offset: usize,
-  byte_length: usize,
-) -> &'a [u8] {
-  let Some(ptr) = buf.data() else {
-    return &[];
-  };
-  // SAFETY: caller
-  unsafe {
-    let ptr = ptr.cast::<u8>().add(byte_offset);
-    std::slice::from_raw_parts(ptr.as_ptr(), byte_length)
-  }
-}
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 enum BufferError {
   #[error("String too long")]
   #[class(generic)]
   #[property("code" = "ERR_STRING_TOO_LONG")]
   StringTooLong,
+  #[error("Invalid type")]
+  #[class(generic)]
+  InvalidType,
+  #[error("Index out of range")]
+  #[class(range)]
+  #[property("code" = "ERR_OUT_OF_RANGE")]
+  OutOfRange,
 }
 
-/// # Safety
-///
-/// The caller must guarantee that the argument is a valid `v8::Number`.
-unsafe fn to_usize_unchecked(arg: v8::Local<v8::Value>) -> usize {
-  // if !arg.is_number() {
-  //   panic!("Expected a number");
-  // }
-  // SAFETY: checked by caller
-  let arg = unsafe { v8::Local::<v8::Number>::cast_unchecked(arg) };
-  arg.value() as usize
-}
-
+#[inline(always)]
 fn parse_array_index(
   scope: &mut v8::HandleScope,
   arg: v8::Local<v8::Value>,
   default: usize,
-) -> Result<usize, DecodeUtf8Error> {
+) -> Result<usize, BufferError> {
   if arg.is_undefined() {
     return Ok(default);
   }
 
   let Some(arg) = arg.integer_value(scope) else {
-    return Err(DecodeUtf8Error::InvalidType);
+    return Err(BufferError::InvalidType);
   };
   if arg < 0 {
-    return Err(DecodeUtf8Error::OutOfRange("index".into()));
+    return Err(BufferError::OutOfRange);
   }
   if arg > isize::MAX as i64 {
-    return Err(DecodeUtf8Error::OutOfRange("index".into()));
+    return Err(BufferError::OutOfRange);
   }
   Ok(arg as usize)
 }

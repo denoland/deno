@@ -63,7 +63,7 @@ import {
   op_is_ascii,
   op_is_utf8,
   op_node_call_is_from_dependency,
-  op_node_unsafe_decode_utf8,
+  op_node_decode_utf8,
   op_transcode,
 } from "ext:core/ops";
 
@@ -668,9 +668,7 @@ Buffer.prototype.swap64 = function swap64() {
 
 function decodeUtf8(buffer, start, end) {
   return op_node_decode_utf8(
-    TypedArrayPrototypeGetBuffer(buffer),
-    TypedArrayPrototypeGetByteOffset(buffer),
-    TypedArrayPrototypeGetByteLength(buffer),
+    buffer,
     start,
     end,
   );
