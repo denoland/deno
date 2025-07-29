@@ -44,6 +44,8 @@ use crate::io::TcpStreamResource;
 use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
+use crate::resolve_addr::resolve_addr_sync_with_permissions;
+use crate::resolve_addr::resolve_addr_with_permissions;
 use crate::tcp::TcpListener;
 use crate::tunnel::TunnelAddr;
 
@@ -260,18 +262,12 @@ where
       "Deno.DatagramConn.send()",
     )?;
   }
-  let addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or(NetError::NoResolvedAddress)?;
-
-  {
-    let mut s = state.borrow_mut();
-    s.borrow_mut::<NP>().check_net_resolved_addr_is_not_denied(
-      &addr,
-      "Deno.DatagramConn.send()",
-    )?;
-  }
+  let addr = resolve_addr_with_permissions::<NP>(
+    &state,
+    "Deno.DatagramConn.send()",
+    addr,
+  )
+  .await?;
 
   let resource = state
     .borrow_mut()
@@ -515,16 +511,8 @@ where
       .check_net(&(&hostname_to_check, Some(addr.port)), "Deno.connect()")?;
   }
 
-  let addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
-
-  {
-    let mut s = state.borrow_mut();
-    s.borrow_mut::<NP>()
-      .check_net_resolved_addr_is_not_denied(&addr, "Deno.connect()")?;
-  }
+  let addr =
+    resolve_addr_with_permissions::<NP>(&state, "Deno.connect()", addr).await?;
 
   let cancel_handle = resource_abort_id.and_then(|rid| {
     state
@@ -594,13 +582,9 @@ where
   state
     .borrow_mut::<NP>()
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
-  let addr = resolve_addr_sync(&addr.hostname, addr.port)?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
 
-  state
-    .borrow_mut::<NP>()
-    .check_net_resolved_addr_is_not_denied(&addr, "Deno.listen()")?;
+  let addr =
+    resolve_addr_sync_with_permissions::<NP>(state, "Deno.listen()", addr)?;
 
   let listener = if load_balanced {
     TcpListener::bind_load_balanced(addr)
@@ -626,15 +610,12 @@ where
   state
     .borrow_mut::<NP>()
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
-  let addr = resolve_addr_sync(&addr.hostname, addr.port)?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
+  let addr = resolve_addr_sync_with_permissions::<NP>(
+    state,
+    "Deno.listenDatagram()",
+    addr,
+  )?;
 
-  {
-    state
-      .borrow_mut::<NP>()
-      .check_net_resolved_addr_is_not_denied(&addr, "Deno.listenDatagram()")?;
-  }
   let domain = if addr.is_ipv4() {
     Domain::IPV4
   } else {

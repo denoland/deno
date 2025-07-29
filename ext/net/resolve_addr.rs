@@ -1,9 +1,14 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 
+use deno_core::OpState;
 use tokio::net::lookup_host;
+
+use crate::NetPermissions;
+use crate::ops::NetError;
 
 /// Resolve network address *asynchronously*.
 pub async fn resolve_addr(
@@ -35,6 +40,47 @@ fn make_addr_port_pair(hostname: &str, port: u16) -> (&str, u16) {
   // Then we remove the brackets.
   let addr = hostname.trim_start_matches('[').trim_end_matches(']');
   (addr, port)
+}
+
+pub async fn resolve_addr_with_permissions<NP>(
+  state: &RefCell<OpState>,
+  api_name: &str,
+  addr: crate::ops::IpAddr,
+) -> Result<SocketAddr, NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  let mut addrs = resolve_addr(&addr.hostname, addr.port).await?;
+  let addr = addrs.next().ok_or_else(|| NetError::NoResolvedAddress)?;
+  {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<NP>();
+    permissions.check_net_resolved_addr_is_not_denied(&addr, api_name)?;
+    for addr in addrs {
+      permissions.check_net_resolved_addr_is_not_denied(&addr, api_name)?;
+    }
+  }
+  Ok(addr)
+}
+
+pub fn resolve_addr_sync_with_permissions<NP>(
+  state: &mut OpState,
+  api_name: &str,
+  addr: crate::ops::IpAddr,
+) -> Result<SocketAddr, NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  let mut addrs = resolve_addr_sync(&addr.hostname, addr.port)?;
+  let addr = addrs.next().ok_or_else(|| NetError::NoResolvedAddress)?;
+  {
+    let permissions = state.borrow_mut::<NP>();
+    permissions.check_net_resolved_addr_is_not_denied(&addr, api_name)?;
+    for addr in addrs {
+      permissions.check_net_resolved_addr_is_not_denied(&addr, api_name)?;
+    }
+  }
+  Ok(addr)
 }
 
 #[cfg(test)]

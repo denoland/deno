@@ -1,0 +1,8 @@
+{
+  "steps": [
+    {
+      "args": "run --unstable-net --allow-run=deno --allow-read --allow-net --unstable --deny-net=127.0.0.1 main.ts",
+      "output": ""
+    }
+  ]
+}
