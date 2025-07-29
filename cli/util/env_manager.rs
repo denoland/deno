@@ -140,15 +140,18 @@ impl EnvManager {
           }
         }
       }
-      Err(e) => {
-        eprintln!(
-          "{} Failed to read {}: {}",
-          colors::yellow("Warning"),
-          path_str,
-          e
-        );
+      Err(e) =>
+      {
+        #[allow(clippy::print_stderr)]
+        if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
+          eprintln!(
+            "{} Failed to read {}: {}",
+            colors::yellow("Warning"),
+            path_str,
+            e
+          );
+        }
       }
-    }
   }
 
   /// Clean up variables that are no longer present in any loaded file
