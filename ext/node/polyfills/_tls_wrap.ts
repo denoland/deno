@@ -91,7 +91,7 @@ export class TLSSocket extends net.Socket {
   _start() {
     this.connecting = true;
     if (this[kHandle] && this[kHandle][kStreamBaseField]) {
-      this[kHandle].afterConnectTls();
+      this[kHandle].afterConnectTls?.();
     }
   }
 
@@ -167,11 +167,12 @@ export class TLSSocket extends net.Socket {
 
       // Set `afterConnectTls` hook. This is called in the `afterConnect` method of net.Socket
       handle.afterConnectTls = async () => {
+        handle.afterConnectTls = undefined;
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
         if (tlssock._needsSockInitWorkaround) {
           // skips the TLS handshake for @npmcli/agent as it's handled by
           // onSocket handler of ClientRequest object.
-          tlssock.emit("secure");
+          tlssock.emit("secureConnect");
           tlssock.removeListener("end", onConnectEnd);
           return;
         }
@@ -196,16 +197,19 @@ export class TLSSocket extends net.Socket {
           // Assign the TLS connection to the handle and resume reading.
           handle[kStreamBaseField] = conn;
           handle.upgrading = false;
-          handle.connecting = false;
+          tlssock.connecting = false;
           if (!handle.pauseOnCreate) {
             handle.readStart();
           }
 
           resolve();
 
-          tlssock.emit("secure");
+          tlssock.emit("connect");
+          tlssock.emit("ready");
+          tlssock.emit("secureConnect");
           tlssock.removeListener("end", onConnectEnd);
-        } catch {
+        } catch (e) {
+          console.log("after connect tls error", e);
           // TODO(kt3k): Handle this
         }
       };

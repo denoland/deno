@@ -15,6 +15,7 @@ import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
 import { execCode } from "../unit/test_util.ts";
+import console from "node:console";
 
 const tlsTestdataDir = fromFileUrl(
   new URL("../testdata/tls", import.meta.url),
@@ -84,6 +85,7 @@ Host: localhost
 Connection: close
 
 `);
+
   const chunk = Promise.withResolvers<Uint8Array>();
   conn.on("data", (received) => {
     conn.destroy();

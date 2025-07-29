@@ -376,6 +376,9 @@ function _afterConnect(
 
     socket._unrefTimer();
 
+    socket.emit("connect");
+    socket.emit("ready");
+
     // Deno specific: run tls handshake if it's from a tls socket
     // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
     if (
@@ -383,9 +386,6 @@ function _afterConnect(
     ) {
       handle.afterConnectTls();
     }
-
-    socket.emit("connect");
-    socket.emit("ready");
 
     // Start the first read, or get an immediate EOF.
     // this doesn't actually consume any bytes, because len=0.
@@ -1290,7 +1290,9 @@ export class Socket extends Duplex {
     }
 
     this.on("end", _onReadableStreamEnd);
-
+    this.on("connect", () => {
+      console.log("socket has been connected");
+    });
     _initSocketHandle(this);
 
     // If we have a handle, then start the flow of data into the
