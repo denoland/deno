@@ -2,10 +2,24 @@ disallowed-methods = [
   { path = "reqwest::Client::new", reason = "create an HttpClient via an HttpClientProvider instead" },
   { path = "std::process::exit", reason = "use deno_runtime::exit instead" },
   { path = "clap::Arg::env", reason = "ensure environment variables are resolved after loading the .env file instead" },
+  { path = "tokio::signal::ctrl_c", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::unix::signal", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::windows::ctrl_break", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::windows::ctrl_c", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::windows::ctrl_close", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::windows::ctrl_logoff", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::windows::ctrl_shutdown", reason = "use deno_signals crate instead" },
 ]
 disallowed-types = [
   { path = "reqwest::Client", reason = "use crate::http_util::HttpClient instead" },
   { path = "sys_traits::impls::RealSys", reason = "use crate::sys::CliSys instead" },
+  { path = "tokio::signal::unix::Signal", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::unix::SignalKind", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::windows::CtrlBreak", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::windows::CtrlC", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::windows::CtrlClose", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::windows::CtrlLogoff", reason = "use deno_signals crate instead" },
+  { path = "tokio::signal::windows::CtrlShutdown", reason = "use deno_signals crate instead" },
 ]
 ignore-interior-mutability = [
   "lsp_types::Uri",
