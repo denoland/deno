@@ -141,7 +141,6 @@ impl EnvManager {
         }
       }
       Err(e) => {
-        #[allow(clippy::print_stderr)]
         eprintln!(
           "{} Failed to read {}: {}",
           colors::yellow("Warning"),
@@ -160,8 +159,9 @@ impl EnvManager {
   ) {
     for var_name in inner.unused_variables.iter() {
       if !inner.original_env.contains_key(var_name) {
+        // SAFETY: We're removing an environment variable that we previously set
         unsafe {
-          env::remove_var(&var_name);
+          env::remove_var(var_name);
         }
 
         #[allow(clippy::print_stderr)]
@@ -174,8 +174,9 @@ impl EnvManager {
         }
       } else {
         let original_value = inner.original_env.get(var_name).unwrap();
+        // SAFETY: We're setting an environment variable to a value we control
         unsafe {
-          env::set_var(&var_name, original_value);
+          env::set_var(var_name, original_value);
         }
 
         #[allow(clippy::print_stderr)]
