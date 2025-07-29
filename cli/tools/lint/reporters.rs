@@ -233,7 +233,7 @@ impl LintReporter for JsonLintReporter {
       .to_file_path()
       .unwrap()
       .to_string_lossy()
-      .to_string();
+      .into_owned();
 
     if !self.checked_files.contains(&file_path) {
       self.checked_files.push(file_path);

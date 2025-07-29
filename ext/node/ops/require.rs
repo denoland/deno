@@ -726,8 +726,8 @@ fn url_or_path_to_string(
   url: UrlOrPath,
 ) -> Result<String, deno_path_util::UrlToFilePathError> {
   if url.is_file() {
-    Ok(url.into_path()?.to_string_lossy().to_string())
+    Ok(url.into_path()?.to_string_lossy().into_owned())
   } else {
-    Ok(url.to_string_lossy().to_string())
+    Ok(url.to_string_lossy().into_owned())
   }
 }

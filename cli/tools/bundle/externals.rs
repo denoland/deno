@@ -63,7 +63,7 @@ fn to_absolute_path(path: &str, cwd: &Path) -> String {
     let path = cwd.join(path);
     deno_path_util::normalize_path(Cow::Owned(path))
       .to_string_lossy()
-      .to_string()
+      .into_owned()
   }
 }
 
@@ -179,7 +179,7 @@ mod tests {
   }
 
   fn path_str(path: impl AsRef<Path>) -> String {
-    path.as_ref().to_string_lossy().to_string()
+    path.as_ref().to_string_lossy().into_owned()
   }
 
   #[test]
