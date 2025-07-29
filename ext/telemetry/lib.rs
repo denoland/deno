@@ -928,6 +928,7 @@ pub fn init(
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
   deno_signals::before_exit(before_exit);
+  deno_net::tunnel::disable_before_exit();
 
   Ok(())
 }
@@ -953,6 +954,8 @@ fn before_exit() {
 
   let r = meter_provider.shutdown();
   log::trace!("meters={:?}", r);
+
+  deno_net::tunnel::before_exit();
 }
 
 pub fn handle_log(record: &log::Record) {

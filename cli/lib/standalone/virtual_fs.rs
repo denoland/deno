@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -284,7 +285,7 @@ impl VirtualSymlinkParts {
       path
         .components()
         .filter(|c| !matches!(c, std::path::Component::RootDir))
-        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
         .collect(),
     )
   }
@@ -863,7 +864,8 @@ impl VfsBuilder {
         .with_context(|| format!("Reading symlink '{}'", path.display()))?,
     );
     let case_sensitivity = self.case_sensitivity;
-    let target = normalize_path(path.parent().unwrap().join(&target));
+    let target =
+      normalize_path(Cow::Owned(path.parent().unwrap().join(&target)));
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
     dir.entries.insert_or_modify(
@@ -886,7 +888,7 @@ impl VfsBuilder {
         format!("Reading symlink target '{}'", target.display())
       })?;
     if target_metadata.is_symlink() {
-      if !visited.insert(target.clone()) {
+      if !visited.insert(target.to_path_buf()) {
         // todo: probably don't error in this scenario
         bail!(
           "Circular symlink detected: {} -> {}",
@@ -900,9 +902,9 @@ impl VfsBuilder {
       }
       self.add_symlink_inner(&target, visited)
     } else if target_metadata.is_dir() {
-      Ok(SymlinkTarget::Dir(target))
+      Ok(SymlinkTarget::Dir(target.into_owned()))
     } else {
-      Ok(SymlinkTarget::File(target))
+      Ok(SymlinkTarget::File(target.into_owned()))
     }
   }
 

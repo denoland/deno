@@ -27,10 +27,10 @@ use deno_graph::ResolutionError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
+use deno_lib::util::result::downcast_ref_deno_resolve_error;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
-use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfigResolver;
@@ -49,7 +49,6 @@ use sys_traits::FsMetadata;
 
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
-use crate::args::DenoSubcommand;
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::cache;
@@ -79,7 +78,6 @@ pub struct GraphValidOptions<'a> {
   /// Otherwise, surfaces integrity errors as errors.
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
-  pub ignore_graph_errors: bool,
   pub allow_unknown_jsr_exports: bool,
 }
 
@@ -108,7 +106,6 @@ pub fn graph_valid(
       check_js: options.check_js,
       kind: options.kind,
       allow_unknown_media_types: options.allow_unknown_media_types,
-      ignore_graph_errors: options.ignore_graph_errors,
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
     },
   );
@@ -150,7 +147,6 @@ pub fn fill_graph_from_lockfile(
 pub struct GraphWalkErrorsOptions<'a> {
   pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
-  pub ignore_graph_errors: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
 }
@@ -163,88 +159,10 @@ pub fn graph_walk_errors<'a>(
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions<'a>,
 ) -> impl Iterator<Item = JsErrorBox> + 'a {
-  fn should_ignore_node_js_error_code_for_types(code: NodeJsErrorCode) -> bool {
-    match code {
-      NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
-      | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
-      | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
-      | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
-      | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
-      | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
-      | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH => false,
-      NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
-      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
-      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
-      | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => true,
-    }
-  }
-
-  fn should_ignore_resolve_error_for_types(err: &JsErrorBox) -> bool {
-    if let Some(err) = err.as_any().downcast_ref::<DenoResolveErrorKind>() {
-      match err {
-        DenoResolveErrorKind::InvalidVendorFolderImport
-        | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
-        | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
-        | DenoResolveErrorKind::MappedResolution { .. }
-        | DenoResolveErrorKind::NodeModulesOutOfDate { .. }
-        | DenoResolveErrorKind::PackageJsonDepValueParse { .. }
-        | DenoResolveErrorKind::PackageJsonDepValueUrlParse { .. }
-        | DenoResolveErrorKind::PathToUrl { .. }
-        | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq { .. }
-        | DenoResolveErrorKind::WorkspaceResolvePkgJsonFolder { .. } => false,
-        DenoResolveErrorKind::ResolveNpmReqRef(err) => err
-          .err
-          .as_kind()
-          .maybe_code()
-          .map(should_ignore_node_js_error_code_for_types)
-          .unwrap_or(false),
-        DenoResolveErrorKind::Node(err) => err
-          .as_kind()
-          .maybe_code()
-          .map(should_ignore_node_js_error_code_for_types)
-          .unwrap_or(false),
-      }
-    } else {
-      false
-    }
-  }
-
-  fn should_ignore_resolution_error_for_types(err: &ResolutionError) -> bool {
-    match err {
-      ResolutionError::ResolverError { error, .. } => match error.as_ref() {
-        ResolveError::Specifier(_) => true,
-        ResolveError::ImportMap(err) => matches!(
-          err.as_kind(),
-          import_map::ImportMapErrorKind::UnmappedBareSpecifier { .. }
-        ),
-        ResolveError::Other(err) => should_ignore_resolve_error_for_types(err),
-      },
-      _ => false,
-    }
-  }
-
-  fn should_ignore_module_graph_error_for_types(
-    err: &ModuleGraphError,
-  ) -> bool {
-    match err {
-      ModuleGraphError::ResolutionError(err) => {
-        should_ignore_resolution_error_for_types(err)
-      }
-      ModuleGraphError::TypesResolutionError(err) => {
-        should_ignore_resolution_error_for_types(err)
-      }
-      ModuleGraphError::ModuleError(module_error) => {
-        matches!(module_error.as_kind(), ModuleErrorKind::Missing { .. })
-      }
-    }
-  }
-
   fn should_ignore_error(
     sys: &CliSys,
     graph_kind: GraphKind,
     allow_unknown_media_types: bool,
-    ignore_graph_errors: bool,
     error: &ModuleGraphError,
   ) -> bool {
     if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
@@ -252,11 +170,6 @@ pub fn graph_walk_errors<'a>(
         error.as_module_error_kind(),
         Some(ModuleErrorKind::UnsupportedMediaType { .. })
       )
-    {
-      return true;
-    }
-
-    if ignore_graph_errors && should_ignore_module_graph_error_for_types(error)
     {
       return true;
     }
@@ -282,7 +195,6 @@ pub fn graph_walk_errors<'a>(
         sys,
         graph.graph_kind(),
         options.allow_unknown_media_types,
-        options.ignore_graph_errors,
         &error,
       ) {
         log::debug!("Ignoring: {}", error);
@@ -383,6 +295,23 @@ pub struct ModuleNotFoundNodeResolutionErrorRef<'a> {
 pub fn resolution_error_for_tsc_diagnostic(
   error: &ResolutionError,
 ) -> Option<ModuleNotFoundNodeResolutionErrorRef> {
+  fn is_module_not_found_code(code: NodeJsErrorCode) -> bool {
+    match code {
+      NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
+      | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
+      | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+      | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
+      | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+      | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
+      | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+      | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
+      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
+      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => false,
+      NodeJsErrorCode::ERR_MODULE_NOT_FOUND => true,
+    }
+  }
+
   match error {
     ResolutionError::ResolverError {
       error,
@@ -390,9 +319,11 @@ pub fn resolution_error_for_tsc_diagnostic(
       range,
     } => match error.as_ref() {
       ResolveError::Other(error) => {
-        // would be nice if there were an easier way of doing this
-        let text = error.to_string();
-        if text.contains("[ERR_MODULE_NOT_FOUND]") {
+        let is_module_not_found_error = downcast_ref_deno_resolve_error(error)
+          .and_then(|err| err.maybe_node_code())
+          .map(is_module_not_found_code)
+          .unwrap_or(false);
+        if is_module_not_found_error {
           Some(ModuleNotFoundNodeResolutionErrorRef {
             specifier,
             maybe_range: Some(range),
@@ -401,7 +332,7 @@ pub fn resolution_error_for_tsc_diagnostic(
           None
         }
       }
-      _ => None,
+      ResolveError::Specifier(_) | ResolveError::ImportMap(_) => None,
     },
     _ => None,
   }
@@ -1050,10 +981,6 @@ impl ModuleGraphBuilder {
         ),
         exit_integrity_errors: true,
         allow_unknown_media_types,
-        ignore_graph_errors: matches!(
-          self.cli_options.sub_command(),
-          DenoSubcommand::Check { .. }
-        ),
         allow_unknown_jsr_exports,
       },
     )

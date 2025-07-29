@@ -283,7 +283,7 @@ pub mod tests {
 
   fn tls_key_for_test(sni: &str) -> TlsKey {
     let manifest_dir =
-      std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+      std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let sni = sni.replace(".com", "");
     let cert_file = manifest_dir.join(format!("testdata/{}_cert.der", sni));
     let prikey_file = manifest_dir.join(format!("testdata/{}_prikey.der", sni));

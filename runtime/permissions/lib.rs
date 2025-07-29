@@ -938,26 +938,26 @@ impl PathQueryDescriptor {
     let (path, requested) = if is_windows_device_path {
       // On Windows, normalize_path doesn't work with device-prefix-style
       // paths. We pass these through.
-      (path.into_owned(), None)
+      (path, None)
     } else if path.is_absolute() {
-      (normalize_path(path.as_ref()), None)
+      (normalize_path(path), None)
     } else {
       let cwd = sys
         .env_current_dir()
         .map_err(PathResolveError::CwdResolve)?;
       (
-        normalize_path(cwd.join(path.as_ref())),
+        normalize_path(Cow::Owned(cwd.join(path.as_ref()))),
         Some(path.to_string_lossy().into_owned()),
       )
     };
     Ok(Self {
-      path,
+      path: path.into_owned(),
       requested,
       is_windows_device_path,
     })
   }
 
-  pub fn new_known_cwd(path: Cow<'_, PathBuf>, cwd: &Path) -> Self {
+  pub fn new_known_cwd(path: Cow<'_, Path>, cwd: &Path) -> Self {
     let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
       && path_bytes.starts_with(br"\\.\")
@@ -965,23 +965,23 @@ impl PathQueryDescriptor {
     let (path, display) = if is_windows_device_path {
       // On Windows, normalize_path doesn't work with device-prefix-style
       // paths. We pass these through.
-      (path.into_owned(), None)
+      (path, None)
     } else if path.is_absolute() {
-      (normalize_path(path.as_ref()), None)
+      (normalize_path(path), None)
     } else {
       (
-        normalize_path(cwd.join(path.as_ref())),
+        normalize_path(Cow::Owned(cwd.join(path.as_ref()))),
         Some(path.to_string_lossy().into_owned()),
       )
     };
     Self {
-      path,
+      path: path.into_owned(),
       requested: display,
       is_windows_device_path,
     }
   }
 
-  pub fn new_known_absolute(path: Cow<'_, PathBuf>) -> Self {
+  pub fn new_known_absolute(path: Cow<'_, Path>) -> Self {
     let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
       && path_bytes.starts_with(br"\\.\")
@@ -989,12 +989,12 @@ impl PathQueryDescriptor {
     let path = if is_windows_device_path {
       // On Windows, normalize_path doesn't work with device-prefix-style
       // paths. We pass these through.
-      path.into_owned()
+      path
     } else {
-      normalize_path(path.as_ref())
+      normalize_path(path)
     };
     Self {
-      path,
+      path: path.into_owned(),
       requested: None,
       is_windows_device_path,
     }
@@ -1967,7 +1967,7 @@ impl AllowRunDescriptor {
   ) -> Result<AllowRunDescriptorParseResult, which::Error> {
     let is_path = is_path(text);
     let path = if is_path {
-      PathBuf::from(text)
+      Cow::Borrowed(Path::new(text))
     } else {
       match which::which_in(
         sys.clone(),
@@ -1975,7 +1975,7 @@ impl AllowRunDescriptor {
         sys.env_var_os("PATH"),
         cwd.to_path_buf(),
       ) {
-        Ok(path) => path,
+        Ok(path) => Cow::Owned(path),
         Err(err) => match err {
           which::Error::CannotGetCurrentDirAndPathListEmpty => {
             return Err(err);
@@ -1989,7 +1989,7 @@ impl AllowRunDescriptor {
         },
       }
     };
-    let path = PathQueryDescriptor::new_known_cwd(Cow::Owned(path), cwd);
+    let path = PathQueryDescriptor::new_known_cwd(path, cwd);
     Ok(AllowRunDescriptorParseResult::Descriptor(
       AllowRunDescriptor(path),
     ))
@@ -2010,7 +2010,7 @@ impl DenyRunDescriptor {
   pub fn parse(text: &str, cwd: &Path) -> Self {
     if text.contains('/') || cfg!(windows) && text.contains('\\') {
       let path = PathQueryDescriptor::new_known_cwd(
-        Cow::Owned(PathBuf::from(&text)),
+        Cow::Borrowed(Path::new(&text)),
         cwd,
       );
       DenyRunDescriptor::Path(path)
@@ -2915,6 +2915,13 @@ impl PermissionsContainer {
     }
   }
 
+  pub fn deep_clone(&self) -> PermissionsContainer {
+    Self {
+      descriptor_parser: self.descriptor_parser.clone(),
+      inner: Arc::new(Mutex::new(self.inner.lock().clone())),
+    }
+  }
+
   pub fn allow_all(
     descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   ) -> Self {
@@ -3127,7 +3134,7 @@ impl PermissionsContainer {
         access_kind.is_read() && !inner.read.is_allow_all();
       let should_check_write =
         access_kind.is_write() && !inner.write.is_allow_all();
-      let path = self.descriptor_parser.parse_path_query_from_path(path)?;
+      let path = self.descriptor_parser.parse_path_query(path)?;
       let path = match blind_requested {
         Some(display) => path.with_requested(format!("<{}>", display)),
         None => path,
@@ -3209,10 +3216,7 @@ impl PermissionsContainer {
         canonicalized: false,
       })
     } else {
-      let desc = self
-        .descriptor_parser
-        .parse_path_query_from_path(path)?
-        .into_write();
+      let desc = self.descriptor_parser.parse_path_query(path)?.into_write();
       inner.check_partial(&desc, Some(api_name))?;
       // skip checking for special permissions because we consider
       // write_partial as WriteNoFollow because it's only used for
@@ -3489,18 +3493,18 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_ffi(
+  pub fn check_ffi<'a>(
     &mut self,
-    path: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
     if inner.is_allow_all() {
-      Ok(PathBuf::from(path))
+      Ok(path)
     } else {
       let desc = self.descriptor_parser.parse_path_query(path)?.into_ffi();
       inner.check(&desc, None)?;
-      Ok(desc.0.path)
+      Ok(Cow::Owned(desc.0.path))
     }
   }
 
@@ -3519,18 +3523,18 @@ impl PermissionsContainer {
 
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   #[inline(always)]
-  pub fn check_ffi_partial_with_path(
+  pub fn check_ffi_partial_with_path<'a>(
     &mut self,
-    path: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     let mut inner = self.inner.lock();
     let inner = &mut inner.ffi;
     if inner.is_allow_all() {
-      Ok(PathBuf::from(path))
+      Ok(path)
     } else {
       let desc = self.descriptor_parser.parse_path_query(path)?.into_ffi();
       inner.check_partial(Some(&desc))?;
-      Ok(desc.0.path)
+      Ok(Cow::Owned(desc.0.path))
     }
   }
 
@@ -3551,7 +3555,10 @@ impl PermissionsContainer {
         path
           .map(|path| {
             Ok::<_, PathResolveError>(
-              self.descriptor_parser.parse_path_query(path)?.into_read(),
+              self
+                .descriptor_parser
+                .parse_path_query(Cow::Borrowed(Path::new(path)))?
+                .into_read(),
             )
           })
           .transpose()?
@@ -3575,7 +3582,10 @@ impl PermissionsContainer {
         path
           .map(|path| {
             Ok::<_, PathResolveError>(
-              self.descriptor_parser.parse_path_query(path)?.into_write(),
+              self
+                .descriptor_parser
+                .parse_path_query(Cow::Borrowed(Path::new(path)))?
+                .into_write(),
             )
           })
           .transpose()?
@@ -3670,7 +3680,10 @@ impl PermissionsContainer {
         path
           .map(|path| {
             Ok::<_, PathResolveError>(
-              self.descriptor_parser.parse_path_query(path)?.into_ffi(),
+              self
+                .descriptor_parser
+                .parse_path_query(Cow::Borrowed(Path::new(path)))?
+                .into_ffi(),
             )
           })
           .transpose()?
@@ -3714,7 +3727,10 @@ impl PermissionsContainer {
         path
           .map(|path| {
             Ok::<_, PathResolveError>(
-              self.descriptor_parser.parse_path_query(path)?.into_read(),
+              self
+                .descriptor_parser
+                .parse_path_query(Cow::Borrowed(Path::new(path)))?
+                .into_read(),
             )
           })
           .transpose()?
@@ -3733,7 +3749,10 @@ impl PermissionsContainer {
         path
           .map(|path| {
             Ok::<_, PathResolveError>(
-              self.descriptor_parser.parse_path_query(path)?.into_write(),
+              self
+                .descriptor_parser
+                .parse_path_query(Cow::Borrowed(Path::new(path)))?
+                .into_write(),
             )
           })
           .transpose()?
@@ -3803,7 +3822,10 @@ impl PermissionsContainer {
         path
           .map(|path| {
             Ok::<_, PathResolveError>(
-              self.descriptor_parser.parse_path_query(path)?.into_ffi(),
+              self
+                .descriptor_parser
+                .parse_path_query(Cow::Borrowed(Path::new(path)))?
+                .into_ffi(),
             )
           })
           .transpose()?
@@ -3842,7 +3864,10 @@ impl PermissionsContainer {
         path
           .map(|path| {
             Ok::<_, PathResolveError>(
-              self.descriptor_parser.parse_path_query(path)?.into_read(),
+              self
+                .descriptor_parser
+                .parse_path_query(Cow::Borrowed(Path::new(path)))?
+                .into_read(),
             )
           })
           .transpose()?
@@ -3861,7 +3886,10 @@ impl PermissionsContainer {
         path
           .map(|path| {
             Ok::<_, PathResolveError>(
-              self.descriptor_parser.parse_path_query(path)?.into_write(),
+              self
+                .descriptor_parser
+                .parse_path_query(Cow::Borrowed(Path::new(path)))?
+                .into_write(),
             )
           })
           .transpose()?
@@ -3931,7 +3959,10 @@ impl PermissionsContainer {
         path
           .map(|path| {
             Ok::<_, PathResolveError>(
-              self.descriptor_parser.parse_path_query(path)?.into_ffi(),
+              self
+                .descriptor_parser
+                .parse_path_query(Cow::Borrowed(Path::new(path)))?
+                .into_ffi(),
             )
           })
           .transpose()?
@@ -4306,17 +4337,10 @@ pub trait PermissionDescriptorParser: Debug + Send + Sync {
 
   // queries
 
-  fn parse_path_query_from_path(
+  fn parse_path_query(
     &self,
     path: Cow<'_, Path>,
   ) -> Result<PathQueryDescriptor, PathResolveError>;
-
-  fn parse_path_query(
-    &self,
-    path: &str,
-  ) -> Result<PathQueryDescriptor, PathResolveError> {
-    self.parse_path_query_from_path(Cow::Borrowed(Path::new(path)))
-  }
 
   fn parse_special_file_descriptor(
     &self,
@@ -4447,7 +4471,7 @@ mod tests {
       Ok(FfiDescriptor(self.join_path_with_root(text)))
     }
 
-    fn parse_path_query_from_path(
+    fn parse_path_query(
       &self,
       path: Cow<'_, Path>,
     ) -> Result<PathQueryDescriptor, PathResolveError> {
@@ -4545,7 +4569,10 @@ mod tests {
           .is_ok(),
         is_ok
       );
-      assert_eq!(perms.check_ffi(path).is_ok(), is_ok);
+      assert_eq!(
+        perms.check_ffi(Cow::Borrowed(Path::new(path))).is_ok(),
+        is_ok
+      );
     }
   }
 
@@ -4913,9 +4940,9 @@ mod tests {
     .unwrap();
     #[rustfmt::skip]
     {
-      let read_query = |path: &str| parser.parse_path_query(path).unwrap().into_read();
-      let write_query = |path: &str| parser.parse_path_query(path).unwrap().into_write();
-      let ffi_query = |path: &str| parser.parse_path_query(path).unwrap().into_ffi();
+      let read_query = |path: &str| parser.parse_path_query(Cow::Borrowed(Path::new(path))).unwrap().into_read();
+      let write_query = |path: &str| parser.parse_path_query(Cow::Borrowed(Path::new(path))).unwrap().into_write();
+      let ffi_query = |path: &str| parser.parse_path_query(Cow::Borrowed(Path::new(path))).unwrap().into_ffi();
       assert_eq!(perms1.read.query(None), PermissionState::Granted);
       assert_eq!(perms1.read.query(Some(&read_query("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.read.query(None), PermissionState::Prompt);
@@ -5009,12 +5036,24 @@ mod tests {
     let parser = TestPermissionDescriptorParser;
     let mut perms: Permissions = Permissions::none_with_prompt();
     let mut perms_no_prompt: Permissions = Permissions::none_without_prompt();
-    let read_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_read();
-    let write_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_write();
-    let ffi_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_ffi();
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_read()
+    };
+    let write_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_write()
+    };
+    let ffi_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_ffi()
+    };
     #[rustfmt::skip]
     {
       let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
@@ -5076,12 +5115,24 @@ mod tests {
       },
     )
     .unwrap();
-    let read_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_read();
-    let write_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_write();
-    let ffi_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_ffi();
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_read()
+    };
+    let write_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_write()
+    };
+    let ffi_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_ffi()
+    };
     #[rustfmt::skip]
     {
       assert_eq!(perms.read.revoke(Some(&read_query("/foo/bar"))), PermissionState::Prompt);
@@ -5109,12 +5160,24 @@ mod tests {
     let mut perms = Permissions::none_with_prompt();
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let parser = TestPermissionDescriptorParser;
-    let read_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_read();
-    let write_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_write();
-    let ffi_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_ffi();
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_read()
+    };
+    let write_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_write()
+    };
+    let ffi_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_ffi()
+    };
 
     prompt_value.set(true);
     assert!(perms.read.check(&read_query("/foo"), None).is_ok());
@@ -5249,12 +5312,24 @@ mod tests {
     let mut perms = Permissions::none_with_prompt();
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let parser = TestPermissionDescriptorParser;
-    let read_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_read();
-    let write_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_write();
-    let ffi_query =
-      |path: &str| parser.parse_path_query(path).unwrap().into_ffi();
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_read()
+    };
+    let write_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_write()
+    };
+    let ffi_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new(path)))
+        .unwrap()
+        .into_ffi()
+    };
 
     prompt_value.set(false);
     assert!(perms.read.check(&read_query("/foo"), None).is_err());
@@ -5511,11 +5586,17 @@ mod tests {
     )
     .unwrap();
 
-    let read_query = parser.parse_path_query("/foo").unwrap().into_read();
+    let read_query = parser
+      .parse_path_query(Cow::Borrowed(Path::new("/foo")))
+      .unwrap()
+      .into_read();
     perms.read.check_partial(&read_query, None).unwrap();
     assert!(perms.read.check(&read_query, None).is_err());
 
-    let write_query = parser.parse_path_query("/foo").unwrap().into_write();
+    let write_query = parser
+      .parse_path_query(Cow::Borrowed(Path::new("/foo")))
+      .unwrap()
+      .into_write();
     perms.write.check_partial(&write_query, None).unwrap();
     assert!(perms.write.check(&write_query, None).is_err());
   }
@@ -5536,11 +5617,17 @@ mod tests {
     .unwrap();
 
     assert!(perms.read.check_all(None).is_err());
-    let read_query = parser.parse_path_query("/foo").unwrap().into_read();
+    let read_query = parser
+      .parse_path_query(Cow::Borrowed(Path::new("/foo")))
+      .unwrap()
+      .into_read();
     assert!(perms.read.check(&read_query, None).is_err());
 
     assert!(perms.write.check_all(None).is_err());
-    let write_query = parser.parse_path_query("/foo").unwrap().into_write();
+    let write_query = parser
+      .parse_path_query(Cow::Borrowed(Path::new("/foo")))
+      .unwrap()
+      .into_write();
     assert!(perms.write.check(&write_query, None).is_err());
   }
 
@@ -5859,7 +5946,13 @@ mod tests {
         .inner
         .lock()
         .write
-        .check(&parser.parse_path_query("foo").unwrap().into_write(), None)
+        .check(
+          &parser
+            .parse_path_query(Cow::Borrowed(Path::new("foo")))
+            .unwrap()
+            .into_write(),
+          None
+        )
         .is_err()
     );
     let worker_perms = main_perms

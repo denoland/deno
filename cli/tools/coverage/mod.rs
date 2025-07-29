@@ -15,6 +15,8 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
+use deno_core::InspectorPostMessageError;
+use deno_core::InspectorPostMessageErrorKind;
 use deno_core::LocalInspectorSession;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
@@ -58,9 +60,14 @@ pub struct CoverageCollector {
   session: LocalInspectorSession,
 }
 
-#[async_trait::async_trait(?Send)]
-impl crate::worker::CoverageCollector for CoverageCollector {
-  async fn start_collecting(&mut self) -> Result<(), CoreError> {
+impl CoverageCollector {
+  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
+    Self { dir, session }
+  }
+
+  pub async fn start_collecting(
+    &mut self,
+  ) -> Result<(), InspectorPostMessageError> {
     self.enable_debugger().await?;
     self.enable_profiler().await?;
     self
@@ -74,7 +81,7 @@ impl crate::worker::CoverageCollector for CoverageCollector {
     Ok(())
   }
 
-  async fn stop_collecting(&mut self) -> Result<(), CoreError> {
+  pub async fn stop_collecting(&mut self) -> Result<(), CoreError> {
     fs::create_dir_all(&self.dir)?;
 
     let script_coverages = self.take_precise_coverage().await?.result;
@@ -113,14 +120,8 @@ impl crate::worker::CoverageCollector for CoverageCollector {
 
     Ok(())
   }
-}
 
-impl CoverageCollector {
-  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
-    Self { dir, session }
-  }
-
-  async fn enable_debugger(&mut self) -> Result<(), CoreError> {
+  async fn enable_debugger(&mut self) -> Result<(), InspectorPostMessageError> {
     self
       .session
       .post_message::<()>("Debugger.enable", None)
@@ -128,7 +129,7 @@ impl CoverageCollector {
     Ok(())
   }
 
-  async fn enable_profiler(&mut self) -> Result<(), CoreError> {
+  async fn enable_profiler(&mut self) -> Result<(), InspectorPostMessageError> {
     self
       .session
       .post_message::<()>("Profiler.enable", None)
@@ -136,7 +137,9 @@ impl CoverageCollector {
     Ok(())
   }
 
-  async fn disable_debugger(&mut self) -> Result<(), CoreError> {
+  async fn disable_debugger(
+    &mut self,
+  ) -> Result<(), InspectorPostMessageError> {
     self
       .session
       .post_message::<()>("Debugger.disable", None)
@@ -144,7 +147,9 @@ impl CoverageCollector {
     Ok(())
   }
 
-  async fn disable_profiler(&mut self) -> Result<(), CoreError> {
+  async fn disable_profiler(
+    &mut self,
+  ) -> Result<(), InspectorPostMessageError> {
     self
       .session
       .post_message::<()>("Profiler.disable", None)
@@ -155,28 +160,30 @@ impl CoverageCollector {
   async fn start_precise_coverage(
     &mut self,
     parameters: cdp::StartPreciseCoverageArgs,
-  ) -> Result<cdp::StartPreciseCoverageResponse, CoreError> {
+  ) -> Result<cdp::StartPreciseCoverageResponse, InspectorPostMessageError> {
     let return_value = self
       .session
       .post_message("Profiler.startPreciseCoverage", Some(parameters))
       .await?;
 
-    let return_object =
-      serde_json::from_value(return_value).map_err(JsErrorBox::from_err)?;
+    let return_object = serde_json::from_value(return_value).map_err(|e| {
+      InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
+    })?;
 
     Ok(return_object)
   }
 
   async fn take_precise_coverage(
     &mut self,
-  ) -> Result<cdp::TakePreciseCoverageResponse, CoreError> {
+  ) -> Result<cdp::TakePreciseCoverageResponse, InspectorPostMessageError> {
     let return_value = self
       .session
       .post_message::<()>("Profiler.takePreciseCoverage", None)
       .await?;
 
-    let return_object =
-      serde_json::from_value(return_value).map_err(JsErrorBox::from_err)?;
+    let return_object = serde_json::from_value(return_value).map_err(|e| {
+      InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
+    })?;
 
     Ok(return_object)
   }
@@ -666,7 +673,7 @@ pub fn cover_files(
   let mut file_reports = Vec::with_capacity(script_coverages.len());
 
   for script_coverage in script_coverages {
-    let module_specifier = deno_core::resolve_url_or_path(
+    let module_specifier = deno_path_util::resolve_url_or_path(
       &script_coverage.url,
       cli_options.initial_cwd(),
     )?;

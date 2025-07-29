@@ -332,7 +332,7 @@ fn check_local_by_default() {
   let temp_dir_str = temp_dir.path().to_string();
   let script_path =
     util::testdata_path().join("./install/check_local_by_default.ts");
-  let script_path_str = script_path.to_string_lossy().to_string();
+  let script_path_str = script_path.to_string_lossy().into_owned();
   context
     .new_command()
     .args_vec(["install", "-g", "--allow-import", script_path_str.as_str()])
@@ -356,7 +356,7 @@ fn check_local_by_default2() {
   let temp_dir_str = temp_dir.path().to_string();
   let script_path =
     util::testdata_path().join("./install/check_local_by_default2.ts");
-  let script_path_str = script_path.to_string_lossy().to_string();
+  let script_path_str = script_path.to_string_lossy().into_owned();
   context
     .new_command()
     .args_vec(["install", "-g", "--allow-import", script_path_str.as_str()])

@@ -121,7 +121,7 @@ deno_core::extension!(deno_fs,
   deps = [ deno_web ],
   parameters = [P: FsPermissions],
   ops = [
-    op_fs_cwd<P>,
+    op_fs_cwd,
     op_fs_umask,
     op_fs_chdir<P>,
 

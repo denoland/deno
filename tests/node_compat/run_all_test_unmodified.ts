@@ -21,6 +21,7 @@ import {
   TEST_ARGS,
   usesNodeTestModule,
 } from "./common.ts";
+import { generateTestSerialId } from "./test.ts";
 
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
@@ -153,7 +154,6 @@ function getFlags(source: string): [string[], string[]] {
   return [v8Flags, nodeOptions];
 }
 
-let testSerialId = 0;
 /**
  * Run a single node test file. Retries 3 times on WouldBlock error.
  *
@@ -169,7 +169,7 @@ export async function runSingle(
     retry?: number;
   },
 ): Promise<NodeTestFileReport> {
-  testSerialId++;
+  const testSerialId = generateTestSerialId();
   let cmd: Deno.ChildProcess | undefined;
   const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   let usesNodeTest = false;
