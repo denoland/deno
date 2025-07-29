@@ -667,7 +667,7 @@ fn spawn_child(
       }
 
       return Err(ProcessError::SpawnFailed {
-        command: command.get_program().to_string_lossy().to_string(),
+        command: command.get_program().to_string_lossy().into_owned(),
         error: Box::new(err.into()),
       });
     }
@@ -1015,7 +1015,7 @@ fn op_spawn_sync(
     create_command(state, args, "Deno.Command().outputSync()")?;
 
   let mut child = command.spawn().map_err(|e| ProcessError::SpawnFailed {
-    command: command.get_program().to_string_lossy().to_string(),
+    command: command.get_program().to_string_lossy().into_owned(),
     error: Box::new(e.into()),
   })?;
   if let Some(input) = input {
@@ -1029,7 +1029,7 @@ fn op_spawn_sync(
     child
       .wait_with_output()
       .map_err(|e| ProcessError::SpawnFailed {
-        command: command.get_program().to_string_lossy().to_string(),
+        command: command.get_program().to_string_lossy().into_owned(),
         error: Box::new(e.into()),
       })?;
   Ok(SpawnOutput {

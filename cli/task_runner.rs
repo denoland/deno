@@ -518,7 +518,7 @@ fn resolve_bin_dir_entry_command(
     return None;
   };
   let text = std::fs::read_to_string(&path).ok()?;
-  let command_name = entry.file_name().to_string_lossy().to_string();
+  let command_name = entry.file_name().to_string_lossy().into_owned();
   if let Some(path) = resolve_execution_path_from_npx_shim(path, &text) {
     log::debug!(
       "Resolved npx command '{}' to '{}'.",

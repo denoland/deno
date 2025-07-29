@@ -317,7 +317,7 @@ mod test {
     ];
     let mut file_names = result
       .into_iter()
-      .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
+      .map(|r| r.file_name().unwrap().to_string_lossy().into_owned())
       .collect::<Vec<_>>();
     file_names.sort();
     assert_eq!(file_names, expected);
@@ -340,7 +340,7 @@ mod test {
     ];
     let mut file_names = result
       .into_iter()
-      .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
+      .map(|r| r.file_name().unwrap().to_string_lossy().into_owned())
       .collect::<Vec<_>>();
     file_names.sort();
     assert_eq!(file_names, expected);
@@ -371,7 +371,7 @@ mod test {
     ];
     let mut file_names = result
       .into_iter()
-      .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
+      .map(|r| r.file_name().unwrap().to_string_lossy().into_owned())
       .collect::<Vec<_>>();
     file_names.sort();
     assert_eq!(file_names, expected);

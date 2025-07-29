@@ -1713,7 +1713,7 @@ pub async fn run_tests(
         PathBuf::from(coverage)
           .join("lcov.info")
           .to_string_lossy()
-          .to_string(),
+          .into_owned(),
       ),
       &reporters,
     ) {

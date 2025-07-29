@@ -3377,7 +3377,11 @@ impl CallHierarchyItem {
     let maybe_file_path = url_to_file_path(&target_module.specifier).ok();
     let name = if use_file_name {
       if let Some(file_path) = &maybe_file_path {
-        file_path.file_name().unwrap().to_string_lossy().to_string()
+        file_path
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .into_owned()
       } else {
         target_module.uri.to_string()
       }
@@ -3393,9 +3397,9 @@ impl CallHierarchyItem {
             .strip_prefix(root_path)
             .unwrap_or(parent_dir)
             .to_string_lossy()
-            .to_string()
+            .into_owned()
         } else {
-          parent_dir.to_string_lossy().to_string()
+          parent_dir.to_string_lossy().into_owned()
         }
       } else {
         String::new()
