@@ -560,6 +560,8 @@ impl<
           if self.sys.is_file(&path_with_ext) {
             Ok(UrlOrPath::Path(path_with_ext))
           } else {
+            // todo(THIS PR): handle circular reference here so this doesn't loop forever
+            // or what would be a better way?
             let (resolved_url, resolved_method) = self
               .resolve_package_dir_subpath(
                 &path,
