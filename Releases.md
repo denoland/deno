@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.4.3 / 2025.07.30
 
-- Revert "fix(unstable): always require --allow-read permissions for raw imports
-  (#30184)" (#30196)
 - feat(unstable): add useful metadata to tunnel (#30161)
 - fix(bundle): don't force managed npm resolution (#30200)
 - fix(check): ensure module not found errors are surfaced (#30181)
@@ -43,8 +41,6 @@ https://github.com/denoland/deno_install
 - fix(task): show package name of task when --recursive (#30136)
 - fix(tsconfig): don't use tsc-compatible defaults for deno.json compiler
   options (#30242)
-- fix(unstable): always require --allow-read permissions for raw imports
-  (#30184)
 - fix: do not panic deserializing config with invalid number value (#30171)
 - fix: don't invoke `Proxy` getter trap on `console.log` (#30230)
 - fix: ensure coverage dir is stored absolute to prevent issues when cwd changes
