@@ -320,22 +320,26 @@ impl<
       sys,
       condition_resolver: ConditionResolver::new(NodeConditionOptions {
         conditions: options.conditions.conditions,
-        import_conditions_override: match options
+        import_conditions_override: options
           .conditions
           .import_conditions_override
-        {
-          Some(value) => Some(value),
-          None => {
+          .or_else(|| {
             if options.is_browser_platform {
-              Some(vec![Cow::Borrowed("browser")])
+              Some(vec![Cow::Borrowed("browser"), Cow::Borrowed("import")])
             } else {
               None
             }
-          }
-        },
+          }),
         require_conditions_override: options
           .conditions
-          .require_conditions_override,
+          .require_conditions_override
+          .or_else(|| {
+            if options.is_browser_platform {
+              Some(vec![Cow::Borrowed("browser"), Cow::Borrowed("require")])
+            } else {
+              None
+            }
+          }),
       }),
       resolution_config: ResolutionConfig {
         bundle_mode: options.bundle_mode,
