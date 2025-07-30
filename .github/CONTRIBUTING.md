@@ -80,7 +80,7 @@ In addition to the above make sure that:
 
 Below are instructions on how to build Deno from source. If you just want to use
 Deno you can download a prebuilt executable (more information in the
-[`Getting Started`](/runtime/getting_started/installation/) chapter).
+[`Getting Started`](https://docs.deno.com/runtime) chapter).
 
 ### Cloning the Repository
 

@@ -1025,7 +1025,7 @@ fn print_worker_error(
       let err = match error.as_kind() {
         CoreErrorKind::Js(js_error) => js_error,
         CoreErrorKind::JsBox(err) => {
-          err.as_any().downcast_ref::<deno_core::error::JsError>()?
+          err.get_ref().downcast_ref::<deno_core::error::JsError>()?
         }
         _ => return None,
       };

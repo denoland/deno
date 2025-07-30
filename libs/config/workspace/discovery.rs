@@ -819,7 +819,7 @@ fn resolve_workspace_for_config_folder<
             .parent()
             .unwrap()
             .to_string_lossy()
-            .to_string(),
+            .into_owned(),
           member_dir_url,
         ));
       }
@@ -946,7 +946,7 @@ fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
         || cfg!(windows) && link.chars().any(|c| c == '\\')
       {
         if let Ok(value) =
-          deno_path_util::url_from_file_path(&PathBuf::from(link.as_ref()))
+          deno_path_util::url_from_file_path(Path::new(link.as_ref()))
         {
           return Ok(value);
         }

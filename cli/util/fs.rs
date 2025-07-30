@@ -164,29 +164,11 @@ pub fn specifier_from_file_path(
 
 #[cfg(test)]
 mod tests {
-  use deno_path_util::normalize_path;
   use pretty_assertions::assert_eq;
   use test_util::PathRef;
   use test_util::TempDir;
 
   use super::*;
-
-  #[test]
-  fn test_normalize_path() {
-    assert_eq!(normalize_path(Path::new("a/../b")), PathBuf::from("b"));
-    assert_eq!(normalize_path(Path::new("a/./b/")), PathBuf::from("a/b/"));
-    assert_eq!(
-      normalize_path(Path::new("a/./b/../c")),
-      PathBuf::from("a/c")
-    );
-
-    if cfg!(windows) {
-      assert_eq!(
-        normalize_path(Path::new("C:\\a\\.\\b\\..\\c")),
-        PathBuf::from("C:\\a\\c")
-      );
-    }
-  }
 
   #[test]
   fn test_collect_specifiers() {

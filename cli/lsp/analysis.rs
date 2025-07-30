@@ -1386,8 +1386,6 @@ pub fn source_range_to_lsp_range(
 
 #[cfg(test)]
 mod tests {
-  use std::path::PathBuf;
-
   use super::*;
 
   #[test]
@@ -1470,8 +1468,8 @@ mod tests {
     let exports = exports.as_object().unwrap();
     assert_eq!(
       try_reverse_map_package_json_exports(
-        &PathBuf::from("/project/"),
-        &PathBuf::from("/project/hooks/index.d.ts"),
+        Path::new("/project/"),
+        Path::new("/project/hooks/index.d.ts"),
         exports,
       )
       .unwrap(),
@@ -1479,8 +1477,8 @@ mod tests {
     );
     assert_eq!(
       try_reverse_map_package_json_exports(
-        &PathBuf::from("/project/"),
-        &PathBuf::from("/project/dist/devtools.module.js"),
+        Path::new("/project/"),
+        Path::new("/project/dist/devtools.module.js"),
         exports,
       )
       .unwrap(),
@@ -1488,8 +1486,8 @@ mod tests {
     );
     assert_eq!(
       try_reverse_map_package_json_exports(
-        &PathBuf::from("/project/"),
-        &PathBuf::from("/project/src/index.d.ts"),
+        Path::new("/project/"),
+        Path::new("/project/src/index.d.ts"),
         exports,
       )
       .unwrap(),
@@ -1497,8 +1495,8 @@ mod tests {
     );
     assert_eq!(
       try_reverse_map_package_json_exports(
-        &PathBuf::from("/project/"),
-        &PathBuf::from("/project/utils_sub_utils.d.ts"),
+        Path::new("/project/"),
+        Path::new("/project/utils_sub_utils.d.ts"),
         exports,
       )
       .unwrap(),

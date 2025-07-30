@@ -186,12 +186,12 @@ pub fn op_require_node_module_paths<
   let sys = state.borrow::<TSys>();
   // Guarantee that "from" is absolute.
   let from = if from.starts_with("file:///") {
-    url_to_file_path(&Url::parse(from)?)?
+    Cow::Owned(url_to_file_path(&Url::parse(from)?)?)
   } else {
     let current_dir = &sys
       .env_current_dir()
       .map_err(|e| RequireErrorKind::UnableToGetCwd(UnableToGetCwdError(e)))?;
-    normalize_path(current_dir.join(from))
+    normalize_path(Cow::Owned(current_dir.join(from)))
   };
 
   if cfg!(windows) {
@@ -406,7 +406,7 @@ fn path_resolve<'a>(mut parts: impl Iterator<Item = &'a str>) -> PathBuf {
   for part in parts {
     p = p.join(part);
   }
-  normalize_path(p)
+  normalize_path(Cow::Owned(p)).into_owned()
 }
 
 #[op2]
@@ -445,37 +445,6 @@ pub fn op_require_path_basename(
 
 #[op2(stack_trace)]
 #[string]
-pub fn op_require_try_self_parent_path<
-  P: NodePermissions + 'static,
-  TSys: ExtNodeSys + 'static,
->(
-  state: &mut OpState,
-  has_parent: bool,
-  #[string] maybe_parent_filename: Option<String>,
-  #[string] maybe_parent_id: Option<String>,
-) -> Result<Option<String>, JsErrorBox> {
-  if !has_parent {
-    return Ok(None);
-  }
-
-  if let Some(parent_filename) = maybe_parent_filename {
-    return Ok(Some(parent_filename));
-  }
-
-  if let Some(parent_id) = maybe_parent_id {
-    if parent_id == "<repl>" || parent_id == "internal/preload" {
-      let sys = state.borrow::<TSys>();
-      if let Ok(cwd) = sys.env_current_dir() {
-        // permissions: no need to do a permission check for cwd
-        return Ok(Some(cwd.to_string_lossy().into_owned()));
-      }
-    }
-  }
-  Ok(None)
-}
-
-#[op2(stack_trace)]
-#[string]
 pub fn op_require_try_self<
   P: NodePermissions + 'static,
   TInNpmPackageChecker: InNpmPackageChecker + 'static,
@@ -483,40 +452,35 @@ pub fn op_require_try_self<
   TSys: ExtNodeSys + 'static,
 >(
   state: &mut OpState,
-  #[string] parent_path: Option<String>,
+  #[string] parent_path: &str,
   #[string] request: &str,
 ) -> Result<Option<String>, RequireError> {
-  if parent_path.is_none() {
-    return Ok(None);
-  }
-
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
   let pkg = pkg_json_resolver
-    .get_closest_package_json(&PathBuf::from(parent_path.unwrap()))
+    .get_closest_package_json(Path::new(parent_path))
     .ok()
     .flatten();
-  if pkg.is_none() {
+  let Some(pkg) = pkg else {
     return Ok(None);
-  }
+  };
 
-  let pkg = pkg.unwrap();
   if pkg.exports.is_none() {
     return Ok(None);
   }
-  if pkg.name.is_none() {
+  let Some(pkg_name) = &pkg.name else {
     return Ok(None);
-  }
+  };
 
-  let pkg_name = pkg.name.as_ref().unwrap().to_string();
-  let mut expansion = ".".to_string();
-
-  if request == pkg_name {
-    // pass
-  } else if request.starts_with(&format!("{pkg_name}/")) {
-    expansion += &request[pkg_name.len()..];
+  let expansion = if request == pkg_name {
+    Cow::Borrowed(".")
+  } else if let Some(slash_with_export) = request
+    .strip_prefix(pkg_name)
+    .filter(|t| t.starts_with('/'))
+  {
+    Cow::Owned(format!(".{}", slash_with_export))
   } else {
     return Ok(None);
-  }
+  };
 
   if let Some(exports) = &pkg.exports {
     let node_resolver = state.borrow::<NodeResolverRc<
@@ -709,12 +673,11 @@ pub fn op_require_package_imports_resolve<
       TSys,
     >>();
     NodeResolutionThreadLocalCache::clear();
-    let url = node_resolver.package_imports_resolve(
+    let url = node_resolver.resolve_package_import(
       request,
       Some(&UrlOrPathRef::from_path(&referrer_path)),
-      ResolutionMode::Require,
       Some(&pkg),
-      node_resolver.require_conditions(),
+      ResolutionMode::Require,
       NodeResolutionKind::Execution,
     )?;
     Ok(Some(url_or_path_to_string(url)?))
@@ -763,8 +726,8 @@ fn url_or_path_to_string(
   url: UrlOrPath,
 ) -> Result<String, deno_path_util::UrlToFilePathError> {
   if url.is_file() {
-    Ok(url.into_path()?.to_string_lossy().to_string())
+    Ok(url.into_path()?.to_string_lossy().into_owned())
   } else {
-    Ok(url.to_string_lossy().to_string())
+    Ok(url.to_string_lossy().into_owned())
   }
 }
