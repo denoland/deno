@@ -80,7 +80,7 @@ impl LspCompilerOptionsResolver {
                   CompilerOptionsType::Check {
                     lib: TsTypeLib::DenoWindow,
                   },
-                  d.defaults,
+                  d.source_kind,
                 ))
               }),
             compiler_options_types: d.compiler_options_types().clone(),
