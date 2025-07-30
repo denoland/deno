@@ -560,17 +560,22 @@ impl<
           if self.sys.is_file(&path_with_ext) {
             Ok(UrlOrPath::Path(path_with_ext))
           } else {
-            Ok(
-              self
-                .resolve_package_dir_subpath(
-                  &path,
-                  ".",
-                  maybe_referrer,
-                  resolution_mode,
-                  conditions,
-                  resolution_kind,
-                )
-                .map(|url| url.0.0.into_url_or_path())?,
+            let (resolved_url, resolved_method) = self
+              .resolve_package_dir_subpath(
+                &path,
+                ".",
+                maybe_referrer,
+                resolution_mode,
+                conditions,
+                resolution_kind,
+              )?;
+            self.finalize_resolution(
+              resolved_url,
+              resolved_method,
+              resolution_mode,
+              conditions,
+              resolution_kind,
+              maybe_referrer,
             )
           }
         }
