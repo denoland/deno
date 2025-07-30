@@ -6,9 +6,13 @@ import { assert } from "@std/assert";
 import { partition } from "@std/collections/partition";
 import { pooledMap } from "@std/async/pool";
 
-// This is a placeholder for the future extension of the config file.
-// deno-lint-ignore ban-types
-type SingleFileConfig = {};
+let testSerialId = 0;
+export const generateTestSerialId = () => ++testSerialId;
+
+interface SingleFileConfig {
+  flaky?: boolean;
+}
+
 type Config = {
   tests: Record<string, SingleFileConfig>;
 };
@@ -22,8 +26,8 @@ const [sequentialTests, parallelTests] = partition(
   ([testName]) => testName.startsWith("sequential/"),
 );
 
-async function run(name: string) {
-  const result = await runSingle(name);
+async function run(name: string, testConfig: SingleFileConfig) {
+  const result = await runSingle(name, testConfig);
   let msg = "";
   const error = result.error;
   if (error && "message" in error) {
@@ -36,9 +40,9 @@ async function run(name: string) {
   assert(result.result === "pass", `Test "${name}" failed: ${msg}`);
 }
 
-for (const [name, _testConfig] of sequentialTests) {
+for (const [name, testConfig] of sequentialTests) {
   Deno.test("Node compat: " + name, async () => {
-    await run(name);
+    await run(name, testConfig);
   });
 }
 
@@ -46,10 +50,10 @@ Deno.test("Node compat: parallel tests", async (t) => {
   const iter = pooledMap(
     navigator.hardwareConcurrency,
     parallelTests,
-    ([name, _testConfig]) =>
+    ([name, testConfig]) =>
       t.step({
         name,
-        fn: () => run(name),
+        fn: () => run(name, testConfig),
         sanitizeExit: false,
         sanitizeOps: false,
         sanitizeResources: false,

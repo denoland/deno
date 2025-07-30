@@ -22,6 +22,8 @@ use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
+use node_resolver::UrlOrPathRef;
+use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
 use node_resolver::errors::PackageResolveErrorKind;
@@ -164,6 +166,27 @@ pub enum DenoResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   WorkspaceResolvePkgJsonFolder(#[from] WorkspaceResolvePkgJsonFolderError),
+}
+
+impl DenoResolveErrorKind {
+  pub fn maybe_node_code(&self) -> Option<NodeJsErrorCode> {
+    match self {
+      DenoResolveErrorKind::InvalidVendorFolderImport
+      | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+      | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+      | DenoResolveErrorKind::MappedResolution { .. }
+      | DenoResolveErrorKind::NodeModulesOutOfDate { .. }
+      | DenoResolveErrorKind::PackageJsonDepValueParse { .. }
+      | DenoResolveErrorKind::PackageJsonDepValueUrlParse { .. }
+      | DenoResolveErrorKind::PathToUrl { .. }
+      | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq { .. }
+      | DenoResolveErrorKind::WorkspaceResolvePkgJsonFolder { .. } => None,
+      DenoResolveErrorKind::ResolveNpmReqRef(err) => {
+        err.err.as_kind().maybe_code()
+      }
+      DenoResolveErrorKind::Node(err) => err.as_kind().maybe_code(),
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -455,6 +478,25 @@ impl<
                 .and_then(|r| Ok(r.into_url()?)),
             })
         }
+        MappedResolution::PackageJsonImport { pkg_json } => self
+          .node_and_npm_resolver
+          .as_ref()
+          .unwrap()
+          .node_resolver
+          .resolve_package_import(
+            raw_specifier,
+            Some(&UrlOrPathRef::from_url(referrer)),
+            Some(pkg_json),
+            resolution_mode,
+            resolution_kind,
+          )
+          .map_err(|e| {
+            DenoResolveErrorKind::Node(
+              NodeResolveErrorKind::PackageImportsResolve(e).into_box(),
+            )
+            .into_box()
+          })
+          .and_then(|r| Ok(r.into_url()?)),
       },
       Err(err) => Err(err.into()),
     };
@@ -633,20 +675,22 @@ impl<
     referrer: &Url,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-  ) -> Result<Option<node_resolver::UrlOrPath>, npm::ResolveNpmReqRefError> {
+  ) -> Result<node_resolver::UrlOrPath, npm::ResolveNpmReqRefError> {
     let Some(NodeAndNpmResolvers {
       npm_req_resolver, ..
     }) = &self.node_and_npm_resolver
     else {
-      return Ok(None);
+      return Err(npm::ResolveNpmReqRefError {
+        npm_req_ref: npm_req_ref.clone(),
+        err: npm::ResolveReqWithSubPathErrorKind::NoNpm(npm::NoNpmError)
+          .into_box(),
+      });
     };
-    npm_req_resolver
-      .resolve_req_reference(
-        npm_req_ref,
-        referrer,
-        resolution_mode,
-        resolution_kind,
-      )
-      .map(Some)
+    npm_req_resolver.resolve_req_reference(
+      npm_req_ref,
+      referrer,
+      resolution_mode,
+      resolution_kind,
+    )
   }
 }

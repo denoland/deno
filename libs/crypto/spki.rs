@@ -17,6 +17,10 @@ impl NetscapeSpki {
       .rposition(|&b| !b" \n\r\t".contains(&b))
       .map_or(0, |i| i + 1);
 
+    if end == 0 {
+      return Err("Invalid SPKI data: no base64 content found");
+    }
+
     // SAFETY: Cast data pointer to convert base64 to NETSCAPE_SPKI
     unsafe {
       let spki = aws_lc_sys::NETSCAPE_SPKI_b64_decode(
@@ -184,5 +188,11 @@ mod tests {
   fn test_spkac_verify() {
     let spkac = b"MIICUzCCATswggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCXzfKgGnkkOF7+VwMzGpiWy5nna/VGJOfPBsCVg5WooJHN9nAFyqLxoV0WyhwvIdHhIgcTX2L4BHRa+4B0zb4stRHK02ZknJvionK4kBfa+k7Q4DzasW3ulLCTXPLVBKzW9QSzE4Wult17BX6uSUy3Bpr/Nuk6B4Ja3JnFpdSYmJbWP55kRONFBZYPCXr7T8k6hzEHcevFE/PUi6IU+LKiwyGH5KXAUzRbMtqbZLn/rEAmEBxmv/z/+shAwiRE8s9RqBi+pVdwqWdw6ibNkbM7G3j4CMyfAk7EOpGf5loRIrVWB4XrVYWb2EQ6sd9LfiQ9GwqlFYw006MUo6nxoEtNAgMBAAEWE3RoaXMtaXMtYS1jaGFsbGVuZ2UwDQYJKoZIhvcNAQELBQADggEBAHUw1UoZjG7TCb/JhFo5p8XIFeizGEwYoqttBoVTQ+MeCfnNoLLeAyId0atb2jPnYsI25Z/PHHV1N9t0L/NelY3rZC/Z00Wx8IGeslnGXXbqwnp36Umb0r2VmxTr8z1QaToGyOQXp4Xor9qbQFoANIivyVUYsuqJ1FnDJCC/jBPo4IWiQbTst331v2fiVdV+/XUh9AIjcm4085b65HjFwLxDeWhbgAZ+UfhqBbTVA1K8uUqS8e3gbeaNstZvnclxZ3PlHSk8v1RdIG4e5ThTOwPH5u/7KKeafn9SwgY/Q8KqaVfHHCv1IeVlijamjnyFhWc35kGlBUNgLOnWAOE3GsM=";
     assert!(verify_spkac(spkac));
+  }
+
+  #[test]
+  fn test_spkac_empty() {
+    let empty_spkac = b"";
+    assert!(!verify_spkac(empty_spkac));
   }
 }

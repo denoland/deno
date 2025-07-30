@@ -235,7 +235,7 @@ fn get_manifest_entries_for_dir(
         let checksum = format!("sha256-{}", get_checksum(&file_bytes));
         let relative_path = path
           .to_string_lossy()
-          .strip_prefix(&root_dir.to_string_lossy().to_string())
+          .strip_prefix(&root_dir.to_string_lossy().into_owned())
           .unwrap()
           .replace('\\', "/");
         manifest.insert(
@@ -254,7 +254,7 @@ fn get_manifest_entries_for_dir(
   DIR_MANIFEST_CACHE
     .lock()
     .unwrap()
-    .entry(dir.to_string_lossy().to_string())
+    .entry(dir.to_string_lossy().into_owned())
     .or_insert_with(|| {
       let mut manifest = BTreeMap::new();
       inner_fill(dir, dir, &mut manifest);

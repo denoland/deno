@@ -161,8 +161,11 @@ pub async fn get_import_completions(
   npm_search_api: &CliNpmSearchApi,
   document_modules: &DocumentModules,
   resolver: &LspResolver,
-  maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
+  let maybe_import_map = resolver
+    .get_scoped_resolver(module.scope.as_deref())
+    .as_workspace_resolver()
+    .maybe_import_map();
   let (text, _, graph_range) = module.dependency_at_position(position)?;
   let resolution_mode = graph_range
     .resolution_mode
@@ -438,7 +441,7 @@ fn get_local_completions(
     let items = entries
       .filter_map(|de| {
         let de = de.ok()?;
-        let label = de.path().file_name()?.to_string_lossy().to_string();
+        let label = de.path().file_name()?.to_string_lossy().into_owned();
         let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
         if entry_specifier == *referrer {
           return None;

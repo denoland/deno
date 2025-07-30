@@ -30,6 +30,7 @@ use hickory_resolver::config::NameServerConfigGroup;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
 use hickory_resolver::system_conf;
+use quinn::rustls;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -53,6 +54,9 @@ pub type Fd = u32;
 #[serde(rename_all = "camelCase")]
 pub struct TlsHandshakeInfo {
   pub alpn_protocol: Option<ByteString>,
+  #[serde(skip_serializing)]
+  pub peer_certificates:
+    Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -864,7 +868,7 @@ pub async fn op_net_accept_tunnel(
   let resource = state
     .borrow()
     .resource_table
-    .get::<NetworkListenerResource<crate::tunnel::TunnelListener>>(rid)
+    .get::<NetworkListenerResource<crate::tunnel::TunnelConnection>>(rid)
     .map_err(|_| NetError::ListenerClosed)?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
@@ -1208,7 +1212,6 @@ mod tests {
   use deno_core::futures::FutureExt;
   use deno_permissions::CheckedPath;
   use deno_permissions::OpenAccessKind;
-  use deno_permissions::PathWithRequested;
   use deno_permissions::PermissionCheckError;
   use hickory_proto::rr::Name;
   use hickory_proto::rr::rdata::SOA;
@@ -1422,13 +1425,7 @@ mod tests {
       _access_kind: OpenAccessKind,
       _api_name: &str,
     ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-      Ok(CheckedPath {
-        path: PathWithRequested {
-          path,
-          requested: None,
-        },
-        canonicalized: false,
-      })
+      Ok(CheckedPath::unsafe_new(path))
     }
 
     fn check_vsock(

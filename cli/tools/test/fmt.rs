@@ -7,6 +7,7 @@ use deno_core::stats::RuntimeActivity;
 use deno_core::stats::RuntimeActivityDiff;
 use deno_core::stats::RuntimeActivityTrace;
 use deno_core::stats::RuntimeActivityType;
+use deno_runtime::fmt_errors::format_js_error;
 use phf::phf_map;
 
 use super::*;

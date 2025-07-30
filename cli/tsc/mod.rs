@@ -18,7 +18,6 @@ use deno_core::RuntimeOptions;
 use deno_core::anyhow::Context;
 use deno_core::located_script_name;
 use deno_core::op2;
-use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
@@ -32,6 +31,7 @@ use deno_graph::ResolutionResolved;
 use deno_lib::util::checksum;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::create_isolate_create_params;
+use deno_path_util::resolve_url_or_path;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -308,24 +308,6 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
         is_lib: false,
         source: StaticAssetSource::Uncompressed(
           "/// <reference types=\"npm:@types/node\" />\n",
-        ),
-      },
-    ),
-    (
-      "text_import.d.ts",
-      StaticAsset {
-        is_lib: false,
-        source: StaticAssetSource::Uncompressed(
-          "export const data: string;\nexport default data;\n",
-        ),
-      },
-    ),
-    (
-      "bytes_import.d.ts",
-      StaticAsset {
-        is_lib: false,
-        source: StaticAssetSource::Uncompressed(
-          "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n",
         ),
       },
     ),
@@ -740,6 +722,13 @@ fn op_load_inner(
     hash = get_maybe_hash(maybe_source, state.hash_data);
     media_type = MediaType::from_str(load_specifier);
     maybe_source.map(FastString::from_static)
+  } else if let Some(source) = load_raw_import_source(&specifier) {
+    return Ok(Some(LoadResponse {
+      data: FastString::from_static(source),
+      version: Some("1".to_string()),
+      script_kind: as_ts_script_kind(MediaType::TypeScript),
+      is_cjs: false,
+    }));
   } else {
     let specifier = if let Some(remapped_specifier) =
       state.maybe_remapped_specifier(load_specifier)
@@ -836,6 +825,43 @@ fn op_load_inner(
     script_kind: as_ts_script_kind(media_type),
     is_cjs,
   }))
+}
+
+pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
+  let raw_import = get_specifier_raw_import(specifier)?;
+  let source = match raw_import {
+    RawImportKind::Bytes => {
+      "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n"
+    }
+    RawImportKind::Text => "export const data: string;\nexport default data;\n",
+  };
+  Some(source)
+}
+
+enum RawImportKind {
+  Bytes,
+  Text,
+}
+
+/// We store the raw import kind in the fragment of the Url
+/// like `#denoRawImport=text`. This is necessary because
+/// TypeScript can't handle different modules at the same
+/// specifier.
+fn get_specifier_raw_import(specifier: &Url) -> Option<RawImportKind> {
+  // this is purposefully relaxed about matching in order to keep the
+  // code less complex. If someone is doing something to cause this to
+  // incorrectly match then they most likely deserve the bug they sought.
+  let fragment = specifier.fragment()?;
+  let key_text = "denoRawImport=";
+  let raw_import_index = fragment.find(key_text)?;
+  let remaining = &fragment[raw_import_index + key_text.len()..];
+  if remaining.starts_with("text") {
+    Some(RawImportKind::Text)
+  } else if remaining.starts_with("bytes") {
+    Some(RawImportKind::Bytes)
+  } else {
+    None
+  }
 }
 
 #[derive(Debug, Error, deno_error::JsError)]
@@ -1277,7 +1303,7 @@ pub enum ExecError {
   ResponseNotSet,
   #[class(inherit)]
   #[error(transparent)]
-  Core(deno_core::error::CoreError),
+  Js(deno_core::error::JsError),
 }
 
 #[derive(Clone)]
@@ -1485,7 +1511,7 @@ pub fn exec(
 
   runtime
     .execute_script(located_script_name!(), exec_source)
-    .map_err(ExecError::Core)?;
+    .map_err(ExecError::Js)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();

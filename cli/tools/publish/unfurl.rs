@@ -33,6 +33,7 @@ use deno_semver::VersionReq;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 
+use crate::node::CliNodeResolver;
 use crate::sys::CliSys;
 
 #[derive(Debug, Clone)]
@@ -300,12 +301,15 @@ enum UnfurlSpecifierError {
 }
 
 pub struct SpecifierUnfurler<TSys: FsMetadata + FsRead = CliSys> {
+  // optional for testing
+  node_resolver: Option<Arc<CliNodeResolver>>,
   workspace_resolver: Arc<WorkspaceResolver<TSys>>,
   bare_node_builtins: bool,
 }
 
 impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
   pub fn new(
+    node_resolver: Option<Arc<CliNodeResolver>>,
     workspace_resolver: Arc<WorkspaceResolver<TSys>>,
     bare_node_builtins: bool,
   ) -> Self {
@@ -314,6 +318,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
       PackageJsonDepResolution::Enabled
     );
     Self {
+      node_resolver,
       workspace_resolver,
       bare_node_builtins,
     }
@@ -509,9 +514,23 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
               None
             }
           },
+          MappedResolution::PackageJsonImport { pkg_json } => {
+            self.node_resolver.as_ref().and_then(|resolver| {
+              resolver
+                .resolve_package_import(
+                  specifier,
+                  Some(&node_resolver::UrlOrPathRef::from_url(referrer)),
+                  Some(pkg_json),
+                  node_resolver::ResolutionMode::Import,
+                  node_resolver::NodeResolutionKind::Execution,
+                )
+                .ok()
+                .and_then(|s| s.into_url().ok())
+            })
+          }
         }
       }
-      _ => None,
+      Err(_) => None,
     };
     let resolved = match resolved {
       Some(resolved) => resolved,
@@ -908,7 +927,8 @@ mod tests {
       Default::default(),
       CliSys::default(),
     );
-    let unfurler = SpecifierUnfurler::new(Arc::new(workspace_resolver), true);
+    let unfurler =
+      SpecifierUnfurler::new(None, Arc::new(workspace_resolver), true);
 
     // Unfurling TS file should apply changes.
     {
@@ -1076,7 +1096,8 @@ export type * from "./c.d.ts";
       Default::default(),
       sys.clone(),
     );
-    let unfurler = SpecifierUnfurler::new(Arc::new(workspace_resolver), true);
+    let unfurler =
+      SpecifierUnfurler::new(None, Arc::new(workspace_resolver), true);
 
     {
       let source_code = r#"import add from "add";

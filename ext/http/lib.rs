@@ -82,6 +82,7 @@ use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 use tokio::sync::Notify;
 
 use crate::network_buffered_stream::NetworkBufferedStream;
@@ -1671,13 +1672,14 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
       Ok(res) => return res,
       Err(x) => x,
     };
-  let upgraded =
-    match maybe_extract_network_stream::<deno_net::ops_tls::TlsStream, _>(
-      upgraded,
-    ) {
-      Ok(res) => return res,
-      Err(x) => x,
-    };
+  let upgraded = match maybe_extract_network_stream::<
+    deno_net::ops_tls::TlsStream<TcpStream>,
+    _,
+  >(upgraded)
+  {
+    Ok(res) => return res,
+    Err(x) => x,
+  };
   #[cfg(unix)]
   let upgraded =
     match maybe_extract_network_stream::<tokio::net::UnixStream, _>(upgraded) {

@@ -78,7 +78,7 @@ where
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  Ok(fs.exists_async(path.into_owned_path()).await?)
+  Ok(fs.exists_async(path.into_owned()).await?)
 }
 
 #[op2(fast, stack_trace)]
@@ -130,7 +130,7 @@ where
     (state.borrow::<FileSystemRc>().clone(), path, new_path)
   };
 
-  fs.cp_async(path.into_owned_path(), new_path.into_owned_path())
+  fs.cp_async(path.into_owned(), new_path.into_owned())
     .await?;
   Ok(())
 }
@@ -337,7 +337,7 @@ where
   };
 
   fs.lutime_async(
-    path.into_owned_path(),
+    path.into_owned(),
     atime_secs,
     atime_nanos,
     mtime_secs,
@@ -387,7 +387,7 @@ where
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
-  fs.lchown_async(path.into_owned_path(), uid, gid).await?;
+  fs.lchown_async(path.into_owned(), uid, gid).await?;
   Ok(())
 }
 
@@ -428,6 +428,6 @@ where
     )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
-  fs.lchmod_async(path.into_owned_path(), mode).await?;
+  fs.lchmod_async(path.into_owned(), mode).await?;
   Ok(())
 }

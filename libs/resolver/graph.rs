@@ -19,6 +19,7 @@ use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
+use import_map::ImportMapErrorKind;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
@@ -302,18 +303,14 @@ impl<
         } else {
           match NpmPackageReqReference::from_specifier(&specifier) {
             Ok(reference) => {
-              if let Some(url) =
+              let url =
                 self.resolver.resolve_non_workspace_npm_req_ref_to_file(
                   &reference,
                   referrer,
                   options.mode,
                   options.kind,
-                )?
-              {
-                url.into_url()?
-              } else {
-                specifier.into_owned()
-              }
+                )?;
+              url.into_url()?
             }
             _ => specifier.into_owned(),
           }
@@ -329,7 +326,7 @@ impl<
     referrer: &Url,
     resolution_mode: node_resolver::ResolutionMode,
     resolution_kind: node_resolver::NodeResolutionKind,
-  ) -> Result<Option<node_resolver::UrlOrPath>, npm::ResolveNpmReqRefError> {
+  ) -> Result<node_resolver::UrlOrPath, npm::ResolveNpmReqRefError> {
     self.resolver.resolve_non_workspace_npm_req_ref_to_file(
       npm_req_ref,
       referrer,
@@ -582,10 +579,22 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
     ))
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
-      format!(
-        "If you want to use a JSR or npm package, try running `deno add jsr:{}` or `deno add npm:{}`",
-        specifier, specifier
-      )
+      if specifier.starts_with("@std/") {
+        format!(
+          "If you want to use the JSR package, try running `deno add jsr:{}`",
+          specifier
+        )
+      } else if specifier.starts_with('@') {
+        format!(
+          "If you want to use a JSR or npm package, try running `deno add jsr:{0}` or `deno add npm:{0}`",
+          specifier
+        )
+      } else {
+        format!(
+          "If you want to use the npm package, try running `deno add npm:{0}`",
+          specifier
+        )
+      }
     })
   };
 
@@ -782,21 +791,33 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
         ResolveError::Other(other_error) => {
           if let Some(SpecifierError::ImportPrefixMissing {
             specifier, ..
-          }) = other_error.as_any().downcast_ref::<SpecifierError>()
+          }) = other_error.get_ref().downcast_ref::<SpecifierError>()
           {
             maybe_specifier = Some(specifier);
           }
         }
-        ResolveError::ImportMap(_) => {}
+        ResolveError::ImportMap(import_map_err) => {
+          if let ImportMapErrorKind::UnmappedBareSpecifier(
+            specifier,
+            _referrer,
+          ) = import_map_err.as_kind()
+          {
+            maybe_specifier = Some(specifier);
+          }
+        }
       }
     }
   }
 
-  // NOTE(bartlomieju): For now, return None if a specifier contains a dot or a space. This is because
-  // suggesting to `deno add bad-module.ts` makes no sense and is worse than not providing
-  // a suggestion at all. This should be improved further in the future
   if let Some(specifier) = maybe_specifier {
+    // NOTE(bartlomieju): For now, return None if a specifier contains a dot or a space. This is because
+    // suggesting to `deno add bad-module.ts` makes no sense and is worse than not providing
+    // a suggestion at all. This should be improved further in the future
     if specifier.contains('.') || specifier.contains(' ') {
+      return None;
+    }
+    // Do not return a hint for specifiers starting with `@`, but not containing a `/`
+    if specifier.starts_with('@') && !specifier.contains('/') {
       return None;
     }
   }

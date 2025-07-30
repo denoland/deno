@@ -15,10 +15,10 @@ use deno_core::op2;
 pub enum SignalError {
   #[class(type)]
   #[error(transparent)]
-  InvalidSignalStr(#[from] crate::signal::InvalidSignalStrError),
+  InvalidSignalStr(#[from] deno_signals::InvalidSignalStrError),
   #[class(type)]
   #[error(transparent)]
-  InvalidSignalInt(#[from] crate::signal::InvalidSignalIntError),
+  InvalidSignalInt(#[from] deno_signals::InvalidSignalIntError),
   #[class(type)]
   #[error("Binding to signal '{0}' is not allowed")]
   SignalNotAllowed(String),
@@ -49,7 +49,7 @@ pub fn op_signal_bind(
   state: &mut OpState,
   #[string] sig: &str,
 ) -> Result<ResourceId, SignalError> {
-  let signo = crate::signal::signal_str_to_int(sig)?;
+  let signo = deno_signals::signal_str_to_int(sig)?;
   if deno_signals::is_forbidden(signo) {
     return Err(SignalError::SignalNotAllowed(sig.to_string()));
   }
@@ -61,7 +61,7 @@ pub fn op_signal_bind(
     Box::new(move || {
       let _ = tx.send(());
     }),
-  );
+  )?;
 
   let rid = state.resource_table.add(SignalStreamResource {
     signo,

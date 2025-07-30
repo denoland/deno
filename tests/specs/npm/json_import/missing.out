@@ -1,0 +1,1 @@
+error: Attempted to load JSON module without specifying "type": "json" attribute in the import statement.

@@ -12,6 +12,7 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use deno_ast::ModuleSpecifier;
+use deno_ast::SourceTextInfo;
 use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::Workspace;
@@ -26,6 +27,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_resolver::collections::FolderScopedMap;
 use deno_runtime::deno_fetch;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
@@ -36,6 +38,7 @@ use tokio::process::Command;
 
 use self::diagnostics::PublishDiagnostic;
 use self::diagnostics::PublishDiagnosticsCollector;
+use self::diagnostics::RelativePackageImportDiagnosticReferrer;
 use self::graph::GraphDiagnosticsCollector;
 use self::module_content::ModuleContentProvider;
 use self::paths::CollectedPublishPath;
@@ -114,6 +117,7 @@ pub async fn publish(
   }
 
   let specifier_unfurler = SpecifierUnfurler::new(
+    Some(cli_factory.node_resolver().await?.clone()),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   );
@@ -427,6 +431,7 @@ impl PublishPreparer {
       let config_path = config_path.clone();
       let config_url = deno_json.specifier.clone();
       let has_license_field = package.license.is_some();
+      let current_package_name = package.name.clone();
       move || {
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
@@ -438,9 +443,18 @@ impl PublishPreparer {
             file_patterns,
             force_include_paths: vec![config_path],
           })?;
+        let all_jsr_packages = FolderScopedMap::from_map(
+          cli_options
+            .workspace()
+            .jsr_packages()
+            .map(|pkg| (pkg.member_dir.dir_url().clone(), pkg))
+            .collect(),
+        );
         collect_excluded_module_diagnostics(
           &root_specifier,
           &graph,
+          &current_package_name,
+          &all_jsr_packages,
           &publish_paths,
           &diagnostics_collector,
         );
@@ -504,7 +518,7 @@ impl PublishPreparer {
         .file_name()
         .unwrap()
         .to_string_lossy()
-        .to_string(),
+        .into_owned(),
     }))
   }
 }
@@ -1065,8 +1079,10 @@ async fn publish_package(
 }
 
 fn collect_excluded_module_diagnostics(
-  root: &ModuleSpecifier,
+  root_dir: &ModuleSpecifier,
   graph: &deno_graph::ModuleGraph,
+  current_package_name: &str,
+  all_jsr_packages: &FolderScopedMap<JsrPackageConfig>,
   publish_paths: &[CollectedPublishPath],
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) {
@@ -1084,12 +1100,84 @@ fn collect_excluded_module_diagnostics(
       | deno_graph::Module::Node(_)
       | deno_graph::Module::External(_) => None,
     })
-    .filter(|s| s.as_str().starts_with(root.as_str()));
+    .filter(|s| s.as_str().starts_with(root_dir.as_str()));
+  let mut outside_specifiers = Vec::new();
+  let mut had_excluded_specifier = false;
   for specifier in graph_specifiers {
     if !publish_specifiers.contains(specifier) {
-      diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
-        specifier: specifier.clone(),
-      });
+      let other_jsr_pkg = all_jsr_packages
+        .get_for_specifier(specifier)
+        .filter(|pkg| pkg.member_dir.dir_url().as_ref() != root_dir);
+      match other_jsr_pkg {
+        Some(other_jsr_pkg) => {
+          outside_specifiers.push((specifier, other_jsr_pkg));
+        }
+        None => {
+          had_excluded_specifier = true;
+          diagnostics_collector.push(PublishDiagnostic::ExcludedModule {
+            specifier: specifier.clone(),
+          })
+        }
+      }
+    }
+  }
+
+  if !had_excluded_specifier {
+    let mut found_outside_specifier = false;
+    // ensure no path being published references another package
+    // via a relative import
+    for publish_path in publish_paths {
+      let Some(module) = graph.get(&publish_path.specifier) else {
+        continue;
+      };
+      for (specifier_text, dep) in module.dependencies() {
+        if !deno_path_util::is_relative_specifier(specifier_text) {
+          continue;
+        }
+        let resolutions = dep
+          .maybe_code
+          .ok()
+          .into_iter()
+          .chain(dep.maybe_type.ok().into_iter());
+        let mut maybe_res = resolutions.filter_map(|r| {
+          let pkg = all_jsr_packages.get_for_specifier(&r.specifier)?;
+          if pkg.member_dir.dir_url().as_ref() != root_dir {
+            Some((r, pkg))
+          } else {
+            None
+          }
+        });
+        if let Some((outside_res, package)) = maybe_res.next() {
+          found_outside_specifier = true;
+          diagnostics_collector.push(
+            PublishDiagnostic::RelativePackageImport {
+              // Wasm modules won't have a referrer
+              maybe_referrer: module.source().cloned().map(|source| {
+                RelativePackageImportDiagnosticReferrer {
+                  referrer: outside_res.range.clone(),
+                  text_info: SourceTextInfo::new(source),
+                }
+              }),
+              from_package_name: current_package_name.to_string(),
+              to_package_name: package.name.clone(),
+              specifier: outside_res.specifier.clone(),
+            },
+          );
+        }
+      }
+    }
+
+    if !found_outside_specifier {
+      // just in case we didn't find an outside specifier above, add
+      // diagnostics for all the specifiers found outside the package
+      for (specifier, to_package) in outside_specifiers {
+        diagnostics_collector.push(PublishDiagnostic::RelativePackageImport {
+          specifier: specifier.clone(),
+          from_package_name: current_package_name.to_string(),
+          to_package_name: to_package.name.clone(),
+          maybe_referrer: None,
+        });
+      }
     }
   }
 }
