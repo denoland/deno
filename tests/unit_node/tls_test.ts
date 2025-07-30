@@ -309,6 +309,7 @@ Deno.test({
 
 Deno.test({
   name: "tls.connect over unix socket works",
+  only: true,
   ignore: Deno.build.os === "windows",
   permissions: { read: true, write: true },
 }, async () => {
@@ -332,6 +333,7 @@ Deno.test({
 
   const netServer = net.createServer((rawSocket) => {
     try {
+      console.log("before create");
       const secureSocket = new tls.TLSSocket(rawSocket, {
         key,
         cert,
@@ -339,19 +341,27 @@ Deno.test({
       });
 
       secureSocket.on("secureConnect", () => {
+        console.log("secure socket on secureConnect");
         secureSocket.write("hello from server");
       });
 
       secureSocket.on("data", (data) => {
+        console.log(
+          "secure socket on data",
+          data.byteLength,
+          data.toString(),
+        );
         assertEquals(data.toString(), "hello from client");
         secureSocket.end();
       });
 
       secureSocket.on("close", () => {
+        console.log("secure socket on close");
         resolveTestComplete();
       });
 
       secureSocket.on("error", (err) => {
+        console.log("secure socket on error");
         serverError = err;
         resolveTestComplete();
       });
@@ -369,9 +379,9 @@ Deno.test({
   netServer.listen(socketPath, () => {
     resolveServerReady();
   });
-
+  console.log("before server ready");
   await serverReady;
-
+  console.log("after server ready");
   try {
     const rawSocket = net.connect(socketPath);
 
@@ -381,28 +391,34 @@ Deno.test({
     });
 
     rawSocket.on("error", (err) => {
+      console.log("raw socket on err", err);
       clientError = err;
       resolveTestComplete();
     });
 
     secureSocket.on("secureConnect", () => {
+      console.log("secure socket on secureConnect");
       secureSocket.write("hello from client");
     });
 
     secureSocket.on("data", (data) => {
+      console.log("secure socket on data");
       resolveClientDataReceived(data.toString());
     });
 
     secureSocket.on("error", (err) => {
+      console.log("secure socket on error");
       clientError = err;
       resolveTestComplete();
     });
 
+    console.log("before client data received");
     const receivedData = await clientDataReceived;
+    console.log("after client data received");
     assertEquals(receivedData, "hello from server");
-
+    console.log("before test complete");
     await testComplete;
-
+    console.log("after test complete");
     if (serverError) {
       console.error("Server error:", serverError);
     }
