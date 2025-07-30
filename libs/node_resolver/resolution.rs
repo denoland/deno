@@ -243,7 +243,7 @@ enum ResolvedMethod {
 #[derive(Debug, Default, Clone)]
 pub struct NodeResolverOptions {
   pub conditions: NodeConditionOptions,
-  pub prefer_browser_field: bool,
+  pub is_browser_platform: bool,
   pub bundle_mode: bool,
   /// TypeScript version to use for typesVersions resolution and
   /// `types@req` exports resolution.
@@ -318,10 +318,28 @@ impl<
       npm_pkg_folder_resolver,
       pkg_json_resolver,
       sys,
-      condition_resolver: ConditionResolver::new(options.conditions),
+      condition_resolver: ConditionResolver::new(NodeConditionOptions {
+        conditions: options.conditions.conditions,
+        import_conditions_override: match options
+          .conditions
+          .import_conditions_override
+        {
+          Some(value) => Some(value),
+          None => {
+            if options.is_browser_platform {
+              Some(vec![Cow::Borrowed("browser")])
+            } else {
+              None
+            }
+          }
+        },
+        require_conditions_override: options
+          .conditions
+          .require_conditions_override,
+      }),
       resolution_config: ResolutionConfig {
         bundle_mode: options.bundle_mode,
-        prefer_browser_field: options.prefer_browser_field,
+        prefer_browser_field: options.is_browser_platform,
         typescript_version: options.typescript_version,
       },
     }
