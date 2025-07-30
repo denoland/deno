@@ -1,8 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::convert::Infallible;
-use std::fmt::Debug;
-use std::fmt::Display;
 
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
@@ -39,7 +37,7 @@ pub fn js_error_downcast_ref(
 }
 
 pub fn any_and_jserrorbox_downcast_ref<
-  E: Display + Debug + Send + Sync + 'static,
+  E: std::error::Error + Send + Sync + 'static,
 >(
   err: &AnyError,
 ) -> Option<&E> {
@@ -48,13 +46,13 @@ pub fn any_and_jserrorbox_downcast_ref<
     .or_else(|| {
       err
         .downcast_ref::<JsErrorBox>()
-        .and_then(|e| e.as_any().downcast_ref::<E>())
+        .and_then(|e| e.get_ref().downcast_ref::<E>())
     })
     .or_else(|| {
       err
         .downcast_ref::<CoreError>()
         .and_then(|e| match e.as_kind() {
-          CoreErrorKind::JsBox(e) => e.as_any().downcast_ref::<E>(),
+          CoreErrorKind::JsBox(e) => e.get_ref().downcast_ref::<E>(),
           _ => None,
         })
     })
@@ -64,8 +62,8 @@ pub fn downcast_ref_deno_resolve_error(
   err: &JsErrorBox,
 ) -> Option<&DenoResolveErrorKind> {
   err
-    .as_any()
+    .get_ref()
     .downcast_ref::<DenoResolveError>()
     .map(|e| e.as_kind())
-    .or_else(|| err.as_any().downcast_ref::<DenoResolveErrorKind>())
+    .or_else(|| err.get_ref().downcast_ref::<DenoResolveErrorKind>())
 }

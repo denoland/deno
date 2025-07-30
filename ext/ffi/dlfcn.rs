@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::path::Path;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
@@ -141,17 +142,12 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
   }
 }
 
-#[derive(Deserialize, Debug)]
-pub struct FfiLoadArgs {
-  path: String,
-  symbols: HashMap<String, ForeignSymbol>,
-}
-
 #[op2(stack_trace)]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: Rc<RefCell<OpState>>,
-  #[serde] args: FfiLoadArgs,
+  #[string] path: &str,
+  #[serde] symbols: HashMap<String, ForeignSymbol>,
 ) -> Result<v8::Local<'scope, v8::Value>, DlfcnError>
 where
   FP: FfiPermissions + 'static,
@@ -160,7 +156,7 @@ where
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
     (
-      permissions.check_partial_with_path(&args.path)?,
+      permissions.check_partial_with_path(Cow::Borrowed(Path::new(path)))?,
       state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
     )
   };
@@ -180,7 +176,7 @@ where
   };
   let obj = v8::Object::new(scope);
 
-  for (symbol_key, foreign_symbol) in args.symbols {
+  for (symbol_key, foreign_symbol) in symbols {
     match foreign_symbol {
       ForeignSymbol::ForeignStatic(_) => {
         // No-op: Statics will be handled separately and are not part of the Rust-side resource.
