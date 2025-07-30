@@ -41,7 +41,10 @@ export const renamePromise = promisify(rename) as (
   newPath: string | Buffer | URL,
 ) => Promise<void>;
 
-export function renameSync(oldPath: string | URL, newPath: string | URL) {
+export function renameSync(
+  oldPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+) {
   oldPath = getValidatedPathToString(oldPath, "oldPath");
   newPath = getValidatedPathToString(newPath, "newPath");
 
