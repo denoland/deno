@@ -95,12 +95,12 @@ impl ConditionResolver {
       override_default: Option<Vec<Cow<'static, str>>>,
       default_conditions: &'static [Cow<'static, str>],
     ) -> Cow<'static, [Cow<'static, str>]> {
+      let default_conditions = override_default
+        .map(Cow::Owned)
+        .unwrap_or(Cow::Borrowed(default_conditions));
       if user_conditions.is_empty() {
-        Cow::Borrowed(default_conditions)
+        default_conditions
       } else {
-        let default_conditions = override_default
-          .map(Cow::Owned)
-          .unwrap_or(Cow::Borrowed(default_conditions));
         let mut new =
           Vec::with_capacity(user_conditions.len() + default_conditions.len());
         let mut append =
