@@ -973,11 +973,11 @@ pub async fn run(
         // do nothing, already granted
       }
       Some(vec) => {
-        vec.push(root_path.to_string_lossy().to_string());
+        vec.push(root_path.to_string_lossy().into_owned());
       }
       None => {
         permissions.allow_read =
-          Some(vec![root_path.to_string_lossy().to_string()]);
+          Some(vec![root_path.to_string_lossy().into_owned()]);
       }
     }
 

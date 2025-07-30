@@ -332,7 +332,7 @@ impl EsbuildBundler {
       write: false,
       stdin_contents: None.into(),
       stdin_resolve_dir: None.into(),
-      abs_working_dir: self.cwd.to_string_lossy().to_string(),
+      abs_working_dir: self.cwd.to_string_lossy().into_owned(),
       context: matches!(self.mode, BundlingMode::Watch),
       mangle_cache: None,
       node_paths: vec![],
