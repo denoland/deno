@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::marker::PhantomData;
+use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -53,6 +54,11 @@ pub trait RemoteDbHandlerPermissions: FetchPermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    addr: &SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
 }
 
 impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
@@ -68,6 +74,15 @@ impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  #[inline(always)]
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    addr: &SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net_resolved_addr_is_not_denied(self, addr, api_name)
   }
 }
 
@@ -192,6 +207,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
       permissions
         .check_env(ENV_VAR_NAME)
         .map_err(JsErrorBox::from_err)?;
+
       permissions
         .check_net_url(&parsed_url, "Deno.openKv")
         .map_err(JsErrorBox::from_err)?;

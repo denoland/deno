@@ -88,25 +88,3 @@ await printResult(
   "Deno.connect tcp",
   () => Deno.connect({ hostname: "localhost", port: 3000, transport: "tcp" }),
 );
-
-const deno = new Deno.Command(Deno.execPath(), {
-  args: [
-    "eval",
-    "--unstable-net",
-    "const l = Deno.listenDatagram({ hostname: 'localhost', port: 4540, transport: 'udp' }); console.log('ready'); await l.receive(); await l.close();",
-  ],
-  stdout: "piped",
-}).spawn();
-
-const p = Promise.withResolvers<void>();
-for await (const chunk of deno.stdout) {
-  const text = new TextDecoder().decode(chunk);
-  if (text.includes("ready")) {
-    p.resolve();
-  }
-}
-await p.promise;
-
-
-
-await deno.status;
