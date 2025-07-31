@@ -634,7 +634,10 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     protoProps = undefined;
   }
 
-  let tag = value[SymbolToStringTag];
+  let tag;
+  if (!proxyDetails) {
+    tag = value[SymbolToStringTag];
+  }
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
   if (

@@ -31,6 +31,7 @@ use crate::UrlOrPath;
 use crate::UrlOrPathRef;
 use crate::errors::ModuleNotFoundError;
 use crate::resolution::NodeResolverRc;
+use crate::resolution::parse_npm_pkg_name;
 
 #[derive(Debug, Clone)]
 pub enum CjsAnalysis<'a> {
@@ -353,24 +354,23 @@ impl<
     }
 
     // We've got a bare specifier or maybe bare_specifier/blah.js"
-    let (package_specifier, package_subpath) =
-      parse_specifier(specifier).unwrap();
+    let (package_specifier, package_subpath, _is_scoped) =
+      parse_npm_pkg_name(specifier, &referrer).map_err(JsErrorBox::from_err)?;
 
-    let module_dir =
-      match self.npm_resolver.resolve_package_folder_from_package(
-        package_specifier.as_str(),
-        &referrer,
-      ) {
-        Err(err)
-          if matches!(
-            err.as_kind(),
-            crate::errors::PackageFolderResolveErrorKind::PackageNotFound(..)
-          ) =>
-        {
-          return Ok(None);
-        }
-        other => other.map_err(JsErrorBox::from_err)?,
-      };
+    let module_dir = match self
+      .npm_resolver
+      .resolve_package_folder_from_package(package_specifier, &referrer)
+    {
+      Err(err)
+        if matches!(
+          err.as_kind(),
+          crate::errors::PackageFolderResolveErrorKind::PackageNotFound(..)
+        ) =>
+      {
+        return Ok(None);
+      }
+      other => other.map_err(JsErrorBox::from_err)?,
+    };
 
     let package_json_path = module_dir.join("package.json");
     let maybe_package_json = self
@@ -398,7 +398,7 @@ impl<
 
       // old school
       if package_subpath != "." {
-        let d = module_dir.join(package_subpath);
+        let d = module_dir.join(package_subpath.as_ref());
         if self.sys.fs_is_dir_no_err(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
@@ -776,48 +776,6 @@ fn add_export(
   }
 }
 
-fn parse_specifier(specifier: &str) -> Option<(String, String)> {
-  let mut separator_index = specifier.find('/');
-  let mut valid_package_name = true;
-  // let mut is_scoped = false;
-  if specifier.is_empty() {
-    valid_package_name = false;
-  } else if specifier.starts_with('@') {
-    // is_scoped = true;
-    if let Some(index) = separator_index {
-      separator_index = specifier[index + 1..].find('/').map(|i| i + index + 1);
-    } else {
-      valid_package_name = false;
-    }
-  }
-
-  let package_name = if let Some(index) = separator_index {
-    specifier[0..index].to_string()
-  } else {
-    specifier.to_string()
-  };
-
-  // Package name cannot have leading . and cannot have percent-encoding or separators.
-  for ch in package_name.chars() {
-    if ch == '%' || ch == '\\' {
-      valid_package_name = false;
-      break;
-    }
-  }
-
-  if !valid_package_name {
-    return None;
-  }
-
-  let package_subpath = if let Some(index) = separator_index {
-    format!(".{}", specifier.chars().skip(index).collect::<String>())
-  } else {
-    ".".to_string()
-  };
-
-  Some((package_name, package_subpath))
-}
-
 fn to_double_quote_string(text: &str) -> String {
   // serde can handle this for us
   serde_json::to_string(text).unwrap()
@@ -849,14 +807,6 @@ mod tests {
         "export { __deno_export_3__ as \"3d\" };".to_string(),
       ]
     )
-  }
-
-  #[test]
-  fn test_parse_specifier() {
-    assert_eq!(
-      parse_specifier("@some-package/core/actions"),
-      Some(("@some-package/core".to_string(), "./actions".to_string()))
-    );
   }
 
   #[test]

@@ -36,6 +36,7 @@ pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
     .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
     .collect::<Vec<_>>()
     .join(" ");
+
   let script = format!("{script} {additional_args}");
   script.trim().to_owned()
 }
@@ -518,7 +519,7 @@ fn resolve_bin_dir_entry_command(
     return None;
   };
   let text = std::fs::read_to_string(&path).ok()?;
-  let command_name = entry.file_name().to_string_lossy().to_string();
+  let command_name = entry.file_name().to_string_lossy().into_owned();
   if let Some(path) = resolve_execution_path_from_npx_shim(path, &text) {
     log::debug!(
       "Resolved npx command '{}' to '{}'.",
@@ -632,7 +633,7 @@ pub async fn run_future_forwarding_signals<TOutput>(
 }
 
 async fn listen_ctrl_c(kill_signal: KillSignal) {
-  while let Ok(()) = tokio::signal::ctrl_c().await {
+  while let Ok(()) = deno_signals::ctrl_c().await {
     // On windows, ctrl+c is sent to the process group, so the signal would
     // have already been sent to the child process. We still want to listen
     // for ctrl+c here to keep the process alive when receiving it, but no
@@ -646,7 +647,7 @@ async fn listen_ctrl_c(kill_signal: KillSignal) {
 #[cfg(unix)]
 async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
   use deno_core::futures::FutureExt;
-  use deno_runtime::deno_os::signal::SIGNAL_NUMS;
+  use deno_signals::SIGNAL_NUMS;
 
   // listen and forward every signal we support
   let mut futures = Vec::with_capacity(SIGNAL_NUMS.len());
@@ -658,9 +659,7 @@ async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
     let kill_signal = kill_signal.clone();
     futures.push(
       async move {
-        let Ok(mut stream) = tokio::signal::unix::signal(
-          tokio::signal::unix::SignalKind::from_raw(signo),
-        ) else {
+        let Ok(mut stream) = deno_signals::signal_stream(signo) else {
           return;
         };
         let signal_kind: deno_task_shell::SignalKind = signo.into();

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_signals"
-version = "0.2.0"
+version = "0.3.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,5 +14,9 @@ description = "Signals for Deno"
 path = "lib.rs"
 
 [dependencies]
+deno_error.workspace = true
+libc.workspace = true
 signal-hook.workspace = true
-winapi.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+winapi = { workspace = true, features = ["consoleapi"] }

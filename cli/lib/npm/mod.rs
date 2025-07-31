@@ -60,7 +60,7 @@ impl<TSys: DenoLibSys> NpmProcessStateProvider
       local_node_modules_path: self
         .0
         .root_node_modules_path()
-        .map(|p| p.to_string_lossy().to_string()),
+        .map(|p| p.to_string_lossy().into_owned()),
     }
     .as_serialized()
   }
