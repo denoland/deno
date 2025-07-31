@@ -221,6 +221,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
         // If we loaded a JSON file, but the "requested_module_type" (that is computed from
         // import attributes) is not JSON we need to fail.
         if loaded_module.media_type == MediaType::Json
+          && !self.in_npm_pkg_checker.in_npm_package(specifier)
           && !matches!(requested_module_type, RequestedModuleType::Json)
         {
           Err(LoadCodeSourceErrorKind::MissingJsonAttribute.into_box())
