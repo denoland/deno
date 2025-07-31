@@ -14,8 +14,13 @@ import * as io from "ext:deno_io/12_io.js";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 import process from "node:process";
 import { primordials } from "ext:core/mod.js";
+import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
 
-const { PromisePrototypeThen, TypedArrayPrototypeGetByteLength } = primordials;
+const {
+  ObjectDefineProperty,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetByteLength,
+} = primordials;
 
 type Callback = (
   err: ErrnoException | null,
@@ -86,6 +91,12 @@ export function readv(
     cb(null, numRead, buffers);
   }, (err) => cb(err, -1, buffers));
 }
+
+ObjectDefineProperty(readv, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesRead", "buffers"],
+  enumerable: false,
+});
 
 export function readvSync(
   fd: number,
