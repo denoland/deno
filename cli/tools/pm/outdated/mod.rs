@@ -301,7 +301,18 @@ fn choose_new_version_req(
         latest_available: false,
       };
     };
-    if preferred.version <= resolved.version {
+    let exact = if let Some(range) = dep.req.version_req.range() {
+      range.0[0].start == range.0[0].end
+    } else {
+      false
+    };
+    let candidate_version_req = VersionReq::parse_from_specifier(
+      format!("{}{}", if exact { "" } else { "^" }, preferred.version).as_str(),
+    )
+    .unwrap();
+    if preferred.version <= resolved.version
+      && candidate_version_req == dep.req.version_req
+    {
       return ChosenVersionReq::None {
         latest_available: !update_to_latest
           && latest_versions
@@ -310,19 +321,16 @@ fn choose_new_version_req(
             .is_some_and(|nv| nv.version > resolved.version),
       };
     }
-    let exact = if let Some(range) = dep.req.version_req.range() {
-      range.0[0].start == range.0[0].end
-    } else {
-      false
-    };
-    ChosenVersionReq::Some(
-      VersionReq::parse_from_specifier(
-        format!("{}{}", if exact { "" } else { "^" }, preferred.version)
-          .as_str(),
-      )
-      .unwrap(),
-    )
+    ChosenVersionReq::Some(candidate_version_req)
   }
+}
+
+struct ToUpdate {
+  dep_id: DepId,
+  package_name: String,
+  current_version: Option<PackageNv>,
+  current_version_req: VersionReq,
+  new_version_req: VersionReq,
 }
 
 async fn update(
@@ -357,41 +365,36 @@ async fn update(
       }
     };
 
-    to_update.push((
+    to_update.push(ToUpdate {
       dep_id,
-      format!("{}:{}", dep.kind.scheme(), dep.req.name),
-      deps.resolved_version(dep.id).cloned(),
-      new_version_req.clone(),
-    ));
+      package_name: format!("{}:{}", dep.kind.scheme(), dep.req.name),
+      current_version: resolved.clone(),
+      current_version_req: dep.req.version_req.clone(),
+      new_version_req: new_version_req.clone(),
+    });
   }
 
   if interactive && !to_update.is_empty() {
     let selected = interactive::select_interactive(
       to_update
         .iter()
-        .map(
-          |(dep_id, _, current_version, new_req): &(
-            DepId,
-            String,
-            Option<PackageNv>,
-            VersionReq,
-          )| {
-            let dep = deps.get_dep(*dep_id);
-            interactive::PackageInfo {
-              id: *dep_id,
-              current_version: current_version
-                .as_ref()
-                .map(|nv| nv.version.clone()),
-              name: dep.alias_or_name().into(),
-              kind: dep.kind,
-              new_version: new_req.clone(),
-            }
-          },
-        )
+        .map(|to_update: &ToUpdate| {
+          let dep = deps.get_dep(to_update.dep_id);
+          interactive::PackageInfo {
+            id: to_update.dep_id,
+            current_version: to_update
+              .current_version
+              .as_ref()
+              .map(|nv| nv.version.clone()),
+            name: dep.alias_or_name().into(),
+            kind: dep.kind,
+            new_version: to_update.new_version_req.clone(),
+          }
+        })
         .collect(),
     )?;
     if let Some(selected) = selected {
-      to_update.retain(|(id, _, _, _)| selected.contains(id));
+      to_update.retain(|to_update| selected.contains(&to_update.dep_id));
     } else {
       log::info!("Cancelled, not updating");
       return Ok(());
@@ -399,8 +402,8 @@ async fn update(
   }
 
   if !to_update.is_empty() {
-    for (dep_id, _, _, new_version_req) in &to_update {
-      deps.update_dep(*dep_id, new_version_req.clone());
+    for pkg in &to_update {
+      deps.update_dep(pkg.dep_id, pkg.new_version_req.clone());
     }
 
     deps.commit_changes()?;
@@ -421,20 +424,18 @@ async fn update(
 
     let mut deps = deps.reloaded_after_modification(args);
     deps.resolve_current_versions().await?;
-    for (dep_id, package_name, maybe_current_version, new_version_req) in
-      to_update
-    {
-      if let Some(nv) = deps.resolved_version(dep_id) {
+    for pkg in &to_update {
+      if deps.resolved_version(pkg.dep_id).is_some() {
         updated_to_versions.insert((
-          package_name,
-          maybe_current_version,
-          nv.version.clone(),
+          pkg.package_name.clone(),
+          pkg.current_version_req.clone(),
+          pkg.new_version_req.clone(),
         ));
       } else {
         log::warn!(
           "Failed to resolve version for new version requirement: {} -> {}",
-          package_name,
-          new_version_req
+          pkg.package_name,
+          pkg.new_version_req
         );
       }
     }
@@ -458,12 +459,7 @@ async fn update(
       .unwrap_or(0);
     let max_old = updated_to_versions
       .iter()
-      .map(|(_, maybe_current, _)| {
-        maybe_current
-          .as_ref()
-          .map(|v| v.version.to_string().len())
-          .unwrap_or(0)
-      })
+      .map(|(_, maybe_current, _)| maybe_current.to_string().len())
       .max()
       .unwrap_or(0);
     let max_new = updated_to_versions
@@ -472,15 +468,10 @@ async fn update(
       .max()
       .unwrap_or(0);
 
-    for (package_name, maybe_current_version, new_version) in
+    for (package_name, current_version_req, new_version_req) in
       updated_to_versions
     {
-      let current_version = if let Some(current_version) = maybe_current_version
-      {
-        current_version.version.to_string()
-      } else {
-        "".to_string()
-      };
+      let current_version = current_version_req.to_string();
 
       log::info!(
         " - {}{}{} {}{} -> {}{}",
@@ -489,8 +480,8 @@ async fn update(
         " ".repeat(max_name - package_name.len()),
         " ".repeat(max_old - current_version.len()),
         colors::gray(&current_version),
-        " ".repeat(max_new - new_version.to_string().len()),
-        colors::green(&new_version),
+        " ".repeat(max_new - new_version_req.to_string().len()),
+        colors::green(&new_version_req),
       );
     }
   } else {
