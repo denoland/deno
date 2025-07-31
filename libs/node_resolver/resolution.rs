@@ -29,11 +29,9 @@ use crate::cache::NodeResolutionSys;
 use crate::errors;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
-use crate::errors::FinalizeResolutionErrorKind;
 use crate::errors::InvalidModuleSpecifierError;
 use crate::errors::InvalidPackageTargetError;
 use crate::errors::LegacyResolveError;
-use crate::errors::LegacyResolveErrorKind;
 use crate::errors::ModuleNotFoundError;
 use crate::errors::NodeJsErrorCode;
 use crate::errors::NodeJsErrorCoded;
@@ -560,8 +558,6 @@ impl<
           if self.sys.is_file(&path_with_ext) {
             Ok(UrlOrPath::Path(path_with_ext))
           } else {
-            // todo(THIS PR): handle circular reference here so this doesn't loop forever
-            // or what would be a better way?
             let (resolved_url, resolved_method) = self
               .resolve_package_dir_subpath(
                 &path,
