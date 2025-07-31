@@ -51,7 +51,6 @@ use deno_semver::StackString;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
-use dotenvy::from_filename;
 pub use flags::*;
 use once_cell::sync::Lazy;
 use thiserror::Error;
