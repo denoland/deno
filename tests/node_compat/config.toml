@@ -452,6 +452,7 @@
 "parallel/test-fs-readfilesync-enoent.js" = {}
 "parallel/test-fs-readv-promisify.js" = {}
 "parallel/test-fs-ready-event-stream.js" = {}
+"parallel/test-fs-rename-type-check.js" = {}
 "parallel/test-fs-rmdir-type-check.js" = {}
 "parallel/test-fs-stream-fs-options.js" = {}
 "parallel/test-fs-stream-options.js" = {}
