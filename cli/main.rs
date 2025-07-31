@@ -29,6 +29,7 @@ pub mod sys {
   pub type CliSys = sys_traits::impls::RealSys;
 }
 
+use std::collections::HashMap;
 use std::env;
 use std::future::Future;
 use std::io::IsTerminal;
@@ -39,10 +40,10 @@ use std::sync::Arc;
 use args::TaskFlags;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_lib::util::result::js_error_downcast_ref;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
@@ -502,12 +503,10 @@ fn exit_with_message(message: &str, code: i32) -> ! {
 }
 
 fn exit_for_error(error: AnyError) -> ! {
-  let mut error_string = format!("{error:?}");
-  if let Some(CoreError::Js(e)) =
-    any_and_jserrorbox_downcast_ref::<CoreError>(&error)
-  {
-    error_string = format_js_error(e);
-  }
+  let error_string = match js_error_downcast_ref(&error) {
+    Some(e) => format_js_error(e),
+    None => format!("{error:?}"),
+  };
 
   exit_with_message(&error_string, 1);
 }
@@ -628,7 +627,11 @@ async fn resolve_flags_and_init(
     .or_else(|| env::var("DENO_CONNECTED").ok())
   {
     if let Err(err) = initialize_tunnel(&host, &flags).await {
-      exit_for_error(AnyError::from(err))
+      exit_for_error(err.context("Failed to start with --connected"));
+    }
+    // SAFETY: We're doing this before any threads are created.
+    unsafe {
+      std::env::set_var("DENO_CONNECTED", &host);
     }
   }
 
@@ -903,29 +906,58 @@ async fn initialize_tunnel(
   let cert_store_provider = factory.root_cert_store_provider();
   let root_cert_store = cert_store_provider.get_or_try_init()?.clone();
 
-  let (tunnel, metadata, mut events) =
-    match deno_runtime::deno_net::tunnel::TunnelListener::connect(
+  let tls_config = deno_runtime::deno_tls::create_client_config(
+    Some(root_cert_store),
+    vec![],
+    None,
+    deno_runtime::deno_tls::TlsKeys::Null,
+    deno_runtime::deno_tls::SocketUse::GeneralSsl,
+  )?;
+
+  let mut metadata = HashMap::new();
+  metadata.insert(
+    "hostname".into(),
+    deno_runtime::deno_os::sys_info::hostname(),
+  );
+  if let Some(entrypoint) = match &flags.subcommand {
+    DenoSubcommand::Run(run_flags) => Some(run_flags.script.to_owned()),
+    DenoSubcommand::Serve(serve_flags) => Some(serve_flags.script.to_owned()),
+    DenoSubcommand::Repl(_) => Some("<repl>".into()),
+    DenoSubcommand::Eval(_) => Some("<eval>".into()),
+    _ => None,
+  } {
+    metadata.insert("entrypoint".into(), entrypoint);
+  }
+
+  let (tunnel, mut events) =
+    match deno_runtime::deno_net::tunnel::TunnelConnection::connect(
       addr,
-      hostname,
-      Some(root_cert_store.clone()),
-      token,
-      org.clone(),
-      app.clone(),
+      hostname.to_owned(),
+      tls_config.clone(),
+      deno_runtime::deno_net::tunnel::Authentication::App {
+        token,
+        org: org.clone(),
+        app: app.clone(),
+      },
+      metadata.clone(),
     )
     .await
     {
       Ok(res) => res,
-      Err(deno_runtime::deno_net::tunnel::Error::InvalidToken) => {
+      Err(deno_runtime::deno_net::tunnel::Error::Unauthorized) => {
         tools::deploy::get_token_entry()?.delete_credential()?;
 
         let token = auth_tunnel().await?;
-        deno_runtime::deno_net::tunnel::TunnelListener::connect(
+        deno_runtime::deno_net::tunnel::TunnelConnection::connect(
           addr,
-          hostname,
-          Some(root_cert_store),
-          token,
-          org,
-          app,
+          hostname.to_owned(),
+          tls_config,
+          deno_runtime::deno_net::tunnel::Authentication::App {
+            token,
+            org,
+            app,
+          },
+          metadata.clone(),
         )
         .await?
       }
@@ -950,17 +982,26 @@ async fn initialize_tunnel(
             colors::green(format!("You are connected to {endpoint}!"))
           );
         }
-        Event::Migrate => {
-          // TODO: reconnect
+        Event::Reconnect(d) => {
+          log::info!(
+            "{}",
+            colors::green(format!(
+              "Reconnecting tunnel in {}s...",
+              d.as_secs()
+            ))
+          );
         }
+        _ => {}
       }
     }
   });
 
-  for (k, v) in metadata.env {
-    // SAFETY: We're doing this before any threads are created.
-    unsafe {
-      std::env::set_var(k, v);
+  if let Some(metadata) = tunnel.metadata() {
+    for (k, v) in metadata.env {
+      // SAFETY: We're doing this before any threads are created.
+      unsafe {
+        std::env::set_var(k, v);
+      }
     }
   }
 

@@ -21,6 +21,7 @@ import {
   TEST_ARGS,
   usesNodeTestModule,
 } from "./common.ts";
+import { generateTestSerialId } from "./test.ts";
 
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
@@ -153,7 +154,6 @@ function getFlags(source: string): [string[], string[]] {
   return [v8Flags, nodeOptions];
 }
 
-let testSerialId = 0;
 /**
  * Run a single node test file. Retries 3 times on WouldBlock error.
  *
@@ -161,9 +161,15 @@ let testSerialId = 0;
  */
 export async function runSingle(
   testPath: string,
-  retry = 0,
+  {
+    flaky = false,
+    retry = 0,
+  }: {
+    flaky?: boolean;
+    retry?: number;
+  },
 ): Promise<NodeTestFileReport> {
-  testSerialId++;
+  const testSerialId = generateTestSerialId();
   let cmd: Deno.ChildProcess | undefined;
   const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   let usesNodeTest = false;
@@ -220,7 +226,9 @@ export async function runSingle(
       };
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
-      return runSingle(testPath, retry + 1);
+      return runSingle(testPath, { flaky, retry: retry + 1 });
+    } else if (flaky && retry < 3) {
+      return runSingle(testPath, { flaky, retry: retry + 1 });
     } else {
       return {
         result: NodeTestFileResult.FAIL,
@@ -312,7 +320,7 @@ async function main() {
 
   async function run(testPath: string) {
     const num = String(++i).padStart(4, " ");
-    const result = await runSingle(testPath);
+    const result = await runSingle(testPath, {});
     reports[testPath] = result;
     if (result.result === NodeTestFileResult.PASS) {
       console.log(`${num} %cPASS`, "color: green", testPath);

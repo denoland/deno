@@ -121,13 +121,11 @@ Deno.test(
 Deno.test(
   "zlib flush i32",
   function () {
-    const handle = createDeflate({
-      // @ts-expect-error: passing non-int flush value
-      flush: "",
-    });
-
-    handle.end();
-    handle.destroy();
+    assertThrows(() =>
+      createDeflate({
+        // @ts-expect-error: passing non-int flush value
+        flush: "",
+      }), TypeError);
   },
 );
 
@@ -157,8 +155,8 @@ Deno.test("Brotli quality 10 doesn't panic", () => {
     },
   });
   assertEquals(
-    new Uint8Array(e.buffer),
-    new Uint8Array([11, 1, 128, 97, 98, 99, 3]),
+    new Uint8Array(e.buffer, e.byteOffset, e.byteLength),
+    new Uint8Array([17, 10, 4, 0, 2, 97, 98, 99, 3]),
   );
 });
 

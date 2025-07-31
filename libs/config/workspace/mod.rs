@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use boxed_error::Boxed;
 use deno_error::JsError;
 use deno_package_json::PackageJson;
+use deno_package_json::PackageJsonDepValue;
+use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_package_json::PackageJsonLoadError;
 use deno_package_json::PackageJsonRc;
 use deno_path_util::url_from_directory_path;
@@ -18,6 +20,8 @@ use deno_path_util::url_to_file_path;
 use deno_semver::RangeSetOrTag;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageKind;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use discovery::ConfigFileDiscovery;
@@ -460,6 +464,225 @@ impl Workspace {
 
   pub fn config_folders(&self) -> &IndexMap<UrlRc, FolderConfigs> {
     &self.config_folders
+  }
+
+  /// Gets the folders sorted by whether they have a dependency on each other.
+  pub fn config_folders_sorted_by_dependencies(
+    &self,
+  ) -> IndexMap<&UrlRc, &FolderConfigs> {
+    struct PackageNameMaybeVersion<'a> {
+      name: &'a str,
+      version: Option<Version>,
+    }
+
+    enum Dep {
+      Req(JsrDepPackageReq),
+      Path(Url),
+    }
+
+    impl Dep {
+      pub fn matches_pkg(
+        &self,
+        package_kind: PackageKind,
+        pkg: &PackageNameMaybeVersion,
+        folder_url: &Url,
+      ) -> bool {
+        match self {
+          Dep::Req(req) => {
+            req.kind == package_kind
+              && req.req.name == pkg.name
+              && pkg
+                .version
+                .as_ref()
+                .map(|v| {
+                  // just match if it's a tag
+                  req.req.version_req.tag().is_some()
+                    || req.req.version_req.matches(v)
+                })
+                .unwrap_or(true)
+          }
+          Dep::Path(url) => {
+            folder_url.as_str().trim_end_matches('/')
+              == url.as_str().trim_end_matches('/')
+          }
+        }
+      }
+    }
+
+    struct Folder<'a> {
+      index: usize,
+      dir_url: &'a UrlRc,
+      folder: &'a FolderConfigs,
+      npm_nv: Option<PackageNameMaybeVersion<'a>>,
+      jsr_nv: Option<PackageNameMaybeVersion<'a>>,
+      deps: Vec<Dep>,
+    }
+
+    impl<'a> Folder<'a> {
+      pub fn depends_on(&self, other: &Folder<'a>) -> bool {
+        if let Some(other_nv) = &other.npm_nv {
+          if self.has_matching_dep(PackageKind::Npm, other_nv, other.dir_url) {
+            return true;
+          }
+        }
+        if let Some(other_nv) = &other.jsr_nv {
+          if self.has_matching_dep(PackageKind::Jsr, other_nv, other.dir_url) {
+            return true;
+          }
+        }
+        false
+      }
+
+      fn has_matching_dep(
+        &self,
+        pkg_kind: PackageKind,
+        pkg: &PackageNameMaybeVersion,
+        folder_url: &Url,
+      ) -> bool {
+        self
+          .deps
+          .iter()
+          .any(|dep| dep.matches_pkg(pkg_kind, pkg, folder_url))
+      }
+    }
+
+    let mut folders = Vec::with_capacity(self.config_folders.len());
+    for (index, (dir_url, folder)) in self.config_folders.iter().enumerate() {
+      folders.push(Folder {
+        index,
+        folder,
+        dir_url,
+        jsr_nv: folder.deno_json.as_ref().and_then(|deno_json| {
+          deno_json
+            .json
+            .name
+            .as_ref()
+            .map(|name| PackageNameMaybeVersion {
+              name,
+              version: deno_json
+                .json
+                .version
+                .as_ref()
+                .and_then(|v| Version::parse_standard(v).ok()),
+            })
+        }),
+        npm_nv: folder.pkg_json.as_ref().and_then(|pkg_json| {
+          pkg_json.name.as_ref().map(|name| PackageNameMaybeVersion {
+            name,
+            version: pkg_json
+              .version
+              .as_ref()
+              .and_then(|v| Version::parse_from_npm(v).ok()),
+          })
+        }),
+        deps: folder
+          .deno_json
+          .as_ref()
+          .map(|d| d.dependencies().into_iter().map(Dep::Req))
+          .into_iter()
+          .flatten()
+          .chain(
+            folder
+              .pkg_json
+              .as_ref()
+              .map(|d| {
+                let deps = d.resolve_local_package_json_deps();
+                deps
+                  .dependencies
+                  .iter()
+                  .chain(deps.dev_dependencies.iter())
+                  .filter_map(|(k, v)| match v.as_ref().ok()? {
+                    PackageJsonDepValue::File(path) => {
+                      dir_url.join(path).ok().map(Dep::Path)
+                    }
+                    PackageJsonDepValue::Req(package_req) => {
+                      Some(Dep::Req(JsrDepPackageReq {
+                        kind: PackageKind::Npm,
+                        req: package_req.clone(),
+                      }))
+                    }
+                    PackageJsonDepValue::Workspace(workspace_req) => {
+                      Some(Dep::Req(JsrDepPackageReq {
+                        kind: PackageKind::Npm,
+                        req: PackageReq {
+                          name: k.clone(),
+                          version_req: match workspace_req {
+                            PackageJsonDepWorkspaceReq::VersionReq(
+                              version_req,
+                            ) => version_req.clone(),
+                            PackageJsonDepWorkspaceReq::Tilde
+                            | PackageJsonDepWorkspaceReq::Caret => {
+                              VersionReq::parse_from_npm("*").unwrap()
+                            }
+                          },
+                        },
+                      }))
+                    }
+                    PackageJsonDepValue::JsrReq(req) => {
+                      Some(Dep::Req(JsrDepPackageReq {
+                        kind: PackageKind::Npm,
+                        req: req.clone(),
+                      }))
+                    }
+                  })
+              })
+              .into_iter()
+              .flatten(),
+          )
+          .collect(),
+      })
+    }
+
+    // build adjacency + in-degree
+    let n = folders.len();
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut indeg = vec![0_u32; n];
+
+    for i in 0..n {
+      for j in 0..n {
+        if i != j && folders[i].depends_on(&folders[j]) {
+          adj[j].push(i);
+          indeg[i] += 1;
+        }
+      }
+    }
+
+    // kahn's algorithm
+    let mut queue: VecDeque<usize> = indeg
+      .iter()
+      .enumerate()
+      .filter(|&(_, &d)| d == 0)
+      .map(|(i, _)| i)
+      .collect();
+    // preserve original insertion order for deterministic output
+    queue.make_contiguous().sort_by_key(|&i| folders[i].index);
+
+    let mut output = Vec::<usize>::with_capacity(n);
+    while let Some(i) = queue.pop_front() {
+      output.push(i);
+      for &j in &adj[i] {
+        indeg[j] -= 1;
+        if indeg[j] == 0 {
+          queue.push_back(j);
+        }
+      }
+    }
+
+    // handle possible cycles
+    if output.len() < n {
+      // collect the still-cyclic nodes
+      let mut cyclic: Vec<usize> = (0..n).filter(|&i| indeg[i] > 0).collect();
+
+      // stable, deterministic: lowest original index first
+      cyclic.sort_by_key(|&i| folders[i].index);
+
+      output.extend(cyclic);
+    }
+
+    output
+      .into_iter()
+      .map(|i| (folders[i].dir_url, folders[i].folder))
+      .collect()
   }
 
   pub fn deno_jsons(&self) -> impl Iterator<Item = &ConfigFileRc> {
@@ -1718,6 +1941,7 @@ impl WorkspaceDirectory {
               tasks.map(|tasks| WorkspaceMemberTasksConfigFile {
                 folder_url: url_parent(&deno_json.specifier),
                 tasks,
+                package_name: deno_json.json.name.clone(),
               })
             })
             .map_err(|error| ToTasksConfigError {
@@ -1731,6 +1955,7 @@ impl WorkspaceDirectory {
             WorkspaceMemberTasksConfigFile {
               folder_url: url_parent(&pkg_json.specifier()),
               tasks: scripts,
+              package_name: pkg_json.name.clone(),
             }
           }),
           None => None,
@@ -1887,13 +2112,36 @@ impl WorkspaceDirectory {
 
 pub enum TaskOrScript<'a> {
   /// A task from a deno.json.
-  Task(&'a IndexMap<String, TaskDefinition>, &'a TaskDefinition),
+  Task {
+    details: &'a WorkspaceMemberTasksConfigFile<TaskDefinition>,
+    task: &'a TaskDefinition,
+  },
   /// A script from a package.json.
-  Script(&'a IndexMap<String, String>, &'a str),
+  Script {
+    details: &'a WorkspaceMemberTasksConfigFile<String>,
+    task: &'a str,
+  },
+}
+
+impl<'a> TaskOrScript<'a> {
+  pub fn package_name(&self) -> Option<&'a str> {
+    match self {
+      TaskOrScript::Task { details, .. } => details.package_name.as_deref(),
+      TaskOrScript::Script { details, .. } => details.package_name.as_deref(),
+    }
+  }
+
+  pub fn folder_url(&self) -> &'a Url {
+    match self {
+      TaskOrScript::Task { details, .. } => &details.folder_url,
+      TaskOrScript::Script { details, .. } => &details.folder_url,
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceMemberTasksConfigFile<TValue> {
+  pub package_name: Option<String>,
   pub folder_url: Url,
   pub tasks: IndexMap<String, TValue>,
 }
@@ -1957,23 +2205,21 @@ impl WorkspaceMemberTasksConfig {
         .unwrap_or(0)
   }
 
-  pub fn task(&self, name: &str) -> Option<(&Url, TaskOrScript)> {
+  pub fn task(&self, name: &str) -> Option<TaskOrScript> {
     self
       .deno_json
       .as_ref()
       .and_then(|config| {
-        config
-          .tasks
-          .get(name)
-          .map(|t| (&config.folder_url, TaskOrScript::Task(&config.tasks, t)))
+        config.tasks.get(name).map(|task| TaskOrScript::Task {
+          details: config,
+          task,
+        })
       })
       .or_else(|| {
         self.package_json.as_ref().and_then(|config| {
-          config.tasks.get(name).map(|task| {
-            (
-              &config.folder_url,
-              TaskOrScript::Script(&config.tasks, task),
-            )
+          config.tasks.get(name).map(|script| TaskOrScript::Script {
+            details: config,
+            task: script,
           })
         })
       })
@@ -2016,7 +2262,7 @@ impl WorkspaceTasksConfig {
       )
   }
 
-  pub fn task(&self, name: &str) -> Option<(&Url, TaskOrScript)> {
+  pub fn task(&self, name: &str) -> Option<TaskOrScript> {
     self
       .member
       .as_ref()
@@ -2476,6 +2722,7 @@ pub mod test {
     assert_eq!(workspace_dir.workspace.diagnostics(), vec![]);
     let root_deno_json = Some(WorkspaceMemberTasksConfigFile {
       folder_url: url_from_directory_path(&root_dir()).unwrap(),
+      package_name: None,
       tasks: IndexMap::from([
         ("hi".to_string(), "echo hi".into()),
         ("overwrite".to_string(), "echo overwrite".into()),
@@ -2515,6 +2762,7 @@ pub mod test {
             deno_json: Some(WorkspaceMemberTasksConfigFile {
               folder_url: url_from_directory_path(&root_dir().join("member"))
                 .unwrap(),
+              package_name: None,
               tasks: IndexMap::from([
                 ("overwrite".to_string(), "echo overwritten".into()),
                 ("bye".to_string(), "echo bye".into()),
@@ -2545,6 +2793,7 @@ pub mod test {
             package_json: Some(WorkspaceMemberTasksConfigFile {
               folder_url: url_from_directory_path(&root_dir().join("pkg_json"))
                 .unwrap(),
+              package_name: None,
               tasks: IndexMap::from([(
                 "script".to_string(),
                 "echo 1".to_string()
@@ -2727,7 +2976,7 @@ pub mod test {
     let root_path = root_dir().join("../dir");
     let workspace_dir = workspace_for_root_and_member_with_fs(
       json!({
-        "links": [root_path.to_string_lossy().to_string()],
+        "links": [root_path.to_string_lossy().into_owned()],
       }),
       json!({}),
       |fs| {
@@ -5020,12 +5269,13 @@ pub mod test {
     }
     // path outside the root directory
     {
-      let dir_outside = normalize_path(root_dir().join("../dir_outside"));
+      let dir_outside =
+        normalize_path(root_dir().join("../dir_outside").into());
       let split = workspace_dir.workspace.split_cli_args_by_deno_json_folder(
         &FilePatterns {
           base: root_dir(),
           include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
-            dir_outside.clone(),
+            dir_outside.to_path_buf(),
           )])),
           exclude: Default::default(),
         },
@@ -5037,7 +5287,7 @@ pub mod test {
           FilePatterns {
             base: root_dir(),
             include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
-              dir_outside.clone(),
+              dir_outside.to_path_buf(),
             ),])),
             exclude: Default::default(),
           }
@@ -5046,14 +5296,16 @@ pub mod test {
     }
     // multiple paths outside the root directory
     {
-      let dir_outside_1 = normalize_path(root_dir().join("../dir_outside_1"));
-      let dir_outside_2 = normalize_path(root_dir().join("../dir_outside_2"));
+      let dir_outside_1 =
+        normalize_path(root_dir().join("../dir_outside_1").into());
+      let dir_outside_2 =
+        normalize_path(root_dir().join("../dir_outside_2").into());
       let split = workspace_dir.workspace.split_cli_args_by_deno_json_folder(
         &FilePatterns {
           base: root_dir(),
           include: Some(PathOrPatternSet::new(vec![
-            PathOrPattern::Path(dir_outside_1.clone()),
-            PathOrPattern::Path(dir_outside_2.clone()),
+            PathOrPattern::Path(dir_outside_1.to_path_buf()),
+            PathOrPattern::Path(dir_outside_2.to_path_buf()),
           ])),
           exclude: Default::default(),
         },
@@ -5065,8 +5317,8 @@ pub mod test {
           FilePatterns {
             base: root_dir(),
             include: Some(PathOrPatternSet::new(vec![
-              PathOrPattern::Path(dir_outside_1.clone()),
-              PathOrPattern::Path(dir_outside_2.clone()),
+              PathOrPattern::Path(dir_outside_1.to_path_buf()),
+              PathOrPattern::Path(dir_outside_2.to_path_buf()),
             ])),
             exclude: Default::default(),
           }
@@ -5082,15 +5334,15 @@ pub mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     // two paths, looped to ensure that the order is maintained on
     // the output and not sorted
-    let path1 = normalize_path(root_dir().join("./path-longer"));
-    let path2 = normalize_path(root_dir().join("./path"));
+    let path1 = normalize_path(root_dir().join("./path-longer").into());
+    let path2 = normalize_path(root_dir().join("./path").into());
     for (path1, path2) in [(&path1, &path2), (&path2, &path1)] {
       let split = workspace_dir.workspace.split_cli_args_by_deno_json_folder(
         &FilePatterns {
           base: root_dir(),
           include: Some(PathOrPatternSet::new(vec![
-            PathOrPattern::Path(path1.clone()),
-            PathOrPattern::Path(path2.clone()),
+            PathOrPattern::Path(path1.to_path_buf()),
+            PathOrPattern::Path(path2.to_path_buf()),
           ])),
           exclude: Default::default(),
         },
@@ -5102,8 +5354,8 @@ pub mod test {
           FilePatterns {
             base: root_dir(),
             include: Some(PathOrPatternSet::new(vec![
-              PathOrPattern::Path(path1.clone()),
-              PathOrPattern::Path(path2.clone()),
+              PathOrPattern::Path(path1.to_path_buf()),
+              PathOrPattern::Path(path2.to_path_buf()),
             ])),
             exclude: Default::default(),
           }
@@ -5651,6 +5903,154 @@ pub mod test {
       )
       .unwrap();
       assert_eq!(workspace_dir.workspace.package_jsons().count(), 3);
+    }
+  }
+
+  #[test]
+  fn test_folder_sorted_dependencies() {
+    #[track_caller]
+    fn assert_order(sys: InMemorySys, expected: Vec<PathBuf>) {
+      let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+      assert_eq!(
+        workspace_dir
+          .workspace
+          .config_folders_sorted_by_dependencies()
+          .keys()
+          .map(|k| k.to_file_path().unwrap())
+          .collect::<Vec<_>>(),
+        expected,
+      );
+    }
+
+    {
+      let sys = InMemorySys::default();
+      sys.fs_insert_json(
+        root_dir().join("deno.json"),
+        json!({
+          "workspace": ["./a", "./b", "./c"]
+        }),
+      );
+      sys.fs_insert_json(
+        root_dir().join("a/package.json"),
+        json!({
+          "dependencies": {
+            "c": "*"
+          }
+        }),
+      );
+      sys.fs_insert_json(
+        root_dir().join("b/package.json"),
+        json!({
+          "name": "b",
+        }),
+      );
+      sys.fs_insert_json(
+        root_dir().join("c/package.json"),
+        json!({
+          "name": "c",
+          "dependencies": {
+            "b": "workspace:~"
+          }
+        }),
+      );
+      assert_order(
+        sys,
+        vec![
+          root_dir(),
+          root_dir().join("b"),
+          root_dir().join("c"),
+          root_dir().join("a"),
+        ],
+      );
+    }
+
+    // circular
+    {
+      let sys = InMemorySys::default();
+      sys.fs_insert_json(
+        root_dir().join("deno.json"),
+        json!({
+          "workspace": ["./a", "./b", "./c"]
+        }),
+      );
+      sys.fs_insert_json(
+        root_dir().join("a/package.json"),
+        json!({
+          "dependencies": {
+            "b": "*"
+          }
+        }),
+      );
+      sys.fs_insert_json(
+        root_dir().join("b/package.json"),
+        json!({
+          "name": "b",
+          "dependencies": {
+            "c": "*"
+          }
+        }),
+      );
+      sys.fs_insert_json(
+        root_dir().join("c/package.json"),
+        json!({
+          "name": "c",
+          "dependencies": {
+            "a": "*"
+          }
+        }),
+      );
+      assert_order(
+        sys,
+        vec![
+          root_dir(),
+          root_dir().join("c"),
+          root_dir().join("b"),
+          root_dir().join("a"),
+        ],
+      );
+    }
+
+    // file specifier
+    {
+      let sys = InMemorySys::default();
+      sys.fs_insert_json(
+        root_dir().join("deno.json"),
+        json!({
+          "workspace": ["./a", "./b", "./c"]
+        }),
+      );
+      sys.fs_insert_json(
+        root_dir().join("a/package.json"),
+        json!({
+          "dependencies": {
+            "b": "file:../b"
+          }
+        }),
+      );
+      sys.fs_insert_json(
+        root_dir().join("b/package.json"),
+        json!({
+          "name": "b",
+          "dependencies": {
+            "c": "file:../c/"
+          }
+        }),
+      );
+      sys.fs_insert_json(
+        root_dir().join("c/package.json"),
+        json!({
+          "name": "c"
+        }),
+      );
+      assert_order(
+        sys,
+        vec![
+          root_dir(),
+          root_dir().join("c"),
+          root_dir().join("b"),
+          root_dir().join("a"),
+        ],
+      );
     }
   }
 

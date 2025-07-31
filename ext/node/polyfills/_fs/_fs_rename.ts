@@ -1,32 +1,63 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { primordials } from "ext:core/mod.js";
+import type { Buffer } from "node:buffer";
+import * as pathModule from "node:path";
+import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+
+const {
+  PromisePrototypeThen,
+} = primordials;
 
 export function rename(
-  oldPath: string | URL,
-  newPath: string | URL,
+  oldPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
   callback: (err?: Error) => void,
 ) {
-  oldPath = oldPath instanceof URL ? pathFromURL(oldPath) : oldPath;
-  newPath = newPath instanceof URL ? pathFromURL(newPath) : newPath;
+  oldPath = getValidatedPathToString(oldPath, "oldPath");
+  newPath = getValidatedPathToString(newPath, "newPath");
+  validateFunction(callback, "callback");
 
-  if (!callback) throw new Error("No callback function supplied");
-
-  Deno.rename(oldPath, newPath).then((_) => callback(), callback);
+  PromisePrototypeThen(
+    Deno.rename(
+      pathModule.toNamespacedPath(oldPath),
+      pathModule.toNamespacedPath(newPath),
+    ),
+    () => callback(),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, {
+        syscall: "rename",
+        path: oldPath,
+        dest: newPath,
+      })),
+  );
 }
 
 export const renamePromise = promisify(rename) as (
-  oldPath: string | URL,
-  newPath: string | URL,
+  oldPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
 ) => Promise<void>;
 
-export function renameSync(oldPath: string | URL, newPath: string | URL) {
-  oldPath = oldPath instanceof URL ? pathFromURL(oldPath) : oldPath;
-  newPath = newPath instanceof URL ? pathFromURL(newPath) : newPath;
+export function renameSync(
+  oldPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
+) {
+  oldPath = getValidatedPathToString(oldPath, "oldPath");
+  newPath = getValidatedPathToString(newPath, "newPath");
 
-  Deno.renameSync(oldPath, newPath);
+  try {
+    Deno.renameSync(
+      pathModule.toNamespacedPath(oldPath),
+      pathModule.toNamespacedPath(newPath),
+    );
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "rename",
+      path: oldPath,
+      dest: newPath,
+    });
+  }
 }

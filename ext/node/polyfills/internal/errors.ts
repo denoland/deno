@@ -5,7 +5,6 @@
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_TLS_CERT_ALTNAME_INVALID
  * ERR_WORKER_INVALID_EXEC_ARGV
  * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
@@ -2667,6 +2666,7 @@ export class ERR_INVALID_STATE extends NodeError {
 interface UvExceptionContext {
   syscall: string;
   path?: string;
+  dest?: string;
 }
 export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   const errno = extractOsErrorNumberFromErrorMessage(e);
@@ -2769,6 +2769,7 @@ codes.ERR_STREAM_PUSH_AFTER_EOF = ERR_STREAM_PUSH_AFTER_EOF;
 codes.ERR_STREAM_UNSHIFT_AFTER_END_EVENT = ERR_STREAM_UNSHIFT_AFTER_END_EVENT;
 codes.ERR_STREAM_WRAP = ERR_STREAM_WRAP;
 codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
+codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
 
 // TODO(kt3k): assign all error classes here.
 

@@ -37,7 +37,7 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
-use crate::collections::FolderScopedMap;
+use crate::collections::FolderScopedWithUnscopedMap;
 use crate::factory::ConfigDiscoveryOption;
 use crate::factory::WorkspaceDirectoryProvider;
 use crate::npm::DenoInNpmPackageChecker;
@@ -244,17 +244,11 @@ pub enum CompilerOptionsSourceKind {
   TsConfig,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum CompilerOptionsDefaults {
-  Deno,
-  TscCompatible,
-}
-
 /// For a given configuration type get the starting point CompilerOptions
 /// used that can then be merged with user specified options.
 pub fn get_base_compiler_options_for_emit(
   config_type: CompilerOptionsType,
-  defaults: CompilerOptionsDefaults,
+  source_kind: CompilerOptionsSourceKind,
 ) -> CompilerOptions {
   match config_type {
     CompilerOptionsType::Bundle => CompilerOptions::new(json!({
@@ -285,25 +279,25 @@ pub fn get_base_compiler_options_for_emit(
       "inlineSourceMap": true,
       "inlineSources": true,
       "isolatedModules": true,
-      "lib": match (lib, defaults) {
-        (TsTypeLib::DenoWindow, CompilerOptionsDefaults::Deno) => vec!["deno.window", "deno.unstable"],
-        (TsTypeLib::DenoWindow, CompilerOptionsDefaults::TscCompatible) => vec!["deno.window", "deno.unstable", "dom"],
-        (TsTypeLib::DenoWorker, CompilerOptionsDefaults::Deno) => vec!["deno.worker", "deno.unstable"],
-        (TsTypeLib::DenoWorker, CompilerOptionsDefaults::TscCompatible) => vec!["deno.worker", "deno.unstable", "dom"],
+      "lib": match (lib, source_kind) {
+        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::DenoJson) => vec!["deno.window", "deno.unstable"],
+        (TsTypeLib::DenoWindow, CompilerOptionsSourceKind::TsConfig) => vec!["deno.window", "deno.unstable", "dom"],
+        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::DenoJson) => vec!["deno.worker", "deno.unstable"],
+        (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom"],
       },
       "module": "NodeNext",
       "moduleResolution": "NodeNext",
       "moduleDetection": "force",
       "noEmit": true,
-      "noImplicitOverride": match defaults {
-        CompilerOptionsDefaults::Deno => true,
-        CompilerOptionsDefaults::TscCompatible => false,
+      "noImplicitOverride": match source_kind {
+        CompilerOptionsSourceKind::DenoJson => true,
+        CompilerOptionsSourceKind::TsConfig => false,
       },
       "resolveJsonModule": true,
       "sourceMap": false,
-      "strict": match defaults {
-        CompilerOptionsDefaults::Deno => true,
-        CompilerOptionsDefaults::TscCompatible => false,
+      "strict": match source_kind {
+        CompilerOptionsSourceKind::DenoJson => true,
+        CompilerOptionsSourceKind::TsConfig => false,
       },
       "target": "esnext",
       "tsBuildInfoFile": "internal:///.tsbuildinfo",
@@ -386,8 +380,7 @@ pub struct CompilerOptionsOverrides {
 #[derive(Debug)]
 pub struct CompilerOptionsData {
   pub sources: Vec<CompilerOptionsSource>,
-  source_kind: CompilerOptionsSourceKind,
-  pub defaults: CompilerOptionsDefaults,
+  pub source_kind: CompilerOptionsSourceKind,
   workspace_dir_url: Option<UrlRc>,
   memoized: MemoizedValues,
   logged_warnings: LoggedWarningsRc,
@@ -399,7 +392,6 @@ impl CompilerOptionsData {
   fn new(
     sources: Vec<CompilerOptionsSource>,
     source_kind: CompilerOptionsSourceKind,
-    defaults: CompilerOptionsDefaults,
     workspace_dir_url: Option<UrlRc>,
     logged_warnings: LoggedWarningsRc,
     overrides: CompilerOptionsOverrides,
@@ -407,7 +399,6 @@ impl CompilerOptionsData {
     Self {
       sources,
       source_kind,
-      defaults,
       workspace_dir_url,
       memoized: Default::default(),
       logged_warnings,
@@ -446,7 +437,7 @@ impl CompilerOptionsData {
       let mut result = CompilerOptionsWithIgnoredOptions {
         compiler_options: get_base_compiler_options_for_emit(
           typ,
-          self.defaults,
+          self.source_kind,
         ),
         ignored_options: Vec::new(),
       };
@@ -636,13 +627,13 @@ impl TsConfigFile {
     };
     let path = Path::new(raw);
     let absolute_path = if path.is_absolute() {
-      normalize_path(path)
+      normalize_path(Cow::Borrowed(path))
     } else {
-      normalize_path(dir_path.as_ref().join(path))
+      normalize_path(Cow::Owned(dir_path.as_ref().join(path)))
     };
     Self {
       relative_specifier,
-      absolute_path,
+      absolute_path: absolute_path.into_owned(),
     }
   }
 }
@@ -778,7 +769,8 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
 
   fn collect(mut self) -> Vec<TsConfigData> {
     for root in std::mem::take(&mut self.roots) {
-      let Ok(ts_config) = self.read_ts_config_with_cache(root) else {
+      let Ok(ts_config) = self.read_ts_config_with_cache(Cow::Owned(root))
+      else {
         continue;
       };
       self.visit_reference(ts_config);
@@ -812,12 +804,12 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       } else {
         Cow::Owned(dir_path.join(reference_path))
       };
-      match self.read_ts_config_with_cache(&reference_path) {
+      match self.read_ts_config_with_cache(Cow::Borrowed(&reference_path)) {
         Ok(ts_config) => self.visit_reference(ts_config),
         Err(err) if is_maybe_directory_error(&err) => {
-          if let Ok(ts_config) =
-            self.read_ts_config_with_cache(reference_path.join("tsconfig.json"))
-          {
+          if let Ok(ts_config) = self.read_ts_config_with_cache(Cow::Owned(
+            reference_path.join("tsconfig.json"),
+          )) {
             self.visit_reference(ts_config)
           }
         }
@@ -829,21 +821,25 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
 
   fn read_ts_config_with_cache(
     &mut self,
-    path: impl AsRef<Path>,
+    path: Cow<Path>,
   ) -> Result<Rc<TsConfigData>, Rc<std::io::Error>> {
-    let path = normalize_path(path.as_ref());
-    self.read_cache.get(&path).cloned().unwrap_or_else(|| {
-      if !self.currently_reading.insert(path.clone()) {
-        return Err(Rc::new(std::io::Error::new(
-          ErrorKind::Other,
-          "Cycle detected while following `extends`.",
-        )));
-      }
-      let result = self.read_ts_config(&path).map(Rc::new).map_err(Rc::new);
-      self.currently_reading.pop();
-      self.read_cache.insert(path, result.clone());
-      result
-    })
+    let path = normalize_path(path);
+    self
+      .read_cache
+      .get(path.as_ref())
+      .cloned()
+      .unwrap_or_else(|| {
+        if !self.currently_reading.insert(path.to_path_buf()) {
+          return Err(Rc::new(std::io::Error::new(
+            ErrorKind::Other,
+            "Cycle detected while following `extends`.",
+          )));
+        }
+        let result = self.read_ts_config(&path).map(Rc::new).map_err(Rc::new);
+        self.currently_reading.pop();
+        self.read_cache.insert(path.to_path_buf(), result.clone());
+        result
+      })
   }
 
   fn read_ts_config(
@@ -893,7 +889,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
           .ok()?;
         let url = node_resolution.into_url().ok()?;
         let path = url_to_file_path(&url).ok()?;
-        self.read_ts_config_with_cache(&path).ok()
+        self.read_ts_config_with_cache(Cow::Owned(path)).ok()
       })
       .collect::<Vec<_>>();
     let sources = extends_targets
@@ -973,7 +969,6 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       compiler_options: CompilerOptionsData::new(
         sources,
         CompilerOptionsSourceKind::TsConfig,
-        CompilerOptionsDefaults::TscCompatible,
         None,
         self.logged_warnings.clone(),
         self.overrides.clone(),
@@ -1022,21 +1017,22 @@ impl Serialize for CompilerOptionsKey {
 
 #[derive(Debug)]
 pub struct CompilerOptionsResolver {
-  workspace_configs: FolderScopedMap<CompilerOptionsData>,
+  workspace_configs: FolderScopedWithUnscopedMap<CompilerOptionsData>,
   ts_configs: Vec<TsConfigData>,
 }
 
 impl Default for CompilerOptionsResolver {
   fn default() -> Self {
     Self {
-      workspace_configs: FolderScopedMap::new(CompilerOptionsData::new(
-        Vec::new(),
-        CompilerOptionsSourceKind::DenoJson,
-        CompilerOptionsDefaults::Deno,
-        None,
-        Default::default(),
-        Default::default(),
-      )),
+      workspace_configs: FolderScopedWithUnscopedMap::new(
+        CompilerOptionsData::new(
+          Vec::new(),
+          CompilerOptionsSourceKind::DenoJson,
+          None,
+          Default::default(),
+          Default::default(),
+        ),
+      ),
       ts_configs: Vec::new(),
     }
   }
@@ -1052,14 +1048,15 @@ impl CompilerOptionsResolver {
   ) -> Self {
     if matches!(config_discover, ConfigDiscoveryOption::Disabled) {
       return Self {
-        workspace_configs: FolderScopedMap::new(CompilerOptionsData::new(
-          Vec::new(),
-          CompilerOptionsSourceKind::DenoJson,
-          CompilerOptionsDefaults::Deno,
-          None,
-          Default::default(),
-          overrides.clone(),
-        )),
+        workspace_configs: FolderScopedWithUnscopedMap::new(
+          CompilerOptionsData::new(
+            Vec::new(),
+            CompilerOptionsSourceKind::DenoJson,
+            None,
+            Default::default(),
+            overrides.clone(),
+          ),
+        ),
         ts_configs: Vec::new(),
       };
     }
@@ -1070,36 +1067,25 @@ impl CompilerOptionsResolver {
       &logged_warnings,
       overrides.clone(),
     );
-    let dir_entries =
-      workspace_directory_provider.entries().collect::<Vec<_>>();
-    for (_, dir) in &dir_entries {
+    let root_dir = workspace_directory_provider.root();
+    let mut workspace_configs =
+      FolderScopedWithUnscopedMap::new(CompilerOptionsData::new(
+        root_dir.to_configured_compiler_options_sources(),
+        CompilerOptionsSourceKind::DenoJson,
+        Some(root_dir.dir_url().clone()),
+        logged_warnings.clone(),
+        overrides.clone(),
+      ));
+    for (dir_url, dir) in workspace_directory_provider.entries() {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       }
-    }
-    let ts_configs = ts_config_collector.collect();
-    let defaults = if ts_configs.is_empty() {
-      CompilerOptionsDefaults::Deno
-    } else {
-      CompilerOptionsDefaults::TscCompatible
-    };
-    let root_dir = workspace_directory_provider.root();
-    let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
-      root_dir.to_configured_compiler_options_sources(),
-      CompilerOptionsSourceKind::DenoJson,
-      defaults,
-      Some(root_dir.dir_url().clone()),
-      logged_warnings.clone(),
-      overrides.clone(),
-    ));
-    for (dir_url, dir) in dir_entries {
       if let Some(dir_url) = dir_url {
         workspace_configs.insert(
           dir_url.clone(),
           CompilerOptionsData::new(
             dir.to_configured_compiler_options_sources(),
             CompilerOptionsSourceKind::DenoJson,
-            defaults,
             Some(dir_url.clone()),
             logged_warnings.clone(),
             overrides.clone(),
@@ -1109,7 +1095,7 @@ impl CompilerOptionsResolver {
     }
     Self {
       workspace_configs,
-      ts_configs,
+      ts_configs: ts_config_collector.collect(),
     }
   }
 
@@ -1197,32 +1183,23 @@ impl CompilerOptionsResolver {
       &logged_warnings,
       Default::default(),
     );
-    for dir in dirs_by_scope.values() {
+    let mut workspace_configs =
+      FolderScopedWithUnscopedMap::new(CompilerOptionsData::new(
+        Vec::new(),
+        CompilerOptionsSourceKind::DenoJson,
+        None,
+        logged_warnings.clone(),
+        Default::default(),
+      ));
+    for (scope, dir) in dirs_by_scope {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       }
-    }
-    let ts_configs = ts_config_collector.collect();
-    let defaults = if ts_configs.is_empty() {
-      CompilerOptionsDefaults::Deno
-    } else {
-      CompilerOptionsDefaults::TscCompatible
-    };
-    let mut workspace_configs = FolderScopedMap::new(CompilerOptionsData::new(
-      Vec::new(),
-      CompilerOptionsSourceKind::DenoJson,
-      defaults,
-      None,
-      logged_warnings.clone(),
-      Default::default(),
-    ));
-    for (scope, dir) in dirs_by_scope {
       workspace_configs.insert(
         scope.clone(),
         CompilerOptionsData::new(
           dir.to_configured_compiler_options_sources(),
           CompilerOptionsSourceKind::DenoJson,
-          defaults,
           Some(scope.clone()),
           logged_warnings.clone(),
           Default::default(),
@@ -1231,7 +1208,7 @@ impl CompilerOptionsResolver {
     }
     Self {
       workspace_configs,
-      ts_configs,
+      ts_configs: ts_config_collector.collect(),
     }
   }
 }
@@ -1251,7 +1228,8 @@ pub type CompilerOptionsResolverRc =
 /// ahead of time as needed for the graph resolver.
 #[derive(Debug)]
 pub struct JsxImportSourceConfigResolver {
-  workspace_configs: FolderScopedMap<Option<JsxImportSourceConfigRc>>,
+  workspace_configs:
+    FolderScopedWithUnscopedMap<Option<JsxImportSourceConfigRc>>,
   ts_configs: Vec<(Option<JsxImportSourceConfigRc>, TsConfigFileFilterRc)>,
 }
 

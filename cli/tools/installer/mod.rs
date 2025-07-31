@@ -16,9 +16,9 @@ use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_lib::args::CaData;
+use deno_path_util::resolve_url_or_path;
 use deno_semver::npm::NpmPackageReqReference;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -616,7 +616,7 @@ async fn resolve_shim_data(
     }
   }
 
-  executable_args.push(module_url.to_string());
+  executable_args.push(module_url.into());
   executable_args.extend_from_slice(&install_flags_global.args);
 
   Ok(ShimData {
@@ -746,7 +746,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -768,7 +768,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -796,7 +796,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -824,7 +824,7 @@ mod tests {
         module_url: "http://localhost:4545/subdir/main.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -848,7 +848,7 @@ mod tests {
           .to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -874,7 +874,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -905,7 +905,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec!["--foobar".to_string()],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -941,7 +941,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -973,7 +973,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -1006,7 +1006,7 @@ mod tests {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(temp_dir.to_string_lossy().to_string()),
+        root: Some(temp_dir.to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -1043,7 +1043,7 @@ mod tests {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
