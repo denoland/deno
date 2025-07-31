@@ -29,11 +29,9 @@ use crate::cache::NodeResolutionSys;
 use crate::errors;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
-use crate::errors::FinalizeResolutionErrorKind;
 use crate::errors::InvalidModuleSpecifierError;
 use crate::errors::InvalidPackageTargetError;
 use crate::errors::LegacyResolveError;
-use crate::errors::LegacyResolveErrorKind;
 use crate::errors::ModuleNotFoundError;
 use crate::errors::NodeJsErrorCode;
 use crate::errors::NodeJsErrorCoded;
@@ -45,6 +43,7 @@ use crate::errors::PackageImportsResolveError;
 use crate::errors::PackageImportsResolveErrorKind;
 use crate::errors::PackagePathNotExportedError;
 use crate::errors::PackageResolveError;
+use crate::errors::PackageSubpathFromDenoModuleResolveError;
 use crate::errors::PackageSubpathResolveError;
 use crate::errors::PackageSubpathResolveErrorKind;
 use crate::errors::PackageTargetNotFoundError;
@@ -425,6 +424,7 @@ impl<
       url,
       resolved_kind,
       resolution_mode,
+      conditions,
       resolution_kind,
       Some(&referrer),
     )?;
@@ -501,6 +501,7 @@ impl<
     resolved: MaybeTypesResolvedUrl,
     resolved_method: ResolvedMethod,
     resolution_mode: ResolutionMode,
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
     maybe_referrer: Option<&UrlOrPathRef>,
   ) -> Result<UrlOrPath, FinalizeResolutionError> {
@@ -579,23 +580,22 @@ impl<
           if self.sys.is_file(&path_with_ext) {
             Ok(UrlOrPath::Path(path_with_ext))
           } else {
-            Ok(
-              self
-                .legacy_index_resolve(
-                  &path,
-                  maybe_referrer,
-                  resolution_mode,
-                  resolution_kind,
-                )
-                .map(|url| url.0.into_url_or_path())
-                .map_err(|err| match err.into_kind() {
-                  LegacyResolveErrorKind::TypesNotFound(err) => {
-                    FinalizeResolutionErrorKind::TypesNotFound(err)
-                  }
-                  LegacyResolveErrorKind::ModuleNotFound(err) => {
-                    FinalizeResolutionErrorKind::ModuleNotFound(err)
-                  }
-                })?,
+            let (resolved_url, resolved_method) = self
+              .resolve_package_dir_subpath(
+                &path,
+                ".",
+                maybe_referrer,
+                resolution_mode,
+                conditions,
+                resolution_kind,
+              )?;
+            self.finalize_resolution(
+              resolved_url,
+              resolved_method,
+              resolution_mode,
+              conditions,
+              resolution_kind,
+              maybe_referrer,
             )
           }
         }
@@ -669,25 +669,27 @@ impl<
     maybe_referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-  ) -> Result<UrlOrPath, PackageSubpathResolveError> {
+  ) -> Result<UrlOrPath, PackageSubpathFromDenoModuleResolveError> {
     // todo(dsherret): don't allocate a string here (maybe use an
     // enum that says the subpath is not prefixed with a ./)
     let package_subpath = package_subpath
       .map(|s| Cow::Owned(format!("./{s}")))
       .unwrap_or_else(|| Cow::Borrowed("."));
     let maybe_referrer = maybe_referrer.map(UrlOrPathRef::from_url);
+    let conditions = self.condition_resolver.resolve(resolution_mode);
     let (resolved_url, resolved_method) = self.resolve_package_dir_subpath(
       package_dir,
       &package_subpath,
       maybe_referrer.as_ref(),
       resolution_mode,
-      self.condition_resolver.resolve(resolution_mode),
+      conditions,
       resolution_kind,
     )?;
     let url_or_path = self.finalize_resolution(
       resolved_url,
       resolved_method,
       resolution_mode,
+      conditions,
       resolution_kind,
       maybe_referrer.as_ref(),
     )?;

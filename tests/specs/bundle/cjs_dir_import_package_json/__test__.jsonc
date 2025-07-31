@@ -1,0 +1,4 @@
+{
+  "args": "bundle --quiet main.cjs",
+  "output": "bundle.out"
+}

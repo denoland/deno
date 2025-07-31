@@ -28,7 +28,7 @@ use node_resolver::errors::PackageFolderResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
-use node_resolver::errors::PackageSubpathResolveError;
+use node_resolver::errors::PackageSubpathFromDenoModuleResolveError;
 use node_resolver::errors::TypesNotFoundError;
 use node_resolver::types_package_name;
 use thiserror::Error;
@@ -107,7 +107,7 @@ pub struct NodeModulesOutOfDateError {
 pub struct MissingPackageNodeModulesFolderError {
   pub package_json_path: PathBuf,
   // Don't bother displaying this error, so don't name it "source"
-  pub inner: PackageSubpathResolveError,
+  pub inner: PackageSubpathFromDenoModuleResolveError,
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -185,7 +185,7 @@ pub enum ResolveReqWithSubPathErrorKind {
   ),
   #[class(inherit)]
   #[error(transparent)]
-  PackageSubpathResolve(#[from] PackageSubpathResolveError),
+  PackageSubpathResolve(#[from] PackageSubpathFromDenoModuleResolveError),
 }
 
 impl ResolveReqWithSubPathErrorKind {
