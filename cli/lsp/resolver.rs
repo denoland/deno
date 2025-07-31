@@ -1142,7 +1142,7 @@ impl<'a> ResolverFactory<'a> {
               .unwrap(),
             ),
             bundle_mode: false, // will change if we add support for moduleResolution bundler
-            prefer_browser_field: false,
+            is_browser_platform: false,
           },
         )))
       })

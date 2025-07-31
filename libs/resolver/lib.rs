@@ -26,7 +26,6 @@ use node_resolver::UrlOrPathRef;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
-use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::UnknownBuiltInNodeModuleError;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolverRc;
@@ -393,13 +392,7 @@ impl<
             resolution_kind,
           )
           .map_err(|e| {
-            DenoResolveErrorKind::Node(
-              NodeResolveErrorKind::PackageResolve(
-                PackageResolveErrorKind::SubpathResolve(e).into_box(),
-              )
-              .into_box(),
-            )
-            .into_box()
+            DenoResolveErrorKind::Node(e.into_node_resolve_error()).into_box()
           })
           .and_then(|r| Ok(r.into_url()?)),
         MappedResolution::PackageJson {
@@ -466,13 +459,8 @@ impl<
                       resolution_kind,
                     )
                     .map_err(|e| {
-                      DenoResolveErrorKind::Node(
-                        NodeResolveErrorKind::PackageResolve(
-                          PackageResolveErrorKind::SubpathResolve(e).into_box(),
-                        )
-                        .into_box(),
-                      )
-                      .into_box()
+                      DenoResolveErrorKind::Node(e.into_node_resolve_error())
+                        .into_box()
                     })
                 })
                 .and_then(|r| Ok(r.into_url()?)),
