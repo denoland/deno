@@ -907,7 +907,8 @@ mod tests {
         .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      let module = document_modules.module_for_specifier(&specifier, None);
+      let module =
+        document_modules.module_for_specifier(&specifier, None, None);
       assert!(module.is_some(), "source could not be setup");
     }
     document_modules
@@ -992,7 +993,7 @@ mod tests {
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );
     let module = document_modules
-      .module_for_specifier(&specifier, None)
+      .module_for_specifier(&specifier, None, None)
       .unwrap();
     let actual =
       get_remote_completions(&module, "h", &range, &document_modules);

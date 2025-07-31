@@ -189,6 +189,7 @@ pub struct StateSnapshot {
   pub linter_resolver: Arc<LspLinterResolver>,
   pub document_modules: DocumentModules,
   pub resolver: Arc<LspResolver>,
+  pub cache: Arc<LspCache>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -637,10 +638,10 @@ impl Inner {
     document: &Document,
   ) -> LspResult<Option<Arc<DocumentModule>>> {
     let Some(module) = self.document_modules.primary_module(document) else {
-      if document
-        .uri()
-        .scheme()
-        .is_some_and(|s| s.eq_lowercase("deno"))
+      let url = uri_to_url(document.uri());
+      if url.scheme() != "file"
+        || self.resolver.in_node_modules(&url)
+        || self.cache.in_cache_directory(&url)
       {
         return Ok(None);
       }
@@ -698,6 +699,7 @@ impl Inner {
       linter_resolver: self.linter_resolver.clone(),
       document_modules: self.document_modules.clone(),
       resolver: self.resolver.snapshot(),
+      cache: Arc::new(self.cache.clone()),
     })
   }
 
