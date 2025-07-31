@@ -791,7 +791,7 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
         ResolveError::Other(other_error) => {
           if let Some(SpecifierError::ImportPrefixMissing {
             specifier, ..
-          }) = other_error.as_any().downcast_ref::<SpecifierError>()
+          }) = other_error.get_ref().downcast_ref::<SpecifierError>()
           {
             maybe_specifier = Some(specifier);
           }

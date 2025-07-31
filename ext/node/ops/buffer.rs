@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 
 #[op2(fast)]
@@ -118,4 +119,74 @@ fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
     }
   }
   ascii_bytes
+}
+
+#[op2]
+pub fn op_node_decode_utf8<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  buf: v8::Local<v8::ArrayBufferView>,
+  start: v8::Local<v8::Value>,
+  end: v8::Local<v8::Value>,
+) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
+  let buf = buf.get_contents(&mut [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP]);
+
+  let start =
+    parse_array_index(scope, start, 0).map_err(JsErrorBox::from_err)?;
+  let mut end =
+    parse_array_index(scope, end, buf.len()).map_err(JsErrorBox::from_err)?;
+
+  if end < start {
+    end = start;
+  }
+
+  if end > buf.len() {
+    return Err(JsErrorBox::from_err(BufferError::OutOfRange));
+  }
+
+  let buffer = &buf[start..end];
+
+  if buffer.len() <= 256 && buffer.is_ascii() {
+    v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+      .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
+  } else {
+    v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
+      .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum BufferError {
+  #[error("String too long")]
+  #[class(generic)]
+  #[property("code" = "ERR_STRING_TOO_LONG")]
+  StringTooLong,
+  #[error("Invalid type")]
+  #[class(generic)]
+  InvalidType,
+  #[error("Index out of range")]
+  #[class(range)]
+  #[property("code" = "ERR_OUT_OF_RANGE")]
+  OutOfRange,
+}
+
+#[inline(always)]
+fn parse_array_index(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+  default: usize,
+) -> Result<usize, BufferError> {
+  if arg.is_undefined() {
+    return Ok(default);
+  }
+
+  let Some(arg) = arg.integer_value(scope) else {
+    return Err(BufferError::InvalidType);
+  };
+  if arg < 0 {
+    return Err(BufferError::OutOfRange);
+  }
+  if arg > isize::MAX as i64 {
+    return Err(BufferError::OutOfRange);
+  }
+  Ok(arg as usize)
 }
