@@ -213,7 +213,7 @@
     "node:vm": "../ext/node/polyfills/vm.js",
     "node:wasi": "../ext/node/polyfills/wasi.ts",
     "node:worker_threads": "../ext/node/polyfills/worker_threads.ts",
-    "node:zlib": "../ext/node/polyfills/zlib.ts",
+    "node:zlib": "../ext/node/polyfills/zlib.js",
     "ext:deno_url/00_url.js": "../ext/url/00_url.js",
     "ext:deno_url/01_urlpattern.js": "../ext/url/01_urlpattern.js",
     "ext:deno_web/00_infra.js": "../ext/web/00_infra.js",

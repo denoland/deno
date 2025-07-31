@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::Extension;
@@ -67,16 +66,19 @@ impl deno_ffi::FfiPermissions for Permissions {
     unreachable!("snapshotting!")
   }
 
-  fn check_partial_with_path(
+  fn check_partial_with_path<'a>(
     &mut self,
-    _path: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+    _path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 }
 
 impl deno_napi::NapiPermissions for Permissions {
-  fn check(&mut self, _path: &str) -> Result<PathBuf, PermissionCheckError> {
+  fn check<'a>(
+    &mut self,
+    _path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
 }

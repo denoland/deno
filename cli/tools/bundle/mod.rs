@@ -19,12 +19,12 @@ use deno_ast::ModuleSpecifier;
 use deno_config::workspace::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
+use deno_path_util::resolve_url_or_path;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::loader::LoadCodeSourceError;
@@ -332,7 +332,7 @@ impl EsbuildBundler {
       write: false,
       stdin_contents: None.into(),
       stdin_resolve_dir: None.into(),
-      abs_working_dir: self.cwd.to_string_lossy().to_string(),
+      abs_working_dir: self.cwd.to_string_lossy().into_owned(),
       context: matches!(self.mode, BundlingMode::Watch),
       mangle_cache: None,
       node_paths: vec![],
@@ -820,7 +820,7 @@ impl DenoPluginHandler {
       requested_type
     );
 
-    let specifier = deno_core::resolve_url_or_path(
+    let specifier = deno_path_util::resolve_url_or_path(
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
@@ -1040,7 +1040,7 @@ fn resolve_url_or_path_absolute(
     Ok(Url::parse(specifier)?)
   } else {
     let path = current_dir.join(specifier);
-    let path = deno_path_util::normalize_path(&path);
+    let path = deno_path_util::normalize_path(Cow::Owned(path));
     let path = path.canonicalize()?;
     Ok(deno_path_util::url_from_file_path(&path)?)
   }

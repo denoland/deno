@@ -17,8 +17,6 @@ use deno_core::futures::stream;
 use deno_core::parking_lot::RwLock;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use tokio_util::sync::CancellationToken;
@@ -234,14 +232,7 @@ impl TestRun {
     )?);
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
-    // Various test files should not share the same permissions in terms of
-    // `PermissionsContainer` - otherwise granting/revoking permissions in one
-    // file would have impact on other files, which is undesirable.
-    let permission_desc_parser = factory.permission_desc_parser()?.clone();
-    let permissions = Permissions::from_options(
-      permission_desc_parser.as_ref(),
-      &cli_options.permissions_options(),
-    )?;
+    let permissions_container = factory.root_permissions_container()?;
     let main_graph_container = factory.main_module_graph_container().await?;
     main_graph_container
       .check_specifiers(
@@ -282,10 +273,10 @@ impl TestRun {
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
       let worker_factory = worker_factory.clone();
-      let permissions_container = PermissionsContainer::new(
-        permission_desc_parser.clone(),
-        permissions.clone(),
-      );
+      // Various test files should not share the same permissions in terms of
+      // `PermissionsContainer` - otherwise granting/revoking permissions in one
+      // file would have impact on other files, which is undesirable.
+      let permissions_container = permissions_container.deep_clone();
       let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);

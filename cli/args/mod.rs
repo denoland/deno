@@ -32,7 +32,6 @@ use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::CaData;
@@ -44,6 +43,7 @@ use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
@@ -452,6 +452,18 @@ impl WorkspaceMainModuleResolver {
           }
         }
       }
+      deno_resolver::workspace::MappedResolution::PackageJsonImport {
+        pkg_json,
+      } => self
+        .node_resolver
+        .resolve_package_import(
+          specifier,
+          Some(&node_resolver::UrlOrPathRef::from_url(cwd)),
+          Some(pkg_json),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Execution,
+        )?
+        .into_url()?,
     };
     Ok(url)
   }
@@ -916,18 +928,18 @@ impl CliOptions {
     &self.flags.ca_stores
   }
 
-  pub fn coverage_dir(&self) -> Option<String> {
+  pub fn coverage_dir(&self) -> Option<PathBuf> {
     match &self.flags.subcommand {
       DenoSubcommand::Test(test) => test
         .coverage_dir
         .as_ref()
-        .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
+        .map(|dir| self.initial_cwd.join(dir))
+        .or_else(|| env::var_os("DENO_COVERAGE_DIR").map(PathBuf::from)),
       DenoSubcommand::Run(flags) => flags
         .coverage_dir
         .as_ref()
-        .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
+        .map(|dir| self.initial_cwd.join(dir))
+        .or_else(|| env::var_os("DENO_COVERAGE_DIR").map(PathBuf::from)),
       _ => None,
     }
   }
@@ -1327,7 +1339,7 @@ fn try_resolve_node_binary_main_entrypoint(
 ) -> Result<Option<Url>, AnyError> {
   // node allows running files at paths without a `.js` extension
   // or at directories with an index.js file
-  let path = deno_core::normalize_path(initial_cwd.join(specifier));
+  let path = initial_cwd.join(specifier);
   if path.is_dir() {
     let index_file = path.join("index.js");
     Ok(if index_file.is_file() {
@@ -1524,11 +1536,8 @@ mod test {
     let config_text = r#"{}"#;
     let config_specifier = Url::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      None,
-      Some(&config_file),
-      &PathBuf::from("/"),
-    );
+    let actual =
+      resolve_import_map_specifier(None, Some(&config_file), Path::new("/"));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);
@@ -1536,7 +1545,7 @@ mod test {
 
   #[test]
   fn resolve_import_map_no_config() {
-    let actual = resolve_import_map_specifier(None, None, &PathBuf::from("/"));
+    let actual = resolve_import_map_specifier(None, None, Path::new("/"));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);

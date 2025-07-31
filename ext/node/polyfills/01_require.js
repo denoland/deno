@@ -4,6 +4,7 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import {
+  op_fs_cwd,
   op_import_sync,
   op_napi_open,
   op_require_as_file_path,
@@ -28,7 +29,6 @@ import {
   op_require_resolve_lookup_paths,
   op_require_stat,
   op_require_try_self,
-  op_require_try_self_parent_path,
 } from "ext:core/ops";
 const {
   ArrayIsArray,
@@ -819,12 +819,10 @@ Module._resolveFilename = function (
   }
 
   // Try module self resolution first
-  const parentPath = op_require_try_self_parent_path(
-    !!parent,
-    parent?.filename,
-    parent?.id,
-  );
-  const selfResolved = op_require_try_self(parentPath, request);
+  const parentPath = trySelfParentPath(parent);
+  const selfResolved = parentPath != null
+    ? op_require_try_self(parentPath, request)
+    : undefined;
   if (selfResolved) {
     const cacheKey = request + "\x00" +
       (paths.length === 1 ? paths[0] : ArrayPrototypeJoin(paths, "\x00"));
@@ -880,6 +878,19 @@ Module._resolveFilename = function (
   // throw the original error
   throw err;
 };
+
+function trySelfParentPath(parent) {
+  if (parent == null) {
+    return undefined;
+  }
+  if (typeof parent.filename === "string") {
+    return parent.filename;
+  }
+  if (parent.id === "<repl>" || parent.id === "internal/preload") {
+    return op_fs_cwd();
+  }
+  return undefined;
+}
 
 /**
  * Internal CommonJS API to always require modules before requiring the actual

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_kv"
-version = "0.119.0"
+version = "0.120.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -38,5 +38,6 @@ num-bigint.workspace = true
 rand.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
+sys_traits = { features = ["real"], workspace = true }
 thiserror.workspace = true
 url.workspace = true

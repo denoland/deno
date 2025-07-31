@@ -88,7 +88,11 @@ pub fn extract_standalone(
     let fs_root = VfsRoot {
       dir: VirtualDirectory {
         // align the name of the directory with the root dir
-        name: root_path.file_name().unwrap().to_string_lossy().to_string(),
+        name: root_path
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .into_owned(),
         entries: vfs_root_entries,
       },
       root_path: root_path.clone(),

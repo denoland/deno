@@ -1,4 +1,4 @@
-const VERSION = 1;
+const VERSION = 2;
 
 const server = new Deno.QuicEndpoint({
   hostname: "localhost",
@@ -31,6 +31,7 @@ const child = new Deno.Command(Deno.execPath(), {
 }).spawn();
 
 setTimeout(() => {
+  console.error("timeout, killing");
   child.kill("SIGKILL");
   Deno.exit(1);
 }, 5000);
@@ -48,19 +49,19 @@ async function handleConnection(conn: Deno.QuicConn) {
     const reader = bi.readable.getReader({ mode: "byob" });
     const version = await readUint32LE(reader);
     if (version !== VERSION) {
-      conn.close();
+      conn.close({ closeCode: 1, reason: "invalid version" });
       return;
     }
     const writer = bi.writable.getWriter();
     await writeUint32LE(writer, VERSION);
     const header = await readStreamHeader(reader);
     if (header.headerType !== "Control") {
-      conn.close();
+      conn.close({ closeCode: 1, reason: "expected Control" });
       return;
     }
     const auth = await readStreamHeader(reader);
     if (auth.headerType !== "AuthenticateApp") {
-      conn.close();
+      conn.close({ closeCode: 1, reason: "expected AuthenticateApp" });
       return;
     }
     await writeStreamHeader(writer, {
@@ -73,6 +74,16 @@ async function handleConnection(conn: Deno.QuicConn) {
       }:${server.addr.port}`,
       env: {},
       metadata: {},
+    });
+
+    const next = await readStreamHeader(reader);
+    if (next.headerType !== "Listening") {
+      conn.close({ closeCode: 1, reason: "expected Listening" });
+      return;
+    }
+
+    await writeStreamHeader(writer, {
+      headerType: "Routed",
     });
 
     reader.releaseLock();

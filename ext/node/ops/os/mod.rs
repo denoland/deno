@@ -295,6 +295,6 @@ where
   Ok(
     sys_traits::impls::RealSys
       .env_home_dir()
-      .map(|path| path.to_string_lossy().to_string()),
+      .map(|path| path.to_string_lossy().into_owned()),
   )
 }

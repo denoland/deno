@@ -173,7 +173,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         ))
       })?
     };
-    let referrer_kind = if self
+    let resolution_mode = if self
       .shared
       .cjs_tracker
       .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))
@@ -185,19 +185,17 @@ impl ModuleLoader for EmbeddedModuleLoader {
     };
 
     if self.shared.node_resolver.in_npm_package(&referrer) {
-      return Ok(
-        self
-          .shared
-          .node_resolver
-          .resolve(
-            raw_specifier,
-            &referrer,
-            referrer_kind,
-            NodeResolutionKind::Execution,
-          )
-          .and_then(|res| res.into_url())
-          .map_err(JsErrorBox::from_err)?,
-      );
+      return self
+        .shared
+        .node_resolver
+        .resolve(
+          raw_specifier,
+          &referrer,
+          resolution_mode,
+          NodeResolutionKind::Execution,
+        )
+        .and_then(|res| res.into_url())
+        .map_err(JsErrorBox::from_err);
     }
 
     let mapped_resolution = self.shared.workspace_resolver.resolve(
@@ -222,7 +220,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             pkg_json.dir_path(),
             sub_path.as_deref(),
             Some(&referrer),
-            referrer_kind,
+            resolution_mode,
             NodeResolutionKind::Execution,
           )
           .map_err(JsErrorBox::from_err)
@@ -239,19 +237,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .as_ref()
         .map_err(|e| JsErrorBox::from_err(e.clone()))?
       {
-        PackageJsonDepValue::File(_) => Err(
-          JsErrorBox::from_err(
-            DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
-              .into_box(),
-          )
-          .into(),
-        ),
-        PackageJsonDepValue::JsrReq(_) => Err(
-          JsErrorBox::from_err(
-            DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
-          )
-          .into(),
-        ),
+        PackageJsonDepValue::File(_) => Err(JsErrorBox::from_err(
+          DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier.into_box(),
+        )),
+        PackageJsonDepValue::JsrReq(_) => Err(JsErrorBox::from_err(
+          DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
+        )),
         PackageJsonDepValue::Req(req) => Ok(
           self
             .shared
@@ -260,7 +251,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               req,
               sub_path.as_deref(),
               &referrer,
-              referrer_kind,
+              resolution_mode,
               NodeResolutionKind::Execution,
             )
             .map_err(JsErrorBox::from_err)
@@ -285,7 +276,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 pkg_folder,
                 sub_path.as_deref(),
                 Some(&referrer),
-                referrer_kind,
+                resolution_mode,
                 NodeResolutionKind::Execution,
               )
               .map_err(JsErrorBox::from_err)
@@ -295,25 +286,37 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
         }
       },
+      Ok(MappedResolution::PackageJsonImport { pkg_json }) => self
+        .shared
+        .node_resolver
+        .resolve_package_import(
+          raw_specifier,
+          Some(&node_resolver::UrlOrPathRef::from_url(&referrer)),
+          Some(pkg_json),
+          resolution_mode,
+          NodeResolutionKind::Execution,
+        )
+        .map_err(JsErrorBox::from_err)
+        .and_then(|url_or_path| {
+          url_or_path.into_url().map_err(JsErrorBox::from_err)
+        }),
       Ok(MappedResolution::Normal { specifier, .. }) => {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          return Ok(
-            self
-              .shared
-              .npm_req_resolver
-              .resolve_req_reference(
-                &reference,
-                &referrer,
-                referrer_kind,
-                NodeResolutionKind::Execution,
-              )
-              .map_err(JsErrorBox::from_err)
-              .and_then(|url_or_path| {
-                url_or_path.into_url().map_err(JsErrorBox::from_err)
-              })?,
-          );
+          return self
+            .shared
+            .npm_req_resolver
+            .resolve_req_reference(
+              &reference,
+              &referrer,
+              resolution_mode,
+              NodeResolutionKind::Execution,
+            )
+            .map_err(JsErrorBox::from_err)
+            .and_then(|url_or_path| {
+              url_or_path.into_url().map_err(JsErrorBox::from_err)
+            });
         }
 
         if specifier.scheme() == "jsr" {
@@ -344,16 +347,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
           .resolve_if_for_npm_pkg(
             raw_specifier,
             &referrer,
-            referrer_kind,
+            resolution_mode,
             NodeResolutionKind::Execution,
           )
           .map_err(JsErrorBox::from_err)?;
         if let Some(res) = maybe_res {
-          return Ok(res.into_url().map_err(JsErrorBox::from_err)?);
+          return res.into_url().map_err(JsErrorBox::from_err);
         }
-        Err(JsErrorBox::from_err(err).into())
+        Err(JsErrorBox::from_err(err))
       }
-      Err(err) => Err(JsErrorBox::from_err(err).into()),
+      Err(err) => Err(JsErrorBox::from_err(err)),
     }
   }
 
@@ -385,7 +388,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           Ok(response) => response,
           Err(err) => {
             return deno_core::ModuleLoadResponse::Sync(Err(
-              JsErrorBox::type_error(format!("{:#}", err)).into(),
+              JsErrorBox::type_error(format!("{:#}", err)),
             ));
           }
         };
@@ -482,7 +485,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           Ok(is_maybe_cjs) => is_maybe_cjs,
           Err(err) => {
             return deno_core::ModuleLoadResponse::Sync(Err(
-              JsErrorBox::type_error(format!("{:?}", err)).into(),
+              JsErrorBox::type_error(format!("{:?}", err)),
             ));
           }
         };
@@ -544,15 +547,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
           ))
         }
       }
-      Ok(None) => deno_core::ModuleLoadResponse::Sync(Err(
-        JsErrorBox::type_error(format!(
-          "Module not found: {}",
-          original_specifier
-        ))
-        .into(),
-      )),
+      Ok(None) => {
+        deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(
+          format!("Module not found: {}", original_specifier),
+        )))
+      }
       Err(err) => deno_core::ModuleLoadResponse::Sync(Err(
-        JsErrorBox::type_error(format!("{:?}", err)).into(),
+        JsErrorBox::type_error(format!("{:?}", err)),
       )),
     }
   }
@@ -972,11 +973,11 @@ pub async fn run(
         // do nothing, already granted
       }
       Some(vec) => {
-        vec.push(root_path.to_string_lossy().to_string());
+        vec.push(root_path.to_string_lossy().into_owned());
       }
       None => {
         permissions.allow_read =
-          Some(vec![root_path.to_string_lossy().to_string()]);
+          Some(vec![root_path.to_string_lossy().into_owned()]);
       }
     }
 
