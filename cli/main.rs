@@ -606,6 +606,9 @@ async fn resolve_flags_and_init(
     Err(err) => exit_for_error(AnyError::from(err)),
   };
 
+  // preserve already loaded env variables
+  EnvManager::instance();
+  load_env_variables_from_env_files(flags.env_file.as_ref(), flags.log_level);
   flags.unstable_config.fill_with_env();
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
@@ -634,8 +637,6 @@ async fn resolve_flags_and_init(
       std::env::set_var("DENO_CONNECTED", &host);
     }
   }
-  EnvManager::instance(); // preserve already loaded env variables
-  load_env_variables_from_env_files(flags.env_file.as_ref(), flags.log_level);
 
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
