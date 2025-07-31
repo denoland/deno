@@ -6,6 +6,54 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.4.3 / 2025.07.30
+
+- feat(unstable): add useful metadata to tunnel (#30161)
+- fix(bundle): don't force managed npm resolution (#30200)
+- fix(check): ensure module not found errors are surfaced (#30181)
+- fix(compile): do not error including npm packages that don't match current
+  system (#30188)
+- fix(compile): do not include managed npm deps when graph does not have any npm
+  pkgs (#30189)
+- fix(ext/node): `fs.read` and `fs.write` promisify compatibility (#30152)
+- fix(ext/node): add process._rawDebug (#30141)
+- fix(ext/node): fix segmentation fault when spkac is empty (#30207)
+- fix(ext/node): implement TLSSocket.getPeerCertificate (#30146)
+- fix(ext/node): implement tls.checkServerIdentitiy (#30148)
+- fix(ext/node): use Zlib base for brotli handles (#30112)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal_binding/_listen.ts` (#30100)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal_binding/pipe_wrap.ts` (#30241)
+- fix(ext/node): validate `fd` is integer on `fsync` and `fdatasync` (#30215)
+- fix(http): catch more tunnel close errors (#30236)
+- fix(lib/node): change ERR_INVALID_PACKAGE_TARGET to
+  ERR_PACKAGE_PATH_NOT_EXPORTED when no package.json#exports condition matches
+  (#29841)
+- fix(lsp): do not error for bytes or text import of json module (#30137)
+- fix(lsp): improve renaming a file with bytes or text imports (#30142)
+- fix(publish): improve diagnostic when importing from another package using a
+  relative import (#30203)
+- fix(regression): do not error when specifying `--config` flag with `../`
+  component (#30208)
+- fix(task): `--recursive` - order tasks by package dependencies (#30129)
+- fix(task): improve parsing of quotes in command substitution (#30162)
+- fix(task): show package name of task when --recursive (#30136)
+- fix(tsconfig): don't use tsc-compatible defaults for deno.json compiler
+  options (#30242)
+- fix: do not panic deserializing config with invalid number value (#30171)
+- fix: don't invoke `Proxy` getter trap on `console.log` (#30230)
+- fix: ensure coverage dir is stored absolute to prevent issues when cwd changes
+  (#30225)
+- fix: reduce change of corrupt lockfile error when updating dependencies in the
+  config file (#30239)
+- fix: support package.json imports in a Deno workspace (#30198)
+- fix: tunnels in processes that don't listen (#30178)
+- fix: update setTimeout and setInterval callback type to support strin…
+  (#30183)
+- fix: use 'deno_signals' crate for signal handling (#30204)
+- perf(buffer): optimize Buffer.subarray and Buffer.prototype.utf8Slice (#30213)
+
 ### 2.4.2 / 2025.07.16
 
 - fix(bundle): default "jsxImportSource" to "react" (#30082)

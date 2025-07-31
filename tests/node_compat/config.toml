@@ -430,6 +430,9 @@
 "parallel/test-fs-fsync.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
+"parallel/test-fs-open-no-close.js" = {}
+"parallel/test-fs-open-numeric-flags.js" = {}
+"parallel/test-fs-open.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
@@ -450,10 +453,13 @@
 "parallel/test-fs-readfile-unlink.js" = {}
 "parallel/test-fs-readfile-zero-byte-liar.js" = {}
 "parallel/test-fs-readfilesync-enoent.js" = {}
+"parallel/test-fs-readv-promisify.js" = {}
 "parallel/test-fs-ready-event-stream.js" = {}
+"parallel/test-fs-rename-type-check.js" = {}
 "parallel/test-fs-rmdir-type-check.js" = {}
 "parallel/test-fs-stream-fs-options.js" = {}
 "parallel/test-fs-stream-options.js" = {}
+"parallel/test-fs-unlink-type-check.js" = {}
 "parallel/test-fs-util-validateoffsetlength.js" = {}
 "parallel/test-fs-write-negativeoffset.js" = {}
 "parallel/test-fs-write-no-fd.js" = {}
