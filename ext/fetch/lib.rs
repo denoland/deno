@@ -245,17 +245,13 @@ impl From<ClientSendError> for FetchError {
     // try checking the source of the source.
     if let Some(source) = value.source.source() {
       if let Some(source) = source.source() {
-        if let Some(dns_error) = source.downcast_ref::<DnsResolveError>() {
-          match dns_error {
-            DnsResolveError::Permission(
-              PermissionCheckError::PermissionDenied(denied),
-            ) => {
-              return FetchError::Permission(
-                PermissionCheckError::PermissionDenied(denied.clone()),
-              );
-            }
-            _ => {}
-          }
+        if let Some(DnsResolveError::Permission(
+          PermissionCheckError::PermissionDenied(denied),
+        )) = source.downcast_ref::<DnsResolveError>()
+        {
+          return FetchError::Permission(
+            PermissionCheckError::PermissionDenied(denied.clone()),
+          );
         }
       }
     }

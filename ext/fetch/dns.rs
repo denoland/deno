@@ -162,7 +162,7 @@ impl Service<Name> for Resolver {
           let x: Vec<_> = result.into_iter().collect();
           for addr in &x {
             permissions
-              .check_net_resolved_addr_is_not_denied(&addr, "Deno.fetch()")?;
+              .check_net_resolved_addr_is_not_denied(addr, "Deno.fetch()")?;
           }
           let iter: SocketAddrs = x.into_iter();
           Ok(iter)
@@ -178,7 +178,7 @@ impl Service<Name> for Resolver {
 
           for addr in &x {
             permissions
-              .check_net_resolved_addr_is_not_denied(&addr, "Deno.fetch()")?;
+              .check_net_resolved_addr_is_not_denied(addr, "Deno.fetch()")?;
           }
           let iter: SocketAddrs = x.into_iter();
           Ok(iter)
@@ -191,7 +191,7 @@ impl Service<Name> for Resolver {
           let x: Vec<_> = result.into_iter().collect();
           for addr in &x {
             permissions
-              .check_net_resolved_addr_is_not_denied(&addr, "Deno.fetch()")?;
+              .check_net_resolved_addr_is_not_denied(addr, "Deno.fetch()")?;
           }
           let iter: SocketAddrs = x.into_iter();
           Ok(iter)
