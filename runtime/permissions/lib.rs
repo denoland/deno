@@ -743,14 +743,14 @@ impl<
 
   fn check_desc_only_denied(
     &mut self,
-    desc: Option<&TQuery>,
+    desc: Option<&TAllowDesc::QueryDesc<'_>>,
     assert_non_partial: bool,
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     let (result, prompted, is_allow_all) = self
       .query_desc_denied(desc, AllowPartial::from(!assert_non_partial))
       .check(
-        TQuery::flag_name(),
+        TAllowDesc::QueryDesc::flag_name(),
         api_name,
         || desc.map(|d| format_display_name(d.display_name()).into_owned()),
         self.prompt,
@@ -771,7 +771,7 @@ impl<
 
   fn query_desc_denied(
     &self,
-    desc: Option<&TQuery>,
+    desc: Option<&TAllowDesc::QueryDesc<'_>>,
     allow_partial: AllowPartial,
   ) -> PermissionState {
     if self.is_flag_denied(desc)

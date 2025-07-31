@@ -88,3 +88,18 @@ await printResult(
   "Deno.connect tcp",
   () => Deno.connect({ hostname: "localhost", port: 3000, transport: "tcp" }),
 );
+
+await printResult(
+  "Deno.QuicEndpoint.listen",
+  () => {
+    const endpoint = new Deno.QuicEndpoint({
+      hostname: "localhost",
+    });
+    return endpoint.listen();
+  },
+);
+
+await printResult(
+  "Deno.connectQuic",
+  () => Deno.connectQuic({ hostname: "localhost", port: 3000 }),
+);

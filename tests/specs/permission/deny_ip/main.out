@@ -6,3 +6,5 @@ Deno.listenTls threw error: NotCapable: Requires net access to "127.0.0.1:3000",
 Deno.connectTls threw error: NotCapable: Requires net access to "127.0.0.1:3000", run again with the --allow-net flag
 Deno.listenDatagram threw error: NotCapable: Requires net access to "127.0.0.1:3000", run again with the --allow-net flag
 Deno.connect tcp threw error: NotCapable: Requires net access to "127.0.0.1:3000", run again with the --allow-net flag
+Deno.QuicEndpoint.listen threw error: NotCapable: Requires net access to "127.0.0.1:0", run again with the --allow-net flag
+Deno.connectQuic threw error: NotCapable: Requires net access to "127.0.0.1:3000", run again with the --allow-net flag
