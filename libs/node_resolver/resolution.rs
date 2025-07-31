@@ -95,12 +95,12 @@ impl ConditionResolver {
       override_default: Option<Vec<Cow<'static, str>>>,
       default_conditions: &'static [Cow<'static, str>],
     ) -> Cow<'static, [Cow<'static, str>]> {
+      let default_conditions = override_default
+        .map(Cow::Owned)
+        .unwrap_or(Cow::Borrowed(default_conditions));
       if user_conditions.is_empty() {
-        Cow::Borrowed(default_conditions)
+        default_conditions
       } else {
-        let default_conditions = override_default
-          .map(Cow::Owned)
-          .unwrap_or(Cow::Borrowed(default_conditions));
         let mut new =
           Vec::with_capacity(user_conditions.len() + default_conditions.len());
         let mut append =
@@ -243,7 +243,7 @@ enum ResolvedMethod {
 #[derive(Debug, Default, Clone)]
 pub struct NodeResolverOptions {
   pub conditions: NodeConditionOptions,
-  pub prefer_browser_field: bool,
+  pub is_browser_platform: bool,
   pub bundle_mode: bool,
   /// TypeScript version to use for typesVersions resolution and
   /// `types@req` exports resolution.
@@ -318,10 +318,32 @@ impl<
       npm_pkg_folder_resolver,
       pkg_json_resolver,
       sys,
-      condition_resolver: ConditionResolver::new(options.conditions),
+      condition_resolver: ConditionResolver::new(NodeConditionOptions {
+        conditions: options.conditions.conditions,
+        import_conditions_override: options
+          .conditions
+          .import_conditions_override
+          .or_else(|| {
+            if options.is_browser_platform {
+              Some(vec![Cow::Borrowed("browser"), Cow::Borrowed("import")])
+            } else {
+              None
+            }
+          }),
+        require_conditions_override: options
+          .conditions
+          .require_conditions_override
+          .or_else(|| {
+            if options.is_browser_platform {
+              Some(vec![Cow::Borrowed("browser"), Cow::Borrowed("require")])
+            } else {
+              None
+            }
+          }),
+      }),
       resolution_config: ResolutionConfig {
         bundle_mode: options.bundle_mode,
-        prefer_browser_field: options.prefer_browser_field,
+        prefer_browser_field: options.is_browser_platform,
         typescript_version: options.typescript_version,
       },
     }
