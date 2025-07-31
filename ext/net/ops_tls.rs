@@ -55,7 +55,6 @@ use crate::ops::IpAddr;
 use crate::ops::NetError;
 use crate::ops::TlsHandshakeInfo;
 use crate::raw::NetworkListenerResource;
-use crate::resolve_addr::resolve_addr_sync;
 use crate::resolve_addr::resolve_addr_sync_with_permissions;
 use crate::resolve_addr::resolve_addr_with_permissions;
 use crate::tcp::TcpListener;
@@ -513,8 +512,11 @@ where
       .map_err(NetError::Permission)?;
   }
 
-  let bind_addr =
-    resolve_addr_sync_with_permissions::<NP>(state, "Deno.listenTls()", addr)?;
+  let bind_addr = resolve_addr_sync_with_permissions::<NP, NetError>(
+    state,
+    "Deno.listenTls()",
+    &addr,
+  )?;
 
   let tcp_listener = if args.load_balanced {
     TcpListener::bind_load_balanced(bind_addr)

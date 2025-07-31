@@ -50,7 +50,9 @@ use serde::Serialize;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
-use crate::resolve_addr::resolve_addr_sync;
+use crate::ops::IpAddr as Addr;
+use crate::resolve_addr::resolve_addr_sync_i_promise_i_dont_need_permissions;
+use crate::resolve_addr::resolve_addr_sync_with_permissions;
 
 #[derive(Debug, thiserror::Error, JsError)]
 pub enum QuicError {
@@ -126,12 +128,6 @@ pub enum QuicError {
 struct CloseInfo {
   close_code: u64,
   reason: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Addr {
-  hostname: String,
-  port: u16,
 }
 
 #[derive(Deserialize)]
@@ -225,15 +221,32 @@ impl GarbageCollected for EndpointResource {
 #[cppgc]
 pub(crate) fn op_quic_endpoint_create<NP>(
   state: Rc<RefCell<OpState>>,
-  #[serde] addr: Addr,
+  #[serde] addr: crate::ops::IpAddr,
   can_listen: bool,
 ) -> Result<EndpointResource, QuicError>
 where
   NP: NetPermissions + 'static,
 {
-  let addr = resolve_addr_sync(&addr.hostname, addr.port)?
+  if can_listen {
+    state.borrow_mut().borrow_mut::<NP>().check_net(
+      &(&addr.hostname, Some(addr.port)),
+      "new Deno.QuicEndpoint()",
+    )?;
+  }
+  let addr = if can_listen {
+    resolve_addr_sync_with_permissions::<NP, QuicError>(
+      &mut state.borrow_mut(),
+      "new Deno.QuicEndpoint()",
+      &addr,
+    )?
+  } else {
+    resolve_addr_sync_i_promise_i_dont_need_permissions(
+      &addr.hostname,
+      addr.port,
+    )?
     .next()
-    .ok_or_else(|| QuicError::UnableToResolve)?;
+    .ok_or_else(|| QuicError::UnableToResolve)?
+  };
 
   if can_listen {
     state.borrow_mut().borrow_mut::<NP>().check_net(
@@ -539,14 +552,11 @@ where
     "Deno.connectQuic()",
   )?;
 
-  let sock_addr = resolve_addr_sync(&args.addr.hostname, args.addr.port)?
-    .next()
-    .ok_or_else(|| QuicError::UnableToResolve)?;
-
-  state
-    .borrow_mut()
-    .borrow_mut::<NP>()
-    .check_net_resolved_addr_is_not_denied(&sock_addr, "Deno.connectQuic()")?;
+  let sock_addr = resolve_addr_sync_with_permissions::<NP, QuicError>(
+    &mut state.borrow_mut(),
+    "Deno.connectQuic()",
+    &args.addr,
+  )?;
 
   let root_cert_store = state
     .borrow()

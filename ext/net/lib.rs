@@ -23,6 +23,7 @@ use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::rustls::RootCertStore;
+use deno_tunnel::TunnelAddr;
 pub use quic::QuicError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
@@ -273,4 +274,28 @@ mod ops_unix {
   stub_op!(op_node_unstable_net_listen_unixpacket<P>);
   stub_op!(op_net_recv_unixpacket);
   stub_op!(op_net_send_unixpacket<P>);
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct IpAddr {
+  pub hostname: String,
+  pub port: u16,
+}
+
+impl From<SocketAddr> for IpAddr {
+  fn from(addr: SocketAddr) -> Self {
+    Self {
+      hostname: addr.ip().to_string(),
+      port: addr.port(),
+    }
+  }
+}
+
+impl From<TunnelAddr> for IpAddr {
+  fn from(addr: TunnelAddr) -> Self {
+    Self {
+      hostname: addr.hostname(),
+      port: addr.port(),
+    }
+  }
 }

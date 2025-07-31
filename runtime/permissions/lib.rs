@@ -719,10 +719,10 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     desc: Option<&TQuery>,
     allow_partial: AllowPartial,
   ) -> PermissionState {
-    if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
-      PermissionState::Denied
-    } else if matches!(allow_partial, AllowPartial::TreatAsDenied)
-      && self.is_partial_flag_denied(desc)
+    if self.is_flag_denied(desc)
+      || self.is_prompt_denied(desc)
+      || (matches!(allow_partial, AllowPartial::TreatAsDenied)
+        && self.is_partial_flag_denied(desc))
     {
       PermissionState::Denied
     } else {
