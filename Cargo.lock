@@ -1108,16 +1108,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "core-foundation"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2a6cd9ae233e7f62ba4e9353e81a88df7fc8a5987b8d445b4d90c879bd156f6"
-dependencies = [
- "core-foundation-sys",
- "libc",
-]
-
-[[package]]
 name = "core-foundation-sys"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1130,7 +1120,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf"
 dependencies = [
  "bitflags 1.3.2",
- "core-foundation 0.9.4",
+ "core-foundation",
  "libc",
 ]
 
@@ -1506,17 +1496,12 @@ version = "4.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b42a16374481d92aed73ae45b1f120207d8e71d24fb89f357fadbd8f946fd84b"
 dependencies = [
- "aes",
- "block-padding",
- "cbc",
  "dbus",
  "futures-util",
- "hkdf",
  "num",
  "once_cell",
  "openssl",
  "rand 0.8.5",
- "sha2",
 ]
 
 [[package]]
@@ -2229,6 +2214,7 @@ dependencies = [
  "denokv_proto",
  "denokv_remote",
  "denokv_sqlite",
+ "dyn-clone",
  "faster-hex",
  "http 1.1.0",
  "http-body-util",
@@ -5379,15 +5365,13 @@ dependencies = [
 
 [[package]]
 name = "keyring"
-version = "4.0.0-rc.1"
+version = "3.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb06f73ca0ea1cbd3858e54404585e33dccb860cb4fc8a66ad5e75a5736f3f19"
+checksum = "1961983669d57bdfe6c0f3ef8e4c229b5ef751afcc7d87e4271d2f71f6ccfa8b"
 dependencies = [
- "byteorder",
  "dbus-secret-service",
  "log",
- "security-framework 3.2.0",
- "windows-sys 0.59.0",
+ "openssl",
 ]
 
 [[package]]
@@ -7608,7 +7592,7 @@ dependencies = [
  "rustls-pemfile",
  "rustls-pki-types",
  "schannel",
- "security-framework 2.10.0",
+ "security-framework",
 ]
 
 [[package]]
@@ -7810,20 +7794,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "770452e37cad93e0a50d5abc3990d2bc351c36d0328f86cefec2f2fb206eaef6"
 dependencies = [
  "bitflags 1.3.2",
- "core-foundation 0.9.4",
- "core-foundation-sys",
- "libc",
- "security-framework-sys",
-]
-
-[[package]]
-name = "security-framework"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "271720403f46ca04f7ba6f55d438f8bd878d6b8ca0a1046e8228c4145bcbb316"
-dependencies = [
- "bitflags 2.8.0",
- "core-foundation 0.10.1",
+ "core-foundation",
  "core-foundation-sys",
  "libc",
  "security-framework-sys",
