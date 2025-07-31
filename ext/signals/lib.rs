@@ -7,6 +7,10 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
 use signal_hook::consts::*;
+use tokio::sync::watch;
+
+mod dict;
+pub use dict::*;
 
 #[cfg(windows)]
 static SIGHUP: i32 = 1;
@@ -91,7 +95,14 @@ pub fn register(
   signal: i32,
   prevent_default: bool,
   f: Box<dyn Fn() + Send>,
-) -> u32 {
+) -> Result<u32, std::io::Error> {
+  if is_forbidden(signal) {
+    return Err(std::io::Error::new(
+      std::io::ErrorKind::Other,
+      format!("Refusing to register signal {signal}"),
+    ));
+  }
+
   let (handle, handlers) = HANDLERS.get_or_init(|| {
     let handle = init();
 
@@ -120,7 +131,7 @@ pub fn register(
     }
   }
 
-  id
+  Ok(id)
 }
 
 pub fn unregister(signal: i32, id: u32) {
@@ -140,9 +151,9 @@ pub fn unregister(signal: i32, id: u32) {
 static BEFORE_EXIT: OnceLock<Mutex<Vec<Handler>>> = OnceLock::new();
 
 pub fn before_exit(f: fn()) {
-  register(SIGHUP, false, Box::new(f));
-  register(SIGTERM, false, Box::new(f));
-  register(SIGINT, false, Box::new(f));
+  register(SIGHUP, false, Box::new(f)).unwrap();
+  register(SIGTERM, false, Box::new(f)).unwrap();
+  register(SIGINT, false, Box::new(f)).unwrap();
   BEFORE_EXIT
     .get_or_init(|| Mutex::new(vec![]))
     .lock()
@@ -161,4 +172,34 @@ pub fn run_exit() {
 
 pub fn is_forbidden(signo: i32) -> bool {
   FORBIDDEN.contains(&signo)
+}
+
+pub struct SignalStream {
+  rx: watch::Receiver<()>,
+}
+
+impl SignalStream {
+  pub async fn recv(&mut self) -> Option<()> {
+    self.rx.changed().await.ok()
+  }
+}
+
+pub fn signal_stream(signo: i32) -> Result<SignalStream, std::io::Error> {
+  let (tx, rx) = watch::channel(());
+  let cb = Box::new(move || {
+    tx.send_replace(());
+  });
+  register(signo, true, cb)?;
+  Ok(SignalStream { rx })
+}
+
+pub async fn ctrl_c() -> std::io::Result<()> {
+  let mut stream = signal_stream(libc::SIGINT)?;
+  match stream.recv().await {
+    Some(_) => Ok(()),
+    None => Err(std::io::Error::new(
+      std::io::ErrorKind::Other,
+      "failed to receive SIGINT signal",
+    )),
+  }
 }

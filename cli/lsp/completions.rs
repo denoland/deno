@@ -441,7 +441,7 @@ fn get_local_completions(
     let items = entries
       .filter_map(|de| {
         let de = de.ok()?;
-        let label = de.path().file_name()?.to_string_lossy().to_string();
+        let label = de.path().file_name()?.to_string_lossy().into_owned();
         let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
         if entry_specifier == *referrer {
           return None;

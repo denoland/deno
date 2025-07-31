@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_process"
-version = "0.26.0"
+version = "0.27.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,6 +21,7 @@ deno_io.workspace = true
 deno_os.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
+deno_signals.workspace = true
 deno_subprocess_windows.workspace = true
 libc.workspace = true
 log.workspace = true

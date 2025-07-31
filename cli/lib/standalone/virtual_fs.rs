@@ -285,7 +285,7 @@ impl VirtualSymlinkParts {
       path
         .components()
         .filter(|c| !matches!(c, std::path::Component::RootDir))
-        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
         .collect(),
     )
   }

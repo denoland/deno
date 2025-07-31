@@ -1,5 +1,1 @@
-{
-  // It shouldn't matter that the tsconfig doesn't include any files, only that
-  // it's detected in the workspace.
-  "include": []
-}
+{}

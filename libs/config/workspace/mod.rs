@@ -2976,7 +2976,7 @@ pub mod test {
     let root_path = root_dir().join("../dir");
     let workspace_dir = workspace_for_root_and_member_with_fs(
       json!({
-        "links": [root_path.to_string_lossy().to_string()],
+        "links": [root_path.to_string_lossy().into_owned()],
       }),
       json!({}),
       |fs| {
