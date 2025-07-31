@@ -92,7 +92,7 @@ impl TypeCheckCache {
       .0
       .query_row(
         "SELECT text FROM tsbuildinfo WHERE specifier=?1 LIMIT 1",
-        params![specifier.to_string()],
+        params![specifier.as_str()],
         |row| Ok(row.get::<_, String>(0)?),
       )
       .ok()?
@@ -116,7 +116,7 @@ impl TypeCheckCache {
   ) -> Result<(), AnyError> {
     self.0.execute(
       "INSERT OR REPLACE INTO tsbuildinfo (specifier, text) VALUES (?1, ?2)",
-      params![specifier.to_string(), text],
+      params![specifier.as_str(), text],
     )?;
     Ok(())
   }

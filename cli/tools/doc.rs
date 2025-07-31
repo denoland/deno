@@ -306,7 +306,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
 
     if url.domain() == Some("deno.land") {
       url.set_query(Some(&format!("s={}", symbol.join("."))));
-      return Some(url.to_string());
+      return Some(url.into());
     }
 
     None

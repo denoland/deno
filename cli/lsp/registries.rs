@@ -853,7 +853,7 @@ impl ModuleRegistry {
                 {
                   format!("{text}{suffix}")
                 } else {
-                  url.to_string()
+                  url.into()
                 };
                 let text_edit =
                   Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
