@@ -632,7 +632,7 @@ async fn resolve_flags_and_init(
     // SAFETY: We're doing this before any threads are created.
     unsafe {
       std::env::set_var("DENO_CONNECTED", &host);
-    }  
+    }
   }
   EnvManager::instance(); // preserve already loaded env variables
   load_env_variables_from_env_files(flags.env_file.as_ref(), flags.log_level);
