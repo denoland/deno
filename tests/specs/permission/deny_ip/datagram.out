@@ -1,0 +1,7 @@
+listener ready
+sending
+errored:  NotCapable: Requires net access to "127.0.0.1:4540", run again with the --allow-net flag
+    at DatagramConn.send ([WILDCARD])
+    at [WILDCARD] {
+  name: "NotCapable"
+}

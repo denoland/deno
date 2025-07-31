@@ -534,7 +534,7 @@ impl WebWorker {
             .unsafely_ignore_certificate_errors
             .clone(),
           file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-          ..Default::default()
+          ..deno_fetch::Options::default(Arc::new(services.permissions.clone()))
         },
       ),
       deno_cache::deno_cache::init(create_cache),

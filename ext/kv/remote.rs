@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::marker::PhantomData;
+use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -12,6 +13,7 @@ use deno_core::OpState;
 use deno_core::futures::Stream;
 use deno_error::JsErrorBox;
 use deno_fetch::CreateHttpClientOptions;
+use deno_fetch::FetchPermissions;
 use deno_fetch::create_http_client;
 use deno_permissions::PermissionCheckError;
 use deno_tls::Proxy;
@@ -45,11 +47,16 @@ impl HttpOptions {
   }
 }
 
-pub trait RemoteDbHandlerPermissions {
+pub trait RemoteDbHandlerPermissions: FetchPermissions {
   fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError>;
   fn check_net_url(
     &mut self,
     url: &Url,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    addr: &SocketAddr,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
 }
@@ -67,6 +74,15 @@ impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  #[inline(always)]
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    addr: &SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net_resolved_addr_is_not_denied(self, addr, api_name)
   }
 }
 
@@ -185,16 +201,19 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
       )));
     };
 
-    {
+    let permissions_arc = {
       let mut state = state.borrow_mut();
       let permissions = state.borrow_mut::<P>();
       permissions
         .check_env(ENV_VAR_NAME)
         .map_err(JsErrorBox::from_err)?;
+
       permissions
         .check_net_url(&parsed_url, "Deno.openKv")
         .map_err(JsErrorBox::from_err)?;
-    }
+
+      Arc::new(dyn_clone::clone(&*permissions))
+    };
 
     let access_token = std::env::var(ENV_VAR_NAME)
       .map_err(anyhow::Error::from)
@@ -214,7 +233,7 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         root_cert_store: options.root_cert_store()?,
         ca_certs: vec![],
         proxy: options.proxy.clone(),
-        dns_resolver: Default::default(),
+        dns_resolver: deno_fetch::dns::Resolver::default(permissions_arc),
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
           .clone(),
