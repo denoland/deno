@@ -64,6 +64,8 @@ use crate::args::Flags;
 use crate::args::flags_from_vec;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
+use crate::util::env_manager::EnvManager;
+use crate::util::env_manager::load_env_variables_from_env_files;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
@@ -630,8 +632,10 @@ async fn resolve_flags_and_init(
     // SAFETY: We're doing this before any threads are created.
     unsafe {
       std::env::set_var("DENO_CONNECTED", &host);
-    }
+    }  
   }
+  EnvManager::instance(); // preserve already loaded env variables
+  load_env_variables_from_env_files(flags.env_file.as_ref(), flags.log_level);
 
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));

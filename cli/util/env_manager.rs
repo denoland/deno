@@ -218,12 +218,49 @@ impl EnvManager {
   }
 }
 
-pub fn load_env_variables_from_env_files<P: AsRef<Path>>(
-  file_paths: &[P],
+pub fn load_env_variables_from_env_files(
+  filename: Option<&Vec<String>>,
   flags_log_level: Option<log::Level>,
 ) {
-  let file_paths_vec: Vec<&P> = file_paths.iter().collect();
+  let Some(env_file_names) = filename else {
+    return;
+  };
 
-  EnvManager::instance()
-    .load_env_variables_from_env_files(Some(&file_paths_vec), flags_log_level);
+  for env_file_name in env_file_names.iter().rev() {
+    match dotenvy::from_filename(env_file_name) {
+      Ok(_) => (),
+      Err(error) => {
+        #[allow(clippy::print_stderr)]
+        if flags_log_level
+          .map(|l| l >= log::Level::Info)
+          .unwrap_or(true)
+        {
+          match error {
+            dotenvy::Error::LineParse(line, index) => eprintln!(
+              "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
+              colors::yellow("Warning"),
+              env_file_name,
+              index,
+              line
+            ),
+            dotenvy::Error::Io(_) => eprintln!(
+              "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+            dotenvy::Error::EnvVar(_) => eprintln!(
+              "{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+            _ => eprintln!(
+              "{} Unknown failure occurred with the specified environment file: {}",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+          }
+        }
+      }
+    }
+  }
 }
