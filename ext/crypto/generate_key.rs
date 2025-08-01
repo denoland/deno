@@ -4,7 +4,7 @@ use aws_lc_rs::rand::SecureRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
 use deno_core::ToJsBuffer;
 use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_optional;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
 use once_cell::sync::Lazy;
@@ -83,7 +83,7 @@ pub async fn op_crypto_generate_key(
       generate_key_hmac(hash, length)
     }
   };
-  let buf = spawn_blocking(fun).await.unwrap()?;
+  let buf = spawn_blocking_optional(fun).await.unwrap()?;
   Ok(buf.into())
 }
 

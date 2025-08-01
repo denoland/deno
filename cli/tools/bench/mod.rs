@@ -17,7 +17,7 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::serde_v8;
 use deno_core::unsync::spawn;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_always;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_npm_installer::graph::NpmCachingStrategy;
@@ -313,7 +313,7 @@ async fn bench_specifiers(
     let sender = sender.clone();
     let options = option_for_handles.clone();
     let preload_modules = preload_modules.clone();
-    spawn_blocking(move || {
+    spawn_blocking_always(move || {
       let future = bench_specifier(
         worker_factory,
         permissions_container,

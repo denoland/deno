@@ -36,3 +36,6 @@ rustflags = [
   "--cfg",
   "tokio_unstable",
 ]
+
+[env]
+DENO_BLOCK_ON_THREAD = "1"
