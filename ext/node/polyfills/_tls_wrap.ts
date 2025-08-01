@@ -37,7 +37,6 @@ import {
 import { startTlsInternal } from "ext:deno_net/02_tls.js";
 import { internals } from "ext:core/mod.js";
 import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
-import console from "node:console";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -178,8 +177,6 @@ export class TLSSocket extends net.Socket {
           return;
         }
 
-        console.log("startTlsInternal", handle[kStreamBaseField]);
-        console.log("start tls", options.isServer ? "[server]" : "[client]");
         try {
           const conn = await startTlsInternal(
             handle[kStreamBaseField],
@@ -197,8 +194,6 @@ export class TLSSocket extends net.Socket {
             // operation emit the error.
           }
 
-          console.log("done tls", options.isServer ? "[server]" : "[client]");
-
           // Assign the TLS connection to the handle and resume reading.
           handle[kStreamBaseField] = conn;
           handle.upgrading = false;
@@ -215,7 +210,7 @@ export class TLSSocket extends net.Socket {
           tlssock.removeListener("end", onConnectEnd);
         } catch (e) {
           // TODO(kt3k): Handle this
-          console.log("handle.afterConnecTls error", e);
+          console.error("handle.afterConnecTls error", e);
         }
       };
 
