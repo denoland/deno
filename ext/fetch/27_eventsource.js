@@ -6,6 +6,8 @@ import { primordials } from "ext:core/mod.js";
 import { op_utf8_to_byte_string } from "ext:core/ops";
 const {
   ArrayPrototypeFind,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
   Number,
   NumberIsFinite,
   NumberIsNaN,
@@ -35,6 +37,11 @@ import { TextDecoderStream } from "ext:deno_web/08_text_encoding.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { newInnerRequest } from "ext:deno_fetch/23_request.js";
 import { mainFetch } from "ext:deno_fetch/26_fetch.js";
+import {
+  fillHeaders,
+  headerListFromHeaders,
+  headersFromHeaderList,
+} from "ext:deno_fetch/20_headers.js";
 
 // Copied from https://github.com/denoland/deno_std/blob/e0753abe0c8602552862a568348c046996709521/streams/text_line_stream.ts#L20-L74
 export class TextLineStream extends TransformStream {
@@ -144,6 +151,8 @@ class EventSource extends EventTarget {
     return this.#withCredentials;
   }
 
+  #headers;
+
   constructor(url, eventSourceInitDict = { __proto__: null }) {
     super();
     this[webidl.brand] = webidl.brand;
@@ -164,6 +173,7 @@ class EventSource extends EventTarget {
 
     this.#url = url;
     this.#withCredentials = eventSourceInitDict.withCredentials;
+    this.#headers = eventSourceInitDict.headers;
 
     this.#loop();
   }
@@ -177,21 +187,39 @@ class EventSource extends EventTarget {
 
   async #loop() {
     const lastEventIdValue = this.#lastEventId;
+    const initialHeaders = headersFromHeaderList(
+      lastEventIdValue === ""
+        ? [
+          ["accept", "text/event-stream"],
+        ]
+        : [
+          ["accept", "text/event-stream"],
+          ["Last-Event-Id", op_utf8_to_byte_string(lastEventIdValue)],
+        ],
+      "request",
+    );
+
+    if (this.#headers) {
+      const headerList = headerListFromHeaders(initialHeaders);
+      const headers = this.#headers ?? ArrayPrototypeSlice(
+        headerList,
+        0,
+        headerList.length,
+      );
+      if (headerList.length !== 0) {
+        ArrayPrototypeSplice(headerList, 0, headerList.length);
+      }
+      fillHeaders(initialHeaders, headers);
+    }
+
     const req = newInnerRequest(
       "GET",
       this.#url,
-      () =>
-        lastEventIdValue === ""
-          ? [
-            ["accept", "text/event-stream"],
-          ]
-          : [
-            ["accept", "text/event-stream"],
-            ["Last-Event-Id", op_utf8_to_byte_string(lastEventIdValue)],
-          ],
+      () => headerListFromHeaders(initialHeaders),
       null,
       false,
     );
+
     /** @type {InnerResponse} */
     let res;
     try {
@@ -380,6 +408,7 @@ webidl.converters.EventSourceInit = webidl.createDictionaryConverter(
       defaultValue: false,
       converter: webidl.converters.boolean,
     },
+    { key: "headers", converter: webidl.converters["HeadersInit"] },
   ],
 );
 
