@@ -13,6 +13,7 @@ use deno_error::JsErrorBox;
 
 use crate::io::TcpStreamResource;
 use crate::ops_tls::TlsStreamResource;
+use crate::ops_tls::TlsStreamReunited;
 
 pub trait NetworkStreamTrait: Into<NetworkStream> {
   type Resource;
@@ -462,7 +463,15 @@ pub fn take_network_stream_resource(
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| TakeNetworkStreamError::TlsBusy)?;
     let tls_stream = resource.into_tls_stream();
-    return Ok(NetworkStream::Tls(tls_stream));
+
+    match tls_stream {
+      TlsStreamReunited::Tcp(tcp_stream) => {
+        return Ok(NetworkStream::Tls(tcp_stream));
+      }
+      // TODO(bartlomieju): support unix sockets here
+      #[allow(unreachable_patterns)]
+      _ => todo!(),
+    }
   }
 
   #[cfg(unix)]

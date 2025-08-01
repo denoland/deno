@@ -13,6 +13,7 @@ import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
 import { execCode } from "../unit/test_util.ts";
+import console from "node:console";
 
 const tlsTestdataDir = fromFileUrl(
   new URL("../testdata/tls", import.meta.url),
@@ -82,6 +83,7 @@ Host: localhost
 Connection: close
 
 `);
+
   const chunk = Promise.withResolvers<Uint8Array>();
   conn.on("data", (received) => {
     conn.destroy();
@@ -303,4 +305,140 @@ Deno.test({
     throw new Error(`stderr: ${new TextDecoder().decode(stderr)}`);
   }
   assertEquals(new TextDecoder().decode(stdout), "");
+});
+
+// TODO(bartlomieju): this test currently doesn't pass, because server-side
+// socket doesn't handle TLS correctly.
+Deno.test({
+  name: "tls.connect over unix socket works",
+  ignore: true,
+  // ignore: Deno.build.os === "windows",
+  permissions: { read: true, write: true },
+}, async () => {
+  const socketPath = "/tmp/tls_unix_test.sock";
+
+  try {
+    await Deno.remove(socketPath);
+  } catch {
+    // pass
+  }
+
+  let serverError: unknown = null;
+  let clientError: unknown = null;
+
+  const { promise: serverReady, resolve: resolveServerReady } = Promise
+    .withResolvers<void>();
+  const { promise: testComplete, resolve: resolveTestComplete } = Promise
+    .withResolvers<void>();
+  const { promise: clientDataReceived, resolve: resolveClientDataReceived } =
+    Promise.withResolvers<string>();
+
+  const netServer = net.createServer((rawSocket) => {
+    try {
+      console.log("before create");
+      const secureSocket = new tls.TLSSocket(rawSocket, {
+        key,
+        cert,
+        isServer: true,
+      });
+
+      secureSocket.on("secureConnect", () => {
+        console.log("secure socket on secureConnect");
+        secureSocket.write("hello from server");
+      });
+
+      secureSocket.on("data", (data) => {
+        console.log(
+          "secure socket on data",
+          data.byteLength,
+          data.toString(),
+        );
+        assertEquals(data.toString(), "hello from client");
+        secureSocket.end();
+      });
+
+      secureSocket.on("close", () => {
+        console.log("secure socket on close");
+        resolveTestComplete();
+      });
+
+      secureSocket.on("error", (err) => {
+        console.log("secure socket on error");
+        serverError = err;
+        resolveTestComplete();
+      });
+    } catch (err) {
+      serverError = err;
+      resolveTestComplete();
+    }
+  });
+
+  netServer.on("error", (err) => {
+    serverError = err;
+    resolveTestComplete();
+  });
+
+  netServer.listen(socketPath, () => {
+    resolveServerReady();
+  });
+  console.log("before server ready");
+  await serverReady;
+  console.log("after server ready");
+  try {
+    const rawSocket = net.connect(socketPath);
+
+    const secureSocket = tls.connect({
+      socket: rawSocket,
+      rejectUnauthorized: false,
+    });
+
+    rawSocket.on("error", (err) => {
+      console.log("raw socket on err", err);
+      clientError = err;
+      resolveTestComplete();
+    });
+
+    secureSocket.on("secureConnect", () => {
+      console.log("secure socket on secureConnect");
+      secureSocket.write("hello from client");
+    });
+
+    secureSocket.on("data", (data) => {
+      console.log("secure socket on data");
+      resolveClientDataReceived(data.toString());
+    });
+
+    secureSocket.on("error", (err) => {
+      console.log("secure socket on error");
+      clientError = err;
+      resolveTestComplete();
+    });
+
+    console.log("before client data received");
+    const receivedData = await clientDataReceived;
+    console.log("after client data received");
+    assertEquals(receivedData, "hello from server");
+    console.log("before test complete");
+    await testComplete;
+    console.log("after test complete");
+    if (serverError) {
+      console.error("Server error:", serverError);
+    }
+    if (clientError) {
+      console.error("Client error:", clientError);
+    }
+
+    secureSocket.destroy();
+  } catch (err) {
+    clientError = err;
+    console.error("Test setup error:", err);
+  }
+
+  netServer.close();
+
+  try {
+    await Deno.remove(socketPath);
+  } catch {
+    // pass
+  }
 });
