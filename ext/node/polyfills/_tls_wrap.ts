@@ -178,8 +178,6 @@ export class TLSSocket extends net.Socket {
           return;
         }
 
-        console.log("startTlsInternal", handle[kStreamBaseField]);
-        console.log("start tls", options.isServer ? "[server]" : "[client]");
         try {
           const conn = await startTlsInternal(
             handle[kStreamBaseField],
@@ -197,8 +195,6 @@ export class TLSSocket extends net.Socket {
             // operation emit the error.
           }
 
-          console.log("done tls", options.isServer ? "[server]" : "[client]");
-
           // Assign the TLS connection to the handle and resume reading.
           handle[kStreamBaseField] = conn;
           handle.upgrading = false;
@@ -215,7 +211,7 @@ export class TLSSocket extends net.Socket {
           tlssock.removeListener("end", onConnectEnd);
         } catch (e) {
           // TODO(kt3k): Handle this
-          console.log("handle.afterConnecTls error", e);
+          console.error("handle.afterConnecTls error", e);
         }
       };
 
