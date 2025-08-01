@@ -442,3 +442,29 @@ Deno.test("[node/fs/promises] lutimes works", {
   Deno.removeSync(tempFile);
   Deno.removeSync(symlinkPath);
 });
+
+Deno.test("[node/fs] constants are correct across platforms", () => {
+  assert(constants.R_OK === 4);
+  // Check a handful of constants with different values across platforms
+  if (Deno.build.os === "darwin") {
+    assert(constants.UV_FS_O_FILEMAP === 0);
+    assert(constants.O_CREAT === 0x200);
+    assert(constants.O_DIRECT === undefined);
+    assert(constants.O_NOATIME === undefined);
+    assert(constants.O_SYMLINK === 0x200000);
+  }
+  if (Deno.build.os === "linux") {
+    assert(constants.UV_FS_O_FILEMAP === 0);
+    assert(constants.O_CREAT === 0x40);
+    assert(constants.O_DIRECT !== undefined); // O_DIRECT has different values between architectures
+    assert(constants.O_NOATIME === 0x40000);
+    assert(constants.O_SYMLINK === undefined);
+  }
+  if (Deno.build.os === "windows") {
+    assert(constants.UV_FS_O_FILEMAP === 0x20000000);
+    assert(constants.O_CREAT === 0x100);
+    assert(constants.O_DIRECT === undefined);
+    assert(constants.O_NOATIME === undefined);
+    assert(constants.O_SYMLINK === undefined);
+  }
+});
