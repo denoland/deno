@@ -62,3 +62,49 @@ pub extern "C" fn zfree(_ptr: *mut c_void, address: *mut c_void) {
     alloc::dealloc(ptr as *mut u8, layout)
   }
 }
+
+pub extern "C" fn brotli_alloc(
+  _opaque: *mut brotli::ffi::broccoli::c_void,
+  size: usize,
+) -> *mut brotli::ffi::broccoli::c_void {
+  // Allocate space for a `usize` header to store the allocation size
+  let total_size = match size
+    .checked_add(std::mem::size_of::<usize>())
+    .map(|size| align_up(size, ALIGN))
+  {
+    Some(i) => i,
+    None => return ptr::null_mut(),
+  };
+
+  let layout = match Layout::from_size_align(total_size, ALIGN) {
+    Ok(layout) => layout,
+    Err(_) => return ptr::null_mut(),
+  };
+
+  // SAFETY: `layout` has non-zero size
+  unsafe {
+    let ptr = alloc::alloc(layout) as *mut usize;
+    if ptr.is_null() {
+      return ptr as *mut brotli::ffi::broccoli::c_void;
+    }
+    *ptr = total_size;
+    ptr.add(1) as *mut brotli::ffi::broccoli::c_void
+  }
+}
+
+pub extern "C" fn brotli_free(
+  _opaque: *mut brotli::ffi::broccoli::c_void,
+  address: *mut brotli::ffi::broccoli::c_void,
+) {
+  if address.is_null() {
+    return;
+  }
+
+  // SAFETY: Move back one pointer to read the size we stored in `brotli_alloc`
+  unsafe {
+    let ptr = (address as *mut usize).offset(-1);
+    let size = *ptr;
+    let layout = Layout::from_size_align_unchecked(size, ALIGN);
+    alloc::dealloc(ptr as *mut u8, layout)
+  }
+}
