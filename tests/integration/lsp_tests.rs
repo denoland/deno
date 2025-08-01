@@ -17335,8 +17335,12 @@ fn lsp_tsconfig_node_modules_dts_diagnostics() {
     .to_string(),
   );
   let file1 = temp_dir.source_file("main.ts", "import type {} from \"foo\";\n");
-  let file2 = temp_dir.source_file(
-    "node_modules/foo/index.d.ts",
+  let file2 = source_file(
+    // Canonicalize for mac.
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/foo/index.d.ts"),
     r#"
       export type foo = typeof Deno;
       export type bar = typeof document;
