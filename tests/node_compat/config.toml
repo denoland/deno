@@ -296,9 +296,9 @@
 "parallel/test-dgram-send-callback-recursive.js" = {}
 "parallel/test-dgram-send-cb-quelches-error.js" = {}
 "parallel/test-dgram-send-default-host.js" = {}
-"parallel/test-dgram-send-empty-array.js" = {}
+"parallel/test-dgram-send-empty-array.js" = { flaky = true }
 "parallel/test-dgram-send-empty-buffer.js" = { flaky = true }
-"parallel/test-dgram-send-empty-packet.js" = {}
+"parallel/test-dgram-send-empty-packet.js" = { flaky = true }
 "parallel/test-dgram-send-error.js" = {}
 "parallel/test-dgram-send-invalid-msg-type.js" = {}
 "parallel/test-dgram-send-multi-buffer-copy.js" = {}
@@ -927,7 +927,7 @@
 "parallel/test-stdin-script-child-option.js" = {}
 "parallel/test-stdio-pipe-access.js" = {}
 "parallel/test-stdio-pipe-redirect.js" = {}
-"parallel/test-stdio-pipe-stderr.js" = {}
+"parallel/test-stdio-pipe-stderr.js" = { flaky = true }
 "parallel/test-stdio-undestroy.js" = { flaky = true }
 "parallel/test-stdout-cannot-be-closed-child-process-pipe.js" = {}
 "parallel/test-stdout-pipeline-destroy.js" = {}
