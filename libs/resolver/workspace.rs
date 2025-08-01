@@ -1254,9 +1254,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     self.pkg_jsons.values().map(|c| &c.pkg_json)
   }
 
-  pub fn jsr_packages(
-    &self,
-  ) -> &[ResolverWorkspaceJsrPackage] {
+  pub fn jsr_packages(&self) -> &[ResolverWorkspaceJsrPackage] {
     &self.jsr_pkgs
   }
 

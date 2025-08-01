@@ -4,13 +4,19 @@
     "args": "install",
     "output": "[WILDCARD]"
   }, {
-    "args": ["eval", "console.log(Deno.readTextFileSync('deno.lock').trim()); Deno.renameSync('deno1.json', 'deno.json')"],
+    "args": [
+      "eval",
+      "console.log(Deno.readTextFileSync('deno.lock').trim()); Deno.renameSync('deno1.json', 'deno.json')"
+    ],
     "output": "lockfile1.out"
   }, {
     "args": "install",
     "output": "[WILDCARD]"
   }, {
-    "args": ["eval", "console.log(Deno.readTextFileSync('deno.lock').trim()); Deno.renameSync('deno2.json', 'deno.json')"],
+    "args": [
+      "eval",
+      "console.log(Deno.readTextFileSync('deno.lock').trim()); Deno.renameSync('deno2.json', 'deno.json')"
+    ],
     "output": "lockfile2.out"
   }, {
     "args": "install",

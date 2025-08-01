@@ -84,10 +84,14 @@ pub async fn cache_top_level_deps(
       match specifier.scheme() {
         "jsr" => {
           let specifier_str = specifier.as_str();
-          let Ok(req_ref) = JsrPackageReqReference::from_str(specifier_str) else {
+          let Ok(req_ref) = JsrPackageReqReference::from_str(specifier_str)
+          else {
             continue;
           };
-          if workspace_jsr_packages.iter().any(|pkg| req_ref.req().name == pkg.name && pkg.version.as_ref().map(|v| req_ref.req().version_req.matches(v)).unwrap_or(true)) {
+          if workspace_jsr_packages
+            .iter()
+            .any(|pkg| pkg.matches_req(req_ref.req()))
+          {
             // do not install a workspace jsr package
             continue;
           }
