@@ -58,9 +58,11 @@ use super::performance::Performance;
 use super::tsc;
 use super::tsc::MaybeAmbientModules;
 use super::tsc::TsServer;
+use crate::lsp::documents::OpenDocument;
 use crate::lsp::lint::LspLinter;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
+use crate::lsp::urls::uri_to_url;
 use crate::sys::CliSys;
 use crate::tsc::DiagnosticCategory;
 use crate::type_checker::ambient_modules_to_regex_string;
@@ -871,7 +873,11 @@ fn to_lsp_related_information(
           let uri = resolve_url(file_name)
             .ok()
             .and_then(|s| {
-              document_modules.module_for_specifier(&s, module.scope.as_deref())
+              document_modules.module_for_specifier(
+                &s,
+                module.scope.as_deref(),
+                Some(&module.compiler_options_key),
+              )
             })
             .map(|m| m.uri.as_ref().clone())
             .unwrap_or_else(|| Uri::from_str("unknown:").unwrap());
@@ -1022,11 +1028,49 @@ async fn generate_ts_diagnostics(
   ts_server: &tsc::TsServer,
   token: CancellationToken,
 ) -> Result<(DiagnosticVec, AmbientModulesByKey), AnyError> {
+  let (mut records, ambient_modules_by_key, unresolved_documents) =
+    generate_ts_diagnostics_inner(
+      snapshot.document_modules.documents.open_docs(),
+      &snapshot,
+      ts_server,
+      &token,
+    )
+    .await?;
+  // Some documents may not have been mapped to any primary module the first
+  // time because they are remote/npm deps, and the compiler-options scope could
+  // not be inferred. But these will often have been transitively assigned while
+  // tsc requested the deps of the other documents. Do a second pass for them.
+  let (records_from_second_pass, _, _) = generate_ts_diagnostics_inner(
+    unresolved_documents.into_iter(),
+    &snapshot,
+    ts_server,
+    &token,
+  )
+  .await?;
+  records.extend(records_from_second_pass);
+  Ok((records, ambient_modules_by_key))
+}
+
+async fn generate_ts_diagnostics_inner<'a>(
+  documents: impl Iterator<Item = &'a Arc<OpenDocument>>,
+  snapshot: &Arc<language_server::StateSnapshot>,
+  ts_server: &tsc::TsServer,
+  token: &CancellationToken,
+) -> Result<
+  (
+    DiagnosticVec,
+    AmbientModulesByKey,
+    // Documents that couldn't be resolved to a primary module.
+    Vec<&'a Arc<OpenDocument>>,
+  ),
+  AnyError,
+> {
   let mut records = Vec::new();
   let mut ambient_modules_by_key = HashMap::new();
   let mut enabled_modules_by_key = BTreeMap::<_, Vec<_>>::new();
   let mut disabled_documents = Vec::new();
-  for document in snapshot.document_modules.documents.open_docs() {
+  let mut unresolved_documents = Vec::new();
+  for document in documents {
     if document.is_diagnosable() {
       if let Some(module) = snapshot
         .document_modules
@@ -1042,6 +1086,14 @@ async fn generate_ts_diagnostics(
             .or_default()
             .push(module);
           continue;
+        }
+      } else {
+        let url = uri_to_url(&document.uri);
+        if url.scheme() != "file"
+          || snapshot.resolver.in_node_modules(&url)
+          || snapshot.cache.in_cache_directory(&url)
+        {
+          unresolved_documents.push(document);
         }
       }
     }
@@ -1063,7 +1115,7 @@ async fn generate_ts_diagnostics(
     enabled_modules_by_key
   {
     let (diagnostics_list, ambient_modules) = ts_server
-      .get_diagnostics(snapshot.clone(), &enabled_modules, &token)
+      .get_diagnostics(snapshot.clone(), &enabled_modules, token)
       .await?;
     enabled_modules_with_diagnostics
       .extend(enabled_modules.into_iter().zip(diagnostics_list));
@@ -1097,7 +1149,7 @@ async fn generate_ts_diagnostics(
       },
     });
   }
-  Ok((records, ambient_modules_by_key))
+  Ok((records, ambient_modules_by_key, unresolved_documents))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1553,10 +1605,11 @@ fn diagnose_resolution(
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }
       }
-      match snapshot
-        .document_modules
-        .module_for_specifier(specifier, referrer_module.scope.as_deref())
-      {
+      match snapshot.document_modules.module_for_specifier(
+        specifier,
+        referrer_module.scope.as_deref(),
+        Some(&referrer_module.compiler_options_key),
+      ) {
         Some(module) => {
           if let Some(headers) = &module.headers {
             if let Some(message) = headers.get("x-deno-warning") {
@@ -1964,6 +2017,7 @@ mod tests {
         compiler_options_resolver,
         linter_resolver,
         resolver,
+        cache: Arc::new(cache),
       },
     )
   }

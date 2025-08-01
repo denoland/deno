@@ -130,6 +130,7 @@ static ALLOWED_COMPILER_OPTIONS: phf::Set<&'static str> = phf::phf_set! {
   "noUnusedLocals",
   "noUnusedParameters",
   "rootDirs",
+  "skipLibCheck",
   "strict",
   "strictBindCallApply",
   "strictBuiltinIteratorReturn",
@@ -295,6 +296,7 @@ pub fn get_base_compiler_options_for_emit(
       },
       "resolveJsonModule": true,
       "sourceMap": false,
+      "skipLibCheck": false,
       "strict": match source_kind {
         CompilerOptionsSourceKind::DenoJson => true,
         CompilerOptionsSourceKind::TsConfig => false,
