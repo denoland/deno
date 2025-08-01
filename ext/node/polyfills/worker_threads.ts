@@ -385,11 +385,13 @@ internals.__initWorkerThreads = (
     // TODO(bartlomieju): this is a really hacky way to provide
     // require in worker_threads - this should be rewritten to use proper
     // CJS/ESM loading
-    globalThis.require = createRequire(
-      StringPrototypeStartsWith(moduleSpecifier, "data:")
-        ? `${Deno.cwd()}/[worker eval]`
-        : moduleSpecifier,
-    );
+    if (moduleSpecifier) {
+      globalThis.require = createRequire(
+        StringPrototypeStartsWith(moduleSpecifier, "data:")
+          ? `${Deno.cwd()}/[worker eval]`
+          : moduleSpecifier,
+      );
+    }
 
     const listeners = new SafeWeakMap<
       // deno-lint-ignore no-explicit-any
