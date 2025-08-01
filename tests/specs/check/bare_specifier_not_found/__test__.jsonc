@@ -1,0 +1,15 @@
+// https://github.com/denoland/deno/issues/30116
+{
+  "tests": {
+    "import_map": {
+      "args": "check main.ts",
+      "output": "check_import_map.out",
+      "exitCode": 1
+    },
+    "no_import_map": {
+      "args": "check --no-config main.ts",
+      "output": "check_no_import_map.out",
+      "exitCode": 1
+    }
+  }
+}

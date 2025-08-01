@@ -30,6 +30,7 @@ use hickory_resolver::config::NameServerConfigGroup;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
 use hickory_resolver::system_conf;
+use quinn::rustls;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -53,6 +54,9 @@ pub type Fd = u32;
 #[serde(rename_all = "camelCase")]
 pub struct TlsHandshakeInfo {
   pub alpn_protocol: Option<ByteString>,
+  #[serde(skip_serializing)]
+  pub peer_certificates:
+    Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -66,6 +70,19 @@ impl From<SocketAddr> for IpAddr {
     Self {
       hostname: addr.ip().to_string(),
       port: addr.port(),
+    }
+  }
+}
+
+#[cfg(unix)]
+impl From<tokio::net::unix::SocketAddr> for IpAddr {
+  fn from(addr: tokio::net::unix::SocketAddr) -> Self {
+    Self {
+      hostname: addr.as_pathname().map_or_else(
+        || "unix socket".to_string(),
+        |p| p.to_string_lossy().into_owned(),
+      ),
+      port: 0, // Unix sockets do not have a port
     }
   }
 }
@@ -147,6 +164,9 @@ pub enum NetError {
   #[class("Busy")]
   #[error("TCP stream is currently in use")]
   TcpStreamBusy,
+  #[class("Busy")]
+  #[error("Unix stream is currently in use")]
+  UnixStreamBusy,
   #[class(generic)]
   #[error("{0}")]
   Rustls(#[from] deno_tls::rustls::Error),
@@ -161,7 +181,11 @@ pub enum NetError {
   RootCertStore(deno_error::JsErrorBox),
   #[class(generic)]
   #[error("{0}")]
-  Reunite(tokio::net::tcp::ReuniteError),
+  ReuniteTcp(tokio::net::tcp::ReuniteError),
+  #[cfg(unix)]
+  #[class(generic)]
+  #[error("{0}")]
+  ReuniteUnix(tokio::net::unix::ReuniteError),
   #[class(generic)]
   #[error("VSOCK is not supported on this platform")]
   VsockUnsupported,
@@ -864,7 +888,7 @@ pub async fn op_net_accept_tunnel(
   let resource = state
     .borrow()
     .resource_table
-    .get::<NetworkListenerResource<crate::tunnel::TunnelListener>>(rid)
+    .get::<NetworkListenerResource<crate::tunnel::TunnelConnection>>(rid)
     .map_err(|_| NetError::ListenerClosed)?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()

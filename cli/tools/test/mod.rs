@@ -32,6 +32,7 @@ use deno_core::anyhow;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
+use deno_core::error::CoreErrorKind;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
@@ -54,10 +55,7 @@ use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
-use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
 use indexmap::IndexMap;
@@ -68,7 +66,6 @@ use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use regex::Regex;
 use serde::Deserialize;
-use tokio::signal;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::args::CliOptions;
@@ -82,7 +79,6 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
-use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
@@ -90,7 +86,6 @@ use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
-use crate::worker::CoverageCollector;
 use crate::worker::CreateCustomWorkerError;
 
 mod channel;
@@ -111,6 +106,7 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
+use super::coverage::CoverageCollector;
 use crate::tools::coverage::cover_files;
 use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
@@ -655,10 +651,7 @@ async fn configure_main_worker(
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
   sender: UnboundedSender<jupyter_protocol::messaging::StreamContent>,
-) -> Result<
-  (Option<Box<dyn CoverageCollector>>, MainWorker),
-  CreateCustomWorkerError,
-> {
+) -> Result<(Option<CoverageCollector>, MainWorker), CreateCustomWorkerError> {
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Test,
@@ -680,23 +673,26 @@ async fn configure_main_worker(
     .await?;
   let coverage_collector = worker.maybe_setup_coverage_collector().await?;
   if options.trace_leaks {
-    worker.execute_script_static(
-      located_script_name!(),
-      "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
-    )?;
+    worker
+      .execute_script_static(
+        located_script_name!(),
+        "Deno[Deno.internal].core.setLeakTracingEnabled(true);",
+      )
+      .map_err(|e| CoreErrorKind::Js(e).into_box())?;
   }
 
   let op_state = worker.op_state();
 
-  let check_res = |res| match res {
-    Ok(()) => Ok(()),
-    Err(CoreError::Js(err)) => send_test_event(
-      &op_state,
-      TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
-    )
-    .map_err(|e| CoreError::JsBox(JsErrorBox::from_err(e))),
-    Err(err) => Err(err),
-  };
+  let check_res =
+    |res: Result<(), CoreError>| match res.map_err(|err| err.into_kind()) {
+      Ok(()) => Ok(()),
+      Err(CoreErrorKind::Js(err)) => send_test_event(
+        &op_state,
+        TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+      )
+      .map_err(|e| CoreErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()),
+      Err(err) => Err(err.into_box()),
+    };
 
   check_res(worker.execute_preload_modules().await)?;
   check_res(worker.execute_side_module().await)?;
@@ -742,13 +738,16 @@ pub async fn test_specifier(
   .await
   {
     Ok(()) => Ok(()),
-    Err(TestSpecifierError::Core(CoreError::Js(err))) => {
-      send_test_event(
-        &worker.js_runtime.op_state(),
-        TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
-      )?;
-      Ok(())
-    }
+    Err(TestSpecifierError::Core(err)) => match err.into_kind() {
+      CoreErrorKind::Js(err) => {
+        send_test_event(
+          &worker.js_runtime.op_state(),
+          TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+        )?;
+        Ok(())
+      }
+      err => Err(err.into_box().into()),
+    },
     Err(e) => Err(e.into()),
   }
 }
@@ -768,7 +767,7 @@ pub enum TestSpecifierError {
 #[allow(clippy::too_many_arguments)]
 async fn test_specifier_inner(
   worker: &mut MainWorker,
-  mut coverage_collector: Option<Box<dyn CoverageCollector>>,
+  mut coverage_collector: Option<CoverageCollector>,
   specifier: ModuleSpecifier,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
@@ -776,7 +775,9 @@ async fn test_specifier_inner(
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  worker.dispatch_load_event().map_err(CoreError::Js)?;
+  worker
+    .dispatch_load_event()
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
 
   run_tests_for_worker(worker, &specifier, &options, &fail_fast_tracker)
     .await?;
@@ -785,8 +786,10 @@ async fn test_specifier_inner(
   // event loop to continue beyond what's needed to await results.
   worker
     .dispatch_beforeunload_event()
-    .map_err(CoreError::Js)?;
-  worker.dispatch_unload_event().map_err(CoreError::Js)?;
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
+  worker
+    .dispatch_unload_event()
+    .map_err(|e| CoreErrorKind::Js(e).into_box())?;
 
   // Ensure all output has been flushed
   _ = worker
@@ -1052,8 +1055,8 @@ async fn run_tests_for_worker_inner(
     slow_test_warning.abort();
     let result = match result {
       Ok(r) => r,
-      Err(error) => {
-        if let CoreError::Js(js_error) = error {
+      Err(error) => match error.into_kind() {
+        CoreErrorKind::Js(js_error) => {
           send_test_event(
             &state_rc,
             TestEvent::UncaughtError(specifier.to_string(), Box::new(js_error)),
@@ -1065,10 +1068,9 @@ async fn run_tests_for_worker_inner(
           )?;
           had_uncaught_error = true;
           continue;
-        } else {
-          return Err(error.into());
         }
-      }
+        err => return Err(err.into_box().into()),
+      },
     };
 
     // Check the result before we check for leaks
@@ -1259,8 +1261,7 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
-  permissions: &Permissions,
-  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
+  root_permissions_container: &PermissionsContainer,
   specifiers: Vec<ModuleSpecifier>,
   preload_modules: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
@@ -1280,7 +1281,7 @@ async fn test_specifiers(
 
   let mut cancel_sender = test_event_sender_factory.weak_sender();
   let sigint_handler_handle = spawn(async move {
-    signal::ctrl_c().await.unwrap();
+    deno_signals::ctrl_c().await.unwrap();
     cancel_sender.send(TestEvent::Sigint).ok();
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
@@ -1289,10 +1290,10 @@ async fn test_specifiers(
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    let permissions_container = PermissionsContainer::new(
-      permission_desc_parser.clone(),
-      permissions.clone(),
-    );
+    // Various test files should not share the same permissions in terms of
+    // `PermissionsContainer` - otherwise granting/revoking permissions in one
+    // file would have impact on other files, which is undesirable.
+    let permissions_container = root_permissions_container.deep_clone();
     let preload_modules = preload_modules.clone();
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
@@ -1615,14 +1616,6 @@ pub async fn run_tests(
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
   let file_fetcher = factory.file_fetcher()?;
-  // Various test files should not share the same permissions in terms of
-  // `PermissionsContainer` - otherwise granting/revoking permissions in one
-  // file would have impact on other files, which is undesirable.
-  let permission_desc_parser = factory.permission_desc_parser()?;
-  let permissions = Permissions::from_options(
-    permission_desc_parser.as_ref(),
-    &cli_options.permissions_options(),
-  )?;
   let log_level = cli_options.log_level();
 
   let members_with_test_options =
@@ -1671,8 +1664,7 @@ pub async fn run_tests(
   // Run tests
   test_specifiers(
     worker_factory,
-    &permissions,
-    permission_desc_parser,
+    factory.root_permissions_container()?,
     specifiers_for_typecheck_and_test,
     preload_modules,
     TestSpecifiersOptions {
@@ -1720,7 +1712,7 @@ pub async fn run_tests(
         PathBuf::from(coverage)
           .join("lcov.info")
           .to_string_lossy()
-          .to_string(),
+          .into_owned(),
       ),
       &reporters,
     ) {
@@ -1741,7 +1733,7 @@ pub async fn run_tests_with_watch(
   // once a user adds one.
   spawn(async move {
     loop {
-      signal::ctrl_c().await.unwrap();
+      deno_signals::ctrl_c().await.unwrap();
       if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
         #[allow(clippy::disallowed_methods)]
         std::process::exit(130);
@@ -1810,11 +1802,6 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
-        let permission_desc_parser = factory.permission_desc_parser()?;
-        let permissions = Permissions::from_options(
-          permission_desc_parser.as_ref(),
-          &cli_options.permissions_options(),
-        )?;
         let graph = module_graph_creator
           .create_graph(graph_kind, test_modules, NpmCachingStrategy::Eager)
           .await?;
@@ -1882,8 +1869,7 @@ pub async fn run_tests_with_watch(
 
         test_specifiers(
           worker_factory,
-          &permissions,
-          permission_desc_parser,
+          factory.root_permissions_container()?,
           specifiers_for_typecheck_and_test,
           preload_modules,
           TestSpecifiersOptions {

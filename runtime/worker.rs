@@ -71,10 +71,7 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
     let (tx, rx) = tokio::sync::watch::channel(());
 
     tokio::spawn(async move {
-      let mut sigusr2 = tokio::signal::unix::signal(
-        tokio::signal::unix::SignalKind::user_defined2(),
-      )
-      .unwrap();
+      let mut sigusr2 = deno_signals::signal_stream(libc::SIGUSR2).unwrap();
 
       loop {
         sigusr2.recv().await;
@@ -805,7 +802,7 @@ impl MainWorker {
     &mut self,
     script_name: &'static str,
     source_code: ModuleCodeString,
-  ) -> Result<v8::Global<v8::Value>, CoreError> {
+  ) -> Result<v8::Global<v8::Value>, JsError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
 

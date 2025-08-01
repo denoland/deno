@@ -27,6 +27,7 @@ use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::error::CoreError;
+use deno_core::error::CoreErrorKind;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
@@ -37,6 +38,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::v8;
 use deno_cron::local::LocalCronHandler;
+use deno_error::JsErrorClass;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -147,8 +149,8 @@ impl Serialize for WorkerControlEvent {
 
     match self {
       WorkerControlEvent::TerminalError(error) => {
-        let value = match error {
-          CoreError::Js(js_error) => {
+        let value = match error.as_kind() {
+          CoreErrorKind::Js(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
               Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
@@ -1017,13 +1019,19 @@ fn print_worker_error(
   name: &str,
   format_js_error_fn: Option<&FormatJsErrorFn>,
 ) {
-  let error_str = match format_js_error_fn {
-    Some(format_js_error_fn) => match error {
-      CoreError::Js(js_error) => format_js_error_fn(js_error),
-      _ => error.to_string(),
-    },
-    None => error.to_string(),
-  };
+  let error_str = format_js_error_fn
+    .as_ref()
+    .and_then(|format_js_error_fn| {
+      let err = match error.as_kind() {
+        CoreErrorKind::Js(js_error) => js_error,
+        CoreErrorKind::JsBox(err) => {
+          err.get_ref().downcast_ref::<deno_core::error::JsError>()?
+        }
+        _ => return None,
+      };
+      Some(format_js_error_fn(err))
+    })
+    .unwrap_or_else(|| error.to_string());
   log::error!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),
