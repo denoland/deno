@@ -20,11 +20,12 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ObjectDefineProperty,
   Symbol,
-  SymbolFor,
-  SymbolIterator,
   PromiseResolve,
   SafeArrayIterator,
+  SymbolFor,
+  SymbolIterator,
   TypeError,
+  TypeErrorPrototype,
 } = primordials;
 const {
   InterruptedPrototype,
@@ -496,6 +497,19 @@ function structuredClone(value, options) {
     prefix,
     "Argument 2",
   );
+
+  // Fast-path, avoiding round-trip serialization and deserialization
+  if (options.transfer.length === 0) {
+    try {
+      return core.structuredClone(value);
+    } catch (e) {
+      if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
+        throw new DOMException(e.message, "DataCloneError");
+      }
+      throw e;
+    }
+  }
+
   const messageData = serializeJsMessageData(value, options.transfer);
   return deserializeJsMessageData(messageData)[0];
 }
