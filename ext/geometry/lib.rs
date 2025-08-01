@@ -139,6 +139,7 @@ impl GarbageCollected for DOMPointReadOnly {
 }
 
 impl DOMPointReadOnly {
+  #[inline]
   fn from_point_inner(init: DOMPointInit) -> DOMPointReadOnly {
     DOMPointReadOnly {
       inner: RefCell::new(Vector4::new(*init.x, *init.y, *init.z, *init.w)),
@@ -204,6 +205,7 @@ impl DOMPointReadOnly {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
+    #[inline]
     fn set(
       scope: &mut v8::HandleScope,
       object: &mut v8::Local<v8::Object>,
@@ -371,6 +373,7 @@ impl GarbageCollected for DOMRectReadOnly {
 }
 
 impl DOMRectReadOnly {
+  #[inline]
   fn from_rect_inner(init: DOMRectInit) -> DOMRectReadOnly {
     DOMRectReadOnly {
       x: Cell::new(*init.x),
@@ -380,24 +383,28 @@ impl DOMRectReadOnly {
     }
   }
 
+  #[inline]
   fn get_top(&self) -> f64 {
     let y = self.y.get();
     let height = self.height.get();
     minimum(y, y + height)
   }
 
+  #[inline]
   fn get_right(&self) -> f64 {
     let x = self.x.get();
     let width = self.width.get();
     maximum(x, x + width)
   }
 
+  #[inline]
   fn get_bottom(&self) -> f64 {
     let y = self.y.get();
     let height = self.height.get();
     maximum(y, y + height)
   }
 
+  #[inline]
   fn get_left(&self) -> f64 {
     let x = self.x.get();
     let width = self.width.get();
@@ -2104,6 +2111,7 @@ impl DOMMatrixReadOnly {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
+    #[inline]
     fn set_f64(
       scope: &mut v8::HandleScope,
       object: &mut v8::Local<v8::Object>,
@@ -2114,6 +2122,8 @@ impl DOMMatrixReadOnly {
       let value = v8::Number::new(scope, value);
       object.set(scope, key.into(), value.into()).unwrap();
     }
+
+    #[inline]
     fn set_boolean(
       scope: &mut v8::HandleScope,
       object: &mut v8::Local<v8::Object>,
