@@ -30,23 +30,25 @@ import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channe
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
 import { createRequire } from "node:module";
-import console from "node:console";
 
-const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
 const {
+  encodeURIComponent,
   Error,
-  ObjectHasOwn,
-  PromiseResolve,
   FunctionPrototypeCall,
+  JSONParse,
+  JSONStringify,
+  ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
+  PromiseResolve,
+  SafeMap,
   SafeSet,
+  SafeWeakMap,
+  StringPrototypeStartsWith,
+  StringPrototypeTrim,
   Symbol,
   SymbolFor,
   SymbolIterator,
-  StringPrototypeTrim,
-  SafeWeakMap,
-  SafeMap,
   TypeError,
-  encodeURIComponent,
 } = primordials;
 
 const debugWorkerThreads = false;
@@ -384,7 +386,7 @@ internals.__initWorkerThreads = (
     // require in worker_threads - this should be rewritten to use proper
     // CJS/ESM loading
     globalThis.require = createRequire(
-      moduleSpecifier.startsWith("data:")
+      StringPrototypeStartsWith(moduleSpecifier, "data:")
         ? `${Deno.cwd()}/[worker eval]`
         : moduleSpecifier,
     );
