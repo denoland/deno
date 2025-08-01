@@ -183,7 +183,7 @@ class EventSource extends EventTarget {
     this.#abortController.abort();
     this.#readyState = CLOSED;
     clearTimeout(this.#reconnectionTimerId);
-  }w
+  }
 
   async #loop() {
     const lastEventIdValue = this.#lastEventId;
