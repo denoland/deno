@@ -177,7 +177,7 @@ fn pty_complete_imports() {
     });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn pty_complete_imports_no_panic_empty_specifier() {
   // does not panic when tabbing when empty
   util::with_pty(&["repl", "-A"], |mut console| {

@@ -134,7 +134,7 @@ function structuredClone(value) {
   }
 
   try {
-    return core.deserialize(core.serialize(value));
+    return core.structuredClone(value);
   } catch (e) {
     if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
       throw new DOMException(e.message, "DataCloneError");

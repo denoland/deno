@@ -2666,6 +2666,7 @@ export class ERR_INVALID_STATE extends NodeError {
 interface UvExceptionContext {
   syscall: string;
   path?: string;
+  dest?: string;
 }
 export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   const errno = extractOsErrorNumberFromErrorMessage(e);

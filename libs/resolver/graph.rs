@@ -112,7 +112,7 @@ pub struct CouldNotResolveError {
   reference: deno_semver::npm::NpmPackageNvReference,
   #[source]
   #[inherit]
-  source: node_resolver::errors::PackageSubpathResolveError,
+  source: node_resolver::errors::PackageSubpathFromDenoModuleResolveError,
 }
 
 impl FoundPackageJsonDepFlag {

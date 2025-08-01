@@ -26,6 +26,7 @@ pub struct OpenOptions {
   pub truncate: bool,
   pub append: bool,
   pub create_new: bool,
+  pub custom_flags: Option<i32>,
   pub mode: Option<u32>,
 }
 
@@ -38,6 +39,7 @@ impl OpenOptions {
       truncate: false,
       append: false,
       create_new: false,
+      custom_flags: None,
       mode: None,
     }
   }
@@ -55,6 +57,7 @@ impl OpenOptions {
       truncate: !append,
       append,
       create_new,
+      custom_flags: None,
       mode,
     }
   }
