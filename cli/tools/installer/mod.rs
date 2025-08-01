@@ -616,7 +616,7 @@ async fn resolve_shim_data(
     }
   }
 
-  executable_args.push(module_url.to_string());
+  executable_args.push(module_url.into());
   executable_args.extend_from_slice(&install_flags_global.args);
 
   Ok(ShimData {

@@ -53,6 +53,11 @@ export interface WriteFileOptions extends FileOptions {
   mode?: number;
 }
 
+export type OpOpenOptions = Deno.OpenOptions & {
+  customFlags?: number;
+  mode?: number;
+};
+
 export function isFileOptions(
   fileOptions: string | WriteFileOptions | undefined,
 ): fileOptions is FileOptions {
@@ -125,119 +130,49 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
 }
 
 export function getOpenOptions(
-  flag: string | number | undefined,
-): Deno.OpenOptions {
-  if (flag === undefined) {
-    return { create: true, append: true };
+  flag: number | undefined,
+  mode: number | undefined,
+): OpOpenOptions {
+  if (typeof flag !== "number") {
+    return { create: true, append: true, mode };
   }
 
-  let openOptions: Deno.OpenOptions = {};
+  const openOptions: OpOpenOptions = { mode };
+  let customFlags = flag;
 
-  if (typeof flag === "string") {
-    switch (flag) {
-      case "a": {
-        // 'a': Open file for appending. The file is created if it does not exist.
-        openOptions = { create: true, append: true };
-        break;
-      }
-      case "ax":
-      case "xa": {
-        // 'ax', 'xa': Like 'a' but fails if the path exists.
-        openOptions = { createNew: true, write: true, append: true };
-        break;
-      }
-      case "a+": {
-        // 'a+': Open file for reading and appending. The file is created if it does not exist.
-        openOptions = { read: true, create: true, append: true };
-        break;
-      }
-      case "ax+":
-      case "xa+": {
-        // 'ax+', 'xa+': Like 'a+' but fails if the path exists.
-        openOptions = { read: true, createNew: true, append: true };
-        break;
-      }
-      case "r": {
-        // 'r': Open file for reading. An exception occurs if the file does not exist.
-        openOptions = { read: true };
-        break;
-      }
-      case "r+": {
-        // 'r+': Open file for reading and writing. An exception occurs if the file does not exist.
-        openOptions = { read: true, write: true };
-        break;
-      }
-      case "w": {
-        // 'w': Open file for writing. The file is created (if it does not exist) or truncated (if it exists).
-        openOptions = { create: true, write: true, truncate: true };
-        break;
-      }
-      case "wx":
-      case "xw": {
-        // 'wx', 'xw': Like 'w' but fails if the path exists.
-        openOptions = { createNew: true, write: true };
-        break;
-      }
-      case "w+": {
-        // 'w+': Open file for reading and writing. The file is created (if it does not exist) or truncated (if it exists).
-        openOptions = { create: true, write: true, truncate: true, read: true };
-        break;
-      }
-      case "wx+":
-      case "xw+": {
-        // 'wx+', 'xw+': Like 'w+' but fails if the path exists.
-        openOptions = { createNew: true, write: true, read: true };
-        break;
-      }
-      case "as":
-      case "sa": {
-        // 'as', 'sa': Open file for appending in synchronous mode. The file is created if it does not exist.
-        openOptions = { create: true, append: true };
-        break;
-      }
-      case "as+":
-      case "sa+": {
-        // 'as+', 'sa+': Open file for reading and appending in synchronous mode. The file is created if it does not exist.
-        openOptions = { create: true, read: true, append: true };
-        break;
-      }
-      case "rs+":
-      case "sr+": {
-        // 'rs+', 'sr+': Open file for reading and writing in synchronous mode. Instructs the operating system to bypass the local file system cache.
-        openOptions = { create: true, read: true, write: true };
-        break;
-      }
-      default: {
-        throw new Error(`Unrecognized file system flag: ${flag}`);
-      }
-    }
-  } else if (typeof flag === "number") {
-    if ((flag & O_APPEND) === O_APPEND) {
-      openOptions.append = true;
-    }
-    if ((flag & O_CREAT) === O_CREAT) {
-      openOptions.create = true;
-      openOptions.write = true;
-    }
-    if ((flag & O_EXCL) === O_EXCL) {
-      openOptions.createNew = true;
-      openOptions.read = true;
-      openOptions.write = true;
-    }
-    if ((flag & O_TRUNC) === O_TRUNC) {
-      openOptions.truncate = true;
-    }
-    if ((flag & O_RDONLY) === O_RDONLY) {
-      openOptions.read = true;
-    }
-    if ((flag & O_WRONLY) === O_WRONLY) {
-      openOptions.write = true;
-    }
-    if ((flag & O_RDWR) === O_RDWR) {
-      openOptions.read = true;
-      openOptions.write = true;
-    }
+  if ((flag & O_APPEND) === O_APPEND) {
+    openOptions.append = true;
+    customFlags &= ~O_APPEND;
   }
+  if ((flag & O_CREAT) === O_CREAT) {
+    openOptions.create = true;
+    openOptions.write = true;
+    customFlags &= ~O_CREAT;
+  }
+  if ((flag & O_EXCL) === O_EXCL) {
+    openOptions.createNew = true;
+    openOptions.read = true;
+    openOptions.write = true;
+    customFlags &= ~O_EXCL;
+  }
+  if ((flag & O_TRUNC) === O_TRUNC) {
+    openOptions.truncate = true;
+    customFlags &= ~O_TRUNC;
+  }
+  if ((flag & O_RDONLY) === O_RDONLY) {
+    openOptions.read = true;
+    customFlags &= ~O_RDONLY;
+  }
+  if ((flag & O_WRONLY) === O_WRONLY) {
+    openOptions.write = true;
+    customFlags &= ~O_WRONLY;
+  }
+  if ((flag & O_RDWR) === O_RDWR) {
+    openOptions.read = true;
+    openOptions.write = true;
+    customFlags &= ~O_RDWR;
+  }
+  openOptions.customFlags = customFlags;
 
   return openOptions;
 }
@@ -253,11 +188,11 @@ export function maybeCallback(cb: unknown) {
 // Ensure that callbacks run in the global context. Only use this function
 // for callbacks that are passed to the binding layer, callbacks that are
 // invoked from JS already run in the proper scope.
-export function makeCallback<T>(
+export function makeCallback<T extends unknown[]>(
   this: unknown,
-  cb?: (arg: T) => void,
+  cb?: (...args: T) => void,
 ) {
   validateFunction(cb, "cb");
 
-  return (...args: unknown[]) => ReflectApply(cb!, this, args);
+  return (...args: T) => ReflectApply(cb!, this, args);
 }
