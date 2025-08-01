@@ -1202,7 +1202,7 @@ pub(crate) mod webtransport {
     };
 
     Ok((
-      url.to_string(),
+      url.into(),
       connect_tx_rid,
       connect_rx_rid,
       settings_tx_rid,

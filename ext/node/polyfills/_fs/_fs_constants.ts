@@ -58,4 +58,6 @@ export const {
   O_NONBLOCK,
   O_CREAT,
   O_EXCL,
+  O_DIRECT,
+  O_NOATIME,
 } = fs;

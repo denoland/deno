@@ -215,6 +215,70 @@ pub enum PackageFolderResolveErrorKind {
 }
 
 #[derive(Debug, Boxed, JsError)]
+pub struct PackageSubpathFromDenoModuleResolveError(
+  pub Box<PackageSubpathFromDenoModuleResolveErrorKind>,
+);
+
+impl NodeJsErrorCoded for PackageSubpathFromDenoModuleResolveError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      PackageSubpathFromDenoModuleResolveErrorKind::SubPath(e) => e.code(),
+      PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
+        e.code()
+      }
+    }
+  }
+}
+
+impl PackageSubpathFromDenoModuleResolveError {
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    match self.as_kind() {
+      PackageSubpathFromDenoModuleResolveErrorKind::SubPath(e) => {
+        e.as_types_not_found()
+      }
+      PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
+        e.as_types_not_found()
+      }
+    }
+  }
+
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+    match self.as_kind() {
+      PackageSubpathFromDenoModuleResolveErrorKind::SubPath(e) => {
+        e.maybe_specifier()
+      }
+      PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
+        e.maybe_specifier()
+      }
+    }
+  }
+
+  pub fn into_node_resolve_error(self) -> NodeResolveError {
+    match self.into_kind() {
+      PackageSubpathFromDenoModuleResolveErrorKind::SubPath(e) => {
+        NodeResolveErrorKind::PackageResolve(
+          PackageResolveErrorKind::SubpathResolve(e).into_box(),
+        )
+      }
+      PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
+        NodeResolveErrorKind::FinalizeResolution(e)
+      }
+    }
+    .into_box()
+  }
+}
+
+#[derive(Debug, Error, JsError)]
+pub enum PackageSubpathFromDenoModuleResolveErrorKind {
+  #[class(inherit)]
+  #[error(transparent)]
+  SubPath(#[from] PackageSubpathResolveError),
+  #[class(inherit)]
+  #[error(transparent)]
+  FinalizeResolution(#[from] FinalizeResolutionError),
+}
+
+#[derive(Debug, Boxed, JsError)]
 pub struct PackageSubpathResolveError(pub Box<PackageSubpathResolveErrorKind>);
 
 impl NodeJsErrorCoded for PackageSubpathResolveError {
@@ -223,7 +287,6 @@ impl NodeJsErrorCoded for PackageSubpathResolveError {
       PackageSubpathResolveErrorKind::PkgJsonLoad(e) => e.code(),
       PackageSubpathResolveErrorKind::Exports(e) => e.code(),
       PackageSubpathResolveErrorKind::LegacyResolve(e) => e.code(),
-      PackageSubpathResolveErrorKind::FinalizeResolution(e) => e.code(),
     }
   }
 }
@@ -240,9 +303,6 @@ impl PackageSubpathResolveError {
       PackageSubpathResolveErrorKind::LegacyResolve(err) => {
         Some(Cow::Borrowed(err.specifier()))
       }
-      PackageSubpathResolveErrorKind::FinalizeResolution(err) => {
-        err.maybe_specifier().map(Cow::Borrowed)
-      }
     }
   }
 }
@@ -258,9 +318,6 @@ pub enum PackageSubpathResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   LegacyResolve(LegacyResolveError),
-  #[class(inherit)]
-  #[error(transparent)]
-  FinalizeResolution(#[from] FinalizeResolutionError),
 }
 
 impl PackageSubpathResolveErrorKind {
@@ -288,7 +345,6 @@ impl PackageSubpathResolveErrorKind {
         LegacyResolveErrorKind::TypesNotFound(not_found) => Some(not_found),
         LegacyResolveErrorKind::ModuleNotFound(_) => None,
       },
-      PackageSubpathResolveErrorKind::FinalizeResolution(_) => None,
     }
   }
 }
@@ -677,9 +733,7 @@ impl NodeResolveError {
       NodeResolveErrorKind::UnknownBuiltInNodeModule(err) => {
         err.maybe_specifier().map(|u| Cow::Owned(UrlOrPath::Url(u)))
       }
-      NodeResolveErrorKind::FinalizeResolution(err) => {
-        err.maybe_specifier().map(Cow::Borrowed)
-      }
+      NodeResolveErrorKind::FinalizeResolution(err) => err.maybe_specifier(),
       NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
       | NodeResolveErrorKind::DataUrlReferrer(_)
       | NodeResolveErrorKind::RelativeJoin(_) => None,
@@ -761,16 +815,34 @@ impl NodeResolveErrorKind {
 pub struct FinalizeResolutionError(pub Box<FinalizeResolutionErrorKind>);
 
 impl FinalizeResolutionError {
-  pub fn maybe_specifier(&self) -> Option<&UrlOrPath> {
+  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
     match self.as_kind() {
-      FinalizeResolutionErrorKind::ModuleNotFound(err) => Some(&err.specifier),
+      FinalizeResolutionErrorKind::ModuleNotFound(err) => {
+        Some(Cow::Borrowed(&err.specifier))
+      }
       FinalizeResolutionErrorKind::TypesNotFound(err) => {
-        Some(&err.0.code_specifier)
+        Some(Cow::Borrowed(&err.0.code_specifier))
       }
       FinalizeResolutionErrorKind::UnsupportedDirImport(err) => {
-        Some(&err.dir_url)
+        Some(Cow::Borrowed(&err.dir_url))
+      }
+      FinalizeResolutionErrorKind::PackageSubpathResolve(err) => {
+        err.maybe_specifier()
       }
       FinalizeResolutionErrorKind::InvalidModuleSpecifierError(_)
+      | FinalizeResolutionErrorKind::UrlToFilePath(_) => None,
+    }
+  }
+
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    match self.as_kind() {
+      FinalizeResolutionErrorKind::TypesNotFound(err) => Some(err),
+      FinalizeResolutionErrorKind::PackageSubpathResolve(err) => {
+        err.as_types_not_found()
+      }
+      FinalizeResolutionErrorKind::ModuleNotFound(_)
+      | FinalizeResolutionErrorKind::UnsupportedDirImport(_)
+      | FinalizeResolutionErrorKind::InvalidModuleSpecifierError(_)
       | FinalizeResolutionErrorKind::UrlToFilePath(_) => None,
     }
   }
@@ -789,6 +861,9 @@ pub enum FinalizeResolutionErrorKind {
   TypesNotFound(#[from] TypesNotFoundError),
   #[class(inherit)]
   #[error(transparent)]
+  PackageSubpathResolve(#[from] PackageSubpathResolveError),
+  #[class(inherit)]
+  #[error(transparent)]
   UnsupportedDirImport(#[from] UnsupportedDirImportError),
   #[class(inherit)]
   #[error(transparent)]
@@ -802,6 +877,7 @@ impl NodeJsErrorCoded for FinalizeResolutionErrorKind {
       FinalizeResolutionErrorKind::InvalidModuleSpecifierError(e) => e.code(),
       FinalizeResolutionErrorKind::ModuleNotFound(e) => e.code(),
       FinalizeResolutionErrorKind::TypesNotFound(e) => e.code(),
+      FinalizeResolutionErrorKind::PackageSubpathResolve(e) => e.code(),
       FinalizeResolutionErrorKind::UnsupportedDirImport(e) => e.code(),
       FinalizeResolutionErrorKind::UrlToFilePath(_) => {
         NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH

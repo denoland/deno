@@ -10,7 +10,6 @@ import {
   CallbackWithError,
   checkEncoding,
   getEncoding,
-  getOpenOptions,
   isFileOptions,
   WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
@@ -25,9 +24,28 @@ import {
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
+import { openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
 
 interface Writer {
   write(p: Uint8Array): Promise<number>;
+}
+
+async function getRid(
+  pathOrRid: string | number,
+  flag: string = "w",
+): Promise<number> {
+  if (typeof pathOrRid === "number") {
+    return pathOrRid;
+  }
+  const fileHandle = await openPromise(pathOrRid, flag);
+  return fileHandle.fd;
+}
+
+function getRidSync(pathOrRid: string | number, flag: string = "w"): number {
+  if (typeof pathOrRid === "number") {
+    return pathOrRid;
+  }
+  return openSync(pathOrRid, flag);
 }
 
 export function writeFile(
@@ -57,7 +75,6 @@ export function writeFile(
     : undefined;
 
   const encoding = checkEncoding(getEncoding(options)) || "utf8";
-  const openOptions = getOpenOptions(flag || "w");
 
   if (!ArrayBuffer.isView(data)) {
     validateStringAfterArrayBufferView(data, "data");
@@ -70,9 +87,8 @@ export function writeFile(
   let error: Error | null = null;
   (async () => {
     try {
-      file = isRid
-        ? new FsFile(pathOrRid as number, Symbol.for("Deno.internal.FsFile"))
-        : await Deno.open(pathOrRid as string, openOptions);
+      const rid = await getRid(pathOrRid, flag);
+      file = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
 
       // ignore mode because it's not supported on windows
       // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
@@ -118,7 +134,6 @@ export function writeFileSync(
     : undefined;
 
   const encoding = checkEncoding(getEncoding(options)) || "utf8";
-  const openOptions = getOpenOptions(flag || "w");
 
   if (!ArrayBuffer.isView(data)) {
     validateStringAfterArrayBufferView(data, "data");
@@ -130,9 +145,8 @@ export function writeFileSync(
 
   let error: Error | null = null;
   try {
-    file = isRid
-      ? new FsFile(pathOrRid as number, Symbol.for("Deno.internal.FsFile"))
-      : Deno.openSync(pathOrRid as string, openOptions);
+    const rid = getRidSync(pathOrRid, flag);
+    file = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
 
     // ignore mode because it's not supported on windows
     // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
