@@ -132,7 +132,7 @@ impl HmrRunner {
               let file_path = file_url.to_file_path().unwrap();
               if let Ok(canonicalized_file_path) = file_path.canonicalize() {
                 let canonicalized_file_url = Url::from_file_path(canonicalized_file_path).unwrap();
-                self.script_ids.insert(canonicalized_file_url.to_string(), params.script_id);
+                self.script_ids.insert(canonicalized_file_url.into(), params.script_id);
               }
             }
           }

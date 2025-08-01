@@ -7,8 +7,11 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::op2;
 use deno_fs::FileSystemRc;
+use deno_fs::OpenOptions;
+use deno_io::fs::FileResource;
 use deno_permissions::OpenAccessKind;
 use serde::Serialize;
 
@@ -133,6 +136,73 @@ where
   fs.cp_async(path.into_owned(), new_path.into_owned())
     .await?;
   Ok(())
+}
+
+fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
+  let read = open_options.read;
+  let write = open_options.write || open_options.append;
+  match (read, write) {
+    (true, true) => OpenAccessKind::ReadWrite,
+    (false, true) => OpenAccessKind::Write,
+    (true, false) | (false, false) => OpenAccessKind::Read,
+  }
+}
+
+#[op2(stack_trace)]
+#[smi]
+pub fn op_node_open_sync<P>(
+  state: &mut OpState,
+  #[string] path: &str,
+  #[serde] options: OpenOptions,
+) -> Result<ResourceId, FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = Path::new(path);
+
+  let fs = state.borrow::<FileSystemRc>().clone();
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(path),
+    open_options_to_access_kind(&options),
+    Some("node:fs.openSync"),
+  )?;
+  let file = fs.open_sync(&path, options)?;
+  let rid = state
+    .resource_table
+    .add(FileResource::new(file, "fsFile".to_string()));
+  Ok(rid)
+}
+
+#[op2(async, stack_trace)]
+#[smi]
+pub async fn op_node_open<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+  #[serde] options: OpenOptions,
+) -> Result<ResourceId, FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = PathBuf::from(path);
+
+  let (fs, path) = {
+    let mut state = state.borrow_mut();
+    (
+      state.borrow::<FileSystemRc>().clone(),
+      state.borrow_mut::<P>().check_open(
+        Cow::Owned(path),
+        open_options_to_access_kind(&options),
+        Some("node:fs.open"),
+      )?,
+    )
+  };
+  let file = fs.open_async(path.as_owned(), options).await?;
+
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(FileResource::new(file, "fsFile".to_string()));
+  Ok(rid)
 }
 
 #[derive(Debug, Serialize)]

@@ -1118,15 +1118,6 @@ impl CliFactory {
                 .node_conditions()
                 .iter()
                 .map(|c| Cow::Owned(c.clone()))
-                .chain({
-                  match &self.flags.subcommand {
-                    DenoSubcommand::Bundle(BundleFlags {
-                      platform: BundlePlatform::Browser,
-                      ..
-                    }) => vec![Cow::Borrowed("browser")],
-                    _ => vec![],
-                  }
-                })
                 .collect(),
               import_conditions_override: None,
               require_conditions_override: None,
@@ -1141,7 +1132,7 @@ impl CliFactory {
               self.flags.subcommand,
               DenoSubcommand::Bundle(_)
             ),
-            prefer_browser_field: matches!(
+            is_browser_platform: matches!(
               self.flags.subcommand,
               DenoSubcommand::Bundle(BundleFlags {
                 platform: BundlePlatform::Browser,

@@ -40,7 +40,7 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
-use node_resolver::errors::PackageSubpathResolveError;
+use node_resolver::errors::PackageSubpathFromDenoModuleResolveError;
 use node_resolver::resolve_specifier_into_node_modules;
 use once_cell::sync::Lazy;
 use thiserror::Error;
@@ -876,7 +876,7 @@ pub enum ResolveError {
   FilePathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error("{0}")]
-  PackageSubpathResolve(PackageSubpathResolveError),
+  PackageSubpathResolve(PackageSubpathFromDenoModuleResolveError),
   #[class(inherit)]
   #[error("{0}")]
   ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
@@ -1196,7 +1196,7 @@ pub enum ResolveNonGraphSpecifierTypesError {
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
   #[class(inherit)]
   #[error(transparent)]
-  PackageSubpathResolve(#[from] PackageSubpathResolveError),
+  PackageSubpathResolve(#[from] PackageSubpathFromDenoModuleResolveError),
 }
 
 fn resolve_non_graph_specifier_types(

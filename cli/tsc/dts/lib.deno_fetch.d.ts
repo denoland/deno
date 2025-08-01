@@ -417,6 +417,7 @@ declare function fetch(
  */
 interface EventSourceInit {
   withCredentials?: boolean;
+  headers?: HeadersInit;
 }
 
 /**
