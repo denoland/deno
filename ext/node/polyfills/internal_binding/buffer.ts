@@ -1,9 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { Encodings } from "ext:deno_node/internal_binding/_node.ts";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  Error,
+  MathMax,
+  TypedArrayFrom,
+  TypedArrayPrototypeGetLength,
+  TypedArrayPrototypeSlice,
+  Uint8Array,
+} = primordials;
 
 export function fill(
   buffer,
@@ -11,6 +18,8 @@ export function fill(
   start,
   end,
 ) {
+  // Ignore primordial: `fill` is a method from Node.js Buffer.
+  // deno-lint-ignore prefer-primordials
   return buffer.fill(value, start, end);
 }
 
@@ -20,26 +29,29 @@ export function indexOfNeedle(
   start = 0,
   step = 1,
 ): number {
-  if (start >= source.length) {
+  const sourceLength = TypedArrayPrototypeGetLength(source);
+  const needleLength = TypedArrayPrototypeGetLength(needle);
+
+  if (start >= sourceLength) {
     return -1;
   }
   if (start < 0) {
-    start = Math.max(0, source.length + start);
+    start = MathMax(0, sourceLength + start);
   }
   const s = needle[0];
-  for (let i = start; i < source.length; i += step) {
+  for (let i = start; i < sourceLength; i += step) {
     if (source[i] !== s) continue;
     const pin = i;
     let matched = 1;
     let j = i;
-    while (matched < needle.length) {
+    while (matched < needleLength) {
       j++;
       if (source[j] !== needle[j - pin]) {
         break;
       }
       matched++;
     }
-    if (matched === needle.length) {
+    if (matched === needleLength) {
       return pin;
     }
   }
@@ -57,11 +69,19 @@ function findLastIndex(
   buffer: Uint8Array,
   offset: number,
 ) {
-  offset = offset > targetBuffer.length ? targetBuffer.length : offset;
+  const targetBufferLength = TypedArrayPrototypeGetLength(targetBuffer);
+  const bufferLength = TypedArrayPrototypeGetLength(buffer);
 
-  const searchableBuffer = targetBuffer.slice(0, offset + buffer.length);
-  const searchableBufferLastIndex = searchableBuffer.length - 1;
-  const bufferLastIndex = buffer.length - 1;
+  offset = offset > targetBufferLength ? targetBufferLength : offset;
+
+  const searchableBuffer = TypedArrayPrototypeSlice(
+    targetBuffer,
+    0,
+    offset + bufferLength,
+  );
+  const searchableBufferLastIndex =
+    TypedArrayPrototypeGetLength(searchableBuffer) - 1;
+  const bufferLastIndex = bufferLength - 1;
 
   // Important to keep track of the last match index in order to backtrack after an incomplete match
   // Not doing this will cause the search to skip all possible matches that happened in the
@@ -88,7 +108,7 @@ function findLastIndex(
       continue;
     }
 
-    if (matches === buffer.length) {
+    if (matches === bufferLength) {
       index = x;
       break;
     }
@@ -110,12 +130,14 @@ function indexOfBuffer(
     throw new Error(`Unknown encoding code ${encoding}`);
   }
 
+  const targetBufferLength = TypedArrayPrototypeGetLength(targetBuffer);
+  const bufferLength = TypedArrayPrototypeGetLength(buffer);
   const isUcs2 = encoding === Encodings.UCS2;
 
   // If the encoding is UCS2 and haystack or needle has a length less than 2, the search will always fail
   // https://github.com/nodejs/node/blob/fbdfe9399cf6c660e67fd7d6ceabfb106e32d787/src/node_buffer.cc#L1067-L1069
   if (isUcs2) {
-    if (buffer.length < 2 || targetBuffer.length < 2) {
+    if (bufferLength < 2 || targetBufferLength < 2) {
       return -1;
     }
   }
@@ -124,20 +146,18 @@ function indexOfBuffer(
     // If negative the offset is calculated from the end of the buffer
 
     if (byteOffset < 0) {
-      byteOffset = targetBuffer.length + byteOffset;
+      byteOffset = targetBufferLength + byteOffset;
     }
 
-    if (buffer.length === 0) {
-      return byteOffset <= targetBuffer.length
-        ? byteOffset
-        : targetBuffer.length;
+    if (bufferLength === 0) {
+      return byteOffset <= targetBufferLength ? byteOffset : targetBufferLength;
     }
 
     return findLastIndex(targetBuffer, buffer, byteOffset);
   }
 
   if (buffer.length === 0) {
-    return byteOffset <= targetBuffer.length ? byteOffset : targetBuffer.length;
+    return byteOffset <= targetBufferLength ? byteOffset : targetBufferLength;
   }
 
   return indexOfNeedle(targetBuffer, buffer, byteOffset, isUcs2 ? 2 : 1);
@@ -153,7 +173,7 @@ function indexOfNumber(
     targetBuffer,
     // Uses only the last 2 hex digits of the number
     // https://github.com/nodejs/node/issues/7591#issuecomment-231178104
-    Uint8Array.from([number & 255]),
+    TypedArrayFrom(Uint8Array, [number & 255]),
     byteOffset,
     Encodings.UTF8,
     forwardDirection,
