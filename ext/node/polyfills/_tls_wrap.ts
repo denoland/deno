@@ -37,6 +37,7 @@ import {
 import { startTlsInternal } from "ext:deno_net/02_tls.js";
 import { internals } from "ext:core/mod.js";
 import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
+import console from "node:console";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
