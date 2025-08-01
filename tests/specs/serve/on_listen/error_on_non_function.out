@@ -1,5 +1,5 @@
 Check [WILDCARD]
-TS2322 [ERROR]: Type 'number' is not assignable to type '(localAddr: Addr) => void'.
+TS2322 [ERROR]: Type 'number' is not assignable to type '(localAddr: NetAddr) => void'.
   onListen: 1,
   ~~~~~~~~
     at [WILDCARD]
