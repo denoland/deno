@@ -205,23 +205,11 @@ impl DOMPointReadOnly {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
-    #[inline]
-    fn set(
-      scope: &mut v8::HandleScope,
-      object: &mut v8::Local<v8::Object>,
-      key: &str,
-      value: f64,
-    ) {
-      let key = v8::String::new(scope, key).unwrap();
-      let value = v8::Number::new(scope, value);
-      object.set(scope, key.into(), value.into()).unwrap();
-    }
-
     let mut obj = v8::Object::new(scope);
-    set(scope, &mut obj, "x", self.inner.borrow().x);
-    set(scope, &mut obj, "y", self.inner.borrow().y);
-    set(scope, &mut obj, "z", self.inner.borrow().z);
-    set(scope, &mut obj, "w", self.inner.borrow().w);
+    set_f64(scope, &mut obj, "x", self.inner.borrow().x);
+    set_f64(scope, &mut obj, "y", self.inner.borrow().y);
+    set_f64(scope, &mut obj, "z", self.inner.borrow().z);
+    set_f64(scope, &mut obj, "w", self.inner.borrow().w);
     obj
   }
 
@@ -492,26 +480,15 @@ impl DOMRectReadOnly {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
-    fn set(
-      scope: &mut v8::HandleScope,
-      object: &mut v8::Local<v8::Object>,
-      key: &str,
-      value: f64,
-    ) {
-      let key = v8::String::new(scope, key).unwrap();
-      let value = v8::Number::new(scope, value);
-      object.set(scope, key.into(), value.into()).unwrap();
-    }
-
     let mut obj = v8::Object::new(scope);
-    set(scope, &mut obj, "x", self.x.get());
-    set(scope, &mut obj, "y", self.y.get());
-    set(scope, &mut obj, "width", self.width.get());
-    set(scope, &mut obj, "height", self.height.get());
-    set(scope, &mut obj, "top", self.get_top());
-    set(scope, &mut obj, "right", self.get_right());
-    set(scope, &mut obj, "bottom", self.get_bottom());
-    set(scope, &mut obj, "left", self.get_left());
+    set_f64(scope, &mut obj, "x", self.x.get());
+    set_f64(scope, &mut obj, "y", self.y.get());
+    set_f64(scope, &mut obj, "width", self.width.get());
+    set_f64(scope, &mut obj, "height", self.height.get());
+    set_f64(scope, &mut obj, "top", self.get_top());
+    set_f64(scope, &mut obj, "right", self.get_right());
+    set_f64(scope, &mut obj, "bottom", self.get_bottom());
+    set_f64(scope, &mut obj, "left", self.get_left());
     obj
   }
 }
@@ -812,23 +789,11 @@ impl DOMQuad {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
-    #[inline]
-    fn set(
-      scope: &mut v8::HandleScope,
-      object: &mut v8::Local<v8::Object>,
-      key: &str,
-      value: v8::Global<v8::Object>,
-    ) {
-      let key = v8::String::new(scope, key).unwrap();
-      let value = v8::Local::new(scope, value);
-      object.set(scope, key.into(), value.into()).unwrap();
-    }
-
     let mut obj = v8::Object::new(scope);
-    set(scope, &mut obj, "p1", self.p1.clone());
-    set(scope, &mut obj, "p2", self.p2.clone());
-    set(scope, &mut obj, "p3", self.p3.clone());
-    set(scope, &mut obj, "p4", self.p4.clone());
+    set_object(scope, &mut obj, "p1", self.p1.clone());
+    set_object(scope, &mut obj, "p2", self.p2.clone());
+    set_object(scope, &mut obj, "p3", self.p3.clone());
+    set_object(scope, &mut obj, "p4", self.p4.clone());
     obj
   }
 }
@@ -2111,30 +2076,6 @@ impl DOMMatrixReadOnly {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
-    #[inline]
-    fn set_f64(
-      scope: &mut v8::HandleScope,
-      object: &mut v8::Local<v8::Object>,
-      key: &str,
-      value: f64,
-    ) {
-      let key = v8::String::new(scope, key).unwrap();
-      let value = v8::Number::new(scope, value);
-      object.set(scope, key.into(), value.into()).unwrap();
-    }
-
-    #[inline]
-    fn set_boolean(
-      scope: &mut v8::HandleScope,
-      object: &mut v8::Local<v8::Object>,
-      key: &str,
-      value: bool,
-    ) {
-      let key = v8::String::new(scope, key).unwrap();
-      let value = v8::Boolean::new(scope, value);
-      object.set(scope, key.into(), value.into()).unwrap();
-    }
-
     let mut obj = v8::Object::new(scope);
     set_f64(scope, &mut obj, "a", self.a_inner());
     set_f64(scope, &mut obj, "b", self.b_inner());
@@ -2951,6 +2892,42 @@ impl DOMMatrix {
     ro.invert_self_inner();
     this
   }
+}
+
+#[inline]
+fn set_f64(
+  scope: &mut v8::HandleScope,
+  object: &mut v8::Local<v8::Object>,
+  key: &str,
+  value: f64,
+) {
+  let key = v8::String::new(scope, key).unwrap();
+  let value = v8::Number::new(scope, value);
+  object.set(scope, key.into(), value.into()).unwrap();
+}
+
+#[inline]
+fn set_boolean(
+  scope: &mut v8::HandleScope,
+  object: &mut v8::Local<v8::Object>,
+  key: &str,
+  value: bool,
+) {
+  let key = v8::String::new(scope, key).unwrap();
+  let value = v8::Boolean::new(scope, value);
+  object.set(scope, key.into(), value.into()).unwrap();
+}
+
+#[inline]
+fn set_object(
+  scope: &mut v8::HandleScope,
+  object: &mut v8::Local<v8::Object>,
+  key: &str,
+  value: v8::Global<v8::Object>,
+) {
+  let key = v8::String::new(scope, key).unwrap();
+  let value = v8::Local::new(scope, value);
+  object.set(scope, key.into(), value.into()).unwrap();
 }
 
 // TODO(petamoriken) Use f64::maximum instead https://github.com/rust-lang/rust/issues/91079
