@@ -1120,6 +1120,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       }),
       jsr_pkgs: self
         .jsr_packages()
+        .iter()
         .map(|pkg| SerializedResolverWorkspaceJsrPackage {
           relative_base: root_dir_url.make_relative_if_descendant(&pkg.base),
           name: Cow::Borrowed(&pkg.name),
@@ -1255,8 +1256,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
 
   pub fn jsr_packages(
     &self,
-  ) -> impl Iterator<Item = &ResolverWorkspaceJsrPackage> {
-    self.jsr_pkgs.iter()
+  ) -> &[ResolverWorkspaceJsrPackage] {
+    &self.jsr_pkgs
   }
 
   pub fn diagnostics(&self) -> Vec<WorkspaceResolverDiagnostic<'_>> {
