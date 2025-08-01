@@ -23,6 +23,7 @@ use deno_permissions::PermissionCheckError;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::rustls::RootCertStore;
 pub use quic::QuicError;
+pub use rustls_tokio_stream;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
 

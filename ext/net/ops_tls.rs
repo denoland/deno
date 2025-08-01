@@ -61,8 +61,7 @@ use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
 
-pub(crate) const TLS_BUFFER_SIZE: Option<NonZeroUsize> =
-  NonZeroUsize::new(65536);
+pub const TLS_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(65536);
 
 pub struct TlsListener {
   pub(crate) tcp_listener: TcpListener,
