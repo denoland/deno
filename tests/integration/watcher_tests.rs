@@ -2055,3 +2055,42 @@ async fn bundle_watch() {
 
   check_alive_then_kill(child);
 }
+
+#[flaky_test(tokio)]
+async fn run_watch_env_file_reload() {
+  let t = TempDir::new();
+
+  let env = t.path().join(".env");
+  env.write("SECRET=1234");
+
+  let main = t.path().join("main.js");
+  main.write("console.log('MY SECRET:', Deno.env.get('SECRET'))");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--allow-env")
+    .arg("--env-file=.env")
+    .arg("-L")
+    .arg("debug")
+    .arg(&main)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("MY SECRET: 1234", &mut stdout_lines).await;
+
+  wait_for_watcher(".env", &mut stderr_lines).await;
+  wait_for_watcher("main.js", &mut stderr_lines).await;
+
+  // Change content of the env file
+  env.write("SECRET=5678");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("MY SECRET: 5678", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
