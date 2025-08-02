@@ -51,7 +51,6 @@ use deno_semver::StackString;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
-use dotenvy::from_filename;
 pub use flags::*;
 use once_cell::sync::Lazy;
 use thiserror::Error;
@@ -1275,6 +1274,15 @@ impl CliOptions {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
     }
 
+    if let Some(env_file_names) = &self.flags.env_file {
+      // Only watch the exact environment files specified
+      full_paths.extend(
+        env_file_names
+          .iter()
+          .map(|name| self.initial_cwd.join(name)),
+      );
+    }
+
     if let Ok(Some(import_map_path)) = self
       .resolve_specified_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
@@ -1294,6 +1302,7 @@ impl CliOptions {
         full_paths.push(pkg_json.path.clone());
       }
     }
+
     full_paths
   }
 
@@ -1416,53 +1425,6 @@ pub fn config_to_deno_graph_workspace_member(
     version,
     exports: config.to_exports_config()?.into_map(),
   })
-}
-
-pub fn load_env_variables_from_env_file(
-  filename: Option<&Vec<String>>,
-  flags_log_level: Option<log::Level>,
-) {
-  let Some(env_file_names) = filename else {
-    return;
-  };
-
-  for env_file_name in env_file_names.iter().rev() {
-    match from_filename(env_file_name) {
-      Ok(_) => (),
-      Err(error) => {
-        #[allow(clippy::print_stderr)]
-        if flags_log_level
-          .map(|l| l >= log::Level::Info)
-          .unwrap_or(true)
-        {
-          match error {
-            dotenvy::Error::LineParse(line, index) => eprintln!(
-              "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
-              colors::yellow("Warning"),
-              env_file_name,
-              index,
-              line
-            ),
-            dotenvy::Error::Io(_) => eprintln!(
-              "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
-              colors::yellow("Warning"),
-              env_file_name
-            ),
-            dotenvy::Error::EnvVar(_) => eprintln!(
-              "{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",
-              colors::yellow("Warning"),
-              env_file_name
-            ),
-            _ => eprintln!(
-              "{} Unknown failure occurred with the specified environment file: {}",
-              colors::yellow("Warning"),
-              env_file_name
-            ),
-          }
-        }
-      }
-    }
-  }
 }
 
 pub fn get_default_v8_flags() -> Vec<String> {

@@ -58,13 +58,14 @@ use factory::CliFactory;
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
-use self::args::load_env_variables_from_env_file;
 use self::util::draw_thread::DrawThread;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::flags_from_vec;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
+use crate::util::env_manager::EnvManager;
+use crate::util::env_manager::load_env_variables_from_env_files;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
@@ -605,7 +606,9 @@ async fn resolve_flags_and_init(
     Err(err) => exit_for_error(AnyError::from(err)),
   };
 
-  load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
+  // preserve already loaded env variables
+  EnvManager::instance();
+  load_env_variables_from_env_files(flags.env_file.as_ref(), flags.log_level);
   flags.unstable_config.fill_with_env();
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();

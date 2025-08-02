@@ -5,6 +5,7 @@ pub mod archive;
 pub mod console;
 pub mod display;
 pub mod draw_thread;
+pub mod env_manager;
 pub mod extract;
 pub mod file_watcher;
 pub mod fs;

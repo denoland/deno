@@ -23,6 +23,7 @@ use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::util;
+use crate::util::env_manager::EnvManager;
 use crate::util::file_watcher::WatcherRestartMode;
 
 pub mod hmr;
@@ -172,6 +173,11 @@ async fn run_with_watch(
     WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
+
+      EnvManager::instance().load_env_variables_from_env_files(
+        flags.env_file.as_ref(),
+        flags.log_level,
+      );
       Ok(async move {
         let factory = CliFactory::from_flags_for_watcher(
           flags,
