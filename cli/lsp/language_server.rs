@@ -362,6 +362,7 @@ impl LanguageServer {
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
           allow_unknown_jsr_exports: false,
+          skip_graph_roots_validation: false,
         },
       )?;
 
