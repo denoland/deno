@@ -1,6 +1,7 @@
 {
   "envs": {
-    "PLAYWRIGHT_BROWSERS_PATH": "../../../../.ms-playwright"
+    "PLAYWRIGHT_BROWSERS_PATH": "../../../../.ms-playwright",
+    "PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT": "90000"
   },
   "steps": [{
     "args": "run -A npm:playwright install chromium",
