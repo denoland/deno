@@ -51,6 +51,7 @@ use deno_semver::StackString;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
+use dotenvy::from_filename;
 use dotenvy::from_filename_override;
 pub use flags::*;
 use once_cell::sync::Lazy;
@@ -1429,6 +1430,52 @@ pub fn config_to_deno_graph_workspace_member(
 }
 
 pub fn load_env_variables_from_env_file(
+  filename: Option<&Vec<String>>,
+  flags_log_level: Option<log::Level>,
+) {
+  let Some(env_file_names) = filename else {
+    return;
+  };
+
+  for env_file_name in env_file_names.iter().rev() {
+    match from_filename(env_file_name) {
+      Ok(_) => (),
+      Err(error) => {
+        #[allow(clippy::print_stderr)]
+        if flags_log_level
+          .map(|l| l >= log::Level::Info)
+          .unwrap_or(true)
+        {
+          match error {
+            dotenvy::Error::LineParse(line, index) => eprintln!(
+              "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
+              colors::yellow("Warning"),
+              env_file_name,
+              index,
+              line
+            ),
+            dotenvy::Error::Io(_) => eprintln!(
+              "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+            dotenvy::Error::EnvVar(_) => eprintln!(
+              "{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+            _ => eprintln!(
+              "{} Unknown failure occurred with the specified environment file: {}",
+              colors::yellow("Warning"),
+              env_file_name
+            ),
+          }
+        }
+      }
+    }
+  }
+}
+pub fn load_env_variables_from_env_file_override(
   filename: Option<&Vec<String>>,
   flags_log_level: Option<log::Level>,
 ) {

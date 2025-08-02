@@ -22,7 +22,7 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
-use crate::args::load_env_variables_from_env_file;
+use crate::args::load_env_variables_from_env_file_override;
 use crate::factory::CliFactory;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -185,7 +185,10 @@ fn maybe_update_env_vars(
   });
 
   if should_reload_env {
-    load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
+    load_env_variables_from_env_file_override(
+      flags.env_file.as_ref(),
+      flags.log_level,
+    );
   }
 }
 
