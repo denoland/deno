@@ -9,6 +9,7 @@ const {
   MathPow,
   NumberIsSafeInteger,
   RangeError,
+  TypeError,
 } = primordials;
 
 export default function randomInt(max: number): number;
@@ -39,11 +40,8 @@ export default function randomInt(
     min = 0;
   }
 
-  if (
-    !NumberIsSafeInteger(min) ||
-    typeof max === "number" && !NumberIsSafeInteger(max)
-  ) {
-    throw new Error("max or min is not a Safe Number");
+  if (!NumberIsSafeInteger(min) || !NumberIsSafeInteger(max)) {
+    throw new TypeError("max or min is not a Safe Number");
   }
 
   if (max - min > MathPow(2, 48)) {
