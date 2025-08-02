@@ -562,7 +562,9 @@ impl<
     let maybe_file_type = self.sys.get_file_type(&path);
     match maybe_file_type {
       Ok(FileType::Dir) => {
-        if resolution_mode == ResolutionMode::Import {
+        if resolution_mode == ResolutionMode::Import
+          && !self.resolution_config.bundle_mode
+        {
           let suggested_file_name = ["index.mjs", "index.js", "index.cjs"]
             .into_iter()
             .find(|e| self.sys.is_file(&path.join(e)));
