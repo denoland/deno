@@ -79,6 +79,17 @@ pub struct ResolverWorkspaceJsrPackage {
   pub is_link: bool,
 }
 
+impl ResolverWorkspaceJsrPackage {
+  pub fn matches_req(&self, req: &PackageReq) -> bool {
+    self.name == req.name
+      && self
+        .version
+        .as_ref()
+        .map(|v| req.version_req.matches(v))
+        .unwrap_or(true)
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct JsrPackageConfig {
   /// The package name.

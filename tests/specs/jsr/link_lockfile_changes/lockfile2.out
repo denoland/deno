@@ -1,0 +1,11 @@
+{
+  "version": "5",
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/add@*"
+    ],
+    "links": {
+      "jsr:@denotest/add": {}
+    }
+  }
+}
