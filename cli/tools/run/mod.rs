@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io::Read;
+use std::path;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::File;
@@ -21,6 +22,7 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
+use crate::args::load_env_variables_from_env_file;
 use crate::factory::CliFactory;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -155,6 +157,38 @@ pub async fn run_from_stdin(
   Ok(exit_code)
 }
 
+fn maybe_update_env_vars(
+  changed_paths: Option<&Vec<path::PathBuf>>,
+  flags: &Arc<Flags>,
+) {
+  let (Some(env_files), Some(changed_paths)) =
+    (flags.env_file.as_ref(), changed_paths)
+  else {
+    return;
+  };
+
+  let should_reload_env = changed_paths.iter().any(|changed_path| {
+    env_files.iter().any(|env_file| {
+      let env_file_path = path::Path::new(env_file);
+      match (changed_path.canonicalize(), env_file_path.canonicalize()) {
+        (Ok(changed_canonical), Ok(env_canonical)) => {
+          changed_canonical == env_canonical
+        }
+        _ => match (changed_path.file_name(), env_file_path.file_name()) {
+          (Some(changed_name), Some(env_name)) => changed_name
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&env_name.to_string_lossy()),
+          _ => false,
+        },
+      }
+    })
+  });
+
+  if should_reload_env {
+    load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
+  }
+}
+
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
 async fn run_with_watch(
@@ -173,6 +207,8 @@ async fn run_with_watch(
     move |flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
+        maybe_update_env_vars(changed_paths.as_ref(), &flags);
+
         let factory = CliFactory::from_flags_for_watcher(
           flags,
           watcher_communicator.clone(),
