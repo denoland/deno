@@ -37,6 +37,7 @@ import {
 import { startTlsInternal } from "ext:deno_net/02_tls.js";
 import { internals } from "ext:core/mod.js";
 import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
+import console from "node:console";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -89,7 +90,10 @@ export class TLSSocket extends net.Socket {
   ssl: any;
 
   _start() {
-    this[kHandle].afterConnectTls();
+    this.connecting = true;
+    if (this[kHandle] && this[kHandle][kStreamBaseField]) {
+      this[kHandle].afterConnectTls?.();
+    }
   }
 
   constructor(socket: any, opts: any = kEmptyObject) {
@@ -164,15 +168,18 @@ export class TLSSocket extends net.Socket {
 
       // Set `afterConnectTls` hook. This is called in the `afterConnect` method of net.Socket
       handle.afterConnectTls = async () => {
+        handle.afterConnectTls = undefined;
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
         if (tlssock._needsSockInitWorkaround) {
           // skips the TLS handshake for @npmcli/agent as it's handled by
           // onSocket handler of ClientRequest object.
-          tlssock.emit("secure");
+          tlssock.emit("secureConnect");
           tlssock.removeListener("end", onConnectEnd);
           return;
         }
 
+        console.log("startTlsInternal", handle[kStreamBaseField]);
+        console.log("start tls", options.isServer ? "[server]" : "[client]");
         try {
           const conn = await startTlsInternal(
             handle[kStreamBaseField],
@@ -190,19 +197,25 @@ export class TLSSocket extends net.Socket {
             // operation emit the error.
           }
 
+          console.log("done tls", options.isServer ? "[server]" : "[client]");
+
           // Assign the TLS connection to the handle and resume reading.
           handle[kStreamBaseField] = conn;
           handle.upgrading = false;
+          tlssock.connecting = false;
           if (!handle.pauseOnCreate) {
             handle.readStart();
           }
 
           resolve();
 
-          tlssock.emit("secure");
+          tlssock.emit("connect");
+          tlssock.emit("ready");
+          tlssock.emit("secureConnect");
           tlssock.removeListener("end", onConnectEnd);
-        } catch {
+        } catch (e) {
           // TODO(kt3k): Handle this
+          console.log("handle.afterConnecTls error", e);
         }
       };
 
