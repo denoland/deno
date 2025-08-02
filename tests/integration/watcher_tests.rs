@@ -2055,3 +2055,59 @@ async fn bundle_watch() {
 
   check_alive_then_kill(child);
 }
+
+#[flaky_test(tokio)]
+async fn run_watch_env_file_reload() {
+  let t = TempDir::new();
+
+  let env_file = t.path().join(".env");
+  env_file.write("INITIAL_VAR=hello\nTEST_PORT=3000");
+
+  let main_file = t.path().join("main.js");
+  main_file.write(
+    r#"
+    console.log("INITIAL_VAR:", Deno.env.get("INITIAL_VAR"));
+    console.log("TEST_PORT:", Deno.env.get("TEST_PORT"));
+    console.log("ENV_LOADED");
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--env-file")
+    .arg(".env")
+    .arg("--allow-env")
+    .arg("-L")
+    .arg("debug")
+    .arg(&main_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("INITIAL_VAR: hello", &mut stdout_lines).await;
+  wait_contains("TEST_PORT: 3000", &mut stdout_lines).await;
+  wait_contains("ENV_LOADED", &mut stdout_lines).await;
+
+  wait_for_watcher("main.js", &mut stderr_lines).await;
+  wait_for_watcher(".env", &mut stderr_lines).await;
+
+  tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+  env_file.write("INITIAL_VAR=world\nTEST_PORT=4000\nNEW_VAR=added");
+
+  tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Process started", &mut stderr_lines).await;
+
+  wait_contains("INITIAL_VAR: world", &mut stdout_lines).await;
+  wait_contains("TEST_PORT: 4000", &mut stdout_lines).await;
+  wait_contains("ENV_LOADED", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
