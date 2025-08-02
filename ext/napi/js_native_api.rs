@@ -599,8 +599,9 @@ fn napi_set_named_property<'s>(
 ) -> napi_status {
   check_arg!(env, value);
   let env_ptr = env as *mut Env;
+  let scope = &mut env.scope();
 
-  let Some(object) = object.and_then(|o| o.to_object(&mut env.scope())) else {
+  let Some(object) = object.and_then(|o| o.to_object(scope)) else {
     return napi_object_expected;
   };
 
@@ -611,10 +612,7 @@ fn napi_set_named_property<'s>(
 
   let value = value.unwrap();
 
-  if !object
-    .set(&mut env.scope(), key.into(), value)
-    .unwrap_or(false)
-  {
+  if !object.set(scope, key.into(), value).unwrap_or(false) {
     return napi_generic_failure;
   }
 
@@ -1559,26 +1557,26 @@ fn node_api_create_syntax_error(
 }
 
 pub fn get_value_type(value: v8::Local<v8::Value>) -> Option<napi_valuetype> {
-  if value.is_undefined() {
-    Some(napi_undefined)
-  } else if value.is_null() {
-    Some(napi_null)
-  } else if value.is_external() {
-    Some(napi_external)
-  } else if value.is_boolean() {
-    Some(napi_boolean)
-  } else if value.is_number() {
+  if value.is_number() {
     Some(napi_number)
   } else if value.is_big_int() {
     Some(napi_bigint)
   } else if value.is_string() {
     Some(napi_string)
-  } else if value.is_symbol() {
-    Some(napi_symbol)
   } else if value.is_function() {
     Some(napi_function)
+  } else if value.is_external() {
+    Some(napi_external)
   } else if value.is_object() {
     Some(napi_object)
+  } else if value.is_boolean() {
+    Some(napi_boolean)
+  } else if value.is_undefined() {
+    Some(napi_undefined)
+  } else if value.is_symbol() {
+    Some(napi_symbol)
+  } else if value.is_null() {
+    Some(napi_null)
   } else {
     None
   }
@@ -1611,7 +1609,7 @@ fn napi_get_undefined(env: *mut Env, result: *mut napi_value) -> napi_status {
   check_arg!(env, result);
 
   unsafe {
-    *result = v8::undefined(&mut env.scope()).into();
+    *result = v8::undefined(env.isolate()).into();
   }
 
   return napi_clear_last_error(env);
@@ -1623,7 +1621,7 @@ fn napi_get_null(env: *mut Env, result: *mut napi_value) -> napi_status {
   check_arg!(env, result);
 
   unsafe {
-    *result = v8::null(&mut env.scope()).into();
+    *result = v8::null(env.isolate()).into();
   }
 
   return napi_clear_last_error(env);
@@ -1892,8 +1890,13 @@ fn napi_get_value_int32(
   check_arg!(env, value);
   check_arg!(env, result);
 
-  let Some(value) = value.unwrap().int32_value(&mut env.scope()) else {
-    return napi_set_last_error(env, napi_number_expected);
+  let value = value.unwrap();
+  let value = if let Ok(value) = value.try_cast::<v8::Int32>() {
+    value.value()
+  } else if let Some(value) = value.int32_value(&mut env.scope()) {
+    value
+  } else {
+    return napi_set_last_error(env_ptr, napi_number_expected);
   };
 
   unsafe {
@@ -1913,12 +1916,18 @@ fn napi_get_value_uint32(
   check_arg!(env, value);
   check_arg!(env, result);
 
-  let Some(value) = value.unwrap().uint32_value(&mut env.scope()) else {
-    return napi_set_last_error(env, napi_number_expected);
+  let value = value.unwrap();
+
+  let num = if let Ok(value) = value.try_cast::<v8::Uint32>() {
+    value.value()
+  } else if let Some(value) = value.uint32_value(&mut env.scope()) {
+    value
+  } else {
+    return napi_set_last_error(env_ptr, napi_number_expected);
   };
 
   unsafe {
-    *result = value;
+    *result = num;
   }
 
   return napi_clear_last_error(env_ptr);
@@ -2379,9 +2388,10 @@ fn unwrap(
   else {
     return napi_invalid_arg;
   };
+  let scope = &mut env.scope();
 
-  let napi_wrap = v8::Local::new(&mut env.scope(), &env.shared().napi_wrap);
-  let Some(val) = obj.get_private(&mut env.scope(), napi_wrap) else {
+  let napi_wrap = v8::Local::new(scope, &env.shared().napi_wrap);
+  let Some(val) = obj.get_private(scope, napi_wrap) else {
     return napi_invalid_arg;
   };
 
@@ -2399,11 +2409,7 @@ fn unwrap(
   }
 
   if !keep {
-    assert!(
-      obj
-        .delete_private(&mut env.scope(), napi_wrap)
-        .unwrap_or(false)
-    );
+    assert!(obj.delete_private(scope, napi_wrap).unwrap_or(false));
     unsafe { Reference::remove(reference) };
   }
 
