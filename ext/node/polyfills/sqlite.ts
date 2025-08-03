@@ -38,6 +38,10 @@ interface BackupProgressInfo {
   remainingPages: number;
 }
 
+interface BackupResult {
+  totalPages: number;
+}
+
 /**
  * This method makes a database backup. This method abstracts the
  * [`sqlite3_backup_init()`](https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupinit),
@@ -68,12 +72,17 @@ interface BackupProgressInfo {
  * following properties are supported:
  * @returns A promise that resolves when the backup is completed and rejects if an error occurs.
  */
-function backup(
+async function backup(
   sourceDb: DatabaseSync,
   path: string | Buffer | URL,
   options?: BackupOptions,
-) {
-  op_node_database_backup(sourceDb, path, options);
+): Promise<number> {
+  const result: BackupResult = await op_node_database_backup(
+    sourceDb,
+    path,
+    options,
+  );
+  return result.totalPages;
 }
 
 export const constants = {
