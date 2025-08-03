@@ -226,13 +226,12 @@ async fn hyper_hello(port: u16) {
   .await;
 }
 
-fn redirect_resp(url: String) -> Response<UnsyncBoxBody<Bytes, Infallible>> {
+fn redirect_resp(url: &str) -> Response<UnsyncBoxBody<Bytes, Infallible>> {
   let mut redirect_resp = Response::new(UnsyncBoxBody::new(Empty::new()));
   *redirect_resp.status_mut() = StatusCode::MOVED_PERMANENTLY;
-  redirect_resp.headers_mut().insert(
-    http::header::LOCATION,
-    HeaderValue::from_str(&url[..]).unwrap(),
-  );
+  redirect_resp
+    .headers_mut()
+    .insert(http::header::LOCATION, HeaderValue::from_str(url).unwrap());
 
   redirect_resp
 }
@@ -244,7 +243,7 @@ async fn redirect(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{PORT}{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn double_redirects(
@@ -254,7 +253,7 @@ async fn double_redirects(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{REDIRECT_PORT}{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn inf_redirects(
@@ -264,7 +263,7 @@ async fn inf_redirects(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{INF_REDIRECTS_PORT}{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn another_redirect(
@@ -274,7 +273,7 @@ async fn another_redirect(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{PORT}/subdir{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn auth_redirect(
@@ -289,7 +288,7 @@ async fn auth_redirect(
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{PORT}{p}");
-      return Ok(redirect_resp(url));
+      return Ok(redirect_resp(&url));
     }
   }
 
@@ -312,7 +311,7 @@ async fn basic_auth_redirect(
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{PORT}{p}");
-      return Ok(redirect_resp(url));
+      return Ok(redirect_resp(&url));
     }
   }
 
@@ -421,21 +420,21 @@ async fn absolute_redirect(
       .collect();
 
     if let Some(url) = query_params.get("redirect_to") {
-      let redirect = redirect_resp(url.to_owned());
+      let redirect = redirect_resp(url);
       return Ok(redirect);
     }
   }
 
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
-    let redirect = redirect_resp(url.to_string());
+    let redirect = redirect_resp(url);
     return Ok(redirect);
   }
 
   if path.starts_with("/a/b/c") {
     if let Some(x_loc) = req.headers().get("x-location") {
       let loc = x_loc.to_str().unwrap();
-      return Ok(redirect_resp(loc.to_string()));
+      return Ok(redirect_resp(loc));
     }
   }
 

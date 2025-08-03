@@ -1109,6 +1109,15 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
     #[cfg(not(unix))]
     let _ = mode; // avoid unused warning
   }
+  if let Some(custom_flags) = options.custom_flags {
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::OpenOptionsExt;
+      open_options.custom_flags(custom_flags);
+    }
+    #[cfg(not(unix))]
+    let _ = custom_flags;
+  }
   open_options.read(options.read);
   open_options.create(options.create);
   open_options.write(options.write);
@@ -1147,7 +1156,14 @@ pub fn open_options_for_checked_path(
     // with the exception of /proc/ which is too special, and /dev/std* which might point to
     // proc.
     use std::os::unix::fs::OpenOptionsExt;
-    opts.custom_flags(libc::O_NOFOLLOW);
+    match options.custom_flags {
+      Some(flags) => {
+        opts.custom_flags(flags | libc::O_NOFOLLOW);
+      }
+      None => {
+        opts.custom_flags(libc::O_NOFOLLOW);
+      }
+    }
   }
 
   opts

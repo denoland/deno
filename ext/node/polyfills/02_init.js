@@ -19,6 +19,7 @@ function initialize(args) {
     maybeWorkerMetadata,
     nodeDebug,
     warmup = false,
+    moduleSpecifier = null,
   } = args;
   if (!warmup) {
     if (initialized) {
@@ -41,6 +42,7 @@ function initialize(args) {
       runningOnMainThread,
       workerId,
       maybeWorkerMetadata,
+      moduleSpecifier,
     );
     internals.__setupChildProcessIpcChannel();
     // `Deno[Deno.internal].requireImpl` will be unreachable after this line.

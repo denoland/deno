@@ -29,22 +29,26 @@ import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
+import { createRequire } from "node:module";
 
-const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
 const {
+  encodeURIComponent,
   Error,
-  ObjectHasOwn,
-  PromiseResolve,
   FunctionPrototypeCall,
+  JSONParse,
+  JSONStringify,
+  ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
+  PromiseResolve,
+  SafeMap,
   SafeSet,
+  SafeWeakMap,
+  StringPrototypeStartsWith,
+  StringPrototypeTrim,
   Symbol,
   SymbolFor,
   SymbolIterator,
-  StringPrototypeTrim,
-  SafeWeakMap,
-  SafeMap,
   TypeError,
-  encodeURIComponent,
 } = primordials;
 
 const debugWorkerThreads = false;
@@ -363,6 +367,7 @@ internals.__initWorkerThreads = (
   runningOnMainThread: boolean,
   workerId,
   maybeWorkerMetadata,
+  moduleSpecifier,
 ) => {
   isMainThread = runningOnMainThread;
 
@@ -377,6 +382,17 @@ internals.__initWorkerThreads = (
   defaultExport.resourceLimits = resourceLimits;
 
   if (!isMainThread) {
+    // TODO(bartlomieju): this is a really hacky way to provide
+    // require in worker_threads - this should be rewritten to use proper
+    // CJS/ESM loading
+    if (moduleSpecifier) {
+      globalThis.require = createRequire(
+        StringPrototypeStartsWith(moduleSpecifier, "data:")
+          ? `${Deno.cwd()}/[worker eval]`
+          : moduleSpecifier,
+      );
+    }
+
     const listeners = new SafeWeakMap<
       // deno-lint-ignore no-explicit-any
       (...args: any[]) => void,

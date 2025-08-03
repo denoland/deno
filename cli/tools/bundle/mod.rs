@@ -423,7 +423,7 @@ fn format_message(
             location.file.as_str(),
             current_dir
           )
-          .map(|url| deno_terminal::colors::cyan(url.to_string()))
+          .map(|url| deno_terminal::colors::cyan(url.into()))
           .unwrap_or(deno_terminal::colors::cyan(location.file.clone())),
           deno_terminal::colors::yellow(location.line),
           deno_terminal::colors::yellow(location.column)
@@ -773,7 +773,7 @@ impl DenoPluginHandler {
     );
 
     match result {
-      Ok(specifier) => Ok(Some(file_path_or_url(&specifier)?)),
+      Ok(specifier) => Ok(Some(file_path_or_url(specifier)?)),
       Err(e) => {
         log::debug!("{}: {:?}", deno_terminal::colors::red("error"), e);
         Err(BundleError::Resolver(e))
@@ -1000,16 +1000,16 @@ impl DenoPluginHandler {
 }
 
 fn file_path_or_url(
-  url: &Url,
+  url: Url,
 ) -> Result<String, deno_path_util::UrlToFilePathError> {
   if url.scheme() == "file" {
     Ok(
-      deno_path_util::url_to_file_path(url)?
+      deno_path_util::url_to_file_path(&url)?
         .to_string_lossy()
         .into(),
     )
   } else {
-    Ok(url.to_string())
+    Ok(url.into())
   }
 }
 
