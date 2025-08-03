@@ -1095,6 +1095,7 @@ function bootstrapWorkerRuntime(
     }
 
     // Not available in workers
+    const moduleSpecifier = finalDenoNs.mainModule;
     delete finalDenoNs.mainModule;
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
@@ -1127,6 +1128,7 @@ function bootstrapWorkerRuntime(
         workerId,
         maybeWorkerMetadata: workerMetadata,
         nodeDebug,
+        moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
       });
     }
   } else {
