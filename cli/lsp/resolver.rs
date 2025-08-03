@@ -66,6 +66,7 @@ use super::jsr::JsrCacheResolver;
 use crate::args::CliLockfile;
 use crate::factory::Deferred;
 use crate::http_util::HttpClientProvider;
+use crate::lsp::compiler_options::LspCompilerOptionsResolverRc;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
 use crate::lsp::logging::lsp_warn;
@@ -106,11 +107,13 @@ pub struct LspScopedResolver {
   dep_info: Arc<Mutex<Arc<ScopeDepInfo>>>,
   configured_dep_resolutions: Arc<ConfiguredDepResolutions>,
   config_data: Option<Arc<ConfigData>>,
+  compiler_options_resolver: LspCompilerOptionsResolverRc,
 }
 
 impl Default for LspScopedResolver {
   fn default() -> Self {
-    let factory = ResolverFactory::new(None);
+    let compiler_options_resolver = Default::default();
+    let factory = ResolverFactory::new(None, &compiler_options_resolver);
     Self {
       resolver: factory.cli_resolver().clone(),
       workspace_resolver: factory.workspace_resolver().clone(),
@@ -128,6 +131,7 @@ impl Default for LspScopedResolver {
       dep_info: Default::default(),
       configured_dep_resolutions: Default::default(),
       config_data: None,
+      compiler_options_resolver,
     }
   }
 }
@@ -135,10 +139,12 @@ impl Default for LspScopedResolver {
 impl LspScopedResolver {
   async fn from_config_data(
     config_data: Option<&Arc<ConfigData>>,
+    compiler_options_resolver: &LspCompilerOptionsResolverRc,
     cache: &LspCache,
     http_client_provider: Option<&Arc<HttpClientProvider>>,
   ) -> Self {
-    let mut factory = ResolverFactory::new(config_data);
+    let mut factory =
+      ResolverFactory::new(config_data, compiler_options_resolver);
     let workspace_resolver = factory.workspace_resolver().clone();
     if let Some(http_client_provider) = http_client_provider {
       factory.init_npm_resolver(http_client_provider, cache).await;
@@ -186,6 +192,7 @@ impl LspScopedResolver {
       dep_info: Default::default(),
       configured_dep_resolutions,
       config_data: config_data.cloned(),
+      compiler_options_resolver: compiler_options_resolver.clone(),
     }
   }
 
@@ -194,7 +201,10 @@ impl LspScopedResolver {
     // todo(dsherret): this is pretty terrible... we should improve this. It should
     // be possible to just change the npm_resolution on the new factory then access
     // another method to create a new npm resolver
-    let mut factory = ResolverFactory::new(self.config_data.as_ref());
+    let mut factory = ResolverFactory::new(
+      self.config_data.as_ref(),
+      &self.compiler_options_resolver,
+    );
     factory
       .services
       .npm_resolution
@@ -260,6 +270,7 @@ impl LspScopedResolver {
       dep_info: self.dep_info.clone(),
       configured_dep_resolutions: self.configured_dep_resolutions.clone(),
       config_data: self.config_data.clone(),
+      compiler_options_resolver: self.compiler_options_resolver.clone(),
     })
   }
 
@@ -449,6 +460,7 @@ pub struct LspResolver {
 impl LspResolver {
   pub async fn from_config(
     config: &Config,
+    compiler_options_resolver: &LspCompilerOptionsResolverRc,
     cache: &LspCache,
     http_client_provider: Option<&Arc<HttpClientProvider>>,
   ) -> Self {
@@ -459,6 +471,7 @@ impl LspResolver {
         Arc::new(
           LspScopedResolver::from_config_data(
             Some(config_data),
+            compiler_options_resolver,
             cache,
             http_client_provider,
           )
@@ -467,8 +480,13 @@ impl LspResolver {
       );
     }
     let unscoped = Arc::new(
-      LspScopedResolver::from_config_data(None, cache, http_client_provider)
-        .await,
+      LspScopedResolver::from_config_data(
+        None,
+        compiler_options_resolver,
+        cache,
+        http_client_provider,
+      )
+      .await,
     );
     for resolver in std::iter::once(&unscoped).chain(by_scope.values()) {
       if resolver.npm_installer.is_none() {
@@ -790,6 +808,7 @@ struct ResolverFactoryServices {
 
 struct ResolverFactory<'a> {
   config_data: Option<&'a Arc<ConfigData>>,
+  compiler_options_resolver: &'a LspCompilerOptionsResolverRc,
   pkg_json_resolver: Arc<CliPackageJsonResolver>,
   node_resolution_sys: NodeResolutionSys<CliSys>,
   sys: CliSys,
@@ -797,7 +816,10 @@ struct ResolverFactory<'a> {
 }
 
 impl<'a> ResolverFactory<'a> {
-  pub fn new(config_data: Option<&'a Arc<ConfigData>>) -> Self {
+  pub fn new(
+    config_data: Option<&'a Arc<ConfigData>>,
+    compiler_options_resolver: &'a LspCompilerOptionsResolverRc,
+  ) -> Self {
     let sys = CliSys::default();
     let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(
       sys.clone(),
@@ -806,6 +828,7 @@ impl<'a> ResolverFactory<'a> {
     ));
     Self {
       config_data,
+      compiler_options_resolver,
       pkg_json_resolver,
       node_resolution_sys: NodeResolutionSys::new(
         sys.clone(),
@@ -1017,7 +1040,23 @@ impl<'a> ResolverFactory<'a> {
               sloppy_imports_options: if unstable_sloppy_imports {
                 SloppyImportsOptions::Enabled
               } else {
-                SloppyImportsOptions::Disabled
+                let compiler_options_resolver =
+                  self.compiler_options_resolver.clone();
+                SloppyImportsOptions::Dynamic(Arc::new(move |referrer| {
+                  if let Some(referrer) = referrer {
+                    let resolver = compiler_options_resolver.load();
+                    let options = resolver.for_specifier(referrer);
+                    let lib =
+                      options.compiler_options.0.get("moduleResolution");
+                    lib.is_some_and(|v| {
+                      v.as_str()
+                        .map(|v| v.to_lowercase() == "bundler")
+                        .unwrap_or(false)
+                    })
+                  } else {
+                    todo!()
+                  }
+                }))
               },
               fs_cache_options: FsCacheOptions::Disabled,
             },

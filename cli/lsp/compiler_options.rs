@@ -27,6 +27,9 @@ pub struct LspCompilerOptionsData {
   pub ts_config_files: Option<(Arc<Url>, Vec<TsConfigFile>)>,
 }
 
+pub type LspCompilerOptionsResolverRc =
+  Arc<arc_swap::ArcSwap<LspCompilerOptionsResolver>>;
+
 #[derive(Debug)]
 pub struct LspCompilerOptionsResolver {
   inner: CompilerOptionsResolver,
