@@ -12,10 +12,17 @@ import {
 } from "node:constants";
 import { assertEquals, assertRejects, assertThrows, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { open, openSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  open,
+  openSync,
+  readSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { open as openPromise } from "node:fs/promises";
 import { join, parse } from "node:path";
-import { closeSync, existsSync } from "node:fs";
 
 const tempDir = parse(Deno.makeTempFileSync()).dir;
 
@@ -475,3 +482,87 @@ Deno.test("[std/node/fs] open throws on invalid flags", {
   );
   await Deno.remove(file);
 });
+
+Deno.test(
+  "[std/node/fs] openSync: only enable read permission when a custom flag is not followed by file access flags",
+  {
+    ignore: Deno.build.os === "windows",
+  },
+  async () => {
+    const path = await Deno.makeTempFile();
+    writeFileSync(path, "Hello, world!");
+
+    const fd = openSync(path, O_SYNC);
+    readSync(fd, new Uint8Array(1), 0, 1, 0);
+    assertThrows(
+      () => {
+        writeSync(fd, "This should fail");
+      },
+      Error,
+    );
+
+    closeSync(fd);
+    await Deno.remove(path);
+  },
+);
+
+Deno.test(
+  "[std/node/fs] open: only enable read permission when a custom flag is not followed by file access flags",
+  {
+    ignore: Deno.build.os === "windows",
+  },
+  async () => {
+    const path = await Deno.makeTempFile();
+    writeFileSync(path, "Hello, world!");
+
+    const fileHandle = await openPromise(path, O_SYNC);
+    readSync(fileHandle.fd, new Uint8Array(1), 0, 1, 0);
+    assertThrows(
+      () => {
+        writeSync(fileHandle.fd, "This should fail");
+      },
+      Error,
+    );
+
+    await fileHandle.close();
+    await Deno.remove(path);
+  },
+);
+
+Deno.test(
+  "[std/node/fs] open: only enable write permission",
+  async () => {
+    const path = await Deno.makeTempFile();
+    const fileHandle = await openPromise(path, O_WRONLY);
+
+    writeSync(fileHandle.fd, "Hello, world!");
+    assertThrows(
+      () => {
+        readSync(fileHandle.fd, new Uint8Array(1), 0, 1, 0);
+      },
+      Error,
+    );
+
+    await fileHandle.close();
+    await Deno.remove(path);
+  },
+);
+
+Deno.test(
+  "[std/node/fs] openSync: only enable write permission",
+  async () => {
+    const path = await Deno.makeTempFile();
+    const fd = openSync(path, O_WRONLY);
+
+    writeSync(fd, "Hello, world!");
+    assertThrows(
+      () => {
+        readSync(fd, new Uint8Array(1), 0, 1, 0);
+      },
+      Error,
+    );
+
+    closeSync(fd);
+    await Deno.remove(path);
+  },
+);
