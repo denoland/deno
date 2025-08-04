@@ -345,12 +345,7 @@ fn peer_dep_diagnostics_to_display_tree(
   fn convert_node(node: &Rc<MergedNode>) -> DisplayTreeNode {
     DisplayTreeNode {
       text: node.text.to_string(),
-      children: node
-        .children
-        .borrow()
-        .iter()
-        .map(|child| convert_node(child))
-        .collect(),
+      children: node.children.borrow().iter().map(convert_node).collect(),
     }
   }
 
