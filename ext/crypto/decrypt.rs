@@ -19,7 +19,7 @@ use ctr::cipher::StreamCipher;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_optional;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use serde::Deserialize;
 use sha1::Sha1;
@@ -134,7 +134,7 @@ pub async fn op_crypto_decrypt(
       tag_length,
     } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
   };
-  let buf = spawn_blocking(fun).await.unwrap()?;
+  let buf = spawn_blocking_optional(fun).await.unwrap()?;
   Ok(buf.into())
 }
 

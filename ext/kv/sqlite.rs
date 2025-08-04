@@ -13,7 +13,7 @@ use std::sync::OnceLock;
 
 use async_trait::async_trait;
 use deno_core::OpState;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_optional;
 use deno_error::JsErrorBox;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
@@ -138,67 +138,69 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     let default_storage_dir = self.default_storage_dir.clone();
     type ConnGen =
       Arc<dyn Fn() -> rusqlite::Result<rusqlite::Connection> + Send + Sync>;
-    let (conn_gen, notifier_key): (ConnGen, _) = spawn_blocking(move || {
-      denokv_sqlite::sqlite_retry_loop(move || {
-        let mode = match std::env::var("DENO_KV_DB_MODE")
-          .unwrap_or_default()
-          .as_str()
-        {
-          "disk" | "" => Mode::Disk,
-          "memory" => Mode::InMemory,
-          _ => {
-            log::warn!("Unknown DENO_KV_DB_MODE value, defaulting to disk");
-            Mode::Disk
+    let (conn_gen, notifier_key): (ConnGen, _) =
+      spawn_blocking_optional(move || {
+        denokv_sqlite::sqlite_retry_loop(move || {
+          let mode = match std::env::var("DENO_KV_DB_MODE")
+            .unwrap_or_default()
+            .as_str()
+          {
+            "disk" | "" => Mode::Disk,
+            "memory" => Mode::InMemory,
+            _ => {
+              log::warn!("Unknown DENO_KV_DB_MODE value, defaulting to disk");
+              Mode::Disk
+            }
+          };
+
+          if matches!(mode, Mode::InMemory) {
+            return Ok::<_, SqliteBackendError>((
+              Arc::new(rusqlite::Connection::open_in_memory) as ConnGen,
+              None,
+            ));
           }
-        };
 
-        if matches!(mode, Mode::InMemory) {
-          return Ok::<_, SqliteBackendError>((
-            Arc::new(rusqlite::Connection::open_in_memory) as ConnGen,
-            None,
-          ));
-        }
-
-        let (conn, notifier_key) = match (path.as_ref(), &default_storage_dir) {
-          (Some(PathOrInMemory::InMemory), _) | (None, None) => (
-            Arc::new(rusqlite::Connection::open_in_memory) as ConnGen,
-            None,
-          ),
-          (Some(PathOrInMemory::Path(path)), _) => {
-            let flags =
-              OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
-            let resolved_path =
-              deno_path_util::fs::canonicalize_path_maybe_not_exists(
-                // todo(dsherret): probably should use the FileSystem in the op state instead
-                &sys_traits::impls::RealSys,
-                path,
+          let (conn, notifier_key) = match (path.as_ref(), &default_storage_dir)
+          {
+            (Some(PathOrInMemory::InMemory), _) | (None, None) => (
+              Arc::new(rusqlite::Connection::open_in_memory) as ConnGen,
+              None,
+            ),
+            (Some(PathOrInMemory::Path(path)), _) => {
+              let flags =
+                OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
+              let resolved_path =
+                deno_path_util::fs::canonicalize_path_maybe_not_exists(
+                  // todo(dsherret): probably should use the FileSystem in the op state instead
+                  &sys_traits::impls::RealSys,
+                  path,
+                )
+                .map_err(JsErrorBox::from_err)?;
+              let path = path.clone();
+              (
+                Arc::new(move || {
+                  rusqlite::Connection::open_with_flags(&path, flags)
+                }) as ConnGen,
+                Some(resolved_path),
               )
-              .map_err(JsErrorBox::from_err)?;
-            let path = path.clone();
-            (
-              Arc::new(move || {
-                rusqlite::Connection::open_with_flags(&path, flags)
-              }) as ConnGen,
-              Some(resolved_path),
-            )
-          }
-          (None, Some(path)) => {
-            std::fs::create_dir_all(path).map_err(JsErrorBox::from_err)?;
-            let path = path.join("kv.sqlite3");
-            let path2 = path.clone();
-            (
-              Arc::new(move || rusqlite::Connection::open(&path2)) as ConnGen,
-              Some(path),
-            )
-          }
-        };
+            }
+            (None, Some(path)) => {
+              std::fs::create_dir_all(path).map_err(JsErrorBox::from_err)?;
+              let path = path.join("kv.sqlite3");
+              let path2 = path.clone();
+              (
+                Arc::new(move || rusqlite::Connection::open(&path2)) as ConnGen,
+                Some(path),
+              )
+            }
+          };
 
-        Ok::<_, SqliteBackendError>((conn, notifier_key))
+          Ok::<_, SqliteBackendError>((conn, notifier_key))
+        })
       })
-    })
-    .await
-    .unwrap()
-    .map_err(JsErrorBox::from_err)?;
+      .await
+      .unwrap()
+      .map_err(JsErrorBox::from_err)?;
 
     let notifier = if let Some(notifier_key) = notifier_key {
       SQLITE_NOTIFIERS_MAP
