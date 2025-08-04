@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file no-explicit-any prefer-primordials
+// deno-lint-ignore-file prefer-primordials
 
 import {
   ObjectAssign,
@@ -56,7 +56,7 @@ function onConnectEnd() {
   if (!this._hadError) {
     const options = this[kConnectOptions];
     this._hadError = true;
-    const error: any = connResetException(
+    const error = connResetException(
       "Client network socket disconnected " +
         "before secure TLS connection was " +
         "established",
@@ -189,7 +189,7 @@ export class TLSSocket extends net.Socket {
       };
 
       handle.upgrading = promise;
-      (handle as any).verifyError = function () {
+      handle.verifyError = function () {
         return null; // Never fails, rejectUnauthorized is always true in Deno.
       };
       // Pretends `handle` is `tls_wrap.wrap(handle, ...)` to make some npm modules happy
@@ -241,7 +241,7 @@ export class TLSSocket extends net.Socket {
   }
 }
 
-function normalizeConnectArgs(listArgs: any) {
+function normalizeConnectArgs(listArgs) {
   const args = net._normalizeArgs(listArgs);
   const options = args[0];
   const cb = args[1];
@@ -271,8 +271,8 @@ export class ServerImpl extends EventEmitter {
   #closed = false;
   #unrefed = false;
   constructor(options, listener) {
-    this.options = options;
     super();
+    this.options = options;
     if (listener) {
       this.on("secureConnection", listener);
     }
@@ -341,7 +341,7 @@ export class ServerImpl extends EventEmitter {
   }
 
   address() {
-    const addr = this.listener!.addr as Deno.NetAddr;
+    const addr = this.listener.addr;
     return {
       port: addr.port,
       address: addr.hostname,
@@ -364,7 +364,7 @@ function onConnectSecure() {
   this.removeListener("end", onConnectEnd);
 }
 
-export function connect(...args: any[]) {
+export function connect(...args) {
   args = normalizeConnectArgs(args);
   let options = args[0];
   const cb = args[1];
