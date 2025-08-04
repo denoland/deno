@@ -59,3 +59,7 @@ export function getOptionValue(optionName: string) {
 
   return MapPrototypeGet(options, optionName)?.value;
 }
+
+export function getAllowUnauthorized() {
+  return false;
+}

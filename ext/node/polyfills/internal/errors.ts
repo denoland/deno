@@ -576,6 +576,17 @@ class NodeSystemError extends Error {
   }
 }
 
+export class ConnResetException extends Error {
+  constructor(msg) {
+    super(msg);
+    this.code = "ECONNRESET";
+  }
+
+  get ["constructor"]() {
+    return Error;
+  }
+}
+
 function makeSystemErrorWithCode(key: string, msgPrfix: string) {
   return class NodeError extends NodeSystemError {
     constructor(ctx: NodeSystemErrorCtx) {

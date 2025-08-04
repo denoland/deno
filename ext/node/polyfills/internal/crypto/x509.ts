@@ -58,8 +58,16 @@ export interface X509CheckOptions {
   singleLabelSubdomains: boolean;
 }
 
+const kHandle = Symbol("kHandle");
+
+export class InternalX509Certificate {
+  constructor(handle) {
+    this[kHandle] = handle;
+  }
+}
+
 export class X509Certificate {
-  #handle: number;
+  [kHandle]: number;
 
   constructor(buffer: BinaryLike) {
     if (typeof buffer === "string") {
@@ -74,11 +82,11 @@ export class X509Certificate {
       );
     }
 
-    this.#handle = op_node_x509_parse(buffer);
+    this[kHandle] = op_node_x509_parse(buffer);
   }
 
   get ca(): boolean {
-    return op_node_x509_ca(this.#handle);
+    return op_node_x509_ca(this[kHandle]);
   }
 
   checkEmail(
@@ -86,14 +94,14 @@ export class X509Certificate {
     _options?: Pick<X509CheckOptions, "subject">,
   ): string | undefined {
     validateString(email, "email");
-    if (op_node_x509_check_email(this.#handle, email)) {
+    if (op_node_x509_check_email(this[kHandle], email)) {
       return email;
     }
   }
 
   checkHost(name: string, _options?: X509CheckOptions): string | undefined {
     validateString(name, "name");
-    if (op_node_x509_check_host(this.#handle, name)) {
+    if (op_node_x509_check_host(this[kHandle], name)) {
       return name;
     }
   }
@@ -111,15 +119,15 @@ export class X509Certificate {
   }
 
   get fingerprint(): string {
-    return op_node_x509_fingerprint(this.#handle);
+    return op_node_x509_fingerprint(this[kHandle]);
   }
 
   get fingerprint256(): string {
-    return op_node_x509_fingerprint256(this.#handle);
+    return op_node_x509_fingerprint256(this[kHandle]);
   }
 
   get fingerprint512(): string {
-    return op_node_x509_fingerprint512(this.#handle);
+    return op_node_x509_fingerprint512(this[kHandle]);
   }
 
   get infoAccess(): string | undefined {
@@ -129,7 +137,7 @@ export class X509Certificate {
   }
 
   get issuer(): string {
-    return op_node_x509_get_issuer(this.#handle);
+    return op_node_x509_get_issuer(this[kHandle]);
   }
 
   get issuerCertificate(): X509Certificate | undefined {
@@ -137,7 +145,7 @@ export class X509Certificate {
   }
 
   get keyUsage(): string[] | undefined {
-    const flags = op_node_x509_key_usage(this.#handle);
+    const flags = op_node_x509_key_usage(this[kHandle]);
     if (flags === 0) return undefined;
     const result: string[] = [];
     if (flags & 0x01) result.push("DigitalSignature");
@@ -153,7 +161,7 @@ export class X509Certificate {
   }
 
   get publicKey(): PublicKeyObject {
-    const handle = op_node_x509_public_key(this.#handle);
+    const handle = op_node_x509_public_key(this[kHandle]);
     return new PublicKeyObject(handle);
   }
 
@@ -164,11 +172,11 @@ export class X509Certificate {
   }
 
   get serialNumber(): string {
-    return op_node_x509_get_serial_number(this.#handle);
+    return op_node_x509_get_serial_number(this[kHandle]);
   }
 
   get subject(): string {
-    return op_node_x509_get_subject(this.#handle);
+    return op_node_x509_get_subject(this[kHandle]);
   }
 
   get subjectAltName(): string | undefined {
@@ -188,11 +196,11 @@ export class X509Certificate {
   }
 
   get validFrom(): string {
-    return op_node_x509_get_valid_from(this.#handle);
+    return op_node_x509_get_valid_from(this[kHandle]);
   }
 
   get validTo(): string {
-    return op_node_x509_get_valid_to(this.#handle);
+    return op_node_x509_get_valid_to(this[kHandle]);
   }
 
   verify(_publicKey: KeyObject): boolean {
