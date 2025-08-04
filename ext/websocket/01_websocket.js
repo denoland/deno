@@ -65,6 +65,10 @@ import {
 } from "ext:deno_web/02_event.js";
 import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
+import {
+  fillHeaders,
+  headersFromHeaderList,
+} from "ext:deno_fetch/20_headers.js";
 
 webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
   "WebSocketInit",
@@ -199,14 +203,19 @@ class WebSocket extends EventTarget {
     this[_role] = CLIENT;
 
     let protocols;
-    let headers;
+    let headers = null;
+
     if (typeof initOrProtocols === "string") {
       protocols = [initOrProtocols];
     } else if (ArrayIsArray(initOrProtocols)) {
       protocols = initOrProtocols;
     } else {
       protocols = initOrProtocols.protocols || [];
-      headers = initOrProtocols.headers;
+
+      if (initOrProtocols.headers !== undefined) {
+        headers = headersFromHeaderList([], "request");
+        fillHeaders(headers, initOrProtocols.headers);
+      }
     }
 
     if (
@@ -250,7 +259,7 @@ class WebSocket extends EventTarget {
         wsURL.href,
         ArrayPrototypeJoin(protocols, ", "),
         cancelRid,
-        headers ? headerListFromHeaders(headers) : undefined,
+        headers,
       ),
       (create) => {
         this[_rid] = create.rid;
