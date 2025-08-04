@@ -305,7 +305,7 @@ fn peer_dep_diagnostics_to_display_tree(
       text: text.clone(),
       children: Default::default(),
     });
-    let mut skip_push = false;
+    let mut found_ancestor = false;
     for ancestor in &diagnostic.ancestors {
       let nv_string = Rc::new(ancestor.to_string());
       if let Some(current_node) = nodes.get(&nv_string) {
@@ -318,7 +318,7 @@ fn peer_dep_diagnostics_to_display_tree(
           }
         }
         node = current_node.clone();
-        skip_push = true;
+        found_ancestor = true;
         break;
       } else {
         let current_node = Rc::new(MergedNode {
@@ -329,7 +329,7 @@ fn peer_dep_diagnostics_to_display_tree(
         node = current_node;
       }
     }
-    if !skip_push {
+    if !found_ancestor {
       top_level_nodes.push(node);
     }
   }
