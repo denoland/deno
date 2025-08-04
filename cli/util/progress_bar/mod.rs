@@ -134,6 +134,7 @@ struct InternalState {
   keep_alive_count: usize,
   total_entries: usize,
   entries: Vec<Arc<ProgressBarEntry>>,
+  is_deferring_display: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -151,9 +152,24 @@ impl ProgressBarInner {
         keep_alive_count: 0,
         total_entries: 0,
         entries: Vec::new(),
+        is_deferring_display: false,
       })),
       renderer,
     }
+  }
+
+  /// A deferred entry will only be shown once another entry
+  /// is added to the progress bar.
+  pub fn add_deferred_entry(
+    &self,
+    kind: ProgressMessagePrompt,
+    message: String,
+  ) -> Arc<ProgressBarEntry> {
+    let mut internal_state = self.state.lock();
+    if internal_state.entries.is_empty() {
+      internal_state.is_deferring_display = true;
+    }
+    self.add_entry_internal(&mut internal_state, kind, message)
   }
 
   pub fn add_entry(
@@ -162,6 +178,15 @@ impl ProgressBarInner {
     message: String,
   ) -> Arc<ProgressBarEntry> {
     let mut internal_state = self.state.lock();
+    self.add_entry_internal(&mut internal_state, kind, message)
+  }
+
+  fn add_entry_internal(
+    &self,
+    internal_state: &mut InternalState,
+    kind: ProgressMessagePrompt,
+    message: String,
+  ) -> Arc<ProgressBarEntry> {
     let id = internal_state.total_entries;
     let entry = Arc::new(ProgressBarEntry {
       id,
@@ -175,7 +200,7 @@ impl ProgressBarInner {
     internal_state.total_entries += 1;
     internal_state.keep_alive_count += 1;
 
-    self.maybe_start_draw_thread(&mut internal_state);
+    self.maybe_start_draw_thread(internal_state);
 
     entry
   }
@@ -188,6 +213,9 @@ impl ProgressBarInner {
       .binary_search_by(|e| e.id.cmp(&entry_id))
     {
       internal_state.entries.remove(index);
+      if internal_state.entries.is_empty() {
+        internal_state.is_deferring_display = false;
+      }
       self.decrement_keep_alive(&mut internal_state);
     }
   }
@@ -226,7 +254,7 @@ impl DrawThreadRenderer for ProgressBarInner {
   fn render(&self, size: &ConsoleSize) -> String {
     let data = {
       let state = self.state.lock();
-      if state.entries.is_empty() {
+      if state.entries.is_empty() || state.is_deferring_display {
         return String::new();
       }
       let display_entries = state
@@ -330,6 +358,26 @@ impl ProgressBar {
       if !msg.is_empty() {
         log::log!(log::Level::Info, "{} {}", kind.as_text(), msg);
       }
+      UpdateGuard { maybe_entry: None }
+    }
+  }
+
+  /// Add an entry to the progress bar that will only be shown
+  /// once another entry has been added.
+  pub fn deferred_update_with_prompt(
+    &self,
+    kind: ProgressMessagePrompt,
+    msg: &str,
+  ) -> UpdateGuard {
+    // only check if progress bars are supported once we go
+    // to update so that we lazily initialize the progress bar
+    if ProgressBar::are_supported() {
+      let entry = self.inner.add_deferred_entry(kind, msg.to_string());
+      UpdateGuard {
+        maybe_entry: Some(entry),
+      }
+    } else {
+      // do not display anything for a deferred update
       UpdateGuard { maybe_entry: None }
     }
   }
