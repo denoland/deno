@@ -752,6 +752,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         jsr_pkgs: self
           .workspace_resolver
           .jsr_packages()
+          .iter()
           .map(|pkg| SerializedResolverWorkspaceJsrPackage {
             relative_base: root_dir_url.specifier_key(&pkg.base).into_owned(),
             name: pkg.name.clone(),
