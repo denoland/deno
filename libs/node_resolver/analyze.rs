@@ -387,7 +387,7 @@ impl<
               &package_subpath,
               exports,
               Some(&referrer),
-              ResolutionMode::Import,
+              ResolutionMode::Require,
               conditions,
               resolution_kind,
             )

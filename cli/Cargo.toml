@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.4.2"
+version = "2.4.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -89,6 +89,7 @@ deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["deno_ast", "graph", "sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
+deno_signals.workspace = true
 deno_snapshots.workspace = true
 deno_task_shell.workspace = true
 deno_telemetry.workspace = true
