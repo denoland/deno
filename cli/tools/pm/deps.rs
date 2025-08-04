@@ -45,6 +45,7 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
+use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -464,6 +465,7 @@ pub struct DepManager {
   npm_resolver: CliNpmResolver,
   npm_installer: Arc<CliNpmInstaller>,
   permissions_container: PermissionsContainer,
+  progress_bar: ProgressBar,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   lockfile: Option<Arc<CliLockfile>>,
 }
@@ -475,6 +477,7 @@ pub struct DepManagerArgs {
   pub npm_installer: Arc<CliNpmInstaller>,
   pub npm_resolver: CliNpmResolver,
   pub permissions_container: PermissionsContainer,
+  pub progress_bar: ProgressBar,
   pub main_module_graph_container: Arc<MainModuleGraphContainer>,
   pub lockfile: Option<Arc<CliLockfile>>,
 }
@@ -485,6 +488,7 @@ impl DepManager {
     new.latest_versions = self.latest_versions;
     new
   }
+
   fn with_deps_args(deps: Vec<Dep>, args: DepManagerArgs) -> Self {
     let DepManagerArgs {
       module_load_preparer,
@@ -492,6 +496,7 @@ impl DepManager {
       npm_fetch_resolver,
       npm_installer,
       npm_resolver,
+      progress_bar,
       permissions_container,
       main_module_graph_container,
       lockfile,
@@ -506,6 +511,7 @@ impl DepManager {
       npm_fetch_resolver,
       npm_installer,
       npm_resolver,
+      progress_bar,
       permissions_container,
       main_module_graph_container,
       lockfile,
@@ -546,6 +552,7 @@ impl DepManager {
     if self.dependencies_resolved.is_raised() {
       return Ok(());
     }
+    let _entry = self.progress_bar.deferred_install_dependencies_update();
 
     let mut graph_permit = self
       .main_module_graph_container

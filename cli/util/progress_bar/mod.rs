@@ -178,6 +178,7 @@ impl ProgressBarInner {
     message: String,
   ) -> Arc<ProgressBarEntry> {
     let mut internal_state = self.state.lock();
+    internal_state.is_deferring_display = false;
     self.add_entry_internal(&mut internal_state, kind, message)
   }
 
@@ -360,6 +361,13 @@ impl ProgressBar {
       }
       UpdateGuard { maybe_entry: None }
     }
+  }
+
+  pub fn deferred_install_dependencies_update(&self) -> UpdateGuard {
+    self.deferred_update_with_prompt(
+      ProgressMessagePrompt::Initialize,
+      "dependencies",
+    )
   }
 
   /// Add an entry to the progress bar that will only be shown
