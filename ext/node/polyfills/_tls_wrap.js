@@ -47,7 +47,7 @@ let debug = debuglog("tls", (fn) => {
   debug = fn;
 });
 
-function canonicalizeIP(ip: string): string {
+function canonicalizeIP(ip) {
   return op_tls_canonicalize_ipv4_address(ip);
 }
 
@@ -70,29 +70,11 @@ function onConnectEnd(this: any) {
 }
 
 export class TLSSocket extends net.Socket {
-  _tlsOptions: any;
-  _secureEstablished: boolean;
-  _securePending: boolean;
-  _newSessionPending: boolean;
-  _controlReleased: boolean;
-  secureConnecting: boolean;
-  _SNICallback: any;
-  servername: string | null;
-  alpnProtocol: string | boolean | null;
-  alpnProtocols: string[] | null;
-  authorized: boolean;
-  authorizationError: any;
-  [kRes]: any;
-  [kIsVerified]: boolean;
-  [kPendingSession]: any;
-  [kConnectOptions]: any;
-  ssl: any;
-
   _start() {
     this[kHandle].afterConnectTls();
   }
 
-  constructor(socket: any, opts: any = kEmptyObject) {
+  constructor(socket, opts = kEmptyObject) {
     const tlsOptions = { ...opts };
 
     const hostname = opts.servername ?? opts.host ?? socket?._host ??
@@ -146,8 +128,8 @@ export class TLSSocket extends net.Socket {
 
     /** Wraps the given socket and adds the tls capability to the underlying
      * handle */
-    function _wrapHandle(tlsOptions: any, wrap: net.Socket | undefined) {
-      let handle: any;
+    function _wrapHandle(tlsOptions, wrap) {
+      let handle;
 
       if (wrap) {
         handle = wrap._handle;
@@ -220,7 +202,7 @@ export class TLSSocket extends net.Socket {
     }
   }
 
-  _tlsError(err: Error) {
+  _tlsError(err) {
     this.emit("_tlsError", err);
     if (this._controlReleased) {
       return err;
@@ -245,15 +227,15 @@ export class TLSSocket extends net.Socket {
     return false;
   }
 
-  setSession(_session: any) {
+  setSession(_session) {
     // TODO(kt3k): implement this
   }
 
-  setServername(_servername: any) {
+  setServername(_servername) {
     // TODO(kt3k): implement this
   }
 
-  getPeerCertificate(detailed: boolean = false) {
+  getPeerCertificate(detailed = false) {
     const conn = this[kHandle]?.[kStreamBaseField];
     if (conn) return conn[internals.getPeerCertificate](detailed);
   }
@@ -280,15 +262,16 @@ function normalizeConnectArgs(listArgs: any) {
 
 let ipServernameWarned = false;
 
-export function Server(options: any, listener: any) {
+export function Server(options, listener) {
   return new ServerImpl(options, listener);
 }
 
 export class ServerImpl extends EventEmitter {
-  listener?: Deno.TlsListener;
+  listener;
   #closed = false;
   #unrefed = false;
-  constructor(public options: any, listener: any) {
+  constructor(options, listener) {
+    this.options = options;
     super();
     if (listener) {
       this.on("secureConnection", listener);
@@ -309,7 +292,7 @@ export class ServerImpl extends EventEmitter {
     }
   }
 
-  listen(port: any, callback: any): this {
+  listen(port, callback) {
     const key = this.options.key?.toString();
     const cert = this.options.cert?.toString();
     // TODO(kt3k): The default host should be "localhost"
@@ -322,7 +305,7 @@ export class ServerImpl extends EventEmitter {
     return this;
   }
 
-  async #listen(listener: Deno.TlsListener) {
+  async #listen(listener) {
     if (this.#unrefed) {
       listener.unref();
       return;
@@ -346,7 +329,7 @@ export class ServerImpl extends EventEmitter {
     }
   }
 
-  close(cb?: (err?: Error) => void): this {
+  close(cb) {
     if (this.listener) {
       this.listener.close();
     }
@@ -368,11 +351,11 @@ export class ServerImpl extends EventEmitter {
 
 Server.prototype = ServerImpl.prototype;
 
-export function createServer(options: any, listener: any) {
+export function createServer(options, listener) {
   return new ServerImpl(options, listener);
 }
 
-function onConnectSecure(this: TLSSocket) {
+function onConnectSecure() {
   this.authorized = true;
   this.secureConnecting = false;
   debug("client emit secureConnect. authorized:", this.authorized);
@@ -524,7 +507,7 @@ function splitEscapedAltNames(altNames) {
   return result;
 }
 
-function unfqdn(host: string): string {
+function unfqdn(host) {
   return StringPrototypeReplace(host, /[.]$/, "");
 }
 
@@ -616,7 +599,7 @@ function check(hostParts, pattern, wildcards) {
   return true;
 }
 
-export function checkServerIdentity(hostname: string, cert: any) {
+export function checkServerIdentity(hostname, cert) {
   const subject = cert.subject;
   const altNames = cert.subjectaltname;
   const dnsNames = [];
