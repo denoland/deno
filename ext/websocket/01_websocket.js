@@ -67,6 +67,7 @@ import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import {
   fillHeaders,
+  headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
 
@@ -80,8 +81,8 @@ webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
     {
       key: "protocols",
       converter: webidl.converters["sequence<DOMString>"],
-    }
-  ]
+    },
+  ],
 );
 
 webidl.converters["WebSocketInit or sequence<DOMString> or DOMString"] = (
@@ -165,11 +166,12 @@ class WebSocket extends EventTarget {
     const prefix = "Failed to construct 'WebSocket'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.USVString(url, prefix, "Argument 1");
-    initOrProtocols = webidl.converters["WebSocketInit or sequence<DOMString> or DOMString"](
-      initOrProtocols,
-      prefix,
-      "Argument 2",
-    );
+    initOrProtocols = webidl.converters
+      ["WebSocketInit or sequence<DOMString> or DOMString"](
+        initOrProtocols,
+        prefix,
+        "Argument 2",
+      );
 
     let wsURL;
 
@@ -259,7 +261,7 @@ class WebSocket extends EventTarget {
         wsURL.href,
         ArrayPrototypeJoin(protocols, ", "),
         cancelRid,
-        headers,
+        headers ? headerListFromHeaders(headers) : null,
       ),
       (create) => {
         this[_rid] = create.rid;
