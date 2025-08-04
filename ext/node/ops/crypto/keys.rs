@@ -8,7 +8,7 @@ use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
 use deno_core::op2;
 use deno_core::serde_v8::BigInt as V8BigInt;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_optional;
 use deno_error::JsErrorBox;
 use ed25519_dalek::pkcs8::BitStringRef;
 use elliptic_curve::JwkEcKey;
@@ -1905,7 +1905,7 @@ pub fn op_node_generate_secret_key(#[smi] len: usize) -> KeyObjectHandle {
 pub async fn op_node_generate_secret_key_async(
   #[smi] len: usize,
 ) -> KeyObjectHandle {
-  spawn_blocking(move || {
+  spawn_blocking_optional(move || {
     let mut key = vec![0u8; len];
     thread_rng().fill_bytes(&mut key);
     KeyObjectHandle::Secret(key.into_boxed_slice())
@@ -1989,7 +1989,7 @@ pub async fn op_node_generate_rsa_key_async(
   #[smi] modulus_length: usize,
   #[smi] public_exponent: usize,
 ) -> KeyObjectHandlePair {
-  spawn_blocking(move || generate_rsa(modulus_length, public_exponent))
+  spawn_blocking_optional(move || generate_rsa(modulus_length, public_exponent))
     .await
     .unwrap()
 }
@@ -2083,7 +2083,7 @@ pub async fn op_node_generate_rsa_pss_key_async(
   #[string] mf1_hash_algorithm: Option<String>, // todo: Option<&str> not supproted in ops yet
   #[smi] salt_length: Option<u32>,
 ) -> Result<KeyObjectHandlePair, GenerateRsaPssError> {
-  spawn_blocking(move || {
+  spawn_blocking_optional(move || {
     generate_rsa_pss(
       modulus_length,
       public_exponent,
@@ -2140,7 +2140,7 @@ pub async fn op_node_generate_dsa_key_async(
   #[smi] modulus_length: usize,
   #[smi] divisor_length: usize,
 ) -> Result<KeyObjectHandlePair, JsErrorBox> {
-  spawn_blocking(move || dsa_generate(modulus_length, divisor_length))
+  spawn_blocking_optional(move || dsa_generate(modulus_length, divisor_length))
     .await
     .unwrap()
 }
@@ -2186,7 +2186,7 @@ pub fn op_node_generate_ec_key(
 pub async fn op_node_generate_ec_key_async(
   #[string] named_curve: String,
 ) -> Result<KeyObjectHandlePair, JsErrorBox> {
-  spawn_blocking(move || ec_generate(&named_curve))
+  spawn_blocking_optional(move || ec_generate(&named_curve))
     .await
     .unwrap()
 }
@@ -2207,7 +2207,7 @@ pub fn op_node_generate_x25519_key() -> KeyObjectHandlePair {
 #[op2(async)]
 #[cppgc]
 pub async fn op_node_generate_x25519_key_async() -> KeyObjectHandlePair {
-  spawn_blocking(x25519_generate).await.unwrap()
+  spawn_blocking_optional(x25519_generate).await.unwrap()
 }
 
 fn ed25519_generate() -> KeyObjectHandlePair {
@@ -2226,7 +2226,7 @@ pub fn op_node_generate_ed25519_key() -> KeyObjectHandlePair {
 #[op2(async)]
 #[cppgc]
 pub async fn op_node_generate_ed25519_key_async() -> KeyObjectHandlePair {
-  spawn_blocking(ed25519_generate).await.unwrap()
+  spawn_blocking_optional(ed25519_generate).await.unwrap()
 }
 
 fn u32_slice_to_u8_slice(slice: &[u32]) -> &[u8] {
@@ -2305,7 +2305,7 @@ pub fn op_node_generate_dh_group_key(
 pub async fn op_node_generate_dh_group_key_async(
   #[string] group_name: String,
 ) -> Result<KeyObjectHandlePair, JsErrorBox> {
-  spawn_blocking(move || dh_group_generate(&group_name))
+  spawn_blocking_optional(move || dh_group_generate(&group_name))
     .await
     .unwrap()
 }
@@ -2353,9 +2353,11 @@ pub async fn op_node_generate_dh_key_async(
   #[smi] prime_len: usize,
   #[smi] generator: usize,
 ) -> KeyObjectHandlePair {
-  spawn_blocking(move || dh_generate(prime.as_deref(), prime_len, generator))
-    .await
-    .unwrap()
+  spawn_blocking_optional(move || {
+    dh_generate(prime.as_deref(), prime_len, generator)
+  })
+  .await
+  .unwrap()
 }
 
 #[op2]

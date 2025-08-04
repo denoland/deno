@@ -16,7 +16,7 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ToJsBuffer;
 use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_optional;
 use deno_error::JsErrorBox;
 use p256::ecdsa::Signature as P256Signature;
 use p256::ecdsa::SigningKey as P256SigningKey;
@@ -297,7 +297,7 @@ pub async fn op_crypto_sign_key(
   #[serde] args: SignArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<ToJsBuffer, CryptoError> {
-  deno_core::unsync::spawn_blocking(move || {
+  deno_core::unsync::spawn_blocking_optional(move || {
     let data = &*zero_copy;
     let algorithm = args.algorithm;
 
@@ -428,7 +428,7 @@ pub async fn op_crypto_verify_key(
   #[serde] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<bool, CryptoError> {
-  deno_core::unsync::spawn_blocking(move || {
+  deno_core::unsync::spawn_blocking_optional(move || {
     let data = &*zero_copy;
     let algorithm = args.algorithm;
 
@@ -587,7 +587,7 @@ pub async fn op_crypto_derive_bits(
   #[serde] args: DeriveKeyArg,
   #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<ToJsBuffer, CryptoError> {
-  deno_core::unsync::spawn_blocking(move || {
+  deno_core::unsync::spawn_blocking_optional(move || {
     let algorithm = args.algorithm;
     match algorithm {
       Algorithm::Pbkdf2 => {
@@ -761,7 +761,7 @@ pub async fn op_crypto_subtle_digest(
   #[serde] algorithm: CryptoHash,
   #[buffer] data: JsBuffer,
 ) -> Result<ToJsBuffer, CryptoError> {
-  let output = spawn_blocking(move || {
+  let output = spawn_blocking_optional(move || {
     digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()
