@@ -287,13 +287,13 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
 fn peer_dep_diagnostics_to_display_tree(
   diagnostics: &[UnmetPeerDepDiagnostic],
 ) -> DisplayTreeNode {
-  // combine the nodes into a unified tree
-  struct UnifiedNode {
+  struct MergedNode {
     text: Rc<String>,
-    children: RefCell<Vec<Rc<UnifiedNode>>>,
+    children: RefCell<Vec<Rc<MergedNode>>>,
   }
 
-  let mut nodes: BTreeMap<Rc<String>, Rc<UnifiedNode>> = BTreeMap::new();
+  // combine the nodes into a unified tree
+  let mut nodes: BTreeMap<Rc<String>, Rc<MergedNode>> = BTreeMap::new();
   let mut top_level_nodes = Vec::new();
 
   for diagnostic in diagnostics {
@@ -301,7 +301,7 @@ fn peer_dep_diagnostics_to_display_tree(
       "peer {}: resolved to {}",
       diagnostic.dependency, diagnostic.resolved
     ));
-    let mut node = Rc::new(UnifiedNode {
+    let mut node = Rc::new(MergedNode {
       text: text.clone(),
       children: Default::default(),
     });
@@ -321,7 +321,7 @@ fn peer_dep_diagnostics_to_display_tree(
         skip_push = true;
         break;
       } else {
-        let current_node = Rc::new(UnifiedNode {
+        let current_node = Rc::new(MergedNode {
           text: nv_string.clone(),
           children: RefCell::new(vec![node]),
         });
@@ -334,7 +334,7 @@ fn peer_dep_diagnostics_to_display_tree(
     }
   }
 
-  // now output the unified tree
+  // now output it
   let mut root_node = DisplayTreeNode {
     text: format!(
       "{} The following peer dependency issues were found:",
@@ -343,7 +343,7 @@ fn peer_dep_diagnostics_to_display_tree(
     children: Vec::new(),
   };
 
-  fn convert_node(node: &Rc<UnifiedNode>) -> DisplayTreeNode {
+  fn convert_node(node: &Rc<MergedNode>) -> DisplayTreeNode {
     DisplayTreeNode {
       text: node.text.to_string(),
       children: node
