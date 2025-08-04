@@ -2,7 +2,6 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -360,4 +359,32 @@ fn peer_dep_diagnostics_to_display_tree(
   }
 
   root_node
+}
+
+#[cfg(test)]
+mod test {
+  use deno_semver::Version;
+  use deno_semver::package::PackageNv;
+
+  use super::*;
+
+  #[test]
+  fn same_ancestor_peer_dep_message() {
+    let peer_deps = Vec::from([
+      UnmetPeerDepDiagnostic {
+        ancestors: vec![PackageNv::from_str("a@1.0.0").unwrap()],
+        dependency: PackageReq::from_str("b@*").unwrap(),
+        resolved: Version::parse_standard("1.0.0").unwrap(),
+      },
+      UnmetPeerDepDiagnostic {
+        // same ancestor as above
+        ancestors: vec![PackageNv::from_str("a@1.0.0").unwrap()],
+        dependency: PackageReq::from_str("c@*").unwrap(),
+        resolved: Version::parse_standard("1.0.0").unwrap(),
+      },
+    ]);
+    let display_tree = peer_dep_diagnostics_to_display_tree(&peer_deps);
+    assert_eq!(display_tree.children.len(), 1);
+    assert_eq!(display_tree.children[0].children.len(), 2);
+  }
 }
