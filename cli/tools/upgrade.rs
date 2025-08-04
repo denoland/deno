@@ -890,7 +890,7 @@ async fn download_package(
   // text above which will stay alive after the progress bars are complete
   let progress = progress_bar.update("");
   let response = client
-    .download_with_progress_and_retries(download_url.clone(), &Default::default(), &progress)
+    .download_with_progress_and_retries(download_url.clone(), &Default::default(), Some(&progress))
     .await
     .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
   Ok(response.into_maybe_bytes()?)

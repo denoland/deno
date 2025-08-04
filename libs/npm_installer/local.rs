@@ -90,13 +90,14 @@ pub struct LocalNpmPackageInstaller<
   npm_cache: Arc<NpmCache<TSys>>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider>,
-  reporter: TReporter,
+  reporter: Option<TReporter>,
   resolution: Arc<NpmResolutionCell>,
   sys: TSys,
   tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
   lifecycle_scripts_config: LifecycleScriptsConfig,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
+  install_reporter: Option<Arc<dyn crate::InstallReporter>>,
 }
 
 impl<
@@ -120,6 +121,17 @@ impl<
   }
 }
 
+struct InitializingGuard {
+  nv: PackageNv,
+  install_reporter: Arc<dyn crate::InstallReporter>,
+}
+
+impl Drop for InitializingGuard {
+  fn drop(&mut self) {
+    self.install_reporter.initialized(&self.nv);
+  }
+}
+
 impl<
   THttpClient: NpmCacheHttpClient,
   TReporter: Reporter,
@@ -132,13 +144,14 @@ impl<
     npm_cache: Arc<NpmCache<TSys>>,
     npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
-    reporter: TReporter,
+    reporter: Option<TReporter>,
     resolution: Arc<NpmResolutionCell>,
     sys: TSys,
     tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
     node_modules_folder: PathBuf,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
+    install_reporter: Option<Arc<dyn crate::InstallReporter>>,
   ) -> Self {
     Self {
       lifecycle_scripts_executor,
@@ -152,6 +165,7 @@ impl<
       lifecycle_scripts_config: lifecycle_scripts,
       root_node_modules_path: node_modules_folder,
       system_info,
+      install_reporter,
     }
   }
 
@@ -192,7 +206,7 @@ impl<
     let single_process_lock = LaxSingleProcessFsFlag::lock(
       &self.sys,
       deno_local_registry_dir.join(".deno.lock"),
-      &self.reporter,
+      self.reporter.as_ref(),
       // similar message used by cargo build
       "waiting for file lock on node_modules directory",
     )
@@ -204,7 +218,7 @@ impl<
       deno_local_registry_dir.join(".setup-cache.bin"),
     );
 
-    let pb_clear_guard = self.reporter.clear_guard(); // prevent flickering
+    let pb_clear_guard = self.reporter.as_ref().map(|r| r.clear_guard()); // prevent flickering
 
     // 1. Write all the packages out the .deno directory.
     //
@@ -309,6 +323,8 @@ impl<
           let extra_info_provider = extra_info_provider.clone();
           let lifecycle_scripts = lifecycle_scripts.clone();
           let bin_entries_to_setup = bin_entries.clone();
+          let install_reporter = self.install_reporter.clone();
+
           cache_futures.push(
             async move {
               self
@@ -316,8 +332,18 @@ impl<
                 .ensure_package(&package.id.nv, dist)
                 .await
                 .map_err(JsErrorBox::from_err)?;
-              let pb_guard =
-                self.reporter.on_initializing(&package.id.nv.to_string());
+              let pb_guard = self
+                .reporter
+                .as_ref()
+                .map(|r| r.on_initializing(&package.id.nv.to_string()));
+              let _initialization_guard =
+                install_reporter.as_ref().map(|install_reporter| {
+                  install_reporter.initializing(&package.id.nv);
+                  InitializingGuard {
+                    nv: package.id.nv.clone(),
+                    install_reporter: install_reporter.clone(),
+                  }
+                });
               let sub_node_modules = folder_path.join("node_modules");
               let package_path = join_package_name(
                 Cow::Owned(sub_node_modules),

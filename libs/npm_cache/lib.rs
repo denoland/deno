@@ -47,6 +47,7 @@ pub use registry_info::get_package_url;
 pub use remote::maybe_auth_header_value_for_npm_registry;
 pub use tarball::EnsurePackageError;
 pub use tarball::TarballCache;
+pub use tarball::TarballCacheReporter;
 
 use self::rt::spawn_blocking;
 

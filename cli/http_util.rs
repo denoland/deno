@@ -269,10 +269,10 @@ impl HttpClient {
     &self,
     url: Url,
     headers: &HeaderMap,
-    progress_guard: &UpdateGuard,
+    progress_guard: Option<&UpdateGuard>,
   ) -> Result<HttpClientResponse, DownloadError> {
     crate::util::retry::retry(
-      || self.download_inner(url.clone(), headers, Some(progress_guard)),
+      || self.download_inner(url.clone(), headers, progress_guard),
       |e| {
         matches!(
           e.as_kind(),

@@ -66,13 +66,13 @@ pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
   http_client_provider: Arc<HttpClientProvider>,
-  progress_bar: ProgressBar,
+  progress_bar: Option<ProgressBar>,
 }
 
 impl CliNpmCacheHttpClient {
   pub fn new(
     http_client_provider: Arc<HttpClientProvider>,
-    progress_bar: ProgressBar,
+    progress_bar: Option<ProgressBar>,
   ) -> Self {
     Self {
       http_client_provider,
@@ -89,7 +89,7 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
     maybe_auth: Option<String>,
     maybe_etag: Option<String>,
   ) -> Result<NpmCacheHttpClientResponse, deno_npm_cache::DownloadError> {
-    let guard = self.progress_bar.update(url.as_str());
+    let guard = self.progress_bar.as_ref().map(|pb| pb.update(url.as_str()));
     let client = self.http_client_provider.get_or_create().map_err(|err| {
       deno_npm_cache::DownloadError {
         status_code: None,
@@ -110,7 +110,7 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
       );
     }
     client
-      .download_with_progress_and_retries(url, &headers, &guard)
+      .download_with_progress_and_retries(url, &headers, guard.as_ref())
       .await
       .map(|response| match response {
         crate::http_util::HttpClientResponse::Success { headers, body } => {

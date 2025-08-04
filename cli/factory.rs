@@ -111,6 +111,26 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
 
+#[derive(Clone, Debug)]
+pub struct NoopReporter;
+
+impl deno_npm_installer::Reporter for NoopReporter {
+  type Guard = ();
+  type ClearGuard = ();
+
+  fn on_blocking(&self, _message: &str) -> Self::Guard {
+    ()
+  }
+
+  fn on_initializing(&self, _message: &str) -> Self::Guard {
+    ()
+  }
+
+  fn clear_guard(&self) -> Self::ClearGuard {
+    ()
+  }
+}
+
 struct CliRootCertStoreProvider {
   cell: OnceCell<RootCertStore>,
   maybe_root_path: Option<PathBuf>,
@@ -302,7 +322,7 @@ struct CliFactoryServices {
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
-  maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
+  graph_reporter: Deferred<Option<Arc<dyn deno_graph::source::Reporter>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
   module_graph_creator: Deferred<Arc<ModuleGraphCreator>>,
@@ -314,9 +334,11 @@ struct CliFactoryServices {
   resolver_factory: Deferred<Arc<CliResolverFactory>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   root_permissions_container: Deferred<PermissionsContainer>,
-  text_only_progress_bar: Deferred<ProgressBar>,
+  text_only_progress_bar: Deferred<Option<ProgressBar>>,
   type_checker: Deferred<Arc<TypeChecker>>,
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
+  install_reporter:
+    Deferred<Option<Arc<crate::tools::installer::InstallReporter>>>,
 }
 
 #[derive(Debug, Default)]
@@ -439,11 +461,23 @@ impl CliFactory {
     })
   }
 
-  pub fn text_only_progress_bar(&self) -> &ProgressBar {
+  pub fn text_only_progress_bar(
+    &self,
+  ) -> Result<Option<&ProgressBar>, AnyError> {
     self
       .services
       .text_only_progress_bar
-      .get_or_init(|| ProgressBar::new(ProgressBarStyle::TextOnly))
+      .get_or_try_init(|| {
+        if matches!(
+          self.cli_options()?.sub_command(),
+          DenoSubcommand::Install(_)
+        ) {
+          Ok(None)
+        } else {
+          Ok(Some(ProgressBar::new(ProgressBarStyle::TextOnly)))
+        }
+      })
+      .map(|opt| opt.as_ref())
   }
 
   pub fn global_http_cache(&self) -> Result<&Arc<GlobalHttpCache>, AnyError> {
@@ -490,8 +524,15 @@ impl CliFactory {
         CreateCliFileFetcherOptions {
           allow_remote: !cli_options.no_remote(),
           cache_setting: cli_options.cache_setting(),
-          download_log_level: log::Level::Info,
-          progress_bar: Some(self.text_only_progress_bar().clone()),
+          download_log_level: if matches!(
+            cli_options.sub_command(),
+            DenoSubcommand::Install(_)
+          ) {
+            log::Level::Trace
+          } else {
+            log::Level::Info
+          },
+          progress_bar: self.text_only_progress_bar()?.cloned(),
         },
       )))
     })
@@ -551,7 +592,7 @@ impl CliFactory {
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
           self.http_client_provider().clone(),
-          self.text_only_progress_bar().clone(),
+          self.text_only_progress_bar()?.cloned(),
         )),
         match resolver_factory.npm_resolver()?.as_managed() {
           Some(managed_npm_resolver) => Arc::new(
@@ -560,7 +601,11 @@ impl CliFactory {
             as Arc<dyn LifecycleScriptsExecutor>,
           None => Arc::new(NullLifecycleScriptsExecutor),
         },
-        self.text_only_progress_bar().clone(),
+        self.text_only_progress_bar()?.cloned(),
+        self
+          .install_reporter()?
+          .cloned()
+          .map(|r| r as Arc<dyn deno_npm_installer::InstallReporter>),
         NpmInstallerFactoryOptions {
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
@@ -573,6 +618,22 @@ impl CliFactory {
         },
       ))
     })
+  }
+
+  pub fn install_reporter(
+    &self,
+  ) -> Result<Option<&Arc<crate::tools::installer::InstallReporter>>, AnyError>
+  {
+    self
+      .services
+      .install_reporter
+      .get_or_try_init(|| match self.cli_options()?.sub_command() {
+        DenoSubcommand::Install(_) => Ok(Some(Arc::new(
+          crate::tools::installer::InstallReporter::new(),
+        ))),
+        _ => Ok(None),
+      })
+      .map(|opt| opt.as_ref())
   }
 
   pub async fn npm_installer(&self) -> Result<&Arc<CliNpmInstaller>, AnyError> {
@@ -615,15 +676,25 @@ impl CliFactory {
     self.resolver_factory()?.deno_resolver().await
   }
 
-  pub fn maybe_file_watcher_reporter(&self) -> &Option<FileWatcherReporter> {
-    let maybe_file_watcher_reporter = self
-      .watcher_communicator
-      .as_ref()
-      .map(|i| FileWatcherReporter::new(i.clone()));
-    self
-      .services
-      .maybe_file_watcher_reporter
-      .get_or_init(|| maybe_file_watcher_reporter)
+  pub fn graph_reporter(
+    &self,
+  ) -> Result<&Option<Arc<dyn deno_graph::source::Reporter>>, AnyError> {
+    match self.cli_options()?.sub_command() {
+      DenoSubcommand::Install(_) => {
+        self.services.graph_reporter.get_or_try_init(|| {
+          self.install_reporter().map(|opt| {
+            opt.map(|r| r.clone() as Arc<dyn deno_graph::source::Reporter>)
+          })
+        })
+      }
+      _ => Ok(self.services.graph_reporter.get_or_init(|| {
+        self
+          .watcher_communicator
+          .as_ref()
+          .map(|i| FileWatcherReporter::new(i.clone()))
+          .map(|i| Arc::new(i) as Arc<dyn deno_graph::source::Reporter>)
+      })),
+    }
   }
 
   pub fn module_info_cache(&self) -> Result<&Arc<ModuleInfoCache>, AnyError> {
@@ -730,7 +801,7 @@ impl CliFactory {
             self.global_http_cache()?.clone(),
             self.in_npm_pkg_checker()?.clone(),
             self.maybe_lockfile().await?.cloned(),
-            self.maybe_file_watcher_reporter().clone(),
+            self.graph_reporter()?.clone(),
             self.module_info_cache()?.clone(),
             self.npm_graph_resolver().await?.clone(),
             self.npm_installer_if_managed().await?.cloned(),
@@ -812,7 +883,7 @@ impl CliFactory {
             cli_options.clone(),
             self.maybe_lockfile().await?.cloned(),
             self.module_graph_builder().await?.clone(),
-            self.text_only_progress_bar().clone(),
+            self.text_only_progress_bar()?.cloned(),
             self.type_checker().await?.clone(),
           )))
         }

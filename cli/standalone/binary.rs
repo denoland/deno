@@ -339,7 +339,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .download_with_progress_and_retries(
           download_url.parse()?,
           &Default::default(),
-          &progress,
+          Some(&progress),
         )
         .await?
     };

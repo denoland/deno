@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -10,12 +11,17 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
+use dashmap::DashSet;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_lib::args::CaData;
 use deno_path_util::resolve_url_or_path;
@@ -45,6 +51,163 @@ use crate::npm::NpmFetchResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod bin_name_resolver;
+
+#[derive(Debug, Default)]
+pub struct Count {
+  value: AtomicUsize,
+}
+
+impl Count {
+  pub fn inc(&self) {
+    self.value.fetch_add(1, Ordering::Relaxed);
+  }
+
+  pub fn get(&self) -> usize {
+    self.value.load(Ordering::Relaxed)
+  }
+}
+
+#[derive(Default)]
+pub struct InstallStats {
+  pub resolved_jsr: DashSet<String>,
+  pub downloaded_jsr: DashSet<String>,
+  pub resolved_npm: Count,
+  pub downloaded_npm: Count,
+  pub intialized_npm: DashSet<String>,
+  pub reused_npm: Count,
+}
+
+impl std::fmt::Debug for InstallStats {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("InstallStats")
+      .field(
+        "resolved_jsr",
+        &self
+          .resolved_jsr
+          .iter()
+          .map(|s| s.as_str().to_string())
+          .collect::<Vec<_>>(),
+      )
+      .field(
+        "downloaded_jsr",
+        &self
+          .downloaded_jsr
+          .iter()
+          .map(|s| s.as_str().to_string())
+          .collect::<Vec<_>>(),
+      )
+      .field("resolved_npm", &self.resolved_npm.get())
+      .field("resolved_jsr_count", &self.resolved_jsr.len())
+      .field("downloaded_npm", &self.downloaded_npm.get())
+      .field("downloaded_jsr_count", &self.downloaded_jsr.len())
+      .field(
+        "intialized_npm",
+        &self
+          .intialized_npm
+          .iter()
+          .map(|s| s.as_str().to_string())
+          .collect::<Vec<_>>(),
+      )
+      .field("intialized_npm_count", &self.intialized_npm.len())
+      .field("reused_npm", &self.reused_npm.get())
+      .finish()
+  }
+}
+
+#[derive(Debug)]
+pub struct InstallReporter {
+  stats: Arc<InstallStats>,
+}
+
+impl InstallReporter {
+  pub fn new() -> Self {
+    Self {
+      stats: Arc::new(InstallStats::default()),
+    }
+  }
+}
+
+impl deno_npm_installer::InstallProgressReporter for InstallReporter {
+  fn initializing(&self, _nv: &deno_semver::package::PackageNv) {
+    // log::info!("initializing: {}", nv);
+  }
+
+  fn initialized(&self, nv: &deno_semver::package::PackageNv) {
+    // log::info!("initialized: {}", nv);
+    self.stats.intialized_npm.insert(nv.to_string());
+  }
+
+  fn blocking(&self, _message: &str) {
+    // log::info!("blocking: {}", message);
+  }
+}
+
+fn package_nv_from_url(url: &Url) -> Option<String> {
+  if !matches!(url.scheme(), "http" | "https") {
+    return None;
+  }
+  if !url.host_str().is_some_and(|h| h.contains("jsr.io")) {
+    return None;
+  }
+  let mut parts = url.path_segments()?;
+  let scope = parts.next()?;
+  let name = parts.next()?;
+  let version = parts.next()?;
+  Some(format!("{scope}/{name}@{version}"))
+}
+
+impl deno_graph::source::Reporter for InstallReporter {
+  fn on_load(
+    &self,
+    specifier: &deno_graph::ModuleSpecifier,
+    modules_done: usize,
+    modules_total: usize,
+  ) {
+    if let Some(nv) = package_nv_from_url(specifier) {
+      log::info!("downloaded_jsr: {}", nv);
+      self.stats.downloaded_jsr.insert(nv);
+    } else {
+      log::info!("on_load: {} {} {}", specifier, modules_done, modules_total);
+    }
+  }
+
+  fn on_resolve(
+    &self,
+    _req: &deno_semver::package::PackageReq,
+    package_nv: &deno_semver::package::PackageNv,
+  ) {
+    // log::info!("on_resolve: {} {}", req, package_nv);
+    self.stats.resolved_jsr.insert(package_nv.to_string());
+  }
+}
+
+impl deno_npm::resolution::Reporter for InstallReporter {
+  fn on_resolved(
+    &self,
+    package_req: &deno_semver::package::PackageReq,
+    nv: &deno_semver::package::PackageNv,
+  ) {
+    // log::info!("on_resolved: {} {}", package_req, nv);
+    // self.stats.resolved_npm.insert(nv.to_string());
+    self.stats.resolved_npm.inc();
+  }
+}
+
+impl deno_npm_cache::TarballCacheReporter for InstallReporter {
+  fn download_started(&self, _nv: &deno_semver::package::PackageNv) {
+    // log::info!("download_started: {}", _nv);
+  }
+
+  fn downloaded(&self, _nv: &deno_semver::package::PackageNv) {
+    // log::info!("downloaded: {}", _nv);
+    self.stats.downloaded_npm.inc();
+  }
+
+  fn reused_cache(&self, _nv: &deno_semver::package::PackageNv) {
+    // log::info!("reused_cache: {}", _nv);
+    self.stats.reused_npm.inc();
+  }
+}
 
 static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
   RegexBuilder::new(r"^[a-z0-9][\w-]*$")
@@ -246,6 +409,38 @@ pub(crate) async fn install_from_entrypoints(
     .await
 }
 
+#[derive(Debug)]
+struct PrintyThing {
+  stats: Arc<InstallStats>,
+  done: Mutex<tokio::sync::oneshot::Receiver<()>>,
+  done_for_sure: AtomicBool,
+}
+
+impl crate::util::draw_thread::DrawThreadRenderer for PrintyThing {
+  fn render(&self, size: &deno_runtime::ops::tty::ConsoleSize) -> String {
+    let done = self.done.lock().try_recv().is_ok()
+      || self.done_for_sure.load(Ordering::Relaxed);
+    if done {
+      self.done_for_sure.store(true, Ordering::Relaxed);
+      return "".to_string();
+    }
+    format!(
+      "Progress: resolved {}, reused: {}, downloaded: {}, added: {}{}",
+      deno_terminal::colors::cyan(self.stats.resolved_npm.get()),
+      deno_terminal::colors::cyan(self.stats.reused_npm.get()),
+      deno_terminal::colors::cyan(self.stats.downloaded_npm.get()),
+      deno_terminal::colors::cyan(self.stats.intialized_npm.len()),
+      if self.done.lock().try_recv().is_ok()
+        || self.done_for_sure.load(Ordering::Relaxed)
+      {
+        ", done"
+      } else {
+        ""
+      }
+    )
+  }
+}
+
 async fn install_local(
   flags: Arc<Flags>,
   install_flags: InstallFlagsLocal,
@@ -264,7 +459,156 @@ async fn install_local(
         .npm_installer()
         .await?
         .ensure_no_pkg_json_dep_errors()?;
+      let install_reporter = factory.install_reporter()?.unwrap().clone();
+
+      let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+      let printy_thing = Arc::new(PrintyThing {
+        stats: install_reporter.stats.clone(),
+        done: Mutex::new(done_rx),
+        done_for_sure: AtomicBool::new(false),
+      });
+
+      let _guard =
+        crate::util::draw_thread::DrawThread::add_entry(printy_thing.clone());
+      crate::util::draw_thread::DrawThread::show();
       crate::tools::pm::cache_top_level_deps(&factory, None).await?;
+      // log::info!("Install stats: {:?}", install_reporter.stats);
+
+      let snapshot = factory
+        .npm_resolver()
+        .await?
+        .as_managed()
+        .unwrap()
+        .resolution()
+        .snapshot();
+
+      let workspace = factory.workspace_resolver().await?;
+      let top_level_packages = snapshot.top_level_packages();
+
+      // all this nonsense is to categorize into normal and dev deps
+      let mut normal_deps = HashSet::new();
+      let mut dev_deps = HashSet::new();
+
+      for package_json in workspace.package_jsons() {
+        let deps = package_json.resolve_local_package_json_deps();
+        for (k, v) in deps.dependencies.iter() {
+          let Ok(s) = v else {
+            continue;
+          };
+          match s {
+            deno_package_json::PackageJsonDepValue::File(_) => todo!(),
+            deno_package_json::PackageJsonDepValue::Req(package_req) => {
+              normal_deps.insert(package_req.name.to_string());
+            }
+            deno_package_json::PackageJsonDepValue::Workspace(
+              package_json_dep_workspace_req,
+            ) => todo!(),
+            deno_package_json::PackageJsonDepValue::JsrReq(package_req) => {
+              todo!()
+            }
+          }
+        }
+
+        for (k, v) in deps.dev_dependencies.iter() {
+          let Ok(s) = v else {
+            continue;
+          };
+          match s {
+            deno_package_json::PackageJsonDepValue::File(_) => todo!(),
+            deno_package_json::PackageJsonDepValue::Req(package_req) => {
+              dev_deps.insert(package_req.name.to_string());
+            }
+            deno_package_json::PackageJsonDepValue::Workspace(
+              package_json_dep_workspace_req,
+            ) => todo!(),
+            deno_package_json::PackageJsonDepValue::JsrReq(package_req) => {
+              todo!()
+            }
+          }
+        }
+      }
+
+      done_tx.send(()).unwrap();
+      crate::util::draw_thread::DrawThread::hide();
+
+      let mut installed_normal_deps = Vec::new();
+      let mut installed_dev_deps = Vec::new();
+
+      for pkg in top_level_packages {
+        if !install_reporter
+          .stats
+          .intialized_npm
+          .contains(&pkg.nv.to_string())
+        {
+          continue;
+        }
+        if normal_deps.contains(&pkg.nv.name.to_string()) {
+          installed_normal_deps.push(pkg);
+        } else if dev_deps.contains(&pkg.nv.name.to_string()) {
+          installed_dev_deps.push(pkg);
+        }
+      }
+
+      installed_normal_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
+      installed_dev_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
+
+      if install_reporter.stats.intialized_npm.len() > 0 {
+        log::info!(
+          "Packages: {}",
+          deno_terminal::colors::green(format!(
+            "+{}",
+            install_reporter.stats.intialized_npm.len()
+          ))
+        );
+        log::info!(
+          "{}",
+          deno_terminal::colors::green(
+            "+".repeat(install_reporter.stats.intialized_npm.len())
+          )
+        );
+
+        log::info!(
+          "Progress: resolved {}, reused: {}, downloaded: {}, added: {}, done",
+          deno_terminal::colors::cyan(
+            install_reporter.stats.resolved_npm.get()
+          ),
+          deno_terminal::colors::cyan(install_reporter.stats.reused_npm.get()),
+          deno_terminal::colors::cyan(
+            install_reporter.stats.downloaded_npm.get()
+          ),
+          deno_terminal::colors::cyan(
+            install_reporter.stats.intialized_npm.len()
+          ),
+        );
+
+        log::info!("");
+
+        if installed_normal_deps.len() > 0 {
+          if !installed_normal_deps.is_empty() {
+            log::info!("{}", deno_terminal::colors::cyan("dependencies:"));
+            for pkg in &installed_normal_deps {
+              log::info!(
+                "{} {} {}",
+                deno_terminal::colors::green("+"),
+                pkg.nv.name,
+                deno_terminal::colors::gray(pkg.nv.version.to_string())
+              );
+            }
+            log::info!("");
+          }
+          if !installed_normal_deps.is_empty() {
+            log::info!("{}", deno_terminal::colors::cyan("devDependencies:"));
+            for pkg in &installed_dev_deps {
+              log::info!(
+                "{} {} {}",
+                deno_terminal::colors::green("+"),
+                pkg.nv.name,
+                deno_terminal::colors::gray(pkg.nv.version.to_string())
+              );
+            }
+          }
+        }
+      }
 
       if let Some(lockfile) = factory.maybe_lockfile().await? {
         lockfile.write_if_changed()?;

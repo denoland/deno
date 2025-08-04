@@ -98,7 +98,7 @@ mod inner {
     pub async fn lock(
       sys: &TSys,
       file_path: PathBuf,
-      reporter: &impl Reporter,
+      reporter: Option<&impl Reporter>,
       long_wait_message: &str,
     ) -> Self {
       log::debug!("Acquiring file lock at {}", file_path.display());
@@ -159,8 +159,9 @@ mod inner {
                 if pb_update_guard.is_none()
                   && start_instant.elapsed().as_millis() > 1_000
                 {
-                  let guard = reporter.on_blocking(long_wait_message);
-                  pb_update_guard = Some(guard);
+                  let guard =
+                    reporter.as_ref().map(|r| r.on_blocking(long_wait_message));
+                  pb_update_guard = guard;
                 }
 
                 // sleep for a little bit
@@ -280,7 +281,7 @@ mod test {
         let flag = LaxSingleProcessFsFlag::lock(
           &sys_traits::impls::RealSys,
           lock_path.to_path_buf(),
-          &LogReporter,
+          Some(&LogReporter),
           "waiting",
         )
         .await;
@@ -304,7 +305,7 @@ mod test {
         let flag = LaxSingleProcessFsFlag::lock(
           &sys_traits::impls::RealSys,
           lock_path.to_path_buf(),
-          &LogReporter,
+          Some(&LogReporter),
           "waiting",
         )
         .await;
@@ -343,7 +344,7 @@ mod test {
         let flag = LaxSingleProcessFsFlag::lock(
           &sys_traits::impls::RealSys,
           lock_path.to_path_buf(),
-          &LogReporter,
+          Some(&LogReporter),
           "waiting",
         )
         .await;

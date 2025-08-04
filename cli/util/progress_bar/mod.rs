@@ -286,19 +286,19 @@ pub struct ProgressBar {
 }
 
 impl deno_npm_installer::Reporter for ProgressBar {
-  type Guard = UpdateGuard;
-  type ClearGuard = UpdateGuard;
+  type Guard = Option<UpdateGuard>;
+  type ClearGuard = Option<UpdateGuard>;
 
   fn on_blocking(&self, message: &str) -> Self::Guard {
-    self.update_with_prompt(ProgressMessagePrompt::Blocking, message)
+    Some(self.update_with_prompt(ProgressMessagePrompt::Blocking, message))
   }
 
   fn on_initializing(&self, message: &str) -> Self::Guard {
-    self.update_with_prompt(ProgressMessagePrompt::Initialize, message)
+    Some(self.update_with_prompt(ProgressMessagePrompt::Initialize, message))
   }
 
   fn clear_guard(&self) -> Self::ClearGuard {
-    self.deferred_keep_initialize_alive()
+    Some(self.deferred_keep_initialize_alive())
   }
 }
 
@@ -309,6 +309,10 @@ impl ProgressBar {
   }
 
   pub fn new(style: ProgressBarStyle) -> Self {
+    eprintln!(
+      "ProgressBar::new, from {}",
+      std::backtrace::Backtrace::capture()
+    );
     Self {
       inner: ProgressBarInner::new(match style {
         ProgressBarStyle::DownloadBars => {

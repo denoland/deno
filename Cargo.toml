@@ -533,3 +533,7 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
+
+[patch.crates-io]
+deno_npm = { path = "../deno_npm" }
+deno_graph = { path = "../deno_graph" }
