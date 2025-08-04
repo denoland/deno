@@ -169,7 +169,7 @@ export class TLSSocket extends net.Socket {
 
       // Set `afterConnectTls` hook. This is called in the `afterConnect` method of net.Socket
       handle.afterConnectTls = async () => {
-        // handle.afterConnectTls = undefined;
+        handle.afterConnectTls = undefined;
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
         if (tlssock._needsSockInitWorkaround) {
           // skips the TLS handshake for @npmcli/agent as it's handled by
