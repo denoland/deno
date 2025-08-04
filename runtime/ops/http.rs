@@ -9,7 +9,6 @@ use deno_core::op2;
 use deno_http::http_create_conn_resource;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
-use deno_net::ops_tls::TlsStreamReunited;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "http";
 
@@ -76,13 +75,7 @@ fn op_http_start(
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| HttpStartError::TlsStreamInUse)?;
     let tls_stream = resource.into_tls_stream();
-    let addr = match tls_stream {
-      TlsStreamReunited::Tcp(ref s) => s.local_addr()?,
-      // TODO(bartlomieju): handle Unix socket
-      #[allow(unreachable_patterns)]
-      _ => todo!(),
-    };
-
+    let addr = tls_stream.local_addr()?;
     return Ok(http_create_conn_resource(state, tls_stream, addr, "https"));
   }
 
