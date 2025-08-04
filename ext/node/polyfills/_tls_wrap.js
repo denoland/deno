@@ -51,7 +51,7 @@ function canonicalizeIP(ip) {
   return op_tls_canonicalize_ipv4_address(ip);
 }
 
-function onConnectEnd(this) {
+function onConnectEnd() {
   // NOTE: This logic is shared with _http_client.js
   if (!this._hadError) {
     const options = this[kConnectOptions];
