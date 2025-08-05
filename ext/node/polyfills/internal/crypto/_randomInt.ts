@@ -43,7 +43,7 @@ export default function randomInt(
   if (!NumberIsSafeInteger(min)) {
     throw new ERR_INVALID_ARG_TYPE("min", "a safe integer", min);
   }
-  
+
   if (!NumberIsSafeInteger(max)) {
     throw new ERR_INVALID_ARG_TYPE("max", "a safe integer", max);
   }
