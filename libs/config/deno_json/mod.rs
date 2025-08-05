@@ -36,8 +36,14 @@ use crate::import_map::value_to_dep_req;
 use crate::import_map::values_to_set;
 use crate::util::is_skippable_io_error;
 
+mod permissions;
 mod ts;
 
+pub use permissions::AllowDenyPermissionConfig;
+pub use permissions::AllowDenyPermissionConfigValue;
+pub use permissions::PermissionConfigValue;
+pub use permissions::PermissionsConfig;
+pub use permissions::PermissionsObject;
 pub use ts::CompilerOptions;
 pub use ts::EmitConfigOptions;
 pub use ts::RawJsxCompilerOptions;
@@ -889,6 +895,7 @@ pub struct ConfigFileJson {
   pub node_modules_dir: Option<Value>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
+  pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
 
@@ -1655,6 +1662,23 @@ impl ConfigFile {
       None => Ok(TestConfig {
         files: self.to_exclude_files_config()?,
       }),
+    }
+  }
+
+  pub(crate) fn to_permissions_config(
+    &self,
+  ) -> Result<PermissionsConfig, ToInvalidConfigError> {
+    match self.json.permissions.clone() {
+      Some(config) => {
+        let serialized = PermissionsConfig::parse(config).map_err(|error| {
+          ToInvalidConfigError::Parse {
+            config: "permissions",
+            source: error,
+          }
+        })?;
+        Ok(serialized)
+      }
+      None => Ok(Default::default()),
     }
   }
 

@@ -51,6 +51,7 @@ use crate::deno_json::LinkConfigParseError;
 use crate::deno_json::LintRulesConfig;
 use crate::deno_json::NodeModulesDirMode;
 use crate::deno_json::NodeModulesDirParseError;
+use crate::deno_json::PermissionsConfig;
 use crate::deno_json::PublishConfig;
 pub use crate::deno_json::TaskDefinition;
 use crate::deno_json::TestConfig;
@@ -1988,6 +1989,20 @@ impl WorkspaceDirectory {
         self.pkg_json.as_ref().map(|d| &d.member),
       )?,
     })
+  }
+
+  pub fn to_permissions_config(
+    &self,
+  ) -> Result<PermissionsConfig, ToInvalidConfigError> {
+    let base = match self.deno_json.as_ref().and_then(|c| c.root.as_ref()) {
+      Some(value) => value.to_permissions_config()?,
+      None => PermissionsConfig::default(),
+    };
+    let member = match self.deno_json.as_ref().map(|c| &c.member) {
+      Some(value) => value.to_permissions_config()?,
+      None => PermissionsConfig::default(),
+    };
+    Ok(base.merge(member))
   }
 
   pub fn to_publish_config(
