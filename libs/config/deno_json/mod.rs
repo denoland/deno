@@ -57,6 +57,11 @@ pub struct LintRulesConfig {
   pub exclude: Option<Vec<String>>,
 }
 
+#[derive(Debug, JsError, Error)]
+#[class(generic)]
+#[error("Undefined permission: {0}")]
+pub struct UndefinedPermissionError(String);
+
 #[derive(Debug, JsError, Boxed)]
 pub struct IntoResolvedError(pub Box<IntoResolvedErrorKind>);
 
@@ -74,9 +79,9 @@ pub enum IntoResolvedErrorKind {
   #[class(inherit)]
   #[error("Invalid exclude: {0}")]
   InvalidExclude(crate::glob::FromExcludeRelativePathOrPatternsError),
-  #[class(generic)]
-  #[error("Undefined permission: {0}")]
-  UndefinedPermission(String),
+  #[class(inherit)]
+  #[error(transparent)]
+  UndefinedPermission(#[from] UndefinedPermissionError),
 }
 
 #[derive(Debug, Error, JsError)]

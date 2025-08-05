@@ -3,8 +3,7 @@
 use indexmap::IndexMap;
 use serde::Deserialize;
 
-use super::IntoResolvedError;
-use super::IntoResolvedErrorKind;
+use super::UndefinedPermissionError;
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PermissionConfigValue {
@@ -134,6 +133,7 @@ fn deserialize_allow_deny<'de, D: serde::Deserializer<'de>>(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Hash)]
+#[serde(untagged)]
 pub enum PermissionNameOrObject {
   Name(String),
   Object(PermissionsObject),
@@ -148,7 +148,7 @@ pub struct PermissionsObject {
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub write: AllowDenyPermissionConfig,
   #[serde(default)]
-  pub import: PermissionConfigValue,
+  pub import: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub env: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
@@ -204,12 +204,10 @@ impl PermissionsConfig {
   pub fn get(
     &self,
     name: &str,
-  ) -> Result<&PermissionsObject, IntoResolvedError> {
+  ) -> Result<&PermissionsObject, UndefinedPermissionError> {
     match self.sets.get(name) {
       Some(value) => Ok(value),
-      None => Err(
-        IntoResolvedErrorKind::UndefinedPermission(name.to_string()).into_box(),
-      ),
+      None => Err(UndefinedPermissionError(name.to_string())),
     }
   }
 

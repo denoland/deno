@@ -262,7 +262,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         bail!(
           "The `--icon` flag is only available when targeting Windows (current: {})",
           target,
-        )
+        );
       }
     }
     self.write_standalone_binary(options, original_binary).await
@@ -722,7 +722,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       seed: self.cli_options.seed(),
       code_cache_key,
       location: self.cli_options.location_flag().clone(),
-      permissions: self.cli_options.permissions_options(),
+      permissions: self.cli_options.permissions_options()?,
       v8_flags: construct_v8_flags(
         &get_default_v8_flags(),
         self.cli_options.v8_flags(),
