@@ -64,6 +64,7 @@ import {
   processTicksAndRejections,
   runNextTicks,
 } from "ext:deno_node/_next_tick.ts";
+import { runImmediates } from "ext:deno_node/internal/timers.mjs";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import * as denoOs from "ext:deno_os/30_os.js";
@@ -1002,6 +1003,7 @@ internals.__bootstrapNodeProcess = function (
     }
 
     core.setNextTickCallback(processTicksAndRejections);
+    core.setImmediateCallback(runImmediates);
     core.setMacrotaskCallback(runNextTicks);
     enableNextTick();
 
