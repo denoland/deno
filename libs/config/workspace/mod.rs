@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
@@ -1363,6 +1364,11 @@ pub struct CompilerOptionsSource {
   pub compiler_options: Option<CompilerOptions>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct CachedDirectoryValues {
+  permissions: OnceLock<PermissionsConfig>,
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkspaceDirectory {
   pub workspace: WorkspaceRc,
@@ -1370,6 +1376,7 @@ pub struct WorkspaceDirectory {
   dir_url: UrlRc,
   pkg_json: Option<WorkspaceDirConfig<PackageJson>>,
   deno_json: Option<WorkspaceDirConfig<ConfigFile>>,
+  cached: CachedDirectoryValues,
 }
 
 impl WorkspaceDirectory {
@@ -1553,6 +1560,7 @@ impl WorkspaceDirectory {
               }
             }),
             workspace,
+            cached: Default::default(),
           }
         }
       }
@@ -1579,6 +1587,7 @@ impl WorkspaceDirectory {
         }
       }),
       workspace,
+      cached: Default::default(),
     }
   }
 
@@ -1993,16 +2002,22 @@ impl WorkspaceDirectory {
 
   pub fn to_permissions_config(
     &self,
-  ) -> Result<PermissionsConfig, ToInvalidConfigError> {
-    let base = match self.deno_json.as_ref().and_then(|c| c.root.as_ref()) {
-      Some(value) => value.to_permissions_config()?,
-      None => PermissionsConfig::default(),
-    };
-    let member = match self.deno_json.as_ref().map(|c| &c.member) {
-      Some(value) => value.to_permissions_config()?,
-      None => PermissionsConfig::default(),
-    };
-    Ok(base.merge(member))
+  ) -> Result<&PermissionsConfig, ToInvalidConfigError> {
+    if let Some(value) = self.cached.permissions.get() {
+      Ok(value)
+    } else {
+      let base = match self.deno_json.as_ref().and_then(|c| c.root.as_ref()) {
+        Some(value) => value.to_permissions_config()?,
+        None => Default::default(),
+      };
+      let member = match self.deno_json.as_ref().map(|c| &c.member) {
+        Some(value) => value.to_permissions_config()?,
+        None => Default::default(),
+      };
+      let value = base.merge(member);
+      _ = self.cached.permissions.set(value);
+      Ok(self.cached.permissions.get().unwrap())
+    }
   }
 
   pub fn to_publish_config(
@@ -2051,16 +2066,24 @@ impl WorkspaceDirectory {
         files: FilePatterns::new_with_base(
           url_to_file_path(&self.dir_url).unwrap(),
         ),
+        permissions: None,
       });
     };
-    let member_config = deno_json.member.to_test_config()?;
+    let permissions = self.to_permissions_config()?;
+    let member_config = deno_json.member.to_test_config(&permissions)?;
     let root_config = match &deno_json.root {
-      Some(root) => root.to_test_config()?,
+      Some(root) => root.to_test_config(&permissions)?,
       None => return Ok(member_config),
     };
 
     Ok(TestConfig {
       files: combine_patterns(root_config.files, member_config.files),
+      permissions: match (root_config.permissions, member_config.permissions) {
+        (Some(r), Some(m)) => Some(r.merge(m)),
+        (Some(r), None) => Some(r),
+        (None, Some(m)) => Some(m),
+        (None, None) => None,
+      },
     })
   }
 
@@ -3487,6 +3510,7 @@ pub mod test {
           )])),
           exclude: Default::default(),
         },
+        permissions: None,
       }
     );
 
@@ -3509,6 +3533,7 @@ pub mod test {
             root_dir().join("member")
           )])),
         },
+        permissions: None,
       }
     );
   }
@@ -3629,6 +3654,7 @@ pub mod test {
           .unwrap(),
         TestConfig {
           files: expected_files.clone(),
+          permissions: None,
         }
       );
       assert_eq!(

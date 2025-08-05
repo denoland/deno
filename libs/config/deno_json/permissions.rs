@@ -3,7 +3,10 @@
 use indexmap::IndexMap;
 use serde::Deserialize;
 
-#[derive(Default, Clone, Debug, PartialEq, Eq)]
+use super::IntoResolvedError;
+use super::IntoResolvedErrorKind;
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PermissionConfigValue {
   All,
   Some(Vec<String>),
@@ -70,7 +73,7 @@ impl<'de> serde::Deserialize<'de> for PermissionConfigValue {
   }
 }
 
-#[derive(Deserialize, Default, Clone, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Default, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AllowDenyPermissionConfig {
   pub allow: PermissionConfigValue,
   pub deny: PermissionConfigValue,
@@ -130,7 +133,13 @@ fn deserialize_allow_deny<'de, D: serde::Deserializer<'de>>(
   })
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Hash)]
+pub enum PermissionNameOrObject {
+  Name(String),
+  Object(PermissionsObject),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Default, Hash)]
 pub struct PermissionsObject {
   #[serde(default)]
   pub all: Option<bool>,
@@ -190,6 +199,18 @@ impl PermissionsConfig {
   pub fn parse(value: serde_json::Value) -> Result<Self, serde_json::Error> {
     let sets = serde_json::from_value(value)?;
     Ok(Self { sets })
+  }
+
+  pub fn get(
+    &self,
+    name: &str,
+  ) -> Result<&PermissionsObject, IntoResolvedError> {
+    match self.sets.get(name) {
+      Some(value) => Ok(value),
+      None => Err(
+        IntoResolvedErrorKind::UndefinedPermission(name.to_string()).into_box(),
+      ),
+    }
   }
 
   pub fn merge(self, other: Self) -> Self {
