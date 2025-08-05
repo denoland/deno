@@ -41,7 +41,6 @@ import {
   newAsyncId,
   ownerSymbol,
 } from "ext:deno_node/internal/async_hooks.ts";
-import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import {
   ERR_INVALID_ADDRESS_FAMILY,
   ERR_INVALID_ARG_TYPE,
@@ -381,9 +380,7 @@ function _afterConnect(
 
     // Deno specific: run tls handshake if it's from a tls socket
     // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
-    if (
-      typeof handle.afterConnectTls === "function" && handle[kStreamBaseField]
-    ) {
+    if (typeof handle.afterConnectTls === "function") {
       handle.afterConnectTls();
     }
 
@@ -1290,6 +1287,7 @@ export class Socket extends Duplex {
     }
 
     this.on("end", _onReadableStreamEnd);
+
     _initSocketHandle(this);
 
     // If we have a handle, then start the flow of data into the
