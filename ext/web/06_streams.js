@@ -6904,6 +6904,8 @@ webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
 );
 
 internals.resourceForReadableStream = resourceForReadableStream;
+internals.readableStreamForRid = readableStreamForRid;
+internals.writableStreamForRid = writableStreamForRid;
 
 export default {
   // Non-Public
