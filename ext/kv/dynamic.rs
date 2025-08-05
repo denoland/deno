@@ -65,7 +65,9 @@ impl DatabaseHandler for MultiBackendDbHandler {
   ) -> Result<Self::DB, JsErrorBox> {
     if path.is_none() {
       if let Ok(x) = std::env::var("DENO_KV_DEFAULT_PATH") {
-        path = Some(x);
+        if !x.is_empty() {
+          path = Some(x);
+        }
       }
     }
 
