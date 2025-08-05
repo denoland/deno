@@ -2,6 +2,7 @@
 
 import { op_node_random_int } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 const {
   Error,
   MathCeil,
@@ -9,7 +10,6 @@ const {
   MathPow,
   NumberIsSafeInteger,
   RangeError,
-  TypeError,
 } = primordials;
 
 export default function randomInt(max: number): number;
@@ -40,8 +40,12 @@ export default function randomInt(
     min = 0;
   }
 
-  if (!NumberIsSafeInteger(min) || !NumberIsSafeInteger(max)) {
-    throw new TypeError("max or min is not a Safe Number");
+  if (!NumberIsSafeInteger(min)) {
+    throw new ERR_INVALID_ARG_TYPE("min", "a safe integer", min);
+  }
+  
+  if (!NumberIsSafeInteger(max)) {
+    throw new ERR_INVALID_ARG_TYPE("max", "a safe integer", max);
   }
 
   if (max - min > MathPow(2, 48)) {
