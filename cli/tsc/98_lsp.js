@@ -523,6 +523,53 @@ function serverRequestInner(
         ts.getSupportedCodeFixes(),
       );
     }
+    case "$getDiagnostics2": {
+      const projectVersion = args[1];
+      // there's a possibility that we receive a change notification
+      // but the diagnostic server queues a `$getDiagnostics` request
+      // with a stale project version. in that case, treat it as cancelled
+      // (it's about to be invalidated anyway).
+      const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
+      if (cachedProjectVersion && projectVersion !== cachedProjectVersion) {
+        return respond(id, [[], null]);
+      }
+      try {
+        /** @type {string} */
+        const specifier = args[0];
+        const diagnostics = fromTypeScriptDiagnostics([
+          ...ls.getSemanticDiagnostics(specifier),
+          ...ls.getSuggestionDiagnostics(specifier),
+          ...ls.getSyntacticDiagnostics(specifier),
+        ].filter(filterMapDiagnostic));
+        return respond(id, diagnostics);
+      } catch (e) {
+        if (
+          !isCancellationError(e)
+        ) {
+          return respond(
+            id,
+            [[], null],
+            formatErrorWithArgs(e, [
+              id,
+              method,
+              args,
+              compilerOptionsKey,
+              notebookUri,
+              maybeChange,
+            ]),
+          );
+        }
+        return respond(id, [[], null]);
+      }
+    }
+    case "$getAmbientModules": {
+      return respond(
+        id,
+        ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
+          symbol.getName()
+        ) ?? [],
+      );
+    }
     case "$getDiagnostics": {
       const projectVersion = args[1];
       // there's a possibility that we receive a change notification

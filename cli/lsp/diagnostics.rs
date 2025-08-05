@@ -896,7 +896,7 @@ fn to_lsp_related_information(
   })
 }
 
-fn ts_json_to_diagnostics(
+pub fn ts_json_to_diagnostics(
   diagnostics: Vec<crate::tsc::Diagnostic>,
   module: &DocumentModule,
   document_modules: &DocumentModules,
@@ -988,7 +988,7 @@ fn generate_lint_diagnostics(
   records
 }
 
-fn generate_document_lint_diagnostics(
+pub fn generate_document_lint_diagnostics(
   module: &DocumentModule,
   linter: &LspLinter,
   token: CancellationToken,
@@ -1747,7 +1747,7 @@ fn diagnose_resolution(
 /// Generate diagnostics related to a dependency. The dependency is analyzed to
 /// determine if it can be remapped to the active import map as well as surface
 /// any diagnostics related to the resolved code or type dependency.
-fn diagnose_dependency(
+pub fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   deferred_diagnostics: &mut Vec<(String, lsp::Diagnostic)>,
   snapshot: &language_server::StateSnapshot,

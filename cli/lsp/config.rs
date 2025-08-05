@@ -1172,6 +1172,15 @@ impl Config {
     .unwrap_or(false)
   }
 
+  /// Whether or not the client supports pull-based diagnostics.
+  pub fn diagnostic_capable(&self) -> bool {
+    (|| {
+      let text_document = self.client_capabilities.text_document.as_ref()?;
+      Some(text_document.diagnostic.is_some())
+    })()
+    .unwrap_or(false)
+  }
+
   pub fn line_folding_only_capable(&self) -> bool {
     (|| {
       let text_document = self.client_capabilities.text_document.as_ref()?;

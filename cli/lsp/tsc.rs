@@ -535,6 +535,40 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn get_diagnostics2(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    module: &DocumentModule,
+    token: &CancellationToken,
+  ) -> Result<Vec<crate::tsc::Diagnostic>, AnyError> {
+    let req = TscRequest::GetDiagnostics2((
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
+      snapshot.project_version,
+    ));
+    self
+      .request::<Vec<crate::tsc::Diagnostic>>(
+        snapshot,
+        req,
+        &module.compiler_options_key,
+        module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
+        token,
+      )
+      .await
+      .and_then(|mut diagnostics| {
+        for diagnostic in &mut diagnostics {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
+          normalize_diagnostic(diagnostic, &self.specifier_map)?;
+        }
+        Ok(diagnostics)
+      })
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -578,6 +612,27 @@ impl TsServer {
         }
         Ok((diagnostics, ambient_modules))
       })
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn get_ambient_modules(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    compiler_options_key: &CompilerOptionsKey,
+    notebook_uri: Option<&Arc<Uri>>,
+    token: &CancellationToken,
+  ) -> Result<Vec<String>, AnyError> {
+    let req = TscRequest::GetAmbientModules;
+    self
+      .request::<Vec<String>>(
+        snapshot.clone(),
+        req,
+        compiler_options_key,
+        None,
+        notebook_uri,
+        token,
+      )
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -5776,8 +5831,10 @@ pub struct JsNull;
 
 #[derive(Debug, Clone, Serialize)]
 enum TscRequest {
+  GetDiagnostics2((String, usize)),
   GetDiagnostics((Vec<String>, usize)),
 
+  GetAmbientModules,
   CleanupSemanticCache,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
   FindReferences((String, u32)),
@@ -5893,9 +5950,13 @@ impl TscRequest {
   ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), serde_v8::Error>
   {
     let args = match self {
+      TscRequest::GetDiagnostics2(args) => {
+        ("$getDiagnostics2", Some(serde_v8::to_v8(scope, args)?))
+      }
       TscRequest::GetDiagnostics(args) => {
         ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))
       }
+      TscRequest::GetAmbientModules => ("$getAmbientModules", None),
       TscRequest::FindReferences(args) => {
         ("findReferences", Some(serde_v8::to_v8(scope, args)?))
       }
@@ -5989,7 +6050,9 @@ impl TscRequest {
 
   fn method(&self) -> &'static str {
     match self {
+      TscRequest::GetDiagnostics2(_) => "$getDiagnostics2",
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
+      TscRequest::GetAmbientModules => "$getAmbientModules",
       TscRequest::CleanupSemanticCache => "$cleanupSemanticCache",
       TscRequest::FindReferences(_) => "findReferences",
       TscRequest::GetNavigationTree(_) => "getNavigationTree",
