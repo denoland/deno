@@ -30,6 +30,7 @@ use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_resolver::deno_json::CompilerOptionsResolver;
+use deno_resolver::factory::WorkspaceDirectoryRc;
 use log::debug;
 use reporters::LintReporter;
 use reporters::create_reporter;
@@ -210,7 +211,7 @@ async fn lint_with_watch(
 }
 
 struct PathsWithOptions {
-  dir: WorkspaceDirectory,
+  dir: WorkspaceDirectoryRc,
   paths: Vec<PathBuf>,
   options: LintOptions,
 }
@@ -282,7 +283,7 @@ impl WorkspaceLinter {
     &mut self,
     cli_options: &Arc<CliOptions>,
     lint_options: LintOptions,
-    member_dir: WorkspaceDirectory,
+    member_dir: WorkspaceDirectoryRc,
     paths: Vec<PathBuf>,
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
@@ -427,7 +428,7 @@ impl WorkspaceLinter {
   fn run_package_rules(
     &mut self,
     linter: &Arc<CliLinter>,
-    member_dir: &WorkspaceDirectory,
+    member_dir: &WorkspaceDirectoryRc,
     paths: &[PathBuf],
   ) -> Option<LocalBoxFuture<Result<(), AnyError>>> {
     if self.workspace_module_graph.is_none() {
@@ -500,7 +501,7 @@ fn collect_lint_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), files)
+  .collect_file_patterns(&CliSys::default(), &files)
 }
 
 #[allow(clippy::print_stdout)]

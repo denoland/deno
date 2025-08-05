@@ -957,7 +957,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
                 )
               }),
             None => (
-              Cow::Owned(workspace.root_dir().join("deno.json").unwrap()),
+              Cow::Owned(workspace.root_dir_url().join("deno.json").unwrap()),
               serde_json::Value::Object(Default::default()),
             ),
           };
@@ -1031,7 +1031,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       );
 
     Ok(Self {
-      workspace_root: workspace.root_dir().clone(),
+      workspace_root: workspace.root_dir_url().clone(),
       pkg_json_dep_resolution: options.pkg_json_dep_resolution,
       jsr_pkgs,
       maybe_import_map,
@@ -1793,6 +1793,7 @@ mod test {
   use url::Url;
 
   use super::*;
+  use crate::factory::WorkspaceDirectoryRc;
 
   pub struct UnreachableSys;
 
@@ -2390,7 +2391,7 @@ mod test {
       },
     )
     .unwrap();
-    let root_dir_url = workspace_dir.workspace.root_dir();
+    let root_dir_url = workspace_dir.workspace.root_dir_url();
 
     let referrer = root_dir_url.join("member/foo/mod.ts").unwrap();
     let resolution = resolver
@@ -2506,7 +2507,7 @@ mod test {
       },
     )
     .unwrap();
-    let root_dir_url = workspace_dir.workspace.root_dir();
+    let root_dir_url = workspace_dir.workspace.root_dir_url();
 
     let referrer = root_dir_url.join("subdir/mod.ts").unwrap();
     let resolution = resolver
@@ -2942,7 +2943,7 @@ mod test {
   fn workspace_at_start_dir(
     sys: &InMemorySys,
     start_dir: &Path,
-  ) -> WorkspaceDirectory {
+  ) -> WorkspaceDirectoryRc {
     WorkspaceDirectory::discover(
       sys,
       WorkspaceDiscoverStart::Paths(&[start_dir.to_path_buf()]),

@@ -16,7 +16,13 @@ path = "lib.rs"
 [features]
 deno_ast = ["dep:deno_ast", "deno_graph/swc"]
 graph = ["deno_graph", "node_resolver/graph", "http", "deno_permissions"]
-sync = ["dashmap", "deno_package_json/sync", "node_resolver/sync", "deno_config/sync", "deno_cache_dir/sync"]
+sync = [
+  "deno_maybe_sync/sync",
+  "deno_package_json/sync",
+  "node_resolver/sync",
+  "deno_config/sync",
+  "deno_cache_dir/sync",
+]
 
 [dependencies]
 anyhow.workspace = true
@@ -32,6 +38,7 @@ deno_config.workspace = true
 deno_error.workspace = true
 deno_graph = { workspace = true, optional = true }
 deno_lockfile.workspace = true
+deno_maybe_sync.workspace = true
 deno_media_type.workspace = true
 deno_npm.workspace = true
 deno_package_json.workspace = true

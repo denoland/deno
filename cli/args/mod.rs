@@ -23,12 +23,9 @@ pub use deno_config::deno_json::FmtOptionsConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::PermissionConfigValue;
-use deno_config::deno_json::PermissionsConfig;
 use deno_config::deno_json::PermissionsObject;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
-use deno_config::deno_json::ToInvalidConfigError;
-use deno_config::deno_json::UndefinedPermissionError;
 pub use deno_config::glob::FilePatterns;
 pub use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::Workspace;
@@ -49,6 +46,7 @@ use deno_npm::NpmSystemInfo;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
+use deno_resolver::factory::WorkspaceDirectoryRc;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
@@ -824,7 +822,7 @@ impl CliOptions {
   pub fn resolve_fmt_options_for_members(
     &self,
     fmt_flags: &FmtFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, FmtOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
       fmt_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
@@ -858,7 +856,7 @@ impl CliOptions {
   pub fn resolve_lint_options_for_members(
     &self,
     lint_flags: &LintFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, LintOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, LintOptions)>, AnyError> {
     let cli_arg_patterns =
       lint_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
@@ -882,7 +880,7 @@ impl CliOptions {
   pub fn resolve_test_options_for_members(
     &self,
     test_flags: &TestFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, TestOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, TestOptions)>, AnyError> {
     let cli_arg_patterns =
       test_flags.files.as_file_patterns(self.initial_cwd())?;
     let workspace_dir_configs = self
@@ -906,7 +904,7 @@ impl CliOptions {
   pub fn resolve_bench_options_for_members(
     &self,
     bench_flags: &BenchFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, BenchOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
       bench_flags.files.as_file_patterns(self.initial_cwd())?;
     let workspace_dir_configs = self
