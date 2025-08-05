@@ -330,6 +330,7 @@ pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
   pub is_default_command: bool,
+  pub json: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -658,6 +659,7 @@ impl Default for DenoSubcommand {
       eval_files: None,
       eval: None,
       is_default_command: true,
+      json: false,
     })
   }
 }
@@ -1564,6 +1566,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
             eval_files: None,
             eval: None,
             is_default_command: true,
+            json: false,
           },
         )
       }
@@ -3355,6 +3358,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
           .help("Evaluates the provided code when the REPL starts")
           .value_name("code"),
       )
+      .arg(Arg::new("json").long("json").action(ArgAction::SetTrue).hide(true))
       .after_help(cstr!("<y>Environment variables:</>
   <g>DENO_REPL_HISTORY</>  Set REPL history file path. History file is disabled when the value is empty.
                        <p(245)>[default: $DENO_DIR/deno_history.txt]</>"))
@@ -5722,12 +5726,15 @@ fn repl_parse(
     flags.argv.extend(args);
   }
 
+  let json = matches.remove_one::<bool>("json").unwrap_or(false);
+
   handle_repl_flags(
     flags,
     ReplFlags {
       eval_files,
       eval: matches.remove_one::<String>("eval"),
       is_default_command: false,
+      json,
     },
   );
   Ok(())
@@ -8406,6 +8413,7 @@ mod tests {
           eval_files: None,
           eval: None,
           is_default_command: true,
+          json: false,
         }),
         unsafely_ignore_certificate_errors: None,
         permissions: PermissionFlags {
@@ -8441,6 +8449,7 @@ mod tests {
           eval_files: None,
           eval: None,
           is_default_command: false,
+          json: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -8476,6 +8485,7 @@ mod tests {
           eval_files: None,
           eval: Some("console.log('hello');".to_string()),
           is_default_command: false,
+          json: false,
         }),
         permissions: PermissionFlags {
           allow_write: Some(vec![]),
@@ -8501,6 +8511,7 @@ mod tests {
           ]),
           eval: None,
           is_default_command: false,
+          json: false,
         }),
         ..Flags::default()
       }
@@ -9615,6 +9626,7 @@ mod tests {
           eval_files: None,
           eval: Some("console.log('hello');".to_string()),
           is_default_command: false,
+          json: false,
         }),
         unsafely_ignore_certificate_errors: Some(vec![]),
         type_check_mode: TypeCheckMode::None,
@@ -9686,6 +9698,7 @@ mod tests {
           eval_files: None,
           eval: None,
           is_default_command: false,
+          json: false,
         }),
         unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
@@ -12234,6 +12247,7 @@ mod tests {
           eval_files: None,
           eval: None,
           is_default_command: true,
+          json: false,
         }),
         log_level: Some(Level::Debug),
         permissions: PermissionFlags {
@@ -12257,6 +12271,7 @@ mod tests {
           eval_files: None,
           eval: None,
           is_default_command: false,
+          json: false,
         }),
         argv: svec!["foo"],
         ..Flags::default()
