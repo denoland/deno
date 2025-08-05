@@ -993,6 +993,30 @@ impl LspClient {
     self.write_notification("workspace/didChangeWatchedFiles", params);
   }
 
+  pub fn cache(
+    &mut self,
+    specifiers: impl IntoIterator<Item = impl Serialize>,
+    referrer: impl Serialize,
+  ) {
+    self.write_request(
+      "workspace/executeCommand",
+      json!({
+        "command": "deno.cache",
+        "arguments": [specifiers.into_iter().collect::<Vec<_>>(), referrer],
+      }),
+    );
+  }
+
+  pub fn cache_specifier(&mut self, specifier: impl Serialize) {
+    self.write_request(
+      "workspace/executeCommand",
+      json!({
+        "command": "deno.cache",
+        "arguments": [[], specifier],
+      }),
+    );
+  }
+
   fn get_latest_diagnostic_batch_index(&mut self) -> usize {
     let result = self
       .write_request("deno/internalLatestDiagnosticBatchIndex", json!(null));

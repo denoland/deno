@@ -889,7 +889,7 @@ error: Failed caching npm package '@denotest/bin@1.0.0'
 
 Caused by:
     Tarball checksum did not match what was provided by npm registry for @denotest/bin@1.0.0.
-    
+
     Expected: foobar
     Actual: [WILDCARD]
 "#)
@@ -1394,13 +1394,7 @@ fn top_level_install_package_json_explicit_opt_in() {
       "text": "",
     }
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file_uri],
-    }),
-  );
+  client.cache_specifier(&file_uri);
 
   assert!(node_modules_dir.join("@denotest").exists());
 }

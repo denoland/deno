@@ -210,13 +210,7 @@ fn unadded_dependency_message_with_import_map() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
   client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
@@ -273,13 +267,7 @@ fn unadded_dependency_message() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
   client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
@@ -388,13 +376,7 @@ fn lsp_import_map_remote() {
       "http://localhost:4545/import_maps/import_map_remote.json",
     );
   });
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
   client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
@@ -874,13 +856,7 @@ fn lsp_deno_json_imports_comments_cache() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
   client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
@@ -2726,13 +2702,7 @@ fn lsp_hover_dependency() {
       }
     }),
   );
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], "file:///a/file.ts"],
-    }),
-  );
+  client.cache_specifier("file:///a/file.ts");
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
@@ -3107,15 +3077,9 @@ fn lsp_hover_typescript_types() {
       }
     }),
   );
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        ["http://127.0.0.1:4545/xTypeScriptTypes.js"],
-        "file:///a/file.ts",
-      ],
-    }),
+  client.cache(
+    ["http://127.0.0.1:4545/xTypeScriptTypes.js"],
+    "file:///a/file.ts",
   );
   client.read_diagnostics();
   let res = client.write_request(
@@ -3161,13 +3125,7 @@ fn lsp_hover_jsr() {
       "text": "import \"jsr:@denotest/add@1.0.0\";\n",
     }
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
@@ -5634,15 +5592,9 @@ fn lsp_code_actions_deno_cache_jsr() {
       },
     }])
   );
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        ["jsr:@denotest/add@1"],
-        temp_dir.url().join("file.ts").unwrap(),
-      ],
-    }),
+  client.cache(
+    ["jsr:@denotest/add@1"],
+    temp_dir.url().join("file.ts").unwrap(),
   );
   let diagnostics = client.read_diagnostics();
   assert_eq!(json!(diagnostics.all()), json!([]));
@@ -5686,16 +5638,7 @@ fn lsp_jsr_lockfile() {
       "#,
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        [],
-        temp_dir.url().join("file.ts").unwrap(),
-      ],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
   let diagnostics = client.read_diagnostics();
   assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
@@ -5717,16 +5660,7 @@ fn lsp_jsr_auto_import_completion() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        [],
-        temp_dir.url().join("main.ts").unwrap(),
-      ],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("main.ts").unwrap());
   client.read_diagnostics();
   client.did_open(json!({
     "textDocument": {
@@ -5800,16 +5734,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        [],
-        temp_dir.url().join("main.ts").unwrap(),
-      ],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("main.ts").unwrap());
   client.read_diagnostics();
   client.did_open(json!({
     "textDocument": {
@@ -5882,13 +5807,7 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file.url()],
-    }),
-  );
+  client.cache_specifier(file.url());
   client.read_diagnostics();
   client.did_open_file(&file);
   let list = client.get_completion_list(
@@ -6080,13 +5999,7 @@ fn lsp_jsr_code_action_missing_declaration() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file.url()],
-    }),
-  );
+  client.cache_specifier(file.url());
   client.read_diagnostics();
   client.did_open_file(&file);
   let res = client.write_request(
@@ -6202,13 +6115,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file.url()],
-    }),
-  );
+  client.cache_specifier(file.url());
   client.read_diagnostics();
   client.did_open_file(&file);
   let list = client
@@ -6558,13 +6465,7 @@ fn lsp_npm_managed_no_export_diagnostic() {
       "text": "import \"npm:chalk/non-existent\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], "file:///a/file.ts"],
-    }),
-  );
+  client.cache_specifier("file:///a/file.ts");
   let diagnostics = client.read_diagnostics();
   assert_eq!(
     json!(diagnostics.all()),
@@ -6602,13 +6503,7 @@ fn lsp_npm_managed_type_only_export_no_diagnostic() {
       "text": "import \"npm:@minecraft/common\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], "file:///a/file.ts"],
-    }),
-  );
+  client.cache_specifier("file:///a/file.ts");
   let diagnostics = client.read_diagnostics();
   assert_eq!(json!(diagnostics.all()), json!([]));
   client.shutdown();
@@ -6755,15 +6650,9 @@ fn lsp_cache_then_definition() {
   // URL "http://localhost:4545/run/002_hello.ts" to itself, preventing it from
   // being reverse-mapped to "deno:/http/localhost%3A4545/run/002_hello.ts" on
   // "textDocument/definition" request.
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        ["http://localhost:4545/run/002_hello.ts"],
-        temp_dir.url().join("file.ts").unwrap(),
-      ],
-    }),
+  client.cache(
+    ["http://localhost:4545/run/002_hello.ts"],
+    temp_dir.url().join("file.ts").unwrap(),
   );
   client.read_diagnostics();
   let res = client.write_request(
@@ -8206,13 +8095,7 @@ fn lsp_completions_auto_import_node_builtin() {
       "#,
     }
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
   client.read_diagnostics();
   let list = client.get_completion_list(
     url_to_uri(&temp_dir.url().join("file.ts").unwrap())
@@ -8275,15 +8158,12 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
       }
     }),
   );
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        ["npm:@denotest/types-exports-subpaths@1/client", "npm:chalk@5.0"],
-        "file:///a/file.ts",
-      ],
-    }),
+  client.cache(
+    [
+      "npm:@denotest/types-exports-subpaths@1/client",
+      "npm:chalk@5.0",
+    ],
+    "file:///a/file.ts",
   );
   client.read_diagnostics();
 
@@ -9019,13 +8899,7 @@ fn lsp_npm_types_nested_js_dts() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file.url()],
-    }),
-  );
+  client.cache_specifier(file.url());
   client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(
@@ -9069,13 +8943,7 @@ fn lsp_npm_reexport_from_non_export() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file.url()],
-    }),
-  );
+  client.cache_specifier(file.url());
   client.read_diagnostics();
   let list = client.get_completion_list(
     file.uri().as_str(),
@@ -9204,13 +9072,7 @@ fn lsp_npm_managed_import_map_no_duplicate_completions() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file.url()],
-    }),
-  );
+  client.cache_specifier(file.url());
   client.read_diagnostics();
   let list = client.get_completion_list(
     file.uri().as_str(),
@@ -9322,15 +9184,9 @@ fn lsp_npm_always_caches() {
       }
     }),
   );
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        ["npm:@denotest/types-exports-subpaths@1/client"],
-        opened_file_url,
-      ],
-    }),
+  client.cache(
+    ["npm:@denotest/types-exports-subpaths@1/client"],
+    opened_file_url,
   );
   client.read_diagnostics();
 
@@ -9441,21 +9297,15 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       }
     }),
   );
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        [
-          "npm:@denotest/types-exports-subpaths@1/client",
-          "npm:@denotest/types-exports-subpaths@1/nested/entry-b",
-          "npm:chalk@^5.0",
-          "npm:chalk@~5",
-          "http://localhost:4545/subdir/print_hello.ts",
-        ],
-        temp_dir.url().join("file.ts").unwrap(),
-      ],
-    }),
+  client.cache(
+    [
+      "npm:@denotest/types-exports-subpaths@1/client",
+      "npm:@denotest/types-exports-subpaths@1/nested/entry-b",
+      "npm:chalk@^5.0",
+      "npm:chalk@~5",
+      "http://localhost:4545/subdir/print_hello.ts",
+    ],
+    temp_dir.url().join("file.ts").unwrap(),
   );
   client.read_diagnostics();
 
@@ -10162,15 +10012,9 @@ fn lsp_completions_npm() {
       }
     }),
   );
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        ["npm:@denotest/cjs-default-export", "npm:chalk"],
-        "file:///a/file.ts",
-      ],
-    }),
+  client.cache(
+    ["npm:@denotest/cjs-default-export", "npm:chalk"],
+    "file:///a/file.ts",
   );
   client.read_diagnostics();
 
@@ -10517,13 +10361,7 @@ fn lsp_auto_imports_remote_dts() {
       "#,
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
   client.read_diagnostics();
   let list = client.get_completion_list(
     url_to_uri(&temp_dir.url().join("file.ts").unwrap())
@@ -10584,13 +10422,7 @@ fn lsp_npm_specifier_unopened_file() {
   client.initialize_default();
 
   // cache the other.ts file to the DENO_DIR
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("other.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("other.ts").unwrap());
   client.read_diagnostics();
 
   // open main.ts, which imports other.ts (unopened)
@@ -10817,13 +10649,7 @@ fn lsp_completions_node_builtin() {
     ])
   );
 
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [["npm:@types/node"], "file:///a/file.ts"],
-    }),
-  );
+  client.cache(["npm:@types/node"], "file:///a/file.ts");
   client.read_diagnostics();
 
   client.write_notification(
@@ -10886,13 +10712,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
       "text": "import fs from \"node:fs\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
   client.read_diagnostics();
   client.write_notification(
     "textDocument/didChange",
@@ -11128,13 +10948,7 @@ fn lsp_cache_location() {
       }
     }));
   assert_eq!(diagnostics.all().len(), 6);
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], "file:///a/file.ts"],
-    }),
-  );
+  client.cache_specifier("file:///a/file.ts");
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
@@ -11224,13 +11038,7 @@ fn lsp_tls_cert() {
   }));
   let diagnostics = diagnostics.all();
   assert_eq!(diagnostics.len(), 6);
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], "file:///a/file.ts"],
-    }),
-  );
+  client.cache_specifier("file:///a/file.ts");
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
@@ -11324,13 +11132,7 @@ fn lsp_npmrc() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file.url()],
-    }),
-  );
+  client.cache_specifier(file.url());
   client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(
@@ -11383,13 +11185,7 @@ fn lsp_lockfile_redirect_resolution() {
       "text": "import \"http://localhost:4545/subdir/mod1.ts\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
@@ -11563,13 +11359,7 @@ fn lsp_root_with_global_reference_types() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file2.url()],
-    }),
-  );
+  client.cache_specifier(file2.url());
   client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(json!(diagnostics.all()), json!([]));
@@ -14128,15 +13918,9 @@ export function B() {
 ",
     }
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        ["http://127.0.0.1:4545/jsx/jsx-runtime"],
-        "file:///a/file.tsx",
-      ],
-    }),
+  client.cache(
+    ["http://127.0.0.1:4545/jsx/jsx-runtime"],
+    "file:///a/file.tsx",
   );
   client.read_diagnostics();
   let res = client.write_request(
@@ -14393,16 +14177,7 @@ export function B() {
 ",
     }
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        [],
-        "file:///a/file.tsx",
-      ],
-    }),
-  );
+  client.cache_specifier("file:///a/file.tsx");
 
   let diagnostics = client.read_diagnostics();
   assert_eq!(json!(diagnostics.all()), json!([]));
@@ -15097,13 +14872,7 @@ fn lsp_node_modules_dir() {
     }
   }));
   let cache = |client: &mut LspClient| {
-    client.write_request(
-      "workspace/executeCommand",
-      json!({
-        "command": "deno.cache",
-        "arguments": [["npm:chalk", "npm:@types/node"], file_url],
-      }),
-    );
+    client.cache(["npm:chalk", "npm:@types/node"], &file_url);
     client.read_diagnostics()
   };
 
@@ -15219,13 +14988,7 @@ fn lsp_vendor_dir() {
     }
   }));
   let cache = |client: &mut LspClient| {
-    client.write_request(
-      "workspace/executeCommand",
-      json!({
-        "command": "deno.cache",
-        "arguments": [["http://localhost:4545/subdir/mod1.ts"], local_file_url],
-      }),
-    );
+    client.cache(["http://localhost:4545/subdir/mod1.ts"], &local_file_url);
   };
 
   cache(&mut client);
@@ -15607,13 +15370,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "text": "import \"http://localhost:4545/subdir/mod1.ts\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("project1/file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("project1/file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
@@ -15658,13 +15415,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "text": "import \"http://localhost:4545/subdir/mod2.ts\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("project2/file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("project2/file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
@@ -15709,13 +15460,8 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "text": "import \"http://localhost:4545/subdir/mod3.js\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("project2/project3/file.ts").unwrap()],
-    }),
-  );
+  client
+    .cache_specifier(temp_dir.url().join("project2/project3/file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
@@ -15794,13 +15540,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "text": "import \"npm:@denotest/add@1\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("project1/file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("project1/file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
@@ -15848,13 +15588,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "text": "import \"npm:@denotest/add@1\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("project2/file.ts").unwrap()],
-    }),
-  );
+  client.cache_specifier(temp_dir.url().join("project2/file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
@@ -15899,13 +15633,8 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "text": "import \"npm:@denotest/add@1\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("project2/project3/file.ts").unwrap()],
-    }),
-  );
+  client
+    .cache_specifier(temp_dir.url().join("project2/project3/file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
@@ -16835,13 +16564,8 @@ fn lsp_workspace_lockfile() {
       "text": "import \"http://localhost:4545/subdir/mod1.ts\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
-    }),
-  );
+  client
+    .cache_specifier(temp_dir.url().join("project1/project2/file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
@@ -16894,13 +16618,8 @@ fn lsp_deno_json_workspace_vendor_dir() {
       "text": "import \"http://localhost:4545/subdir/mod1.ts\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
-    }),
-  );
+  client
+    .cache_specifier(temp_dir.url().join("project1/project2/file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
@@ -16967,13 +16686,8 @@ fn lsp_deno_json_workspace_node_modules_dir() {
       "text": "import \"npm:@denotest/add@1\";\n",
     },
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
-    }),
-  );
+  client
+    .cache_specifier(temp_dir.url().join("project1/project2/file.ts").unwrap());
   client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
@@ -17500,13 +17214,7 @@ fn lsp_npm_workspace_npm_reqs() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open_file(&file);
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file.url()],
-    }),
-  );
+  client.cache_specifier(file.url());
   let diagnostics = client.read_diagnostics();
   assert_eq!(
     json!(diagnostics.all()),
@@ -18587,13 +18295,7 @@ fn lsp_wasm_module() {
     }
   }));
 
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], "file:///a/file.ts"],
-    }),
-  );
+  client.cache_specifier("file:///a/file.ts");
 
   let diagnostics = client.read_diagnostics();
   assert_eq!(
