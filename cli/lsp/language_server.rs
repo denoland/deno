@@ -1715,7 +1715,9 @@ impl Inner {
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
-      if self.config.diagnostic_capable() {
+      if self.config.diagnostic_capable()
+        && self.config.diagnostic_refresh_capable()
+      {
         self.client.refresh_diagnostics();
       }
       self.send_testing_update();
@@ -4846,7 +4848,9 @@ impl Inner {
     self.project_changed(vec![], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
-    if self.config.diagnostic_capable() {
+    if self.config.diagnostic_capable()
+      && self.config.diagnostic_refresh_capable()
+    {
       self.client.refresh_diagnostics();
     }
     self.send_testing_update();
