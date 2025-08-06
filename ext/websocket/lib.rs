@@ -57,6 +57,7 @@ use tokio::io::AsyncWrite;
 use tokio::io::ReadHalf;
 use tokio::io::WriteHalf;
 use tokio::net::TcpStream;
+use tokio_aws_lc::SslStream;
 
 use crate::stream::WebSocketStream;
 
@@ -315,15 +316,37 @@ async fn handshake_http1_wss(
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), HandshakeError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http1Only)?;
-  let dnsname = ServerName::try_from(domain.to_string())
-    .map_err(|_| HandshakeError::InvalidHostname(domain.to_string()))?;
-  let mut tls_connector = TlsStream::new_client_side(
-    tcp_socket,
-    ClientConnection::new(tls_config.into(), dnsname)?,
-    NonZeroUsize::new(65536),
-  );
+
+  let ssl = unsafe {
+    let ctx = aws_lc_sys::SSL_CTX_new(aws_lc_sys::TLS_method());
+    if ctx.is_null() {
+      panic!("Failed to create SSL context");
+    }
+
+    aws_lc_sys::SSL_CTX_set_cipher_list(
+      ctx,
+      b"HIGH:!aNULL:!MD5\0".as_ptr() as *const _,
+    );
+
+    let ssl = aws_lc_sys::SSL_new(ctx);
+    if ssl.is_null() {
+      panic!("Failed to create SSL object");
+    }
+
+    // Set hostname for SNI
+    aws_lc_sys::SSL_set_tlsext_host_name(
+      ssl,
+      domain.as_ptr() as *const i8,
+    );
+    aws_lc_sys::SSL_set_connect_state(ssl);
+
+    aws_lc_sys::SSL_CTX_free(ctx);
+    ssl
+  };
+
+  let mut tls_connector = SslStream::new(ssl, tcp_socket).unwrap();
   // If we can bail on an http/1.1 ALPN mismatch here, we can avoid doing extra work
-  tls_connector.handshake().await?;
+  std::pin::Pin::new(&mut tls_connector).do_handshake().await;
   handshake_connection(request, tls_connector).await
 }
 

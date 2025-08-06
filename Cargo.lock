@@ -3045,6 +3045,7 @@ dependencies = [
 name = "deno_websocket"
 version = "0.217.0"
 dependencies = [
+ "aws-lc-sys",
  "bytes",
  "deno_core",
  "deno_error",
@@ -3062,6 +3063,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-aws-lc",
 ]
 
 [[package]]
@@ -9197,6 +9199,16 @@ dependencies = [
  "socket2",
  "tokio-macros",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "tokio-aws-lc"
+version = "0.0.0"
+dependencies = [
+ "aws-lc-sys",
+ "bitflags 1.3.2",
+ "libc",
+ "tokio",
 ]
 
 [[package]]

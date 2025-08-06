@@ -31,3 +31,5 @@ rustls-tokio-stream.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-aws-lc = { path = "../../../tokio-aws-lc" }
+aws-lc-sys.workspace = true
