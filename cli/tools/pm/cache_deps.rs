@@ -51,8 +51,7 @@ pub async fn cache_top_level_deps(
       .await;
     let graph = graph_permit.graph_mut();
     if let Some(lockfile) = factory.maybe_lockfile().await? {
-      let lockfile = lockfile.lock();
-      crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
+      lockfile.fill_graph(graph);
     }
 
     let mut roots = Vec::new();

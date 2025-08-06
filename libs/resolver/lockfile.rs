@@ -223,6 +223,24 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     self.lockfile.lock().set_workspace_config(options);
   }
 
+  #[cfg(feature = "graph")]
+  pub fn fill_graph(&self, graph: &mut deno_graph::ModuleGraph) {
+    let lockfile = self.lockfile.lock();
+    graph.fill_from_lockfile(deno_graph::FillFromLockfileOptions {
+      redirects: lockfile
+        .content
+        .redirects
+        .iter()
+        .map(|(from, to)| (from.as_str(), to.as_str())),
+      package_specifiers: lockfile
+        .content
+        .packages
+        .specifiers
+        .iter()
+        .map(|(dep, id)| (dep, id.as_str())),
+    });
+  }
+
   pub fn overwrite(&self) -> bool {
     self.lockfile.lock().overwrite
   }
