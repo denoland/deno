@@ -1,12 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const {
+  getAsyncContext,
+  setAsyncContext,
+} = core;
 const {
   FunctionPrototypeBind,
   MapPrototypeDelete,
   MapPrototypeSet,
   NumberIsFinite,
+  ReflectApply,
   SafeArrayIterator,
   SafeMap,
   Symbol,
@@ -172,6 +177,7 @@ class ImmediateList {
   // Appends an item to the end of the linked list, adjusting the current tail's
   // next pointer and the item's previous pointer where applicable
   append(item) {
+    // console.log("append", this.tail);
     if (this.tail !== null) {
       this.tail._idleNext = item;
       item._idlePrev = this.tail;
@@ -216,7 +222,7 @@ export function runImmediates() {
     ? outstandingQueue
     : immediateQueue;
   let immediate = queue.head;
-
+  // console.log("running immediates", immediate);
   // Clear the linked list early in case new `setImmediate()`
   // calls occur while immediate callbacks are executed
   if (queue !== outstandingQueue) {
@@ -292,18 +298,24 @@ export function runImmediates() {
   if (queue === outstandingQueue) {
     outstandingQueue.head = null;
   }
+
+  // console.log("has run immediate, does have next?", immediate);
+  if (!queue.head) {
+    core.setHasImmediateScheduled(false);
+  }
   // TODO:
   // immediateInfo[kHasOutstanding] = 0;
 }
 
 export class Immediate {
-  constructor(unboundCallback, args) {
+  constructor(unboundCallback, ...args) {
+    // console.log("immediate create");
     const asyncContext = getAsyncContext();
-    const callback = () => {
+    const callback = (...argv) => {
       const oldContext = getAsyncContext();
       try {
         setAsyncContext(asyncContext);
-        return ReflectApply(unboundCallback, globalThis, args);
+        return ReflectApply(unboundCallback, globalThis, argv);
       } finally {
         setAsyncContext(oldContext);
       }
@@ -324,6 +336,7 @@ export class Immediate {
     // immediateInfo[kCount]++;
 
     immediateQueue.append(this);
+    core.setHasImmediateScheduled(true);
   }
 
   ref() {
