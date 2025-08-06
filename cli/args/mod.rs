@@ -1172,8 +1172,9 @@ impl CliOptions {
     let config_permissions = if let Some(name) = &self.flags.permission_set {
       if name.is_empty() {
         let maybe_subcommand_permissions = match &self.flags.subcommand {
-          DenoSubcommand::Test(_) => dir.to_test_permissions_config()?,
           DenoSubcommand::Bench(_) => dir.to_bench_permissions_config()?,
+          DenoSubcommand::Compile(_) => dir.to_compile_permissions_config()?,
+          DenoSubcommand::Test(_) => dir.to_test_permissions_config()?,
           _ => None,
         };
         match maybe_subcommand_permissions {
@@ -1188,20 +1189,24 @@ impl CliOptions {
     } else {
       if !self.flags.has_permission() {
         let has_config_permission = match &self.flags.subcommand {
-          DenoSubcommand::Test(_) => {
-            dir.to_test_permissions_config()?.is_some()
-          }
           DenoSubcommand::Bench(_) => {
             dir.to_bench_permissions_config()?.is_some()
+          }
+          DenoSubcommand::Compile(_) => {
+            dir.to_compile_permissions_config()?.is_some()
+          }
+          DenoSubcommand::Test(_) => {
+            dir.to_test_permissions_config()?.is_some()
           }
           _ => false,
         };
         if has_config_permission {
           // prevent people from wasting time wondering why benches/tests are failing
           bail!(
-            "{} permissions were found in the config file. Did you mean to run with `-P`?{}",
+            "{} permissions were found in the config file. Did you mean to run with `-P` or a permission flag?{}",
             match &self.flags.subcommand {
               DenoSubcommand::Bench(_) => "Bench",
+              DenoSubcommand::Compile(_) => "Compile",
               _ => "Test",
             },
             dir

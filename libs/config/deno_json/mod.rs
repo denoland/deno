@@ -657,6 +657,35 @@ impl BenchConfig {
   }
 }
 
+/// `compile` config representation for serde
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedCompileConfig {
+  pub permissions: Option<PermissionNameOrObject>,
+}
+
+impl SerializedCompileConfig {
+  pub fn into_resolved(
+    self,
+    permissions: &PermissionsConfig,
+  ) -> Result<CompileConfig, IntoResolvedError> {
+    Ok(CompileConfig {
+      permissions: match self.permissions {
+        Some(PermissionNameOrObject::Name(name)) => {
+          Some(Box::new(permissions.get(&name)?.clone()))
+        }
+        Some(PermissionNameOrObject::Object(obj)) => Some(obj),
+        None => None,
+      },
+    })
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompileConfig {
+  pub permissions: Option<Box<PermissionsObject>>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum LockConfig {
@@ -921,6 +950,7 @@ pub struct ConfigFileJson {
   pub tasks: Option<Value>,
   pub test: Option<Value>,
   pub bench: Option<Value>,
+  pub compile: Option<Value>,
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
   pub node_modules_dir: Option<Value>,
@@ -1614,6 +1644,30 @@ impl ConfigFile {
         files: self.to_exclude_files_config()?,
         permissions: None,
       }),
+    }
+  }
+
+  pub fn to_compile_config(
+    &self,
+    permissions: &PermissionsConfig,
+  ) -> Result<CompileConfig, ToInvalidConfigError> {
+    match self.json.compile.clone() {
+      Some(config) => {
+        let serialized: SerializedCompileConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "compile",
+              source: error,
+            }
+          })?;
+        serialized.into_resolved(permissions).map_err(|error| {
+          ToInvalidConfigError::InvalidConfig {
+            config: "compile",
+            source: error,
+          }
+        })
+      }
+      None => Ok(CompileConfig { permissions: None }),
     }
   }
 

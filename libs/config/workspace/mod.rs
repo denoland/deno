@@ -41,6 +41,7 @@ use url::Url;
 use crate::UrlToFilePathError;
 use crate::deno_json;
 use crate::deno_json::BenchConfig;
+use crate::deno_json::CompileConfig;
 use crate::deno_json::CompilerOptions;
 use crate::deno_json::ConfigFile;
 use crate::deno_json::ConfigFileError;
@@ -1468,6 +1469,7 @@ pub struct CompilerOptionsSource {
 struct CachedDirectoryValues {
   permissions: OnceLock<PermissionsConfig>,
   bench: OnceLock<BenchConfig>,
+  compile: OnceLock<CompileConfig>,
   test: OnceLock<TestConfig>,
 }
 
@@ -2003,6 +2005,40 @@ impl WorkspaceDirectory {
     })
   }
 
+  pub fn to_compile_config(
+    &self,
+  ) -> Result<&CompileConfig, ToInvalidConfigError> {
+    if let Some(config) = &self.cached.compile.get() {
+      Ok(config)
+    } else {
+      let config = self.to_compile_config_no_cache()?;
+      _ = self.cached.compile.set(config);
+      Ok(self.cached.compile.get().unwrap())
+    }
+  }
+
+  fn to_compile_config_no_cache(
+    &self,
+  ) -> Result<CompileConfig, ToInvalidConfigError> {
+    let Some(deno_json) = self.deno_json.as_ref() else {
+      return Ok(CompileConfig { permissions: None });
+    };
+    let permissions = self.to_permissions_config()?;
+    let member_config = deno_json.member.to_compile_config(permissions)?;
+    let root_config = match &deno_json.root {
+      Some(root) => root.to_compile_config(permissions)?,
+      None => return Ok(member_config),
+    };
+    Ok(CompileConfig {
+      permissions: match (root_config.permissions, member_config.permissions) {
+        (Some(r), Some(m)) => Some(Box::new(r.clone().merge((*m).clone()))),
+        (Some(r), None) => Some(r),
+        (None, Some(m)) => Some(m),
+        (None, None) => None,
+      },
+    })
+  }
+
   pub fn to_tasks_config(
     &self,
   ) -> Result<WorkspaceTasksConfig, ToTasksConfigError> {
@@ -2080,6 +2116,12 @@ impl WorkspaceDirectory {
     &self,
   ) -> Result<Option<&PermissionsObject>, ToInvalidConfigError> {
     Ok(self.to_bench_config_inner()?.permissions.as_deref())
+  }
+
+  pub fn to_compile_permissions_config(
+    &self,
+  ) -> Result<Option<&PermissionsObject>, ToInvalidConfigError> {
+    Ok(self.to_compile_config()?.permissions.as_deref())
   }
 
   pub fn to_test_permissions_config(
