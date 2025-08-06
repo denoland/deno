@@ -145,7 +145,10 @@ fn js_unit_test(test: String) {
     deno = deno.arg("--unstable-kv");
   }
 
-  if test == "worker_permissions_test" || test == "worker_dynamic_permissions_test" || test == "worker_test" {
+  if test == "worker_permissions_test"
+    || test == "worker_dynamic_permissions_test"
+    || test == "worker_test"
+  {
     deno = deno.arg("--unstable-worker-options");
   }
 
