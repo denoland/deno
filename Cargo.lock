@@ -2383,6 +2383,7 @@ dependencies = [
  "aead-gcm-stream",
  "aes",
  "aws-lc-rs",
+ "aws-lc-sys",
  "base64 0.22.1",
  "blake2",
  "boxed_error",
@@ -2456,6 +2457,7 @@ dependencies = [
  "sys_traits",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-aws-lc",
  "tokio-eld",
  "tower-service",
  "url",
@@ -9196,6 +9198,16 @@ dependencies = [
  "socket2",
  "tokio-macros",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "tokio-aws-lc"
+version = "0.0.0"
+dependencies = [
+ "aws-lc-sys",
+ "bitflags 1.3.2",
+ "libc",
+ "tokio",
 ]
 
 [[package]]

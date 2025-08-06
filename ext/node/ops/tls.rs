@@ -6,6 +6,8 @@ use deno_core::ResourceId;
 use deno_core::op2;
 use deno_core::v8;
 use deno_net::ops_tls::TlsStreamResource;
+use tokio::net::TcpStream;
+use tokio_aws_lc::SslStream;
 use webpki_root_certs;
 
 use super::crypto::x509::Certificate;
@@ -73,11 +75,13 @@ pub fn op_tls_canonicalize_ipv4_address(
 }
 
 pub struct TLSWrap {
-  stream: v8::Global<v8::Object>,
+  // TODO: this will be used for JSStream
+  // stream: v8::Global<v8::Object>,
   is_server: bool,
   has_active_from_prev_owner: bool,
   bio_in: deno_crypto_provider::ffi::Bio,
   bio_out: deno_crypto_provider::ffi::Bio,
+  ssl: SslStream<TcpStream>,
 }
 
 #[op2]
@@ -88,8 +92,17 @@ pub fn op_tls_wrap(
   is_server: bool,
   has_active_from_prev_owner: bool,
 ) -> TLSWrap {
+  let ssl = unsafe {
+    let ctx = aws_lc_sys::SSL_CTX_new(aws_lc_sys::TLS_method());
+    let ssl = aws_lc_sys::SSL_new(ctx);
+
+    aws_lc_sys::SSL_CTX_free(ctx);
+    ssl
+  };
+
   TLSWrap {
     stream,
+    ssl,
     is_server,
     has_active_from_prev_owner,
     bio_in: deno_crypto_provider::ffi::Bio::new_memory().expect("Failed to create BIO"),
