@@ -60,7 +60,7 @@ import {
   constants as PipeConstants,
   Pipe,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-// const tls_wrap = internalBinding('tls_wrap');
+import { TLSWrap, op_tls_wrap } from "ext:core/ops";
 // const { SecureContext: NativeSecureContext } = internalBinding('crypto');
 
 import { codes, ConnResetException } from "ext:deno_node/internal/errors.ts";
@@ -697,10 +697,10 @@ function makeMethodProxy(name) {
   };
 }
 for (const proxiedMethod of proxiedMethods) {
-  tls_wrap.TLSWrap.prototype[proxiedMethod] = makeMethodProxy(proxiedMethod);
+  TLSWrap.prototype[proxiedMethod] = makeMethodProxy(proxiedMethod);
 }
 
-tls_wrap.TLSWrap.prototype.close = function close(cb) {
+TLSWrap.prototype.close = function close(cb) {
   let ssl;
   if (this[owner_symbol]) {
     ssl = this[owner_symbol].ssl;
@@ -772,7 +772,7 @@ TLSSocket.prototype._wrapHandle = function (
     throw new ERR_TLS_INVALID_CONTEXT("context");
   }
 
-  const res = tls_wrap.wrap(
+  const res = op_tls_wrap(
     handle,
     context.context,
     !!options.isServer,
@@ -798,7 +798,7 @@ TLSSocket.prototype._wrapHandle = function (
   return res;
 };
 
-TLSSocket.prototype[kReinitializeHandle] = function reinitializeHandle(handle) {
+/*TLSSocket.prototype[kReinitializeHandle] = function reinitializeHandle(handle) {
   const originalServername = this.ssl ? this._handle.getServername() : null;
   const originalSession = this.ssl ? this._handle.getSession() : null;
 
@@ -819,7 +819,7 @@ TLSSocket.prototype[kReinitializeHandle] = function reinitializeHandle(handle) {
   if (originalServername) {
     this.setServername(originalServername);
   }
-};
+};*/
 
 // This eliminates a cyclic reference to TLSWrap
 // Ref: https://github.com/nodejs/node/commit/f7620fb96d339f704932f9bb9a0dceb9952df2d4

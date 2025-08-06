@@ -2443,6 +2443,7 @@ dependencies = [
  "ripemd",
  "rsa",
  "rusqlite",
+ "rustls-tokio-stream",
  "scrypt",
  "sec1",
  "serde",
@@ -7586,8 +7587,6 @@ dependencies = [
 [[package]]
 name = "rustls"
 version = "0.23.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7160e3e10bf4535308537f3c4e1641468cd0e485175d6163087c0393c7d46643"
 dependencies = [
  "aws-lc-rs",
  "log",

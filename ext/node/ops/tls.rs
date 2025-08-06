@@ -1,8 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 use base64::Engine;
+use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::op2;
+use deno_core::v8;
 use deno_net::ops_tls::TlsStreamResource;
 use webpki_root_certs;
 
@@ -68,4 +70,43 @@ pub fn op_tls_canonicalize_ipv4_address(
   };
 
   Some(canonical_ip)
+}
+
+pub struct TLSWrap {
+  stream: v8::Global<v8::Object>,
+  is_server: bool,
+  has_active_from_prev_owner: bool,
+  bio_in: deno_crypto_provider::ffi::Bio,
+  bio_out: deno_crypto_provider::ffi::Bio,
+}
+
+#[op2]
+#[cppgc]
+pub fn op_tls_wrap(
+  #[global] stream: v8::Global<v8::Object>,
+  _context: v8::Local<v8::Object>,
+  is_server: bool,
+  has_active_from_prev_owner: bool,
+) -> TLSWrap {
+  TLSWrap {
+    stream,
+    is_server,
+    has_active_from_prev_owner,
+    bio_in: deno_crypto_provider::ffi::Bio::new_memory().expect("Failed to create BIO"),
+    bio_out: deno_crypto_provider::ffi::Bio::new_memory().expect("Failed to create BIO"),
+  }
+}
+
+impl GarbageCollected for TLSWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"TLSWrap"
+  }
+}
+
+#[op2]
+impl TLSWrap {
+  #[fast]
+  fn get_servername(&self) {
+    
+  }
 }

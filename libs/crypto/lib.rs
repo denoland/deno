@@ -5,5 +5,5 @@
 #![deny(clippy::unused_async)]
 #![deny(clippy::unnecessary_wraps)]
 
-mod ffi;
+pub mod ffi;
 pub mod spki;

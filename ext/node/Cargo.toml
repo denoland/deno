@@ -78,6 +78,7 @@ rand.workspace = true
 ripemd = { workspace = true, features = ["oid"] }
 rsa.workspace = true
 rusqlite.workspace = true
+rustls-tokio-stream.workspace = true
 scrypt.workspace = true
 sec1.workspace = true
 serde.workspace = true
