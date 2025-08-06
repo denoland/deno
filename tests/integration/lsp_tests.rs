@@ -11985,20 +11985,20 @@ fn lsp_performance() {
   assert_eq!(
     averages,
     vec![
+      "lsp.diagnostic",
       "lsp.did_open",
       "lsp.hover",
       "lsp.initialize",
       "lsp.testing_update",
       "lsp.update_cache",
-      "lsp.update_diagnostics_deps",
-      "lsp.update_diagnostics_lint",
-      "lsp.update_diagnostics_ts",
       "lsp.update_global_cache",
+      "tsc.host.$getAmbientModules",
       "tsc.host.$getDiagnostics",
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
       "tsc.op.op_script_names",
+      "tsc.request.$getAmbientModules",
       "tsc.request.$getDiagnostics",
       "tsc.request.getQuickInfoAtPosition",
     ]
@@ -15020,7 +15020,6 @@ fn lsp_vendor_dir() {
   assert_eq!(uri, remote_file_uri.as_str());
 
   let file_text = remote_file_path.read_to_string();
-  dbg!();
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": remote_file_uri,
@@ -15029,9 +15028,7 @@ fn lsp_vendor_dir() {
       "text": file_text,
     }
   }));
-  dbg!();
   assert_eq!(json!(diagnostics.all()), json!([]));
-  dbg!();
 
   client.write_notification(
     "textDocument/didChange",
@@ -15051,11 +15048,7 @@ fn lsp_vendor_dir() {
       ]
     }),
   );
-
-  dbg!();
   let diagnostics = client.read_diagnostics();
-  dbg!();
-
   assert_eq!(
     json!(
       diagnostics
@@ -15075,7 +15068,6 @@ fn lsp_vendor_dir() {
       }
     ]),
   );
-
   assert_eq!(
     json!(
       diagnostics
@@ -15097,6 +15089,13 @@ fn lsp_vendor_dir() {
   );
   assert_eq!(diagnostics.all().len(), 2);
 
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": { "uri": &remote_file_uri },
+    }),
+  );
+
   // now try doing a relative import into the vendor directory
   client.write_notification(
     "textDocument/didChange",
@@ -15116,11 +15115,7 @@ fn lsp_vendor_dir() {
       ]
     }),
   );
-
-  dbg!();
   let diagnostics = client.read_diagnostics();
-  dbg!();
-
   assert_eq!(
     json!(
       diagnostics

@@ -3090,6 +3090,7 @@ impl Inner {
     params: DocumentDiagnosticParams,
     token: &CancellationToken,
   ) -> LspResult<DocumentDiagnosticReportResult> {
+    let _mark = self.performance.measure_scope("lsp.diagnostic");
     if params
       .previous_result_id
       .as_ref()

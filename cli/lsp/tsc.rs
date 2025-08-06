@@ -6244,23 +6244,17 @@ mod tests {
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
-          "start": {
-            "line": 0,
-            "character": 0,
-          },
-          "end": {
-            "line": 0,
-            "character": 7
-          },
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 7 },
           "fileName": specifier,
           "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the \'lib\' compiler option to include 'dom'.",
           "sourceLine": "console.log(\"hello deno\");",
           "category": 1,
-          "code": 2584
+          "code": 2584,
         }
-      ]]),
+      ]),
     );
   }
 
