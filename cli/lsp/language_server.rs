@@ -1371,7 +1371,7 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn did_save(&mut self, params: DidSaveTextDocumentParams) {
+  async fn did_save(&mut self, params: DidSaveTextDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.did_save");
     let Ok(Some(document)) = self
       .get_document(
@@ -1386,14 +1386,38 @@ impl Inner {
     else {
       return;
     };
+    let has_no_cache_diagnostics = async || {
+      if self.config.diagnostic_capable() {
+        let Ok(Some(module)) = self.get_primary_module(&document) else {
+          return false;
+        };
+        self
+          .get_module_diagnostics(&module, &Default::default())
+          .await
+          .ok()
+          .iter()
+          .flat_map(|d| d.iter())
+          .any(|d| {
+            let Some(NumberOrString::String(code)) = &d.code else {
+              return false;
+            };
+            matches!(
+              code.as_str(),
+              "no-cache" | "not-installed-jsr" | "not-installed-npm"
+            )
+          })
+      } else {
+        self
+          .diagnostics_state
+          .has_no_cache_diagnostics(document.uri())
+      }
+    };
     if !self
       .config
       .workspace_settings_for_uri(document.uri())
       .cache_on_save
       || !self.config.uri_enabled(document.uri())
-      || !self
-        .diagnostics_state
-        .has_no_cache_diagnostics(document.uri())
+      || !has_no_cache_diagnostics().await
     {
       return;
     }
@@ -1551,7 +1575,7 @@ impl Inner {
     }
   }
 
-  fn notebook_did_save(&mut self, params: DidSaveNotebookDocumentParams) {
+  async fn notebook_did_save(&mut self, params: DidSaveNotebookDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.notebook_did_save");
     let Some(cell_uris) = self
       .document_modules
@@ -1567,12 +1591,14 @@ impl Inner {
       return;
     };
     for cell_uri in cell_uris {
-      self.did_save(DidSaveTextDocumentParams {
-        text_document: TextDocumentIdentifier {
-          uri: cell_uri.as_ref().clone(),
-        },
-        text: None,
-      });
+      self
+        .did_save(DidSaveTextDocumentParams {
+          text_document: TextDocumentIdentifier {
+            uri: cell_uri.as_ref().clone(),
+          },
+          text: None,
+        })
+        .await;
     }
   }
 
@@ -3193,7 +3219,7 @@ impl Inner {
 
       let mut ts_diagnostics = self
         .ts_server
-        .get_diagnostics2(snapshot.clone(), module, token)
+        .get_diagnostics(snapshot.clone(), module, token)
         .await
         .map_err(|err| {
           if token.is_cancelled() {
@@ -4257,7 +4283,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.did_save(params);
+    self.inner.write().await.did_save(params).await;
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -4277,7 +4303,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.notebook_did_save(params)
+    self.inner.write().await.notebook_did_save(params).await
   }
 
   async fn notebook_did_close(&self, params: DidCloseNotebookDocumentParams) {

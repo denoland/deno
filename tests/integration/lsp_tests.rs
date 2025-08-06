@@ -1059,6 +1059,7 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
       "type": 1,
     }],
   }));
+  client.handle_refresh_diagnostics_request();
   client.read_diagnostics();
   let mut res = client
     .read_notification_with_method::<Value>(
@@ -6582,6 +6583,7 @@ fn lsp_cache_on_save() {
   client.did_save(json!({
     "textDocument": { "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap() },
   }));
+  client.handle_refresh_diagnostics_request();
   assert_eq!(client.read_diagnostics().all(), vec![]);
 
   client.shutdown();
@@ -11593,7 +11595,7 @@ fn lsp_jupyter_import_map_and_diagnostics() {
     json!(diagnostics.all_messages()),
     json!([
       {
-        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()),
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
         "diagnostics": [],
         "version": 1,
       },
@@ -11638,7 +11640,7 @@ fn lsp_jupyter_import_map_and_diagnostics() {
         "version": 1,
       },
       {
-        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#c").unwrap()),
         "diagnostics": [],
         "version": 1,
       },
@@ -11670,7 +11672,7 @@ fn lsp_jupyter_import_map_and_diagnostics() {
     json!(diagnostics.all_messages()),
     json!([
       {
-        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#b").unwrap()),
+        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
         "diagnostics": [],
         "version": 1,
       },
@@ -11688,11 +11690,6 @@ fn lsp_jupyter_import_map_and_diagnostics() {
             "message": "Cannot find name 'someNumber'.",
           },
         ],
-        "version": 1,
-      },
-      {
-        "uri": url_to_notebook_cell_uri(&temp_dir.url().join("file.ipynb#a").unwrap()),
-        "diagnostics": [],
         "version": 1,
       },
     ]),
@@ -11899,7 +11896,7 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let diagnostics = client.did_open(json!({
+  client.did_open(json!({
     "textDocument": {
       // Drive letters are not uppercase in our normalized URI representation.
       "uri": "file:///C:/file.ts",
@@ -11911,30 +11908,6 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
       "#,
     },
   }));
-  assert_eq!(
-    json!(diagnostics.all_messages()),
-    json!([
-      {
-        // Accordingly, the drive letter returned here is lowercase.
-        // Spec-compliant language clients must deal with that. See:
-        // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#uri
-        "uri": "file:///c%3A/file.ts",
-        "diagnostics": [
-          {
-            "range": {
-              "start": { "line": 1, "character": 14 },
-              "end": { "line": 1, "character": 17 },
-            },
-            "severity": 1,
-            "code": 2322,
-            "source": "deno-ts",
-            "message": "Type 'number' is not assignable to type 'string'.",
-          },
-        ],
-        "version": 1,
-      },
-    ]),
-  );
   let list = client.get_completion_list(
     "file:///C:/file.ts",
     (2, 23),
@@ -11950,6 +11923,9 @@ fn lsp_non_normalized_uri_diagnostics_and_completions() {
       "sortText": "11",
       "data": {
         "tsc": {
+          // Accordingly, the drive letter returned here is lowercase.
+          // Spec-compliant language clients must deal with that. See:
+          // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#uri
           "uri": "file:///c%3A/file.ts",
           "position": 55,
           "name": "foo",
@@ -14873,6 +14849,7 @@ fn lsp_node_modules_dir() {
   }));
   let cache = |client: &mut LspClient| {
     client.cache(["npm:chalk", "npm:@types/node"], &file_url);
+    client.handle_refresh_diagnostics_request();
     client.read_diagnostics()
   };
 
@@ -14974,56 +14951,25 @@ fn lsp_vendor_dir() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "vendor": true,
+      "lock": false,
+    })
+    .to_string(),
+  );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let local_file_url = temp_dir.url().join("file.ts").unwrap();
-  let local_file_uri = url_to_uri(&local_file_url).unwrap();
-  client.did_open(json!({
+  let file = temp_dir.source_file("file.ts", "import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts';\nconst test: string = returnsHi();\nconsole.log(test);");
+  let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": local_file_uri,
+      "uri": file.uri(),
       "languageId": "typescript",
       "version": 1,
       "text": "import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts';\nconst test: string = returnsHi();\nconsole.log(test);",
     }
   }));
-  let cache = |client: &mut LspClient| {
-    client.cache(["http://localhost:4545/subdir/mod1.ts"], &local_file_url);
-  };
-
-  cache(&mut client);
-
-  assert!(!temp_dir.path().join("vendor").exists());
-
-  // read the diagnostic update after caching
-  let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.all().len(), 0);
-
-  temp_dir.write(
-    temp_dir.path().join("deno.json"),
-    "{ \"vendor\": true, \"lock\": false }\n",
-  );
-  client.change_configuration(json!({ "deno": {
-    "enable": true,
-    "config": "./deno.json",
-    "codeLens": {
-      "implementations": true,
-      "references": true,
-    },
-    "importMap": null,
-    "lint": false,
-    "suggest": {
-      "autoImports": true,
-      "completeFunctionCalls": false,
-      "names": true,
-      "paths": true,
-      "imports": {},
-    },
-    "unstable": [],
-  } }));
-  let diagnostics = client.read_diagnostics();
-
-  // won't be cached until a manual cache occurs
   assert_eq!(
     diagnostics
       .all()
@@ -15034,16 +14980,10 @@ fn lsp_vendor_dir() {
       "Uncached or missing remote URL: http://localhost:4545/subdir/mod1.ts"
     ]
   );
+  assert!(!temp_dir.path().join("vendor").exists());
 
-  assert!(
-    !temp_dir
-      .path()
-      .join("vendor/http_localhost_4545/subdir/mod1.ts")
-      .exists()
-  );
-
-  // now cache
-  cache(&mut client);
+  client.cache_specifier(file.url());
+  client.handle_refresh_diagnostics_request();
   let diagnostics = client.read_diagnostics();
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
   assert!(
@@ -15052,22 +14992,22 @@ fn lsp_vendor_dir() {
       .join("vendor/http_localhost_4545/subdir/mod1.ts")
       .exists()
   );
+  let remote_file_path = temp_dir
+    .path()
+    .join("vendor/http_localhost_4545/subdir/mod1.ts");
+  let remote_file_uri = remote_file_path.uri_file();
 
   // the declaration should be found in the vendor directory
   let res = client.write_request(
     "textDocument/references",
     json!({
-      "textDocument": {
-        "uri": local_file_uri,
-      },
+      "textDocument": { "uri": file.uri() },
       "position": { "line": 0, "character": 9 }, // returnsHi
       "context": {
         "includeDeclaration": false
       }
     }),
   );
-
-  // ensure that it's using the vendor directory
   let references = res.as_array().unwrap();
   assert_eq!(references.len(), 2, "references: {:#?}", references);
   let uri = references[1]
@@ -15077,13 +15017,10 @@ fn lsp_vendor_dir() {
     .unwrap()
     .as_str()
     .unwrap();
-  let file_path = temp_dir
-    .path()
-    .join("vendor/http_localhost_4545/subdir/mod1.ts");
-  let remote_file_uri = file_path.uri_file();
   assert_eq!(uri, remote_file_uri.as_str());
 
-  let file_text = file_path.read_to_string();
+  let file_text = remote_file_path.read_to_string();
+  dbg!();
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": remote_file_uri,
@@ -15092,7 +15029,9 @@ fn lsp_vendor_dir() {
       "text": file_text,
     }
   }));
-  assert_eq!(diagnostics.all(), Vec::new());
+  dbg!();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  dbg!();
 
   client.write_notification(
     "textDocument/didChange",
@@ -15113,7 +15052,9 @@ fn lsp_vendor_dir() {
     }),
   );
 
+  dbg!();
   let diagnostics = client.read_diagnostics();
+  dbg!();
 
   assert_eq!(
     json!(
@@ -15138,7 +15079,7 @@ fn lsp_vendor_dir() {
   assert_eq!(
     json!(
       diagnostics
-        .messages_with_file_and_source(local_file_uri.as_str(), "deno-ts")
+        .messages_with_file_and_source(file.uri().as_str(), "deno-ts")
         .diagnostics
     ),
     json!([
@@ -15161,7 +15102,7 @@ fn lsp_vendor_dir() {
     "textDocument/didChange",
     json!({
       "textDocument": {
-        "uri": local_file_uri,
+        "uri": file.uri(),
         "version": 2
       },
       "contentChanges": [
@@ -15176,12 +15117,14 @@ fn lsp_vendor_dir() {
     }),
   );
 
+  dbg!();
   let diagnostics = client.read_diagnostics();
+  dbg!();
 
   assert_eq!(
     json!(
       diagnostics
-        .messages_with_file_and_source(local_file_uri.as_str(), "deno")
+        .messages_with_file_and_source(file.uri().as_str(), "deno")
         .diagnostics
     ),
     json!([
@@ -15711,6 +15654,22 @@ fn lsp_deno_json_scopes_compiler_options() {
     json!(diagnostics.all_messages()),
     json!([
       {
+        "uri": url_to_uri(&temp_dir.url().join("project1/file.ts").unwrap()).unwrap(),
+        "version": 1,
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 17 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'WorkerGlobalScope'.",
+          },
+        ],
+      },
+      {
         "uri": url_to_uri(&temp_dir.url().join("project2/file.ts").unwrap()).unwrap(),
         "version": 1,
         "diagnostics": [
@@ -15726,22 +15685,6 @@ fn lsp_deno_json_scopes_compiler_options() {
           },
         ],
       },
-      {
-        "uri": url_to_uri(&temp_dir.url().join("project1/file.ts").unwrap()).unwrap(),
-        "version": 1,
-        "diagnostics": [
-          {
-            "range": {
-              "start": { "line": 1, "character": 0 },
-              "end": { "line": 1, "character": 17 },
-            },
-            "severity": 1,
-            "code": 2304,
-            "source": "deno-ts",
-            "message": "Cannot find name 'WorkerGlobalScope'.",
-          },
-        ],
-      }
     ]),
   );
   client.shutdown();
@@ -15778,6 +15721,22 @@ fn lsp_deno_json_scopes_declaration_files() {
     json!(diagnostics.all_messages()),
     json!([
       {
+        "uri": url_to_uri(&temp_dir.url().join("project1/file.ts").unwrap()).unwrap(),
+        "version": 1,
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 18 },
+              "end": { "line": 1, "character": 21 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'Bar'.",
+          },
+        ],
+      },
+      {
         "uri": url_to_uri(&temp_dir.url().join("project2/file.ts").unwrap()).unwrap(),
         "version": 1,
         "diagnostics": [
@@ -15793,22 +15752,6 @@ fn lsp_deno_json_scopes_declaration_files() {
           },
         ],
       },
-      {
-        "uri": url_to_uri(&temp_dir.url().join("project1/file.ts").unwrap()).unwrap(),
-        "version": 1,
-        "diagnostics": [
-          {
-            "range": {
-              "start": { "line": 1, "character": 18 },
-              "end": { "line": 1, "character": 21 },
-            },
-            "severity": 1,
-            "code": 2304,
-            "source": "deno-ts",
-            "message": "Cannot find name 'Bar'.",
-          },
-        ],
-      }
     ]),
   );
   client.shutdown();

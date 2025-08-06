@@ -535,13 +535,13 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub async fn get_diagnostics2(
+  pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
     module: &DocumentModule,
     token: &CancellationToken,
   ) -> Result<Vec<crate::tsc::Diagnostic>, AnyError> {
-    let req = TscRequest::GetDiagnostics2((
+    let req = TscRequest::GetDiagnostics((
       self
         .specifier_map
         .denormalize(&module.specifier, module.media_type),
@@ -569,7 +569,7 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub async fn get_diagnostics(
+  pub async fn get_diagnostics_many(
     &self,
     snapshot: Arc<StateSnapshot>,
     modules: &[Arc<DocumentModule>],
@@ -592,7 +592,7 @@ impl TsServer {
       .map(|m| self.specifier_map.denormalize(&m.specifier, m.media_type))
       .collect();
     let req =
-      TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
+      TscRequest::GetDiagnosticsMany((specifiers, snapshot.project_version));
     self
       .request::<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules)>(
         snapshot,
@@ -5831,8 +5831,8 @@ pub struct JsNull;
 
 #[derive(Debug, Clone, Serialize)]
 enum TscRequest {
-  GetDiagnostics2((String, usize)),
-  GetDiagnostics((Vec<String>, usize)),
+  GetDiagnostics((String, usize)),
+  GetDiagnosticsMany((Vec<String>, usize)),
 
   GetAmbientModules,
   CleanupSemanticCache,
@@ -5950,11 +5950,11 @@ impl TscRequest {
   ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), serde_v8::Error>
   {
     let args = match self {
-      TscRequest::GetDiagnostics2(args) => {
-        ("$getDiagnostics2", Some(serde_v8::to_v8(scope, args)?))
-      }
       TscRequest::GetDiagnostics(args) => {
         ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))
+      }
+      TscRequest::GetDiagnosticsMany(args) => {
+        ("$getDiagnosticsMany", Some(serde_v8::to_v8(scope, args)?))
       }
       TscRequest::GetAmbientModules => ("$getAmbientModules", None),
       TscRequest::FindReferences(args) => {
@@ -6050,8 +6050,8 @@ impl TscRequest {
 
   fn method(&self) -> &'static str {
     match self {
-      TscRequest::GetDiagnostics2(_) => "$getDiagnostics2",
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
+      TscRequest::GetDiagnosticsMany(_) => "$getDiagnosticsMany",
       TscRequest::GetAmbientModules => "$getAmbientModules",
       TscRequest::CleanupSemanticCache => "$cleanupSemanticCache",
       TscRequest::FindReferences(_) => "findReferences",
@@ -6238,8 +6238,8 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -6294,7 +6294,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!([[]]));
@@ -6332,7 +6332,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!([[]]));
@@ -6366,7 +6366,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -6424,7 +6424,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!([[]]));
@@ -6465,7 +6465,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -6532,7 +6532,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -6596,7 +6596,7 @@ mod tests {
       .module_for_specifier(&specifier, scope, None)
       .unwrap();
     let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -6659,7 +6659,7 @@ mod tests {
       .module_for_specifier(&specifier, scope, None)
       .unwrap();
     let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!([[]]));

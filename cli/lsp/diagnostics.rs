@@ -1115,7 +1115,7 @@ async fn generate_ts_diagnostics_inner<'a>(
     enabled_modules_by_key
   {
     let (diagnostics_list, ambient_modules) = ts_server
-      .get_diagnostics(snapshot.clone(), &enabled_modules, token)
+      .get_diagnostics_many(snapshot.clone(), &enabled_modules, token)
       .await?;
     enabled_modules_with_diagnostics
       .extend(enabled_modules.into_iter().zip(diagnostics_list));

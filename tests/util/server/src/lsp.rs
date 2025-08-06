@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsStr;
@@ -264,6 +264,7 @@ impl InitializeParamsBuilder {
               }),
               ..Default::default()
             }),
+            diagnostic: Some(Default::default()),
             folding_range: Some(FoldingRangeClientCapabilities {
               line_folding_only: Some(true),
               ..Default::default()
@@ -278,6 +279,9 @@ impl InitializeParamsBuilder {
           }),
           workspace: Some(WorkspaceClientCapabilities {
             configuration: Some(true),
+            diagnostic: Some(lsp::DiagnosticWorkspaceClientCapabilities {
+              refresh_support: Some(true),
+            }),
             workspace_folders: Some(true),
             ..Default::default()
           }),
@@ -622,6 +626,7 @@ impl LspClientBuilder {
       stderr_lines_rx,
       config: json!("{}"),
       supports_workspace_configuration: false,
+      supports_pull_diagnostics: false,
       perf: perf_rx.map(Perf::new),
       open_docs: Default::default(),
       notebook_cells: Default::default(),
@@ -723,8 +728,9 @@ pub struct LspClient {
   stderr_lines_rx: Option<mpsc::Receiver<String>>,
   config: serde_json::Value,
   supports_workspace_configuration: bool,
+  supports_pull_diagnostics: bool,
   perf: Option<Perf>,
-  open_docs: BTreeSet<Uri>,
+  open_docs: BTreeMap<Uri, i32>,
   notebook_cells: HashMap<Uri, Vec<Uri>>,
 }
 
@@ -886,6 +892,13 @@ impl LspClient {
       Some(workspace) => workspace.configuration == Some(true),
       _ => false,
     };
+    self.supports_pull_diagnostics = params
+      .capabilities
+      .text_document
+      .as_ref()
+      .and_then(|t| t.diagnostic.as_ref())
+      .is_some();
+
     self.write_request("initialize", params);
     self.write_notification("initialized", json!({}));
     self.config = config;
@@ -990,6 +1003,12 @@ impl LspClient {
     self.write_response(id, result);
   }
 
+  pub fn handle_refresh_diagnostics_request(&mut self) {
+    let (id, method, _) = self.read_request::<Value>();
+    assert_eq!(method, "workspace/diagnostic/refresh");
+    self.write_response(id, None::<()>);
+  }
+
   pub fn did_save(&mut self, params: Value) {
     self.write_notification("textDocument/didSave", params);
   }
@@ -1030,6 +1049,37 @@ impl LspClient {
 
   /// Reads the latest diagnostics.
   pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
+    if self.supports_pull_diagnostics {
+      return CollectedDiagnostics(
+        self
+          .open_docs
+          .clone()
+          .into_iter()
+          .map(|(uri, version)| {
+            let report = self.write_request(
+              "textDocument/diagnostic",
+              json!({
+                "textDocument": { "uri": &uri },
+              }),
+            );
+            let report =
+              serde_json::from_value::<lsp::DocumentDiagnosticReport>(report)
+                .unwrap();
+            let diagnostics = match report {
+              lsp::DocumentDiagnosticReport::Full(report) => {
+                report.full_document_diagnostic_report.items
+              }
+              lsp::DocumentDiagnosticReport::Unchanged(_) => vec![],
+            };
+            lsp::PublishDiagnosticsParams {
+              uri,
+              diagnostics,
+              version: Some(version),
+            }
+          })
+          .collect(),
+      );
+    }
     // wait for three (deno, lint, and typescript diagnostics) batch
     // notification messages for that index
     let mut read = 0;
@@ -1277,7 +1327,17 @@ impl LspClient {
         params.clone(),
       )
       .unwrap();
-      self.open_docs.insert(params.text_document.uri);
+      self
+        .open_docs
+        .insert(params.text_document.uri, params.text_document.version);
+    }
+    if method == "textDocument/didChange" {
+      let params = serde_json::from_value::<lsp::DidChangeTextDocumentParams>(
+        params.clone(),
+      )
+      .unwrap();
+      *self.open_docs.get_mut(&params.text_document.uri).unwrap() =
+        params.text_document.version;
     }
     if method == "textDocument/didClose" {
       let params = serde_json::from_value::<lsp::DidCloseTextDocumentParams>(
@@ -1292,15 +1352,16 @@ impl LspClient {
           params.clone(),
         )
         .unwrap();
-      let cell_uris = params
+      let cells = params
         .cell_text_documents
         .into_iter()
-        .map(|c| c.uri)
+        .map(|c| (c.uri, c.version))
         .collect::<Vec<_>>();
+      let cell_uris = cells.iter().map(|(u, _)| u.clone()).collect::<Vec<_>>();
       self
         .notebook_cells
-        .insert(params.notebook_document.uri, cell_uris.clone());
-      self.open_docs.extend(cell_uris);
+        .insert(params.notebook_document.uri, cell_uris);
+      self.open_docs.extend(cells);
     }
     if method == "notebookDocument/didChange" {
       let params =
@@ -1308,7 +1369,12 @@ impl LspClient {
           params.clone(),
         )
         .unwrap();
-      if let Some(structure) = params.change.cells.and_then(|c| c.structure) {
+      let (structure, content) = params
+        .change
+        .cells
+        .map(|c| (c.structure, c.text_content))
+        .unwrap_or_default();
+      if let Some(structure) = structure {
         self
           .notebook_cells
           .get_mut(&params.notebook_document.uri)
@@ -1323,13 +1389,13 @@ impl LspClient {
               .flatten()
               .map(|c| c.document),
           );
-        let opened_cell_uris = structure
+        let opened_cells = structure
           .did_open
           .into_iter()
           .flatten()
-          .map(|c| c.uri)
+          .map(|c| (c.uri, c.version))
           .collect::<Vec<_>>();
-        self.open_docs.extend(opened_cell_uris);
+        self.open_docs.extend(opened_cells);
         let closed_cell_uris = structure
           .did_close
           .into_iter()
@@ -1339,6 +1405,10 @@ impl LspClient {
         for closed_cell_uri in closed_cell_uris {
           self.open_docs.remove(&closed_cell_uri);
         }
+      }
+      for changed in content.into_iter().flatten() {
+        *self.open_docs.get_mut(&changed.document.uri).unwrap() =
+          changed.document.version;
       }
     }
     if method == "notebookDocument/didClose" {
