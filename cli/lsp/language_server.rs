@@ -3090,8 +3090,13 @@ impl Inner {
     params: DocumentDiagnosticParams,
     token: &CancellationToken,
   ) -> LspResult<DocumentDiagnosticReportResult> {
-    let empty_result = || {
-      DocumentDiagnosticReportResult::Report(
+    if params
+      .previous_result_id
+      .as_ref()
+      .and_then(|i| i.parse::<usize>().ok())
+      .is_some_and(|i| i >= self.project_version)
+    {
+      return Ok(DocumentDiagnosticReportResult::Report(
         DocumentDiagnosticReport::Unchanged(
           RelatedUnchangedDocumentDiagnosticReport {
             related_documents: None,
@@ -3101,16 +3106,19 @@ impl Inner {
               },
           },
         ),
-      )
-    };
-    if params
-      .previous_result_id
-      .as_ref()
-      .and_then(|i| i.parse::<usize>().ok())
-      .is_some_and(|i| i >= self.project_version)
-    {
-      return Ok(empty_result());
+      ));
     }
+    let empty_result = || {
+      DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(
+        RelatedFullDocumentDiagnosticReport {
+          related_documents: None,
+          full_document_diagnostic_report: FullDocumentDiagnosticReport {
+            result_id: Some(self.project_version.to_string()),
+            items: Vec::new(),
+          },
+        },
+      ))
+    };
     let Some(document) = self.get_document(
       &params.text_document.uri,
       Enabled::Filter,
