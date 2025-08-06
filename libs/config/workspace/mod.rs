@@ -2054,7 +2054,7 @@ impl WorkspaceDirectory {
     }
   }
 
-  pub fn to_test_permissions(
+  pub fn to_test_permissions_config(
     &self,
   ) -> Result<Option<&PermissionsObject>, ToInvalidConfigError> {
     Ok(self.to_test_config_inner()?.permissions.as_ref())

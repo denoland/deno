@@ -13,7 +13,6 @@ use deno_config::deno_json::CompilerOptions;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::TsTypeLib;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_error::JsError;
 use deno_path_util::normalize_path;

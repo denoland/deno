@@ -3929,7 +3929,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Set)
           .num_args(0..=1)
           .require_equals(true)
-          .default_missing_value("default")
+          .default_missing_value("")
           .short('P');
         if let Some(requires) = requires {
           arg = arg.requires(requires);

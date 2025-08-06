@@ -73,6 +73,7 @@ impl<'de> serde::Deserialize<'de> for PermissionConfigValue {
 }
 
 #[derive(Deserialize, Default, Clone, Debug, PartialEq, Eq, Hash)]
+#[serde(default, deny_unknown_fields)]
 pub struct AllowDenyPermissionConfig {
   pub allow: PermissionConfigValue,
   pub deny: PermissionConfigValue,
@@ -140,6 +141,7 @@ pub enum PermissionNameOrObject {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Default, Hash)]
+#[serde(default, deny_unknown_fields)]
 pub struct PermissionsObject {
   #[serde(default)]
   pub all: Option<bool>,

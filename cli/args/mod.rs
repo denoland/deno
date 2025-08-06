@@ -1018,6 +1018,13 @@ impl CliOptions {
   }
 
   pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
+    self.permissions_options_for_dir(&self.start_dir)
+  }
+
+  pub fn permissions_options_for_dir(
+    &self,
+    dir: &WorkspaceDirectory,
+  ) -> Result<PermissionsOptions, AnyError> {
     // bury this in here to ensure people use cli_options.permissions_options()
     fn flags_to_options(
       flags: &PermissionFlags,
@@ -1151,12 +1158,20 @@ impl CliOptions {
       }
     }
 
-    let sets = self.start_dir.to_permissions_config()?;
     let config_permissions = if let Some(name) = &self.flags.permission_set {
       if name.is_empty() {
-        sets.sets.get("default")
+        let maybe_subcommand_permissions = match &self.flags.subcommand {
+          DenoSubcommand::Test(_) => dir.to_test_permissions_config()?,
+          _ => None,
+        };
+        match maybe_subcommand_permissions {
+          Some(permissions) => Some(permissions),
+          // do not error when the default set doesn't exist in order
+          // to allow providing `-P` unconditionally
+          None => dir.to_permissions_config()?.sets.get("default"),
+        }
       } else {
-        Some(sets.get(name)?)
+        Some(dir.to_permissions_config()?.get(name)?)
       }
     } else {
       None
@@ -1173,7 +1188,6 @@ impl CliOptions {
     if !options.allow_all && options.allow_import.is_none() {
       options.allow_import = Some(self.implicit_allow_import());
     }
-    options.deny_import = options.deny_import.clone();
   }
 
   fn implicit_allow_import(&self) -> Vec<String> {
