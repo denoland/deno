@@ -869,6 +869,7 @@ process.on("newListener", (event: string) => {
       rejectionHandledListenerCount++;
       break;
     case "uncaughtException":
+      console.log("installed uncaughtException1");
       uncaughtExceptionListenerCount++;
       break;
     case "beforeExit":
@@ -892,6 +893,7 @@ process.on("removeListener", (event: string) => {
       rejectionHandledListenerCount--;
       break;
     case "uncaughtException":
+      console.log("removed uncaughtException");
       uncaughtExceptionListenerCount--;
       break;
     case "beforeExit":
@@ -907,6 +909,7 @@ process.on("removeListener", (event: string) => {
 });
 
 function processOnError(event: ErrorEvent) {
+  console.log("process on error uncaughtException");
   if (process.listenerCount("uncaughtException") > 0) {
     event.preventDefault();
   }
@@ -933,6 +936,7 @@ function synchronizeListeners() {
   if (
     unhandledRejectionListenerCount > 0 || uncaughtExceptionListenerCount > 0
   ) {
+    console.log("installing internal listener");
     internals.nodeProcessUnhandledRejectionCallback = (event) => {
       if (process.listenerCount("unhandledRejection") === 0) {
         // The Node.js default behavior is to raise an uncaught exception if
