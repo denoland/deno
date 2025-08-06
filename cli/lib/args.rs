@@ -239,6 +239,13 @@ impl UnstableConfig {
       &mut self.sloppy_imports,
       UNSTABLE_ENV_VAR_NAMES.sloppy_imports,
     );
+
+    if has_flag_env_var(UNSTABLE_ENV_VAR_NAMES.single_threaded) {
+      let name = "single-threaded".to_string();
+      if !self.features.contains(&name) {
+        self.features.push(name);
+      }
+    }
   }
 
   pub fn enable_node_compat(&mut self) {
