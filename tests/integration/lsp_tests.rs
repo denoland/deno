@@ -6,17 +6,17 @@ use ntest_timeout::timeout;
 use pretty_assertions::assert_eq;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
+use test_util::TestContextBuilder;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
+use test_util::lsp::LspClient;
 use test_util::lsp::range_of;
 use test_util::lsp::source_file;
-use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::url_to_notebook_cell_uri;
 use test_util::url_to_uri;
-use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
 use url::Url;
 
@@ -32,7 +32,7 @@ fn lsp_startup_shutdown() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_init_tsconfig() {
+fn lsp_config_setting() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
@@ -66,7 +66,7 @@ fn lsp_init_tsconfig() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_tsconfig_types() {
+fn lsp_config_setting_compiler_options_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
@@ -110,7 +110,7 @@ fn lsp_tsconfig_types() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_tsconfig_types_config_sub_dir() {
+fn lsp_config_setting_compiler_options_types_config_sub_dir() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
 
@@ -228,9 +228,11 @@ fn unadded_dependency_message_with_import_map() {
     }
   }));
   // expected lsp_messages don't include the file path
-  let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
-  "'x' is declared but its value is never read.",
-  "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency."]);
+  let mut expected_lsp_messages = Vec::from([
+    "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
+    "'x' is declared but its value is never read.",
+    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
+  ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
   let mut correct_lsp_messages = all_diagnostics
@@ -289,9 +291,11 @@ fn unadded_dependency_message() {
     }
   }));
   // expected lsp_messages don't include the file path
-  let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
-  "'x' is declared but its value is never read.",
-  "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency."]);
+  let mut expected_lsp_messages = Vec::from([
+    "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
+    "'x' is declared but its value is never read.",
+    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
+  ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
   let mut correct_lsp_messages = all_diagnostics
@@ -424,11 +428,12 @@ fn lsp_import_map_data_url() {
   }));
 
   // This indicates that the import map is applied correctly.
-  assert!(diagnostics.all().iter().any(|diagnostic| diagnostic.code
-    == Some(lsp::NumberOrString::String("no-cache".to_string()))
-    && diagnostic
-      .message
-      .contains("https://deno.land/x/example/mod.ts")));
+  assert!(diagnostics.all().iter().any(|diagnostic| {
+    diagnostic.code == Some(lsp::NumberOrString::String("no-cache".to_string()))
+      && diagnostic
+        .message
+        .contains("https://deno.land/x/example/mod.ts")
+  }));
   client.shutdown();
 }
 
@@ -9089,13 +9094,15 @@ fn lsp_npm_reexport_from_non_export() {
     .filter(|i| i.label == "getValue")
     .collect::<Vec<_>>();
   assert_eq!(
-    json!(items
-      .iter()
-      .map(|i| i
-        .label_details
-        .as_ref()
-        .and_then(|d| d.description.as_ref()))
-      .collect::<Vec<_>>()),
+    json!(
+      items
+        .iter()
+        .map(|i| i
+          .label_details
+          .as_ref()
+          .and_then(|d| d.description.as_ref()))
+        .collect::<Vec<_>>()
+    ),
     json!(["npm:@denotest/reexport-from-non-export"]),
   );
   client.shutdown();
@@ -10738,7 +10745,7 @@ fn lsp_completions_node_builtin() {
           "severity": 1,
           "code": "import-node-prefix-missing",
           "source": "deno",
-          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\n  \u{1b}[0m\u{1b}[36mhint:\u{1b}[0m If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
+          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\n  hint: If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
           "data": {
             "specifier": "fs"
           },
@@ -11599,8 +11606,10 @@ fn lsp_diagnostics_refresh_dependents() {
     }
   }));
   assert_eq!(
-    json!(diagnostics
-      .messages_with_file_and_source("file:///a/file_02.ts", "deno-ts")),
+    json!(
+      diagnostics
+        .messages_with_file_and_source("file:///a/file_02.ts", "deno-ts")
+    ),
     json!({
       "uri": "file:///a/file_02.ts",
       "diagnostics": [
@@ -12812,7 +12821,10 @@ fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}\n");
-  let scss_file = source_file(temp_dir.path().join("file.scss"), "  $font-stack: Helvetica, sans-serif;\n\nbody {\n  font: 100% $font-stack;\n}\n");
+  let scss_file = source_file(
+    temp_dir.path().join("file.scss"),
+    "  $font-stack: Helvetica, sans-serif;\n\nbody {\n  font: 100% $font-stack;\n}\n",
+  );
   let sass_file = source_file(
     temp_dir.path().join("file.sass"),
     "  $font-stack: Helvetica, sans-serif\n\nbody\n  font: 100% $font-stack\n",
@@ -15260,19 +15272,23 @@ fn lsp_vendor_dir() {
     ]
   );
 
-  assert!(!temp_dir
-    .path()
-    .join("vendor/http_localhost_4545/subdir/mod1.ts")
-    .exists());
+  assert!(
+    !temp_dir
+      .path()
+      .join("vendor/http_localhost_4545/subdir/mod1.ts")
+      .exists()
+  );
 
   // now cache
   cache(&mut client);
   let diagnostics = client.read_diagnostics();
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
-  assert!(temp_dir
-    .path()
-    .join("vendor/http_localhost_4545/subdir/mod1.ts")
-    .exists());
+  assert!(
+    temp_dir
+      .path()
+      .join("vendor/http_localhost_4545/subdir/mod1.ts")
+      .exists()
+  );
 
   // the declaration should be found in the vendor directory
   let res = client.write_request(
@@ -17124,6 +17140,236 @@ fn lsp_workspace_compiler_options_root_dirs() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_tsconfig_scopes() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write(
+    "project1/tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["deno.window"],
+      },
+    })
+    .to_string(),
+  );
+  let file1 = temp_dir.source_file("project1/file.ts", "Deno;\ndocument;\n");
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  temp_dir.write(
+    "project2/tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  let file2 = temp_dir.source_file("project2/file.ts", "Deno;\ndocument;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file1);
+  let diagnostics = client.did_open_file(&file2);
+  let mut messages = diagnostics.all_messages();
+  messages.sort_by_key(|d| d.uri.to_string());
+  assert_eq!(
+    json!(&messages),
+    json!([
+      {
+        "uri": file1.uri(),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 8 },
+            },
+            "severity": 1,
+            "code": 2584,
+            "source": "deno-ts",
+            "message": "Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.",
+          },
+        ],
+        "version": 1,
+      },
+      {
+        "uri": file2.uri(),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 4 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib=\"deno.ns\" />",
+          },
+        ],
+        "version": 1,
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_tsconfig_references_extends_include() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "exclude": ["file3.ts"],
+      "compilerOptions": {
+        "lib": ["deno.window"],
+      },
+      "references": [
+        { "path": "tsconfig.dom.json" },
+      ],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "tsconfig.dom.json",
+    json!({
+      "extends": "./tsconfig.dom_include.json",
+      "compilerOptions": {
+        "composite": true,
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "tsconfig.dom_include.json",
+    json!({
+      "include": ["file2.ts"],
+    })
+    .to_string(),
+  );
+  // This file is scoped for `tsconfig.json`.
+  let file1 = temp_dir.source_file("file1.ts", "Deno;\ndocument;\n");
+  // This file is scoped for `tsconfig.dom.json`.
+  let file2 = temp_dir.source_file("file2.ts", "Deno;\ndocument;\n");
+  // This file is scoped for `deno.json`. Since no compiler options are
+  // specified, it will use the default. Since there are tsconfigs in the
+  // workspace, the defaults will be tsc-compatible (`[ "deno.window", "dom"]`).
+  let file3 = temp_dir.source_file("file2.ts", "Deno;\ndocument;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file1);
+  client.did_open_file(&file2);
+  let diagnostics = client.did_open_file(&file3);
+  let mut messages = diagnostics.all_messages();
+  messages.sort_by_key(|d| d.uri.to_string());
+  assert_eq!(
+    json!(&messages),
+    json!([
+      {
+        "uri": file1.uri(),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 8 },
+            },
+            "severity": 1,
+            "code": 2584,
+            "source": "deno-ts",
+            "message": "Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.",
+          },
+        ],
+        "version": 1,
+      },
+      {
+        "uri": file2.uri(),
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 4 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib=\"deno.ns\" />",
+          },
+        ],
+        "version": 1,
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_tsconfig_node_modules_dts_diagnostics() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "include": ["main.ts"],
+      "compilerOptions": {
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  let file1 = temp_dir.source_file("main.ts", "import type {} from \"foo\";\n");
+  let file2 = source_file(
+    // Canonicalize for mac.
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/foo/index.d.ts"),
+    r#"
+      export type foo = typeof Deno;
+      export type bar = typeof document;
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file1);
+  let diagnostics = client.did_open_file(&file2);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 1, "character": 31 },
+          "end": { "line": 1, "character": 35 },
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib=\"deno.ns\" />",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -18185,7 +18431,9 @@ fn lsp_ts_code_fix_any_param() {
     }
   }
 
-  panic!("failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}");
+  panic!(
+    "failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}"
+  );
 }
 
 #[test]
@@ -18712,4 +18960,295 @@ fn do_not_auto_import_from_definitely_typed() {
     );
     client.shutdown();
   }
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_import_json_module_import_attribute_variations() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "unstable": ["raw-imports"]
+  }));
+  temp_dir.join("file.json").write_json(&json!({}));
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  for type_text in ["bytes", "text", "json"] {
+    let diagnostics = client.did_open(json!({
+      "textDocument": {
+        "uri": temp_dir.join(format!("{}.ts", type_text)).uri_file(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": format!("import data from './file.json' with {{ type: '{}' }};\nconsole.log(data);\n", type_text)
+      }
+    }));
+    assert_eq!(json!(diagnostics.all()), json!([]));
+  }
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("missing.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import data from './file.json';\nconsole.log(data);\n",
+    }
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 17,
+        },
+        "end": {
+          "line": 0,
+          "character": 30,
+        },
+      },
+      "severity": 1,
+      "code": "no-attribute-type",
+      "source": "deno",
+      "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
+    }])
+  );
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_import_raw_imports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "unstable": ["raw-imports"]
+  }));
+  temp_dir.join("data.txt").write("");
+  temp_dir
+    .join("hello.ts")
+    .write("export function hello() { return 'Hello'; }\n");
+  let text = r#"import { hello } from "./hello.ts";
+import helloBytes from "./hello.ts" with { type: "bytes" };
+import helloText from "./hello.ts" with { type: "text" };
+import dataBytes from "./data.txt" with { type: "bytes" };
+import dataText from "./data.txt" with { type: "text" };
+
+const { default: dynamicHelloBytes } = await import("./hello.ts", {
+  with: { "type": "bytes" },
+});
+const { default: dynamicHelloText } = await import("./hello.ts", {
+  with: { "type": "text" },
+});
+const { default: dynamicDataBytes } = await import("./data.txt", {
+  with: { "type": "bytes" },
+});
+const { default: dynamicDataText } = await import("./data.txt", {
+  with: { "type": "text" },
+});
+
+let validBytes: Uint8Array<ArrayBuffer>;
+let validText: string;
+
+validBytes = helloBytes;
+validBytes = dataBytes;
+validBytes = dynamicHelloBytes;
+validBytes = dynamicDataBytes;
+
+validText = helloText;
+validText = hello();
+validText = dataText;
+validText = dynamicHelloText;
+validText = dynamicDataText;
+
+let invalid: number;
+invalid = helloBytes;
+invalid = dataBytes;
+invalid = dynamicHelloBytes;
+invalid = dynamicDataBytes;
+invalid = helloText;
+invalid = hello();
+invalid = dataText;
+invalid = dynamicHelloText;
+invalid = dynamicDataText;
+
+console.log(invalid, validBytes, validText);
+"#;
+  temp_dir.join("main.ts").write(text);
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.join("main.ts").uri_file(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": text,
+    }
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+      "range": {
+        "start": {
+          "line": 34,
+          "character": 0
+        },
+        "end": {
+          "line": 34,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 35,
+          "character": 0
+        },
+        "end": {
+          "line": 35,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 36,
+          "character": 0
+        },
+        "end": {
+          "line": 36,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 37,
+          "character": 0
+        },
+        "end": {
+          "line": 37,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'Uint8Array<ArrayBuffer>' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 38,
+          "character": 0
+        },
+        "end": {
+          "line": 38,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'string' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 39,
+          "character": 0
+        },
+        "end": {
+          "line": 39,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'string' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 40,
+          "character": 0
+        },
+        "end": {
+          "line": 40,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'string' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 41,
+          "character": 0
+        },
+        "end": {
+          "line": 41,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'string' is not assignable to type 'number'."
+    },
+    {
+      "range": {
+        "start": {
+          "line": 42,
+          "character": 0
+        },
+        "end": {
+          "line": 42,
+          "character": 7
+        }
+      },
+      "severity": 1,
+      "code": 2322,
+      "source": "deno-ts",
+      "message": "Type 'string' is not assignable to type 'number'."
+    }
+    ])
+  );
+
+  // ensure the specifiers aren't modified when renaming
+  let res = client.write_request(
+    "workspace/willRenameFiles",
+    json!({
+      "files": [
+        {
+          "oldUri": temp_dir.join("main.ts").uri_file(),
+          "newUri": temp_dir.join("renamed.ts").uri_file(),
+        },
+      ],
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [],
+    }),
+  );
+  client.shutdown();
 }

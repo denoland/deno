@@ -5,13 +5,13 @@ use deno_lockfile::Lockfile;
 use deno_lockfile::NewLockfileOptions;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use test_util as util;
 use url::Url;
+use util::TestContextBuilder;
 use util::assert_contains;
 use util::assert_not_contains;
-use util::TestContextBuilder;
 
 #[test]
 fn fast_check_cache() {

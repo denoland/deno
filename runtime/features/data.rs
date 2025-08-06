@@ -223,5 +223,5 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     kind: UnstableFeatureKind::Runtime,
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
-  }
+  },
 ];

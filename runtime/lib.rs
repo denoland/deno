@@ -31,7 +31,6 @@ pub use deno_webstorage;
 
 pub mod code_cache;
 pub mod fmt_errors;
-pub mod fs_util;
 pub mod inspector_server;
 pub mod js;
 pub mod ops;
@@ -54,8 +53,8 @@ pub use worker_bootstrap::WorkerLogLevel;
 
 pub mod shared;
 pub use deno_features::FeatureChecker;
-pub use deno_features::UnstableFeatureKind;
 pub use deno_features::UNSTABLE_ENV_VAR_NAMES;
 pub use deno_features::UNSTABLE_FEATURES;
+pub use deno_features::UnstableFeatureKind;
 pub use deno_os::exit;
 pub use shared::runtime;

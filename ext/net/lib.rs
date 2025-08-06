@@ -13,6 +13,7 @@ mod quic;
 pub mod raw;
 pub mod resolve_addr;
 pub mod tcp;
+pub mod tunnel;
 #[cfg(unix)]
 mod unix_pipe;
 #[cfg(windows)]
@@ -37,14 +38,15 @@ mod ops_pipe {
 
 use std::borrow::Cow;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::OpState;
 use deno_features::FeatureChecker;
+use deno_permissions::CheckedPath;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
-use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::rustls::RootCertStore;
 pub use quic::QuicError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
@@ -56,23 +58,12 @@ pub trait NetPermissions {
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read(
+  fn check_open<'a>(
     &mut self,
-    p: &str,
+    path: Cow<'a, Path>,
+    open_access: OpenAccessKind,
     api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_write(
-    &mut self,
-    p: &str,
-    api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_write_path<'a>(
-    &mut self,
-    p: Cow<'a, Path>,
-    api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_vsock(
     &mut self,
@@ -93,31 +84,17 @@ impl NetPermissions for deno_permissions::PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_read(
-    &mut self,
-    path: &str,
-    api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
-  }
-
-  #[inline(always)]
-  fn check_write(
-    &mut self,
-    path: &str,
-    api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write(self, path, api_name)
-  }
-
-  #[inline(always)]
-  fn check_write_path<'a>(
+  fn check_open<'a>(
     &mut self,
     path: Cow<'a, Path>,
+    open_access: OpenAccessKind,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write_path(
-      self, path, api_name,
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_open(
+      self,
+      path,
+      open_access,
+      Some(api_name),
     )
   }
 
@@ -189,6 +166,8 @@ deno_core::extension!(deno_net,
     ops::op_net_listen_vsock<P>,
     ops::op_net_accept_vsock,
     ops::op_net_connect_vsock<P>,
+    ops::op_net_listen_tunnel,
+    ops::op_net_accept_tunnel,
 
     ops_tls::op_tls_key_null,
     ops_tls::op_tls_key_static,

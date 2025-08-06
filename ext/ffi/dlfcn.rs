@@ -4,13 +4,14 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::path::Path;
 use std::rc::Rc;
 
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::Resource;
+use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use denort_helper::DenoRtNativeAddonLoaderRc;
@@ -18,12 +19,12 @@ use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
 
+use crate::FfiPermissions;
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
-use crate::FfiPermissions;
 
 deno_error::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
   match err {
@@ -129,28 +130,24 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
     let value = serde_value::Value::deserialize(deserializer)?;
 
     // Probe a ForeignStatic and if that doesn't match, assume ForeignFunction to improve error messages
-    if let Ok(res) = ForeignStatic::deserialize(
-      ValueDeserializer::<D::Error>::new(value.clone()),
-    ) {
-      Ok(ForeignSymbol::ForeignStatic(res))
-    } else {
-      ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
-        .map(ForeignSymbol::ForeignFunction)
+    match ForeignStatic::deserialize(ValueDeserializer::<D::Error>::new(
+      value.clone(),
+    )) {
+      Ok(res) => Ok(ForeignSymbol::ForeignStatic(res)),
+      _ => {
+        ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
+          .map(ForeignSymbol::ForeignFunction)
+      }
     }
   }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct FfiLoadArgs {
-  path: String,
-  symbols: HashMap<String, ForeignSymbol>,
 }
 
 #[op2(stack_trace)]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: Rc<RefCell<OpState>>,
-  #[serde] args: FfiLoadArgs,
+  #[string] path: &str,
+  #[serde] symbols: HashMap<String, ForeignSymbol>,
 ) -> Result<v8::Local<'scope, v8::Value>, DlfcnError>
 where
   FP: FfiPermissions + 'static,
@@ -159,7 +156,7 @@ where
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
     (
-      permissions.check_partial_with_path(&args.path)?,
+      permissions.check_partial_with_path(Cow::Borrowed(Path::new(path)))?,
       state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
     )
   };
@@ -179,7 +176,7 @@ where
   };
   let obj = v8::Object::new(scope);
 
-  for (symbol_key, foreign_symbol) in args.symbols {
+  for (symbol_key, foreign_symbol) in symbols {
     match foreign_symbol {
       ForeignSymbol::ForeignStatic(_) => {
         // No-op: Statics will be handled separately and are not part of the Rust-side resource.
@@ -361,9 +358,9 @@ pub(crate) fn format_error(
       use winapi::shared::minwindef::DWORD;
       use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
       use winapi::um::errhandlingapi::GetLastError;
-      use winapi::um::winbase::FormatMessageW;
       use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
       use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
+      use winapi::um::winbase::FormatMessageW;
       use winapi::um::winnt::LANG_SYSTEM_DEFAULT;
       use winapi::um::winnt::MAKELANGID;
       use winapi::um::winnt::SUBLANG_SYS_DEFAULT;

@@ -9,13 +9,13 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
@@ -25,8 +25,8 @@ use super::installer::BinNameResolver;
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
-use crate::standalone::binary::is_standalone_binary;
 use crate::standalone::binary::WriteBinOptions;
+use crate::standalone::binary::is_standalone_binary;
 
 pub async fn compile(
   flags: Arc<Flags>,
@@ -83,7 +83,7 @@ pub async fn compile(
   temp_filename.push(format!(
     ".tmp-{}",
     faster_hex::hex_encode(
-      &rand::thread_rng().gen::<[u8; 8]>(),
+      &rand::thread_rng().r#gen::<[u8; 8]>(),
       &mut [0u8; 16]
     )
     .unwrap()
@@ -162,7 +162,7 @@ pub async fn compile_eszip(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
-  let parsed_source_cache = factory.parsed_source_cache();
+  let parsed_source_cache = factory.parsed_source_cache()?;
   let compiler_options_resolver = factory.compiler_options_resolver()?;
   let bin_name_resolver = factory.bin_name_resolver()?;
   let entrypoint = cli_options.resolve_main_module()?;
@@ -307,13 +307,13 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
     let output_base = &output_path.parent().unwrap();
     if output_base.exists() && output_base.is_file() {
       bail!(
-          concat!(
-            "Could not compile to file '{}' because its parent directory ",
-            "is an existing file. You can use the `--output <file-path>` flag to ",
-            "provide an alternative name.",
-          ),
-          output_base.display(),
-        );
+        concat!(
+          "Could not compile to file '{}' because its parent directory ",
+          "is an existing file. You can use the `--output <file-path>` flag to ",
+          "provide an alternative name.",
+        ),
+        output_base.display(),
+      );
     }
     std::fs::create_dir_all(output_base)?;
   }

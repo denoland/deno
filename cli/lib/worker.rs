@@ -11,17 +11,22 @@ use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
+use deno_runtime::BootstrapOptions;
+use deno_runtime::FeatureChecker;
+use deno_runtime::UNSTABLE_FEATURES;
+use deno_runtime::WorkerExecutionMode;
+use deno_runtime::WorkerLogLevel;
 use deno_runtime::colors;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_core;
-use deno_runtime::deno_core::error::CoreError;
-use deno_runtime::deno_core::v8;
 use deno_runtime::deno_core::CompiledWasmModuleStore;
 use deno_runtime::deno_core::Extension;
 use deno_runtime::deno_core::JsRuntime;
 use deno_runtime::deno_core::LocalInspectorSession;
 use deno_runtime::deno_core::ModuleLoader;
 use deno_runtime::deno_core::SharedArrayBufferStore;
+use deno_runtime::deno_core::error::CoreError;
+use deno_runtime::deno_core::v8;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_node::NodeExtInitServices;
@@ -41,13 +46,8 @@ use deno_runtime::web_worker::WebWorkerServiceOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::worker::WorkerServiceOptions;
-use deno_runtime::BootstrapOptions;
-use deno_runtime::FeatureChecker;
-use deno_runtime::WorkerExecutionMode;
-use deno_runtime::WorkerLogLevel;
-use deno_runtime::UNSTABLE_FEATURES;
-use node_resolver::errors::ResolvePkgJsonBinExportError;
 use node_resolver::UrlOrPath;
+use node_resolver::errors::ResolvePkgJsonBinExportError;
 use url::Url;
 
 use crate::args::has_trace_permissions_enabled;
@@ -313,7 +313,9 @@ pub enum ResolveNpmBinaryEntrypointError {
 pub enum ResolveNpmBinaryEntrypointFallbackError {
   #[class(inherit)]
   #[error(transparent)]
-  PackageSubpathResolve(node_resolver::errors::PackageSubpathResolveError),
+  PackageSubpathResolve(
+    node_resolver::errors::PackageSubpathFromDenoModuleResolveError,
+  ),
   #[class(generic)]
   #[error("Cannot find module '{0}'")]
   ModuleNotFound(UrlOrPath),
@@ -425,7 +427,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         .resolve_storage_key(&args.main_module);
       let cache_storage_dir = maybe_storage_key.map(|key| {
         // TODO(@satyarohith): storage quota management
-        get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
+        get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
       });
 
       // TODO(bartlomieju): this is cruft, update FeatureChecker to spit out
@@ -568,10 +570,12 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     mode: WorkerExecutionMode,
     permissions: PermissionsContainer,
     main_module: Url,
+    preload_modules: Vec<Url>,
   ) -> Result<LibMainWorker, CoreError> {
     self.create_custom_worker(
       mode,
       main_module,
+      preload_modules,
       permissions,
       vec![],
       Default::default(),
@@ -580,10 +584,12 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
   }
 
   #[allow(clippy::result_large_err)]
+  #[allow(clippy::too_many_arguments)]
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
     main_module: Url,
+    preload_modules: Vec<Url>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
@@ -612,11 +618,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           .origin_data_folder_path
           .as_ref()
           .unwrap() // must be set if storage key resolver returns a value
-          .join(checksum::gen(&[key.as_bytes()]))
+          .join(checksum::r#gen(&[key.as_bytes()]))
       });
     let cache_storage_dir = maybe_storage_key.map(|key| {
       // TODO(@satyarohith): storage quota management
-      get_cache_storage_dir().join(checksum::gen(&[key.as_bytes()]))
+      get_cache_storage_dir().join(checksum::r#gen(&[key.as_bytes()]))
     });
 
     let services = WorkerServiceOptions {
@@ -700,6 +706,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 
     Ok(LibMainWorker {
       main_module,
+      preload_modules,
       worker,
     })
   }
@@ -786,6 +793,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 
 pub struct LibMainWorker {
   main_module: Url,
+  preload_modules: Vec<Url>,
   worker: MainWorker,
 }
 
@@ -847,8 +855,20 @@ impl LibMainWorker {
     self.worker.evaluate_module(id).await
   }
 
+  pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
+    for preload_module_url in self.preload_modules.iter() {
+      let id = self.worker.preload_side_module(preload_module_url).await?;
+      self.worker.evaluate_module(id).await?;
+      self.worker.run_event_loop(false).await?;
+    }
+    Ok(())
+  }
+
   pub async fn run(&mut self) -> Result<i32, CoreError> {
     log::debug!("main_module {}", self.main_module);
+
+    // Run preload modules first if they were defined
+    self.execute_preload_modules().await?;
 
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;

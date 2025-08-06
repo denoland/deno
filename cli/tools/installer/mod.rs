@@ -12,13 +12,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_lib::args::CaData;
+use deno_path_util::resolve_url_or_path;
 use deno_semver::npm::NpmPackageReqReference;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -26,7 +26,6 @@ use regex::Regex;
 use regex::RegexBuilder;
 
 pub use self::bin_name_resolver::BinNameResolver;
-use crate::args::resolve_no_prompt;
 use crate::args::AddFlags;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
@@ -36,9 +35,10 @@ use crate::args::InstallFlagsLocal;
 use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
+use crate::args::resolve_no_prompt;
 use crate::factory::CliFactory;
-use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
+use crate::file_fetcher::create_cli_file_fetcher;
 use crate::graph_container::ModuleGraphContainer;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
@@ -288,7 +288,12 @@ fn check_if_installs_a_single_package_globally(
     return Ok(());
   };
   if matches!(url.scheme(), "http" | "https") {
-    bail!("Failed to install \"{}\" specifier. If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}", url.scheme(), url.as_str(), url.as_str());
+    bail!(
+      "Failed to install \"{}\" specifier. If you are trying to install {} globally, run again with `-g` flag:\n  deno install -g {}",
+      url.scheme(),
+      url.as_str(),
+      url.as_str()
+    );
   }
   Ok(())
 }
@@ -371,7 +376,10 @@ async fn install_global(
   if matches!(flags.config_flag, ConfigFlag::Discover)
     && cli_options.workspace().deno_jsons().next().is_some()
   {
-    log::warn!("{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.", crate::colors::yellow("Warning"));
+    log::warn!(
+      "{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.",
+      crate::colors::yellow("Warning")
+    );
   }
 
   let bin_name_resolver = factory.bin_name_resolver()?;
@@ -464,11 +472,13 @@ async fn resolve_shim_data(
 
   let name = match name {
     Some(name) => name,
-    None => return Err(anyhow!(
-      "An executable name was not provided. One could not be inferred from the URL. Aborting.\n  {} {}",
-      deno_runtime::colors::cyan("hint:"),
-      "provide one with the `--name` flag"
-    )),
+    None => {
+      return Err(anyhow!(
+        "An executable name was not provided. One could not be inferred from the URL. Aborting.\n  {} {}",
+        deno_runtime::colors::cyan("hint:"),
+        "provide one with the `--name` flag"
+      ));
+    }
   };
 
   validate_name(name.as_str())?;
@@ -606,7 +616,7 @@ async fn resolve_shim_data(
     }
   }
 
-  executable_args.push(module_url.to_string());
+  executable_args.push(module_url.into());
   executable_args.extend_from_slice(&install_flags_global.args);
 
   Ok(ShimData {
@@ -655,8 +665,8 @@ mod tests {
   use std::process::Command;
 
   use deno_lib::args::UnstableConfig;
-  use test_util::testdata_path;
   use test_util::TempDir;
+  use test_util::testdata_path;
 
   use super::*;
   use crate::args::ConfigFlag;
@@ -720,8 +730,11 @@ mod tests {
         r#""run" "--no-config" "http://localhost:4545/echo_server.ts""#
       ));
     } else {
-      assert!(content
-        .contains(r#"run --no-config 'http://localhost:4545/echo_server.ts'"#));
+      assert!(
+        content.contains(
+          r#"run --no-config 'http://localhost:4545/echo_server.ts'"#
+        )
+      );
     }
   }
 
@@ -733,7 +746,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -755,7 +768,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -783,7 +796,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -811,7 +824,7 @@ mod tests {
         module_url: "http://localhost:4545/subdir/main.ts".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -835,7 +848,7 @@ mod tests {
           .to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -861,7 +874,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -892,7 +905,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec!["--foobar".to_string()],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -928,7 +941,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -960,7 +973,7 @@ mod tests {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
         name: Some("echo_test".to_string()),
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -993,7 +1006,7 @@ mod tests {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(temp_dir.to_string_lossy().to_string()),
+        root: Some(temp_dir.to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -1030,7 +1043,7 @@ mod tests {
         module_url: "npm:cowsay".to_string(),
         args: vec![],
         name: None,
-        root: Some(env::temp_dir().to_string_lossy().to_string()),
+        root: Some(env::temp_dir().to_string_lossy().into_owned()),
         force: false,
       },
     )
@@ -1120,10 +1133,12 @@ mod tests {
     )
     .await;
     assert!(no_force_result.is_err());
-    assert!(no_force_result
-      .unwrap_err()
-      .to_string()
-      .contains("Existing installation found"));
+    assert!(
+      no_force_result
+        .unwrap_err()
+        .to_string()
+        .contains("Existing installation found")
+    );
     // Assert not modified
     let file_content = fs::read_to_string(&file_path).unwrap();
     assert!(file_content.contains("echo_server.ts"));

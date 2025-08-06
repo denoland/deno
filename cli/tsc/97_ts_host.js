@@ -134,10 +134,6 @@ export const SCRIPT_VERSION_CACHE = new Map();
 /** @type {Map<string, boolean>} */
 export const IS_NODE_SOURCE_FILE_CACHE = new Map();
 
-// Maps asset specifiers to the first scope that the asset was loaded into.
-/** @type {Map<string, string | null>} */
-export const ASSET_SCOPES = new Map();
-
 /** @type {number | null} */
 let projectVersionCache = null;
 export const PROJECT_VERSION_CACHE = {
@@ -157,11 +153,11 @@ export const LAST_REQUEST_METHOD = {
 };
 
 /** @type {string | null} */
-let lastRequestScope = null;
-export const LAST_REQUEST_SCOPE = {
-  get: () => lastRequestScope,
-  set: (scope) => {
-    lastRequestScope = scope;
+let lastRequestCompilerOptionsKey = null;
+export const LAST_REQUEST_COMPILER_OPTIONS_KEY = {
+  get: () => lastRequestCompilerOptionsKey,
+  set: (key) => {
+    lastRequestCompilerOptionsKey = key;
   },
 };
 
@@ -379,15 +375,13 @@ class CancellationToken {
  *    ls: ts.LanguageService & { [k:string]: any },
  *    compilerOptions: ts.CompilerOptions,
  *  }} LanguageServiceEntry */
-/** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
+/** @type {{ byCompilerOptionsKey: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
 export const LANGUAGE_SERVICE_ENTRIES = {
-  // @ts-ignore Will be set later.
-  unscoped: null,
-  byScope: new Map(),
+  byCompilerOptionsKey: new Map(),
   byNotebookUri: new Map(),
 };
 
-/** @type {{ unscoped: string[], byScope: Map<string, string[]>, byNotebookUri: Map<string, string[]> } | null} */
+/** @type {{ byCompilerOptionsKey: Map<string, string[]>, byNotebookUri: Map<string, string[]> } | null} */
 let SCRIPT_NAMES_CACHE = null;
 
 export function clearScriptNamesCache() {
@@ -606,23 +600,13 @@ const hostImpl = {
   ) {
     const specifiers = moduleLiterals.map((literal) => {
       const rawKind = getModuleLiteralImportKind(literal);
+      let lookupSpecifier = literal.text;
       if (rawKind != null) {
-        // hack to get the specifier keyed differently until
-        // https://github.com/microsoft/TypeScript/issues/61941 is resolved
-        if (!literal.text.includes("?")) {
-          literal.text += `?${rawKind}`;
-        } else if (
-          !literal.text.includes(`?${rawKind}`) &&
-          !literal.text.includes(`&${rawKind}`)
-        ) {
-          literal.text += `&${rawKind}`;
+        if ((/** @type any */ (literal)).__originalText == null) {
+          (/** @type any */ (literal)).__originalText = literal.text;
+          literal.text = appendRawImportFragment(literal.text, rawKind);
         }
-        return [
-          false,
-          rawKind === "text"
-            ? "asset:///text_import.d.ts"
-            : "asset:///bytes_import.d.ts",
-        ];
+        lookupSpecifier = (/** @type any */ (literal)).__originalText;
       }
       return [
         ts.getModeForUsageLocation(
@@ -630,7 +614,7 @@ const hostImpl = {
           literal,
           compilerOptions,
         ) === ts.ModuleKind.CommonJS,
-        literal.text,
+        lookupSpecifier,
       ];
     });
     if (logDebug) {
@@ -645,17 +629,29 @@ const hostImpl = {
     );
     if (resolved) {
       /** @type {Array<ts.ResolvedModuleWithFailedLookupLocations>} */
-      const result = resolved.map((item) => {
-        if (item && item[1]) {
-          const [resolvedFileName, extension] = item;
-          return {
-            resolvedModule: {
+      const result = resolved.map((item, i) => {
+        if (item) {
+          let [resolvedFileName, extension] = item;
+          // hack to get the specifier keyed differently until
+          // https://github.com/microsoft/TypeScript/issues/61941 is resolved
+          const rawKind = getModuleLiteralImportKind(moduleLiterals[i]);
+          if (rawKind != null) {
+            resolvedFileName = appendRawImportFragment(
               resolvedFileName,
-              extension,
-              // todo(dsherret): we should probably be setting this
-              isExternalLibraryImport: false,
-            },
-          };
+              rawKind,
+            );
+            extension = ts.Extension.Ts;
+          }
+          if (extension) {
+            return {
+              resolvedModule: {
+                resolvedFileName,
+                extension,
+                // todo(dsherret): we should probably be setting this
+                isExternalLibraryImport: false,
+              },
+            };
+          }
         }
         return {
           resolvedModule: undefined,
@@ -676,33 +672,44 @@ const hostImpl = {
     if (logDebug) {
       debug("host.getCompilationSettings()");
     }
-    const lastRequestScope = LAST_REQUEST_SCOPE.get();
-    return (lastRequestScope
-      ? LANGUAGE_SERVICE_ENTRIES.byScope.get(lastRequestScope)
-        ?.compilerOptions
-      : null) ?? LANGUAGE_SERVICE_ENTRIES.unscoped.compilerOptions;
+    const lastRequestCompilerOptionsKey = LAST_REQUEST_COMPILER_OPTIONS_KEY
+      .get();
+    if (lastRequestCompilerOptionsKey == null) {
+      throw new Error(`No compiler options key was set.`);
+    }
+    const compilerOptions = LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(
+      lastRequestCompilerOptionsKey,
+    )?.compilerOptions;
+    if (!compilerOptions) {
+      throw new Error(
+        `Couldn't find language service entry for key: ${lastRequestCompilerOptionsKey}`,
+      );
+    }
+    return compilerOptions;
   },
   getScriptFileNames() {
     if (logDebug) {
       debug("host.getScriptFileNames()");
     }
     if (!SCRIPT_NAMES_CACHE) {
-      const { unscoped, byScope, byNotebookUri } = ops.op_script_names();
+      const { byCompilerOptionsKey, byNotebookUri } = ops.op_script_names();
       SCRIPT_NAMES_CACHE = {
-        unscoped,
-        byScope: new Map(Object.entries(byScope)),
+        byCompilerOptionsKey: new Map(Object.entries(byCompilerOptionsKey)),
         byNotebookUri: new Map(Object.entries(byNotebookUri)),
       };
     }
-    const lastRequestScope = LAST_REQUEST_SCOPE.get();
+    const lastRequestCompilerOptionsKey = LAST_REQUEST_COMPILER_OPTIONS_KEY
+      .get();
     const lastRequestNotebookUri = LAST_REQUEST_NOTEBOOK_URI.get();
     return (lastRequestNotebookUri
       ? SCRIPT_NAMES_CACHE.byNotebookUri.get(lastRequestNotebookUri)
       : null) ??
-      (lastRequestScope
-        ? SCRIPT_NAMES_CACHE.byScope.get(lastRequestScope)
+      (lastRequestCompilerOptionsKey
+        ? SCRIPT_NAMES_CACHE.byCompilerOptionsKey.get(
+          lastRequestCompilerOptionsKey,
+        )
         : null) ??
-      SCRIPT_NAMES_CACHE.unscoped;
+      [];
   },
   getScriptVersion(specifier) {
     if (logDebug) {
@@ -730,9 +737,6 @@ const hostImpl = {
         ts.ScriptTarget.ESNext,
       );
       if (sourceFile) {
-        if (!ASSET_SCOPES.has(specifier)) {
-          ASSET_SCOPES.set(specifier, LAST_REQUEST_SCOPE.get());
-        }
         // This case only occurs for assets.
         return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
@@ -988,6 +992,24 @@ function getModuleLiteralImportKind(node) {
   } else {
     return undefined;
   }
+}
+
+/**
+ * @param {string} specifier
+ * @param {"bytes" | "text"} rawKind
+ */
+function appendRawImportFragment(specifier, rawKind) {
+  const fragmentIndex = specifier.indexOf("#");
+  if (fragmentIndex === -1) {
+    specifier += `#denoRawImport=${rawKind}.ts`;
+  } else if (
+    !specifier.substring(fragmentIndex).includes(
+      `denoRawImport=${rawKind}.ts`,
+    )
+  ) {
+    specifier += `&denoRawImport=${rawKind}.ts`;
+  }
+  return specifier;
 }
 
 /** @param {ts.ImportAttribute} node */

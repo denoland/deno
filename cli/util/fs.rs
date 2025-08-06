@@ -10,9 +10,9 @@ use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::ModuleSpecifier;
 
 use crate::sys::CliSys;
 
@@ -164,29 +164,11 @@ pub fn specifier_from_file_path(
 
 #[cfg(test)]
 mod tests {
-  use deno_path_util::normalize_path;
   use pretty_assertions::assert_eq;
   use test_util::PathRef;
   use test_util::TempDir;
 
   use super::*;
-
-  #[test]
-  fn test_normalize_path() {
-    assert_eq!(normalize_path(Path::new("a/../b")), PathBuf::from("b"));
-    assert_eq!(normalize_path(Path::new("a/./b/")), PathBuf::from("a/b/"));
-    assert_eq!(
-      normalize_path(Path::new("a/./b/../c")),
-      PathBuf::from("a/c")
-    );
-
-    if cfg!(windows) {
-      assert_eq!(
-        normalize_path(Path::new("C:\\a\\.\\b\\..\\c")),
-        PathBuf::from("C:\\a\\c")
-      );
-    }
-  }
 
   #[test]
   fn test_collect_specifiers() {
@@ -288,14 +270,14 @@ mod tests {
     let result = collect_specifiers(
       FilePatterns {
         base: root_dir_path.to_path_buf(),
-        include: Some(PathOrPatternSet::new(vec![PathOrPattern::new(
-          &format!(
+        include: Some(PathOrPatternSet::new(vec![
+          PathOrPattern::new(&format!(
             "{}{}",
             scheme,
             root_dir_path.join("child").to_string().replace('\\', "/")
-          ),
-        )
-        .unwrap()])),
+          ))
+          .unwrap(),
+        ])),
         exclude: Default::default(),
       },
       None,

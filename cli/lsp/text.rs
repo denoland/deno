@@ -1,8 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::error::AnyError;
-use dissimilar::diff;
 use dissimilar::Chunk;
+use dissimilar::diff;
 use text_size::TextRange;
 use text_size::TextSize;
 use tower_lsp::jsonrpc;

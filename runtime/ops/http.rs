@@ -2,10 +2,10 @@
 
 use std::rc::Rc;
 
-use deno_core::error::ResourceError;
-use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
+use deno_core::op2;
 use deno_http::http_create_conn_resource;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
@@ -74,8 +74,7 @@ fn op_http_start(
     // See also: https://github.com/denoland/deno/pull/16242
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| HttpStartError::TlsStreamInUse)?;
-    let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.unsplit(write_half);
+    let tls_stream = resource.into_tls_stream();
     let addr = tls_stream.local_addr()?;
     return Ok(http_create_conn_resource(state, tls_stream, addr, "https"));
   }

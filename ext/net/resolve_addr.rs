@@ -19,7 +19,7 @@ pub async fn resolve_addr(
 pub fn resolve_addr_sync(
   hostname: &str,
   port: u16,
-) -> Result<impl Iterator<Item = SocketAddr>, std::io::Error> {
+) -> Result<impl Iterator<Item = SocketAddr> + use<>, std::io::Error> {
   let addr_port_pair = make_addr_port_pair(hostname, port);
   let result = addr_port_pair.to_socket_addrs()?;
   Ok(result)

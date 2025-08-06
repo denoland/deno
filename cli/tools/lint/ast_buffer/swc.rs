@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_ast::ParsedSource;
 use deno_ast::swc::ast::AssignTarget;
 use deno_ast::swc::ast::AssignTargetPat;
 use deno_ast::swc::ast::BindingIdent;
@@ -87,7 +88,6 @@ use deno_ast::view::TsTypeOperatorOp;
 use deno_ast::view::UnaryOp;
 use deno_ast::view::UpdateOp;
 use deno_ast::view::VarDeclKind;
-use deno_ast::ParsedSource;
 
 use super::buffer::AstBufSerializer;
 use super::buffer::CommentKind;

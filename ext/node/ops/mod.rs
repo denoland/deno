@@ -2,6 +2,7 @@
 
 pub mod blocklist;
 pub mod buffer;
+pub mod constant;
 pub mod crypto;
 pub mod dns;
 pub mod fs;

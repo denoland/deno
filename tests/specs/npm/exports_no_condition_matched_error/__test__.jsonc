@@ -1,0 +1,6 @@
+// Test for issue #29374: ensure correct error message when no package.json#exports condition matches
+{
+  "args": "run main.ts",
+  "exitCode": 1,
+  "output": "main.out"
+}

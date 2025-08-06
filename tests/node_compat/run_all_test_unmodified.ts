@@ -21,11 +21,12 @@ import {
   TEST_ARGS,
   usesNodeTestModule,
 } from "./common.ts";
+import { generateTestSerialId } from "./test.ts";
 
-// The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
-const TIMEOUT = 2000;
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
+// The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
+const TIMEOUT = IS_CI ? 10_000 : 5000;
 
 // The metadata of the test report
 export type TestReportMetadata = {
@@ -156,12 +157,19 @@ function getFlags(source: string): [string[], string[]] {
 /**
  * Run a single node test file. Retries 3 times on WouldBlock error.
  *
- * @param testPath Relative path to the test file
+ * @param testPath Relative path from test/ dir of Node.js (e.g. "parallel/test-assert.js").
  */
-async function runSingle(
+export async function runSingle(
   testPath: string,
-  retry = 0,
+  {
+    flaky = false,
+    retry = 0,
+  }: {
+    flaky?: boolean;
+    retry?: number;
+  },
 ): Promise<NodeTestFileReport> {
+  const testSerialId = generateTestSerialId();
   let cmd: Deno.ChildProcess | undefined;
   const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
   let usesNodeTest = false;
@@ -183,6 +191,7 @@ async function runSingle(
         NODE_SKIP_FLAG_CHECK: "1",
         NODE_OPTIONS: nodeOptions.join(" "),
         NO_COLOR: "1",
+        TEST_SERIAL_ID: String(testSerialId),
       },
       stdout: "piped",
       stderr: "piped",
@@ -217,7 +226,10 @@ async function runSingle(
       };
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
-      return runSingle(testPath, retry + 1);
+      return runSingle(testPath, { flaky, retry: retry + 1 });
+    } else if (flaky && retry < 5) {
+      await new Promise((resolve) => setTimeout(resolve, 100 * retry));
+      return runSingle(testPath, { flaky, retry: retry + 1 });
     } else {
       return {
         result: NodeTestFileResult.FAIL,
@@ -309,7 +321,7 @@ async function main() {
 
   async function run(testPath: string) {
     const num = String(++i).padStart(4, " ");
-    const result = await runSingle(testPath);
+    const result = await runSingle(testPath, {});
     reports[testPath] = result;
     if (result.result === NodeTestFileResult.PASS) {
       console.log(`${num} %cPASS`, "color: green", testPath);
@@ -334,14 +346,14 @@ async function main() {
         return true;
       }
 
-      reports[term] = { result: NodeTestFileResult.SKIP };
+      reports[term] = { result: NodeTestFileResult.SKIP, usesNodeTest: false };
       return false;
     });
     parallel = parallel.filter((term) => {
       if (term.includes(filterTerm)) {
         return true;
       }
-      reports[term] = { result: NodeTestFileResult.SKIP };
+      reports[term] = { result: NodeTestFileResult.SKIP, usesNodeTest: false };
       return false;
     });
     console.log(
@@ -356,7 +368,11 @@ async function main() {
   }
   // Runs parallel tests
   for await (
-    const _ of pooledMap(navigator.hardwareConcurrency, parallel, run)
+    const _ of pooledMap(
+      Math.max(1, navigator.hardwareConcurrency - 1),
+      parallel,
+      run,
+    )
   ) {
     // pass
   }

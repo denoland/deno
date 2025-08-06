@@ -1,0 +1,5 @@
+// node_modules/package/browser.js
+var browser_default = "browser";
+
+// main.ts
+console.log(browser_default, browser_default);

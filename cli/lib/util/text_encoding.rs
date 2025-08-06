@@ -3,6 +3,11 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+pub fn is_valid_utf8(bytes: &[u8]) -> bool {
+  matches!(String::from_utf8_lossy(bytes), Cow::Borrowed(_))
+}
+
+// todo(https://github.com/rust-lang/rust/issues/129436): remove once stabilized
 #[inline(always)]
 pub fn from_utf8_lossy_owned(bytes: Vec<u8>) -> String {
   match String::from_utf8_lossy(&bytes) {

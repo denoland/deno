@@ -7,24 +7,24 @@ use std::sync::Arc;
 use deno_ast::diagnostics::Diagnostic;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_doc as doc;
 use deno_doc::html::UrlResolveKind;
 use deno_doc::html::UsageComposer;
 use deno_doc::html::UsageComposerEntry;
-use deno_graph::analysis::ModuleAnalyzer;
-use deno_graph::ast::EsParser;
-use deno_graph::source::NullFileSystem;
 use deno_graph::CheckJsOption;
 use deno_graph::GraphKind;
 use deno_graph::ModuleSpecifier;
+use deno_graph::analysis::ModuleAnalyzer;
+use deno_graph::ast::EsParser;
+use deno_graph::source::NullFileSystem;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm_installer::graph::NpmCachingStrategy;
-use doc::html::ShortPath;
 use doc::DocDiagnostic;
+use doc::html::ShortPath;
 use indexmap::IndexMap;
 
 use crate::args::DocFlags;
@@ -34,9 +34,9 @@ use crate::args::Flags;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
+use crate::graph_util::GraphWalkErrorsOptions;
 use crate::graph_util::graph_exit_integrity_errors;
 use crate::graph_util::graph_walk_errors;
-use crate::graph_util::GraphWalkErrorsOptions;
 use crate::sys::CliSys;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
@@ -109,7 +109,7 @@ pub async fn doc(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let module_info_cache = factory.module_info_cache()?;
-  let parsed_source_cache = factory.parsed_source_cache();
+  let parsed_source_cache = factory.parsed_source_cache()?;
   let capturing_parser = parsed_source_cache.as_capturing_parser();
   let analyzer = module_info_cache.as_module_analyzer();
 
@@ -157,7 +157,6 @@ pub async fn doc(
           check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
           allow_unknown_media_types: false,
-          ignore_graph_errors: true,
           allow_unknown_jsr_exports: false,
         },
       );
@@ -307,7 +306,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
 
     if url.domain() == Some("deno.land") {
       url.set_query(Some(&format!("s={}", symbol.join("."))));
-      return Some(url.to_string());
+      return Some(url.into());
     }
 
     None

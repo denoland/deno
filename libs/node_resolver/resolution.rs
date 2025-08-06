@@ -5,8 +5,8 @@ use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
 
-use anyhow::bail;
 use anyhow::Error as AnyError;
+use anyhow::bail;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
@@ -20,15 +20,18 @@ use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
+use crate::InNpmPackageChecker;
+use crate::IsBuiltInNodeModuleChecker;
+use crate::NpmPackageFolderResolver;
+use crate::PackageJsonResolverRc;
+use crate::PathClean;
 use crate::cache::NodeResolutionSys;
 use crate::errors;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
-use crate::errors::FinalizeResolutionErrorKind;
 use crate::errors::InvalidModuleSpecifierError;
 use crate::errors::InvalidPackageTargetError;
 use crate::errors::LegacyResolveError;
-use crate::errors::LegacyResolveErrorKind;
 use crate::errors::ModuleNotFoundError;
 use crate::errors::NodeJsErrorCode;
 use crate::errors::NodeJsErrorCoded;
@@ -40,6 +43,7 @@ use crate::errors::PackageImportsResolveError;
 use crate::errors::PackageImportsResolveErrorKind;
 use crate::errors::PackagePathNotExportedError;
 use crate::errors::PackageResolveError;
+use crate::errors::PackageSubpathFromDenoModuleResolveError;
 use crate::errors::PackageSubpathResolveError;
 use crate::errors::PackageSubpathResolveErrorKind;
 use crate::errors::PackageTargetNotFoundError;
@@ -54,11 +58,6 @@ use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::path::UrlOrPath;
 use crate::path::UrlOrPathRef;
-use crate::InNpmPackageChecker;
-use crate::IsBuiltInNodeModuleChecker;
-use crate::NpmPackageFolderResolver;
-use crate::PackageJsonResolverRc;
-use crate::PathClean;
 
 pub static IMPORT_CONDITIONS: &[Cow<'static, str>] = &[
   Cow::Borrowed("deno"),
@@ -95,12 +94,12 @@ impl ConditionResolver {
       override_default: Option<Vec<Cow<'static, str>>>,
       default_conditions: &'static [Cow<'static, str>],
     ) -> Cow<'static, [Cow<'static, str>]> {
+      let default_conditions = override_default
+        .map(Cow::Owned)
+        .unwrap_or(Cow::Borrowed(default_conditions));
       if user_conditions.is_empty() {
-        Cow::Borrowed(default_conditions)
+        default_conditions
       } else {
-        let default_conditions = override_default
-          .map(Cow::Owned)
-          .unwrap_or(Cow::Borrowed(default_conditions));
         let mut new =
           Vec::with_capacity(user_conditions.len() + default_conditions.len());
         let mut append =
@@ -243,7 +242,7 @@ enum ResolvedMethod {
 #[derive(Debug, Default, Clone)]
 pub struct NodeResolverOptions {
   pub conditions: NodeConditionOptions,
-  pub prefer_browser_field: bool,
+  pub is_browser_platform: bool,
   pub bundle_mode: bool,
   /// TypeScript version to use for typesVersions resolution and
   /// `types@req` exports resolution.
@@ -292,11 +291,11 @@ pub struct NodeResolver<
 }
 
 impl<
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: NodeResolverSys,
-  >
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: NodeResolverSys,
+>
   NodeResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -318,10 +317,32 @@ impl<
       npm_pkg_folder_resolver,
       pkg_json_resolver,
       sys,
-      condition_resolver: ConditionResolver::new(options.conditions),
+      condition_resolver: ConditionResolver::new(NodeConditionOptions {
+        conditions: options.conditions.conditions,
+        import_conditions_override: options
+          .conditions
+          .import_conditions_override
+          .or_else(|| {
+            if options.is_browser_platform {
+              Some(vec![Cow::Borrowed("browser"), Cow::Borrowed("import")])
+            } else {
+              None
+            }
+          }),
+        require_conditions_override: options
+          .conditions
+          .require_conditions_override
+          .or_else(|| {
+            if options.is_browser_platform {
+              Some(vec![Cow::Borrowed("browser"), Cow::Borrowed("require")])
+            } else {
+              None
+            }
+          }),
+      }),
       resolution_config: ResolutionConfig {
         bundle_mode: options.bundle_mode,
-        prefer_browser_field: options.prefer_browser_field,
+        prefer_browser_field: options.is_browser_platform,
         typescript_version: options.typescript_version,
       },
     }
@@ -403,6 +424,7 @@ impl<
       url,
       resolved_kind,
       resolution_mode,
+      conditions,
       resolution_kind,
       Some(&referrer),
     )?;
@@ -479,6 +501,7 @@ impl<
     resolved: MaybeTypesResolvedUrl,
     resolved_method: ResolvedMethod,
     resolution_mode: ResolutionMode,
+    conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
     maybe_referrer: Option<&UrlOrPathRef>,
   ) -> Result<UrlOrPath, FinalizeResolutionError> {
@@ -539,7 +562,9 @@ impl<
     let maybe_file_type = self.sys.get_file_type(&path);
     match maybe_file_type {
       Ok(FileType::Dir) => {
-        if resolution_mode == ResolutionMode::Import {
+        if resolution_mode == ResolutionMode::Import
+          && !self.resolution_config.bundle_mode
+        {
           let suggested_file_name = ["index.mjs", "index.js", "index.cjs"]
             .into_iter()
             .find(|e| self.sys.is_file(&path.join(e)));
@@ -557,23 +582,22 @@ impl<
           if self.sys.is_file(&path_with_ext) {
             Ok(UrlOrPath::Path(path_with_ext))
           } else {
-            Ok(
-              self
-                .legacy_index_resolve(
-                  &path,
-                  maybe_referrer,
-                  resolution_mode,
-                  resolution_kind,
-                )
-                .map(|url| url.0.into_url_or_path())
-                .map_err(|err| match err.into_kind() {
-                  LegacyResolveErrorKind::TypesNotFound(err) => {
-                    FinalizeResolutionErrorKind::TypesNotFound(err)
-                  }
-                  LegacyResolveErrorKind::ModuleNotFound(err) => {
-                    FinalizeResolutionErrorKind::ModuleNotFound(err)
-                  }
-                })?,
+            let (resolved_url, resolved_method) = self
+              .resolve_package_dir_subpath(
+                &path,
+                ".",
+                maybe_referrer,
+                resolution_mode,
+                conditions,
+                resolution_kind,
+              )?;
+            self.finalize_resolution(
+              resolved_url,
+              resolved_method,
+              resolution_mode,
+              conditions,
+              resolution_kind,
+              maybe_referrer,
             )
           }
         }
@@ -588,7 +612,8 @@ impl<
       }
       _ => {
         if let Err(e) = maybe_file_type {
-          if resolution_mode == ResolutionMode::Require
+          if (resolution_mode == ResolutionMode::Require
+            || self.resolution_config.bundle_mode)
             && e.kind() == std::io::ErrorKind::NotFound
           {
             let file_with_ext = with_known_extension(&path, "js");
@@ -646,25 +671,27 @@ impl<
     maybe_referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-  ) -> Result<UrlOrPath, PackageSubpathResolveError> {
+  ) -> Result<UrlOrPath, PackageSubpathFromDenoModuleResolveError> {
     // todo(dsherret): don't allocate a string here (maybe use an
     // enum that says the subpath is not prefixed with a ./)
     let package_subpath = package_subpath
-      .map(|s| format!("./{s}"))
-      .unwrap_or_else(|| ".".to_string());
+      .map(|s| Cow::Owned(format!("./{s}")))
+      .unwrap_or_else(|| Cow::Borrowed("."));
     let maybe_referrer = maybe_referrer.map(UrlOrPathRef::from_url);
+    let conditions = self.condition_resolver.resolve(resolution_mode);
     let (resolved_url, resolved_method) = self.resolve_package_dir_subpath(
       package_dir,
       &package_subpath,
       maybe_referrer.as_ref(),
       resolution_mode,
-      self.condition_resolver.resolve(resolution_mode),
+      conditions,
       resolution_kind,
     )?;
     let url_or_path = self.finalize_resolution(
       resolved_url,
       resolved_method,
       resolution_mode,
+      conditions,
       resolution_kind,
       maybe_referrer.as_ref(),
     )?;
@@ -874,13 +901,12 @@ impl<
   }
 
   #[allow(clippy::too_many_arguments)]
-  pub fn package_imports_resolve(
+  pub fn resolve_package_import(
     &self,
     name: &str,
     maybe_referrer: Option<&UrlOrPathRef>,
-    resolution_mode: ResolutionMode,
     referrer_pkg_json: Option<&PackageJson>,
-    conditions: &[Cow<'static, str>],
+    resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
   ) -> Result<UrlOrPath, PackageImportsResolveError> {
     self
@@ -889,7 +915,7 @@ impl<
         maybe_referrer,
         resolution_mode,
         referrer_pkg_json,
-        conditions,
+        self.condition_resolver.resolve(resolution_mode),
         resolution_kind,
       )
       .map(|url| url.0.into_url_or_path())
@@ -917,68 +943,22 @@ impl<
       );
     }
 
-    let mut package_json_path = None;
     if let Some(pkg_json) = &referrer_pkg_json {
-      package_json_path = Some(pkg_json.path.clone());
-      if let Some(imports) = &pkg_json.imports {
-        if imports.contains_key(name) && !name.contains('*') {
-          let target = imports.get(name).unwrap();
-          let maybe_resolved = self.resolve_package_target(
-            package_json_path.as_ref().unwrap(),
-            target,
-            "",
-            name,
-            maybe_referrer,
-            resolution_mode,
-            false,
-            true,
-            conditions,
-            resolution_kind,
-          )?;
-          if let Some(resolved) = maybe_resolved {
-            return Ok(resolved);
-          }
-        } else {
-          let mut best_match = "";
-          let mut best_match_subpath = None;
-          for key in imports.keys() {
-            let pattern_index = key.find('*');
-            if let Some(pattern_index) = pattern_index {
-              let key_sub = &key[0..pattern_index];
-              if name.starts_with(key_sub) {
-                let pattern_trailer = &key[pattern_index + 1..];
-                if name.len() > key.len()
-                  && name.ends_with(&pattern_trailer)
-                  && pattern_key_compare(best_match, key) == 1
-                  && key.rfind('*') == Some(pattern_index)
-                {
-                  best_match = key;
-                  best_match_subpath = Some(
-                    &name[pattern_index..(name.len() - pattern_trailer.len())],
-                  );
-                }
-              }
-            }
-          }
-
-          if !best_match.is_empty() {
-            let target = imports.get(best_match).unwrap();
-            let maybe_resolved = self.resolve_package_target(
-              package_json_path.as_ref().unwrap(),
-              target,
-              best_match_subpath.unwrap(),
-              best_match,
-              maybe_referrer,
-              resolution_mode,
-              true,
-              true,
-              conditions,
-              resolution_kind,
-            )?;
-            if let Some(resolved) = maybe_resolved {
-              return Ok(resolved);
-            }
-          }
+      if let Some(resolved_import) = resolve_pkg_json_import(pkg_json, name) {
+        let maybe_resolved = self.resolve_package_target(
+          &pkg_json.path,
+          resolved_import.target,
+          resolved_import.sub_path,
+          resolved_import.package_sub_path,
+          maybe_referrer,
+          resolution_mode,
+          resolved_import.is_pattern,
+          true,
+          conditions,
+          resolution_kind,
+        )?;
+        if let Some(resolved) = maybe_resolved {
+          return Ok(resolved);
         }
       }
     }
@@ -986,7 +966,7 @@ impl<
     Err(
       PackageImportNotDefinedError {
         name: name.to_string(),
-        package_json_path,
+        package_json_path: referrer_pkg_json.map(|p| p.path.clone()),
         maybe_referrer: maybe_referrer.map(|r| r.display()),
       }
       .into(),
@@ -1036,11 +1016,11 @@ impl<
           }
           Err(_) => {
             let export_target = if pattern {
-              pattern_re
-                .replace(target, |_caps: &regex::Captures| subpath)
-                .to_string()
+              pattern_re.replace(target, |_caps: &regex::Captures| subpath)
+            } else if subpath.is_empty() {
+              Cow::Borrowed(target)
             } else {
-              format!("{target}{subpath}")
+              Cow::Owned(format!("{target}{subpath}"))
             };
             let result = match self.package_resolve(
               &export_target,
@@ -1337,20 +1317,9 @@ impl<
           }
         }
       }
-    } else if target.is_null() {
-      return Ok(None);
     }
 
-    Err(
-      InvalidPackageTargetError {
-        pkg_json_path: package_json_path.to_path_buf(),
-        sub_path: package_subpath.to_string(),
-        target: target.to_string(),
-        is_import: internal,
-        maybe_referrer: maybe_referrer.map(|r| r.display()),
-      }
-      .into(),
-    )
+    Ok(None)
   }
 
   fn matches_types_key(&self, key: &str) -> bool {
@@ -2052,6 +2021,63 @@ impl<
   }
 }
 
+struct ResolvedPkgJsonImport<'a> {
+  pub target: &'a serde_json::Value,
+  pub sub_path: &'a str,
+  pub package_sub_path: &'a str,
+  pub is_pattern: bool,
+}
+
+fn resolve_pkg_json_import<'a>(
+  pkg_json: &'a PackageJson,
+  name: &'a str,
+) -> Option<ResolvedPkgJsonImport<'a>> {
+  let imports = pkg_json.imports.as_ref()?;
+  if let Some((name, target)) =
+    imports.get_key_value(name).filter(|_| !name.contains('*'))
+  {
+    Some(ResolvedPkgJsonImport {
+      target,
+      sub_path: "",
+      package_sub_path: name,
+      is_pattern: false,
+    })
+  } else {
+    let mut best_match: &'a str = "";
+    let mut best_match_subpath: &'a str = "";
+    for key in imports.keys() {
+      let pattern_index = key.find('*');
+      if let Some(pattern_index) = pattern_index {
+        let key_sub = &key[0..pattern_index];
+        if name.starts_with(key_sub) {
+          let pattern_trailer = &key[pattern_index + 1..];
+          if name.len() > key.len()
+            && name.ends_with(&pattern_trailer)
+            && pattern_key_compare(best_match, key) == 1
+            && key.rfind('*') == Some(pattern_index)
+          {
+            best_match = key;
+            best_match_subpath =
+              &name[pattern_index..(name.len() - pattern_trailer.len())];
+          }
+        }
+      }
+    }
+
+    if !best_match.is_empty() {
+      let target = imports.get(best_match).unwrap();
+      Some(ResolvedPkgJsonImport {
+        target,
+        sub_path: best_match_subpath,
+        package_sub_path: best_match,
+        is_pattern: true,
+      })
+    } else {
+      None
+    }
+  }
+}
+
 fn resolve_bin_entry_value<'a>(
   package_json: &'a PackageJson,
   bin_name: Option<&str>,
@@ -2407,9 +2433,9 @@ impl<'a, TSys: FsMetadata> TypesVersions<'a, TSys> {
 #[cfg(test)]
 mod tests {
   use serde_json::json;
-  use sys_traits::impls::InMemorySys;
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
+  use sys_traits::impls::InMemorySys;
 
   use super::*;
 
@@ -2552,7 +2578,7 @@ mod tests {
   }
 
   #[test]
-  fn test_parse_package_name() {
+  fn test_parse_npm_pkg_name() {
     let dummy_referrer = Url::parse("http://example.com").unwrap();
     let dummy_referrer = UrlOrPathRef::from_url(&dummy_referrer);
 
@@ -2584,7 +2610,7 @@ mod tests {
       ("test.d.mts", "js", "test.js"),
     ];
     for (path, ext, expected) in cases {
-      let actual = with_known_extension(&PathBuf::from(path), ext);
+      let actual = with_known_extension(Path::new(path), ext);
       assert_eq!(actual.to_string_lossy(), *expected);
     }
   }

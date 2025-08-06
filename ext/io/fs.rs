@@ -9,13 +9,14 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use deno_core::error::ResourceError;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
 use deno_error::JsErrorBox;
+use deno_permissions::PermissionCheckError;
 #[cfg(windows)]
 use deno_subprocess_windows::Stdio as StdStdio;
 use tokio::task::JoinError;
@@ -28,8 +29,8 @@ pub enum FsError {
   FileBusy,
   #[class(not_supported)]
   NotSupported,
-  #[class("NotCapable")]
-  NotCapable(&'static str),
+  #[class(inherit)]
+  PermissionCheck(PermissionCheckError),
 }
 
 impl std::fmt::Display for FsError {
@@ -38,9 +39,7 @@ impl std::fmt::Display for FsError {
       FsError::Io(err) => std::fmt::Display::fmt(err, f),
       FsError::FileBusy => f.write_str("file busy"),
       FsError::NotSupported => f.write_str("not supported"),
-      FsError::NotCapable(err) => {
-        f.write_str(&format!("requires {err} access"))
-      }
+      FsError::PermissionCheck(err) => std::fmt::Display::fmt(err, f),
     }
   }
 }
@@ -53,7 +52,7 @@ impl FsError {
       Self::Io(err) => err.kind(),
       Self::FileBusy => io::ErrorKind::Other,
       Self::NotSupported => io::ErrorKind::Other,
-      Self::NotCapable(_) => io::ErrorKind::Other,
+      Self::PermissionCheck(e) => e.kind(),
     }
   }
 
@@ -62,9 +61,7 @@ impl FsError {
       FsError::Io(err) => err,
       FsError::FileBusy => io::Error::new(self.kind(), "file busy"),
       FsError::NotSupported => io::Error::new(self.kind(), "not supported"),
-      FsError::NotCapable(err) => {
-        io::Error::new(self.kind(), format!("requires {err} access"))
-      }
+      FsError::PermissionCheck(err) => err.into_io_error(),
     }
   }
 }
@@ -78,6 +75,12 @@ impl From<io::Error> for FsError {
 impl From<io::ErrorKind> for FsError {
   fn from(err: io::ErrorKind) -> Self {
     Self::Io(err.into())
+  }
+}
+
+impl From<PermissionCheckError> for FsError {
+  fn from(err: PermissionCheckError) -> Self {
+    Self::PermissionCheck(err)
   }
 }
 

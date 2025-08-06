@@ -46,7 +46,9 @@ export function once(callback) {
 // In addition to being accessible through util.promisify.custom,
 // this symbol is registered globally and can be accessed in any environment as
 // Symbol.for('nodejs.util.promisify.custom').
-const kCustomPromisifiedSymbol = SymbolFor("nodejs.util.promisify.custom");
+export const kCustomPromisifiedSymbol = SymbolFor(
+  "nodejs.util.promisify.custom",
+);
 // This is an internal Node symbol used by functions returning multiple
 // arguments, e.g. ['bytesRead', 'buffer'] for fs.read().
 const kCustomPromisifyArgsSymbol = SymbolFor(
@@ -138,6 +140,8 @@ export function convertToValidSignal(signal) {
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
+export function deprecateInstantiation() {}
+
 export class WeakReference {
   #weak = null;
   #strong = null;
@@ -176,6 +180,7 @@ export default {
   convertToValidSignal,
   customInspectSymbol,
   customPromisifyArgs,
+  deprecateInstantiation,
   kEmptyObject,
   kEnumerableProperty,
   normalizeEncoding,

@@ -5,16 +5,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::rc::Weak;
 
+use deno_core::GarbageCollected;
+use deno_core::ToV8;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::v8_static_strings;
-use deno_core::GarbageCollected;
-use deno_core::ToV8;
 use rusqlite::ffi;
 
-use super::validators;
 use super::SqliteError;
+use super::validators;
 
 // ECMA-262, 15th edition, 21.1.2.6. Number.MAX_SAFE_INTEGER (2^53-1)
 const MAX_SAFE_JS_INTEGER: i64 = 9007199254740991;

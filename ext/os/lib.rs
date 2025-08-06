@@ -1,15 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
+use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::OpState;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
@@ -17,7 +18,6 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 
 mod ops;
-pub mod signal;
 pub mod sys_info;
 
 pub use ops::signal::SignalError;
@@ -42,7 +42,7 @@ impl ExitCode {
 }
 
 pub fn exit(code: i32) -> ! {
-  deno_telemetry::flush();
+  deno_signals::run_exit();
   #[allow(clippy::disallowed_methods)]
   std::process::exit(code);
 }
@@ -81,10 +81,6 @@ deno_core::extension!(
     if let Some(exit_code) = options.exit_code {
       state.put::<ExitCode>(exit_code);
     }
-    #[cfg(unix)]
-    {
-      state.put(ops::signal::SignalState::default());
-    }
   }
 );
 
@@ -118,16 +114,17 @@ pub enum OsError {
 fn op_exec_path() -> Result<String, OsError> {
   let current_exe = env::current_exe().unwrap();
   // normalize path so it doesn't include '.' or '..' components
-  let path = normalize_path(current_exe);
+  let path = normalize_path(Cow::Owned(current_exe));
 
   path
+    .into_owned()
     .into_os_string()
     .into_string()
     .map_err(OsError::InvalidUtf8)
 }
 
 fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
-  extern "C" {
+  unsafe extern "C" {
     #[cfg(unix)]
     fn tzset();
 
@@ -169,7 +166,10 @@ fn op_set_env(
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
 
-  env::set_var(key, value);
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    env::set_var(key, value)
+  };
   dt_change_notif(scope, key);
   Ok(())
 }
@@ -241,7 +241,11 @@ fn op_delete_env(
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
-  env::remove_var(key);
+
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    env::remove_var(key)
+  };
   Ok(())
 }
 
@@ -594,7 +598,7 @@ fn rss() -> u64 {
   let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
   // SAFETY: libc calls
   let r = unsafe {
-    extern "C" {
+    unsafe extern "C" {
       static mut mach_task_self_: std::ffi::c_uint;
     }
     libc::task_info(

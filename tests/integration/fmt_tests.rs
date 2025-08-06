@@ -3,11 +3,11 @@
 use serde_json::json;
 use test_util as util;
 use test_util::itest;
-use util::assert_contains;
-use util::assert_not_contains;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::assert_contains;
+use util::assert_not_contains;
 
 #[test]
 fn fmt_test() {
@@ -247,8 +247,12 @@ itest!(fmt_stdin {
 
 itest!(fmt_stdin_markdown {
   args: "fmt --ext=md -",
-  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"),
-  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"),
+  input: Some(
+    "# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"
+  ),
+  output_str: Some(
+    "# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"
+  ),
 });
 
 itest!(fmt_stdin_json {

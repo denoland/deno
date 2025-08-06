@@ -2,12 +2,6 @@
 
 use std::sync::Arc;
 
-use deno_ast::diagnostics::Diagnostic;
-use deno_ast::swc::ast as swc_ast;
-use deno_ast::swc::common::comments::CommentKind;
-use deno_ast::swc::ecma_visit::noop_visit_type;
-use deno_ast::swc::ecma_visit::Visit;
-use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
@@ -16,22 +10,29 @@ use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_ast::diagnostics::Diagnostic;
+use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::comments::CommentKind;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
+use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_core::InspectorPostMessageError;
+use deno_core::LocalInspectorSession;
+use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
-use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
-use deno_core::LocalInspectorSession;
-use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
-use deno_graph::analysis::SpecifierWithRange;
 use deno_graph::Position;
 use deno_graph::PositionRange;
+use deno_graph::analysis::SpecifierWithRange;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_runtime::worker::MainWorker;
@@ -50,15 +51,15 @@ use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmInstaller;
 use crate::resolver::CliResolver;
+use crate::tools::test::TestEvent;
+use crate::tools::test::TestEventReceiver;
+use crate::tools::test::TestFailureFormatOptions;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::reporters::TestReporter;
 use crate::tools::test::run_tests_for_worker;
 use crate::tools::test::send_test_event;
 use crate::tools::test::worker_has_tests;
-use crate::tools::test::TestEvent;
-use crate::tools::test::TestEventReceiver;
-use crate::tools::test::TestFailureFormatOptions;
 
 fn comment_source_to_position_range(
   comment_start: SourcePos,
@@ -86,18 +87,20 @@ fn comment_source_to_position_range(
 fn get_prelude() -> String {
   r#"(() => {
   const repl_internal = {
-      lastEvalResult: undefined,
-      lastThrownError: undefined,
-      inspectArgs: Deno[Deno.internal].inspectArgs,
-      noColor: Deno.noColor,
-      get closed() {
-        try {
-          return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
-        } catch {
-          return false;
-        }
+    String,
+    lastEvalResult: undefined,
+    lastThrownError: undefined,
+    inspectArgs: Deno[Deno.internal].inspectArgs,
+    noColor: Deno.noColor,
+    get closed() {
+      try {
+        return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+      } catch {
+        return false;
       }
     }
+  };
+
   Object.defineProperty(globalThis, "_", {
     configurable: true,
     get: () => repl_internal.lastEvalResult,
@@ -129,7 +132,7 @@ fn get_prelude() -> String {
 
   globalThis.clear = console.clear.bind(console);
 
-  return repl_internal
+  return repl_internal;
 })()"#.to_string()
 }
 
@@ -226,13 +229,15 @@ impl ReplSession {
         let execution_context_created = serde_json::from_value::<
           cdp::ExecutionContextCreated,
         >(notification.params)?;
-        assert!(execution_context_created
-          .context
-          .aux_data
-          .get("isDefault")
-          .unwrap()
-          .as_bool()
-          .unwrap());
+        assert!(
+          execution_context_created
+            .context
+            .aux_data
+            .get("isDefault")
+            .unwrap()
+            .as_bool()
+            .unwrap()
+        );
         context_id = execution_context_created.context.id;
         break;
       }
@@ -320,7 +325,7 @@ impl ReplSession {
     &mut self,
     method: &str,
     params: Option<T>,
-  ) -> Result<Value, CoreError> {
+  ) -> Result<Value, InspectorPostMessageError> {
     self
       .worker
       .js_runtime
@@ -485,7 +490,7 @@ impl ReplSession {
     result
   }
 
-  async fn set_last_thrown_error(
+  pub async fn set_last_thrown_error(
     &mut self,
     error: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
@@ -512,7 +517,7 @@ impl ReplSession {
     Ok(())
   }
 
-  async fn set_last_eval_result(
+  pub async fn set_last_eval_result(
     &mut self,
     evaluate_result: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
@@ -645,13 +650,14 @@ impl ReplSession {
       match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
         Ok(parsed) => parsed,
         Err(err) => {
-          if let Ok(parsed) = parse_source_as(
+          match parse_source_as(
             expression.to_string(),
             deno_ast::MediaType::TypeScript,
           ) {
-            parsed
-          } else {
-            return Err(err);
+            Ok(parsed) => parsed,
+            _ => {
+              return Err(err);
+            }
           }
         }
       };
@@ -779,7 +785,7 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<cdp::EvaluateResponse, CoreError> {
+  ) -> Result<cdp::EvaluateResponse, InspectorPostMessageError> {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",
