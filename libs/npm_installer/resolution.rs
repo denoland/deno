@@ -112,7 +112,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     fn get_types_node_version() -> VersionReq {
       // WARNING: When bumping this version, check if anything needs to be
       // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-      VersionReq::parse_from_npm("24.2.0").unwrap()
+      VersionReq::parse_from_npm("24.0.4 - 24.2.0").unwrap()
     }
 
     let snapshot = self.resolution.snapshot();
