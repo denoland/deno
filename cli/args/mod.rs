@@ -1188,27 +1188,26 @@ impl CliOptions {
       }
     } else {
       if !self.flags.has_permission() {
-        let has_config_permission = match &self.flags.subcommand {
-          DenoSubcommand::Bench(_) => {
-            dir.to_bench_permissions_config()?.is_some()
-          }
-          DenoSubcommand::Compile(_) => {
-            dir.to_compile_permissions_config()?.is_some()
-          }
-          DenoSubcommand::Test(_) => {
-            dir.to_test_permissions_config()?.is_some()
-          }
-          _ => false,
+        let set_config_permission_name = match &self.flags.subcommand {
+          DenoSubcommand::Bench(_) => dir
+            .to_bench_permissions_config()?
+            .is_some()
+            .then_some("Bench"),
+          DenoSubcommand::Compile(_) => dir
+            .to_compile_permissions_config()?
+            .is_some()
+            .then_some("Compile"),
+          DenoSubcommand::Test(_) => dir
+            .to_test_permissions_config()?
+            .is_some()
+            .then_some("Test"),
+          _ => None,
         };
-        if has_config_permission {
+        if let Some(name) = set_config_permission_name {
           // prevent people from wasting time wondering why benches/tests are failing
           bail!(
             "{} permissions were found in the config file. Did you mean to run with `-P` or a permission flag?{}",
-            match &self.flags.subcommand {
-              DenoSubcommand::Bench(_) => "Bench",
-              DenoSubcommand::Compile(_) => "Compile",
-              _ => "Test",
-            },
+            name,
             dir
               .maybe_deno_json()
               .map(|d| format!("\n    at {}", d.specifier))
