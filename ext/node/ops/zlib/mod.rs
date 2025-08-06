@@ -19,6 +19,8 @@ mod stream;
 use mode::Flush;
 use mode::Mode;
 
+use self::alloc::brotli_alloc;
+use self::alloc::brotli_free;
 use self::stream::StreamWrapper;
 
 #[inline]
@@ -593,8 +595,8 @@ impl BrotliEncoder {
     // SAFETY: creates new brotli encoder instance. `params` is a valid slice of u32 values.
     let inst = unsafe {
       let state = ffi::compressor::BrotliEncoderCreateInstance(
-        None,
-        None,
+        Some(brotli_alloc),
+        Some(brotli_free),
         std::ptr::null_mut(),
       );
       for (i, &value) in params.iter().enumerate() {
@@ -791,8 +793,8 @@ impl BrotliDecoder {
     // SAFETY: creates new brotli decoder instance. `params` is a valid slice of u32 values.
     let inst = unsafe {
       let state = ffi::decompressor::ffi::BrotliDecoderCreateInstance(
-        None,
-        None,
+        Some(brotli_alloc),
+        Some(brotli_free),
         std::ptr::null_mut(),
       );
       for (i, &value) in params.iter().enumerate() {
