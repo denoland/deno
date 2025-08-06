@@ -9004,6 +9004,7 @@ dependencies = [
  "http-body-util",
  "hyper 1.6.0",
  "hyper-util",
+ "indexmap 2.9.0",
  "jsonc-parser",
  "lazy-regex",
  "libc",

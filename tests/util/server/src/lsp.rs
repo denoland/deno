@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsStr;
@@ -21,6 +20,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::Result;
+use indexmap::IndexMap;
 use lsp_types as lsp;
 use lsp_types::ClientCapabilities;
 use lsp_types::ClientInfo;
@@ -718,7 +718,7 @@ pub struct LspClient {
   supports_workspace_configuration: bool,
   supports_pull_diagnostics: bool,
   perf: Option<Perf>,
-  open_docs: BTreeMap<Uri, i32>,
+  open_docs: IndexMap<Uri, i32>,
   notebook_cells: HashMap<Uri, Vec<Uri>>,
 }
 
@@ -1334,7 +1334,7 @@ impl LspClient {
         params.clone(),
       )
       .unwrap();
-      self.open_docs.remove(&params.text_document.uri);
+      self.open_docs.shift_remove(&params.text_document.uri);
     }
     if method == "notebookDocument/didOpen" {
       let params =
@@ -1393,7 +1393,7 @@ impl LspClient {
           .map(|c| c.uri)
           .collect::<Vec<_>>();
         for closed_cell_uri in closed_cell_uris {
-          self.open_docs.remove(&closed_cell_uri);
+          self.open_docs.shift_remove(&closed_cell_uri);
         }
       }
       for changed in content.into_iter().flatten() {
@@ -1412,7 +1412,7 @@ impl LspClient {
         .remove(&params.notebook_document.uri)
         .unwrap();
       for cell_uri in cell_uris {
-        self.open_docs.remove(&cell_uri);
+        self.open_docs.shift_remove(&cell_uri);
       }
     }
     let value = json!({
