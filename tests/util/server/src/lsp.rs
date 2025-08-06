@@ -446,7 +446,6 @@ pub struct LspClientBuilder {
   log_debug: bool,
   deno_exe: PathRef,
   root_dir: PathRef,
-  use_diagnostic_sync: bool,
   deno_dir: TempDir,
   envs: HashMap<OsString, OsString>,
   collect_perf: bool,
@@ -465,7 +464,6 @@ impl LspClientBuilder {
       log_debug: false,
       deno_exe: deno_exe_path(),
       root_dir: deno_dir.path().clone(),
-      use_diagnostic_sync: true,
       deno_dir,
       envs: Default::default(),
       collect_perf: false,
@@ -505,13 +503,6 @@ impl LspClientBuilder {
     self
   }
 
-  /// Whether to use the synchronization messages to better sync diagnostics
-  /// between the test client and server.
-  pub fn use_diagnostic_sync(mut self, value: bool) -> Self {
-    self.use_diagnostic_sync = value;
-    self
-  }
-
   pub fn set_root_dir(mut self, root_dir: PathRef) -> Self {
     self.root_dir = root_dir;
     self
@@ -544,10 +535,7 @@ impl LspClientBuilder {
       .env("NPM_CONFIG_REGISTRY", npm_registry_url())
       .env("JSR_URL", jsr_registry_url())
       // turn on diagnostic synchronization communication
-      .env(
-        "DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG",
-        if self.use_diagnostic_sync { "1" } else { "" },
-      )
+      .env("DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG", "1")
       .env("DENO_NO_UPDATE_CHECK", "1")
       .args(args)
       .stdin(Stdio::piped())
@@ -1017,6 +1005,16 @@ impl LspClient {
     self.write_notification("workspace/didChangeWatchedFiles", params);
   }
 
+  pub fn diagnostic(
+    &mut self,
+    uri: impl Serialize,
+  ) -> lsp::DocumentDiagnosticReport {
+    self.write_request_with_res_as(
+      "textDocument/diagnostic",
+      json!({ "textDocument": { "uri": uri } }),
+    )
+  }
+
   pub fn cache(
     &mut self,
     specifiers: impl IntoIterator<Item = impl Serialize>,
@@ -1056,15 +1054,7 @@ impl LspClient {
           .clone()
           .into_iter()
           .map(|(uri, version)| {
-            let report = self.write_request(
-              "textDocument/diagnostic",
-              json!({
-                "textDocument": { "uri": &uri },
-              }),
-            );
-            let report =
-              serde_json::from_value::<lsp::DocumentDiagnosticReport>(report)
-                .unwrap();
+            let report = self.diagnostic(&uri);
             let diagnostics = match report {
               lsp::DocumentDiagnosticReport::Full(report) => {
                 report.full_document_diagnostic_report.items
