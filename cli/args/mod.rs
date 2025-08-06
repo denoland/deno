@@ -1158,10 +1158,22 @@ impl CliOptions {
       }
     }
 
+    let config_permissions = self.resolve_config_permissions_for_dir(dir)?;
+    let mut permissions_options =
+      flags_to_options(&self.flags.permissions, config_permissions);
+    self.augment_import_permissions(&mut permissions_options);
+    Ok(permissions_options)
+  }
+
+  fn resolve_config_permissions_for_dir<'a>(
+    &self,
+    dir: &'a WorkspaceDirectory,
+  ) -> Result<Option<&'a PermissionsObject>, AnyError> {
     let config_permissions = if let Some(name) = &self.flags.permission_set {
       if name.is_empty() {
         let maybe_subcommand_permissions = match &self.flags.subcommand {
           DenoSubcommand::Test(_) => dir.to_test_permissions_config()?,
+          DenoSubcommand::Bench(_) => dir.to_bench_permissions_config()?,
           _ => None,
         };
         match maybe_subcommand_permissions {
@@ -1174,13 +1186,35 @@ impl CliOptions {
         Some(dir.to_permissions_config()?.get(name)?)
       }
     } else {
+      if !self.flags.has_permission() {
+        let has_config_permission = match &self.flags.subcommand {
+          DenoSubcommand::Test(_) => {
+            dir.to_test_permissions_config()?.is_some()
+          }
+          DenoSubcommand::Bench(_) => {
+            dir.to_bench_permissions_config()?.is_some()
+          }
+          _ => false,
+        };
+        if has_config_permission {
+          // prevent people from wasting time wondering why benches/tests are failing
+          bail!(
+            "{} permissions were found in the config file. Did you mean to run with `-P`?{}",
+            match &self.flags.subcommand {
+              DenoSubcommand::Bench(_) => "Bench",
+              _ => "Test",
+            },
+            dir
+              .maybe_deno_json()
+              .map(|d| format!("\n    at {}", d.specifier))
+              .unwrap_or_default()
+          );
+        }
+      }
+
       None
     };
-
-    let mut permissions_options =
-      flags_to_options(&self.flags.permissions, config_permissions);
-    self.augment_import_permissions(&mut permissions_options);
-    Ok(permissions_options)
+    Ok(config_permissions)
   }
 
   fn augment_import_permissions(&self, options: &mut PermissionsOptions) {

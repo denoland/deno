@@ -1467,6 +1467,7 @@ pub struct CompilerOptionsSource {
 #[derive(Debug, Clone, Default)]
 struct CachedDirectoryValues {
   permissions: OnceLock<PermissionsConfig>,
+  bench: OnceLock<BenchConfig>,
   test: OnceLock<TestConfig>,
 }
 
@@ -1955,28 +1956,50 @@ impl WorkspaceDirectory {
     &self,
     cli_args: FilePatterns,
   ) -> Result<BenchConfig, ToInvalidConfigError> {
-    let mut config = self.to_bench_config_inner()?;
+    let mut config = self.to_bench_config_inner()?.clone();
     self.exclude_includes_with_member_for_base_for_root(&mut config.files);
     combine_files_config_with_cli_args(&mut config.files, cli_args);
     self.append_workspace_members_to_exclude(&mut config.files);
     Ok(config)
   }
 
-  fn to_bench_config_inner(&self) -> Result<BenchConfig, ToInvalidConfigError> {
+  fn to_bench_config_inner(
+    &self,
+  ) -> Result<&BenchConfig, ToInvalidConfigError> {
+    if let Some(config) = self.cached.bench.get() {
+      Ok(config)
+    } else {
+      let config = self.to_bench_config_inner_no_cache()?;
+      _ = self.cached.bench.set(config);
+      Ok(self.cached.bench.get().unwrap())
+    }
+  }
+
+  fn to_bench_config_inner_no_cache(
+    &self,
+  ) -> Result<BenchConfig, ToInvalidConfigError> {
     let Some(deno_json) = self.deno_json.as_ref() else {
       return Ok(BenchConfig {
         files: FilePatterns::new_with_base(
           url_to_file_path(&self.dir_url).unwrap(),
         ),
+        permissions: None,
       });
     };
-    let member_config = deno_json.member.to_bench_config()?;
+    let permissions = self.to_permissions_config()?;
+    let member_config = deno_json.member.to_bench_config(permissions)?;
     let root_config = match &deno_json.root {
-      Some(root) => root.to_bench_config()?,
+      Some(root) => root.to_bench_config(permissions)?,
       None => return Ok(member_config),
     };
     Ok(BenchConfig {
       files: combine_patterns(root_config.files, member_config.files),
+      permissions: match (root_config.permissions, member_config.permissions) {
+        (Some(r), Some(m)) => Some(Box::new(r.clone().merge((*m).clone()))),
+        (Some(r), None) => Some(r),
+        (None, Some(m)) => Some(m),
+        (None, None) => None,
+      },
     })
   }
 
@@ -2053,10 +2076,16 @@ impl WorkspaceDirectory {
     }
   }
 
+  pub fn to_bench_permissions_config(
+    &self,
+  ) -> Result<Option<&PermissionsObject>, ToInvalidConfigError> {
+    Ok(self.to_bench_config_inner()?.permissions.as_deref())
+  }
+
   pub fn to_test_permissions_config(
     &self,
   ) -> Result<Option<&PermissionsObject>, ToInvalidConfigError> {
-    Ok(self.to_test_config_inner()?.permissions.as_ref())
+    Ok(self.to_test_config_inner()?.permissions.as_deref())
   }
 
   pub fn to_publish_config(
@@ -2121,16 +2150,16 @@ impl WorkspaceDirectory {
       });
     };
     let permissions = self.to_permissions_config()?;
-    let member_config = deno_json.member.to_test_config(&permissions)?;
+    let member_config = deno_json.member.to_test_config(permissions)?;
     let root_config = match &deno_json.root {
-      Some(root) => root.to_test_config(&permissions)?,
+      Some(root) => root.to_test_config(permissions)?,
       None => return Ok(member_config),
     };
 
     Ok(TestConfig {
       files: combine_patterns(root_config.files, member_config.files),
       permissions: match (root_config.permissions, member_config.permissions) {
-        (Some(r), Some(m)) => Some(r.clone().merge(m.clone())),
+        (Some(r), Some(m)) => Some(Box::new(r.clone().merge((*m).clone()))),
         (Some(r), None) => Some(r),
         (None, Some(m)) => Some(m),
         (None, None) => None,
@@ -3511,6 +3540,7 @@ pub mod test {
             root_dir().join("member").join("subdir")
           )]),
         },
+        permissions: None,
       }
     );
 
@@ -3533,6 +3563,7 @@ pub mod test {
             root_dir().join("member")
           )])),
         },
+        permissions: None,
       }
     );
   }
@@ -3678,6 +3709,7 @@ pub mod test {
           .unwrap(),
         BenchConfig {
           files: expected_files.clone(),
+          permissions: None,
         }
       );
       assert_eq!(
@@ -5619,7 +5651,7 @@ pub mod test {
       .workspace
       .resolve_lint_config_for_members(&FilePatterns::new_with_base(root_dir()))
       .unwrap();
-    let mut file_patterns = config_for_members
+    let file_patterns = config_for_members
       .into_iter()
       .map(|(_ctx, config)| config.files)
       .collect::<Vec<_>>();

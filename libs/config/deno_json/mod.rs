@@ -542,7 +542,7 @@ impl SerializedTestConfig {
       files: files.into_resolved(config_file_specifier)?,
       permissions: match self.permissions {
         Some(PermissionNameOrObject::Name(name)) => {
-          Some(permissions.get(&name)?.clone())
+          Some(Box::new(permissions.get(&name)?.clone()))
         }
         Some(PermissionNameOrObject::Object(obj)) => Some(obj),
         None => None,
@@ -554,7 +554,7 @@ impl SerializedTestConfig {
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct TestConfig {
   pub files: FilePatterns,
-  pub permissions: Option<PermissionsObject>,
+  pub permissions: Option<Box<PermissionsObject>>,
 }
 
 impl TestConfig {
@@ -613,12 +613,14 @@ struct SerializedBenchConfig {
   pub exclude: Vec<String>,
   #[serde(rename = "files")]
   pub deprecated_files: serde_json::Value,
+  pub permissions: Option<PermissionNameOrObject>,
 }
 
 impl SerializedBenchConfig {
   pub fn into_resolved(
     self,
     config_file_specifier: &Url,
+    permissions: &PermissionsConfig,
   ) -> Result<BenchConfig, IntoResolvedError> {
     let (include, exclude) = (self.include, self.exclude);
     let files = SerializedFilesConfig { include, exclude };
@@ -629,6 +631,13 @@ impl SerializedBenchConfig {
     }
     Ok(BenchConfig {
       files: files.into_resolved(config_file_specifier)?,
+      permissions: match self.permissions {
+        Some(PermissionNameOrObject::Name(name)) => {
+          Some(Box::new(permissions.get(&name)?.clone()))
+        }
+        Some(PermissionNameOrObject::Object(obj)) => Some(obj),
+        None => None,
+      },
     })
   }
 }
@@ -636,12 +645,14 @@ impl SerializedBenchConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BenchConfig {
   pub files: FilePatterns,
+  pub permissions: Option<Box<PermissionsObject>>,
 }
 
 impl BenchConfig {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
       files: FilePatterns::new_with_base(base),
+      permissions: None,
     }
   }
 }
@@ -1575,7 +1586,10 @@ impl ConfigFile {
     Ok(exclude)
   }
 
-  pub fn to_bench_config(&self) -> Result<BenchConfig, ToInvalidConfigError> {
+  pub fn to_bench_config(
+    &self,
+    permissions: &PermissionsConfig,
+  ) -> Result<BenchConfig, ToInvalidConfigError> {
     match self.json.bench.clone() {
       Some(config) => {
         let mut exclude_patterns = self.resolve_exclude_patterns()?;
@@ -1589,15 +1603,16 @@ impl ConfigFile {
         // top level excludes at the start because they're lower priority
         exclude_patterns.extend(std::mem::take(&mut serialized.exclude));
         serialized.exclude = exclude_patterns;
-        serialized.into_resolved(&self.specifier).map_err(|error| {
-          ToInvalidConfigError::InvalidConfig {
+        serialized
+          .into_resolved(&self.specifier, permissions)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
             config: "bench",
             source: error,
-          }
-        })
+          })
       }
       None => Ok(BenchConfig {
         files: self.to_exclude_files_config()?,
+        permissions: None,
       }),
     }
   }
@@ -2249,7 +2264,8 @@ mod tests {
       .unwrap()
     );
 
-    let bench_config = config_file.to_bench_config().unwrap();
+    let bench_config =
+      config_file.to_bench_config(&Default::default()).unwrap();
     assert_eq!(
       bench_config.files.exclude,
       PathOrPatternSet::from_absolute_paths(&["/deno/foo/".to_string()])

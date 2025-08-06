@@ -137,7 +137,7 @@ fn deserialize_allow_deny<'de, D: serde::Deserializer<'de>>(
 #[serde(untagged)]
 pub enum PermissionNameOrObject {
   Name(String),
-  Object(PermissionsObject),
+  Object(Box<PermissionsObject>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Default, Hash)]
