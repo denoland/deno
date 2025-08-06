@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsStr;
@@ -622,6 +623,8 @@ impl LspClientBuilder {
       config: json!("{}"),
       supports_workspace_configuration: false,
       perf: perf_rx.map(Perf::new),
+      open_docs: Default::default(),
+      notebook_cells: Default::default(),
     })
   }
 }
@@ -721,6 +724,8 @@ pub struct LspClient {
   config: serde_json::Value,
   supports_workspace_configuration: bool,
   perf: Option<Perf>,
+  open_docs: BTreeSet<Uri>,
+  notebook_cells: HashMap<Uri, Vec<Uri>>,
 }
 
 impl Drop for LspClient {
@@ -1265,9 +1270,94 @@ impl LspClient {
     S: AsRef<str>,
     V: Serialize,
   {
+    let method = method.as_ref();
+    let params = json!(params);
+    if method == "textDocument/didOpen" {
+      let params = serde_json::from_value::<lsp::DidOpenTextDocumentParams>(
+        params.clone(),
+      )
+      .unwrap();
+      self.open_docs.insert(params.text_document.uri);
+    }
+    if method == "textDocument/didClose" {
+      let params = serde_json::from_value::<lsp::DidCloseTextDocumentParams>(
+        params.clone(),
+      )
+      .unwrap();
+      self.open_docs.remove(&params.text_document.uri);
+    }
+    if method == "notebookDocument/didOpen" {
+      let params =
+        serde_json::from_value::<lsp::DidOpenNotebookDocumentParams>(
+          params.clone(),
+        )
+        .unwrap();
+      let cell_uris = params
+        .cell_text_documents
+        .into_iter()
+        .map(|c| c.uri)
+        .collect::<Vec<_>>();
+      self
+        .notebook_cells
+        .insert(params.notebook_document.uri, cell_uris.clone());
+      self.open_docs.extend(cell_uris);
+    }
+    if method == "notebookDocument/didChange" {
+      let params =
+        serde_json::from_value::<lsp::DidChangeNotebookDocumentParams>(
+          params.clone(),
+        )
+        .unwrap();
+      if let Some(structure) = params.change.cells.and_then(|c| c.structure) {
+        self
+          .notebook_cells
+          .get_mut(&params.notebook_document.uri)
+          .unwrap()
+          .splice(
+            structure.array.start as usize
+              ..(structure.array.start + structure.array.delete_count) as usize,
+            structure
+              .array
+              .cells
+              .into_iter()
+              .flatten()
+              .map(|c| c.document),
+          );
+        let opened_cell_uris = structure
+          .did_open
+          .into_iter()
+          .flatten()
+          .map(|c| c.uri)
+          .collect::<Vec<_>>();
+        self.open_docs.extend(opened_cell_uris);
+        let closed_cell_uris = structure
+          .did_close
+          .into_iter()
+          .flatten()
+          .map(|c| c.uri)
+          .collect::<Vec<_>>();
+        for closed_cell_uri in closed_cell_uris {
+          self.open_docs.remove(&closed_cell_uri);
+        }
+      }
+    }
+    if method == "notebookDocument/didClose" {
+      let params =
+        serde_json::from_value::<lsp::DidCloseNotebookDocumentParams>(
+          params.clone(),
+        )
+        .unwrap();
+      let cell_uris = self
+        .notebook_cells
+        .remove(&params.notebook_document.uri)
+        .unwrap();
+      for cell_uri in cell_uris {
+        self.open_docs.remove(&cell_uri);
+      }
+    }
     let value = json!({
       "jsonrpc": "2.0",
-      "method": method.as_ref(),
+      "method": method,
       "params": params,
     });
     self.write(value);
