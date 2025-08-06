@@ -186,6 +186,7 @@ pub struct WebWorkerInternalHandle {
   isolate_handle: v8::IsolateHandle,
   pub name: String,
   pub worker_type: WorkerThreadType,
+  permissions_receiver: Rc<RefCell<mpsc::Receiver<PermissionsContainer>>>,
 }
 
 impl WebWorkerInternalHandle {
@@ -226,6 +227,12 @@ impl WebWorkerInternalHandle {
     has_terminated
   }
 
+  /// Try to receive a permission update and return it if available
+  pub fn try_receive_permission_update(&self) -> Option<PermissionsContainer> {
+    let mut receiver = self.permissions_receiver.borrow_mut();
+    receiver.try_next().ok().flatten()
+  }
+
   /// Terminate the worker
   /// This function will set terminated to true, terminate the isolate and close the message channel
   pub fn terminate(&mut self) {
@@ -254,6 +261,7 @@ pub struct SendableWebWorkerHandle {
   has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
   isolate_handle: v8::IsolateHandle,
+  permissions_sender: mpsc::Sender<PermissionsContainer>,
 }
 
 impl From<SendableWebWorkerHandle> for WebWorkerHandle {
@@ -265,6 +273,7 @@ impl From<SendableWebWorkerHandle> for WebWorkerHandle {
       has_terminated: handle.has_terminated,
       terminate_waker: handle.terminate_waker,
       isolate_handle: handle.isolate_handle,
+      permissions_sender: handle.permissions_sender,
     }
   }
 }
@@ -284,6 +293,7 @@ pub struct WebWorkerHandle {
   has_terminated: Arc<AtomicBool>,
   terminate_waker: Arc<AtomicWaker>,
   isolate_handle: v8::IsolateHandle,
+  permissions_sender: mpsc::Sender<PermissionsContainer>,
 }
 
 impl WebWorkerHandle {
@@ -293,6 +303,16 @@ impl WebWorkerHandle {
   pub async fn get_control_event(&self) -> Option<WorkerControlEvent> {
     let mut receiver = self.receiver.borrow_mut();
     receiver.next().await
+  }
+
+  /// Update the permissions for this worker
+  pub fn update_permissions(&self, new_permissions: PermissionsContainer) {
+    let mut sender = self.permissions_sender.clone();
+    if let Err(e) = sender.try_send(new_permissions) {
+      log::warn!("Failed to send permission update to worker: {:?}", e);
+    } else {
+      log::debug!("Sent permission update to worker");
+    }
   }
 
   /// Terminate the worker
@@ -338,6 +358,7 @@ fn create_handles(
 ) -> (WebWorkerInternalHandle, SendableWebWorkerHandle) {
   let (parent_port, worker_port) = create_entangled_message_port();
   let (ctrl_tx, ctrl_rx) = mpsc::channel::<WorkerControlEvent>(1);
+  let (perm_tx, perm_rx) = mpsc::channel::<PermissionsContainer>(1);
   let termination_signal = Arc::new(AtomicBool::new(false));
   let has_terminated = Arc::new(AtomicBool::new(false));
   let terminate_waker = Arc::new(AtomicWaker::new());
@@ -351,6 +372,7 @@ fn create_handles(
     cancel: CancelHandle::new_rc(),
     sender: ctrl_tx,
     worker_type,
+    permissions_receiver: Rc::new(RefCell::new(perm_rx)),
   };
   let external_handle = SendableWebWorkerHandle {
     receiver: ctrl_rx,
@@ -359,6 +381,7 @@ fn create_handles(
     has_terminated,
     terminate_waker,
     isolate_handle,
+    permissions_sender: perm_tx,
   };
   (internal_handle, external_handle)
 }
@@ -941,6 +964,17 @@ impl WebWorker {
     // If awakened because we are terminating, just return Ok
     if self.internal_handle.terminate_if_needed() {
       return Poll::Ready(Ok(()));
+    }
+
+    // Check for permission updates
+    if let Some(new_permissions) =
+      self.internal_handle.try_receive_permission_update()
+    {
+      log::debug!("Received permission update in worker");
+      let op_state = self.js_runtime.op_state();
+      let mut state = op_state.borrow_mut();
+      state.put::<PermissionsContainer>(new_permissions);
+      log::debug!("Updated worker permissions in op_state");
     }
 
     self.internal_handle.terminate_waker.register(cx.waker());
