@@ -65,9 +65,9 @@ deno_core = { version = "0.354.0" }
 deno_cache_dir = "=0.24.0"
 deno_doc = "=0.181.0"
 deno_error = "=0.7.0"
-deno_graph = { version = "=0.98.0", default-features = false }
+deno_graph = { version = "=0.98.1", default-features = false }
 deno_lint = "=0.77.0"
-deno_lockfile = "=0.31.1"
+deno_lockfile = "=0.31.2"
 deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_npm = "=0.36.0"
