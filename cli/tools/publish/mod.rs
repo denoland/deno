@@ -151,7 +151,7 @@ pub async fn publish(
         )
       })?;
       let (scope, name_no_scope) =
-          registry::parse_package_name(&publish_config.name)?;
+        registry::parse_package_name(&publish_config.name)?;
 
       package_versions.push(PackageVersion {
         scope: scope.to_string(),
@@ -166,7 +166,7 @@ pub async fn publish(
       jsr_url(),
       package_versions.into_iter(),
     )
-        .await?;
+    .await?;
   }
 
   let prepared_data = publish_preparer
