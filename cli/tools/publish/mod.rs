@@ -881,10 +881,13 @@ async fn ensure_scopes_and_packages_exist(
     ring_bell();
     for existing_version in existing_version {
       log::warn!(
-        "@{}/{}@{} already published. You can't overwrite an existing version",
+        "@{}/{}@{} {}",
         &existing_version.scope,
         &existing_version.package,
         &existing_version.version,
+        colors::yellow(
+          "is already published. You can't overwrite an existing version"
+        )
       );
     }
     bail!("Cannot overwrite existing version");
