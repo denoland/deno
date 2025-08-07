@@ -318,8 +318,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
             });
         }
 
-        if specifier.scheme() == "jsr" {
-          if let Some(specifier) = self
+        if specifier.scheme() == "jsr"
+          && let Some(specifier) = self
             .shared
             .modules
             .resolve_specifier(&specifier)
@@ -327,7 +327,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
           {
             return Ok(specifier.clone());
           }
-        }
 
         Ok(
           self

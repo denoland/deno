@@ -856,8 +856,8 @@ impl Settings {
     folder_uri = folder_uri.or(self.first_folder.as_ref());
     let mut disable_paths = vec![];
     let mut enable_paths = None;
-    if let Some(folder_uri) = folder_uri {
-      if let Ok(folder_path) = url_to_file_path(folder_uri) {
+    if let Some(folder_uri) = folder_uri
+      && let Ok(folder_path) = url_to_file_path(folder_uri) {
         disable_paths = settings
           .disable_paths
           .iter()
@@ -870,7 +870,6 @@ impl Settings {
             .collect::<Vec<_>>()
         });
       }
-    }
 
     if disable_paths.iter().any(|p| path.starts_with(p)) {
       Some(false)
@@ -1096,8 +1095,8 @@ impl Config {
       return true;
     }
     let data = self.tree.data_for_specifier(specifier);
-    if let Some(data) = &data {
-      if let Ok(path) = specifier.to_file_path() {
+    if let Some(data) = &data
+      && let Ok(path) = specifier.to_file_path() {
         // deno_config's exclusion checks exclude vendor dirs invariably. We
         // don't want that behavior here.
         if data.exclude_files.matches_path(&path)
@@ -1109,7 +1108,6 @@ impl Config {
           return false;
         }
       }
-    }
     self
       .settings
       .specifier_enabled(specifier)
@@ -1120,11 +1118,10 @@ impl Config {
     &self,
     specifier: &ModuleSpecifier,
   ) -> bool {
-    if let Some(data) = self.tree.data_for_specifier(specifier) {
-      if !data.test_config.files.matches_specifier(specifier) {
+    if let Some(data) = self.tree.data_for_specifier(specifier)
+      && !data.test_config.files.matches_specifier(specifier) {
         return false;
       }
-    }
     self.specifier_enabled(specifier)
   }
 
@@ -1355,11 +1352,10 @@ impl ConfigData {
           .ok()
           .and_then(|p| canonicalize_path_maybe_not_exists(&p).ok())
           .and_then(|p| ModuleSpecifier::from_file_path(p).ok());
-        if let Some(canonicalized) = maybe_canonicalized {
-          if canonicalized != specifier {
+        if let Some(canonicalized) = maybe_canonicalized
+          && canonicalized != specifier {
             watched_files.entry(canonicalized).or_insert(file_type);
           }
-        }
         watched_files.entry(specifier).or_insert(file_type);
       };
 
@@ -1532,13 +1528,12 @@ impl ConfigData {
       .ok()
       .flatten()
       .cloned();
-    if let Some(lockfile) = &lockfile {
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
+    if let Some(lockfile) = &lockfile
+      && let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
         lsp_log!("  Resolved lockfile: \"{}\"", specifier);
         add_watched_file(specifier, ConfigWatchedFileType::Lockfile);
       }
-    }
 
     let node_modules_dir = npm_installer_factory
       .workspace_factory()

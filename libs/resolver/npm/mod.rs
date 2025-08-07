@@ -515,8 +515,8 @@ impl<
                 .unwrap(),
               )
             };
-          if let Some(req) = maybe_definitely_typed_req {
-            if let Ok(resolved) = self.resolve_req_with_sub_path(
+          if let Some(req) = maybe_definitely_typed_req
+            && let Ok(resolved) = self.resolve_req_with_sub_path(
               &req,
               sub_path,
               referrer,
@@ -525,7 +525,6 @@ impl<
             ) {
               return Ok(resolved);
             }
-          }
         }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
@@ -616,8 +615,7 @@ impl<
                     }
                     if let NpmResolver::Byonm(byonm_npm_resolver) =
                       &self.npm_resolver
-                    {
-                      if byonm_npm_resolver
+                      && byonm_npm_resolver
                         .find_ancestor_package_json_with_dep(
                           package_name,
                           referrer,
@@ -632,7 +630,6 @@ impl<
                           ).into_box(),
                         );
                       }
-                    }
                     Ok(None)
                   }
                   PackageFolderResolveErrorKind::ReferrerNotFound(_) => {

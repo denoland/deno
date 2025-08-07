@@ -626,17 +626,15 @@ fn sort_tasks_topo<'a>(
 
   impl TasksConfig for WorkspaceTasksConfig {
     fn task(&self, name: &str) -> Option<(TaskOrScript, &dyn TasksConfig)> {
-      if let Some(member) = &self.member {
-        if let Some(task_or_script) = member.task(name) {
+      if let Some(member) = &self.member
+        && let Some(task_or_script) = member.task(name) {
           return Some((task_or_script, self as &dyn TasksConfig));
         }
-      }
-      if let Some(root) = &self.root {
-        if let Some(task_or_script) = root.task(name) {
+      if let Some(root) = &self.root
+        && let Some(task_or_script) = root.task(name) {
           // switch to only using the root tasks for the dependencies
           return Some((task_or_script, root as &dyn TasksConfig));
         }
-      }
       None
     }
   }
@@ -713,23 +711,18 @@ fn matches_package(
   force_use_pkg_json: bool,
   regex: &Regex,
 ) -> bool {
-  if !force_use_pkg_json {
-    if let Some(deno_json) = &config.deno_json {
-      if let Some(name) = &deno_json.json.name {
-        if regex.is_match(name) {
+  if !force_use_pkg_json
+    && let Some(deno_json) = &config.deno_json
+      && let Some(name) = &deno_json.json.name
+        && regex.is_match(name) {
           return true;
         }
-      }
-    }
-  }
 
-  if let Some(package_json) = &config.pkg_json {
-    if let Some(name) = &package_json.name {
-      if regex.is_match(name) {
+  if let Some(package_json) = &config.pkg_json
+    && let Some(name) = &package_json.name
+      && regex.is_match(name) {
         return true;
       }
-    }
-  }
 
   false
 }

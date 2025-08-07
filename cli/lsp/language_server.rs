@@ -368,11 +368,10 @@ impl LanguageServer {
 
       // Update the lockfile on the file system with anything new
       // found after caching
-      if let Ok(Some(lockfile)) = factory.maybe_lockfile().await {
-        if let Err(err) = &lockfile.write_if_changed() {
+      if let Ok(Some(lockfile)) = factory.maybe_lockfile().await
+        && let Err(err) = &lockfile.write_if_changed() {
           lsp_warn!("{:#}", err);
         }
-      }
 
       Ok(())
     }
@@ -905,11 +904,10 @@ impl Inner {
           .into_iter()
           .map(|folder| {
             let mut url = uri_to_url(&folder.uri);
-            if !url.path().ends_with('/') {
-              if let Ok(mut path_segments) = url.path_segments_mut() {
+            if !url.path().ends_with('/')
+              && let Ok(mut path_segments) = url.path_segments_mut() {
                 path_segments.push("");
               }
-            }
             (Arc::new(url), folder)
           })
           .collect();
@@ -917,19 +915,18 @@ impl Inner {
       // rootUri is deprecated by the LSP spec. If it's specified, merge it into
       // workspace_folders.
       #[allow(deprecated)]
-      if let Some(root_uri) = params.root_uri {
-        if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
+      if let Some(root_uri) = params.root_uri
+        && !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
           let mut root_url = uri_to_url(&root_uri);
           let name = root_url
             .path_segments()
             .and_then(|mut s| s.next_back())
             .unwrap_or_default()
             .to_string();
-          if !root_url.path().ends_with('/') {
-            if let Ok(mut path_segments) = root_url.path_segments_mut() {
+          if !root_url.path().ends_with('/')
+            && let Ok(mut path_segments) = root_url.path_segments_mut() {
               path_segments.push("");
             }
-          }
           workspace_folders.insert(
             0,
             (
@@ -941,7 +938,6 @@ impl Inner {
             ),
           );
         }
-      }
       self.config.set_workspace_folders(workspace_folders);
       if let Some(options) = params.initialization_options {
         self.config.set_workspace_settings(
@@ -2454,8 +2450,7 @@ impl Inner {
     let mut code_lenses = Vec::new();
     if settings.code_lens.test
       && self.config.specifier_enabled_for_test(&module.specifier)
-    {
-      if let Some(Ok(parsed_source)) = &module
+      && let Some(Ok(parsed_source)) = &module
         .open_data
         .as_ref()
         .and_then(|d| d.parsed_source.as_ref())
@@ -2475,7 +2470,6 @@ impl Inner {
             })?,
         );
       }
-    }
     if settings.code_lens.implementations || settings.code_lens.references {
       let navigation_tree = self.get_navigation_tree(&module, token).await?;
       code_lenses.extend(
@@ -3842,11 +3836,10 @@ impl Inner {
   /// Send a message to the testing server to look for any changes in tests and
   /// update the client.
   fn send_testing_update(&self) {
-    if let Some(testing_server) = &self.maybe_testing_server {
-      if let Err(err) = testing_server.update(self.snapshot()) {
+    if let Some(testing_server) = &self.maybe_testing_server
+      && let Err(err) = testing_server.update(self.snapshot()) {
         error!("Cannot update testing server: {err:#}");
       }
-    }
   }
 }
 
@@ -4404,8 +4397,8 @@ impl Inner {
       let Ok(scope_uri) = url_to_uri(scope_url) else {
         continue;
       };
-      if let Some(config_file) = config_data.maybe_deno_json() {
-        if let Ok(file_uri) = url_to_uri(&config_file.specifier) {
+      if let Some(config_file) = config_data.maybe_deno_json()
+        && let Ok(file_uri) = url_to_uri(&config_file.specifier) {
           config_events.push(lsp_custom::DenoConfigurationChangeEvent {
             scope_uri: scope_uri.clone(),
             file_uri,
@@ -4413,9 +4406,8 @@ impl Inner {
             configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
           });
         }
-      }
-      if let Some(package_json) = config_data.maybe_pkg_json() {
-        if let Ok(file_uri) = url_to_uri(&package_json.specifier()) {
+      if let Some(package_json) = config_data.maybe_pkg_json()
+        && let Ok(file_uri) = url_to_uri(&package_json.specifier()) {
           config_events.push(lsp_custom::DenoConfigurationChangeEvent {
             scope_uri,
             file_uri,
@@ -4423,7 +4415,6 @@ impl Inner {
             configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
           });
         }
-      }
     }
     if !config_events.is_empty() {
       self.client.send_did_change_deno_configuration_notification(
@@ -4544,11 +4535,10 @@ impl Inner {
       .into_iter()
       .map(|folder| {
         let mut url = uri_to_url(&folder.uri);
-        if !url.path().ends_with('/') {
-          if let Ok(mut path_segments) = url.path_segments_mut() {
+        if !url.path().ends_with('/')
+          && let Ok(mut path_segments) = url.path_segments_mut() {
             path_segments.push("");
           }
-        }
         (Arc::new(url), folder)
       })
       .collect::<Vec<_>>();

@@ -53,8 +53,7 @@ impl GraphDiagnosticsCollector {
               // check for a missing version constraint
               if let Ok(jsr_req_ref) =
                 JsrPackageReqReference::from_specifier(&resolution.specifier)
-              {
-                if jsr_req_ref.req().version_req.version_text() == "*" {
+                && jsr_req_ref.req().version_req.version_text() == "*" {
                   let maybe_version = graph
                     .packages
                     .mappings()
@@ -70,7 +69,6 @@ impl GraphDiagnosticsCollector {
                     },
                   );
                 }
-              }
             }
             "npm" => {
               skip_specifiers.insert(resolution.specifier.clone());
@@ -78,8 +76,7 @@ impl GraphDiagnosticsCollector {
               // check for a missing version constraint
               if let Ok(jsr_req_ref) =
                 NpmPackageReqReference::from_specifier(&resolution.specifier)
-              {
-                if jsr_req_ref.req().version_req.version_text() == "*" {
+                && jsr_req_ref.req().version_req.version_text() == "*" {
                   let maybe_version = graph
                     .get(&resolution.specifier)
                     .and_then(|m| m.npm())
@@ -94,7 +91,6 @@ impl GraphDiagnosticsCollector {
                     },
                   );
                 }
-              }
             }
             "http" | "https" => {
               skip_specifiers.insert(resolution.specifier.clone());

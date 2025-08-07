@@ -499,8 +499,8 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnResolveArgs,
   ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
-    if let Some(matcher) = &self.externals_matcher {
-      if matcher.is_pre_resolve_match(&args.path) {
+    if let Some(matcher) = &self.externals_matcher
+      && matcher.is_pre_resolve_match(&args.path) {
         return Ok(Some(esbuild_client::OnResolveResult {
           external: Some(true),
           path: Some(args.path),
@@ -509,7 +509,6 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
           ..Default::default()
         }));
       }
-    }
     let result = self.bundle_resolve(
       &args.path,
       args.importer.as_deref(),
@@ -1241,14 +1240,13 @@ fn process_result(
       continue;
     }
 
-    if let Some(parent) = path.parent() {
-      if !exists_cache.contains(parent) {
+    if let Some(parent) = path.parent()
+      && !exists_cache.contains(parent) {
         if !parent.exists() {
           std::fs::create_dir_all(parent)?;
         }
         exists_cache.insert(parent.to_path_buf());
       }
-    }
 
     output_infos.push(OutputFileInfo {
       relative_path,

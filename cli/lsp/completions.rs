@@ -65,8 +65,8 @@ async fn check_auto_config_registry(
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
-  if workspace_settings.suggest.imports.auto_discover {
-    if let Ok(specifier) = resolve_url(url_str) {
+  if workspace_settings.suggest.imports.auto_discover
+    && let Ok(specifier) = resolve_url(url_str) {
       let scheme = specifier.scheme();
       let path = &specifier[Position::BeforePath..];
       if scheme.starts_with("http")
@@ -104,7 +104,6 @@ async fn check_auto_config_registry(
         }
       }
     }
-  }
 }
 
 /// Ranges from the graph for specifiers include the leading and maybe trailing quote,
@@ -368,8 +367,8 @@ fn get_import_map_completions(
   range: &lsp::Range,
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<CompletionList> {
-  if !text.is_empty() {
-    if let Some(import_map) = maybe_import_map {
+  if !text.is_empty()
+    && let Some(import_map) = maybe_import_map {
       let mut specifiers = IndexSet::new();
       for key in import_map.imports().keys() {
         // for some reason, the import_map stores keys that begin with `/` as
@@ -407,7 +406,6 @@ fn get_import_map_completions(
         });
       }
     }
-  }
   None
 }
 

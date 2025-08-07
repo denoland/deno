@@ -373,8 +373,8 @@ fn discover_workspace_config_files_for_single_dir<
         }
       };
 
-      if let Some(workspace_cache) = &opts.workspace_cache {
-        if let Some(workspace) = workspace_cache.get(&config_file.dir_path()) {
+      if let Some(workspace_cache) = &opts.workspace_cache
+        && let Some(workspace) = workspace_cache.get(&config_file.dir_path()) {
           if cfg!(debug_assertions) {
             let expected_vendor_dir = resolve_vendor_dir(
               config_folder.deno_json().map(|d| d.as_ref()),
@@ -389,7 +389,6 @@ fn discover_workspace_config_files_for_single_dir<
             workspace: workspace.clone(),
           });
         }
-      }
 
       if config_folder.has_workspace_members() {
         return handle_workspace_folder_with_members(
@@ -412,8 +411,8 @@ fn discover_workspace_config_files_for_single_dir<
   // user is running something directly within there)
   let start_dir = start_dir.map(strip_up_to_node_modules);
   for current_dir in start_dir.iter().flat_map(|p| p.ancestors()) {
-    if let Some(checked) = checked.as_mut() {
-      if !checked.insert(current_dir.to_path_buf()) {
+    if let Some(checked) = checked.as_mut()
+      && !checked.insert(current_dir.to_path_buf()) {
         // already visited here, so exit
         return Ok(ConfigFileDiscovery::None {
           maybe_vendor_dir: resolve_vendor_dir(
@@ -422,7 +421,6 @@ fn discover_workspace_config_files_for_single_dir<
           ),
         });
       }
-    }
 
     if let Some(workspace_with_members) = opts
       .workspace_cache
@@ -467,8 +465,8 @@ fn discover_workspace_config_files_for_single_dir<
 
     let config_folder_url = root_config_folder.folder_url();
     if first_config_folder_url.is_none() {
-      if let Some(workspace_cache) = &opts.workspace_cache {
-        if let Some(workspace) = workspace_cache.get(current_dir) {
+      if let Some(workspace_cache) = &opts.workspace_cache
+        && let Some(workspace) = workspace_cache.get(current_dir) {
           if cfg!(debug_assertions) {
             let expected_vendor_dir = resolve_vendor_dir(
               root_config_folder.deno_json().map(|d| d.as_ref()),
@@ -483,7 +481,6 @@ fn discover_workspace_config_files_for_single_dir<
             workspace: workspace.clone(),
           });
         }
-      }
 
       first_config_folder_url = Some(config_folder_url.clone());
     }
@@ -583,13 +580,12 @@ fn handle_workspace_with_members<TSys: FsRead + FsMetadata + FsReadDir>(
     .unwrap_or(false);
   // if the root was an npm workspace that doesn't have the start config
   // as a member then only resolve the start config
-  if !is_root_deno_json_workspace {
-    if let Some(first_config_folder) = &first_config_folder_url {
-      if !root_workspace
+  if !is_root_deno_json_workspace
+    && let Some(first_config_folder) = &first_config_folder_url
+      && !root_workspace
         .config_folders
         .contains_key(*first_config_folder)
-      {
-        if let Some(config_folder) =
+        && let Some(config_folder) =
           found_config_folders.remove(first_config_folder)
         {
           let maybe_vendor_dir = resolve_vendor_dir(
@@ -612,9 +608,6 @@ fn handle_workspace_with_members<TSys: FsRead + FsMetadata + FsReadDir>(
           }
           return Ok(ConfigFileDiscovery::Workspace { workspace });
         }
-      }
-    }
-  }
 
   if is_root_deno_json_workspace {
     for (key, config_folder) in &found_config_folders {
@@ -788,8 +781,8 @@ fn resolve_workspace_for_config_folder<
       Ok(paths)
     };
 
-  if let Some(deno_json) = root_config_folder.deno_json() {
-    if let Some(workspace_config) = deno_json.to_workspace_config()? {
+  if let Some(deno_json) = root_config_folder.deno_json()
+    && let Some(workspace_config) = deno_json.to_workspace_config()? {
       let (pattern_members, path_members): (Vec<_>, Vec<_>) = workspace_config
         .members
         .iter()
@@ -849,9 +842,8 @@ fn resolve_workspace_for_config_folder<
         }
       }
     }
-  }
-  if let Some(pkg_json) = root_config_folder.pkg_json() {
-    if let Some(members) = &pkg_json.workspaces {
+  if let Some(pkg_json) = root_config_folder.pkg_json()
+    && let Some(members) = &pkg_json.workspaces {
       let (pattern_members, path_members): (Vec<_>, Vec<_>) = members
         .iter()
         .partition(|member| is_glob_pattern(member) || member.starts_with('!'));
@@ -915,7 +907,6 @@ fn resolve_workspace_for_config_folder<
         final_members.insert(new_rc(member_dir_url), member_config_folder);
       }
     }
-  }
 
   Ok(RawResolvedWorkspace {
     root: root_config_folder,
@@ -942,15 +933,13 @@ fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
     |raw_link: &str| -> Result<Url, WorkspaceDiscoverError> {
       let link = ensure_trailing_slash(raw_link);
       // support someone specifying an absolute path
-      if !cfg!(windows) && link.starts_with('/')
-        || cfg!(windows) && link.chars().any(|c| c == '\\')
-      {
-        if let Ok(value) =
+      if (!cfg!(windows) && link.starts_with('/')
+        || cfg!(windows) && link.chars().any(|c| c == '\\'))
+        && let Ok(value) =
           deno_path_util::url_from_file_path(Path::new(link.as_ref()))
         {
           return Ok(value);
         }
-      }
       let link_dir_url =
         root_config_file_directory_url.join(&link).map_err(|err| {
           WorkspaceDiscoverErrorKind::ResolveLink {

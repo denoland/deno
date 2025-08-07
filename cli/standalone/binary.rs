@@ -588,15 +588,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       );
     }
 
-    if let Some(import_map) = self.workspace_resolver.maybe_import_map() {
-      if let Ok(file_path) = url_to_file_path(import_map.base_url()) {
-        if let Some(import_map_parent_dir) = file_path.parent() {
+    if let Some(import_map) = self.workspace_resolver.maybe_import_map()
+      && let Ok(file_path) = url_to_file_path(import_map.base_url())
+        && let Some(import_map_parent_dir) = file_path.parent() {
           // tell the vfs about the import map's parent directory in case it
           // falls outside what the root of where the VFS will be based
           vfs.add_possible_min_root_dir(import_map_parent_dir);
         }
-      }
-    }
     if let Some(node_modules_dir) = self.npm_resolver.root_node_modules_path() {
       // ensure the vfs doesn't go below the node_modules directory's parent
       if let Some(parent) = node_modules_dir.parent() {

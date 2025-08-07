@@ -125,11 +125,10 @@ impl PrettyTestReporter {
       TestStepResult::Failed(failure) => failure.format_label(),
     };
     write!(&mut self.writer, " {status}").ok();
-    if let TestStepResult::Failed(failure) = result {
-      if let Some(inline_summary) = failure.format_inline_summary() {
+    if let TestStepResult::Failed(failure) = result
+      && let Some(inline_summary) = failure.format_inline_summary() {
         write!(&mut self.writer, " ({inline_summary})").ok();
       }
-    }
     if !matches!(result, TestStepResult::Failed(TestFailure::Incomplete)) {
       write!(
         &mut self.writer,
@@ -284,11 +283,10 @@ impl TestReporter for PrettyTestReporter {
       TestResult::Cancelled => colors::gray("cancelled").to_string(),
     };
     write!(&mut self.writer, " {status}").ok();
-    if let TestResult::Failed(failure) = result {
-      if let Some(inline_summary) = failure.format_inline_summary() {
+    if let TestResult::Failed(failure) = result
+      && let Some(inline_summary) = failure.format_inline_summary() {
         write!(&mut self.writer, " ({inline_summary})").ok();
       }
-    }
     writeln!(
       &mut self.writer,
       " {}",

@@ -1115,14 +1115,13 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   let mut latency = None;
 
   for line in output.lines() {
-    if requests.is_none() {
-      if let Some(cap) = REQUESTS_RX.captures(line) {
+    if requests.is_none()
+      && let Some(cap) = REQUESTS_RX.captures(line) {
         requests =
           Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
       }
-    }
-    if latency.is_none() {
-      if let Some(cap) = LATENCY_RX.captures(line) {
+    if latency.is_none()
+      && let Some(cap) = LATENCY_RX.captures(line) {
         let time = cap.get(1).unwrap();
         let unit = cap.get(2).unwrap();
 
@@ -1136,7 +1135,6 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
             },
         );
       }
-    }
   }
 
   WrkOutput {

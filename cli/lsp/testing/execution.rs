@@ -60,8 +60,8 @@ fn as_queue_and_filters(
       let url = uri_to_url(&item.text_document.uri);
       if let Some((test_definitions, _)) = tests.get(&url) {
         queue.insert(url.clone());
-        if let Some(id) = &item.id {
-          if let Some(test) = test_definitions.get(id) {
+        if let Some(id) = &item.id
+          && let Some(test) = test_definitions.get(id) {
             let filter = filters.entry(url).or_default();
             if let Some(include) = filter.include.as_mut() {
               include.insert(test.id.clone(), test.clone());
@@ -71,7 +71,6 @@ fn as_queue_and_filters(
               filter.include = Some(include);
             }
           }
-        }
       }
     }
   } else {
@@ -83,12 +82,11 @@ fn as_queue_and_filters(
     if let Some((test_definitions, _)) = tests.get(&url) {
       if let Some(id) = &item.id {
         // there is no way to exclude a test step
-        if item.step_id.is_none() {
-          if let Some(test) = test_definitions.get(id) {
+        if item.step_id.is_none()
+          && let Some(test) = test_definitions.get(id) {
             let filter = filters.entry(url.clone()).or_default();
             filter.exclude.insert(test.id.clone(), test.clone());
           }
-        }
       } else {
         // the entire test module is excluded
         queue.remove(&url);
@@ -472,20 +470,18 @@ impl TestRun {
         args.push(Cow::Owned(flag));
       }
     }
-    if let Some(config) = &self.workspace_settings.config {
-      if !args.contains(&Cow::Borrowed("--config"))
+    if let Some(config) = &self.workspace_settings.config
+      && !args.contains(&Cow::Borrowed("--config"))
         && !args.contains(&Cow::Borrowed("-c"))
       {
         args.push(Cow::Borrowed("--config"));
         args.push(Cow::Borrowed(config.as_str()));
       }
-    }
-    if let Some(import_map) = &self.workspace_settings.import_map {
-      if !args.contains(&Cow::Borrowed("--import-map")) {
+    if let Some(import_map) = &self.workspace_settings.import_map
+      && !args.contains(&Cow::Borrowed("--import-map")) {
         args.push(Cow::Borrowed("--import-map"));
         args.push(Cow::Borrowed(import_map.as_str()));
       }
-    }
     if self.kind == lsp_custom::TestRunKind::Debug
       && !args.contains(&Cow::Borrowed("--inspect"))
       && !args.contains(&Cow::Borrowed("--inspect-brk"))

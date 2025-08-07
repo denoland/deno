@@ -198,13 +198,11 @@ impl<TEnvironment: UpdateCheckerEnvironment, TVersionProvider: VersionProvider>
       return None;
     }
 
-    if let Ok(current) = Version::parse_standard(&current_version) {
-      if let Ok(latest) = Version::parse_standard(&file.latest_version) {
-        if current >= latest {
+    if let Ok(current) = Version::parse_standard(&current_version)
+      && let Ok(latest) = Version::parse_standard(&file.latest_version)
+        && current >= latest {
           return None;
         }
-      }
-    }
 
     let last_prompt_age = self
       .env
@@ -430,15 +428,12 @@ async fn check_for_upgrades_for_lsp_with_provider(
 
   match release_channel {
     ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
-      if let Ok(current) = Version::parse_standard(&current_version) {
-        if let Ok(latest) =
+      if let Ok(current) = Version::parse_standard(&current_version)
+        && let Ok(latest) =
           Version::parse_standard(&latest_version.version_or_hash)
-        {
-          if current >= latest {
+          && current >= latest {
             return Ok(None); // nothing to upgrade
           }
-        }
-      }
       Ok(Some(LspVersionUpgradeInfo {
         latest_version: latest_version.version_or_hash,
         is_canary: false,

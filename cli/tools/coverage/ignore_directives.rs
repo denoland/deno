@@ -125,8 +125,8 @@ pub fn parse_range_ignore_directives(
 
   // If the coverage ignore start directive has no corresponding close directive
   // then log a warning and ignore the directive.
-  if let Some(range) = current_range.take() {
-    if log::log_enabled!(log::Level::Warn) {
+  if let Some(range) = current_range.take()
+    && log::log_enabled!(log::Level::Warn) {
       let loc = text_lines.line_and_column_display(range.start);
       log::warn!(
         "WARNING: Unterminated {} comment at {}:{}:{} will be ignored.",
@@ -136,7 +136,6 @@ pub fn parse_range_ignore_directives(
         loc.column_number,
       );
     }
-  }
 
   directives
 }
@@ -197,11 +196,10 @@ fn is_ignore_comment(
 
   let comment_text = comment.text.trim();
 
-  if let Some(prefix) = comment_text.split_whitespace().next() {
-    if prefix == ignore_diagnostic_directive {
+  if let Some(prefix) = comment_text.split_whitespace().next()
+    && prefix == ignore_diagnostic_directive {
       return true;
     }
-  }
 
   false
 }

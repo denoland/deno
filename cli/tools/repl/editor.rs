@@ -479,8 +479,8 @@ impl ReplEditor {
 
   pub fn update_history(&self, entry: String) {
     let _ = self.inner.lock().add_history_entry(entry);
-    if let Some(history_file_path) = &self.history_file_path {
-      if let Err(e) = self.inner.lock().append_history(history_file_path) {
+    if let Some(history_file_path) = &self.history_file_path
+      && let Err(e) = self.inner.lock().append_history(history_file_path) {
         if self.errored_on_history_save.load(Relaxed) {
           return;
         }
@@ -488,7 +488,6 @@ impl ReplEditor {
         self.errored_on_history_save.store(true, Relaxed);
         log::warn!("Unable to save history file: {e}");
       }
-    }
   }
 
   pub fn should_exit_on_interrupt(&self) -> bool {

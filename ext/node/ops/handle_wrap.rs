@@ -185,11 +185,10 @@ impl HandleWrap {
   #[fast]
   #[rename("r#ref")]
   fn ref_(&self, state: &mut OpState) {
-    if self.is_alive() {
-      if let Some(handle) = self.handle {
+    if self.is_alive()
+      && let Some(handle) = self.handle {
         state.uv_ref(handle);
       }
-    }
   }
 
   // Ported from Node.js
@@ -197,11 +196,10 @@ impl HandleWrap {
   // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L49-L55
   #[fast]
   fn unref(&self, state: &mut OpState) {
-    if self.is_alive() {
-      if let Some(handle) = self.handle {
+    if self.is_alive()
+      && let Some(handle) = self.handle {
         state.uv_unref(handle);
       }
-    }
   }
 }
 

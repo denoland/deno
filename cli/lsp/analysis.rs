@@ -382,18 +382,16 @@ impl<'a> TsResponseImportMapper<'a> {
         {
           return Some(result);
         }
-        if let Some(req_ref_str) = specifier.as_str().strip_prefix("jsr:") {
-          if !req_ref_str.starts_with('/') {
+        if let Some(req_ref_str) = specifier.as_str().strip_prefix("jsr:")
+          && !req_ref_str.starts_with('/') {
             let specifier_str = format!("jsr:/{req_ref_str}");
-            if let Ok(specifier) = ModuleSpecifier::parse(&specifier_str) {
-              if let Some(result) =
+            if let Ok(specifier) = ModuleSpecifier::parse(&specifier_str)
+              && let Some(result) =
                 import_map_lookup(import_map, &specifier, referrer)
               {
                 return Some(result);
               }
-            }
           }
-        }
       }
       return Some(spec_str);
     }
@@ -432,9 +430,9 @@ impl<'a> TsResponseImportMapper<'a> {
           let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
           let mut matches = Vec::new();
           for entry in import_map.entries_for_referrer(referrer) {
-            if let Some(value) = entry.raw_value {
-              if let Ok(package_ref) = NpmPackageReqReference::from_str(value) {
-                if pkg_reqs.contains(package_ref.req()) {
+            if let Some(value) = entry.raw_value
+              && let Ok(package_ref) = NpmPackageReqReference::from_str(value)
+                && pkg_reqs.contains(package_ref.req()) {
                   let sub_path = sub_path.as_deref().unwrap_or("");
                   let value_sub_path = package_ref.sub_path().unwrap_or("");
                   if let Some(key_sub_path) =
@@ -447,8 +445,6 @@ impl<'a> TsResponseImportMapper<'a> {
                     }
                   }
                 }
-              }
-            }
           }
           // select the shortest match
           matches.sort_by_key(|a| a.len());
@@ -479,11 +475,10 @@ impl<'a> TsResponseImportMapper<'a> {
     }
 
     // check if the import map has this specifier
-    if let Some(import_map) = self.maybe_import_map {
-      if let Some(result) = import_map_lookup(import_map, specifier, referrer) {
+    if let Some(import_map) = self.maybe_import_map
+      && let Some(result) = import_map_lookup(import_map, specifier, referrer) {
         return Some(result);
       }
-    }
 
     None
   }
@@ -575,15 +570,13 @@ impl<'a> TsResponseImportMapper<'a> {
             .document_modules
             .specifier_exists(s, self.scope.as_deref())
         })
-      {
-        if let Some(specifier) = self
+        && let Some(specifier) = self
           .check_specifier(&specifier, referrer)
           .or_else(|| relative_specifier(referrer, &specifier))
           .filter(|s| !s.contains("/node_modules/"))
         {
           return Some(specifier);
         }
-      }
     }
     None
   }
@@ -873,7 +866,7 @@ fn is_preferred(
     } else if let CodeActionKind::Deno(_) = i {
       // This is to make sure 'Remove import' isn't preferred over 'Cache
       // dependencies'.
-      return false;
+      false
     } else {
       true
     }
@@ -1196,8 +1189,8 @@ impl CodeActionCollection {
       .actions
       .push(CodeActionKind::Tsc(code_action, action.as_ref().clone()));
 
-    if let Some(fix_id) = &action.fix_id {
-      if let Some(CodeActionKind::Tsc(existing_fix_all, existing_action)) =
+    if let Some(fix_id) = &action.fix_id
+      && let Some(CodeActionKind::Tsc(existing_fix_all, existing_action)) =
         self.fix_all_actions.get(&FixAllKind::Tsc(fix_id.clone()))
       {
         self.actions.retain(|i| match i {
@@ -1209,7 +1202,6 @@ impl CodeActionCollection {
           existing_action.clone(),
         ));
       }
-    }
     Ok(())
   }
 

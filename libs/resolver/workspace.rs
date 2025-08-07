@@ -302,11 +302,10 @@ impl<TSys: FsMetadata> CachedMetadataFs<TSys> {
   }
 
   fn stat_sync(&self, path: &Path) -> Option<CachedMetadataFsEntry> {
-    if let Some(cache) = &self.cache {
-      if let Some(entry) = cache.get(path) {
+    if let Some(cache) = &self.cache
+      && let Some(entry) = cache.get(path) {
         return *entry;
       }
-    }
     let entry = self.sys.fs_metadata(path).ok().and_then(|stat| {
       if stat.file_type().is_file() {
         Some(CachedMetadataFsEntry::File)
@@ -622,11 +621,10 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
       };
 
     for (probe_path, reason) in probe_paths {
-      if self.fs.is_file(&probe_path) {
-        if let Ok(specifier) = url_from_file_path(&probe_path) {
+      if self.fs.is_file(&probe_path)
+        && let Ok(specifier) = url_from_file_path(&probe_path) {
           return Some((specifier, reason));
         }
-      }
     }
 
     None
@@ -768,11 +766,10 @@ impl<TSys: FsMetadata> CompilerOptionsRootDirsResolver<TSys> {
     let root_dirs_by_member = workspace
       .resolver_deno_jsons()
       .filter_map(|c| {
-        if let Some(root_deno_json) = root_deno_json {
-          if c.specifier == root_deno_json.specifier {
+        if let Some(root_deno_json) = root_deno_json
+          && c.specifier == root_deno_json.specifier {
             return None;
           }
-        }
         let dir_url = c
           .specifier
           .join(".")
@@ -1303,8 +1300,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         {
           specifier = probed_specifier;
           sloppy_reason = Some(probed_sloppy_reason);
-        } else if resolution_kind.is_types() {
-          if let Some((probed_specifier, probed_sloppy_reason)) = self
+        } else if resolution_kind.is_types()
+          && let Some((probed_specifier, probed_sloppy_reason)) = self
             .compiler_options_root_dirs_resolver
             .resolve_types(&specifier, referrer)
           {
@@ -1312,7 +1309,6 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
             specifier = probed_specifier;
             sloppy_reason = probed_sloppy_reason;
           }
-        }
         return self.maybe_resolve_specifier_to_workspace_jsr_pkg(
           MappedResolution::Normal {
             specifier,
@@ -1329,8 +1325,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     // 2. Try to resolve the bare specifier to a workspace member
     if resolve_error.is_unmapped_bare_specifier() {
       for member in &self.jsr_pkgs {
-        if let Some(path) = specifier.strip_prefix(&member.name) {
-          if path.is_empty() || path.starts_with('/') {
+        if let Some(path) = specifier.strip_prefix(&member.name)
+          && (path.is_empty() || path.starts_with('/')) {
             let path = path.strip_prefix('/').unwrap_or(path);
             let pkg_req_ref = match JsrPackageReqReference::from_str(&format!(
               "jsr:{}{}/{}",
@@ -1351,7 +1347,6 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
             };
             return self.resolve_workspace_jsr_pkg(member, pkg_req_ref);
           }
-        }
       }
     }
 
@@ -1375,8 +1370,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
           .iter()
           .chain(pkg_json_folder.deps.dev_dependencies.iter())
         {
-          if let Some(path) = specifier.strip_prefix(bare_specifier.as_str()) {
-            if path.is_empty() || path.starts_with('/') {
+          if let Some(path) = specifier.strip_prefix(bare_specifier.as_str())
+            && (path.is_empty() || path.starts_with('/')) {
               let sub_path = path.strip_prefix('/').unwrap_or(path);
               return Ok(MappedResolution::PackageJson {
                 pkg_json: &pkg_json_folder.pkg_json,
@@ -1389,7 +1384,6 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
                 dep_result,
               });
             }
-          }
         }
       }
 

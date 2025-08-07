@@ -220,11 +220,10 @@ pub fn op_message_port_post_message(
   #[serde] data: JsMessageData,
 ) -> Result<(), MessagePortError> {
   for js_transferable in &data.transferables {
-    if let JsTransferable::MessagePort(id) = js_transferable {
-      if *id == rid {
+    if let JsTransferable::MessagePort(id) = js_transferable
+      && *id == rid {
         return Err(MessagePortError::TransferSelf);
       }
-    }
   }
 
   let resource = state

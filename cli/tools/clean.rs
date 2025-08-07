@@ -280,11 +280,10 @@ async fn clean_except(
   }
 
   for url in &keep {
-    if url.scheme() == "http" || url.scheme() == "https" {
-      if let Ok(path) = http_cache.local_path_for_url(url) {
+    if (url.scheme() == "http" || url.scheme() == "https")
+      && let Ok(path) = http_cache.local_path_for_url(url) {
         keep_paths_trie.insert(path);
       }
-    }
     if let Some(path) = deno_dir
       .gen_cache
       .get_cache_filename_with_extension(url, "js")
@@ -354,8 +353,8 @@ async fn clean_except(
   }
 
   let mut vendor_cleaned = CleanState::default();
-  if let Some(vendor_dir) = options.vendor_dir_path() {
-    if let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache {
+  if let Some(vendor_dir) = options.vendor_dir_path()
+    && let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache {
       let mut trie = PathTrie::new();
       if deno_dir_root_canonical != deno_dir.root {
         trie.add_rewrite(deno_dir.root.clone(), deno_dir_root_canonical);
@@ -386,7 +385,6 @@ async fn clean_except(
         dry_run,
       )?;
     }
-  }
 
   if !dry_run {
     log_stats(&state, &deno_dir.root);
@@ -602,8 +600,8 @@ fn clean_node_modules_symlinks(
     if ty.is_symlink() {
       let target = std::fs::read_link(entry.path())?;
       let name = node_modules_package_actual_dir_to_name(&target);
-      if let Some(name) = name {
-        if !keep_names.contains(&*name) {
+      if let Some(name) = name
+        && !keep_names.contains(&*name) {
           if dry_run {
             #[allow(clippy::print_stderr)]
             {
@@ -614,7 +612,6 @@ fn clean_node_modules_symlinks(
             remove_file(state, &entry.path(), None)?;
           }
         }
-      }
     }
   }
   Ok(())
@@ -650,16 +647,14 @@ fn remove_file(
     .with_context(|| format!("Failed to remove file: {}", path.display()))
   {
     Err(e) => {
-      if cfg!(windows) {
-        if let Ok(meta) = path.symlink_metadata() {
-          if meta.is_symlink() {
+      if cfg!(windows)
+        && let Ok(meta) = path.symlink_metadata()
+          && meta.is_symlink() {
             std::fs::remove_dir(path).with_context(|| {
               format!("Failed to remove symlink: {}", path.display())
             })?;
             return Ok(());
           }
-        }
-      }
       Err(e)
     }
     _ => Ok(()),

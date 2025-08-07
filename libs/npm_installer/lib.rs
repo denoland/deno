@@ -267,13 +267,12 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       .add_package_reqs(packages)
       .await;
 
-    if result.dependencies_result.is_ok() {
-      if let Some(lockfile) = self.maybe_lockfile.as_ref() {
+    if result.dependencies_result.is_ok()
+      && let Some(lockfile) = self.maybe_lockfile.as_ref() {
         result.dependencies_result = lockfile.error_if_changed();
       }
-    }
-    if result.dependencies_result.is_ok() {
-      if let Some(caching) = caching {
+    if result.dependencies_result.is_ok()
+      && let Some(caching) = caching {
         // the async mutex is unfortunate, but needed to handle the edge case where two workers
         // try to cache the same package at the same time. we need to hold the lock while we cache
         // and since that crosses an await point, we need the async mutex.
@@ -299,7 +298,6 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           }
         }
       }
-    }
 
     result
   }

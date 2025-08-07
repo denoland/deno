@@ -530,11 +530,10 @@ where
     TcpStream::connect(&addr).await
   };
 
-  if let Some(cancel_rid) = resource_abort_id {
-    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+  if let Some(cancel_rid) = resource_abort_id
+    && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
       res.close();
     }
-  }
 
   let tcp_stream = match tcp_stream_result {
     Ok(tcp_stream) => tcp_stream,
@@ -1026,11 +1025,10 @@ where
   let lookup = if let Some(cancel_handle) = cancel_handle {
     let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
 
-    if let Some(cancel_rid) = cancel_rid {
-      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+    if let Some(cancel_rid) = cancel_rid
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
         res.close();
-      }
-    };
+      };
 
     lookup_rv?
   } else {

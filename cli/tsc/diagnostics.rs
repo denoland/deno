@@ -255,8 +255,7 @@ impl Diagnostic {
   ) -> fmt::Result {
     if let (Some(source_line), Some(start), Some(end)) =
       (&self.source_line, &self.start, &self.end)
-    {
-      if !source_line.is_empty() && source_line.len() <= MAX_SOURCE_LINE_LENGTH
+      && !source_line.is_empty() && source_line.len() <= MAX_SOURCE_LINE_LENGTH
       {
         write!(f, "\n{:indent$}{}", "", source_line, indent = level)?;
         let length = if start.line == end.line {
@@ -286,20 +285,18 @@ impl Diagnostic {
         };
         write!(f, "\n{:indent$}{}", "", underline, indent = level)?;
       }
-    }
 
     Ok(())
   }
 
   fn fmt_related_information(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    if let Some(related_information) = self.related_information.as_ref() {
-      if !related_information.is_empty() {
+    if let Some(related_information) = self.related_information.as_ref()
+      && !related_information.is_empty() {
         write!(f, "\n\n")?;
         for info in related_information {
           info.fmt_stack(f, 4)?;
         }
       }
-    }
 
     Ok(())
   }
@@ -375,17 +372,15 @@ impl Diagnostics {
         .file_name
         .as_ref()
         .and_then(|n| ModuleSpecifier::parse(n).ok())
-      {
-        if let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) {
-          if let Some(fast_check_module) =
+        && let Ok(Some(module)) = graph.try_get_prefer_types(&specifier)
+          && let Some(fast_check_module) =
             module.js().and_then(|m| m.fast_check_module())
           {
             // todo(dsherret): use a short lived cache to prevent parsing
             // source maps so often
             if let Ok(source_map) =
               SourceMap::from_slice(fast_check_module.source_map.as_bytes())
-            {
-              if let Some(start) = d.start.as_mut() {
+              && let Some(start) = d.start.as_mut() {
                 let maybe_token = source_map
                   .lookup_token(start.line as u32, start.character as u32);
                 if let Some(token) = maybe_token {
@@ -395,10 +390,7 @@ impl Diagnostics {
                   });
                 }
               }
-            }
           }
-        }
-      }
 
       if let Some(related) = &mut d.related_information {
         for d in related.iter_mut() {

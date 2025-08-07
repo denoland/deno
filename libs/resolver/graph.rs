@@ -394,15 +394,14 @@ impl<
           reference,
           ..
         } => {
-          if let Some(on_warning) = &self.on_warning {
-            if self.warned_pkgs.insert(reference.req().clone()) {
+          if let Some(on_warning) = &self.on_warning
+            && self.warned_pkgs.insert(reference.req().clone()) {
               on_warning(MappedResolutionDiagnosticWithPosition {
                 diagnostic,
                 referrer,
                 start: referrer_range_start,
               });
             }
-          }
         }
       }
     }
@@ -556,14 +555,13 @@ pub fn enhance_graph_error(
     }
   };
 
-  if let Some(range) = error.maybe_range() {
-    if mode == EnhanceGraphErrorMode::ShowRange
+  if let Some(range) = error.maybe_range()
+    && mode == EnhanceGraphErrorMode::ShowRange
       && !range.specifier.as_str().contains("/$deno$eval")
     {
       message.push_str("\n    at ");
       message.push_str(&format_range_with_colors(range));
     }
-  }
   message
 }
 
@@ -773,8 +771,8 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
     if range.specifier.scheme() == "file" {
       maybe_specifier = Some(specifier);
     }
-  } else if let ResolutionError::ResolverError { error, range, .. } = error {
-    if range.specifier.scheme() == "file" {
+  } else if let ResolutionError::ResolverError { error, range, .. } = error
+    && range.specifier.scheme() == "file" {
       match error.as_ref() {
         ResolveError::Specifier(specifier_error) => {
           if let SpecifierError::ImportPrefixMissing { specifier, .. } =
@@ -802,7 +800,6 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
         }
       }
     }
-  }
 
   if let Some(specifier) = maybe_specifier {
     // NOTE(bartlomieju): For now, return None if a specifier contains a dot or a space. This is because

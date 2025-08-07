@@ -220,8 +220,8 @@ fn handle_custom_npm_registry_path(
       let file_resp = custom_headers("file.tgz", file_bytes);
       return Ok(Some(file_resp));
     }
-  } else if remainder.is_empty() {
-    if let Some(registry_file) =
+  } else if remainder.is_empty()
+    && let Some(registry_file) =
       test_npm_registry.registry_file(&package_name)?
     {
       let actual_etag = format!(
@@ -246,7 +246,6 @@ fn handle_custom_npm_registry_path(
 
       return Ok(Some(file_resp));
     }
-  }
 
   Ok(None)
 }

@@ -663,15 +663,12 @@ fn is_response_compressible(headers: &HeaderMap) -> bool {
   if headers.contains_key(CONTENT_RANGE) {
     return false;
   }
-  if let Some(cache_control) = headers.get(CACHE_CONTROL) {
-    if let Ok(s) = std::str::from_utf8(cache_control.as_bytes()) {
-      if let Some(cache_control) = CacheControl::from_value(s) {
-        if cache_control.no_transform {
+  if let Some(cache_control) = headers.get(CACHE_CONTROL)
+    && let Ok(s) = std::str::from_utf8(cache_control.as_bytes())
+      && let Some(cache_control) = CacheControl::from_value(s)
+        && cache_control.no_transform {
           return false;
         }
-      }
-    }
-  }
   true
 }
 
@@ -700,14 +697,13 @@ fn modify_compressibility_from_response(
 /// If the user provided a ETag header for uncompressed data, we need to ensure it is a
 /// weak Etag header ("W/").
 fn weaken_etag(hmap: &mut HeaderMap) {
-  if let Some(etag) = hmap.get_mut(hyper::header::ETAG) {
-    if !etag.as_bytes().starts_with(b"W/") {
+  if let Some(etag) = hmap.get_mut(hyper::header::ETAG)
+    && !etag.as_bytes().starts_with(b"W/") {
       let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
       v.extend(b"W/");
       v.extend(etag.as_bytes());
       *etag = v.try_into().unwrap();
     }
-  }
 }
 
 // Set Vary: Accept-Encoding header for direct body response.
@@ -715,14 +711,13 @@ fn weaken_etag(hmap: &mut HeaderMap) {
 // to make sure cache services do not serve uncompressed data to clients that
 // support compression.
 fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
-  if let Some(v) = hmap.get_mut(hyper::header::VARY) {
-    if let Ok(s) = v.to_str() {
+  if let Some(v) = hmap.get_mut(hyper::header::VARY)
+    && let Ok(s) = v.to_str() {
       if !s.to_lowercase().contains("accept-encoding") {
         *v = format!("Accept-Encoding, {s}").try_into().unwrap()
       }
       return;
     }
-  }
   hmap.insert(
     hyper::header::VARY,
     HeaderValue::from_static("Accept-Encoding"),

@@ -440,11 +440,10 @@ impl Proxies {
   }
 
   fn intercept(&self, dst: &Uri) -> Option<&Intercept> {
-    if let Some(no_proxy) = self.no.as_ref() {
-      if no_proxy.contains(dst.host()?) {
+    if let Some(no_proxy) = self.no.as_ref()
+      && no_proxy.contains(dst.host()?) {
         return None;
       }
-    }
 
     for intercept in &self.intercepts {
       return match (

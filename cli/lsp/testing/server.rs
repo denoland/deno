@@ -144,13 +144,12 @@ impl TestServer {
                     {
                       client.send_test_notification(params);
                     }
-                  } else if !was_empty {
-                    if let Ok(params) =
+                  } else if !was_empty
+                    && let Ok(params) =
                       as_delete_notification(&module.specifier)
                     {
                       client.send_test_notification(params);
                     }
-                  }
                   tests.insert(
                     module.specifier.as_ref().clone(),
                     (test_module, script_version),

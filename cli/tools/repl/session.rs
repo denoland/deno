@@ -938,8 +938,8 @@ fn analyze_jsx_pragmas(
       continue; // invalid
     }
 
-    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
+    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text)
+      && let Some(m) = captures.get(1) {
         analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
           text: m.as_str().to_string(),
           range: comment_source_to_position_range(
@@ -950,10 +950,9 @@ fn analyze_jsx_pragmas(
           ),
         });
       }
-    }
 
-    if let Some(captures) = JSX_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
+    if let Some(captures) = JSX_RE.captures(&c.text)
+      && let Some(m) = captures.get(1) {
         analyzed_pragmas.jsx = Some(SpecifierWithRange {
           text: m.as_str().to_string(),
           range: comment_source_to_position_range(
@@ -964,10 +963,9 @@ fn analyze_jsx_pragmas(
           ),
         });
       }
-    }
 
-    if let Some(captures) = JSX_FRAG_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
+    if let Some(captures) = JSX_FRAG_RE.captures(&c.text)
+      && let Some(m) = captures.get(1) {
         analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
           text: m.as_str().to_string(),
           range: comment_source_to_position_range(
@@ -978,7 +976,6 @@ fn analyze_jsx_pragmas(
           ),
         });
       }
-    }
   }
 
   Some(analyzed_pragmas)

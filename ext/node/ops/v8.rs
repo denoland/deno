@@ -73,13 +73,12 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
       .v8_string(scope)
       .unwrap()
       .into();
-    if let Some(v) = obj.get(scope, key) {
-      if let Ok(fun) = v.try_cast::<v8::Function>() {
+    if let Some(v) = obj.get(scope, key)
+      && let Ok(fun) = v.try_cast::<v8::Function>() {
         return fun
           .call(scope, obj.into(), &[shared_array_buffer.into()])
           .and_then(|ret| ret.uint32_value(scope));
       }
-    }
     None
   }
   fn has_custom_host_object(&self, _isolate: &mut v8::Isolate) -> bool {
@@ -119,12 +118,11 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
       .v8_string(scope)
       .unwrap()
       .into();
-    if let Some(v) = obj.get(scope, key) {
-      if let Ok(v) = v.try_cast::<v8::Function>() {
+    if let Some(v) = obj.get(scope, key)
+      && let Ok(v) = v.try_cast::<v8::Function>() {
         v.call(scope, obj.into(), &[object.into()])?;
         return Some(true);
       }
-    }
 
     None
   }
@@ -259,8 +257,8 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
       .unwrap()
       .into();
     let scope = &mut v8::AllowJavascriptExecutionScope::new(scope);
-    if let Some(v) = obj.get(scope, key) {
-      if let Ok(v) = v.try_cast::<v8::Function>() {
+    if let Some(v) = obj.get(scope, key)
+      && let Ok(v) = v.try_cast::<v8::Function>() {
         let result = v.call(scope, obj.into(), &[])?;
         match result.try_cast() {
           Ok(res) => return Some(res),
@@ -275,7 +273,6 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
           }
         }
       }
-    }
     None
   }
 }

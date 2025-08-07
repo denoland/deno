@@ -297,15 +297,13 @@ impl SqliteBackedCache {
         // headers of the cached request match the query request.
         if let Some(vary_header) =
           get_header("vary", &cache_meta.response_headers)
-        {
-          if !vary_header_matches(
+          && !vary_header_matches(
             &vary_header,
             &request.request_headers,
             &cache_meta.request_headers,
           ) {
             return Ok(None);
           }
-        }
         let response_path =
           get_responses_dir(cache_storage_dir, request.cache_id)
             .join(response_body_key);

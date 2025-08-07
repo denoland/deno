@@ -1237,13 +1237,12 @@ fn get_typescript_config_builder(
     builder.indent_width(indent_width);
   }
 
-  if let Some(single_quote) = options.single_quote {
-    if single_quote {
+  if let Some(single_quote) = options.single_quote
+    && single_quote {
       builder.quote_style(
         dprint_plugin_typescript::configuration::QuoteStyle::PreferSingle,
       );
     }
-  }
 
   if let Some(semi_colons) = options.semi_colons {
     builder.semi_colons(match semi_colons {

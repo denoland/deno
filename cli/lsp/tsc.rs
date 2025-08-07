@@ -2041,20 +2041,16 @@ impl QuickInfo {
       .display_parts
       .clone()
       .map(|p| display_parts_to_string(&p, module, language_server))
-    {
-      if !display_string.is_empty() {
+      && !display_string.is_empty() {
         parts.push(format!("```typescript\n{display_string}\n```"));
       }
-    }
     if let Some(documentation) = self
       .documentation
       .clone()
       .map(|p| display_parts_to_string(&p, module, language_server))
-    {
-      if !documentation.is_empty() {
+      && !documentation.is_empty() {
         parts.push(documentation);
       }
-    }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
         .iter()
@@ -3990,14 +3986,12 @@ impl CompletionEntry {
       }
     } else if SUPPORTED_BUILTIN_NODE_MODULES
       .contains(&raw.module_specifier.as_str())
-    {
-      if let Ok(normalized) =
+      && let Ok(normalized) =
         resolve_url(&format!("node:{}", &raw.module_specifier))
       {
         self.auto_import_data =
           Some(CompletionNormalizedAutoImportData { raw, normalized });
       }
-    }
   }
 
   fn get_commit_characters(
@@ -4171,8 +4165,8 @@ impl CompletionEntry {
         }
       }
     }
-    if let Some(source) = &self.source {
-      if let Some(import_data) = &self.auto_import_data {
+    if let Some(source) = &self.source
+      && let Some(import_data) = &self.auto_import_data {
         sort_text = format!("\u{ffff}{}", self.sort_text);
         let mut display_source = source.clone();
         let import_mapper =
@@ -4253,7 +4247,6 @@ impl CompletionEntry {
           .get_or_insert_with(Default::default)
           .description = Some(display_source);
       }
-    }
 
     let text_edit =
       if let (Some(text_span), Some(new_text)) = (range, &insert_text) {

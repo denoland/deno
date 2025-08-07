@@ -776,8 +776,8 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     }
   }
 
-  if let Ok(m) = fs::metadata(to) {
-    if m.is_dir() {
+  if let Ok(m) = fs::metadata(to)
+    && m.is_dir() {
       return cp_(
         source_meta,
         from,
@@ -789,10 +789,9 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         })?),
       );
     }
-  }
 
-  if let Ok(m) = fs::symlink_metadata(to) {
-    if is_identical(&source_meta, &m) {
+  if let Ok(m) = fs::symlink_metadata(to)
+    && is_identical(&source_meta, &m) {
       return Err(
         io::Error::new(
           io::ErrorKind::InvalidInput,
@@ -801,7 +800,6 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         .into(),
       );
     }
-  }
 
   cp_(source_meta, from, to)
 }

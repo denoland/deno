@@ -318,8 +318,8 @@ pub fn select_interactive(
       .cols
       .map(|cols| (instructions_width / cols as usize) + 1)
       .unwrap_or(1);
-    if let Some(rows) = size.rows {
-      if items.len() + first_line_rows >= rows as usize {
+    if let Some(rows) = size.rows
+      && items.len() + first_line_rows >= rows as usize {
         let adj = if scroll_offset == 0 {
           first_line_rows.saturating_sub(1)
         } else {
@@ -350,7 +350,6 @@ pub fn select_interactive(
         );
         items = new_items;
       }
-    }
     static_text.eprint_items(items.iter());
 
     let event = crossterm::event::read()?;

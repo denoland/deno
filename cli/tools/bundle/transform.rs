@@ -21,9 +21,9 @@ impl VisitMut for BundleImportMetaMainTransform {
     //   import.meta.main => import.meta.main
     // else:
     //   import.meta.main => false
-    if let swc::ast::Expr::Member(member) = node {
-      if let swc::ast::Expr::MetaProp(meta_prop) = &mut *member.obj {
-        if meta_prop.kind == swc::ast::MetaPropKind::ImportMeta
+    if let swc::ast::Expr::Member(member) = node
+      && let swc::ast::Expr::MetaProp(meta_prop) = &mut *member.obj
+        && meta_prop.kind == swc::ast::MetaPropKind::ImportMeta
           && member.prop.is_ident_with("main")
         {
           if self.is_entrypoint {
@@ -37,8 +37,6 @@ impl VisitMut for BundleImportMetaMainTransform {
             return;
           }
         }
-      }
-    }
     node.visit_mut_children_with(self);
   }
 }

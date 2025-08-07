@@ -165,26 +165,21 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
   }
 
   // 2. Try `.npmrc` next to `package.json`
-  if let Some(package_json_path) = maybe_package_json_path {
-    if let Some(package_json_dir) = package_json_path.parent() {
-      if let Some((source, path)) = try_to_read_npmrc(sys, package_json_dir)? {
+  if let Some(package_json_path) = maybe_package_json_path
+    && let Some(package_json_dir) = package_json_path.parent()
+      && let Some((source, path)) = try_to_read_npmrc(sys, package_json_dir)? {
         let npmrc = try_to_parse_npmrc(sys, &source, &path)?;
         project_npmrc = Some((path, npmrc));
       }
-    }
-  }
 
   // 3. Try `.npmrc` next to `deno.json(c)` when not found `package.json`
-  if project_npmrc.is_none() {
-    if let Some(deno_json_path) = maybe_deno_json_path {
-      if let Some(deno_json_dir) = deno_json_path.parent() {
-        if let Some((source, path)) = try_to_read_npmrc(sys, deno_json_dir)? {
+  if project_npmrc.is_none()
+    && let Some(deno_json_path) = maybe_deno_json_path
+      && let Some(deno_json_dir) = deno_json_path.parent()
+        && let Some((source, path)) = try_to_read_npmrc(sys, deno_json_dir)? {
           let npmrc = try_to_parse_npmrc(sys, &source, &path)?;
           project_npmrc = Some((path, npmrc));
         }
-      }
-    }
-  }
 
   let resolve_npmrc = |path: PathBuf, npm_rc: NpmRc| {
     Ok((

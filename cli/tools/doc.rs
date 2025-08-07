@@ -273,14 +273,13 @@ impl deno_doc::html::HrefResolver for DocResolver {
     target: UrlResolveKind,
   ) -> String {
     let path = deno_doc::html::href_path_resolve(current, target);
-    if self.strip_trailing_html {
-      if let Some(path) = path
+    if self.strip_trailing_html
+      && let Some(path) = path
         .strip_suffix("index.html")
         .or_else(|| path.strip_suffix(".html"))
       {
         return path.to_owned();
       }
-    }
 
     path
   }

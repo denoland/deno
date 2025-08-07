@@ -436,8 +436,8 @@ fn with_folder_sync_lock(
   match inner(sys, output_folder, action) {
     Ok(()) => Ok(()),
     Err(err) => {
-      if let Err(remove_err) = sys.fs_remove_dir_all(output_folder) {
-        if remove_err.kind() != std::io::ErrorKind::NotFound {
+      if let Err(remove_err) = sys.fs_remove_dir_all(output_folder)
+        && remove_err.kind() != std::io::ErrorKind::NotFound {
           return Err(WithFolderSyncLockError::SetUpPackageCacheDir {
             package: Box::new(package.clone()),
             error: Box::new(err),
@@ -445,7 +445,6 @@ fn with_folder_sync_lock(
             output_folder: output_folder.to_path_buf(),
           });
         }
-      }
       Err(err)
     }
   }

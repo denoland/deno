@@ -189,11 +189,10 @@ impl ConfigUpdater {
 
         let (alias, value) = package_json_dependency_entry(selected);
 
-        if let Some(other) = other_dependencies {
-          if let Some(prop) = other.get(&alias) {
+        if let Some(other) = other_dependencies
+          && let Some(prop) = other.get(&alias) {
             remove_prop_and_maybe_parent_prop(prop);
           }
-        }
 
         match dependencies.get(&alias) {
           Some(prop) => {
@@ -390,8 +389,8 @@ pub async fn add(
       add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
     })?;
 
-  if let Some(deno) = &deno_config {
-    if deno.obj().get("importMap").is_some() {
+  if let Some(deno) = &deno_config
+    && deno.obj().get("importMap").is_some() {
       bail!(
         concat!(
           "`deno {}` is not supported when configuration file contains an \"importMap\" field. ",
@@ -402,7 +401,6 @@ pub async fn add(
         deno.display_path(),
       );
     }
-  }
 
   let start_dir = cli_factory.cli_options()?.start_dir.dir_path();
 
@@ -670,8 +668,8 @@ async fn find_package_and_select_version_for_req(
           package_req: req.clone(),
         });
       }
-      if req.version_req.version_text() == "*" {
-        if let Some(pre_release_version) =
+      if req.version_req.version_text() == "*"
+        && let Some(pre_release_version) =
           main_resolver.latest_version(req).await
         {
           return Ok(PackageAndVersion::NotFound {
@@ -682,7 +680,6 @@ async fn find_package_and_select_version_for_req(
             )),
           });
         }
-      }
 
       return Ok(PackageAndVersion::NotFound {
         package: prefixed_name,

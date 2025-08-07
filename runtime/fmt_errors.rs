@@ -207,12 +207,11 @@ fn format_js_error_inner(
 
   s.push_str(&js_error.exception_message);
 
-  if let Some(circular) = &circular {
-    if js_error.is_same_error(circular.reference.to) {
+  if let Some(circular) = &circular
+    && js_error.is_same_error(circular.reference.to) {
       write!(s, " {}", colors::cyan(format!("<ref *{}>", circular.index)))
         .unwrap();
     }
-  }
 
   if let Some(aggregated) = &js_error.aggregated {
     let aggregated_message = format_aggregated_error(
@@ -312,11 +311,9 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
     {
       if let Some(file_name) =
         e.frames.first().and_then(|f| f.file_name.as_ref())
-      {
-        if file_name.ends_with(".mjs") || file_name.ends_with(".mts") {
+        && (file_name.ends_with(".mjs") || file_name.ends_with(".mts")) {
           return vec![];
         }
-      }
       return vec![
         FixSuggestion::info_multiline(&[
           cstr!(

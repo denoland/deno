@@ -183,15 +183,14 @@ impl LscBackend {
     // From https://w3c.github.io/ServiceWorker/#request-matches-cached-item-algorithm
     // If there's Vary header in the response, ensure all the
     // headers of the cached request match the query request.
-    if let Some(vary_header) = res.headers().get(&VARY) {
-      if !vary_header_matches(
+    if let Some(vary_header) = res.headers().get(&VARY)
+      && !vary_header_matches(
         vary_header.as_bytes(),
         &request.request_headers,
         res.headers(),
       ) {
         return Ok(None);
       }
-    }
 
     let mut response_headers: Vec<(ByteString, ByteString)> = res
       .headers()
@@ -209,8 +208,7 @@ impl LscBackend {
       .headers()
       .get("x-lsc-meta-cached-at")
       .and_then(|x| x.to_str().ok())
-    {
-      if let Ok(cached_at) = chrono::DateTime::parse_from_rfc3339(x) {
+      && let Ok(cached_at) = chrono::DateTime::parse_from_rfc3339(x) {
         let age = chrono::Utc::now()
           .signed_duration_since(cached_at)
           .num_seconds();
@@ -218,7 +216,6 @@ impl LscBackend {
           response_headers.push(("age".into(), age.to_string().into()));
         }
       }
-    }
 
     let meta = CacheMatchResponseMeta {
       response_status: res.status().as_u16(),

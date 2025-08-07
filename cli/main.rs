@@ -271,8 +271,7 @@ async fn run_subcommand(
             ) = any_and_jserrorbox_downcast_ref::<
               worker::CreateCustomWorkerError,
             >(&script_err)
-            {
-              if flags.node_modules_dir.is_none() {
+              && flags.node_modules_dir.is_none() {
                 let mut flags = flags.deref().clone();
                 let watch = match &flags.subcommand {
                   DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
@@ -294,7 +293,6 @@ async fn run_subcommand(
                 .boxed_local()
                 .await;
               }
-            }
             let script_err_msg = script_err.to_string();
             if script_err_msg.starts_with(MODULE_NOT_FOUND)
               || script_err_msg.starts_with(UNSUPPORTED_SCHEME)
@@ -609,14 +607,13 @@ async fn resolve_flags_and_init(
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
   }
-  if flags.node_conditions.is_empty() {
-    if let Ok(conditions) = std::env::var("DENO_CONDITIONS") {
+  if flags.node_conditions.is_empty()
+    && let Ok(conditions) = std::env::var("DENO_CONDITIONS") {
       flags.node_conditions = conditions
         .split(",")
         .map(|c| c.trim().to_string())
         .collect();
     }
-  }
 
   // Tunnel is initialized before OTEL since
   // OTEL data is submitted via the tunnel.

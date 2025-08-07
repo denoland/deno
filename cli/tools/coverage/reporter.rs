@@ -216,8 +216,8 @@ impl CoverageReporter for LcovCoverageReporter {
     file_reports.iter().for_each(|(report, file_text)| {
       self.report(report, file_text).unwrap();
     });
-    if let Some((report, _)) = file_reports.first() {
-      if let Some(ref output) = report.output {
+    if let Some((report, _)) = file_reports.first()
+      && let Some(ref output) = report.output {
         if let Ok(path) = output.canonicalize() {
           let url = Url::from_file_path(path).unwrap();
           log::info!("Lcov coverage report has been generated at {url}");
@@ -228,7 +228,6 @@ impl CoverageReporter for LcovCoverageReporter {
           );
         }
       }
-    }
   }
 }
 
@@ -389,12 +388,11 @@ impl DetailedCoverageReporter {
       const SEPARATOR: &str = "|";
 
       // Put a horizontal separator between disjoint runs of lines
-      if let Some(last_line) = last_line {
-        if last_line + 1 != line_index {
+      if let Some(last_line) = last_line
+        && last_line + 1 != line_index {
           let dash = colors::gray("-".repeat(WIDTH + 1));
           println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
         }
-      }
 
       println!(
         "{:width$} {} {}",

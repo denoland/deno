@@ -248,12 +248,11 @@ impl SerializeCtx {
     let flags: u8 = prop_flags.into();
     let n: u8 = prop.clone().into();
 
-    if let Some(v) = self.prop_name_map.get::<usize>(n.into()) {
-      if *v == 0 {
+    if let Some(v) = self.prop_name_map.get::<usize>(n.into())
+      && *v == 0 {
         let id = self.str_table.insert(&format!("{prop}"));
         self.prop_name_map[n as usize] = id;
       }
-    }
 
     // Increment field counter
     let idx = self.field_count.len() - 1;
@@ -327,12 +326,11 @@ impl SerializeCtx {
       parent: 0,
     });
 
-    if let Some(v) = self.kind_name_map.get::<usize>(kind_u8.into()) {
-      if *v == 0 {
+    if let Some(v) = self.kind_name_map.get::<usize>(kind_u8.into())
+      && *v == 0 {
         let s_id = self.str_table.insert(&format!("{kind}"));
         self.kind_name_map[kind_u8 as usize] = s_id;
       }
-    }
 
     self.field_count.push(0);
     self.prop_stack.push(vec![]);

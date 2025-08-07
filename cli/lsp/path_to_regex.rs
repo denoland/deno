@@ -370,12 +370,11 @@ fn try_consume(
   token_type: &TokenType,
   it: &mut Peekable<impl Iterator<Item = LexToken>>,
 ) -> Option<String> {
-  if let Some(token) = it.peek() {
-    if &token.token_type == token_type {
+  if let Some(token) = it.peek()
+    && &token.token_type == token_type {
       let token = it.next().unwrap();
       return Some(token.value);
     }
-  }
   None
 }
 
@@ -742,9 +741,9 @@ impl Compiler {
                 let prefix = k.prefix.clone().unwrap_or_default();
                 let suffix = k.suffix.clone().unwrap_or_default();
                 for segment in v {
-                  if !segment.is_empty() && self.validate {
-                    if let Some(re) = &self.matches[i] {
-                      if !re.is_match(segment) {
+                  if !segment.is_empty() && self.validate
+                    && let Some(re) = &self.matches[i]
+                      && !re.is_match(segment) {
                         return Err(anyhow!(
                           "Expected all \"{:?}\" to match \"{}\", but got {}",
                           k.name,
@@ -752,16 +751,14 @@ impl Compiler {
                           segment
                         ));
                       }
-                    }
-                  }
                   write!(path, "{prefix}{segment}{suffix}").unwrap();
                 }
               }
             }
             Some(StringOrVec::String(s)) => {
-              if self.validate {
-                if let Some(re) = &self.matches[i] {
-                  if !re.is_match(s) {
+              if self.validate
+                && let Some(re) = &self.matches[i]
+                  && !re.is_match(s) {
                     return Err(anyhow!(
                       "Expected \"{:?}\" to match \"{}\", but got \"{}\"",
                       k.name,
@@ -769,8 +766,6 @@ impl Compiler {
                       s
                     ));
                   }
-                }
-              }
               let prefix = k.prefix.clone().unwrap_or_default();
               let suffix = k.suffix.clone().unwrap_or_default();
               write!(path, "{prefix}{s}{suffix}").unwrap();

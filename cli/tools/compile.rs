@@ -405,11 +405,10 @@ fn get_module_roots_and_include_paths(
     } else {
       analyze_path(&url, &exclude_set, &mut searched_paths, |file_path| {
         let media_type = MediaType::from_path(file_path);
-        if is_module_graph_media_type(media_type) {
-          if let Ok(file_url) = url_from_file_path(file_path) {
+        if is_module_graph_media_type(media_type)
+          && let Ok(file_url) = url_from_file_path(file_path) {
             module_roots.push(file_url);
           }
-        }
       })?;
     }
     if url.scheme() == "file" {

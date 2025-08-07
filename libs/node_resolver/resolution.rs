@@ -611,8 +611,8 @@ impl<
         )
       }
       _ => {
-        if let Err(e) = maybe_file_type {
-          if (resolution_mode == ResolutionMode::Require
+        if let Err(e) = maybe_file_type
+          && (resolution_mode == ResolutionMode::Require
             || self.resolution_config.bundle_mode)
             && e.kind() == std::io::ErrorKind::NotFound
           {
@@ -621,7 +621,6 @@ impl<
               return Ok(UrlOrPath::Path(file_with_ext));
             }
           }
-        }
 
         Err(
           ModuleNotFoundError {
@@ -841,11 +840,10 @@ impl<
         }
         _ => None, // already searched above
       };
-      if let Some(specific_dts_path) = specific_dts_path {
-        if sys.exists_(&specific_dts_path) {
+      if let Some(specific_dts_path) = specific_dts_path
+        && sys.exists_(&specific_dts_path) {
           return Some(specific_dts_path);
         }
-      }
       let ts_path = with_known_extension(path, "ts");
       if sys.is_file(&ts_path) {
         return Some(ts_path);
@@ -943,8 +941,8 @@ impl<
       );
     }
 
-    if let Some(pkg_json) = &referrer_pkg_json {
-      if let Some(resolved_import) = resolve_pkg_json_import(pkg_json, name) {
+    if let Some(pkg_json) = &referrer_pkg_json
+      && let Some(resolved_import) = resolve_pkg_json_import(pkg_json, name) {
         let maybe_resolved = self.resolve_package_target(
           &pkg_json.path,
           resolved_import.target,
@@ -961,7 +959,6 @@ impl<
           return Ok(resolved);
         }
       }
-    }
 
     Err(
       PackageImportNotDefinedError {
@@ -1373,8 +1370,8 @@ impl<
     conditions: &[Cow<'static, str>],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, PackageExportsResolveError> {
-    if let Some(target) = package_exports.get(package_subpath) {
-      if package_subpath.find('*').is_none() && !package_subpath.ends_with('/')
+    if let Some(target) = package_exports.get(package_subpath)
+      && package_subpath.find('*').is_none() && !package_subpath.ends_with('/')
       {
         let resolved = self.resolve_package_target(
           package_json_path,
@@ -1401,7 +1398,6 @@ impl<
           ),
         };
       }
-    }
 
     let mut best_match = "";
     let mut best_match_data = None;
@@ -1494,8 +1490,8 @@ impl<
       .get_closest_package_json(referrer.path()?)?
     {
       // ResolveSelf
-      if package_config.name.as_deref() == Some(package_name) {
-        if let Some(exports) = &package_config.exports {
+      if package_config.name.as_deref() == Some(package_name)
+        && let Some(exports) = &package_config.exports {
           return self
             .package_exports_resolve_internal(
               &package_config.path,
@@ -1509,7 +1505,6 @@ impl<
             .map(|url| (url, ResolvedMethod::PackageExports))
             .map_err(|err| err.into());
         }
-      }
     }
 
     self.resolve_package_subpath_for_package(

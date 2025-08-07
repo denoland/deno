@@ -159,11 +159,10 @@ impl<TSys: FsMetadata> NodeResolutionSys<TSys> {
 
 impl<TSys: FsCanonicalize> BaseFsCanonicalize for NodeResolutionSys<TSys> {
   fn base_fs_canonicalize(&self, from: &Path) -> std::io::Result<PathBuf> {
-    if let Some(cache) = &self.cache {
-      if let Some(result) = cache.get_canonicalized(from) {
+    if let Some(cache) = &self.cache
+      && let Some(result) = cache.get_canonicalized(from) {
         return result;
       }
-    }
     let result = self.sys.base_fs_canonicalize(from);
     if let Some(cache) = &self.cache {
       cache.set_canonicalized(from.to_path_buf(), &result);

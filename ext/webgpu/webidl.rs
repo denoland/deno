@@ -52,8 +52,8 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
     }
     if let Ok(obj) = value.try_cast::<v8::Object>() {
       let iter = v8::Symbol::get_iterator(scope);
-      if let Some(iter) = obj.get(scope, iter.into()) {
-        if !iter.is_undefined() {
+      if let Some(iter) = obj.get(scope, iter.into())
+        && !iter.is_undefined() {
           let conv = <Vec<u32>>::convert(
             scope,
             value,
@@ -82,7 +82,6 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
             iter.next().unwrap_or(1),
           )));
         }
-      }
 
       return Ok(GPUExtent3D::Dict(GPUExtent3DDict::convert(
         scope, value, prefix, context, options,
@@ -162,8 +161,8 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
     }
     if let Ok(obj) = value.try_cast::<v8::Object>() {
       let iter = v8::Symbol::get_iterator(scope);
-      if let Some(iter) = obj.get(scope, iter.into()) {
-        if !iter.is_undefined() {
+      if let Some(iter) = obj.get(scope, iter.into())
+        && !iter.is_undefined() {
           let conv = <Vec<u32>>::convert(
             scope,
             value,
@@ -192,7 +191,6 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
             iter.next().unwrap_or(0),
           )));
         }
-      }
 
       return Ok(GPUOrigin3D::Dict(GPUOrigin3DDict::convert(
         scope, value, prefix, context, options,
@@ -257,8 +255,8 @@ impl<'a> WebIdlConverter<'a> for GPUColor {
     }
     if let Ok(obj) = value.try_cast::<v8::Object>() {
       let iter = v8::Symbol::get_iterator(scope);
-      if let Some(iter) = obj.get(scope, iter.into()) {
-        if !iter.is_undefined() {
+      if let Some(iter) = obj.get(scope, iter.into())
+        && !iter.is_undefined() {
           let conv = <Vec<f64>>::convert(
             scope,
             value,
@@ -285,7 +283,6 @@ impl<'a> WebIdlConverter<'a> for GPUColor {
             iter.next().unwrap(),
           )));
         }
-      }
 
       return Ok(GPUColor::Dict(GPUColorDict::convert(
         scope, value, prefix, context, options,

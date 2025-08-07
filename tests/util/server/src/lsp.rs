@@ -216,11 +216,10 @@ impl InitializeParamsBuilder {
   pub fn new(config: Value) -> Self {
     let mut config_as_options = json!({});
     if let Some(object) = config.as_object() {
-      if let Some(deno) = object.get("deno") {
-        if let Some(deno) = deno.as_object() {
+      if let Some(deno) = object.get("deno")
+        && let Some(deno) = deno.as_object() {
           config_as_options = json!(deno.clone());
         }
-      }
       let config_as_options = config_as_options.as_object_mut().unwrap();
       if let Some(typescript) = object.get("typescript") {
         config_as_options.insert("typescript".to_string(), typescript.clone());
@@ -858,9 +857,9 @@ impl LspClient {
     let params: InitializeParams = builder.build();
     // `config` must be updated to account for the builder changes.
     // TODO(nayeemrmn): Remove config-related methods from builder.
-    if let Some(options) = &params.initialization_options {
-      if let Some(options) = options.as_object() {
-        if let Some(config) = config.as_object_mut() {
+    if let Some(options) = &params.initialization_options
+      && let Some(options) = options.as_object()
+        && let Some(config) = config.as_object_mut() {
           let mut deno = options.clone();
           let typescript = options.get("typescript");
           let javascript = options.get("javascript");
@@ -874,8 +873,6 @@ impl LspClient {
             config.insert("javascript".to_string(), javascript.clone());
           }
         }
-      }
-    }
     self.supports_workspace_configuration = match &params.capabilities.workspace
     {
       Some(workspace) => workspace.configuration == Some(true),

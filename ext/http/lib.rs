@@ -1302,14 +1302,13 @@ fn http_response(
 // If user provided a ETag header for uncompressed data, we need to
 // ensure it is a Weak Etag header ("W/").
 fn weaken_etag(hmap: &mut hyper_v014::HeaderMap) {
-  if let Some(etag) = hmap.get_mut(hyper_v014::header::ETAG) {
-    if !etag.as_bytes().starts_with(b"W/") {
+  if let Some(etag) = hmap.get_mut(hyper_v014::header::ETAG)
+    && !etag.as_bytes().starts_with(b"W/") {
       let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
       v.extend(b"W/");
       v.extend(etag.as_bytes());
       *etag = v.try_into().unwrap();
     }
-  }
 }
 
 // Set Vary: Accept-Encoding header for direct body response.
@@ -1317,14 +1316,13 @@ fn weaken_etag(hmap: &mut hyper_v014::HeaderMap) {
 // to make sure cache services do not serve uncompressed data to clients that
 // support compression.
 fn ensure_vary_accept_encoding(hmap: &mut hyper_v014::HeaderMap) {
-  if let Some(v) = hmap.get_mut(hyper_v014::header::VARY) {
-    if let Ok(s) = v.to_str() {
+  if let Some(v) = hmap.get_mut(hyper_v014::header::VARY)
+    && let Ok(s) = v.to_str() {
       if !s.to_lowercase().contains("accept-encoding") {
         *v = format!("Accept-Encoding, {s}").try_into().unwrap()
       }
       return;
     }
-  }
   hmap.insert(
     hyper_v014::header::VARY,
     HeaderValue::from_static("Accept-Encoding"),
@@ -1434,11 +1432,10 @@ async fn op_http_write(
 
   if let Some(otel) = stream.otel_info.as_ref() {
     let mut maybe_otel_info = otel.borrow_mut();
-    if let Some(otel_info) = maybe_otel_info.as_mut() {
-      if let Some(response_size) = otel_info.response_size.as_mut() {
+    if let Some(otel_info) = maybe_otel_info.as_mut()
+      && let Some(response_size) = otel_info.response_size.as_mut() {
         *response_size += buf.len() as u64;
       }
-    }
   }
 
   match &mut *wr {

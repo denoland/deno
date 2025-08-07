@@ -349,11 +349,11 @@ impl Visit for TestStepCollector<'_> {
         }
         // Identify calls to `test.step()`
         ast::Expr::Member(member_expr) => {
-          if let Some(test_context) = &self.maybe_test_context {
-            if let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop {
-              if ns_prop_ident.sym.eq("step") {
-                if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
-                  if ident.sym == *test_context {
+          if let Some(test_context) = &self.maybe_test_context
+            && let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop
+              && ns_prop_ident.sym.eq("step")
+                && let ast::Expr::Ident(ident) = member_expr.obj.as_ref()
+                  && ident.sym == *test_context {
                     visit_call_expr(
                       node,
                       None,
@@ -366,10 +366,6 @@ impl Visit for TestStepCollector<'_> {
                       self.test_module,
                     );
                   }
-                }
-              }
-            }
-          }
         }
         _ => (),
       }
@@ -401,14 +397,12 @@ impl Visit for TestStepCollector<'_> {
                   }
                 }
                 ast::ObjectPatProp::KeyValue(prop) => {
-                  if let ast::PropName::Ident(key_ident) = &prop.key {
-                    if key_ident.sym.eq("step") {
-                      if let ast::Pat::Ident(value_ident) = &prop.value.as_ref()
+                  if let ast::PropName::Ident(key_ident) = &prop.key
+                    && key_ident.sym.eq("step")
+                      && let ast::Pat::Ident(value_ident) = &prop.value.as_ref()
                       {
                         self.vars.insert(value_ident.id.sym.to_string());
                       }
-                    }
-                  }
                 }
                 _ => (),
               }
@@ -429,11 +423,10 @@ impl Visit for TestStepCollector<'_> {
               continue;
             };
 
-            if prop_ident.sym.eq("step") {
-              if let ast::Pat::Ident(binding_ident) = &decl.name {
+            if prop_ident.sym.eq("step")
+              && let ast::Pat::Ident(binding_ident) = &decl.name {
                 self.vars.insert(binding_ident.id.sym.to_string());
               }
-            }
           }
           _ => (),
         }
@@ -580,11 +573,10 @@ impl Visit for TestCollector {
                   continue;
                 };
 
-                if key_ident.sym == "test" {
-                  if let ast::Pat::Ident(value_ident) = &prop.value.as_ref() {
+                if key_ident.sym == "test"
+                  && let ast::Pat::Ident(value_ident) = &prop.value.as_ref() {
                     self.vars.insert(value_ident.id.sym.to_string());
                   }
-                }
               }
               _ => (),
             }

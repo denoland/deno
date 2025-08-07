@@ -106,12 +106,11 @@ impl DenoTestCollector {
       match expr {
         ast::Expr::Object(obj_lit) => {
           for prop in &obj_lit.props {
-            if let ast::PropOrSpread::Prop(prop) = prop {
-              if let ast::Prop::KeyValue(key_value_prop) = prop.as_ref() {
-                if let ast::PropName::Ident(ast::IdentName { sym, .. }) =
+            if let ast::PropOrSpread::Prop(prop) = prop
+              && let ast::Prop::KeyValue(key_value_prop) = prop.as_ref()
+                && let ast::PropName::Ident(ast::IdentName { sym, .. }) =
                   &key_value_prop.key
-                {
-                  if sym == "name" {
+                  && sym == "name" {
                     match key_value_prop.value.as_ref() {
                       ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
                         let name = lit_str.value.to_string();
@@ -124,9 +123,6 @@ impl DenoTestCollector {
                       _ => {}
                     }
                   }
-                }
-              }
-            }
           }
         }
         ast::Expr::Fn(fn_expr) => {
@@ -180,13 +176,11 @@ impl Visit for DenoTestCollector {
               };
               ns_prop_ident = ns_prop_ident_;
             }
-            if ns_prop_ident.sym == "test" {
-              if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
-                if ident.sym == "Deno" {
+            if ns_prop_ident.sym == "test"
+              && let ast::Expr::Ident(ident) = member_expr.obj.as_ref()
+                && ident.sym == "Deno" {
                   self.check_call_expr(node, &range);
                 }
-              }
-            }
           }
         }
         _ => (),
@@ -200,8 +194,8 @@ impl Visit for DenoTestCollector {
         match init.as_ref() {
           // Identify destructured assignments of `test` from `Deno`
           ast::Expr::Ident(ident) => {
-            if ident.sym == "Deno" {
-              if let ast::Pat::Object(object_pat) = &decl.name {
+            if ident.sym == "Deno"
+              && let ast::Pat::Object(object_pat) = &decl.name {
                 for prop in &object_pat.props {
                   match prop {
                     ast::ObjectPatProp::Assign(prop) => {
@@ -211,37 +205,30 @@ impl Visit for DenoTestCollector {
                       }
                     }
                     ast::ObjectPatProp::KeyValue(prop) => {
-                      if let ast::PropName::Ident(key_ident) = &prop.key {
-                        if key_ident.sym == "test" {
-                          if let ast::Pat::Ident(value_ident) =
+                      if let ast::PropName::Ident(key_ident) = &prop.key
+                        && key_ident.sym == "test"
+                          && let ast::Pat::Ident(value_ident) =
                             &prop.value.as_ref()
                           {
                             self
                               .test_vars
                               .insert(value_ident.id.sym.to_string());
                           }
-                        }
-                      }
                     }
                     _ => (),
                   }
                 }
               }
-            }
           }
           // Identify variable assignments where the init is `Deno.test`
           ast::Expr::Member(member_expr) => {
-            if let ast::Expr::Ident(obj_ident) = member_expr.obj.as_ref() {
-              if obj_ident.sym == "Deno" {
-                if let ast::MemberProp::Ident(prop_ident) = &member_expr.prop {
-                  if prop_ident.sym == "test" {
-                    if let ast::Pat::Ident(binding_ident) = &decl.name {
+            if let ast::Expr::Ident(obj_ident) = member_expr.obj.as_ref()
+              && obj_ident.sym == "Deno"
+                && let ast::MemberProp::Ident(prop_ident) = &member_expr.prop
+                  && prop_ident.sym == "test"
+                    && let ast::Pat::Ident(binding_ident) = &decl.name {
                       self.test_vars.insert(binding_ident.id.sym.to_string());
                     }
-                  }
-                }
-              }
-            }
           }
           _ => (),
         }
@@ -436,11 +423,10 @@ pub fn collect_tsc(
     // TSC References Code Lens
     if code_lens_settings.references {
       let source = CodeLensSource::References;
-      if let Some(parent) = &mp {
-        if parent.kind == tsc::ScriptElementKind::EnumElement {
+      if let Some(parent) = &mp
+        && parent.kind == tsc::ScriptElementKind::EnumElement {
           code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
         }
-      }
       match i.kind {
         tsc::ScriptElementKind::FunctionElement => {
           if code_lens_settings.references_all_functions {
@@ -470,8 +456,8 @@ pub fn collect_tsc(
         | tsc::ScriptElementKind::MemberSetAccessorElement
         | tsc::ScriptElementKind::ConstructorImplementationElement
         | tsc::ScriptElementKind::MemberVariableElement => {
-          if let Some(parent) = &mp {
-            if parent.spans[0].start != i.spans[0].start {
+          if let Some(parent) = &mp
+            && parent.spans[0].start != i.spans[0].start {
               match parent.kind {
                 tsc::ScriptElementKind::ClassElement
                 | tsc::ScriptElementKind::InterfaceElement
@@ -485,7 +471,6 @@ pub fn collect_tsc(
                 _ => (),
               }
             }
-          }
         }
         _ => (),
       }

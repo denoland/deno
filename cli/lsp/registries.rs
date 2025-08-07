@@ -658,11 +658,10 @@ impl ModuleRegistry {
           .iter()
           .last()
           .map(|t| {
-            if let Token::Key(key) = t {
-              if let StringOrNumber::String(s) = &key.name {
+            if let Token::Key(key) = t
+              && let StringOrNumber::String(s) = &key.name {
                 return s.clone();
               }
-            }
             "".to_string()
           })
           .unwrap_or_default(),
@@ -709,8 +708,8 @@ impl ModuleRegistry {
             }
             Some(CompletionType::Key { key, prefix, index }) => {
               let maybe_url = registry.get_url_for_key(&key);
-              if let Some(url) = maybe_url {
-                if let Some(items) = self
+              if let Some(url) = maybe_url
+                && let Some(items) = self
                   .get_variable_items(
                     &key,
                     url,
@@ -827,7 +826,6 @@ impl ModuleRegistry {
                     );
                   }
                 }
-              }
             }
             None => (),
           }
@@ -885,8 +883,8 @@ impl ModuleRegistry {
             Token::Key(k) => {
               if let Some(prefix) = &k.prefix {
                 let maybe_url = registry.get_url_for_key(k);
-                if let Some(url) = maybe_url {
-                  if let Some(items) = self.get_items(url).await {
+                if let Some(url) = maybe_url
+                  && let Some(items) = self.get_items(url).await {
                     let base = Url::parse(&origin).ok()?;
                     let (items, preselect, incomplete) = match items {
                       VariableItems::List(list) => {
@@ -966,7 +964,6 @@ impl ModuleRegistry {
                       );
                     }
                   }
-                }
               }
             }
           }
@@ -1618,11 +1615,10 @@ mod tests {
     assert!(completions.is_some());
     let completions = completions.unwrap().items;
     for completion in completions {
-      if let Some(filter_text) = completion.filter_text {
-        if !"http://localhost:4545/cde@".contains(&filter_text) {
+      if let Some(filter_text) = completion.filter_text
+        && !"http://localhost:4545/cde@".contains(&filter_text) {
           continue;
         }
-      }
       assert!(completion.text_edit.is_some());
       if let lsp::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
       {

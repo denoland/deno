@@ -1368,8 +1368,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
         ErrorKind::MissingRequiredArgument => {
           if let Some(clap::error::ContextValue::Strings(s)) =
             e.get(clap::error::ContextKind::InvalidArg)
-          {
-            if s.len() == 1
+            && s.len() == 1
               && s[0] == "--global"
               && args.iter().any(|arg| arg == "install")
             {
@@ -1381,7 +1380,6 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
                 ),
               );
             }
-          }
 
           e
         }

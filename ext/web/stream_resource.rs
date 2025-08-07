@@ -210,11 +210,10 @@ impl BoundedBufferChannelInner {
 
     if self.write_waker.is_some() {
       // We may be able to write again if we have buffer and byte room in the channel
-      if self.can_write() {
-        if let Some(waker) = self.write_waker.take() {
+      if self.can_write()
+        && let Some(waker) = self.write_waker.take() {
           waker.wake();
         }
-      }
     }
 
     Ok(Some(BufView::from(JsBuffer::from_parts(buf))))

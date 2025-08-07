@@ -389,15 +389,14 @@ fn open_connection(
   };
 
   // reduce logging for readonly file system
-  if let rusqlite::Error::SqliteFailure(ffi_err, _) = &err {
-    if ffi_err.code == rusqlite::ErrorCode::ReadOnly {
+  if let rusqlite::Error::SqliteFailure(ffi_err, _) = &err
+    && ffi_err.code == rusqlite::ErrorCode::ReadOnly {
       log::debug!(
         "Failed creating cache db. Folder readonly: {}",
         path.display()
       );
       return handle_failure_mode(config, err, open_connection_and_init);
     }
-  }
 
   // ensure the parent directory exists
   if let Some(parent) = path.parent() {
