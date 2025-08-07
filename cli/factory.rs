@@ -736,6 +736,7 @@ impl CliFactory {
             self.npm_installer_if_managed().await?.cloned(),
             self.npm_resolver().await?.clone(),
             self.resolver_factory()?.parsed_source_cache().clone(),
+            self.text_only_progress_bar().clone(),
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),
@@ -1142,7 +1143,7 @@ impl CliFactory {
           },
           node_code_translator_mode: match options.sub_command() {
             DenoSubcommand::Bundle(_) => {
-              node_resolver::analyze::NodeCodeTranslatorMode::Bundling
+              node_resolver::analyze::NodeCodeTranslatorMode::Disabled
             }
             _ => node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
           },

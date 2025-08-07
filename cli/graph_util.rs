@@ -15,7 +15,6 @@ use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_graph::CheckJsOption;
-use deno_graph::FillFromLockfileOptions;
 use deno_graph::GraphKind;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleError;
@@ -68,6 +67,7 @@ use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
+use crate::util::progress_bar::ProgressBar;
 
 #[derive(Clone)]
 pub struct GraphValidOptions<'a> {
@@ -122,25 +122,6 @@ pub fn graph_valid(
       Ok(())
     }
   }
-}
-
-pub fn fill_graph_from_lockfile(
-  graph: &mut ModuleGraph,
-  lockfile: &deno_lockfile::Lockfile,
-) {
-  graph.fill_from_lockfile(FillFromLockfileOptions {
-    redirects: lockfile
-      .content
-      .redirects
-      .iter()
-      .map(|(from, to)| (from.as_str(), to.as_str())),
-    package_specifiers: lockfile
-      .content
-      .packages
-      .specifiers
-      .iter()
-      .map(|(dep, id)| (dep, id.as_str())),
-  });
 }
 
 #[derive(Clone)]
@@ -629,6 +610,7 @@ pub struct ModuleGraphBuilder {
   npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
+  progress_bar: ProgressBar,
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
@@ -651,6 +633,7 @@ impl ModuleGraphBuilder {
     npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
+    progress_bar: ProgressBar,
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
@@ -670,6 +653,7 @@ impl ModuleGraphBuilder {
       npm_installer,
       npm_resolver,
       parsed_source_cache,
+      progress_bar,
       resolver,
       root_permissions_container,
       sys,
@@ -696,6 +680,7 @@ impl ModuleGraphBuilder {
       }
     }
 
+    let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
@@ -782,8 +767,7 @@ impl ModuleGraphBuilder {
     if is_first_execution {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
-        let lockfile = lockfile.lock();
-        fill_graph_from_lockfile(graph, &lockfile);
+        lockfile.fill_graph(graph)
       }
     }
 

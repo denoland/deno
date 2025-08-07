@@ -400,6 +400,11 @@ impl ServeFlags {
   }
 }
 
+pub enum WatchFlagsRef<'a> {
+  Watch(&'a WatchFlags),
+  WithPaths(&'a WatchFlagsWithPaths),
+}
+
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct WatchFlags {
   pub hmr: bool,
@@ -593,6 +598,29 @@ pub enum DenoSubcommand {
   Version(VersionFlags),
   Publish(PublishFlags),
   Help(HelpFlags),
+}
+
+impl DenoSubcommand {
+  pub fn watch_flags(&self) -> Option<WatchFlagsRef> {
+    match self {
+      Self::Run(RunFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Test(TestFlags {
+        watch: Some(flags), ..
+      }) => Some(WatchFlagsRef::WithPaths(flags)),
+      Self::Bench(BenchFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Lint(LintFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Fmt(FmtFlags {
+        watch: Some(flags), ..
+      }) => Some(WatchFlagsRef::Watch(flags)),
+      _ => None,
+    }
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1235,55 +1263,23 @@ impl Flags {
   pub fn resolve_watch_exclude_set(
     &self,
   ) -> Result<PathOrPatternSet, AnyError> {
-    if let DenoSubcommand::Run(RunFlags {
-      watch:
-        Some(WatchFlagsWithPaths {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    })
-    | DenoSubcommand::Bench(BenchFlags {
-      watch:
-        Some(WatchFlags {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    })
-    | DenoSubcommand::Test(TestFlags {
-      watch:
-        Some(WatchFlagsWithPaths {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    })
-    | DenoSubcommand::Lint(LintFlags {
-      watch:
-        Some(WatchFlags {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    })
-    | DenoSubcommand::Fmt(FmtFlags {
-      watch:
-        Some(WatchFlags {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    }) = &self.subcommand
-    {
-      let cwd = std::env::current_dir()?;
-      PathOrPatternSet::from_exclude_relative_path_or_patterns(
-        &cwd,
-        excluded_paths,
-      )
-      .context("Failed resolving watch exclude patterns.")
-    } else {
-      Ok(PathOrPatternSet::default())
+    match self.subcommand.watch_flags() {
+      Some(WatchFlagsRef::WithPaths(WatchFlagsWithPaths {
+        exclude: excluded_paths,
+        ..
+      }))
+      | Some(WatchFlagsRef::Watch(WatchFlags {
+        exclude: excluded_paths,
+        ..
+      })) => {
+        let cwd = std::env::current_dir()?;
+        PathOrPatternSet::from_exclude_relative_path_or_patterns(
+          &cwd,
+          excluded_paths,
+        )
+        .context("Failed resolving watch exclude patterns.")
+      }
+      _ => Ok(PathOrPatternSet::default()),
     }
   }
 }
