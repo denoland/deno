@@ -143,12 +143,26 @@ impl Default for TextOnlyProgressBarRenderer {
   }
 }
 
-const SPINNER_CHARS: [&str; 8] = ["⣷", "⣯", "⣟", "⡿", "⢿", "⣻", "⣽", "⣾"];
+const SPINNER_CHARS: [&str; 13] = [
+  "▰▱▱▱▱▱",
+  "▰▰▱▱▱▱",
+  "▰▰▰▱▱▱",
+  "▰▰▰▰▱▱",
+  "▰▰▰▰▰▱",
+  "▰▰▰▰▰▰",
+  "▰▰▰▰▰▰",
+  "▱▰▰▰▰▰",
+  "▱▱▰▰▰▰",
+  "▱▱▱▰▰▰",
+  "▱▱▱▱▰▰",
+  "▱▱▱▱▱▰",
+  "▱▱▱▱▱▱",
+];
 impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
   fn render(&self, data: ProgressData) -> String {
     let last_tick = {
       let last_tick = self.last_tick.load(Ordering::Relaxed);
-      let last_tick = (last_tick + 1) % 8;
+      let last_tick = (last_tick + 1) % SPINNER_CHARS.len();
       self.last_tick.store(last_tick, Ordering::Relaxed);
       last_tick
     };
@@ -207,7 +221,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
         .replace("%2F", "/");
 
       display_str.push_str(
-        &colors::gray(format!(" - {}{}\n", message, bytes_text)).to_string(),
+        &colors::gray(format!("  {}{}\n", message, bytes_text)).to_string(),
       );
     } else {
       // prevent cursor from going up
