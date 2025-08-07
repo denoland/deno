@@ -819,7 +819,7 @@ impl TsServer {
     trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
     token: &CancellationToken,
-  ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
+  ) -> Result<Vec<ApplicableRefactorInfo>, AnyError> {
     let trigger_kind = trigger_kind.map(|reason| match reason {
       lsp::CodeActionTriggerKind::INVOKED => "invoked",
       lsp::CodeActionTriggerKind::AUTOMATIC => "implicit",
@@ -847,10 +847,6 @@ impl TsServer {
         token,
       )
       .await
-      .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
