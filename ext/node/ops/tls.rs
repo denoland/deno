@@ -1,11 +1,19 @@
+use std::rc::Rc;
+
 // Copyright 2018-2025 the Deno authors. MIT license.
 use base64::Engine;
+use deno_core::BufMutView;
+use deno_core::BufView;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8_static_strings;
 use deno_net::ops_tls::TlsStreamResource;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio_aws_lc::SslStream;
 use webpki_root_certs;
@@ -81,13 +89,66 @@ pub struct TLSWrap {
   has_active_from_prev_owner: bool,
   bio_in: deno_crypto_provider::ffi::Bio,
   bio_out: deno_crypto_provider::ffi::Bio,
-  ssl: SslStream<TcpStream>,
+  ssl: SslStream<ResourceStream>,
+}
+
+struct ResourceStream(Rc<dyn Resource>);
+
+use deno_core::futures::FutureExt;
+
+impl AsyncRead for ResourceStream {
+  fn poll_read(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+    buf: &mut tokio::io::ReadBuf<'_>,
+  ) -> std::task::Poll<std::io::Result<()>> {
+    let this = self.get_mut();
+    let resource = this.0.clone();
+
+    // hold up
+    todo!()
+  }
+}
+
+impl AsyncWrite for ResourceStream {
+  fn poll_write(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+    buf: &[u8],
+  ) -> std::task::Poll<Result<usize, std::io::Error>> {
+    let this = self.get_mut();
+    let resource = this.0.clone();
+
+    resource
+      .write(buf.to_vec().into())
+      .poll_unpin(cx)
+      .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+      .map(|written| written.map(|outcome| outcome.nwritten()))
+  }
+
+  fn poll_flush(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    // fuck it
+    todo!()
+  }
+
+  fn poll_shutdown(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Result<(), std::io::Error>> {
+    // fuck it for now
+    todo!()
+  }
 }
 
 #[op2]
 #[cppgc]
 pub fn op_tls_wrap(
-  #[global] stream: v8::Global<v8::Object>,
+  // #[global] stream: v8::Global<v8::Object>,
+  state: &mut OpState,
+  #[smi] stream: ResourceId,
   _context: v8::Local<v8::Object>,
   is_server: bool,
   has_active_from_prev_owner: bool,
@@ -100,13 +161,22 @@ pub fn op_tls_wrap(
     ssl
   };
 
+  let resource = state
+    .resource_table
+    .take_any(stream)
+    .expect("Failed to take resource from OpState");
+  let wrap = ResourceStream(resource);
+
+  let ssl = SslStream::new(ssl, wrap).unwrap();
+
   TLSWrap {
-    stream,
     ssl,
     is_server,
     has_active_from_prev_owner,
-    bio_in: deno_crypto_provider::ffi::Bio::new_memory().expect("Failed to create BIO"),
-    bio_out: deno_crypto_provider::ffi::Bio::new_memory().expect("Failed to create BIO"),
+    bio_in: deno_crypto_provider::ffi::Bio::new_memory()
+      .expect("Failed to create BIO"),
+    bio_out: deno_crypto_provider::ffi::Bio::new_memory()
+      .expect("Failed to create BIO"),
   }
 }
 
@@ -119,7 +189,5 @@ impl GarbageCollected for TLSWrap {
 #[op2]
 impl TLSWrap {
   #[fast]
-  fn get_servername(&self) {
-    
-  }
+  fn get_servername(&self) {}
 }
