@@ -1123,7 +1123,6 @@ fn collect_excluded_module_diagnostics(
   }
 
   if !had_excluded_specifier {
-    let mut found_outside_specifier = false;
     // ensure no path being published references another package
     // via a relative import
     for publish_path in publish_paths {
@@ -1148,7 +1147,6 @@ fn collect_excluded_module_diagnostics(
           }
         });
         if let Some((outside_res, package)) = maybe_res.next() {
-          found_outside_specifier = true;
           diagnostics_collector.push(
             PublishDiagnostic::RelativePackageImport {
               // Wasm modules won't have a referrer
@@ -1164,19 +1162,6 @@ fn collect_excluded_module_diagnostics(
             },
           );
         }
-      }
-    }
-
-    if !found_outside_specifier {
-      // just in case we didn't find an outside specifier above, add
-      // diagnostics for all the specifiers found outside the package
-      for (specifier, to_package) in outside_specifiers {
-        diagnostics_collector.push(PublishDiagnostic::RelativePackageImport {
-          specifier: specifier.clone(),
-          from_package_name: current_package_name.to_string(),
-          to_package_name: to_package.name.clone(),
-          maybe_referrer: None,
-        });
       }
     }
   }
