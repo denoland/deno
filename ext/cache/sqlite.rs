@@ -391,7 +391,7 @@ fn get_responses_dir(cache_storage_dir: PathBuf, cache_id: i64) -> PathBuf {
 }
 
 impl deno_core::Resource for SqliteBackedCache {
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "SqliteBackedCache".into()
   }
 }

@@ -146,7 +146,7 @@ fn format_maybe_source_line(
   format!("\n{indent}{source_line}\n{indent}{color_underline}")
 }
 
-fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
+fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference<'_>> {
   let mut history = Vec::<&JsError>::new();
 
   let mut current_error: &JsError = js_error;
@@ -303,7 +303,7 @@ fn format_js_error_inner(
   s
 }
 
-fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
+fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
       || msg.contains("exports is not defined")

@@ -2210,7 +2210,7 @@ impl WorkspaceMemberTasksConfig {
         .unwrap_or(0)
   }
 
-  pub fn task(&self, name: &str) -> Option<TaskOrScript> {
+  pub fn task(&self, name: &str) -> Option<TaskOrScript<'_>> {
     self
       .deno_json
       .as_ref()
@@ -2267,7 +2267,7 @@ impl WorkspaceTasksConfig {
       )
   }
 
-  pub fn task(&self, name: &str) -> Option<TaskOrScript> {
+  pub fn task(&self, name: &str) -> Option<TaskOrScript<'_>> {
     self
       .member
       .as_ref()

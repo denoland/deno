@@ -133,7 +133,7 @@ fn get_sanitizer_item(
 
 fn get_sanitizer_item_ref(
   activity: &RuntimeActivity,
-) -> (RuntimeActivityType, Cow<str>) {
+) -> (RuntimeActivityType, Cow<'_, str>) {
   let activity_type = activity.activity();
   match activity {
     RuntimeActivity::AsyncOp(_, _, name) => (activity_type, (*name).into()),

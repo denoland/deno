@@ -579,7 +579,7 @@ fn clean_node_modules(
 }
 
 // node_modules/.deno/chalk@5.0.1/node_modules/chalk -> chalk@5.0.1
-fn node_modules_package_actual_dir_to_name(path: &Path) -> Option<Cow<str>> {
+fn node_modules_package_actual_dir_to_name(path: &Path) -> Option<Cow<'_, str>> {
   path
     .parent()?
     .parent()?

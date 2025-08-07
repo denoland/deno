@@ -274,7 +274,7 @@ pub struct ModuleNotFoundNodeResolutionErrorRef<'a> {
 
 pub fn resolution_error_for_tsc_diagnostic(
   error: &ResolutionError,
-) -> Option<ModuleNotFoundNodeResolutionErrorRef> {
+) -> Option<ModuleNotFoundNodeResolutionErrorRef<'_>> {
   fn is_module_not_found_code(code: NodeJsErrorCode) -> bool {
     match code {
       NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER

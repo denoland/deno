@@ -500,6 +500,7 @@ pub fn create_v8_context<'a>(
 #[derive(Debug, Clone)]
 struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
+#[allow(clippy::unnecessary_unwrap)]
 pub fn init_global_template<'a>(
   scope: &mut v8::HandleScope<'a, ()>,
   mode: ContextInitMode,

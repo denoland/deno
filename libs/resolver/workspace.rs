@@ -402,7 +402,7 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
     fn path_without_ext(
       path: &Path,
       media_type: MediaType,
-    ) -> Option<Cow<str>> {
+    ) -> Option<Cow<'_, str>> {
       let old_path_str = path.to_string_lossy();
       match media_type {
         MediaType::Unknown => Some(old_path_str),
@@ -1106,7 +1106,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
   pub fn to_serializable(
     &self,
     root_dir_url: &Url,
-  ) -> SerializableWorkspaceResolver {
+  ) -> SerializableWorkspaceResolver<'_> {
     let root_dir_url = BaseUrl(root_dir_url);
     SerializableWorkspaceResolver {
       import_map: self.maybe_import_map().map(|i| {

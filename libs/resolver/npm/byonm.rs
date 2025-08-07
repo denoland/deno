@@ -446,7 +446,7 @@ impl InNpmPackageChecker for ByonmInNpmPackageChecker {
   }
 }
 
-fn join_package_name(mut path: Cow<Path>, package_name: &str) -> PathBuf {
+fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
   // ensure backslashes are used on windows
   for part in package_name.split('/') {
     match path {

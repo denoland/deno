@@ -425,7 +425,7 @@ impl WorkspaceLinter {
     linter: &Arc<CliLinter>,
     member_dir: &WorkspaceDirectory,
     paths: &[PathBuf],
-  ) -> Option<LocalBoxFuture<Result<(), AnyError>>> {
+  ) -> Option<LocalBoxFuture<'_, Result<(), AnyError>>> {
     if self.workspace_module_graph.is_none() {
       let module_graph_creator = self.module_graph_creator.clone();
       let packages = self.workspace_dir.jsr_packages_for_publish();

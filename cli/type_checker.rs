@@ -183,7 +183,7 @@ impl TypeChecker {
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<DiagnosticsByFolderIterator, CheckError> {
+  ) -> Result<DiagnosticsByFolderIterator<'_>, CheckError> {
     fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
       match resolver {
         CliNpmResolver::Byonm(_) => {

@@ -50,7 +50,7 @@ pub enum DenoOrPkgJson {
 }
 
 impl DenoOrPkgJson {
-  pub fn specifier(&self) -> Cow<Url> {
+  pub fn specifier(&self) -> Cow<'_, Url> {
     match self {
       Self::Deno(config) => Cow::Borrowed(&config.specifier),
       Self::PkgJson(pkg_json) => Cow::Owned(pkg_json.specifier()),
@@ -138,7 +138,7 @@ pub enum ConfigFileDiscovery {
 }
 
 impl ConfigFileDiscovery {
-  fn root_config_specifier(&self) -> Option<Cow<Url>> {
+  fn root_config_specifier(&self) -> Option<Cow<'_, Url>> {
     match self {
       Self::None { .. } => None,
       Self::Workspace { workspace, .. } => {
@@ -155,7 +155,7 @@ impl ConfigFileDiscovery {
   }
 }
 
-fn config_folder_config_specifier(res: &ConfigFolder) -> Cow<Url> {
+fn config_folder_config_specifier(res: &ConfigFolder) -> Cow<'_, Url> {
   match res {
     ConfigFolder::Single(config) => config.specifier(),
     ConfigFolder::Both { deno_json, .. } => Cow::Borrowed(&deno_json.specifier),
@@ -1074,7 +1074,7 @@ fn resolve_vendor_dir(
   }
 }
 
-fn ensure_trailing_slash(path: &str) -> Cow<str> {
+fn ensure_trailing_slash(path: &str) -> Cow<'_, str> {
   if !path.ends_with('/') {
     Cow::Owned(format!("{path}/"))
   } else {

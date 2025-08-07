@@ -204,7 +204,7 @@ pub struct LockfileLock<TSys: LockfileSys> {
 
 impl<TSys: LockfileSys> LockfileLock<TSys> {
   /// Get the inner deno_lockfile::Lockfile.
-  pub fn lock(&self) -> Guard<Lockfile> {
+  pub fn lock(&self) -> Guard<'_, Lockfile> {
     Guard {
       guard: self.lockfile.lock(),
     }

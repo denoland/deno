@@ -103,7 +103,7 @@ trait VersionProvider: Clone {
   /// Returns either a semver or git hash. It's up to implementor to
   /// decide which one is appropriate, but in general only "stable"
   /// and "lts" versions use semver.
-  fn current_version(&self) -> Cow<str>;
+  fn current_version(&self) -> Cow<'_, str>;
 
   fn get_current_exe_release_channel(&self) -> ReleaseChannel;
 }
@@ -140,7 +140,7 @@ impl VersionProvider for RealVersionProvider {
     .await
   }
 
-  fn current_version(&self) -> Cow<str> {
+  fn current_version(&self) -> Cow<'_, str> {
     Cow::Borrowed(version::DENO_VERSION_INFO.version_or_git_hash())
   }
 
@@ -784,7 +784,7 @@ struct AvailableVersion {
 impl AvailableVersion {
   /// Format display version, appending `v` before version number
   /// for non-canary releases.
-  fn display(&self) -> Cow<str> {
+  fn display(&self) -> Cow<'_, str> {
     match self.release_channel {
       ReleaseChannel::Canary => Cow::Borrowed(&self.version_or_hash),
       _ => Cow::Owned(format!("v{}", self.version_or_hash)),
@@ -1356,7 +1356,7 @@ mod test {
       }
     }
 
-    fn current_version(&self) -> Cow<str> {
+    fn current_version(&self) -> Cow<'_, str> {
       Cow::Owned(self.current_version.borrow().clone())
     }
 

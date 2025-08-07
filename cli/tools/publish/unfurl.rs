@@ -120,7 +120,7 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
     }
   }
 
-  fn location(&self) -> deno_ast::diagnostics::DiagnosticLocation {
+  fn location(&self) -> deno_ast::diagnostics::DiagnosticLocation<'_> {
     match self {
       SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
         specifier,

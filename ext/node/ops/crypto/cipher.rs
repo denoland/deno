@@ -169,13 +169,13 @@ impl DecipherContext {
 }
 
 impl Resource for CipherContext {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cryptoCipher".into()
   }
 }
 
 impl Resource for DecipherContext {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cryptoDecipher".into()
   }
 }

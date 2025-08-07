@@ -573,7 +573,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     std::future::ready(()).boxed_local()
   }
 
-  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<'_, [u8]>> {
     let url = Url::parse(file_name).ok()?;
     let data = self.shared.modules.read(&url).ok()??;
     data.source_map

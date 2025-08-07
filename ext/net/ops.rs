@@ -557,7 +557,7 @@ struct UdpSocketResource {
 }
 
 impl Resource for UdpSocketResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "udpSocket".into()
   }
 

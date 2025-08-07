@@ -581,7 +581,7 @@ pub enum DenoSubcommand {
 }
 
 impl DenoSubcommand {
-  pub fn watch_flags(&self) -> Option<WatchFlagsRef> {
+  pub fn watch_flags(&self) -> Option<WatchFlagsRef<'_>> {
     match self {
       Self::Run(RunFlags {
         watch: Some(flags), ..

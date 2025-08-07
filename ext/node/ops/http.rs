@@ -96,7 +96,7 @@ impl Debug for NodeHttpClientResponse {
 }
 
 impl deno_core::Resource for NodeHttpClientResponse {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "nodeHttpClientResponse".into()
   }
 }
@@ -554,7 +554,7 @@ impl UpgradeStream {
 }
 
 impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchUpgradedStream".into()
   }
 
@@ -611,7 +611,7 @@ impl NodeHttpResponseResource {
 }
 
 impl Resource for NodeHttpResponseResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchResponse".into()
   }
 

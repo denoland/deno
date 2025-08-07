@@ -453,7 +453,7 @@ impl TestRun {
     Ok(())
   }
 
-  fn get_args(&self) -> Vec<Cow<str>> {
+  fn get_args(&self) -> Vec<Cow<'_, str>> {
     let mut args = vec![Cow::Borrowed("deno"), Cow::Borrowed("test")];
     args.extend(
       self

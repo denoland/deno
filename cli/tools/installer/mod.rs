@@ -368,7 +368,7 @@ async fn install_global(
   factory
     .main_module_graph_container()
     .await?
-    .load_and_type_check_files(&[install_flags_global.module_url.clone()])
+    .load_and_type_check_files(std::slice::from_ref(&install_flags_global.module_url))
     .await?;
 
   if matches!(flags.config_flag, ConfigFlag::Discover)

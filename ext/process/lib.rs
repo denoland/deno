@@ -180,7 +180,7 @@ deno_core::extension!(
 struct ChildResource(RefCell<AsyncChild>, u32);
 
 impl Resource for ChildResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "child".into()
   }
 }
@@ -1083,7 +1083,7 @@ mod deprecated {
   }
 
   impl Resource for ChildResource {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> Cow<'_, str> {
       "child".into()
     }
   }

@@ -154,7 +154,7 @@ impl std::fmt::Display for ResolveNpmReqRefError {
 pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
 
 impl ResolveReqWithSubPathError {
-  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+  pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
       ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
       ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(err) => {

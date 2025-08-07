@@ -119,7 +119,7 @@ impl ParsedSourceCache {
 
   /// Creates a parser that will reuse a ParsedSource from the store
   /// if it exists, or else parse.
-  pub fn as_capturing_parser(&self) -> CapturingEsParser {
+  pub fn as_capturing_parser(&self) -> CapturingEsParser<'_> {
     CapturingEsParser::new(None, self)
   }
 

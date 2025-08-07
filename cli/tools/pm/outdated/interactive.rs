@@ -137,7 +137,7 @@ impl State {
     "Select which packages to update (<space> to select, ↑/↓/j/k to navigate, a to select all, i to invert selection, enter to accept, <Ctrl-c> to cancel)"
   }
 
-  fn render(&self) -> anyhow::Result<Vec<TextItem>> {
+  fn render(&self) -> anyhow::Result<Vec<TextItem<'_>>> {
     let mut items = Vec::with_capacity(self.packages.len() + 1);
 
     items.push(TextItem::new_owned(format!(

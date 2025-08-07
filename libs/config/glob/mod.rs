@@ -658,7 +658,7 @@ impl GlobPattern {
     GlobPattern::new(&pattern)
   }
 
-  pub fn as_str(&self) -> Cow<str> {
+  pub fn as_str(&self) -> Cow<'_, str> {
     if self.is_negated {
       Cow::Owned(format!("!{}", self.pattern.as_str()))
     } else {

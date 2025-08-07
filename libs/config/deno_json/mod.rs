@@ -1285,7 +1285,7 @@ impl ConfigFile {
   pub fn to_import_map_value(
     &self,
     sys: &impl FsRead,
-  ) -> Result<Option<(Cow<Url>, serde_json::Value)>, ConfigFileError> {
+  ) -> Result<Option<(Cow<'_, Url>, serde_json::Value)>, ConfigFileError> {
     // has higher precedence over the path
     if self.json.imports.is_some() || self.json.scopes.is_some() {
       Ok(Some((

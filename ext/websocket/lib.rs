@@ -143,7 +143,7 @@ pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 pub struct WsCancelResource(Rc<CancelHandle>);
 
 impl Resource for WsCancelResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webSocketCancel".into()
   }
 
@@ -600,7 +600,7 @@ impl ServerWebSocket {
 }
 
 impl Resource for ServerWebSocket {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "serverWebSocket".into()
   }
 }

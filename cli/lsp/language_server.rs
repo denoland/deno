@@ -2416,7 +2416,7 @@ impl Inner {
   pub fn get_ts_response_import_mapper(
     &self,
     module: &DocumentModule,
-  ) -> TsResponseImportMapper {
+  ) -> TsResponseImportMapper<'_> {
     TsResponseImportMapper::new(
       &self.document_modules,
       module.scope.clone(),

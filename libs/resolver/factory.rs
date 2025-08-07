@@ -581,7 +581,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       let dir = match &self.options.config_discovery {
         ConfigDiscoveryOption::DiscoverCwd => WorkspaceDirectory::discover(
           &self.sys,
-          WorkspaceDiscoverStart::Paths(&[self.initial_cwd.clone()]),
+          WorkspaceDiscoverStart::Paths(std::slice::from_ref(&self.initial_cwd)),
           &resolve_workspace_discover_options(),
         )?,
         ConfigDiscoveryOption::Discover { start_paths } => {

@@ -201,7 +201,7 @@ impl PathBufWithRequested {
     }
   }
 
-  pub fn as_path_with_requested(&self) -> PathWithRequested {
+  pub fn as_path_with_requested(&self) -> PathWithRequested<'_> {
     PathWithRequested {
       path: Cow::Borrowed(self.path.as_path()),
       requested: self.requested.as_deref().map(Cow::Borrowed),
@@ -607,7 +607,7 @@ pub trait QueryDescriptor: Debug {
   type DenyDesc: DenyDescriptor;
 
   fn flag_name() -> &'static str;
-  fn display_name(&self) -> Cow<str>;
+  fn display_name(&self) -> Cow<'_, str>;
 
   fn from_allow(allow: &Self::AllowDesc) -> Self;
 
@@ -630,7 +630,7 @@ pub trait QueryDescriptor: Debug {
   fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool;
 }
 
-fn format_display_name(display_name: Cow<str>) -> Cow<str> {
+fn format_display_name(display_name: Cow<'_, str>) -> Cow<'_, str> {
   if display_name.starts_with('<') && display_name.ends_with('>') {
     display_name
   } else {
@@ -1057,7 +1057,7 @@ impl<'a> PathQueryDescriptor<'a> {
     self.path.starts_with(&base.path)
   }
 
-  pub fn display_name(&self) -> Cow<str> {
+  pub fn display_name(&self) -> Cow<'_, str> {
     match &self.requested {
       Some(requested) => Cow::Borrowed(requested.as_str()),
       None => self.path.to_string_lossy(),
@@ -1104,7 +1104,7 @@ impl QueryDescriptor for ReadQueryDescriptor<'_> {
     "read"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     self.0.display_name()
   }
 
@@ -1212,7 +1212,7 @@ impl PathDescriptor {
     self.path.starts_with(&base.path)
   }
 
-  pub fn display_name(&self) -> Cow<str> {
+  pub fn display_name(&self) -> Cow<'_, str> {
     match &self.requested {
       Some(requested) => Cow::Borrowed(requested.as_str()),
       None => self.path.to_string_lossy(),
@@ -1261,7 +1261,7 @@ impl QueryDescriptor for WriteQueryDescriptor<'_> {
     "write"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     self.0.display_name()
   }
 
@@ -1430,7 +1430,7 @@ impl QueryDescriptor for NetDescriptor {
     "net"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     Cow::from(format!("{self}"))
   }
 
@@ -1686,7 +1686,7 @@ impl QueryDescriptor for ImportDescriptor {
     "import"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     self.0.display_name()
   }
 
@@ -1801,7 +1801,7 @@ impl QueryDescriptor for EnvQueryDescriptor<'_> {
     "env"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     Cow::from(match &self.0 {
       EnvQueryDescriptorInner::Name(env_var_name) => env_var_name.as_ref(),
       EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
@@ -2026,7 +2026,7 @@ impl QueryDescriptor for RunQueryDescriptor<'_> {
     "run"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     match self {
       RunQueryDescriptor::Path(path) => path.display_name(),
       RunQueryDescriptor::Name(name) => Cow::Borrowed(name),
@@ -2328,7 +2328,7 @@ impl QueryDescriptor for SysDescriptor {
     "sys"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     Cow::from(self.0.to_string())
   }
 
@@ -2392,7 +2392,7 @@ impl QueryDescriptor for FfiQueryDescriptor<'_> {
     "ffi"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     self.0.display_name()
   }
 

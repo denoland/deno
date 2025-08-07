@@ -288,7 +288,7 @@ impl LscBackend {
   }
 }
 impl deno_core::Resource for LscBackend {
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "LscBackend".into()
   }
 }

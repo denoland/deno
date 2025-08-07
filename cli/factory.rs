@@ -850,7 +850,7 @@ impl CliFactory {
 
   pub async fn create_compile_binary_writer(
     &self,
-  ) -> Result<DenoCompileBinaryWriter, AnyError> {
+  ) -> Result<DenoCompileBinaryWriter<'_>, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
       self.resolver_factory()?.cjs_module_export_analyzer()?,

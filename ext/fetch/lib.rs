@@ -742,7 +742,7 @@ pub struct FetchRequestResource {
 }
 
 impl Resource for FetchRequestResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchRequest".into()
   }
 }
@@ -750,7 +750,7 @@ impl Resource for FetchRequestResource {
 pub struct FetchCancelHandle(pub Rc<CancelHandle>);
 
 impl Resource for FetchCancelHandle {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchCancelHandle".into()
   }
 
@@ -799,7 +799,7 @@ impl FetchResponseResource {
 }
 
 impl Resource for FetchResponseResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchResponse".into()
   }
 
@@ -874,7 +874,7 @@ pub struct HttpClientResource {
 }
 
 impl Resource for HttpClientResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpClient".into()
   }
 }

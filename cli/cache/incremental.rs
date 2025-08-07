@@ -268,7 +268,7 @@ mod test {
     sql_cache.set_source_hash(&file_path, file_hash).unwrap();
     let cache = IncrementalCacheInner::from_sql_incremental_cache(
       sql_cache,
-      &[file_path.clone()],
+      std::slice::from_ref(&file_path),
     );
 
     assert!(cache.is_file_same(&file_path, "test"));

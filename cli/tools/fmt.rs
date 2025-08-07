@@ -1618,7 +1618,7 @@ pub struct FileContents<'a> {
   pub had_bom: bool,
 }
 
-fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
+fn read_file_contents(file_path: &Path) -> Result<FileContents<'_>, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);

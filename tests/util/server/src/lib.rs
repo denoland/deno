@@ -435,7 +435,7 @@ pub fn http_server() -> HttpServerGuard {
 }
 
 /// Helper function to strip ansi codes.
-pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
+pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<'_, str> {
   console_static_text::ansi::strip_ansi_codes(s)
 }
 
@@ -947,10 +947,10 @@ enum WildcardPatternPart<'a> {
 
 fn parse_wildcard_pattern_text(
   text: &str,
-) -> Result<Vec<WildcardPatternPart>, monch::ParseErrorFailureError> {
+) -> Result<Vec<WildcardPatternPart<'_>>, monch::ParseErrorFailureError> {
   use monch::*;
 
-  fn parse_unordered_lines(input: &str) -> ParseResult<Vec<&str>> {
+  fn parse_unordered_lines(input: &str) -> ParseResult<'_, Vec<&str>> {
     const END_TEXT: &str = "\n[UNORDERED_END]\n";
     let (input, _) = tag("[UNORDERED_START]\n")(input)?;
     match input.find(END_TEXT) {
@@ -978,7 +978,7 @@ fn parse_wildcard_pattern_text(
 
   impl<'a> Parser<'a> {
     fn parse(mut self) -> ParseResult<'a, Vec<WildcardPatternPart<'a>>> {
-      fn parse_num(input: &str) -> ParseResult<usize> {
+      fn parse_num(input: &str) -> ParseResult<'_, usize> {
         let num_char_count =
           input.chars().take_while(|c| c.is_ascii_digit()).count();
         if num_char_count == 0 {
@@ -989,12 +989,12 @@ fn parse_wildcard_pattern_text(
         Ok((input, value))
       }
 
-      fn parse_wild_char(input: &str) -> ParseResult<()> {
+      fn parse_wild_char(input: &str) -> ParseResult<'_, ()> {
         let (input, _) = tag("[WILDCHAR]")(input)?;
         ParseResult::Ok((input, ()))
       }
 
-      fn parse_wild_chars(input: &str) -> ParseResult<usize> {
+      fn parse_wild_chars(input: &str) -> ParseResult<'_, usize> {
         let (input, _) = tag("[WILDCHARS(")(input)?;
         let (input, times) = parse_num(input)?;
         let (input, _) = tag(")]")(input)?;

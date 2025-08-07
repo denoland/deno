@@ -534,8 +534,8 @@ pub fn op_http_read_request_body(
 #[op2(fast)]
 pub fn op_http_set_response_header(
   external: *const c_void,
-  #[string(onebyte)] name: Cow<[u8]>,
-  #[string(onebyte)] value: Cow<[u8]>,
+  #[string(onebyte)] name: Cow<'_, [u8]>,
+  #[string(onebyte)] value: Cow<'_, [u8]>,
 ) {
   let http =
     // SAFETY: op is called with external.
@@ -1107,7 +1107,7 @@ impl HttpJoinHandle {
 }
 
 impl Resource for HttpJoinHandle {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "http".into()
   }
 
@@ -1484,7 +1484,7 @@ impl UpgradeStream {
 }
 
 impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpRawUpgradeStream".into()
   }
 

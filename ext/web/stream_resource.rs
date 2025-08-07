@@ -320,7 +320,7 @@ struct BoundedBufferChannel {
 impl BoundedBufferChannel {
   // TODO(mmastrac): in release mode we should be able to make this an UnsafeCell
   #[inline(always)]
-  fn inner(&self) -> RefMut<BoundedBufferChannelInner> {
+  fn inner(&self) -> RefMut<'_, BoundedBufferChannelInner> {
     self.inner.borrow_mut()
   }
 
@@ -406,7 +406,7 @@ impl ReadableStreamResource {
 }
 
 impl Resource for ReadableStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     Cow::Borrowed("readableStream")
   }
 

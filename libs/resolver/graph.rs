@@ -49,7 +49,7 @@ pub struct FoundPackageJsonDepFlag(AtomicFlag);
 pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
 
 impl ResolveWithGraphError {
-  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+  pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
       ResolveWithGraphErrorKind::CouldNotResolve(err) => {
         err.source.maybe_specifier()

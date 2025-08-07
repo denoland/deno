@@ -79,7 +79,7 @@ impl HttpRequestBody {
 }
 
 impl Resource for HttpRequestBody {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "requestBody".into()
   }
 

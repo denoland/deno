@@ -38,7 +38,7 @@ pub struct UnixDatagramResource {
 }
 
 impl Resource for UnixDatagramResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "unixDatagram".into()
   }
 

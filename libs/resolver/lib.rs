@@ -103,7 +103,7 @@ impl DenoResolveError {
     }
   }
 
-  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+  pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
       DenoResolveErrorKind::Node(err) => err.maybe_specifier(),
       DenoResolveErrorKind::PathToUrl(err) => {

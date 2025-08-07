@@ -621,11 +621,11 @@ fn sort_tasks_topo<'a>(
   task_name: &str,
 ) -> Result<Vec<ResolvedTask<'a>>, TaskError> {
   trait TasksConfig {
-    fn task(&self, name: &str) -> Option<(TaskOrScript, &dyn TasksConfig)>;
+    fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)>;
   }
 
   impl TasksConfig for WorkspaceTasksConfig {
-    fn task(&self, name: &str) -> Option<(TaskOrScript, &dyn TasksConfig)> {
+    fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)> {
       if let Some(member) = &self.member
         && let Some(task_or_script) = member.task(name) {
           return Some((task_or_script, self as &dyn TasksConfig));
@@ -640,7 +640,7 @@ fn sort_tasks_topo<'a>(
   }
 
   impl TasksConfig for WorkspaceMemberTasksConfig {
-    fn task(&self, name: &str) -> Option<(TaskOrScript, &dyn TasksConfig)> {
+    fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)> {
       self
         .task(name)
         .map(|task_or_script| (task_or_script, self as &dyn TasksConfig))
@@ -968,7 +968,7 @@ fn package_filter_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
   Regex::new(&regex_str)
 }
 
-fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
+fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter<'_>, AnyError> {
   if !input.contains("*") {
     return Ok(TaskNameFilter::Exact(input));
   }

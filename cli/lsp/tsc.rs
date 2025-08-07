@@ -5765,6 +5765,7 @@ pub struct CombinedCodeFixScope {
 }
 
 #[derive(Serialize, Clone, Copy)]
+#[allow(dead_code)]
 pub struct JsNull;
 
 #[derive(Debug, Clone, Serialize)]

@@ -821,7 +821,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
 
   fn read_ts_config_with_cache(
     &mut self,
-    path: Cow<Path>,
+    path: Cow<'_, Path>,
   ) -> Result<Rc<TsConfigData>, Rc<std::io::Error>> {
     let path = normalize_path(path);
     self

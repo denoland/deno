@@ -629,7 +629,7 @@ impl ReplSession {
           }
         }"#
           .to_string(),
-        &[evaluate_result.clone()],
+        std::slice::from_ref(evaluate_result),
       )
       .await?;
     let s = response
