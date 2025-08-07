@@ -3,6 +3,7 @@
 import { primordials } from "ext:core/mod.js";
 import { op_node_call_is_from_dependency } from "ext:core/ops";
 const {
+  ArrayIsArray,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   Date,
@@ -65,6 +66,9 @@ export {
   styleText,
   types,
 };
+
+/** @deprecated - use `Array.isArray()` instead. */
+export const isArray = ArrayIsArray;
 
 /** @deprecated Use Object.assign() instead. */
 export function _extend(
