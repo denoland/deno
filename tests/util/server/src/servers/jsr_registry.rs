@@ -130,6 +130,21 @@ async fn registry_server_handler(
     .unwrap();
     let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
+  } else if path.starts_with("/api/scopes/") {
+    let segments: Vec<_> = path
+      .strip_prefix("/api/scopes/")
+      .unwrap()
+      .split('/')
+      .collect();
+    if let [scope, "packages", name] = segments.as_slice() {
+      let body = serde_json::to_string_pretty(&json!({
+        "scope": scope,
+        "name": name,
+      }))
+      .unwrap();
+      let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
+      return Ok(res);
+    }
   } else if path.starts_with("/api/publish_status/") {
     let body = serde_json::to_string_pretty(&json!({
       "id": "sdfwqer-qwer-qwerasdf",
