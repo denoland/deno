@@ -832,8 +832,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       .cloned()
       .unwrap_or_else(|| {
         if !self.currently_reading.insert(path.to_path_buf()) {
-          return Err(Rc::new(std::io::Error::new(
-            ErrorKind::Other,
+          return Err(Rc::new(std::io::Error::other(
             "Cycle detected while following `extends`.",
           )));
         }
