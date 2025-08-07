@@ -72,6 +72,7 @@ use auth::AuthMethod;
 use auth::get_auth_method;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
+
 use crate::registry::PackageVersion;
 
 pub async fn publish(
@@ -148,12 +149,13 @@ pub async fn publish(
         deno_json.specifier
       )
     })?;
-    let (scope, name_no_scope) = registry::parse_package_name(&publish_config.name)?;
+    let (scope, name_no_scope) =
+      registry::parse_package_name(&publish_config.name)?;
 
     package_versions.push(PackageVersion {
       scope: scope.to_string(),
       package: name_no_scope.to_string(),
-      version: version.to_string()
+      version: version.to_string(),
     })
   }
 
@@ -161,8 +163,9 @@ pub async fn publish(
     &cli_factory.http_client_provider().get_or_create()?,
     jsr_api_url(),
     jsr_url(),
-    package_versions.into_iter()
-  ).await?;
+    package_versions.into_iter(),
+  )
+  .await?;
 
   let prepared_data = publish_preparer
     .prepare_packages_for_publishing(
@@ -229,12 +232,12 @@ struct PreparedPublishPackage {
   exports: HashMap<String, String>,
 }
 
-impl Into<PackageVersion> for &PreparedPublishPackage {
-  fn into(self) -> PackageVersion {
+impl From<&PreparedPublishPackage> for PackageVersion {
+  fn from(val: &PreparedPublishPackage) -> PackageVersion {
     PackageVersion {
-      scope: self.scope.clone(),
-      package: self.package.clone(),
-      version: self.version.clone(),
+      scope: val.scope.clone(),
+      package: val.package.clone(),
+      version: val.version.clone(),
     }
   }
 }
@@ -752,14 +755,22 @@ async fn check_if_version_exist(
   registry_api_url: &Url,
   scope: &str,
   package: &str,
-  version: &str
+  version: &str,
 ) -> Result<Option<PackageVersion>, AnyError> {
-  let response =
-    registry::get_package_version(client, registry_api_url, scope, package, version).await?;
+  let response = registry::get_package_version(
+    client,
+    registry_api_url,
+    scope,
+    package,
+    version,
+  )
+  .await?;
   if response.status() == 404 {
-    return Ok(None)
+    return Ok(None);
   }
-  Ok(Some(registry::parse_response::<PackageVersion>(response).await?))
+  Ok(Some(
+    registry::parse_response::<PackageVersion>(response).await?,
+  ))
 }
 
 /// Check if both `scope` and `package` already exist, if not return
@@ -804,7 +815,9 @@ async fn ensure_scopes_and_packages_exist(
         &package.scope,
         &package.package,
         &package.version,
-      ).await? {
+      )
+      .await?
+      {
         return Ok(Some(PackagePublishError::VersionExists(version)));
       }
       if let Some(create) = check_if_scope_and_package_exist(
@@ -813,7 +826,9 @@ async fn ensure_scopes_and_packages_exist(
         registry_manage_url,
         &package.scope,
         &package.package,
-      ).await? {
+      )
+      .await?
+      {
         return Ok(Some(PackagePublishError::PackageNotExist(create)));
       }
       Ok::<Option<PackagePublishError>, AnyError>(None)
@@ -828,10 +843,11 @@ async fn ensure_scopes_and_packages_exist(
     match maybe_publish_error? {
       Some(PackagePublishError::PackageNotExist(info)) => {
         missing_packages.push(info);
-      },
+      }
       Some(PackagePublishError::VersionExists(version)) => {
         existing_version.push(version);
-      }, None => {}
+      }
+      None => {}
     };
   }
 
@@ -848,7 +864,9 @@ async fn ensure_scopes_and_packages_exist(
     }
     let existing_version_lines: Vec<_> = existing_version
       .into_iter()
-      .map(|info| format!("- @{}/{}@{}", info.scope, info.package, info.version))
+      .map(|info| {
+        format!("- @{}/{}@{}", info.scope, info.package, info.version)
+      })
       .collect();
     if !existing_version_lines.is_empty() {
       bail!(

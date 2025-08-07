@@ -147,12 +147,18 @@ pub fn get_package_version_api_url(
   scope: &str,
   package: &str,
   version: &str,
-  params: Option<&str>
+  params: Option<&str>,
 ) -> String {
   if let Some(params) = params {
-    format!("{}scopes/{}/packages/{}/versions/{}?{}", registry_api_url, scope, package, version, params)
+    format!(
+      "{}scopes/{}/packages/{}/versions/{}?{}",
+      registry_api_url, scope, package, version, params
+    )
   } else {
-    format!("{}scopes/{}/packages/{}/versions/{}", registry_api_url, scope, package, version)
+    format!(
+      "{}scopes/{}/packages/{}/versions/{}",
+      registry_api_url, scope, package, version
+    )
   }
 }
 
@@ -184,7 +190,13 @@ pub async fn get_package_version(
   package: &str,
   version: &str,
 ) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
-  let package_url = get_package_version_api_url(registry_api_url, scope, package, version, None);
+  let package_url = get_package_version_api_url(
+    registry_api_url,
+    scope,
+    package,
+    version,
+    None,
+  );
   let response = client.get(package_url.parse()?)?.send().await?;
   Ok(response)
 }
@@ -253,6 +265,6 @@ mod test {
   fn test_parse_package_name() {
     let (scope, package) = parse_package_name("@deno/doc").unwrap();
     assert_eq!(scope, "deno");
-    assert_eq!(scope, "doc");
+    assert_eq!(package, "doc");
   }
 }
