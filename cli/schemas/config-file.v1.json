@@ -217,6 +217,12 @@
           },
           "markdownDescription": "Declare many “virtual” directories acting as a single root.\n\nSee more: https://www.typescriptlang.org/tsconfig#rootDirs"
         },
+        "skipLibCheck": {
+          "description": "Skip type checking all .d.ts files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Skip type checking all .d.ts files.\n\nSee more: https://www.typescriptlang.org/tsconfig#skipLibCheck"
+        },
         "strict": {
           "description": "Enable all strict type checking options.",
           "type": "boolean",
