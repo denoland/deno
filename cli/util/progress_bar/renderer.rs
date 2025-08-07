@@ -171,9 +171,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
     let non_empty_entry = data
       .display_entries
       .iter()
-      .filter(|d| !d.message.is_empty() || d.total_size != 0)
-      .next();
-
+      .find(|d| !d.message.is_empty() || d.total_size != 0);
     let prompt = match non_empty_entry {
       Some(entry) => entry.prompt,
       None => data.display_entries[0].prompt,
@@ -225,7 +223,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
       );
     } else {
       // prevent cursor from going up
-      display_str.push_str("\n");
+      display_str.push('\n');
     }
 
     display_str
@@ -352,8 +350,8 @@ mod test {
     };
     let text = renderer.render(data.clone());
     let text = test_util::strip_ansi_codes(&text);
-    assert_contains!(text, "Blocking ⣯");
-    assert_contains!(text, "2/3\n - data 0.00KiB/10.00KiB\n\n\n\n");
+    assert_contains!(text, "Blocking ▰▰▱▱▱▱");
+    assert_contains!(text, "2/3\n  data 0.00KiB/10.00KiB\n");
 
     data.pending_entries = 0;
     data.total_entries = 1;
@@ -361,7 +359,7 @@ mod test {
     data.display_entries[0].total_size = 0;
     let text = renderer.render(data);
     let text = test_util::strip_ansi_codes(&text);
-    assert_contains!(text, "Blocking ⣟");
-    assert_contains!(text, "\n - data\n\n\n\n");
+    assert_contains!(text, "Blocking ▰▰▰▱▱▱");
+    assert_contains!(text, "\n  data\n");
   }
 }
