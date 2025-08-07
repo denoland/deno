@@ -9615,8 +9615,6 @@
         "request-constructor-init-body-override.any.html": true,
         "request-constructor-init-body-override.any.worker.html": true,
         "request-init-001.sub.html": [
-          "Check method init value of patch and associated getter",
-          "Check method init value of patCh and associated getter",
           "Check referrer init value of /relative/ressource and associated getter",
           "Check referrer init value of http://web-platform.test:8000/relative/ressource?query=true#fragment and associated getter",
           "Check referrer init value of http://web-platform.test:8000/ and associated getter",
