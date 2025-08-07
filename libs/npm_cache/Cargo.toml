@@ -42,6 +42,9 @@ url.workspace = true
 deno_error = { workspace = true, features = ["serde", "serde_json", "tokio"] }
 deno_unsync = { workspace = true, features = ["tokio"] }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+flate2 = { workspace = true, features = ["rust_backend"] }
+
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["real"] }
 tempfile.workspace = true
