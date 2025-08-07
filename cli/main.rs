@@ -619,13 +619,13 @@ async fn resolve_flags_and_init(
   }
 
   // Configure spawn_blocking_optional before first use.
-  {
-    let factory = CliFactory::from_flags(Arc::new(flags.clone()));
-    let feature_checker = factory.feature_checker()?;
-    deno_core::unsync::set_spawn_blocking_optional_use_current_thread(
-      feature_checker.check("single-threaded"),
-    );
-  }
+  deno_core::unsync::set_spawn_blocking_optional_use_current_thread(
+    flags
+      .unstable_config
+      .features
+      .iter()
+      .any(|f| f == "single-threaded"),
+  );
 
   // Tunnel is initialized before OTEL since
   // OTEL data is submitted via the tunnel.
