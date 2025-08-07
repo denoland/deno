@@ -108,7 +108,6 @@ where
         "Deno.connect()",
       )
       .map_err(NetError::Permission)?
-      .path
   };
   let unix_stream = UnixStream::connect(address_path).await?;
   let local_addr = unix_stream.local_addr()?;
@@ -183,8 +182,8 @@ where
 #[serde]
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
-  #[string] address_path: String,
-  #[string] api_name: String,
+  #[string] address_path: &str,
+  #[string] api_name: &str,
 ) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
@@ -193,12 +192,11 @@ where
   let api_call_expr = format!("{}()", api_name);
   let address_path = permissions
     .check_open(
-      Cow::Owned(PathBuf::from(address_path)),
+      Cow::Borrowed(Path::new(address_path)),
       OpenAccessKind::ReadWriteNoFollow,
       &api_call_expr,
     )
-    .map_err(NetError::Permission)?
-    .path;
+    .map_err(NetError::Permission)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
@@ -209,7 +207,7 @@ where
 
 pub fn net_listen_unixpacket<NP>(
   state: &mut OpState,
-  address_path: String,
+  address_path: &str,
 ) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
@@ -217,7 +215,7 @@ where
   let permissions = state.borrow_mut::<NP>();
   let address_path = permissions
     .check_open(
-      Cow::Owned(PathBuf::from(address_path)),
+      Cow::Borrowed(Path::new(address_path)),
       OpenAccessKind::ReadWriteNoFollow,
       "Deno.listenDatagram()",
     )
@@ -237,7 +235,7 @@ where
 #[serde]
 pub fn op_net_listen_unixpacket<NP>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
 ) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,
@@ -250,7 +248,7 @@ where
 #[serde]
 pub fn op_node_unstable_net_listen_unixpacket<NP>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
 ) -> Result<(ResourceId, Option<String>), NetError>
 where
   NP: NetPermissions + 'static,

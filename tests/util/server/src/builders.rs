@@ -453,7 +453,7 @@ impl TestCommandBuilder {
   }
 
   pub fn name(mut self, name: impl AsRef<OsStr>) -> Self {
-    self.command_name = name.as_ref().to_string_lossy().to_string();
+    self.command_name = name.as_ref().to_string_lossy().into_owned();
     self
   }
 
@@ -470,7 +470,7 @@ impl TestCommandBuilder {
     self.args_vec.extend(
       args
         .into_iter()
-        .map(|s| s.as_ref().to_string_lossy().to_string()),
+        .map(|s| s.as_ref().to_string_lossy().into_owned()),
     );
     self
   }
@@ -481,7 +481,7 @@ impl TestCommandBuilder {
   {
     self
       .args_vec
-      .push(arg.as_ref().to_string_lossy().to_string());
+      .push(arg.as_ref().to_string_lossy().into_owned());
     self
   }
 
@@ -509,8 +509,8 @@ impl TestCommandBuilder {
     V: AsRef<std::ffi::OsStr>,
   {
     self.envs.insert(
-      key.as_ref().to_string_lossy().to_string(),
-      val.as_ref().to_string_lossy().to_string(),
+      key.as_ref().to_string_lossy().into_owned(),
+      val.as_ref().to_string_lossy().into_owned(),
     );
     self
   }
@@ -521,7 +521,7 @@ impl TestCommandBuilder {
   {
     self
       .envs_remove
-      .insert(key.as_ref().to_string_lossy().to_string());
+      .insert(key.as_ref().to_string_lossy().into_owned());
     self
   }
 
@@ -551,7 +551,7 @@ impl TestCommandBuilder {
   }
 
   pub fn current_dir<P: AsRef<OsStr>>(mut self, dir: P) -> Self {
-    let dir = dir.as_ref().to_string_lossy().to_string();
+    let dir = dir.as_ref().to_string_lossy().into_owned();
     self.cwd = Some(match self.cwd {
       Some(current) => current.join(dir),
       None => PathRef::new(dir),

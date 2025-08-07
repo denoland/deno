@@ -152,7 +152,7 @@ pub fn hostname() -> String {
     buf[len - 1] = 0;
     std::ffi::CStr::from_ptr(buf.as_ptr() as *const libc::c_char)
       .to_string_lossy()
-      .to_string()
+      .into_owned()
   }
   #[cfg(target_family = "windows")]
   {

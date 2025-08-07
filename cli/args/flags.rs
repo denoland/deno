@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
@@ -28,7 +29,6 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::CaData;
@@ -37,6 +37,7 @@ use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmSystemInfo;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_path_util::normalize_path;
+use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
 use deno_runtime::deno_permissions::SysDescriptor;
@@ -329,6 +330,7 @@ pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
   pub is_default_command: bool,
+  pub json: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -377,6 +379,11 @@ impl ServeFlags {
       open_site: false,
     }
   }
+}
+
+pub enum WatchFlagsRef<'a> {
+  Watch(&'a WatchFlags),
+  WithPaths(&'a WatchFlagsWithPaths),
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -573,6 +580,29 @@ pub enum DenoSubcommand {
   Help(HelpFlags),
 }
 
+impl DenoSubcommand {
+  pub fn watch_flags(&self) -> Option<WatchFlagsRef> {
+    match self {
+      Self::Run(RunFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Test(TestFlags {
+        watch: Some(flags), ..
+      }) => Some(WatchFlagsRef::WithPaths(flags)),
+      Self::Bench(BenchFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Lint(LintFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Fmt(FmtFlags {
+        watch: Some(flags), ..
+      }) => Some(WatchFlagsRef::Watch(flags)),
+      _ => None,
+    }
+  }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutdatedKind {
   Update { latest: bool, interactive: bool },
@@ -657,6 +687,7 @@ impl Default for DenoSubcommand {
       eval_files: None,
       eval: None,
       is_default_command: true,
+      json: false,
     })
   }
 }
@@ -1111,9 +1142,9 @@ impl Flags {
       let result = files_or_dirs
         .iter()
         .filter_map(|p| {
-          let path = normalize_path(current_dir.join(p));
+          let path = normalize_path(Cow::Owned(current_dir.join(p)));
           if seen.insert(path.clone()) {
-            Some(path)
+            Some(path.into_owned())
           } else {
             None
           }
@@ -1163,7 +1194,7 @@ impl Flags {
         // todo(dsherret): Why is this canonicalized? Document why.
         // attempt to resolve the config file from the task subcommand's
         // `--cwd` when specified
-        match canonicalize_path(&PathBuf::from(path)) {
+        match canonicalize_path(Path::new(path)) {
           Ok(path) => Some(vec![path]),
           Err(_) => Some(vec![current_dir.to_path_buf()]),
         }
@@ -1212,55 +1243,23 @@ impl Flags {
   pub fn resolve_watch_exclude_set(
     &self,
   ) -> Result<PathOrPatternSet, AnyError> {
-    if let DenoSubcommand::Run(RunFlags {
-      watch:
-        Some(WatchFlagsWithPaths {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    })
-    | DenoSubcommand::Bench(BenchFlags {
-      watch:
-        Some(WatchFlags {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    })
-    | DenoSubcommand::Test(TestFlags {
-      watch:
-        Some(WatchFlagsWithPaths {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    })
-    | DenoSubcommand::Lint(LintFlags {
-      watch:
-        Some(WatchFlags {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    })
-    | DenoSubcommand::Fmt(FmtFlags {
-      watch:
-        Some(WatchFlags {
-          exclude: excluded_paths,
-          ..
-        }),
-      ..
-    }) = &self.subcommand
-    {
-      let cwd = std::env::current_dir()?;
-      PathOrPatternSet::from_exclude_relative_path_or_patterns(
-        &cwd,
-        excluded_paths,
-      )
-      .context("Failed resolving watch exclude patterns.")
-    } else {
-      Ok(PathOrPatternSet::default())
+    match self.subcommand.watch_flags() {
+      Some(WatchFlagsRef::WithPaths(WatchFlagsWithPaths {
+        exclude: excluded_paths,
+        ..
+      }))
+      | Some(WatchFlagsRef::Watch(WatchFlags {
+        exclude: excluded_paths,
+        ..
+      })) => {
+        let cwd = std::env::current_dir()?;
+        PathOrPatternSet::from_exclude_relative_path_or_patterns(
+          &cwd,
+          excluded_paths,
+        )
+        .context("Failed resolving watch exclude patterns.")
+      }
+      _ => Ok(PathOrPatternSet::default()),
     }
   }
 }
@@ -1563,6 +1562,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
             eval_files: None,
             eval: None,
             is_default_command: true,
+            json: false,
           },
         )
       }
@@ -3354,6 +3354,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
           .help("Evaluates the provided code when the REPL starts")
           .value_name("code"),
       )
+      .arg(Arg::new("json").long("json").action(ArgAction::SetTrue).hide(true))
       .after_help(cstr!("<y>Environment variables:</>
   <g>DENO_REPL_HISTORY</>  Set REPL history file path. History file is disabled when the value is empty.
                        <p(245)>[default: $DENO_DIR/deno_history.txt]</>"))
@@ -5721,12 +5722,15 @@ fn repl_parse(
     flags.argv.extend(args);
   }
 
+  let json = matches.remove_one::<bool>("json").unwrap_or(false);
+
   handle_repl_flags(
     flags,
     ReplFlags {
       eval_files,
       eval: matches.remove_one::<String>("eval"),
       is_default_command: false,
+      json,
     },
   );
   Ok(())
@@ -8405,6 +8409,7 @@ mod tests {
           eval_files: None,
           eval: None,
           is_default_command: true,
+          json: false,
         }),
         unsafely_ignore_certificate_errors: None,
         permissions: PermissionFlags {
@@ -8440,6 +8445,7 @@ mod tests {
           eval_files: None,
           eval: None,
           is_default_command: false,
+          json: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -8475,6 +8481,7 @@ mod tests {
           eval_files: None,
           eval: Some("console.log('hello');".to_string()),
           is_default_command: false,
+          json: false,
         }),
         permissions: PermissionFlags {
           allow_write: Some(vec![]),
@@ -8500,6 +8507,7 @@ mod tests {
           ]),
           eval: None,
           is_default_command: false,
+          json: false,
         }),
         ..Flags::default()
       }
@@ -9614,6 +9622,7 @@ mod tests {
           eval_files: None,
           eval: Some("console.log('hello');".to_string()),
           is_default_command: false,
+          json: false,
         }),
         unsafely_ignore_certificate_errors: Some(vec![]),
         type_check_mode: TypeCheckMode::None,
@@ -9685,6 +9694,7 @@ mod tests {
           eval_files: None,
           eval: None,
           is_default_command: false,
+          json: false,
         }),
         unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
@@ -12233,6 +12243,7 @@ mod tests {
           eval_files: None,
           eval: None,
           is_default_command: true,
+          json: false,
         }),
         log_level: Some(Level::Debug),
         permissions: PermissionFlags {
@@ -12256,6 +12267,7 @@ mod tests {
           eval_files: None,
           eval: None,
           is_default_command: false,
+          json: false,
         }),
         argv: svec!["foo"],
         ..Flags::default()

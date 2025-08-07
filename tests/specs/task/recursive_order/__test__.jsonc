@@ -1,0 +1,4 @@
+{
+  "args": "task -r build",
+  "output": "task.out"
+}

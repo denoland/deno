@@ -49,6 +49,7 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
+use crate::collections::FolderScopedMap;
 use crate::sync::MaybeDashMap;
 use crate::sync::new_rc;
 
@@ -187,6 +188,9 @@ pub enum MappedResolution<'a> {
     alias: &'a str,
     sub_path: Option<String>,
     dep_result: &'a Result<PackageJsonDepValue, PackageJsonDepValueParseError>,
+  },
+  PackageJsonImport {
+    pkg_json: &'a PackageJsonRc,
   },
 }
 
@@ -856,8 +860,6 @@ pub enum ResolutionKind {
   Execution,
   /// Resolving for code that will be used for type information.
   Types,
-  /// Resolving for code that will be bundled.
-  Bundling,
 }
 
 impl ResolutionKind {
@@ -871,7 +873,6 @@ impl From<NodeResolutionKind> for ResolutionKind {
     match value {
       NodeResolutionKind::Execution => Self::Execution,
       NodeResolutionKind::Types => Self::Types,
-      NodeResolutionKind::Bundling => Self::Bundling,
     }
   }
 }
@@ -896,7 +897,7 @@ pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   workspace_root: UrlRc,
   jsr_pkgs: Vec<ResolverWorkspaceJsrPackage>,
   maybe_import_map: Option<ImportMapWithDiagnostics>,
-  pkg_jsons: BTreeMap<UrlRc, PkgJsonResolverFolderConfig>,
+  pkg_jsons: FolderScopedMap<PkgJsonResolverFolderConfig>,
   pkg_json_dep_resolution: PackageJsonDepResolution,
   sloppy_imports_options: SloppyImportsOptions,
   fs_cache_options: FsCacheOptions,
@@ -1034,7 +1035,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_dep_resolution: options.pkg_json_dep_resolution,
       jsr_pkgs,
       maybe_import_map,
-      pkg_jsons,
+      pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       sloppy_imports_options: options.sloppy_imports_options,
       fs_cache_options: options.fs_cache_options,
       sloppy_imports_resolver,
@@ -1091,7 +1092,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       workspace_root,
       jsr_pkgs,
       maybe_import_map,
-      pkg_jsons,
+      pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       pkg_json_dep_resolution,
       sloppy_imports_options,
       fs_cache_options,
@@ -1119,6 +1120,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       }),
       jsr_pkgs: self
         .jsr_packages()
+        .iter()
         .map(|pkg| SerializedResolverWorkspaceJsrPackage {
           relative_base: root_dir_url.make_relative_if_descendant(&pkg.base),
           name: Cow::Borrowed(&pkg.name),
@@ -1252,10 +1254,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     self.pkg_jsons.values().map(|c| &c.pkg_json)
   }
 
-  pub fn jsr_packages(
-    &self,
-  ) -> impl Iterator<Item = &ResolverWorkspaceJsrPackage> {
-    self.jsr_pkgs.iter()
+  pub fn jsr_packages(&self) -> &[ResolverWorkspaceJsrPackage] {
+    &self.jsr_pkgs
   }
 
   pub fn diagnostics(&self) -> Vec<WorkspaceResolverDiagnostic<'_>> {
@@ -1355,19 +1355,20 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       }
     }
 
-    // 3. Attempt to resolve from the package.json dependencies.
-    if self.pkg_json_dep_resolution == PackageJsonDepResolution::Enabled {
-      let mut previously_found_dir = false;
-      for (dir_url, pkg_json_folder) in self.pkg_jsons.iter().rev() {
-        if !referrer.as_str().starts_with(dir_url.as_str()) {
-          if previously_found_dir {
-            break;
-          } else {
-            continue;
-          }
-        }
-        previously_found_dir = true;
-
+    // 3. Attempt to resolve from the package.json dependencies or imports.
+    if specifier.starts_with('#') && specifier.len() > 1 {
+      if let Some((_, pkg_json_folder)) =
+        self.pkg_jsons.entry_for_specifier(referrer)
+      {
+        return Ok(MappedResolution::PackageJsonImport {
+          pkg_json: &pkg_json_folder.pkg_json,
+        });
+      }
+    } else if self.pkg_json_dep_resolution == PackageJsonDepResolution::Enabled
+    {
+      for (_dir_url, pkg_json_folder) in
+        self.pkg_jsons.entries_for_specifier(referrer)
+      {
         for (bare_specifier, dep_result) in pkg_json_folder
           .deps
           .dependencies
@@ -1874,9 +1875,9 @@ mod test {
     let resolve = |name: &str, referrer: &str| {
       resolver.resolve(
         name,
-        &url_from_file_path(&deno_path_util::normalize_path(
+        &url_from_file_path(&deno_path_util::normalize_path(Cow::Owned(
           root_dir().join(referrer),
-        ))
+        )))
         .unwrap(),
         ResolutionKind::Execution,
       )

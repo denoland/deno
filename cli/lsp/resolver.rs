@@ -37,7 +37,10 @@ use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npmrc::create_default_npmrc;
+use deno_resolver::workspace::CreateResolverOptions;
+use deno_resolver::workspace::FsCacheOptions;
 use deno_resolver::workspace::PackageJsonDepResolution;
+use deno_resolver::workspace::SloppyImportsOptions;
 use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -88,6 +91,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 #[derive(Debug, Clone)]
 pub struct LspScopedResolver {
   resolver: Arc<CliResolver>,
+  workspace_resolver: Arc<WorkspaceResolver<CliSys>>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   is_cjs_resolver: Arc<CliIsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
@@ -109,6 +113,7 @@ impl Default for LspScopedResolver {
     let factory = ResolverFactory::new(None);
     Self {
       resolver: factory.cli_resolver().clone(),
+      workspace_resolver: factory.workspace_resolver().clone(),
       in_npm_pkg_checker: factory.in_npm_pkg_checker().clone(),
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: None,
@@ -134,6 +139,7 @@ impl LspScopedResolver {
     http_client_provider: Option<&Arc<HttpClientProvider>>,
   ) -> Self {
     let mut factory = ResolverFactory::new(config_data);
+    let workspace_resolver = factory.workspace_resolver().clone();
     if let Some(http_client_provider) = http_client_provider {
       factory.init_npm_resolver(http_client_provider, cache).await;
     }
@@ -147,6 +153,7 @@ impl LspScopedResolver {
     let jsr_resolver = Some(Arc::new(JsrCacheResolver::new(
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.map(|d| d.as_ref()),
+      &workspace_resolver,
     )));
     let redirect_resolver = Some(Arc::new(RedirectResolver::new(
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
@@ -155,7 +162,7 @@ impl LspScopedResolver {
     let configured_dep_resolutions = (|| {
       let npm_pkg_req_resolver = npm_pkg_req_resolver.as_ref()?;
       Some(Arc::new(ConfiguredDepResolutions::new(
-        config_data.and_then(|d| d.resolver.maybe_import_map()),
+        workspace_resolver.maybe_import_map(),
         config_data.and_then(|d| d.maybe_pkg_json().map(|p| p.as_ref())),
         npm_pkg_req_resolver,
         &pkg_json_resolver,
@@ -164,6 +171,7 @@ impl LspScopedResolver {
     .unwrap_or_default();
     Self {
       resolver: cli_resolver,
+      workspace_resolver,
       in_npm_pkg_checker,
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver,
@@ -237,6 +245,7 @@ impl LspScopedResolver {
 
     Arc::new(Self {
       resolver: factory.cli_resolver().clone(),
+      workspace_resolver: factory.workspace_resolver().clone(),
       in_npm_pkg_checker: factory.in_npm_pkg_checker().clone(),
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: self.jsr_resolver.clone(),
@@ -260,6 +269,10 @@ impl LspScopedResolver {
 
   pub fn as_cli_resolver(&self) -> &CliResolver {
     self.resolver.as_ref()
+  }
+
+  pub fn as_workspace_resolver(&self) -> &Arc<WorkspaceResolver<CliSys>> {
+    &self.workspace_resolver
   }
 
   pub fn as_is_cjs_resolver(&self) -> &CliIsCjsResolver {
@@ -764,6 +777,7 @@ impl ConfiguredDepResolutions {
 #[derive(Default)]
 struct ResolverFactoryServices {
   cli_resolver: Deferred<Arc<CliResolver>>,
+  workspace_resolver: Deferred<Arc<WorkspaceResolver<CliSys>>>,
   found_pkg_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
   in_npm_pkg_checker: Deferred<DenoInNpmPackageChecker>,
   is_cjs_resolver: Deferred<Arc<CliIsCjsResolver>>,
@@ -962,24 +976,7 @@ impl<'a> ResolverFactory<'a> {
             }),
             _ => None,
           },
-          workspace_resolver: self
-            .config_data
-            .map(|d| d.resolver.clone())
-            .unwrap_or_else(|| {
-              Arc::new(WorkspaceResolver::new_raw(
-                // this is fine because this is only used before initialization
-                Arc::new(ModuleSpecifier::parse("file:///").unwrap()),
-                None,
-                Vec::new(),
-                Vec::new(),
-                PackageJsonDepResolution::Disabled,
-                Default::default(),
-                Default::default(),
-                Default::default(),
-                Default::default(),
-                self.sys.clone(),
-              ))
-            }),
+          workspace_resolver: self.workspace_resolver().clone(),
           bare_node_builtins: self
             .config_data
             .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
@@ -994,6 +991,90 @@ impl<'a> ResolverFactory<'a> {
         self.services.found_pkg_json_dep_flag.clone(),
         Some(Arc::new(on_resolve_diagnostic)),
       ))
+    })
+  }
+
+  pub fn workspace_resolver(&self) -> &Arc<WorkspaceResolver<CliSys>> {
+    self.services.workspace_resolver.get_or_init(|| {
+      let workspace_resolver = self
+        .config_data
+        .map(|d| {
+          let unstable_sloppy_imports =
+            std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS").is_ok()
+              || d.unstable.contains("sloppy-imports");
+          let pkg_json_dep_resolution = if d.byonm {
+            PackageJsonDepResolution::Disabled
+          } else {
+            // todo(dsherret): this should be false for nodeModulesDir: true
+            PackageJsonDepResolution::Enabled
+          };
+          WorkspaceResolver::from_workspace(
+            &d.member_dir.workspace,
+            CliSys::default(),
+            CreateResolverOptions {
+              pkg_json_dep_resolution,
+              specified_import_map: d.specified_import_map.clone(),
+              sloppy_imports_options: if unstable_sloppy_imports {
+                SloppyImportsOptions::Enabled
+              } else {
+                SloppyImportsOptions::Disabled
+              },
+              fs_cache_options: FsCacheOptions::Disabled,
+            },
+          )
+          .inspect_err(|err| {
+            lsp_warn!(
+              "Failed to load resolver: {err}", // will contain the specifier
+            );
+          })
+          .ok()
+          .unwrap_or_else(|| {
+            // create a dummy resolver
+            WorkspaceResolver::new_raw(
+              d.scope.clone(),
+              None,
+              d.member_dir.workspace.resolver_jsr_pkgs().collect(),
+              d.member_dir.workspace.package_jsons().cloned().collect(),
+              pkg_json_dep_resolution,
+              Default::default(),
+              Default::default(),
+              Default::default(),
+              Default::default(),
+              CliSys::default(),
+            )
+          })
+        })
+        .unwrap_or_else(|| {
+          WorkspaceResolver::new_raw(
+            // this is fine because this is only used before initialization
+            Arc::new(ModuleSpecifier::parse("file:///").unwrap()),
+            None,
+            Vec::new(),
+            Vec::new(),
+            PackageJsonDepResolution::Disabled,
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            self.sys.clone(),
+          )
+        });
+      let diagnostics = workspace_resolver.diagnostics();
+      if !diagnostics.is_empty() {
+        lsp_warn!(
+          "Workspace resolver diagnostics ({}):\n{}",
+          self
+            .config_data
+            .map(|d| d.scope.as_str())
+            .unwrap_or("null scope"),
+          diagnostics
+            .iter()
+            .map(|d| format!("  - {d}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+        );
+      }
+      Arc::new(workspace_resolver)
     })
   }
 
@@ -1061,7 +1142,7 @@ impl<'a> ResolverFactory<'a> {
               .unwrap(),
             ),
             bundle_mode: false, // will change if we add support for moduleResolution bundler
-            prefer_browser_field: false,
+            is_browser_platform: false,
           },
         )))
       })

@@ -3377,7 +3377,11 @@ impl CallHierarchyItem {
     let maybe_file_path = url_to_file_path(&target_module.specifier).ok();
     let name = if use_file_name {
       if let Some(file_path) = &maybe_file_path {
-        file_path.file_name().unwrap().to_string_lossy().to_string()
+        file_path
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .into_owned()
       } else {
         target_module.uri.to_string()
       }
@@ -3393,9 +3397,9 @@ impl CallHierarchyItem {
             .strip_prefix(root_path)
             .unwrap_or(parent_dir)
             .to_string_lossy()
-            .to_string()
+            .into_owned()
         } else {
-          parent_dir.to_string_lossy().to_string()
+          parent_dir.to_string_lossy().into_owned()
         }
       } else {
         String::new()
@@ -4569,7 +4573,7 @@ impl TscSpecifierMap {
     }
     // If the module's media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
-    if MediaType::from_path(Path::new(specifier.as_str())) != media_type {
+    if MediaType::from_path(Path::new(&specifier)) != media_type {
       specifier += media_type.as_ts_extension();
     }
     if specifier != original.as_str() {
@@ -4657,10 +4661,11 @@ impl State {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Arc<DocumentModule>> {
-    self
-      .state_snapshot
-      .document_modules
-      .module_for_specifier(specifier, self.last_scope.as_deref())
+    self.state_snapshot.document_modules.module_for_specifier(
+      specifier,
+      self.last_scope.as_deref(),
+      Some(&self.last_compiler_options_key),
+    )
   }
 
   fn script_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
@@ -4733,26 +4738,38 @@ fn op_load<'s>(
     .performance
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
-  let module = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
-    None
-  } else {
-    state.get_module(&specifier)
-  };
-  let maybe_load_response = module.as_ref().map(|m| {
-    let data = if m.media_type == MediaType::Json && m.text.len() > 10_000_000 {
-      // VSCode's TS server types large JSON files this way.
-      DocumentText::Static("{}\n")
+  let maybe_load_response =
+    if let Some(source) = crate::tsc::load_raw_import_source(&specifier) {
+      Some(LoadResponse {
+        data: DocumentText::Static(source),
+        script_kind: crate::tsc::as_ts_script_kind(MediaType::TypeScript),
+        version: Some("1".to_string()),
+        is_cjs: false,
+        is_classic_script: false,
+      })
     } else {
-      m.text.clone()
+      let module = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
+        None
+      } else {
+        state.get_module(&specifier)
+      };
+      module.as_ref().map(|m| {
+        let data =
+          if m.media_type == MediaType::Json && m.text.len() > 10_000_000 {
+            // VSCode's TS server types large JSON files this way.
+            DocumentText::Static("{}\n")
+          } else {
+            m.text.clone()
+          };
+        LoadResponse {
+          data,
+          script_kind: crate::tsc::as_ts_script_kind(m.media_type),
+          version: state.script_version(&specifier),
+          is_cjs: m.resolution_mode == ResolutionMode::Require,
+          is_classic_script: m.notebook_uri.is_some(),
+        }
+      })
     };
-    LoadResponse {
-      data,
-      script_kind: crate::tsc::as_ts_script_kind(m.media_type),
-      version: state.script_version(&specifier),
-      is_cjs: m.resolution_mode == ResolutionMode::Require,
-      is_classic_script: m.notebook_uri.is_some(),
-    }
-  });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
   Ok(serialized)
@@ -4769,10 +4786,11 @@ fn op_release(
     .performance
     .mark_with_args("tsc.op.op_release", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
-  state
-    .state_snapshot
-    .document_modules
-    .release(&specifier, state.last_scope.as_deref());
+  state.state_snapshot.document_modules.release(
+    &specifier,
+    state.last_scope.as_deref(),
+    Some(&state.last_compiler_options_key),
+  );
   state.performance.measure(mark);
   Ok(())
 }
@@ -4906,7 +4924,12 @@ fn op_resolve_inner(
   let specifiers = state
     .state_snapshot
     .document_modules
-    .resolve(&args.specifiers, &referrer, state.last_scope.as_deref())
+    .resolve(
+      &args.specifiers,
+      &referrer,
+      state.last_scope.as_deref(),
+      Some(&state.last_compiler_options_key),
+    )
     .into_iter()
     .map(|o| {
       o.map(|(s, mt)| {
@@ -5116,10 +5139,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           };
           specifier = resolved;
         }
-        let Some(module) = state
-          .state_snapshot
-          .document_modules
-          .module_for_specifier(&specifier, scope.as_deref())
+        let Some(module) =
+          state.state_snapshot.document_modules.module_for_specifier(
+            &specifier,
+            scope.as_deref(),
+            Some(compiler_options_key),
+          )
         else {
           continue;
         };
@@ -5197,6 +5222,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           &module.specifier,
           module.resolution_mode,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )
       })();
       let script_names = result
@@ -6024,7 +6050,7 @@ mod tests {
   async fn setup(
     deno_json_content: Value,
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (TempDir, TsServer, Arc<StateSnapshot>, LspCache) {
+  ) -> (TempDir, TsServer, Arc<StateSnapshot>) {
     let temp_dir = TempDir::new();
     let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let mut config = Config::default();
@@ -6042,8 +6068,11 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
       Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
-    let linter_resolver =
-      Arc::new(LspLinterResolver::new(&config, &compiler_options_resolver));
+    let linter_resolver = Arc::new(LspLinterResolver::new(
+      &config,
+      &compiler_options_resolver,
+      &resolver,
+    ));
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
@@ -6069,6 +6098,7 @@ mod tests {
       compiler_options_resolver,
       linter_resolver,
       resolver,
+      cache: Arc::new(cache),
     });
     let performance = Arc::new(Performance::default());
     let ts_server = TsServer::new(performance);
@@ -6084,7 +6114,7 @@ mod tests {
       ),
       None,
     );
-    (temp_dir, ts_server, snapshot, cache)
+    (temp_dir, ts_server, snapshot)
   }
 
   fn setup_op_state(state_snapshot: Arc<StateSnapshot>) -> OpState {
@@ -6118,7 +6148,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_diagnostics() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({
         "compilerOptions": {
           "lib": [],
@@ -6142,6 +6172,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let (diagnostics, _) = ts_server
@@ -6172,7 +6203,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_diagnostics_lib() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({
         "compilerOptions": {
           "lib": ["dom"],
@@ -6196,6 +6227,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let (diagnostics, _) = ts_server
@@ -6207,7 +6239,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_module_resolution() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6233,6 +6265,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
@@ -6244,7 +6277,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_bad_module_specifiers() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6266,6 +6299,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
@@ -6297,7 +6331,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_remote_modules() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6323,6 +6357,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
@@ -6334,7 +6369,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_partial_modules() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6363,6 +6398,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
@@ -6409,7 +6445,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_no_debug_failure() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6429,6 +6465,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
@@ -6459,7 +6496,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_modify_sources() {
-    let (temp_dir, ts_server, snapshot, cache) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6482,7 +6519,8 @@ mod tests {
       .map(|s| s.as_ref());
     let dep_specifier =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
-    cache
+    snapshot
+      .cache
       .global()
       .set(
         &dep_specifier,
@@ -6492,7 +6530,7 @@ mod tests {
       .unwrap();
     let module = snapshot
       .document_modules
-      .module_for_specifier(&specifier, scope)
+      .module_for_specifier(&specifier, scope, None)
       .unwrap();
     let (diagnostics, _) = ts_server
       .get_diagnostics(snapshot.clone(), &[module], &Default::default())
@@ -6521,9 +6559,10 @@ mod tests {
     let dep_document = snapshot
       .document_modules
       .documents
-      .get_for_specifier(&dep_specifier, scope, &cache)
+      .get_for_specifier(&dep_specifier, scope, &snapshot.cache)
       .unwrap();
-    cache
+    snapshot
+      .cache
       .global()
       .set(
         &dep_specifier,
@@ -6550,10 +6589,11 @@ mod tests {
         .tree
         .scope_for_specifier(&specifier)
         .map(|s| s.as_ref()),
+      None,
     );
     let module = snapshot
       .document_modules
-      .module_for_specifier(&specifier, scope)
+      .module_for_specifier(&specifier, scope, None)
       .unwrap();
     let (diagnostics, _) = ts_server
       .get_diagnostics(snapshot.clone(), &[module], &Default::default())
@@ -6607,7 +6647,7 @@ mod tests {
         character: 16,
       })
       .unwrap();
-    let (temp_dir, ts_server, snapshot, _) =
+    let (temp_dir, ts_server, snapshot) =
       setup(json!({}), &[("a.ts", fixture, 1, LanguageId::TypeScript)]).await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let module = snapshot
@@ -6619,6 +6659,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let info = ts_server
@@ -6784,7 +6825,7 @@ mod tests {
         character: 33,
       })
       .unwrap();
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({
         "fmt": {
           "semiColons": false,
@@ -6807,6 +6848,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let info = ts_server
@@ -6884,7 +6926,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_edits_for_file_rename() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[
         ("a.ts", r#"import "./b.ts";"#, 1, LanguageId::TypeScript),
@@ -6902,6 +6944,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let changes = ts_server
@@ -6961,7 +7004,7 @@ mod tests {
 
   #[tokio::test]
   async fn resolve_unknown_dependency() {
-    let (temp_dir, _, snapshot, _) =
+    let (temp_dir, _, snapshot) =
       setup(json!({}), &[("a.ts", "", 1, LanguageId::TypeScript)]).await;
     let mut state = setup_op_state(snapshot);
     let resolved = op_resolve_inner(

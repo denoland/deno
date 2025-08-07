@@ -6,6 +6,7 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
+import { format } from "ext:deno_node/internal/util/inspect.mjs";
 import {
   op_getegid,
   op_geteuid,
@@ -643,6 +644,13 @@ process.exit = exit;
 
 /** https://nodejs.org/api/process.html#processabort */
 process.abort = abort;
+
+// NB(bartlomieju): this is a private API in Node.js, but there are packages like
+// `aws-iot-device-sdk-v2` that depend on it
+// https://github.com/denoland/deno/issues/30115
+process._rawDebug = (...args: unknown[]) => {
+  core.print(`${format(...args)}\n`, true);
+};
 
 // Undocumented Node API that is used by `signal-exit` which in turn
 // is used by `node-tap`. It was marked for removal a couple of years

@@ -554,9 +554,7 @@ impl DepManager {
     let graph = graph_permit.graph_mut();
     // populate the information from the lockfile
     if let Some(lockfile) = &self.lockfile {
-      let lockfile = lockfile.lock();
-
-      crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
+      lockfile.fill_graph(graph);
     }
 
     let npm_resolver = self.npm_resolver.as_managed().unwrap();

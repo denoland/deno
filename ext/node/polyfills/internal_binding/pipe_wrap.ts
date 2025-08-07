@@ -24,9 +24,6 @@
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.h
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -48,6 +45,15 @@ import {
 } from "ext:deno_node/internal_binding/_listen.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  FunctionPrototypeCall,
+  MapPrototypeGet,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+  ReflectHas,
+} = primordials;
 
 export enum socketType {
   SOCKET,
@@ -103,7 +109,10 @@ export class Pipe extends ConnectionWrap {
 
     this.ipc = ipc;
 
-    if (conn && provider === providerType.PIPEWRAP && "localAddr" in conn) {
+    if (
+      conn && provider === providerType.PIPEWRAP &&
+      ReflectHas(conn, "localAddr")
+    ) {
       const localAddr = conn.localAddr;
       this.#address = localAddr.path;
     }
@@ -146,7 +155,8 @@ export class Pipe extends ConnectionWrap {
       transport: "unix",
     };
 
-    Deno.connect(connectOptions).then(
+    PromisePrototypeThen(
+      Deno.connect(connectOptions),
       (conn: Deno.UnixConn) => {
         const localAddr = conn.localAddr as Deno.UnixAddr;
 
@@ -160,8 +170,8 @@ export class Pipe extends ConnectionWrap {
         }
       },
       (e) => {
-        const code = codeMap.get(e.code ?? "UNKNOWN") ??
-          codeMap.get("UNKNOWN")!;
+        const code = MapPrototypeGet(codeMap, e.code ?? "UNKNOWN") ??
+          MapPrototypeGet(codeMap, "UNKNOWN")!;
 
         try {
           this.afterConnect(req, code);
@@ -199,10 +209,11 @@ export class Pipe extends ConnectionWrap {
     try {
       listener = Deno.listen(listenOptions);
     } catch (e) {
-      if (e instanceof Deno.errors.NotCapable) {
+      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
         throw e;
       }
-      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
+      return MapPrototypeGet(codeMap, e.code ?? "UNKNOWN") ??
+        MapPrototypeGet(codeMap, "UNKNOWN")!;
     }
 
     const address = listener.addr as Deno.UnixAddr;
@@ -249,7 +260,7 @@ export class Pipe extends ConnectionWrap {
       mode != constants.UV_WRITABLE &&
       mode != (constants.UV_WRITABLE | constants.UV_READABLE)
     ) {
-      return codeMap.get("EINVAL");
+      return MapPrototypeGet(codeMap, "EINVAL");
     }
 
     let desiredMode = 0;
@@ -267,7 +278,7 @@ export class Pipe extends ConnectionWrap {
       Deno.chmodSync(this.#address!, desiredMode);
     } catch {
       // TODO(cmorten): map errors to appropriate error codes.
-      return codeMap.get("UNKNOWN")!;
+      return MapPrototypeGet(codeMap, "UNKNOWN")!;
     }
 
     return 0;
@@ -310,14 +321,17 @@ export class Pipe extends ConnectionWrap {
     try {
       connection = await this.#listener.accept();
     } catch (e) {
-      if (e instanceof Deno.errors.BadResource && this.#closed) {
+      if (
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e) &&
+        this.#closed
+      ) {
         // Listener and server has closed.
         return;
       }
 
       try {
         // TODO(cmorten): map errors to appropriate error codes.
-        this.onconnection!(codeMap.get("UNKNOWN")!, undefined);
+        this.onconnection!(MapPrototypeGet(codeMap, "UNKNOWN")!, undefined);
       } catch {
         // swallow callback errors.
       }
@@ -361,7 +375,7 @@ export class Pipe extends ConnectionWrap {
       }
     }
 
-    return LibuvStreamWrap.prototype._onClose.call(this);
+    return FunctionPrototypeCall(LibuvStreamWrap.prototype._onClose, this);
   }
 }
 
