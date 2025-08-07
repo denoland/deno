@@ -58,7 +58,6 @@ use factory::CliFactory;
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
-use self::args::load_env_variables_from_env_file;
 use self::util::draw_thread::DrawThread;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -67,6 +66,8 @@ use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
+use crate::util::watch_env_tracker::WatchEnvTracker;
+use crate::util::watch_env_tracker::load_env_variables_from_env_files;
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -604,8 +605,15 @@ async fn resolve_flags_and_init(
     }
     Err(err) => exit_for_error(AnyError::from(err)),
   };
-
-  load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
+  // preserve already loaded env variables
+  if flags.subcommand.watch_flags().is_some() {
+    WatchEnvTracker::snapshot();
+  }
+  let env_file_paths: Option<Vec<std::path::PathBuf>> = flags
+    .env_file
+    .as_ref()
+    .map(|files| files.iter().map(PathBuf::from).collect());
+  load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
   flags.unstable_config.fill_with_env();
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
