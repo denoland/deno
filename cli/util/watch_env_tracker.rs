@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
+use std::ffi::OsString;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -11,19 +13,19 @@ use std::sync::OnceLock;
 use deno_terminal::colors;
 
 #[derive(Debug, Clone)]
-struct EnvManagerInner {
+struct WatchEnvTrackerInner {
   // Track all loaded variables and their values
-  loaded_variables: HashSet<String>,
+  loaded_variables: HashSet<OsString>,
   // Track variables that are no longer present in any loaded file
-  unused_variables: HashSet<String>,
+  unused_variables: HashSet<OsString>,
   // Track original env vars that existed before we started
-  original_env: HashMap<String, String>,
+  original_env: HashMap<OsString, OsString>,
 }
 
-impl EnvManagerInner {
+impl WatchEnvTrackerInner {
   fn new() -> Self {
     // Capture the original environment state
-    let original_env: HashMap<String, String> = env::vars().collect();
+    let original_env: HashMap<OsString, OsString> = env::vars_os().collect();
 
     Self {
       loaded_variables: HashSet::new(),
@@ -34,63 +36,101 @@ impl EnvManagerInner {
 }
 
 #[derive(Debug, Clone)]
-pub struct EnvManager {
-  inner: Arc<Mutex<EnvManagerInner>>,
+pub struct WatchEnvTracker {
+  inner: Arc<Mutex<WatchEnvTrackerInner>>,
 }
 
 // Global singleton instance
-static ENV_MANAGER: OnceLock<EnvManager> = OnceLock::new();
+static WATCH_ENV_TRACKER: OnceLock<WatchEnvTracker> = OnceLock::new();
 
-impl EnvManager {
+impl WatchEnvTracker {
   /// Get the global singleton instance
-  pub fn instance() -> &'static EnvManager {
-    ENV_MANAGER.get_or_init(|| EnvManager {
-      inner: Arc::new(Mutex::new(EnvManagerInner::new())),
+  pub fn snapshot() -> &'static WatchEnvTracker {
+    WATCH_ENV_TRACKER.get_or_init(|| WatchEnvTracker {
+      inner: Arc::new(Mutex::new(WatchEnvTrackerInner::new())),
     })
   }
 
-  // Internal method that accepts an already-acquired lock to avoid deadlocks
-  fn load_env_file_inner<P: AsRef<Path>>(
-    &self,
-    file_path: P,
+  // Consolidated error handling function
+  fn handle_dotenvy_error(
+    error: dotenvy::Error,
+    file_path: &Path,
     log_level: Option<log::Level>,
-    inner: &mut EnvManagerInner,
   ) {
-    let path_str = file_path.as_ref().to_string_lossy().to_string();
+    #[allow(clippy::print_stderr)]
+    if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
+      match error {
+        dotenvy::Error::LineParse(line, index) => eprintln!(
+          "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
+          colors::yellow("Warning"),
+          file_path.display(),
+          index,
+          line
+        ),
+        dotenvy::Error::Io(_) => eprintln!(
+          "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
+          colors::yellow("Warning"),
+          file_path.display()
+        ),
+        dotenvy::Error::EnvVar(_) => eprintln!(
+          "{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",
+          colors::yellow("Warning"),
+          file_path.display()
+        ),
+        _ => eprintln!(
+          "{} Unknown failure occurred with the specified environment file: {}",
+          colors::yellow("Warning"),
+          file_path.display()
+        ),
+      }
+    }
+  }
 
+  // Internal method that accepts an already-acquired lock to avoid deadlocks
+  fn load_env_file_inner(
+    &self,
+    file_path: PathBuf,
+    log_level: Option<log::Level>,
+    inner: &mut WatchEnvTrackerInner,
+  ) {
     // Check if file exists
-    if !file_path.as_ref().exists() {
+    if !file_path.exists() {
       // Only show warning if logging is enabled
       #[allow(clippy::print_stderr)]
       if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
         eprintln!(
           "{} The environment file specified '{}' was not found.",
           colors::yellow("Warning"),
-          path_str
+          file_path.display()
         );
       }
       return;
     }
 
-    match dotenvy::from_path_iter(file_path.as_ref()) {
+    match dotenvy::from_path_iter(&file_path) {
       Ok(iter) => {
         for item in iter {
           match item {
             Ok((key, value)) => {
+              // Convert to OsString for consistency
+              let key_os = OsString::from(key);
+              let value_os = OsString::from(value);
+
               // Check if this variable is already loaded from a previous file
-              if inner.loaded_variables.contains(&key) {
+              if inner.loaded_variables.contains(&key_os) {
                 // Variable already exists from a previous file, skip it
                 #[allow(clippy::print_stderr)]
                 if log_level.map(|l| l >= log::Level::Debug).unwrap_or(false) {
                   eprintln!(
                     "{} Variable '{}' already loaded from '{}', skipping value from '{}'",
                     colors::yellow("Debug"),
-                    key,
+                    key_os.to_string_lossy(),
                     inner
                       .loaded_variables
-                      .get(&key)
-                      .unwrap_or(&"unknown".to_string()),
-                    path_str
+                      .get(&key_os)
+                      .map(|k| k.to_string_lossy().to_string())
+                      .unwrap_or_else(|| "unknown".to_string()),
+                    file_path.display()
                   );
                 }
                 continue;
@@ -100,42 +140,15 @@ impl EnvManager {
               // SAFETY: We're setting environment variables with valid UTF-8 strings
               // from the .env file. Both key and value are guaranteed to be valid strings.
               unsafe {
-                env::set_var(&key, &value);
+                env::set_var(&key_os, &value_os);
               }
 
               // Track this variable
-              inner.loaded_variables.insert(key.clone());
-              inner.unused_variables.remove(&key);
+              inner.loaded_variables.insert(key_os.clone());
+              inner.unused_variables.remove(&key_os);
             }
             Err(e) => {
-              // Handle parsing errors with detailed messages
-              #[allow(clippy::print_stderr)]
-              if log_level.map(|l| l >= log::Level::Info).unwrap_or(true) {
-                match e {
-                  dotenvy::Error::LineParse(line, index) => eprintln!(
-                    "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
-                    colors::yellow("Warning"),
-                    path_str,
-                    index,
-                    line
-                  ),
-                  dotenvy::Error::Io(_) => eprintln!(
-                    "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
-                    colors::yellow("Warning"),
-                    path_str
-                  ),
-                  dotenvy::Error::EnvVar(_) => eprintln!(
-                    "{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",
-                    colors::yellow("Warning"),
-                    path_str
-                  ),
-                  _ => eprintln!(
-                    "{} Unknown failure occurred with the specified environment file: {}",
-                    colors::yellow("Warning"),
-                    path_str
-                  ),
-                }
-              }
+              Self::handle_dotenvy_error(e, &file_path, log_level);
             }
           }
         }
@@ -147,7 +160,7 @@ impl EnvManager {
           eprintln!(
             "{} Failed to read {}: {}",
             colors::yellow("Warning"),
-            path_str,
+            file_path.display(),
             e
           );
         }
@@ -158,7 +171,7 @@ impl EnvManager {
   /// Clean up variables that are no longer present in any loaded file
   fn _cleanup_removed_variables(
     &self,
-    inner: &mut EnvManagerInner,
+    inner: &mut WatchEnvTrackerInner,
     log_level: Option<log::Level>,
   ) {
     for var_name in inner.unused_variables.iter() {
@@ -173,7 +186,7 @@ impl EnvManager {
           eprintln!(
             "{} Variable '{}' removed from environment as it's no longer present in any loaded file",
             colors::yellow("Debug"),
-            var_name
+            var_name.to_string_lossy()
           );
         }
       } else {
@@ -188,7 +201,7 @@ impl EnvManager {
           eprintln!(
             "{} Variable '{}' restored to original value as it's no longer present in any loaded file",
             colors::yellow("Debug"),
-            var_name
+            var_name.to_string_lossy()
           );
         }
       }
@@ -196,9 +209,9 @@ impl EnvManager {
   }
 
   // Load multiple env files in reverse order (later files take precedence over earlier ones)
-  pub fn load_env_variables_from_env_files<P: AsRef<Path>>(
+  pub fn load_env_variables_from_env_files(
     &self,
-    file_paths: Option<&Vec<P>>,
+    file_paths: Option<&Vec<PathBuf>>,
     log_level: Option<log::Level>,
   ) {
     let Some(env_file_names) = file_paths else {
@@ -211,7 +224,11 @@ impl EnvManager {
     inner.loaded_variables = HashSet::new();
 
     for env_file_name in env_file_names.iter().rev() {
-      self.load_env_file_inner(env_file_name, log_level, &mut inner);
+      self.load_env_file_inner(
+        env_file_name.to_path_buf(),
+        log_level,
+        &mut inner,
+      );
     }
 
     self._cleanup_removed_variables(&mut inner, log_level);
@@ -219,7 +236,7 @@ impl EnvManager {
 }
 
 pub fn load_env_variables_from_env_files(
-  filename: Option<&Vec<String>>,
+  filename: Option<&Vec<PathBuf>>,
   flags_log_level: Option<log::Level>,
 ) {
   let Some(env_file_names) = filename else {
@@ -230,36 +247,11 @@ pub fn load_env_variables_from_env_files(
     match dotenvy::from_filename(env_file_name) {
       Ok(_) => (),
       Err(error) => {
-        #[allow(clippy::print_stderr)]
-        if flags_log_level
-          .map(|l| l >= log::Level::Info)
-          .unwrap_or(true)
-        {
-          match error {
-            dotenvy::Error::LineParse(line, index) => eprintln!(
-              "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
-              colors::yellow("Warning"),
-              env_file_name,
-              index,
-              line
-            ),
-            dotenvy::Error::Io(_) => eprintln!(
-              "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
-              colors::yellow("Warning"),
-              env_file_name
-            ),
-            dotenvy::Error::EnvVar(_) => eprintln!(
-              "{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",
-              colors::yellow("Warning"),
-              env_file_name
-            ),
-            _ => eprintln!(
-              "{} Unknown failure occurred with the specified environment file: {}",
-              colors::yellow("Warning"),
-              env_file_name
-            ),
-          }
-        }
+        WatchEnvTracker::handle_dotenvy_error(
+          error,
+          env_file_name,
+          flags_log_level,
+        );
       }
     }
   }
