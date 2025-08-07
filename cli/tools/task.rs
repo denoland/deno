@@ -46,6 +46,7 @@ use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
 use crate::util::fs::canonicalize_path;
+use crate::util::progress_bar::ProgressBar;
 
 #[derive(Debug)]
 struct PackageTaskInfo {
@@ -178,6 +179,7 @@ pub async fn execute_script(
   let npm_installer = factory.npm_installer_if_managed().await?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
+  let progress_bar = factory.text_only_progress_bar();
   let mut env_vars = task_runner::real_env_vars();
 
   if let Some(connected) = &flags.connected {
@@ -196,6 +198,7 @@ pub async fn execute_script(
     npm_installer: npm_installer.map(|n| n.as_ref()),
     npm_resolver,
     node_resolver: node_resolver.as_ref(),
+    progress_bar,
     env_vars,
     cli_options,
     maybe_lockfile,
@@ -250,6 +253,7 @@ struct TaskRunner<'a> {
   npm_installer: Option<&'a CliNpmInstaller>,
   npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
+  progress_bar: &'a ProgressBar,
   env_vars: HashMap<OsString, OsString>,
   cli_options: &'a CliOptions,
   maybe_lockfile: Option<Arc<CliLockfile>>,
@@ -567,6 +571,7 @@ impl<'a> TaskRunner<'a> {
 
   async fn maybe_npm_install(&self) -> Result<(), AnyError> {
     if let Some(npm_installer) = self.npm_installer {
+      self.progress_bar.deferred_keep_initialize_alive();
       npm_installer
         .ensure_top_level_package_json_install()
         .await?;

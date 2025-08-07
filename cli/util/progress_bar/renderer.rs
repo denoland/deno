@@ -154,11 +154,18 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
     };
     let current_time = std::time::Instant::now();
 
-    let mut display_str = format!(
-      "{} {} ",
-      data.display_entries[0].prompt.as_text(),
-      SPINNER_CHARS[last_tick]
-    );
+    let non_empty_entry = data
+      .display_entries
+      .iter()
+      .filter(|d| !d.message.is_empty() || d.total_size != 0)
+      .next();
+
+    let prompt = match non_empty_entry {
+      Some(entry) => entry.prompt,
+      None => data.display_entries[0].prompt,
+    };
+    let mut display_str =
+      format!("{} {} ", prompt.as_text(), SPINNER_CHARS[last_tick]);
 
     let elapsed_time = current_time - self.start_time;
     let fmt_elapsed_time = get_elapsed_text(elapsed_time);
@@ -174,13 +181,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
     };
 
     display_str.push_str(&format!("{}{}\n", fmt_elapsed_time, total_text));
-
-    for i in 0..4 {
-      let Some(display_entry) = data.display_entries.get(i) else {
-        display_str.push('\n');
-        continue;
-      };
-
+    if let Some(display_entry) = non_empty_entry {
       let bytes_text = {
         let total_size = display_entry.total_size;
         let pos = display_entry.position;
@@ -208,6 +209,9 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
       display_str.push_str(
         &colors::gray(format!(" - {}{}\n", message, bytes_text)).to_string(),
       );
+    } else {
+      // prevent cursor from going up
+      display_str.push_str("\n");
     }
 
     display_str

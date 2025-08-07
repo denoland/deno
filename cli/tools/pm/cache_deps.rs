@@ -27,7 +27,7 @@ pub async fn cache_top_level_deps(
 ) -> Result<(), AnyError> {
   let _entry = factory
     .text_only_progress_bar()
-    .deferred_install_dependencies_update();
+    .deferred_keep_initialize_alive();
   let npm_installer = factory.npm_installer().await?;
   npm_installer
     .ensure_top_level_package_json_install()

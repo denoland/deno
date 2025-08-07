@@ -363,11 +363,8 @@ impl ProgressBar {
     }
   }
 
-  pub fn deferred_install_dependencies_update(&self) -> UpdateGuard {
-    self.deferred_update_with_prompt(
-      ProgressMessagePrompt::Initialize,
-      "dependencies",
-    )
+  pub fn deferred_keep_initialize_alive(&self) -> UpdateGuard {
+    self.deferred_update_with_prompt(ProgressMessagePrompt::Initialize, "")
   }
 
   /// Add an entry to the progress bar that will only be shown
