@@ -5,7 +5,6 @@
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_TLS_CERT_ALTNAME_INVALID
  * ERR_WORKER_INVALID_EXEC_ARGV
  * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
@@ -1460,6 +1459,11 @@ export class ERR_HTTP_TRAILER_INVALID extends NodeError {
     );
   }
 }
+export class ERR_ILLEGAL_CONSTRUCTOR extends NodeTypeError {
+  constructor() {
+    super("ERR_ILLEGAL_CONSTRUCTOR", "Illegal constructor");
+  }
+}
 export class ERR_INCOMPATIBLE_OPTION_PAIR extends NodeTypeError {
   constructor(x: string, y: string) {
     super(
@@ -2662,6 +2666,7 @@ export class ERR_INVALID_STATE extends NodeError {
 interface UvExceptionContext {
   syscall: string;
   path?: string;
+  dest?: string;
 }
 export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   const errno = extractOsErrorNumberFromErrorMessage(e);
@@ -2737,6 +2742,7 @@ export class NodeAggregateError extends AggregateError {
   }
 }
 
+codes.ERR_BUFFER_TOO_LARGE = ERR_BUFFER_TOO_LARGE;
 codes.ERR_IPC_CHANNEL_CLOSED = ERR_IPC_CHANNEL_CLOSED;
 codes.ERR_METHOD_NOT_IMPLEMENTED = ERR_METHOD_NOT_IMPLEMENTED;
 codes.ERR_INVALID_RETURN_VALUE = ERR_INVALID_RETURN_VALUE;
@@ -2764,6 +2770,7 @@ codes.ERR_STREAM_PUSH_AFTER_EOF = ERR_STREAM_PUSH_AFTER_EOF;
 codes.ERR_STREAM_UNSHIFT_AFTER_END_EVENT = ERR_STREAM_UNSHIFT_AFTER_END_EVENT;
 codes.ERR_STREAM_WRAP = ERR_STREAM_WRAP;
 codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
+codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
 
 // TODO(kt3k): assign all error classes here.
 

@@ -40,10 +40,10 @@ pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
-pub use fs::url_to_notebook_cell_uri;
-pub use fs::url_to_uri;
 pub use fs::PathRef;
 pub use fs::TempDir;
+pub use fs::url_to_notebook_cell_uri;
+pub use fs::url_to_uri;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -428,6 +428,7 @@ impl Drop for HttpServerGuard {
 /// killed.
 pub fn http_server() -> HttpServerGuard {
   ensure_test_server_built();
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
   let mut g = lock_http_server();
   g.inc();
   HttpServerGuard {}

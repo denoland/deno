@@ -1033,7 +1033,10 @@ export class IncomingMessageForClient extends NodeReadable {
     this._dumped = false;
 
     this.on("close", () => {
-      this.socket.emit("close");
+      // Let the final data flush before closing the socket.
+      this.socket.once("drain", () => {
+        this.socket.emit("close");
+      });
     });
   }
 

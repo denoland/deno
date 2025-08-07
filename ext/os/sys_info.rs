@@ -152,7 +152,7 @@ pub fn hostname() -> String {
     buf[len - 1] = 0;
     std::ffi::CStr::from_ptr(buf.as_ptr() as *const libc::c_char)
       .to_string_lossy()
-      .to_string()
+      .into_owned()
   }
   #[cfg(target_family = "windows")]
   {
@@ -279,7 +279,7 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.swap_total = xs.xsu_total;
       mem_info.swap_free = xs.xsu_avail;
 
-      extern "C" {
+      unsafe extern "C" {
         fn mach_host_self() -> std::ffi::c_uint;
       }
 

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.145.0"
+version = "0.150.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,6 +19,7 @@ sync_fs = ["deno_fs/sync_fs", "deno_package_json/sync", "node_resolver/sync"]
 [dependencies]
 aead-gcm-stream.workspace = true
 aes.workspace = true
+aws-lc-rs.workspace = true
 base64.workspace = true
 blake2.workspace = true
 boxed_error.workspace = true
@@ -29,6 +30,7 @@ const-oid.workspace = true
 ctr.workspace = true
 data-encoding.workspace = true
 deno_core.workspace = true
+deno_crypto_provider.workspace = true
 deno_error.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
@@ -73,7 +75,6 @@ p384.workspace = true
 pbkdf2.workspace = true
 pkcs8 = { workspace = true, features = ["std", "pkcs5", "encryption"] }
 rand.workspace = true
-ring.workspace = true
 ripemd = { workspace = true, features = ["oid"] }
 rsa.workspace = true
 rusqlite.workspace = true

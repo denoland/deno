@@ -1,3 +1,2 @@
 error: Uncaught[WILDCARD] RuntimeError: unreachable
-    at <anonymous> (wasm://wasm/2fb7b482:1:41)
-    at [WILDCARD]/wasm_unreachable.js:[WILDCARD]
+[WILDCARD]

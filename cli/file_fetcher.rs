@@ -3,24 +3,24 @@
 use std::sync::Arc;
 
 use deno_ast::MediaType;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::BlobData;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::file_fetcher::File;
 use deno_cache_dir::file_fetcher::SendError;
 use deno_cache_dir::file_fetcher::SendResponse;
-use deno_cache_dir::GlobalOrLocalHttpCache;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_resolver::file_fetcher::PermissionedFileFetcherOptions;
 use deno_runtime::deno_web::BlobStore;
 use http::HeaderMap;
 use http::StatusCode;
 
 use crate::colors;
-use crate::http_util::get_response_body_with_progress;
 use crate::http_util::HttpClientProvider;
+use crate::http_util::get_response_body_with_progress;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 
@@ -242,8 +242,8 @@ impl deno_cache_dir::file_fetcher::HttpClient for HttpClientAdapter {
 mod tests {
   use std::collections::HashMap;
 
-  use deno_cache_dir::file_fetcher::HttpClient;
   use deno_cache_dir::HttpCache;
+  use deno_cache_dir::file_fetcher::HttpClient;
   use deno_core::resolve_url;
   use deno_resolver::file_fetcher::FetchErrorKind;
   use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
@@ -282,6 +282,7 @@ mod tests {
     Arc<BlobStore>,
     Arc<GlobalHttpCache>,
   ) {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("remote").to_path_buf();
     let blob_store: Arc<BlobStore> = Default::default();
@@ -868,7 +869,10 @@ mod tests {
       deno_cache_dir::file_fetcher::FetchNoFollowErrorKind::NoRemote {
         ..
       } => {
-        assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/run/002_hello.ts\", but --no-remote is specified.");
+        assert_eq!(
+          err.to_string(),
+          "A remote specifier was requested: \"http://localhost:4545/run/002_hello.ts\", but --no-remote is specified."
+        );
       }
       _ => unreachable!(),
     }
@@ -923,7 +927,10 @@ mod tests {
       deno_cache_dir::file_fetcher::FetchNoFollowErrorKind::NotCached {
         ..
       } => {
-        assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified.");
+        assert_eq!(
+          err.to_string(),
+          "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified."
+        );
       }
       _ => unreachable!(),
     }

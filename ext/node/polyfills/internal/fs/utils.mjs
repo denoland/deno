@@ -154,13 +154,14 @@ export const kMaxUserId = 2 ** 32 - 1;
 export function assertEncoding(encoding) {
   if (encoding && !Buffer.isEncoding(encoding)) {
     const reason = "is invalid encoding";
-    throw new ERR_INVALID_ARG_VALUE(encoding, "encoding", reason);
+    throw new ERR_INVALID_ARG_VALUE("encoding", encoding, reason);
   }
 }
 
 export class Dirent {
-  constructor(name, type) {
+  constructor(name, type, path) {
     this.name = name;
+    this.parentPath = path;
     this[kType] = type;
   }
 
@@ -193,9 +194,23 @@ export class Dirent {
   }
 }
 
-class DirentFromStats extends Dirent {
-  constructor(name, stats) {
-    super(name, null);
+export function direntFromDeno(entry) {
+  let type;
+
+  if (entry.isDirectory) {
+    type = UV_DIRENT_DIR;
+  } else if (entry.isFile) {
+    type = UV_DIRENT_FILE;
+  } else if (entry.isSymlink) {
+    type = UV_DIRENT_LINK;
+  }
+
+  return new Dirent(entry.name, type, entry.parentPath);
+}
+
+export class DirentFromStats extends Dirent {
+  constructor(name, stats, path) {
+    super(name, null, path);
     this[kStats] = stats;
   }
 }
@@ -277,13 +292,13 @@ export function getDirents(path, { 0: names, 1: types }, callback) {
             callback(err);
             return;
           }
-          names[idx] = new DirentFromStats(name, stats);
+          names[idx] = new DirentFromStats(name, stats, path);
           if (--toFinish === 0) {
             callback(null, names);
           }
         });
       } else {
-        names[i] = new Dirent(names[i], types[i]);
+        names[i] = new Dirent(names[i], types[i], path);
       }
     }
     if (toFinish === 0) {
@@ -313,16 +328,16 @@ export function getDirent(path, name, type, callback) {
           callback(err);
           return;
         }
-        callback(null, new DirentFromStats(name, stats));
+        callback(null, new DirentFromStats(name, stats, path));
       });
     } else {
-      callback(null, new Dirent(name, type));
+      callback(null, new Dirent(name, type, path));
     }
   } else if (type === UV_DIRENT_UNKNOWN) {
     const stats = lstatSync(join(path, name));
-    return new DirentFromStats(name, stats);
+    return new DirentFromStats(name, stats, path);
   } else {
-    return new Dirent(name, type);
+    return new Dirent(name, type, path);
   }
 }
 
@@ -797,6 +812,20 @@ export const getValidatedPath = hideStackFrames(
     return path;
   },
 );
+
+/**
+ * @param {string | Buffer | URL} fileURLOrPath
+ * @param {string} [propName]
+ * @returns string
+ */
+export const getValidatedPathToString = (fileURLOrPath, propName) => {
+  const path = getValidatedPath(fileURLOrPath, propName);
+  if (!Buffer.isBuffer(path)) {
+    return path;
+  }
+  // deno-lint-ignore prefer-primordials
+  return path.toString();
+};
 
 export const getValidatedFd = hideStackFrames((fd, propName = "fd") => {
   if (ObjectIs(fd, -0)) {

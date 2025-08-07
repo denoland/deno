@@ -6,17 +6,17 @@ use std::path::Path;
 
 use anyhow::Context;
 use anyhow::Result;
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use flate2::write::GzEncoder;
+use base64::prelude::BASE64_STANDARD;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use tar::Builder;
 
+use crate::PathRef;
 use crate::root_path;
 use crate::tests_path;
-use crate::PathRef;
 
 pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
 pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
@@ -495,7 +495,7 @@ fn get_npm_package(
     if !file_type.is_dir() {
       continue;
     }
-    let version = entry.file_name().to_string_lossy().to_string();
+    let version = entry.file_name().to_string_lossy().into_owned();
     let version_folder = package_folder.join(&version);
 
     let (tarball_bytes, mut version_info) = create_package_version_info(

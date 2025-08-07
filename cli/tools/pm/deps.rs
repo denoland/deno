@@ -10,26 +10,26 @@ use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileRc;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::futures::future::try_join;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::stream::FuturesUnordered;
-use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_package_json::PackageJsonDepsMap;
 use deno_package_json::PackageJsonRc;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_semver::StackString;
+use deno_semver::Version;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
-use deno_semver::StackString;
-use deno_semver::Version;
-use deno_semver::VersionReq;
 use import_map::ImportMap;
 use import_map::ImportMapWithDiagnostics;
 use import_map::SpecifierMapEntry;
@@ -554,9 +554,7 @@ impl DepManager {
     let graph = graph_permit.graph_mut();
     // populate the information from the lockfile
     if let Some(lockfile) = &self.lockfile {
-      let lockfile = lockfile.lock();
-
-      crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
+      lockfile.fill_graph(graph);
     }
 
     let npm_resolver = self.npm_resolver.as_managed().unwrap();
@@ -640,7 +638,7 @@ impl DepManager {
         &roots,
         crate::module_loader::PrepareModuleLoadOptions {
           is_dynamic: false,
-          lib: deno_config::deno_json::TsTypeLib::DenoWindow,
+          lib: deno_config::workspace::TsTypeLib::DenoWindow,
           permissions: self.permissions_container.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
@@ -902,7 +900,10 @@ impl DepManager {
                   format!("npm:{first}@{version_req}")
                 }
               } else if string_value.contains(":") {
-                bail!("Unexpected package json dependency string: \"{string_value}\" in {}", arc.path.display());
+                bail!(
+                  "Unexpected package json dependency string: \"{string_value}\" in {}",
+                  arc.path.display()
+                );
               } else {
                 version_req.to_string()
               };

@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
+import { join } from "@std/path";
 
 function readFileString(filename: string | URL): string {
   const dataRead = Deno.readFileSync(filename);
@@ -64,8 +65,8 @@ Deno.test(
   { permissions: { write: true, read: true } },
   function copyFileSyncFailure() {
     const tempDir = Deno.makeTempDirSync();
-    const fromFilename = tempDir + "/from.txt";
-    const toFilename = tempDir + "/to.txt";
+    const fromFilename = join(tempDir, "from.txt");
+    const toFilename = join(tempDir, "to.txt");
     // We skip initial writing here, from.txt does not exist
     assertThrows(
       () => {
@@ -158,8 +159,8 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function copyFileFailure() {
     const tempDir = Deno.makeTempDirSync();
-    const fromFilename = tempDir + "/from.txt";
-    const toFilename = tempDir + "/to.txt";
+    const fromFilename = join(tempDir, "from.txt");
+    const toFilename = join(tempDir, "to.txt");
     // We skip initial writing here, from.txt does not exist
     await assertRejects(
       async () => {
@@ -245,5 +246,23 @@ Deno.test(
     await assertRejects(async () => {
       await Deno.copyFile(fromFilename, toFilename);
     }, TypeError);
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { read: true, write: true },
+  },
+  async function copyFileProc() {
+    // should not be able to copy from /proc without --allow-all permissions
+    assertThrows(
+      () => Deno.copyFileSync("/proc/self/status", "data.txt"),
+      Deno.errors.NotCapable,
+    );
+    await assertRejects(
+      () => Deno.copyFile("/proc/self/status", "data.txt"),
+      Deno.errors.NotCapable,
+    );
   },
 );

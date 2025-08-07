@@ -2,13 +2,14 @@
 
 use core::str;
 use std::borrow::Cow;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_permissions::CheckedPath;
+use deno_permissions::CheckedPathBuf;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -25,6 +26,7 @@ pub struct OpenOptions {
   pub truncate: bool,
   pub append: bool,
   pub create_new: bool,
+  pub custom_flags: Option<i32>,
   pub mode: Option<u32>,
 }
 
@@ -37,6 +39,7 @@ impl OpenOptions {
       truncate: false,
       append: false,
       create_new: false,
+      custom_flags: None,
       mode: None,
     }
   }
@@ -54,6 +57,7 @@ impl OpenOptions {
       truncate: !append,
       append,
       create_new,
+      custom_flags: None,
       mode,
     }
   }
@@ -82,153 +86,159 @@ pub struct FsDirEntry {
 #[allow(clippy::disallowed_types)]
 pub type FileSystemRc = crate::sync::MaybeArc<dyn FileSystem>;
 
-pub trait AccessCheckFn:
-  for<'a> FnMut(
-  Cow<'a, Path>,
-  &'a OpenOptions,
-  &'a dyn crate::GetPath,
-) -> FsResult<CheckedPath<'a>>
-{
-}
-impl<T> AccessCheckFn for T where
-  T: for<'a> FnMut(
-    Cow<'a, Path>,
-    &'a OpenOptions,
-    &'a dyn crate::GetPath,
-  ) -> FsResult<CheckedPath<'a>>
-{
-}
-
-pub enum CheckedPath<'a> {
-  Resolved(Cow<'a, Path>),
-  Unresolved(Cow<'a, Path>),
-}
-
-pub type AccessCheckCb<'a> = &'a mut (dyn AccessCheckFn + 'a);
-
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn cwd(&self) -> FsResult<PathBuf>;
   fn tmp_dir(&self) -> FsResult<PathBuf>;
-  fn chdir(&self, path: &Path) -> FsResult<()>;
+  fn chdir(&self, path: &CheckedPath) -> FsResult<()>;
   fn umask(&self, mask: Option<u32>) -> FsResult<u32>;
 
   fn open_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     options: OpenOptions,
-    access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn File>>;
   async fn open_async<'a>(
     &'a self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     options: OpenOptions,
-    access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>>;
 
   fn mkdir_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()>;
   async fn mkdir_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()>;
 
-  fn chmod_sync(&self, path: &Path, mode: u32) -> FsResult<()>;
-  async fn chmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()>;
+  fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()>;
+  async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()>;
 
   fn chown_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()>;
   async fn chown_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()>;
 
+  fn lchmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()>;
+  async fn lchmod_async(&self, path: CheckedPathBuf, mode: u32)
+  -> FsResult<()>;
+
   fn lchown_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()>;
   async fn lchown_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()>;
 
-  fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()>;
-  async fn remove_async(&self, path: PathBuf, recursive: bool) -> FsResult<()>;
+  fn remove_sync(&self, path: &CheckedPath, recursive: bool) -> FsResult<()>;
+  async fn remove_async(
+    &self,
+    path: CheckedPathBuf,
+    recursive: bool,
+  ) -> FsResult<()>;
 
-  fn copy_file_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()>;
+  fn copy_file_sync(
+    &self,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
+  ) -> FsResult<()>;
   async fn copy_file_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
   ) -> FsResult<()>;
 
-  fn cp_sync(&self, path: &Path, new_path: &Path) -> FsResult<()>;
-  async fn cp_async(&self, path: PathBuf, new_path: PathBuf) -> FsResult<()>;
+  fn cp_sync(&self, path: &CheckedPath, new_path: &CheckedPath)
+  -> FsResult<()>;
+  async fn cp_async(
+    &self,
+    path: CheckedPathBuf,
+    new_path: CheckedPathBuf,
+  ) -> FsResult<()>;
 
-  fn stat_sync(&self, path: &Path) -> FsResult<FsStat>;
-  async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat>;
+  fn stat_sync(&self, path: &CheckedPath) -> FsResult<FsStat>;
+  async fn stat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat>;
 
-  fn lstat_sync(&self, path: &Path) -> FsResult<FsStat>;
-  async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat>;
+  fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat>;
+  async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat>;
 
-  fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf>;
-  async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf>;
+  fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf>;
+  async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf>;
 
-  fn read_dir_sync(&self, path: &Path) -> FsResult<Vec<FsDirEntry>>;
-  async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>>;
+  fn read_dir_sync(&self, path: &CheckedPath) -> FsResult<Vec<FsDirEntry>>;
+  async fn read_dir_async(
+    &self,
+    path: CheckedPathBuf,
+  ) -> FsResult<Vec<FsDirEntry>>;
 
-  fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()>;
+  fn rename_sync(
+    &self,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
+  ) -> FsResult<()>;
   async fn rename_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
   ) -> FsResult<()>;
 
-  fn link_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()>;
+  fn link_sync(
+    &self,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
+  ) -> FsResult<()>;
   async fn link_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
   ) -> FsResult<()>;
 
   fn symlink_sync(
     &self,
-    oldpath: &Path,
-    newpath: &Path,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
     file_type: Option<FsFileType>,
   ) -> FsResult<()>;
   async fn symlink_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
     file_type: Option<FsFileType>,
   ) -> FsResult<()>;
 
-  fn read_link_sync(&self, path: &Path) -> FsResult<PathBuf>;
-  async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf>;
+  fn read_link_sync(&self, path: &CheckedPath) -> FsResult<PathBuf>;
+  async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf>;
 
-  fn truncate_sync(&self, path: &Path, len: u64) -> FsResult<()>;
-  async fn truncate_async(&self, path: PathBuf, len: u64) -> FsResult<()>;
+  fn truncate_sync(&self, path: &CheckedPath, len: u64) -> FsResult<()>;
+  async fn truncate_async(
+    &self,
+    path: CheckedPathBuf,
+    len: u64,
+  ) -> FsResult<()>;
 
   fn utime_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -236,7 +246,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   ) -> FsResult<()>;
   async fn utime_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -245,7 +255,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn lutime_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -253,7 +263,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   ) -> FsResult<()>;
   async fn lutime_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -262,12 +272,11 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn write_file_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     options: OpenOptions,
-    access_check: Option<AccessCheckCb>,
     data: &[u8],
   ) -> FsResult<()> {
-    let file = self.open_sync(path, options, access_check)?;
+    let file = self.open_sync(path, options)?;
     if let Some(mode) = options.mode {
       file.clone().chmod_sync(mode)?;
     }
@@ -276,12 +285,11 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   }
   async fn write_file_async<'a>(
     &'a self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     options: OpenOptions,
-    access_check: Option<AccessCheckCb<'a>>,
     data: Vec<u8>,
   ) -> FsResult<()> {
-    let file = self.open_async(path, options, access_check).await?;
+    let file = self.open_async(path, options).await?;
     if let Some(mode) = options.mode {
       file.clone().chmod_async(mode).await?;
     }
@@ -289,59 +297,52 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     Ok(())
   }
 
-  fn read_file_sync(
-    &self,
-    path: &Path,
-    access_check: Option<AccessCheckCb>,
-  ) -> FsResult<Cow<'static, [u8]>> {
+  fn read_file_sync(&self, path: &CheckedPath) -> FsResult<Cow<'static, [u8]>> {
     let options = OpenOptions::read();
-    let file = self.open_sync(path, options, access_check)?;
+    let file = self.open_sync(path, options)?;
     let buf = file.read_all_sync()?;
     Ok(buf)
   }
   async fn read_file_async<'a>(
     &'a self,
-    path: PathBuf,
-    access_check: Option<AccessCheckCb<'a>>,
+    path: CheckedPathBuf,
   ) -> FsResult<Cow<'static, [u8]>> {
     let options = OpenOptions::read();
-    let file = self.open_async(path, options, access_check).await?;
+    let file = self.open_async(path, options).await?;
     let buf = file.read_all_async().await?;
     Ok(buf)
   }
 
-  fn is_file_sync(&self, path: &Path) -> bool {
+  fn is_file_sync(&self, path: &CheckedPath) -> bool {
     self.stat_sync(path).map(|m| m.is_file).unwrap_or(false)
   }
 
-  fn is_dir_sync(&self, path: &Path) -> bool {
+  fn is_dir_sync(&self, path: &CheckedPath) -> bool {
     self
       .stat_sync(path)
       .map(|m| m.is_directory)
       .unwrap_or(false)
   }
 
-  fn exists_sync(&self, path: &Path) -> bool {
+  fn exists_sync(&self, path: &CheckedPath) -> bool {
     self.stat_sync(path).is_ok()
   }
-  async fn exists_async(&self, path: PathBuf) -> FsResult<bool> {
+  async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
     Ok(self.stat_async(path).await.is_ok())
   }
 
   fn read_text_file_lossy_sync(
     &self,
-    path: &Path,
-    access_check: Option<AccessCheckCb>,
+    path: &CheckedPath,
   ) -> FsResult<Cow<'static, str>> {
-    let buf = self.read_file_sync(path, access_check)?;
+    let buf = self.read_file_sync(path)?;
     Ok(string_from_cow_utf8_lossy(buf))
   }
   async fn read_text_file_lossy_async<'a>(
     &'a self,
-    path: PathBuf,
-    access_check: Option<AccessCheckCb<'a>>,
+    path: CheckedPathBuf,
   ) -> FsResult<Cow<'static, str>> {
-    let buf = self.read_file_async(path, access_check).await?;
+    let buf = self.read_file_async(path).await?;
     Ok(string_from_cow_utf8_lossy(buf))
   }
 }

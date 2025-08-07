@@ -7,21 +7,21 @@ use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_semver::package::PackageNv;
-use futures::future::LocalBoxFuture;
 use futures::FutureExt;
+use futures::future::LocalBoxFuture;
 use parking_lot::Mutex;
 use url::Url;
 
-use crate::remote::maybe_auth_header_value_for_npm_registry;
-use crate::rt::spawn_blocking;
-use crate::rt::MultiRuntimeAsyncValueCreator;
-use crate::tarball_extract::verify_and_extract_tarball;
-use crate::tarball_extract::TarballExtractionMode;
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
 use crate::NpmCacheHttpClientResponse;
 use crate::NpmCacheSetting;
 use crate::NpmCacheSys;
+use crate::remote::maybe_auth_header_value_for_npm_registry;
+use crate::rt::MultiRuntimeAsyncValueCreator;
+use crate::rt::spawn_blocking;
+use crate::tarball_extract::TarballExtractionMode;
+use crate::tarball_extract::verify_and_extract_tarball;
 
 type LoadResult = Result<(), Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;

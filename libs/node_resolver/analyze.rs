@@ -8,10 +8,10 @@ use std::path::PathBuf;
 
 use deno_error::JsErrorBox;
 use deno_path_util::url_to_file_path;
-use futures::future::LocalBoxFuture;
-use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
+use futures::future::LocalBoxFuture;
+use futures::stream::FuturesUnordered;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
@@ -20,8 +20,6 @@ use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
-use crate::errors::ModuleNotFoundError;
-use crate::resolution::NodeResolverRc;
 use crate::InNpmPackageChecker;
 use crate::IsBuiltInNodeModuleChecker;
 use crate::NodeResolutionKind;
@@ -31,6 +29,9 @@ use crate::PathClean;
 use crate::ResolutionMode;
 use crate::UrlOrPath;
 use crate::UrlOrPathRef;
+use crate::errors::ModuleNotFoundError;
+use crate::resolution::NodeResolverRc;
+use crate::resolution::parse_npm_pkg_name;
 
 #[derive(Debug, Clone)]
 pub enum CjsAnalysis<'a> {
@@ -114,12 +115,12 @@ pub struct CjsModuleExportAnalyzer<
 }
 
 impl<
-    TCjsCodeAnalyzer: CjsCodeAnalyzer,
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
-  >
+  TCjsCodeAnalyzer: CjsCodeAnalyzer,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: FsCanonicalize + FsMetadata + FsRead,
+>
   CjsModuleExportAnalyzer<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
@@ -164,7 +165,7 @@ impl<
 
     let analysis = match analysis {
       CjsAnalysis::Esm(source, _) => {
-        return Ok(ResolvedCjsAnalysis::Esm(source))
+        return Ok(ResolvedCjsAnalysis::Esm(source));
       }
       CjsAnalysis::Cjs(analysis) => analysis,
     };
@@ -353,24 +354,23 @@ impl<
     }
 
     // We've got a bare specifier or maybe bare_specifier/blah.js"
-    let (package_specifier, package_subpath) =
-      parse_specifier(specifier).unwrap();
+    let (package_specifier, package_subpath, _is_scoped) =
+      parse_npm_pkg_name(specifier, &referrer).map_err(JsErrorBox::from_err)?;
 
-    let module_dir =
-      match self.npm_resolver.resolve_package_folder_from_package(
-        package_specifier.as_str(),
-        &referrer,
-      ) {
-        Err(err)
-          if matches!(
-            err.as_kind(),
-            crate::errors::PackageFolderResolveErrorKind::PackageNotFound(..)
-          ) =>
-        {
-          return Ok(None);
-        }
-        other => other.map_err(JsErrorBox::from_err)?,
-      };
+    let module_dir = match self
+      .npm_resolver
+      .resolve_package_folder_from_package(package_specifier, &referrer)
+    {
+      Err(err)
+        if matches!(
+          err.as_kind(),
+          crate::errors::PackageFolderResolveErrorKind::PackageNotFound(..)
+        ) =>
+      {
+        return Ok(None);
+      }
+      other => other.map_err(JsErrorBox::from_err)?,
+    };
 
     let package_json_path = module_dir.join("package.json");
     let maybe_package_json = self
@@ -387,7 +387,7 @@ impl<
               &package_subpath,
               exports,
               Some(&referrer),
-              ResolutionMode::Import,
+              ResolutionMode::Require,
               conditions,
               resolution_kind,
             )
@@ -398,7 +398,7 @@ impl<
 
       // old school
       if package_subpath != "." {
-        let d = module_dir.join(package_subpath);
+        let d = module_dir.join(package_subpath.as_ref());
         if self.sys.fs_is_dir_no_err(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
@@ -505,7 +505,9 @@ pub enum TranslateCjsToEsmError {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
-#[error("Could not load '{reexport}' ({reexport_specifier}) referenced from {referrer}")]
+#[error(
+  "Could not load '{reexport}' ({reexport_specifier}) referenced from {referrer}"
+)]
 pub struct CjsAnalysisCouldNotLoadError {
   reexport: String,
   reexport_specifier: Url,
@@ -514,12 +516,32 @@ pub struct CjsAnalysisCouldNotLoadError {
   source: JsErrorBox,
 }
 
+#[sys_traits::auto_impl]
+pub trait NodeCodeTranslatorSys: FsCanonicalize + FsMetadata + FsRead {}
+
+#[allow(clippy::disallowed_types)]
+pub type NodeCodeTranslatorRc<
+  TCjsCodeAnalyzer,
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSys,
+> = crate::sync::MaybeArc<
+  NodeCodeTranslator<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+>;
+
 pub struct NodeCodeTranslator<
   TCjsCodeAnalyzer: CjsCodeAnalyzer,
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: NodeCodeTranslatorSys,
 > {
   module_export_analyzer: CjsModuleExportAnalyzerRc<
     TCjsCodeAnalyzer,
@@ -531,19 +553,20 @@ pub struct NodeCodeTranslator<
   mode: NodeCodeTranslatorMode,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub enum NodeCodeTranslatorMode {
   Bundling,
+  #[default]
   ModuleLoader,
 }
 
 impl<
-    TCjsCodeAnalyzer: CjsCodeAnalyzer,
-    TInNpmPackageChecker: InNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
-  >
+  TCjsCodeAnalyzer: CjsCodeAnalyzer,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: NodeCodeTranslatorSys,
+>
   NodeCodeTranslator<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
@@ -753,48 +776,6 @@ fn add_export(
   }
 }
 
-fn parse_specifier(specifier: &str) -> Option<(String, String)> {
-  let mut separator_index = specifier.find('/');
-  let mut valid_package_name = true;
-  // let mut is_scoped = false;
-  if specifier.is_empty() {
-    valid_package_name = false;
-  } else if specifier.starts_with('@') {
-    // is_scoped = true;
-    if let Some(index) = separator_index {
-      separator_index = specifier[index + 1..].find('/').map(|i| i + index + 1);
-    } else {
-      valid_package_name = false;
-    }
-  }
-
-  let package_name = if let Some(index) = separator_index {
-    specifier[0..index].to_string()
-  } else {
-    specifier.to_string()
-  };
-
-  // Package name cannot have leading . and cannot have percent-encoding or separators.
-  for ch in package_name.chars() {
-    if ch == '%' || ch == '\\' {
-      valid_package_name = false;
-      break;
-    }
-  }
-
-  if !valid_package_name {
-    return None;
-  }
-
-  let package_subpath = if let Some(index) = separator_index {
-    format!(".{}", specifier.chars().skip(index).collect::<String>())
-  } else {
-    ".".to_string()
-  };
-
-  Some((package_name, package_subpath))
-}
-
 fn to_double_quote_string(text: &str) -> String {
   // serde can handle this for us
   serde_json::to_string(text).unwrap()
@@ -826,14 +807,6 @@ mod tests {
         "export { __deno_export_3__ as \"3d\" };".to_string(),
       ]
     )
-  }
-
-  #[test]
-  fn test_parse_specifier() {
-    assert_eq!(
-      parse_specifier("@some-package/core/actions"),
-      Some(("@some-package/core".to_string(), "./actions".to_string()))
-    );
   }
 
   #[test]

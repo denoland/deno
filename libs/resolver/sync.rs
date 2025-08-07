@@ -58,6 +58,19 @@ mod inner {
       let mut inner = self.0.borrow_mut();
       inner.insert(key, value)
     }
+
+    pub fn clear(&self) {
+      self.0.borrow_mut().clear();
+    }
+
+    pub fn remove(&self, key: &K) -> Option<(K, V)> {
+      self.0.borrow_mut().remove_entry(key)
+    }
+
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+      self.0.borrow().len()
+    }
   }
 
   // Wrapper struct that exposes a subset of `DashMap` API.

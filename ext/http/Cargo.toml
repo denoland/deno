@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_http"
-version = "0.205.0"
+version = "0.210.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -25,6 +25,7 @@ harness = false
 [dependencies]
 async-compression = { workspace = true, features = ["tokio", "brotli", "gzip"] }
 async-trait.workspace = true
+aws-lc-rs.workspace = true
 base64.workspace = true
 brotli.workspace = true
 bytes.workspace = true
@@ -49,7 +50,6 @@ once_cell.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
 pin-project.workspace = true
-ring.workspace = true
 scopeguard.workspace = true
 serde.workspace = true
 smallvec.workspace = true

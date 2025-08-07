@@ -2,6 +2,7 @@
 import {
   O_APPEND,
   O_CREAT,
+  O_DIRECTORY,
   O_EXCL,
   O_RDONLY,
   O_RDWR,
@@ -9,11 +10,19 @@ import {
   O_TRUNC,
   O_WRONLY,
 } from "node:constants";
-import { assertEquals, assertThrows, fail } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { open, openSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  open,
+  openSync,
+  readSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
+import { open as openPromise } from "node:fs/promises";
 import { join, parse } from "node:path";
-import { closeSync, existsSync } from "node:fs";
 
 const tempDir = parse(Deno.makeTempFileSync()).dir;
 
@@ -398,3 +407,162 @@ Deno.test("[std/node/fs] open callback isn't called twice if error is thrown", a
     },
   });
 });
+
+Deno.test("[std/node/fs] openSync with custom flag", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const file = await Deno.makeTempFile();
+  assertThrows(
+    () => {
+      // Should throw error if path is not a directory
+      openSync(file, O_DIRECTORY as number);
+    },
+    Error,
+    `ENOTDIR: not a directory, open '${file}'`,
+  );
+  await Deno.remove(file);
+});
+
+Deno.test("[std/node/fs] open with custom flag", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const file = await Deno.makeTempFile();
+  await assertRejects(
+    async () => {
+      // Should throw error if path is not a directory
+      // `openPromise` uses `open` under the hood.
+      await openPromise(file, O_DIRECTORY as number);
+    },
+    Error,
+    `ENOTDIR: not a directory, open '${file}'`,
+  );
+  await Deno.remove(file);
+});
+
+let invalidFlag: number | undefined;
+// On linux it refers to the `O_TMPFILE` constant in libc.
+// It should throw EINVAL when it's not followed by `O_RDWR` or `O_WRONLY`.
+// https://docs.rs/libc/latest/libc/constant.O_TMPFILE.html
+if (Deno.build.os === "linux" || Deno.build.os === "android") {
+  if (Deno.build.arch === "x86_64") {
+    invalidFlag = 4_259_840;
+  } else {
+    invalidFlag = 4_210_688;
+  }
+} else if (Deno.build.os === "darwin") {
+  // On macOS it's a random value that is not a valid flag.
+  invalidFlag = 0x7FFFFFFF;
+}
+
+Deno.test("[std/node/fs] openSync throws on invalid flags", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const file = await Deno.makeTempFile();
+  assertThrows(
+    () => {
+      openSync(file, invalidFlag as number);
+    },
+    Error,
+    `EINVAL: invalid argument, open '${file}'`,
+  );
+  await Deno.remove(file);
+});
+
+Deno.test("[std/node/fs] open throws on invalid flags", {
+  ignore: Deno.build.os === "windows",
+}, async () => {
+  const file = await Deno.makeTempFile();
+  await assertRejects(
+    async () => {
+      // `openPromise` uses `open` under the hood.
+      await openPromise(file, invalidFlag as number);
+    },
+    Error,
+    `EINVAL: invalid argument, open '${file}'`,
+  );
+  await Deno.remove(file);
+});
+
+Deno.test(
+  "[std/node/fs] openSync: only enable read permission when a custom flag is not followed by file access flags",
+  {
+    ignore: Deno.build.os === "windows",
+  },
+  async () => {
+    const path = await Deno.makeTempFile();
+    writeFileSync(path, "Hello, world!");
+
+    const fd = openSync(path, O_SYNC);
+    readSync(fd, new Uint8Array(1), 0, 1, 0);
+    assertThrows(
+      () => {
+        writeSync(fd, "This should fail");
+      },
+      Error,
+    );
+
+    closeSync(fd);
+    await Deno.remove(path);
+  },
+);
+
+Deno.test(
+  "[std/node/fs] open: only enable read permission when a custom flag is not followed by file access flags",
+  {
+    ignore: Deno.build.os === "windows",
+  },
+  async () => {
+    const path = await Deno.makeTempFile();
+    writeFileSync(path, "Hello, world!");
+
+    const fileHandle = await openPromise(path, O_SYNC);
+    readSync(fileHandle.fd, new Uint8Array(1), 0, 1, 0);
+    assertThrows(
+      () => {
+        writeSync(fileHandle.fd, "This should fail");
+      },
+      Error,
+    );
+
+    await fileHandle.close();
+    await Deno.remove(path);
+  },
+);
+
+Deno.test(
+  "[std/node/fs] open: only enable write permission",
+  async () => {
+    const path = await Deno.makeTempFile();
+    const fileHandle = await openPromise(path, O_WRONLY);
+
+    writeSync(fileHandle.fd, "Hello, world!");
+    assertThrows(
+      () => {
+        readSync(fileHandle.fd, new Uint8Array(1), 0, 1, 0);
+      },
+      Error,
+    );
+
+    await fileHandle.close();
+    await Deno.remove(path);
+  },
+);
+
+Deno.test(
+  "[std/node/fs] openSync: only enable write permission",
+  async () => {
+    const path = await Deno.makeTempFile();
+    const fd = openSync(path, O_WRONLY);
+
+    writeSync(fd, "Hello, world!");
+    assertThrows(
+      () => {
+        readSync(fd, new Uint8Array(1), 0, 1, 0);
+      },
+      Error,
+    );
+
+    closeSync(fd);
+    await Deno.remove(path);
+  },
+);

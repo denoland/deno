@@ -10,6 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use lsp_types::Uri;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::LanguageServer;
 use tower_lsp::lsp_types::ClientCapabilities;
 use tower_lsp::lsp_types::ClientInfo;
 use tower_lsp::lsp_types::CompletionContext;
@@ -31,7 +32,6 @@ use tower_lsp::lsp_types::TextDocumentItem;
 use tower_lsp::lsp_types::TextDocumentPositionParams;
 use tower_lsp::lsp_types::VersionedTextDocumentIdentifier;
 use tower_lsp::lsp_types::WorkDoneProgressParams;
-use tower_lsp::LanguageServer;
 
 use super::client::Client;
 use super::config::ClassMemberSnippets;

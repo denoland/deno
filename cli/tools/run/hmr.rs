@@ -4,18 +4,20 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_core::InspectorPostMessageError;
+use deno_core::InspectorPostMessageErrorKind;
+use deno_core::LocalInspectorSession;
 use deno_core::error::CoreError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
 use deno_core::url::Url;
-use deno_core::LocalInspectorSession;
 use deno_error::JsErrorBox;
 use deno_terminal::colors;
 use tokio::select;
 
 use crate::cdp;
-use crate::emit::Emitter;
+use crate::module_loader::CliEmitter;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
 
@@ -79,25 +81,37 @@ pub struct HmrRunner {
   session: LocalInspectorSession,
   watcher_communicator: Arc<WatcherCommunicator>,
   script_ids: HashMap<String, String>,
-  emitter: Arc<Emitter>,
+  emitter: Arc<CliEmitter>,
 }
 
-#[async_trait::async_trait(?Send)]
-impl crate::worker::HmrRunner for HmrRunner {
+impl HmrRunner {
+  pub fn new(
+    emitter: Arc<CliEmitter>,
+    session: LocalInspectorSession,
+    watcher_communicator: Arc<WatcherCommunicator>,
+  ) -> Self {
+    Self {
+      session,
+      emitter,
+      watcher_communicator,
+      script_ids: HashMap::new(),
+    }
+  }
+
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn start(&mut self) -> Result<(), CoreError> {
+  pub async fn start(&mut self) -> Result<(), InspectorPostMessageError> {
     self.enable_debugger().await
   }
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn stop(&mut self) -> Result<(), CoreError> {
+  pub async fn stop(&mut self) -> Result<(), InspectorPostMessageError> {
     self
       .watcher_communicator
       .change_restart_mode(WatcherRestartMode::Automatic);
     self.disable_debugger().await
   }
 
-  async fn run(&mut self) -> Result<(), CoreError> {
+  pub async fn run(&mut self) -> Result<(), CoreError> {
     self
       .watcher_communicator
       .change_restart_mode(WatcherRestartMode::Manual);
@@ -118,7 +132,7 @@ impl crate::worker::HmrRunner for HmrRunner {
               let file_path = file_url.to_file_path().unwrap();
               if let Ok(canonicalized_file_path) = file_path.canonicalize() {
                 let canonicalized_file_url = Url::from_file_path(canonicalized_file_path).unwrap();
-                self.script_ids.insert(canonicalized_file_url.to_string(), params.script_id);
+                self.script_ids.insert(canonicalized_file_url.into(), params.script_id);
               }
             }
           }
@@ -159,9 +173,11 @@ impl crate::worker::HmrRunner for HmrRunner {
               continue;
             };
 
-            let source_code = self.emitter.load_and_emit_for_hmr(
+            let source_code = tokio::fs::read_to_string(deno_path_util::url_to_file_path(&module_url).unwrap()).await?;
+            let source_code = self.emitter.emit_for_hmr(
               &module_url,
-            ).await?;
+              source_code,
+            )?;
 
             let mut tries = 1;
             loop {
@@ -189,24 +205,9 @@ impl crate::worker::HmrRunner for HmrRunner {
       }
     }
   }
-}
-
-impl HmrRunner {
-  pub fn new(
-    emitter: Arc<Emitter>,
-    session: LocalInspectorSession,
-    watcher_communicator: Arc<WatcherCommunicator>,
-  ) -> Self {
-    Self {
-      session,
-      emitter,
-      watcher_communicator,
-      script_ids: HashMap::new(),
-    }
-  }
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn enable_debugger(&mut self) -> Result<(), CoreError> {
+  async fn enable_debugger(&mut self) -> Result<(), InspectorPostMessageError> {
     self
       .session
       .post_message::<()>("Debugger.enable", None)
@@ -219,7 +220,9 @@ impl HmrRunner {
   }
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn disable_debugger(&mut self) -> Result<(), CoreError> {
+  async fn disable_debugger(
+    &mut self,
+  ) -> Result<(), InspectorPostMessageError> {
     self
       .session
       .post_message::<()>("Debugger.disable", None)
@@ -235,7 +238,7 @@ impl HmrRunner {
     &mut self,
     script_id: &str,
     source: &str,
-  ) -> Result<cdp::SetScriptSourceResponse, CoreError> {
+  ) -> Result<cdp::SetScriptSourceResponse, InspectorPostMessageError> {
     let result = self
       .session
       .post_message(
@@ -248,16 +251,17 @@ impl HmrRunner {
       )
       .await?;
 
-    Ok(
-      serde_json::from_value::<cdp::SetScriptSourceResponse>(result)
-        .map_err(JsErrorBox::from_err)?,
+    serde_json::from_value::<cdp::SetScriptSourceResponse>(result).map_err(
+      |e| {
+        InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
+      },
     )
   }
 
   async fn dispatch_hmr_event(
     &mut self,
     script_id: &str,
-  ) -> Result<(), CoreError> {
+  ) -> Result<(), InspectorPostMessageError> {
     let expr = format!(
       "dispatchEvent(new CustomEvent(\"hmr\", {{ detail: {{ path: \"{}\" }} }}));",
       script_id

@@ -6,6 +6,7 @@
 
 import { core, internals, primordials } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
+import { format } from "ext:deno_node/internal/util/inspect.mjs";
 import {
   op_getegid,
   op_geteuid,
@@ -84,7 +85,6 @@ import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
-import { setProcess } from "ext:deno_node/_events.mjs";
 
 const { NumberMAX_SAFE_INTEGER } = primordials;
 
@@ -645,6 +645,13 @@ process.exit = exit;
 /** https://nodejs.org/api/process.html#processabort */
 process.abort = abort;
 
+// NB(bartlomieju): this is a private API in Node.js, but there are packages like
+// `aws-iot-device-sdk-v2` that depend on it
+// https://github.com/denoland/deno/issues/30115
+process._rawDebug = (...args: unknown[]) => {
+  core.print(`${format(...args)}\n`, true);
+};
+
 // Undocumented Node API that is used by `signal-exit` which in turn
 // is used by `node-tap`. It was marked for removal a couple of years
 // ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
@@ -1051,7 +1058,5 @@ internals.__bootstrapNodeProcess = function (
     );
   }
 };
-
-setProcess(process);
 
 export default process;

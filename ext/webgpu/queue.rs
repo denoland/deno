@@ -1,19 +1,19 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 use deno_core::cppgc::Ptr;
 use deno_core::futures::channel::oneshot;
 use deno_core::op2;
-use deno_core::GarbageCollected;
-use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 
+use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::command_buffer::GPUCommandBuffer;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureAspect;
 use crate::webidl::GPUExtent3D;
 use crate::webidl::GPUOrigin3D;
-use crate::Instance;
 
 pub struct GPUQueue {
   pub instance: Instance,

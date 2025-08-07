@@ -717,6 +717,11 @@ const NOT_IMPORTED_OPS = [
   // to not depend on them.
   "op_set_exit_code",
   "op_napi_open",
+
+  // deno deploy subcommand
+  "op_deploy_token_get",
+  "op_deploy_token_set",
+  "op_deploy_token_delete",
 ];
 
 function removeImportedOps() {
@@ -811,16 +816,24 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       12: serveWorkerCountOrIndex,
       13: otelConfig,
       15: standalone,
+      16: autoServe,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
 
-    if (mode === executionModes.serve) {
-      const hasMultipleThreads = serveIsMain
-        ? serveWorkerCountOrIndex > 0 // count > 0
+    let serveIsMain_ = serveIsMain;
+    let serveWorkerCountOrIndex_ = serveWorkerCountOrIndex;
+    if (autoServe) {
+      serveIsMain_ = true;
+      serveWorkerCountOrIndex_ = 0;
+    }
+
+    if (mode === executionModes.serve || autoServe) {
+      const hasMultipleThreads = serveIsMain_
+        ? serveWorkerCountOrIndex_ > 0 // count > 0
         : true;
       if (hasMultipleThreads) {
-        const serveLogIndex = serveIsMain ? 0 : (serveWorkerCountOrIndex + 1);
+        const serveLogIndex = serveIsMain_ ? 0 : (serveWorkerCountOrIndex_ + 1);
         const base = `serve-worker-${serveLogIndex}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
@@ -839,14 +852,14 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
           try {
             serve = registerDeclarativeServer(main.default);
           } catch (e) {
-            if (mode === executionModes.serve) {
+            if (mode === executionModes.serve || autoServe) {
               throw e;
             }
           }
         }
 
         if (mode === executionModes.serve && !serve) {
-          if (serveIsMain) {
+          if (serveIsMain_) {
             // Only error if main worker
             import.meta.log(
               "error",
@@ -861,7 +874,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         }
 
         if (serve) {
-          if (mode === executionModes.run) {
+          if (mode === executionModes.run && !autoServe) {
             import.meta.log(
               "error",
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
@@ -871,12 +884,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
               "font-weight: normal;",
             );
           }
-          if (mode === executionModes.serve) {
+          if (mode === executionModes.serve || autoServe) {
             serve({
               servePort,
               serveHost,
-              workerCountWhenMain: serveIsMain
-                ? serveWorkerCountOrIndex
+              workerCountWhenMain: serveIsMain_
+                ? serveWorkerCountOrIndex_
                 : undefined,
             });
           }
@@ -1014,7 +1027,11 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
+      15: standalone,
     } = runtimeOptions;
+
+    denoNs.build.standalone = standalone;
+
     closeOnIdle = runtimeOptions[14];
 
     performance.setTimeOrigin();
@@ -1078,6 +1095,7 @@ function bootstrapWorkerRuntime(
     }
 
     // Not available in workers
+    const moduleSpecifier = finalDenoNs.mainModule;
     delete finalDenoNs.mainModule;
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
@@ -1110,6 +1128,7 @@ function bootstrapWorkerRuntime(
         workerId,
         maybeWorkerMetadata: workerMetadata,
         nodeDebug,
+        moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
       });
     }
   } else {

@@ -1,8 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
-use util::assert_contains;
 use util::TestContextBuilder;
+use util::assert_contains;
 
 #[test]
 fn init_subcommand_without_dir() {

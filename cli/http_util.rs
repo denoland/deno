@@ -16,15 +16,15 @@ use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::deno_fetch;
-use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_fetch::ResBody;
+use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use http::header::HeaderName;
-use http::header::HeaderValue;
-use http::header::CONTENT_LENGTH;
 use http::HeaderMap;
 use http::StatusCode;
+use http::header::CONTENT_LENGTH;
+use http::header::HeaderName;
+use http::header::HeaderValue;
 use http_body_util::BodyExt;
 use thiserror::Error;
 
@@ -508,10 +508,10 @@ mod test {
       create_http_client(
         DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
-          ca_certs: vec![std::fs::read(
-            test_util::testdata_path().join("tls/RootCA.pem"),
-          )
-          .unwrap()],
+          ca_certs: vec![
+            std::fs::read(test_util::testdata_path().join("tls/RootCA.pem"))
+              .unwrap(),
+          ],
           ..Default::default()
         },
       )
@@ -574,7 +574,9 @@ mod test {
       return;
     }
 
-    panic!("None of the expected public URLs were available but internet appears to be available");
+    panic!(
+      "None of the expected public URLs were available but internet appears to be available"
+    );
   }
 
   #[tokio::test]
@@ -614,12 +616,14 @@ mod test {
       create_http_client(
         DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
-          ca_certs: vec![std::fs::read(
-            test_util::testdata_path()
-              .join("tls/RootCA.pem")
-              .to_string(),
-          )
-          .unwrap()],
+          ca_certs: vec![
+            std::fs::read(
+              test_util::testdata_path()
+                .join("tls/RootCA.pem")
+                .to_string(),
+            )
+            .unwrap(),
+          ],
           ..Default::default()
         },
       )
@@ -647,12 +651,14 @@ mod test {
       create_http_client(
         DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
-          ca_certs: vec![std::fs::read(
-            test_util::testdata_path()
-              .join("tls/RootCA.pem")
-              .to_string(),
-          )
-          .unwrap()],
+          ca_certs: vec![
+            std::fs::read(
+              test_util::testdata_path()
+                .join("tls/RootCA.pem")
+                .to_string(),
+            )
+            .unwrap(),
+          ],
           ..Default::default()
         },
       )
@@ -688,12 +694,14 @@ mod test {
       create_http_client(
         DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
-          ca_certs: vec![std::fs::read(
-            test_util::testdata_path()
-              .join("tls/RootCA.pem")
-              .to_string(),
-          )
-          .unwrap()],
+          ca_certs: vec![
+            std::fs::read(
+              test_util::testdata_path()
+                .join("tls/RootCA.pem")
+                .to_string(),
+            )
+            .unwrap(),
+          ],
           ..Default::default()
         },
       )

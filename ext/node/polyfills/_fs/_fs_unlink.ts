@@ -1,19 +1,41 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import type { Buffer } from "node:buffer";
+import { primordials } from "ext:core/mod.js";
+import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import * as pathModule from "node:path";
 
-export function unlink(path: string | URL, callback: (err?: Error) => void) {
-  if (!callback) throw new Error("No callback function supplied");
-  Deno.remove(path).then((_) => callback(), callback);
+const {
+  PromisePrototypeThen,
+} = primordials;
+
+export function unlink(
+  path: string | Buffer | URL,
+  callback: (err?: Error) => void,
+): void {
+  path = getValidatedPathToString(path);
+  validateFunction(callback, "callback");
+
+  PromisePrototypeThen(
+    Deno.remove(pathModule.toNamespacedPath(path)),
+    () => callback(),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, { syscall: "unlink", path })),
+  );
 }
 
 export const unlinkPromise = promisify(unlink) as (
-  path: string | URL,
+  path: string | Buffer | URL,
 ) => Promise<void>;
 
-export function unlinkSync(path: string | URL) {
-  Deno.removeSync(path);
+export function unlinkSync(path: string | Buffer | URL): void {
+  path = getValidatedPathToString(path);
+  try {
+    Deno.removeSync(pathModule.toNamespacedPath(path));
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "unlink", path });
+  }
 }

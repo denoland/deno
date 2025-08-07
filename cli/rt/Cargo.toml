@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.3.6"
+version = "2.4.3"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -48,6 +48,7 @@ bincode.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 log = { workspace = true, features = ["serde"] }
+rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }

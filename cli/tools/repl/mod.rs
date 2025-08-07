@@ -26,10 +26,10 @@ mod channel;
 mod editor;
 mod session;
 
-use channel::rustyline_channel;
 use channel::RustylineSyncMessage;
 use channel::RustylineSyncMessageHandler;
 use channel::RustylineSyncResponse;
+use channel::rustyline_channel;
 use editor::EditorHelper;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
@@ -157,7 +157,7 @@ async fn read_eval_file(
   eval_file: &str,
 ) -> Result<Arc<str>, AnyError> {
   let specifier =
-    deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
+    deno_path_util::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
   let file = file_fetcher.fetch_bypass_permissions(&specifier).await?;
 
@@ -176,18 +176,16 @@ pub async fn run(
   let npm_installer = factory.npm_installer_if_managed().await?.cloned();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let history_file_path = factory
-    .deno_dir()
-    .ok()
-    .and_then(|dir| dir.repl_history_file_path());
   let (worker, test_event_receiver) = create_single_test_event_channel();
   let test_event_sender = worker.sender;
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Repl,
       main_module.clone(),
+      // `deno repl` doesn't support preloading modules
+      vec![],
       permissions.clone(),
       vec![crate::ops::testing::deno_test::init(test_event_sender)],
       Default::default(),
@@ -200,12 +198,18 @@ pub async fn run(
     cli_options,
     npm_installer,
     resolver,
-    tsconfig_resolver,
+    compiler_options_resolver,
     worker,
     main_module.clone(),
     test_event_receiver,
   )
   .await?;
+
+  #[cfg(unix)]
+  if repl_flags.json {
+    return run_json(session).await;
+  }
+
   let rustyline_channel = rustyline_channel();
 
   let helper = EditorHelper {
@@ -213,6 +217,10 @@ pub async fn run(
     sync_sender: rustyline_channel.0,
   };
 
+  let history_file_path = factory
+    .deno_dir()
+    .ok()
+    .and_then(|dir| dir.repl_history_file_path());
   let editor = ReplEditor::new(helper, history_file_path)?;
 
   let mut repl = Repl {
@@ -275,4 +283,122 @@ pub async fn run(
   repl.run().await?;
 
   Ok(repl.session.worker.exit_code())
+}
+
+#[cfg(unix)]
+async fn run_json(mut repl_session: ReplSession) -> Result<i32, AnyError> {
+  use bytes::Buf;
+  use bytes::Bytes;
+  use deno_runtime::deno_io::BiPipe;
+  use tokio::io::AsyncReadExt;
+  use tokio::io::AsyncWriteExt;
+  use tokio::io::BufReader;
+
+  #[derive(serde::Serialize, serde::Deserialize, Debug)]
+  #[serde(tag = "type")]
+  enum ReplMessage {
+    Run { code: String, output: bool },
+    RunOutput { output: String },
+    Error { error: String },
+  }
+
+  let (receiver, mut sender) = BiPipe::from_raw(3)?.split();
+  let mut receiver = BufReader::new(receiver);
+
+  loop {
+    let mut line_fut = std::pin::pin!(async {
+      let len = receiver.read_u32_le().await?;
+      let mut buf = vec![0; len as _];
+      receiver.read_exact(&mut buf).await?;
+      Ok::<_, AnyError>(buf)
+    });
+    let mut poll_worker = true;
+    let line = loop {
+      tokio::select! {
+        line = &mut line_fut => break line?,
+        _ = repl_session.run_event_loop(), if poll_worker => {
+          poll_worker = false;
+          continue;
+        }
+      }
+    };
+    let command: ReplMessage = serde_json::from_slice(&line)?;
+
+    if let ReplMessage::Run { code, output } = command {
+      let result = repl_session.evaluate_line_with_object_wrapping(&code).await;
+
+      // We check for close and break here instead of making it a loop condition to get
+      // consistent behavior in when the user evaluates a call to close().
+      match repl_session.closing().await {
+        Ok(closing) if closing => break,
+        Ok(_) => {}
+        Err(err) => {
+          let buf = serde_json::to_vec(&ReplMessage::Error {
+            error: format!("{}", err),
+          })?;
+          sender
+            .write_all_buf(
+              &mut Bytes::from_owner((buf.len() as u32).to_le_bytes())
+                .chain(Bytes::from(buf)),
+            )
+            .await?;
+        }
+      };
+
+      match result {
+        Ok(evaluate_response) => {
+          let cdp::EvaluateResponse {
+            result,
+            exception_details,
+          } = evaluate_response.value;
+
+          if exception_details.is_some() {
+            repl_session.set_last_thrown_error(&result).await?;
+          } else {
+            repl_session
+              .language_server
+              .commit_text(&evaluate_response.ts_code)
+              .await;
+            repl_session.set_last_eval_result(&result).await?;
+          }
+
+          if output {
+            let response = repl_session
+              .call_function_on_repl_internal_obj(
+                "function (object) { return this.String(object); }".into(),
+                &[result],
+              )
+              .await?;
+            let output = response
+              .result
+              .value
+              .map(|v| v.as_str().unwrap().to_string())
+              .or(response.result.description)
+              .unwrap_or_else(|| "something went wrong".into());
+
+            let buf = serde_json::to_vec(&ReplMessage::RunOutput { output })?;
+            sender
+              .write_all_buf(
+                &mut Bytes::from_owner((buf.len() as u32).to_le_bytes())
+                  .chain(Bytes::from(buf)),
+              )
+              .await?;
+          }
+        }
+        Err(err) => {
+          let buf = serde_json::to_vec(&ReplMessage::Error {
+            error: format!("{}", err),
+          })?;
+          sender
+            .write_all_buf(
+              &mut Bytes::from_owner((buf.len() as u32).to_le_bytes())
+                .chain(Bytes::from(buf)),
+            )
+            .await?;
+        }
+      }
+    }
+  }
+
+  Ok(repl_session.worker.exit_code())
 }
