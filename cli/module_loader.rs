@@ -183,7 +183,7 @@ impl ModuleLoadPreparer {
       allow_unknown_media_types,
       skip_graph_roots_validation,
     } = options;
-    let _pb_clear_guard = self.progress_bar.clear_guard();
+    let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut loader = self
       .module_graph_builder
@@ -273,7 +273,7 @@ impl ModuleLoadPreparer {
         .collect::<Vec<_>>()
         .join(", ")
     );
-    let _pb_clear_guard = self.progress_bar.clear_guard();
+    let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut loader = self
       .module_graph_builder
