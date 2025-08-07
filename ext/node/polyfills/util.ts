@@ -331,5 +331,6 @@ export default {
   debuglog,
   debug: debuglog,
   isDeepStrictEqual,
+  isArray,
   styleText,
 };
