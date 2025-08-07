@@ -72,6 +72,7 @@ use auth::AuthMethod;
 use auth::get_auth_method;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
+use crate::registry::PackageVersion;
 
 pub async fn publish(
   flags: Arc<Flags>,
@@ -138,6 +139,31 @@ pub async fn publish(
     module_content_provider,
   );
 
+  let mut package_versions = Vec::with_capacity(publish_configs.len());
+  for publish_config in &publish_configs {
+    let deno_json = &publish_config.config_file;
+    let version = deno_json.json.version.clone().ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "{} is missing 'version' field",
+        deno_json.specifier
+      )
+    })?;
+    let (scope, name_no_scope) = registry::parse_package_name(&publish_config.name)?;
+
+    package_versions.push(PackageVersion {
+      scope: scope.to_string(),
+      package: name_no_scope.to_string(),
+      version: version.to_string()
+    })
+  }
+
+  ensure_scopes_and_packages_exist(
+    &cli_factory.http_client_provider().get_or_create()?,
+    jsr_api_url(),
+    jsr_url(),
+    package_versions.into_iter()
+  ).await?;
+
   let prepared_data = publish_preparer
     .prepare_packages_for_publishing(
       publish_flags.allow_slow_types,
@@ -201,6 +227,16 @@ struct PreparedPublishPackage {
   tarball: PublishableTarball,
   config: String,
   exports: HashMap<String, String>,
+}
+
+impl Into<PackageVersion> for &PreparedPublishPackage {
+  fn into(self) -> PackageVersion {
+    PackageVersion {
+      scope: self.scope.clone(),
+      package: self.package.clone(),
+      version: self.version.clone(),
+    }
+  }
 }
 
 impl PreparedPublishPackage {
@@ -400,7 +436,6 @@ impl PublishPreparer {
     }
   }
 
-  #[allow(clippy::too_many_arguments)]
   async fn prepare_publish(
     &self,
     package: &JsrPackageConfig,
@@ -416,12 +451,8 @@ impl PublishPreparer {
         deno_json.specifier
       )
     })?;
-    let Some(name_no_at) = package.name.strip_prefix('@') else {
-      bail!("Invalid package name, use '@<scope_name>/<package_name> format");
-    };
-    let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
-      bail!("Invalid package name, use '@<scope_name>/<package_name> format");
-    };
+    let (scope, name_no_scope) = registry::parse_package_name(&package.name)?;
+
     let file_patterns = package.member_dir.to_publish_config()?.files;
 
     let tarball = deno_core::unsync::spawn_blocking({
@@ -710,6 +741,27 @@ struct CreatePackageInfo {
   create_url: String,
 }
 
+#[derive(Debug)]
+enum PackagePublishError {
+  PackageNotExist(CreatePackageInfo),
+  VersionExists(PackageVersion),
+}
+
+async fn check_if_version_exist(
+  client: &HttpClient,
+  registry_api_url: &Url,
+  scope: &str,
+  package: &str,
+  version: &str
+) -> Result<Option<PackageVersion>, AnyError> {
+  let response =
+    registry::get_package_version(client, registry_api_url, scope, package, version).await?;
+  if response.status() == 404 {
+    return Ok(None)
+  }
+  Ok(Some(registry::parse_response::<PackageVersion>(response).await?))
+}
+
 /// Check if both `scope` and `package` already exist, if not return
 /// a URL to the management panel to create them.
 async fn check_if_scope_and_package_exist(
@@ -740,26 +792,46 @@ async fn ensure_scopes_and_packages_exist(
   client: &HttpClient,
   registry_api_url: &Url,
   registry_manage_url: &Url,
-  packages: &[Rc<PreparedPublishPackage>],
+  packages: impl Iterator<Item = PackageVersion>,
 ) -> Result<(), AnyError> {
   let mut futures = FuturesUnordered::new();
 
   for package in packages {
-    let future = check_if_scope_and_package_exist(
-      client,
-      registry_api_url,
-      registry_manage_url,
-      &package.scope,
-      &package.package,
-    );
+    let future = async move {
+      if let Some(version) = check_if_version_exist(
+        client,
+        registry_api_url,
+        &package.scope,
+        &package.package,
+        &package.version,
+      ).await? {
+        return Ok(Some(PackagePublishError::VersionExists(version)));
+      }
+      if let Some(create) = check_if_scope_and_package_exist(
+        client,
+        registry_api_url,
+        registry_manage_url,
+        &package.scope,
+        &package.package,
+      ).await? {
+        return Ok(Some(PackagePublishError::PackageNotExist(create)));
+      }
+      Ok::<Option<PackagePublishError>, AnyError>(None)
+    };
     futures.push(future);
   }
 
   let mut missing_packages = vec![];
+  let mut existing_version = vec![];
 
-  while let Some(maybe_create_package_info) = futures.next().await {
-    if let Some(create_package_info) = maybe_create_package_info? {
-      missing_packages.push(create_package_info);
+  while let Some(maybe_publish_error) = futures.next().await {
+    match maybe_publish_error? {
+      Some(PackagePublishError::PackageNotExist(info)) => {
+        missing_packages.push(info);
+      },
+      Some(PackagePublishError::VersionExists(version)) => {
+        existing_version.push(version);
+      }, None => {}
     };
   }
 
@@ -774,7 +846,30 @@ async fn ensure_scopes_and_packages_exist(
         missing_packages_lines.join("\n")
       );
     }
+    let existing_version_lines: Vec<_> = existing_version
+      .into_iter()
+      .map(|info| format!("- @{}/{}@{}", info.scope, info.package, info.version))
+      .collect();
+    if !existing_version_lines.is_empty() {
+      bail!(
+        "Following versions already published, and cannot be published again:\n{}",
+        existing_version_lines.join("\n")
+      );
+    }
     return Ok(());
+  }
+
+  if !existing_version.is_empty() {
+    ring_bell();
+    for existing_version in existing_version {
+      log::warn!(
+        "@{}/{}@{} already published. You can't overwrite an existing version",
+        &existing_version.scope,
+        &existing_version.package,
+        &existing_version.version,
+      );
+    }
+    bail!("Cannot overwrite existing version");
   }
 
   for create_package_info in missing_packages {
@@ -830,7 +925,7 @@ async fn perform_publish(
     http_client,
     registry_api_url,
     registry_url,
-    &packages,
+    packages.iter().map(|package| package.as_ref().into()),
   )
   .await?;
 

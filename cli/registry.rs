@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -57,6 +58,14 @@ pub struct PublishingTask {
 #[serde(rename_all = "camelCase")]
 pub struct Package {
   pub latest_version: Option<String>,
+}
+
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageVersion {
+  pub scope: String,
+  pub package: String,
+  pub version: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -133,6 +142,20 @@ pub fn get_package_api_url(
   format!("{}scopes/{}/packages/{}", registry_api_url, scope, package)
 }
 
+pub fn get_package_version_api_url(
+  registry_api_url: &Url,
+  scope: &str,
+  package: &str,
+  version: &str,
+  params: Option<&str>
+) -> String {
+  if let Some(params) = params {
+    format!("{}scopes/{}/packages/{}/versions/{}?{}", registry_api_url, scope, package, version, params)
+  } else {
+    format!("{}scopes/{}/packages/{}/versions/{}", registry_api_url, scope, package, version)
+  }
+}
+
 pub async fn get_package(
   client: &HttpClient,
   registry_api_url: &Url,
@@ -140,6 +163,28 @@ pub async fn get_package(
   package: &str,
 ) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
   let package_url = get_package_api_url(registry_api_url, scope, package);
+  let response = client.get(package_url.parse()?)?.send().await?;
+  Ok(response)
+}
+
+pub fn parse_package_name(name: &str) -> Result<(&str, &str), AnyError> {
+  let Some(name_no_at) = name.strip_prefix('@') else {
+    bail!("Invalid package name, use '@<scope_name>/<package_name>' format");
+  };
+  let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
+    bail!("Invalid package name, use '@<scope_name>/<package_name>' format");
+  };
+  Ok((scope, name_no_scope))
+}
+
+pub async fn get_package_version(
+  client: &HttpClient,
+  registry_api_url: &Url,
+  scope: &str,
+  package: &str,
+  version: &str,
+) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
+  let package_url = get_package_version_api_url(registry_api_url, scope, package, version, None);
   let response = client.get(package_url.parse()?)?.send().await?;
   Ok(response)
 }
@@ -202,5 +247,12 @@ mod test {
       "https://deno.land/std@0.229.0/path/something_underscore.ts",
       Some("\"jsr:@std/path@1/something-underscore\""),
     );
+  }
+
+  #[test]
+  fn test_parse_package_name() {
+    let (scope, package) = parse_package_name("@deno/doc").unwrap();
+    assert_eq!(scope, "deno");
+    assert_eq!(scope, "doc");
   }
 }
