@@ -174,10 +174,7 @@ pub async fn get_package(
 }
 
 pub fn parse_package_name(name: &str) -> Result<(&str, &str), AnyError> {
-  let Some(name_no_at) = name.strip_prefix('@') else {
-    bail!("Invalid package name, use '@<scope_name>/<package_name>' format");
-  };
-  let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
+  let Some((scope, name_no_scope)) = name.strip_prefix('@').and_then(|name_no_at| name_no_at.split_once('/')) else {
     bail!("Invalid package name, use '@<scope_name>/<package_name>' format");
   };
   Ok((scope, name_no_scope))
