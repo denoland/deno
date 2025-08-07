@@ -722,11 +722,9 @@ if (import.meta.main) {
   mod = require("#,
       );
       builder.append(&quoted_entry_specifier_text);
-      builder.append(
-        r#");
+      builder.append(r#");
 }
-"#,
-      );
+"#);
 
       for (export_name, quoted_name) in &export_names_with_quoted {
         if !matches!(*export_name, "default" | "module.exports") {
@@ -759,9 +757,7 @@ fn add_export<'a>(
   builder: &mut capacity_builder::StringBuilder<'a, String>,
   name: &'a str,
   quoted_name: &'a str,
-  build_initializer: impl FnOnce(
-    &mut capacity_builder::StringBuilder<'a, String>,
-  ) -> (),
+  build_initializer: impl FnOnce(&mut capacity_builder::StringBuilder<'a, String>),
   temp_var_count: &mut usize,
 ) {
   fn is_valid_var_decl(name: &str) -> bool {
