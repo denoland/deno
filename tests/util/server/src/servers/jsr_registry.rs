@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use bytes::Bytes;
+use http::Method;
 use http_body_util::Empty;
 use http_body_util::Full;
 use http_body_util::combinators::UnsyncBoxBody;
@@ -120,7 +121,7 @@ async fn registry_server_handler(
     let body = serde_json::to_string_pretty(&json!({})).unwrap();
     let res = Response::new(UnsyncBoxBody::new(Full::from(body)));
     return Ok(res);
-  } else if path.starts_with("/api/scopes/") {
+  } else if req.method() == Method::POST && path.starts_with("/api/scopes/") {
     let body = serde_json::to_string_pretty(&json!({
       "id": "sdfwqer-sffg-qwerasdf",
       "status": "success",

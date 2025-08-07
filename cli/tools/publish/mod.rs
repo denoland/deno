@@ -140,32 +140,34 @@ pub async fn publish(
     module_content_provider,
   );
 
-  let mut package_versions = Vec::with_capacity(publish_configs.len());
-  for publish_config in &publish_configs {
-    let deno_json = &publish_config.config_file;
-    let version = deno_json.json.version.clone().ok_or_else(|| {
-      deno_core::anyhow::anyhow!(
-        "{} is missing 'version' field",
-        deno_json.specifier
-      )
-    })?;
-    let (scope, name_no_scope) =
-      registry::parse_package_name(&publish_config.name)?;
+  if !publish_flags.dry_run {
+    let mut package_versions = Vec::with_capacity(publish_configs.len());
+    for publish_config in &publish_configs {
+      let deno_json = &publish_config.config_file;
+      let version = deno_json.json.version.clone().ok_or_else(|| {
+        deno_core::anyhow::anyhow!(
+          "{} is missing 'version' field",
+          deno_json.specifier
+        )
+      })?;
+      let (scope, name_no_scope) =
+          registry::parse_package_name(&publish_config.name)?;
 
-    package_versions.push(PackageVersion {
-      scope: scope.to_string(),
-      package: name_no_scope.to_string(),
-      version: version.to_string(),
-    })
+      package_versions.push(PackageVersion {
+        scope: scope.to_string(),
+        package: name_no_scope.to_string(),
+        version: version.to_string(),
+      })
+    }
+
+    ensure_scopes_and_packages_exist(
+      &cli_factory.http_client_provider().get_or_create()?,
+      jsr_api_url(),
+      jsr_url(),
+      package_versions.into_iter(),
+    )
+        .await?;
   }
-
-  ensure_scopes_and_packages_exist(
-    &cli_factory.http_client_provider().get_or_create()?,
-    jsr_api_url(),
-    jsr_url(),
-    package_versions.into_iter(),
-  )
-  .await?;
 
   let prepared_data = publish_preparer
     .prepare_packages_for_publishing(
