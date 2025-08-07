@@ -24,7 +24,7 @@ deno_path_util.workspace = true
 deno_semver.workspace = true
 deno_unsync.workspace = true
 faster-hex.workspace = true
-flate2 = { workspace = true, features = ["zlib-ng-compat"] }
+flate2.workspace = true
 futures.workspace = true
 log.workspace = true
 parking_lot.workspace = true
