@@ -851,6 +851,17 @@ async fn ensure_scopes_and_packages_exist(
     };
   }
 
+  let existing_version_lines: Vec<_> = existing_version
+    .into_iter()
+    .map(|info| format!("- @{}/{}@{}", info.scope, info.package, info.version))
+    .collect();
+  if !existing_version_lines.is_empty() {
+    bail!(
+      "Following versions of package already published:\n{}",
+      existing_version_lines.join("\n")
+    );
+  }
+
   if !std::io::stdin().is_terminal() {
     let missing_packages_lines: Vec<_> = missing_packages
       .into_iter()
@@ -862,35 +873,7 @@ async fn ensure_scopes_and_packages_exist(
         missing_packages_lines.join("\n")
       );
     }
-    let existing_version_lines: Vec<_> = existing_version
-      .into_iter()
-      .map(|info| {
-        format!("- @{}/{}@{}", info.scope, info.package, info.version)
-      })
-      .collect();
-    if !existing_version_lines.is_empty() {
-      bail!(
-        "Following versions already published, and cannot be published again:\n{}",
-        existing_version_lines.join("\n")
-      );
-    }
     return Ok(());
-  }
-
-  if !existing_version.is_empty() {
-    ring_bell();
-    for existing_version in existing_version {
-      log::warn!(
-        "@{}/{}@{} {}",
-        &existing_version.scope,
-        &existing_version.package,
-        &existing_version.version,
-        colors::yellow(
-          "is already published. You cannot overwrite an existing version"
-        )
-      );
-    }
-    bail!("Cannot overwrite existing version");
   }
 
   for create_package_info in missing_packages {
