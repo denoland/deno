@@ -878,6 +878,7 @@ impl CliFactory {
           desc_parser.as_ref(),
           &self.cli_options()?.permissions_options(),
         )?;
+
         Ok(PermissionsContainer::new(desc_parser, permissions))
       })
   }
@@ -1062,11 +1063,7 @@ impl CliFactory {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
       let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
-        Box::new(HmrRunner::new(
-          emitter.clone(),
-          session,
-          watcher_communicator.clone(),
-        ))
+        HmrRunner::new(emitter.clone(), session, watcher_communicator.clone())
       });
       Some(fn_)
     } else {
@@ -1074,10 +1071,9 @@ impl CliFactory {
     };
     let create_coverage_collector =
       if let Some(coverage_dir) = cli_options.coverage_dir() {
-        let coverage_dir = PathBuf::from(coverage_dir);
         let fn_: crate::worker::CreateCoverageCollectorCb =
           Box::new(move |session| {
-            Box::new(CoverageCollector::new(coverage_dir.clone(), session))
+            CoverageCollector::new(coverage_dir.clone(), session)
           });
         Some(fn_)
       } else {
@@ -1122,15 +1118,6 @@ impl CliFactory {
                 .node_conditions()
                 .iter()
                 .map(|c| Cow::Owned(c.clone()))
-                .chain({
-                  match &self.flags.subcommand {
-                    DenoSubcommand::Bundle(BundleFlags {
-                      platform: BundlePlatform::Browser,
-                      ..
-                    }) => vec![Cow::Borrowed("browser")],
-                    _ => vec![],
-                  }
-                })
                 .collect(),
               import_conditions_override: None,
               require_conditions_override: None,
@@ -1145,7 +1132,7 @@ impl CliFactory {
               self.flags.subcommand,
               DenoSubcommand::Bundle(_)
             ),
-            prefer_browser_field: matches!(
+            is_browser_platform: matches!(
               self.flags.subcommand,
               DenoSubcommand::Bundle(BundleFlags {
                 platform: BundlePlatform::Browser,
@@ -1230,7 +1217,6 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Clean(_)
-        | DenoSubcommand::Bundle(_)
     ),
     no_lock: flags.no_lock
       || matches!(

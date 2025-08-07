@@ -33,6 +33,7 @@ use deno_permissions::PermissionCheckError;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
+use serde::Deserialize;
 use serde::Serialize;
 
 use crate::FsPermissions;
@@ -109,12 +110,9 @@ fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
   }
 }
 
-#[op2(stack_trace)]
+#[op2]
 #[string]
-pub fn op_fs_cwd<P>(state: &mut OpState) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+pub fn op_fs_cwd(state: &mut OpState) -> Result<String, FsOpsError> {
   let fs = state.borrow::<FileSystemRc>();
   let path = fs.cwd()?;
   let path_str = path_into_string(path.into_os_string())?;
@@ -150,19 +148,49 @@ where
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
+#[derive(Deserialize, Default, Debug, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+struct FsOpenOptions {
+  read: bool,
+  write: bool,
+  create: bool,
+  truncate: bool,
+  append: bool,
+  create_new: bool,
+  mode: Option<u32>,
+}
+
+impl From<FsOpenOptions> for OpenOptions {
+  fn from(options: FsOpenOptions) -> Self {
+    OpenOptions {
+      read: options.read,
+      write: options.write,
+      create: options.create,
+      truncate: options.truncate,
+      append: options.append,
+      create_new: options.create_new,
+      custom_flags: None,
+      mode: options.mode,
+    }
+  }
+}
+
 #[op2(stack_trace)]
 #[smi]
 pub fn op_fs_open_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
-  #[serde] options: Option<OpenOptions>,
+  #[serde] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
+  let options = match options {
+    Some(options) => OpenOptions::from(options),
+    None => OpenOptions::read(),
+  };
   let path = Path::new(path);
-
-  let options = options.unwrap_or_else(OpenOptions::read);
 
   let fs = state.borrow::<FileSystemRc>().clone();
   let path = state.borrow_mut::<P>().check_open(
@@ -182,14 +210,17 @@ where
 pub async fn op_fs_open_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-  #[serde] options: Option<OpenOptions>,
+  #[serde] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
+  let options = match options {
+    Some(options) => OpenOptions::from(options),
+    None => OpenOptions::read(),
+  };
   let path = PathBuf::from(path);
 
-  let options = options.unwrap_or_else(OpenOptions::read);
   let (fs, path) = {
     let mut state = state.borrow_mut();
     (

@@ -55,7 +55,7 @@ use crate::cjs::IsCjsResolutionMode;
 use crate::cjs::analyzer::DenoCjsCodeAnalyzer;
 use crate::cjs::analyzer::NodeAnalysisCacheRc;
 use crate::cjs::analyzer::NullNodeAnalysisCache;
-use crate::collections::FolderScopedMap;
+use crate::collections::FolderScopedWithUnscopedMap;
 use crate::deno_json::CompilerOptionsOverrides;
 use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
@@ -1153,13 +1153,13 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
 #[derive(Debug)]
 pub struct WorkspaceDirectoryProvider {
   pub workspace: WorkspaceRc,
-  dirs: FolderScopedMap<Deferred<WorkspaceDirectoryRc>>,
+  dirs: FolderScopedWithUnscopedMap<Deferred<WorkspaceDirectoryRc>>,
 }
 
 impl WorkspaceDirectoryProvider {
   pub fn from_initial_dir(dir: &WorkspaceDirectoryRc) -> Self {
     let workspace = dir.workspace.clone();
-    let mut dirs = FolderScopedMap::new(Deferred::default());
+    let mut dirs = FolderScopedWithUnscopedMap::new(Deferred::default());
     for dir_url in workspace.config_folders().keys() {
       if dir_url == workspace.root_dir() {
         continue;

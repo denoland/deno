@@ -22,9 +22,10 @@ use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
+use node_resolver::UrlOrPathRef;
+use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
-use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::UnknownBuiltInNodeModuleError;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolverRc;
@@ -164,6 +165,27 @@ pub enum DenoResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   WorkspaceResolvePkgJsonFolder(#[from] WorkspaceResolvePkgJsonFolderError),
+}
+
+impl DenoResolveErrorKind {
+  pub fn maybe_node_code(&self) -> Option<NodeJsErrorCode> {
+    match self {
+      DenoResolveErrorKind::InvalidVendorFolderImport
+      | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+      | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+      | DenoResolveErrorKind::MappedResolution { .. }
+      | DenoResolveErrorKind::NodeModulesOutOfDate { .. }
+      | DenoResolveErrorKind::PackageJsonDepValueParse { .. }
+      | DenoResolveErrorKind::PackageJsonDepValueUrlParse { .. }
+      | DenoResolveErrorKind::PathToUrl { .. }
+      | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq { .. }
+      | DenoResolveErrorKind::WorkspaceResolvePkgJsonFolder { .. } => None,
+      DenoResolveErrorKind::ResolveNpmReqRef(err) => {
+        err.err.as_kind().maybe_code()
+      }
+      DenoResolveErrorKind::Node(err) => err.as_kind().maybe_code(),
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -370,13 +392,7 @@ impl<
             resolution_kind,
           )
           .map_err(|e| {
-            DenoResolveErrorKind::Node(
-              NodeResolveErrorKind::PackageResolve(
-                PackageResolveErrorKind::SubpathResolve(e).into_box(),
-              )
-              .into_box(),
-            )
-            .into_box()
+            DenoResolveErrorKind::Node(e.into_node_resolve_error()).into_box()
           })
           .and_then(|r| Ok(r.into_url()?)),
         MappedResolution::PackageJson {
@@ -443,18 +459,32 @@ impl<
                       resolution_kind,
                     )
                     .map_err(|e| {
-                      DenoResolveErrorKind::Node(
-                        NodeResolveErrorKind::PackageResolve(
-                          PackageResolveErrorKind::SubpathResolve(e).into_box(),
-                        )
-                        .into_box(),
-                      )
-                      .into_box()
+                      DenoResolveErrorKind::Node(e.into_node_resolve_error())
+                        .into_box()
                     })
                 })
                 .and_then(|r| Ok(r.into_url()?)),
             })
         }
+        MappedResolution::PackageJsonImport { pkg_json } => self
+          .node_and_npm_resolver
+          .as_ref()
+          .unwrap()
+          .node_resolver
+          .resolve_package_import(
+            raw_specifier,
+            Some(&UrlOrPathRef::from_url(referrer)),
+            Some(pkg_json),
+            resolution_mode,
+            resolution_kind,
+          )
+          .map_err(|e| {
+            DenoResolveErrorKind::Node(
+              NodeResolveErrorKind::PackageImportsResolve(e).into_box(),
+            )
+            .into_box()
+          })
+          .and_then(|r| Ok(r.into_url()?)),
       },
       Err(err) => Err(err.into()),
     };

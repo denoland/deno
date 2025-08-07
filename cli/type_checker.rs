@@ -791,20 +791,30 @@ impl<'a> GraphWalker<'a> {
               deno_graph::Resolution::Ok(resolution) => {
                 self.handle_specifier(&resolution.specifier, dep.is_dynamic);
               }
-              deno_graph::Resolution::Err(resolution_error) => {
-                if let Some(err) =
-                  resolution_error_for_tsc_diagnostic(resolution_error)
-                {
-                  self.missing_diagnostics.push(
-                    tsc::Diagnostic::from_missing_error(
-                      err.specifier,
-                      err.maybe_range,
-                      None,
-                    ),
-                  );
-                }
+              deno_graph::Resolution::Err(_) | deno_graph::Resolution::None => {
               }
-              deno_graph::Resolution::None => {}
+            }
+          }
+
+          // only surface the code error if there's no type
+          let dep_to_check_error = if dep.maybe_type.is_none() {
+            &dep.maybe_code
+          } else {
+            &dep.maybe_type
+          };
+          if let deno_graph::Resolution::Err(resolution_error) =
+            dep_to_check_error
+          {
+            if let Some(err) =
+              resolution_error_for_tsc_diagnostic(resolution_error)
+            {
+              self.missing_diagnostics.push(
+                tsc::Diagnostic::from_missing_error(
+                  err.specifier,
+                  err.maybe_range,
+                  None,
+                ),
+              );
             }
           }
         }

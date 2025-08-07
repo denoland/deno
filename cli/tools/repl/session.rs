@@ -16,6 +16,7 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_core::InspectorPostMessageError;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
@@ -86,18 +87,20 @@ fn comment_source_to_position_range(
 fn get_prelude() -> String {
   r#"(() => {
   const repl_internal = {
-      lastEvalResult: undefined,
-      lastThrownError: undefined,
-      inspectArgs: Deno[Deno.internal].inspectArgs,
-      noColor: Deno.noColor,
-      get closed() {
-        try {
-          return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
-        } catch {
-          return false;
-        }
+    String,
+    lastEvalResult: undefined,
+    lastThrownError: undefined,
+    inspectArgs: Deno[Deno.internal].inspectArgs,
+    noColor: Deno.noColor,
+    get closed() {
+      try {
+        return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+      } catch {
+        return false;
       }
     }
+  };
+
   Object.defineProperty(globalThis, "_", {
     configurable: true,
     get: () => repl_internal.lastEvalResult,
@@ -129,7 +132,7 @@ fn get_prelude() -> String {
 
   globalThis.clear = console.clear.bind(console);
 
-  return repl_internal
+  return repl_internal;
 })()"#.to_string()
 }
 
@@ -322,7 +325,7 @@ impl ReplSession {
     &mut self,
     method: &str,
     params: Option<T>,
-  ) -> Result<Value, CoreError> {
+  ) -> Result<Value, InspectorPostMessageError> {
     self
       .worker
       .js_runtime
@@ -487,7 +490,7 @@ impl ReplSession {
     result
   }
 
-  async fn set_last_thrown_error(
+  pub async fn set_last_thrown_error(
     &mut self,
     error: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
@@ -514,7 +517,7 @@ impl ReplSession {
     Ok(())
   }
 
-  async fn set_last_eval_result(
+  pub async fn set_last_eval_result(
     &mut self,
     evaluate_result: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
@@ -782,7 +785,7 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<cdp::EvaluateResponse, CoreError> {
+  ) -> Result<cdp::EvaluateResponse, InspectorPostMessageError> {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",

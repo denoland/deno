@@ -441,7 +441,7 @@ fn get_local_completions(
     let items = entries
       .filter_map(|de| {
         let de = de.ok()?;
-        let label = de.path().file_name()?.to_string_lossy().to_string();
+        let label = de.path().file_name()?.to_string_lossy().into_owned();
         let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
         if entry_specifier == *referrer {
           return None;
@@ -864,6 +864,7 @@ mod tests {
   use std::collections::HashMap;
 
   use deno_core::resolve_url;
+  use deno_resolver::deno_json::CompilerOptionsKey;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -907,7 +908,11 @@ mod tests {
         .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      let module = document_modules.module_for_specifier(&specifier, None);
+      let module = document_modules.module_for_specifier(
+        &specifier,
+        None,
+        Some(&CompilerOptionsKey::WorkspaceConfig(None)),
+      );
       assert!(module.is_some(), "source could not be setup");
     }
     document_modules
@@ -992,7 +997,7 @@ mod tests {
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );
     let module = document_modules
-      .module_for_specifier(&specifier, None)
+      .module_for_specifier(&specifier, None, None)
       .unwrap();
     let actual =
       get_remote_completions(&module, "h", &range, &document_modules);

@@ -7,8 +7,11 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::OpState;
+use deno_core::ResourceId;
 use deno_core::op2;
 use deno_fs::FileSystemRc;
+use deno_fs::OpenOptions;
+use deno_io::fs::FileResource;
 use deno_permissions::OpenAccessKind;
 use serde::Serialize;
 
@@ -133,6 +136,126 @@ where
   fs.cp_async(path.into_owned(), new_path.into_owned())
     .await?;
   Ok(())
+}
+
+fn get_open_options(mut flags: i32, mode: u32) -> OpenOptions {
+  let mut options = OpenOptions {
+    mode: Some(mode),
+    ..Default::default()
+  };
+
+  if (flags & libc::O_APPEND) == libc::O_APPEND {
+    options.append = true;
+    flags &= !libc::O_APPEND;
+  }
+  if (flags & libc::O_CREAT) == libc::O_CREAT {
+    options.create = true;
+    flags &= !libc::O_CREAT;
+  }
+  if (flags & libc::O_EXCL) == libc::O_EXCL {
+    options.create_new = true;
+    options.write = true;
+    flags &= !libc::O_EXCL;
+  }
+  if (flags & libc::O_RDWR) == libc::O_RDWR {
+    options.read = true;
+    options.write = true;
+    flags &= !libc::O_RDWR;
+  }
+  if (flags & libc::O_TRUNC) == libc::O_TRUNC {
+    options.truncate = true;
+    flags &= !libc::O_TRUNC;
+  }
+  if (flags & libc::O_WRONLY) == libc::O_WRONLY {
+    options.write = true;
+    flags &= !libc::O_WRONLY;
+  }
+
+  if flags != 0 {
+    options.custom_flags = Some(flags);
+  }
+
+  if !options.append
+    && !options.create
+    && !options.create_new
+    && !options.read
+    && !options.truncate
+    && !options.write
+  {
+    options.read = true;
+  }
+  options
+}
+
+fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
+  let read = open_options.read;
+  let write = open_options.write || open_options.append;
+  match (read, write) {
+    (true, true) => OpenAccessKind::ReadWrite,
+    (false, true) => OpenAccessKind::Write,
+    (true, false) | (false, false) => OpenAccessKind::Read,
+  }
+}
+
+#[op2(fast, stack_trace)]
+#[smi]
+pub fn op_node_open_sync<P>(
+  state: &mut OpState,
+  #[string] path: &str,
+  #[smi] flags: i32,
+  #[smi] mode: u32,
+) -> Result<ResourceId, FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = Path::new(path);
+  let options = get_open_options(flags, mode);
+
+  let fs = state.borrow::<FileSystemRc>().clone();
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(path),
+    open_options_to_access_kind(&options),
+    Some("node:fs.openSync"),
+  )?;
+  let file = fs.open_sync(&path, options)?;
+  let rid = state
+    .resource_table
+    .add(FileResource::new(file, "fsFile".to_string()));
+  Ok(rid)
+}
+
+#[op2(async, stack_trace)]
+#[smi]
+pub async fn op_node_open<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+  #[smi] flags: i32,
+  #[smi] mode: u32,
+) -> Result<ResourceId, FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = PathBuf::from(path);
+  let options = get_open_options(flags, mode);
+
+  let (fs, path) = {
+    let mut state = state.borrow_mut();
+    (
+      state.borrow::<FileSystemRc>().clone(),
+      state.borrow_mut::<P>().check_open(
+        Cow::Owned(path),
+        open_options_to_access_kind(&options),
+        Some("node:fs.open"),
+      )?,
+    )
+  };
+  let file = fs.open_async(path.as_owned(), options).await?;
+
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(FileResource::new(file, "fsFile".to_string()));
+  Ok(rid)
 }
 
 #[derive(Debug, Serialize)]

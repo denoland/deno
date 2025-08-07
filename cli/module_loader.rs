@@ -37,7 +37,6 @@ use deno_core::futures::io::BufReader;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_graph::GraphKind;
@@ -51,6 +50,7 @@ use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
 use deno_lib::worker::ModuleLoaderFactory;
 use deno_path_util::PathToUrlError;
+use deno_path_util::resolve_url_or_path;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::file_fetcher::FetchOptions;
 use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
@@ -932,15 +932,12 @@ impl<TGraphContainer: ModuleGraphContainer>
           match err.into_kind() {
             ResolveWithGraphErrorKind::Resolution(err) => {
               // todo(dsherret): why do we have a newline here? Document it.
-              return Err(
-                JsErrorBox::type_error(format!(
-                  "{}\n",
-                  err.to_string_with_range()
-                ))
-                .into(),
-              );
+              return Err(JsErrorBox::type_error(format!(
+                "{}\n",
+                err.to_string_with_range()
+              )));
             }
-            err => return Err(JsErrorBox::from_err(err).into()),
+            err => return Err(JsErrorBox::from_err(err)),
           }
         }
       }
@@ -1441,9 +1438,9 @@ impl EszipModuleLoader {
         );
         deno_core::ModuleLoadResponse::Sync(Ok(module_source))
       }
-      None => {
-        deno_core::ModuleLoadResponse::Sync(Err(ModuleLoaderError::NotFound))
-      }
+      None => deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::generic(
+        "Module not found",
+      ))),
     }
   }
 }

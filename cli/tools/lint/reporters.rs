@@ -2,8 +2,8 @@
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::serde_json;
+use deno_lib::util::result::js_error_downcast_ref;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
@@ -54,12 +54,10 @@ impl LintReporter for PrettyLintReporter {
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
     log::error!("Error linting: {file_path}");
-    let text =
-      if let Some(CoreError::Js(js_error)) = err.downcast_ref::<CoreError>() {
-        format_js_error(js_error)
-      } else {
-        format!("{err:#}")
-      };
+    let text = match js_error_downcast_ref(err) {
+      Some(js_error) => format_js_error(js_error),
+      None => format!("{err:#}"),
+    };
     for line in text.split('\n') {
       if line.is_empty() {
         log::error!("");
@@ -235,7 +233,7 @@ impl LintReporter for JsonLintReporter {
       .to_file_path()
       .unwrap()
       .to_string_lossy()
-      .to_string();
+      .into_owned();
 
     if !self.checked_files.contains(&file_path) {
       self.checked_files.push(file_path);

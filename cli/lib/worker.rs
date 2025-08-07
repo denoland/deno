@@ -313,7 +313,9 @@ pub enum ResolveNpmBinaryEntrypointError {
 pub enum ResolveNpmBinaryEntrypointFallbackError {
   #[class(inherit)]
   #[error(transparent)]
-  PackageSubpathResolve(node_resolver::errors::PackageSubpathResolveError),
+  PackageSubpathResolve(
+    node_resolver::errors::PackageSubpathFromDenoModuleResolveError,
+  ),
   #[class(generic)]
   #[error("Cannot find module '{0}'")]
   ModuleNotFound(UrlOrPath),

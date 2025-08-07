@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Error as AnyError;
+use capacity_builder::StringBuilder;
 use deno_config::workspace::Workspace;
 use deno_error::JsErrorBox;
 use deno_lockfile::Lockfile;
@@ -222,6 +223,24 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     self.lockfile.lock().set_workspace_config(options);
   }
 
+  #[cfg(feature = "graph")]
+  pub fn fill_graph(&self, graph: &mut deno_graph::ModuleGraph) {
+    let lockfile = self.lockfile.lock();
+    graph.fill_from_lockfile(deno_graph::FillFromLockfileOptions {
+      redirects: lockfile
+        .content
+        .redirects
+        .iter()
+        .map(|(from, to)| (from.as_str(), to.as_str())),
+      package_specifiers: lockfile
+        .content
+        .packages
+        .specifiers
+        .iter()
+        .map(|(dep, id)| (dep, id.as_str())),
+    });
+  }
+
   pub fn overwrite(&self) -> bool {
     self.lockfile.lock().overwrite
   }
@@ -394,11 +413,16 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
               .unwrap_or_default()
           }
 
-          let key = format!(
-            "npm:{}@{}",
-            pkg_json.name.as_ref()?,
-            pkg_json.version.as_ref()?
-          );
+          let name = pkg_json.name.as_ref()?;
+          let key = StringBuilder::<String>::build(|builder| {
+            builder.append("npm:");
+            builder.append(name);
+            if let Some(version) = &pkg_json.version {
+              builder.append('@');
+              builder.append(version);
+            }
+          })
+          .unwrap();
           // anything that affects npm resolution should go here in order to bust
           // the npm resolution when it changes
           let value = deno_lockfile::LockfileLinkContent {
@@ -414,6 +438,24 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           };
           Some((key, value))
         })
+        .chain(workspace.link_deno_jsons().filter_map(|deno_json| {
+          let name = deno_json.json.name.as_ref()?;
+          let key = StringBuilder::<String>::build(|builder| {
+            builder.append("jsr:");
+            builder.append(name);
+            if let Some(version) = &deno_json.json.version {
+              builder.append('@');
+              builder.append(version);
+            }
+          })
+          .unwrap();
+          let value = deno_lockfile::LockfileLinkContent {
+            dependencies: deno_json.dependencies(),
+            peer_dependencies: Default::default(),
+            peer_dependencies_meta: Default::default(),
+          };
+          Some((key, value))
+        }))
         .collect(),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {

@@ -1167,8 +1167,15 @@ impl DocumentModules {
     self.documents.close_notebook(uri)
   }
 
-  pub fn release(&self, specifier: &Url, scope: Option<&Url>) {
-    let Some(module) = self.module_for_specifier(specifier, scope) else {
+  pub fn release(
+    &self,
+    specifier: &Url,
+    scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
+  ) {
+    let Some(module) =
+      self.module_for_specifier(specifier, scope, compiler_options_key)
+    else {
       return;
     };
     self.documents.remove_server_doc(&module.uri);
@@ -1201,6 +1208,7 @@ impl DocumentModules {
     document: &Document,
     specifier: Option<&Arc<Url>>,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Option<Arc<DocumentModule>> {
     let modules = self.modules_for_scope(scope)?;
     if let Some(module) = modules.get(document) {
@@ -1209,15 +1217,27 @@ impl DocumentModules {
     let specifier = specifier
       .cloned()
       .or_else(|| self.infer_specifier(document))?;
-    let (compiler_options_key, compiler_options_data) =
+    let scheme = specifier.scheme();
+    let (compiler_options_key, compiler_options_data) = if scheme != "file"
+      || self.resolver.in_node_modules(&specifier)
+      || self.cache.in_global_cache_directory(&specifier)
+    {
+      let key = compiler_options_key?;
+      let value = self
+        .compiler_options_resolver
+        .for_key(key)
+        .expect("Key should be in sync with resolver.");
+      (key, value)
+    } else {
       self.compiler_options_resolver.entry_for_specifier(
-        if specifier.scheme() != "file" && scope.is_some() {
+        if scheme != "file" && scope.is_some() {
           #[allow(clippy::unnecessary_unwrap)]
           scope.unwrap()
         } else {
           &specifier
         },
-      );
+      )
+    };
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
@@ -1238,13 +1258,14 @@ impl DocumentModules {
     document: &Document,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
-    self.module_inner(document, None, scope)
+    self.module_inner(document, None, scope, None)
   }
 
   pub fn module_for_specifier(
     &self,
     specifier: &Url,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Option<Arc<DocumentModule>> {
     let scoped_resolver = self.resolver.get_scoped_resolver(scope);
     let specifier = match JsrPackageReqReference::from_specifier(specifier) {
@@ -1258,7 +1279,12 @@ impl DocumentModules {
       self
         .documents
         .get_for_specifier(&specifier, scope, &self.cache)?;
-    self.module_inner(&document, Some(&Arc::new(specifier)), scope)
+    self.module_inner(
+      &document,
+      Some(&Arc::new(specifier)),
+      scope,
+      compiler_options_key,
+    )
   }
 
   pub fn primary_module(
@@ -1586,8 +1612,10 @@ impl DocumentModules {
     raw_specifiers: &[(bool, String)],
     referrer: &Url,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Vec<Option<(Url, MediaType)>> {
-    let referrer_module = self.module_for_specifier(referrer, scope);
+    let referrer_module =
+      self.module_for_specifier(referrer, scope, compiler_options_key);
     let dependencies = referrer_module.as_ref().map(|d| &d.dependencies);
     let mut results = Vec::new();
     let scoped_resolver = self.resolver.get_scoped_resolver(scope);
@@ -1596,32 +1624,34 @@ impl DocumentModules {
         true => ResolutionMode::Require,
         false => ResolutionMode::Import,
       };
-      if raw_specifier.starts_with("asset:") {
+      let result = if raw_specifier.starts_with("asset:") {
         if let Ok(specifier) = resolve_url(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
-          results.push(Some((specifier, media_type)));
+          Some((specifier, media_type))
         } else {
-          results.push(None);
+          None
         }
       } else if let Some(dep) =
         dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(
+          self.resolve_dependency(
             specifier,
             referrer,
             resolution_mode,
             scope,
-          ));
+            compiler_options_key,
+          )
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(
+          self.resolve_dependency(
             specifier,
             referrer,
             resolution_mode,
             scope,
-          ));
+            compiler_options_key,
+          )
         } else {
-          results.push(None);
+          None
         }
       } else {
         match scoped_resolver.as_cli_resolver().resolve(
@@ -1631,19 +1661,17 @@ impl DocumentModules {
           resolution_mode,
           NodeResolutionKind::Types,
         ) {
-          Ok(specifier) => {
-            results.push(self.resolve_dependency(
-              &specifier,
-              referrer,
-              resolution_mode,
-              scope,
-            ));
-          }
-          _ => {
-            results.push(None);
-          }
+          Ok(specifier) => self.resolve_dependency(
+            &specifier,
+            referrer,
+            resolution_mode,
+            scope,
+            compiler_options_key,
+          ),
+          _ => None,
         }
-      }
+      };
+      results.push(result);
     }
     results
   }
@@ -1655,6 +1683,7 @@ impl DocumentModules {
     referrer: &Url,
     resolution_mode: ResolutionMode,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Option<(Url, MediaType)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
       if deno_node::is_builtin_node_module(module_name) {
@@ -1677,7 +1706,9 @@ impl DocumentModules {
       specifier = s;
       media_type = Some(mt);
     }
-    let Some(module) = self.module_for_specifier(&specifier, scope) else {
+    let Some(module) =
+      self.module_for_specifier(&specifier, scope, compiler_options_key)
+    else {
       let media_type =
         media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
       return Some((specifier, media_type));
@@ -1687,7 +1718,13 @@ impl DocumentModules {
       .as_ref()
       .and_then(|d| d.dependency.maybe_specifier())
     {
-      self.resolve_dependency(types, &specifier, module.resolution_mode, scope)
+      self.resolve_dependency(
+        types,
+        &specifier,
+        module.resolution_mode,
+        scope,
+        compiler_options_key,
+      )
     } else {
       Some((module.specifier.as_ref().clone(), module.media_type))
     }

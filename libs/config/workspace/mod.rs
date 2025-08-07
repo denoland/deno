@@ -79,6 +79,17 @@ pub struct ResolverWorkspaceJsrPackage {
   pub is_link: bool,
 }
 
+impl ResolverWorkspaceJsrPackage {
+  pub fn matches_req(&self, req: &PackageReq) -> bool {
+    self.name == req.name
+      && self
+        .version
+        .as_ref()
+        .map(|v| req.version_req.matches(v))
+        .unwrap_or(true)
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct JsrPackageConfig {
   /// The package name.
@@ -2976,7 +2987,7 @@ pub mod test {
     let root_path = root_dir().join("../dir");
     let workspace_dir = workspace_for_root_and_member_with_fs(
       json!({
-        "links": [root_path.to_string_lossy().to_string()],
+        "links": [root_path.to_string_lossy().into_owned()],
       }),
       json!({}),
       |fs| {
@@ -5269,12 +5280,13 @@ pub mod test {
     }
     // path outside the root directory
     {
-      let dir_outside = normalize_path(root_dir().join("../dir_outside"));
+      let dir_outside =
+        normalize_path(root_dir().join("../dir_outside").into());
       let split = workspace_dir.workspace.split_cli_args_by_deno_json_folder(
         &FilePatterns {
           base: root_dir(),
           include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
-            dir_outside.clone(),
+            dir_outside.to_path_buf(),
           )])),
           exclude: Default::default(),
         },
@@ -5286,7 +5298,7 @@ pub mod test {
           FilePatterns {
             base: root_dir(),
             include: Some(PathOrPatternSet::new(vec![PathOrPattern::Path(
-              dir_outside.clone(),
+              dir_outside.to_path_buf(),
             ),])),
             exclude: Default::default(),
           }
@@ -5295,14 +5307,16 @@ pub mod test {
     }
     // multiple paths outside the root directory
     {
-      let dir_outside_1 = normalize_path(root_dir().join("../dir_outside_1"));
-      let dir_outside_2 = normalize_path(root_dir().join("../dir_outside_2"));
+      let dir_outside_1 =
+        normalize_path(root_dir().join("../dir_outside_1").into());
+      let dir_outside_2 =
+        normalize_path(root_dir().join("../dir_outside_2").into());
       let split = workspace_dir.workspace.split_cli_args_by_deno_json_folder(
         &FilePatterns {
           base: root_dir(),
           include: Some(PathOrPatternSet::new(vec![
-            PathOrPattern::Path(dir_outside_1.clone()),
-            PathOrPattern::Path(dir_outside_2.clone()),
+            PathOrPattern::Path(dir_outside_1.to_path_buf()),
+            PathOrPattern::Path(dir_outside_2.to_path_buf()),
           ])),
           exclude: Default::default(),
         },
@@ -5314,8 +5328,8 @@ pub mod test {
           FilePatterns {
             base: root_dir(),
             include: Some(PathOrPatternSet::new(vec![
-              PathOrPattern::Path(dir_outside_1.clone()),
-              PathOrPattern::Path(dir_outside_2.clone()),
+              PathOrPattern::Path(dir_outside_1.to_path_buf()),
+              PathOrPattern::Path(dir_outside_2.to_path_buf()),
             ])),
             exclude: Default::default(),
           }
@@ -5331,15 +5345,15 @@ pub mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     // two paths, looped to ensure that the order is maintained on
     // the output and not sorted
-    let path1 = normalize_path(root_dir().join("./path-longer"));
-    let path2 = normalize_path(root_dir().join("./path"));
+    let path1 = normalize_path(root_dir().join("./path-longer").into());
+    let path2 = normalize_path(root_dir().join("./path").into());
     for (path1, path2) in [(&path1, &path2), (&path2, &path1)] {
       let split = workspace_dir.workspace.split_cli_args_by_deno_json_folder(
         &FilePatterns {
           base: root_dir(),
           include: Some(PathOrPatternSet::new(vec![
-            PathOrPattern::Path(path1.clone()),
-            PathOrPattern::Path(path2.clone()),
+            PathOrPattern::Path(path1.to_path_buf()),
+            PathOrPattern::Path(path2.to_path_buf()),
           ])),
           exclude: Default::default(),
         },
@@ -5351,8 +5365,8 @@ pub mod test {
           FilePatterns {
             base: root_dir(),
             include: Some(PathOrPatternSet::new(vec![
-              PathOrPattern::Path(path1.clone()),
-              PathOrPattern::Path(path2.clone()),
+              PathOrPattern::Path(path1.to_path_buf()),
+              PathOrPattern::Path(path2.to_path_buf()),
             ])),
             exclude: Default::default(),
           }

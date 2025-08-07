@@ -157,7 +157,6 @@ pub async fn doc(
           check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
           allow_unknown_media_types: false,
-          ignore_graph_errors: true,
           allow_unknown_jsr_exports: false,
         },
       );
@@ -307,7 +306,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
 
     if url.domain() == Some("deno.land") {
       url.set_query(Some(&format!("s={}", symbol.join("."))));
-      return Some(url.to_string());
+      return Some(url.into());
     }
 
     None
