@@ -74,7 +74,7 @@ pub enum ProgressBarStyle {
   /// Shows a progress bar with human readable download size
   DownloadBars,
 
-  /// Shows a progress bar with numeric progres count
+  /// Shows a progress bar with numeric progress count
   ProgressBars,
 
   /// Shows a list of currently downloaded files.
@@ -221,16 +221,6 @@ impl ProgressBarInner {
     }
   }
 
-  pub fn increment_clear(&self) {
-    let mut internal_state = self.state.lock();
-    internal_state.keep_alive_count += 1;
-  }
-
-  pub fn decrement_clear(&self) {
-    let mut internal_state = self.state.lock();
-    self.decrement_keep_alive(&mut internal_state);
-  }
-
   fn decrement_keep_alive(&self, state: &mut InternalState) {
     state.keep_alive_count -= 1;
 
@@ -297,7 +287,7 @@ pub struct ProgressBar {
 
 impl deno_npm_installer::Reporter for ProgressBar {
   type Guard = UpdateGuard;
-  type ClearGuard = ClearGuard;
+  type ClearGuard = UpdateGuard;
 
   fn on_blocking(&self, message: &str) -> Self::Guard {
     self.update_with_prompt(ProgressMessagePrompt::Blocking, message)
@@ -308,7 +298,7 @@ impl deno_npm_installer::Reporter for ProgressBar {
   }
 
   fn clear_guard(&self) -> Self::ClearGuard {
-    self.clear_guard()
+    self.deferred_keep_initialize_alive()
   }
 }
 
@@ -385,24 +375,5 @@ impl ProgressBar {
       // do not display anything for a deferred update
       UpdateGuard { maybe_entry: None }
     }
-  }
-
-  pub fn clear_guard(&self) -> ClearGuard {
-    self.inner.increment_clear();
-    ClearGuard { pb: self.clone() }
-  }
-
-  fn decrement_clear(&self) {
-    self.inner.decrement_clear();
-  }
-}
-
-pub struct ClearGuard {
-  pb: ProgressBar,
-}
-
-impl Drop for ClearGuard {
-  fn drop(&mut self) {
-    self.pb.decrement_clear();
   }
 }

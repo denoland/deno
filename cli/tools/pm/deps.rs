@@ -552,7 +552,7 @@ impl DepManager {
     if self.dependencies_resolved.is_raised() {
       return Ok(());
     }
-    let _entry = self.progress_bar.deferred_keep_initialize_alive();
+    let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut graph_permit = self
       .main_module_graph_container

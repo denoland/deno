@@ -25,7 +25,7 @@ pub async fn cache_top_level_deps(
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
-  let _entry = factory
+  let _clear_guard = factory
     .text_only_progress_bar()
     .deferred_keep_initialize_alive();
   let npm_installer = factory.npm_installer().await?;

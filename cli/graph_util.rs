@@ -680,7 +680,7 @@ impl ModuleGraphBuilder {
       }
     }
 
-    let _entry = self.progress_bar.deferred_keep_initialize_alive();
+    let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
