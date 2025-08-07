@@ -886,7 +886,7 @@ async fn ensure_scopes_and_packages_exist(
         &existing_version.package,
         &existing_version.version,
         colors::yellow(
-          "is already published. You can't overwrite an existing version"
+          "is already published. You cannot overwrite an existing version"
         )
       );
     }
