@@ -3285,7 +3285,9 @@ impl Inner {
             )
             .await
             .inspect_err(|err| {
-              lsp_warn!("Unable to get ambient modules: {:#}", err);
+              if !token.is_cancelled() {
+                lsp_warn!("Unable to get ambient modules: {:#}", err);
+              }
             })
             .ok()
             .filter(|a| !a.is_empty())
