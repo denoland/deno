@@ -1142,7 +1142,7 @@ impl CliFactory {
           },
           node_code_translator_mode: match options.sub_command() {
             DenoSubcommand::Bundle(_) => {
-              node_resolver::analyze::NodeCodeTranslatorMode::Bundling
+              node_resolver::analyze::NodeCodeTranslatorMode::Disabled
             }
             _ => node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
           },
