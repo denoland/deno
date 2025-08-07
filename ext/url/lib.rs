@@ -236,7 +236,6 @@ pub fn op_url_parse_search_params(
 pub fn op_url_stringify_search_params(
   #[serde] args: Vec<(String, String)>,
 ) -> String {
-  
   form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)
     .finish()

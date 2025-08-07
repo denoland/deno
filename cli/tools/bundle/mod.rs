@@ -273,7 +273,7 @@ fn get_input_paths_for_watch(response: &BuildResponse) -> Vec<PathBuf> {
       .expect("metafile is required for watch mode"),
   )
   .unwrap();
-  
+
   metafile
     .inputs
     .keys()
@@ -499,16 +499,16 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnResolveArgs,
   ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
-    if let Some(matcher) = &self.externals_matcher {
-      if matcher.is_pre_resolve_match(&args.path) {
-        return Ok(Some(esbuild_client::OnResolveResult {
-          external: Some(true),
-          path: Some(args.path),
-          plugin_name: Some("deno".to_string()),
-          plugin_data: None,
-          ..Default::default()
-        }));
-      }
+    if let Some(matcher) = &self.externals_matcher
+      && matcher.is_pre_resolve_match(&args.path)
+    {
+      return Ok(Some(esbuild_client::OnResolveResult {
+        external: Some(true),
+        path: Some(args.path),
+        plugin_name: Some("deno".to_string()),
+        plugin_data: None,
+        ..Default::default()
+      }));
     }
     let result = self.bundle_resolve(
       &args.path,
@@ -705,7 +705,7 @@ impl DenoPluginHandler {
     graph_permit.commit();
     Ok(())
   }
-  
+
   #[allow(clippy::result_large_err)]
   fn bundle_resolve(
     &self,
@@ -1246,13 +1246,13 @@ fn process_result(
       continue;
     }
 
-    if let Some(parent) = path.parent() {
-      if !exists_cache.contains(parent) {
-        if !parent.exists() {
-          std::fs::create_dir_all(parent)?;
-        }
-        exists_cache.insert(parent.to_path_buf());
+    if let Some(parent) = path.parent()
+      && !exists_cache.contains(parent)
+    {
+      if !parent.exists() {
+        std::fs::create_dir_all(parent)?;
       }
+      exists_cache.insert(parent.to_path_buf());
     }
 
     output_infos.push(OutputFileInfo {

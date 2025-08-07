@@ -729,7 +729,7 @@ impl SendStreamResource {
 }
 
 impl Resource for SendStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "quicSendStream".into()
   }
 
@@ -766,7 +766,7 @@ impl RecvStreamResource {
 }
 
 impl Resource for RecvStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "quicReceiveStream".into()
   }
 

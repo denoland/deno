@@ -12,7 +12,6 @@ use super::crypto::x509::CertificateObject;
 #[op2]
 #[serde]
 pub fn op_get_root_certificates() -> Vec<String> {
-  
   webpki_root_certs::TLS_SERVER_ROOT_CERTS
     .iter()
     .map(|cert| {

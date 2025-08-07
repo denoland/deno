@@ -654,15 +654,15 @@ struct TsConfigFileFilter {
 impl TsConfigFileFilter {
   fn includes_path(&self, path: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
-    if let Some((_, files)) = &self.files {
-      if files.iter().any(|f| f.absolute_path == path) {
-        return true;
-      }
+    if let Some((_, files)) = &self.files
+      && files.iter().any(|f| f.absolute_path == path)
+    {
+      return true;
     }
-    if let Some(exclude) = &self.exclude {
-      if exclude.matches_path(path) {
-        return false;
-      }
+    if let Some(exclude) = &self.exclude
+      && exclude.matches_path(path)
+    {
+      return false;
     }
     if let Some(include) = &self.include {
       if include.matches_path(path) {
@@ -823,7 +823,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
 
   fn read_ts_config_with_cache(
     &mut self,
-    path: Cow<Path>,
+    path: Cow<'_, Path>,
   ) -> Result<Rc<TsConfigData>, Rc<std::io::Error>> {
     let path = normalize_path(path);
     self
@@ -1106,12 +1106,11 @@ impl CompilerOptionsResolver {
       .sources
       .iter()
       .any(|s| s.compiler_options.is_some())
+      && let Ok(path) = url_to_file_path(specifier)
     {
-      if let Ok(path) = url_to_file_path(specifier) {
-        for ts_config in &self.ts_configs {
-          if ts_config.filter.includes_path(&path) {
-            return &ts_config.compiler_options;
-          }
+      for ts_config in &self.ts_configs {
+        if ts_config.filter.includes_path(&path) {
+          return &ts_config.compiler_options;
         }
       }
     }
@@ -1128,15 +1127,14 @@ impl CompilerOptionsResolver {
       .sources
       .iter()
       .any(|s| s.compiler_options.is_some())
+      && let Ok(path) = url_to_file_path(specifier)
     {
-      if let Ok(path) = url_to_file_path(specifier) {
-        for (i, ts_config) in self.ts_configs.iter().enumerate() {
-          if ts_config.filter.includes_path(&path) {
-            return (
-              CompilerOptionsKey::TsConfig(i),
-              &ts_config.compiler_options,
-            );
-          }
+      for (i, ts_config) in self.ts_configs.iter().enumerate() {
+        if ts_config.filter.includes_path(&path) {
+          return (
+            CompilerOptionsKey::TsConfig(i),
+            &ts_config.compiler_options,
+          );
         }
       }
     }
