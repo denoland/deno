@@ -15,7 +15,6 @@ use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_graph::CheckJsOption;
-use deno_graph::FillFromLockfileOptions;
 use deno_graph::GraphKind;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleError;
@@ -122,25 +121,6 @@ pub fn graph_valid(
       Ok(())
     }
   }
-}
-
-pub fn fill_graph_from_lockfile(
-  graph: &mut ModuleGraph,
-  lockfile: &deno_lockfile::Lockfile,
-) {
-  graph.fill_from_lockfile(FillFromLockfileOptions {
-    redirects: lockfile
-      .content
-      .redirects
-      .iter()
-      .map(|(from, to)| (from.as_str(), to.as_str())),
-    package_specifiers: lockfile
-      .content
-      .packages
-      .specifiers
-      .iter()
-      .map(|(dep, id)| (dep, id.as_str())),
-  });
 }
 
 #[derive(Clone)]
@@ -782,8 +762,7 @@ impl ModuleGraphBuilder {
     if is_first_execution {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
-        let lockfile = lockfile.lock();
-        fill_graph_from_lockfile(graph, &lockfile);
+        lockfile.fill_graph(graph)
       }
     }
 
