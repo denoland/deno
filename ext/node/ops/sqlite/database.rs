@@ -757,7 +757,7 @@ impl DatabaseSync {
           libsqlite3_sys::sqlite3_free(err_msg as *mut _);
           message
         } else {
-          format!("Failed to load extension with error code: {}", res)
+          format!("Failed to load extension with error code: {res}")
         };
 
         return Err(SqliteError::LoadExensionFailed(error_message));

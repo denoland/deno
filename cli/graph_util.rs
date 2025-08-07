@@ -178,7 +178,7 @@ pub fn graph_walk_errors<'a>(
         options.allow_unknown_media_types,
         &error,
       ) {
-        log::debug!("Ignoring: {}", error);
+        log::debug!("Ignoring: {error}");
         return None;
       }
 

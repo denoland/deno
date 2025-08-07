@@ -66,11 +66,11 @@ impl Repl {
             Ok(closing) if closing => break,
             Ok(_) => {}
             Err(err) => {
-              println!("Error: {:?}", err)
+              println!("Error: {err:?}")
             }
           };
 
-          println!("{}", output);
+          println!("{output}");
         }
         Err(ReadlineError::Interrupted) => {
           if self.editor.should_exit_on_interrupt() {
@@ -84,7 +84,7 @@ impl Repl {
           break;
         }
         Err(err) => {
-          println!("Error: {:?}", err);
+          println!("Error: {err:?}");
           break;
         }
       }
@@ -140,7 +140,7 @@ async fn read_line_and_poll(
           if notification.method == "Runtime.exceptionThrown" {
             let exception_thrown: cdp::ExceptionThrown = serde_json::from_value(notification.params).unwrap();
             let (message, description) = exception_thrown.exception_details.get_message_and_description();
-            println!("{} {}", message, description);
+            println!("{message} {description}");
           }
         }
       }
@@ -334,7 +334,7 @@ async fn run_json(mut repl_session: ReplSession) -> Result<i32, AnyError> {
         Ok(_) => {}
         Err(err) => {
           let buf = serde_json::to_vec(&ReplMessage::Error {
-            error: format!("{}", err),
+            error: format!("{err}"),
           })?;
           sender
             .write_all_buf(
@@ -387,7 +387,7 @@ async fn run_json(mut repl_session: ReplSession) -> Result<i32, AnyError> {
         }
         Err(err) => {
           let buf = serde_json::to_vec(&ReplMessage::Error {
-            error: format!("{}", err),
+            error: format!("{err}"),
           })?;
           sender
             .write_all_buf(

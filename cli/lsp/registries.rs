@@ -648,8 +648,7 @@ impl ModuleRegistry {
       let tokens = parse(&registry.schema, None)
         .map_err(|e| {
           error!(
-            "Error parsing registry schema for origin \"{}\". {}",
-            origin, e
+            "Error parsing registry schema for origin \"{origin}\". {e}"
           );
         })
         .ok()?;
@@ -672,8 +671,7 @@ impl ModuleRegistry {
         let matcher = Matcher::new(&tokens[..i], None)
           .map_err(|e| {
             error!(
-              "Error creating matcher for schema for origin \"{}\". {}",
-              origin, e
+              "Error creating matcher for schema for origin \"{origin}\". {e}"
             );
           })
           .ok()?;
@@ -1061,8 +1059,7 @@ impl ModuleRegistry {
         .await
         .map_err(|err| {
           error!(
-            "Internal error fetching endpoint \"{}\". {}",
-            specifier, err
+            "Internal error fetching endpoint \"{specifier}\". {err}"
           );
         })
         .ok()?;
@@ -1071,8 +1068,7 @@ impl ModuleRegistry {
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
-          "Error parsing response from endpoint \"{}\". {}",
-          specifier, err
+          "Error parsing response from endpoint \"{specifier}\". {err}"
         );
       })
       .ok()?;
@@ -1090,7 +1086,7 @@ impl ModuleRegistry {
     let specifier =
       get_endpoint_with_match(variable, url, base, tokens, match_result, None)
         .map_err(|err| {
-          error!("Internal error mapping endpoint \"{}\". {}", url, err);
+          error!("Internal error mapping endpoint \"{url}\". {err}");
         })
         .ok()?;
     let file = {
@@ -1100,8 +1096,7 @@ impl ModuleRegistry {
         .await
         .map_err(|err| {
           error!(
-            "Internal error fetching endpoint \"{}\". {}",
-            specifier, err
+            "Internal error fetching endpoint \"{specifier}\". {err}"
           );
         })
         .ok()?;
@@ -1110,8 +1105,7 @@ impl ModuleRegistry {
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
-          "Error parsing response from endpoint \"{}\". {}",
-          specifier, err
+          "Error parsing response from endpoint \"{specifier}\". {err}"
         );
       })
       .ok()?;

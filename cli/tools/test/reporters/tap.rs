@@ -127,7 +127,7 @@ impl TestReporter for TapTestReporter {
 
   fn report_plan(&mut self, plan: &TestPlan) {
     if !self.header {
-      println!("{}", VERSION_HEADER);
+      println!("{VERSION_HEADER}");
       self.header = true;
     }
     self.planned += plan.total;

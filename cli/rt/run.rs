@@ -168,8 +168,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     } else {
       Url::parse(referrer).map_err(|err| {
         JsErrorBox::type_error(format!(
-          "Referrer uses invalid specifier: {}",
-          err
+          "Referrer uses invalid specifier: {err}"
         ))
       })?
     };
@@ -388,7 +387,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           Ok(response) => response,
           Err(err) => {
             return deno_core::ModuleLoadResponse::Sync(Err(
-              JsErrorBox::type_error(format!("{:#}", err)),
+              JsErrorBox::type_error(format!("{err:#}")),
             ));
           }
         };
@@ -485,7 +484,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           Ok(is_maybe_cjs) => is_maybe_cjs,
           Err(err) => {
             return deno_core::ModuleLoadResponse::Sync(Err(
-              JsErrorBox::type_error(format!("{:?}", err)),
+              JsErrorBox::type_error(format!("{err:?}")),
             ));
           }
         };
@@ -549,11 +548,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
       }
       Ok(None) => {
         deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(
-          format!("Module not found: {}", original_specifier),
+          format!("Module not found: {original_specifier}"),
         )))
       }
       Err(err) => deno_core::ModuleLoadResponse::Sync(Err(
-        JsErrorBox::type_error(format!("{:?}", err)),
+        JsErrorBox::type_error(format!("{err:?}")),
       )),
     }
   }

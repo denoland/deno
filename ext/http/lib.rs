@@ -1742,7 +1742,7 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
           (1, hostname, addr.port() as u32, duplicate)
         }
         Err(_) => {
-          log::error!("DENO_SERVE_ADDRESS: invalid TCP address: {}", addr);
+          log::error!("DENO_SERVE_ADDRESS: invalid TCP address: {addr}");
           (0, String::new(), 0, false)
         }
       }
@@ -1765,7 +1765,7 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
             match cid.parse::<u32>() {
               Ok(cid) => cid.to_string(),
               Err(_) => {
-                log::error!("DENO_SERVE_ADDRESS: invalid vsock CID: {}", cid);
+                log::error!("DENO_SERVE_ADDRESS: invalid vsock CID: {cid}");
                 return (0, String::new(), 0, false);
               }
             }
@@ -1773,7 +1773,7 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
           let port = match port.parse::<u32>() {
             Ok(port) => port,
             Err(_) => {
-              log::error!("DENO_SERVE_ADDRESS: invalid vsock port: {}", port);
+              log::error!("DENO_SERVE_ADDRESS: invalid vsock port: {port}");
               return (0, String::new(), 0, false);
             }
           };
@@ -1784,7 +1784,7 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
     }
     Some(("tunnel", _)) => (4, String::new(), 0, duplicate),
     Some((_, _)) | None => {
-      log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
+      log::error!("DENO_SERVE_ADDRESS: invalid address format: {input}");
       (0, String::new(), 0, false)
     }
   }

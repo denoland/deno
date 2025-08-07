@@ -1872,9 +1872,9 @@ impl std::fmt::Display for OperationError {
 
     match &self.kind {
       OperationErrorKind::Bare => Ok(()),
-      OperationErrorKind::WithPath(path) => write!(f, " '{}'", path),
+      OperationErrorKind::WithPath(path) => write!(f, " '{path}'"),
       OperationErrorKind::WithTwoPaths(from, to) => {
-        write!(f, " '{}' -> '{}'", from, to)
+        write!(f, " '{from}' -> '{to}'")
       }
     }
   }

@@ -609,8 +609,7 @@ fn not_supported(name: &str) -> std::io::Error {
   std::io::Error::new(
     ErrorKind::Unsupported,
     format!(
-      "{} is not supported for an embedded deno compile file",
-      name
+      "{name} is not supported for an embedded deno compile file"
     ),
   )
 }

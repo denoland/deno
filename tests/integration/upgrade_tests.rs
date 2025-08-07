@@ -96,7 +96,7 @@ fn upgrade_lsp_repl_sleeps() {
 
   // the test server will sleep for 95 seconds, so ensure this is less
   let elapsed_secs = start_instant.elapsed().as_secs();
-  assert!(elapsed_secs < 94, "elapsed_secs: {}", elapsed_secs);
+  assert!(elapsed_secs < 94, "elapsed_secs: {elapsed_secs}");
 }
 
 fn upgrade_context() -> TestContext {

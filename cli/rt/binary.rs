@@ -67,7 +67,7 @@ pub fn extract_standalone(
       .map(|p| p.to_string_lossy())
       // should never happen
       .unwrap_or_else(|| Cow::Borrowed("binary"));
-    std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name))
+    std::env::temp_dir().join(format!("deno-compile-{current_exe_name}"))
   };
   let root_url = deno_path_util::url_from_directory_path(&root_path)?;
 

@@ -486,7 +486,7 @@ impl ReplEditor {
         }
 
         self.errored_on_history_save.store(true, Relaxed);
-        log::warn!("Unable to save history file: {}", e);
+        log::warn!("Unable to save history file: {e}");
       }
     }
   }

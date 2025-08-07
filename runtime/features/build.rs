@@ -70,7 +70,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[\n",
 
     if matches!(feature.kind, structs::UnstableFeatureKind::Runtime) {
       let camel = camel_case(feature.name);
-      js_list += &format!("  {}: {},\n", camel, id);
+      js_list += &format!("  {camel}: {id},\n");
     }
   }
 
@@ -87,8 +87,8 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[\n",
       None => continue,
     };
     let prop_name = feature.name.replace("-", "_");
-    env_var_def.push_str(&format!("  pub {}: &'static str,\n", prop_name));
-    env_var_impl.push_str(&format!("  {}: \"{}\",\n", prop_name, value));
+    env_var_def.push_str(&format!("  pub {prop_name}: &'static str,\n"));
+    env_var_impl.push_str(&format!("  {prop_name}: \"{value}\",\n"));
   }
   env_var_def.push_str("}\n");
   env_var_impl.push_str("};\n");

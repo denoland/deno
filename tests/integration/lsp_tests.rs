@@ -242,7 +242,7 @@ fn unadded_dependency_message_with_import_map() {
   correct_lsp_messages.sort();
   let part1 = correct_lsp_messages[1].split("file").collect::<Vec<_>>()[0];
   let part2 = correct_lsp_messages[1].split('\n').collect::<Vec<_>>()[1];
-  let file_path_removed_from_message = format!("{} {}", part1, part2);
+  let file_path_removed_from_message = format!("{part1} {part2}");
   correct_lsp_messages[1] = file_path_removed_from_message.as_str();
   assert_eq!(correct_lsp_messages, expected_lsp_messages);
   client.shutdown();
@@ -305,7 +305,7 @@ fn unadded_dependency_message() {
   correct_lsp_messages.sort();
   let part1 = correct_lsp_messages[1].split("file").collect::<Vec<_>>()[0];
   let part2 = correct_lsp_messages[1].split('\n').collect::<Vec<_>>()[1];
-  let file_path_removed_from_message = format!("{} {}", part1, part2);
+  let file_path_removed_from_message = format!("{part1} {part2}");
   correct_lsp_messages[1] = file_path_removed_from_message.as_str();
   assert_eq!(correct_lsp_messages, expected_lsp_messages);
   client.shutdown();
@@ -11731,7 +11731,7 @@ fn lsp_diagnostics_none_for_resolving_types() {
     },
   }));
   let diagnostics = diagnostics.all();
-  assert!(diagnostics.is_empty(), "{:?}", diagnostics);
+  assert!(diagnostics.is_empty(), "{diagnostics:?}");
   client.shutdown();
 }
 
@@ -18209,7 +18209,7 @@ fn lsp_uses_lockfile_for_npm_initialization() {
     if line.contains("Skipping npm resolution.") {
       skipping_count += 1;
     }
-    assert!(!line.contains("Running npm resolution."), "Line: {}", line);
+    assert!(!line.contains("Running npm resolution."), "Line: {line}");
     line.contains("Server ready.")
   });
   assert_eq!(skipping_count, 1);
@@ -18976,7 +18976,7 @@ fn lsp_import_json_module_import_attribute_variations() {
   for type_text in ["bytes", "text", "json"] {
     let diagnostics = client.did_open(json!({
       "textDocument": {
-        "uri": temp_dir.join(format!("{}.ts", type_text)).uri_file(),
+        "uri": temp_dir.join(format!("{type_text}.ts")).uri_file(),
         "languageId": "typescript",
         "version": 1,
         "text": format!("import data from './file.json' with {{ type: '{}' }};\nconsole.log(data);\n", type_text)

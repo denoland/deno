@@ -52,7 +52,7 @@ pub fn check_test_glob(
     .replace('\\', "/");
   let mut found = HashSet::new();
   let mut list = vec![];
-  for file in glob(&format!("{}/{}", base, glob_pattern))
+  for file in glob(&format!("{base}/{glob_pattern}"))
     .expect("Failed to read test path")
   {
     let mut file = file
@@ -68,7 +68,7 @@ pub fn check_test_glob(
       .expect("File {file} did not start with {base_dir} prefix");
     let file = file.strip_prefix('/').unwrap().to_owned();
     if file.contains('/') {
-      list.push(format!("{}={}", name, file))
+      list.push(format!("{name}={file}"))
     } else {
       list.push(file.clone());
     }

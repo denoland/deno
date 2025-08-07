@@ -927,7 +927,7 @@ impl<'a> ResolverFactory<'a> {
       ));
       self.set_npm_installer(npm_installer);
       if let Err(err) = npm_resolution_initializer.ensure_initialized().await {
-        log::warn!("failed to initialize npm resolution: {}", err);
+        log::warn!("failed to initialize npm resolution: {err}");
       }
 
       CliNpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {

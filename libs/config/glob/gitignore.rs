@@ -118,9 +118,9 @@ impl<'a, Sys: FsRead + FsMetadata> GitIgnoreTree<'a, Sys> {
         for path in &self.include_paths {
           if let Ok(suffix) = path.strip_prefix(dir_path) {
             let suffix = suffix.to_string_lossy().replace('\\', "/");
-            let _ignore = builder.add_line(None, &format!("!/{}", suffix));
+            let _ignore = builder.add_line(None, &format!("!/{suffix}"));
             if !suffix.ends_with('/') {
-              let _ignore = builder.add_line(None, &format!("!/{}/", suffix));
+              let _ignore = builder.add_line(None, &format!("!/{suffix}/"));
             }
           }
         }

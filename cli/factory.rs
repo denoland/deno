@@ -216,7 +216,7 @@ impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
           )
           .await
           .with_context(|| {
-            format!("Unable to load '{}' import map", specifier)
+            format!("Unable to load '{specifier}' import map")
           })?,
         };
         Ok(Some(deno_resolver::workspace::SpecifiedImportMap {

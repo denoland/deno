@@ -189,7 +189,7 @@ where
   NP: NetPermissions + 'static,
 {
   let permissions = state.borrow_mut::<NP>();
-  let api_call_expr = format!("{}()", api_name);
+  let api_call_expr = format!("{api_name}()");
   let address_path = permissions
     .check_open(
       Cow::Borrowed(Path::new(address_path)),

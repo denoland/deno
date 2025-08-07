@@ -892,8 +892,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         && matches!(specifier.scheme(), "http" | "https")
       {
         return Err(JsErrorBox::generic(format!(
-          "Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.",
-          specifier
+          "Importing {specifier} blocked. JSR packages cannot import non-JSR remote modules for security reasons."
         )));
       }
       Ok(())
@@ -1385,10 +1384,10 @@ impl EszipModuleLoader {
       loaded_eszips.push_back(async move {
         let (eszip, loader) = EszipV2::parse(eszip)
           .await
-          .with_context(|| format!("Error parsing eszip header at {}", path))?;
+          .with_context(|| format!("Error parsing eszip header at {path}"))?;
         loader
           .await
-          .with_context(|| format!("Error loading eszip at {}", path))?;
+          .with_context(|| format!("Error loading eszip at {path}"))?;
         Ok(eszip)
       });
     }

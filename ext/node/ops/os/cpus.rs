@@ -292,8 +292,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     cpus[j].model = model.to_string();
 
     if let Ok(fp) = std::fs::File::open(format!(
-      "/sys/devices/system/cpu/cpu{}/cpufreq/scaling_cur_freq",
-      j
+      "/sys/devices/system/cpu/cpu{j}/cpufreq/scaling_cur_freq"
     )) {
       let mut reader = std::io::BufReader::new(fp);
       let mut speed = String::new();

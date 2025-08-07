@@ -481,7 +481,7 @@ fn create_command(
           IpcRefTracker::new(state.external_ops_tracker.clone()),
         )?);
         /* The other end passed to child process via NODE_CHANNEL_FD */
-        command.env("NODE_CHANNEL_FD", format!("{}", ipc));
+        command.env("NODE_CHANNEL_FD", format!("{ipc}"));
         ipc_rid = Some(pipe_rid);
       }
     }

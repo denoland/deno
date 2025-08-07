@@ -5,7 +5,7 @@ fn main() {
     "android" | "freebsd" | "openbsd" => {
       "generated_symbol_exports_list_linux.def".to_string()
     }
-    os => format!("generated_symbol_exports_list_{}.def", os),
+    os => format!("generated_symbol_exports_list_{os}.def"),
   };
   let symbols_path = std::path::Path::new(".")
     .join(symbols_file_name)

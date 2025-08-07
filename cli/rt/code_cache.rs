@@ -189,15 +189,15 @@ impl FirstRunCodeCacheStrategy {
     match serialize(&temp_file, self.cache_key, cache_data) {
       Ok(()) => {
         if let Err(err) = std::fs::rename(&temp_file, &self.file_path) {
-          log::debug!("Failed to rename code cache: {}", err);
+          log::debug!("Failed to rename code cache: {err}");
           let _ = std::fs::remove_file(&temp_file);
         } else {
-          log::debug!("Serialized {} code cache entries", count);
+          log::debug!("Serialized {count} code cache entries");
         }
       }
       Err(err) => {
         let _ = std::fs::remove_file(&temp_file);
-        log::debug!("Failed to serialize code cache: {}", err);
+        log::debug!("Failed to serialize code cache: {err}");
       }
     }
   }

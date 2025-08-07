@@ -33,7 +33,7 @@ fn explain(response: &cdp::SetScriptSourceResponse) -> String {
           if description == "undefined" {
             "".to_string()
           } else {
-            format!(" - {}", description)
+            format!(" - {description}")
           }
         )
       } else {
@@ -124,7 +124,7 @@ impl HmrRunner {
           if notification.method == "Runtime.exceptionThrown" {
             let exception_thrown = serde_json::from_value::<cdp::ExceptionThrown>(notification.params).map_err(JsErrorBox::from_err)?;
             let (message, description) = exception_thrown.exception_details.get_message_and_description();
-            break Err(JsErrorBox::generic(format!("{} {}", message, description)).into());
+            break Err(JsErrorBox::generic(format!("{message} {description}")).into());
           } else if notification.method == "Debugger.scriptParsed" {
             let params = serde_json::from_value::<cdp::ScriptParsed>(notification.params).map_err(JsErrorBox::from_err)?;
             if params.url.starts_with("file://") {
@@ -263,8 +263,7 @@ impl HmrRunner {
     script_id: &str,
   ) -> Result<(), InspectorPostMessageError> {
     let expr = format!(
-      "dispatchEvent(new CustomEvent(\"hmr\", {{ detail: {{ path: \"{}\" }} }}));",
-      script_id
+      "dispatchEvent(new CustomEvent(\"hmr\", {{ detail: {{ path: \"{script_id}\" }} }}));"
     );
 
     let _result = self

@@ -948,13 +948,13 @@ fn before_exit() {
   log::trace!("deno_telemetry::before_exit");
 
   let r = spans.shutdown();
-  log::trace!("spans={:?}", r);
+  log::trace!("spans={r:?}");
 
   let r = logs.shutdown();
-  log::trace!("logs={:?}", r);
+  log::trace!("logs={r:?}");
 
   let r = meter_provider.shutdown();
-  log::trace!("meters={:?}", r);
+  log::trace!("meters={r:?}");
 
   deno_net::tunnel::before_exit();
 }

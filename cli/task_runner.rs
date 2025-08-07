@@ -261,7 +261,7 @@ impl ShellCommand for NpmCommand {
     let npm_path = match context.state.resolve_command_path(OsStr::new("npm")) {
       Ok(path) => path,
       Err(err) => {
-        let _ = context.stderr.write_line(&format!("{}", err));
+        let _ = context.stderr.write_line(&format!("{err}"));
         return Box::pin(std::future::ready(ExecuteResult::from_exit_code(
           err.exit_code(),
         )));
@@ -384,7 +384,7 @@ impl ShellCommand for NpxCommand {
             match context.state.resolve_command_path(OsStr::new("npx")) {
               Ok(npx) => npx,
               Err(err) => {
-                let _ = context.stderr.write_line(&format!("{}", err));
+                let _ = context.stderr.write_line(&format!("{err}"));
                 return Box::pin(std::future::ready(
                   ExecuteResult::from_exit_code(err.exit_code()),
                 ));
@@ -528,7 +528,7 @@ fn resolve_bin_dir_entry_command(
     );
     Some(NodeModulesFileRunCommand { command_name, path })
   } else {
-    log::debug!("Failed resolving npx command '{}'.", command_name);
+    log::debug!("Failed resolving npx command '{command_name}'.");
     None
   }
 }
@@ -694,7 +694,7 @@ mod test {
       env_vars,
       HashMap::from([(
         "PATH".into(),
-        format!("/example2{}/example", separator).into()
+        format!("/example2{separator}/example").into()
       )])
     );
 

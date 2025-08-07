@@ -160,7 +160,7 @@ pub async fn publish(
     if let Some(dirty_text) =
       check_if_git_repo_dirty(cli_options.initial_cwd()).await
     {
-      log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
+      log::error!("\nUncommitted changes:\n\n{dirty_text}\n");
       bail!(
         "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty"
       );
@@ -560,7 +560,7 @@ async fn get_auth_headers(
 
       let response = client
         .post_json(
-          format!("{}authorizations", registry_url).parse()?,
+          format!("{registry_url}authorizations").parse()?,
           &serde_json::json!({
             "challenge": challenge,
             "permissions": permissions,
@@ -597,7 +597,7 @@ async fn get_auth_headers(
         tokio::time::sleep(interval).await;
         let response = client
           .post_json(
-            format!("{}authorizations/exchange", registry_url).parse()?,
+            format!("{registry_url}authorizations/exchange").parse()?,
             &serde_json::json!({
               "exchangeToken": auth.exchange_token,
               "verifier": verifier,
@@ -638,7 +638,7 @@ async fn get_auth_headers(
       }
     }
     AuthMethod::Token(token) => {
-      let authorization: Rc<str> = format!("Bearer {}", token).into();
+      let authorization: Rc<str> = format!("Bearer {token}").into();
       for pkg in packages {
         authorizations.insert(
           (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
@@ -672,7 +672,7 @@ async fn get_auth_headers(
         let text = crate::http_util::body_to_string(response)
           .await
           .with_context(|| {
-            format!("Failed to get OIDC token: status {}", status)
+            format!("Failed to get OIDC token: status {status}")
           })?;
         if !status.is_success() {
           bail!(
@@ -684,12 +684,11 @@ async fn get_auth_headers(
         let registry::OidcTokenResponse { value } = serde_json::from_str(&text)
           .with_context(|| {
             format!(
-              "Failed to parse OIDC token: '{}' (status {})",
-              text, status
+              "Failed to parse OIDC token: '{text}' (status {status})"
             )
           })?;
 
-        let authorization: Rc<str> = format!("githuboidc {}", value).into();
+        let authorization: Rc<str> = format!("githuboidc {value}").into();
         for pkg in chunked_packages.next().unwrap() {
           authorizations.insert(
             (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
@@ -723,8 +722,7 @@ async fn check_if_scope_and_package_exist(
     registry::get_package(client, registry_api_url, scope, package).await?;
   if response.status() == 404 {
     let create_url = format!(
-      "{}new?scope={}&package={}&from=cli",
-      registry_manage_url, scope, package
+      "{registry_manage_url}new?scope={scope}&package={package}&from=cli"
     );
     Ok(Some(CreatePackageInfo {
       create_url,
@@ -878,7 +876,7 @@ async fn perform_publish(
             provenance,
           )
           .await
-          .with_context(|| format!("Failed to publish {}", display_name))?;
+          .with_context(|| format!("Failed to publish {display_name}"))?;
           Ok(package_name)
         }
         .boxed_local(),

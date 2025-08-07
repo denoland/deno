@@ -1354,7 +1354,7 @@ fn check_warn_compiler_options(
         .map(|s| logged_warnings.folders.insert(s.clone()))
         .unwrap_or(true)
     {
-      log::warn!("{}", ignored_options);
+      log::warn!("{ignored_options}");
     }
   }
   let serde_json::Value::Object(obj) = &compiler_options.compiler_options.0

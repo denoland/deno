@@ -2460,8 +2460,7 @@ fn parent_specifier_str(specifier: &str) -> Option<&str> {
 
 fn is_valid_jsr_pkg_name(name: &str) -> bool {
   let jsr = deno_semver::jsr::JsrPackageReqReference::from_str(&format!(
-    "jsr:{}@*",
-    name
+    "jsr:{name}@*"
   ));
   match jsr {
     Ok(jsr) => jsr.sub_path().is_none(),

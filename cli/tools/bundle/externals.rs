@@ -151,23 +151,23 @@ mod tests {
     let matcher = ExternalsMatcher::new(&patterns, &cwd);
     for path in matches.pre_resolve {
       if !matcher.is_pre_resolve_match(&path) {
-        eprintln!("failed to match pre resolve: {}", path);
+        eprintln!("failed to match pre resolve: {path}");
         return false;
       }
     }
     for path in matches.post_resolve {
       if !matcher.is_post_resolve_match(&path) {
-        eprintln!("failed to match post resolve: {}", path);
+        eprintln!("failed to match post resolve: {path}");
         return false;
       }
     }
     for path in no_match {
       if matcher.is_pre_resolve_match(path) {
-        eprintln!("matched pre resolve when it should not: {}", path);
+        eprintln!("matched pre resolve when it should not: {path}");
         return false;
       }
       if matcher.is_post_resolve_match(path) {
-        eprintln!("matched post resolve when it should not: {}", path);
+        eprintln!("matched post resolve when it should not: {path}");
         return false;
       }
     }

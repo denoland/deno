@@ -213,7 +213,7 @@ impl JupyterServer {
       .await;
 
     if let Err(err) = result {
-      log::error!("Output error: {}", err);
+      log::error!("Output error: {err}");
     }
   }
 

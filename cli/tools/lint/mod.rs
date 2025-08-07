@@ -318,9 +318,9 @@ impl WorkspaceLinter {
     #[allow(clippy::print_stderr)]
     fn logger_printer(msg: &str, is_err: bool) {
       if is_err {
-        eprint!("{}", msg);
+        eprint!("{msg}");
       } else {
-        print!("{}", msg);
+        print!("{msg}");
       }
     }
 

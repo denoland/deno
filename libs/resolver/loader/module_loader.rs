@@ -97,7 +97,7 @@ pub enum LoadCodeSourceErrorKind {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
-#[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {}", r)).unwrap_or_default())]
+#[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {r}")).unwrap_or_default())]
 pub struct LoadUnpreparedModuleError {
   specifier: Url,
   maybe_referrer: Option<Url>,

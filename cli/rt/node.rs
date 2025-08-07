@@ -116,13 +116,11 @@ impl CjsCodeAnalyzer {
           if log::log_enabled!(log::Level::Debug) {
             if self.sys.is_specifier_in_vfs(specifier) {
               log::debug!(
-                "No CJS export analysis was stored for '{}'. Assuming ESM. This might indicate a bug in Deno.",
-                specifier
+                "No CJS export analysis was stored for '{specifier}'. Assuming ESM. This might indicate a bug in Deno."
               );
             } else {
               log::debug!(
-                "Analyzing potentially CommonJS files is not supported at runtime in a compiled executable ({}). Assuming ESM.",
-                specifier
+                "Analyzing potentially CommonJS files is not supported at runtime in a compiled executable ({specifier}). Assuming ESM."
               );
             }
           }

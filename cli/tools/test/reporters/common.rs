@@ -95,7 +95,7 @@ pub(super) fn report_sigint(
   )
   .ok();
   for entry in formatted_pending {
-    writeln!(writer, "{}", entry).ok();
+    writeln!(writer, "{entry}").ok();
   }
   writeln!(writer).ok();
 }

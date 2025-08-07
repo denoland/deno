@@ -95,7 +95,7 @@ impl ParsedSourceCache {
         && parsed_source.text().as_ref() == source.as_ref()
       {
         // note: message used tests
-        log::debug!("Removed parsed source: {}", specifier);
+        log::debug!("Removed parsed source: {specifier}");
         return Ok(parsed_source);
       }
     }

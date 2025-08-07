@@ -217,7 +217,7 @@ fn resolve_serve_url(host: String, port: u16) -> String {
   let host = if matches!(host.as_str(), "0.0.0.0" | "::") {
     "127.0.0.1".to_string()
   } else if std::net::Ipv6Addr::from_str(&host).is_ok() {
-    format!("[{}]", host)
+    format!("[{host}]")
   } else {
     host
   };

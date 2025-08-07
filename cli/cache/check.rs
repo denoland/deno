@@ -46,7 +46,7 @@ impl TypeCheckCache {
         if cfg!(debug_assertions) {
           panic!("Error retrieving hash: {err}");
         } else {
-          log::debug!("Error retrieving hash: {}", err);
+          log::debug!("Error retrieving hash: {err}");
           // fail silently when not debugging
           false
         }
@@ -69,7 +69,7 @@ impl TypeCheckCache {
       if cfg!(debug_assertions) {
         panic!("Error saving check hash: {err}");
       } else {
-        log::debug!("Error saving check hash: {}", err);
+        log::debug!("Error saving check hash: {err}");
       }
     }
   }
@@ -104,7 +104,7 @@ impl TypeCheckCache {
       if cfg!(debug_assertions) {
         panic!("Error saving tsbuildinfo: {err}");
       } else {
-        log::debug!("Error saving tsbuildinfo: {}", err);
+        log::debug!("Error saving tsbuildinfo: {err}");
       }
     }
   }

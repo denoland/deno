@@ -1391,9 +1391,9 @@ impl ConfigFile {
       }
       if !key.starts_with("./") {
         let suggestion = if key.starts_with('/') {
-          format!(".{}", key)
+          format!(".{key}")
         } else {
-          format!("./{}", key)
+          format!("./{key}")
         };
         return Err(ConfigFileExportsError::KeyMustStartWithDotSlash {
           key: key_display(),
@@ -1433,9 +1433,9 @@ impl ConfigFile {
       }
       if !value.starts_with("./") {
         let suggestion = if value.starts_with('/') {
-          format!(".{}", value)
+          format!(".{value}")
         } else {
-          format!("./{}", value)
+          format!("./{value}")
         };
         return Err(ConfigFileExportsError::ValueCouldNotBeResolved {
           value: value.to_string(),
@@ -1464,7 +1464,7 @@ impl ConfigFile {
       Some(Value::Object(map)) => {
         let mut result = IndexMap::with_capacity(map.len());
         for (k, v) in map {
-          let key_display = || Cow::Owned(format!("'{}' export", k));
+          let key_display = || Cow::Owned(format!("'{k}' export"));
           validate_key(&key_display, k)?;
           match v {
             Value::String(value) => {

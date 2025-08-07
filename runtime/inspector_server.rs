@@ -194,8 +194,7 @@ fn handle_ws_request(
       Ok(w) => w,
       Err(err) => {
         log::error!(
-          "Inspector server failed to upgrade to WS connection: {:?}",
-          err
+          "Inspector server failed to upgrade to WS connection: {err:?}"
         );
         return;
       }
@@ -303,7 +302,7 @@ async fn server(
   let listener = match TcpListener::from_std(listener) {
     Ok(l) => l,
     Err(err) => {
-      log::error!("Cannot start inspector server: {:?}", err);
+      log::error!("Cannot start inspector server: {err:?}");
       return;
     }
   };
@@ -320,7 +319,7 @@ async fn server(
           match accept_result {
             Ok((s, _)) => s,
             Err(err) => {
-              log::error!("Failed to accept inspector connection: {:?}", err);
+              log::error!("Failed to accept inspector connection: {err:?}");
               continue;
             }
           }
@@ -383,7 +382,7 @@ async fn server(
         tokio::select! {
           result = conn.as_mut() => {
             if let Err(err) = result {
-              log::error!("Failed to serve connection: {:?}", err);
+              log::error!("Failed to serve connection: {err:?}");
             }
           },
           _ = &mut shutdown_rx => {

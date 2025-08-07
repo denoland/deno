@@ -73,7 +73,7 @@ impl DatabaseHandler for MultiBackendDbHandler {
 
     if let Some(path) = &mut path {
       if let Ok(prefix) = std::env::var("DENO_KV_PATH_PREFIX") {
-        *path = format!("{}{}", prefix, path);
+        *path = format!("{prefix}{path}");
       }
     }
 
@@ -91,8 +91,7 @@ impl DatabaseHandler for MultiBackendDbHandler {
       }
     }
     Err(JsErrorBox::type_error(format!(
-      "No backend supports the given path: {:?}",
-      path
+      "No backend supports the given path: {path:?}"
     )))
   }
 }

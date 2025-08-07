@@ -59,7 +59,7 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
           (pos.to_string(), total_size.to_string())
         };
         (
-          format!(" {}/{}", pos_str, total_size_str,),
+          format!(" {pos_str}/{total_size_str}",),
           2 + total_size_str.len() * 2,
         )
       }
@@ -192,7 +192,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
       )
     };
 
-    display_str.push_str(&format!("{}{}\n", fmt_elapsed_time, total_text));
+    display_str.push_str(&format!("{fmt_elapsed_time}{total_text}\n"));
     if let Some(display_entry) = non_empty_entry {
       let bytes_text = {
         let total_size = display_entry.total_size;
@@ -219,7 +219,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
         .replace("%2F", "/");
 
       display_str.push_str(
-        &colors::gray(format!("  {}{}\n", message, bytes_text)).to_string(),
+        &colors::gray(format!("  {message}{bytes_text}\n")).to_string(),
       );
     } else {
       // prevent cursor from going up

@@ -604,7 +604,7 @@ async fn get_jsr_completions(
         if !version.starts_with(v_prefix) {
           return None;
         }
-        let specifier = format!("jsr:{}@{}", package_name, version);
+        let specifier = format!("jsr:{package_name}@{version}");
         let command = Some(lsp::Command {
           title: "".to_string(),
           command: "deno.cache".to_string(),
@@ -644,7 +644,7 @@ async fn get_jsr_completions(
     .iter()
     .enumerate()
     .map(|(idx, name)| {
-      let specifier = format!("jsr:{}", name);
+      let specifier = format!("jsr:{name}");
       let command = Some(lsp::Command {
         title: "".to_string(),
         command: "deno.cache".to_string(),
@@ -699,7 +699,7 @@ async fn get_npm_completions(
         if !version.starts_with(v_prefix) {
           return None;
         }
-        let specifier = format!("npm:{}@{}", package_name, version);
+        let specifier = format!("npm:{package_name}@{version}");
         let command = Some(lsp::Command {
           title: "".to_string(),
           command: "deno.cache".to_string(),
@@ -739,7 +739,7 @@ async fn get_npm_completions(
     .iter()
     .enumerate()
     .map(|(idx, name)| {
-      let specifier = format!("npm:{}", name);
+      let specifier = format!("npm:{name}");
       let command = Some(lsp::Command {
         title: "".to_string(),
         command: "deno.cache".to_string(),
@@ -787,7 +787,7 @@ fn get_node_completions(
       if name.starts_with('_') {
         return None;
       }
-      let specifier = format!("node:{}", name);
+      let specifier = format!("node:{name}");
       let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
         range: *range,
         new_text: specifier.clone(),

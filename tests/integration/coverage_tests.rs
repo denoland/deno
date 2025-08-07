@@ -703,14 +703,13 @@ fn test_collect_summary_with_no_matches() {
   if !unexpected_contents.is_empty() {
     eprintln!("Unexpected files or directories in the coverage directory:");
     for path in &unexpected_contents {
-      eprintln!("{:?}", path);
+      eprintln!("{path:?}");
     }
   }
 
   // Assert that the coverage directory is otherwise empty
   assert!(
     unexpected_contents.is_empty(),
-    "Expected the coverage directory to be empty except for 'empty_dir', but found: {:?}",
-    unexpected_contents
+    "Expected the coverage directory to be empty except for 'empty_dir', but found: {unexpected_contents:?}"
   );
 }

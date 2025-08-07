@@ -47,8 +47,8 @@ pub async fn ensure_esbuild(
   let target = esbuild_platform();
   let mut esbuild_path = deno_dir
     .dl_folder_path()
-    .join(format!("esbuild-{}", ESBUILD_VERSION))
-    .join(format!("esbuild-{}", target));
+    .join(format!("esbuild-{ESBUILD_VERSION}"))
+    .join(format!("esbuild-{target}"));
   if cfg!(windows) {
     esbuild_path.set_extension("exe");
   }
@@ -57,9 +57,9 @@ pub async fn ensure_esbuild(
     return Ok(esbuild_path);
   }
 
-  let pkg_name = format!("@esbuild/{}", target);
+  let pkg_name = format!("@esbuild/{target}");
   let nv =
-    PackageNv::from_str(&format!("{}@{}", pkg_name, ESBUILD_VERSION)).unwrap();
+    PackageNv::from_str(&format!("{pkg_name}@{ESBUILD_VERSION}")).unwrap();
   let mut info = api.package_info(&pkg_name).await?;
   let version_info = match info.version_info(&nv, &workspace_link_packages.0) {
     Ok(version_info) => version_info,

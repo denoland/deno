@@ -878,8 +878,7 @@ fn get_download_url(
 
   Url::parse(&download_url).with_context(|| {
     format!(
-      "Failed to parse URL to download new release: {}",
-      download_url
+      "Failed to parse URL to download new release: {download_url}"
     )
   })
 }

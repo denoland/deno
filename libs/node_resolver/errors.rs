@@ -74,7 +74,7 @@ pub trait NodeJsErrorCoded {
   self.code(),
   request,
   reason,
-  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
+  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{referrer}'")).unwrap_or_default()
 )]
 #[class(type)]
 #[property("code" = self.code())]
@@ -126,7 +126,7 @@ impl NodeJsErrorCoded for LegacyResolveError {
   "Could not find package '{}' from referrer '{}'{}.",
   package_name,
   referrer,
-  referrer_extra.as_ref().map(|r| format!(" ({})", r)).unwrap_or_default()
+  referrer_extra.as_ref().map(|r| format!(" ({r})")).unwrap_or_default()
 )]
 #[class(generic)]
 #[property("code" = self.code())]
@@ -147,7 +147,7 @@ impl NodeJsErrorCoded for PackageNotFoundError {
 #[error(
   "Could not find referrer npm package '{}'{}.",
   referrer,
-  referrer_extra.as_ref().map(|r| format!(" ({})", r)).unwrap_or_default()
+  referrer_extra.as_ref().map(|r| format!(" ({r})")).unwrap_or_default()
 )]
 #[class(generic)]
 #[property("code" = self.code())]
@@ -502,7 +502,7 @@ pub enum PackageExportsResolveErrorKind {
     "[{}] Could not find types for '{}'{}",
     self.code(),
     self.0.code_specifier,
-    self.0.maybe_referrer.as_ref().map(|r| format!(" imported from '{}'", r)).unwrap_or_default(),
+    self.0.maybe_referrer.as_ref().map(|r| format!(" imported from '{r}'")).unwrap_or_default(),
   )]
 #[class(generic)]
 #[property("code" = self.code())]
@@ -561,7 +561,7 @@ pub enum ClosestPkgJsonErrorKind {
   self.code(),
   name,
   package_json_path.as_ref().map(|p| format!(" in package {}", p.display())).unwrap_or_default(),
-  maybe_referrer.as_ref().map(|r| format!(" imported from '{}'", r)).unwrap_or_default(),
+  maybe_referrer.as_ref().map(|r| format!(" imported from '{r}'")).unwrap_or_default(),
 )]
 #[property("code" = self.code())]
 pub struct PackageImportNotDefinedError {
@@ -892,8 +892,8 @@ impl NodeJsErrorCoded for FinalizeResolutionErrorKind {
   "[{}] Cannot find module '{}'{}{}",
   self.code(),
   specifier,
-  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
-  suggested_ext.as_ref().map(|m| format!("\nDid you mean to import with the \".{}\" extension?", m)).unwrap_or_default()
+  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{referrer}'")).unwrap_or_default(),
+  suggested_ext.as_ref().map(|m| format!("\nDid you mean to import with the \".{m}\" extension?")).unwrap_or_default()
 )]
 #[property("code" = self.code())]
 pub struct ModuleNotFoundError {
@@ -914,7 +914,7 @@ impl NodeJsErrorCoded for ModuleNotFoundError {
   "[{}] Directory import '{}' is not supported resolving ES modules{}{}",
   self.code(),
   dir_url,
-  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
+  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{referrer}'")).unwrap_or_default(),
   suggested_file_name.map(|file_name| format!("\nDid you mean to import {file_name} within the directory?")).unwrap_or_default(),
 )]
 #[property("code" = self.code())]
@@ -973,7 +973,7 @@ impl std::fmt::Display for InvalidPackageTargetError {
     };
 
     if let Some(referrer) = &self.maybe_referrer {
-      write!(f, " imported from '{}'", referrer)?;
+      write!(f, " imported from '{referrer}'")?;
     }
     if rel_error {
       write!(f, "; target must start with \"./\"")?;
@@ -1034,7 +1034,7 @@ impl std::fmt::Display for PackagePathNotExportedError {
     };
 
     if let Some(referrer) = &self.maybe_referrer {
-      write!(f, " imported from '{}'", referrer)?;
+      write!(f, " imported from '{referrer}'")?;
     }
     Ok(())
   }

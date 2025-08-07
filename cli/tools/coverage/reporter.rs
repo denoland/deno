@@ -145,26 +145,23 @@ impl SummaryCoverageReporter {
     };
 
     let branch_percent = if branch_class == "high" {
-      format!("{}", colors::green(&format!("{:>8.1}", branch_percent)))
+      format!("{}", colors::green(&format!("{branch_percent:>8.1}")))
     } else if branch_class == "medium" {
-      format!("{}", colors::yellow(&format!("{:>8.1}", branch_percent)))
+      format!("{}", colors::yellow(&format!("{branch_percent:>8.1}")))
     } else {
-      format!("{}", colors::red(&format!("{:>8.1}", branch_percent)))
+      format!("{}", colors::red(&format!("{branch_percent:>8.1}")))
     };
 
     let line_percent = if line_class == "high" {
-      format!("{}", colors::green(&format!("{:>6.1}", line_percent)))
+      format!("{}", colors::green(&format!("{line_percent:>6.1}")))
     } else if line_class == "medium" {
-      format!("{}", colors::yellow(&format!("{:>6.1}", line_percent)))
+      format!("{}", colors::yellow(&format!("{line_percent:>6.1}")))
     } else {
-      format!("{}", colors::red(&format!("{:>6.1}", line_percent)))
+      format!("{}", colors::red(&format!("{line_percent:>6.1}")))
     };
 
     println!(
       "| {file_name} | {branch_percent} | {line_percent} |",
-      file_name = file_name,
-      branch_percent = branch_percent,
-      line_percent = line_percent,
     );
   }
 }
@@ -199,8 +196,8 @@ impl CoverageReporter for SummaryCoverageReporter {
       "-".repeat(8),
       "-".repeat(6)
     );
-    println!("{}", header);
-    println!("{}", separator);
+    println!("{header}");
+    println!("{separator}");
     entries.iter().for_each(|(node, stats)| {
       self.print_coverage_line(node, node_max, stats);
     });
@@ -223,7 +220,7 @@ impl CoverageReporter for LcovCoverageReporter {
       if let Some(ref output) = report.output {
         if let Ok(path) = output.canonicalize() {
           let url = Url::from_file_path(path).unwrap();
-          log::info!("Lcov coverage report has been generated at {}", url);
+          log::info!("Lcov coverage report has been generated at {url}");
         } else {
           log::error!(
             "Failed to resolve the output path of Lcov report: {}",
@@ -447,7 +444,7 @@ impl CoverageReporter for HtmlCoverageReporter {
     )
     .unwrap();
 
-    log::info!("HTML coverage report has been generated at {}", root_report);
+    log::info!("HTML coverage report has been generated at {root_report}");
   }
 }
 
@@ -489,7 +486,7 @@ impl HtmlCoverageReporter {
       "Coverage report for all files".to_string()
     } else {
       let node = if is_dir {
-        format!("{}/", node)
+        format!("{node}/")
       } else {
         node.to_string()
       };
@@ -614,8 +611,8 @@ impl HtmlCoverageReporter {
 
     let path = Path::new(c.strip_prefix(&format!("{node}{}", std::path::MAIN_SEPARATOR)).unwrap_or(c)).to_str().unwrap();
     let path = path.replace(std::path::MAIN_SEPARATOR, "/");
-    let path_label = if *is_file { path.to_string() } else { format!("{}/", path) };
-    let path_link = if *is_file { format!("{}.html", path) } else { format!("{}index.html", path_label) };
+    let path_label = if *is_file { path.to_string() } else { format!("{path}/") };
+    let path_link = if *is_file { format!("{path}.html") } else { format!("{path_label}index.html") };
 
     format!("
       <tr>

@@ -913,7 +913,7 @@ fn repl_with_quiet_flag() {
   assert!(!out.contains("Deno"));
   assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
   assert_ends_with!(out, "\"done\"\n");
-  assert!(err.is_empty(), "Error: {}", err);
+  assert!(err.is_empty(), "Error: {err}");
 }
 
 #[test]
@@ -977,7 +977,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "hello");
-    assert!(err.is_empty(), "Error: {}", err);
+    assert!(err.is_empty(), "Error: {err}");
   }
 
   {
@@ -993,7 +993,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "hello");
-    assert!(err.is_empty(), "Error: {}", err);
+    assert!(err.is_empty(), "Error: {err}");
   }
 
   {
@@ -1007,7 +1007,7 @@ fn npm_packages() {
 
     assert_contains!(out, "[Module: null prototype] {");
     assert_contains!(out, "Chalk: [class Chalk],");
-    assert!(err.is_empty(), "Error: {}", err);
+    assert!(err.is_empty(), "Error: {err}");
   }
 
   {
@@ -1023,7 +1023,7 @@ fn npm_packages() {
       out,
       "error: npm package 'asdfawe52345asdf' does not exist"
     );
-    assert!(err.is_empty(), "Error: {}", err);
+    assert!(err.is_empty(), "Error: {err}");
   }
 
   {
@@ -1039,7 +1039,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "no");
-    assert!(err.is_empty(), "Error: {}", err);
+    assert!(err.is_empty(), "Error: {err}");
   }
 }
 

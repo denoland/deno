@@ -277,7 +277,7 @@ mod tests {
     for test_case in &test_cases {
       let cache_filename =
         cache.get_cache_filename(&Url::parse(test_case).unwrap());
-      assert_eq!(cache_filename, None, "Failed for {:?}", test_case);
+      assert_eq!(cache_filename, None, "Failed for {test_case:?}");
     }
   }
 }

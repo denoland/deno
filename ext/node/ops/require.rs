@@ -201,7 +201,7 @@ pub fn op_require_node_module_paths<
       let bytes = from_str.as_bytes();
       if bytes[from_str.len() - 1] == b'\\' && bytes[from_str.len() - 2] == b':'
       {
-        let p = format!("{}node_modules", from_str);
+        let p = format!("{from_str}node_modules");
         return Ok(vec![p]);
       }
     }
@@ -477,7 +477,7 @@ pub fn op_require_try_self<
     .strip_prefix(pkg_name)
     .filter(|t| t.starts_with('/'))
   {
-    Cow::Owned(format!(".{}", slash_with_export))
+    Cow::Owned(format!(".{slash_with_export}"))
   } else {
     return Ok(None);
   };

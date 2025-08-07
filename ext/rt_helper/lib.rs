@@ -133,7 +133,7 @@ fn resolve_temp_file_name(
     hasher.finish()
   };
   let mut file_name =
-    format!("{}{}{}", current_exe_name, path_hash, bytes_hash);
+    format!("{current_exe_name}{path_hash}{bytes_hash}");
   if let Some(ext) = path.extension() {
     file_name.push('.');
     file_name.push_str(&ext.to_string_lossy());

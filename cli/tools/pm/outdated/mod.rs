@@ -543,7 +543,7 @@ mod filter {
   fn pattern_to_regex(pattern: &str) -> Result<regex::Regex, AnyError> {
     let escaped = regex::escape(pattern);
     let unescaped_star = escaped.replace(r"\*", ".*");
-    Ok(regex::Regex::new(&format!("^{}$", unescaped_star))?)
+    Ok(regex::Regex::new(&format!("^{unescaped_star}$"))?)
   }
 
   impl Filter {

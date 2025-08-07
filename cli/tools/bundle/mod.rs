@@ -135,7 +135,7 @@ pub async fn bundle(
 
   tokio::spawn(async move {
     let res = esbuild.wait_for_exit().await;
-    log::warn!("esbuild exited: {:?}", res);
+    log::warn!("esbuild exited: {res:?}");
   });
 
   let esbuild_flags = configure_esbuild_flags(&bundle_flags);
@@ -716,12 +716,7 @@ impl DenoPluginHandler {
     with: IndexMap<String, String>,
   ) -> Result<Option<String>, BundleError> {
     log::debug!(
-      "bundle_resolve: {:?} {:?} {:?} {:?} {:?}",
-      path,
-      importer,
-      resolve_dir,
-      kind,
-      with
+      "bundle_resolve: {path:?} {importer:?} {resolve_dir:?} {kind:?} {with:?}"
     );
     let mut resolve_dir = resolve_dir.unwrap_or("").to_string();
     let resolver = self.resolver.clone();
@@ -1305,7 +1300,7 @@ fn print_finished_message(
     ));
   }
   output.push('\n');
-  log::info!("{}", output);
+  log::info!("{output}");
 
   Ok(())
 }

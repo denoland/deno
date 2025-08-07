@@ -2164,8 +2164,7 @@ fn ec_generate(named_curve: &str) -> Result<KeyObjectHandlePair, JsErrorBox> {
     }
     _ => {
       return Err(JsErrorBox::type_error(format!(
-        "unsupported named curve: {}",
-        named_curve
+        "unsupported named curve: {named_curve}"
       )));
     }
   };

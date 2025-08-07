@@ -538,7 +538,7 @@ impl<'a> FulcioSigner<'a> {
       .get(url)?
       .header(
         http::header::AUTHORIZATION,
-        format!("Bearer {}", token)
+        format!("Bearer {token}")
           .parse()
           .map_err(http::Error::from)?,
       )

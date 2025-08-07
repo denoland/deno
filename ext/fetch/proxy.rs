@@ -952,7 +952,7 @@ fn test_no_proxy_ip_ranges() {
   ];
 
   for host in &should_not_match {
-    assert!(!no_proxy.contains(host), "should not contain {:?}", host);
+    assert!(!no_proxy.contains(host), "should not contain {host:?}");
   }
 
   let should_match = [
@@ -975,6 +975,6 @@ fn test_no_proxy_ip_ranges() {
   ];
 
   for host in &should_match {
-    assert!(no_proxy.contains(host), "should contain {:?}", host);
+    assert!(no_proxy.contains(host), "should contain {host:?}");
   }
 }

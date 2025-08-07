@@ -46,7 +46,7 @@ impl CodeCache {
         if cfg!(debug_assertions) {
           panic!("Error using code cache: {err:#}");
         } else {
-          log::debug!("Error using code cache: {:#}", err);
+          log::debug!("Error using code cache: {err:#}");
         }
         T::default()
       }

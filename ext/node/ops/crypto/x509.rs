@@ -119,7 +119,7 @@ impl Certificate {
     // OpenSSL returns colon separated upper case hex values.
     let mut hex = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-      hex.push_str(&format!("{:02X}:", byte));
+      hex.push_str(&format!("{byte:02X}:"));
     }
     hex.pop();
     Some(hex)
@@ -162,10 +162,10 @@ impl Certificate {
       for name in &subject_alt.general_names {
         match name {
           extensions::GeneralName::DNSName(dns) => {
-            alt_names.push(format!("DNS:{}", dns));
+            alt_names.push(format!("DNS:{dns}"));
           }
           extensions::GeneralName::RFC822Name(email) => {
-            alt_names.push(format!("email:{}", email));
+            alt_names.push(format!("email:{email}"));
           }
           extensions::GeneralName::IPAddress(ip) => {
             alt_names.push(format!(
@@ -463,7 +463,7 @@ fn x509name_to_string(
           Ok(s) => String::from(s),
           _ => format!("{:?}", attr.attr_type()),
         };
-        let rdn = format!("{}={}", abbrev, val_str);
+        let rdn = format!("{abbrev}={val_str}");
         match acc2.len() {
           0 => Ok(rdn),
           _ => Ok(acc2 + " + " + rdn.as_str()),

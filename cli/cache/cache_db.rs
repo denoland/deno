@@ -406,7 +406,7 @@ fn open_connection(
         log::debug!("Created parent directory for cache db.");
       }
       Err(err) => {
-        log::debug!("Failed creating the cache db parent dir: {:#}", err);
+        log::debug!("Failed creating the cache db parent dir: {err:#}");
       }
     }
   }

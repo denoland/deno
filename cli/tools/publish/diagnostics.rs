@@ -236,8 +236,7 @@ impl Diagnostic for PublishDiagnostic {
         "module in package's module graph was excluded from publishing",
       ),
       MissingConstraint { specifier, .. } => Cow::Owned(format!(
-        "specifier '{}' is missing a version constraint",
-        specifier
+        "specifier '{specifier}' is missing a version constraint"
       )),
       BannedTripleSlashDirectives { .. } => Cow::Borrowed(
         "triple slash directives that modify globals are not allowed",
@@ -247,8 +246,7 @@ impl Diagnostic for PublishDiagnostic {
         to_package_name,
         ..
       } => Cow::Owned(format!(
-        "invalid relative import from the '{}' package into the '{}' package",
-        from_package_name, to_package_name,
+        "invalid relative import from the '{from_package_name}' package into the '{to_package_name}' package",
       )),
       SyntaxError(diagnostic) => diagnostic.message(),
       MissingLicense { .. } => Cow::Borrowed("missing license field or file"),
@@ -438,8 +436,7 @@ impl Diagnostic for PublishDiagnostic {
       RelativePackageImport {
         to_package_name, ..
       } => Some(Cow::Owned(format!(
-        "replace the relative import with a bare specifier that imports from the other package by name and optionally an export (ex. \"{}\")",
-        to_package_name
+        "replace the relative import with a bare specifier that imports from the other package by name and optionally an export (ex. \"{to_package_name}\")"
       ))),
       SyntaxError(diagnostic) => diagnostic.hint(),
       MissingLicense { .. } => Some(Cow::Borrowed(
@@ -506,7 +503,7 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("the file was ignored and will not be published"),
       ]),
       InvalidExternalImport { imported, .. } => Cow::Owned(vec![
-        Cow::Owned(format!("the import was resolved to '{}'", imported)),
+        Cow::Owned(format!("the import was resolved to '{imported}'")),
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
         Cow::Borrowed(
           "jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers",

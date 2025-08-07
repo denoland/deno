@@ -57,7 +57,7 @@ impl PackageSearchApi for CliNpmSearchApi {
     let mut search_url = npm_registry_url().join("-/v1/search")?;
     search_url
       .query_pairs_mut()
-      .append_pair("text", &format!("{} boost-exact:false", query));
+      .append_pair("text", &format!("{query} boost-exact:false"));
     let file_fetcher = self.file_fetcher.clone();
     let file = deno_core::unsync::spawn(async move {
       let file = file_fetcher.fetch_bypass_permissions(&search_url).await?;

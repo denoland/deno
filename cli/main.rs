@@ -513,8 +513,7 @@ fn exit_for_error(error: AnyError) -> ! {
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   log::error!(
-    "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
-    feature
+    "Unstable API '{api_name}'. The `--unstable-{feature}` flag must be provided."
   );
   deno_runtime::exit(70);
 }

@@ -172,7 +172,7 @@ pub fn resolve_jsr_url(sys: &impl sys_traits::EnvVar) -> Url {
         return url;
       }
       Err(err) => {
-        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+        log::debug!("Invalid {env_var_name} environment variable: {err:#}",);
       }
     }
   }

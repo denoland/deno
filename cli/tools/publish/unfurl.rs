@@ -106,18 +106,15 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
         reason,
         ..
       } => format!(
-        "failed resolving npm workspace package '{}': {}",
-        package_name, reason
+        "failed resolving npm workspace package '{package_name}': {reason}"
       )
       .into(),
       Self::UnsupportedPkgJsonFileSpecifier { package_name, .. } => format!(
-        "unsupported package.json file specifier for '{}'",
-        package_name
+        "unsupported package.json file specifier for '{package_name}'"
       )
       .into(),
       Self::UnsupportedPkgJsonJsrSpecifier { package_name, .. } => format!(
-        "unsupported package.json JSR specifier for '{}'",
-        package_name
+        "unsupported package.json JSR specifier for '{package_name}'"
       )
       .into(),
     }
@@ -417,11 +414,11 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
               pkg_json
                 .version
                 .as_ref()
-                .map(|v| format!("@^{}", v))
+                .map(|v| format!("@^{v}"))
                 .unwrap_or_default(),
               sub_path
                 .as_ref()
-                .map(|s| format!("/{}", s))
+                .map(|s| format!("/{s}"))
                 .unwrap_or_default()
             ))
             .ok()
@@ -455,7 +452,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
                   pkg_req,
                   sub_path
                     .as_ref()
-                    .map(|s| format!("/{}", s))
+                    .map(|s| format!("/{s}"))
                     .unwrap_or_default()
                 ))
                 .ok()
@@ -474,7 +471,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
                       })?;
                     // version was validated, so ok to unwrap
                     Cow::Owned(
-                      VersionReq::parse_from_npm(&format!("^{}", version))
+                      VersionReq::parse_from_npm(&format!("^{version}"))
                         .unwrap(),
                     )
                   }
@@ -487,7 +484,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
                       })?;
                     // version was validated, so ok to unwrap
                     Cow::Owned(
-                      VersionReq::parse_from_npm(&format!("~{}", version))
+                      VersionReq::parse_from_npm(&format!("~{version}"))
                         .unwrap(),
                     )
                   }
@@ -500,7 +497,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
                   version_req,
                   sub_path
                     .as_ref()
-                    .map(|s| format!("/{}", s))
+                    .map(|s| format!("/{s}"))
                     .unwrap_or_default()
                 ))
                 .ok()
@@ -508,8 +505,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
             },
             Err(err) => {
               log::warn!(
-                "Ignoring failed to resolve package.json dependency. {:#}",
-                err
+                "Ignoring failed to resolve package.json dependency. {err:#}"
               );
               None
             }
@@ -572,10 +568,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
       Ok(None) // nothing to unfurl
     } else {
       log::debug!(
-        "Unfurled specifier: {} from {} -> {}",
-        specifier,
-        referrer,
-        relative_resolved
+        "Unfurled specifier: {specifier} from {referrer} -> {relative_resolved}"
       );
       Ok(Some(relative_resolved))
     }

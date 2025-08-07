@@ -939,7 +939,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
     version: &str,
   ) {
     let registry_json_path =
-      format!("npm/localhost_4260/{}/registry.json", package);
+      format!("npm/localhost_4260/{package}/registry.json");
     let mut registry_json: Value =
       serde_json::from_str(&deno_dir.read_to_string(&registry_json_path))
         .unwrap();

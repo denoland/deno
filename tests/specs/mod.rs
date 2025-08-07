@@ -238,7 +238,7 @@ fn map_test_within_file(
     .unwrap_or(false)
   {
     let data: MultiTestMetaData = serde_json::from_value(metadata_value)
-      .with_context(|| format!("Failed deserializing {}", test_path))
+      .with_context(|| format!("Failed deserializing {test_path}"))
       .map_err(CollectTestsError::Other)?;
     Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
       children: data
@@ -365,7 +365,7 @@ fn test_context_from_metadata(
 
   match &metadata.base {
     // todo(dsherret): add bases in the future as needed
-    Some(base) => panic!("Unknown test base: {}", base),
+    Some(base) => panic!("Unknown test base: {base}"),
     None => {
       // by default add all these
       builder = builder
@@ -395,7 +395,7 @@ fn should_run(if_cond: Option<&str>) -> bool {
       "mac" => cfg!(target_os = "macos"),
       "linux" => cfg!(target_os = "linux"),
       "notCI" => std::env::var_os("CI").is_none(),
-      value => panic!("Unknown if condition: {}", value),
+      value => panic!("Unknown if condition: {value}"),
     }
   } else {
     true

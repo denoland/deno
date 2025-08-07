@@ -459,7 +459,7 @@ mod tests {
         if msg_str.len() > 50 {
           eprintln!("message = {}...", &msg_str[..50]);
         } else {
-          eprintln!("message = {}", msg_str);
+          eprintln!("message = {msg_str}");
         }
         queue.push(message);
       }

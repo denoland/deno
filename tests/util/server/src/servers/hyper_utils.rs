@@ -98,7 +98,7 @@ pub async fn run_server_with_acceptor<A, F, S>(
     let err_str = e.to_string();
     #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
-      eprintln!("{}: {:?}", error_msg, e);
+      eprintln!("{error_msg}: {e:?}");
     }
   }
 }
@@ -181,7 +181,7 @@ async fn hyper_serve_connection<I, F, S>(
     let err_str = e.to_string();
     #[allow(clippy::print_stderr)]
     if !err_str.contains("early eof") {
-      eprintln!("{}: {:?}", error_msg, e);
+      eprintln!("{error_msg}: {e:?}");
     }
   }
 }

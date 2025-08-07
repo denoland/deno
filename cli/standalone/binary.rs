@@ -345,7 +345,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     };
     let bytes = response
       .into_bytes()
-      .with_context(|| format!("Failed downloading '{}'", download_url))?;
+      .with_context(|| format!("Failed downloading '{download_url}'"))?;
 
     let create_dir_all = |dir: &Path| {
       std::fs::create_dir_all(dir)
@@ -628,9 +628,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           }
           Err(err) => {
             log::debug!(
-              "Had cjs export analysis error for '{}': {}",
-              specifier,
-              err
+              "Had cjs export analysis error for '{specifier}': {err}"
             );
             CjsExportAnalysisEntry::Error(err.to_string())
           }
@@ -963,8 +961,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                   localhost_entries.insert(entry.name().to_string(), entry)
                 {
                   panic!(
-                    "Unhandled scenario where a duplicate entry was found: {:?}",
-                    existing
+                    "Unhandled scenario where a duplicate entry was found: {existing:?}"
                   );
                 }
               }

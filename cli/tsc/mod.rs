@@ -1054,7 +1054,7 @@ fn op_resolve_inner(
         Some(MediaType::Dts.as_ts_extension()),
       ),
     };
-    log::debug!("Resolved {} from {} to {:?}", specifier, referrer, result);
+    log::debug!("Resolved {specifier} from {referrer} to {result:?}");
     resolved.push(result);
   }
 

@@ -180,7 +180,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
         peer_dep_diagnostics_to_display_tree(&result.unmet_peer_diagnostics);
       let mut text = String::new();
       _ = root_node.print(&mut text);
-      log::warn!("{}", text);
+      log::warn!("{text}");
     }
 
     if let Ok(snapshot) = &result.dep_graph_result {

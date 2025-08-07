@@ -581,18 +581,15 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
     get_import_prefix_missing_error(error).map(|specifier| {
       if specifier.starts_with("@std/") {
         format!(
-          "If you want to use the JSR package, try running `deno add jsr:{}`",
-          specifier
+          "If you want to use the JSR package, try running `deno add jsr:{specifier}`"
         )
       } else if specifier.starts_with('@') {
         format!(
-          "If you want to use a JSR or npm package, try running `deno add jsr:{0}` or `deno add npm:{0}`",
-          specifier
+          "If you want to use a JSR or npm package, try running `deno add jsr:{specifier}` or `deno add npm:{specifier}`"
         )
       } else {
         format!(
-          "If you want to use the npm package, try running `deno add npm:{0}`",
-          specifier
+          "If you want to use the npm package, try running `deno add npm:{specifier}`"
         )
       }
     })
@@ -621,9 +618,7 @@ fn enhanced_sloppy_imports_error_message(
     | ModuleErrorKind::Missing { specifier, .. } => {
       let additional_message = maybe_additional_sloppy_imports_message(sys, specifier)?;
       Some(format!(
-        "{} {}",
-        error,
-        additional_message,
+        "{error} {additional_message}",
       ))
     }
     _ => None,
@@ -838,7 +833,7 @@ fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
 pub fn format_deno_graph_error(err: &dyn std::error::Error) -> String {
   use std::fmt::Write;
 
-  let mut message = format!("{}", err);
+  let mut message = format!("{err}");
   let mut maybe_source = err.source();
 
   if maybe_source.is_some() {
@@ -846,25 +841,25 @@ pub fn format_deno_graph_error(err: &dyn std::error::Error) -> String {
     let mut count = 0;
     let mut display_count = 0;
     while let Some(source) = maybe_source {
-      let current_message = format!("{}", source);
+      let current_message = format!("{source}");
       maybe_source = source.source();
 
       // sometimes an error might be repeated due to
       // being boxed multiple times in another AnyError
       if current_message != past_message {
-        write!(message, "\n    {}: ", display_count,).unwrap();
+        write!(message, "\n    {display_count}: ",).unwrap();
         for (i, line) in current_message.lines().enumerate() {
           if i > 0 {
-            write!(message, "\n       {}", line).unwrap();
+            write!(message, "\n       {line}").unwrap();
           } else {
-            write!(message, "{}", line).unwrap();
+            write!(message, "{line}").unwrap();
           }
         }
         display_count += 1;
       }
 
       if count > 8 {
-        write!(message, "\n    {}: ...", count).unwrap();
+        write!(message, "\n    {count}: ...").unwrap();
         break;
       }
 

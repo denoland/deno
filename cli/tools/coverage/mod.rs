@@ -665,8 +665,7 @@ pub fn cover_files(
   };
   let get_message = |specifier: &ModuleSpecifier| -> String {
     format!(
-      "Failed to fetch \"{}\" from cache. Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
-      specifier,
+      "Failed to fetch \"{specifier}\" from cache. Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
     )
   };
 

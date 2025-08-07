@@ -44,7 +44,7 @@ impl FastCheckCache {
         if cfg!(debug_assertions) {
           panic!("Error using fast check cache: {err:#}");
         } else {
-          log::debug!("Error using fast check cache: {:#}", err);
+          log::debug!("Error using fast check cache: {err:#}");
         }
         T::default()
       }

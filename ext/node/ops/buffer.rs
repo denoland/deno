@@ -51,7 +51,7 @@ fn utf16le_to_utf8(source: &[u8]) -> Result<Vec<u8>, JsErrorBox> {
     .collect();
   String::from_utf16(&ucs2_vec)
     .map(|utf8_string| utf8_string.into_bytes())
-    .map_err(|e| JsErrorBox::generic(format!("Invalid UTF-16 sequence: {}", e)))
+    .map_err(|e| JsErrorBox::generic(format!("Invalid UTF-16 sequence: {e}")))
 }
 
 fn utf8_to_utf16le(source: &[u8]) -> Result<Vec<u8>, JsErrorBox> {

@@ -110,8 +110,7 @@ pub fn get_root_cert_store(
             log::error!(
               "{}",
               colors::yellow(&format!(
-                "Unable to add system certificate to certificate store: {:?}",
-                err
+                "Unable to add system certificate to certificate store: {err:?}"
               ))
             );
             let hex_encoded_root = faster_hex::hex_string(&root.0);
@@ -180,7 +179,7 @@ pub fn npm_process_state(
       }
       NpmProcessState::from_env_var(sys, fd_or_path)
         .inspect_err(|e| {
-          log::error!("failed to resolve npm process state: {}", e);
+          log::error!("failed to resolve npm process state: {e}");
         })
         .ok()
     })

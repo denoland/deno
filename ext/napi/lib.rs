@@ -705,8 +705,7 @@ pub fn print_linker_flags(name: &str) {
     target_os = "openbsd"
   ))]
   println!(
-    "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
-    symbols_path,
+    "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={symbols_path}",
   );
 
   #[cfg(target_os = "android")]

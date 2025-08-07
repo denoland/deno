@@ -634,7 +634,7 @@ fn format_display_name(display_name: Cow<str>) -> Cow<str> {
   if display_name.starts_with('<') && display_name.ends_with('>') {
     display_name
   } else {
-    Cow::Owned(format!("\"{}\"", display_name))
+    Cow::Owned(format!("\"{display_name}\""))
   }
 }
 
@@ -1432,7 +1432,7 @@ impl QueryDescriptor for NetDescriptor {
   }
 
   fn display_name(&self) -> Cow<str> {
-    Cow::from(format!("{}", self))
+    Cow::from(format!("{self}"))
   }
 
   fn from_allow(allow: &Self::AllowDesc) -> Self {
@@ -1670,7 +1670,7 @@ impl fmt::Display for NetDescriptor {
       Host::Vsock(cid) => write!(f, "vsock:{cid}"),
     }?;
     if let Some(port) = self.1 {
-      write!(f, ":{}", port)?;
+      write!(f, ":{port}")?;
     }
     Ok(())
   }
@@ -1987,7 +1987,7 @@ impl PathResolveError {
     match self {
       Self::CwdResolve(e) | Self::Canonicalize(e) | Self::NotFound(e) => e,
       PathResolveError::EmptyPath => {
-        std::io::Error::new(self.kind(), format!("{}", self))
+        std::io::Error::new(self.kind(), format!("{self}"))
       }
     }
   }
@@ -3107,7 +3107,7 @@ impl PermissionCheckError {
       | Self::NetDescriptorForUrlParse(_)
       | Self::SysDescriptorParse(_)
       | Self::HostParse(_) => {
-        std::io::Error::new(self.kind(), format!("{}", self))
+        std::io::Error::new(self.kind(), format!("{self}"))
       }
       Self::PathResolve(e) => e.into_io_error(),
     }
@@ -3358,7 +3358,7 @@ impl PermissionsContainer {
         access_kind.is_write() && !inner.write.is_allow_all();
       let path = self.descriptor_parser.parse_path_query(path)?;
       let path = match blind_requested {
-        Some(display) => path.with_requested(format!("<{}>", display)),
+        Some(display) => path.with_requested(format!("<{display}>")),
         None => path,
       };
       if !should_check_read && !should_check_write {
@@ -5011,7 +5011,7 @@ mod tests {
 
     for (url_str, is_ok) in url_tests {
       let u = Url::parse(url_str).unwrap();
-      assert_eq!(is_ok, perms.check_net_url(&u, "api()").is_ok(), "{}", u);
+      assert_eq!(is_ok, perms.check_net_url(&u, "api()").is_ok(), "{u}");
     }
   }
 
@@ -5096,8 +5096,7 @@ mod tests {
       assert_eq!(
         perms.check_specifier(&specifier, kind).is_ok(),
         expected,
-        "{}",
-        specifier,
+        "{specifier}",
       );
     }
   }
@@ -6445,9 +6444,7 @@ mod tests {
       assert_eq!(
         denies_run_name(name, Path::new(cmd_path)),
         denies,
-        "{} {}",
-        name,
-        cmd_path
+        "{name} {cmd_path}"
       );
     }
   }

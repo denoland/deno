@@ -203,7 +203,7 @@ pub enum WorkspaceResolveError {
     sub_path: String,
     error: url::ParseError,
   },
-  #[error("Unknown export '{}' for '{}'.\n  Package exports:\n{}", export_name, package_name, .exports.iter().map(|e| format!(" * {}", e)).collect::<Vec<_>>().join("\n"))]
+  #[error("Unknown export '{}' for '{}'.\n  Package exports:\n{}", export_name, package_name, .exports.iter().map(|e| format!(" * {e}")).collect::<Vec<_>>().join("\n"))]
   UnknownExport {
     package_name: String,
     export_name: String,
@@ -368,7 +368,7 @@ impl SloppyImportsResolutionReason {
           .rsplit_once('/')
           .map(|(_, file_name)| file_name)
           .unwrap_or(specifier.path());
-        format!("specify path to '{}' file in directory instead", file_name)
+        format!("specify path to '{file_name}' file in directory instead")
       }
     }
   }
@@ -1338,7 +1338,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
               member
                 .version
                 .as_ref()
-                .map(|v| format!("@^{}", v))
+                .map(|v| format!("@^{v}"))
                 .unwrap_or_else(String::new),
               path
             )) {
