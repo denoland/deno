@@ -1013,13 +1013,12 @@ async fn publish_package(
     package.version
   );
 
-  let url = format!(
-    "{}scopes/{}/packages/{}/versions/{}?config=/{}",
+  let url = registry::get_package_version_api_url(
     registry_api_url,
-    package.scope,
-    package.package,
-    package.version,
-    package.config
+    &package.scope,
+    &package.package,
+    &package.version,
+    Some(&format!("config=/{}", package.config)),
   );
 
   let body = deno_fetch::ReqBody::full(package.tarball.bytes.clone());
