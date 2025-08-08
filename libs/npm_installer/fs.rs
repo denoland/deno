@@ -176,12 +176,11 @@ pub fn symlink_dir<TSys: sys_traits::BaseFsSymlinkDir>(
 
   sys.fs_symlink_dir(oldpath, newpath).map_err(|err| {
     #[cfg(windows)]
-    if let Some(code) = err.raw_os_error() {
-      if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD
-        || code as u32 == winapi::shared::winerror::ERROR_INVALID_FUNCTION
-      {
-        return err_mapper(err, Some(ErrorKind::PermissionDenied));
-      }
+    if let Some(code) = err.raw_os_error()
+      && (code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD
+        || code as u32 == winapi::shared::winerror::ERROR_INVALID_FUNCTION)
+    {
+      return err_mapper(err, Some(ErrorKind::PermissionDenied));
     }
     err_mapper(err, None)
   })
