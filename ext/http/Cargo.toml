@@ -57,7 +57,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
 
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 
 [dev-dependencies]
