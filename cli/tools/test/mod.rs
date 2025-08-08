@@ -180,17 +180,20 @@ pub struct TestFilter {
 impl TestFilter {
   pub fn includes(&self, name: &String) -> bool {
     if let Some(substring) = &self.substring
-      && !name.contains(substring) {
-        return false;
-      }
+      && !name.contains(substring)
+    {
+      return false;
+    }
     if let Some(regex) = &self.regex
-      && !regex.is_match(name) {
-        return false;
-      }
+      && !regex.is_match(name)
+    {
+      return false;
+    }
     if let Some(include) = &self.include
-      && !include.contains(name) {
-        return false;
-      }
+      && !include.contains(name)
+    {
+      return false;
+    }
     if self.exclude.contains(name) {
       return false;
     }

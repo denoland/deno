@@ -123,9 +123,10 @@ impl IncrementalCacheInner {
   pub fn update_file(&self, file_path: &Path, file_text: &str) {
     let hash = CacheDBHash::from_hashable(file_text);
     if let Some(previous_hash) = self.previous_hashes.get(file_path)
-      && *previous_hash == hash {
-        return; // do not bother updating the db file because nothing has changed
-      }
+      && *previous_hash == hash
+    {
+      return; // do not bother updating the db file because nothing has changed
+    }
     let _ = self
       .sender
       .send(ReceiverMessage::Update(file_path.to_path_buf(), hash));

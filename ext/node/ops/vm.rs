@@ -191,9 +191,10 @@ impl ContextifyScript {
     let mut run = || {
       let r = script.run(scope);
       if r.is_some()
-        && let Some(mtask_queue) = microtask_queue {
-          mtask_queue.perform_checkpoint(scope);
-        }
+        && let Some(mtask_queue) = microtask_queue
+      {
+        mtask_queue.perform_checkpoint(scope);
+      }
       r
     };
 
@@ -752,24 +753,25 @@ fn property_setter<'s>(
 
   if is_declared_on_sandbox
     && let Some(desc) = sandbox.get_own_property_descriptor(scope, key)
-      && !desc.is_undefined() {
-        let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
-        // We have to specify the return value for any contextual or get/set
-        // property
-        let get_key =
-          v8::String::new_external_onebyte_static(scope, b"get").unwrap();
-        let set_key =
-          v8::String::new_external_onebyte_static(scope, b"set").unwrap();
-        if desc_obj
-          .has_own_property(scope, get_key.into())
-          .unwrap_or(false)
-          || desc_obj
-            .has_own_property(scope, set_key.into())
-            .unwrap_or(false)
-        {
-          return v8::Intercepted::Yes;
-        }
-      }
+    && !desc.is_undefined()
+  {
+    let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
+    // We have to specify the return value for any contextual or get/set
+    // property
+    let get_key =
+      v8::String::new_external_onebyte_static(scope, b"get").unwrap();
+    let set_key =
+      v8::String::new_external_onebyte_static(scope, b"set").unwrap();
+    if desc_obj
+      .has_own_property(scope, get_key.into())
+      .unwrap_or(false)
+      || desc_obj
+        .has_own_property(scope, set_key.into())
+        .unwrap_or(false)
+    {
+      return v8::Intercepted::Yes;
+    }
+  }
 
   v8::Intercepted::No
 }
@@ -791,10 +793,11 @@ fn property_descriptor<'s>(
   let scope = &mut v8::ContextScope::new(scope, context);
 
   if sandbox.has_own_property(scope, key).unwrap_or(false)
-    && let Some(desc) = sandbox.get_own_property_descriptor(scope, key) {
-      rv.set(desc);
-      return v8::Intercepted::Yes;
-    }
+    && let Some(desc) = sandbox.get_own_property_descriptor(scope, key)
+  {
+    rv.set(desc);
+    return v8::Intercepted::Yes;
+  }
 
   v8::Intercepted::No
 }

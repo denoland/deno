@@ -353,9 +353,10 @@ impl WorkspaceLinter {
 
     let mut futures = Vec::with_capacity(2);
     if linter.has_package_rules()
-      && let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths) {
-        futures.push(fut);
-      }
+      && let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths)
+    {
+      futures.push(fut);
+    }
 
     let maybe_incremental_cache_ = maybe_incremental_cache.clone();
     let linter = linter.clone();
@@ -366,9 +367,10 @@ impl WorkspaceLinter {
 
         // don't bother rechecking this file if it didn't have any diagnostics before
         if let Some(incremental_cache) = &maybe_incremental_cache_
-          && incremental_cache.is_file_same(&file_path, &file_text) {
-            return Ok(());
-          }
+          && incremental_cache.is_file_same(&file_path, &file_text)
+        {
+          return Ok(());
+        }
 
         let r = linter.lint_file(
           &file_path,
@@ -377,14 +379,15 @@ impl WorkspaceLinter {
         );
         if let Ok((file_source, file_diagnostics)) = &r
           && let Some(incremental_cache) = &maybe_incremental_cache_
-            && file_diagnostics.is_empty() {
-              // update the incremental cache if there were no diagnostics
-              incremental_cache.update_file(
-                &file_path,
-                // ensure the returned text is used here as it may have been modified via --fix
-                file_source.text(),
-              )
-            }
+          && file_diagnostics.is_empty()
+        {
+          // update the incremental cache if there were no diagnostics
+          incremental_cache.update_file(
+            &file_path,
+            // ensure the returned text is used here as it may have been modified via --fix
+            file_source.text(),
+          )
+        }
 
         let success = handle_lint_result(
           &file_path.to_string_lossy(),

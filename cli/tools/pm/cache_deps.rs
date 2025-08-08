@@ -166,9 +166,10 @@ pub async fn cache_top_level_deps(
           }
           if specifier.scheme() == "file"
             && let Ok(path) = specifier.to_file_path()
-              && !path.is_file() {
-                continue;
-              }
+            && !path.is_file()
+          {
+            continue;
+          }
           roots.push(specifier.clone());
         }
       }

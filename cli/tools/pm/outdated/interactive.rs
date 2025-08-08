@@ -319,37 +319,38 @@ pub fn select_interactive(
       .map(|cols| (instructions_width / cols as usize) + 1)
       .unwrap_or(1);
     if let Some(rows) = size.rows
-      && items.len() + first_line_rows >= rows as usize {
-        let adj = if scroll_offset == 0 {
-          first_line_rows.saturating_sub(1)
-        } else {
-          0
-        };
-        if state.currently_selected < scroll_offset {
-          scroll_offset = state.currently_selected;
-        } else if state.currently_selected + 1
-          >= scroll_offset + (rows as usize).saturating_sub(adj)
-        {
-          scroll_offset =
-            (state.currently_selected + 1).saturating_sub(rows as usize) + 1;
-        }
-        let adj = if scroll_offset == 0 {
-          first_line_rows.saturating_sub(1)
-        } else {
-          0
-        };
-        let mut new_items = Vec::with_capacity(rows as usize);
-
-        scroll_offset = scroll_offset.clamp(0, items.len() - 1);
-        new_items.extend(
-          items.drain(
-            scroll_offset
-              ..(scroll_offset + (rows as usize).saturating_sub(adj))
-                .min(items.len()),
-          ),
-        );
-        items = new_items;
+      && items.len() + first_line_rows >= rows as usize
+    {
+      let adj = if scroll_offset == 0 {
+        first_line_rows.saturating_sub(1)
+      } else {
+        0
+      };
+      if state.currently_selected < scroll_offset {
+        scroll_offset = state.currently_selected;
+      } else if state.currently_selected + 1
+        >= scroll_offset + (rows as usize).saturating_sub(adj)
+      {
+        scroll_offset =
+          (state.currently_selected + 1).saturating_sub(rows as usize) + 1;
       }
+      let adj = if scroll_offset == 0 {
+        first_line_rows.saturating_sub(1)
+      } else {
+        0
+      };
+      let mut new_items = Vec::with_capacity(rows as usize);
+
+      scroll_offset = scroll_offset.clamp(0, items.len() - 1);
+      new_items.extend(
+        items.drain(
+          scroll_offset
+            ..(scroll_offset + (rows as usize).saturating_sub(adj))
+              .min(items.len()),
+        ),
+      );
+      items = new_items;
+    }
     static_text.eprint_items(items.iter());
 
     let event = crossterm::event::read()?;

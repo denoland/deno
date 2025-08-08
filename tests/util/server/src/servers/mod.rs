@@ -283,12 +283,13 @@ async fn auth_redirect(
     .headers()
     .get("authorization")
     .map(|v| v.to_str().unwrap())
-    && auth.to_lowercase() == format!("bearer {TEST_AUTH_TOKEN}") {
-      let p = req.uri().path();
-      assert_eq!(&p[0..1], "/");
-      let url = format!("http://localhost:{PORT}{p}");
-      return Ok(redirect_resp(&url));
-    }
+    && auth.to_lowercase() == format!("bearer {TEST_AUTH_TOKEN}")
+  {
+    let p = req.uri().path();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://localhost:{PORT}{p}");
+    return Ok(redirect_resp(&url));
+  }
 
   let mut resp = Response::new(UnsyncBoxBody::new(Empty::new()));
   *resp.status_mut() = StatusCode::NOT_FOUND;
@@ -430,10 +431,11 @@ async fn absolute_redirect(
   }
 
   if path.starts_with("/a/b/c")
-    && let Some(x_loc) = req.headers().get("x-location") {
-      let loc = x_loc.to_str().unwrap();
-      return Ok(redirect_resp(loc));
-    }
+    && let Some(x_loc) = req.headers().get("x-location")
+  {
+    let loc = x_loc.to_str().unwrap();
+    return Ok(redirect_resp(loc));
+  }
 
   let file_path = testdata_path().join(&req.uri().path()[1..]);
   if file_path.is_dir() || !file_path.exists() {

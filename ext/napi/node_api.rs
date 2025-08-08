@@ -650,12 +650,13 @@ extern "C" fn default_call_js_cb(
   _data: *mut c_void,
 ) {
   if let Some(js_callback) = *js_callback
-    && let Ok(js_callback) = v8::Local::<v8::Function>::try_from(js_callback) {
-      let env = unsafe { &mut *(env as *mut Env) };
-      let scope = &mut env.scope();
-      let recv = v8::undefined(scope);
-      js_callback.call(scope, recv.into(), &[]);
-    }
+    && let Ok(js_callback) = v8::Local::<v8::Function>::try_from(js_callback)
+  {
+    let env = unsafe { &mut *(env as *mut Env) };
+    let scope = &mut env.scope();
+    let recv = v8::undefined(scope);
+    js_callback.call(scope, recv.into(), &[]);
+  }
 }
 
 struct TsFn {

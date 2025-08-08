@@ -949,9 +949,11 @@ impl Drop for TestCommandOutput {
 
     // either the combined output needs to be asserted or both stdout and stderr
     if let Some(combined) = &self.combined
-      && !*self.asserted_combined.borrow() && !combined.is_empty() {
-        panic_unasserted_output(self, combined);
-      }
+      && !*self.asserted_combined.borrow()
+      && !combined.is_empty()
+    {
+      panic_unasserted_output(self, combined);
+    }
     if let Some((stdout, stderr)) = &self.std_out_err {
       if !*self.asserted_stdout.borrow() && !stdout.is_empty() {
         panic_unasserted_output(self, stdout);

@@ -522,9 +522,10 @@ impl<
               referrer,
               resolution_mode,
               resolution_kind,
-            ) {
-              return Ok(resolved);
-            }
+            )
+          {
+            return Ok(resolved);
+          }
         }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
@@ -621,15 +622,16 @@ impl<
                           referrer,
                         )
                         .is_some()
-                      {
-                        return Err(
-                          ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(
-                            NodeModulesOutOfDateError {
-                              specifier: specifier.to_string(),
-                            },
-                          ).into_box(),
-                        );
-                      }
+                    {
+                      return Err(
+                        ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(
+                          NodeModulesOutOfDateError {
+                            specifier: specifier.to_string(),
+                          },
+                        )
+                        .into_box(),
+                      );
+                    }
                     Ok(None)
                   }
                   PackageFolderResolveErrorKind::ReferrerNotFound(_) => {

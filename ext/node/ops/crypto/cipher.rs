@@ -531,9 +531,10 @@ impl Decipher {
         }
 
         if let Some(tag_len) = auth_tag_length
-          && !is_valid_gcm_tag_length(tag_len) {
-            return Err(DecipherError::InvalidAuthTag(tag_len));
-          }
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
+        }
 
         let decipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
@@ -546,9 +547,10 @@ impl Decipher {
         }
 
         if let Some(tag_len) = auth_tag_length
-          && !is_valid_gcm_tag_length(tag_len) {
-            return Err(DecipherError::InvalidAuthTag(tag_len));
-          }
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
+        }
 
         let decipher =
           aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);

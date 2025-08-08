@@ -181,16 +181,17 @@ impl FilePatterns {
     );
     for p in &negated_excludes {
       if let Some(base_path) = p.base_path()
-        && !include_patterns_by_base_path.contains_key(&base_path) {
-          let has_any_base_parent = include_patterns_by_base_path
-            .keys()
-            .any(|k| base_path.starts_with(k))
-            || include_paths.iter().any(|p| base_path.starts_with(p));
-          // don't include an orphaned negated pattern
-          if has_any_base_parent {
-            include_patterns_by_base_path.insert(base_path, Vec::new());
-          }
+        && !include_patterns_by_base_path.contains_key(&base_path)
+      {
+        let has_any_base_parent = include_patterns_by_base_path
+          .keys()
+          .any(|k| base_path.starts_with(k))
+          || include_paths.iter().any(|p| base_path.starts_with(p));
+        // don't include an orphaned negated pattern
+        if has_any_base_parent {
+          include_patterns_by_base_path.insert(base_path, Vec::new());
         }
+      }
     }
 
     let exclude_by_base_path = exclude_patterns

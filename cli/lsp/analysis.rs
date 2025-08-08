@@ -383,15 +383,16 @@ impl<'a> TsResponseImportMapper<'a> {
           return Some(result);
         }
         if let Some(req_ref_str) = specifier.as_str().strip_prefix("jsr:")
-          && !req_ref_str.starts_with('/') {
-            let specifier_str = format!("jsr:/{req_ref_str}");
-            if let Ok(specifier) = ModuleSpecifier::parse(&specifier_str)
-              && let Some(result) =
-                import_map_lookup(import_map, &specifier, referrer)
-              {
-                return Some(result);
-              }
+          && !req_ref_str.starts_with('/')
+        {
+          let specifier_str = format!("jsr:/{req_ref_str}");
+          if let Ok(specifier) = ModuleSpecifier::parse(&specifier_str)
+            && let Some(result) =
+              import_map_lookup(import_map, &specifier, referrer)
+          {
+            return Some(result);
           }
+        }
       }
       return Some(spec_str);
     }
@@ -432,19 +433,18 @@ impl<'a> TsResponseImportMapper<'a> {
           for entry in import_map.entries_for_referrer(referrer) {
             if let Some(value) = entry.raw_value
               && let Ok(package_ref) = NpmPackageReqReference::from_str(value)
-                && pkg_reqs.contains(package_ref.req()) {
-                  let sub_path = sub_path.as_deref().unwrap_or("");
-                  let value_sub_path = package_ref.sub_path().unwrap_or("");
-                  if let Some(key_sub_path) =
-                    sub_path.strip_prefix(value_sub_path)
-                  {
-                    // keys that don't end in a slash can't be mapped to a subpath
-                    if entry.raw_key.ends_with('/') || key_sub_path.is_empty() {
-                      matches
-                        .push(format!("{}{}", entry.raw_key, key_sub_path));
-                    }
-                  }
+              && pkg_reqs.contains(package_ref.req())
+            {
+              let sub_path = sub_path.as_deref().unwrap_or("");
+              let value_sub_path = package_ref.sub_path().unwrap_or("");
+              if let Some(key_sub_path) = sub_path.strip_prefix(value_sub_path)
+              {
+                // keys that don't end in a slash can't be mapped to a subpath
+                if entry.raw_key.ends_with('/') || key_sub_path.is_empty() {
+                  matches.push(format!("{}{}", entry.raw_key, key_sub_path));
                 }
+              }
+            }
           }
           // select the shortest match
           matches.sort_by_key(|a| a.len());
@@ -476,9 +476,10 @@ impl<'a> TsResponseImportMapper<'a> {
 
     // check if the import map has this specifier
     if let Some(import_map) = self.maybe_import_map
-      && let Some(result) = import_map_lookup(import_map, specifier, referrer) {
-        return Some(result);
-      }
+      && let Some(result) = import_map_lookup(import_map, specifier, referrer)
+    {
+      return Some(result);
+    }
 
     None
   }
@@ -574,9 +575,9 @@ impl<'a> TsResponseImportMapper<'a> {
           .check_specifier(&specifier, referrer)
           .or_else(|| relative_specifier(referrer, &specifier))
           .filter(|s| !s.contains("/node_modules/"))
-        {
-          return Some(specifier);
-        }
+      {
+        return Some(specifier);
+      }
     }
     None
   }
@@ -1192,16 +1193,16 @@ impl CodeActionCollection {
     if let Some(fix_id) = &action.fix_id
       && let Some(CodeActionKind::Tsc(existing_fix_all, existing_action)) =
         self.fix_all_actions.get(&FixAllKind::Tsc(fix_id.clone()))
-      {
-        self.actions.retain(|i| match i {
-          CodeActionKind::Tsc(c, _) => c != existing_fix_all,
-          _ => true,
-        });
-        self.actions.push(CodeActionKind::Tsc(
-          existing_fix_all.clone(),
-          existing_action.clone(),
-        ));
-      }
+    {
+      self.actions.retain(|i| match i {
+        CodeActionKind::Tsc(c, _) => c != existing_fix_all,
+        _ => true,
+      });
+      self.actions.push(CodeActionKind::Tsc(
+        existing_fix_all.clone(),
+        existing_action.clone(),
+      ));
+    }
     Ok(())
   }
 

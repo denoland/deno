@@ -329,12 +329,13 @@ fn add_npm_packages_to_json(
               .ok()
           });
         if let Some(pkg) = maybe_package
-          && let Some(module) = module.as_object_mut() {
-            module.insert(
-              "npmPackage".to_string(),
-              pkg.id.as_serialized().into_string().into(),
-            );
-          }
+          && let Some(module) = module.as_object_mut()
+        {
+          module.insert(
+            "npmPackage".to_string(),
+            pkg.id.as_serialized().into_string().into(),
+          );
+        }
       }
 
       let dependencies = module
@@ -344,14 +345,14 @@ fn add_npm_packages_to_json(
         for dep in dependencies.iter_mut().flat_map(|d| d.as_object_mut()) {
           if let Some(specifier) = dep.get("specifier").and_then(|s| s.as_str())
             && let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier)
-              && let Ok(pkg) =
-                npm_snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
-              {
-                dep.insert(
-                  "npmPackage".to_string(),
-                  pkg.id.as_serialized().into_string().into(),
-                );
-              }
+            && let Ok(pkg) =
+              npm_snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
+          {
+            dep.insert(
+              "npmPackage".to_string(),
+              pkg.id.as_serialized().into_string().into(),
+            );
+          }
 
           // don't show this in the output unless someone needs it
           if let Some(code) =
@@ -436,14 +437,16 @@ impl NpmInfo {
   ) {
     self.packages.insert(package.id.clone(), package.clone());
     if let Ok(folder) = npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)
-      && let Ok(size) = crate::util::fs::dir_size(&folder) {
-        self.package_sizes.insert(package.id.clone(), size);
-      }
+      && let Ok(size) = crate::util::fs::dir_size(&folder)
+    {
+      self.package_sizes.insert(package.id.clone(), size);
+    }
     for id in package.dependencies.values() {
       if !self.packages.contains_key(id)
-        && let Some(package) = npm_snapshot.package_from_id(id) {
-          self.fill_package_info(package, npm_resolver, npm_snapshot);
-        }
+        && let Some(package) = npm_snapshot.package_from_id(id)
+      {
+        self.fill_package_info(package, npm_resolver, npm_snapshot);
+      }
     }
   }
 
@@ -503,14 +506,15 @@ impl<'a> GraphDisplayContext<'a> {
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         };
         if let Some(cache_info) = maybe_cache_info
-          && let Some(local) = &cache_info.local {
-            writeln!(
-              writer,
-              "{} {}",
-              colors::bold("local:"),
-              local.to_string_lossy()
-            )?;
-          }
+          && let Some(local) = &cache_info.local
+        {
+          writeln!(
+            writer,
+            "{} {}",
+            colors::bold("local:"),
+            local.to_string_lossy()
+          )?;
+        }
         if let Some(module) = root.js() {
           writeln!(writer, "{} {}", colors::bold("type:"), module.media_type)?;
         }
@@ -570,13 +574,15 @@ impl<'a> GraphDisplayContext<'a> {
   fn build_dep_info(&mut self, dep: &Dependency) -> Vec<DisplayTreeNode> {
     let mut children = Vec::with_capacity(2);
     if !dep.maybe_code.is_none()
-      && let Some(child) = self.build_resolved_info(&dep.maybe_code, false) {
-        children.push(child);
-      }
+      && let Some(child) = self.build_resolved_info(&dep.maybe_code, false)
+    {
+      children.push(child);
+    }
     if !dep.maybe_type.is_none()
-      && let Some(child) = self.build_resolved_info(&dep.maybe_type, true) {
-        children.push(child);
-      }
+      && let Some(child) = self.build_resolved_info(&dep.maybe_type, true)
+    {
+      children.push(child);
+    }
     children
   }
 
@@ -642,9 +648,9 @@ impl<'a> GraphDisplayContext<'a> {
             if let Some(types_dep) = &module.maybe_types_dependency
               && let Some(child) =
                 self.build_resolved_info(&types_dep.dependency, true)
-              {
-                tree_node.children.push(child);
-              }
+            {
+              tree_node.children.push(child);
+            }
             for dep in module.dependencies.values() {
               tree_node.children.extend(self.build_dep_info(dep));
             }
@@ -680,16 +686,17 @@ impl<'a> GraphDisplayContext<'a> {
         size_str
       ));
       if let Some(package) = self.npm_info.packages.get(dep_id)
-        && !package.dependencies.is_empty() {
-          let was_seen =
-            !self.seen.insert(package.id.as_serialized().into_string());
-          if was_seen {
-            child.text = format!("{} {}", child.text, colors::gray("*"));
-          } else {
-            let package = package.clone();
-            child.children.extend(self.build_npm_deps(&package));
-          }
+        && !package.dependencies.is_empty()
+      {
+        let was_seen =
+          !self.seen.insert(package.id.as_serialized().into_string());
+        if was_seen {
+          child.text = format!("{} {}", child.text, colors::gray("*"));
+        } else {
+          let package = package.clone();
+          child.children.extend(self.build_npm_deps(&package));
         }
+      }
       children.push(child);
     }
     children

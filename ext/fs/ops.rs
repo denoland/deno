@@ -1486,9 +1486,10 @@ where
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid
-      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-        res.close();
-      };
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
+    };
 
     res?.context_path("writefile", &path)?;
   } else {
@@ -1551,9 +1552,10 @@ where
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid
-      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-        res.close();
-      };
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
+    };
 
     res?.context_path("readfile", &path)?
   } else {
@@ -1620,9 +1622,10 @@ where
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid
-      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-        res.close();
-      };
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
+    };
 
     res?.context_path("readfile", &path)?
   } else {

@@ -160,9 +160,7 @@ impl SummaryCoverageReporter {
       format!("{}", colors::red(&format!("{line_percent:>6.1}")))
     };
 
-    println!(
-      "| {file_name} | {branch_percent} | {line_percent} |",
-    );
+    println!("| {file_name} | {branch_percent} | {line_percent} |",);
   }
 }
 
@@ -217,17 +215,18 @@ impl CoverageReporter for LcovCoverageReporter {
       self.report(report, file_text).unwrap();
     });
     if let Some((report, _)) = file_reports.first()
-      && let Some(ref output) = report.output {
-        if let Ok(path) = output.canonicalize() {
-          let url = Url::from_file_path(path).unwrap();
-          log::info!("Lcov coverage report has been generated at {url}");
-        } else {
-          log::error!(
-            "Failed to resolve the output path of Lcov report: {}",
-            output.display()
-          );
-        }
+      && let Some(ref output) = report.output
+    {
+      if let Ok(path) = output.canonicalize() {
+        let url = Url::from_file_path(path).unwrap();
+        log::info!("Lcov coverage report has been generated at {url}");
+      } else {
+        log::error!(
+          "Failed to resolve the output path of Lcov report: {}",
+          output.display()
+        );
       }
+    }
   }
 }
 
@@ -389,10 +388,11 @@ impl DetailedCoverageReporter {
 
       // Put a horizontal separator between disjoint runs of lines
       if let Some(last_line) = last_line
-        && last_line + 1 != line_index {
-          let dash = colors::gray("-".repeat(WIDTH + 1));
-          println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
-        }
+        && last_line + 1 != line_index
+      {
+        let dash = colors::gray("-".repeat(WIDTH + 1));
+        println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
+      }
 
       println!(
         "{:width$} {} {}",

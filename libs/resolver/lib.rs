@@ -495,11 +495,10 @@ impl<
     // if they do this.
     if let Some(vendor_specifier) = &self.maybe_vendor_specifier
       && let Ok(specifier) = &result
-        && specifier.as_str().starts_with(vendor_specifier.as_str()) {
-          return Err(
-            DenoResolveErrorKind::InvalidVendorFolderImport.into_box(),
-          );
-        }
+      && specifier.as_str().starts_with(vendor_specifier.as_str())
+    {
+      return Err(DenoResolveErrorKind::InvalidVendorFolderImport.into_box());
+    }
 
     let Some(NodeAndNpmResolvers {
       node_resolver,

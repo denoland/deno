@@ -354,11 +354,12 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
               // `deno_dir` can be symlink in macOS or on the CI
               if let Ok(deno_dir) =
                 canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
-                && pkg_json.path.starts_with(deno_dir) {
-                  // if the package.json is in deno_dir, then do not use node_modules
-                  // next to it as local node_modules dir
-                  return Ok(NodeModulesDirMode::None);
-                }
+                && pkg_json.path.starts_with(deno_dir)
+              {
+                // if the package.json is in deno_dir, then do not use node_modules
+                // next to it as local node_modules dir
+                return Ok(NodeModulesDirMode::None);
+              }
             }
 
             Ok(NodeModulesDirMode::Manual)
@@ -581,7 +582,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       let dir = match &self.options.config_discovery {
         ConfigDiscoveryOption::DiscoverCwd => WorkspaceDirectory::discover(
           &self.sys,
-          WorkspaceDiscoverStart::Paths(std::slice::from_ref(&self.initial_cwd)),
+          WorkspaceDiscoverStart::Paths(std::slice::from_ref(
+            &self.initial_cwd,
+          )),
           &resolve_workspace_discover_options(),
         )?,
         ConfigDiscoveryOption::Discover { start_paths } => {

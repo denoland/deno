@@ -23,20 +23,18 @@ impl VisitMut for BundleImportMetaMainTransform {
     //   import.meta.main => false
     if let swc::ast::Expr::Member(member) = node
       && let swc::ast::Expr::MetaProp(meta_prop) = &mut *member.obj
-        && meta_prop.kind == swc::ast::MetaPropKind::ImportMeta
-          && member.prop.is_ident_with("main")
-        {
-          if self.is_entrypoint {
-            return;
-          } else {
-            let span = member.span;
-            *node = swc::ast::Expr::Lit(swc::ast::Lit::Bool(Bool {
-              span,
-              value: false,
-            }));
-            return;
-          }
-        }
+      && meta_prop.kind == swc::ast::MetaPropKind::ImportMeta
+      && member.prop.is_ident_with("main")
+    {
+      if self.is_entrypoint {
+        return;
+      } else {
+        let span = member.span;
+        *node =
+          swc::ast::Expr::Lit(swc::ast::Lit::Bool(Bool { span, value: false }));
+        return;
+      }
+    }
     node.visit_mut_children_with(self);
   }
 }

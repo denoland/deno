@@ -301,9 +301,10 @@ impl SqliteBackedCache {
             &vary_header,
             &request.request_headers,
             &cache_meta.request_headers,
-          ) {
-            return Ok(None);
-          }
+          )
+        {
+          return Ok(None);
+        }
         let response_path =
           get_responses_dir(cache_storage_dir, request.cache_id)
             .join(response_body_key);

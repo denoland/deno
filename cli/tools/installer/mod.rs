@@ -137,15 +137,16 @@ fn get_installer_bin_dir(
 
 fn get_installer_root() -> Result<PathBuf, AnyError> {
   if let Some(env_dir) = env::var_os("DENO_INSTALL_ROOT")
-    && !env_dir.is_empty() {
-      let env_dir = PathBuf::from(env_dir);
-      return canonicalize_path_maybe_not_exists(&env_dir).with_context(|| {
-        format!(
-          "Canonicalizing DENO_INSTALL_ROOT ('{}').",
-          env_dir.display()
-        )
-      });
-    }
+    && !env_dir.is_empty()
+  {
+    let env_dir = PathBuf::from(env_dir);
+    return canonicalize_path_maybe_not_exists(&env_dir).with_context(|| {
+      format!(
+        "Canonicalizing DENO_INSTALL_ROOT ('{}').",
+        env_dir.display()
+      )
+    });
+  }
   // Note: on Windows, the $HOME environment variable may be set by users or by
   // third party software, but it is non-standard and should not be relied upon.
   let home_env_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
@@ -179,9 +180,10 @@ pub async fn uninstall(
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&installation_dir)
-    && !metadata.is_dir() {
-      return Err(anyhow!("Installation path is not a directory"));
-    }
+    && !metadata.is_dir()
+  {
+    return Err(anyhow!("Installation path is not a directory"));
+  }
 
   let file_path = installation_dir.join(&uninstall_flags.name);
 
@@ -368,7 +370,9 @@ async fn install_global(
   factory
     .main_module_graph_container()
     .await?
-    .load_and_type_check_files(std::slice::from_ref(&install_flags_global.module_url))
+    .load_and_type_check_files(std::slice::from_ref(
+      &install_flags_global.module_url,
+    ))
     .await?;
 
   if matches!(flags.config_flag, ConfigFlag::Discover)

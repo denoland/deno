@@ -471,19 +471,20 @@ fn create_command(
       fds_to_close.push(fd);
     }
     if let Some(ipc) = args.ipc
-      && ipc >= 0 {
-        let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
-        fds_to_dup.push((ipc_fd2, ipc));
-        fds_to_close.push(ipc_fd2);
-        /* One end returned to parent process (this) */
-        let pipe_rid = state.resource_table.add(IpcJsonStreamResource::new(
-          ipc_fd1 as _,
-          IpcRefTracker::new(state.external_ops_tracker.clone()),
-        )?);
-        /* The other end passed to child process via NODE_CHANNEL_FD */
-        command.env("NODE_CHANNEL_FD", format!("{ipc}"));
-        ipc_rid = Some(pipe_rid);
-      }
+      && ipc >= 0
+    {
+      let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
+      fds_to_dup.push((ipc_fd2, ipc));
+      fds_to_close.push(ipc_fd2);
+      /* One end returned to parent process (this) */
+      let pipe_rid = state.resource_table.add(IpcJsonStreamResource::new(
+        ipc_fd1 as _,
+        IpcRefTracker::new(state.external_ops_tracker.clone()),
+      )?);
+      /* The other end passed to child process via NODE_CHANNEL_FD */
+      command.env("NODE_CHANNEL_FD", format!("{ipc}"));
+      ipc_rid = Some(pipe_rid);
+    }
 
     for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
       // index 0 in `extra_stdio` actually refers to fd 3

@@ -112,13 +112,15 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
       let pkg_json_path = current_folder.join("package.json");
       if let Ok(Some(pkg_json)) = self.load_pkg_json(&pkg_json_path) {
         if let Some(deps) = &pkg_json.dependencies
-          && deps.contains_key(dep_name) {
-            return Some(pkg_json);
-          }
+          && deps.contains_key(dep_name)
+        {
+          return Some(pkg_json);
+        }
         if let Some(deps) = &pkg_json.dev_dependencies
-          && deps.contains_key(dep_name) {
-            return Some(pkg_json);
-          }
+          && deps.contains_key(dep_name)
+        {
+          return Some(pkg_json);
+        }
       }
 
       if let Some(parent) = current_folder.parent() {
@@ -231,9 +233,9 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
         if let Some(pkg_json) = self.load_pkg_json(&package_json_path)?
           && let Some(alias) =
             resolve_alias_from_pkg_json(req, pkg_json.as_ref())?
-          {
-            return Ok(Some((pkg_json, alias)));
-          }
+        {
+          return Ok(Some((pkg_json, alias)));
+        }
       }
     }
 
@@ -244,9 +246,9 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
       if let Some(pkg_json) = self.load_pkg_json(&root_pkg_json_path)?
         && let Some(alias) =
           resolve_alias_from_pkg_json(req, pkg_json.as_ref())?
-        {
-          return Ok(Some((pkg_json, alias)));
-        }
+      {
+        return Ok(Some((pkg_json, alias)));
+      }
     }
 
     // now try to resolve based on the closest node_modules directory
@@ -259,17 +261,18 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
       let pkg_folder = node_modules.join(&req.name);
       if let Ok(Some(dep_pkg_json)) =
         self.load_pkg_json(&pkg_folder.join("package.json"))
-        && dep_pkg_json.name.as_deref() == Some(req.name.as_str()) {
-          let matches_req = dep_pkg_json
-            .version
-            .as_ref()
-            .and_then(|v| Version::parse_from_npm(v).ok())
-            .map(|version| req.version_req.matches(&version))
-            .unwrap_or(true);
-          if matches_req {
-            return Some((dep_pkg_json, req.name.clone()));
-          }
+        && dep_pkg_json.name.as_deref() == Some(req.name.as_str())
+      {
+        let matches_req = dep_pkg_json
+          .version
+          .as_ref()
+          .and_then(|v| Version::parse_from_npm(v).ok())
+          .map(|version| req.version_req.matches(&version))
+          .unwrap_or(true);
+        if matches_req {
+          return Some((dep_pkg_json, req.name.clone()));
         }
+      }
       None
     };
     if let Some(file_path) = &maybe_referrer_path {
@@ -293,9 +296,10 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
         })
         .unwrap_or(false);
       if !already_searched
-        && let Some(result) = search_node_modules(root_node_modules_dir) {
-          return Ok(Some(result));
-        }
+        && let Some(result) = search_node_modules(root_node_modules_dir)
+      {
+        return Ok(Some(result));
+      }
     }
 
     Ok(None)

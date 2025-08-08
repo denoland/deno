@@ -508,9 +508,10 @@ where
   };
 
   if let Some(cancel_rid) = cancel_handle
-    && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-      res.close();
-    }
+    && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+  {
+    res.close();
+  }
 
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(ServerWebSocket::new(stream));

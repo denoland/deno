@@ -92,12 +92,12 @@ impl ParsedSourceCache {
   ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
     if let Some(parsed_source) = self.remove_parsed_source(specifier)
       && parsed_source.media_type() == media_type
-        && parsed_source.text().as_ref() == source.as_ref()
-      {
-        // note: message used tests
-        log::debug!("Removed parsed source: {specifier}");
-        return Ok(parsed_source);
-      }
+      && parsed_source.text().as_ref() == source.as_ref()
+    {
+      // note: message used tests
+      log::debug!("Removed parsed source: {specifier}");
+      return Ok(parsed_source);
+    }
     let options = deno_graph::ast::ParseOptions {
       specifier,
       source,

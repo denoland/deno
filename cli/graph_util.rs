@@ -255,12 +255,13 @@ pub fn module_error_for_tsc_diagnostic<'a>(
       err: ModuleLoadError::Loader(_),
     } => {
       if let Ok(path) = deno_path_util::url_to_file_path(specifier)
-        && sys.fs_is_dir_no_err(path) {
-          return Some(ModuleNotFoundGraphErrorRef {
-            specifier,
-            maybe_range: maybe_referrer.as_ref(),
-          });
-        }
+        && sys.fs_is_dir_no_err(path)
+      {
+        return Some(ModuleNotFoundGraphErrorRef {
+          specifier,
+          maybe_range: maybe_referrer.as_ref(),
+        });
+      }
       None
     }
     _ => None,
@@ -727,9 +728,11 @@ impl ModuleGraphBuilder {
       .await?;
 
     if let Some(npm_installer) = &self.npm_installer
-      && graph.has_node_specifier && graph.graph_kind().include_types() {
-        npm_installer.inject_synthetic_types_node_package().await?;
-      }
+      && graph.has_node_specifier
+      && graph.graph_kind().include_types()
+    {
+      npm_installer.inject_synthetic_types_node_package().await?;
+    }
 
     Ok(())
   }
@@ -749,14 +752,15 @@ impl ModuleGraphBuilder {
       .specified_node_modules_dir()?
       .map(|m| m == NodeModulesDirMode::Auto)
       .unwrap_or(false)
-      && let Some(npm_installer) = &self.npm_installer {
-        let already_done = npm_installer
-          .ensure_top_level_package_json_install()
-          .await?;
-        if !already_done && matches!(npm_caching, NpmCachingStrategy::Eager) {
-          npm_installer.cache_packages(PackageCaching::All).await?;
-        }
+      && let Some(npm_installer) = &self.npm_installer
+    {
+      let already_done = npm_installer
+        .ensure_top_level_package_json_install()
+        .await?;
+      if !already_done && matches!(npm_caching, NpmCachingStrategy::Eager) {
+        npm_installer.cache_packages(PackageCaching::All).await?;
       }
+    }
 
     // fill the graph with the information from the lockfile
     let is_first_execution = graph.roots.is_empty();
@@ -828,33 +832,34 @@ impl ModuleGraphBuilder {
     if (has_redirects_changed
       || has_jsr_package_deps_changed
       || has_jsr_package_mappings_changed)
-      && let Some(lockfile) = &self.lockfile {
-        let mut lockfile = lockfile.lock();
-        // https redirects
-        if has_redirects_changed {
-          let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
-            !matches!(from.scheme(), "npm" | "file" | "deno")
-          });
-          for (from, to) in graph_redirects {
-            lockfile.insert_redirect(from.to_string(), to.to_string());
-          }
-        }
-        // jsr package mappings
-        if has_jsr_package_mappings_changed {
-          for (from, to) in graph.packages.mappings() {
-            lockfile.insert_package_specifier(
-              JsrDepPackageReq::jsr(from.clone()),
-              to.version.to_custom_string::<SmallStackString>(),
-            );
-          }
-        }
-        // jsr packages
-        if has_jsr_package_deps_changed {
-          for (nv, deps) in graph.packages.packages_with_deps() {
-            lockfile.add_package_deps(nv, deps.cloned());
-          }
+      && let Some(lockfile) = &self.lockfile
+    {
+      let mut lockfile = lockfile.lock();
+      // https redirects
+      if has_redirects_changed {
+        let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
+          !matches!(from.scheme(), "npm" | "file" | "deno")
+        });
+        for (from, to) in graph_redirects {
+          lockfile.insert_redirect(from.to_string(), to.to_string());
         }
       }
+      // jsr package mappings
+      if has_jsr_package_mappings_changed {
+        for (from, to) in graph.packages.mappings() {
+          lockfile.insert_package_specifier(
+            JsrDepPackageReq::jsr(from.clone()),
+            to.version.to_custom_string::<SmallStackString>(),
+          );
+        }
+      }
+      // jsr packages
+      if has_jsr_package_deps_changed {
+        for (nv, deps) in graph.packages.packages_with_deps() {
+          lockfile.add_package_deps(nv, deps.cloned());
+        }
+      }
+    }
 
     Ok(())
   }
@@ -984,9 +989,10 @@ pub fn has_graph_root_local_dependent_changed(
   while let Some((s, _)) = dependent_specifiers.next() {
     if let Ok(path) = url_to_file_path(s) {
       if let Ok(path) = canonicalize_path(&path)
-        && canonicalized_changed_paths.contains(&path) {
-          return true;
-        }
+        && canonicalized_changed_paths.contains(&path)
+      {
+        return true;
+      }
     } else {
       // skip walking this remote module's dependencies
       dependent_specifiers.skip_previous_dependencies();

@@ -255,48 +255,50 @@ impl Diagnostic {
   ) -> fmt::Result {
     if let (Some(source_line), Some(start), Some(end)) =
       (&self.source_line, &self.start, &self.end)
-      && !source_line.is_empty() && source_line.len() <= MAX_SOURCE_LINE_LENGTH
-      {
-        write!(f, "\n{:indent$}{}", "", source_line, indent = level)?;
-        let length = if start.line == end.line {
-          end.character - start.character
+      && !source_line.is_empty()
+      && source_line.len() <= MAX_SOURCE_LINE_LENGTH
+    {
+      write!(f, "\n{:indent$}{}", "", source_line, indent = level)?;
+      let length = if start.line == end.line {
+        end.character - start.character
+      } else {
+        1
+      };
+      let mut s = String::new();
+      for i in 0..start.character {
+        s.push(if source_line.chars().nth(i as usize).unwrap() == '\t' {
+          '\t'
         } else {
-          1
-        };
-        let mut s = String::new();
-        for i in 0..start.character {
-          s.push(if source_line.chars().nth(i as usize).unwrap() == '\t' {
-            '\t'
-          } else {
-            ' '
-          });
-        }
-        // TypeScript always uses `~` when underlining, but v8 always uses `^`.
-        // We will use `^` to indicate a single point, or `~` when spanning
-        // multiple characters.
-        let ch = if length > 1 { '~' } else { '^' };
-        for _i in 0..length {
-          s.push(ch)
-        }
-        let underline = if self.is_error() {
-          colors::red(&s).to_string()
-        } else {
-          colors::cyan(&s).to_string()
-        };
-        write!(f, "\n{:indent$}{}", "", underline, indent = level)?;
+          ' '
+        });
       }
+      // TypeScript always uses `~` when underlining, but v8 always uses `^`.
+      // We will use `^` to indicate a single point, or `~` when spanning
+      // multiple characters.
+      let ch = if length > 1 { '~' } else { '^' };
+      for _i in 0..length {
+        s.push(ch)
+      }
+      let underline = if self.is_error() {
+        colors::red(&s).to_string()
+      } else {
+        colors::cyan(&s).to_string()
+      };
+      write!(f, "\n{:indent$}{}", "", underline, indent = level)?;
+    }
 
     Ok(())
   }
 
   fn fmt_related_information(&self, f: &mut fmt::Formatter) -> fmt::Result {
     if let Some(related_information) = self.related_information.as_ref()
-      && !related_information.is_empty() {
-        write!(f, "\n\n")?;
-        for info in related_information {
-          info.fmt_stack(f, 4)?;
-        }
+      && !related_information.is_empty()
+    {
+      write!(f, "\n\n")?;
+      for info in related_information {
+        info.fmt_stack(f, 4)?;
       }
+    }
 
     Ok(())
   }
@@ -373,24 +375,25 @@ impl Diagnostics {
         .as_ref()
         .and_then(|n| ModuleSpecifier::parse(n).ok())
         && let Ok(Some(module)) = graph.try_get_prefer_types(&specifier)
-          && let Some(fast_check_module) =
-            module.js().and_then(|m| m.fast_check_module())
-          {
-            // todo(dsherret): use a short lived cache to prevent parsing
-            // source maps so often
-            if let Ok(source_map) =
-              SourceMap::from_slice(fast_check_module.source_map.as_bytes())
-              && let Some(start) = d.start.as_mut() {
-                let maybe_token = source_map
-                  .lookup_token(start.line as u32, start.character as u32);
-                if let Some(token) = maybe_token {
-                  d.original_source_start = Some(Position {
-                    line: token.get_src_line() as u64,
-                    character: token.get_src_col() as u64,
-                  });
-                }
-              }
+        && let Some(fast_check_module) =
+          module.js().and_then(|m| m.fast_check_module())
+      {
+        // todo(dsherret): use a short lived cache to prevent parsing
+        // source maps so often
+        if let Ok(source_map) =
+          SourceMap::from_slice(fast_check_module.source_map.as_bytes())
+          && let Some(start) = d.start.as_mut()
+        {
+          let maybe_token =
+            source_map.lookup_token(start.line as u32, start.character as u32);
+          if let Some(token) = maybe_token {
+            d.original_source_start = Some(Position {
+              line: token.get_src_line() as u64,
+              character: token.get_src_col() as u64,
+            });
           }
+        }
+      }
 
       if let Some(related) = &mut d.related_information {
         for d in related.iter_mut() {

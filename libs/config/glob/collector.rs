@@ -197,7 +197,7 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
       .file_name()
       .map(|dir_name| {
         let dir_name = dir_name.to_string_lossy().to_lowercase();
-        
+
         match dir_name.as_str() {
           "node_modules" => self.ignore_node_modules,
           ".git" => self.ignore_git_folder,

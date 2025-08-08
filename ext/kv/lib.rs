@@ -870,14 +870,16 @@ fn decode_selector_and_cursor(
 
   // Defend against out-of-bounds reading
   if let Some(start) = selector.start()
-    && &first_key[..] < start {
-      return Err(KvErrorKind::CursorOutOfBounds.into_box());
-    }
+    && &first_key[..] < start
+  {
+    return Err(KvErrorKind::CursorOutOfBounds.into_box());
+  }
 
   if let Some(end) = selector.end()
-    && &last_key[..] > end {
-      return Err(KvErrorKind::CursorOutOfBounds.into_box());
-    }
+    && &last_key[..] > end
+  {
+    return Err(KvErrorKind::CursorOutOfBounds.into_box());
+  }
 
   Ok((first_key, last_key))
 }

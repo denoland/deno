@@ -217,9 +217,10 @@ impl InitializeParamsBuilder {
     let mut config_as_options = json!({});
     if let Some(object) = config.as_object() {
       if let Some(deno) = object.get("deno")
-        && let Some(deno) = deno.as_object() {
-          config_as_options = json!(deno.clone());
-        }
+        && let Some(deno) = deno.as_object()
+      {
+        config_as_options = json!(deno.clone());
+      }
       let config_as_options = config_as_options.as_object_mut().unwrap();
       if let Some(typescript) = object.get("typescript") {
         config_as_options.insert("typescript".to_string(), typescript.clone());
@@ -859,20 +860,21 @@ impl LspClient {
     // TODO(nayeemrmn): Remove config-related methods from builder.
     if let Some(options) = &params.initialization_options
       && let Some(options) = options.as_object()
-        && let Some(config) = config.as_object_mut() {
-          let mut deno = options.clone();
-          let typescript = options.get("typescript");
-          let javascript = options.get("javascript");
-          deno.remove("typescript");
-          deno.remove("javascript");
-          config.insert("deno".to_string(), json!(deno));
-          if let Some(typescript) = typescript {
-            config.insert("typescript".to_string(), typescript.clone());
-          }
-          if let Some(javascript) = javascript {
-            config.insert("javascript".to_string(), javascript.clone());
-          }
-        }
+      && let Some(config) = config.as_object_mut()
+    {
+      let mut deno = options.clone();
+      let typescript = options.get("typescript");
+      let javascript = options.get("javascript");
+      deno.remove("typescript");
+      deno.remove("javascript");
+      config.insert("deno".to_string(), json!(deno));
+      if let Some(typescript) = typescript {
+        config.insert("typescript".to_string(), typescript.clone());
+      }
+      if let Some(javascript) = javascript {
+        config.insert("javascript".to_string(), javascript.clone());
+      }
+    }
     self.supports_workspace_configuration = match &params.capabilities.workspace
     {
       Some(workspace) => workspace.configuration == Some(true),

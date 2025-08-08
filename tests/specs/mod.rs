@@ -68,9 +68,10 @@ impl MultiTestMetaData {
       value: &mut JsonMap,
     ) {
       if let Some(base) = &multi_test_meta_data.base
-        && !value.contains_key("base") {
-          value.insert("base".to_string(), base.clone().into());
-        }
+        && !value.contains_key("base")
+      {
+        value.insert("base".to_string(), base.clone().into());
+      }
       if multi_test_meta_data.temp_dir && !value.contains_key("tempDir") {
         value.insert("tempDir".to_string(), true.into());
       }

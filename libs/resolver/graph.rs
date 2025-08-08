@@ -395,13 +395,14 @@ impl<
           ..
         } => {
           if let Some(on_warning) = &self.on_warning
-            && self.warned_pkgs.insert(reference.req().clone()) {
-              on_warning(MappedResolutionDiagnosticWithPosition {
-                diagnostic,
-                referrer,
-                start: referrer_range_start,
-              });
-            }
+            && self.warned_pkgs.insert(reference.req().clone())
+          {
+            on_warning(MappedResolutionDiagnosticWithPosition {
+              diagnostic,
+              referrer,
+              start: referrer_range_start,
+            });
+          }
         }
       }
     }
@@ -557,11 +558,11 @@ pub fn enhance_graph_error(
 
   if let Some(range) = error.maybe_range()
     && mode == EnhanceGraphErrorMode::ShowRange
-      && !range.specifier.as_str().contains("/$deno$eval")
-    {
-      message.push_str("\n    at ");
-      message.push_str(&format_range_with_colors(range));
-    }
+    && !range.specifier.as_str().contains("/$deno$eval")
+  {
+    message.push_str("\n    at ");
+    message.push_str(&format_range_with_colors(range));
+  }
   message
 }
 
@@ -772,34 +773,32 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
       maybe_specifier = Some(specifier);
     }
   } else if let ResolutionError::ResolverError { error, range, .. } = error
-    && range.specifier.scheme() == "file" {
-      match error.as_ref() {
-        ResolveError::Specifier(specifier_error) => {
-          if let SpecifierError::ImportPrefixMissing { specifier, .. } =
-            specifier_error
-          {
-            maybe_specifier = Some(specifier);
-          }
+    && range.specifier.scheme() == "file"
+  {
+    match error.as_ref() {
+      ResolveError::Specifier(specifier_error) => {
+        if let SpecifierError::ImportPrefixMissing { specifier, .. } =
+          specifier_error
+        {
+          maybe_specifier = Some(specifier);
         }
-        ResolveError::Other(other_error) => {
-          if let Some(SpecifierError::ImportPrefixMissing {
-            specifier, ..
-          }) = other_error.get_ref().downcast_ref::<SpecifierError>()
-          {
-            maybe_specifier = Some(specifier);
-          }
+      }
+      ResolveError::Other(other_error) => {
+        if let Some(SpecifierError::ImportPrefixMissing { specifier, .. }) =
+          other_error.get_ref().downcast_ref::<SpecifierError>()
+        {
+          maybe_specifier = Some(specifier);
         }
-        ResolveError::ImportMap(import_map_err) => {
-          if let ImportMapErrorKind::UnmappedBareSpecifier(
-            specifier,
-            _referrer,
-          ) = import_map_err.as_kind()
-          {
-            maybe_specifier = Some(specifier);
-          }
+      }
+      ResolveError::ImportMap(import_map_err) => {
+        if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _referrer) =
+          import_map_err.as_kind()
+        {
+          maybe_specifier = Some(specifier);
         }
       }
     }
+  }
 
   if let Some(specifier) = maybe_specifier {
     // NOTE(bartlomieju): For now, return None if a specifier contains a dot or a space. This is because

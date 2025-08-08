@@ -47,34 +47,36 @@ impl FromV8<'_> for SessionOptions {
 
     let table_string = TABLE_STRING.v8_string(scope).unwrap();
     if let Some(table_value) = obj.get(scope, table_string.into())
-      && !table_value.is_undefined() {
-        if !table_value.is_string() {
-          return Err(Error::InvalidArgType(
-            "The \"options.table\" argument must be a string.",
-          ));
-        }
-        let table =
-          v8::Local::<v8::String>::try_from(table_value).map_err(|_| {
-            Error::InvalidArgType(
-              "The \"options.table\" argument must be a string.",
-            )
-          })?;
-        options.table = Some(table.to_rust_string_lossy(scope).to_string());
+      && !table_value.is_undefined()
+    {
+      if !table_value.is_string() {
+        return Err(Error::InvalidArgType(
+          "The \"options.table\" argument must be a string.",
+        ));
       }
+      let table =
+        v8::Local::<v8::String>::try_from(table_value).map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.table\" argument must be a string.",
+          )
+        })?;
+      options.table = Some(table.to_rust_string_lossy(scope).to_string());
+    }
 
     let db_string = DB_STRING.v8_string(scope).unwrap();
     if let Some(db_value) = obj.get(scope, db_string.into())
-      && !db_value.is_undefined() {
-        if !db_value.is_string() {
-          return Err(Error::InvalidArgType(
-            "The \"options.db\" argument must be a string.",
-          ));
-        }
-        let db = v8::Local::<v8::String>::try_from(db_value).map_err(|_| {
-          Error::InvalidArgType("The \"options.db\" argument must be a string.")
-        })?;
-        options.db = Some(db.to_rust_string_lossy(scope).to_string());
+      && !db_value.is_undefined()
+    {
+      if !db_value.is_string() {
+        return Err(Error::InvalidArgType(
+          "The \"options.db\" argument must be a string.",
+        ));
       }
+      let db = v8::Local::<v8::String>::try_from(db_value).map_err(|_| {
+        Error::InvalidArgType("The \"options.db\" argument must be a string.")
+      })?;
+      options.db = Some(db.to_rust_string_lossy(scope).to_string());
+    }
 
     Ok(options)
   }

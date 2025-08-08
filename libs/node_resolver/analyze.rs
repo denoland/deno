@@ -409,9 +409,9 @@ impl<
           if let Some(package_json) = maybe_package_json
             && let Some(main) =
               self.node_resolver.legacy_fallback_resolve(&package_json)
-            {
-              return Ok(Some(UrlOrPath::Path(d.join(main).clean())));
-            }
+          {
+            return Ok(Some(UrlOrPath::Path(d.join(main).clean())));
+          }
 
           return Ok(Some(UrlOrPath::Path(d.join("index.js").clean())));
         }
@@ -766,9 +766,12 @@ fn add_export<'a>(
     }
 
     if let Some(first) = name.chars().next()
-      && !first.is_ascii_alphabetic() && first != '_' && first != '$' {
-        return false;
-      }
+      && !first.is_ascii_alphabetic()
+      && first != '_'
+      && first != '$'
+    {
+      return false;
+    }
 
     name
       .chars()

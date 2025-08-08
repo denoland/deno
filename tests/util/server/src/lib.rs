@@ -1116,25 +1116,26 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
 
   for line in output.lines() {
     if requests.is_none()
-      && let Some(cap) = REQUESTS_RX.captures(line) {
-        requests =
-          Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
-      }
+      && let Some(cap) = REQUESTS_RX.captures(line)
+    {
+      requests = Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
+    }
     if latency.is_none()
-      && let Some(cap) = LATENCY_RX.captures(line) {
-        let time = cap.get(1).unwrap();
-        let unit = cap.get(2).unwrap();
+      && let Some(cap) = LATENCY_RX.captures(line)
+    {
+      let time = cap.get(1).unwrap();
+      let unit = cap.get(2).unwrap();
 
-        latency = Some(
-          str::parse::<f64>(time.as_str()).unwrap()
-            * match unit.as_str() {
-              "ms" => 1.0,
-              "us" => 0.001,
-              "s" => 1000.0,
-              _ => unreachable!(),
-            },
-        );
-      }
+      latency = Some(
+        str::parse::<f64>(time.as_str()).unwrap()
+          * match unit.as_str() {
+            "ms" => 1.0,
+            "us" => 0.001,
+            "s" => 1000.0,
+            _ => unreachable!(),
+          },
+      );
+    }
   }
 
   WrkOutput {

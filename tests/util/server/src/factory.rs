@@ -52,8 +52,8 @@ pub fn check_test_glob(
     .replace('\\', "/");
   let mut found = HashSet::new();
   let mut list = vec![];
-  for file in glob(&format!("{base}/{glob_pattern}"))
-    .expect("Failed to read test path")
+  for file in
+    glob(&format!("{base}/{glob_pattern}")).expect("Failed to read test path")
   {
     let mut file = file
       .expect("Invalid file from glob")

@@ -120,7 +120,6 @@ pub(crate) unsafe fn check_new_from_utf8_len<'s>(
   let string = if len == NAPI_AUTO_LENGTH {
     unsafe { std::ffi::CStr::from_ptr(str_ as *const _) }.to_bytes()
   } else {
-    
     unsafe { std::slice::from_raw_parts(str_ as *const u8, len) }
   };
   let result = {

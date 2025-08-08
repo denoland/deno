@@ -627,14 +627,16 @@ fn sort_tasks_topo<'a>(
   impl TasksConfig for WorkspaceTasksConfig {
     fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)> {
       if let Some(member) = &self.member
-        && let Some(task_or_script) = member.task(name) {
-          return Some((task_or_script, self as &dyn TasksConfig));
-        }
+        && let Some(task_or_script) = member.task(name)
+      {
+        return Some((task_or_script, self as &dyn TasksConfig));
+      }
       if let Some(root) = &self.root
-        && let Some(task_or_script) = root.task(name) {
-          // switch to only using the root tasks for the dependencies
-          return Some((task_or_script, root as &dyn TasksConfig));
-        }
+        && let Some(task_or_script) = root.task(name)
+      {
+        // switch to only using the root tasks for the dependencies
+        return Some((task_or_script, root as &dyn TasksConfig));
+      }
       None
     }
   }
@@ -713,16 +715,18 @@ fn matches_package(
 ) -> bool {
   if !force_use_pkg_json
     && let Some(deno_json) = &config.deno_json
-      && let Some(name) = &deno_json.json.name
-        && regex.is_match(name) {
-          return true;
-        }
+    && let Some(name) = &deno_json.json.name
+    && regex.is_match(name)
+  {
+    return true;
+  }
 
   if let Some(package_json) = &config.pkg_json
     && let Some(name) = &package_json.name
-      && regex.is_match(name) {
-        return true;
-      }
+    && regex.is_match(name)
+  {
+    return true;
+  }
 
   false
 }
@@ -968,7 +972,9 @@ fn package_filter_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
   Regex::new(&regex_str)
 }
 
-fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter<'_>, AnyError> {
+fn arg_to_task_name_filter(
+  input: &str,
+) -> Result<TaskNameFilter<'_>, AnyError> {
   if !input.contains("*") {
     return Ok(TaskNameFilter::Exact(input));
   }

@@ -939,43 +939,46 @@ fn analyze_jsx_pragmas(
     }
 
     if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text)
-      && let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            true,
-          ),
-        });
-      }
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          true,
+        ),
+      });
+    }
 
     if let Some(captures) = JSX_RE.captures(&c.text)
-      && let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            false,
-          ),
-        });
-      }
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          false,
+        ),
+      });
+    }
 
     if let Some(captures) = JSX_FRAG_RE.captures(&c.text)
-      && let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            false,
-          ),
-        });
-      }
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          false,
+        ),
+      });
+    }
   }
 
   Some(analyzed_pragmas)

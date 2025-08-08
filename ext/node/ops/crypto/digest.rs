@@ -225,17 +225,19 @@ impl Hash {
       "sha256" => {
         let digest = ring_sha2::RingSha256::new();
         if let Some(length) = output_length
-          && length != digest.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+          && length != digest.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
+        }
         return Ok(Hash::FixedSize(Box::new(digest)));
       }
       "sha512" => {
         let digest = ring_sha2::RingSha512::new();
         if let Some(length) = output_length
-          && length != digest.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+          && length != digest.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
+        }
         return Ok(Hash::FixedSize(Box::new(digest)));
       }
       _ => {}
@@ -288,9 +290,10 @@ impl Hash {
     let hash = match self {
       FixedSize(context) => {
         if let Some(length) = output_length
-          && length != context.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+          && length != context.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
+        }
         FixedSize(context.box_clone())
       }
 

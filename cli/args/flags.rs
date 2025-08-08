@@ -1369,17 +1369,17 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
           if let Some(clap::error::ContextValue::Strings(s)) =
             e.get(clap::error::ContextKind::InvalidArg)
             && s.len() == 1
-              && s[0] == "--global"
-              && args.iter().any(|arg| arg == "install")
-            {
-              e.insert(
-                clap::error::ContextKind::Usage,
-                clap::error::ContextValue::StyledStr(
-                  "Note: Permission flags can only be used in a global setting"
-                    .into(),
-                ),
-              );
-            }
+            && s[0] == "--global"
+            && args.iter().any(|arg| arg == "install")
+          {
+            e.insert(
+              clap::error::ContextKind::Usage,
+              clap::error::ContextValue::StyledStr(
+                "Note: Permission flags can only be used in a global setting"
+                  .into(),
+              ),
+            );
+          }
 
           e
         }
@@ -6398,9 +6398,9 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(cache_type) = matches.get_one::<String>("no-check") {
     match cache_type.as_str() {
       "remote" => flags.type_check_mode = TypeCheckMode::Local,
-      _ => debug!(
-        "invalid value for 'no-check' of '{cache_type}' using default"
-      ),
+      _ => {
+        debug!("invalid value for 'no-check' of '{cache_type}' using default")
+      }
     }
   } else if matches.contains_id("no-check") {
     flags.type_check_mode = TypeCheckMode::None;
@@ -6411,9 +6411,7 @@ fn check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(cache_type) = matches.get_one::<String>("check") {
     match cache_type.as_str() {
       "all" => flags.type_check_mode = TypeCheckMode::All,
-      _ => debug!(
-        "invalid value for 'check' of '{cache_type}' using default"
-      ),
+      _ => debug!("invalid value for 'check' of '{cache_type}' using default"),
     }
   } else if matches.contains_id("check") {
     flags.type_check_mode = TypeCheckMode::Local;

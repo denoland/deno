@@ -74,11 +74,12 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
       .unwrap()
       .into();
     if let Some(v) = obj.get(scope, key)
-      && let Ok(fun) = v.try_cast::<v8::Function>() {
-        return fun
-          .call(scope, obj.into(), &[shared_array_buffer.into()])
-          .and_then(|ret| ret.uint32_value(scope));
-      }
+      && let Ok(fun) = v.try_cast::<v8::Function>()
+    {
+      return fun
+        .call(scope, obj.into(), &[shared_array_buffer.into()])
+        .and_then(|ret| ret.uint32_value(scope));
+    }
     None
   }
   fn has_custom_host_object(&self, _isolate: &mut v8::Isolate) -> bool {
@@ -119,10 +120,11 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
       .unwrap()
       .into();
     if let Some(v) = obj.get(scope, key)
-      && let Ok(v) = v.try_cast::<v8::Function>() {
-        v.call(scope, obj.into(), &[object.into()])?;
-        return Some(true);
-      }
+      && let Ok(v) = v.try_cast::<v8::Function>()
+    {
+      v.call(scope, obj.into(), &[object.into()])?;
+      return Some(true);
+    }
 
     None
   }
@@ -258,21 +260,22 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
       .into();
     let scope = &mut v8::AllowJavascriptExecutionScope::new(scope);
     if let Some(v) = obj.get(scope, key)
-      && let Ok(v) = v.try_cast::<v8::Function>() {
-        let result = v.call(scope, obj.into(), &[])?;
-        match result.try_cast() {
-          Ok(res) => return Some(res),
-          Err(_) => {
-            let msg =
-              FastString::from_static("readHostObject must return an object")
-                .v8_string(scope)
-                .unwrap();
-            let error = v8::Exception::type_error(scope, msg);
-            scope.throw_exception(error);
-            return None;
-          }
+      && let Ok(v) = v.try_cast::<v8::Function>()
+    {
+      let result = v.call(scope, obj.into(), &[])?;
+      match result.try_cast() {
+        Ok(res) => return Some(res),
+        Err(_) => {
+          let msg =
+            FastString::from_static("readHostObject must return an object")
+              .v8_string(scope)
+              .unwrap();
+          let error = v8::Exception::type_error(scope, msg);
+          scope.throw_exception(error);
+          return None;
         }
       }
+    }
     None
   }
 }

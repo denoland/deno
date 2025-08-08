@@ -324,9 +324,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .modules
             .resolve_specifier(&specifier)
             .map_err(JsErrorBox::from_err)?
-          {
-            return Ok(specifier.clone());
-          }
+        {
+          return Ok(specifier.clone());
+        }
 
         Ok(
           self

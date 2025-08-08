@@ -374,21 +374,22 @@ fn discover_workspace_config_files_for_single_dir<
       };
 
       if let Some(workspace_cache) = &opts.workspace_cache
-        && let Some(workspace) = workspace_cache.get(&config_file.dir_path()) {
-          if cfg!(debug_assertions) {
-            let expected_vendor_dir = resolve_vendor_dir(
-              config_folder.deno_json().map(|d| d.as_ref()),
-              opts.maybe_vendor_override.as_ref(),
-            );
-            debug_assert_eq!(
-              expected_vendor_dir, workspace.vendor_dir,
-              "should not be using a different vendor dir across calls"
-            );
-          }
-          return Ok(ConfigFileDiscovery::Workspace {
-            workspace: workspace.clone(),
-          });
+        && let Some(workspace) = workspace_cache.get(&config_file.dir_path())
+      {
+        if cfg!(debug_assertions) {
+          let expected_vendor_dir = resolve_vendor_dir(
+            config_folder.deno_json().map(|d| d.as_ref()),
+            opts.maybe_vendor_override.as_ref(),
+          );
+          debug_assert_eq!(
+            expected_vendor_dir, workspace.vendor_dir,
+            "should not be using a different vendor dir across calls"
+          );
         }
+        return Ok(ConfigFileDiscovery::Workspace {
+          workspace: workspace.clone(),
+        });
+      }
 
       if config_folder.has_workspace_members() {
         return handle_workspace_folder_with_members(
@@ -412,15 +413,16 @@ fn discover_workspace_config_files_for_single_dir<
   let start_dir = start_dir.map(strip_up_to_node_modules);
   for current_dir in start_dir.iter().flat_map(|p| p.ancestors()) {
     if let Some(checked) = checked.as_mut()
-      && !checked.insert(current_dir.to_path_buf()) {
-        // already visited here, so exit
-        return Ok(ConfigFileDiscovery::None {
-          maybe_vendor_dir: resolve_vendor_dir(
-            None,
-            opts.maybe_vendor_override.as_ref(),
-          ),
-        });
-      }
+      && !checked.insert(current_dir.to_path_buf())
+    {
+      // already visited here, so exit
+      return Ok(ConfigFileDiscovery::None {
+        maybe_vendor_dir: resolve_vendor_dir(
+          None,
+          opts.maybe_vendor_override.as_ref(),
+        ),
+      });
+    }
 
     if let Some(workspace_with_members) = opts
       .workspace_cache
@@ -466,21 +468,22 @@ fn discover_workspace_config_files_for_single_dir<
     let config_folder_url = root_config_folder.folder_url();
     if first_config_folder_url.is_none() {
       if let Some(workspace_cache) = &opts.workspace_cache
-        && let Some(workspace) = workspace_cache.get(current_dir) {
-          if cfg!(debug_assertions) {
-            let expected_vendor_dir = resolve_vendor_dir(
-              root_config_folder.deno_json().map(|d| d.as_ref()),
-              opts.maybe_vendor_override.as_ref(),
-            );
-            debug_assert_eq!(
-              expected_vendor_dir, workspace.vendor_dir,
-              "should not be using a different vendor dir across calls"
-            );
-          }
-          return Ok(ConfigFileDiscovery::Workspace {
-            workspace: workspace.clone(),
-          });
+        && let Some(workspace) = workspace_cache.get(current_dir)
+      {
+        if cfg!(debug_assertions) {
+          let expected_vendor_dir = resolve_vendor_dir(
+            root_config_folder.deno_json().map(|d| d.as_ref()),
+            opts.maybe_vendor_override.as_ref(),
+          );
+          debug_assert_eq!(
+            expected_vendor_dir, workspace.vendor_dir,
+            "should not be using a different vendor dir across calls"
+          );
         }
+        return Ok(ConfigFileDiscovery::Workspace {
+          workspace: workspace.clone(),
+        });
+      }
 
       first_config_folder_url = Some(config_folder_url.clone());
     }
@@ -582,32 +585,29 @@ fn handle_workspace_with_members<TSys: FsRead + FsMetadata + FsReadDir>(
   // as a member then only resolve the start config
   if !is_root_deno_json_workspace
     && let Some(first_config_folder) = &first_config_folder_url
-      && !root_workspace
-        .config_folders
-        .contains_key(*first_config_folder)
-        && let Some(config_folder) =
-          found_config_folders.remove(first_config_folder)
-        {
-          let maybe_vendor_dir = resolve_vendor_dir(
-            config_folder.deno_json().map(|d| d.as_ref()),
-            opts.maybe_vendor_override.as_ref(),
-          );
-          let links = resolve_link_config_folders(
-            sys,
-            &config_folder,
-            load_config_folder,
-          )?;
-          let workspace = new_rc(Workspace::new(
-            config_folder,
-            Default::default(),
-            links,
-            maybe_vendor_dir,
-          ));
-          if let Some(cache) = opts.workspace_cache {
-            cache.set(workspace.root_dir_path(), workspace.clone());
-          }
-          return Ok(ConfigFileDiscovery::Workspace { workspace });
-        }
+    && !root_workspace
+      .config_folders
+      .contains_key(*first_config_folder)
+    && let Some(config_folder) =
+      found_config_folders.remove(first_config_folder)
+  {
+    let maybe_vendor_dir = resolve_vendor_dir(
+      config_folder.deno_json().map(|d| d.as_ref()),
+      opts.maybe_vendor_override.as_ref(),
+    );
+    let links =
+      resolve_link_config_folders(sys, &config_folder, load_config_folder)?;
+    let workspace = new_rc(Workspace::new(
+      config_folder,
+      Default::default(),
+      links,
+      maybe_vendor_dir,
+    ));
+    if let Some(cache) = opts.workspace_cache {
+      cache.set(workspace.root_dir_path(), workspace.clone());
+    }
+    return Ok(ConfigFileDiscovery::Workspace { workspace });
+  }
 
   if is_root_deno_json_workspace {
     for (key, config_folder) in &found_config_folders {
@@ -782,131 +782,133 @@ fn resolve_workspace_for_config_folder<
     };
 
   if let Some(deno_json) = root_config_folder.deno_json()
-    && let Some(workspace_config) = deno_json.to_workspace_config()? {
-      let (pattern_members, path_members): (Vec<_>, Vec<_>) = workspace_config
-        .members
-        .iter()
-        .partition(|member| is_glob_pattern(member) || member.starts_with('!'));
+    && let Some(workspace_config) = deno_json.to_workspace_config()?
+  {
+    let (pattern_members, path_members): (Vec<_>, Vec<_>) = workspace_config
+      .members
+      .iter()
+      .partition(|member| is_glob_pattern(member) || member.starts_with('!'));
 
-      // Deno workspaces can discover wildcard members that use either `deno.json`, `deno.jsonc` or `package.json`.
-      // But it only works for Deno workspaces, npm workspaces don't discover `deno.json(c)` files, otherwise
-      // we'd be incompatible with npm workspaces if we discovered more files.
-      let deno_json_paths = collect_member_config_folders(
-        "Deno",
-        pattern_members,
-        &deno_json.dir_path(),
-        &["deno.json", "deno.jsonc", "package.json"],
-      )?;
+    // Deno workspaces can discover wildcard members that use either `deno.json`, `deno.jsonc` or `package.json`.
+    // But it only works for Deno workspaces, npm workspaces don't discover `deno.json(c)` files, otherwise
+    // we'd be incompatible with npm workspaces if we discovered more files.
+    let deno_json_paths = collect_member_config_folders(
+      "Deno",
+      pattern_members,
+      &deno_json.dir_path(),
+      &["deno.json", "deno.jsonc", "package.json"],
+    )?;
 
-      let mut member_dir_urls =
-        IndexSet::with_capacity(path_members.len() + deno_json_paths.len());
-      for path_member in path_members {
-        let member_dir_url = resolve_member_url(path_member)?;
-        member_dir_urls.insert((path_member.clone(), member_dir_url));
+    let mut member_dir_urls =
+      IndexSet::with_capacity(path_members.len() + deno_json_paths.len());
+    for path_member in path_members {
+      let member_dir_url = resolve_member_url(path_member)?;
+      member_dir_urls.insert((path_member.clone(), member_dir_url));
+    }
+    for deno_json_path in deno_json_paths {
+      let member_dir_url =
+        url_from_directory_path(deno_json_path.parent().unwrap()).unwrap();
+      member_dir_urls.insert((
+        deno_json_path
+          .parent()
+          .unwrap()
+          .to_string_lossy()
+          .into_owned(),
+        member_dir_url,
+      ));
+    }
+
+    for (raw_member, member_dir_url) in member_dir_urls {
+      if member_dir_url == root_config_file_directory_url {
+        return Err(
+          ResolveWorkspaceMemberErrorKind::InvalidSelfReference {
+            member: raw_member.to_string(),
+          }
+          .into_box()
+          .into(),
+        );
       }
-      for deno_json_path in deno_json_paths {
-        let member_dir_url =
-          url_from_directory_path(deno_json_path.parent().unwrap()).unwrap();
-        member_dir_urls.insert((
-          deno_json_path
-            .parent()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned(),
-          member_dir_url,
-        ));
-      }
-
-      for (raw_member, member_dir_url) in member_dir_urls {
-        if member_dir_url == root_config_file_directory_url {
-          return Err(
-            ResolveWorkspaceMemberErrorKind::InvalidSelfReference {
-              member: raw_member.to_string(),
-            }
-            .into_box()
-            .into(),
-          );
-        }
-        validate_member_url_is_descendant(&member_dir_url)?;
-        let member_config_folder = find_member_config_folder(&member_dir_url)?;
-        let previous_member = final_members
-          .insert(new_rc(member_dir_url.clone()), member_config_folder);
-        if previous_member.is_some() {
-          return Err(
-            ResolveWorkspaceMemberErrorKind::Duplicate {
-              member: raw_member.to_string(),
-            }
-            .into_box()
-            .into(),
-          );
-        }
+      validate_member_url_is_descendant(&member_dir_url)?;
+      let member_config_folder = find_member_config_folder(&member_dir_url)?;
+      let previous_member = final_members
+        .insert(new_rc(member_dir_url.clone()), member_config_folder);
+      if previous_member.is_some() {
+        return Err(
+          ResolveWorkspaceMemberErrorKind::Duplicate {
+            member: raw_member.to_string(),
+          }
+          .into_box()
+          .into(),
+        );
       }
     }
+  }
   if let Some(pkg_json) = root_config_folder.pkg_json()
-    && let Some(members) = &pkg_json.workspaces {
-      let (pattern_members, path_members): (Vec<_>, Vec<_>) = members
-        .iter()
-        .partition(|member| is_glob_pattern(member) || member.starts_with('!'));
+    && let Some(members) = &pkg_json.workspaces
+  {
+    let (pattern_members, path_members): (Vec<_>, Vec<_>) = members
+      .iter()
+      .partition(|member| is_glob_pattern(member) || member.starts_with('!'));
 
-      // npm workspaces can discover wildcard members `package.json` files, but not `deno.json(c)` files, otherwise
-      // we'd be incompatible with npm workspaces if we discovered more files than just `package.json`.
-      let pkg_json_paths = collect_member_config_folders(
-        "npm",
-        pattern_members,
-        pkg_json.dir_path(),
-        &["package.json"],
-      )?;
+    // npm workspaces can discover wildcard members `package.json` files, but not `deno.json(c)` files, otherwise
+    // we'd be incompatible with npm workspaces if we discovered more files than just `package.json`.
+    let pkg_json_paths = collect_member_config_folders(
+      "npm",
+      pattern_members,
+      pkg_json.dir_path(),
+      &["package.json"],
+    )?;
 
-      let mut member_dir_urls =
-        IndexSet::with_capacity(path_members.len() + pkg_json_paths.len());
-      for path_member in path_members {
-        let member_dir_url = resolve_member_url(path_member)?;
-        member_dir_urls.insert(member_dir_url);
-      }
-      for pkg_json_path in pkg_json_paths {
-        let member_dir_url =
-          url_from_directory_path(pkg_json_path.parent().unwrap())?;
-        member_dir_urls.insert(member_dir_url);
-      }
-
-      for member_dir_url in member_dir_urls {
-        if member_dir_url == root_config_file_directory_url {
-          continue; // ignore self references
-        }
-        validate_member_url_is_descendant(&member_dir_url)?;
-        let member_config_folder =
-          match find_member_config_folder(&member_dir_url) {
-            Ok(config_folder) => config_folder,
-            Err(err) => {
-              return Err(
-                match err.into_kind() {
-                  ResolveWorkspaceMemberErrorKind::NotFound { dir_url } => {
-                    // enhance the error to say we didn't find a package.json
-                    ResolveWorkspaceMemberErrorKind::NotFoundPackageJson {
-                      dir_url,
-                    }
-                    .into_box()
-                  }
-                  err => err.into_box(),
-                }
-                .into(),
-              );
-            }
-          };
-        if member_config_folder.pkg_json().is_none() {
-          return Err(
-            ResolveWorkspaceMemberErrorKind::NotFoundPackageJson {
-              dir_url: member_dir_url,
-            }
-            .into_box()
-            .into(),
-          );
-        }
-        // don't surface errors about duplicate members for
-        // package.json workspace members
-        final_members.insert(new_rc(member_dir_url), member_config_folder);
-      }
+    let mut member_dir_urls =
+      IndexSet::with_capacity(path_members.len() + pkg_json_paths.len());
+    for path_member in path_members {
+      let member_dir_url = resolve_member_url(path_member)?;
+      member_dir_urls.insert(member_dir_url);
     }
+    for pkg_json_path in pkg_json_paths {
+      let member_dir_url =
+        url_from_directory_path(pkg_json_path.parent().unwrap())?;
+      member_dir_urls.insert(member_dir_url);
+    }
+
+    for member_dir_url in member_dir_urls {
+      if member_dir_url == root_config_file_directory_url {
+        continue; // ignore self references
+      }
+      validate_member_url_is_descendant(&member_dir_url)?;
+      let member_config_folder =
+        match find_member_config_folder(&member_dir_url) {
+          Ok(config_folder) => config_folder,
+          Err(err) => {
+            return Err(
+              match err.into_kind() {
+                ResolveWorkspaceMemberErrorKind::NotFound { dir_url } => {
+                  // enhance the error to say we didn't find a package.json
+                  ResolveWorkspaceMemberErrorKind::NotFoundPackageJson {
+                    dir_url,
+                  }
+                  .into_box()
+                }
+                err => err.into_box(),
+              }
+              .into(),
+            );
+          }
+        };
+      if member_config_folder.pkg_json().is_none() {
+        return Err(
+          ResolveWorkspaceMemberErrorKind::NotFoundPackageJson {
+            dir_url: member_dir_url,
+          }
+          .into_box()
+          .into(),
+        );
+      }
+      // don't surface errors about duplicate members for
+      // package.json workspace members
+      final_members.insert(new_rc(member_dir_url), member_config_folder);
+    }
+  }
 
   Ok(RawResolvedWorkspace {
     root: root_config_folder,
@@ -937,9 +939,9 @@ fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
         || cfg!(windows) && link.chars().any(|c| c == '\\'))
         && let Ok(value) =
           deno_path_util::url_from_file_path(Path::new(link.as_ref()))
-        {
-          return Ok(value);
-        }
+      {
+        return Ok(value);
+      }
       let link_dir_url =
         root_config_file_directory_url.join(&link).map_err(|err| {
           WorkspaceDiscoverErrorKind::ResolveLink {

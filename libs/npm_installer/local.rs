@@ -380,11 +380,12 @@ impl<
               }
 
               if package.is_deprecated
-                && let Some(deprecated) = &extra.deprecated {
-                  packages_with_deprecation_warnings
-                    .lock()
-                    .push((package.id.nv.clone(), deprecated.clone()));
-                }
+                && let Some(deprecated) = &extra.deprecated
+              {
+                packages_with_deprecation_warnings
+                  .lock()
+                  .push((package.id.nv.clone(), deprecated.clone()));
+              }
 
               // finally stop showing the progress bar
               drop(pb_guard); // explicit for clarity
@@ -1131,9 +1132,10 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
 
   pub fn save(&self) -> bool {
     if let Some(previous) = &self.previous
-      && previous == &self.current {
-        return false; // nothing to save
-      }
+      && previous == &self.current
+    {
+      return false; // nothing to save
+    }
 
     const CACHE_PERM: u32 = 0o644;
     bincode::serialize(&self.current).ok().and_then(|data| {

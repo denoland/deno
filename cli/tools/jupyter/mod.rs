@@ -84,9 +84,7 @@ pub async fn kernel(
     })?;
   let spec: ConnectionInfo =
     serde_json::from_str(&conn_file).with_context(|| {
-      format!(
-        "Connection file is not a valid JSON: {connection_filepath:?}"
-      )
+      format!("Connection file is not a valid JSON: {connection_filepath:?}")
     })?;
   let (worker, test_event_receiver) = create_single_test_event_channel();
   let TestEventWorkerSender {

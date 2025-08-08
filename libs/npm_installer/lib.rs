@@ -268,36 +268,38 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       .await;
 
     if result.dependencies_result.is_ok()
-      && let Some(lockfile) = self.maybe_lockfile.as_ref() {
-        result.dependencies_result = lockfile.error_if_changed();
-      }
+      && let Some(lockfile) = self.maybe_lockfile.as_ref()
+    {
+      result.dependencies_result = lockfile.error_if_changed();
+    }
     if result.dependencies_result.is_ok()
-      && let Some(caching) = caching {
-        // the async mutex is unfortunate, but needed to handle the edge case where two workers
-        // try to cache the same package at the same time. we need to hold the lock while we cache
-        // and since that crosses an await point, we need the async mutex.
-        //
-        // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
-        // while caching typically takes micro or milli seconds.
-        let _permit = self.install_queue.acquire().await;
-        let uncached = {
-          let cached_reqs = self.cached_reqs.lock();
-          packages
-            .iter()
-            .filter(|req| !cached_reqs.contains(req))
-            .collect::<Vec<_>>()
-        };
+      && let Some(caching) = caching
+    {
+      // the async mutex is unfortunate, but needed to handle the edge case where two workers
+      // try to cache the same package at the same time. we need to hold the lock while we cache
+      // and since that crosses an await point, we need the async mutex.
+      //
+      // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
+      // while caching typically takes micro or milli seconds.
+      let _permit = self.install_queue.acquire().await;
+      let uncached = {
+        let cached_reqs = self.cached_reqs.lock();
+        packages
+          .iter()
+          .filter(|req| !cached_reqs.contains(req))
+          .collect::<Vec<_>>()
+      };
 
-        if !uncached.is_empty() {
-          result.dependencies_result = self.cache_packages(caching).await;
-          if result.dependencies_result.is_ok() {
-            let mut cached_reqs = self.cached_reqs.lock();
-            for req in uncached {
-              cached_reqs.insert(req.clone());
-            }
+      if !uncached.is_empty() {
+        result.dependencies_result = self.cache_packages(caching).await;
+        if result.dependencies_result.is_ok() {
+          let mut cached_reqs = self.cached_reqs.lock();
+          for req in uncached {
+            cached_reqs.insert(req.clone());
           }
         }
       }
+    }
 
     result
   }

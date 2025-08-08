@@ -1390,10 +1390,11 @@ impl Host {
       let mut host_or_suffix = lower.as_ref();
       let mut has_subdomain_wildcard = false;
       if matches!(subdomain_wildcards, SubdomainWildcards::Enabled)
-        && let Some(suffix) = lower.strip_prefix("*.") {
-          host_or_suffix = suffix;
-          has_subdomain_wildcard = true;
-        }
+        && let Some(suffix) = lower.strip_prefix("*.")
+      {
+        host_or_suffix = suffix;
+        has_subdomain_wildcard = true;
+      }
       let fqdn = {
         use std::str::FromStr;
         FQDN::from_str(host_or_suffix).map_err(|e| HostParseError::Fqdn {
@@ -2912,14 +2913,15 @@ impl Permissions {
       .transpose()?;
     // add the allow_run list to deny_write
     if let Some(allow_run_vec) = &allow_run
-      && !allow_run_vec.is_empty() {
-        let deny_write = deny_write.get_or_insert_with(Default::default);
-        deny_write.extend(
-          allow_run_vec
-            .iter()
-            .map(|item| WriteDescriptor(item.0.clone())),
-        );
-      }
+      && !allow_run_vec.is_empty()
+    {
+      let deny_write = deny_write.get_or_insert_with(Default::default);
+      deny_write.extend(
+        allow_run_vec
+          .iter()
+          .map(|item| WriteDescriptor(item.0.clone())),
+      );
+    }
 
     Ok(Self {
       read: Permissions::new_unary(
@@ -3563,18 +3565,19 @@ impl PermissionsContainer {
     fn is_fd_file_is_pipe(path: &Path) -> bool {
       if let Some(fd) = path.file_name()
         && let Ok(s) = std::str::from_utf8(fd.as_encoded_bytes())
-          && let Ok(n) = s.parse::<i32>()
-            && n > 2 {
-              // SAFETY: This is proper use of the stat syscall
-              unsafe {
-                let mut stat = std::mem::zeroed::<libc::stat>();
-                if libc::fstat(n, &mut stat as _) == 0
-                  && ((stat.st_mode & libc::S_IFMT) & libc::S_IFIFO) != 0
-                {
-                  return true;
-                }
-              };
-            }
+        && let Ok(n) = s.parse::<i32>()
+        && n > 2
+      {
+        // SAFETY: This is proper use of the stat syscall
+        unsafe {
+          let mut stat = std::mem::zeroed::<libc::stat>();
+          if libc::fstat(n, &mut stat as _) == 0
+            && ((stat.st_mode & libc::S_IFMT) & libc::S_IFIFO) != 0
+          {
+            return true;
+          }
+        };
+      }
       false
     }
 

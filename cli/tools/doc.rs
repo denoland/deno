@@ -277,9 +277,9 @@ impl deno_doc::html::HrefResolver for DocResolver {
       && let Some(path) = path
         .strip_suffix("index.html")
         .or_else(|| path.strip_suffix(".html"))
-      {
-        return path.to_owned();
-      }
+    {
+      return path.to_owned();
+    }
 
     path
   }

@@ -271,28 +271,29 @@ async fn run_subcommand(
             ) = any_and_jserrorbox_downcast_ref::<
               worker::CreateCustomWorkerError,
             >(&script_err)
-              && flags.node_modules_dir.is_none() {
-                let mut flags = flags.deref().clone();
-                let watch = match &flags.subcommand {
-                  DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
-                  _ => unreachable!(),
-                };
-                flags.node_modules_dir =
-                  Some(deno_config::deno_json::NodeModulesDirMode::None);
-                // use the current lockfile, but don't write it out
-                if flags.frozen_lockfile.is_none() {
-                  flags.internal.lockfile_skip_write = true;
-                }
-                return tools::run::run_script(
-                  WorkerExecutionMode::Run,
-                  Arc::new(flags),
-                  watch,
-                  None,
-                  roots,
-                )
-                .boxed_local()
-                .await;
+              && flags.node_modules_dir.is_none()
+            {
+              let mut flags = flags.deref().clone();
+              let watch = match &flags.subcommand {
+                DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
+                _ => unreachable!(),
+              };
+              flags.node_modules_dir =
+                Some(deno_config::deno_json::NodeModulesDirMode::None);
+              // use the current lockfile, but don't write it out
+              if flags.frozen_lockfile.is_none() {
+                flags.internal.lockfile_skip_write = true;
               }
+              return tools::run::run_script(
+                WorkerExecutionMode::Run,
+                Arc::new(flags),
+                watch,
+                None,
+                roots,
+              )
+              .boxed_local()
+              .await;
+            }
             let script_err_msg = script_err.to_string();
             if script_err_msg.starts_with(MODULE_NOT_FOUND)
               || script_err_msg.starts_with(UNSUPPORTED_SCHEME)
@@ -608,12 +609,13 @@ async fn resolve_flags_and_init(
     flags.unstable_config.enable_node_compat();
   }
   if flags.node_conditions.is_empty()
-    && let Ok(conditions) = std::env::var("DENO_CONDITIONS") {
-      flags.node_conditions = conditions
-        .split(",")
-        .map(|c| c.trim().to_string())
-        .collect();
-    }
+    && let Ok(conditions) = std::env::var("DENO_CONDITIONS")
+  {
+    flags.node_conditions = conditions
+      .split(",")
+      .map(|c| c.trim().to_string())
+      .collect();
+  }
 
   // Tunnel is initialized before OTEL since
   // OTEL data is submitted via the tunnel.

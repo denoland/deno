@@ -647,9 +647,7 @@ impl ModuleRegistry {
     for registry in registries {
       let tokens = parse(&registry.schema, None)
         .map_err(|e| {
-          error!(
-            "Error parsing registry schema for origin \"{origin}\". {e}"
-          );
+          error!("Error parsing registry schema for origin \"{origin}\". {e}");
         })
         .ok()?;
       let mut i = tokens.len();
@@ -659,9 +657,10 @@ impl ModuleRegistry {
           .last()
           .map(|t| {
             if let Token::Key(key) = t
-              && let StringOrNumber::String(s) = &key.name {
-                return s.clone();
-              }
+              && let StringOrNumber::String(s) = &key.name
+            {
+              return s.clone();
+            }
             "".to_string()
           })
           .unwrap_or_default(),
@@ -718,114 +717,113 @@ impl ModuleRegistry {
                     &match_result,
                   )
                   .await
-                {
-                  let compiler = Compiler::new(&tokens[..=index], None);
-                  let base = Url::parse(&origin).ok()?;
-                  let (items, preselect, incomplete) = match items {
-                    VariableItems::List(list) => {
-                      (list.items, list.preselect, list.is_incomplete)
-                    }
-                    VariableItems::Simple(items) => (items, None, false),
-                  };
-                  if incomplete {
-                    is_incomplete = true;
+              {
+                let compiler = Compiler::new(&tokens[..=index], None);
+                let base = Url::parse(&origin).ok()?;
+                let (items, preselect, incomplete) = match items {
+                  VariableItems::List(list) => {
+                    (list.items, list.preselect, list.is_incomplete)
                   }
-                  for (idx, item) in items.into_iter().enumerate() {
-                    let mut label = if let Some(p) = &prefix {
-                      format!("{p}{item}")
-                    } else {
-                      item.clone()
-                    };
-                    if label.ends_with('/') {
-                      label.pop();
-                    }
-                    let kind =
-                      if key.name == last_key_name && !item.ends_with('/') {
-                        Some(lsp::CompletionItemKind::FILE)
-                      } else {
-                        Some(lsp::CompletionItemKind::FOLDER)
-                      };
-                    let mut params = match_result.params.clone();
-                    params.insert(
-                      key.name.clone(),
-                      StringOrVec::from_str(&item, &key),
-                    );
-                    let mut path =
-                      compiler.to_path(&params).unwrap_or_default();
-                    if path.ends_with('/') {
-                      path.pop();
-                    }
-                    let item_specifier = base.join(&path).ok()?;
-                    let full_text = if let Some(suffix) =
-                      item_specifier.as_str().strip_prefix(resolved_str)
-                    {
-                      format!("{text}{suffix}")
-                    } else {
-                      item_specifier.to_string()
-                    };
-                    let text_edit =
-                      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                        range: *range,
-                        new_text: full_text.to_string(),
-                      }));
-                    let command = if key.name == last_key_name
-                      && !item.ends_with('/')
-                      && !specifier_exists(&item_specifier)
-                    {
-                      Some(lsp::Command {
-                        title: "".to_string(),
-                        command: "deno.cache".to_string(),
-                        arguments: Some(vec![
-                          json!([item_specifier]),
-                          json!(&resolved),
-                        ]),
-                      })
-                    } else {
-                      None
-                    };
-                    let detail = Some(format!("({})", key.name));
-                    let filter_text = Some(full_text.to_string());
-                    let sort_text = Some(format!("{:0>10}", idx + 1));
-                    let preselect =
-                      get_preselect(item.clone(), preselect.clone());
-                    let data = get_data_with_match(
-                      registry,
-                      &resolved,
-                      &tokens,
-                      &match_result,
-                      &key,
-                      &item,
-                    );
-                    let commit_characters = if is_incomplete {
-                      Some(
-                        REGISTRY_IMPORT_COMMIT_CHARS
-                          .iter()
-                          .map(|&c| c.into())
-                          .collect(),
-                      )
-                    } else {
-                      Some(
-                        IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
-                      )
-                    };
-                    completions.insert(
-                      item,
-                      lsp::CompletionItem {
-                        label,
-                        kind,
-                        detail,
-                        sort_text,
-                        filter_text,
-                        text_edit,
-                        command,
-                        preselect,
-                        data,
-                        commit_characters,
-                        ..Default::default()
-                      },
-                    );
-                  }
+                  VariableItems::Simple(items) => (items, None, false),
+                };
+                if incomplete {
+                  is_incomplete = true;
                 }
+                for (idx, item) in items.into_iter().enumerate() {
+                  let mut label = if let Some(p) = &prefix {
+                    format!("{p}{item}")
+                  } else {
+                    item.clone()
+                  };
+                  if label.ends_with('/') {
+                    label.pop();
+                  }
+                  let kind =
+                    if key.name == last_key_name && !item.ends_with('/') {
+                      Some(lsp::CompletionItemKind::FILE)
+                    } else {
+                      Some(lsp::CompletionItemKind::FOLDER)
+                    };
+                  let mut params = match_result.params.clone();
+                  params.insert(
+                    key.name.clone(),
+                    StringOrVec::from_str(&item, &key),
+                  );
+                  let mut path = compiler.to_path(&params).unwrap_or_default();
+                  if path.ends_with('/') {
+                    path.pop();
+                  }
+                  let item_specifier = base.join(&path).ok()?;
+                  let full_text = if let Some(suffix) =
+                    item_specifier.as_str().strip_prefix(resolved_str)
+                  {
+                    format!("{text}{suffix}")
+                  } else {
+                    item_specifier.to_string()
+                  };
+                  let text_edit =
+                    Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                      range: *range,
+                      new_text: full_text.to_string(),
+                    }));
+                  let command = if key.name == last_key_name
+                    && !item.ends_with('/')
+                    && !specifier_exists(&item_specifier)
+                  {
+                    Some(lsp::Command {
+                      title: "".to_string(),
+                      command: "deno.cache".to_string(),
+                      arguments: Some(vec![
+                        json!([item_specifier]),
+                        json!(&resolved),
+                      ]),
+                    })
+                  } else {
+                    None
+                  };
+                  let detail = Some(format!("({})", key.name));
+                  let filter_text = Some(full_text.to_string());
+                  let sort_text = Some(format!("{:0>10}", idx + 1));
+                  let preselect =
+                    get_preselect(item.clone(), preselect.clone());
+                  let data = get_data_with_match(
+                    registry,
+                    &resolved,
+                    &tokens,
+                    &match_result,
+                    &key,
+                    &item,
+                  );
+                  let commit_characters = if is_incomplete {
+                    Some(
+                      REGISTRY_IMPORT_COMMIT_CHARS
+                        .iter()
+                        .map(|&c| c.into())
+                        .collect(),
+                    )
+                  } else {
+                    Some(
+                      IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+                    )
+                  };
+                  completions.insert(
+                    item,
+                    lsp::CompletionItem {
+                      label,
+                      kind,
+                      detail,
+                      sort_text,
+                      filter_text,
+                      text_edit,
+                      command,
+                      preselect,
+                      data,
+                      commit_characters,
+                      ..Default::default()
+                    },
+                  );
+                }
+              }
             }
             None => (),
           }
@@ -884,86 +882,84 @@ impl ModuleRegistry {
               if let Some(prefix) = &k.prefix {
                 let maybe_url = registry.get_url_for_key(k);
                 if let Some(url) = maybe_url
-                  && let Some(items) = self.get_items(url).await {
-                    let base = Url::parse(&origin).ok()?;
-                    let (items, preselect, incomplete) = match items {
-                      VariableItems::List(list) => {
-                        (list.items, list.preselect, list.is_incomplete)
-                      }
-                      VariableItems::Simple(items) => (items, None, false),
-                    };
-                    if incomplete {
-                      is_incomplete = true;
+                  && let Some(items) = self.get_items(url).await
+                {
+                  let base = Url::parse(&origin).ok()?;
+                  let (items, preselect, incomplete) = match items {
+                    VariableItems::List(list) => {
+                      (list.items, list.preselect, list.is_incomplete)
                     }
-                    for (idx, item) in items.into_iter().enumerate() {
-                      let path = format!("{prefix}{item}");
-                      let kind = Some(lsp::CompletionItemKind::FOLDER);
-                      let item_specifier = base.join(&path).ok()?;
-                      let full_text = if let Some(suffix) =
-                        item_specifier.as_str().strip_prefix(resolved_str)
-                      {
-                        format!("{text}{suffix}")
-                      } else {
-                        item_specifier.to_string()
-                      };
-                      let text_edit =
-                        Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                          range: *range,
-                          new_text: full_text.clone(),
-                        }));
-                      let command = if k.name == last_key_name
-                        && !specifier_exists(&item_specifier)
-                      {
-                        Some(lsp::Command {
-                          title: "".to_string(),
-                          command: "deno.cache".to_string(),
-                          arguments: Some(vec![
-                            json!([item_specifier]),
-                            json!(&resolved),
-                          ]),
-                        })
-                      } else {
-                        None
-                      };
-                      let detail = Some(format!("({})", k.name));
-                      let filter_text = Some(full_text.to_string());
-                      let sort_text = Some(format!("{:0>10}", idx + 1));
-                      let preselect =
-                        get_preselect(item.clone(), preselect.clone());
-                      let data = get_data(registry, &resolved, k, &path);
-                      let commit_characters = if is_incomplete {
-                        Some(
-                          REGISTRY_IMPORT_COMMIT_CHARS
-                            .iter()
-                            .map(|&c| c.into())
-                            .collect(),
-                        )
-                      } else {
-                        Some(
-                          IMPORT_COMMIT_CHARS
-                            .iter()
-                            .map(|&c| c.into())
-                            .collect(),
-                        )
-                      };
-                      completions.insert(
-                        item.clone(),
-                        lsp::CompletionItem {
-                          label: item,
-                          kind,
-                          detail,
-                          sort_text,
-                          filter_text,
-                          text_edit,
-                          command,
-                          preselect,
-                          data,
-                          commit_characters,
-                          ..Default::default()
-                        },
-                      );
-                    }
+                    VariableItems::Simple(items) => (items, None, false),
+                  };
+                  if incomplete {
+                    is_incomplete = true;
                   }
+                  for (idx, item) in items.into_iter().enumerate() {
+                    let path = format!("{prefix}{item}");
+                    let kind = Some(lsp::CompletionItemKind::FOLDER);
+                    let item_specifier = base.join(&path).ok()?;
+                    let full_text = if let Some(suffix) =
+                      item_specifier.as_str().strip_prefix(resolved_str)
+                    {
+                      format!("{text}{suffix}")
+                    } else {
+                      item_specifier.to_string()
+                    };
+                    let text_edit =
+                      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                        range: *range,
+                        new_text: full_text.clone(),
+                      }));
+                    let command = if k.name == last_key_name
+                      && !specifier_exists(&item_specifier)
+                    {
+                      Some(lsp::Command {
+                        title: "".to_string(),
+                        command: "deno.cache".to_string(),
+                        arguments: Some(vec![
+                          json!([item_specifier]),
+                          json!(&resolved),
+                        ]),
+                      })
+                    } else {
+                      None
+                    };
+                    let detail = Some(format!("({})", k.name));
+                    let filter_text = Some(full_text.to_string());
+                    let sort_text = Some(format!("{:0>10}", idx + 1));
+                    let preselect =
+                      get_preselect(item.clone(), preselect.clone());
+                    let data = get_data(registry, &resolved, k, &path);
+                    let commit_characters = if is_incomplete {
+                      Some(
+                        REGISTRY_IMPORT_COMMIT_CHARS
+                          .iter()
+                          .map(|&c| c.into())
+                          .collect(),
+                      )
+                    } else {
+                      Some(
+                        IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+                      )
+                    };
+                    completions.insert(
+                      item.clone(),
+                      lsp::CompletionItem {
+                        label: item,
+                        kind,
+                        detail,
+                        sort_text,
+                        filter_text,
+                        text_edit,
+                        command,
+                        preselect,
+                        data,
+                        commit_characters,
+                        ..Default::default()
+                      },
+                    );
+                  }
+                }
               }
             }
           }
@@ -1055,18 +1051,14 @@ impl ModuleRegistry {
         .fetch_bypass_permissions(&specifier)
         .await
         .map_err(|err| {
-          error!(
-            "Internal error fetching endpoint \"{specifier}\". {err}"
-          );
+          error!("Internal error fetching endpoint \"{specifier}\". {err}");
         })
         .ok()?;
       TextDecodedFile::decode(file).ok()?
     };
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
-        error!(
-          "Error parsing response from endpoint \"{specifier}\". {err}"
-        );
+        error!("Error parsing response from endpoint \"{specifier}\". {err}");
       })
       .ok()?;
     Some(items)
@@ -1092,18 +1084,14 @@ impl ModuleRegistry {
         .fetch_bypass_permissions(&specifier)
         .await
         .map_err(|err| {
-          error!(
-            "Internal error fetching endpoint \"{specifier}\". {err}"
-          );
+          error!("Internal error fetching endpoint \"{specifier}\". {err}");
         })
         .ok()?;
       TextDecodedFile::decode(file).ok()?
     };
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
-        error!(
-          "Error parsing response from endpoint \"{specifier}\". {err}"
-        );
+        error!("Error parsing response from endpoint \"{specifier}\". {err}");
       })
       .ok()?;
     Some(items)
@@ -1616,9 +1604,10 @@ mod tests {
     let completions = completions.unwrap().items;
     for completion in completions {
       if let Some(filter_text) = completion.filter_text
-        && !"http://localhost:4545/cde@".contains(&filter_text) {
-          continue;
-        }
+        && !"http://localhost:4545/cde@".contains(&filter_text)
+      {
+        continue;
+      }
       assert!(completion.text_edit.is_some());
       if let lsp::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()
       {

@@ -684,13 +684,14 @@ pub async fn op_fetch_send(
 
       if let FetchError::ClientSend(err_src) = &err
         && let Some(client_err) = std::error::Error::source(&err_src.source)
-          && let Some(err_src) = client_err.downcast_ref::<hyper::Error>()
-            && let Some(err_src) = std::error::Error::source(err_src) {
-              return Ok(FetchResponse {
-                error: Some((err.to_string(), err_src.to_string())),
-                ..Default::default()
-              });
-            }
+        && let Some(err_src) = client_err.downcast_ref::<hyper::Error>()
+        && let Some(err_src) = std::error::Error::source(err_src)
+      {
+        return Ok(FetchResponse {
+          error: Some((err.to_string(), err_src.to_string())),
+          ..Default::default()
+        });
+      }
 
       return Err(err);
     }

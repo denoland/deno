@@ -655,13 +655,15 @@ impl TsConfigFileFilter {
   fn includes_path(&self, path: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
     if let Some((_, files)) = &self.files
-      && files.iter().any(|f| f.absolute_path == path) {
-        return true;
-      }
+      && files.iter().any(|f| f.absolute_path == path)
+    {
+      return true;
+    }
     if let Some(exclude) = &self.exclude
-      && exclude.matches_path(path) {
-        return false;
-      }
+      && exclude.matches_path(path)
+    {
+      return false;
+    }
     if let Some(include) = &self.include {
       if include.matches_path(path) {
         return true;
@@ -1104,13 +1106,14 @@ impl CompilerOptionsResolver {
       .sources
       .iter()
       .any(|s| s.compiler_options.is_some())
-      && let Ok(path) = url_to_file_path(specifier) {
-        for ts_config in &self.ts_configs {
-          if ts_config.filter.includes_path(&path) {
-            return &ts_config.compiler_options;
-          }
+      && let Ok(path) = url_to_file_path(specifier)
+    {
+      for ts_config in &self.ts_configs {
+        if ts_config.filter.includes_path(&path) {
+          return &ts_config.compiler_options;
         }
       }
+    }
     workspace_data
   }
 
@@ -1124,16 +1127,17 @@ impl CompilerOptionsResolver {
       .sources
       .iter()
       .any(|s| s.compiler_options.is_some())
-      && let Ok(path) = url_to_file_path(specifier) {
-        for (i, ts_config) in self.ts_configs.iter().enumerate() {
-          if ts_config.filter.includes_path(&path) {
-            return (
-              CompilerOptionsKey::TsConfig(i),
-              &ts_config.compiler_options,
-            );
-          }
+      && let Ok(path) = url_to_file_path(specifier)
+    {
+      for (i, ts_config) in self.ts_configs.iter().enumerate() {
+        if ts_config.filter.includes_path(&path) {
+          return (
+            CompilerOptionsKey::TsConfig(i),
+            &ts_config.compiler_options,
+          );
         }
       }
+    }
     (
       CompilerOptionsKey::WorkspaceConfig(scope.cloned()),
       workspace_data,

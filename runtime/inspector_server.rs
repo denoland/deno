@@ -307,93 +307,94 @@ async fn server(
     }
   };
 
-  let mut server_handler =
-    pin!(deno_core::unsync::spawn(async move {
-    loop {
-      let mut rx = shutdown_server_rx.resubscribe();
-      let mut shutdown_rx = pin!(rx.recv());
-      let mut accept = pin!(listener.accept());
+  let mut server_handler = pin!(
+    deno_core::unsync::spawn(async move {
+      loop {
+        let mut rx = shutdown_server_rx.resubscribe();
+        let mut shutdown_rx = pin!(rx.recv());
+        let mut accept = pin!(listener.accept());
 
-      let stream = tokio::select! {
-        accept_result = &mut accept => {
-          match accept_result {
-            Ok((s, _)) => s,
-            Err(err) => {
-              log::error!("Failed to accept inspector connection: {err:?}");
-              continue;
-            }
-          }
-        },
-
-        _ = &mut shutdown_rx => {
-          break;
-        }
-      };
-      let io = TokioIo::new(stream);
-
-      let inspector_map = Rc::clone(&inspector_map_);
-      let json_version_response = json_version_response.clone();
-      let mut shutdown_server_rx = shutdown_server_rx.resubscribe();
-
-      let service = hyper::service::service_fn(
-        move |req: http::Request<hyper::body::Incoming>| {
-          future::ready({
-            // If the host header can make a valid URL, use it
-            let host = req
-              .headers()
-              .get("host")
-              .and_then(|host| host.to_str().ok())
-              .and_then(|host| Url::parse(&format!("http://{host}")).ok())
-              .and_then(|url| match (url.host(), url.port()) {
-                (Some(host), Some(port)) => Some(format!("{host}:{port}")),
-                (Some(host), None) => Some(format!("{host}")),
-                _ => None,
-              });
-            match (req.method(), req.uri().path()) {
-              (&http::Method::GET, path) if path.starts_with("/ws/") => {
-                handle_ws_request(req, Rc::clone(&inspector_map))
+        let stream = tokio::select! {
+          accept_result = &mut accept => {
+            match accept_result {
+              Ok((s, _)) => s,
+              Err(err) => {
+                log::error!("Failed to accept inspector connection: {err:?}");
+                continue;
               }
-              (&http::Method::GET, "/json/version") => {
-                handle_json_version_request(json_version_response.clone())
-              }
-              (&http::Method::GET, "/json") => {
-                handle_json_request(Rc::clone(&inspector_map), host)
-              }
-              (&http::Method::GET, "/json/list") => {
-                handle_json_request(Rc::clone(&inspector_map), host)
-              }
-              _ => http::Response::builder()
-                .status(http::StatusCode::NOT_FOUND)
-                .body(Box::new(http_body_util::Full::new(Bytes::from(
-                  "Not Found",
-                )))),
-            }
-          })
-        },
-      );
-
-      deno_core::unsync::spawn(async move {
-        let server = hyper::server::conn::http1::Builder::new();
-
-        let mut conn =
-          pin!(server.serve_connection(io, service).with_upgrades());
-        let mut shutdown_rx = pin!(shutdown_server_rx.recv());
-
-        tokio::select! {
-          result = conn.as_mut() => {
-            if let Err(err) = result {
-              log::error!("Failed to serve connection: {err:?}");
             }
           },
+
           _ = &mut shutdown_rx => {
-            conn.as_mut().graceful_shutdown();
-            let _ = conn.await;
+            break;
           }
-        }
-      });
-    }
-  })
-  .fuse());
+        };
+        let io = TokioIo::new(stream);
+
+        let inspector_map = Rc::clone(&inspector_map_);
+        let json_version_response = json_version_response.clone();
+        let mut shutdown_server_rx = shutdown_server_rx.resubscribe();
+
+        let service = hyper::service::service_fn(
+          move |req: http::Request<hyper::body::Incoming>| {
+            future::ready({
+              // If the host header can make a valid URL, use it
+              let host = req
+                .headers()
+                .get("host")
+                .and_then(|host| host.to_str().ok())
+                .and_then(|host| Url::parse(&format!("http://{host}")).ok())
+                .and_then(|url| match (url.host(), url.port()) {
+                  (Some(host), Some(port)) => Some(format!("{host}:{port}")),
+                  (Some(host), None) => Some(format!("{host}")),
+                  _ => None,
+                });
+              match (req.method(), req.uri().path()) {
+                (&http::Method::GET, path) if path.starts_with("/ws/") => {
+                  handle_ws_request(req, Rc::clone(&inspector_map))
+                }
+                (&http::Method::GET, "/json/version") => {
+                  handle_json_version_request(json_version_response.clone())
+                }
+                (&http::Method::GET, "/json") => {
+                  handle_json_request(Rc::clone(&inspector_map), host)
+                }
+                (&http::Method::GET, "/json/list") => {
+                  handle_json_request(Rc::clone(&inspector_map), host)
+                }
+                _ => http::Response::builder()
+                  .status(http::StatusCode::NOT_FOUND)
+                  .body(Box::new(http_body_util::Full::new(Bytes::from(
+                    "Not Found",
+                  )))),
+              }
+            })
+          },
+        );
+
+        deno_core::unsync::spawn(async move {
+          let server = hyper::server::conn::http1::Builder::new();
+
+          let mut conn =
+            pin!(server.serve_connection(io, service).with_upgrades());
+          let mut shutdown_rx = pin!(shutdown_server_rx.recv());
+
+          tokio::select! {
+            result = conn.as_mut() => {
+              if let Err(err) = result {
+                log::error!("Failed to serve connection: {err:?}");
+              }
+            },
+            _ = &mut shutdown_rx => {
+              conn.as_mut().graceful_shutdown();
+              let _ = conn.await;
+            }
+          }
+        });
+      }
+    })
+    .fuse()
+  );
 
   select! {
     _ = register_inspector_handler => {},

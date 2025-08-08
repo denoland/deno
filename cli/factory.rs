@@ -157,17 +157,18 @@ struct EszipModuleLoaderProvider {
 impl EszipModuleLoaderProvider {
   pub async fn get(&self) -> Result<Option<&Arc<EszipModuleLoader>>, AnyError> {
     if self.cli_options.eszip()
-      && let DenoSubcommand::Run(run_flags) = self.cli_options.sub_command() {
-        if self.deferred.get().is_none() {
-          let eszip_loader = EszipModuleLoader::create(
-            &run_flags.script,
-            self.cli_options.initial_cwd(),
-          )
-          .await?;
-          _ = self.deferred.set(Arc::new(eszip_loader));
-        }
-        return Ok(Some(self.deferred.get().unwrap()));
+      && let DenoSubcommand::Run(run_flags) = self.cli_options.sub_command()
+    {
+      if self.deferred.get().is_none() {
+        let eszip_loader = EszipModuleLoader::create(
+          &run_flags.script,
+          self.cli_options.initial_cwd(),
+        )
+        .await?;
+        _ = self.deferred.set(Arc::new(eszip_loader));
       }
+      return Ok(Some(self.deferred.get().unwrap()));
+    }
     Ok(None)
   }
 }

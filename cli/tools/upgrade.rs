@@ -200,9 +200,10 @@ impl<TEnvironment: UpdateCheckerEnvironment, TVersionProvider: VersionProvider>
 
     if let Ok(current) = Version::parse_standard(&current_version)
       && let Ok(latest) = Version::parse_standard(&file.latest_version)
-        && current >= latest {
-          return None;
-        }
+      && current >= latest
+    {
+      return None;
+    }
 
     let last_prompt_age = self
       .env
@@ -431,9 +432,10 @@ async fn check_for_upgrades_for_lsp_with_provider(
       if let Ok(current) = Version::parse_standard(&current_version)
         && let Ok(latest) =
           Version::parse_standard(&latest_version.version_or_hash)
-          && current >= latest {
-            return Ok(None); // nothing to upgrade
-          }
+        && current >= latest
+      {
+        return Ok(None); // nothing to upgrade
+      }
       Ok(Some(LspVersionUpgradeInfo {
         latest_version: latest_version.version_or_hash,
         is_canary: false,
@@ -872,9 +874,7 @@ fn get_download_url(
   };
 
   Url::parse(&download_url).with_context(|| {
-    format!(
-      "Failed to parse URL to download new release: {download_url}"
-    )
+    format!("Failed to parse URL to download new release: {download_url}")
   })
 }
 

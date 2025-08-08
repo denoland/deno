@@ -742,7 +742,6 @@ fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
 
   let word = &line[start..end];
   let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-  
 
   (word.strip_suffix(is_word_boundary).unwrap_or(word)) as _
 }

@@ -31,20 +31,22 @@ impl<'a> BinNameResolver<'a> {
     // perform a request, and see if it redirects another file instead.
     let mut url = url.clone();
 
-    if matches!(url.scheme(), "http" | "https") && url.path() == "/"
+    if matches!(url.scheme(), "http" | "https")
+      && url.path() == "/"
       && let Ok(client) = self.http_client_provider.get_or_create()
-        && let Ok(redirected_url) = client
-          .get_redirected_url(url.clone(), &Default::default())
-          .await
-        {
-          url = redirected_url;
-        }
+      && let Ok(redirected_url) = client
+        .get_redirected_url(url.clone(), &Default::default())
+        .await
+    {
+      url = redirected_url;
+    }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&url) {
       if let Some(sub_path) = npm_ref.sub_path()
-        && !sub_path.contains('/') {
-          return Some(sub_path.to_string());
-        }
+        && !sub_path.contains('/')
+      {
+        return Some(sub_path.to_string());
+      }
 
       match self.resolve_name_from_npm(&npm_ref).await {
         Ok(Some(value)) => return Some(value),
@@ -63,9 +65,10 @@ impl<'a> BinNameResolver<'a> {
       }
       if let Some(scope_and_pkg) = npm_ref.req().name.strip_prefix('@')
         && let Some((scope, package)) = scope_and_pkg.split_once('/')
-          && package == "cli" {
-            return Some(scope.to_string());
-          }
+        && package == "cli"
+      {
+        return Some(scope.to_string());
+      }
 
       return None;
     }
@@ -84,9 +87,10 @@ impl<'a> BinNameResolver<'a> {
 
     let mut stem = path.file_stem()?.to_string_lossy();
     if matches!(stem.as_ref(), "main" | "mod" | "index" | "cli")
-      && let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
-        stem = parent_name.to_string_lossy();
-      }
+      && let Some(parent_name) = path.parent().and_then(|p| p.file_name())
+    {
+      stem = parent_name.to_string_lossy();
+    }
 
     // if atmark symbol appears in the index other than 0 (e.g. `foo@bar`) we use
     // the former part as the inferred name because the latter part is most likely

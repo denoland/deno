@@ -158,12 +158,12 @@ pub async fn publish(
     && !publish_flags.allow_dirty
     && let Some(dirty_text) =
       check_if_git_repo_dirty(cli_options.initial_cwd()).await
-    {
-      log::error!("\nUncommitted changes:\n\n{dirty_text}\n");
-      bail!(
-        "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty"
-      );
-    }
+  {
+    log::error!("\nUncommitted changes:\n\n{dirty_text}\n");
+    bail!(
+      "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty"
+    );
+  }
 
   if publish_flags.dry_run {
     for (_, package) in prepared_data.package_by_name {
@@ -681,9 +681,7 @@ async fn get_auth_headers(
         }
         let registry::OidcTokenResponse { value } = serde_json::from_str(&text)
           .with_context(|| {
-            format!(
-              "Failed to parse OIDC token: '{text}' (status {status})"
-            )
+            format!("Failed to parse OIDC token: '{text}' (status {status})")
           })?;
 
         let authorization: Rc<str> = format!("githuboidc {value}").into();

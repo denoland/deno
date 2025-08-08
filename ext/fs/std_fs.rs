@@ -777,29 +777,31 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
   }
 
   if let Ok(m) = fs::metadata(to)
-    && m.is_dir() {
-      return cp_(
-        source_meta,
-        from,
-        &to.join(from.file_name().ok_or_else(|| {
-          io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "the source path is not a valid file",
-          )
-        })?),
-      );
-    }
-
-  if let Ok(m) = fs::symlink_metadata(to)
-    && is_identical(&source_meta, &m) {
-      return Err(
+    && m.is_dir()
+  {
+    return cp_(
+      source_meta,
+      from,
+      &to.join(from.file_name().ok_or_else(|| {
         io::Error::new(
           io::ErrorKind::InvalidInput,
-          "the source and destination are the same file",
+          "the source path is not a valid file",
         )
-        .into(),
-      );
-    }
+      })?),
+    );
+  }
+
+  if let Ok(m) = fs::symlink_metadata(to)
+    && is_identical(&source_meta, &m)
+  {
+    return Err(
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "the source and destination are the same file",
+      )
+      .into(),
+    );
+  }
 
   cp_(source_meta, from, to)
 }

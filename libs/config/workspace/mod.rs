@@ -532,13 +532,15 @@ impl Workspace {
     impl<'a> Folder<'a> {
       pub fn depends_on(&self, other: &Folder<'a>) -> bool {
         if let Some(other_nv) = &other.npm_nv
-          && self.has_matching_dep(PackageKind::Npm, other_nv, other.dir_url) {
-            return true;
-          }
+          && self.has_matching_dep(PackageKind::Npm, other_nv, other.dir_url)
+        {
+          return true;
+        }
         if let Some(other_nv) = &other.jsr_nv
-          && self.has_matching_dep(PackageKind::Jsr, other_nv, other.dir_url) {
-            return true;
-          }
+          && self.has_matching_dep(PackageKind::Jsr, other_nv, other.dir_url)
+        {
+          return true;
+        }
         false
       }
 
@@ -945,12 +947,13 @@ impl Workspace {
         });
       }
       if let Some(value) = &member_config.json.lint
-        && value.get("report").is_some() {
-          diagnostics.push(WorkspaceDiagnostic {
-            config_url: member_config.specifier.clone(),
-            kind: WorkspaceDiagnosticKind::RootOnlyOption("lint.report"),
-          });
-        }
+        && value.get("report").is_some()
+      {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("lint.report"),
+        });
+      }
     }
 
     fn check_all_configs(
@@ -958,14 +961,15 @@ impl Workspace {
       diagnostics: &mut Vec<WorkspaceDiagnostic>,
     ) {
       if let Some(name) = &config.json.name
-        && !is_valid_jsr_pkg_name(name) {
-          diagnostics.push(WorkspaceDiagnostic {
-            config_url: config.specifier.clone(),
-            kind: WorkspaceDiagnosticKind::InvalidMemberName {
-              name: name.clone(),
-            },
-          });
-        }
+        && !is_valid_jsr_pkg_name(name)
+      {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::InvalidMemberName {
+            name: name.clone(),
+          },
+        });
+      }
       if config.json.deprecated_workspaces.is_some() {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: config.specifier.clone(),
@@ -1027,13 +1031,14 @@ impl Workspace {
 
     for folder in self.links.values() {
       if let Some(config) = &folder.deno_json
-        && config.json.links.is_some() {
-          // supporting linking in links is too complicated
-          diagnostics.push(WorkspaceDiagnostic {
-            config_url: config.specifier.clone(),
-            kind: WorkspaceDiagnosticKind::RootOnlyOption("links"),
-          });
-        }
+        && config.json.links.is_some()
+      {
+        // supporting linking in links is too complicated
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("links"),
+        });
+      }
     }
 
     diagnostics
@@ -1197,10 +1202,11 @@ impl Workspace {
       for (i, (_dir_path, (folder_url, _config))) in matches.iter().enumerate()
       {
         if let Some(skip_index) = indexes_to_remove.front()
-          && i == *skip_index {
-            indexes_to_remove.pop_front();
-            continue;
-          }
+          && i == *skip_index
+        {
+          indexes_to_remove.pop_front();
+          continue;
+        }
         matched_folder_urls.push(folder_url);
       }
       for folder_url in matched_folder_urls {
@@ -2355,9 +2361,10 @@ fn combine_files_config_with_cli_args(
     files_config.base = cli_arg_patterns.base;
   }
   if let Some(include) = cli_arg_patterns.include
-    && !include.inner().is_empty() {
-      files_config.include = Some(include);
-    }
+    && !include.inner().is_empty()
+  {
+    files_config.include = Some(include);
+  }
   if !cli_arg_patterns.exclude.inner().is_empty() {
     files_config.exclude = cli_arg_patterns.exclude;
   }

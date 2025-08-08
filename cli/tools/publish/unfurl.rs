@@ -109,14 +109,14 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
         "failed resolving npm workspace package '{package_name}': {reason}"
       )
       .into(),
-      Self::UnsupportedPkgJsonFileSpecifier { package_name, .. } => format!(
-        "unsupported package.json file specifier for '{package_name}'"
-      )
-      .into(),
-      Self::UnsupportedPkgJsonJsrSpecifier { package_name, .. } => format!(
-        "unsupported package.json JSR specifier for '{package_name}'"
-      )
-      .into(),
+      Self::UnsupportedPkgJsonFileSpecifier { package_name, .. } => {
+        format!("unsupported package.json file specifier for '{package_name}'")
+          .into()
+      }
+      Self::UnsupportedPkgJsonJsrSpecifier { package_name, .. } => {
+        format!("unsupported package.json JSR specifier for '{package_name}'")
+          .into()
+      }
     }
   }
 
@@ -1163,7 +1163,6 @@ console.log(nonExistent);
       diagnostic_reporter,
     );
 
-    
     deno_ast::apply_text_changes(text_info.text_str(), text_changes)
   }
 }

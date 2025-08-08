@@ -369,9 +369,10 @@ impl LanguageServer {
       // Update the lockfile on the file system with anything new
       // found after caching
       if let Ok(Some(lockfile)) = factory.maybe_lockfile().await
-        && let Err(err) = &lockfile.write_if_changed() {
-          lsp_warn!("{:#}", err);
-        }
+        && let Err(err) = &lockfile.write_if_changed()
+      {
+        lsp_warn!("{:#}", err);
+      }
 
       Ok(())
     }
@@ -481,9 +482,7 @@ impl LanguageServer {
           self.inner.read().await.virtual_text_document(params)?,
         )
         .map_err(|err| {
-          error!(
-            "Failed to serialize virtual_text_document response: {err:#}"
-          );
+          error!("Failed to serialize virtual_text_document response: {err:#}");
           LspError::internal_error()
         })?,
       )),
@@ -905,9 +904,10 @@ impl Inner {
           .map(|folder| {
             let mut url = uri_to_url(&folder.uri);
             if !url.path().ends_with('/')
-              && let Ok(mut path_segments) = url.path_segments_mut() {
-                path_segments.push("");
-              }
+              && let Ok(mut path_segments) = url.path_segments_mut()
+            {
+              path_segments.push("");
+            }
             (Arc::new(url), folder)
           })
           .collect();
@@ -916,28 +916,30 @@ impl Inner {
       // workspace_folders.
       #[allow(deprecated)]
       if let Some(root_uri) = params.root_uri
-        && !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
-          let mut root_url = uri_to_url(&root_uri);
-          let name = root_url
-            .path_segments()
-            .and_then(|mut s| s.next_back())
-            .unwrap_or_default()
-            .to_string();
-          if !root_url.path().ends_with('/')
-            && let Ok(mut path_segments) = root_url.path_segments_mut() {
-              path_segments.push("");
-            }
-          workspace_folders.insert(
-            0,
-            (
-              Arc::new(root_url),
-              WorkspaceFolder {
-                uri: root_uri,
-                name,
-              },
-            ),
-          );
+        && !workspace_folders.iter().any(|(_, f)| f.uri == root_uri)
+      {
+        let mut root_url = uri_to_url(&root_uri);
+        let name = root_url
+          .path_segments()
+          .and_then(|mut s| s.next_back())
+          .unwrap_or_default()
+          .to_string();
+        if !root_url.path().ends_with('/')
+          && let Ok(mut path_segments) = root_url.path_segments_mut()
+        {
+          path_segments.push("");
         }
+        workspace_folders.insert(
+          0,
+          (
+            Arc::new(root_url),
+            WorkspaceFolder {
+              uri: root_uri,
+              name,
+            },
+          ),
+        );
+      }
       self.config.set_workspace_folders(workspace_folders);
       if let Some(options) = params.initialization_options {
         self.config.set_workspace_settings(
@@ -2097,9 +2099,7 @@ impl Inner {
                 // so we will log them to the output, but we won't send an error
                 // message back to the client.
                 if !token.is_cancelled() {
-                  error!(
-                    "Unable to get code actions from TypeScript: {err:#}"
-                  );
+                  error!("Unable to get code actions from TypeScript: {err:#}");
                 }
                 vec![]
               });
@@ -2362,9 +2362,7 @@ impl Inner {
           if token.is_cancelled() {
             LspError::request_cancelled()
           } else {
-            error!(
-              "Unable to get refactor edit info from TypeScript: {err:#}"
-            );
+            error!("Unable to get refactor edit info from TypeScript: {err:#}");
             LspError::invalid_request()
           }
         });
@@ -2454,22 +2452,22 @@ impl Inner {
         .open_data
         .as_ref()
         .and_then(|d| d.parsed_source.as_ref())
-      {
-        code_lenses.extend(
-          code_lens::collect_test(&module.specifier, parsed_source, token)
-            .map_err(|err| {
-              if token.is_cancelled() {
-                LspError::request_cancelled()
-              } else {
-                error!(
-                  "Error getting test code lenses for \"{}\": {:#}",
-                  &module.specifier, err
-                );
-                LspError::internal_error()
-              }
-            })?,
-        );
-      }
+    {
+      code_lenses.extend(
+        code_lens::collect_test(&module.specifier, parsed_source, token)
+          .map_err(|err| {
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              error!(
+                "Error getting test code lenses for \"{}\": {:#}",
+                &module.specifier, err
+              );
+              LspError::internal_error()
+            }
+          })?,
+      );
+    }
     if settings.code_lens.implementations || settings.code_lens.references {
       let navigation_tree = self.get_navigation_tree(&module, token).await?;
       code_lenses.extend(
@@ -2566,9 +2564,7 @@ impl Inner {
         if token.is_cancelled() {
           LspError::request_cancelled()
         } else {
-          error!(
-            "Unable to get document highlights from TypeScript: {err:#}"
-          );
+          error!("Unable to get document highlights from TypeScript: {err:#}");
           LspError::internal_error()
         }
       })?;
@@ -2762,9 +2758,7 @@ impl Inner {
         if token.is_cancelled() {
           LspError::request_cancelled()
         } else {
-          error!(
-            "Unable to get type definition info from TypeScript: {err:#}"
-          );
+          error!("Unable to get type definition info from TypeScript: {err:#}");
           LspError::internal_error()
         }
       })?;
@@ -2954,9 +2948,7 @@ impl Inner {
           }
           Err(err) => {
             if !token.is_cancelled() {
-              error!(
-                "Unable to get completion info from TypeScript: {err:#}"
-              );
+              error!("Unable to get completion info from TypeScript: {err:#}");
             }
             return Ok(params);
           }
@@ -3837,9 +3829,10 @@ impl Inner {
   /// update the client.
   fn send_testing_update(&self) {
     if let Some(testing_server) = &self.maybe_testing_server
-      && let Err(err) = testing_server.update(self.snapshot()) {
-        error!("Cannot update testing server: {err:#}");
-      }
+      && let Err(err) = testing_server.update(self.snapshot())
+    {
+      error!("Cannot update testing server: {err:#}");
+    }
   }
 }
 
@@ -4398,23 +4391,25 @@ impl Inner {
         continue;
       };
       if let Some(config_file) = config_data.maybe_deno_json()
-        && let Ok(file_uri) = url_to_uri(&config_file.specifier) {
-          config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: scope_uri.clone(),
-            file_uri,
-            typ: lsp_custom::DenoConfigurationChangeType::Added,
-            configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
-          });
-        }
+        && let Ok(file_uri) = url_to_uri(&config_file.specifier)
+      {
+        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+          scope_uri: scope_uri.clone(),
+          file_uri,
+          typ: lsp_custom::DenoConfigurationChangeType::Added,
+          configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
+        });
+      }
       if let Some(package_json) = config_data.maybe_pkg_json()
-        && let Ok(file_uri) = url_to_uri(&package_json.specifier()) {
-          config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri,
-            file_uri,
-            typ: lsp_custom::DenoConfigurationChangeType::Added,
-            configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
-          });
-        }
+        && let Ok(file_uri) = url_to_uri(&package_json.specifier())
+      {
+        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+          scope_uri,
+          file_uri,
+          typ: lsp_custom::DenoConfigurationChangeType::Added,
+          configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
+        });
+      }
     }
     if !config_events.is_empty() {
       self.client.send_did_change_deno_configuration_notification(
@@ -4536,9 +4531,10 @@ impl Inner {
       .map(|folder| {
         let mut url = uri_to_url(&folder.uri);
         if !url.path().ends_with('/')
-          && let Ok(mut path_segments) = url.path_segments_mut() {
-            path_segments.push("");
-          }
+          && let Ok(mut path_segments) = url.path_segments_mut()
+        {
+          path_segments.push("");
+        }
         (Arc::new(url), folder)
       })
       .collect::<Vec<_>>();
@@ -4791,8 +4787,7 @@ impl Inner {
       let mut averages = self.performance.averages_as_f64();
       averages.sort_by(|a, b| a.0.cmp(&b.0));
       for (name, count, average_duration) in averages {
-        writeln!(contents, "|{name}|{count}|{average_duration}ms|")
-          .unwrap();
+        writeln!(contents, "|{name}|{count}|{average_duration}ms|").unwrap();
       }
 
       contents.push_str(
@@ -4801,11 +4796,8 @@ impl Inner {
       let mut measurements_by_type = self.performance.measurements_by_type();
       measurements_by_type.sort_by(|a, b| a.0.cmp(&b.0));
       for (name, total_count, total_duration) in measurements_by_type {
-        writeln!(
-          contents,
-          "|{name}|{total_count}|{total_duration:.3}ms|"
-        )
-        .unwrap();
+        writeln!(contents, "|{name}|{total_count}|{total_duration:.3}ms|")
+          .unwrap();
       }
 
       Some(contents)

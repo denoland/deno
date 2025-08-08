@@ -1869,24 +1869,27 @@ impl ConfigFile {
       // add jsxImportSource
       if let Some(serde_json::Value::String(value)) =
         compiler_options.get("jsxImportSource")
-        && let Some(dep_req) = value_to_dep_req(value) {
-          set.insert(dep_req);
-        }
+        && let Some(dep_req) = value_to_dep_req(value)
+      {
+        set.insert(dep_req);
+      }
       // add jsxImportSourceTypes
       if let Some(serde_json::Value::String(value)) =
         compiler_options.get("jsxImportSourceTypes")
-        && let Some(dep_req) = value_to_dep_req(value) {
-          set.insert(dep_req);
-        }
+        && let Some(dep_req) = value_to_dep_req(value)
+      {
+        set.insert(dep_req);
+      }
       // add the dependencies in the types array
       if let Some(serde_json::Value::Array(types)) =
         compiler_options.get("types")
       {
         for value in types {
           if let serde_json::Value::String(value) = value
-            && let Some(dep_req) = value_to_dep_req(value) {
-              set.insert(dep_req);
-            }
+            && let Some(dep_req) = value_to_dep_req(value)
+          {
+            set.insert(dep_req);
+          }
         }
       }
     }

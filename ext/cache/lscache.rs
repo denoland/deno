@@ -188,9 +188,10 @@ impl LscBackend {
         vary_header.as_bytes(),
         &request.request_headers,
         res.headers(),
-      ) {
-        return Ok(None);
-      }
+      )
+    {
+      return Ok(None);
+    }
 
     let mut response_headers: Vec<(ByteString, ByteString)> = res
       .headers()
@@ -208,14 +209,15 @@ impl LscBackend {
       .headers()
       .get("x-lsc-meta-cached-at")
       .and_then(|x| x.to_str().ok())
-      && let Ok(cached_at) = chrono::DateTime::parse_from_rfc3339(x) {
-        let age = chrono::Utc::now()
-          .signed_duration_since(cached_at)
-          .num_seconds();
-        if age >= 0 {
-          response_headers.push(("age".into(), age.to_string().into()));
-        }
+      && let Ok(cached_at) = chrono::DateTime::parse_from_rfc3339(x)
+    {
+      let age = chrono::Utc::now()
+        .signed_duration_since(cached_at)
+        .num_seconds();
+      if age >= 0 {
+        response_headers.push(("age".into(), age.to_string().into()));
       }
+    }
 
     let meta = CacheMatchResponseMeta {
       response_status: res.status().as_u16(),

@@ -371,10 +371,11 @@ fn try_consume(
   it: &mut Peekable<impl Iterator<Item = LexToken>>,
 ) -> Option<String> {
   if let Some(token) = it.peek()
-    && &token.token_type == token_type {
-      let token = it.next().unwrap();
-      return Some(token.value);
-    }
+    && &token.token_type == token_type
+  {
+    let token = it.next().unwrap();
+    return Some(token.value);
+  }
   None
 }
 
@@ -741,16 +742,18 @@ impl Compiler {
                 let prefix = k.prefix.clone().unwrap_or_default();
                 let suffix = k.suffix.clone().unwrap_or_default();
                 for segment in v {
-                  if !segment.is_empty() && self.validate
+                  if !segment.is_empty()
+                    && self.validate
                     && let Some(re) = &self.matches[i]
-                      && !re.is_match(segment) {
-                        return Err(anyhow!(
-                          "Expected all \"{:?}\" to match \"{}\", but got {}",
-                          k.name,
-                          k.pattern,
-                          segment
-                        ));
-                      }
+                    && !re.is_match(segment)
+                  {
+                    return Err(anyhow!(
+                      "Expected all \"{:?}\" to match \"{}\", but got {}",
+                      k.name,
+                      k.pattern,
+                      segment
+                    ));
+                  }
                   write!(path, "{prefix}{segment}{suffix}").unwrap();
                 }
               }
@@ -758,14 +761,15 @@ impl Compiler {
             Some(StringOrVec::String(s)) => {
               if self.validate
                 && let Some(re) = &self.matches[i]
-                  && !re.is_match(s) {
-                    return Err(anyhow!(
-                      "Expected \"{:?}\" to match \"{}\", but got \"{}\"",
-                      k.name,
-                      k.pattern,
-                      s
-                    ));
-                  }
+                && !re.is_match(s)
+              {
+                return Err(anyhow!(
+                  "Expected \"{:?}\" to match \"{}\", but got \"{}\"",
+                  k.name,
+                  k.pattern,
+                  s
+                ));
+              }
               let prefix = k.prefix.clone().unwrap_or_default();
               let suffix = k.suffix.clone().unwrap_or_default();
               write!(path, "{prefix}{s}{suffix}").unwrap();

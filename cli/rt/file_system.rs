@@ -608,9 +608,7 @@ impl sys_traits::FsMetadataValue for FileBackedVfsMetadata {
 fn not_supported(name: &str) -> std::io::Error {
   std::io::Error::new(
     ErrorKind::Unsupported,
-    format!(
-      "{name} is not supported for an embedded deno compile file"
-    ),
+    format!("{name} is not supported for an embedded deno compile file"),
   )
 }
 
