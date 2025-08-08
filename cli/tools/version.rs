@@ -6,7 +6,8 @@ use std::sync::Arc;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_semver::{Version, SmallStackString};
+use deno_semver::SmallStackString;
+use deno_semver::Version;
 use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::json;
@@ -65,7 +66,8 @@ impl ConfigUpdater {
   }
 
   fn get_version(&self) -> Option<String> {
-    self.root_object
+    self
+      .root_object
       .get("version")?
       .value()?
       .as_string_lit()
@@ -100,35 +102,53 @@ impl ConfigUpdater {
   }
 }
 
-fn increment_version(current: &Version, increment: &VersionIncrement) -> Result<Version, AnyError> {
+fn increment_version(
+  current: &Version,
+  increment: &VersionIncrement,
+) -> Result<Version, AnyError> {
   match increment {
     VersionIncrement::Major => {
       Version::parse_standard(&format!("{}.0.0", current.major + 1))
         .with_context(|| "Failed to create major version")
     }
-    VersionIncrement::Minor => {
-      Version::parse_standard(&format!("{}.{}.0", current.major, current.minor + 1))
-        .with_context(|| "Failed to create minor version")
-    }
-    VersionIncrement::Patch => {
-      Version::parse_standard(&format!("{}.{}.{}", current.major, current.minor, current.patch + 1))
-        .with_context(|| "Failed to create patch version")
-    }
+    VersionIncrement::Minor => Version::parse_standard(&format!(
+      "{}.{}.0",
+      current.major,
+      current.minor + 1
+    ))
+    .with_context(|| "Failed to create minor version"),
+    VersionIncrement::Patch => Version::parse_standard(&format!(
+      "{}.{}.{}",
+      current.major,
+      current.minor,
+      current.patch + 1
+    ))
+    .with_context(|| "Failed to create patch version"),
     VersionIncrement::Premajor => {
-      let mut new_version = Version::parse_standard(&format!("{}.0.0", current.major + 1))
-        .with_context(|| "Failed to create premajor version")?;
+      let mut new_version =
+        Version::parse_standard(&format!("{}.0.0", current.major + 1))
+          .with_context(|| "Failed to create premajor version")?;
       new_version.pre = vec![SmallStackString::from_static("0")].into();
       Ok(new_version)
     }
     VersionIncrement::Preminor => {
-      let mut new_version = Version::parse_standard(&format!("{}.{}.0", current.major, current.minor + 1))
-        .with_context(|| "Failed to create preminor version")?;
+      let mut new_version = Version::parse_standard(&format!(
+        "{}.{}.0",
+        current.major,
+        current.minor + 1
+      ))
+      .with_context(|| "Failed to create preminor version")?;
       new_version.pre = vec![SmallStackString::from_static("0")].into();
       Ok(new_version)
     }
     VersionIncrement::Prepatch => {
-      let mut new_version = Version::parse_standard(&format!("{}.{}.{}", current.major, current.minor, current.patch + 1))
-        .with_context(|| "Failed to create prepatch version")?;
+      let mut new_version = Version::parse_standard(&format!(
+        "{}.{}.{}",
+        current.major,
+        current.minor,
+        current.patch + 1
+      ))
+      .with_context(|| "Failed to create prepatch version")?;
       new_version.pre = vec![SmallStackString::from_static("0")].into();
       Ok(new_version)
     }
@@ -153,7 +173,9 @@ fn increment_version(current: &Version, increment: &VersionIncrement) -> Result<
   }
 }
 
-fn find_config_files(cli_options: &CliOptions) -> Result<Vec<ConfigUpdater>, AnyError> {
+fn find_config_files(
+  cli_options: &CliOptions,
+) -> Result<Vec<ConfigUpdater>, AnyError> {
   let start_dir = &cli_options.start_dir;
   let mut configs = Vec::new();
 
@@ -166,7 +188,10 @@ fn find_config_files(cli_options: &CliOptions) -> Result<Vec<ConfigUpdater>, Any
 
   // Check for package.json
   if let Some(pkg_json) = start_dir.maybe_pkg_json() {
-    configs.push(ConfigUpdater::new(ConfigKind::PackageJson, pkg_json.path.clone())?);
+    configs.push(ConfigUpdater::new(
+      ConfigKind::PackageJson,
+      pkg_json.path.clone(),
+    )?);
   }
 
   if configs.is_empty() {
@@ -237,8 +262,14 @@ pub async fn version_command(
   let mut current_version = None;
   for config in &configs {
     if let Some(version_str) = config.get_version() {
-      current_version = Some(Version::parse_standard(&version_str)
-        .with_context(|| format!("Failed to parse version '{}' in {}", version_str, config.display_path()))?);
+      current_version =
+        Some(Version::parse_standard(&version_str).with_context(|| {
+          format!(
+            "Failed to parse version '{}' in {}",
+            version_str,
+            config.display_path()
+          )
+        })?);
       break;
     }
   }
@@ -296,6 +327,9 @@ pub async fn version_command(
     }
   }
 
-  println!("Version updated from {} to {}", current_version, new_version);
+  println!(
+    "Version updated from {} to {}",
+    current_version, new_version
+  );
   Ok(())
 }

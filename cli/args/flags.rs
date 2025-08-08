@@ -3825,7 +3825,15 @@ Additional options:
       .arg(
         Arg::new("increment")
           .help("Version increment type")
-          .value_parser(["major", "minor", "patch", "premajor", "preminor", "prepatch", "prerelease"])
+          .value_parser([
+            "major",
+            "minor",
+            "patch",
+            "premajor",
+            "preminor",
+            "prepatch",
+            "prerelease",
+          ])
           .index(1),
       )
       .arg(
@@ -5029,19 +5037,20 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let increment = matches.remove_one::<String>("increment").and_then(|s| {
-    match s.as_str() {
-      "major" => Some(VersionIncrement::Major),
-      "minor" => Some(VersionIncrement::Minor),
-      "patch" => Some(VersionIncrement::Patch),
-      "premajor" => Some(VersionIncrement::Premajor),
-      "preminor" => Some(VersionIncrement::Preminor),
-      "prepatch" => Some(VersionIncrement::Prepatch),
-      "prerelease" => Some(VersionIncrement::Prerelease),
-      _ => None,
-    }
-  });
-  
+  let increment =
+    matches
+      .remove_one::<String>("increment")
+      .and_then(|s| match s.as_str() {
+        "major" => Some(VersionIncrement::Major),
+        "minor" => Some(VersionIncrement::Minor),
+        "patch" => Some(VersionIncrement::Patch),
+        "premajor" => Some(VersionIncrement::Premajor),
+        "preminor" => Some(VersionIncrement::Preminor),
+        "prepatch" => Some(VersionIncrement::Prepatch),
+        "prerelease" => Some(VersionIncrement::Prerelease),
+        _ => None,
+      });
+
   flags.subcommand = DenoSubcommand::Version(VersionFlags {
     increment,
     dry_run: matches.get_flag("dry-run"),
