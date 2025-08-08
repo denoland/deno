@@ -853,13 +853,12 @@ fn search_path_join_test(
     result.extend_from_slice(&cwd[..cwd_len]);
 
     // Add path separator if needed
-    if let Some(last) = result.last() {
-      if !(*last == wchar!('\\')
+    if let Some(last) = result.last()
+      && !(*last == wchar!('\\')
         || *last == wchar!('/')
         || *last == wchar!(':'))
-      {
-        result.push(wchar!('\\'));
-      }
+    {
+      result.push(wchar!('\\'));
     }
   }
 
