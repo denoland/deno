@@ -499,6 +499,7 @@ mod tests {
   use deno_core::FsModuleLoader;
   use deno_core::resolve_path;
   use deno_resolver::npm::DenoInNpmPackageChecker;
+  use deno_runtime::deno_fetch::dns::Resolver;
   use deno_runtime::deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
   use deno_runtime::permissions::RuntimePermissionDescriptorParser;
@@ -538,7 +539,7 @@ mod tests {
         node_services: Default::default(),
         npm_process_state_provider: Default::default(),
         root_cert_store_provider: Default::default(),
-        fetch_dns_resolver: Default::default(),
+        fetch_dns_resolver: Resolver::default(Arc::new(crate::http_util::Noop)),
         shared_array_buffer_store: Default::default(),
         compiled_wasm_module_store: Default::default(),
         v8_code_cache: Default::default(),

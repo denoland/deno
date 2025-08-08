@@ -1,0 +1,15 @@
+{
+  "tests": {
+    "main": {
+      "args": "run --unstable-net --unstable-kv --allow-env --allow-read --allow-net --deny-net=127.0.0.1 main.ts",
+      "envs": {
+        "DENO_KV_ACCESS_TOKEN": "test"
+      },
+      "output": "main.out"
+    },
+    "send_datagram": {
+      "args": "run --unstable-net --allow-run --allow-read --allow-net --deny-net=127.0.0.1 send_datagram.ts",
+      "output": "datagram.out"
+    }
+  }
+}

@@ -51,7 +51,7 @@ fn test_userspace_resolver() {
       addr.clone(),
       "https",
       http::Version::HTTP_2,
-      dns::Resolver::hickory_from_resolver(hickory),
+      dns::Resolver::hickory_from_resolver(Arc::new(()),hickory),
     )
     .await;
     assert_eq!(thread_counter.load(SeqCst), 0, "userspace resolver shouldn't spawn new threads.");
@@ -60,7 +60,7 @@ fn test_userspace_resolver() {
       addr.clone(),
       "https",
       http::Version::HTTP_2,
-      dns::Resolver::gai(),
+      dns::Resolver::gai(Arc::new(())),
     )
     .await;
     assert_eq!(thread_counter.load(SeqCst), 1, "getaddrinfo is called inside spawn_blocking, so tokio spawn a new worker thread for it.");
@@ -153,7 +153,7 @@ async fn run_test_client(
     src_addr.to_string(),
     proto,
     ver,
-    Default::default(),
+    dns::Resolver::default(Arc::new(())),
   )
   .await
 }
