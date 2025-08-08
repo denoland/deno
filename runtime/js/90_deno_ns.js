@@ -14,6 +14,7 @@ import * as console from "ext:deno_console/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
+import * as pipe from "ext:deno_net/04_pipe.ts";
 import * as serve from "ext:deno_http/00_serve.ts";
 import * as http from "ext:deno_http/01_http.js";
 import * as websocket from "ext:deno_http/02_websocket.ts";
@@ -126,6 +127,7 @@ const denoNs = {
   stderr: io.stderr,
   connect: net.connect,
   listen: net.listen,
+  pipe: pipe,
   loadavg: os.loadavg,
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
