@@ -16,6 +16,7 @@ use super::config::SETTINGS_SECTION;
 use super::config::WorkspaceSettings;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
+use crate::lsp::logging::lsp_warn;
 use crate::lsp::repl::get_repl_workspace_settings;
 
 #[derive(Debug)]
@@ -140,6 +141,16 @@ impl Client {
       client.show_message(message_type, message).await;
     });
   }
+
+  pub fn refresh_diagnostics(&self) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      if let Err(err) = client.refresh_diagnostics().await {
+        lsp_warn!("Client failed to refresh diagnostics: ${err:#}");
+      }
+    });
+  }
 }
 
 /// DANGER: The methods on this client should only be called outside
@@ -193,6 +204,7 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::DidUpgradeCheckNotificationParams,
   );
+  async fn refresh_diagnostics(&self) -> Result<(), AnyError>;
   async fn workspace_configuration(
     &self,
     scopes: Vec<Option<lsp::Uri>>,
@@ -297,6 +309,14 @@ impl ClientTrait for TowerClient {
       .0
       .send_notification::<lsp_custom::DidUpgradeCheckNotification>(params)
       .await
+  }
+
+  async fn refresh_diagnostics(&self) -> Result<(), AnyError> {
+    self
+      .0
+      .send_request::<lsp::request::WorkspaceDiagnosticRefresh>(())
+      .await
+      .map_err(|err| anyhow!("{err:#}"))
   }
 
   async fn workspace_configuration(
@@ -410,6 +430,10 @@ impl ClientTrait for ReplClient {
     &self,
     _params: lsp_custom::DidUpgradeCheckNotificationParams,
   ) {
+  }
+
+  async fn refresh_diagnostics(&self) -> Result<(), AnyError> {
+    Ok(())
   }
 
   async fn workspace_configuration(

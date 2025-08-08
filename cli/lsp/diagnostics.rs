@@ -481,7 +481,7 @@ pub struct DiagnosticsServer {
   performance: Arc<Performance>,
   ts_server: Arc<TsServer>,
   batch_counter: DiagnosticBatchCounter,
-  state: Arc<DiagnosticsState>,
+  pub state: Arc<DiagnosticsState>,
   deferred_diagnostics: Arc<deno_core::parking_lot::Mutex<DeferredDiagnostics>>,
 }
 
@@ -505,7 +505,6 @@ impl DiagnosticsServer {
     client: Client,
     performance: Arc<Performance>,
     ts_server: Arc<TsServer>,
-    state: Arc<DiagnosticsState>,
   ) -> Self {
     DiagnosticsServer {
       channel: Default::default(),
@@ -514,7 +513,7 @@ impl DiagnosticsServer {
       performance,
       ts_server,
       batch_counter: Default::default(),
-      state,
+      state: Default::default(),
       deferred_diagnostics: Arc::new(
         Mutex::new(DeferredDiagnostics::default()),
       ),
@@ -896,7 +895,7 @@ fn to_lsp_related_information(
   })
 }
 
-fn ts_json_to_diagnostics(
+pub fn ts_json_to_diagnostics(
   diagnostics: Vec<crate::tsc::Diagnostic>,
   module: &DocumentModule,
   document_modules: &DocumentModules,
@@ -988,7 +987,7 @@ fn generate_lint_diagnostics(
   records
 }
 
-fn generate_document_lint_diagnostics(
+pub fn generate_document_lint_diagnostics(
   module: &DocumentModule,
   linter: &LspLinter,
   token: CancellationToken,
@@ -1115,7 +1114,7 @@ async fn generate_ts_diagnostics_inner<'a>(
     enabled_modules_by_key
   {
     let (diagnostics_list, ambient_modules) = ts_server
-      .get_diagnostics(snapshot.clone(), &enabled_modules, token)
+      .get_diagnostics_many(snapshot.clone(), &enabled_modules, token)
       .await?;
     enabled_modules_with_diagnostics
       .extend(enabled_modules.into_iter().zip(diagnostics_list));
@@ -1747,7 +1746,7 @@ fn diagnose_resolution(
 /// Generate diagnostics related to a dependency. The dependency is analyzed to
 /// determine if it can be remapped to the active import map as well as surface
 /// any diagnostics related to the resolved code or type dependency.
-fn diagnose_dependency(
+pub fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   deferred_diagnostics: &mut Vec<(String, lsp::Diagnostic)>,
   snapshot: &language_server::StateSnapshot,

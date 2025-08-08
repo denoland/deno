@@ -538,6 +538,40 @@ impl TsServer {
   pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
+    module: &DocumentModule,
+    token: &CancellationToken,
+  ) -> Result<Vec<crate::tsc::Diagnostic>, AnyError> {
+    let req = TscRequest::GetDiagnostics((
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
+      snapshot.project_version,
+    ));
+    self
+      .request::<Vec<crate::tsc::Diagnostic>>(
+        snapshot,
+        req,
+        &module.compiler_options_key,
+        module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
+        token,
+      )
+      .await
+      .and_then(|mut diagnostics| {
+        for diagnostic in &mut diagnostics {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
+          normalize_diagnostic(diagnostic, &self.specifier_map)?;
+        }
+        Ok(diagnostics)
+      })
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn get_diagnostics_many(
+    &self,
+    snapshot: Arc<StateSnapshot>,
     modules: &[Arc<DocumentModule>],
     token: &CancellationToken,
   ) -> Result<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules), AnyError>
@@ -558,7 +592,7 @@ impl TsServer {
       .map(|m| self.specifier_map.denormalize(&m.specifier, m.media_type))
       .collect();
     let req =
-      TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
+      TscRequest::GetDiagnosticsMany((specifiers, snapshot.project_version));
     self
       .request::<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules)>(
         snapshot,
@@ -578,6 +612,27 @@ impl TsServer {
         }
         Ok((diagnostics, ambient_modules))
       })
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn get_ambient_modules(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    compiler_options_key: &CompilerOptionsKey,
+    notebook_uri: Option<&Arc<Uri>>,
+    token: &CancellationToken,
+  ) -> Result<Vec<String>, AnyError> {
+    let req = TscRequest::GetAmbientModules;
+    self
+      .request::<Vec<String>>(
+        snapshot.clone(),
+        req,
+        compiler_options_key,
+        None,
+        notebook_uri,
+        token,
+      )
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -764,7 +819,7 @@ impl TsServer {
     trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
     token: &CancellationToken,
-  ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
+  ) -> Result<Vec<ApplicableRefactorInfo>, AnyError> {
     let trigger_kind = trigger_kind.map(|reason| match reason {
       lsp::CodeActionTriggerKind::INVOKED => "invoked",
       lsp::CodeActionTriggerKind::AUTOMATIC => "implicit",
@@ -792,10 +847,6 @@ impl TsServer {
         token,
       )
       .await
-      .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -5776,8 +5827,10 @@ pub struct JsNull;
 
 #[derive(Debug, Clone, Serialize)]
 enum TscRequest {
-  GetDiagnostics((Vec<String>, usize)),
+  GetDiagnostics((String, usize)),
+  GetDiagnosticsMany((Vec<String>, usize)),
 
+  GetAmbientModules,
   CleanupSemanticCache,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
   FindReferences((String, u32)),
@@ -5896,6 +5949,10 @@ impl TscRequest {
       TscRequest::GetDiagnostics(args) => {
         ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))
       }
+      TscRequest::GetDiagnosticsMany(args) => {
+        ("$getDiagnosticsMany", Some(serde_v8::to_v8(scope, args)?))
+      }
+      TscRequest::GetAmbientModules => ("$getAmbientModules", None),
       TscRequest::FindReferences(args) => {
         ("findReferences", Some(serde_v8::to_v8(scope, args)?))
       }
@@ -5990,6 +6047,8 @@ impl TscRequest {
   fn method(&self) -> &'static str {
     match self {
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
+      TscRequest::GetDiagnosticsMany(_) => "$getDiagnosticsMany",
+      TscRequest::GetAmbientModules => "$getAmbientModules",
       TscRequest::CleanupSemanticCache => "$cleanupSemanticCache",
       TscRequest::FindReferences(_) => "findReferences",
       TscRequest::GetNavigationTree(_) => "getNavigationTree",
@@ -6175,29 +6234,23 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
-          "start": {
-            "line": 0,
-            "character": 0,
-          },
-          "end": {
-            "line": 0,
-            "character": 7
-          },
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 7 },
           "fileName": specifier,
           "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the \'lib\' compiler option to include 'dom'.",
           "sourceLine": "console.log(\"hello deno\");",
           "category": 1,
-          "code": 2584
+          "code": 2584,
         }
-      ]]),
+      ]),
     );
   }
 
@@ -6231,7 +6284,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!([[]]));
@@ -6269,7 +6322,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!([[]]));
@@ -6303,7 +6356,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -6361,7 +6414,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!([[]]));
@@ -6402,7 +6455,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -6469,7 +6522,7 @@ mod tests {
       )
       .unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -6533,7 +6586,7 @@ mod tests {
       .module_for_specifier(&specifier, scope, None)
       .unwrap();
     let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -6596,7 +6649,7 @@ mod tests {
       .module_for_specifier(&specifier, scope, None)
       .unwrap();
     let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!([[]]));
