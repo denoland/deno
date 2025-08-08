@@ -1,24 +1,24 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 #[cfg(not(target_arch = "wasm32"))]
-use deno_unsync::JoinHandle;
-#[cfg(target_arch = "wasm32")]
-pub type JoinHandle<T> =
-  std::future::Ready<Result<T, std::convert::Infallible>>;
+use deno_unsync::JoinResult;
 
-pub fn spawn_blocking<
+#[cfg(target_arch = "wasm32")]
+pub type JoinResult<T> = Result<T, std::convert::Infallible>;
+
+pub async fn spawn_blocking<
   F: (FnOnce() -> R) + Send + 'static,
   R: Send + 'static,
 >(
   f: F,
-) -> JoinHandle<R> {
+) -> JoinResult<R> {
   #[cfg(target_arch = "wasm32")]
   {
     let result = f();
-    std::future::ready(Ok(result))
+    Ok(result)
   }
   #[cfg(not(target_arch = "wasm32"))]
   {
-    deno_unsync::spawn_blocking(f)
+    deno_unsync::spawn_blocking_optional(f).await
   }
 }
