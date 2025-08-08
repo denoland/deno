@@ -542,24 +542,24 @@ fn create_command(
     if let Some(handle) = maybe_npm_process_state {
       handles_to_close.push(handle);
     }
-    if let Some(ipc) = args.ipc {
-      if ipc >= 0 {
-        let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
+    if let Some(ipc) = args.ipc
+      && ipc >= 0
+    {
+      let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
 
-        /* One end returned to parent process (this) */
-        let pipe_rid =
-          Some(state.resource_table.add(IpcJsonStreamResource::new(
-            hd1 as i64,
-            IpcRefTracker::new(state.external_ops_tracker.clone()),
-          )?));
+      /* One end returned to parent process (this) */
+      let pipe_rid =
+        Some(state.resource_table.add(IpcJsonStreamResource::new(
+          hd1 as i64,
+          IpcRefTracker::new(state.external_ops_tracker.clone()),
+        )?));
 
-        /* The other end passed to child process via NODE_CHANNEL_FD */
-        command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
+      /* The other end passed to child process via NODE_CHANNEL_FD */
+      command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
 
-        handles_to_close.push(hd2);
+      handles_to_close.push(hd2);
 
-        ipc_rid = pipe_rid;
-      }
+      ipc_rid = pipe_rid;
     }
 
     for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
