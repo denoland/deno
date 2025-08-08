@@ -5,7 +5,7 @@ try {
   if (Deno.build.os === "windows") {
     Deno.removeSync(tmpdir() + "\\deno-compile-using_code_cache.exe.cache");
   } else {
-    Deno.removeSync(tmpdir() + "\\deno-compile-using_code_cache.cache");
+    Deno.removeSync(tmpdir() + "/deno-compile-using_code_cache.cache");
   }
 } catch {
 }
