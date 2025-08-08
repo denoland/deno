@@ -108,9 +108,7 @@ use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::config::ConfigWatchedFileType;
-use crate::lsp::diagnostics::diagnose_dependency;
-use crate::lsp::diagnostics::generate_document_lint_diagnostics;
-use crate::lsp::diagnostics::ts_json_to_diagnostics;
+use crate::lsp::diagnostics::generate_module_diagnostics;
 use crate::lsp::lint::LspLinterResolver;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
@@ -119,8 +117,6 @@ use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
 use crate::tools::upgrade::upgrade_check_enabled;
-use crate::tsc::DiagnosticCategory;
-use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::sync::AsyncFlag;
@@ -244,7 +240,7 @@ impl LanguageServerTaskQueue {
   }
 }
 
-type OnceCellMap<K, V> = DashMap<K, Rc<OnceCell<V>>>;
+pub type OnceCellMap<K, V> = DashMap<K, Rc<OnceCell<V>>>;
 
 pub struct Inner {
   /// (_, notebook_uri) -> _
@@ -3172,154 +3168,31 @@ impl Inner {
       .entry(module.uri.clone())
       .or_default()
       .clone();
-    diagnostics_cell.get_or_try_init(async || {
-      let snapshot = self.snapshot();
-
-      let deps_handle = tokio::task::spawn_blocking({
-        let snapshot = snapshot.clone();
-        let module = module.clone();
-        let token = token.clone();
-        move || {
-          let mut diagnostics = Vec::new();
-          let mut deferred = Vec::new();
-          for (dependency_key, dependency) in module.dependencies.iter() {
-            if token.is_cancelled() {
-              return (Vec::new(), Vec::new());
-            }
-            diagnose_dependency(
-              &mut diagnostics,
-              &mut deferred,
-              &snapshot,
-              &module,
-              dependency_key,
-              dependency,
-            );
-          }
-          (diagnostics, deferred)
-        }
-      });
-
-      let lint_handle = tokio::task::spawn_blocking({
-        let snapshot = snapshot.clone();
-        let module = module.clone();
-        let token = token.clone();
-        move || {
-          // TODO(nayeemrmn): Support linting notebooks cells. Will require
-          // stitching cells from the same notebook into one module, linting it
-          // and then splitting/relocating the diagnostics to each cell.
-          if token.is_cancelled()
-            || module.notebook_uri.is_some()
-            || module.specifier.scheme() != "file"
-            || snapshot.resolver.in_node_modules(&module.specifier)
-          {
-            return Vec::new();
-          }
-          let settings = snapshot
-            .config
-            .workspace_settings_for_specifier(&module.specifier);
-          if !settings.lint {
-            return Vec::new();
-          }
-          let linter = snapshot.linter_resolver.for_module(&module);
-          generate_document_lint_diagnostics(&module, &linter, token)
-        }
-      });
-
-      let mut ts_diagnostics = self
-        .ts_server
-        .get_diagnostics(snapshot.clone(), module, token)
+    diagnostics_cell
+      .get_or_try_init(async || {
+        let diagnostics = generate_module_diagnostics(
+          module,
+          &self.snapshot(),
+          &self.ts_server,
+          &self.ambient_modules_regex_cache,
+          token,
+        )
         .await
         .map_err(|err| {
           if token.is_cancelled() {
             LspError::request_cancelled()
           } else {
-            error!("Unable to get diagnostics from TypeScript: {:#}", err);
+            error!(
+              "Unable to generate diagnostics for \"{}\": {:#}",
+              &module.specifier, err
+            );
             LspError::internal_error()
           }
         })?;
-      let suggestion_actions_settings = snapshot
-        .config
-        .language_settings_for_specifier(&module.specifier)
-        .map(|s| s.suggestion_actions.clone())
-        .unwrap_or_default();
-      if !suggestion_actions_settings.enabled {
-        ts_diagnostics.retain(|d| {
-          d.category != DiagnosticCategory::Suggestion
-            // Still show deprecated and unused diagnostics.
-            // https://github.com/microsoft/vscode/blob/ce50bd4876af457f64d83cfd956bc916535285f4/extensions/typescript-language-features/src/languageFeatures/diagnostics.ts#L113-L114
-            || d.reports_deprecated == Some(true)
-            || d.reports_unnecessary == Some(true)
-        });
-      }
-      let mut diagnostics = ts_json_to_diagnostics(
-        ts_diagnostics,
-        module,
-        &snapshot.document_modules,
-      );
-
-      let (deps_diagnostics, deferred_deps_diagnostics) = deps_handle
-        .await
-        .inspect_err(|err| {
-          lsp_warn!("Deps diagnostics task join error: {err:#}");
-        })
-        .unwrap_or_default();
-      diagnostics.extend(deps_diagnostics);
-      let ambient_modules_regex_cell = self
-        .ambient_modules_regex_cache
-        .entry((
-          module.compiler_options_key.clone(),
-          module.notebook_uri.clone(),
-        ))
-        .or_default()
-        .clone();
-      let ambient_modules_regex = ambient_modules_regex_cell
-        .get_or_init(async || {
-          self
-            .ts_server
-            .get_ambient_modules(
-              snapshot,
-              &module.compiler_options_key,
-              module.notebook_uri.as_ref(),
-              token,
-            )
-            .await
-            .inspect_err(|err| {
-              if !token.is_cancelled() {
-                lsp_warn!("Unable to get ambient modules: {:#}", err);
-              }
-            })
-            .ok()
-            .filter(|a| !a.is_empty())
-            .and_then(|ambient_modules| {
-              let regex_string = ambient_modules_to_regex_string(&ambient_modules);
-              regex::Regex::new(&regex_string).inspect_err(|err| {
-                lsp_warn!("Failed to compile ambient modules pattern: {err:#} (pattern is {regex_string:?})");
-              }).ok()
-            })
-        }).await;
-      if let Some(ambient_modules_regex) = ambient_modules_regex {
-        diagnostics.extend(deferred_deps_diagnostics.into_iter().filter_map(
-          |(import_url, diag)| {
-            if ambient_modules_regex.is_match(import_url.as_str()) {
-              return None;
-            }
-            Some(diag)
-          },
-        ));
-      } else {
-        diagnostics.extend(deferred_deps_diagnostics.into_iter().map(|(_, d)| d));
-      }
-
-      let lint_diagnostics = lint_handle
-        .await
-        .inspect_err(|err| {
-          lsp_warn!("Lint task join error: {err:#}");
-        })
-        .unwrap_or_default();
-      diagnostics.extend(lint_diagnostics);
-
-      Ok(Rc::new(diagnostics))
-    }).await.cloned()
+        Ok(Rc::new(diagnostics))
+      })
+      .await
+      .cloned()
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]

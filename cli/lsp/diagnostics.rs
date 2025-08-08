@@ -59,6 +59,7 @@ use super::tsc;
 use super::tsc::MaybeAmbientModules;
 use super::tsc::TsServer;
 use crate::lsp::documents::OpenDocument;
+use crate::lsp::language_server::OnceCellMap;
 use crate::lsp::lint::LspLinter;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
@@ -987,7 +988,7 @@ fn generate_lint_diagnostics(
   records
 }
 
-pub fn generate_document_lint_diagnostics(
+fn generate_document_lint_diagnostics(
   module: &DocumentModule,
   linter: &LspLinter,
   token: CancellationToken,
@@ -1746,7 +1747,7 @@ fn diagnose_resolution(
 /// Generate diagnostics related to a dependency. The dependency is analyzed to
 /// determine if it can be remapped to the active import map as well as surface
 /// any diagnostics related to the resolved code or type dependency.
-pub fn diagnose_dependency(
+fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   deferred_diagnostics: &mut Vec<(String, lsp::Diagnostic)>,
   snapshot: &language_server::StateSnapshot,
@@ -1936,6 +1937,148 @@ fn generate_deno_diagnostics(
   }
 
   (diagnostics_vec, deferred_diagnostics)
+}
+
+pub async fn generate_module_diagnostics(
+  module: &Arc<DocumentModule>,
+  snapshot: &Arc<StateSnapshot>,
+  ts_server: &TsServer,
+  ambient_modules_regex_cache: &OnceCellMap<
+    (CompilerOptionsKey, Option<Arc<Uri>>),
+    Option<regex::Regex>,
+  >,
+  token: &CancellationToken,
+) -> Result<Vec<lsp::Diagnostic>, AnyError> {
+  let deps_handle = tokio::task::spawn_blocking({
+    let snapshot = snapshot.clone();
+    let module = module.clone();
+    let token = token.clone();
+    move || {
+      let mut diagnostics = Vec::new();
+      let mut deferred = Vec::new();
+      for (dependency_key, dependency) in module.dependencies.iter() {
+        if token.is_cancelled() {
+          return (Vec::new(), Vec::new());
+        }
+        diagnose_dependency(
+          &mut diagnostics,
+          &mut deferred,
+          &snapshot,
+          &module,
+          dependency_key,
+          dependency,
+        );
+      }
+      (diagnostics, deferred)
+    }
+  });
+
+  let lint_handle = tokio::task::spawn_blocking({
+    let snapshot = snapshot.clone();
+    let module = module.clone();
+    let token = token.clone();
+    move || {
+      // TODO(nayeemrmn): Support linting notebooks cells. Will require
+      // stitching cells from the same notebook into one module, linting it
+      // and then splitting/relocating the diagnostics to each cell.
+      if token.is_cancelled()
+        || module.notebook_uri.is_some()
+        || module.specifier.scheme() != "file"
+        || snapshot.resolver.in_node_modules(&module.specifier)
+      {
+        return Vec::new();
+      }
+      let settings = snapshot
+        .config
+        .workspace_settings_for_specifier(&module.specifier);
+      if !settings.lint {
+        return Vec::new();
+      }
+      let linter = snapshot.linter_resolver.for_module(&module);
+      generate_document_lint_diagnostics(&module, &linter, token)
+    }
+  });
+
+  let mut ts_diagnostics = ts_server
+    .get_diagnostics(snapshot.clone(), module, token)
+    .await?;
+  let suggestion_actions_settings = snapshot
+    .config
+    .language_settings_for_specifier(&module.specifier)
+    .map(|s| s.suggestion_actions.clone())
+    .unwrap_or_default();
+  if !suggestion_actions_settings.enabled {
+    ts_diagnostics.retain(|d| {
+      d.category != DiagnosticCategory::Suggestion
+        // Still show deprecated and unused diagnostics.
+        // https://github.com/microsoft/vscode/blob/ce50bd4876af457f64d83cfd956bc916535285f4/extensions/typescript-language-features/src/languageFeatures/diagnostics.ts#L113-L114
+        || d.reports_deprecated == Some(true)
+        || d.reports_unnecessary == Some(true)
+    });
+  }
+  let mut diagnostics =
+    ts_json_to_diagnostics(ts_diagnostics, module, &snapshot.document_modules);
+
+  let (deps_diagnostics, deferred_deps_diagnostics) = deps_handle
+    .await
+    .inspect_err(|err| {
+      lsp_warn!("Deps diagnostics task join error: {err:#}");
+    })
+    .unwrap_or_default();
+  diagnostics.extend(deps_diagnostics);
+  let ambient_modules_regex_cell = ambient_modules_regex_cache
+    .entry((
+      module.compiler_options_key.clone(),
+      module.notebook_uri.clone(),
+    ))
+    .or_default()
+    .clone();
+  let ambient_modules_regex = ambient_modules_regex_cell
+    .get_or_init(async || {
+      ts_server
+        .get_ambient_modules(
+          snapshot.clone(),
+          &module.compiler_options_key,
+          module.notebook_uri.as_ref(),
+          token,
+        )
+        .await
+        .inspect_err(|err| {
+          if !token.is_cancelled() {
+            lsp_warn!("Unable to get ambient modules: {:#}", err);
+          }
+        })
+        .ok()
+        .filter(|a| !a.is_empty())
+        .and_then(|ambient_modules| {
+          let regex_string = ambient_modules_to_regex_string(&ambient_modules);
+          regex::Regex::new(&regex_string).inspect_err(|err| {
+            lsp_warn!("Failed to compile ambient modules pattern: {err:#} (pattern is {regex_string:?})");
+          }).ok()
+        })
+    }).await;
+  if let Some(ambient_modules_regex) = ambient_modules_regex {
+    diagnostics.extend(deferred_deps_diagnostics.into_iter().filter_map(
+      |(import_url, diag)| {
+        if ambient_modules_regex.is_match(import_url.as_str()) {
+          return None;
+        }
+        Some(diag)
+      },
+    ));
+  } else {
+    diagnostics.extend(deferred_deps_diagnostics.into_iter().map(|(_, d)| d));
+  }
+
+  let lint_diagnostics = lint_handle
+    .await
+    .inspect_err(|err| {
+      lsp_warn!("Lint task join error: {err:#}");
+    })
+    .unwrap_or_default();
+  diagnostics.extend(lint_diagnostics);
+
+  Ok(diagnostics)
 }
 
 #[cfg(test)]
