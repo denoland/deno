@@ -75,7 +75,6 @@ use super::diagnostics;
 use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
-use super::diagnostics::DiagnosticsState;
 use super::documents::Document;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
@@ -258,7 +257,6 @@ pub struct Inner {
   /// Configuration information.
   pub config: Config,
   diagnostics_cache: OnceCellMap<Arc<Uri>, Rc<Vec<Diagnostic>>>,
-  diagnostics_state: Arc<diagnostics::DiagnosticsState>,
   diagnostics_server: Option<diagnostics::DiagnosticsServer>,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -293,7 +291,6 @@ impl std::fmt::Debug for Inner {
       .field("cache", &self.cache)
       .field("client", &self.client)
       .field("config", &self.config)
-      .field("diagnostics_state", &self.diagnostics_state)
       .field("diagnostics_server", &self.diagnostics_server)
       .field("document_modules", &self.document_modules)
       .field("http_client_provider", &self.http_client_provider)
@@ -565,7 +562,6 @@ impl Inner {
       CliNpmSearchApi::new(module_registry.file_fetcher.clone());
     let config = Config::default();
     let ts_server = Arc::new(TsServer::new(performance.clone()));
-    let diagnostics_state = Arc::new(DiagnosticsState::default());
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
       panic!("Could not resolve current working directory")
     });
@@ -577,7 +573,6 @@ impl Inner {
       compiler_options_resolver: Default::default(),
       config,
       diagnostics_cache: Default::default(),
-      diagnostics_state,
       diagnostics_server: None,
       document_modules: Default::default(),
       http_client_provider,
@@ -969,7 +964,6 @@ impl Inner {
         self.client.clone(),
         self.performance.clone(),
         self.ts_server.clone(),
-        self.diagnostics_state.clone(),
       );
       diagnostics_server.start();
       self.diagnostics_server = Some(diagnostics_server);
@@ -1387,7 +1381,11 @@ impl Inner {
       return;
     };
     let has_no_cache_diagnostics = async || {
-      if self.config.diagnostic_capable() {
+      if let Some(diagnostics_server) = &self.diagnostics_server {
+        diagnostics_server
+          .state
+          .has_no_cache_diagnostics(document.uri())
+      } else {
         let Ok(Some(module)) = self.get_primary_module(&document) else {
           return false;
         };
@@ -1406,10 +1404,6 @@ impl Inner {
               "no-cache" | "not-installed-jsr" | "not-installed-npm"
             )
           })
-      } else {
-        self
-          .diagnostics_state
-          .has_no_cache_diagnostics(document.uri())
       }
     };
     if !self
@@ -1468,7 +1462,9 @@ impl Inner {
     {
       return;
     }
-    self.diagnostics_state.clear(&params.text_document.uri);
+    if let Some(diagnostics_server) = &self.diagnostics_server {
+      diagnostics_server.state.clear(&params.text_document.uri);
+    }
     let document = match self
       .document_modules
       .close_document(&params.text_document.uri)
@@ -2236,27 +2232,30 @@ impl Inner {
         }
       }
       if includes_no_cache {
-        let no_cache_diagnostics = if self.config.diagnostic_capable() {
-          self
-            .get_module_diagnostics(&module, token)
-            .await
-            .ok()
-            .iter()
-            .flat_map(|d| d.iter())
-            .filter(|d| {
-              let Some(NumberOrString::String(code)) = &d.code else {
-                return false;
-              };
-              matches!(
-                code.as_str(),
-                "no-cache" | "not-installed-jsr" | "not-installed-npm"
-              )
-            })
-            .cloned()
-            .collect::<Vec<_>>()
-        } else {
-          self.diagnostics_state.no_cache_diagnostics(document.uri())
-        };
+        let no_cache_diagnostics =
+          if let Some(diagnostics_server) = &self.diagnostics_server {
+            diagnostics_server
+              .state
+              .no_cache_diagnostics(document.uri())
+          } else {
+            self
+              .get_module_diagnostics(&module, token)
+              .await
+              .ok()
+              .iter()
+              .flat_map(|d| d.iter())
+              .filter(|d| {
+                let Some(NumberOrString::String(code)) = &d.code else {
+                  return false;
+                };
+                matches!(
+                  code.as_str(),
+                  "no-cache" | "not-installed-jsr" | "not-installed-npm"
+                )
+              })
+              .cloned()
+              .collect::<Vec<_>>()
+          };
         let uncached_deps = no_cache_diagnostics
           .iter()
           .filter_map(|d| {

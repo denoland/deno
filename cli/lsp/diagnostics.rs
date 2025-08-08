@@ -481,7 +481,7 @@ pub struct DiagnosticsServer {
   performance: Arc<Performance>,
   ts_server: Arc<TsServer>,
   batch_counter: DiagnosticBatchCounter,
-  state: Arc<DiagnosticsState>,
+  pub state: Arc<DiagnosticsState>,
   deferred_diagnostics: Arc<deno_core::parking_lot::Mutex<DeferredDiagnostics>>,
 }
 
@@ -505,7 +505,6 @@ impl DiagnosticsServer {
     client: Client,
     performance: Arc<Performance>,
     ts_server: Arc<TsServer>,
-    state: Arc<DiagnosticsState>,
   ) -> Self {
     DiagnosticsServer {
       channel: Default::default(),
@@ -514,7 +513,7 @@ impl DiagnosticsServer {
       performance,
       ts_server,
       batch_counter: Default::default(),
-      state,
+      state: Default::default(),
       deferred_diagnostics: Arc::new(
         Mutex::new(DeferredDiagnostics::default()),
       ),
