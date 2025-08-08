@@ -8,6 +8,8 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
+use log::info;
+use log::warn;
 use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::json;
@@ -25,7 +27,7 @@ enum ConfigKind {
 }
 
 struct ConfigUpdater {
-  kind: ConfigKind,
+  _kind: ConfigKind,
   cst: CstRootNode,
   root_object: CstObject,
   path: PathBuf,
@@ -47,7 +49,7 @@ impl ConfigUpdater {
       })?;
     let root_object = cst.object_value_or_set();
     Ok(Self {
-      kind,
+      _kind: kind,
       cst,
       root_object,
       path: config_file_path,
@@ -248,7 +250,7 @@ fn commit_version_changes(version: &str) -> Result<(), AnyError> {
   Ok(())
 }
 
-pub async fn version_command(
+pub fn version_command(
   flags: Arc<Flags>,
   version_flags: VersionFlags,
 ) -> Result<(), AnyError> {
@@ -279,7 +281,7 @@ pub async fn version_command(
     None => {
       if version_flags.increment.is_none() {
         // If no increment specified and no version found, just show current state
-        println!("No version found in configuration files");
+        info!("No version found in configuration files");
         return Ok(());
       }
       // Default to 1.0.0 if no version is found but increment is specified
@@ -292,16 +294,16 @@ pub async fn version_command(
     Some(increment) => increment_version(&current_version, increment)?,
     None => {
       // Just show the current version
-      println!("{}", current_version);
+      info!("{}", current_version);
       return Ok(());
     }
   };
 
   if version_flags.dry_run {
-    println!("Current version: {}", current_version);
-    println!("New version: {}", new_version);
+    info!("Current version: {}", current_version);
+    info!("New version: {}", new_version);
     for config in &configs {
-      println!("Would update: {}", config.display_path());
+      info!("Would update: {}", config.display_path());
     }
     return Ok(());
   }
@@ -310,24 +312,24 @@ pub async fn version_command(
   for config in &mut configs {
     config.set_version(&new_version.to_string());
     config.commit()?;
-    println!("Updated version in {}", config.display_path());
+    info!("Updated version in {}", config.display_path());
   }
 
   // Handle git operations
   if version_flags.git_commit_all {
     commit_version_changes(&new_version.to_string())?;
-    println!("Committed version changes");
+    info!("Committed version changes");
   }
 
   if !version_flags.no_git_tag {
     if let Err(e) = create_git_tag(&new_version.to_string()) {
-      eprintln!("Warning: Failed to create git tag: {}", e);
+      warn!("Failed to create git tag: {}", e);
     } else {
-      println!("Created git tag v{}", new_version);
+      info!("Created git tag v{}", new_version);
     }
   }
 
-  println!(
+  info!(
     "Version updated from {} to {}",
     current_version, new_version
   );

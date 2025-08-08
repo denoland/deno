@@ -407,7 +407,7 @@ async fn run_subcommand(
       1,
     ),
     DenoSubcommand::Version(version_flags) => spawn_subcommand(async {
-      tools::version::version_command(flags, version_flags).await
+      tools::version::version_command(flags, version_flags)
     }),
     DenoSubcommand::Vendor => exit_with_message(
       "⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
