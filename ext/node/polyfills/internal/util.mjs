@@ -183,5 +183,4 @@ export default {
   normalizeEncoding,
   once,
   promisify,
-  slowCases,
 };
