@@ -24,7 +24,7 @@
 // (https://github.com/nodejs/node/blob/ba06c5c509956dc413f91b755c1c93798bb700d4/src/string_decoder.cc)
 
 import { Buffer, constants } from "node:buffer";
-import { normalizeEncoding as castEncoding } from "ext:deno_node/_utils.ts";
+import { normalizeEncoding as castEncoding } from "ext:deno_node/internal/util.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
