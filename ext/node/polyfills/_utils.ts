@@ -29,6 +29,7 @@ export type TextEncodings =
   | "ucs2"
   | "ucs-2"
   | "base64"
+  | "base64url"
   | "latin1"
   | "hex";
 
@@ -105,7 +106,7 @@ export function normalizeEncoding(
   return slowCases(enc);
 }
 
-// https://github.com/nodejs/node/blob/ba684805b6c0eded76e5cd89ee00328ac7a59365/lib/internal/util.js#L130
+// https://github.com/nodejs/node/blob/931ec10d87730925f0baf10a571330459a1a2fcd/lib/internal/util.js#L257-L309
 function slowCases(enc: string): TextEncodings | undefined {
   switch (enc.length) {
     case 4:
@@ -159,6 +160,14 @@ function slowCases(enc: string): TextEncodings | undefined {
         StringPrototypeToLowerCase(enc) === "utf-16le"
       ) {
         return "utf16le";
+      }
+      break;
+    case 9:
+      if (
+        enc === "base64url" || enc === "BASE64URL" ||
+        StringPrototypeToLowerCase(enc) === "base64url"
+      ) {
+        return "base64url";
       }
       break;
     default:

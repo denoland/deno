@@ -132,7 +132,8 @@ function decode(this: StringDecoder, buf: Buffer) {
   let rest = "";
 
   if (
-    enc === Encoding.Utf8 || enc === Encoding.Utf16 || enc === Encoding.Base64
+    enc === Encoding.Utf8 || enc === Encoding.Utf16 ||
+    enc === Encoding.Base64 || enc === Encoding.Base64Url
   ) {
     // check if we need to finish an incomplete char from the last chunk
     // written. If we do, we copy the bytes into our `lastChar` buffer
@@ -242,7 +243,7 @@ function decode(this: StringDecoder, buf: Buffer) {
           this[kBufferedBytes] = 2;
           this[kMissingBytes] = 2;
         }
-      } else if (enc === Encoding.Base64) {
+      } else if (enc === Encoding.Base64 || enc === Encoding.Base64Url) {
         this[kBufferedBytes] = (buf.length - bufIdx) % 3;
         if (this[kBufferedBytes] > 0) {
           this[kMissingBytes] = 3 - this[kBufferedBytes];
@@ -302,6 +303,7 @@ function flush(this: StringDecoder) {
 enum Encoding {
   Utf8,
   Base64,
+  Base64Url,
   Utf16,
   Ascii,
   Latin1,
@@ -345,7 +347,11 @@ export function StringDecoder(this: Partial<StringDecoder>, encoding?: string) {
       break;
     case "base64":
       enc = Encoding.Base64;
-      bufLen = 3;
+      bufLen = 4;
+      break;
+    case "base64url":
+      enc = Encoding.Base64Url;
+      bufLen = 4;
       break;
     case "utf16le":
       enc = Encoding.Utf16;
