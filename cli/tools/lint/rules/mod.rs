@@ -234,16 +234,16 @@ fn filtered_rules(
         true
       };
 
-      if let Some(includes) = &maybe_include {
-        if includes.contains(&rule.code().to_owned()) {
-          passes |= true;
-        }
+      if let Some(includes) = &maybe_include
+        && includes.contains(&rule.code().to_owned())
+      {
+        passes |= true;
       }
 
-      if let Some(excludes) = &maybe_exclude {
-        if excludes.contains(&rule.code().to_owned()) {
-          passes &= false;
-        }
+      if let Some(excludes) = &maybe_exclude
+        && excludes.contains(&rule.code().to_owned())
+      {
+        passes &= false;
       }
 
       passes

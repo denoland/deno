@@ -156,18 +156,18 @@ struct EszipModuleLoaderProvider {
 
 impl EszipModuleLoaderProvider {
   pub async fn get(&self) -> Result<Option<&Arc<EszipModuleLoader>>, AnyError> {
-    if self.cli_options.eszip() {
-      if let DenoSubcommand::Run(run_flags) = self.cli_options.sub_command() {
-        if self.deferred.get().is_none() {
-          let eszip_loader = EszipModuleLoader::create(
-            &run_flags.script,
-            self.cli_options.initial_cwd(),
-          )
-          .await?;
-          _ = self.deferred.set(Arc::new(eszip_loader));
-        }
-        return Ok(Some(self.deferred.get().unwrap()));
+    if self.cli_options.eszip()
+      && let DenoSubcommand::Run(run_flags) = self.cli_options.sub_command()
+    {
+      if self.deferred.get().is_none() {
+        let eszip_loader = EszipModuleLoader::create(
+          &run_flags.script,
+          self.cli_options.initial_cwd(),
+        )
+        .await?;
+        _ = self.deferred.set(Arc::new(eszip_loader));
       }
+      return Ok(Some(self.deferred.get().unwrap()));
     }
     Ok(None)
   }
@@ -736,6 +736,7 @@ impl CliFactory {
             self.npm_installer_if_managed().await?.cloned(),
             self.npm_resolver().await?.clone(),
             self.resolver_factory()?.parsed_source_cache().clone(),
+            self.text_only_progress_bar().clone(),
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),
@@ -850,7 +851,7 @@ impl CliFactory {
 
   pub async fn create_compile_binary_writer(
     &self,
-  ) -> Result<DenoCompileBinaryWriter, AnyError> {
+  ) -> Result<DenoCompileBinaryWriter<'_>, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
       self.resolver_factory()?.cjs_module_export_analyzer()?,
@@ -1142,7 +1143,7 @@ impl CliFactory {
           },
           node_code_translator_mode: match options.sub_command() {
             DenoSubcommand::Bundle(_) => {
-              node_resolver::analyze::NodeCodeTranslatorMode::Bundling
+              node_resolver::analyze::NodeCodeTranslatorMode::Disabled
             }
             _ => node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
           },

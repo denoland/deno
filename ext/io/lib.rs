@@ -420,7 +420,7 @@ where
 pub type ChildStdinResource = WriteOnlyResource<process::ChildStdin>;
 
 impl Resource for ChildStdinResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStdin".into()
   }
 
@@ -436,7 +436,7 @@ pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
 impl Resource for ChildStdoutResource {
   deno_core::impl_readable_byob!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStdout".into()
   }
 
@@ -450,7 +450,7 @@ pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
 impl Resource for ChildStderrResource {
   deno_core::impl_readable_byob!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStderr".into()
   }
 
@@ -1058,7 +1058,7 @@ impl crate::fs::File for StdFileResourceInner {
 pub struct ReadCancelResource(Rc<CancelHandle>);
 
 impl Resource for ReadCancelResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "readCancel".into()
   }
 

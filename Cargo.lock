@@ -955,17 +955,14 @@ dependencies = [
  "async-trait",
  "bytes",
  "chrono",
- "deno_bench_util",
  "deno_cache_dir",
  "deno_lockfile",
  "deno_semver",
- "deno_terminal 0.2.2",
  "deno_tower_lsp",
  "deno_unsync",
  "fastwebsockets",
  "file_test_runner",
  "flaky_test",
- "hickory-client",
  "hickory-proto",
  "hickory-server",
  "http 1.1.0",
@@ -1668,7 +1665,6 @@ dependencies = [
  "faster-hex",
  "flate2",
  "fs3",
- "glibc_version",
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
@@ -2022,7 +2018,6 @@ dependencies = [
 name = "deno_crypto_provider"
 version = "0.6.0"
 dependencies = [
- "aws-lc-rs",
  "aws-lc-sys",
 ]
 
@@ -2191,9 +2186,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.98.0"
+version = "0.98.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0985b39cb178c6828c0029b11c544b9dd596e9424b4b076ad156a01cc73314ee"
+checksum = "d54ddae9ecbb3fb155a65a01d169b94a7219619b2f41de65458c4aa8c78d4123"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2378,9 +2373,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.31.1"
+version = "0.31.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2051c2aecfd7f287c2afdcee50d9e2ac1b8f1873bae2d3934d9a2e2762d7c66"
+checksum = "5afb20b44a44842178f41fa3b713c2b1516062590b5cca2ad792f2d6786bc74f"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -2778,6 +2773,7 @@ dependencies = [
  "async-trait",
  "base32",
  "boxed_error",
+ "capacity_builder",
  "dashmap",
  "deno_ast",
  "deno_cache_dir",
@@ -4049,7 +4045,7 @@ checksum = "1ee447700ac8aa0b2f2bd7bc4462ad686ba06baa6727ac149a2d6277f0d240fd"
 dependencies = [
  "cfg-if",
  "libc",
- "redox_syscall",
+ "redox_syscall 0.4.1",
  "windows-sys 0.52.0",
 ]
 
@@ -4410,15 +4406,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glibc_version"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "803ff7635f1ab4e2c064b68a0c60da917d3d18dc8d086130f689d62ce4f1c33e"
-dependencies = [
- "regex",
-]
-
-[[package]]
 name = "glob"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4699,25 +4686,6 @@ name = "hexf-parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfa686283ad6dd069f105e5ab091b04c62850d3e4cf5d67debad1933f55023df"
-
-[[package]]
-name = "hickory-client"
-version = "0.25.0-alpha.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83536dab9a159b2b5cf2c20c47ecf188cee35316f96be028e63e8e1340d2724d"
-dependencies = [
- "cfg-if",
- "data-encoding",
- "futures-channel",
- "futures-util",
- "hickory-proto",
- "once_cell",
- "radix_trie",
- "rand 0.8.5",
- "thiserror 2.0.12",
- "tokio",
- "tracing",
-]
 
 [[package]]
 name = "hickory-proto"
@@ -6163,8 +6131,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "boxed_error",
+ "capacity_builder",
  "dashmap",
- "deno_config",
  "deno_error",
  "deno_graph",
  "deno_media_type",
@@ -6175,6 +6143,7 @@ dependencies = [
  "lazy-regex",
  "once_cell",
  "path-clean",
+ "pretty_assertions",
  "regex",
  "serde",
  "serde_json",
@@ -6705,7 +6674,7 @@ checksum = "4c42a9226546d68acdd9c0a280d17ce19bfe27a46bf68784e4066115788d008e"
 dependencies = [
  "cfg-if",
  "libc",
- "redox_syscall",
+ "redox_syscall 0.4.1",
  "smallvec",
  "windows-targets 0.48.5",
 ]
@@ -7459,6 +7428,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4722d768eff46b75989dd134e5c353f0d6296e5aaa3132e776cbdb56be7731aa"
 dependencies = [
  "bitflags 1.3.2",
+]
+
+[[package]]
+name = "redox_syscall"
+version = "0.5.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d04b7d0ee6b4a0207a0a7adb104d23ecb0b47d6beae7152d0fa34b692b29fd6"
+dependencies = [
+ "bitflags 2.8.0",
 ]
 
 [[package]]
@@ -10376,11 +10354,11 @@ checksum = "d3fabb953106c3c8eea8306e4393700d7657561cb43122571b172bbfb7c7ba1d"
 
 [[package]]
 name = "whoami"
-version = "1.5.1"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a44ab49fad634e88f55bf8f9bb3abd2f27d7204172a112c7c9987e01c1c94ea9"
+checksum = "6994d13118ab492c3c80c1f81928718159254c53c472bf9ce36f8dae4add02a7"
 dependencies = [
- "redox_syscall",
+ "redox_syscall 0.5.13",
  "wasite",
  "web-sys",
 ]

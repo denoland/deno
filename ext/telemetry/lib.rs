@@ -549,6 +549,7 @@ mod hyper_client {
     Vsock(VsockAddr),
   }
 
+  #[allow(clippy::large_enum_variant)]
   #[pin_project::pin_project(project = IOProj)]
   enum IO {
     Tls(#[pin] TokioIo<MaybeHttpsStream<TokioIo<TcpStream>>>),

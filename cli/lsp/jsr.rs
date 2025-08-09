@@ -59,7 +59,7 @@ impl JsrCacheResolver {
     let info_by_nv = DashMap::new();
     let info_by_name = DashMap::new();
     let mut workspace_packages_by_name = HashMap::new();
-    for jsr_package in workspace_resolver.jsr_packages() {
+    for jsr_package in workspace_resolver.jsr_packages().iter() {
       let exports = deno_core::serde_json::json!(&jsr_package.exports);
       let version_info = Arc::new(JsrPackageVersionInfo {
         exports: exports.clone(),

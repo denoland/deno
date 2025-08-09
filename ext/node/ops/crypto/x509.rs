@@ -281,10 +281,10 @@ pub fn op_node_x509_check_email(
 
   if let Some(subject_alt) = subject_alt {
     for name in &subject_alt.general_names {
-      if let extensions::GeneralName::RFC822Name(n) = name {
-        if *n == email {
-          return true;
-        }
+      if let extensions::GeneralName::RFC822Name(n) = name
+        && *n == email
+      {
+        return true;
       }
     }
   }
@@ -318,10 +318,10 @@ pub fn op_node_x509_check_host(
 
   if let Some(subject_alt) = subject_alt {
     for name in &subject_alt.general_names {
-      if let extensions::GeneralName::DNSName(n) = name {
-        if *n == host {
-          return true;
-        }
+      if let extensions::GeneralName::DNSName(n) = name
+        && *n == host
+      {
+        return true;
       }
     }
   }
@@ -553,31 +553,31 @@ fn extract_key_info(spki: &x509_parser::x509::SubjectPublicKeyInfo) -> KeyInfo {
       let mut nist_curve = None;
       let mut bits = None;
 
-      if let Some(params) = &spki.algorithm.parameters {
-        if let Ok(curve_oid) = params.as_oid() {
-          const ID_SECP224R1: &[u8] = &oid!(raw 1.3.132.0.33);
-          const ID_SECP256R1: &[u8] = &oid!(raw 1.2.840.10045.3.1.7);
-          const ID_SECP384R1: &[u8] = &oid!(raw 1.3.132.0.34);
+      if let Some(params) = &spki.algorithm.parameters
+        && let Ok(curve_oid) = params.as_oid()
+      {
+        const ID_SECP224R1: &[u8] = &oid!(raw 1.3.132.0.33);
+        const ID_SECP256R1: &[u8] = &oid!(raw 1.2.840.10045.3.1.7);
+        const ID_SECP384R1: &[u8] = &oid!(raw 1.3.132.0.34);
 
-          match curve_oid.as_bytes() {
-            ID_SECP224R1 => {
-              asn1_curve = Some("1.3.132.0.33".to_string());
-              nist_curve = Some("secp224r1".to_string());
-              bits = Some(224);
-            }
-            ID_SECP256R1 => {
-              asn1_curve = Some("1.2.840.10045.3.1.7".to_string());
-              nist_curve = Some("secp256r1".to_string());
-              bits = Some(256);
-            }
-            ID_SECP384R1 => {
-              asn1_curve = Some("1.3.132.0.34".to_string());
-              nist_curve = Some("secp384r1".to_string());
-              bits = Some(384);
-            }
-            _ => {
-              asn1_curve = Some(curve_oid.to_string());
-            }
+        match curve_oid.as_bytes() {
+          ID_SECP224R1 => {
+            asn1_curve = Some("1.3.132.0.33".to_string());
+            nist_curve = Some("secp224r1".to_string());
+            bits = Some(224);
+          }
+          ID_SECP256R1 => {
+            asn1_curve = Some("1.2.840.10045.3.1.7".to_string());
+            nist_curve = Some("secp256r1".to_string());
+            bits = Some(256);
+          }
+          ID_SECP384R1 => {
+            asn1_curve = Some("1.3.132.0.34".to_string());
+            nist_curve = Some("secp384r1".to_string());
+            bits = Some(384);
+          }
+          _ => {
+            asn1_curve = Some(curve_oid.to_string());
           }
         }
       }
