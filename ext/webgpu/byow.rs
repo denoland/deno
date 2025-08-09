@@ -24,6 +24,16 @@ use crate::surface::GPUCanvasContext;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ByowError {
+  #[cfg(not(any(
+    target_os = "macos",
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd",
+  )))]
+  #[class(type)]
+  #[error("Unsupported platform")]
+  Unsupported,
   #[class(type)]
   #[error(
     "Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?"
@@ -360,6 +370,6 @@ fn raw_window(
   _system: UnsafeWindowSurfaceSystem,
   _window: *const c_void,
   _display: *const c_void,
-) -> Result<RawHandles, deno_error::JsErrorBox> {
-  Err(deno_error::JsErrorBox::type_error("Unsupported platform"))
+) -> Result<RawHandles, ByowError> {
+  Err(ByowError::Unsupported)
 }
