@@ -4,6 +4,11 @@
       "args": "run -A main.ts basic.ts",
       "output": "basic.out"
     },
+    "basic_grpc": {
+      "args": "run -A main.ts basic.ts",
+      "envFile": "env_file_grpc",
+      "output": "basic.out"
+    },
     "basic_vsock": {
       "if": "linux",
       "args": "run -A --unstable-vsock main.ts basic.ts",
@@ -25,6 +30,14 @@
       "output": "uncaught.out"
     },
     "metric": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+      },
+      "args": "run -A main.ts metric.ts",
+      "output": "metric.out"
+    },
+    "metric_grpc": {
+      "envFile": "env_file_grpc",
       "envs": {
         "OTEL_METRIC_EXPORT_INTERVAL": "1000"
       },
@@ -57,8 +70,18 @@
       "args": "run -A main.ts links.ts",
       "output": "links.out"
     },
+    "links_grpc": {
+      "args": "run -A main.ts links.ts",
+      "envFile": "env_file_grpc",
+      "output": "links.out"
+    },
     "start_active_span": {
       "args": "run -A main.ts start_active_span.ts",
+      "output": "start_active_span.out"
+    },
+    "start_active_span_grpc": {
+      "args": "run -A main.ts start_active_span.ts",
+      "envFile": "env_file_grpc",
       "output": "start_active_span.out"
     },
     "node_http_request": {
@@ -69,6 +92,11 @@
       "args": "run -A main.ts events.ts",
       "output": "events.out"
     },
+    "events_grpc": {
+      "args": "run -A main.ts events.ts",
+      "envFile": "env_file_grpc",
+      "output": "events.out"
+    },
     "metric_temporality_delta": {
       "envs": {
         "OTEL_METRIC_EXPORT_INTERVAL": "1000",
@@ -77,7 +105,25 @@
       "args": "run -A main.ts metric_temporality.ts",
       "output": "metric_temporality_delta.out"
     },
+    "metric_temporality_delta_grpc": {
+      "envFile": "env_file_grpc",
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "delta"
+      },
+      "args": "run -A main.ts metric_temporality.ts",
+      "output": "metric_temporality_delta.out"
+    },
     "metric_temporality_cumulative": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative"
+      },
+      "args": "run -A main.ts metric_temporality.ts",
+      "output": "metric_temporality_cumulative.out"
+    },
+    "metric_temporality_cumulative_grpc": {
+      "envFile": "env_file_grpc",
       "envs": {
         "OTEL_METRIC_EXPORT_INTERVAL": "1000",
         "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative"
