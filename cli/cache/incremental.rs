@@ -122,10 +122,10 @@ impl IncrementalCacheInner {
 
   pub fn update_file(&self, file_path: &Path, file_text: &str) {
     let hash = CacheDBHash::from_hashable(file_text);
-    if let Some(previous_hash) = self.previous_hashes.get(file_path) {
-      if *previous_hash == hash {
-        return; // do not bother updating the db file because nothing has changed
-      }
+    if let Some(previous_hash) = self.previous_hashes.get(file_path)
+      && *previous_hash == hash
+    {
+      return; // do not bother updating the db file because nothing has changed
     }
     let _ = self
       .sender
@@ -269,7 +269,7 @@ mod test {
     sql_cache.set_source_hash(&file_path, file_hash).unwrap();
     let cache = IncrementalCacheInner::from_sql_incremental_cache(
       sql_cache,
-      &[file_path.clone()],
+      std::slice::from_ref(&file_path),
     );
 
     assert!(cache.is_file_same(&file_path, "test"));

@@ -337,7 +337,7 @@ impl FileResource {
 }
 
 impl deno_core::Resource for FileResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     Cow::Borrowed(&self.name)
   }
 
