@@ -62,8 +62,11 @@ pub mod npm;
 pub mod npmrc;
 #[cfg(feature = "sync")]
 mod rt;
-mod sync;
 pub mod workspace;
+
+mod sync {
+  pub use deno_maybe_sync::*;
+}
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc<TSys> =

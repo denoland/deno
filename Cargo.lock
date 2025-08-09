@@ -1821,6 +1821,7 @@ dependencies = [
  "boxed_error",
  "capacity_builder",
  "deno_error",
+ "deno_maybe_sync",
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
@@ -2303,6 +2304,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_maybe_sync"
+version = "0.0.1"
+dependencies = [
+ "dashmap",
+]
+
+[[package]]
 name = "deno_media_type"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2699,6 +2707,7 @@ dependencies = [
  "deno_error",
  "deno_graph",
  "deno_lockfile",
+ "deno_maybe_sync",
  "deno_media_type",
  "deno_npm",
  "deno_package_json",
