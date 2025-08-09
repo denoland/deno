@@ -7,6 +7,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  ArrayPrototypeFlat,
   Error,
   FunctionPrototypeCall,
   MapPrototypeGet,
@@ -23,6 +24,8 @@ const {
   TypeError,
 } = primordials;
 import {
+  CloseEvent,
+  ErrorEvent,
   Event,
   EventTarget,
   op_event_dispatch,
@@ -225,141 +228,71 @@ defineEnumerableProps(EventTarget.prototype, [
   "dispatchEvent",
 ]);
 
-class ErrorEvent extends Event {
-  #message = "";
-  #filename = "";
-  #lineno = "";
-  #colno = "";
-  #error = "";
-
-  get message() {
-    return this.#message;
-  }
-  get filename() {
-    return this.#filename;
-  }
-  get lineno() {
-    return this.#lineno;
-  }
-  get colno() {
-    return this.#colno;
-  }
-  get error() {
-    return this.#error;
-  }
-
-  constructor(
-    type,
-    {
-      bubbles,
-      cancelable,
-      composed,
-      message = "",
-      filename = "",
-      lineno = 0,
-      colno = 0,
-      error,
-    } = { __proto__: null },
-  ) {
-    super(type, {
-      bubbles: bubbles,
-      cancelable: cancelable,
-      composed: composed,
-    });
-
-    this.#message = message;
-    this.#filename = filename;
-    this.#lineno = lineno;
-    this.#colno = colno;
-    this.#error = error;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ErrorEventPrototype, this),
-        keys: [
-          ...new SafeArrayIterator(EVENT_PROPS),
-          "message",
-          "filename",
-          "lineno",
-          "colno",
-          "error",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
 webidl.configureInterface(ErrorEvent);
 const ErrorEventPrototype = ErrorEvent.prototype;
 
-defineEnumerableProps(ErrorEvent.prototype, [
+ObjectDefineProperty(
+  ErrorEvent.prototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(ErrorEventPrototype, this),
+          keys: ArrayPrototypeFlat([
+            EVENT_PROPS,
+            ERROR_EVENT_PROPS,
+          ]),
+        }),
+        inspectOptions,
+      );
+    },
+  },
+);
+
+const ERROR_EVENT_PROPS = [
   "message",
   "filename",
   "lineno",
   "colno",
   "error",
-]);
+];
 
-class CloseEvent extends Event {
-  #wasClean = "";
-  #code = "";
-  #reason = "";
-
-  get wasClean() {
-    return this.#wasClean;
-  }
-  get code() {
-    return this.#code;
-  }
-  get reason() {
-    return this.#reason;
-  }
-
-  constructor(
-    type,
-    {
-      bubbles,
-      cancelable,
-      composed,
-      wasClean = false,
-      code = 0,
-      reason = "",
-    } = { __proto__: null },
-  ) {
-    super(type, {
-      bubbles: bubbles,
-      cancelable: cancelable,
-      composed: composed,
-    });
-
-    this.#wasClean = wasClean;
-    this.#code = code;
-    this.#reason = reason;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(CloseEventPrototype, this),
-        keys: [
-          ...new SafeArrayIterator(EVENT_PROPS),
-          "wasClean",
-          "code",
-          "reason",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
+defineEnumerableProps(ErrorEvent.prototype, ERROR_EVENT_PROPS);
 
 webidl.configureInterface(CloseEvent);
 const CloseEventPrototype = CloseEvent.prototype;
+
+ObjectDefineProperty(
+  CloseEvent.prototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(CloseEventPrototype, this),
+          keys: ArrayPrototypeFlat([
+            EVENT_PROPS,
+            CLOSE_EVENT_PROPS,
+          ]),
+        }),
+        inspectOptions,
+      );
+    },
+  },
+);
+
+const CLOSE_EVENT_PROPS = [
+  "wasClean",
+  "code",
+  "reason",
+];
+
+defineEnumerableProps(CloseEvent.prototype, CLOSE_EVENT_PROPS);
 
 class MessageEvent extends Event {
   get source() {

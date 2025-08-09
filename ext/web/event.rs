@@ -13,6 +13,8 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::Global;
 use deno_core::webidl::Nullable;
+use deno_core::webidl::WebIdlConverter;
+use deno_core::webidl::WebIdlError;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EventError {
@@ -28,6 +30,9 @@ pub enum EventError {
   #[class(generic)]
   #[error(transparent)]
   DataError(#[from] v8::DataError),
+  #[class(inherit)]
+  #[error(transparent)]
+  WebIDL(#[from] WebIdlError),
 }
 
 #[derive(WebIDL, Debug)]
@@ -101,6 +106,38 @@ impl GarbageCollected for Event {
 }
 
 impl Event {
+  #[inline]
+  fn new(typ: String, init: Option<EventInit>) -> Event {
+    let (bubbles, cancelable, composed) = if let Some(init) = init {
+      (init.bubbles, init.cancelable, init.composed)
+    } else {
+      (false, false, false)
+    };
+
+    Event {
+      typ: RefCell::new(typ),
+      bubbles: Cell::new(bubbles),
+      cancelable: Cell::new(cancelable),
+      composed,
+
+      target: RefCell::new(None),
+      related_target: RefCell::new(None),
+      current_target: RefCell::new(None),
+      path: RefCell::new(Vec::new()),
+      event_phase: RefCell::new(EventPhase::None),
+
+      // flags
+      stop_propagation_flag: Cell::new(false),
+      stop_immediate_propagation_flag: Cell::new(false),
+      canceled_flag: Cell::new(false),
+      in_passive_listener_flag: Cell::new(false),
+      dispatch_flag: Cell::new(false),
+
+      is_trusted: Cell::new(false),
+      time_stamp: 0.0,
+    }
+  }
+
   // https://dom.spec.whatwg.org/#concept-event-dispatch
   fn dispatch<'a>(
     &self,
@@ -350,44 +387,16 @@ impl Event {
   }
 }
 
-#[op2]
+#[op2(base)]
 impl Event {
   #[constructor]
   #[required(1)]
   #[cppgc]
-  fn new<'a>(
+  fn constructor(
     #[string] typ: String,
     #[webidl] init: Nullable<EventInit>,
   ) -> Event {
-    let (bubbles, cancelable, composed) = if let Some(init) = init.into_option()
-    {
-      (init.bubbles, init.cancelable, init.composed)
-    } else {
-      (false, false, false)
-    };
-
-    Event {
-      typ: RefCell::new(typ),
-      bubbles: Cell::new(bubbles),
-      cancelable: Cell::new(cancelable),
-      composed,
-
-      target: RefCell::new(None),
-      related_target: RefCell::new(None),
-      current_target: RefCell::new(None),
-      path: RefCell::new(Vec::new()),
-      event_phase: RefCell::new(EventPhase::None),
-
-      // flags
-      stop_propagation_flag: Cell::new(false),
-      stop_immediate_propagation_flag: Cell::new(false),
-      canceled_flag: Cell::new(false),
-      in_passive_listener_flag: Cell::new(false),
-      dispatch_flag: Cell::new(false),
-
-      is_trusted: Cell::new(false),
-      time_stamp: 0.0,
-    }
+    Event::new(typ, init.into_option())
   }
 
   // legacy
@@ -660,19 +669,262 @@ pub fn op_event_dispatch<'a>(
     cppgc::try_unwrap_cppgc_object::<EventTarget>(scope, target.into())
       .unwrap();
   let event =
-    cppgc::try_unwrap_cppgc_object::<Event>(scope, event_object.into())
+    cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event_object.into())
       .unwrap();
   event.dispatch(scope, event_object, &target, target_object, target_override)
 }
 
+#[derive(WebIDL, Debug)]
+#[webidl(dictionary)]
+pub struct ErrorEventInit {
+  #[webidl(default = false)]
+  bubbles: bool,
+  #[webidl(default = false)]
+  cancelable: bool,
+  #[webidl(default = false)]
+  composed: bool,
+  #[webidl(default = String::new())]
+  message: String,
+  #[webidl(default = String::new())]
+  filename: String,
+  #[webidl(default = 0)]
+  lineno: u32,
+  #[webidl(default = 0)]
+  colno: u32,
+  // #[webidl(default = None)]
+  // error: Option<v8::Global<v8::Value>>,
+}
+
+#[derive(Debug)]
+pub struct ErrorEvent {
+  message: String,
+  filename: String,
+  lineno: u32,
+  colno: u32,
+  error: Option<v8::Global<v8::Value>>,
+}
+
+impl GarbageCollected for ErrorEvent {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ErrorEvent"
+  }
+}
+
+impl ErrorEvent {
+  #[inline]
+  fn new(
+    init: Option<ErrorEventInit>,
+    error: Option<v8::Global<v8::Value>>,
+  ) -> ErrorEvent {
+    let Some(init) = init else {
+      return ErrorEvent {
+        message: String::new(),
+        filename: String::new(),
+        lineno: 0,
+        colno: 0,
+        error,
+      };
+    };
+
+    ErrorEvent {
+      message: init.message,
+      filename: init.filename,
+      lineno: init.lineno,
+      colno: init.colno,
+      error,
+    }
+  }
+}
+
+#[op2(inherit = Event)]
+impl ErrorEvent {
+  #[constructor]
+  #[required(1)]
+  #[cppgc]
+  fn constructor<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    #[string] typ: String,
+    init: v8::Local<'a, v8::Value>,
+    // TODO(petamoriken): Error when deleting next line. proc-macro bug?
+    #[webidl] _: bool,
+  ) -> Result<(Event, ErrorEvent), EventError> {
+    if init.is_null_or_undefined() {
+      return Ok((Event::new(typ, None), ErrorEvent::new(None, None)));
+    }
+
+    let error_event_init = Nullable::<ErrorEventInit>::convert(
+      scope,
+      init,
+      "Failed to construct 'ErrorEvent'".into(),
+      (|| "Argument 2".into()).into(),
+      &Default::default(),
+    )?;
+    let error_event_init = error_event_init.into_option();
+    let event = if let Some(ref error_event_init) = error_event_init {
+      let event_init = EventInit {
+        bubbles: error_event_init.bubbles,
+        cancelable: error_event_init.cancelable,
+        composed: error_event_init.composed,
+      };
+      Event::new(typ, Some(event_init))
+    } else {
+      Event::new(typ, None)
+    };
+
+    let error = if init.is_object()
+      && let Some(init) = init.to_object(scope)
+    {
+      get_value(scope, init, "error").map(|error| v8::Global::new(scope, error))
+    } else {
+      None
+    };
+    let error_event = ErrorEvent::new(error_event_init, error);
+    Ok((event, error_event))
+  }
+
+  #[getter]
+  #[string]
+  fn message(&self) -> String {
+    self.message.clone()
+  }
+
+  #[getter]
+  #[string]
+  fn filename(&self) -> String {
+    self.filename.clone()
+  }
+
+  #[getter]
+  fn lineno(&self) -> u32 {
+    self.lineno.clone()
+  }
+
+  #[getter]
+  fn colno(&self) -> u32 {
+    self.colno.clone()
+  }
+
+  #[getter]
+  fn error<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Value> {
+    if let Some(error) = &self.error {
+      v8::Local::new(scope, error)
+    } else {
+      v8::undefined(scope).into()
+    }
+  }
+}
+
+#[derive(WebIDL, Debug)]
+#[webidl(dictionary)]
+pub struct CloseEventInit {
+  #[webidl(default = false)]
+  bubbles: bool,
+  #[webidl(default = false)]
+  cancelable: bool,
+  #[webidl(default = false)]
+  composed: bool,
+  #[webidl(default = false)]
+  was_clean: bool,
+  #[webidl(default = 0)]
+  code: u16,
+  #[webidl(default = String::new())]
+  reason: String,
+}
+
+#[derive(Debug)]
+pub struct CloseEvent {
+  was_clean: bool,
+  code: u16,
+  reason: String,
+}
+
+impl GarbageCollected for CloseEvent {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"CloseEvent"
+  }
+}
+
+impl CloseEvent {
+  fn new(init: Option<CloseEventInit>) -> CloseEvent {
+    let (was_clean, code, reason) = if let Some(init) = init {
+      (init.was_clean, init.code, init.reason)
+    } else {
+      (false, 0, String::new())
+    };
+    CloseEvent {
+      was_clean,
+      code,
+      reason,
+    }
+  }
+}
+
+#[op2(inherit = Event)]
+impl CloseEvent {
+  #[constructor]
+  #[required(1)]
+  #[cppgc]
+  fn constructor(
+    #[string] typ: String,
+    #[webidl] init: Nullable<CloseEventInit>,
+  ) -> (Event, CloseEvent) {
+    let init = init.into_option();
+    let event = if let Some(ref init) = init {
+      let event_init = EventInit {
+        bubbles: init.bubbles,
+        cancelable: init.cancelable,
+        composed: init.composed,
+      };
+      Event::new(typ, Some(event_init))
+    } else {
+      Event::new(typ, None)
+    };
+    let close_event = CloseEvent::new(init);
+    (event, close_event)
+  }
+
+  #[getter]
+  fn was_clean(&self) -> bool {
+    self.was_clean
+  }
+
+  #[getter]
+  fn code(&self) -> u16 {
+    self.code
+  }
+
+  #[getter]
+  #[string]
+  fn reason(&self) -> String {
+    self.reason.clone()
+  }
+}
+
 // TODO(petamorken): list
 // report error
-// CloseEvent
-// ErrorEvent
 // MessageEvent
 // PromiseRejectionEvent
 // CustomEvent
 // ProgressEvent
+
+#[inline]
+fn get_value<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  obj: v8::Local<'a, v8::Object>,
+  key: &str,
+) -> Option<v8::Local<'a, v8::Value>> {
+  let key = v8::String::new(scope, key).unwrap();
+  if let Some(value) = obj.get(scope, key.into())
+    && !value.is_undefined()
+  {
+    Some(value)
+  } else {
+    None
+  }
+}
 
 #[derive(Debug)]
 struct EventListener {
@@ -859,7 +1111,7 @@ impl EventTarget {
     event_object: v8::Local<'a, v8::Object>,
   ) -> Result<bool, EventError> {
     let Some(event) =
-      cppgc::try_unwrap_cppgc_object::<Event>(scope, event_object.into())
+      cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event_object.into())
     else {
       return Err(EventError::ExpectedEvent);
     };
