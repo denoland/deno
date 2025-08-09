@@ -169,13 +169,13 @@ impl DecipherContext {
 }
 
 impl Resource for CipherContext {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cryptoCipher".into()
   }
 }
 
 impl Resource for DecipherContext {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cryptoDecipher".into()
   }
 }
@@ -530,10 +530,10 @@ impl Decipher {
           return Err(DecipherError::InvalidKeyLength);
         }
 
-        if let Some(tag_len) = auth_tag_length {
-          if !is_valid_gcm_tag_length(tag_len) {
-            return Err(DecipherError::InvalidAuthTag(tag_len));
-          }
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
         }
 
         let decipher =
@@ -546,10 +546,10 @@ impl Decipher {
           return Err(DecipherError::InvalidKeyLength);
         }
 
-        if let Some(tag_len) = auth_tag_length {
-          if !is_valid_gcm_tag_length(tag_len) {
-            return Err(DecipherError::InvalidAuthTag(tag_len));
-          }
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
         }
 
         let decipher =

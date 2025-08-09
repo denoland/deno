@@ -352,10 +352,10 @@ impl WorkspaceLinter {
     let reporter_lock = self.reporter_lock.clone();
 
     let mut futures = Vec::with_capacity(2);
-    if linter.has_package_rules() {
-      if let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths) {
-        futures.push(fut);
-      }
+    if linter.has_package_rules()
+      && let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths)
+    {
+      futures.push(fut);
     }
 
     let maybe_incremental_cache_ = maybe_incremental_cache.clone();
@@ -366,10 +366,10 @@ impl WorkspaceLinter {
         let file_text = deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
         // don't bother rechecking this file if it didn't have any diagnostics before
-        if let Some(incremental_cache) = &maybe_incremental_cache_ {
-          if incremental_cache.is_file_same(&file_path, &file_text) {
-            return Ok(());
-          }
+        if let Some(incremental_cache) = &maybe_incremental_cache_
+          && incremental_cache.is_file_same(&file_path, &file_text)
+        {
+          return Ok(());
         }
 
         let r = linter.lint_file(
@@ -377,17 +377,16 @@ impl WorkspaceLinter {
           file_text,
           cli_options.ext_flag().as_deref(),
         );
-        if let Ok((file_source, file_diagnostics)) = &r {
-          if let Some(incremental_cache) = &maybe_incremental_cache_ {
-            if file_diagnostics.is_empty() {
-              // update the incremental cache if there were no diagnostics
-              incremental_cache.update_file(
-                &file_path,
-                // ensure the returned text is used here as it may have been modified via --fix
-                file_source.text(),
-              )
-            }
-          }
+        if let Ok((file_source, file_diagnostics)) = &r
+          && let Some(incremental_cache) = &maybe_incremental_cache_
+          && file_diagnostics.is_empty()
+        {
+          // update the incremental cache if there were no diagnostics
+          incremental_cache.update_file(
+            &file_path,
+            // ensure the returned text is used here as it may have been modified via --fix
+            file_source.text(),
+          )
         }
 
         let success = handle_lint_result(
@@ -429,7 +428,7 @@ impl WorkspaceLinter {
     linter: &Arc<CliLinter>,
     member_dir: &WorkspaceDirectory,
     paths: &[PathBuf],
-  ) -> Option<LocalBoxFuture<Result<(), AnyError>>> {
+  ) -> Option<LocalBoxFuture<'_, Result<(), AnyError>>> {
     if self.workspace_module_graph.is_none() {
       let module_graph_creator = self.module_graph_creator.clone();
       let packages = self.workspace_dir.jsr_packages_for_publish();

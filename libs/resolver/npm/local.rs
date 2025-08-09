@@ -55,7 +55,9 @@ pub fn get_package_folder_id_from_folder_name(
 }
 
 /// Normalizes a package name for use at `node_modules/.deno/<pkg-name>@<version>[_<copy_index>]`
-pub fn normalize_pkg_name_for_node_modules_deno_folder(name: &str) -> Cow<str> {
+pub fn normalize_pkg_name_for_node_modules_deno_folder(
+  name: &str,
+) -> Cow<'_, str> {
   let name = if name.to_lowercase() == name {
     Cow::Borrowed(name)
   } else {

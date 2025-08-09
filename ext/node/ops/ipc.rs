@@ -107,11 +107,11 @@ mod impl_ {
       )
       .unwrap()
       .into();
-      if let Some(to_json) = object.get(scope, to_json_key) {
-        if let Ok(to_json) = to_json.try_cast::<v8::Function>() {
-          let json_value = to_json.call(scope, object.into(), &[]).unwrap();
-          return serialize_v8_value(scope, json_value, ser);
-        }
+      if let Some(to_json) = object.get(scope, to_json_key)
+        && let Ok(to_json) = to_json.try_cast::<v8::Function>()
+      {
+        let json_value = to_json.call(scope, object.into(), &[]).unwrap();
+        return serialize_v8_value(scope, json_value, ser);
       }
 
       let keys = object

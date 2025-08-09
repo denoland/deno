@@ -162,7 +162,7 @@ impl PathRef {
     self.0.to_path_buf()
   }
 
-  pub fn to_string_lossy(&self) -> Cow<str> {
+  pub fn to_string_lossy(&self) -> Cow<'_, str> {
     self.0.to_string_lossy()
   }
 

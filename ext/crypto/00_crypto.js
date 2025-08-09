@@ -574,7 +574,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "encrypt")) {
       throw new DOMException(
-        "Key does not support the 'encrypt' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -617,7 +617,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "decrypt")) {
       throw new DOMException(
-        "Key does not support the 'decrypt' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -823,7 +823,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "sign")) {
       throw new DOMException(
-        "Key does not support the 'sign' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -1244,7 +1244,7 @@ class SubtleCrypto {
 
     if (!ArrayPrototypeIncludes(key[_usages], "verify")) {
       throw new DOMException(
-        "Key does not support the 'verify' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -1371,7 +1371,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(wrappingKey[_usages], "wrapKey")) {
       throw new DOMException(
-        "Key does not support the 'wrapKey' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -1527,7 +1527,7 @@ class SubtleCrypto {
     // 12.
     if (!ArrayPrototypeIncludes(unwrappingKey[_usages], "unwrapKey")) {
       throw new DOMException(
-        "Key does not support the 'unwrapKey' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }

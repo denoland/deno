@@ -47,7 +47,7 @@ pub struct NetworkListenerResource<T: NetworkStreamListenerTrait> {
 impl<T: NetworkStreamListenerTrait + 'static> Resource
   for NetworkListenerResource<T>
 {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     T::RESOURCE_NAME.into()
   }
 

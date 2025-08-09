@@ -167,7 +167,7 @@ class Stdin {
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.#rid);
+      this.#readable = readableStreamForRid(this.#rid, false);
     }
     return this.#readable;
   }

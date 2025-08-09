@@ -143,7 +143,7 @@ pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 pub struct WsCancelResource(Rc<CancelHandle>);
 
 impl Resource for WsCancelResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webSocketCancel".into()
   }
 
@@ -507,10 +507,10 @@ where
     None => handshake.await?,
   };
 
-  if let Some(cancel_rid) = cancel_handle {
-    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-      res.close();
-    }
+  if let Some(cancel_rid) = cancel_handle
+    && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+  {
+    res.close();
   }
 
   let mut state = state.borrow_mut();
@@ -601,7 +601,7 @@ impl ServerWebSocket {
 }
 
 impl Resource for ServerWebSocket {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "serverWebSocket".into()
   }
 }

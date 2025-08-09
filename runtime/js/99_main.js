@@ -1025,7 +1025,11 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
+      15: standalone,
     } = runtimeOptions;
+
+    denoNs.build.standalone = standalone;
+
     closeOnIdle = runtimeOptions[14];
 
     performance.setTimeOrigin();

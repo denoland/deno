@@ -61,8 +61,21 @@ impl DatabaseHandler for MultiBackendDbHandler {
   async fn open(
     &self,
     state: Rc<RefCell<OpState>>,
-    path: Option<String>,
+    mut path: Option<String>,
   ) -> Result<Self::DB, JsErrorBox> {
+    if path.is_none()
+      && let Ok(x) = std::env::var("DENO_KV_DEFAULT_PATH")
+      && !x.is_empty()
+    {
+      path = Some(x);
+    }
+
+    if let Some(path) = &mut path
+      && let Ok(prefix) = std::env::var("DENO_KV_PATH_PREFIX")
+    {
+      *path = format!("{}{}", prefix, path);
+    }
+
     for (prefixes, handler) in &self.backends {
       for &prefix in *prefixes {
         if prefix.is_empty() {

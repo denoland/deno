@@ -46,6 +46,7 @@ use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
 use crate::util::fs::canonicalize_path;
+use crate::util::progress_bar::ProgressBar;
 
 #[derive(Debug)]
 struct PackageTaskInfo {
@@ -178,6 +179,7 @@ pub async fn execute_script(
   let npm_installer = factory.npm_installer_if_managed().await?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
+  let progress_bar = factory.text_only_progress_bar();
   let mut env_vars = task_runner::real_env_vars();
 
   if let Some(connected) = &flags.connected {
@@ -196,6 +198,7 @@ pub async fn execute_script(
     npm_installer: npm_installer.map(|n| n.as_ref()),
     npm_resolver,
     node_resolver: node_resolver.as_ref(),
+    progress_bar,
     env_vars,
     cli_options,
     maybe_lockfile,
@@ -250,6 +253,7 @@ struct TaskRunner<'a> {
   npm_installer: Option<&'a CliNpmInstaller>,
   npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
+  progress_bar: &'a ProgressBar,
   env_vars: HashMap<OsString, OsString>,
   cli_options: &'a CliOptions,
   maybe_lockfile: Option<Arc<CliLockfile>>,
@@ -567,6 +571,7 @@ impl<'a> TaskRunner<'a> {
 
   async fn maybe_npm_install(&self) -> Result<(), AnyError> {
     if let Some(npm_installer) = self.npm_installer {
+      self.progress_bar.deferred_keep_initialize_alive();
       npm_installer
         .ensure_top_level_package_json_install()
         .await?;
@@ -617,28 +622,28 @@ fn sort_tasks_topo<'a>(
   task_name: &str,
 ) -> Result<Vec<ResolvedTask<'a>>, TaskError> {
   trait TasksConfig {
-    fn task(&self, name: &str) -> Option<(TaskOrScript, &dyn TasksConfig)>;
+    fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)>;
   }
 
   impl TasksConfig for WorkspaceTasksConfig {
-    fn task(&self, name: &str) -> Option<(TaskOrScript, &dyn TasksConfig)> {
-      if let Some(member) = &self.member {
-        if let Some(task_or_script) = member.task(name) {
-          return Some((task_or_script, self as &dyn TasksConfig));
-        }
+    fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)> {
+      if let Some(member) = &self.member
+        && let Some(task_or_script) = member.task(name)
+      {
+        return Some((task_or_script, self as &dyn TasksConfig));
       }
-      if let Some(root) = &self.root {
-        if let Some(task_or_script) = root.task(name) {
-          // switch to only using the root tasks for the dependencies
-          return Some((task_or_script, root as &dyn TasksConfig));
-        }
+      if let Some(root) = &self.root
+        && let Some(task_or_script) = root.task(name)
+      {
+        // switch to only using the root tasks for the dependencies
+        return Some((task_or_script, root as &dyn TasksConfig));
       }
       None
     }
   }
 
   impl TasksConfig for WorkspaceMemberTasksConfig {
-    fn task(&self, name: &str) -> Option<(TaskOrScript, &dyn TasksConfig)> {
+    fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)> {
       self
         .task(name)
         .map(|task_or_script| (task_or_script, self as &dyn TasksConfig))
@@ -709,22 +714,19 @@ fn matches_package(
   force_use_pkg_json: bool,
   regex: &Regex,
 ) -> bool {
-  if !force_use_pkg_json {
-    if let Some(deno_json) = &config.deno_json {
-      if let Some(name) = &deno_json.json.name {
-        if regex.is_match(name) {
-          return true;
-        }
-      }
-    }
+  if !force_use_pkg_json
+    && let Some(deno_json) = &config.deno_json
+    && let Some(name) = &deno_json.json.name
+    && regex.is_match(name)
+  {
+    return true;
   }
 
-  if let Some(package_json) = &config.pkg_json {
-    if let Some(name) = &package_json.name {
-      if regex.is_match(name) {
-        return true;
-      }
-    }
+  if let Some(package_json) = &config.pkg_json
+    && let Some(name) = &package_json.name
+    && regex.is_match(name)
+  {
+    return true;
   }
 
   false
@@ -972,7 +974,9 @@ fn package_filter_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
   Regex::new(&regex_str)
 }
 
-fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
+fn arg_to_task_name_filter(
+  input: &str,
+) -> Result<TaskNameFilter<'_>, AnyError> {
   if !input.contains("*") {
     return Ok(TaskNameFilter::Exact(input));
   }

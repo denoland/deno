@@ -92,7 +92,7 @@ struct DatabaseResource<DB: Database + 'static> {
 }
 
 impl<DB: Database + 'static> Resource for DatabaseResource<DB> {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "database".into()
   }
 
@@ -109,7 +109,7 @@ struct DatabaseWatcherResource {
 }
 
 impl Resource for DatabaseWatcherResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "databaseWatcher".into()
   }
 
@@ -429,7 +429,7 @@ struct QueueMessageResource<QPH: QueueMessageHandle + 'static> {
 }
 
 impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "queueMessage".into()
   }
 }
@@ -869,16 +869,16 @@ fn decode_selector_and_cursor(
   }
 
   // Defend against out-of-bounds reading
-  if let Some(start) = selector.start() {
-    if &first_key[..] < start {
-      return Err(KvErrorKind::CursorOutOfBounds.into_box());
-    }
+  if let Some(start) = selector.start()
+    && &first_key[..] < start
+  {
+    return Err(KvErrorKind::CursorOutOfBounds.into_box());
   }
 
-  if let Some(end) = selector.end() {
-    if &last_key[..] > end {
-      return Err(KvErrorKind::CursorOutOfBounds.into_box());
-    }
+  if let Some(end) = selector.end()
+    && &last_key[..] > end
+  {
+    return Err(KvErrorKind::CursorOutOfBounds.into_box());
   }
 
   Ok((first_key, last_key))

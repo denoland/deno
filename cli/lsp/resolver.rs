@@ -380,10 +380,10 @@ impl LspScopedResolver {
           .contains("/node_modules/")
     }
 
-    if let Some(node_resolver) = &self.node_resolver {
-      if node_resolver.in_npm_package(specifier) {
-        return true;
-      }
+    if let Some(node_resolver) = &self.node_resolver
+      && node_resolver.in_npm_package(specifier)
+    {
+      return true;
     }
 
     has_node_modules_dir(specifier)
@@ -707,18 +707,17 @@ impl ConfiguredDepResolutions {
               .insert(file_url, entry.key.to_string());
           }
         }
-        if let Some(key_prefix) = entry.key.strip_suffix('/') {
-          if req_ref.sub_path().is_none() {
-            if let Some(dep_package_json) = &dep_package_json {
-              insert_export_resolutions(
-                key_prefix,
-                &req_ref.req().to_string(),
-                dep_package_json,
-                referrer,
-                &mut result,
-              );
-            }
-          }
+        if let Some(key_prefix) = entry.key.strip_suffix('/')
+          && req_ref.sub_path().is_none()
+          && let Some(dep_package_json) = &dep_package_json
+        {
+          insert_export_resolutions(
+            key_prefix,
+            &req_ref.req().to_string(),
+            dep_package_json,
+            referrer,
+            &mut result,
+          );
         }
       }
     }

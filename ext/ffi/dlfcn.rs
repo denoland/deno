@@ -65,7 +65,7 @@ pub struct DynamicLibraryResource {
 }
 
 impl Resource for DynamicLibraryResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "dynamicLibrary".into()
   }
 

@@ -382,6 +382,7 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
 }
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[allow(dead_code)]
 pub struct EmittedFile {
   pub data: String,
   pub maybe_specifiers: Option<Vec<ModuleSpecifier>>,

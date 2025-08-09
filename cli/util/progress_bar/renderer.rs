@@ -143,22 +143,41 @@ impl Default for TextOnlyProgressBarRenderer {
   }
 }
 
-const SPINNER_CHARS: [&str; 8] = ["⣷", "⣯", "⣟", "⡿", "⢿", "⣻", "⣽", "⣾"];
+const SPINNER_CHARS: [&str; 13] = [
+  "▰▱▱▱▱▱",
+  "▰▰▱▱▱▱",
+  "▰▰▰▱▱▱",
+  "▰▰▰▰▱▱",
+  "▰▰▰▰▰▱",
+  "▰▰▰▰▰▰",
+  "▰▰▰▰▰▰",
+  "▱▰▰▰▰▰",
+  "▱▱▰▰▰▰",
+  "▱▱▱▰▰▰",
+  "▱▱▱▱▰▰",
+  "▱▱▱▱▱▰",
+  "▱▱▱▱▱▱",
+];
 impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
   fn render(&self, data: ProgressData) -> String {
     let last_tick = {
       let last_tick = self.last_tick.load(Ordering::Relaxed);
-      let last_tick = (last_tick + 1) % 8;
+      let last_tick = (last_tick + 1) % SPINNER_CHARS.len();
       self.last_tick.store(last_tick, Ordering::Relaxed);
       last_tick
     };
     let current_time = std::time::Instant::now();
 
-    let mut display_str = format!(
-      "{} {} ",
-      data.display_entries[0].prompt.as_text(),
-      SPINNER_CHARS[last_tick]
-    );
+    let non_empty_entry = data
+      .display_entries
+      .iter()
+      .find(|d| !d.message.is_empty() || d.total_size != 0);
+    let prompt = match non_empty_entry {
+      Some(entry) => entry.prompt,
+      None => data.display_entries[0].prompt,
+    };
+    let mut display_str =
+      format!("{} {} ", prompt.as_text(), SPINNER_CHARS[last_tick]);
 
     let elapsed_time = current_time - self.start_time;
     let fmt_elapsed_time = get_elapsed_text(elapsed_time);
@@ -174,13 +193,7 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
     };
 
     display_str.push_str(&format!("{}{}\n", fmt_elapsed_time, total_text));
-
-    for i in 0..4 {
-      let Some(display_entry) = data.display_entries.get(i) else {
-        display_str.push('\n');
-        continue;
-      };
-
+    if let Some(display_entry) = non_empty_entry {
       let bytes_text = {
         let total_size = display_entry.total_size;
         let pos = display_entry.position;
@@ -206,8 +219,11 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
         .replace("%2F", "/");
 
       display_str.push_str(
-        &colors::gray(format!(" - {}{}\n", message, bytes_text)).to_string(),
+        &colors::gray(format!("  {}{}\n", message, bytes_text)).to_string(),
       );
+    } else {
+      // prevent cursor from going up
+      display_str.push('\n');
     }
 
     display_str
@@ -334,8 +350,8 @@ mod test {
     };
     let text = renderer.render(data.clone());
     let text = test_util::strip_ansi_codes(&text);
-    assert_contains!(text, "Blocking ⣯");
-    assert_contains!(text, "2/3\n - data 0.00KiB/10.00KiB\n\n\n\n");
+    assert_contains!(text, "Blocking ▰▰▱▱▱▱");
+    assert_contains!(text, "2/3\n  data 0.00KiB/10.00KiB\n");
 
     data.pending_entries = 0;
     data.total_entries = 1;
@@ -343,7 +359,7 @@ mod test {
     data.display_entries[0].total_size = 0;
     let text = renderer.render(data);
     let text = test_util::strip_ansi_codes(&text);
-    assert_contains!(text, "Blocking ⣟");
-    assert_contains!(text, "\n - data\n\n\n\n");
+    assert_contains!(text, "Blocking ▰▰▰▱▱▱");
+    assert_contains!(text, "\n  data\n");
   }
 }

@@ -87,18 +87,20 @@ fn comment_source_to_position_range(
 fn get_prelude() -> String {
   r#"(() => {
   const repl_internal = {
-      lastEvalResult: undefined,
-      lastThrownError: undefined,
-      inspectArgs: Deno[Deno.internal].inspectArgs,
-      noColor: Deno.noColor,
-      get closed() {
-        try {
-          return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
-        } catch {
-          return false;
-        }
+    String,
+    lastEvalResult: undefined,
+    lastThrownError: undefined,
+    inspectArgs: Deno[Deno.internal].inspectArgs,
+    noColor: Deno.noColor,
+    get closed() {
+      try {
+        return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+      } catch {
+        return false;
       }
     }
+  };
+
   Object.defineProperty(globalThis, "_", {
     configurable: true,
     get: () => repl_internal.lastEvalResult,
@@ -130,7 +132,7 @@ fn get_prelude() -> String {
 
   globalThis.clear = console.clear.bind(console);
 
-  return repl_internal
+  return repl_internal;
 })()"#.to_string()
 }
 
@@ -488,7 +490,7 @@ impl ReplSession {
     result
   }
 
-  async fn set_last_thrown_error(
+  pub async fn set_last_thrown_error(
     &mut self,
     error: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
@@ -515,7 +517,7 @@ impl ReplSession {
     Ok(())
   }
 
-  async fn set_last_eval_result(
+  pub async fn set_last_eval_result(
     &mut self,
     evaluate_result: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
@@ -627,7 +629,7 @@ impl ReplSession {
           }
         }"#
           .to_string(),
-        &[evaluate_result.clone()],
+        std::slice::from_ref(evaluate_result),
       )
       .await?;
     let s = response
@@ -936,46 +938,46 @@ fn analyze_jsx_pragmas(
       continue; // invalid
     }
 
-    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            true,
-          ),
-        });
-      }
+    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text)
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          true,
+        ),
+      });
     }
 
-    if let Some(captures) = JSX_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            false,
-          ),
-        });
-      }
+    if let Some(captures) = JSX_RE.captures(&c.text)
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          false,
+        ),
+      });
     }
 
-    if let Some(captures) = JSX_FRAG_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            false,
-          ),
-        });
-      }
+    if let Some(captures) = JSX_FRAG_RE.captures(&c.text)
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          false,
+        ),
+      });
     }
   }
 

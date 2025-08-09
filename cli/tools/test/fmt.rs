@@ -17,13 +17,13 @@ pub fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
   let Ok(url) = Url::parse(path_or_url) else {
     return "<anonymous>".to_string();
   };
-  if url.scheme() == "file" {
-    if let Some(mut r) = cwd.make_relative(&url) {
-      if !r.starts_with("../") {
-        r = format!("./{r}");
-      }
-      return to_percent_decoded_str(&r);
+  if url.scheme() == "file"
+    && let Some(mut r) = cwd.make_relative(&url)
+  {
+    if !r.starts_with("../") {
+      r = format!("./{r}");
     }
+    return to_percent_decoded_str(&r);
   }
   path_or_url.to_string()
 }

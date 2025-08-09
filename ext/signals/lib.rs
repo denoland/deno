@@ -97,10 +97,9 @@ pub fn register(
   f: Box<dyn Fn() + Send>,
 ) -> Result<u32, std::io::Error> {
   if is_forbidden(signal) {
-    return Err(std::io::Error::new(
-      std::io::ErrorKind::Other,
-      format!("Refusing to register signal {signal}"),
-    ));
+    return Err(std::io::Error::other(format!(
+      "Refusing to register signal {signal}"
+    )));
   }
 
   let (handle, handlers) = HANDLERS.get_or_init(|| {
@@ -197,9 +196,6 @@ pub async fn ctrl_c() -> std::io::Result<()> {
   let mut stream = signal_stream(libc::SIGINT)?;
   match stream.recv().await {
     Some(_) => Ok(()),
-    None => Err(std::io::Error::new(
-      std::io::ErrorKind::Other,
-      "failed to receive SIGINT signal",
-    )),
+    None => Err(std::io::Error::other("failed to receive SIGINT signal")),
   }
 }

@@ -41,7 +41,7 @@ struct CronResource<EH: CronHandle + 'static> {
 }
 
 impl<EH: CronHandle + 'static> Resource for CronResource<EH> {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cron".into()
   }
 

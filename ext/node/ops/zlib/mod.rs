@@ -19,6 +19,8 @@ mod stream;
 use mode::Flush;
 use mode::Mode;
 
+use self::alloc::brotli_alloc;
+use self::alloc::brotli_free;
 use self::stream::StreamWrapper;
 
 #[inline]
@@ -303,7 +305,7 @@ impl deno_core::GarbageCollected for Zlib {
 }
 
 impl deno_core::Resource for Zlib {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "zlib".into()
   }
 }
@@ -538,10 +540,8 @@ pub fn op_zlib_close_if_pending(
     zlib.write_in_progress = false;
     zlib.pending_close
   };
-  if pending_close {
-    if let Some(mut res) = resource.inner.borrow_mut().take() {
-      let _ = res.close();
-    }
+  if pending_close && let Some(mut res) = resource.inner.borrow_mut().take() {
+    let _ = res.close();
   }
 
   Ok(())
@@ -593,8 +593,8 @@ impl BrotliEncoder {
     // SAFETY: creates new brotli encoder instance. `params` is a valid slice of u32 values.
     let inst = unsafe {
       let state = ffi::compressor::BrotliEncoderCreateInstance(
-        None,
-        None,
+        Some(brotli_alloc),
+        Some(brotli_free),
         std::ptr::null_mut(),
       );
       for (i, &value) in params.iter().enumerate() {
@@ -791,8 +791,8 @@ impl BrotliDecoder {
     // SAFETY: creates new brotli decoder instance. `params` is a valid slice of u32 values.
     let inst = unsafe {
       let state = ffi::decompressor::ffi::BrotliDecoderCreateInstance(
-        None,
-        None,
+        Some(brotli_alloc),
+        Some(brotli_free),
         std::ptr::null_mut(),
       );
       for (i, &value) in params.iter().enumerate() {

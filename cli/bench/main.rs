@@ -278,10 +278,10 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
     let file_mtime = meta.modified()?;
 
     // If multiple copies of a file are found, use the most recent one.
-    if let Some(stored_mtime) = mtimes.get(&filename) {
-      if *stored_mtime > file_mtime {
-        continue;
-      }
+    if let Some(stored_mtime) = mtimes.get(&filename)
+      && *stored_mtime > file_mtime
+    {
+      continue;
     }
 
     mtimes.insert(filename.clone(), file_mtime);

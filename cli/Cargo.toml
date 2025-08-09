@@ -61,9 +61,6 @@ zstd.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
 
-[target.'cfg(unix)'.build-dependencies]
-glibc_version = "0.1.2"
-
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
 winres.workspace = true

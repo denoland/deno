@@ -123,7 +123,7 @@ pub struct MessagePortResource {
 }
 
 impl Resource for MessagePortResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "messagePort".into()
   }
 
@@ -220,10 +220,10 @@ pub fn op_message_port_post_message(
   #[serde] data: JsMessageData,
 ) -> Result<(), MessagePortError> {
   for js_transferable in &data.transferables {
-    if let JsTransferable::MessagePort(id) = js_transferable {
-      if *id == rid {
-        return Err(MessagePortError::TransferSelf);
-      }
+    if let JsTransferable::MessagePort(id) = js_transferable
+      && *id == rid
+    {
+      return Err(MessagePortError::TransferSelf);
     }
   }
 

@@ -108,7 +108,7 @@ impl Resource for TcpStreamResource {
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "tcpStream".into()
   }
 
@@ -177,7 +177,7 @@ impl Resource for UnixStreamResource {
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "unixStream".into()
   }
 
@@ -218,7 +218,7 @@ impl Resource for VsockStreamResource {
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "vsockStream".into()
   }
 

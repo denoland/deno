@@ -2,6 +2,7 @@
 
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
+import { randomBytes } from "node:crypto";
 import {
   BrotliCompress,
   brotliCompress,
@@ -14,6 +15,7 @@ import {
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  deflateSync,
   gzip,
   gzipSync,
   unzipSync,
@@ -272,4 +274,15 @@ Deno.test("BrotliCompress", async () => {
 
   await deffered.promise;
   assertEquals(data, "hello");
+});
+
+Deno.test("ERR_BUFFER_TOO_LARGE works correctly", () => {
+  assertThrows(
+    () => {
+      deflateSync(randomBytes(1024), {
+        maxOutputLength: 1,
+      });
+    },
+    "Cannot create a Buffer larger than 1 bytes",
+  );
 });

@@ -151,7 +151,7 @@ impl Resource for TunnelStreamResource {
     })
   }
 
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "tunnelStream".into()
   }
 

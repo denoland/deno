@@ -154,7 +154,7 @@ export const kMaxUserId = 2 ** 32 - 1;
 export function assertEncoding(encoding) {
   if (encoding && !Buffer.isEncoding(encoding)) {
     const reason = "is invalid encoding";
-    throw new ERR_INVALID_ARG_VALUE(encoding, "encoding", reason);
+    throw new ERR_INVALID_ARG_VALUE("encoding", encoding, reason);
   }
 }
 

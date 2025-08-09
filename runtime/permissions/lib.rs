@@ -201,7 +201,7 @@ impl PathBufWithRequested {
     }
   }
 
-  pub fn as_path_with_requested(&self) -> PathWithRequested {
+  pub fn as_path_with_requested(&self) -> PathWithRequested<'_> {
     PathWithRequested {
       path: Cow::Borrowed(self.path.as_path()),
       requested: self.requested.as_deref().map(Cow::Borrowed),
@@ -607,7 +607,7 @@ pub trait QueryDescriptor: Debug {
   type DenyDesc: DenyDescriptor;
 
   fn flag_name() -> &'static str;
-  fn display_name(&self) -> Cow<str>;
+  fn display_name(&self) -> Cow<'_, str>;
 
   fn from_allow(allow: &Self::AllowDesc) -> Self;
 
@@ -630,7 +630,7 @@ pub trait QueryDescriptor: Debug {
   fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool;
 }
 
-fn format_display_name(display_name: Cow<str>) -> Cow<str> {
+fn format_display_name(display_name: Cow<'_, str>) -> Cow<'_, str> {
   if display_name.starts_with('<') && display_name.ends_with('>') {
     display_name
   } else {
@@ -1057,7 +1057,7 @@ impl<'a> PathQueryDescriptor<'a> {
     self.path.starts_with(&base.path)
   }
 
-  pub fn display_name(&self) -> Cow<str> {
+  pub fn display_name(&self) -> Cow<'_, str> {
     match &self.requested {
       Some(requested) => Cow::Borrowed(requested.as_str()),
       None => self.path.to_string_lossy(),
@@ -1104,7 +1104,7 @@ impl QueryDescriptor for ReadQueryDescriptor<'_> {
     "read"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     self.0.display_name()
   }
 
@@ -1212,7 +1212,7 @@ impl PathDescriptor {
     self.path.starts_with(&base.path)
   }
 
-  pub fn display_name(&self) -> Cow<str> {
+  pub fn display_name(&self) -> Cow<'_, str> {
     match &self.requested {
       Some(requested) => Cow::Borrowed(requested.as_str()),
       None => self.path.to_string_lossy(),
@@ -1261,7 +1261,7 @@ impl QueryDescriptor for WriteQueryDescriptor<'_> {
     "write"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     self.0.display_name()
   }
 
@@ -1389,11 +1389,11 @@ impl Host {
       };
       let mut host_or_suffix = lower.as_ref();
       let mut has_subdomain_wildcard = false;
-      if matches!(subdomain_wildcards, SubdomainWildcards::Enabled) {
-        if let Some(suffix) = lower.strip_prefix("*.") {
-          host_or_suffix = suffix;
-          has_subdomain_wildcard = true;
-        }
+      if matches!(subdomain_wildcards, SubdomainWildcards::Enabled)
+        && let Some(suffix) = lower.strip_prefix("*.")
+      {
+        host_or_suffix = suffix;
+        has_subdomain_wildcard = true;
       }
       let fqdn = {
         use std::str::FromStr;
@@ -1431,7 +1431,7 @@ impl QueryDescriptor for NetDescriptor {
     "net"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     Cow::from(format!("{}", self))
   }
 
@@ -1687,7 +1687,7 @@ impl QueryDescriptor for ImportDescriptor {
     "import"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     self.0.display_name()
   }
 
@@ -1802,7 +1802,7 @@ impl QueryDescriptor for EnvQueryDescriptor<'_> {
     "env"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     Cow::from(match &self.0 {
       EnvQueryDescriptorInner::Name(env_var_name) => env_var_name.as_ref(),
       EnvQueryDescriptorInner::PrefixPattern(env_var_name) => {
@@ -2027,7 +2027,7 @@ impl QueryDescriptor for RunQueryDescriptor<'_> {
     "run"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     match self {
       RunQueryDescriptor::Path(path) => path.display_name(),
       RunQueryDescriptor::Name(name) => Cow::Borrowed(name),
@@ -2329,7 +2329,7 @@ impl QueryDescriptor for SysDescriptor {
     "sys"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     Cow::from(self.0.to_string())
   }
 
@@ -2393,7 +2393,7 @@ impl QueryDescriptor for FfiQueryDescriptor<'_> {
     "ffi"
   }
 
-  fn display_name(&self) -> Cow<str> {
+  fn display_name(&self) -> Cow<'_, str> {
     self.0.display_name()
   }
 
@@ -2912,15 +2912,15 @@ impl Permissions {
       })
       .transpose()?;
     // add the allow_run list to deny_write
-    if let Some(allow_run_vec) = &allow_run {
-      if !allow_run_vec.is_empty() {
-        let deny_write = deny_write.get_or_insert_with(Default::default);
-        deny_write.extend(
-          allow_run_vec
-            .iter()
-            .map(|item| WriteDescriptor(item.0.clone())),
-        );
-      }
+    if let Some(allow_run_vec) = &allow_run
+      && !allow_run_vec.is_empty()
+    {
+      let deny_write = deny_write.get_or_insert_with(Default::default);
+      deny_write.extend(
+        allow_run_vec
+          .iter()
+          .map(|item| WriteDescriptor(item.0.clone())),
+      );
     }
 
     Ok(Self {
@@ -3563,22 +3563,20 @@ impl PermissionsContainer {
     /// 2. the fd referred to by n is a pipe
     #[cfg(unix)]
     fn is_fd_file_is_pipe(path: &Path) -> bool {
-      if let Some(fd) = path.file_name() {
-        if let Ok(s) = std::str::from_utf8(fd.as_encoded_bytes()) {
-          if let Ok(n) = s.parse::<i32>() {
-            if n > 2 {
-              // SAFETY: This is proper use of the stat syscall
-              unsafe {
-                let mut stat = std::mem::zeroed::<libc::stat>();
-                if libc::fstat(n, &mut stat as _) == 0
-                  && ((stat.st_mode & libc::S_IFMT) & libc::S_IFIFO) != 0
-                {
-                  return true;
-                }
-              };
-            }
+      if let Some(fd) = path.file_name()
+        && let Ok(s) = std::str::from_utf8(fd.as_encoded_bytes())
+        && let Ok(n) = s.parse::<i32>()
+        && n > 2
+      {
+        // SAFETY: This is proper use of the stat syscall
+        unsafe {
+          let mut stat = std::mem::zeroed::<libc::stat>();
+          if libc::fstat(n, &mut stat as _) == 0
+            && ((stat.st_mode & libc::S_IFMT) & libc::S_IFIFO) != 0
+          {
+            return true;
           }
-        }
+        };
       }
       false
     }

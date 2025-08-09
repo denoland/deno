@@ -302,10 +302,10 @@ impl<TSys: FsMetadata> CachedMetadataFs<TSys> {
   }
 
   fn stat_sync(&self, path: &Path) -> Option<CachedMetadataFsEntry> {
-    if let Some(cache) = &self.cache {
-      if let Some(entry) = cache.get(path) {
-        return *entry;
-      }
+    if let Some(cache) = &self.cache
+      && let Some(entry) = cache.get(path)
+    {
+      return *entry;
     }
     let entry = self.sys.fs_metadata(path).ok().and_then(|stat| {
       if stat.file_type().is_file() {
@@ -403,7 +403,7 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
     fn path_without_ext(
       path: &Path,
       media_type: MediaType,
-    ) -> Option<Cow<str>> {
+    ) -> Option<Cow<'_, str>> {
       let old_path_str = path.to_string_lossy();
       match media_type {
         MediaType::Unknown => Some(old_path_str),
@@ -622,10 +622,10 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
       };
 
     for (probe_path, reason) in probe_paths {
-      if self.fs.is_file(&probe_path) {
-        if let Ok(specifier) = url_from_file_path(&probe_path) {
-          return Some((specifier, reason));
-        }
+      if self.fs.is_file(&probe_path)
+        && let Ok(specifier) = url_from_file_path(&probe_path)
+      {
+        return Some((specifier, reason));
       }
     }
 
@@ -768,10 +768,10 @@ impl<TSys: FsMetadata> CompilerOptionsRootDirsResolver<TSys> {
     let root_dirs_by_member = workspace
       .resolver_deno_jsons()
       .filter_map(|c| {
-        if let Some(root_deno_json) = root_deno_json {
-          if c.specifier == root_deno_json.specifier {
-            return None;
-          }
+        if let Some(root_deno_json) = root_deno_json
+          && c.specifier == root_deno_json.specifier
+        {
+          return None;
         }
         let dir_url = c
           .specifier
@@ -1109,7 +1109,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
   pub fn to_serializable(
     &self,
     root_dir_url: &Url,
-  ) -> SerializableWorkspaceResolver {
+  ) -> SerializableWorkspaceResolver<'_> {
     let root_dir_url = BaseUrl(root_dir_url);
     SerializableWorkspaceResolver {
       import_map: self.maybe_import_map().map(|i| {
@@ -1120,6 +1120,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       }),
       jsr_pkgs: self
         .jsr_packages()
+        .iter()
         .map(|pkg| SerializedResolverWorkspaceJsrPackage {
           relative_base: root_dir_url.make_relative_if_descendant(&pkg.base),
           name: Cow::Borrowed(&pkg.name),
@@ -1253,10 +1254,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     self.pkg_jsons.values().map(|c| &c.pkg_json)
   }
 
-  pub fn jsr_packages(
-    &self,
-  ) -> impl Iterator<Item = &ResolverWorkspaceJsrPackage> {
-    self.jsr_pkgs.iter()
+  pub fn jsr_packages(&self) -> &[ResolverWorkspaceJsrPackage] {
+    &self.jsr_pkgs
   }
 
   pub fn diagnostics(&self) -> Vec<WorkspaceResolverDiagnostic<'_>> {
@@ -1304,15 +1303,14 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         {
           specifier = probed_specifier;
           sloppy_reason = Some(probed_sloppy_reason);
-        } else if resolution_kind.is_types() {
-          if let Some((probed_specifier, probed_sloppy_reason)) = self
+        } else if resolution_kind.is_types()
+          && let Some((probed_specifier, probed_sloppy_reason)) = self
             .compiler_options_root_dirs_resolver
             .resolve_types(&specifier, referrer)
-          {
-            used_compiler_options_root_dirs = true;
-            specifier = probed_specifier;
-            sloppy_reason = probed_sloppy_reason;
-          }
+        {
+          used_compiler_options_root_dirs = true;
+          specifier = probed_specifier;
+          sloppy_reason = probed_sloppy_reason;
         }
         return self.maybe_resolve_specifier_to_workspace_jsr_pkg(
           MappedResolution::Normal {
@@ -1330,28 +1328,28 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     // 2. Try to resolve the bare specifier to a workspace member
     if resolve_error.is_unmapped_bare_specifier() {
       for member in &self.jsr_pkgs {
-        if let Some(path) = specifier.strip_prefix(&member.name) {
-          if path.is_empty() || path.starts_with('/') {
-            let path = path.strip_prefix('/').unwrap_or(path);
-            let pkg_req_ref = match JsrPackageReqReference::from_str(&format!(
-              "jsr:{}{}/{}",
-              member.name,
-              member
-                .version
-                .as_ref()
-                .map(|v| format!("@^{}", v))
-                .unwrap_or_else(String::new),
-              path
-            )) {
-              Ok(pkg_req_ref) => pkg_req_ref,
-              Err(_) => {
-                // Ignore the error as it will be surfaced as a diagnostic
-                // in workspace.diagnostics() routine.
-                continue;
-              }
-            };
-            return self.resolve_workspace_jsr_pkg(member, pkg_req_ref);
-          }
+        if let Some(path) = specifier.strip_prefix(&member.name)
+          && (path.is_empty() || path.starts_with('/'))
+        {
+          let path = path.strip_prefix('/').unwrap_or(path);
+          let pkg_req_ref = match JsrPackageReqReference::from_str(&format!(
+            "jsr:{}{}/{}",
+            member.name,
+            member
+              .version
+              .as_ref()
+              .map(|v| format!("@^{}", v))
+              .unwrap_or_else(String::new),
+            path
+          )) {
+            Ok(pkg_req_ref) => pkg_req_ref,
+            Err(_) => {
+              // Ignore the error as it will be surfaced as a diagnostic
+              // in workspace.diagnostics() routine.
+              continue;
+            }
+          };
+          return self.resolve_workspace_jsr_pkg(member, pkg_req_ref);
         }
       }
     }
@@ -1376,20 +1374,20 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
           .iter()
           .chain(pkg_json_folder.deps.dev_dependencies.iter())
         {
-          if let Some(path) = specifier.strip_prefix(bare_specifier.as_str()) {
-            if path.is_empty() || path.starts_with('/') {
-              let sub_path = path.strip_prefix('/').unwrap_or(path);
-              return Ok(MappedResolution::PackageJson {
-                pkg_json: &pkg_json_folder.pkg_json,
-                alias: bare_specifier,
-                sub_path: if sub_path.is_empty() {
-                  None
-                } else {
-                  Some(sub_path.to_string())
-                },
-                dep_result,
-              });
-            }
+          if let Some(path) = specifier.strip_prefix(bare_specifier.as_str())
+            && (path.is_empty() || path.starts_with('/'))
+          {
+            let sub_path = path.strip_prefix('/').unwrap_or(path);
+            return Ok(MappedResolution::PackageJson {
+              pkg_json: &pkg_json_folder.pkg_json,
+              alias: bare_specifier,
+              sub_path: if sub_path.is_empty() {
+                None
+              } else {
+                Some(sub_path.to_string())
+              },
+              dep_result,
+            });
           }
         }
       }

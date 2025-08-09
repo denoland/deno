@@ -53,23 +53,22 @@ impl GraphDiagnosticsCollector {
               // check for a missing version constraint
               if let Ok(jsr_req_ref) =
                 JsrPackageReqReference::from_specifier(&resolution.specifier)
+                && jsr_req_ref.req().version_req.version_text() == "*"
               {
-                if jsr_req_ref.req().version_req.version_text() == "*" {
-                  let maybe_version = graph
-                    .packages
-                    .mappings()
-                    .get(jsr_req_ref.req())
-                    .map(|nv| nv.version.clone());
-                  diagnostics_collector.push(
-                    PublishDiagnostic::MissingConstraint {
-                      specifier: resolution.specifier.clone(),
-                      specifier_text: specifier_text.to_string(),
-                      resolved_version: maybe_version,
-                      text_info: SourceTextInfo::new(source_text.clone()),
-                      referrer: resolution.range.clone(),
-                    },
-                  );
-                }
+                let maybe_version = graph
+                  .packages
+                  .mappings()
+                  .get(jsr_req_ref.req())
+                  .map(|nv| nv.version.clone());
+                diagnostics_collector.push(
+                  PublishDiagnostic::MissingConstraint {
+                    specifier: resolution.specifier.clone(),
+                    specifier_text: specifier_text.to_string(),
+                    resolved_version: maybe_version,
+                    text_info: SourceTextInfo::new(source_text.clone()),
+                    referrer: resolution.range.clone(),
+                  },
+                );
               }
             }
             "npm" => {
@@ -78,22 +77,21 @@ impl GraphDiagnosticsCollector {
               // check for a missing version constraint
               if let Ok(jsr_req_ref) =
                 NpmPackageReqReference::from_specifier(&resolution.specifier)
+                && jsr_req_ref.req().version_req.version_text() == "*"
               {
-                if jsr_req_ref.req().version_req.version_text() == "*" {
-                  let maybe_version = graph
-                    .get(&resolution.specifier)
-                    .and_then(|m| m.npm())
-                    .map(|n| n.nv_reference.nv().version.clone());
-                  diagnostics_collector.push(
-                    PublishDiagnostic::MissingConstraint {
-                      specifier: resolution.specifier.clone(),
-                      specifier_text: specifier_text.to_string(),
-                      resolved_version: maybe_version,
-                      text_info: SourceTextInfo::new(source_text.clone()),
-                      referrer: resolution.range.clone(),
-                    },
-                  );
-                }
+                let maybe_version = graph
+                  .get(&resolution.specifier)
+                  .and_then(|m| m.npm())
+                  .map(|n| n.nv_reference.nv().version.clone());
+                diagnostics_collector.push(
+                  PublishDiagnostic::MissingConstraint {
+                    specifier: resolution.specifier.clone(),
+                    specifier_text: specifier_text.to_string(),
+                    resolved_version: maybe_version,
+                    text_info: SourceTextInfo::new(source_text.clone()),
+                    referrer: resolution.range.clone(),
+                  },
+                );
               }
             }
             "http" | "https" => {

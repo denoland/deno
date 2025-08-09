@@ -154,7 +154,7 @@ impl std::fmt::Display for ResolveNpmReqRefError {
 pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
 
 impl ResolveReqWithSubPathError {
-  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+  pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
       ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
       ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(err) => {
@@ -515,16 +515,16 @@ impl<
                 .unwrap(),
               )
             };
-          if let Some(req) = maybe_definitely_typed_req {
-            if let Ok(resolved) = self.resolve_req_with_sub_path(
+          if let Some(req) = maybe_definitely_typed_req
+            && let Ok(resolved) = self.resolve_req_with_sub_path(
               &req,
               sub_path,
               referrer,
               resolution_mode,
               resolution_kind,
-            ) {
-              return Ok(resolved);
-            }
+            )
+          {
+            return Ok(resolved);
           }
         }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
@@ -616,22 +616,21 @@ impl<
                     }
                     if let NpmResolver::Byonm(byonm_npm_resolver) =
                       &self.npm_resolver
-                    {
-                      if byonm_npm_resolver
+                      && byonm_npm_resolver
                         .find_ancestor_package_json_with_dep(
                           package_name,
                           referrer,
                         )
                         .is_some()
-                      {
-                        return Err(
-                          ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(
-                            NodeModulesOutOfDateError {
-                              specifier: specifier.to_string(),
-                            },
-                          ).into_box(),
-                        );
-                      }
+                    {
+                      return Err(
+                        ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(
+                          NodeModulesOutOfDateError {
+                            specifier: specifier.to_string(),
+                          },
+                        )
+                        .into_box(),
+                      );
                     }
                     Ok(None)
                   }

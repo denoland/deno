@@ -146,7 +146,7 @@ fn format_maybe_source_line(
   format!("\n{indent}{source_line}\n{indent}{color_underline}")
 }
 
-fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
+fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference<'_>> {
   let mut history = Vec::<&JsError>::new();
 
   let mut current_error: &JsError = js_error;
@@ -207,11 +207,11 @@ fn format_js_error_inner(
 
   s.push_str(&js_error.exception_message);
 
-  if let Some(circular) = &circular {
-    if js_error.is_same_error(circular.reference.to) {
-      write!(s, " {}", colors::cyan(format!("<ref *{}>", circular.index)))
-        .unwrap();
-    }
+  if let Some(circular) = &circular
+    && js_error.is_same_error(circular.reference.to)
+  {
+    write!(s, " {}", colors::cyan(format!("<ref *{}>", circular.index)))
+      .unwrap();
   }
 
   if let Some(aggregated) = &js_error.aggregated {
@@ -304,7 +304,7 @@ fn format_js_error_inner(
   s
 }
 
-fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
+fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
       || msg.contains("exports is not defined")
@@ -312,10 +312,9 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
     {
       if let Some(file_name) =
         e.frames.first().and_then(|f| f.file_name.as_ref())
+        && (file_name.ends_with(".mjs") || file_name.ends_with(".mts"))
       {
-        if file_name.ends_with(".mjs") || file_name.ends_with(".mts") {
-          return vec![];
-        }
+        return vec![];
       }
       return vec![
         FixSuggestion::info_multiline(&[

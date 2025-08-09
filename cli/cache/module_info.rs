@@ -129,7 +129,7 @@ impl ModuleInfoCache {
     Ok(())
   }
 
-  pub fn as_module_analyzer(&self) -> ModuleInfoCacheModuleAnalyzer {
+  pub fn as_module_analyzer(&self) -> ModuleInfoCacheModuleAnalyzer<'_> {
     ModuleInfoCacheModuleAnalyzer {
       module_info_cache: self,
       parsed_source_cache: &self.parsed_source_cache,

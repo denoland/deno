@@ -192,7 +192,7 @@ impl<'a> DenoRtDeserializable<'a> for RemoteModuleEntry<'a> {
       input: &[u8],
       has_data_flags: u8,
       flag: u8,
-    ) -> std::io::Result<(&[u8], Option<Cow<[u8]>>)> {
+    ) -> std::io::Result<(&[u8], Option<Cow<'_, [u8]>>)> {
       if has_data_flags & flag != 0 {
         let (input, bytes) = read_bytes_with_u32_len(input)?;
         Ok((input, Some(Cow::Borrowed(bytes))))

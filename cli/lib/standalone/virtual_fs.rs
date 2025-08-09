@@ -359,7 +359,7 @@ impl VfsEntry {
     }
   }
 
-  pub fn as_ref(&self) -> VfsEntryRef {
+  pub fn as_ref(&self) -> VfsEntryRef<'_> {
     match self {
       VfsEntry::Dir(dir) => VfsEntryRef::Dir(dir),
       VfsEntry::File(file) => VfsEntryRef::File(file),

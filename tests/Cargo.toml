@@ -33,16 +33,13 @@ anyhow.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
-deno_bench_util.workspace = true
 deno_cache_dir.workspace = true
 deno_lockfile.workspace = true
 deno_semver.workspace = true
-deno_terminal.workspace = true
 deno_unsync.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 file_test_runner.workspace = true
 flaky_test.workspace = true
-hickory-client.workspace = true
 hickory-proto.workspace = true
 hickory-server.workspace = true
 http.workspace = true

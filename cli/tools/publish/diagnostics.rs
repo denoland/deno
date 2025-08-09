@@ -258,7 +258,7 @@ impl Diagnostic for PublishDiagnostic {
     }
   }
 
-  fn location(&self) -> DiagnosticLocation {
+  fn location(&self) -> DiagnosticLocation<'_> {
     fn from_referrer_range<'a>(
       referrer: &'a deno_graph::Range,
       text_info: &'a SourceTextInfo,

@@ -135,14 +135,13 @@ impl KeyObjectHandle {
         let pss = match_fixed_digest_with_oid!(
           digest_type,
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
-            if let Some(hash_algorithm) = hash_algorithm.take() {
-              if Some(hash_algorithm) != algorithm {
+            if let Some(hash_algorithm) = hash_algorithm.take()
+              && Some(hash_algorithm) != algorithm {
                 return Err(KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage {
                   actual: digest_type.to_string(),
                   expected: hash_algorithm.as_str().to_string(),
                 });
               }
-            }
             if let Some(salt_length) = salt_length {
               rsa::pss::Pss::new_with_salt::<D>(salt_length)
             } else {
@@ -255,14 +254,13 @@ impl KeyObjectHandle {
         let pss = match_fixed_digest_with_oid!(
           digest_type,
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
-            if let Some(hash_algorithm) = hash_algorithm.take() {
-              if Some(hash_algorithm) != algorithm {
+            if let Some(hash_algorithm) = hash_algorithm.take()
+              && Some(hash_algorithm) != algorithm {
                 return Err(KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage {
                   actual: digest_type.to_string(),
                   expected: hash_algorithm.as_str().to_string(),
                 });
               }
-            }
             if let Some(salt_length) = salt_length {
               rsa::pss::Pss::new_with_salt::<D>(salt_length)
             } else {

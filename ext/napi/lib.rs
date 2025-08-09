@@ -451,7 +451,7 @@ impl Env {
   }
 
   #[inline]
-  pub fn scope(&self) -> v8::CallbackScope {
+  pub fn scope(&self) -> v8::CallbackScope<'_> {
     // SAFETY: `v8::Local` is always non-null pointer; the `HandleScope` is
     // already on the stack, but we don't have access to it.
     let context = unsafe {

@@ -1085,10 +1085,10 @@ impl CliOptions {
       imports
         .extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
       // also add the JSR_URL env var
-      if let Some(jsr_host) = allow_import_host_from_url(jsr_url()) {
-        if jsr_host != "jsr.io:443" {
-          imports.push(jsr_host);
-        }
+      if let Some(jsr_host) = allow_import_host_from_url(jsr_url())
+        && jsr_host != "jsr.io:443"
+      {
+        imports.push(jsr_host);
       }
       // include the cli arg urls
       for url in cli_arg_urls {
@@ -1283,12 +1283,11 @@ impl CliOptions {
     }
 
     for (_, folder) in self.workspace().config_folders() {
-      if let Some(deno_json) = &folder.deno_json {
-        if deno_json.specifier.scheme() == "file" {
-          if let Ok(path) = deno_json.specifier.to_file_path() {
-            full_paths.push(path);
-          }
-        }
+      if let Some(deno_json) = &folder.deno_json
+        && deno_json.specifier.scheme() == "file"
+        && let Ok(path) = deno_json.specifier.to_file_path()
+      {
+        full_paths.push(path);
       }
       if let Some(pkg_json) = &folder.pkg_json {
         full_paths.push(pkg_json.path.clone());
@@ -1376,14 +1375,14 @@ fn resolve_import_map_specifier(
   current_dir: &Path,
 ) -> Result<Option<Url>, ImportMapSpecifierResolveError> {
   if let Some(import_map_path) = maybe_import_map_path {
-    if let Some(config_file) = &maybe_config_file {
-      if config_file.json.import_map.is_some() {
-        log::warn!(
-          "{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.",
-          colors::yellow("Warning"),
-          config_file.specifier,
-        );
-      }
+    if let Some(config_file) = &maybe_config_file
+      && config_file.json.import_map.is_some()
+    {
+      log::warn!(
+        "{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.",
+        colors::yellow("Warning"),
+        config_file.specifier,
+      );
     }
     let specifier =
       deno_path_util::resolve_url_or_path(import_map_path, current_dir)

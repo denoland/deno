@@ -90,7 +90,7 @@ struct UnsafeCallbackResource {
 }
 
 impl Resource for UnsafeCallbackResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "unsafecallback".into()
   }
 

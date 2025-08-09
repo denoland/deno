@@ -391,6 +391,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
   }
 }
 
+#[allow(clippy::result_large_err)]
 trait ParsedSourceProvider: MaybeSend + MaybeSync + Clone + 'static {
   fn specifier(&self) -> &Url;
   fn media_type(&self) -> MediaType;

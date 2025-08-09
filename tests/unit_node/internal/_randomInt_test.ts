@@ -4,6 +4,10 @@ import { assert, assertThrows } from "@std/assert";
 
 const between = (x: number, min: number, max: number) => x >= min && x < max;
 
+Deno.test("[node/crypto.randomInt] No Params", () => {
+  assertThrows(() => randomInt(undefined as unknown as number));
+});
+
 Deno.test("[node/crypto.randomInt] One Param: Max", () => {
   assert(between(randomInt(55), 0, 55));
 });

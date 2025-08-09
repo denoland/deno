@@ -227,7 +227,8 @@ export async function runSingle(
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
       return runSingle(testPath, { flaky, retry: retry + 1 });
-    } else if (flaky && retry < 3) {
+    } else if (flaky && retry < 5) {
+      await new Promise((resolve) => setTimeout(resolve, 100 * retry));
       return runSingle(testPath, { flaky, retry: retry + 1 });
     } else {
       return {

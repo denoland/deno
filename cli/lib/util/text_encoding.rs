@@ -19,7 +19,7 @@ pub fn from_utf8_lossy_owned(bytes: Vec<u8>) -> String {
 }
 
 #[inline(always)]
-pub fn from_utf8_lossy_cow(bytes: Cow<[u8]>) -> Cow<str> {
+pub fn from_utf8_lossy_cow(bytes: Cow<'_, [u8]>) -> Cow<'_, str> {
   match bytes {
     Cow::Borrowed(bytes) => String::from_utf8_lossy(bytes),
     Cow::Owned(bytes) => Cow::Owned(from_utf8_lossy_owned(bytes)),

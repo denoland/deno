@@ -229,6 +229,7 @@ const _extraPipeRids = Symbol("[[_extraPipeRids]]");
 
 internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
 internals.getExtraPipeRids = (process) => process[_extraPipeRids];
+internals.kExtraStdio = kExtraStdio;
 
 class ChildProcess {
   #rid;

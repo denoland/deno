@@ -65,42 +65,39 @@ async fn check_auto_config_registry(
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
-  if workspace_settings.suggest.imports.auto_discover {
-    if let Ok(specifier) = resolve_url(url_str) {
-      let scheme = specifier.scheme();
-      let path = &specifier[Position::BeforePath..];
-      if scheme.starts_with("http")
-        && !path.is_empty()
-        && url_str.ends_with(path)
-      {
-        // check to see if this origin is already explicitly set
-        let in_config =
-          workspace_settings
-            .suggest
-            .imports
-            .hosts
-            .iter()
-            .any(|(h, _)| {
-              resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
-            });
-        // if it isn't in the configuration, we will check to see if it supports
-        // suggestions and send a notification to the client.
-        if !in_config {
-          let origin = specifier.origin().ascii_serialization();
-          let suggestions =
-            module_registries.check_origin(&origin).await.is_ok();
-          // we are only sending registry state when enabled now, but changing
-          // the custom notification would make older versions of the plugin
-          // incompatible.
-          // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
-          if suggestions {
-            client.send_registry_state_notification(
-              lsp_custom::RegistryStateNotificationParams {
-                origin,
-                suggestions,
-              },
-            );
-          }
+  if workspace_settings.suggest.imports.auto_discover
+    && let Ok(specifier) = resolve_url(url_str)
+  {
+    let scheme = specifier.scheme();
+    let path = &specifier[Position::BeforePath..];
+    if scheme.starts_with("http") && !path.is_empty() && url_str.ends_with(path)
+    {
+      // check to see if this origin is already explicitly set
+      let in_config =
+        workspace_settings
+          .suggest
+          .imports
+          .hosts
+          .iter()
+          .any(|(h, _)| {
+            resolve_url(h).map(|u| u.origin()) == Ok(specifier.origin())
+          });
+      // if it isn't in the configuration, we will check to see if it supports
+      // suggestions and send a notification to the client.
+      if !in_config {
+        let origin = specifier.origin().ascii_serialization();
+        let suggestions = module_registries.check_origin(&origin).await.is_ok();
+        // we are only sending registry state when enabled now, but changing
+        // the custom notification would make older versions of the plugin
+        // incompatible.
+        // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
+        if suggestions {
+          client.send_registry_state_notification(
+            lsp_custom::RegistryStateNotificationParams {
+              origin,
+              suggestions,
+            },
+          );
         }
       }
     }
@@ -368,44 +365,44 @@ fn get_import_map_completions(
   range: &lsp::Range,
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<CompletionList> {
-  if !text.is_empty() {
-    if let Some(import_map) = maybe_import_map {
-      let mut specifiers = IndexSet::new();
-      for key in import_map.imports().keys() {
-        // for some reason, the import_map stores keys that begin with `/` as
-        // `file:///` in its index, so we have to reverse that here
-        let key = if key.starts_with("file://") {
-          FILE_PROTO_RE.replace(key, "").to_string()
-        } else {
-          key.to_string()
-        };
-        if key.starts_with(text) && key != text {
-          specifiers.insert(key.trim_end_matches('/').to_string());
-        }
+  if !text.is_empty()
+    && let Some(import_map) = maybe_import_map
+  {
+    let mut specifiers = IndexSet::new();
+    for key in import_map.imports().keys() {
+      // for some reason, the import_map stores keys that begin with `/` as
+      // `file:///` in its index, so we have to reverse that here
+      let key = if key.starts_with("file://") {
+        FILE_PROTO_RE.replace(key, "").to_string()
+      } else {
+        key.to_string()
+      };
+      if key.starts_with(text) && key != text {
+        specifiers.insert(key.trim_end_matches('/').to_string());
       }
-      if !specifiers.is_empty() {
-        let items = specifiers
-          .into_iter()
-          .map(|specifier| lsp::CompletionItem {
-            label: specifier.clone(),
-            kind: Some(lsp::CompletionItemKind::FILE),
-            detail: Some("(import map)".to_string()),
-            sort_text: Some("1".to_string()),
-            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-              range: *range,
-              new_text: specifier,
-            })),
-            commit_characters: Some(
-              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
-            ),
-            ..Default::default()
-          })
-          .collect();
-        return Some(CompletionList {
-          items,
-          is_incomplete: false,
-        });
-      }
+    }
+    if !specifiers.is_empty() {
+      let items = specifiers
+        .into_iter()
+        .map(|specifier| lsp::CompletionItem {
+          label: specifier.clone(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(import map)".to_string()),
+          sort_text: Some("1".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range: *range,
+            new_text: specifier,
+          })),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+          ),
+          ..Default::default()
+        })
+        .collect();
+      return Some(CompletionList {
+        items,
+        is_incomplete: false,
+      });
     }
   }
   None
@@ -864,6 +861,7 @@ mod tests {
   use std::collections::HashMap;
 
   use deno_core::resolve_url;
+  use deno_resolver::deno_json::CompilerOptionsKey;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -907,7 +905,11 @@ mod tests {
         .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      let module = document_modules.module_for_specifier(&specifier, None);
+      let module = document_modules.module_for_specifier(
+        &specifier,
+        None,
+        Some(&CompilerOptionsKey::WorkspaceConfig(None)),
+      );
       assert!(module.is_some(), "source could not be setup");
     }
     document_modules
@@ -992,7 +994,7 @@ mod tests {
       &[("https://deno.land/x/a/b/c.ts", "console.log(1);\n")],
     );
     let module = document_modules
-      .module_for_specifier(&specifier, None)
+      .module_for_specifier(&specifier, None, None)
       .unwrap();
     let actual =
       get_remote_completions(&module, "h", &range, &document_modules);
