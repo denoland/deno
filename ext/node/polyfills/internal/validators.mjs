@@ -23,7 +23,7 @@ const {
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.mjs";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 
 /**
  * @param {number} value

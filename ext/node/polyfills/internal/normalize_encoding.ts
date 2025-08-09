@@ -2,13 +2,17 @@
 
 import { primordials } from "ext:core/mod.js";
 const { StringPrototypeToLowerCase } = primordials;
+import type { TextEncodings } from "ext:deno_node/_utils.ts";
 
-export function normalizeEncoding(enc) {
+// https://github.com/nodejs/node/blob/a73b575304722a3682fbec3a5fb13b39c5791342/lib/internal/util.js#L252
+export function normalizeEncoding(
+  enc: string | null,
+): TextEncodings | undefined {
   if (enc == null || enc === "utf8" || enc === "utf-8") return "utf8";
   return slowCases(enc);
 }
 
-export function slowCases(enc) {
+function slowCases(enc: string): TextEncodings | undefined {
   switch (enc.length) {
     case 4:
       if (enc === "UTF8") return "utf8";

@@ -1,11 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import {
-  normalizeEncoding,
-  slowCases,
-} from "ext:deno_node/internal/normalize_encoding.mjs";
-export { normalizeEncoding, slowCases };
+import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.ts";
+export { normalizeEncoding };
 import {
   ObjectCreate,
   StringPrototypeToUpperCase,
@@ -186,5 +183,4 @@ export default {
   normalizeEncoding,
   once,
   promisify,
-  slowCases,
 };

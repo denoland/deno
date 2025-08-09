@@ -164,9 +164,7 @@ import type {
   TransformOptions,
   WritableOptions,
 } from "ext:deno_node/_stream.d.ts";
-import {
-  normalizeEncoding,
-} from "ext:deno_node/internal/normalize_encoding.mjs";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
