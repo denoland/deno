@@ -917,17 +917,17 @@ impl DOMMatrixReadOnly {
     }
 
     // sequence
-    if !value.is_string() {
-      if let Ok(seq) = Vec::<webidl::UnrestrictedDouble>::convert(
+    if !value.is_string()
+      && let Ok(seq) = Vec::<webidl::UnrestrictedDouble>::convert(
         scope,
         value,
         prefix,
         context,
         &Default::default(),
-      ) {
-        let seq = seq.into_iter().map(|f| *f).collect::<Vec<f64>>();
-        return DOMMatrixReadOnly::from_sequence_inner(&seq);
-      }
+      )
+    {
+      let seq = seq.into_iter().map(|f| *f).collect::<Vec<f64>>();
+      return DOMMatrixReadOnly::from_sequence_inner(&seq);
     }
 
     // DOMString
