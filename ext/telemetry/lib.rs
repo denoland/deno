@@ -803,10 +803,10 @@ pub fn init(
 
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
-  // TODO(piscisaureus): enable GRPC support.
   let protocol = match env::var("OTEL_EXPORTER_OTLP_PROTOCOL").as_deref() {
     Ok("http/protobuf") => Protocol::HttpBinary,
     Ok("http/json") => Protocol::HttpJson,
+    Ok("grpc") => Protocol::Grpc,
     Ok("") | Err(env::VarError::NotPresent) => Protocol::HttpBinary,
     Ok(protocol) => {
       return Err(deno_core::anyhow::anyhow!(
@@ -863,45 +863,78 @@ pub fn init(
   // `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Additional headers can
   // be specified using `OTEL_EXPORTER_OTLP_HEADERS`.
 
-  let client = hyper_client::HyperClient::new()?;
+  let (span_exporter, metric_exporter, log_exporter) = match protocol {
+    Protocol::Grpc => {
+      let span_exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .build()?;
+      let temporality_preference =
+        env::var("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE")
+          .ok()
+          .map(|s| s.to_lowercase());
+      let temporality = match temporality_preference.as_deref() {
+        None | Some("cumulative") => Temporality::Cumulative,
+        Some("delta") => Temporality::Delta,
+        Some("lowmemory") => Temporality::LowMemory,
+        Some(other) => {
+          return Err(deno_core::anyhow::anyhow!(
+            "Invalid value for OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: {}",
+            other
+          ));
+        }
+      };
+      let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_temporality(temporality)
+        .build()?;
+      let log_exporter = opentelemetry_otlp::LogExporter::builder()
+        .with_tonic()
+        .build()?;
+      (span_exporter, metric_exporter, log_exporter)
+    }
+    _ => {
+      let client = hyper_client::HyperClient::new()?;
+      let span_exporter = HttpExporterBuilder::default()
+        .with_http_client(client.clone())
+        .with_protocol(protocol)
+        .build_span_exporter()?;
+      let temporality_preference =
+        env::var("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE")
+          .ok()
+          .map(|s| s.to_lowercase());
+      let temporality = match temporality_preference.as_deref() {
+        None | Some("cumulative") => Temporality::Cumulative,
+        Some("delta") => Temporality::Delta,
+        Some("lowmemory") => Temporality::LowMemory,
+        Some(other) => {
+          return Err(deno_core::anyhow::anyhow!(
+            "Invalid value for OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: {}",
+            other
+          ));
+        }
+      };
+      let metric_exporter = HttpExporterBuilder::default()
+        .with_http_client(client.clone())
+        .with_protocol(protocol)
+        .build_metrics_exporter(temporality)?;
+      let log_exporter = HttpExporterBuilder::default()
+        .with_http_client(client)
+        .with_protocol(protocol)
+        .build_log_exporter()?;
+      (span_exporter, metric_exporter, log_exporter)
+    }
+  };
 
-  let span_exporter = HttpExporterBuilder::default()
-    .with_http_client(client.clone())
-    .with_protocol(protocol)
-    .build_span_exporter()?;
   let mut span_processor =
     BatchSpanProcessor::builder(span_exporter, OtelSharedRuntime).build();
   span_processor.set_resource(&resource);
 
-  let temporality_preference =
-    env::var("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE")
-      .ok()
-      .map(|s| s.to_lowercase());
-  let temporality = match temporality_preference.as_deref() {
-    None | Some("cumulative") => Temporality::Cumulative,
-    Some("delta") => Temporality::Delta,
-    Some("lowmemory") => Temporality::LowMemory,
-    Some(other) => {
-      return Err(deno_core::anyhow::anyhow!(
-        "Invalid value for OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: {}",
-        other
-      ));
-    }
-  };
-  let metric_exporter = HttpExporterBuilder::default()
-    .with_http_client(client.clone())
-    .with_protocol(protocol)
-    .build_metrics_exporter(temporality)?;
   let metric_reader = DenoPeriodicReader::new(metric_exporter);
   let meter_provider = SdkMeterProvider::builder()
     .with_reader(metric_reader)
     .with_resource(resource.clone())
     .build();
 
-  let log_exporter = HttpExporterBuilder::default()
-    .with_http_client(client)
-    .with_protocol(protocol)
-    .build_log_exporter()?;
   let log_processor =
     BatchLogProcessor::builder(log_exporter, OtelSharedRuntime).build();
   log_processor.set_resource(&resource);
