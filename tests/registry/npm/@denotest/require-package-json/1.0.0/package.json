@@ -1,0 +1,9 @@
+{
+  "name": "@denotest/require-package-json",
+  "type": "commonjs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "license": "ISC",
+  "author": ""
+}
