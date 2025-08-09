@@ -382,7 +382,7 @@ napi-sys = { version = "=2.2.2", default-features = false }
 
 # geometry
 lightningcss = { version = "1.0.0-alpha.67", default-features = false }
-nalgebra = { version = "0.33.2", default-features = false, features = ["std"] }
+nalgebra = { version = "0.34.0", default-features = false, features = ["std"] }
 
 # webgpu
 raw-window-handle = "0.6.0"
