@@ -210,10 +210,10 @@ impl BoundedBufferChannelInner {
 
     if self.write_waker.is_some() {
       // We may be able to write again if we have buffer and byte room in the channel
-      if self.can_write() {
-        if let Some(waker) = self.write_waker.take() {
-          waker.wake();
-        }
+      if self.can_write()
+        && let Some(waker) = self.write_waker.take()
+      {
+        waker.wake();
       }
     }
 
@@ -321,7 +321,7 @@ struct BoundedBufferChannel {
 impl BoundedBufferChannel {
   // TODO(mmastrac): in release mode we should be able to make this an UnsafeCell
   #[inline(always)]
-  fn inner(&self) -> RefMut<BoundedBufferChannelInner> {
+  fn inner(&self) -> RefMut<'_, BoundedBufferChannelInner> {
     self.inner.borrow_mut()
   }
 
@@ -407,7 +407,7 @@ impl ReadableStreamResource {
 }
 
 impl Resource for ReadableStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     Cow::Borrowed("readableStream")
   }
 

@@ -304,7 +304,7 @@ impl CacheResponseResource {
 impl Resource for CacheResponseResource {
   deno_core::impl_readable_byob!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "CacheResponseResource".into()
   }
 }
