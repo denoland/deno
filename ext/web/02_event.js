@@ -15,7 +15,6 @@ const {
   ObjectDefineProperty,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
-  ReflectDefineProperty,
   SafeArrayIterator,
   SafeMap,
   StringPrototypeStartsWith,
@@ -25,9 +24,11 @@ const {
 } = primordials;
 import {
   CloseEvent,
+  CustomEvent,
   ErrorEvent,
   Event,
   EventTarget,
+  MessageEvent,
   op_event_dispatch,
   op_event_get_target_listener_count,
   op_event_get_target_listeners,
@@ -49,7 +50,7 @@ function saveGlobalThisReference(val) {
 function defineEnumerableProps(prototype, props) {
   for (let i = 0; i < props.length; ++i) {
     const prop = props[i];
-    ReflectDefineProperty(prototype, prop, {
+    ObjectDefineProperty(prototype, prop, {
       __proto__: null,
       enumerable: true,
     });
@@ -228,6 +229,35 @@ defineEnumerableProps(EventTarget.prototype, [
   "dispatchEvent",
 ]);
 
+webidl.configureInterface(CustomEvent);
+const CustomEventPrototype = CustomEvent.prototype;
+
+ObjectDefineProperty(
+  CustomEvent.prototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(CustomEventPrototype, this),
+          keys: ArrayPrototypeFlat([
+            EVENT_PROPS,
+            "detail",
+          ]),
+        }),
+        inspectOptions,
+      );
+    },
+  },
+);
+
+ObjectDefineProperty(CustomEvent.prototype, "detail", {
+  __proto__: null,
+  enumerable: true,
+});
+
 webidl.configureInterface(ErrorEvent);
 const ErrorEventPrototype = ErrorEvent.prototype;
 
@@ -294,81 +324,39 @@ const CLOSE_EVENT_PROPS = [
 
 defineEnumerableProps(CloseEvent.prototype, CLOSE_EVENT_PROPS);
 
-class MessageEvent extends Event {
-  get source() {
-    return null;
-  }
-
-  constructor(type, eventInitDict) {
-    super(type, {
-      bubbles: eventInitDict?.bubbles ?? false,
-      cancelable: eventInitDict?.cancelable ?? false,
-      composed: eventInitDict?.composed ?? false,
-    });
-
-    this.data = eventInitDict?.data ?? null;
-    this.ports = eventInitDict?.ports ?? [];
-    this.origin = eventInitDict?.origin ?? "";
-    this.lastEventId = eventInitDict?.lastEventId ?? "";
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(MessageEventPrototype, this),
-        keys: [
-          ...new SafeArrayIterator(EVENT_PROPS),
-          "data",
-          "origin",
-          "lastEventId",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
 webidl.configureInterface(MessageEvent);
 const MessageEventPrototype = MessageEvent.prototype;
 
-class CustomEvent extends Event {
-  #detail = null;
+ObjectDefineProperty(
+  MessageEvent.prototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(MessageEventPrototype, this),
+          keys: ArrayPrototypeFlat([
+            EVENT_PROPS,
+            MESSAGE_EVENT_PROPS,
+          ]),
+        }),
+        inspectOptions,
+      );
+    },
+  },
+);
 
-  constructor(type, eventInitDict = { __proto__: null }) {
-    super(type, eventInitDict);
-    webidl.requiredArguments(
-      arguments.length,
-      1,
-      "Failed to construct 'CustomEvent'",
-    );
-    const { detail } = eventInitDict;
-    this.#detail = detail;
-  }
+const MESSAGE_EVENT_PROPS = [
+  "data",
+  "origin",
+  "lastEventId",
+  "source",
+  "ports",
+];
 
-  get detail() {
-    return this.#detail;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(CustomEventPrototype, this),
-        keys: [...new SafeArrayIterator(EVENT_PROPS), "detail"],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
-webidl.configureInterface(CustomEvent);
-const CustomEventPrototype = CustomEvent.prototype;
-
-ReflectDefineProperty(CustomEvent.prototype, "detail", {
-  __proto__: null,
-  enumerable: true,
-});
+defineEnumerableProps(MessageEvent.prototype, MESSAGE_EVENT_PROPS);
 
 // ProgressEvent could also be used in other DOM progress event emits.
 // Current use is for FileReader.

@@ -102,8 +102,10 @@ deno_core::extension!(deno_web,
   objects = [
     event::Event,
     event::EventTarget,
+    event::CustomEvent,
     event::ErrorEvent,
     event::CloseEvent,
+    event::MessageEvent,
   ],
   esm = [
     "00_infra.js",
