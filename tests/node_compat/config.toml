@@ -1345,9 +1345,12 @@
 "pseudo-tty/test-tty-stdin-call-end.js" = {}
 "pseudo-tty/test-tty-stdin-end.js" = {}
 "pseudo-tty/test-tty-stdout-end.js" = {}
+"pummel/test-buffer-large-size-buffer-alloc-unsafe-slow.js" = {}
+"pummel/test-buffer-large-size-buffer-alloc-unsafe.js" = {}
 "pummel/test-dh-regr.js" = {}
 "pummel/test-fs-watch-system-limit.js" = {}
 "pummel/test-heapdump-inspector.js" = {}
+"pummel/test-string-decoder-large-buffer.js" = {}
 "sequential/test-buffer-creation-regression.js" = {}
 "sequential/test-child-process-exit.js" = {}
 "sequential/test-cli-syntax-bad.js" = {}
