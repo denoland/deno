@@ -41,6 +41,7 @@ const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
+  NumberPrototypeToString,
   ObjectPrototypeIsPrototypeOf,
   String,
   TypedArrayPrototypeGetBuffer,
@@ -106,6 +107,7 @@ function normalizeBuffer(buf: Buffer) {
   }
 }
 
+const maxStringLengthHex = NumberPrototypeToString(MAX_STRING_LENGTH, 16);
 function bufferToString(
   buf: Buffer,
   encoding?: string,
@@ -114,7 +116,10 @@ function bufferToString(
 ): string {
   const len = (end ?? buf.length) - (start ?? 0);
   if (len > MAX_STRING_LENGTH) {
-    throw new NodeError("ERR_STRING_TOO_LONG", "string exceeds maximum length");
+    throw new NodeError(
+      "ERR_STRING_TOO_LONG",
+      `Cannot create a string longer than 0x${maxStringLengthHex} characters`,
+    );
   }
   // deno-lint-ignore prefer-primordials
   return buf.toString(encoding as Any, start, end);
