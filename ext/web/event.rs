@@ -907,6 +907,88 @@ impl ErrorEvent {
   }
 }
 
+#[derive(Debug)]
+pub struct PromiseRejectionEvent {
+  promise: v8::Global<v8::Object>,
+  reason: Option<v8::Global<v8::Value>>,
+}
+
+impl GarbageCollected for PromiseRejectionEvent {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"PromiseRejectionEvent"
+  }
+}
+
+impl PromiseRejectionEvent {
+  fn new(
+    promise: v8::Global<v8::Object>,
+    reason: Option<v8::Global<v8::Value>>,
+  ) -> PromiseRejectionEvent {
+    PromiseRejectionEvent { promise, reason }
+  }
+}
+
+#[op2(inherit = Event)]
+impl PromiseRejectionEvent {
+  #[constructor]
+  #[required(1)]
+  #[cppgc]
+  fn constructor<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    #[webidl] typ: String,
+    init: v8::Local<'a, v8::Object>,
+  ) -> Result<(Event, PromiseRejectionEvent), EventError> {
+    let prefix = "Failed to construct 'PromiseRejectionEvent'";
+    let event_init = EventInit::convert(
+      scope,
+      init.into(),
+      prefix.into(),
+      (|| "Argument 2".into()).into(),
+      &Default::default(),
+    )?;
+    let event = Event::new(typ, Some(event_init));
+
+    let promise = {
+      let promise = get_value(scope, init, "promise");
+      if let Some(promise) = promise
+        && promise.is_object()
+        && let Some(promise) = promise.to_object(scope)
+      {
+        v8::Global::new(scope, promise)
+      } else {
+        return Err(EventError::WebIDL(WebIdlError::new(
+          prefix.into(),
+          (|| "'promise' of 'PromiseRejectionEventInit' (Argument 2)".into())
+            .into(),
+          WebIdlErrorKind::ConvertToConverterType("object"),
+        )));
+      }
+    };
+    let reason = get_value(scope, init, "reason")
+      .map(|reason| v8::Global::new(scope, reason));
+    let promise_rejection_event = PromiseRejectionEvent::new(promise, reason);
+    Ok((event, promise_rejection_event))
+  }
+
+  #[getter]
+  #[global]
+  fn promise(&self) -> v8::Global<v8::Object> {
+    self.promise.clone()
+  }
+
+  #[getter]
+  fn reason<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Value> {
+    if let Some(reason) = &self.reason {
+      v8::Local::new(scope, reason)
+    } else {
+      v8::undefined(scope).into()
+    }
+  }
+}
+
 #[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct CloseEventInit {
@@ -1250,7 +1332,6 @@ impl MessageEvent {
 
 // TODO(petamorken): list
 // report error
-// PromiseRejectionEvent
 // ProgressEvent
 
 #[inline]
