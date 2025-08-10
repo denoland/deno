@@ -65,7 +65,7 @@ impl DepLocation {
     matches!(self, DepLocation::DenoJson(..))
   }
 
-  pub fn file_path(&self) -> Cow<std::path::Path> {
+  pub fn file_path(&self) -> Cow<'_, std::path::Path> {
     match self {
       DepLocation::DenoJson(arc, _, kind) => match kind {
         ImportMapKind::Inline => {

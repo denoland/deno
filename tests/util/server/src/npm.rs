@@ -193,10 +193,10 @@ impl TestNpmRegistry {
     let maybe_package_name_with_path = uri_path
       .strip_prefix(&prefix1)
       .or_else(|| uri_path.strip_prefix(&prefix2));
-    if let Some(package_name_with_path) = maybe_package_name_with_path {
-      if package_name_with_path.starts_with("denotest") {
-        return Some(("@types", package_name_with_path));
-      }
+    if let Some(package_name_with_path) = maybe_package_name_with_path
+      && package_name_with_path.starts_with("denotest")
+    {
+      return Some(("@types", package_name_with_path));
     }
 
     let prefix1 = format!("/{}/", "@esbuild");
@@ -462,12 +462,11 @@ fn get_npm_package(
   local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
-  if package_name.starts_with("@esbuild/") {
-    if let Some(esbuild_package) =
+  if package_name.starts_with("@esbuild/")
+    && let Some(esbuild_package) =
       create_esbuild_package(registry_hostname, package_name)?
-    {
-      return Ok(Some(esbuild_package));
-    }
+  {
+    return Ok(Some(esbuild_package));
   }
 
   let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
@@ -508,34 +507,32 @@ fn get_npm_package(
     tarballs.insert(version.clone(), tarball_bytes);
 
     if let Some(maybe_optional_deps) = version_info.get("optionalDependencies")
+      && let Some(optional_deps) = maybe_optional_deps.as_object()
     {
-      if let Some(optional_deps) = maybe_optional_deps.as_object() {
-        if let Some(maybe_deps) = version_info.get("dependencies") {
-          if let Some(deps) = maybe_deps.as_object() {
-            let mut cloned_deps = deps.to_owned();
-            for (key, value) in optional_deps {
-              cloned_deps.insert(key.to_string(), value.to_owned());
-            }
-            version_info.insert(
-              "dependencies".to_string(),
-              serde_json::to_value(cloned_deps).unwrap(),
-            );
+      if let Some(maybe_deps) = version_info.get("dependencies") {
+        if let Some(deps) = maybe_deps.as_object() {
+          let mut cloned_deps = deps.to_owned();
+          for (key, value) in optional_deps {
+            cloned_deps.insert(key.to_string(), value.to_owned());
           }
-        } else {
           version_info.insert(
             "dependencies".to_string(),
-            serde_json::to_value(optional_deps).unwrap(),
+            serde_json::to_value(cloned_deps).unwrap(),
           );
         }
+      } else {
+        version_info.insert(
+          "dependencies".to_string(),
+          serde_json::to_value(optional_deps).unwrap(),
+        );
       }
     }
 
-    if let Some(publish_config) = version_info.get("publishConfig") {
-      if let Some(tag) = publish_config.get("tag") {
-        if let Some(tag) = tag.as_str() {
-          dist_tags.insert(tag.to_string(), version.clone().into());
-        }
-      }
+    if let Some(publish_config) = version_info.get("publishConfig")
+      && let Some(tag) = publish_config.get("tag")
+      && let Some(tag) = tag.as_str()
+    {
+      dist_tags.insert(tag.to_string(), version.clone().into());
     }
 
     versions.insert(version.clone(), version_info.into());
