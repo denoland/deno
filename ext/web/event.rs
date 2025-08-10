@@ -15,6 +15,7 @@ use deno_core::v8::Global;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
+use deno_core::webidl::WebIdlErrorKind;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EventError {
@@ -674,6 +675,97 @@ pub fn op_event_dispatch<'a>(
   event.dispatch(scope, event_object, &target, target_object, target_override)
 }
 
+#[derive(Debug)]
+pub struct CustomEvent {
+  detail: RefCell<Option<v8::Global<v8::Value>>>,
+}
+
+impl GarbageCollected for CustomEvent {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"CustomEvent"
+  }
+}
+
+impl CustomEvent {
+  #[inline]
+  fn new(detail: Option<v8::Global<v8::Value>>) -> CustomEvent {
+    CustomEvent {
+      detail: RefCell::new(detail),
+    }
+  }
+}
+
+#[op2(inherit = Event)]
+impl CustomEvent {
+  #[constructor]
+  #[required(1)]
+  #[cppgc]
+  fn constructor<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    #[webidl] typ: String,
+    init: v8::Local<'a, v8::Value>,
+  ) -> Result<(Event, CustomEvent), EventError> {
+    if init.is_null_or_undefined() {
+      return Ok((Event::new(typ, None), CustomEvent::new(None)));
+    }
+
+    let event_init = Nullable::<EventInit>::convert(
+      scope,
+      init,
+      "Failed to construct 'CustomEvent'".into(),
+      (|| "Argument 2".into()).into(),
+      &Default::default(),
+    )?;
+    let event = Event::new(typ, event_init.into_option());
+
+    let detail = if init.is_object()
+      && let Some(init) = init.to_object(scope)
+    {
+      get_value(scope, init, "detail")
+        .map(|detail| v8::Global::new(scope, detail))
+    } else {
+      None
+    };
+    let custom_event = CustomEvent::new(detail);
+    Ok((event, custom_event))
+  }
+
+  // legacy
+  #[required(1)]
+  fn init_custom_event<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    #[webidl] typ: String,
+    #[webidl] bubbles: Option<bool>,
+    #[webidl] cancelable: Option<bool>,
+    #[global] detail: Option<v8::Global<v8::Value>>,
+    #[proto] event: &Event,
+  ) -> v8::Local<'a, v8::Primitive> {
+    let undefined = v8::undefined(scope);
+    if event.dispatch_flag.get() {
+      return undefined;
+    }
+
+    event.typ.replace(typ);
+    if let Some(bubbles) = bubbles {
+      event.bubbles.replace(bubbles);
+    }
+    if let Some(cancelable) = cancelable {
+      event.cancelable.replace(cancelable);
+    }
+    if detail.is_some() {
+      self.detail.replace(detail);
+    }
+    undefined
+  }
+
+  #[getter]
+  #[global]
+  fn detail(&self) -> Option<v8::Global<v8::Value>> {
+    self.detail.borrow().clone()
+  }
+}
+
 #[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct ErrorEventInit {
@@ -901,11 +993,264 @@ impl CloseEvent {
   }
 }
 
+#[derive(WebIDL, Debug)]
+#[webidl(dictionary)]
+pub struct MessageEventInit {
+  #[webidl(default = false)]
+  bubbles: bool,
+  #[webidl(default = false)]
+  cancelable: bool,
+  #[webidl(default = false)]
+  composed: bool,
+  #[webidl(default = String::new())]
+  origin: String,
+  #[webidl(default = String::new())]
+  last_event_id: String,
+  // #[webidl(default = None)]
+  // data: Option<v8::Global<v8::Value>>,
+  // #[webidl(default = None)]
+  // source: Option<v8::Global<v8::Object>>,
+  // #[webidl(default = None)]
+  // ports: Option<v8::Global<v8::Array>>,
+}
+
+#[derive(Debug)]
+pub struct MessageEvent {
+  origin: RefCell<String>,
+  last_event_id: RefCell<String>,
+  data: RefCell<Option<v8::Global<v8::Value>>>,
+  source: RefCell<Option<v8::Global<v8::Object>>>,
+  ports: RefCell<v8::Global<v8::Array>>,
+}
+
+impl GarbageCollected for MessageEvent {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"MessageEvent"
+  }
+}
+
+impl MessageEvent {
+  #[inline]
+  fn new(
+    init: Option<MessageEventInit>,
+    data: Option<v8::Global<v8::Value>>,
+    source: Option<v8::Global<v8::Object>>,
+    ports: v8::Global<v8::Array>,
+  ) -> MessageEvent {
+    let Some(init) = init else {
+      return MessageEvent {
+        origin: RefCell::new(String::new()),
+        last_event_id: RefCell::new(String::new()),
+        data: RefCell::new(data),
+        source: RefCell::new(source),
+        ports: RefCell::new(ports),
+      };
+    };
+
+    MessageEvent {
+      origin: RefCell::new(init.origin),
+      last_event_id: RefCell::new(init.last_event_id),
+      data: RefCell::new(data),
+      source: RefCell::new(source),
+      ports: RefCell::new(ports),
+    }
+  }
+}
+
+#[op2(inherit = Event)]
+impl MessageEvent {
+  #[constructor]
+  #[required(1)]
+  #[cppgc]
+  fn constructor<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    #[webidl] typ: String,
+    init: v8::Local<'a, v8::Value>,
+  ) -> Result<(Event, MessageEvent), EventError> {
+    if init.is_null_or_undefined() {
+      let ports = v8::Array::new(scope, 0);
+      return Ok((
+        Event::new(typ, None),
+        MessageEvent::new(None, None, None, Global::new(scope, ports)),
+      ));
+    }
+
+    let prefix = "Failed to construct 'MessageEvent'";
+    let message_event_init = Nullable::<MessageEventInit>::convert(
+      scope,
+      init,
+      prefix.into(),
+      (|| "Argument 2".into()).into(),
+      &Default::default(),
+    )?;
+    let message_event_init = message_event_init.into_option();
+    let event = if let Some(ref message_event_init) = message_event_init {
+      let event_init = EventInit {
+        bubbles: message_event_init.bubbles,
+        cancelable: message_event_init.cancelable,
+        composed: message_event_init.composed,
+      };
+      Event::new(typ, Some(event_init))
+    } else {
+      Event::new(typ, None)
+    };
+
+    let (data, source, ports) = if init.is_object()
+      && let Some(init) = init.to_object(scope)
+    {
+      let data = get_value(scope, init, "data")
+        .map(|value| v8::Global::new(scope, value));
+      // TODO(petamoriken): Validate Window or MessagePort
+      let source = if let Some(source) = get_value(scope, init, "source") {
+        if source.is_object()
+          && let Some(source) = source.to_object(scope)
+        {
+          Some(v8::Global::new(scope, source))
+        } else {
+          return Err(EventError::WebIDL(WebIdlError::new(
+            prefix.into(),
+            (|| "'source' of 'MessageEventInit' (Argument 2)".into()).into(),
+            WebIdlErrorKind::ConvertToConverterType("object"),
+          )));
+        }
+      } else {
+        None
+      };
+      // TODO(petamoriken): Validate sequence<MessagePort>
+      let ports = if let Some(ports) = get_value(scope, init, "ports") {
+        let context = || "'ports' of 'MessageEventInit' (Argument 2)".into();
+        let elements = Vec::<v8::Local<'a, v8::Value>>::convert(
+          scope,
+          ports,
+          prefix.into(),
+          context.into(),
+          &Default::default(),
+        )?;
+        if elements.iter().any(|element| !element.is_object()) {
+          return Err(EventError::WebIDL(WebIdlError::new(
+            prefix.into(),
+            context.into(),
+            WebIdlErrorKind::ConvertToConverterType("sequence"),
+          )));
+        }
+        v8::Array::new_with_elements(scope, &elements)
+      } else {
+        v8::Array::new(scope, 0)
+      };
+      ports.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+      let ports = v8::Global::new(scope, ports);
+      (data, source, ports)
+    } else {
+      let ports = v8::Array::new(scope, 0);
+      ports.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+      let ports = v8::Global::new(scope, ports);
+      (None, None, ports)
+    };
+    let message_event =
+      MessageEvent::new(message_event_init, data, source, ports);
+    Ok((event, message_event))
+  }
+
+  // legacy
+  #[required(1)]
+  fn init_message_event<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    #[webidl] typ: String,
+    #[webidl] bubbles: Option<bool>,
+    #[webidl] cancelable: Option<bool>,
+    #[global] data: Option<v8::Global<v8::Value>>,
+    #[webidl] origin: Option<String>,
+    #[webidl] last_event_id: Option<String>,
+    #[global] source: Option<v8::Global<v8::Object>>,
+    ports: Option<v8::Local<'a, v8::Value>>,
+    #[proto] event: &Event,
+  ) -> Result<v8::Local<'a, v8::Primitive>, EventError> {
+    let undefined = v8::undefined(scope);
+    if event.dispatch_flag.get() {
+      return Ok(undefined);
+    }
+
+    event.typ.replace(typ);
+    if let Some(bubbles) = bubbles {
+      event.bubbles.replace(bubbles);
+    }
+    if let Some(cancelable) = cancelable {
+      event.cancelable.replace(cancelable);
+    }
+    if data.is_some() {
+      self.data.replace(data);
+    }
+    if let Some(origin) = origin {
+      self.origin.replace(origin);
+    }
+    if let Some(last_event_id) = last_event_id {
+      self.last_event_id.replace(last_event_id);
+    }
+    // TODO(petamoriken): Validate Window or MessagePort
+    if source.is_some() {
+      self.source.replace(source);
+    }
+    // TODO(petamoriken): Validate sequence<MessagePort>
+    if let Some(ports) = ports {
+      let prefix = "Failed to execute 'initMessageEvent' on 'MessageEvent'";
+      let context = || "Argument 8".into();
+      let elements = Vec::<v8::Local<'a, v8::Value>>::convert(
+        scope,
+        ports,
+        prefix.into(),
+        context.into(),
+        &Default::default(),
+      )?;
+      if elements.iter().any(|element| !element.is_object()) {
+        return Err(EventError::WebIDL(WebIdlError::new(
+          prefix.into(),
+          context.into(),
+          WebIdlErrorKind::ConvertToConverterType("sequence"),
+        )));
+      }
+      let ports = v8::Array::new_with_elements(scope, &elements);
+      ports.set_integrity_level(scope, v8::IntegrityLevel::Frozen);
+      let ports = v8::Global::new(scope, ports);
+      self.ports.replace(ports);
+    }
+    Ok(undefined)
+  }
+
+  #[getter]
+  #[string]
+  fn origin(&self) -> String {
+    self.origin.borrow().clone()
+  }
+
+  #[getter]
+  #[string]
+  fn last_event_id(&self) -> String {
+    self.last_event_id.borrow().clone()
+  }
+
+  #[getter]
+  #[global]
+  fn data(&self) -> Option<v8::Global<v8::Value>> {
+    self.data.borrow().clone()
+  }
+
+  #[getter]
+  #[global]
+  fn source(&self) -> Option<v8::Global<v8::Object>> {
+    self.source.borrow().clone()
+  }
+
+  #[getter]
+  #[global]
+  fn ports(&self) -> v8::Global<v8::Array> {
+    self.ports.borrow().clone()
+  }
+}
+
 // TODO(petamorken): list
 // report error
-// MessageEvent
 // PromiseRejectionEvent
-// CustomEvent
 // ProgressEvent
 
 #[inline]
