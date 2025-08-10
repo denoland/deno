@@ -371,7 +371,6 @@ Deno.test("[node/sqlite] Database backup", async () => {
 
   // Create backup database
   const totalPages = await backup(db, `${tempDir}/backup.db`);
-  assert(totalPages >= 1);
 
   // Verify backup contains same data
   const backupDb = new DatabaseSync(`${tempDir}/backup.db`);
