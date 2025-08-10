@@ -15,7 +15,6 @@ const {
   ObjectDefineProperty,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
-  SafeArrayIterator,
   SafeMap,
   StringPrototypeStartsWith,
   Symbol,
@@ -35,6 +34,7 @@ import {
   op_event_set_is_trusted,
   op_event_set_target,
   op_event_wrap_event_target,
+  ProgressEvent,
   PromiseRejectionEvent,
 } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
@@ -396,36 +396,37 @@ const MESSAGE_EVENT_PROPS = [
 
 defineEnumerableProps(MessageEvent.prototype, MESSAGE_EVENT_PROPS);
 
-// ProgressEvent could also be used in other DOM progress event emits.
-// Current use is for FileReader.
-class ProgressEvent extends Event {
-  constructor(type, eventInitDict = { __proto__: null }) {
-    super(type, eventInitDict);
-
-    this.lengthComputable = eventInitDict?.lengthComputable ?? false;
-    this.loaded = eventInitDict?.loaded ?? 0;
-    this.total = eventInitDict?.total ?? 0;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ProgressEventPrototype, this),
-        keys: [
-          ...new SafeArrayIterator(EVENT_PROPS),
-          "lengthComputable",
-          "loaded",
-          "total",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
 webidl.configureInterface(ProgressEvent);
 const ProgressEventPrototype = ProgressEvent.prototype;
+
+ObjectDefineProperty(
+  ProgressEvent.prototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(ProgressEventPrototype, this),
+          keys: ArrayPrototypeFlat([
+            EVENT_PROPS,
+            PROGRESS_EVENT_PROPS,
+          ]),
+        }),
+        inspectOptions,
+      );
+    },
+  },
+);
+
+const PROGRESS_EVENT_PROPS = [
+  "lengthComputable",
+  "loaded",
+  "total",
+];
+
+defineEnumerableProps(ProgressEvent.prototype, PROGRESS_EVENT_PROPS);
 
 const _eventHandlers = Symbol("eventHandlers");
 

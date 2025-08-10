@@ -107,6 +107,7 @@ deno_core::extension!(deno_web,
     event::PromiseRejectionEvent,
     event::CloseEvent,
     event::MessageEvent,
+    event::ProgressEvent,
   ],
   esm = [
     "00_infra.js",
