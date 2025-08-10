@@ -1330,9 +1330,97 @@ impl MessageEvent {
   }
 }
 
+#[derive(WebIDL, Debug)]
+#[webidl(dictionary)]
+pub struct ProgressEventInit {
+  #[webidl(default = false)]
+  bubbles: bool,
+  #[webidl(default = false)]
+  cancelable: bool,
+  #[webidl(default = false)]
+  composed: bool,
+  #[webidl(default = false)]
+  length_computable: bool,
+  #[webidl(default = 0.0)]
+  loaded: f64,
+  #[webidl(default = 0.0)]
+  total: f64,
+}
+
+#[derive(Debug)]
+pub struct ProgressEvent {
+  length_computable: bool,
+  loaded: f64,
+  total: f64,
+}
+
+impl GarbageCollected for ProgressEvent {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ProgressEvent"
+  }
+}
+
+impl ProgressEvent {
+  #[inline]
+  fn new(init: Option<ProgressEventInit>) -> ProgressEvent {
+    let Some(init) = init else {
+      return ProgressEvent {
+        length_computable: false,
+        loaded: 0.0,
+        total: 0.0,
+      };
+    };
+
+    ProgressEvent {
+      length_computable: init.length_computable,
+      loaded: init.loaded,
+      total: init.total,
+    }
+  }
+}
+
+#[op2(inherit = Event)]
+impl ProgressEvent {
+  #[constructor]
+  #[required(1)]
+  #[cppgc]
+  fn constructor<'a>(
+    #[webidl] typ: String,
+    #[webidl] init: Nullable<ProgressEventInit>,
+  ) -> (Event, ProgressEvent) {
+    let init = init.into_option();
+    let event = if let Some(ref init) = init {
+      let event_init = EventInit {
+        bubbles: init.bubbles,
+        cancelable: init.cancelable,
+        composed: init.composed,
+      };
+      Event::new(typ, Some(event_init))
+    } else {
+      Event::new(typ, None)
+    };
+    let progress_event = ProgressEvent::new(init);
+    (event, progress_event)
+  }
+
+  #[getter]
+  fn length_computable(&self) -> bool {
+    self.length_computable
+  }
+
+  #[getter]
+  fn loaded(&self) -> f64 {
+    self.loaded
+  }
+
+  #[getter]
+  fn total(&self) -> f64 {
+    self.total
+  }
+}
+
 // TODO(petamorken): list
 // report error
-// ProgressEvent
 
 #[inline]
 fn get_value<'a>(
