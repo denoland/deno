@@ -154,7 +154,7 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
     &mut self,
     package: &'a NpmResolutionPackage,
     extra: &NpmPackageExtraInfo,
-    package_path: Cow<Path>,
+    package_path: Cow<'_, Path>,
   ) {
     if has_lifecycle_scripts(self.sys, extra, &package_path) {
       if self.can_run_scripts(&package.id.nv) {

@@ -379,12 +379,12 @@ impl<
                 );
               }
 
-              if package.is_deprecated {
-                if let Some(deprecated) = &extra.deprecated {
-                  packages_with_deprecation_warnings
-                    .lock()
-                    .push((package.id.nv.clone(), deprecated.clone()));
-                }
+              if package.is_deprecated
+                && let Some(deprecated) = &extra.deprecated
+              {
+                packages_with_deprecation_warnings
+                  .lock()
+                  .push((package.id.nv.clone(), deprecated.clone()));
               }
 
               // finally stop showing the progress bar
@@ -1132,10 +1132,10 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
   }
 
   pub fn save(&self) -> bool {
-    if let Some(previous) = &self.previous {
-      if previous == &self.current {
-        return false; // nothing to save
-      }
+    if let Some(previous) = &self.previous
+      && previous == &self.current
+    {
+      return false; // nothing to save
     }
 
     const CACHE_PERM: u32 = 0o644;
@@ -1369,7 +1369,7 @@ fn create_initialized_file(
     })
 }
 
-fn join_package_name(mut path: Cow<Path>, package_name: &str) -> PathBuf {
+fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
   // ensure backslashes are used on windows
   for part in package_name.split('/') {
     match path {

@@ -416,10 +416,10 @@ impl crate::Kill for ChildProcess {
           "Process not found",
         )
       } else {
-        std::io::Error::new(
-          std::io::ErrorKind::Other,
-          format!("Failed to kill process: {}", e.as_uv_error()),
-        )
+        std::io::Error::other(format!(
+          "Failed to kill process: {}",
+          e.as_uv_error()
+        ))
       }
     })
   }
@@ -853,13 +853,12 @@ fn search_path_join_test(
     result.extend_from_slice(&cwd[..cwd_len]);
 
     // Add path separator if needed
-    if let Some(last) = result.last() {
-      if !(*last == wchar!('\\')
+    if let Some(last) = result.last()
+      && !(*last == wchar!('\\')
         || *last == wchar!('/')
         || *last == wchar!(':'))
-      {
-        result.push(wchar!('\\'));
-      }
+    {
+      result.push(wchar!('\\'));
     }
   }
 
@@ -868,13 +867,12 @@ fn search_path_join_test(
     result.extend_from_slice(&dir[..dir_len]);
 
     // Add separator if needed
-    if let Some(last) = result.last() {
-      if !(*last == wchar!('\\')
+    if let Some(last) = result.last()
+      && !(*last == wchar!('\\')
         || *last == wchar!('/')
         || *last == wchar!(':'))
-      {
-        result.push(wchar!('\\'));
-      }
+    {
+      result.push(wchar!('\\'));
     }
   }
 
@@ -910,10 +908,10 @@ fn search_path_walk_ext(
   name_has_ext: bool,
 ) -> Option<WCString> {
   // If the name itself has a nonempty extension, try this extension first
-  if name_has_ext {
-    if let Some(result) = search_path_join_test(dir, name, &[], cwd) {
-      return Some(result);
-    }
+  if name_has_ext
+    && let Some(result) = search_path_join_test(dir, name, &[], cwd)
+  {
+    return Some(result);
   }
 
   // Try .com extension

@@ -130,6 +130,7 @@ static ALLOWED_COMPILER_OPTIONS: phf::Set<&'static str> = phf::phf_set! {
   "noUnusedLocals",
   "noUnusedParameters",
   "rootDirs",
+  "skipLibCheck",
   "strict",
   "strictBindCallApply",
   "strictBuiltinIteratorReturn",
@@ -295,6 +296,7 @@ pub fn get_base_compiler_options_for_emit(
       },
       "resolveJsonModule": true,
       "sourceMap": false,
+      "skipLibCheck": false,
       "strict": match source_kind {
         CompilerOptionsSourceKind::DenoJson => true,
         CompilerOptionsSourceKind::TsConfig => false,
@@ -652,15 +654,15 @@ struct TsConfigFileFilter {
 impl TsConfigFileFilter {
   fn includes_path(&self, path: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
-    if let Some((_, files)) = &self.files {
-      if files.iter().any(|f| f.absolute_path == path) {
-        return true;
-      }
+    if let Some((_, files)) = &self.files
+      && files.iter().any(|f| f.absolute_path == path)
+    {
+      return true;
     }
-    if let Some(exclude) = &self.exclude {
-      if exclude.matches_path(path) {
-        return false;
-      }
+    if let Some(exclude) = &self.exclude
+      && exclude.matches_path(path)
+    {
+      return false;
     }
     if let Some(include) = &self.include {
       if include.matches_path(path) {
@@ -821,7 +823,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
 
   fn read_ts_config_with_cache(
     &mut self,
-    path: Cow<Path>,
+    path: Cow<'_, Path>,
   ) -> Result<Rc<TsConfigData>, Rc<std::io::Error>> {
     let path = normalize_path(path);
     self
@@ -830,8 +832,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       .cloned()
       .unwrap_or_else(|| {
         if !self.currently_reading.insert(path.to_path_buf()) {
-          return Err(Rc::new(std::io::Error::new(
-            ErrorKind::Other,
+          return Err(Rc::new(std::io::Error::other(
             "Cycle detected while following `extends`.",
           )));
         }
@@ -1105,12 +1106,11 @@ impl CompilerOptionsResolver {
       .sources
       .iter()
       .any(|s| s.compiler_options.is_some())
+      && let Ok(path) = url_to_file_path(specifier)
     {
-      if let Ok(path) = url_to_file_path(specifier) {
-        for ts_config in &self.ts_configs {
-          if ts_config.filter.includes_path(&path) {
-            return &ts_config.compiler_options;
-          }
+      for ts_config in &self.ts_configs {
+        if ts_config.filter.includes_path(&path) {
+          return &ts_config.compiler_options;
         }
       }
     }
@@ -1127,15 +1127,14 @@ impl CompilerOptionsResolver {
       .sources
       .iter()
       .any(|s| s.compiler_options.is_some())
+      && let Ok(path) = url_to_file_path(specifier)
     {
-      if let Ok(path) = url_to_file_path(specifier) {
-        for (i, ts_config) in self.ts_configs.iter().enumerate() {
-          if ts_config.filter.includes_path(&path) {
-            return (
-              CompilerOptionsKey::TsConfig(i),
-              &ts_config.compiler_options,
-            );
-          }
+      for (i, ts_config) in self.ts_configs.iter().enumerate() {
+        if ts_config.filter.includes_path(&path) {
+          return (
+            CompilerOptionsKey::TsConfig(i),
+            &ts_config.compiler_options,
+          );
         }
       }
     }
