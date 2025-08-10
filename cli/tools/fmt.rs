@@ -1398,6 +1398,12 @@ fn get_typescript_config_builder(
     options.space_surrounding_properties
   {
     builder.space_surrounding_properties(space_surrounding_properties);
+    builder.import_declaration_space_surrounding_named_imports(
+      space_surrounding_properties,
+    );
+    builder.export_declaration_space_surrounding_named_exports(
+      space_surrounding_properties,
+    );
   }
 
   builder
