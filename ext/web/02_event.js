@@ -35,6 +35,7 @@ import {
   op_event_set_is_trusted,
   op_event_set_target,
   op_event_wrap_event_target,
+  PromiseRejectionEvent,
 } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -292,6 +293,43 @@ const ERROR_EVENT_PROPS = [
 
 defineEnumerableProps(ErrorEvent.prototype, ERROR_EVENT_PROPS);
 
+webidl.configureInterface(PromiseRejectionEvent);
+const PromiseRejectionEventPrototype = PromiseRejectionEvent.prototype;
+
+ObjectDefineProperty(
+  PromiseRejectionEvent.prototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(
+            PromiseRejectionEventPrototype,
+            this,
+          ),
+          keys: ArrayPrototypeFlat([
+            EVENT_PROPS,
+            PROMISE_REJECTION_EVENT_PROPS,
+          ]),
+        }),
+        inspectOptions,
+      );
+    },
+  },
+);
+
+const PROMISE_REJECTION_EVENT_PROPS = [
+  "promise",
+  "reason",
+];
+
+defineEnumerableProps(
+  PromiseRejectionEvent.prototype,
+  PROMISE_REJECTION_EVENT_PROPS,
+);
+
 webidl.configureInterface(CloseEvent);
 const CloseEventPrototype = CloseEvent.prototype;
 
@@ -388,51 +426,6 @@ class ProgressEvent extends Event {
 
 webidl.configureInterface(ProgressEvent);
 const ProgressEventPrototype = ProgressEvent.prototype;
-
-class PromiseRejectionEvent extends Event {
-  #promise = null;
-  #reason = null;
-
-  get promise() {
-    return this.#promise;
-  }
-  get reason() {
-    return this.#reason;
-  }
-
-  constructor(
-    type,
-    { bubbles, cancelable, composed, promise, reason } = { __proto__: null },
-  ) {
-    super(type, {
-      bubbles: bubbles,
-      cancelable: cancelable,
-      composed: composed,
-    });
-
-    this.#promise = promise;
-    this.#reason = reason;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          PromiseRejectionEventPrototype,
-          this,
-        ),
-        keys: [...new SafeArrayIterator(EVENT_PROPS), "promise", "reason"],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
-webidl.configureInterface(PromiseRejectionEvent);
-const PromiseRejectionEventPrototype = PromiseRejectionEvent.prototype;
-
-defineEnumerableProps(PromiseRejectionEvent.prototype, ["promise", "reason"]);
 
 const _eventHandlers = Symbol("eventHandlers");
 
