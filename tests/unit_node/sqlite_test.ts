@@ -370,7 +370,7 @@ Deno.test("[node/sqlite] Database backup", async () => {
   insertStmt.run("Bob Wilson", "bob@example.com");
 
   // Create backup database
-  const totalPages = await backup(db, `${tempDir}/backup.db`);
+  await backup(db, `${tempDir}/backup.db`);
 
   // Verify backup contains same data
   const backupDb = new DatabaseSync(`${tempDir}/backup.db`);
