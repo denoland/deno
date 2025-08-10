@@ -12,7 +12,7 @@ jobs:
     name: lint title
     runs-on: ubuntu-latest
     steps:
-      - name: Install deno
+      - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: canary
