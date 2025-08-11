@@ -38,7 +38,6 @@ use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
-use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceResolver;
@@ -699,7 +698,6 @@ impl CliFactory {
             self.node_resolver().await?.clone(),
             self.npm_resolver().await?.clone(),
             self.sys(),
-            self.workspace_directory_provider()?.clone(),
             self.compiler_options_resolver()?.clone(),
             if cli_options.code_cache_enabled() {
               Some(self.code_cache()?.clone())
@@ -877,17 +875,11 @@ impl CliFactory {
         let desc_parser = self.permission_desc_parser()?.clone();
         let permissions = Permissions::from_options(
           desc_parser.as_ref(),
-          &self.cli_options()?.permissions_options(),
+          &self.cli_options()?.permissions_options()?,
         )?;
 
         Ok(PermissionsContainer::new(desc_parser, permissions))
       })
-  }
-
-  fn workspace_directory_provider(
-    &self,
-  ) -> Result<&Arc<WorkspaceDirectoryProvider>, AnyError> {
-    Ok(self.workspace_factory()?.workspace_directory_provider()?)
   }
 
   fn workspace_external_import_map_loader(
