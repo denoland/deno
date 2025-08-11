@@ -222,6 +222,14 @@ impl Target {
         path: decoded.into(),
       });
     }
+    // vsock:<cid>:<port> is valid RFC3986 but not as an http::Uri
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    if let Some(cid_port) = val.strip_prefix("vsock:") {
+      let (left, right) = cid_port.split_once(":")?;
+      let cid = left.parse::<u32>().ok()?;
+      let port = right.parse::<u32>().ok()?;
+      return Some(Target::Vsock { cid, port });
+    }
 
     let uri = val.parse::<Uri>().ok()?;
 
@@ -957,6 +965,16 @@ fn test_proxy_parse_from_env() {
   match parse("unix:foo%20bar/baz") {
     Target::Unix { path } => {
       assert_eq!(path.to_str(), Some("foo bar/baz"));
+    }
+    _ => panic!("bad target"),
+  }
+
+  // vsock
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  match parse("vsock:1234:5678") {
+    Target::Vsock { cid, port } => {
+      assert_eq!(cid, 1234);
+      assert_eq!(port, 5678);
     }
     _ => panic!("bad target"),
   }
