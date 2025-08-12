@@ -618,6 +618,7 @@ fn not_supported(name: &str) -> std::io::Error {
 impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
   type Metadata = BoxedFsMetadataValue;
 
+  #[allow(mismatched_lifetime_syntaxes)]
   fn file_name(&self) -> Cow<std::ffi::OsStr> {
     Cow::Borrowed(self.metadata.name.as_ref())
   }
@@ -630,7 +631,7 @@ impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
     Ok(BoxedFsMetadataValue(Box::new(self.metadata.clone())))
   }
 
-  fn path(&self) -> Cow<Path> {
+  fn path(&self) -> Cow<'_, Path> {
     Cow::Owned(self.parent_path.join(&self.metadata.name))
   }
 }
@@ -1073,7 +1074,7 @@ impl VfsRoot {
     &self,
     path: &Path,
     case_sensitivity: FileSystemCaseSensitivity,
-  ) -> std::io::Result<(PathBuf, VfsEntryRef)> {
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'_>)> {
     self.find_entry_no_follow_inner(path, &mut HashSet::new(), case_sensitivity)
   }
 

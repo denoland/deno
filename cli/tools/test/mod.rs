@@ -133,7 +133,7 @@ fn get_sanitizer_item(
 
 fn get_sanitizer_item_ref(
   activity: &RuntimeActivity,
-) -> (RuntimeActivityType, Cow<str>) {
+) -> (RuntimeActivityType, Cow<'_, str>) {
   let activity_type = activity.activity();
   match activity {
     RuntimeActivity::AsyncOp(_, _, name) => (activity_type, (*name).into()),
@@ -179,20 +179,20 @@ pub struct TestFilter {
 
 impl TestFilter {
   pub fn includes(&self, name: &String) -> bool {
-    if let Some(substring) = &self.substring {
-      if !name.contains(substring) {
-        return false;
-      }
+    if let Some(substring) = &self.substring
+      && !name.contains(substring)
+    {
+      return false;
     }
-    if let Some(regex) = &self.regex {
-      if !regex.is_match(name) {
-        return false;
-      }
+    if let Some(regex) = &self.regex
+      && !regex.is_match(name)
+    {
+      return false;
     }
-    if let Some(include) = &self.include {
-      if !include.contains(name) {
-        return false;
-      }
+    if let Some(include) = &self.include
+      && !include.contains(name)
+    {
+      return false;
     }
     if self.exclude.contains(name) {
       return false;

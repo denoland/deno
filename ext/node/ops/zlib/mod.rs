@@ -305,7 +305,7 @@ impl deno_core::GarbageCollected for Zlib {
 }
 
 impl deno_core::Resource for Zlib {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "zlib".into()
   }
 }
@@ -540,10 +540,8 @@ pub fn op_zlib_close_if_pending(
     zlib.write_in_progress = false;
     zlib.pending_close
   };
-  if pending_close {
-    if let Some(mut res) = resource.inner.borrow_mut().take() {
-      let _ = res.close();
-    }
+  if pending_close && let Some(mut res) = resource.inner.borrow_mut().take() {
+    let _ = res.close();
   }
 
   Ok(())

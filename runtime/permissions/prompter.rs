@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 
 /// Helper function to make control characters visible so users can see the underlying filename.
 #[cfg(not(target_arch = "wasm32"))]
-fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
+fn escape_control_characters(s: &str) -> std::borrow::Cow<'_, str> {
   use deno_terminal::colors;
 
   if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {

@@ -156,15 +156,13 @@ pub async fn publish(
     .ok()
     .is_none()
     && !publish_flags.allow_dirty
-  {
-    if let Some(dirty_text) =
+    && let Some(dirty_text) =
       check_if_git_repo_dirty(cli_options.initial_cwd()).await
-    {
-      log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
-      bail!(
-        "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty"
-      );
-    }
+  {
+    log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
+    bail!(
+      "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty"
+    );
   }
 
   if publish_flags.dry_run {

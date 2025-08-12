@@ -460,7 +460,7 @@ impl Command {
         .unwrap_or(StdioContainer::Ignore)
     }));
 
-    let res = crate::process::spawn(&SpawnOptions {
+    crate::process::spawn(&SpawnOptions {
       flags,
       file: Cow::Borrowed(&self.program),
       args: self
@@ -472,9 +472,7 @@ impl Command {
       cwd: self.cwd.as_deref().map(Cow::Borrowed),
       stdio,
     })
-    .map_err(|err| {
-      std::io::Error::new(std::io::ErrorKind::Other, err.to_string())
-    })
+    .map_err(|err| std::io::Error::other(err.to_string()))
     .map(|process| Child {
       inner: FusedChild::Child(ChildDropGuard {
         inner: process,
@@ -483,8 +481,6 @@ impl Command {
       stdin: child_stdin,
       stdout: child_stdout,
       stderr: child_stderr,
-    });
-
-    res
+    })
   }
 }

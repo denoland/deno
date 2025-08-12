@@ -39,7 +39,12 @@ import { Buffer } from "ext:deno_node/internal/buffer.mjs";
 import { primordials } from "ext:core/mod.js";
 import { validateInt32 } from "ext:deno_node/internal/validators.mjs";
 import { denoErrorToNodeSystemError } from "ext:deno_node/internal/errors.ts";
-const { StringPrototypeEndsWith, StringPrototypeSlice } = primordials;
+
+const {
+  ObjectDefineProperties,
+  StringPrototypeEndsWith,
+  StringPrototypeSlice,
+} = primordials;
 
 export const constants = os;
 
@@ -369,7 +374,7 @@ export function availableParallelism(): number {
 export const EOL = isWindows ? "\r\n" : "\n";
 export const devNull = isWindows ? "\\\\.\\nul" : "/dev/null";
 
-export default {
+const mod = {
   availableParallelism,
   arch,
   cpus,
@@ -390,7 +395,31 @@ export default {
   uptime,
   userInfo,
   version,
-  constants,
-  EOL,
-  devNull,
 };
+
+ObjectDefineProperties(mod, {
+  constants: {
+    __proto__: null,
+    configurable: false,
+    enumerable: true,
+    value: constants,
+  },
+  EOL: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    writable: false,
+    value: EOL,
+  },
+  devNull: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    writable: false,
+    value: devNull,
+  },
+});
+
+// NB(Tango992): we want to have a default exports from this module for ES imports,
+// as well as make it work with `require` in such a way that the object properties are set correctly.
+export { mod as "module.exports", mod as default };
