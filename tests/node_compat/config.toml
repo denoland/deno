@@ -807,6 +807,7 @@
 "parallel/test-no-node-snapshot.js" = {}
 "parallel/test-nodeeventtarget.js" = {}
 "parallel/test-os-homedir-no-envvar.js" = {}
+"parallel/test-os-process-priority.js" = {}
 "parallel/test-os-userinfo-handles-getter-errors.js" = {}
 "parallel/test-os.js" = {}
 "parallel/test-outgoing-message-destroy.js" = {}
