@@ -191,7 +191,7 @@ impl Pty {
     });
   }
 
-  pub fn all_output(&self) -> Cow<str> {
+  pub fn all_output(&self) -> Cow<'_, str> {
     String::from_utf8_lossy(&self.read_bytes)
   }
 
