@@ -111,26 +111,6 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
 
-#[derive(Clone, Debug)]
-pub struct NoopReporter;
-
-impl deno_npm_installer::Reporter for NoopReporter {
-  type Guard = ();
-  type ClearGuard = ();
-
-  fn on_blocking(&self, _message: &str) -> Self::Guard {
-    ()
-  }
-
-  fn on_initializing(&self, _message: &str) -> Self::Guard {
-    ()
-  }
-
-  fn clear_guard(&self) -> Self::ClearGuard {
-    ()
-  }
-}
-
 struct CliRootCertStoreProvider {
   cell: OnceCell<RootCertStore>,
   maybe_root_path: Option<PathBuf>,
@@ -807,7 +787,7 @@ impl CliFactory {
             self.npm_installer_if_managed().await?.cloned(),
             self.npm_resolver().await?.clone(),
             self.resolver_factory()?.parsed_source_cache().clone(),
-            self.text_only_progress_bar().clone(),
+            self.text_only_progress_bar()?.cloned(),
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),

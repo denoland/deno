@@ -26,8 +26,9 @@ pub async fn cache_top_level_deps(
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
   let _clear_guard = factory
-    .text_only_progress_bar()
-    .deferred_keep_initialize_alive();
+    .text_only_progress_bar()?
+    .as_ref()
+    .map(|pb| pb.deferred_keep_initialize_alive());
   let npm_installer = factory.npm_installer().await?;
   npm_installer
     .ensure_top_level_package_json_install()

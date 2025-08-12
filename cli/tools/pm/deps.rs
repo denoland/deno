@@ -465,7 +465,7 @@ pub struct DepManager {
   npm_resolver: CliNpmResolver,
   npm_installer: Arc<CliNpmInstaller>,
   permissions_container: PermissionsContainer,
-  progress_bar: ProgressBar,
+  progress_bar: Option<ProgressBar>,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   lockfile: Option<Arc<CliLockfile>>,
 }
@@ -477,7 +477,7 @@ pub struct DepManagerArgs {
   pub npm_installer: Arc<CliNpmInstaller>,
   pub npm_resolver: CliNpmResolver,
   pub permissions_container: PermissionsContainer,
-  pub progress_bar: ProgressBar,
+  pub progress_bar: Option<ProgressBar>,
   pub main_module_graph_container: Arc<MainModuleGraphContainer>,
   pub lockfile: Option<Arc<CliLockfile>>,
 }
@@ -552,7 +552,10 @@ impl DepManager {
     if self.dependencies_resolved.is_raised() {
       return Ok(());
     }
-    let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
+    let _clear_guard = self
+      .progress_bar
+      .as_ref()
+      .map(|pb| pb.deferred_keep_initialize_alive());
 
     let mut graph_permit = self
       .main_module_graph_container

@@ -179,7 +179,7 @@ pub async fn execute_script(
   let npm_installer = factory.npm_installer_if_managed().await?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
-  let progress_bar = factory.text_only_progress_bar();
+  let progress_bar = factory.text_only_progress_bar()?;
   let mut env_vars = task_runner::real_env_vars();
 
   if let Some(connected) = &flags.connected {
@@ -253,7 +253,7 @@ struct TaskRunner<'a> {
   npm_installer: Option<&'a CliNpmInstaller>,
   npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
-  progress_bar: &'a ProgressBar,
+  progress_bar: Option<&'a ProgressBar>,
   env_vars: HashMap<OsString, OsString>,
   cli_options: &'a CliOptions,
   maybe_lockfile: Option<Arc<CliLockfile>>,
@@ -571,7 +571,10 @@ impl<'a> TaskRunner<'a> {
 
   async fn maybe_npm_install(&self) -> Result<(), AnyError> {
     if let Some(npm_installer) = self.npm_installer {
-      self.progress_bar.deferred_keep_initialize_alive();
+      let _guard = self
+        .progress_bar
+        .as_ref()
+        .map(|pb| pb.deferred_keep_initialize_alive());
       npm_installer
         .ensure_top_level_package_json_install()
         .await?;

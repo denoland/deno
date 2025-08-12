@@ -184,8 +184,8 @@ impl deno_graph::source::Reporter for InstallReporter {
 impl deno_npm::resolution::Reporter for InstallReporter {
   fn on_resolved(
     &self,
-    package_req: &deno_semver::package::PackageReq,
-    nv: &deno_semver::package::PackageNv,
+    _package_req: &deno_semver::package::PackageReq,
+    _nv: &deno_semver::package::PackageNv,
   ) {
     // log::info!("on_resolved: {} {}", package_req, nv);
     // self.stats.resolved_npm.insert(nv.to_string());
@@ -410,14 +410,14 @@ pub(crate) async fn install_from_entrypoints(
 }
 
 #[derive(Debug)]
-struct PrintyThing {
+struct InstallProgressBar {
   stats: Arc<InstallStats>,
   done: Mutex<tokio::sync::oneshot::Receiver<()>>,
   done_for_sure: AtomicBool,
 }
 
-impl crate::util::draw_thread::DrawThreadRenderer for PrintyThing {
-  fn render(&self, size: &deno_runtime::ops::tty::ConsoleSize) -> String {
+impl crate::util::draw_thread::DrawThreadRenderer for InstallProgressBar {
+  fn render(&self, _size: &deno_runtime::ops::tty::ConsoleSize) -> String {
     let done = self.done.lock().try_recv().is_ok()
       || self.done_for_sure.load(Ordering::Relaxed);
     if done {
@@ -462,7 +462,7 @@ async fn install_local(
       let install_reporter = factory.install_reporter()?.unwrap().clone();
 
       let (done_tx, done_rx) = tokio::sync::oneshot::channel();
-      let printy_thing = Arc::new(PrintyThing {
+      let printy_thing = Arc::new(InstallProgressBar {
         stats: install_reporter.stats.clone(),
         done: Mutex::new(done_rx),
         done_for_sure: AtomicBool::new(false),
@@ -501,9 +501,9 @@ async fn install_local(
               normal_deps.insert(package_req.name.to_string());
             }
             deno_package_json::PackageJsonDepValue::Workspace(
-              package_json_dep_workspace_req,
+              _package_json_dep_workspace_req,
             ) => todo!(),
-            deno_package_json::PackageJsonDepValue::JsrReq(package_req) => {
+            deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
               todo!()
             }
           }
@@ -519,9 +519,9 @@ async fn install_local(
               dev_deps.insert(package_req.name.to_string());
             }
             deno_package_json::PackageJsonDepValue::Workspace(
-              package_json_dep_workspace_req,
+              _package_json_dep_workspace_req,
             ) => todo!(),
-            deno_package_json::PackageJsonDepValue::JsrReq(package_req) => {
+            deno_package_json::PackageJsonDepValue::JsrReq(_package_req) => {
               todo!()
             }
           }
