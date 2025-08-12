@@ -247,6 +247,7 @@ fn extract_files_from_regex_blocks(
         mtime: None,
         maybe_headers: None,
         source: file_source.into_bytes().into(),
+        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
       };
       Some(TestOrSnippet {
         file,
@@ -616,6 +617,7 @@ fn generate_pseudo_file(
     mtime: None,
     maybe_headers: None,
     source: source.into_bytes().into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   })
 }
 

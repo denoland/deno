@@ -1775,8 +1775,7 @@ dependencies = [
 [[package]]
 name = "deno_cache_dir"
 version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "392538d71e0ce9db316302116095b8acef4d734a8e2360d16308ca7dc32dcdc3"
+source = "git+https://github.com/nathanwhit/deno_cache_dir?branch=loaded-from#0ddb1bb1eddc7c63a18a2e296d1ec8cb7acac35b"
 dependencies = [
  "async-trait",
  "base32",
@@ -2105,6 +2104,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.98.1"
+source = "git+https://github.com/denoland/deno_graph?branch=main#87ea4bb4cf05d92aaf20b2a325c5d6ea7dcd49e3"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2462,6 +2462,7 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.36.0"
+source = "git+https://github.com/nathanwhit/deno_npm?branch=reporter-trait#f7b4fff6c0b6e4f27cfcae47bf38d1935cbf25d0"
 dependencies = [
  "async-trait",
  "capacity_builder",

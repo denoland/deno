@@ -34,6 +34,7 @@ use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
+use deno_resolver::file_fetcher::GraphLoaderReporterRc;
 use deno_resolver::graph::EnhanceGraphErrorMode;
 use deno_resolver::graph::enhance_graph_error;
 use deno_resolver::graph::enhanced_integrity_error_message;
@@ -615,6 +616,7 @@ pub struct ModuleGraphBuilder {
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
+  load_reporter: Option<GraphLoaderReporterRc>,
 }
 
 impl ModuleGraphBuilder {
@@ -638,6 +640,7 @@ impl ModuleGraphBuilder {
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
+    load_reporter: Option<GraphLoaderReporterRc>,
   ) -> Self {
     Self {
       caches,
@@ -658,6 +661,7 @@ impl ModuleGraphBuilder {
       root_permissions_container,
       sys,
       compiler_options_resolver,
+      load_reporter,
     }
   }
 
@@ -926,6 +930,7 @@ impl ModuleGraphBuilder {
       deno_resolver::file_fetcher::DenoGraphLoaderOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions: Some(permissions),
+        reporter: self.load_reporter.clone(),
       },
     )
   }

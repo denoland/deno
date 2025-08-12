@@ -402,9 +402,22 @@ impl<
   }
 }
 
+pub trait GraphLoaderReporter: Send + Sync {
+  #[allow(unused_variables)]
+  fn on_load(
+    &self,
+    specifier: &Url,
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom,
+  ) {
+  }
+}
+
+pub type GraphLoaderReporterRc = crate::sync::MaybeArc<dyn GraphLoaderReporter>;
+
 pub struct DenoGraphLoaderOptions {
   pub file_header_overrides: HashMap<Url, HashMap<String, String>>,
   pub permissions: Option<PermissionsContainer>,
+  pub reporter: Option<GraphLoaderReporterRc>,
 }
 
 #[sys_traits::auto_impl]
@@ -427,6 +440,7 @@ pub struct DenoGraphLoader<
   permissions: Option<PermissionsContainer>,
   sys: TSys,
   cache_info_enabled: bool,
+  reporter: Option<GraphLoaderReporterRc>,
 }
 
 impl<
@@ -450,6 +464,7 @@ impl<
       file_header_overrides: options.file_header_overrides,
       permissions: options.permissions,
       cache_info_enabled: false,
+      reporter: options.reporter,
     }
   }
 
@@ -635,6 +650,7 @@ impl<
       LoadStrategy {
         file_fetcher: self.file_fetcher.clone(),
         file_header_overrides: self.file_header_overrides.clone(),
+        reporter: self.reporter.clone(),
       },
       specifier,
       options,
@@ -675,6 +691,7 @@ struct LoadStrategy<
 > {
   file_fetcher: PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient>,
   file_header_overrides: HashMap<Url, HashMap<String, String>>,
+  reporter: Option<GraphLoaderReporterRc>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -706,6 +723,9 @@ impl<TBlobStore: BlobStore, TSys: DenoGraphLoaderSys, THttpClient: HttpClient>
             (None, Some(overrides)) => Some(overrides.clone()),
             (None, None) => None,
           };
+          if let Some(reporter) = &self.reporter {
+            reporter.on_load(specifier, file.loaded_from);
+          }
           LoadResponse::Module {
             specifier: file.url,
             maybe_headers,

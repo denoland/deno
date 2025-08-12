@@ -535,5 +535,6 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_npm = { path = "../deno_npm" }
-deno_graph = { path = "../deno_graph" }
+deno_npm = { git = "https://github.com/nathanwhit/deno_npm", branch = "reporter-trait" }
+deno_graph = { git = "https://github.com/denoland/deno_graph", branch = "main" }
+deno_cache_dir = { git = "https://github.com/nathanwhit/deno_cache_dir", branch = "loaded-from" }
