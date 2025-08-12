@@ -60,7 +60,7 @@ import {
   constants as PipeConstants,
   Pipe,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { TLSWrap, op_tls_wrap } from "ext:core/ops";
+import { op_tls_wrap, TLSWrap } from "ext:core/ops";
 // const { SecureContext: NativeSecureContext } = internalBinding('crypto');
 
 import { codes, ConnResetException } from "ext:deno_node/internal/errors.ts";
@@ -755,7 +755,6 @@ TLSSocket.prototype._wrapHandle = function (
   wrapHasActiveWriteFromPrevOwner,
 ) {
   const options = this._tlsOptions;
-  console.log(wrap, handle);
   if (!handle) {
     handle = options.pipe
       ? new Pipe(PipeConstants.SOCKET)
@@ -766,15 +765,16 @@ TLSSocket.prototype._wrapHandle = function (
   // Wrap socket's handle
   const context = options.secureContext ||
     options.credentials ||
-    tls.createSecureContext(options);
-  assert(handle.isStreamBase, "handle must be a StreamBase");
-  if (!(context.context instanceof NativeSecureContext)) {
-    throw new ERR_TLS_INVALID_CONTEXT("context");
-  }
+    common.createSecureContext(options);
+  // assert(handle.isStreamBase, "handle must be a StreamBase");
+  // if (!(context.context instanceof NativeSecureContext)) {
+  //  throw new ERR_TLS_INVALID_CONTEXT("context");
+  // }
 
+  console.log(handle);
   const res = op_tls_wrap(
     handle,
-    context.context,
+    context.context ?? {},
     !!options.isServer,
     wrapHasActiveWriteFromPrevOwner,
   );
@@ -1270,7 +1270,7 @@ TLSSocket.prototype.setKeyCert = function (context) {
     if (context instanceof common.SecureContext) {
       secureContext = context;
     } else {
-      secureContext = tls.createSecureContext(context);
+      secureContext = common.createSecureContext(context);
     }
     this._handle.setKeyCert(secureContext.context);
   }
@@ -1632,7 +1632,7 @@ Server.prototype.setSecureContext = function (options) {
   this.privateKeyIdentifier = options.privateKeyIdentifier;
   this.privateKeyEngine = options.privateKeyEngine;
 
-  this._sharedCreds = tls.createSecureContext({
+  this._sharedCreds = common.createSecureContext({
     pfx: this.pfx,
     key: this.key,
     passphrase: this.passphrase,
@@ -1746,7 +1746,7 @@ Server.prototype.addContext = function (servername, context) {
 
   const secureContext = context instanceof common.SecureContext
     ? context
-    : tls.createSecureContext(context);
+    : common.createSecureContext(context);
   this._contexts.push([re, secureContext.context]);
 };
 
@@ -1899,6 +1899,22 @@ function onConnectEnd() {
   }
 }
 
+// Order matters. Mirrors ALL_CIPHER_SUITES from rustls/src/suites.rs but
+// using openssl cipher names instead. Mutable in Node but not (yet) in Deno.
+export const DEFAULT_CIPHERS = [
+  // TLSv1.3 suites
+  "AES256-GCM-SHA384",
+  "AES128-GCM-SHA256",
+  "TLS_CHACHA20_POLY1305_SHA256",
+  // TLSv1.2 suites
+  "ECDHE-ECDSA-AES256-GCM-SHA384",
+  "ECDHE-ECDSA-AES128-GCM-SHA256",
+  "ECDHE-ECDSA-CHACHA20-POLY1305",
+  "ECDHE-RSA-AES256-GCM-SHA384",
+  "ECDHE-RSA-AES128-GCM-SHA256",
+  "ECDHE-RSA-CHACHA20-POLY1305",
+].join(":");
+
 // Arguments: [port,] [host,] [options,] [cb]
 export function connect(...args) {
   args = normalizeConnectArgs(args);
@@ -1908,8 +1924,8 @@ export function connect(...args) {
 
   options = {
     rejectUnauthorized: !allowUnauthorized,
-    ciphers: tls.DEFAULT_CIPHERS,
-    checkServerIdentity: tls.checkServerIdentity,
+    ciphers: DEFAULT_CIPHERS,
+    checkServerIdentity: checkServerIdentity,
     minDHSize: 1024,
     ...options,
   };
@@ -1921,7 +1937,7 @@ export function connect(...args) {
   validateFunction(options.checkServerIdentity, "options.checkServerIdentity");
   validateNumber(options.minDHSize, "options.minDHSize", 1);
 
-  const context = options.secureContext || tls.createSecureContext(options);
+  const context = options.secureContext || common.createSecureContext(options);
 
   const tlssock = new TLSSocket(options.socket, {
     allowHalfOpen: options.allowHalfOpen,
@@ -1992,9 +2008,206 @@ export function connect(...args) {
   return tlssock;
 }
 
+// This pattern is used to determine the length of escaped sequences within
+// the subject alt names string. It allows any valid JSON string literal.
+// This MUST match the JSON specification (ECMA-404 / RFC8259) exactly.
+const jsonStringPattern =
+  // deno-lint-ignore no-control-regex
+  /^"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"/;
+
+function splitEscapedAltNames(altNames) {
+  const result = [];
+  let currentToken = "";
+  let offset = 0;
+  while (offset !== altNames.length) {
+    const nextSep = altNames.indexOf(",", offset);
+    const nextQuote = altNames.indexOf('"', offset);
+    if (nextQuote !== -1 && (nextSep === -1 || nextQuote < nextSep)) {
+      // There is a quote character and there is no separator before the quote.
+      currentToken += altNames.substring(offset, nextQuote);
+      const match = jsonStringPattern.exec(altNames.substring(nextQuote));
+      if (!match) {
+        throw new ERR_TLS_CERT_ALTNAME_FORMAT();
+      }
+      currentToken += JSON.parse(match[0]);
+      offset = nextQuote + match[0].length;
+    } else if (nextSep !== -1) {
+      // There is a separator and no quote before it.
+      currentToken += altNames.substring(offset, nextSep);
+      result.push(currentToken);
+      currentToken = "";
+      offset = nextSep + 2;
+    } else {
+      currentToken += altNames.substring(offset);
+      offset = altNames.length;
+    }
+  }
+  result.push(currentToken);
+  return result;
+}
+
+function unfqdn(host) {
+  return StringPrototypeReplace(host, /[.]$/, "");
+}
+
+// String#toLowerCase() is locale-sensitive so we use
+// a conservative version that only lowercases A-Z.
+function toLowerCase(c) {
+  return String.fromCharCode(32 + c.charCodeAt(0));
+}
+
+function splitHost(host) {
+  return unfqdn(host).replace(/[A-Z]/g, toLowerCase).split(".");
+}
+
+function check(hostParts, pattern, wildcards) {
+  // Empty strings, null, undefined, etc. never match.
+  if (!pattern) {
+    return false;
+  }
+
+  const patternParts = splitHost(pattern);
+
+  if (hostParts.length !== patternParts.length) {
+    return false;
+  }
+
+  // Pattern has empty components, e.g. "bad..example.com".
+  if (patternParts.includes("")) {
+    return false;
+  }
+
+  // RFC 6125 allows IDNA U-labels (Unicode) in names but we have no
+  // good way to detect their encoding or normalize them so we simply
+  // reject them.  Control characters and blanks are rejected as well
+  // because nothing good can come from accepting them.
+  const isBad = (s) => /[^\u0021-\u007F]/u.test(s);
+  if (patternParts.some(isBad)) {
+    return false;
+  }
+
+  // Check host parts from right to left first.
+  for (let i = hostParts.length - 1; i > 0; i -= 1) {
+    if (hostParts[i] !== patternParts[i]) {
+      return false;
+    }
+  }
+
+  const hostSubdomain = hostParts[0];
+  const patternSubdomain = patternParts[0];
+  const patternSubdomainParts = patternSubdomain.split("*", 3);
+
+  // Short-circuit when the subdomain does not contain a wildcard.
+  // RFC 6125 does not allow wildcard substitution for components
+  // containing IDNA A-labels (Punycode) so match those verbatim.
+  if (
+    patternSubdomainParts.length === 1 ||
+    patternSubdomain.includes("xn--")
+  ) {
+    return hostSubdomain === patternSubdomain;
+  }
+
+  if (!wildcards) {
+    return false;
+  }
+
+  // More than one wildcard is always wrong.
+  if (patternSubdomainParts.length > 2) {
+    return false;
+  }
+
+  // *.tld wildcards are not allowed.
+  if (patternParts.length <= 2) {
+    return false;
+  }
+
+  const { 0: prefix, 1: suffix } = patternSubdomainParts;
+
+  if (prefix.length + suffix.length > hostSubdomain.length) {
+    return false;
+  }
+
+  if (!hostSubdomain.startsWith(prefix)) {
+    return false;
+  }
+
+  if (!hostSubdomain.endsWith(suffix)) {
+    return false;
+  }
+
+  return true;
+}
+
+export function checkServerIdentity(hostname, cert) {
+  const subject = cert.subject;
+  const altNames = cert.subjectaltname;
+  const dnsNames = [];
+  const ips = [];
+
+  hostname = "" + hostname;
+
+  if (altNames) {
+    const splitAltNames = altNames.includes('"')
+      ? splitEscapedAltNames(altNames)
+      : altNames.split(", ");
+    splitAltNames.forEach((name) => {
+      if (name.startsWith("DNS:")) {
+        dnsNames.push(name.slice(4));
+      } else if (name.startsWith("IP Address:")) {
+        ips.push(canonicalizeIP(name.slice(11)));
+      }
+    });
+  }
+
+  let valid = false;
+  let reason = "Unknown reason";
+
+  hostname = unfqdn(hostname); // Remove trailing dot for error messages.
+
+  if (net.isIP(hostname)) {
+    valid = ips.includes(canonicalizeIP(hostname));
+    if (!valid) {
+      reason = `IP: ${hostname} is not in the cert's list: ` + ips.join(", ");
+    }
+  } else if (dnsNames.length > 0 || subject?.CN) {
+    const hostParts = splitHost(hostname);
+    const wildcard = (pattern) => check(hostParts, pattern, true);
+
+    if (dnsNames.length > 0) {
+      valid = dnsNames.some(wildcard);
+      if (!valid) {
+        reason =
+          `Host: ${hostname}. is not in the cert's altnames: ${altNames}`;
+      }
+    } else {
+      // Match against Common Name only if no supported identifiers exist.
+      const cn = subject.CN;
+
+      if (ArrayIsArray(cn)) {
+        valid = cn.some(wildcard);
+      } else if (cn) {
+        valid = wildcard(cn);
+      }
+
+      if (!valid) {
+        reason = `Host: ${hostname}. is not cert's CN: ${cn}`;
+      }
+    }
+  } else {
+    reason = "Cert does not contain a DNS name";
+  }
+
+  if (!valid) {
+    return new ERR_TLS_CERT_ALTNAME_INVALID(reason, hostname, cert);
+  }
+}
+
 export default {
   Server,
   createServer,
+  checkServerIdentity,
+  DEFAULT_CIPHERS,
   TLSSocket,
   connect,
+  unfqdn,
 };

@@ -12,6 +12,7 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8_static_strings;
 use deno_net::ops_tls::TlsStreamResource;
+use once_cell::unsync::OnceCell;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
@@ -82,14 +83,17 @@ pub fn op_tls_canonicalize_ipv4_address(
   Some(canonical_ip)
 }
 
+enum SslImpl {
+  AwsLc(SslStream<ResourceStream>),
+}
+
 pub struct TLSWrap {
-  // TODO: this will be used for JSStream
-  // stream: v8::Global<v8::Object>,
+  stream: v8::Global<v8::Object>,
   is_server: bool,
   has_active_from_prev_owner: bool,
   bio_in: deno_crypto_provider::ffi::Bio,
   bio_out: deno_crypto_provider::ffi::Bio,
-  ssl: SslStream<ResourceStream>,
+  ssl: OnceCell<SslImpl>,
 }
 
 struct ResourceStream(Rc<dyn Resource>);
@@ -146,31 +150,14 @@ impl AsyncWrite for ResourceStream {
 #[op2]
 #[cppgc]
 pub fn op_tls_wrap(
-  // #[global] stream: v8::Global<v8::Object>,
-  state: &mut OpState,
-  #[smi] stream: ResourceId,
+  #[global] stream: v8::Global<v8::Object>,
   _context: v8::Local<v8::Object>,
   is_server: bool,
   has_active_from_prev_owner: bool,
 ) -> TLSWrap {
-  let ssl = unsafe {
-    let ctx = aws_lc_sys::SSL_CTX_new(aws_lc_sys::TLS_method());
-    let ssl = aws_lc_sys::SSL_new(ctx);
-
-    aws_lc_sys::SSL_CTX_free(ctx);
-    ssl
-  };
-
-  let resource = state
-    .resource_table
-    .take_any(stream)
-    .expect("Failed to take resource from OpState");
-  let wrap = ResourceStream(resource);
-
-  let ssl = SslStream::new(ssl, wrap).unwrap();
-
   TLSWrap {
-    ssl,
+    ssl: Default::default(),
+    stream,
     is_server,
     has_active_from_prev_owner,
     bio_in: deno_crypto_provider::ffi::Bio::new_memory()
@@ -189,5 +176,35 @@ impl GarbageCollected for TLSWrap {
 #[op2]
 impl TLSWrap {
   #[fast]
-  fn get_servername(&self) {}
+  fn start(&self, scope: &mut v8::HandleScope, state: &mut OpState) {
+    let ssl = unsafe {
+      let ctx = aws_lc_sys::SSL_CTX_new(aws_lc_sys::TLS_method());
+      let ssl = aws_lc_sys::SSL_new(ctx);
+
+      aws_lc_sys::SSL_CTX_free(ctx);
+      ssl
+    };
+
+    v8_static_strings! {
+      RID = "_rid",
+    }
+
+    let rid_str = RID.v8_string(scope).unwrap();
+    let stream = v8::Local::new(scope, &self.stream);
+    let rid = stream
+      .get(scope, rid_str.into())
+      .expect("Failed to get resource ID")
+      .int32_value(scope)
+      .expect("Failed to convert resource ID to integer");
+
+    let resource = state
+      .resource_table
+      .take_any(rid as _)
+      .expect("Failed to take resource from OpState");
+    let wrap = ResourceStream(resource);
+
+    let ssl = SslStream::new(ssl, wrap).unwrap();
+
+    self.ssl.set(SslImpl::AwsLc(ssl));
+  }
 }
