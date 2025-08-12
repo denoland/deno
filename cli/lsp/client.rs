@@ -70,17 +70,19 @@ impl Client {
     });
   }
 
-  /// This notification is sent to the client during internal testing
-  /// purposes only in order to let the test client know when the latest
-  /// diagnostics have been published.
-  pub fn send_diagnostic_batch_notification(
-    &self,
-    params: lsp_custom::DiagnosticBatchNotificationParams,
-  ) {
+  pub fn send_diagnostic_batch_start_notification(&self) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
     spawn(async move {
-      client.send_diagnostic_batch_notification(params).await;
+      client.send_diagnostic_batch_start_notification().await;
+    });
+  }
+
+  pub fn send_diagnostic_batch_end_notification(&self) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client.send_diagnostic_batch_end_notification().await;
     });
   }
 
@@ -187,10 +189,8 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
   );
-  async fn send_diagnostic_batch_notification(
-    &self,
-    params: lsp_custom::DiagnosticBatchNotificationParams,
-  );
+  async fn send_diagnostic_batch_start_notification(&self);
+  async fn send_diagnostic_batch_end_notification(&self);
   async fn send_test_notification(&self, params: TestingNotification);
   async fn send_did_refresh_deno_configuration_tree_notification(
     &self,
@@ -240,13 +240,17 @@ impl ClientTrait for TowerClient {
       .await
   }
 
-  async fn send_diagnostic_batch_notification(
-    &self,
-    params: lsp_custom::DiagnosticBatchNotificationParams,
-  ) {
+  async fn send_diagnostic_batch_start_notification(&self) {
     self
       .0
-      .send_notification::<lsp_custom::DiagnosticBatchNotification>(params)
+      .send_notification::<lsp_custom::DiagnosticBatchStartNotification>(())
+      .await
+  }
+
+  async fn send_diagnostic_batch_end_notification(&self) {
+    self
+      .0
+      .send_notification::<lsp_custom::DiagnosticBatchEndNotification>(())
       .await
   }
 
@@ -406,12 +410,9 @@ impl ClientTrait for ReplClient {
   ) {
   }
 
-  async fn send_diagnostic_batch_notification(
-    &self,
-    _params: lsp_custom::DiagnosticBatchNotificationParams,
-  ) {
-  }
+  async fn send_diagnostic_batch_start_notification(&self) {}
 
+  async fn send_diagnostic_batch_end_notification(&self) {}
   async fn send_test_notification(&self, _params: TestingNotification) {}
 
   async fn send_did_refresh_deno_configuration_tree_notification(

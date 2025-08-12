@@ -422,8 +422,6 @@ impl PendingChange {
   }
 }
 
-pub type MaybeAmbientModules = Option<Vec<String>>;
-
 impl TsServer {
   pub fn new(performance: Arc<Performance>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
@@ -565,52 +563,6 @@ impl TsServer {
           normalize_diagnostic(diagnostic, &self.specifier_map)?;
         }
         Ok(diagnostics)
-      })
-  }
-
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub async fn get_diagnostics_many(
-    &self,
-    snapshot: Arc<StateSnapshot>,
-    modules: &[Arc<DocumentModule>],
-    token: &CancellationToken,
-  ) -> Result<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules), AnyError>
-  {
-    let Some((compiler_options_key, scope, notebook_uri)) =
-      modules.first().map(|m| {
-        (
-          &m.compiler_options_key,
-          m.scope.as_ref(),
-          m.notebook_uri.as_ref(),
-        )
-      })
-    else {
-      return Ok(Default::default());
-    };
-    let specifiers = modules
-      .iter()
-      .map(|m| self.specifier_map.denormalize(&m.specifier, m.media_type))
-      .collect();
-    let req =
-      TscRequest::GetDiagnosticsMany((specifiers, snapshot.project_version));
-    self
-      .request::<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules)>(
-        snapshot,
-        req,
-        compiler_options_key,
-        scope,
-        notebook_uri,
-        token,
-      )
-      .await
-      .and_then(|(mut diagnostics, ambient_modules)| {
-        for diagnostic in diagnostics.iter_mut().flatten() {
-          if token.is_cancelled() {
-            return Err(anyhow!("request cancelled"));
-          }
-          normalize_diagnostic(diagnostic, &self.specifier_map)?;
-        }
-        Ok((diagnostics, ambient_modules))
       })
   }
 
@@ -5828,7 +5780,6 @@ pub struct JsNull;
 #[derive(Debug, Clone, Serialize)]
 enum TscRequest {
   GetDiagnostics((String, usize)),
-  GetDiagnosticsMany((Vec<String>, usize)),
 
   GetAmbientModules,
   CleanupSemanticCache,
@@ -5949,9 +5900,6 @@ impl TscRequest {
       TscRequest::GetDiagnostics(args) => {
         ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))
       }
-      TscRequest::GetDiagnosticsMany(args) => {
-        ("$getDiagnosticsMany", Some(serde_v8::to_v8(scope, args)?))
-      }
       TscRequest::GetAmbientModules => ("$getAmbientModules", None),
       TscRequest::FindReferences(args) => {
         ("findReferences", Some(serde_v8::to_v8(scope, args)?))
@@ -6047,7 +5995,6 @@ impl TscRequest {
   fn method(&self) -> &'static str {
     match self {
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
-      TscRequest::GetDiagnosticsMany(_) => "$getDiagnosticsMany",
       TscRequest::GetAmbientModules => "$getAmbientModules",
       TscRequest::CleanupSemanticCache => "$cleanupSemanticCache",
       TscRequest::FindReferences(_) => "findReferences",
@@ -6283,11 +6230,11 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[tokio::test]
@@ -6321,11 +6268,11 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[tokio::test]
@@ -6355,13 +6302,13 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 1,
@@ -6378,7 +6325,7 @@ mod tests {
           "code": 6133,
           "reportsUnnecessary": true,
         }
-      ]]),
+      ]),
     );
   }
 
@@ -6413,11 +6360,11 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[tokio::test]
@@ -6454,13 +6401,13 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 1,
@@ -6492,7 +6439,7 @@ mod tests {
           "category": 1,
           "code": 1109
         }
-      ]]),
+      ]),
     );
   }
 
@@ -6521,13 +6468,13 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 0,
@@ -6543,7 +6490,7 @@ mod tests {
           "category": 1,
           "code": 1003,
         }
-      ]]),
+      ]),
     );
   }
 
@@ -6585,13 +6532,13 @@ mod tests {
       .document_modules
       .module_for_specifier(&specifier, scope, None)
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 2,
@@ -6607,7 +6554,7 @@ mod tests {
           "code": 2339,
           "category": 1,
         }
-      ]]),
+      ]),
     );
     let dep_document = snapshot
       .document_modules
@@ -6648,11 +6595,11 @@ mod tests {
       .document_modules
       .module_for_specifier(&specifier, scope, None)
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics_many(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[test]

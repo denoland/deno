@@ -18892,3 +18892,100 @@ console.log(invalid, validBytes, validText);
   );
   client.shutdown();
 }
+
+#[test]
+#[timeout(300_000)]
+fn lsp_push_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.with_capabilities(|capabilities| {
+      capabilities.text_document.as_mut().unwrap().diagnostic = None;
+      capabilities.workspace.as_mut().unwrap().diagnostic = None;
+    });
+  });
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file1.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        const foo: string = 1;
+        foo;
+      "#,
+    },
+  }));
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file2.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import "foo";
+      "#,
+    },
+  }));
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file3.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        // @ts-ignore
+      "#,
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": "file:///a/file1.ts",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 14 },
+              "end": { "line": 1, "character": 17 },
+            },
+            "severity": 1,
+            "code": 2322,
+            "source": "deno-ts",
+            "message": "Type 'number' is not assignable to type 'string'.",
+          },
+        ],
+        "version": 1,
+      },
+      {
+        "uri": "file:///a/file2.ts",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 15 },
+              "end": { "line": 1, "character": 20 },
+            },
+            "severity": 1,
+            "code": "import-prefix-missing",
+            "source": "deno",
+            "message": "Relative import path \"foo\" not prefixed with / or ./ or ../\n  hint: If you want to use the npm package, try running `deno add npm:foo`",
+          },
+        ],
+        "version": 1,
+      },
+      {
+        "uri": "file:///a/file3.ts",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 8 },
+              "end": { "line": 1, "character": 21 },
+            },
+            "severity": 2,
+            "code": "ban-ts-comment",
+            "source": "deno-lint",
+            "message": "`@ts-ignore` is not allowed without comment\nAdd an in-line comment explaining the reason for using `@ts-ignore`, like `// @ts-ignore: <reason>`",
+          },
+        ],
+        "version": 1,
+      },
+    ]),
+  );
+}

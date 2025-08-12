@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::io;
@@ -91,12 +90,6 @@ impl<'a> From<&'a [u8]> for LspMessage {
       Self::Notification(method, obj.get("params").cloned())
     }
   }
-}
-
-#[derive(Debug, Deserialize)]
-struct DiagnosticBatchNotificationParams {
-  batch_index: usize,
-  messages_len: usize,
 }
 
 fn read_message<R>(reader: &mut R) -> Result<Option<Vec<u8>>>
@@ -535,7 +528,7 @@ impl LspClientBuilder {
       .env("NPM_CONFIG_REGISTRY", npm_registry_url())
       .env("JSR_URL", jsr_registry_url())
       // turn on diagnostic synchronization communication
-      .env("DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG", "1")
+      .env("DENO_INTERNAL_DIAGNOSTIC_BATCH_NOTIFICATIONS", "1")
       .env("DENO_NO_UPDATE_CHECK", "1")
       .args(args)
       .stdin(Stdio::piped())
@@ -1039,12 +1032,6 @@ impl LspClient {
     );
   }
 
-  fn get_latest_diagnostic_batch_index(&mut self) -> usize {
-    let result = self
-      .write_request("deno/internalLatestDiagnosticBatchIndex", json!(null));
-    result.as_u64().unwrap() as usize
-  }
-
   /// Reads the latest diagnostics.
   pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
     if self.supports_pull_diagnostics {
@@ -1070,35 +1057,26 @@ impl LspClient {
           .collect(),
       );
     }
-    // wait for three (deno, lint, and typescript diagnostics) batch
-    // notification messages for that index
-    let mut read = 0;
-    let mut total_messages_len = 0;
-    while read < 3 {
-      let (method, response) =
-        self.read_notification::<DiagnosticBatchNotificationParams>();
-      assert_eq!(method, "deno/internalTestDiagnosticBatch");
-      let response = response.unwrap();
-      if response.batch_index == self.get_latest_diagnostic_batch_index() {
-        read += 1;
-        total_messages_len += response.messages_len;
+    self.read_notification_with_method::<()>(
+      "deno/internalTestDiagnosticBatchStart",
+    );
+    // Most tests have just one open document.
+    let mut diagnostics = Vec::with_capacity(1);
+    loop {
+      let (method, params) = self.read_notification::<Value>();
+      if method == "deno/internalTestDiagnosticBatchEnd" {
+        break;
+      }
+      if method == "textDocument/publishDiagnostics" {
+        diagnostics.push(
+          serde_json::from_value::<lsp::PublishDiagnosticsParams>(
+            params.unwrap(),
+          )
+          .unwrap(),
+        );
       }
     }
-
-    // now read the latest diagnostic messages
-    let mut all_diagnostics = Vec::with_capacity(total_messages_len);
-    let mut seen_files = HashSet::new();
-    for _ in 0..total_messages_len {
-      let (method, response) =
-        self.read_latest_notification::<lsp::PublishDiagnosticsParams>();
-      assert_eq!(method, "textDocument/publishDiagnostics");
-      let response = response.unwrap();
-      if seen_files.insert(response.uri.to_string()) {
-        all_diagnostics.push(response);
-      }
-    }
-
-    CollectedDiagnostics(all_diagnostics)
+    CollectedDiagnostics(diagnostics)
   }
 
   pub fn shutdown(&mut self) {

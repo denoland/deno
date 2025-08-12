@@ -73,8 +73,8 @@ use super::config::UpdateImportsOnFileMoveEnabled;
 use super::config::WorkspaceSettings;
 use super::diagnostics;
 use super::diagnostics::DiagnosticDataSpecifier;
-use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
+use super::diagnostics::DiagnosticsUpdateMessage;
 use super::documents::Document;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
@@ -240,7 +240,7 @@ impl LanguageServerTaskQueue {
   }
 }
 
-pub type OnceCellMap<K, V> = DashMap<K, Rc<OnceCell<V>>>;
+pub type OnceCellMap<K, V> = DashMap<K, Arc<OnceCell<V>>>;
 
 pub struct Inner {
   /// (_, notebook_uri) -> _
@@ -252,7 +252,7 @@ pub struct Inner {
   compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
   /// Configuration information.
   pub config: Config,
-  diagnostics_cache: OnceCellMap<Arc<Uri>, Rc<Vec<Diagnostic>>>,
+  diagnostics_cache: OnceCellMap<Arc<Uri>, Arc<Vec<Diagnostic>>>,
   diagnostics_server: Option<diagnostics::DiagnosticsServer>,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -423,25 +423,6 @@ impl LanguageServer {
     }
 
     Ok(Some(json!(true)))
-  }
-
-  /// This request is only used by the lsp integration tests to
-  /// coordinate the tests receiving the latest diagnostics.
-  pub async fn latest_diagnostic_batch_index_request(
-    &self,
-    _token: CancellationToken,
-  ) -> LspResult<Option<Value>> {
-    self.init_flag.wait_raised().await;
-    Ok(
-      self
-        .inner
-        .read()
-        .await
-        .diagnostics_server
-        .as_ref()
-        .and_then(|s| s.latest_batch_index())
-        .map(|v| v.into()),
-    )
   }
 
   pub async fn performance_request(
@@ -1294,9 +1275,6 @@ impl Inner {
     if document.is_diagnosable() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info();
-      if let Some(diagnostics_server) = &self.diagnostics_server {
-        diagnostics_server.invalidate(&[document.uri.as_ref()]);
-      }
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Opened)],
         ProjectScopesChange::None,
@@ -1342,9 +1320,6 @@ impl Inner {
         .equivalent(&old_scopes_with_node_specifier)
       {
         config_changed = true;
-      }
-      if let Some(diagnostics_server) = &self.diagnostics_server {
-        diagnostics_server.invalidate(&[&document.uri]);
       }
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Modified)],
@@ -1473,9 +1448,6 @@ impl Inner {
     };
     if document.is_diagnosable() {
       self.refresh_dep_info();
-      if let Some(diagnostics_server) = &self.diagnostics_server {
-        diagnostics_server.invalidate(&[&document.uri]);
-      }
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Closed)],
         ProjectScopesChange::None,
@@ -1499,14 +1471,6 @@ impl Inner {
     if !diagnosable_documents.is_empty() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info();
-      if let Some(diagnostics_server) = &self.diagnostics_server {
-        diagnostics_server.invalidate(
-          &diagnosable_documents
-            .iter()
-            .map(|d| d.uri.as_ref())
-            .collect::<Vec<_>>(),
-        );
-      }
       self.project_changed(
         diagnosable_documents
           .into_iter()
@@ -1543,14 +1507,6 @@ impl Inner {
         .equivalent(&old_scopes_with_node_specifier)
       {
         config_changed = true;
-      }
-      if let Some(diagnostics_server) = &self.diagnostics_server {
-        diagnostics_server.invalidate(
-          &diagnosable_documents
-            .iter()
-            .map(|(d, _)| d.uri.as_ref())
-            .collect::<Vec<_>>(),
-        );
       }
       self.project_changed(
         diagnosable_documents
@@ -1605,14 +1561,6 @@ impl Inner {
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
       self.refresh_dep_info();
-      if let Some(diagnostics_server) = &self.diagnostics_server {
-        diagnostics_server.invalidate(
-          &diagnosable_documents
-            .iter()
-            .map(|d| d.uri.as_ref())
-            .collect::<Vec<_>>(),
-        );
-      }
       self.project_changed(
         diagnosable_documents
           .into_iter()
@@ -1656,9 +1604,6 @@ impl Inner {
     self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
     self.refresh_documents_config();
-    if let Some(diagnostics_server) = &self.diagnostics_server {
-      diagnostics_server.invalidate_all();
-    }
     self.send_diagnostics_update();
     self.send_testing_update();
   }
@@ -1718,9 +1663,6 @@ impl Inner {
       }
       self.refresh_linter_resolver();
       self.refresh_documents_config();
-      if let Some(diagnostics_server) = &self.diagnostics_server {
-        diagnostics_server.invalidate_all();
-      }
       self.project_changed(
         changes
           .iter()
@@ -2128,10 +2070,7 @@ impl Inner {
     if !fixable_diagnostics.is_empty() {
       let file_diagnostics =
         if let Some(diagnostics_server) = &self.diagnostics_server {
-          Rc::new(diagnostics_server.get_ts_diagnostics(
-            document.uri(),
-            document.open().map(|d| d.version),
-          ))
+          diagnostics_server.state.ts_diagnostics(document.uri())
         } else {
           self
             .get_module_diagnostics(&module, token)
@@ -2234,23 +2173,25 @@ impl Inner {
               .state
               .no_cache_diagnostics(document.uri())
           } else {
-            self
-              .get_module_diagnostics(&module, token)
-              .await
-              .ok()
-              .iter()
-              .flat_map(|d| d.iter())
-              .filter(|d| {
-                let Some(NumberOrString::String(code)) = &d.code else {
-                  return false;
-                };
-                matches!(
-                  code.as_str(),
-                  "no-cache" | "not-installed-jsr" | "not-installed-npm"
-                )
-              })
-              .cloned()
-              .collect::<Vec<_>>()
+            Arc::new(
+              self
+                .get_module_diagnostics(&module, token)
+                .await
+                .ok()
+                .iter()
+                .flat_map(|d| d.iter())
+                .filter(|d| {
+                  let Some(NumberOrString::String(code)) = &d.code else {
+                    return false;
+                  };
+                  matches!(
+                    code.as_str(),
+                    "no-cache" | "not-installed-jsr" | "not-installed-npm"
+                  )
+                })
+                .cloned()
+                .collect::<Vec<_>>(),
+            )
           };
         let uncached_deps = no_cache_diagnostics
           .iter()
@@ -2265,7 +2206,7 @@ impl Inner {
         if uncached_deps.len() > 1 {
           code_actions.add_cache_all_action(
             &module.specifier,
-            no_cache_diagnostics.to_owned(),
+            no_cache_diagnostics.as_ref().clone(),
           );
         }
       }
@@ -3128,22 +3069,20 @@ impl Inner {
       Some(module) => module,
       None => {
         let url = uri_to_url(document.uri());
-        if url.scheme() != "file"
-          || self.resolver.in_node_modules(&url)
-          || self.cache.in_cache_directory(&url)
+        if url.scheme() == "file"
+          && !self.resolver.in_node_modules(&url)
+          && !self.cache.in_cache_directory(&url)
         {
-          // If this document represents a non-local module, the module may not be
-          // retrievable until its referrer is known through some other request.
-          // Wait and try one more time.
-          tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-          if let Some(module) = self.get_primary_module(&document)? {
-            module
-          } else {
-            return Ok(empty_result());
-          }
-        } else {
           return Ok(empty_result());
         }
+        // If this document represents a non-local module, the module may not be
+        // retrievable until its referrer is known through some other request.
+        // Wait and try one more time.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let Some(module) = self.get_primary_module(&document)? else {
+          return Ok(empty_result());
+        };
+        module
       }
     };
     let diagnostics = self.get_module_diagnostics(&module, token).await?;
@@ -3162,7 +3101,7 @@ impl Inner {
     &self,
     module: &Arc<DocumentModule>,
     token: &CancellationToken,
-  ) -> Result<Rc<Vec<Diagnostic>>, LspError> {
+  ) -> Result<Arc<Vec<Diagnostic>>, LspError> {
     let diagnostics_cell = self
       .diagnostics_cache
       .entry(module.uri.clone())
@@ -3189,7 +3128,7 @@ impl Inner {
             LspError::internal_error()
           }
         })?;
-        Ok(Rc::new(diagnostics))
+        Ok(Arc::new(diagnostics))
       })
       .await
       .cloned()
@@ -4046,7 +3985,7 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn send_diagnostics_update(&self) {
     if let Some(diagnostics_server) = &self.diagnostics_server {
-      let snapshot = DiagnosticServerUpdateMessage {
+      let snapshot = DiagnosticsUpdateMessage {
         snapshot: self.snapshot(),
       };
       if let Err(err) = diagnostics_server.update(snapshot) {
@@ -4751,9 +4690,6 @@ impl Inner {
   async fn post_cache(&mut self) {
     self.resolver.did_cache();
     self.refresh_dep_info();
-    if let Some(diagnostics_server) = &self.diagnostics_server {
-      diagnostics_server.invalidate_all();
-    }
     self.project_changed(vec![], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
@@ -4804,9 +4740,6 @@ impl Inner {
     self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
     self.refresh_documents_config();
-    if let Some(diagnostics_server) = &self.diagnostics_server {
-      diagnostics_server.invalidate_all();
-    }
     self.send_diagnostics_update();
     self.send_testing_update();
   }
