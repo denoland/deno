@@ -38,7 +38,6 @@ use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_semver::jsr::JsrPackageReqReference;
-use indexmap::Equivalent;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::error;
