@@ -1310,24 +1310,10 @@ impl Inner {
       }
     };
     if document.is_diagnosable() {
-      let old_scopes_with_node_specifier =
-        self.document_modules.scopes_with_node_specifier();
       self.refresh_dep_info();
-      let mut config_changed = false;
-      if !self
-        .document_modules
-        .scopes_with_node_specifier()
-        .equivalent(&old_scopes_with_node_specifier)
-      {
-        config_changed = true;
-      }
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Modified)],
-        if config_changed {
-          ProjectScopesChange::Config
-        } else {
-          ProjectScopesChange::None
-        },
+        ProjectScopesChange::None,
       );
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -1497,27 +1483,13 @@ impl Inner {
       .filter(|(d, _)| d.is_diagnosable())
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
-      let old_scopes_with_node_specifier =
-        self.document_modules.scopes_with_node_specifier();
       self.refresh_dep_info();
-      let mut config_changed = false;
-      if !self
-        .document_modules
-        .scopes_with_node_specifier()
-        .equivalent(&old_scopes_with_node_specifier)
-      {
-        config_changed = true;
-      }
       self.project_changed(
         diagnosable_documents
           .into_iter()
           .map(|(d, k)| (Document::Open(d), k))
           .collect(),
-        if config_changed {
-          ProjectScopesChange::Config
-        } else {
-          ProjectScopesChange::None
-        },
+        ProjectScopesChange::None,
       );
       self.send_diagnostics_update();
     }
