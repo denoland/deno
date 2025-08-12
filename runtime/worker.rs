@@ -1280,7 +1280,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
       .purge_and_prevent_code_cache(module_specifier)
   }
 
-  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<'_, [u8]>> {
     let v = self.0.borrow_mut().clone().unwrap();
     let v = v.get_source_map(file_name);
     v.map(|c| Cow::from(c.into_owned()))

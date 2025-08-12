@@ -111,15 +111,15 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     loop {
       let pkg_json_path = current_folder.join("package.json");
       if let Ok(Some(pkg_json)) = self.load_pkg_json(&pkg_json_path) {
-        if let Some(deps) = &pkg_json.dependencies {
-          if deps.contains_key(dep_name) {
-            return Some(pkg_json);
-          }
+        if let Some(deps) = &pkg_json.dependencies
+          && deps.contains_key(dep_name)
+        {
+          return Some(pkg_json);
         }
-        if let Some(deps) = &pkg_json.dev_dependencies {
-          if deps.contains_key(dep_name) {
-            return Some(pkg_json);
-          }
+        if let Some(deps) = &pkg_json.dev_dependencies
+          && deps.contains_key(dep_name)
+        {
+          return Some(pkg_json);
         }
       }
 
@@ -230,12 +230,11 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     if let Some(file_path) = maybe_referrer_path {
       for dir_path in file_path.as_path().ancestors().skip(1) {
         let package_json_path = dir_path.join("package.json");
-        if let Some(pkg_json) = self.load_pkg_json(&package_json_path)? {
-          if let Some(alias) =
+        if let Some(pkg_json) = self.load_pkg_json(&package_json_path)?
+          && let Some(alias) =
             resolve_alias_from_pkg_json(req, pkg_json.as_ref())?
-          {
-            return Ok(Some((pkg_json, alias)));
-          }
+        {
+          return Ok(Some((pkg_json, alias)));
         }
       }
     }
@@ -244,12 +243,11 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
     if let Some(root_node_modules_dir) = &self.root_node_modules_dir {
       let root_pkg_json_path =
         root_node_modules_dir.parent().unwrap().join("package.json");
-      if let Some(pkg_json) = self.load_pkg_json(&root_pkg_json_path)? {
-        if let Some(alias) =
+      if let Some(pkg_json) = self.load_pkg_json(&root_pkg_json_path)?
+        && let Some(alias) =
           resolve_alias_from_pkg_json(req, pkg_json.as_ref())?
-        {
-          return Ok(Some((pkg_json, alias)));
-        }
+      {
+        return Ok(Some((pkg_json, alias)));
       }
     }
 
@@ -263,17 +261,16 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
       let pkg_folder = node_modules.join(&req.name);
       if let Ok(Some(dep_pkg_json)) =
         self.load_pkg_json(&pkg_folder.join("package.json"))
+        && dep_pkg_json.name.as_deref() == Some(req.name.as_str())
       {
-        if dep_pkg_json.name.as_deref() == Some(req.name.as_str()) {
-          let matches_req = dep_pkg_json
-            .version
-            .as_ref()
-            .and_then(|v| Version::parse_from_npm(v).ok())
-            .map(|version| req.version_req.matches(&version))
-            .unwrap_or(true);
-          if matches_req {
-            return Some((dep_pkg_json, req.name.clone()));
-          }
+        let matches_req = dep_pkg_json
+          .version
+          .as_ref()
+          .and_then(|v| Version::parse_from_npm(v).ok())
+          .map(|version| req.version_req.matches(&version))
+          .unwrap_or(true);
+        if matches_req {
+          return Some((dep_pkg_json, req.name.clone()));
         }
       }
       None
@@ -298,10 +295,10 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
             .map(|root_dir| referrer_path.starts_with(root_dir))
         })
         .unwrap_or(false);
-      if !already_searched {
-        if let Some(result) = search_node_modules(root_node_modules_dir) {
-          return Ok(Some(result));
-        }
+      if !already_searched
+        && let Some(result) = search_node_modules(root_node_modules_dir)
+      {
+        return Ok(Some(result));
       }
     }
 
@@ -453,7 +450,7 @@ impl InNpmPackageChecker for ByonmInNpmPackageChecker {
   }
 }
 
-fn join_package_name(mut path: Cow<Path>, package_name: &str) -> PathBuf {
+fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
   // ensure backslashes are used on windows
   for part in package_name.split('/') {
     match path {

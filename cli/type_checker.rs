@@ -183,7 +183,7 @@ impl TypeChecker {
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<DiagnosticsByFolderIterator, CheckError> {
+  ) -> Result<DiagnosticsByFolderIterator<'_>, CheckError> {
     fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
       match resolver {
         CliNpmResolver::Byonm(_) => {
@@ -480,11 +480,11 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     if !self.options.reload && !missing_diagnostics.has_diagnostic() {
       // do not type check if we know this is type checked
-      if let Some(check_hash) = maybe_check_hash {
-        if self.type_check_cache.has_check_hash(check_hash) {
-          log::debug!("Already type checked {}", &check_group.referrer);
-          return Ok(Default::default());
-        }
+      if let Some(check_hash) = maybe_check_hash
+        && self.type_check_cache.has_check_hash(check_hash)
+      {
+        log::debug!("Already type checked {}", &check_group.referrer);
+        return Ok(Default::default());
       }
     }
 
@@ -552,10 +552,10 @@ impl DiagnosticsByFolderRealIterator<'_> {
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
     let mut diagnostics = missing_diagnostics.filter(|d| {
-      if let Some(ambient_modules_regex) = &ambient_modules_regex {
-        if let Some(missing_specifier) = &d.missing_specifier {
-          return !ambient_modules_regex.is_match(missing_specifier);
-        }
+      if let Some(ambient_modules_regex) = &ambient_modules_regex
+        && let Some(missing_specifier) = &d.missing_specifier
+      {
+        return !ambient_modules_regex.is_match(missing_specifier);
       }
       true
     });
@@ -567,10 +567,10 @@ impl DiagnosticsByFolderRealIterator<'_> {
         .set_tsbuildinfo(first_root, &tsbuildinfo);
     }
 
-    if !diagnostics.has_diagnostic() {
-      if let Some(check_hash) = maybe_check_hash {
-        self.type_check_cache.add_check_hash(check_hash);
-      }
+    if !diagnostics.has_diagnostic()
+      && let Some(check_hash) = maybe_check_hash
+    {
+      self.type_check_cache.add_check_hash(check_hash);
     }
 
     log::debug!("{}", response.stats);
@@ -725,19 +725,19 @@ impl<'a> GraphWalker<'a> {
         Ok(Some(module)) => module,
         Ok(None) => continue,
         Err(err) => {
-          if !is_dynamic {
-            if let Some(err) = module_error_for_tsc_diagnostic(self.sys, err) {
-              self.missing_diagnostics.push(
-                tsc::Diagnostic::from_missing_error(
-                  err.specifier.as_str(),
-                  err.maybe_range,
-                  maybe_additional_sloppy_imports_message(
-                    self.sys,
-                    err.specifier,
-                  ),
+          if !is_dynamic
+            && let Some(err) = module_error_for_tsc_diagnostic(self.sys, err)
+          {
+            self
+              .missing_diagnostics
+              .push(tsc::Diagnostic::from_missing_error(
+                err.specifier.as_str(),
+                err.maybe_range,
+                maybe_additional_sloppy_imports_message(
+                  self.sys,
+                  err.specifier,
                 ),
-              );
-            }
+              ));
           }
           continue;
         }
@@ -804,18 +804,16 @@ impl<'a> GraphWalker<'a> {
           };
           if let deno_graph::Resolution::Err(resolution_error) =
             dep_to_check_error
-          {
-            if let Some(err) =
+            && let Some(err) =
               resolution_error_for_tsc_diagnostic(resolution_error)
-            {
-              self.missing_diagnostics.push(
-                tsc::Diagnostic::from_missing_error(
-                  err.specifier,
-                  err.maybe_range,
-                  None,
-                ),
-              );
-            }
+          {
+            self
+              .missing_diagnostics
+              .push(tsc::Diagnostic::from_missing_error(
+                err.specifier,
+                err.maybe_range,
+                None,
+              ));
           }
         }
       }
@@ -865,17 +863,17 @@ impl<'a> GraphWalker<'a> {
           | MediaType::Sql
           | MediaType::Unknown => None,
         };
-        if result.is_some() {
-          if let Some(hasher) = &mut self.maybe_hasher {
-            hasher.write_str(module.specifier.as_str());
-            hasher.write_str(
-              // the fast check module will only be set when publishing
-              module
-                .fast_check_module()
-                .map(|s| s.source.as_ref())
-                .unwrap_or(&module.source.text),
-            );
-          }
+        if result.is_some()
+          && let Some(hasher) = &mut self.maybe_hasher
+        {
+          hasher.write_str(module.specifier.as_str());
+          hasher.write_str(
+            // the fast check module will only be set when publishing
+            module
+              .fast_check_module()
+              .map(|s| s.source.as_ref())
+              .unwrap_or(&module.source.text),
+          );
         }
         result
       }

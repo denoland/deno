@@ -25,6 +25,9 @@ pub async fn cache_top_level_deps(
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
+  let _clear_guard = factory
+    .text_only_progress_bar()
+    .deferred_keep_initialize_alive();
   let npm_installer = factory.npm_installer().await?;
   npm_installer
     .ensure_top_level_package_json_install()
@@ -161,12 +164,11 @@ pub async fn cache_top_level_deps(
           if entry.key.ends_with('/') && specifier.as_str().ends_with('/') {
             continue;
           }
-          if specifier.scheme() == "file" {
-            if let Ok(path) = specifier.to_file_path() {
-              if !path.is_file() {
-                continue;
-              }
-            }
+          if specifier.scheme() == "file"
+            && let Ok(path) = specifier.to_file_path()
+            && !path.is_file()
+          {
+            continue;
           }
           roots.push(specifier.clone());
         }

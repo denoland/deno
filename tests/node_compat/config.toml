@@ -117,7 +117,8 @@
 "parallel/test-buffer-set-inspect-max-bytes.js" = {}
 "parallel/test-buffer-sharedarraybuffer.js" = {}
 "parallel/test-buffer-slice.js" = {}
-"parallel/test-buffer-slow.js" = {}
+# TODO(bartlomieju): this is failing on missing warning
+# "parallel/test-buffer-slow.js" = {}
 "parallel/test-buffer-swap.js" = {}
 "parallel/test-buffer-tojson.js" = {}
 "parallel/test-buffer-tostring-range.js" = {}
@@ -144,7 +145,8 @@
 "parallel/test-child-process-exec-stdout-stderr-data-string.js" = {}
 "parallel/test-child-process-execFile-promisified-abortController.js" = {}
 "parallel/test-child-process-execfile-maxbuf.js" = {}
-"parallel/test-child-process-execfile.js" = {}
+# TODO(bartlomieju): this is failing on missing warning
+# "parallel/test-child-process-execfile.js" = {}
 "parallel/test-child-process-execfilesync-maxbuf.js" = {}
 "parallel/test-child-process-exit-code.js" = {}
 "parallel/test-child-process-flush-stdio.js" = {}
@@ -160,7 +162,6 @@
 "parallel/test-child-process-send-cb.js" = {}
 "parallel/test-child-process-set-blocking.js" = {}
 "parallel/test-child-process-silent.js" = {}
-"parallel/test-child-process-spawn-args.js" = {}
 "parallel/test-child-process-spawn-event.js" = {}
 "parallel/test-child-process-spawnsync-args.js" = {}
 "parallel/test-child-process-spawnsync-env.js" = {}
@@ -423,9 +424,12 @@
 "parallel/test-fs-buffertype-writesync.js" = {}
 "parallel/test-fs-chown-type-check.js" = {}
 "parallel/test-fs-close.js" = {}
-"parallel/test-fs-constants.js" = {}
+# TODO(bartlomieju): appears that part of the test that's broke was removed in Node 24.0
+# but it's actually not included in 24.2 https://github.com/nodejs/node/pull/55862
+# "parallel/test-fs-constants.js" = {}
 "parallel/test-fs-empty-readStream.js" = {}
-"parallel/test-fs-exists.js" = {}
+# TODO(bartlomieju): this is failing on missing warning
+# "parallel/test-fs-exists.js" = {}
 "parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
 "parallel/test-fs-fsync.js" = {}
@@ -560,9 +564,6 @@
 "parallel/test-http-max-sockets.js" = {}
 "parallel/test-http-outgoing-end-types.js" = {}
 "parallel/test-http-outgoing-finished.js" = {}
-"parallel/test-http-outgoing-internal-headernames-getter.js" = {}
-"parallel/test-http-outgoing-internal-headernames-setter.js" = {}
-"parallel/test-http-outgoing-internal-headers.js" = {}
 "parallel/test-http-outgoing-message-write-callback.js" = {}
 "parallel/test-http-outgoing-renderHeaders.js" = {}
 "parallel/test-http-outgoing-settimeout.js" = {}
@@ -805,6 +806,7 @@
 "parallel/test-next-tick.js" = {}
 "parallel/test-no-node-snapshot.js" = {}
 "parallel/test-nodeeventtarget.js" = {}
+"parallel/test-os-eol.js" = {}
 "parallel/test-os-homedir-no-envvar.js" = {}
 "parallel/test-os-userinfo-handles-getter-errors.js" = {}
 "parallel/test-os.js" = {}
@@ -1119,6 +1121,8 @@
 "parallel/test-stream3-pause-then-read.js" = {}
 "parallel/test-stream3-pipeline-async-iterator.js" = {}
 "parallel/test-streams-highwatermark.js" = {}
+"parallel/test-string-decoder-end.js" = {}
+"parallel/test-string-decoder-fuzz.js" = {}
 "parallel/test-string-decoder.js" = { flaky = true }
 "parallel/test-sys.js" = {}
 "parallel/test-timers-api-refs.js" = {}
@@ -1175,7 +1179,6 @@
 "parallel/test-tls-pause.js" = {}
 "parallel/test-tls-peer-certificate-encoding.js" = {}
 "parallel/test-tls-psk-server.js" = {}
-"parallel/test-tls-securepair-server.js" = {}
 "parallel/test-tls-server-verify.js" = {}
 "parallel/test-tls-session-cache.js" = {}
 "parallel/test-tls-timeout-server-2.js" = {}
@@ -1203,7 +1206,8 @@
 "parallel/test-url-urltooptions.js" = {}
 "parallel/test-utf8-scripts.js" = {}
 "parallel/test-util-deprecate-invalid-code.js" = {}
-"parallel/test-util-deprecate.js" = {}
+# TODO(bartlomieju): disabled due to missing `pendingDeprecate` function
+# "parallel/test-util-deprecate.js" = {}
 "parallel/test-util-inherits.js" = {}
 "parallel/test-util-inspect-getters-accessing-this.js" = {}
 "parallel/test-util-isDeepStrictEqual.js" = {}
@@ -1344,9 +1348,12 @@
 "pseudo-tty/test-tty-stdin-call-end.js" = {}
 "pseudo-tty/test-tty-stdin-end.js" = {}
 "pseudo-tty/test-tty-stdout-end.js" = {}
+"pummel/test-buffer-large-size-buffer-alloc-unsafe-slow.js" = {}
+"pummel/test-buffer-large-size-buffer-alloc-unsafe.js" = {}
 "pummel/test-dh-regr.js" = {}
 "pummel/test-fs-watch-system-limit.js" = {}
 "pummel/test-heapdump-inspector.js" = {}
+"pummel/test-string-decoder-large-buffer.js" = {}
 "sequential/test-buffer-creation-regression.js" = {}
 "sequential/test-child-process-exit.js" = {}
 "sequential/test-cli-syntax-bad.js" = {}
@@ -1370,8 +1377,7 @@
 "sequential/test-debugger-pid.js" = {}
 "sequential/test-diagnostic-dir-cpu-prof.js" = {}
 "sequential/test-diagnostic-dir-heap-prof.js" = {}
-# TODO(kt3k): Enable this when node_test is updated to v24.x
-# "sequential/test-fs-readdir-recursive.js" = {}
+"sequential/test-fs-readdir-recursive.js" = {}
 "sequential/test-fs-stat-sync-overflow.js" = {}
 "sequential/test-http-server-keep-alive-timeout-slow-server.js" = {}
 "sequential/test-inspector-open-dispose.mjs" = {}
@@ -1394,7 +1400,6 @@
 "sequential/test-stream2-fs.js" = {}
 "sequential/test-tls-lookup.js" = {}
 "sequential/test-tls-psk-client.js" = {}
-"sequential/test-tls-securepair-client.js" = {}
 "sequential/test-vm-timeout-rethrow.js" = {}
 "sequential/test-watch-mode-inspect.mjs" = {}
 "sequential/test-worker-fshandles-open-close-on-termination.js" = {}
