@@ -928,72 +928,71 @@ async fn initialize_tunnel(
     metadata.insert("entrypoint".into(), entrypoint);
   }
 
-  let (tunnel, mut events) =
-    match deno_runtime::deno_net::tunnel::TunnelConnection::connect(
-      addr,
-      hostname.to_owned(),
-      tls_config.clone(),
-      deno_runtime::deno_net::tunnel::Authentication::App {
-        token,
-        org: org.clone(),
-        app: app.clone(),
-      },
-      metadata.clone(),
-    )
-    .await
-    {
-      Ok(res) => res,
-      Err(deno_runtime::deno_net::tunnel::Error::Unauthorized) => {
-        tools::deploy::get_token_entry()?.delete_credential()?;
+  let on_event = |event| {
+    use deno_runtime::deno_net::tunnel::Event;
+    match event {
+      Event::Routed(addr) => {
+        let endpoint = if addr.port() == 443 {
+          format!("https://{}", addr.hostname())
+        } else {
+          format!("https://{}:{}", addr.hostname(), addr.port())
+        };
 
-        let token = auth_tunnel().await?;
-        deno_runtime::deno_net::tunnel::TunnelConnection::connect(
-          addr,
-          hostname.to_owned(),
-          tls_config,
-          deno_runtime::deno_net::tunnel::Authentication::App {
-            token,
-            org,
-            app,
-          },
-          metadata.clone(),
-        )
-        .await?
+        log::info!(
+          "{}",
+          colors::green(format!("You are connected to {endpoint}!"))
+        );
       }
-      Err(e) => return Err(e.into()),
-    };
-
-  let addr = tunnel.local_addr()?;
-
-  let endpoint = if addr.port() == 443 {
-    format!("https://{}", addr.hostname())
-  } else {
-    format!("https://{}:{}", addr.hostname(), addr.port())
+      Event::Reconnect(duration, reason) => {
+        let reason = if let Some(reason) = reason {
+          format!(" ({reason})")
+        } else {
+          "".into()
+        };
+        log::info!(
+          "{}",
+          colors::green(format!(
+            "Reconnecting tunnel in {}s...{}",
+            duration.as_secs(),
+            reason
+          ))
+        );
+      }
+      _ => {}
+    }
   };
 
-  tokio::spawn(async move {
-    while let Some(event) = events.next().await {
-      use deno_runtime::deno_net::tunnel::Event;
-      match event {
-        Event::Routed => {
-          log::info!(
-            "{}",
-            colors::green(format!("You are connected to {endpoint}!"))
-          );
-        }
-        Event::Reconnect(d) => {
-          log::info!(
-            "{}",
-            colors::green(format!(
-              "Reconnecting tunnel in {}s...",
-              d.as_secs()
-            ))
-          );
-        }
-        _ => {}
-      }
+  let tunnel = match deno_runtime::deno_net::tunnel::TunnelConnection::connect(
+    addr,
+    hostname.to_owned(),
+    tls_config.clone(),
+    deno_runtime::deno_net::tunnel::Authentication::App {
+      token,
+      org: org.clone(),
+      app: app.clone(),
+    },
+    metadata.clone(),
+    on_event,
+  )
+  .await
+  {
+    Ok(res) => res,
+    Err(deno_runtime::deno_net::tunnel::Error::Unauthorized) => {
+      tools::deploy::get_token_entry()?.delete_credential()?;
+
+      let token = auth_tunnel().await?;
+      deno_runtime::deno_net::tunnel::TunnelConnection::connect(
+        addr,
+        hostname.to_owned(),
+        tls_config,
+        deno_runtime::deno_net::tunnel::Authentication::App { token, org, app },
+        metadata.clone(),
+        on_event,
+      )
+      .await?
     }
-  });
+    Err(e) => return Err(e.into()),
+  };
 
   if let Some(metadata) = tunnel.metadata() {
     for (k, v) in metadata.env {
