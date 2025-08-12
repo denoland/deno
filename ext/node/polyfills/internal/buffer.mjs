@@ -175,8 +175,8 @@ function showFlaggedDeprecation() {
 }
 
 class FastBuffer extends Uint8Array {
-  constructor(arg0, arg1, arg2) {
-    super(arg0, arg1, arg2);
+  constructor(bufferOrLength, byteOffset, length) {
+    super(bufferOrLength, byteOffset, length);
   }
 }
 
@@ -380,6 +380,10 @@ const of = (...items) => {
 };
 Buffer.of = of;
 
+/**
+ * @param {unknown} size
+ * @returns {asserts size is number}
+ */
 function assertSize(size) {
   validateNumber(size, "size", 0, kMaxLength);
 }
@@ -411,12 +415,34 @@ function _allocUnsafe(size) {
   return createBuffer(size < 0 ? 0 : checked(size) | 0);
 }
 
+/**
+ * @param {number} size
+ * @returns {FastBuffer}
+ */
+function allocate(size) {
+  if (size <= 0) {
+    return new FastBuffer();
+  }
+  if (size < (Buffer.poolSize >>> 1)) {
+    if (size > (poolSize - poolOffset)) {
+      createPool();
+    }
+    const b = new FastBuffer(allocPool, poolOffset, size);
+    poolOffset += size;
+    alignPool();
+    return b;
+  }
+  return new FastBuffer(size);
+}
+
 Buffer.allocUnsafe = function allocUnsafe(size) {
-  return _allocUnsafe(size);
+  assertSize(size);
+  return allocate(size);
 };
 
 Buffer.allocUnsafeSlow = function allocUnsafeSlow(size) {
-  return _allocUnsafe(size);
+  assertSize(size);
+  return new FastBuffer(size);
 };
 
 function fromString(string, encoding) {
@@ -2669,6 +2695,13 @@ export function boundsError(value, length, type) {
   );
 }
 
+/**
+ * @param {number} value
+ * @param {string} name
+ * @param {number} min
+ * @param {number} max
+ * @returns {asserts value is number}
+ */
 export function validateNumber(value, name, min = undefined, max) {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);

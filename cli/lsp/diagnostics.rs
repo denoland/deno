@@ -103,10 +103,10 @@ impl DiagnosticsState {
   fn update(&self, uri: &Uri, version: i32, diagnostics: &[lsp::Diagnostic]) {
     let mut specifiers = self.documents.write();
     let current_version = specifiers.get(uri).map(|s| s.version);
-    if let Some(current_version) = current_version {
-      if version < current_version {
-        return;
-      }
+    if let Some(current_version) = current_version
+      && version < current_version
+    {
+      return;
     }
     let mut ts_diagnostics = vec![];
     let mut no_cache_diagnostics = vec![];
@@ -927,10 +927,10 @@ fn diagnose_resolution(
         Some(&referrer_module.compiler_options_key),
       ) {
         Some(module) => {
-          if let Some(headers) = &module.headers {
-            if let Some(message) = headers.get("x-deno-warning") {
-              diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
-            }
+          if let Some(headers) = &module.headers
+            && let Some(message) = headers.get("x-deno-warning")
+          {
+            diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
           }
           if module.media_type == MediaType::Json {
             match maybe_assert_type {
@@ -998,15 +998,13 @@ fn diagnose_resolution(
                       ));
                     } else if module_name == dependency_key {
                       let mut is_mapped = false;
-                      if let Some(import_map) = import_map {
-                        if let Resolution::Ok(resolved) = &resolution {
-                          if import_map
-                            .resolve(module_name, &resolved.specifier)
-                            .is_ok()
-                          {
-                            is_mapped = true;
-                          }
-                        }
+                      if let Some(import_map) = import_map
+                        && let Resolution::Ok(resolved) = &resolution
+                        && import_map
+                          .resolve(module_name, &resolved.specifier)
+                          .is_ok()
+                      {
+                        is_mapped = true;
                       }
                       // show diagnostics for bare node specifiers that aren't mapped by import map
                       if !is_mapped {
@@ -1088,22 +1086,21 @@ fn diagnose_dependency(
       .maybe_code
       .ok()
       .or_else(|| dependency.maybe_type.ok());
-    if let Some(resolved) = resolved {
-      if let Some(to) = import_map_lookup(
+    if let Some(resolved) = resolved
+      && let Some(to) = import_map_lookup(
         import_map,
         &resolved.specifier,
         &referrer_module.specifier,
-      ) {
-        if dependency_key != to {
-          diagnostics.push(
-            DenoDiagnostic::ImportMapRemap {
-              from: dependency_key.to_string(),
-              to,
-            }
-            .to_lsp_diagnostic(&language_server::to_lsp_range(&resolved.range)),
-          );
+      )
+      && dependency_key != to
+    {
+      diagnostics.push(
+        DenoDiagnostic::ImportMapRemap {
+          from: dependency_key.to_string(),
+          to,
         }
-      }
+        .to_lsp_diagnostic(&language_server::to_lsp_range(&resolved.range)),
+      );
     }
   }
 

@@ -121,10 +121,10 @@ impl<T> Drop for SignallingRc<T> {
   #[inline]
   fn drop(&mut self) {
     // Trigger the waker iff the refcount is about to become 1.
-    if Rc::strong_count(&self.0) == 2 {
-      if let Some(waker) = self.0.1.take() {
-        waker.wake();
-      }
+    if Rc::strong_count(&self.0) == 2
+      && let Some(waker) = self.0.1.take()
+    {
+      waker.wake();
     }
   }
 }
@@ -501,10 +501,10 @@ impl HttpRecord {
     // The request body might include actual resources.
     inner.request_body.take();
 
-    if inner.legacy_abort || !inner.response_body_finished {
-      if let Some(closed_channel) = inner.closed_channel.take() {
-        let _ = closed_channel.send(());
-      }
+    if (inner.legacy_abort || !inner.response_body_finished)
+      && let Some(closed_channel) = inner.closed_channel.take()
+    {
+      let _ = closed_channel.send(());
     }
   }
 
@@ -711,10 +711,10 @@ impl Body for HttpRecordResponse {
 
     if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
       let mut http = record.0.borrow_mut();
-      if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info {
-        if let Some(response_size) = &mut otel_info.response_size {
-          *response_size += buf.len() as u64;
-        }
+      if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info
+        && let Some(response_size) = &mut otel_info.response_size
+      {
+        *response_size += buf.len() as u64;
       }
     }
 

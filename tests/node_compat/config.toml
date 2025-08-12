@@ -1120,6 +1120,8 @@
 "parallel/test-stream3-pause-then-read.js" = {}
 "parallel/test-stream3-pipeline-async-iterator.js" = {}
 "parallel/test-streams-highwatermark.js" = {}
+"parallel/test-string-decoder-end.js" = {}
+"parallel/test-string-decoder-fuzz.js" = {}
 "parallel/test-string-decoder.js" = { flaky = true }
 "parallel/test-sys.js" = {}
 "parallel/test-timers-api-refs.js" = {}
@@ -1345,9 +1347,12 @@
 "pseudo-tty/test-tty-stdin-call-end.js" = {}
 "pseudo-tty/test-tty-stdin-end.js" = {}
 "pseudo-tty/test-tty-stdout-end.js" = {}
+"pummel/test-buffer-large-size-buffer-alloc-unsafe-slow.js" = {}
+"pummel/test-buffer-large-size-buffer-alloc-unsafe.js" = {}
 "pummel/test-dh-regr.js" = {}
 "pummel/test-fs-watch-system-limit.js" = {}
 "pummel/test-heapdump-inspector.js" = {}
+"pummel/test-string-decoder-large-buffer.js" = {}
 "sequential/test-buffer-creation-regression.js" = {}
 "sequential/test-child-process-exit.js" = {}
 "sequential/test-cli-syntax-bad.js" = {}
