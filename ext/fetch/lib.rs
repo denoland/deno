@@ -1121,12 +1121,20 @@ pub fn create_http_client(
       Proxy::Unix { .. } => {
         return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
       }
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Proxy::Vsock { cid, port } => {
         let target = proxy::Target::new_vsock(cid, port);
         proxy::Intercept::all(target)
       }
-      #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+      #[cfg(not(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      )))]
       Proxy::Vsock { .. } => {
         return Err(HttpClientCreateError::VsockProxyNotSupported);
       }
