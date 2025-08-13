@@ -62,22 +62,22 @@ repository = "https://github.com/denoland/deno"
 deno_ast = { version = "=0.49", features = ["transpiling"] }
 deno_core = { version = "0.355.0" }
 
-deno_cache_dir = "=0.24.0"
-deno_doc = "=0.181.0"
+deno_cache_dir = "=0.25.0"
+deno_doc = "=0.182.0"
 deno_error = "=0.7.0"
-deno_graph = { version = "=0.98.1", default-features = false }
+deno_graph = { version = "=0.99.0", default-features = false }
 deno_lint = "=0.77.0"
 deno_lockfile = "=0.31.2"
 deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.36.0"
+deno_npm = "=0.37.0"
 deno_path_util = "=0.6.1"
 deno_semver = "=0.9.0"
 deno_task_shell = "=0.26.0"
 deno_terminal = "=0.2.2"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.95.0"
+eszip = "=0.96.0"
 
 denokv_proto = "0.12.0"
 denokv_remote = "0.12.0"
@@ -533,8 +533,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_npm_cache]
 opt-level = 3
-
-[patch.crates-io]
-deno_npm = { git = "https://github.com/nathanwhit/deno_npm", branch = "reporter-trait" }
-deno_graph = { git = "https://github.com/denoland/deno_graph", branch = "main" }
-deno_cache_dir = { git = "https://github.com/nathanwhit/deno_cache_dir", branch = "loaded-from" }
