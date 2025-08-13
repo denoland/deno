@@ -99,14 +99,14 @@ Deno.test({
         os.getPriority(3.15);
       },
       Error,
-      "pid must be 'an integer'",
+      'The value of "pid" is out of range. It must be an integer',
     );
     assertThrows(
       () => {
         os.getPriority(9999999999);
       },
       Error,
-      "must be >= -2147483648 && <= 2147483647",
+      'The value of "pid" is out of range. It must be >= -2147483648 && <= 2147483647',
     );
   },
 });
@@ -119,14 +119,14 @@ Deno.test({
         os.setPriority(3.15, 0);
       },
       Error,
-      "pid must be 'an integer'",
+      `The value of "pid" is out of range. It must be an integer`,
     );
     assertThrows(
       () => {
         os.setPriority(9999999999, 0);
       },
       Error,
-      "pid must be >= -2147483648 && <= 2147483647",
+      'The value of "pid" is out of range. It must be >= -2147483648 && <= 2147483647',
     );
   },
 });
@@ -139,28 +139,28 @@ Deno.test({
         os.setPriority(0, 3.15);
       },
       Error,
-      "priority must be 'an integer'",
+      'The value of "priority" is out of range. It must be an integer',
     );
     assertThrows(
       () => {
         os.setPriority(0, -21);
       },
       Error,
-      "priority must be >= -20 && <= 19",
+      'The value of "priority" is out of range. It must be >= -20 && <= 19',
     );
     assertThrows(
       () => {
         os.setPriority(0, 20);
       },
       Error,
-      "priority must be >= -20 && <= 19",
+      'The value of "priority" is out of range. It must be >= -20 && <= 19',
     );
     assertThrows(
       () => {
         os.setPriority(0, 9999999999);
       },
       Error,
-      "priority must be >= -20 && <= 19",
+      'The value of "priority" is out of range. It must be >= -20 && <= 19',
     );
   },
 });
@@ -174,28 +174,28 @@ Deno.test({
         os.setPriority(3.15);
       },
       Error,
-      "priority must be 'an integer'",
+      'The value of "priority" is out of range. It must be an integer',
     );
     assertThrows(
       () => {
         os.setPriority(-21);
       },
       Error,
-      "priority must be >= -20 && <= 19",
+      'The value of "priority" is out of range. It must be >= -20 && <= 19',
     );
     assertThrows(
       () => {
         os.setPriority(20);
       },
       Error,
-      "priority must be >= -20 && <= 19",
+      'The value of "priority" is out of range. It must be >= -20 && <= 19',
     );
     assertThrows(
       () => {
         os.setPriority(9999999999);
       },
       Error,
-      "priority must be >= -20 && <= 19",
+      'The value of "priority" is out of range. It must be >= -20 && <= 19',
     );
   },
 });
@@ -307,7 +307,8 @@ Deno.test({
           throw err;
         }
       },
-      Deno.errors.PermissionDenied,
+      Error,
+      "uv_os_setpriority returned EACCES (permission denied)",
     );
     os.getPriority(child.pid);
     child.kill();
