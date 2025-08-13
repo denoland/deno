@@ -412,6 +412,7 @@ pub trait GraphLoaderReporter: Send + Sync {
   }
 }
 
+#[allow(clippy::disallowed_types)]
 pub type GraphLoaderReporterRc = crate::sync::MaybeArc<dyn GraphLoaderReporter>;
 
 pub struct DenoGraphLoaderOptions {

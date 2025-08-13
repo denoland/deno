@@ -309,10 +309,6 @@ impl ProgressBar {
   }
 
   pub fn new(style: ProgressBarStyle) -> Self {
-    eprintln!(
-      "ProgressBar::new, from {}",
-      std::backtrace::Backtrace::capture()
-    );
     Self {
       inner: ProgressBarInner::new(match style {
         ProgressBarStyle::DownloadBars => {

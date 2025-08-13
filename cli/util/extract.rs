@@ -1309,6 +1309,7 @@ Deno.test("file:///main.ts$3-8.ts", async ()=>{
         maybe_headers: None,
         mtime: None,
         source: test.input.source.as_bytes().into(),
+        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
       };
       let got_decoded = extract_doc_tests(file)
         .unwrap()
@@ -1546,6 +1547,7 @@ add('1', '2');
         maybe_headers: None,
         mtime: None,
         source: test.input.source.as_bytes().into(),
+        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
       };
       let got_decoded = extract_snippet_files(file)
         .unwrap()

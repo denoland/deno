@@ -496,7 +496,7 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   crate::util::draw_thread::DrawThread::show();
 
   // the actual work
-  crate::tools::pm::cache_top_level_deps(&factory, None).await?;
+  crate::tools::pm::cache_top_level_deps(factory, None).await?;
 
   // compute the summary info
   let snapshot = factory
@@ -583,8 +583,8 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   installed_normal_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
   installed_dev_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
 
-  if install_reporter.stats.intialized_npm.len() > 0
-    || install_reporter.stats.downloaded_jsr.len() > 0
+  if !install_reporter.stats.intialized_npm.is_empty()
+    || !install_reporter.stats.downloaded_jsr.is_empty()
   {
     log::info!(
       "Packages: {}",
