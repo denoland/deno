@@ -1323,13 +1323,13 @@ Buffer.prototype.readUintBE = Buffer.prototype.readUIntBE = function readUIntBE(
     return readUInt24BE(this, offset);
   }
   if (byteLength === 4) {
-    return readUInt32BE(offset);
+    return this.readUInt32BE(offset);
   }
   if (byteLength === 2) {
-    return readUInt16BE(offset);
+    return this.readUInt16BE(offset);
   }
   if (byteLength === 1) {
-    return readUInt8(offset);
+    return this.readUInt8(offset);
   }
 
   boundsError(byteLength, 6, "byteLength");
