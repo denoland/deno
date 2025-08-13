@@ -19,6 +19,7 @@ use deno_core::url::Url;
 use deno_graph::Dependency;
 use deno_resolver::file_fetcher::FetchOptions;
 use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
+use deno_resolver::loader::MemoryFilesRc;
 use log::error;
 use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
@@ -456,6 +457,7 @@ impl ModuleRegistry {
       Default::default(),
       http_cache.clone().into(),
       http_client_provider,
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
