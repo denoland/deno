@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -20,6 +21,7 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
@@ -168,6 +170,44 @@ pub fn to_lsp_range(referrer: &deno_graph::Range) -> lsp_types::Range {
   }
 }
 
+#[derive(Debug)]
+struct DidChangeBatchQueueEntry {
+  version: i32,
+  content_changes: Vec<TextDocumentContentChangeEvent>,
+}
+
+#[derive(Debug)]
+struct DidChangeBatchQueue {
+  uri: Uri,
+  entries: Mutex<VecDeque<(DidChangeBatchQueueEntry, CancellationToken)>>,
+}
+
+impl DidChangeBatchQueue {
+  fn new(uri: Uri) -> Self {
+    DidChangeBatchQueue {
+      uri,
+      entries: Default::default(),
+    }
+  }
+
+  fn enqueue(&self, entry: DidChangeBatchQueueEntry) -> CancellationToken {
+    let token = CancellationToken::new();
+    self.entries.lock().push_back((entry, token.clone()));
+    token
+  }
+
+  fn dequeue(&self) -> Option<DidChangeBatchQueueEntry> {
+    let (entry, token) = self.entries.lock().pop_front()?;
+    token.cancel();
+    Some(entry)
+  }
+
+  fn clear(&self) {
+    let entries = std::mem::take(&mut *self.entries.lock());
+    entries.into_iter().for_each(|(_, token)| token.cancel());
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct LanguageServer {
   client: Client,
@@ -179,6 +219,7 @@ pub struct LanguageServer {
   /// `workspace/configuration` requests in the `initialize` handler. See:
   /// https://github.com/Microsoft/language-server-protocol/issues/567#issuecomment-2085131917
   init_flag: AsyncFlag,
+  did_change_batch_queue: RefCell<Option<Arc<DidChangeBatchQueue>>>,
   performance: Arc<Performance>,
 }
 
@@ -321,6 +362,7 @@ impl LanguageServer {
         performance.clone(),
       ))),
       init_flag: Default::default(),
+      did_change_batch_queue: Default::default(),
       performance,
     }
   }
@@ -389,6 +431,7 @@ impl LanguageServer {
     let mark = self
       .performance
       .mark_with_args("lsp.cache", (&specifiers, &referrer));
+    *self.did_change_batch_queue.borrow_mut() = None;
     let prepare_cache_result = self.inner.write().await.prepare_cache(
       specifiers,
       referrer,
@@ -411,6 +454,7 @@ impl LanguageServer {
         }
 
         // now get the lock back to update with the new information
+        *self.did_change_batch_queue.borrow_mut() = None;
         self.inner.write().await.post_cache().await;
         self.performance.measure(mark);
       }
@@ -513,6 +557,7 @@ impl LanguageServer {
         for (folder_uri, _) in folders.as_ref() {
           folder_settings.push((folder_uri.clone(), configs.next().unwrap()));
         }
+        *self.did_change_batch_queue.borrow_mut() = None;
         self
           .inner
           .write()
@@ -1285,30 +1330,39 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn did_change(&mut self, params: DidChangeTextDocumentParams) {
-    let mark = self.performance.mark_with_args("lsp.did_change", &params);
+  fn did_change_batched(&mut self, batch_queue: Arc<DidChangeBatchQueue>) {
+    let mark = self
+      .performance
+      .mark_with_args("lsp.did_change_batched", &batch_queue.uri);
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if params
-      .text_document
+    if batch_queue
       .uri
       .scheme()
       .is_some_and(|s| s.eq_lowercase("deno"))
     {
+      batch_queue.clear();
       return;
     }
-    let document = match self.document_modules.change_document(
-      &params.text_document.uri,
-      params.text_document.version,
-      params.content_changes,
-    ) {
-      Ok(doc) => doc,
-      Err(err) => {
-        error!("{:#}", err);
-        return;
+    let mut document = None;
+    while let Some(entry) = batch_queue.dequeue() {
+      match self.document_modules.change_document(
+        &batch_queue.uri,
+        entry.version,
+        entry.content_changes,
+      ) {
+        Ok(doc) => {
+          document = Some(doc);
+        }
+        Err(err) => {
+          error!("{:#}", err);
+          return;
+        }
       }
-    };
-    if document.is_diagnosable() {
+    }
+    if let Some(document) = document
+      && document.is_diagnosable()
+    {
       self.refresh_dep_info();
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Modified)],
@@ -1321,7 +1375,7 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn did_save(&mut self, params: DidSaveTextDocumentParams) {
+  async fn did_save(&self, params: DidSaveTextDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.did_save");
     let Ok(Some(document)) = self
       .get_document(
@@ -1494,7 +1548,7 @@ impl Inner {
     }
   }
 
-  async fn notebook_did_save(&mut self, params: DidSaveNotebookDocumentParams) {
+  async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.notebook_did_save");
     let Some(cell_uris) = self
       .document_modules
@@ -3998,6 +4052,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .cache(specifiers, referrer, options.force_global_cache)
         .await
     } else if params.command == "deno.reloadImportRegistries" {
+      *self.did_change_batch_queue.borrow_mut() = None;
       self.inner.write().await.reload_import_registries().await
     } else {
       Ok(None)
@@ -4064,41 +4119,66 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self.inner.write().await.did_open(params);
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.did_change(params);
+    let (batch_queue, token) = {
+      let existing = self.did_change_batch_queue.borrow_mut().take();
+      let batch_queue = existing
+        .filter(|q| q.uri == params.text_document.uri)
+        .unwrap_or_else(|| {
+          Arc::new(DidChangeBatchQueue::new(params.text_document.uri))
+        });
+      let token = batch_queue.enqueue(DidChangeBatchQueueEntry {
+        version: params.text_document.version,
+        content_changes: params.content_changes,
+      });
+      *self.did_change_batch_queue.borrow_mut() = Some(batch_queue.clone());
+      (batch_queue, token)
+    };
+    tokio::select! {
+      biased;
+      _ = token.cancelled() => {}
+      mut inner = self.inner.write() => {
+        inner.did_change_batched(batch_queue);
+      }
+    }
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.did_save(params).await;
+    self.inner.read().await.did_save(params).await;
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self.inner.write().await.did_close(params);
   }
 
   async fn notebook_did_open(&self, params: DidOpenNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self.inner.write().await.notebook_did_open(params)
   }
 
   async fn notebook_did_change(&self, params: DidChangeNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self.inner.write().await.notebook_did_change(params)
   }
 
   async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.notebook_did_save(params).await
+    self.inner.read().await.notebook_did_save(params).await
   }
 
   async fn notebook_did_close(&self, params: DidCloseNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self.inner.write().await.notebook_did_close(params)
   }
 
@@ -4111,6 +4191,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       .performance
       .mark_with_args("lsp.did_change_configuration", &params);
     self.refresh_configuration().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self
       .inner
       .write()
@@ -4125,6 +4206,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: DidChangeWatchedFilesParams,
   ) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self
       .inner
       .write()
@@ -4141,12 +4223,14 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let mark = self
       .performance
       .mark_with_args("lsp.did_change_workspace_folders", &params);
+    *self.did_change_batch_queue.borrow_mut() = None;
     self
       .inner
       .write()
       .await
       .pre_did_change_workspace_folders(params);
     self.refresh_configuration().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self
       .inner
       .write()
