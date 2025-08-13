@@ -1849,8 +1849,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.355.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "775d2fde80a2ec3116d179703b38346a931bb9626f4a826148d5fe8631cab29f"
+source = "git+https://github.com/petamoriken/deno_core?branch=feat%2Fexport-dispatch-exception#240abafcd2e8155abbed0c9d44d02f0035364f26"
 dependencies = [
  "anyhow",
  "az",
@@ -2554,8 +2553,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.231.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ca530772bbcbc9ad389ad7bcd86623b2ec555f68a2d062d23cc008915cbe781"
+source = "git+https://github.com/petamoriken/deno_core?branch=feat%2Fexport-dispatch-exception#240abafcd2e8155abbed0c9d44d02f0035364f26"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro-rules",
@@ -2952,9 +2950,9 @@ dependencies = [
 
 [[package]]
 name = "deno_tunnel"
-version = "0.8.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbe45dacb6e0d2a646b22a12fea81ba2f7128202f9ee91602782b9208da123b9"
+checksum = "386488c23cda3d6f44d4fa5593a45346032902bbd5bf058e48077b85fb550f99"
 dependencies = [
  "pin-project",
  "quinn",
@@ -7927,8 +7925,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.264.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c34707712f3815e73e1c8319bba06e5bc105bb65fe812ea2e7279ffb905f6312"
+source = "git+https://github.com/petamoriken/deno_core?branch=feat%2Fexport-dispatch-exception#240abafcd2e8155abbed0c9d44d02f0035364f26"
 dependencies = [
  "deno_error",
  "num-bigint",
