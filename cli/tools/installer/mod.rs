@@ -441,7 +441,9 @@ impl crate::util::draw_thread::DrawThreadRenderer for InstallProgressBar {
       deno_terminal::colors::cyan(
         self.stats.downloaded_npm.get() + self.stats.downloaded_jsr.len()
       ),
-      deno_terminal::colors::cyan(self.stats.intialized_npm.len()),
+      deno_terminal::colors::cyan(
+        self.stats.intialized_npm.len() + self.stats.downloaded_jsr.len()
+      ),
       if self.done.lock().try_recv().is_ok()
         || self.done_for_sure.load(Ordering::Relaxed)
       {
@@ -479,20 +481,24 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
     .ensure_no_pkg_json_dep_errors()?;
   let npm_installer = factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
-  let install_reporter = factory.install_reporter()?.unwrap().clone();
 
+  // set up the custom progress bar
+  let install_reporter = factory.install_reporter()?.unwrap().clone();
   let (done_tx, done_rx) = tokio::sync::oneshot::channel();
-  let printy_thing = Arc::new(InstallProgressBar {
+  let progress_bar = Arc::new(InstallProgressBar {
     stats: install_reporter.stats.clone(),
     done: Mutex::new(done_rx),
     done_for_sure: AtomicBool::new(false),
   });
 
   let _guard =
-    crate::util::draw_thread::DrawThread::add_entry(printy_thing.clone());
+    crate::util::draw_thread::DrawThread::add_entry(progress_bar.clone());
   crate::util::draw_thread::DrawThread::show();
+
+  // the actual work
   crate::tools::pm::cache_top_level_deps(&factory, None).await?;
 
+  // compute the summary info
   let snapshot = factory
     .npm_resolver()
     .await?
@@ -577,19 +583,23 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   installed_normal_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
   installed_dev_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
 
-  if install_reporter.stats.intialized_npm.len() > 0 {
+  if install_reporter.stats.intialized_npm.len() > 0
+    || install_reporter.stats.downloaded_jsr.len() > 0
+  {
     log::info!(
       "Packages: {}",
       deno_terminal::colors::green(format!(
         "+{}",
         install_reporter.stats.intialized_npm.len()
+          + install_reporter.stats.downloaded_jsr.len()
       ))
     );
     log::info!(
       "{}",
-      deno_terminal::colors::green(
-        "+".repeat(install_reporter.stats.intialized_npm.len())
-      )
+      deno_terminal::colors::green("+".repeat(
+        install_reporter.stats.intialized_npm.len()
+          + install_reporter.stats.downloaded_jsr.len()
+      ))
     );
   }
 
@@ -607,7 +617,10 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
       install_reporter.stats.downloaded_npm.get()
         + install_reporter.stats.downloaded_jsr.len()
     ),
-    deno_terminal::colors::cyan(install_reporter.stats.intialized_npm.len()),
+    deno_terminal::colors::cyan(
+      install_reporter.stats.intialized_npm.len()
+        + install_reporter.stats.downloaded_jsr.len()
+    ),
   );
 
   log::info!("");
