@@ -13,6 +13,7 @@ const {
   MapPrototypeSet,
   ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectGetOwnPropertyDescriptors,
   ObjectPrototypeIsPrototypeOf,
   SafeMap,
   Symbol,
@@ -168,10 +169,13 @@ defineEnumerableProps(Event.prototype, EVENT_PROPS);
 // Accessors for non-public data
 
 /**
+ * TODO(petamoriken): Fix this!
  * @param {object} target
  */
 function setEventTargetData(target) {
+  const descriptors = ObjectGetOwnPropertyDescriptors(target);
   op_event_wrap_event_target(target);
+  ObjectDefineProperties(target, descriptors);
 }
 
 /**

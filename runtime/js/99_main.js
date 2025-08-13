@@ -898,7 +898,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     removeImportedOps();
 
     performance.setTimeOrigin();
-    event.setEventTargetData(performance);
+    event.setEventTargetData(performance.performance);
     globalThis_ = globalThis;
 
     // Remove bootstrapping data from the global scope
@@ -1035,7 +1035,7 @@ function bootstrapWorkerRuntime(
     closeOnIdle = runtimeOptions[14];
 
     performance.setTimeOrigin();
-    event.setEventTargetData(performance);
+    event.setEventTargetData(performance.performance);
     globalThis_ = globalThis;
 
     // Remove bootstrapping data from the global scope
