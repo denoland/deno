@@ -8,12 +8,10 @@ https://github.com/denoland/deno_install
 
 ### 2.4.4 / 2025.08.13
 
-- Revert "fix(ext/node): support TLS for unix sockets" (#30284)
-- feat(ci): migrate to Cirrus medium runners (#30070)
-- feat(ext/kv): allow specifying default path and path prefix (#30320)
-- feat(kv): implement custom inspect for AtomicOperation (#30077)
 - feat(unstable): add json repl (#30307)
 - feat(unstable): allow setting headers on EventSource (#30278)
+- feat(unstable): allow specifying default path and path prefix (#30320)
+- feat(unstable): implement custom inspect for AtomicOperation (#30077)
 - fix(bundle): require of sub directory in npm package should consult
   package.json (#30253)
 - fix(bundle): support importing directories with a package.json from an es
@@ -46,8 +44,6 @@ https://github.com/denoland/deno_install
 - fix(lsp): use referrer compiler options for node_modules files (#30275)
 - fix(publish): remove incorrect `relative-package-import` diagnostic when root
   of workspace is package (#30333)
-- fix(tests): use correct path separator on unix for code_cache cleanup.ts
-  (#30378)
 - fix(unstable): lint node properties should be enumerable (#30391)
 - fix(unstable): update deno_tunnel for better reconnect errors (#30381)
 - fix(update): update version reqs even if locked to latest version (#30249)
@@ -58,7 +54,7 @@ https://github.com/denoland/deno_install
 - fix: upgrade @node/types to 24 (#30343)
 - fix: upgrade deno_core to 0.355.0 (#30352)
 - perf(napi): misc napi optimizations (#30291)
-- perf: Use more efficient structuredClone API (#30258)
+- perf: use more efficient structuredClone API (#30258)
 - perf: reduce heap allocations and memory creating cjs wrapper module (#30344)
 
 ### 2.4.3 / 2025.07.30
