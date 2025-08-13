@@ -792,10 +792,9 @@ impl CliFactory {
             self.root_permissions_container()?.clone(),
             self.sys(),
             self.compiler_options_resolver()?.clone(),
-            self
-              .install_reporter()?
-              .cloned()
-              .map(|r| r as Arc<dyn deno_resolver::file_fetcher::GraphLoaderReporter>),
+            self.install_reporter()?.cloned().map(|r| {
+              r as Arc<dyn deno_resolver::file_fetcher::GraphLoaderReporter>
+            }),
           )))
         }
         .boxed_local(),
