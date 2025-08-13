@@ -1235,6 +1235,7 @@ Deno.test("Plugin - enumerable properties", () => {
     create() {
       return {
         Program(node) {
+          // deno-lint-ignore guard-for-in
           for (const k in node) {
             keys.push(k);
           }
