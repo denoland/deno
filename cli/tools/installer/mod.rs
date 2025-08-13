@@ -11,7 +11,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -21,7 +20,6 @@ use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_lib::args::CaData;
 use deno_path_util::resolve_url_or_path;
@@ -415,46 +413,6 @@ pub(crate) async fn install_from_entrypoints(
     .await
 }
 
-#[derive(Debug)]
-struct InstallProgressBar {
-  stats: Arc<InstallStats>,
-  done: Mutex<tokio::sync::oneshot::Receiver<()>>,
-  done_for_sure: AtomicBool,
-}
-
-impl crate::util::draw_thread::DrawThreadRenderer for InstallProgressBar {
-  fn render(&self, _size: &deno_runtime::ops::tty::ConsoleSize) -> String {
-    let done = self.done.lock().try_recv().is_ok()
-      || self.done_for_sure.load(Ordering::Relaxed);
-    if done {
-      self.done_for_sure.store(true, Ordering::Relaxed);
-      return "".to_string();
-    }
-    format!(
-      "Progress: resolved {}, reused: {}, downloaded: {}, added: {}{}",
-      deno_terminal::colors::cyan(
-        self.stats.resolved_npm.len() + self.stats.resolved_jsr.len()
-      ),
-      deno_terminal::colors::cyan(
-        self.stats.reused_npm.get() + self.stats.reused_jsr.len()
-      ),
-      deno_terminal::colors::cyan(
-        self.stats.downloaded_npm.get() + self.stats.downloaded_jsr.len()
-      ),
-      deno_terminal::colors::cyan(
-        self.stats.intialized_npm.len() + self.stats.downloaded_jsr.len()
-      ),
-      if self.done.lock().try_recv().is_ok()
-        || self.done_for_sure.load(Ordering::Relaxed)
-      {
-        ", done"
-      } else {
-        ""
-      }
-    )
-  }
-}
-
 async fn install_local(
   flags: Arc<Flags>,
   install_flags: InstallFlagsLocal,
@@ -484,16 +442,6 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
 
   // set up the custom progress bar
   let install_reporter = factory.install_reporter()?.unwrap().clone();
-  let (done_tx, done_rx) = tokio::sync::oneshot::channel();
-  let progress_bar = Arc::new(InstallProgressBar {
-    stats: install_reporter.stats.clone(),
-    done: Mutex::new(done_rx),
-    done_for_sure: AtomicBool::new(false),
-  });
-
-  let _guard =
-    crate::util::draw_thread::DrawThread::add_entry(progress_bar.clone());
-  crate::util::draw_thread::DrawThread::show();
 
   // the actual work
   crate::tools::pm::cache_top_level_deps(factory, None).await?;
@@ -556,9 +504,6 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
       }
     }
   }
-
-  done_tx.send(()).unwrap();
-  crate::util::draw_thread::DrawThread::hide();
 
   let mut installed_normal_deps = Vec::new();
   let mut installed_dev_deps = Vec::new();

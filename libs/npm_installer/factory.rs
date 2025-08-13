@@ -76,7 +76,7 @@ pub struct NpmInstallerFactory<
   resolver_factory: Arc<ResolverFactory<TSys>>,
   http_client: Arc<TNpmCacheHttpClient>,
   lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
-  reporter: Option<TReporter>,
+  reporter: TReporter,
   lockfile_npm_package_info_provider:
     Deferred<LockfileNpmPackageInfoApiAdapter>,
   npm_cache: Deferred<Arc<NpmCache<TSys>>>,
@@ -107,7 +107,7 @@ impl<
     resolver_factory: Arc<ResolverFactory<TSys>>,
     http_client: Arc<TNpmCacheHttpClient>,
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
-    reporter: Option<TReporter>,
+    reporter: TReporter,
     install_reporter: Option<Arc<dyn InstallReporter + 'static>>,
     options: NpmInstallerFactoryOptions,
   ) -> Self {
@@ -297,7 +297,7 @@ impl<
             self.resolver_factory.npm_resolution().clone(),
             self.npm_resolution_initializer().await?.clone(),
             self.npm_resolution_installer().await?.clone(),
-            self.reporter.as_ref(),
+            &self.reporter,
             workspace_factory.sys().clone(),
             self.tarball_cache()?.clone(),
             self.maybe_lockfile().await?.cloned(),

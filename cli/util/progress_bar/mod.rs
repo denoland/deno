@@ -286,19 +286,19 @@ pub struct ProgressBar {
 }
 
 impl deno_npm_installer::Reporter for ProgressBar {
-  type Guard = Option<UpdateGuard>;
-  type ClearGuard = Option<UpdateGuard>;
+  type Guard = UpdateGuard;
+  type ClearGuard = UpdateGuard;
 
   fn on_blocking(&self, message: &str) -> Self::Guard {
-    Some(self.update_with_prompt(ProgressMessagePrompt::Blocking, message))
+    self.update_with_prompt(ProgressMessagePrompt::Blocking, message)
   }
 
   fn on_initializing(&self, message: &str) -> Self::Guard {
-    Some(self.update_with_prompt(ProgressMessagePrompt::Initialize, message))
+    self.update_with_prompt(ProgressMessagePrompt::Initialize, message)
   }
 
   fn clear_guard(&self) -> Self::ClearGuard {
-    Some(self.deferred_keep_initialize_alive())
+    self.deferred_keep_initialize_alive()
   }
 }
 

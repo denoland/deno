@@ -90,7 +90,7 @@ pub struct LocalNpmPackageInstaller<
   npm_cache: Arc<NpmCache<TSys>>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider>,
-  reporter: Option<TReporter>,
+  reporter: TReporter,
   resolution: Arc<NpmResolutionCell>,
   sys: TSys,
   tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
@@ -144,7 +144,7 @@ impl<
     npm_cache: Arc<NpmCache<TSys>>,
     npm_package_extra_info_provider: Arc<NpmPackageExtraInfoProvider>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
-    reporter: Option<TReporter>,
+    reporter: TReporter,
     resolution: Arc<NpmResolutionCell>,
     sys: TSys,
     tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
@@ -206,7 +206,7 @@ impl<
     let single_process_lock = LaxSingleProcessFsFlag::lock(
       &self.sys,
       deno_local_registry_dir.join(".deno.lock"),
-      self.reporter.as_ref(),
+      &self.reporter,
       // similar message used by cargo build
       "waiting for file lock on node_modules directory",
     )
@@ -218,7 +218,7 @@ impl<
       deno_local_registry_dir.join(".setup-cache.bin"),
     );
 
-    let pb_clear_guard = self.reporter.as_ref().map(|r| r.clear_guard()); // prevent flickering
+    let pb_clear_guard = self.reporter.clear_guard(); // prevent flickering
 
     // 1. Write all the packages out the .deno directory.
     //
@@ -332,10 +332,7 @@ impl<
                 .ensure_package(&package.id.nv, dist)
                 .await
                 .map_err(JsErrorBox::from_err)?;
-              let pb_guard = self
-                .reporter
-                .as_ref()
-                .map(|r| r.on_initializing(&package.id.nv.to_string()));
+              let pb_guard = self.reporter.on_initializing(&package.id.nv.to_string());
               let _initialization_guard =
                 install_reporter.as_ref().map(|install_reporter| {
                   install_reporter.initializing(&package.id.nv);

@@ -611,7 +611,7 @@ pub struct ModuleGraphBuilder {
   npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  progress_bar: Option<ProgressBar>,
+  progress_bar: ProgressBar,
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
@@ -635,7 +635,7 @@ impl ModuleGraphBuilder {
     npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
-    progress_bar: Option<ProgressBar>,
+    progress_bar: ProgressBar,
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
@@ -684,10 +684,7 @@ impl ModuleGraphBuilder {
       }
     }
 
-    let _clear_guard = self
-      .progress_bar
-      .as_ref()
-      .map(|p| p.deferred_keep_initialize_alive());
+    let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),

@@ -1456,10 +1456,10 @@ impl ConfigData {
           .cloned()
           // will only happen in the tests
           .unwrap_or_else(|| Arc::new(HttpClientProvider::new(None, None))),
-        Some(pb.clone()),
+        pb.clone(),
       )),
       Arc::new(NullLifecycleScriptsExecutor),
-      Some(pb),
+      pb,
       None,
       NpmInstallerFactoryOptions {
         cache_setting: NpmCacheSetting::Use,

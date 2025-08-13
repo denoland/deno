@@ -314,7 +314,7 @@ struct CliFactoryServices {
   resolver_factory: Deferred<Arc<CliResolverFactory>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   root_permissions_container: Deferred<PermissionsContainer>,
-  text_only_progress_bar: Deferred<Option<ProgressBar>>,
+  text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
   install_reporter:
@@ -441,23 +441,11 @@ impl CliFactory {
     })
   }
 
-  pub fn text_only_progress_bar(
-    &self,
-  ) -> Result<Option<&ProgressBar>, AnyError> {
+  pub fn text_only_progress_bar(&self) -> &ProgressBar {
     self
       .services
       .text_only_progress_bar
-      .get_or_try_init(|| {
-        if matches!(
-          self.cli_options()?.sub_command(),
-          DenoSubcommand::Install(_)
-        ) {
-          Ok(None)
-        } else {
-          Ok(Some(ProgressBar::new(ProgressBarStyle::TextOnly)))
-        }
-      })
-      .map(|opt| opt.as_ref())
+      .get_or_init(|| ProgressBar::new(ProgressBarStyle::TextOnly))
   }
 
   pub fn global_http_cache(&self) -> Result<&Arc<GlobalHttpCache>, AnyError> {
@@ -504,15 +492,8 @@ impl CliFactory {
         CreateCliFileFetcherOptions {
           allow_remote: !cli_options.no_remote(),
           cache_setting: cli_options.cache_setting(),
-          download_log_level: if matches!(
-            cli_options.sub_command(),
-            DenoSubcommand::Install(_)
-          ) {
-            log::Level::Trace
-          } else {
-            log::Level::Info
-          },
-          progress_bar: self.text_only_progress_bar()?.cloned(),
+          download_log_level: log::Level::Info,
+          progress_bar: Some(self.text_only_progress_bar().clone()),
         },
       )))
     })
@@ -572,7 +553,7 @@ impl CliFactory {
         resolver_factory.clone(),
         Arc::new(CliNpmCacheHttpClient::new(
           self.http_client_provider().clone(),
-          self.text_only_progress_bar()?.cloned(),
+          self.text_only_progress_bar().clone(),
         )),
         match resolver_factory.npm_resolver()?.as_managed() {
           Some(managed_npm_resolver) => Arc::new(
@@ -581,7 +562,7 @@ impl CliFactory {
             as Arc<dyn LifecycleScriptsExecutor>,
           None => Arc::new(NullLifecycleScriptsExecutor),
         },
-        self.text_only_progress_bar()?.cloned(),
+        self.text_only_progress_bar().clone(),
         self
           .install_reporter()?
           .cloned()
@@ -608,7 +589,7 @@ impl CliFactory {
       .services
       .install_reporter
       .get_or_try_init(|| match self.cli_options()?.sub_command() {
-        DenoSubcommand::Install(_) => Ok(Some(Arc::new(
+        DenoSubcommand::Install(InstallFlags::Local(_)) => Ok(Some(Arc::new(
           crate::tools::installer::InstallReporter::new(),
         ))),
         _ => Ok(None),
@@ -787,7 +768,7 @@ impl CliFactory {
             self.npm_installer_if_managed().await?.cloned(),
             self.npm_resolver().await?.clone(),
             self.resolver_factory()?.parsed_source_cache().clone(),
-            self.text_only_progress_bar()?.cloned(),
+            self.text_only_progress_bar().clone(),
             self.resolver().await?.clone(),
             self.root_permissions_container()?.clone(),
             self.sys(),
@@ -866,7 +847,7 @@ impl CliFactory {
             cli_options.clone(),
             self.maybe_lockfile().await?.cloned(),
             self.module_graph_builder().await?.clone(),
-            self.text_only_progress_bar()?.cloned(),
+            self.text_only_progress_bar().clone(),
             self.type_checker().await?.clone(),
           )))
         }

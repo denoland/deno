@@ -861,7 +861,7 @@ impl<'a> ResolverFactory<'a> {
       let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
       let npm_client = Arc::new(CliNpmCacheHttpClient::new(
         http_client_provider.clone(),
-        Some(pb.clone()),
+        pb.clone(),
       ));
       let registry_info_provider = Arc::new(CliNpmRegistryInfoProvider::new(
         npm_cache.clone(),
@@ -917,7 +917,7 @@ impl<'a> ResolverFactory<'a> {
         self.services.npm_resolution.clone(),
         npm_resolution_initializer.clone(),
         npm_resolution_installer,
-        Some(&pb),
+        &pb,
         sys.clone(),
         tarball_cache.clone(),
         maybe_lockfile,

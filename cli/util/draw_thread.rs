@@ -92,7 +92,6 @@ impl DrawThread {
     log::log_enabled!(log::Level::Info) && *IS_TTY_WITH_CONSOLE_SIZE
   }
 
-  #[must_use]
   /// Adds a renderer to the draw thread.
   pub fn add_entry(renderer: Arc<dyn DrawThreadRenderer>) -> DrawThreadGuard {
     let internal_state = &*INTERNAL_STATE;

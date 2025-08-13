@@ -170,7 +170,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     npm_resolution_installer: Arc<
       NpmResolutionInstaller<TNpmCacheHttpClient, TSys>,
     >,
-    reporter: Option<&TReporter>,
+    reporter: &TReporter,
     sys: TSys,
     tarball_cache: Arc<deno_npm_cache::TarballCache<TNpmCacheHttpClient, TSys>>,
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
@@ -191,7 +191,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
             workspace_link_packages,
           )),
           npm_install_deps_provider.clone(),
-          reporter.map(|r| dyn_clone::clone(r)),
+          dyn_clone::clone(reporter),
           npm_resolution.clone(),
           sys,
           tarball_cache,

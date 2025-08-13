@@ -261,9 +261,8 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
     && let Some(npm_installer) = factory.npm_installer_if_managed().await?
   {
     let _clear_guard = factory
-      .text_only_progress_bar()?
-      .as_ref()
-      .map(|pb| pb.deferred_keep_initialize_alive());
+      .text_only_progress_bar()
+      .deferred_keep_initialize_alive();
     let already_done = npm_installer
       .ensure_top_level_package_json_install()
       .await?;

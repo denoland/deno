@@ -514,7 +514,7 @@ async fn dep_manager_args(
     npm_fetch_resolver,
     npm_resolver: factory.npm_resolver().await?.clone(),
     npm_installer: factory.npm_installer().await?.clone(),
-    progress_bar: factory.text_only_progress_bar()?.cloned(),
+    progress_bar: factory.text_only_progress_bar().clone(),
     permissions_container: factory.root_permissions_container()?.clone(),
     main_module_graph_container: factory
       .main_module_graph_container()
