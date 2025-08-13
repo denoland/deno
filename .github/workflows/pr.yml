@@ -1,4 +1,4 @@
-name: 'Lint PR title'
+name: 'pr'
 
 on:
   pull_request_target:
@@ -9,10 +9,10 @@ on:
 
 jobs:
   main:
-    name: Validate PR title
+    name: lint title
     runs-on: ubuntu-latest
     steps:
-      - name: Install deno
+      - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: canary
