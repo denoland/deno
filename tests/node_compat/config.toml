@@ -808,7 +808,9 @@
 "parallel/test-nodeeventtarget.js" = {}
 "parallel/test-os-eol.js" = {}
 "parallel/test-os-homedir-no-envvar.js" = {}
-"parallel/test-os-process-priority.js" = { flaky = true }
+# NB(Tango992): Fails on CI specifically on macos-aarch64.
+# Seems like the process priority can't be set correctly on CI.
+# "parallel/test-os-process-priority.js" = {}
 "parallel/test-os-userinfo-handles-getter-errors.js" = {}
 "parallel/test-os.js" = {}
 "parallel/test-outgoing-message-destroy.js" = {}
