@@ -22,24 +22,30 @@
 
 "use strict";
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+
+const { internalRidSymbol } = core;
 const {
+  ArrayIsArray,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectSetPrototypeOf,
   ReflectApply,
   RegExp,
+  StringPrototypeReplace,
   Symbol,
   SymbolFor,
 } = primordials;
 
+import {
+  kStreamBaseField,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { setImmediate } from "node:timers";
 import assert from "ext:deno_node/internal/assert.mjs";
 import crypto from "node:crypto";
 import EE from "node:events";
 import net from "node:net";
-// import tls from "node:tls";
 import common from "node:_tls_common";
 // import { kReinitializeHandle } from "deno_node:internal/net.ts";
 import { Buffer } from "node:buffer";
@@ -50,7 +56,10 @@ let debug = debuglog("net", (fn) => {
 });
 
 import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
-import { isAnyArrayBuffer } from "ext:deno_node/internal/util/types.ts";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "ext:deno_node/internal/util/types.ts";
 
 import {
   constants as TCPConstants,
@@ -80,7 +89,7 @@ const {
   ERR_TLS_SESSION_ATTACK,
   ERR_TLS_SNI_FROM_SERVER,
 } = codes;
-// const { onpskexchange: kOnPskExchange } = internalBinding('symbols');
+const kOnPskExchange = Symbol("onpskexchange");
 import {
   getAllowUnauthorized,
   getOptionValue,
@@ -95,9 +104,6 @@ import {
   validateString,
   validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
-// const {
-//  InternalX509Certificate,
-// } = require('internal/crypto/x509');
 import { InternalX509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 const traceTls = getOptionValue("--trace-tls");
 const tlsKeylog = getOptionValue("--tls-keylog");
@@ -116,6 +122,10 @@ const kPendingSession = Symbol("pendingSession");
 const kIsVerified = Symbol("verified");
 
 const noop = () => {};
+
+function canonicalizeIP(ip) {
+  return net.isIPv6(ip) ? `[${ip}]` : ip;
+}
 
 let ipServernameWarned = false;
 let tlsTracingWarned = false;
@@ -556,116 +566,662 @@ function initRead(tlsSocket, socket) {
 /**
  * Provides a wrap of socket stream to do encrypted communication.
  */
+class TLSSocket extends net.Socket {
+  constructor(socket, opts) {
+    const tlsOptions = { ...opts };
+    let enableTrace = tlsOptions.enableTrace;
 
-function TLSSocket(socket, opts) {
-  const tlsOptions = { ...opts };
-  let enableTrace = tlsOptions.enableTrace;
+    if (enableTrace == null) {
+      enableTrace = traceTls;
 
-  if (enableTrace == null) {
-    enableTrace = traceTls;
-
-    if (enableTrace && !tlsTracingWarned) {
-      tlsTracingWarned = true;
-      process.emitWarning(
-        "Enabling --trace-tls can expose sensitive data in " +
-          "the resulting log.",
-      );
-    }
-  } else {
-    validateBoolean(enableTrace, "options.enableTrace");
-  }
-
-  if (tlsOptions.ALPNProtocols) {
-    tls.convertALPNProtocols(tlsOptions.ALPNProtocols, tlsOptions);
-  }
-
-  this._tlsOptions = tlsOptions;
-  this._secureEstablished = false;
-  this._securePending = false;
-  this._newSessionPending = false;
-  this._controlReleased = false;
-  this.secureConnecting = true;
-  this._SNICallback = null;
-  this[kALPNCallback] = null;
-  this.servername = null;
-  this.alpnProtocol = null;
-  this.authorized = false;
-  this.authorizationError = null;
-  this[kRes] = null;
-  this[kIsVerified] = false;
-  this[kPendingSession] = null;
-
-  let wrap;
-  let handle;
-  let wrapHasActiveWriteFromPrevOwner;
-
-  if (socket) {
-    if (socket instanceof net.Socket && socket._handle) {
-      // 1. connected socket
-      wrap = socket;
+      if (enableTrace && !tlsTracingWarned) {
+        tlsTracingWarned = true;
+        process.emitWarning(
+          "Enabling --trace-tls can expose sensitive data in " +
+            "the resulting log.",
+        );
+      }
     } else {
-      // 2. socket has no handle so it is js not c++
-      // 3. unconnected sockets are wrapped
-      // TLS expects to interact from C++ with a net.Socket that has a C++ stream
-      // handle, but a JS stream doesn't have one. Wrap it up to make it look like
-      // a socket.
-      // wrap = new JSStreamSocket(socket);
-      throw new TypeError("JSStreamSocket not implemented");
+      validateBoolean(enableTrace, "options.enableTrace");
     }
 
-    handle = wrap._handle;
-    wrapHasActiveWriteFromPrevOwner = wrap.writableLength > 0;
-  } else {
-    // 4. no socket, one will be created with net.Socket().connect
-    wrap = null;
-    wrapHasActiveWriteFromPrevOwner = false;
-  }
+    if (tlsOptions.ALPNProtocols) {
+      convertALPNProtocols(tlsOptions.ALPNProtocols, tlsOptions);
+    }
 
-  // Just a documented property to make secure sockets
-  // distinguishable from regular ones.
-  this.encrypted = true;
+    let wrap;
+    let handle;
+    let wrapHasActiveWriteFromPrevOwner;
 
-  ReflectApply(net.Socket, this, [{
-    handle: this._wrapHandle(wrap, handle, wrapHasActiveWriteFromPrevOwner),
-    allowHalfOpen: socket ? socket.allowHalfOpen : tlsOptions.allowHalfOpen,
-    pauseOnCreate: tlsOptions.pauseOnConnect,
-    manualStart: true,
-    highWaterMark: tlsOptions.highWaterMark,
-    onread: !socket ? tlsOptions.onread : null,
-    signal: tlsOptions.signal,
-  }]);
-
-  // Proxy for API compatibility
-  this.ssl = this._handle; // C++ TLSWrap object
-
-  this.on("error", this._tlsError);
-
-  this._init(socket, wrap);
-
-  if (enableTrace && this._handle) {
-    this._handle.enableTrace();
-  }
-
-  if (wrapHasActiveWriteFromPrevOwner) {
-    // `wrap` is a streams.Writable in JS. This empty write will be queued
-    // and hence finish after all existing writes, which is the timing
-    // we want to start to send any tls data to `wrap`.
-    wrap.write("", (err) => {
-      if (err) {
-        debug("error got before writing any tls data to the underlying stream");
-        this.destroy(err);
-        return;
+    if (socket) {
+      if (socket instanceof net.Socket && socket._handle) {
+        // 1. connected socket
+        wrap = socket;
+      } else {
+        // 2. socket has no handle so it is js not c++
+        // 3. unconnected sockets are wrapped
+        // TLS expects to interact from C++ with a net.Socket that has a C++ stream
+        // handle, but a JS stream doesn't have one. Wrap it up to make it look like
+        // a socket.
+        // wrap = new JSStreamSocket(socket);
+        throw new TypeError("JSStreamSocket not implemented");
       }
 
-      this._handle.writesIssuedByPrevListenerDone();
+      handle = wrap._handle;
+      wrapHasActiveWriteFromPrevOwner = wrap.writableLength > 0;
+    } else {
+      // 4. no socket, one will be created with net.Socket().connect
+      wrap = null;
+      wrapHasActiveWriteFromPrevOwner = false;
+    }
+
+    // Just a documented property to make secure sockets
+    // distinguishable from regular ones.
+    const encrypted = true;
+    const e = _wrapHandle(
+      tlsOptions,
+      wrap,
+      handle,
+      wrapHasActiveWriteFromPrevOwner,
+    );
+    super({
+      handle: e.res,
+      allowHalfOpen: socket ? socket.allowHalfOpen : tlsOptions.allowHalfOpen,
+      pauseOnCreate: tlsOptions.pauseOnConnect,
+      manualStart: true,
+      highWaterMark: tlsOptions.highWaterMark,
+      onread: !socket ? tlsOptions.onread : null,
+      signal: tlsOptions.signal,
     });
+
+    this[kRes] = null;
+
+    this._tlsOptions = tlsOptions;
+
+    this[kRes] = this._handle;
+    defineHandleReading(this, e.handle);
+
+    /**
+     * @param {null|net.Socket} wrap
+     * @param {null|object} handle
+     * @param {boolean} wrapHasActiveWriteFromPrevOwner
+     * @returns {object}
+     */
+    function _wrapHandle(
+      options,
+      wrap,
+      handle,
+      wrapHasActiveWriteFromPrevOwner,
+    ) {
+      if (!handle) {
+        handle = options.pipe
+          ? new Pipe(PipeConstants.SOCKET)
+          : new TCP(TCPConstants.SOCKET);
+        handle[owner_symbol] = this;
+      }
+
+      // Wrap socket's handle
+      const context = options.secureContext ||
+        options.credentials ||
+        common.createSecureContext(options);
+      // assert(handle.isStreamBase, "handle must be a StreamBase");
+      // if (!(context.context instanceof NativeSecureContext)) {
+      //  throw new ERR_TLS_INVALID_CONTEXT("context");
+      // }
+
+      const res = op_tls_wrap(
+        handle,
+        context.context ?? {},
+        !!options.isServer,
+        wrapHasActiveWriteFromPrevOwner,
+      );
+      res._parent = handle; // C++ "wrap" object: TCPWrap, JSStream, ...
+      res._parentWrap = wrap; // JS object: net.Socket, JSStreamSocket, ...
+      res._secureContext = context;
+      res.reading = handle.reading;
+
+      // Guard against adding multiple listeners, as this method may be called
+      // repeatedly on the same socket by reinitializeHandle
+      //if (this.listenerCount("close", onSocketCloseDestroySSL) === 0) {
+      //  this.on("close", onSocketCloseDestroySSL);
+      //}
+
+      if (wrap) {
+        wrap.on("close", () => this.destroy());
+      }
+
+      return { res, handle };
+    }
+
+    // Initialize remaining properties
+    this._secureEstablished = false;
+    this._securePending = false;
+    this._newSessionPending = false;
+    this._controlReleased = false;
+    this.secureConnecting = true;
+    this._SNICallback = null;
+    this[kALPNCallback] = null;
+    this.servername = null;
+    this.alpnProtocol = null;
+    this.authorized = false;
+    this.authorizationError = null;
+    this[kIsVerified] = false;
+    this[kPendingSession] = null;
+    this.encrypted = encrypted;
+
+    // Proxy for API compatibility
+    this.ssl = this._handle; // C++ TLSWrap object
+
+    this.on("error", this._tlsError);
+
+    this._init(socket, wrap);
+
+    if (enableTrace && this._handle) {
+      this._handle.enableTrace();
+    }
+
+    if (wrapHasActiveWriteFromPrevOwner) {
+      // `wrap` is a streams.Writable in JS. This empty write will be queued
+      // and hence finish after all existing writes, which is the timing
+      // we want to start to send any tls data to `wrap`.
+      wrap.write("", (err) => {
+        if (err) {
+          debug(
+            "error got before writing any tls data to the underlying stream",
+          );
+          this.destroy(err);
+          return;
+        }
+
+        this._handle.writesIssuedByPrevListenerDone();
+      });
+    }
+
+    // Read on next tick so the caller has a chance to setup listeners
+    process.nextTick(initRead, this, socket);
   }
 
-  // Read on next tick so the caller has a chance to setup listeners
-  process.nextTick(initRead, this, socket);
+  disableRenegotiation() {
+    this[kDisableRenegotiation] = true;
+  }
+
+  _destroySSL() {
+    if (!this.ssl) return;
+    this.ssl.destroySSL();
+    if (this.ssl._secureContext.singleUse) {
+      this.ssl._secureContext.context.close();
+      this.ssl._secureContext.context = null;
+    }
+    this.ssl = null;
+    this[kPendingSession] = null;
+    this[kIsVerified] = false;
+  }
+
+  _init(socket, wrap) {
+    const options = this._tlsOptions;
+    const ssl = this._handle;
+    this.server = options.server;
+
+    debug("%s _init", options.isServer ? "server" : "client", "handle?", !!ssl);
+
+    // Clients (!isServer) always request a cert, servers request a client cert
+    // only on explicit configuration.
+    const requestCert = !!options.requestCert || !options.isServer;
+    const rejectUnauthorized = !!options.rejectUnauthorized;
+
+    this._requestCert = requestCert;
+    this._rejectUnauthorized = rejectUnauthorized;
+    if (requestCert || rejectUnauthorized) {
+      ssl.setVerifyMode(requestCert, rejectUnauthorized);
+    }
+
+    // Only call .onkeylog if there is a keylog listener.
+    ssl.onkeylog = onkeylog;
+
+    if (this.listenerCount("newListener", keylogNewListener) === 0) {
+      this.on("newListener", keylogNewListener);
+    }
+
+    if (options.isServer) {
+      ssl.onhandshakestart = onhandshakestart;
+      ssl.onhandshakedone = onhandshakedone;
+      ssl.onclienthello = loadSession;
+      ssl.oncertcb = loadSNI;
+      ssl.onnewsession = onnewsession;
+      ssl.lastHandshakeTime = 0;
+      ssl.handshakes = 0;
+
+      if (options.ALPNCallback) {
+        validateFunction(options.ALPNCallback, "options.ALPNCallback");
+        this[kALPNCallback] = options.ALPNCallback;
+        ssl.ALPNCallback = callALPNCallback;
+        ssl.enableALPNCb();
+      }
+
+      if (this.server) {
+        if (
+          this.server.listenerCount("resumeSession") > 0 ||
+          this.server.listenerCount("newSession") > 0
+        ) {
+          // Also starts the client hello parser as a side effect.
+          ssl.enableSessionCallbacks();
+        }
+        if (this.server.listenerCount("OCSPRequest") > 0) {
+          ssl.enableCertCb();
+        }
+      }
+    } else {
+      ssl.onhandshakestart = noop;
+      ssl.onhandshakedone = () => {
+        debug("client onhandshakedone");
+        this._finishInit();
+      };
+      ssl.onocspresponse = onocspresponse;
+
+      if (options.session) {
+        ssl.setSession(options.session);
+      }
+
+      ssl.onnewsession = onnewsessionclient;
+
+      // Only call .onnewsession if there is a session listener.
+      if (this.listenerCount("newListener", newListener) === 0) {
+        this.on("newListener", newListener);
+      }
+    }
+
+    if (tlsKeylog) {
+      if (warnOnTlsKeylog) {
+        warnOnTlsKeylog = false;
+        process.emitWarning(
+          "Using --tls-keylog makes TLS connections insecure " +
+            "by writing secret key material to file " + tlsKeylog,
+        );
+      }
+      this.on("keylog", (line) => {
+        appendFile(tlsKeylog, line, { mode: 0o600 }, (err) => {
+          if (err && warnOnTlsKeylogError) {
+            warnOnTlsKeylogError = false;
+            process.emitWarning(
+              "Failed to write TLS keylog (this warning " +
+                "will not be repeated): " + err,
+            );
+          }
+        });
+      });
+    }
+
+    ssl.onerror = onerror;
+
+    // If custom SNICallback was given, or if
+    // there're SNI contexts to perform match against -
+    // set `.onsniselect` callback.
+    if (
+      options.isServer &&
+      options.SNICallback &&
+      (options.SNICallback !== SNICallback ||
+        (options.server && options.server._contexts.length))
+    ) {
+      validateFunction(options.SNICallback, "options.SNICallback");
+      this._SNICallback = options.SNICallback;
+      ssl.enableCertCb();
+    }
+
+    if (options.ALPNProtocols) {
+      ssl.setALPNProtocols(options.ALPNProtocols);
+    }
+
+    if (options.pskCallback && ssl.enablePskCallback) {
+      validateFunction(options.pskCallback, "pskCallback");
+
+      ssl[kOnPskExchange] = options.isServer
+        ? onPskServerCallback
+        : onPskClientCallback;
+
+      this[kPskCallback] = options.pskCallback;
+      ssl.enablePskCallback();
+
+      if (options.pskIdentityHint) {
+        validateString(options.pskIdentityHint, "options.pskIdentityHint");
+        ssl.setPskIdentityHint(options.pskIdentityHint);
+      }
+    }
+
+    // We can only come here via [kWrapConnectedHandle]() call that happens
+    // if the connection is established with `autoSelectFamily` set to `true`.
+    const connectOptions = this[kConnectOptions];
+    if (!options.isServer && connectOptions) {
+      if (connectOptions.servername) {
+        this.setServername(connectOptions.servername);
+      }
+    }
+
+    if (options.handshakeTimeout > 0) {
+      this.setTimeout(options.handshakeTimeout, this._handleTimeout);
+    }
+
+    if (socket instanceof net.Socket) {
+      this._parent = socket;
+
+      // To prevent assertion in afterConnect() and properly kick off readStart
+      this.connecting = socket.connecting || !socket._handle;
+      socket.once("connect", () => {
+        this.connecting = false;
+        this.emit("connect");
+      });
+    }
+
+    // Assume `tls.connect()`
+    if (wrap) {
+      wrap.on("error", (err) => this._emitTLSError(err));
+    } else {
+      assert(!socket);
+      this.connecting = true;
+    }
+  }
+
+  renegotiate(options, callback) {
+    validateObject(options, "options");
+    if (callback !== undefined) {
+      validateFunction(callback, "callback");
+    }
+
+    debug(
+      "%s renegotiate()",
+      this._tlsOptions.isServer ? "server" : "client",
+      "destroyed?",
+      this.destroyed,
+    );
+
+    if (this.destroyed) {
+      return;
+    }
+
+    let requestCert = !!this._requestCert;
+    let rejectUnauthorized = !!this._rejectUnauthorized;
+
+    if (options.requestCert !== undefined) {
+      requestCert = !!options.requestCert;
+    }
+    if (options.rejectUnauthorized !== undefined) {
+      rejectUnauthorized = !!options.rejectUnauthorized;
+    }
+
+    if (
+      requestCert !== this._requestCert ||
+      rejectUnauthorized !== this._rejectUnauthorized
+    ) {
+      this._handle.setVerifyMode(requestCert, rejectUnauthorized);
+      this._requestCert = requestCert;
+      this._rejectUnauthorized = rejectUnauthorized;
+    }
+    // Ensure that we'll cycle through internal openssl's state
+    this.write("");
+
+    try {
+      this._handle.renegotiate();
+    } catch (err) {
+      if (callback) {
+        process.nextTick(callback, err);
+      }
+      return false;
+    }
+
+    // Ensure that we'll cycle through internal openssl's state
+    this.write("");
+
+    if (callback) {
+      this.once("secure", () => callback(null));
+    }
+
+    return true;
+  }
+
+  exportKeyingMaterial(length, label, context) {
+    validateUint32(length, "length", true);
+    validateString(label, "label");
+    if (context !== undefined) {
+      validateBuffer(context, "context");
+    }
+
+    if (!this._secureEstablished) {
+      throw new ERR_TLS_INVALID_STATE();
+    }
+
+    return this._handle.exportKeyingMaterial(length, label, context);
+  }
+
+  setMaxSendFragment(size) {
+    validateInt32(size, "size");
+    return this._handle.setMaxSendFragment(size) === 1;
+  }
+
+  _handleTimeout() {
+    this._emitTLSError(new ERR_TLS_HANDSHAKE_TIMEOUT());
+  }
+
+  _emitTLSError(err) {
+    const e = this._tlsError(err);
+    if (e) {
+      this.emit("error", e);
+    }
+  }
+
+  _tlsError(err) {
+    this.emit("_tlsError", err);
+    if (this._controlReleased) {
+      return err;
+    }
+    return null;
+  }
+
+  _releaseControl() {
+    if (this._controlReleased) {
+      return false;
+    }
+    this._controlReleased = true;
+    this.removeListener("error", this._tlsError);
+    return true;
+  }
+
+  _finishInit() {
+    // Guard against getting onhandshakedone() after .destroy().
+    // * 1.2: If destroy() during onocspresponse(), then write of next handshake
+    // record fails, the handshake done info callbacks does not occur, and the
+    // socket closes.
+    // * 1.3: The OCSP response comes in the same record that finishes handshake,
+    // so even after .destroy(), the handshake done info callback occurs
+    // immediately after onocspresponse(). Ignore it.
+    if (!this._handle) {
+      return;
+    }
+
+    this.alpnProtocol = this._handle.getALPNNegotiatedProtocol();
+    // The servername could be set by TLSWrap::SelectSNIContextCallback().
+    if (this.servername === null) {
+      this.servername = this._handle.getServername();
+    }
+
+    debug(
+      "%s _finishInit",
+      this._tlsOptions.isServer ? "server" : "client",
+      "handle?",
+      !!this._handle,
+      "alpn",
+      this.alpnProtocol,
+      "servername",
+      this.servername,
+    );
+
+    this._secureEstablished = true;
+    if (this._tlsOptions.handshakeTimeout > 0) {
+      this.setTimeout(0, this._handleTimeout);
+    }
+    this.emit("secure");
+  }
+
+  _start() {
+    debug(
+      "%s _start",
+      this._tlsOptions.isServer ? "server" : "client",
+      "handle?",
+      !!this._handle,
+      "connecting?",
+      this.connecting,
+      "requestOCSP?",
+      !!this._tlsOptions.requestOCSP,
+    );
+    if (this.connecting) {
+      this.once("connect", this._start);
+      return;
+    }
+
+    // Socket was destroyed before the connection was established
+    if (!this._handle) {
+      return;
+    }
+
+    const parent = this._handle._parent[kStreamBaseField];
+    this._handle._parent._rid = parent[internalRidSymbol];
+    if (this._tlsOptions.requestOCSP) {
+      this._handle.requestOCSP();
+    }
+    this._handle.start();
+    this._handle.handshake();
+  }
+
+  setServername(name) {
+    validateString(name, "name");
+
+    if (this._tlsOptions.isServer) {
+      throw new ERR_TLS_SNI_FROM_SERVER();
+    }
+
+    this._handle.setServername(name);
+  }
+
+  setSession(session) {
+    if (typeof session === "string") {
+      session = Buffer.from(session, "latin1");
+    }
+    this._handle.setSession(session);
+  }
+
+  getPeerCertificate(detailed) {
+    if (this._handle) {
+      return common.translatePeerCertificate(
+        this._handle.getPeerCertificate(detailed),
+      ) || {};
+    }
+
+    return null;
+  }
+
+  getCertificate() {
+    if (this._handle) {
+      // It's not a peer cert, but the formatting is identical.
+      return common.translatePeerCertificate(
+        this._handle.getCertificate(),
+      ) || {};
+    }
+
+    return null;
+  }
+
+  getPeerX509Certificate(detailed) {
+    const cert = this._handle?.getPeerX509Certificate();
+    return cert ? new InternalX509Certificate(cert) : undefined;
+  }
+
+  getX509Certificate() {
+    const cert = this._handle?.getX509Certificate();
+    return cert ? new InternalX509Certificate(cert) : undefined;
+  }
+
+  setKeyCert(context) {
+    if (this._handle) {
+      let secureContext;
+      if (context instanceof common.SecureContext) {
+        secureContext = context;
+      } else {
+        secureContext = common.createSecureContext(context);
+      }
+      this._handle.setKeyCert(secureContext.context);
+    }
+  }
+
+  // Proxy methods from handles
+  getCipher(...args) {
+    if (this._handle) {
+      return ReflectApply(this._handle.getCipher, this._handle, args);
+    }
+    return null;
+  }
+
+  getSharedSigalgs(...args) {
+    if (this._handle) {
+      return ReflectApply(this._handle.getSharedSigalgs, this._handle, args);
+    }
+    return null;
+  }
+
+  getEphemeralKeyInfo(...args) {
+    if (this._handle) {
+      return ReflectApply(this._handle.getEphemeralKeyInfo, this._handle, args);
+    }
+    return null;
+  }
+
+  getFinished(...args) {
+    if (this._handle) {
+      return ReflectApply(this._handle.getFinished, this._handle, args);
+    }
+    return null;
+  }
+
+  getPeerFinished(...args) {
+    if (this._handle) {
+      return ReflectApply(this._handle.getPeerFinished, this._handle, args);
+    }
+    return null;
+  }
+
+  getProtocol(...args) {
+    if (this._handle) {
+      return ReflectApply(this._handle.getProtocol, this._handle, args);
+    }
+    return null;
+  }
+
+  getSession(...args) {
+    if (this._handle) {
+      return ReflectApply(this._handle.getSession, this._handle, args);
+    }
+    return null;
+  }
+
+  getTLSTicket(...args) {
+    if (this._handle) {
+      return ReflectApply(this._handle.getTLSTicket, this._handle, args);
+    }
+    return null;
+  }
+
+  isSessionReused(...args) {
+    if (this._handle) {
+      return ReflectApply(this._handle.isSessionReused, this._handle, args);
+    }
+    return null;
+  }
+
+  enableTrace(...args) {
+    if (this._handle) {
+      return ReflectApply(this._handle.enableTrace, this._handle, args);
+    }
+    return null;
+  }
 }
-ObjectSetPrototypeOf(TLSSocket.prototype, net.Socket.prototype);
-ObjectSetPrototypeOf(TLSSocket, net.Socket);
+
 export { TLSSocket };
 
 const proxiedMethods = [
@@ -739,65 +1295,6 @@ TLSWrap.prototype.close = function close(cb) {
   return this._parent.close(done);
 };
 
-TLSSocket.prototype.disableRenegotiation = function disableRenegotiation() {
-  this[kDisableRenegotiation] = true;
-};
-
-/**
- * @param {null|net.Socket} wrap
- * @param {null|object} handle
- * @param {boolean} wrapHasActiveWriteFromPrevOwner
- * @returns {object}
- */
-TLSSocket.prototype._wrapHandle = function (
-  wrap,
-  handle,
-  wrapHasActiveWriteFromPrevOwner,
-) {
-  const options = this._tlsOptions;
-  if (!handle) {
-    handle = options.pipe
-      ? new Pipe(PipeConstants.SOCKET)
-      : new TCP(TCPConstants.SOCKET);
-    handle[owner_symbol] = this;
-  }
-
-  // Wrap socket's handle
-  const context = options.secureContext ||
-    options.credentials ||
-    common.createSecureContext(options);
-  // assert(handle.isStreamBase, "handle must be a StreamBase");
-  // if (!(context.context instanceof NativeSecureContext)) {
-  //  throw new ERR_TLS_INVALID_CONTEXT("context");
-  // }
-
-  console.log(handle);
-  const res = op_tls_wrap(
-    handle,
-    context.context ?? {},
-    !!options.isServer,
-    wrapHasActiveWriteFromPrevOwner,
-  );
-  res._parent = handle; // C++ "wrap" object: TCPWrap, JSStream, ...
-  res._parentWrap = wrap; // JS object: net.Socket, JSStreamSocket, ...
-  res._secureContext = context;
-  res.reading = handle.reading;
-  this[kRes] = res;
-  defineHandleReading(this, handle);
-
-  // Guard against adding multiple listeners, as this method may be called
-  // repeatedly on the same socket by reinitializeHandle
-  if (this.listenerCount("close", onSocketCloseDestroySSL) === 0) {
-    this.on("close", onSocketCloseDestroySSL);
-  }
-
-  if (wrap) {
-    wrap.on("close", () => this.destroy());
-  }
-
-  return res;
-};
-
 /*TLSSocket.prototype[kReinitializeHandle] = function reinitializeHandle(handle) {
   const originalServername = this.ssl ? this._handle.getServername() : null;
   const originalSession = this.ssl ? this._handle.getSession() : null;
@@ -845,18 +1342,6 @@ function destroySSL(self) {
   self._destroySSL();
 }
 
-TLSSocket.prototype._destroySSL = function _destroySSL() {
-  if (!this.ssl) return;
-  this.ssl.destroySSL();
-  if (this.ssl._secureContext.singleUse) {
-    this.ssl._secureContext.context.close();
-    this.ssl._secureContext.context = null;
-  }
-  this.ssl = null;
-  this[kPendingSession] = null;
-  this[kIsVerified] = false;
-};
-
 function keylogNewListener(event) {
   if (event !== "keylog") {
     return;
@@ -886,420 +1371,6 @@ function newListener(event) {
 // Constructor guts, arbitrarily factored out.
 let warnOnTlsKeylog = true;
 let warnOnTlsKeylogError = true;
-TLSSocket.prototype._init = function (socket, wrap) {
-  const options = this._tlsOptions;
-  const ssl = this._handle;
-  this.server = options.server;
-
-  debug("%s _init", options.isServer ? "server" : "client", "handle?", !!ssl);
-
-  // Clients (!isServer) always request a cert, servers request a client cert
-  // only on explicit configuration.
-  const requestCert = !!options.requestCert || !options.isServer;
-  const rejectUnauthorized = !!options.rejectUnauthorized;
-
-  this._requestCert = requestCert;
-  this._rejectUnauthorized = rejectUnauthorized;
-  if (requestCert || rejectUnauthorized) {
-    ssl.setVerifyMode(requestCert, rejectUnauthorized);
-  }
-
-  // Only call .onkeylog if there is a keylog listener.
-  ssl.onkeylog = onkeylog;
-
-  if (this.listenerCount("newListener", keylogNewListener) === 0) {
-    this.on("newListener", keylogNewListener);
-  }
-
-  if (options.isServer) {
-    ssl.onhandshakestart = onhandshakestart;
-    ssl.onhandshakedone = onhandshakedone;
-    ssl.onclienthello = loadSession;
-    ssl.oncertcb = loadSNI;
-    ssl.onnewsession = onnewsession;
-    ssl.lastHandshakeTime = 0;
-    ssl.handshakes = 0;
-
-    if (options.ALPNCallback) {
-      validateFunction(options.ALPNCallback, "options.ALPNCallback");
-      this[kALPNCallback] = options.ALPNCallback;
-      ssl.ALPNCallback = callALPNCallback;
-      ssl.enableALPNCb();
-    }
-
-    if (this.server) {
-      if (
-        this.server.listenerCount("resumeSession") > 0 ||
-        this.server.listenerCount("newSession") > 0
-      ) {
-        // Also starts the client hello parser as a side effect.
-        ssl.enableSessionCallbacks();
-      }
-      if (this.server.listenerCount("OCSPRequest") > 0) {
-        ssl.enableCertCb();
-      }
-    }
-  } else {
-    ssl.onhandshakestart = noop;
-    ssl.onhandshakedone = () => {
-      debug("client onhandshakedone");
-      this._finishInit();
-    };
-    ssl.onocspresponse = onocspresponse;
-
-    if (options.session) {
-      ssl.setSession(options.session);
-    }
-
-    ssl.onnewsession = onnewsessionclient;
-
-    // Only call .onnewsession if there is a session listener.
-    if (this.listenerCount("newListener", newListener) === 0) {
-      this.on("newListener", newListener);
-    }
-  }
-
-  if (tlsKeylog) {
-    if (warnOnTlsKeylog) {
-      warnOnTlsKeylog = false;
-      process.emitWarning(
-        "Using --tls-keylog makes TLS connections insecure " +
-          "by writing secret key material to file " + tlsKeylog,
-      );
-    }
-    this.on("keylog", (line) => {
-      appendFile(tlsKeylog, line, { mode: 0o600 }, (err) => {
-        if (err && warnOnTlsKeylogError) {
-          warnOnTlsKeylogError = false;
-          process.emitWarning(
-            "Failed to write TLS keylog (this warning " +
-              "will not be repeated): " + err,
-          );
-        }
-      });
-    });
-  }
-
-  ssl.onerror = onerror;
-
-  // If custom SNICallback was given, or if
-  // there're SNI contexts to perform match against -
-  // set `.onsniselect` callback.
-  if (
-    options.isServer &&
-    options.SNICallback &&
-    (options.SNICallback !== SNICallback ||
-      (options.server && options.server._contexts.length))
-  ) {
-    validateFunction(options.SNICallback, "options.SNICallback");
-    this._SNICallback = options.SNICallback;
-    ssl.enableCertCb();
-  }
-
-  if (options.ALPNProtocols) {
-    ssl.setALPNProtocols(options.ALPNProtocols);
-  }
-
-  if (options.pskCallback && ssl.enablePskCallback) {
-    validateFunction(options.pskCallback, "pskCallback");
-
-    ssl[kOnPskExchange] = options.isServer
-      ? onPskServerCallback
-      : onPskClientCallback;
-
-    this[kPskCallback] = options.pskCallback;
-    ssl.enablePskCallback();
-
-    if (options.pskIdentityHint) {
-      validateString(options.pskIdentityHint, "options.pskIdentityHint");
-      ssl.setPskIdentityHint(options.pskIdentityHint);
-    }
-  }
-
-  // We can only come here via [kWrapConnectedHandle]() call that happens
-  // if the connection is established with `autoSelectFamily` set to `true`.
-  const connectOptions = this[kConnectOptions];
-  if (!options.isServer && connectOptions) {
-    if (connectOptions.servername) {
-      this.setServername(connectOptions.servername);
-    }
-  }
-
-  if (options.handshakeTimeout > 0) {
-    this.setTimeout(options.handshakeTimeout, this._handleTimeout);
-  }
-
-  if (socket instanceof net.Socket) {
-    this._parent = socket;
-
-    // To prevent assertion in afterConnect() and properly kick off readStart
-    this.connecting = socket.connecting || !socket._handle;
-    socket.once("connect", () => {
-      this.connecting = false;
-      this.emit("connect");
-    });
-  }
-
-  // Assume `tls.connect()`
-  if (wrap) {
-    wrap.on("error", (err) => this._emitTLSError(err));
-  } else {
-    assert(!socket);
-    this.connecting = true;
-  }
-};
-
-TLSSocket.prototype.renegotiate = function (options, callback) {
-  validateObject(options, "options");
-  if (callback !== undefined) {
-    validateFunction(callback, "callback");
-  }
-
-  debug(
-    "%s renegotiate()",
-    this._tlsOptions.isServer ? "server" : "client",
-    "destroyed?",
-    this.destroyed,
-  );
-
-  if (this.destroyed) {
-    return;
-  }
-
-  let requestCert = !!this._requestCert;
-  let rejectUnauthorized = !!this._rejectUnauthorized;
-
-  if (options.requestCert !== undefined) {
-    requestCert = !!options.requestCert;
-  }
-  if (options.rejectUnauthorized !== undefined) {
-    rejectUnauthorized = !!options.rejectUnauthorized;
-  }
-
-  if (
-    requestCert !== this._requestCert ||
-    rejectUnauthorized !== this._rejectUnauthorized
-  ) {
-    this._handle.setVerifyMode(requestCert, rejectUnauthorized);
-    this._requestCert = requestCert;
-    this._rejectUnauthorized = rejectUnauthorized;
-  }
-  // Ensure that we'll cycle through internal openssl's state
-  this.write("");
-
-  try {
-    this._handle.renegotiate();
-  } catch (err) {
-    if (callback) {
-      process.nextTick(callback, err);
-    }
-    return false;
-  }
-
-  // Ensure that we'll cycle through internal openssl's state
-  this.write("");
-
-  if (callback) {
-    this.once("secure", () => callback(null));
-  }
-
-  return true;
-};
-
-TLSSocket.prototype.exportKeyingMaterial = function (length, label, context) {
-  validateUint32(length, "length", true);
-  validateString(label, "label");
-  if (context !== undefined) {
-    validateBuffer(context, "context");
-  }
-
-  if (!this._secureEstablished) {
-    throw new ERR_TLS_INVALID_STATE();
-  }
-
-  return this._handle.exportKeyingMaterial(length, label, context);
-};
-
-TLSSocket.prototype.setMaxSendFragment = function setMaxSendFragment(size) {
-  validateInt32(size, "size");
-  return this._handle.setMaxSendFragment(size) === 1;
-};
-
-TLSSocket.prototype._handleTimeout = function () {
-  this._emitTLSError(new ERR_TLS_HANDSHAKE_TIMEOUT());
-};
-
-TLSSocket.prototype._emitTLSError = function (err) {
-  const e = this._tlsError(err);
-  if (e) {
-    this.emit("error", e);
-  }
-};
-
-TLSSocket.prototype._tlsError = function (err) {
-  this.emit("_tlsError", err);
-  if (this._controlReleased) {
-    return err;
-  }
-  return null;
-};
-
-TLSSocket.prototype._releaseControl = function () {
-  if (this._controlReleased) {
-    return false;
-  }
-  this._controlReleased = true;
-  this.removeListener("error", this._tlsError);
-  return true;
-};
-
-TLSSocket.prototype._finishInit = function () {
-  // Guard against getting onhandshakedone() after .destroy().
-  // * 1.2: If destroy() during onocspresponse(), then write of next handshake
-  // record fails, the handshake done info callbacks does not occur, and the
-  // socket closes.
-  // * 1.3: The OCSP response comes in the same record that finishes handshake,
-  // so even after .destroy(), the handshake done info callback occurs
-  // immediately after onocspresponse(). Ignore it.
-  if (!this._handle) {
-    return;
-  }
-
-  this.alpnProtocol = this._handle.getALPNNegotiatedProtocol();
-  // The servername could be set by TLSWrap::SelectSNIContextCallback().
-  if (this.servername === null) {
-    this.servername = this._handle.getServername();
-  }
-
-  debug(
-    "%s _finishInit",
-    this._tlsOptions.isServer ? "server" : "client",
-    "handle?",
-    !!this._handle,
-    "alpn",
-    this.alpnProtocol,
-    "servername",
-    this.servername,
-  );
-
-  this._secureEstablished = true;
-  if (this._tlsOptions.handshakeTimeout > 0) {
-    this.setTimeout(0, this._handleTimeout);
-  }
-  this.emit("secure");
-};
-
-TLSSocket.prototype._start = function () {
-  debug(
-    "%s _start",
-    this._tlsOptions.isServer ? "server" : "client",
-    "handle?",
-    !!this._handle,
-    "connecting?",
-    this.connecting,
-    "requestOCSP?",
-    !!this._tlsOptions.requestOCSP,
-  );
-  if (this.connecting) {
-    this.once("connect", this._start);
-    return;
-  }
-
-  // Socket was destroyed before the connection was established
-  if (!this._handle) {
-    return;
-  }
-
-  if (this._tlsOptions.requestOCSP) {
-    this._handle.requestOCSP();
-  }
-  this._handle.start();
-};
-
-TLSSocket.prototype.setServername = function (name) {
-  validateString(name, "name");
-
-  if (this._tlsOptions.isServer) {
-    throw new ERR_TLS_SNI_FROM_SERVER();
-  }
-
-  this._handle.setServername(name);
-};
-
-TLSSocket.prototype.setSession = function (session) {
-  if (typeof session === "string") {
-    session = Buffer.from(session, "latin1");
-  }
-  this._handle.setSession(session);
-};
-
-TLSSocket.prototype.getPeerCertificate = function (detailed) {
-  if (this._handle) {
-    return common.translatePeerCertificate(
-      this._handle.getPeerCertificate(detailed),
-    ) || {};
-  }
-
-  return null;
-};
-
-TLSSocket.prototype.getCertificate = function () {
-  if (this._handle) {
-    // It's not a peer cert, but the formatting is identical.
-    return common.translatePeerCertificate(
-      this._handle.getCertificate(),
-    ) || {};
-  }
-
-  return null;
-};
-
-TLSSocket.prototype.getPeerX509Certificate = function (detailed) {
-  const cert = this._handle?.getPeerX509Certificate();
-  return cert ? new InternalX509Certificate(cert) : undefined;
-};
-
-TLSSocket.prototype.getX509Certificate = function () {
-  const cert = this._handle?.getX509Certificate();
-  return cert ? new InternalX509Certificate(cert) : undefined;
-};
-
-TLSSocket.prototype.setKeyCert = function (context) {
-  if (this._handle) {
-    let secureContext;
-    if (context instanceof common.SecureContext) {
-      secureContext = context;
-    } else {
-      secureContext = common.createSecureContext(context);
-    }
-    this._handle.setKeyCert(secureContext.context);
-  }
-};
-
-// Proxy TLSSocket handle methods
-function makeSocketMethodProxy(name) {
-  return function socketMethodProxy(...args) {
-    if (this._handle) {
-      return ReflectApply(this._handle[name], this._handle, args);
-    }
-    return null;
-  };
-}
-
-[
-  "getCipher",
-  "getSharedSigalgs",
-  "getEphemeralKeyInfo",
-  "getFinished",
-  "getPeerFinished",
-  "getProtocol",
-  "getSession",
-  "getTLSTicket",
-  "isSessionReused",
-  "enableTrace",
-].forEach((method) => {
-  TLSSocket.prototype[method] = makeSocketMethodProxy(method);
-});
 
 // TODO: support anonymous (nocert)
 
@@ -1476,7 +1547,7 @@ function Server(options, listener) {
   }
 
   if (options.ALPNProtocols) {
-    tls.convertALPNProtocols(options.ALPNProtocols, this);
+    convertALPNProtocols(options.ALPNProtocols, this);
   }
 
   this.setSecureContext(options);
@@ -1711,7 +1782,7 @@ Server.prototype.setOptions = function (options) {
   }
   if (secureOptions) this.secureOptions = secureOptions;
   if (options.ALPNProtocols) {
-    tls.convertALPNProtocols(options.ALPNProtocols, this);
+    convertALPNProtocols(options.ALPNProtocols, this);
   }
   if (options.sessionIdContext) {
     this.sessionIdContext = options.sessionIdContext;
