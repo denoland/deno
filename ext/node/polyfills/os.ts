@@ -181,7 +181,7 @@ export function getPriority(pid = 0): number {
   try {
     return op_node_os_get_priority(pid);
   } catch (error) {
-    throw denoErrorToNodeSystemError(error as Error, "uv_os_setpriority");
+    throw denoErrorToNodeSystemError(error as Error, "uv_os_getpriority");
   }
 }
 
