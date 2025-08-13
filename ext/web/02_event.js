@@ -5,10 +5,9 @@
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
 
-import { core, primordials } from "ext:core/mod.js";
+import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeFlat,
-  Error,
   FunctionPrototypeCall,
   MapPrototypeGet,
   MapPrototypeSet,
@@ -16,10 +15,8 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   SafeMap,
-  StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
-  TypeError,
 } = primordials;
 import {
   CloseEvent,
@@ -31,6 +28,8 @@ import {
   op_event_dispatch,
   op_event_get_target_listener_count,
   op_event_get_target_listeners,
+  op_event_report_error,
+  op_event_report_exception,
   op_event_set_is_trusted,
   op_event_set_target,
   op_event_wrap_event_target,
@@ -39,14 +38,6 @@ import {
 } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-
-// This should be set via setGlobalThis this is required so that if even
-// user deletes globalThis it is still usable
-let globalThis_;
-
-function saveGlobalThisReference(val) {
-  globalThis_ = val;
-}
 
 function defineEnumerableProps(prototype, props) {
   for (let i = 0; i < props.length; ++i) {
@@ -509,63 +500,14 @@ function defineEventHandler(
   });
 }
 
-let reportExceptionStackedCalls = 0;
-
 // https://html.spec.whatwg.org/#report-the-exception
 function reportException(error) {
-  reportExceptionStackedCalls++;
-  const jsError = core.destructureError(error);
-  const message = jsError.exceptionMessage;
-  let filename = "";
-  let lineno = 0;
-  let colno = 0;
-  if (jsError.frames.length > 0) {
-    filename = jsError.frames[0].fileName;
-    lineno = jsError.frames[0].lineNumber;
-    colno = jsError.frames[0].columnNumber;
-  } else {
-    const jsError = core.destructureError(new Error());
-    const frames = jsError.frames;
-    for (let i = 0; i < frames.length; ++i) {
-      const frame = frames[i];
-      if (
-        typeof frame.fileName == "string" &&
-        !StringPrototypeStartsWith(frame.fileName, "ext:")
-      ) {
-        filename = frame.fileName;
-        lineno = frame.lineNumber;
-        colno = frame.columnNumber;
-        break;
-      }
-    }
-  }
-  const event = new ErrorEvent("error", {
-    cancelable: true,
-    message,
-    filename,
-    lineno,
-    colno,
-    error,
-  });
-  // Avoid recursing `reportException()` via error handlers more than once.
-  if (reportExceptionStackedCalls > 1 || globalThis_.dispatchEvent(event)) {
-    core.reportUnhandledException(error);
-  }
-  reportExceptionStackedCalls--;
-}
-
-function checkThis(thisArg) {
-  if (thisArg !== null && thisArg !== undefined && thisArg !== globalThis_) {
-    throw new TypeError("Illegal invocation");
-  }
+  op_event_report_exception(error);
 }
 
 // https://html.spec.whatwg.org/#dom-reporterror
 function reportError(error) {
-  checkThis(this);
-  const prefix = "Failed to execute 'reportError'";
-  webidl.requiredArguments(arguments.length, 1, prefix);
-  reportException(error);
+  op_event_report_error(error);
 }
 
 export {
@@ -584,7 +526,6 @@ export {
   PromiseRejectionEvent,
   reportError,
   reportException,
-  saveGlobalThisReference,
   setEventTargetData,
   setIsTrusted,
   setTarget,

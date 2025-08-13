@@ -7,8 +7,11 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::WebIDL;
 use deno_core::cppgc;
+use deno_core::error::JsError;
+use deno_core::error::dispatch_exception;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::Global;
@@ -25,6 +28,9 @@ pub enum EventError {
   #[class(type)]
   #[error("parameter 1 is expected Event")]
   ExpectedEvent,
+  #[class(type)]
+  #[error("Illegal invocation")]
+  Illegal,
   #[class("DOMExceptionInvalidStateError")]
   #[error("Invalid event state")]
   InvalidState,
@@ -143,6 +149,7 @@ impl Event {
   fn dispatch<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
+    state: &mut OpState,
     event_object: v8::Local<'a, v8::Object>,
     target: &EventTarget,
     target_object: v8::Global<v8::Object>,
@@ -168,38 +175,46 @@ impl Event {
     );
 
     // 6.13.
-    for (path_index, path) in self.path.borrow().iter().enumerate().rev() {
-      if path.shadow_adjusted_target.is_none() {
-        self.event_phase.replace(EventPhase::CapturingPhase);
+    {
+      let event_path = self.path.borrow();
+      for (path_index, path) in event_path.iter().enumerate().rev() {
+        if path.shadow_adjusted_target.is_none() {
+          self.event_phase.replace(EventPhase::CapturingPhase);
+          self.invoke(
+            scope,
+            state,
+            event_object,
+            target,
+            target_object.clone(),
+            &event_path,
+            path_index,
+            InvokePhase::Capturing,
+          );
+        }
+      }
+
+      // 6.14.
+      for (path_index, path) in event_path.iter().enumerate() {
+        if path.shadow_adjusted_target.is_some() {
+          self.event_phase.replace(EventPhase::AtTarget);
+        } else {
+          if !self.bubbles.get() {
+            continue;
+          }
+          self.event_phase.replace(EventPhase::BubblingPhase);
+        }
+
         self.invoke(
           scope,
+          state,
           event_object,
           target,
           target_object.clone(),
+          &event_path,
           path_index,
-          InvokePhase::Capturing,
+          InvokePhase::Bubbling,
         );
       }
-    }
-
-    // 6.14.
-    for (path_index, path) in self.path.borrow().iter().enumerate() {
-      if path.shadow_adjusted_target.is_some() {
-        self.event_phase.replace(EventPhase::AtTarget);
-      } else {
-        if !self.bubbles.get() {
-          continue;
-        }
-        self.event_phase.replace(EventPhase::BubblingPhase);
-      }
-      self.invoke(
-        scope,
-        event_object,
-        target,
-        target_object.clone(),
-        path_index,
-        InvokePhase::Bubbling,
-      );
     }
 
     // 7.
@@ -243,14 +258,14 @@ impl Event {
   fn invoke<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
+    state: &mut OpState,
     event_object: v8::Local<'a, v8::Object>,
     target: &EventTarget,
     target_object: v8::Global<v8::Object>,
+    path: &Vec<Path>,
     path_index: usize,
     phase: InvokePhase,
   ) {
-    let path = self.path.borrow();
-
     // 1.
     for (index, current) in path.iter().enumerate().rev() {
       if let Some(target) = &current.shadow_adjusted_target {
@@ -277,18 +292,23 @@ impl Event {
       .replace(Some(current.invocation_target.clone()));
 
     // 6.
-    // Against the spec, clone event listeners in inner_invoke
     let typ = self.typ.borrow();
-    let mut listeners = target.listeners.borrow_mut();
-    let Some(listeners) = listeners.get_mut(&*typ) else {
-      return;
+    let listeners = {
+      let listeners = target.listeners.borrow();
+      let Some(listeners) = listeners.get(&*typ) else {
+        return;
+      };
+      listeners.clone()
     };
 
     // 8.
     let _ = self.inner_invoke(
       scope,
+      state,
       event_object,
       target_object.clone(),
+      &typ,
+      target,
       listeners,
       phase,
     );
@@ -299,9 +319,12 @@ impl Event {
   fn inner_invoke<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
+    state: &mut OpState,
     event_object: v8::Local<'a, v8::Object>,
     target_object: v8::Global<v8::Object>,
-    listeners: &mut Vec<Rc<EventListener>>,
+    typ: &String,
+    target: &EventTarget,
+    listeners: Vec<Rc<EventListener>>,
     phase: InvokePhase,
   ) -> bool {
     // NOTE: Omit implementations for window.event (current event)
@@ -310,10 +333,8 @@ impl Event {
     let mut found = false;
 
     // 2.
-    // Clone event listeners before iterating since the list can be modified during the iteration.
-    for listener in listeners.clone().iter() {
-      // Check if the event listener has been removed since the listeners has been cloned.
-      if !listeners.iter().any(|l| Rc::ptr_eq(l, listener)) {
+    for listener in listeners.iter() {
+      if listener.removed.get() {
         continue;
       }
 
@@ -330,6 +351,9 @@ impl Event {
 
       // 5.
       if listener.once {
+        let mut listeners = target.listeners.borrow_mut();
+        let listeners = listeners.get_mut(typ).unwrap();
+        listener.removed.set(true);
         listeners.remove(
           listeners
             .iter()
@@ -362,14 +386,16 @@ impl Event {
           }
           // 11.1.
           Err(error) => {
-            // TODO(petamoriken): report exception
+            let message = v8::String::new(scope, &error.to_string()).unwrap();
+            let exception = v8::Exception::type_error(scope, message);
+            report_exception(scope, state, exception);
           }
         }
       }
 
       // 11.1.
       if let Some(exception) = scope.exception() {
-        // TODO(petamoriken): report exception
+        report_exception(scope, state, exception);
       }
 
       // 12.
@@ -661,6 +687,7 @@ pub fn op_event_set_target(
 #[op2(reentrant)]
 pub fn op_event_dispatch<'a>(
   scope: &mut v8::HandleScope<'a>,
+  state: &mut OpState,
   #[global] target_object: v8::Global<v8::Object>,
   event_object: v8::Local<'a, v8::Object>,
   #[global] target_override: Option<v8::Global<v8::Object>>,
@@ -672,7 +699,14 @@ pub fn op_event_dispatch<'a>(
   let event =
     cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event_object.into())
       .unwrap();
-  event.dispatch(scope, event_object, &target, target_object, target_override)
+  event.dispatch(
+    scope,
+    state,
+    event_object,
+    &target,
+    target_object,
+    target_override,
+  )
 }
 
 #[derive(Debug)]
@@ -1419,8 +1453,119 @@ impl ProgressEvent {
   }
 }
 
-// TODO(petamorken): list
-// report error
+pub(crate) struct ReportExceptionStackedCalls(u32);
+
+impl Default for ReportExceptionStackedCalls {
+  fn default() -> Self {
+    ReportExceptionStackedCalls(0)
+  }
+}
+
+// https://html.spec.whatwg.org/#report-the-exception
+fn report_exception<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  state: &mut OpState,
+  exception: v8::Local<'a, v8::Value>,
+) {
+  // Avoid recursing `reportException()` via error handlers more than once.
+  let callable = {
+    let stacked_calls = state.borrow_mut::<ReportExceptionStackedCalls>();
+    stacked_calls.0 += 1;
+    stacked_calls.0 == 1
+  };
+
+  let allow_default = if callable {
+    let js_error = JsError::from_v8_exception(scope, exception);
+    let message = js_error.message;
+    let (file_name, line_number, column_number) =
+      if let Some(frame) = js_error.frames.first() {
+        (
+          frame.file_name.clone(),
+          frame.line_number,
+          frame.column_number,
+        )
+      } else {
+        let message = v8::String::empty(scope);
+        let exception = v8::Exception::error(scope, message);
+        let js_error = JsError::from_v8_exception(scope, exception);
+        if let Some(frame) = js_error.frames.iter().find(|frame| {
+          frame
+            .file_name
+            .as_ref()
+            .is_some_and(|file_name| !file_name.starts_with("ext:"))
+        }) {
+          (
+            frame.file_name.clone(),
+            frame.line_number,
+            frame.column_number,
+          )
+        } else {
+          (None, None, None)
+        }
+      };
+    let event_object = {
+      let event = Event::new(
+        "error".into(),
+        Some(EventInit {
+          bubbles: false,
+          cancelable: true,
+          composed: false,
+        }),
+      );
+      let error_event = ErrorEvent {
+        message: message.unwrap_or(String::new()),
+        filename: file_name.unwrap_or(String::new()),
+        lineno: line_number.unwrap_or(0) as u32,
+        colno: column_number.unwrap_or(0) as u32,
+        error: Some(v8::Global::new(scope, exception)),
+      };
+      let event_object = cppgc::make_cppgc_empty_object::<ErrorEvent>(scope);
+      cppgc::wrap_object2(scope, event_object, (event, error_event))
+    };
+    let event =
+      cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event_object.into())
+        .unwrap();
+    let global = scope.get_current_context().global(scope);
+    let target =
+      cppgc::try_unwrap_cppgc_object::<EventTarget>(scope, global.into())
+        .unwrap();
+    let global = v8::Global::new(scope, global);
+    event.dispatch(scope, state, event_object, &target, global, None)
+  } else {
+    true
+  };
+
+  if allow_default {
+    dispatch_exception(scope, exception, false);
+  }
+
+  let stacked_calls = state.borrow_mut::<ReportExceptionStackedCalls>();
+  stacked_calls.0 -= 1;
+}
+
+#[op2(fast, reentrant, required(1))]
+pub fn op_event_report_exception<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  state: &mut OpState,
+  exception: v8::Local<'a, v8::Value>,
+) {
+  report_exception(scope, state, exception);
+}
+
+#[op2(fast, reentrant, required(1))]
+pub fn op_event_report_error<'a>(
+  #[this] this: v8::Global<v8::Object>,
+  scope: &mut v8::HandleScope<'a>,
+  state: &mut OpState,
+  exception: v8::Local<'a, v8::Value>,
+) -> Result<(), EventError> {
+  let global = scope.get_current_context().global(scope);
+  if global != this {
+    return Err(EventError::Illegal);
+  }
+  report_exception(scope, state, exception);
+  Ok(())
+}
 
 #[inline]
 fn get_value<'a>(
@@ -1445,6 +1590,7 @@ struct EventListener {
   passive: bool,
   once: bool,
   signal: Option<v8::Global<v8::Object>>,
+  removed: Cell<bool>,
   // This field exists for simulating Node.js behavior, implemented in https://github.com/nodejs/node/commit/bcd35c334ec75402ee081f1c4da128c339f70c24
   // Some internal event listeners in Node.js can ignore `e.stopImmediatePropagation()` calls　from the earlier event listeners.
   resist_stop_immediate_propagation: bool,
@@ -1556,6 +1702,7 @@ impl EventTarget {
       passive,
       once,
       signal: None,
+      removed: Cell::new(false),
       resist_stop_immediate_propagation,
     }));
 
@@ -1604,9 +1751,12 @@ impl EventTarget {
     let Some(listeners) = listeners.get_mut(&typ) else {
       return;
     };
-    if let Some(index) = listeners.iter().position(|listener| {
-      listener.capture == capture && listener.callback == callback
-    }) {
+    if let Some((index, listener)) =
+      listeners.iter().enumerate().find(|(_, listener)| {
+        listener.capture == capture && listener.callback == callback
+      })
+    {
+      listener.removed.set(true);
       listeners.remove(index);
     }
   }
@@ -1618,6 +1768,7 @@ impl EventTarget {
     &self,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::HandleScope<'a>,
+    state: &mut OpState,
     event_object: v8::Local<'a, v8::Object>,
   ) -> Result<bool, EventError> {
     let Some(event) =
@@ -1640,11 +1791,13 @@ impl EventTarget {
       global.set(scope, symbol.into(), value.into());
     }
 
-    let listeners = self.listeners.borrow();
-    if listeners.get(&*typ).is_none() {
-      event.target.replace(Some(this));
-      return Ok(true);
-    };
+    {
+      let listeners = self.listeners.borrow();
+      if listeners.get(&*typ).is_none() {
+        event.target.replace(Some(this));
+        return Ok(true);
+      };
+    }
 
     if event.dispatch_flag.get()
       || !matches!(*event.event_phase.borrow(), EventPhase::None)
@@ -1652,7 +1805,7 @@ impl EventTarget {
       return Err(EventError::InvalidState);
     }
 
-    Ok(event.dispatch(scope, event_object, self, this, None))
+    Ok(event.dispatch(scope, state, event_object, self, this, None))
   }
 }
 

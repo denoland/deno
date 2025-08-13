@@ -37,6 +37,7 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
+use crate::event::ReportExceptionStackedCalls;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::Transferable;
@@ -87,6 +88,8 @@ deno_core::extension!(deno_web,
     event::op_event_set_is_trusted,
     event::op_event_set_target,
     event::op_event_wrap_event_target,
+    event::op_event_report_error,
+    event::op_event_report_exception,
     op_now<P>,
     op_time_origin<P>,
     op_defer,
@@ -139,6 +142,7 @@ deno_core::extension!(deno_web,
     if let Some(location) = options.maybe_location {
       state.put(Location(location));
     }
+    state.put(ReportExceptionStackedCalls::default());
     state.put(StartTime::default());
   }
 );

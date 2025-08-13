@@ -1156,7 +1156,6 @@ globalThis.bootstrap = {
   dispatchProcessBeforeExitEvent,
 };
 
-event.saveGlobalThisReference(globalThis);
 event.defineEventHandler(globalThis, "unhandledrejection");
 
 removeImportedOps();
