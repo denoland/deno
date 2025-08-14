@@ -6,7 +6,6 @@ pub use repl::ReplLanguageServer;
 use tower_lsp::LspService;
 use tower_lsp::Server;
 
-use self::diagnostics::should_send_diagnostic_batch_index_notifications;
 use crate::lsp::language_server::LanguageServer;
 
 mod analysis;
@@ -60,16 +59,15 @@ pub async fn start() -> Result<(), AnyError> {
   .custom_method(
     lsp_custom::VIRTUAL_TEXT_DOCUMENT,
     LanguageServer::virtual_text_document,
+  )
+  .custom_method(
+    lsp_custom::VIRTUAL_TEXT_DOCUMENT,
+    LanguageServer::virtual_text_document,
+  )
+  .custom_method(
+    lsp_custom::VIRTUAL_TEXT_DOCUMENT,
+    LanguageServer::virtual_text_document,
   );
-
-  let builder = if should_send_diagnostic_batch_index_notifications() {
-    builder.custom_method(
-      lsp_custom::LATEST_DIAGNOSTIC_BATCH_INDEX,
-      LanguageServer::latest_diagnostic_batch_index_request,
-    )
-  } else {
-    builder
-  };
 
   let (service, socket, pending) = builder.finish();
   Server::new(stdin, stdout, socket, pending)

@@ -197,7 +197,12 @@ pub fn server_capabilities(
     })),
     inlay_hint_provider: Some(OneOf::Left(true)),
     position_encoding: None,
-    diagnostic_provider: None,
+    diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+      DiagnosticOptions {
+        inter_file_dependencies: true,
+        ..Default::default()
+      },
+    )),
     inline_value_provider: None,
     inline_completion_provider: None,
     notebook_document_sync: Some(OneOf::Left(NotebookDocumentSyncOptions {
