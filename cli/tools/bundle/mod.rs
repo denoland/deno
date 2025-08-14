@@ -868,7 +868,13 @@ impl DenoPluginHandler {
     let graph = self.module_graph_container.graph();
     let module_or_asset = self
       .module_loader
-      .load(&graph, &specifier, None, requested_type)
+      .load(
+        &graph,
+        &specifier,
+        None,
+        requested_type,
+        deno_resolver::loader::AllowJsonImports::Always,
+      )
       .await?;
     let loaded_code = match module_or_asset {
       LoadedModuleOrAsset::Module(loaded_module) => loaded_module.source,

@@ -139,6 +139,13 @@ pub struct ModuleLoader<TSys: ModuleLoaderSys> {
   prepared_module_loader: PreparedModuleLoader<TSys>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub enum AllowJsonImports {
+  Always,
+  #[default]
+  WithAttribute,
+}
+
 impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
@@ -175,6 +182,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     // referrer from all error messages. This should be up to deno_core to display.
     maybe_referrer: Option<&Url>,
     requested_module_type: &RequestedModuleType<'_>,
+    allow_json_imports: AllowJsonImports,
   ) -> Result<LoadedModuleOrAsset<'a>, LoadCodeSourceError> {
     let source = match self
       .prepared_module_loader
@@ -222,6 +230,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
         // import attributes) is not JSON we need to fail.
         if loaded_module.media_type == MediaType::Json
           && !matches!(requested_module_type, RequestedModuleType::Json)
+          && matches!(allow_json_imports, AllowJsonImports::WithAttribute)
         {
           Err(LoadCodeSourceErrorKind::MissingJsonAttribute.into_box())
         } else {
