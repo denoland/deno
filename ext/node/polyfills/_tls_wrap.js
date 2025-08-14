@@ -93,14 +93,16 @@ export class TLSSocket extends net.Socket {
     tlsOptions.alpnProtocols = opts.ALPNProtocols;
     tlsOptions.rejectUnauthorized = opts.rejectUnauthorized !== false;
 
-    if (
-      opts.checkServerIdentity &&
-      typeof opts.checkServerIdentity == "function" &&
-      opts.checkServerIdentity() == undefined
-    ) {
-      // If checkServerIdentity is no-op, we disable hostname verification.
-      tlsOptions.disableHostnameVerification = true;
-    }
+    try {
+      if (
+        opts.checkServerIdentity &&
+        typeof opts.checkServerIdentity == "function" &&
+        opts.checkServerIdentity() == undefined
+      ) {
+        // If checkServerIdentity is no-op, we disable hostname verification.
+        tlsOptions.disableHostnameVerification = true;
+      }
+    } catch { /* pass */ }
 
     super({
       handle: _wrapHandle(tlsOptions, socket),
