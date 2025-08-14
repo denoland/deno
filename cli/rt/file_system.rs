@@ -1226,6 +1226,12 @@ impl FileBackedVfsFile {
 
 #[async_trait::async_trait(?Send)]
 impl deno_io::fs::File for FileBackedVfsFile {
+  fn maybe_path(&self) -> Option<&Path> {
+    // ok because a vfs file will never be written to and this
+    // method is only used for checking write permissions
+    None
+  }
+
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
     self.read_to_buf(buf).map_err(Into::into)
   }
