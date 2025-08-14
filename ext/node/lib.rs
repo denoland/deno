@@ -76,6 +76,11 @@ pub trait NodePermissions {
     kind: &str,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    addr: &std::net::SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -120,6 +125,14 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
+  }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &mut self,
+    addr: &std::net::SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net_resolved_addr_is_not_denied(self, addr, api_name)
   }
 }
 

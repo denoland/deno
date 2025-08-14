@@ -17,6 +17,7 @@ use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
+use deno_runtime::deno_fetch::FetchPermissions;
 use deno_runtime::deno_fetch::ResBody;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -55,6 +56,58 @@ impl std::fmt::Debug for HttpClientProvider {
   }
 }
 
+#[derive(Clone)]
+pub struct Noop;
+
+impl FetchPermissions for Noop {
+  fn check_net_url(
+    &self,
+    _url: &Url,
+    _api_name: &str,
+  ) -> Result<(), deno_runtime::deno_permissions::PermissionCheckError> {
+    Ok(())
+  }
+
+  fn check_open<'a>(
+    &mut self,
+    path: std::borrow::Cow<'a, std::path::Path>,
+    _open_access: deno_runtime::deno_permissions::OpenAccessKind,
+    _api_name: &str,
+  ) -> Result<
+    deno_runtime::deno_permissions::CheckedPath<'a>,
+    deno_runtime::deno_permissions::PermissionCheckError,
+  > {
+    Ok(deno_runtime::deno_permissions::CheckedPath::unsafe_new(
+      path,
+    ))
+  }
+
+  fn check_net_vsock(
+    &mut self,
+    _cid: u32,
+    _port: u32,
+    _api_name: &str,
+  ) -> Result<(), deno_runtime::deno_permissions::PermissionCheckError> {
+    Ok(())
+  }
+
+  fn check_net(
+    &self,
+    _addr: &(&str, Option<u16>),
+    _api_name: &str,
+  ) -> Result<(), deno_runtime::deno_permissions::PermissionCheckError> {
+    Ok(())
+  }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &self,
+    _addr: &std::net::SocketAddr,
+    _api_name: &str,
+  ) -> Result<(), deno_runtime::deno_permissions::PermissionCheckError> {
+    Ok(())
+  }
+}
+
 impl HttpClientProvider {
   pub fn new(
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -63,7 +116,7 @@ impl HttpClientProvider {
     Self {
       options: CreateHttpClientOptions {
         unsafely_ignore_certificate_errors,
-        ..Default::default()
+        ..CreateHttpClientOptions::default(Arc::new(Noop))
       },
       root_cert_store_provider,
       clients_by_thread_id: Default::default(),
@@ -472,6 +525,10 @@ mod test {
 
   use super::*;
 
+  fn default_options() -> CreateHttpClientOptions {
+    CreateHttpClientOptions::default(Arc::new(Noop))
+  }
+
   #[tokio::test]
   async fn test_http_client_download_redirect() {
     let _http_server_guard = test_util::http_server();
@@ -512,7 +569,7 @@ mod test {
             std::fs::read(test_util::testdata_path().join("tls/RootCA.pem"))
               .unwrap(),
           ],
-          ..Default::default()
+          ..default_options()
         },
       )
       .unwrap(),
@@ -549,11 +606,8 @@ mod test {
       eprintln!("Attempting to fetch {url}...");
 
       let client = HttpClient::new(
-        create_http_client(
-          DENO_VERSION_INFO.user_agent,
-          CreateHttpClientOptions::default(),
-        )
-        .unwrap(),
+        create_http_client(DENO_VERSION_INFO.user_agent, default_options())
+          .unwrap(),
       );
 
       let result = client.send(&url, Default::default()).await;
@@ -596,7 +650,7 @@ mod test {
         DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           root_cert_store: Some(root_cert_store),
-          ..Default::default()
+          ..default_options()
         },
       )
       .unwrap(),
@@ -624,7 +678,7 @@ mod test {
             )
             .unwrap(),
           ],
-          ..Default::default()
+          ..default_options()
         },
       )
       .unwrap(),
@@ -659,7 +713,7 @@ mod test {
             )
             .unwrap(),
           ],
-          ..Default::default()
+          ..default_options()
         },
       )
       .unwrap(),
@@ -702,7 +756,7 @@ mod test {
             )
             .unwrap(),
           ],
-          ..Default::default()
+          ..default_options()
         },
       )
       .unwrap(),
