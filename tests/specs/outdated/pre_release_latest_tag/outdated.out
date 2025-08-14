@@ -1,0 +1,8 @@
+┌──────────────────────────────────────────┬───────────────┬───────────────┬───────────────┐
+│ Package                                  │ Current       │ Update        │ Latest        │
+├──────────────────────────────────────────┼───────────────┼───────────────┼───────────────┤
+│ npm:@denotest/pre-release-with-nightlies │ 1.0.0-beta.13 │ 1.0.0-beta.32 │ 1.0.0-beta.32 │
+└──────────────────────────────────────────┴───────────────┴───────────────┴───────────────┘
+
+Run deno update --latest to update to the latest available versions,
+or deno outdated --help for more information.
