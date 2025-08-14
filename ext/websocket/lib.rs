@@ -418,6 +418,7 @@ pub fn create_ws_client_config(
     root_cert_store,
     vec![],
     unsafely_ignore_certificate_errors,
+    false,
     TlsKeys::Null,
     socket_use,
   )

@@ -797,8 +797,14 @@ mod hyper_client {
           _ => TlsKeys::Null,
         };
 
-        let tls_config =
-          create_client_config(None, ca_certs, None, keys, SocketUse::Http)?;
+        let tls_config = create_client_config(
+          None,
+          ca_certs,
+          None,
+          false,
+          keys,
+          SocketUse::Http,
+        )?;
         let mut http_connector = HttpConnector::new();
         http_connector.enforce_http(false);
         let connector = HttpsConnector::from((http_connector, tls_config));

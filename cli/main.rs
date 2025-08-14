@@ -921,6 +921,7 @@ async fn initialize_tunnel(
     Some(root_cert_store),
     vec![],
     None,
+    false,
     deno_runtime::deno_tls::TlsKeys::Null,
     deno_runtime::deno_tls::SocketUse::GeneralSsl,
   )?;

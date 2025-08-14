@@ -578,6 +578,7 @@ where
       root_cert_store,
       ca_certs,
       unsafely_ignore_certificate_errors,
+      false,
       key_pair.take(),
       SocketUse::GeneralSsl,
     )?
