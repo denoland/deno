@@ -301,7 +301,7 @@ Deno.test({
     assertThrows(
       () => {
         try {
-          os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGH);
+          os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGHEST);
         } catch (err) {
           console.error(err);
           throw err;
