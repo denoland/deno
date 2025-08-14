@@ -21,8 +21,6 @@ mod impl_ {
   use libc::PRIO_PROCESS;
   use libc::id_t;
 
-  const PRIORITY_HIGH: i32 = -14;
-
   // Ref: https://github.com/libuv/libuv/blob/55376b044b74db40772e8a6e24d67a8673998e02/src/unix/core.c#L1533-L1547
   pub fn get_priority(pid: u32) -> Result<i32, super::PriorityError> {
     set_errno(Errno(0));
@@ -31,7 +29,7 @@ mod impl_ {
       unsafe { libc::getpriority(PRIO_PROCESS, pid as id_t) },
       errno(),
     ) {
-      (-1, Errno(0)) => Ok(PRIORITY_HIGH),
+      (-1, Errno(0)) => Ok(-1),
       (-1, _) => Err(std::io::Error::last_os_error().into()),
       (priority, _) => Ok(priority),
     }
