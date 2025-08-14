@@ -779,6 +779,13 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
   if let Ok(m) = fs::metadata(to)
     && m.is_dir()
   {
+    if let Ok(from_meta) = fs::metadata(from)
+      && from_meta.is_dir()
+    {
+      // Both are directories, nothing to do here
+      return Ok(());
+    }
+
     return cp_(
       source_meta,
       from,
