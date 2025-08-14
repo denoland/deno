@@ -996,6 +996,9 @@ pub async fn run(
     }
     checker
   });
+  deno_core::unsync::set_spawn_blocking_optional_use_current_thread(
+    feature_checker.check("single-threaded"),
+  );
   let lib_main_worker_options = LibMainWorkerOptions {
     argv: metadata.argv,
     log_level: WorkerLogLevel::Info,

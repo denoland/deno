@@ -21,7 +21,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_always;
 use deno_core::url::Url;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -690,7 +690,7 @@ impl DiagnosticsServer {
                     previous_handle.await;
                   }
                   let mark = performance.mark("lsp.update_diagnostics_deps");
-                  let (diagnostics, deferred) = spawn_blocking({
+                  let (diagnostics, deferred) = spawn_blocking_always({
                     let token = token.clone();
                     let snapshot = snapshot.clone();
                     move || generate_deno_diagnostics(&snapshot, token)
@@ -751,7 +751,7 @@ impl DiagnosticsServer {
                     previous_handle.await;
                   }
                   let mark = performance.mark("lsp.update_diagnostics_lint");
-                  let diagnostics = spawn_blocking({
+                  let diagnostics = spawn_blocking_always({
                     let token = token.clone();
                     let snapshot = snapshot.clone();
                     move || generate_lint_diagnostics(&snapshot, token)

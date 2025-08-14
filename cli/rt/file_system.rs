@@ -264,7 +264,7 @@ impl FileSystem for DenoRtSys {
     self.error_if_in_vfs(&newpath)?;
     if self.0.is_path_within(&oldpath) {
       let fs = self.clone();
-      tokio::task::spawn_blocking(move || {
+      deno_core::unsync::spawn_blocking_optional(move || {
         fs.copy_to_real_path(
           &oldpath.as_checked_path(),
           &newpath.as_checked_path(),

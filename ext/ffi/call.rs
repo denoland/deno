@@ -11,7 +11,7 @@ use deno_core::op2;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::serde_v8::ExternalPointer;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_always;
 use deno_core::v8;
 use libffi::middle::Arg;
 use num_bigint::BigInt;
@@ -324,7 +324,7 @@ where
   let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
   let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
-  let join_handle = spawn_blocking(move || {
+  let join_handle = spawn_blocking_always(move || {
     let PtrSymbol { cif, ptr } = symbol.clone();
     ffi_call(
       call_args,
@@ -370,7 +370,7 @@ pub fn op_ffi_call_nonblocking(
   let call_args = ffi_parse_args(scope, parameters, &symbol.parameter_types)?;
   let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
-  let join_handle = spawn_blocking(move || {
+  let join_handle = spawn_blocking_always(move || {
     let Symbol {
       cif,
       ptr,

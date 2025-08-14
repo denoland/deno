@@ -422,7 +422,7 @@ impl PublishPreparer {
     };
     let file_patterns = package.member_dir.to_publish_config()?.files;
 
-    let tarball = deno_core::unsync::spawn_blocking({
+    let tarball = deno_core::unsync::spawn_blocking_optional({
       let diagnostics_collector = diagnostics_collector.clone();
       let module_content_provider = self.module_content_provider.clone();
       let cli_options = self.cli_options.clone();
