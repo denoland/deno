@@ -93,7 +93,6 @@ spki.workspace = true
 sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true
 tokio.workspace = true
-tokio-aws-lc = { path = "../../../tokio-aws-lc" }
 tokio-eld.workspace = true
 tower-service.workspace = true
 url.workspace = true
