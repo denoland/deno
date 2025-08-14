@@ -661,13 +661,10 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
 
       // The target directory might already exists. If it does,
       // continue copying all entries instead of aborting.
-      match builder.create(to) {
-        Err(err) => {
-          if err.kind() != ErrorKind::AlreadyExists {
-            return Err(FsError::Io(err));
-          }
-        }
-        Ok(_) => {}
+      if let Err(err) = builder.create(to)
+        && err.kind() != ErrorKind::AlreadyExists
+      {
+        return Err(FsError::Io(err));
       }
 
       let mut entries: Vec<_> = fs::read_dir(from)?
