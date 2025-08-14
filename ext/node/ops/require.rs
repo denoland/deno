@@ -395,9 +395,21 @@ pub fn op_require_real_path<
   let path = ensure_read_permission::<P>(state, path)
     .map_err(RequireErrorKind::Permission)?;
   let sys = state.borrow::<TSys>();
-  let canonicalized_path = deno_path_util::strip_unc_prefix(
-    sys.fs_canonicalize(&path).map_err(RequireErrorKind::Io)?,
-  );
+  let canonicalized_path =
+    deno_path_util::strip_unc_prefix(match sys.fs_canonicalize(&path) {
+      Ok(path) => path,
+      Err(err) => {
+        if path.ends_with("$deno$eval.cjs")
+          || path.ends_with("$deno$eval.cts")
+          || path.ends_with("$deno$stdin.cjs")
+          || path.ends_with("$deno$stdin.cts")
+        {
+          path.to_path_buf()
+        } else {
+          return Err(RequireErrorKind::Io(err).into_box());
+        }
+      }
+    });
   Ok(canonicalized_path.to_string_lossy().into_owned())
 }
 
