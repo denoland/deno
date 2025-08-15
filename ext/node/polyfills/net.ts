@@ -1233,8 +1233,7 @@ export function Socket(options) {
   this.connecting = false;
 
   const errorStack = new Error().stack;
-  this._needsSockInitWorkaround =
-    options.handle?.ipc !== true &&
+  this._needsSockInitWorkaround = options.handle?.ipc !== true &&
     pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
   if (this._needsSockInitWorkaround) {
     this.pause();
@@ -2241,7 +2240,7 @@ function _setupListenHandle(
 
 /**
  * This class is used to create a TCP or IPC server.
- * 
+ *
  * `net.Server` is an `EventEmitter` with the following events:
  *
  * - `"close"` - Emitted when the server closes. If connections exist, this
@@ -2256,7 +2255,10 @@ function _setupListenHandle(
  * `server.listen()`.
  */
 export function Server(connectionListener?: ConnectionListener);
-export function Server(options?: ServerOptions, connectionListener?: ConnectionListener);
+export function Server(
+  options?: ServerOptions,
+  connectionListener?: ConnectionListener,
+);
 export function Server(
   options?: ServerOptions | ConnectionListener,
   connectionListener?: ConnectionListener,
@@ -2556,7 +2558,9 @@ Server.prototype.address = function (): AddressInfo | string | null {
  *
  * Callback should take two arguments `err` and `count`.
  */
-Server.prototype.getConnections = function (cb: (err: Error | null, count: number) => void) {
+Server.prototype.getConnections = function (
+  cb: (err: Error | null, count: number) => void,
+) {
   // deno-lint-ignore no-this-alias
   const server = this;
 
