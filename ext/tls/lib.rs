@@ -267,14 +267,33 @@ pub enum SocketUse {
   Http2Only,
 }
 
+#[derive(Default)]
+pub struct TlsClientConfigOptions {
+  pub root_cert_store: Option<RootCertStore>,
+  pub ca_certs: Vec<Vec<u8>>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub disable_hostname_verification: bool,
+  pub cert_chain_and_key: TlsKeys,
+  pub socket_use: SocketUse,
+}
+
+impl Default for SocketUse {
+  fn default() -> Self {
+    SocketUse::GeneralSsl
+  }
+}
+
 pub fn create_client_config(
-  root_cert_store: Option<RootCertStore>,
-  ca_certs: Vec<Vec<u8>>,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  disable_hostname_verification: bool,
-  maybe_cert_chain_and_key: TlsKeys,
-  socket_use: SocketUse,
+  options: TlsClientConfigOptions,
 ) -> Result<ClientConfig, TlsError> {
+  let TlsClientConfigOptions {
+    root_cert_store,
+    ca_certs,
+    unsafely_ignore_certificate_errors,
+    disable_hostname_verification,
+    cert_chain_and_key: maybe_cert_chain_and_key,
+    socket_use,
+  } = options;
   if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
     let client_config = ClientConfig::builder()
       .dangerous()

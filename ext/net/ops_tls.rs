@@ -28,6 +28,7 @@ use deno_error::JsErrorBox;
 use deno_permissions::OpenAccessKind;
 use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeyLookup;
 use deno_tls::TlsKeys;
@@ -372,14 +373,14 @@ where
 
   let tls_null = TlsKeysHolder::from(TlsKeys::Null);
   let key_pair = key_pair.unwrap_or(&tls_null);
-  let mut tls_config = create_client_config(
+  let mut tls_config = create_client_config(TlsClientConfigOptions {
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
     disable_hostname_verification,
-    key_pair.take(),
-    SocketUse::GeneralSsl,
-  )?;
+    cert_chain_and_key: key_pair.take(),
+    socket_use: SocketUse::GeneralSsl,
+  })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
@@ -474,14 +475,14 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let mut tls_config = create_client_config(
+  let mut tls_config = create_client_config(TlsClientConfigOptions {
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
     disable_hostname_verification,
-    key_pair.take(),
-    SocketUse::GeneralSsl,
-  )?;
+    cert_chain_and_key: key_pair.take(),
+    socket_use: SocketUse::GeneralSsl,
+  })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
