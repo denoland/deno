@@ -666,7 +666,6 @@ impl<TGraphContainer: ModuleGraphContainer>
         &specifier,
         maybe_referrer,
         &deno_resolver_requested_module_type,
-        deno_resolver::loader::AllowJsonImports::WithAttribute,
       )
       .await?
     {

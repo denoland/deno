@@ -16,6 +16,13 @@ pub use npm::*;
 use parking_lot::RwLock;
 use url::Url;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub enum AllowJsonImports {
+  Always,
+  #[default]
+  WithAttribute,
+}
+
 #[derive(Debug)]
 pub enum RequestedModuleType<'a> {
   None,
