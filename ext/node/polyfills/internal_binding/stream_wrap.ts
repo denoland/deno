@@ -33,7 +33,7 @@ const {
   Array,
   MapPrototypeGet,
   ObjectPrototypeIsPrototypeOf,
-  Promise,
+  PromiseResolve,
   PromisePrototypeThen,
   Symbol,
   TypedArrayPrototypeSlice,
@@ -350,7 +350,7 @@ export class LibuvStreamWrap extends HandleWrap {
     //
     // This is done to ensure that the resource is not locked up by
     // op_read.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await PromiseResolve();
 
     let buf = this.#buf;
 
