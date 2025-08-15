@@ -2239,490 +2239,470 @@ function _setupListenHandle(
   );
 }
 
-/** This class is used to create a TCP or IPC server. */
-export class Server extends EventEmitter {
-  [asyncIdSymbol] = -1;
-
-  allowHalfOpen = false;
-  pauseOnConnect = false;
-
-  // deno-lint-ignore no-explicit-any
-  _handle: any = null;
-  _connections = 0;
-  _usingWorkers = false;
-  // deno-lint-ignore no-explicit-any
-  _workers: any[] = [];
-  _unref = false;
-  _pipeName?: string;
-  _connectionKey?: string;
-
-  /**
-   * `net.Server` is an `EventEmitter` with the following events:
-   *
-   * - `"close"` - Emitted when the server closes. If connections exist, this
-   * event is not emitted until all connections are ended.
-   * - `"connection"` - Emitted when a new connection is made. `socket` is an
-   * instance of `net.Socket`.
-   * - `"error"` - Emitted when an error occurs. Unlike `net.Socket`, the
-   * `"close"` event will not be emitted directly following this event unless
-   * `server.close()` is manually called. See the example in discussion of
-   * `server.listen()`.
-   * - `"listening"` - Emitted when the server has been bound after calling
-   * `server.listen()`.
-   */
-  constructor(connectionListener?: ConnectionListener);
-  constructor(options?: ServerOptions, connectionListener?: ConnectionListener);
-  constructor(
-    options?: ServerOptions | ConnectionListener,
-    connectionListener?: ConnectionListener,
-  ) {
-    super();
-
-    if (_isConnectionListener(options)) {
-      this.on("connection", options);
-    } else if (_isServerSocketOptions(options)) {
-      this.allowHalfOpen = options?.allowHalfOpen || false;
-      this.pauseOnConnect = !!options?.pauseOnConnect;
-
-      if (_isConnectionListener(connectionListener)) {
-        this.on("connection", connectionListener);
-      }
-    } else {
-      throw new ERR_INVALID_ARG_TYPE("options", "Object", options);
-    }
+/**
+ * This class is used to create a TCP or IPC server.
+ * 
+ * `net.Server` is an `EventEmitter` with the following events:
+ *
+ * - `"close"` - Emitted when the server closes. If connections exist, this
+ * event is not emitted until all connections are ended.
+ * - `"connection"` - Emitted when a new connection is made. `socket` is an
+ * instance of `net.Socket`.
+ * - `"error"` - Emitted when an error occurs. Unlike `net.Socket`, the
+ * `"close"` event will not be emitted directly following this event unless
+ * `server.close()` is manually called. See the example in discussion of
+ * `server.listen()`.
+ * - `"listening"` - Emitted when the server has been bound after calling
+ * `server.listen()`.
+ */
+export function Server(connectionListener?: ConnectionListener);
+export function Server(options?: ServerOptions, connectionListener?: ConnectionListener);
+export function Server(
+  options?: ServerOptions | ConnectionListener,
+  connectionListener?: ConnectionListener,
+) {
+  if (!(this instanceof Server)) {
+    return new Server(options, connectionListener);
   }
 
-  /**
-   * Start a server listening for connections. A `net.Server` can be a TCP or
-   * an `IPC` server depending on what it listens to.
-   *
-   * Possible signatures:
-   *
-   * - `server.listen(handle[, backlog][, callback])`
-   * - `server.listen(options[, callback])`
-   * - `server.listen(path[, backlog][, callback])` for `IPC` servers
-   * - `server.listen([port[, host[, backlog]]][, callback])` for TCP servers
-   *
-   * This function is asynchronous. When the server starts listening, the `'listening'` event will be emitted. The last parameter `callback`will be added as a listener for the `'listening'`
-   * event.
-   *
-   * All `listen()` methods can take a `backlog` parameter to specify the maximum
-   * length of the queue of pending connections. The actual length will be determined
-   * by the OS through sysctl settings such as `tcp_max_syn_backlog` and `somaxconn` on Linux. The default value of this parameter is 511 (not 512).
-   *
-   * All `Socket` are set to `SO_REUSEADDR` (see [`socket(7)`](https://man7.org/linux/man-pages/man7/socket.7.html) for
-   * details).
-   *
-   * The `server.listen()` method can be called again if and only if there was an
-   * error during the first `server.listen()` call or `server.close()` has been
-   * called. Otherwise, an `ERR_SERVER_ALREADY_LISTEN` error will be thrown.
-   *
-   * One of the most common errors raised when listening is `EADDRINUSE`.
-   * This happens when another server is already listening on the requested`port`/`path`/`handle`. One way to handle this would be to retry
-   * after a certain amount of time:
-   */
-  listen(
-    port?: number,
-    hostname?: string,
-    backlog?: number,
-    listeningListener?: () => void,
-  ): this;
-  listen(
-    port?: number,
-    hostname?: string,
-    listeningListener?: () => void,
-  ): this;
-  listen(port?: number, backlog?: number, listeningListener?: () => void): this;
-  listen(port?: number, listeningListener?: () => void): this;
-  listen(path: string, backlog?: number, listeningListener?: () => void): this;
-  listen(path: string, listeningListener?: () => void): this;
-  listen(options: ListenOptions, listeningListener?: () => void): this;
+  EventEmitter.call(this);
+
+  this[asyncIdSymbol] = -1;
+  this.allowHalfOpen = false;
+  this.pauseOnConnect = false;
+  this._handle = null;
+  this._connections = 0;
+  this._usingWorkers = false;
+  this._workers = [];
+  this._unref = false;
+  this._pipeName = undefined;
+  this._connectionKey = undefined;
+
+  if (_isConnectionListener(options)) {
+    this.on("connection", options);
+  } else if (_isServerSocketOptions(options)) {
+    this.allowHalfOpen = options?.allowHalfOpen || false;
+    this.pauseOnConnect = !!options?.pauseOnConnect;
+
+    if (_isConnectionListener(connectionListener)) {
+      this.on("connection", connectionListener);
+    }
+  } else {
+    throw new ERR_INVALID_ARG_TYPE("options", "Object", options);
+  }
+}
+Object.setPrototypeOf(Server.prototype, EventEmitter.prototype);
+Object.setPrototypeOf(Server, EventEmitter);
+
+/**
+ * Start a server listening for connections. A `net.Server` can be a TCP or
+ * an `IPC` server depending on what it listens to.
+ *
+ * Possible signatures:
+ *
+ * - `server.listen(handle[, backlog][, callback])`
+ * - `server.listen(options[, callback])`
+ * - `server.listen(path[, backlog][, callback])` for `IPC` servers
+ * - `server.listen([port[, host[, backlog]]][, callback])` for TCP servers
+ *
+ * This function is asynchronous. When the server starts listening, the `'listening'` event will be emitted. The last parameter `callback`will be added as a listener for the `'listening'`
+ * event.
+ *
+ * All `listen()` methods can take a `backlog` parameter to specify the maximum
+ * length of the queue of pending connections. The actual length will be determined
+ * by the OS through sysctl settings such as `tcp_max_syn_backlog` and `somaxconn` on Linux. The default value of this parameter is 511 (not 512).
+ *
+ * All `Socket` are set to `SO_REUSEADDR` (see [`socket(7)`](https://man7.org/linux/man-pages/man7/socket.7.html) for
+ * details).
+ *
+ * The `server.listen()` method can be called again if and only if there was an
+ * error during the first `server.listen()` call or `server.close()` has been
+ * called. Otherwise, an `ERR_SERVER_ALREADY_LISTEN` error will be thrown.
+ *
+ * One of the most common errors raised when listening is `EADDRINUSE`.
+ * This happens when another server is already listening on the requested`port`/`path`/`handle`. One way to handle this would be to retry
+ * after a certain amount of time:
+ */
+Server.prototype.listen = function (...args: unknown[]) {
+  const normalized = _normalizeArgs(args);
+  let options = normalized[0] as Partial<ListenOptions>;
+  const cb = normalized[1];
+
+  if (this._handle) {
+    throw new ERR_SERVER_ALREADY_LISTEN();
+  }
+
+  if (cb !== null) {
+    this.once("listening", cb);
+  }
+
+  const backlogFromArgs: number =
+    // (handle, backlog) or (path, backlog) or (port, backlog)
+    _toNumber(args.length > 1 && args[1]) ||
+    (_toNumber(args.length > 2 && args[2]) as number); // (port, host, backlog)
+
   // deno-lint-ignore no-explicit-any
-  listen(handle: any, backlog?: number, listeningListener?: () => void): this;
-  // deno-lint-ignore no-explicit-any
-  listen(handle: any, listeningListener?: () => void): this;
-  listen(...args: unknown[]): this {
-    const normalized = _normalizeArgs(args);
-    let options = normalized[0] as Partial<ListenOptions>;
-    const cb = normalized[1];
+  options = (options as any)._handle || (options as any).handle || options;
+  const flags = _getFlags(options.ipv6Only);
 
-    if (this._handle) {
-      throw new ERR_SERVER_ALREADY_LISTEN();
-    }
+  // (handle[, backlog][, cb]) where handle is an object with a handle
+  if (options instanceof TCP) {
+    this._handle = options;
+    this[asyncIdSymbol] = this._handle.getAsyncId();
 
-    if (cb !== null) {
-      this.once("listening", cb);
-    }
+    _listenInCluster(this, null, -1, -1, backlogFromArgs);
 
-    const backlogFromArgs: number =
-      // (handle, backlog) or (path, backlog) or (port, backlog)
-      _toNumber(args.length > 1 && args[1]) ||
-      (_toNumber(args.length > 2 && args[2]) as number); // (port, host, backlog)
+    return this;
+  }
 
-    // deno-lint-ignore no-explicit-any
-    options = (options as any)._handle || (options as any).handle || options;
-    const flags = _getFlags(options.ipv6Only);
+  _addAbortSignalOption(this, options);
 
-    // (handle[, backlog][, cb]) where handle is an object with a handle
-    if (options instanceof TCP) {
-      this._handle = options;
-      this[asyncIdSymbol] = this._handle.getAsyncId();
+  // (handle[, backlog][, cb]) where handle is an object with a fd
+  if (typeof options.fd === "number" && options.fd >= 0) {
+    _listenInCluster(this, null, null, null, backlogFromArgs, options.fd);
 
-      _listenInCluster(this, null, -1, -1, backlogFromArgs);
+    return this;
+  }
 
-      return this;
-    }
+  // ([port][, host][, backlog][, cb]) where port is omitted,
+  // that is, listen(), listen(null), listen(cb), or listen(null, cb)
+  // or (options[, cb]) where options.port is explicitly set as undefined or
+  // null, bind to an arbitrary unused port
+  if (
+    args.length === 0 ||
+    typeof args[0] === "function" ||
+    (typeof options.port === "undefined" && "port" in options) ||
+    options.port === null
+  ) {
+    options.port = 0;
+  }
 
-    _addAbortSignalOption(this, options);
+  // ([port][, host][, backlog][, cb]) where port is specified
+  // or (options[, cb]) where options.port is specified
+  // or if options.port is normalized as 0 before
+  let backlog;
 
-    // (handle[, backlog][, cb]) where handle is an object with a fd
-    if (typeof options.fd === "number" && options.fd >= 0) {
-      _listenInCluster(this, null, null, null, backlogFromArgs, options.fd);
+  if (typeof options.port === "number" || typeof options.port === "string") {
+    validatePort(options.port, "options.port");
+    backlog = options.backlog || backlogFromArgs;
 
-      return this;
-    }
-
-    // ([port][, host][, backlog][, cb]) where port is omitted,
-    // that is, listen(), listen(null), listen(cb), or listen(null, cb)
-    // or (options[, cb]) where options.port is explicitly set as undefined or
-    // null, bind to an arbitrary unused port
-    if (
-      args.length === 0 ||
-      typeof args[0] === "function" ||
-      (typeof options.port === "undefined" && "port" in options) ||
-      options.port === null
-    ) {
-      options.port = 0;
-    }
-
-    // ([port][, host][, backlog][, cb]) where port is specified
-    // or (options[, cb]) where options.port is specified
-    // or if options.port is normalized as 0 before
-    let backlog;
-
-    if (typeof options.port === "number" || typeof options.port === "string") {
-      validatePort(options.port, "options.port");
-      backlog = options.backlog || backlogFromArgs;
-
-      // start TCP server listening on host:port
-      if (options.host) {
-        _lookupAndListen(
-          this,
-          options.port | 0,
-          options.host,
-          backlog,
-          !!options.exclusive,
-          flags,
-        );
-      } else {
-        // Undefined host, listens on unspecified address
-        // Default addressType 4 will be used to search for primary server
-        _listenInCluster(
-          this,
-          null,
-          options.port | 0,
-          4,
-          backlog,
-          undefined,
-          options.exclusive,
-        );
-      }
-
-      return this;
-    }
-
-    // (path[, backlog][, cb]) or (options[, cb])
-    // where path or options.path is a UNIX domain socket or Windows pipe
-    if (options.path && _isPipeName(options.path)) {
-      const pipeName = (this._pipeName = options.path);
-      backlog = options.backlog || backlogFromArgs;
-
+    // start TCP server listening on host:port
+    if (options.host) {
+      _lookupAndListen(
+        this,
+        options.port | 0,
+        options.host,
+        backlog,
+        !!options.exclusive,
+        flags,
+      );
+    } else {
+      // Undefined host, listens on unspecified address
+      // Default addressType 4 will be used to search for primary server
       _listenInCluster(
         this,
-        pipeName,
-        -1,
-        -1,
+        null,
+        options.port | 0,
+        4,
         backlog,
         undefined,
         options.exclusive,
       );
-
-      if (!this._handle) {
-        // Failed and an error shall be emitted in the next tick.
-        // Therefore, we directly return.
-        return this;
-      }
-
-      let mode = 0;
-
-      if (options.readableAll === true) {
-        mode |= PipeConstants.UV_READABLE;
-      }
-
-      if (options.writableAll === true) {
-        mode |= PipeConstants.UV_WRITABLE;
-      }
-
-      if (mode !== 0) {
-        const err = this._handle.fchmod(mode);
-
-        if (err) {
-          this._handle.close();
-          this._handle = null;
-
-          throw errnoException(err, "uv_pipe_chmod");
-        }
-      }
-
-      return this;
-    }
-
-    if (!("port" in options || "path" in options)) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "options",
-        options,
-        'must have the property "port" or "path"',
-      );
-    }
-
-    throw new ERR_INVALID_ARG_VALUE("options", options);
-  }
-
-  /**
-   * Stops the server from accepting new connections and keeps existing
-   * connections. This function is asynchronous, the server is finally closed
-   * when all connections are ended and the server emits a `"close"` event.
-   * The optional `callback` will be called once the `"close"` event occurs. Unlike
-   * that event, it will be called with an `Error` as its only argument if the server
-   * was not open when it was closed.
-   *
-   * @param cb Called when the server is closed.
-   */
-  close(cb?: (err?: Error) => void): this {
-    if (typeof cb === "function") {
-      if (!this._handle) {
-        this.once("close", function close() {
-          cb(new ERR_SERVER_NOT_RUNNING());
-        });
-      } else {
-        this.once("close", cb);
-      }
-    }
-
-    if (this._handle) {
-      (this._handle as TCP).close();
-      this._handle = null;
-    }
-
-    if (this._usingWorkers) {
-      let left = this._workers.length;
-      const onWorkerClose = () => {
-        if (--left !== 0) {
-          return;
-        }
-
-        this._connections = 0;
-        this._emitCloseIfDrained();
-      };
-
-      // Increment connections to be sure that, even if all sockets will be closed
-      // during polling of workers, `close` event will be emitted only once.
-      this._connections++;
-
-      // Poll workers
-      for (let n = 0; n < this._workers.length; n++) {
-        this._workers[n].close(onWorkerClose);
-      }
-    } else {
-      this._emitCloseIfDrained();
     }
 
     return this;
   }
 
-  /**
-   * Returns the bound `address`, the address `family` name, and `port` of the server
-   * as reported by the operating system if listening on an IP socket
-   * (useful to find which port was assigned when getting an OS-assigned address):`{ port: 12346, family: "IPv4", address: "127.0.0.1" }`.
-   *
-   * For a server listening on a pipe or Unix domain socket, the name is returned
-   * as a string.
-   *
-   * `server.address()` returns `null` before the `"listening"` event has been
-   * emitted or after calling `server.close()`.
-   */
-  address(): AddressInfo | string | null {
-    if (this._handle && this._handle.getsockname) {
-      const out = {};
-      const err = this._handle.getsockname(out);
+  // (path[, backlog][, cb]) or (options[, cb])
+  // where path or options.path is a UNIX domain socket or Windows pipe
+  if (options.path && _isPipeName(options.path)) {
+    const pipeName = (this._pipeName = options.path);
+    backlog = options.backlog || backlogFromArgs;
 
-      if (err) {
-        throw errnoException(err, "address");
-      }
-
-      return out as AddressInfo;
-    } else if (this._pipeName) {
-      return this._pipeName;
-    }
-
-    return null;
-  }
-
-  /**
-   * Asynchronously get the number of concurrent connections on the server. Works
-   * when sockets were sent to forks.
-   *
-   * Callback should take two arguments `err` and `count`.
-   */
-  getConnections(cb: (err: Error | null, count: number) => void): this {
-    // deno-lint-ignore no-this-alias
-    const server = this;
-
-    function end(err: Error | null, connections?: number) {
-      defaultTriggerAsyncIdScope(
-        server[asyncIdSymbol],
-        nextTick,
-        cb,
-        err,
-        connections,
-      );
-    }
-
-    if (!this._usingWorkers) {
-      end(null, this._connections);
-
-      return this;
-    }
-
-    // Poll workers
-    let left = this._workers.length;
-    let total = this._connections;
-
-    function oncount(err: Error, count: number) {
-      if (err) {
-        left = -1;
-
-        return end(err);
-      }
-
-      total += count;
-
-      if (--left === 0) {
-        return end(null, total);
-      }
-    }
-
-    for (let n = 0; n < this._workers.length; n++) {
-      this._workers[n].getConnections(oncount);
-    }
-
-    return this;
-  }
-
-  /**
-   * Calling `unref()` on a server will allow the program to exit if this is the only
-   * active server in the event system. If the server is already `unref`ed calling `unref()` again will have no effect.
-   */
-  unref(): this {
-    this._unref = true;
-
-    if (this._handle) {
-      this._handle.unref();
-    }
-
-    return this;
-  }
-
-  /**
-   * Opposite of `unref()`, calling `ref()` on a previously `unref`ed server will _not_ let the program exit if it's the only server left (the default behavior).
-   * If the server is `ref`ed calling `ref()` again will have no effect.
-   */
-  ref(): this {
-    this._unref = false;
-
-    if (this._handle) {
-      this._handle.ref();
-    }
-
-    return this;
-  }
-
-  /**
-   * Indicates whether or not the server is listening for connections.
-   */
-  get listening(): boolean {
-    return !!this._handle;
-  }
-
-  _createSocket(clientHandle) {
-    const socket = new Socket({
-      handle: clientHandle,
-      allowHalfOpen: this.allowHalfOpen,
-      pauseOnCreate: this.pauseOnConnect,
-      readable: true,
-      writable: true,
-    });
-
-    // TODO(@bartlomieju): implement noDelay and setKeepAlive
-
-    socket.server = this;
-    socket._server = this;
-
-    DTRACE_NET_SERVER_CONNECTION(socket);
-
-    return socket;
-  }
-
-  _listen2 = _setupListenHandle;
-
-  _emitCloseIfDrained() {
-    debug("SERVER _emitCloseIfDrained");
-    if (this._handle || this._connections) {
-      debug(
-        `SERVER handle? ${!!this._handle}   connections? ${this._connections}`,
-      );
-      return;
-    }
-
-    // We use setTimeout instead of nextTick here to avoid EADDRINUSE error
-    // when the same port listened immediately after the 'close' event.
-    // ref: https://github.com/denoland/deno_std/issues/2788
-    defaultTriggerAsyncIdScope(
-      this[asyncIdSymbol],
-      setTimeout,
-      _emitCloseNT,
-      0,
+    _listenInCluster(
       this,
+      pipeName,
+      -1,
+      -1,
+      backlog,
+      undefined,
+      options.exclusive,
+    );
+
+    if (!this._handle) {
+      // Failed and an error shall be emitted in the next tick.
+      // Therefore, we directly return.
+      return this;
+    }
+
+    let mode = 0;
+
+    if (options.readableAll === true) {
+      mode |= PipeConstants.UV_READABLE;
+    }
+
+    if (options.writableAll === true) {
+      mode |= PipeConstants.UV_WRITABLE;
+    }
+
+    if (mode !== 0) {
+      const err = this._handle.fchmod(mode);
+
+      if (err) {
+        this._handle.close();
+        this._handle = null;
+
+        throw errnoException(err, "uv_pipe_chmod");
+      }
+    }
+
+    return this;
+  }
+
+  if (!("port" in options || "path" in options)) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "options",
+      options,
+      'must have the property "port" or "path"',
     );
   }
 
-  _setupWorker(socketList: EventEmitter) {
-    this._usingWorkers = true;
-    this._workers.push(socketList);
+  throw new ERR_INVALID_ARG_VALUE("options", options);
+};
 
-    // deno-lint-ignore no-explicit-any
-    socketList.once("exit", (socketList: any) => {
-      const index = this._workers.indexOf(socketList);
-      this._workers.splice(index, 1);
-    });
-  }
-
-  [EventEmitter.captureRejectionSymbol](
-    err: Error,
-    event: string,
-    sock: Socket,
-  ) {
-    switch (event) {
-      case "connection": {
-        sock.destroy(err);
-        break;
-      }
-      default: {
-        this.emit("error", err);
-      }
+/**
+ * Stops the server from accepting new connections and keeps existing
+ * connections. This function is asynchronous, the server is finally closed
+ * when all connections are ended and the server emits a `"close"` event.
+ * The optional `callback` will be called once the `"close"` event occurs. Unlike
+ * that event, it will be called with an `Error` as its only argument if the server
+ * was not open when it was closed.
+ *
+ * @param cb Called when the server is closed.
+ */
+Server.prototype.close = function (cb?: (err?: Error) => void) {
+  if (typeof cb === "function") {
+    if (!this._handle) {
+      this.once("close", function close() {
+        cb(new ERR_SERVER_NOT_RUNNING());
+      });
+    } else {
+      this.once("close", cb);
     }
   }
-}
+
+  if (this._handle) {
+    (this._handle as TCP).close();
+    this._handle = null;
+  }
+
+  if (this._usingWorkers) {
+    let left = this._workers.length;
+    const onWorkerClose = () => {
+      if (--left !== 0) {
+        return;
+      }
+
+      this._connections = 0;
+      this._emitCloseIfDrained();
+    };
+
+    // Increment connections to be sure that, even if all sockets will be closed
+    // during polling of workers, `close` event will be emitted only once.
+    this._connections++;
+
+    // Poll workers
+    for (let n = 0; n < this._workers.length; n++) {
+      this._workers[n].close(onWorkerClose);
+    }
+  } else {
+    this._emitCloseIfDrained();
+  }
+
+  return this;
+};
+
+/**
+ * Returns the bound `address`, the address `family` name, and `port` of the server
+ * as reported by the operating system if listening on an IP socket
+ * (useful to find which port was assigned when getting an OS-assigned address):`{ port: 12346, family: "IPv4", address: "127.0.0.1" }`.
+ *
+ * For a server listening on a pipe or Unix domain socket, the name is returned
+ * as a string.
+ *
+ * `server.address()` returns `null` before the `"listening"` event has been
+ * emitted or after calling `server.close()`.
+ */
+Server.prototype.address = function (): AddressInfo | string | null {
+  if (this._handle && this._handle.getsockname) {
+    const out = {};
+    const err = this._handle.getsockname(out);
+
+    if (err) {
+      throw errnoException(err, "address");
+    }
+
+    return out as AddressInfo;
+  } else if (this._pipeName) {
+    return this._pipeName;
+  }
+
+  return null;
+};
+
+/**
+ * Asynchronously get the number of concurrent connections on the server. Works
+ * when sockets were sent to forks.
+ *
+ * Callback should take two arguments `err` and `count`.
+ */
+Server.prototype.getConnections = function (cb: (err: Error | null, count: number) => void) {
+  // deno-lint-ignore no-this-alias
+  const server = this;
+
+  function end(err: Error | null, connections?: number) {
+    defaultTriggerAsyncIdScope(
+      server[asyncIdSymbol],
+      nextTick,
+      cb,
+      err,
+      connections,
+    );
+  }
+
+  if (!this._usingWorkers) {
+    end(null, this._connections);
+
+    return this;
+  }
+
+  // Poll workers
+  let left = this._workers.length;
+  let total = this._connections;
+
+  function oncount(err: Error, count: number) {
+    if (err) {
+      left = -1;
+
+      return end(err);
+    }
+
+    total += count;
+
+    if (--left === 0) {
+      return end(null, total);
+    }
+  }
+
+  for (let n = 0; n < this._workers.length; n++) {
+    this._workers[n].getConnections(oncount);
+  }
+
+  return this;
+};
+
+/**
+ * Calling `unref()` on a server will allow the program to exit if this is the only
+ * active server in the event system. If the server is already `unref`ed calling `unref()` again will have no effect.
+ */
+Server.prototype.unref = function () {
+  this._unref = true;
+
+  if (this._handle) {
+    this._handle.unref();
+  }
+
+  return this;
+};
+
+/**
+ * Opposite of `unref()`, calling `ref()` on a previously `unref`ed server will _not_ let the program exit if it's the only server left (the default behavior).
+ * If the server is `ref`ed calling `ref()` again will have no effect.
+ */
+Server.prototype.ref = function () {
+  this._unref = false;
+
+  if (this._handle) {
+    this._handle.ref();
+  }
+
+  return this;
+};
+
+Object.defineProperty(Server.prototype, "listening", {
+  get: function () {
+    return !!this._handle;
+  },
+});
+
+Server.prototype._createSocket = function (clientHandle) {
+  const socket = new Socket({
+    handle: clientHandle,
+    allowHalfOpen: this.allowHalfOpen,
+    pauseOnCreate: this.pauseOnConnect,
+    readable: true,
+    writable: true,
+  });
+
+  // TODO(@bartlomieju): implement noDelay and setKeepAlive
+
+  socket.server = this;
+  socket._server = this;
+
+  DTRACE_NET_SERVER_CONNECTION(socket);
+
+  return socket;
+};
+
+Server.prototype._listen2 = _setupListenHandle;
+
+Server.prototype._emitCloseIfDrained = function () {
+  debug("SERVER _emitCloseIfDrained");
+  if (this._handle || this._connections) {
+    debug(
+      `SERVER handle? ${!!this._handle}   connections? ${this._connections}`,
+    );
+    return;
+  }
+
+  // We use setTimeout instead of nextTick here to avoid EADDRINUSE error
+  // when the same port listened immediately after the 'close' event.
+  // ref: https://github.com/denoland/deno_std/issues/2788
+  defaultTriggerAsyncIdScope(
+    this[asyncIdSymbol],
+    setTimeout,
+    _emitCloseNT,
+    0,
+    this,
+  );
+};
+
+Server.prototype._setupWorker = function (socketList: EventEmitter) {
+  this._usingWorkers = true;
+  this._workers.push(socketList);
+
+  // deno-lint-ignore no-explicit-any
+  socketList.once("exit", (socketList: any) => {
+    const index = this._workers.indexOf(socketList);
+    this._workers.splice(index, 1);
+  });
+};
+
+Server.prototype[EventEmitter.captureRejectionSymbol] = function (
+  err: Error,
+  event: string,
+  sock: Socket,
+) {
+  switch (event) {
+    case "connection": {
+      sock.destroy(err);
+      break;
+    }
+    default: {
+      this.emit("error", err);
+    }
+  }
+};
 
 /**
  * Creates a new TCP or IPC server.
