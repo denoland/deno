@@ -1183,6 +1183,14 @@ impl CliFactory {
             }
             _ => None,
           },
+          allow_json_imports: if matches!(
+            self.flags.subcommand,
+            DenoSubcommand::Bundle(_)
+          ) {
+            deno_resolver::loader::AllowJsonImports::Always
+          } else {
+            deno_resolver::loader::AllowJsonImports::WithAttribute
+          },
         },
       )))
     })

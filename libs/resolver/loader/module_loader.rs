@@ -13,6 +13,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::errors::PackageJsonLoadError;
 use url::Url;
 
+use super::AllowJsonImports;
 use super::DenoNpmModuleLoaderRc;
 use super::LoadedModule;
 use super::LoadedModuleOrAsset;
@@ -137,6 +138,7 @@ pub struct ModuleLoader<TSys: ModuleLoaderSys> {
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   npm_module_loader: DenoNpmModuleLoaderRc<TSys>,
   prepared_module_loader: PreparedModuleLoader<TSys>,
+  allow_json_imports: AllowJsonImports,
 }
 
 impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
@@ -149,6 +151,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     npm_module_loader: DenoNpmModuleLoaderRc<TSys>,
     parsed_source_cache: ParsedSourceCacheRc,
     sys: TSys,
+    allow_json_imports: AllowJsonImports,
   ) -> Self {
     Self {
       in_npm_pkg_checker,
@@ -160,6 +163,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
         parsed_source_cache,
         sys,
       },
+      allow_json_imports,
     }
   }
 
@@ -222,6 +226,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
         // import attributes) is not JSON we need to fail.
         if loaded_module.media_type == MediaType::Json
           && !matches!(requested_module_type, RequestedModuleType::Json)
+          && matches!(self.allow_json_imports, AllowJsonImports::WithAttribute)
         {
           Err(LoadCodeSourceErrorKind::MissingJsonAttribute.into_box())
         } else {
