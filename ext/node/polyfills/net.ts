@@ -1188,439 +1188,288 @@ const pkgsNeedsSockInitWorkaround = [
  * is received. For example, it is passed to the listeners of a `"connection"` event emitted on a `Server`, so the user can use
  * it to interact with the client.
  */
-export class Socket extends Duplex {
-  // Problem with this is that users can supply their own handle, that may not
-  // have `handle.getAsyncId()`. In this case an `[asyncIdSymbol]` should
-  // probably be supplied by `async_hooks`.
-  [asyncIdSymbol] = -1;
+export function Socket(options) {
+  if (!(this instanceof Socket)) {
+    return new Socket(options);
+  }
 
-  [kHandle]: Handle | null = null;
-  [kSetNoDelay] = false;
-  [kLastWriteQueueSize] = 0;
-  // deno-lint-ignore no-explicit-any
-  [kTimeout]: any = null;
-  [kBuffer]: Uint8Array | boolean | null = null;
-  [kBufferCb]: OnReadOptions["callback"] | null = null;
-  [kBufferGen]: (() => Uint8Array) | null = null;
+  if (typeof options === "number") {
+    // Legacy interface.
+    options = { fd: options };
+  } else {
+    options = { ...options };
+  }
 
-  // Used after `.destroy()`
-  [kBytesRead] = 0;
-  [kBytesWritten] = 0;
+  // Default to *not* allowing half open sockets.
+  options.allowHalfOpen = Boolean(options.allowHalfOpen);
+  // For backwards compat do not emit close on destroy.
+  options.emitClose = false;
+  options.autoDestroy = true;
+  // Handle strings directly.
+  options.decodeStrings = false;
 
-  // Reserved properties
-  server = null;
-  // deno-lint-ignore no-explicit-any
-  _server: any = null;
+  Duplex.call(this, options);
 
-  _peername?: AddressInfo | Record<string, never>;
-  _sockname?: AddressInfo | Record<string, never>;
-  _pendingData: Uint8Array | string | null = null;
-  _pendingEncoding = "";
-  _host: string | null = null;
-  // deno-lint-ignore no-explicit-any
-  _parent: any = null;
-  // Skip some initialization (initial read and tls handshake if it's tls socket).
-  // If this flag is true, it's used as connection for http(s) request, and
-  // the reading and TLS handshake is done by the http client.
-  // See discussions in https://github.com/denoland/deno/pull/25470 for more details.
-  _needsSockInitWorkaround = false;
-  autoSelectFamilyAttemptedAddresses: AddressInfo[] | undefined = undefined;
+  this[asyncIdSymbol] = -1;
+  this[kHandle] = null;
+  this[kSetNoDelay] = false;
+  this[kLastWriteQueueSize] = 0;
+  this[kTimeout] = null;
+  this[kBuffer] = null;
+  this[kBufferCb] = null;
+  this[kBufferGen] = null;
+  this[kBytesRead] = 0;
+  this[kBytesWritten] = 0;
+  this.server = null;
+  this._server = null;
+  this._peername = undefined;
+  this._sockname = undefined;
+  this._pendingData = null;
+  this._pendingEncoding = "";
+  this._host = null;
+  this._parent = null;
+  this._needsSockInitWorkaround = false;
+  this.autoSelectFamilyAttemptedAddresses = undefined;
+  this.connecting = false;
 
-  constructor(options: SocketOptions | number) {
-    if (typeof options === "number") {
-      // Legacy interface.
-      options = { fd: options };
+  const errorStack = new Error().stack;
+  this._needsSockInitWorkaround =
+    options.handle?.ipc !== true &&
+    pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
+  if (this._needsSockInitWorkaround) {
+    this.pause();
+  }
+
+  if (options.handle) {
+    this._handle = options.handle;
+    this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+  } else if (options.fd !== undefined) {
+    notImplemented("net.Socket.prototype.constructor with fd option");
+  }
+
+  const onread = options.onread;
+
+  if (
+    onread !== null &&
+    typeof onread === "object" &&
+    (isUint8Array(onread.buffer) || typeof onread.buffer === "function") &&
+    typeof onread.callback === "function"
+  ) {
+    if (typeof onread.buffer === "function") {
+      this[kBuffer] = true;
+      this[kBufferGen] = onread.buffer;
     } else {
-      options = { ...options };
+      this[kBuffer] = onread.buffer;
     }
+    this[kBufferCb] = onread.callback;
+  }
 
-    // Default to *not* allowing half open sockets.
-    options.allowHalfOpen = Boolean(options.allowHalfOpen);
-    // For backwards compat do not emit close on destroy.
-    options.emitClose = false;
-    options.autoDestroy = true;
-    // Handle strings directly.
-    options.decodeStrings = false;
+  this.on("end", _onReadableStreamEnd);
 
-    super(options);
+  _initSocketHandle(this);
 
-    // Note: If the TCP/TLS socket is created from one of `pkgNeedsSockInitWorkaround`,
-    // the 'socket' event on ClientRequest object happens after 'connect' event on Socket object.
-    // That swaps the sequence of op_node_http_request_with_conn() call and
-    // initial socket read. That causes op_node_http_request_with_conn() not
-    // working.
-    // To avoid the above situation, we detect the socket created from
-    // one of those packages using stack trace and pause the socket
-    // (and also skips the startTls call if it's TLSSocket)
-    // TODO(kt3k): Remove this workaround
-    const errorStack = new Error().stack;
-    this._needsSockInitWorkaround = options.handle?.ipc !== true &&
-      pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
-    if (this._needsSockInitWorkaround) {
-      this.pause();
+  if (this._handle && options.readable !== false) {
+    if (options.pauseOnCreate) {
+      this._handle.reading = false;
+      this._handle.readStop();
+      this.readableFlowing = false;
+    } else if (!options.manualStart) {
+      this.read(0);
     }
+  }
+}
+Object.setPrototypeOf(Socket.prototype, Duplex.prototype);
+Object.setPrototypeOf(Socket, Duplex);
 
-    if (options.handle) {
-      this._handle = options.handle;
-      this[asyncIdSymbol] = _getNewAsyncId(this._handle);
-    } else if (options.fd !== undefined) {
-      // REF: https://github.com/denoland/deno/issues/6529
-      notImplemented("net.Socket.prototype.constructor with fd option");
-    }
+Socket.prototype.connect = function (...args) {
+  let normalized;
 
-    const onread = options.onread;
+  if (
+    Array.isArray(args[0]) &&
+    args[0][normalizedArgsSymbol]
+  ) {
+    normalized = args[0];
+  } else {
+    normalized = _normalizeArgs(args);
+  }
 
-    if (
-      onread !== null &&
-      typeof onread === "object" &&
-      (isUint8Array(onread.buffer) || typeof onread.buffer === "function") &&
-      typeof onread.callback === "function"
-    ) {
-      if (typeof onread.buffer === "function") {
-        this[kBuffer] = true;
-        this[kBufferGen] = onread.buffer;
-      } else {
-        this[kBuffer] = onread.buffer;
-      }
+  const options = normalized[0];
+  const cb = normalized[1];
 
-      this[kBufferCb] = onread.callback;
-    }
+  if (
+    options.port === undefined &&
+    options.path == null
+  ) {
+    throw new ERR_MISSING_ARGS(["options", "port", "path"]);
+  }
 
-    this.on("end", _onReadableStreamEnd);
+  if (this.write !== Socket.prototype.write) {
+    this.write = Socket.prototype.write;
+  }
+
+  if (this.destroyed) {
+    this._handle = null;
+    this._peername = undefined;
+    this._sockname = undefined;
+  }
+
+  const { path } = options;
+  const pipe = _isPipe(options);
+  debug("pipe", pipe, path);
+
+  if (!this._handle) {
+    this._handle = pipe
+      ? new Pipe(PipeConstants.SOCKET)
+      : new TCP(TCPConstants.SOCKET);
 
     _initSocketHandle(this);
+  }
 
-    // If we have a handle, then start the flow of data into the
-    // buffer. If not, then this will happen when we connect.
-    if (this._handle && options.readable !== false) {
-      if (options.pauseOnCreate) {
-        // Stop the handle from reading and pause the stream
-        this._handle.reading = false;
-        this._handle.readStop();
-        // @ts-expect-error This property shouldn't be modified
-        this.readableFlowing = false;
-      } else if (!options.manualStart) {
-        this.read(0);
+  if (cb !== null) {
+    this.once("connect", cb);
+  }
+
+  this._unrefTimer();
+
+  this.connecting = true;
+
+  if (pipe) {
+    validateString(path, "options.path");
+    defaultTriggerAsyncIdScope(
+      this[asyncIdSymbol],
+      _internalConnect,
+      this,
+      path,
+    );
+  } else {
+    _lookupAndConnect(this, options);
+  }
+
+  return this;
+};
+
+Socket.prototype.pause = function () {
+  if (
+    !this.connecting &&
+    this._handle &&
+    this._handle.reading
+  ) {
+    this._handle.reading = false;
+
+    if (!this.destroyed) {
+      const err = this._handle.readStop();
+
+      if (err) {
+        this.destroy(errnoException(err, "read"));
       }
     }
   }
 
-  /**
-   * Initiate a connection on a given socket.
-   *
-   * Possible signatures:
-   *
-   * - `socket.connect(options[, connectListener])`
-   * - `socket.connect(path[, connectListener])` for `IPC` connections.
-   * - `socket.connect(port[, host][, connectListener])` for TCP connections.
-   * - Returns: `net.Socket` The socket itself.
-   *
-   * This function is asynchronous. When the connection is established, the `"connect"` event will be emitted. If there is a problem connecting,
-   * instead of a `"connect"` event, an `"error"` event will be emitted with
-   * the error passed to the `"error"` listener.
-   * The last parameter `connectListener`, if supplied, will be added as a listener
-   * for the `"connect"` event **once**.
-   *
-   * This function should only be used for reconnecting a socket after `"close"` has been emitted or otherwise it may lead to undefined
-   * behavior.
-   */
-  connect(
-    options: SocketConnectOptions | NormalizedArgs,
-    connectionListener?: ConnectionListener,
-  ): this;
-  connect(
-    port: number,
-    host: string,
-    connectionListener?: ConnectionListener,
-  ): this;
-  connect(port: number, connectionListener?: ConnectionListener): this;
-  connect(path: string, connectionListener?: ConnectionListener): this;
-  connect(...args: unknown[]): this {
-    let normalized: NormalizedArgs;
+  return Duplex.prototype.pause.call(this);
+};
 
-    // If passed an array, it's treated as an array of arguments that have
-    // already been normalized (so we don't normalize more than once). This has
-    // been solved before in https://github.com/nodejs/node/pull/12342, but was
-    // reverted as it had unintended side effects.
-    if (
-      Array.isArray(args[0]) &&
-      (args[0] as unknown as NormalizedArgs)[normalizedArgsSymbol]
-    ) {
-      normalized = args[0] as unknown as NormalizedArgs;
-    } else {
-      normalized = _normalizeArgs(args);
-    }
+Socket.prototype.resume = function () {
+  if (
+    !this.connecting &&
+    this._handle &&
+    !this._handle.reading
+  ) {
+    _tryReadStart(this);
+  }
 
-    const options = normalized[0];
-    const cb = normalized[1];
+  return Duplex.prototype.resume.call(this);
+};
 
-    // `options.port === null` will be checked later.
-    if (
-      (options as TcpSocketConnectOptions).port === undefined &&
-      (options as IpcSocketConnectOptions).path == null
-    ) {
-      throw new ERR_MISSING_ARGS(["options", "port", "path"]);
-    }
+Socket.prototype.setTimeout = setStreamTimeout;
 
-    if (this.write !== Socket.prototype.write) {
-      this.write = Socket.prototype.write;
-    }
-
-    if (this.destroyed) {
-      this._handle = null;
-      this._peername = undefined;
-      this._sockname = undefined;
-    }
-
-    const { path } = options as IpcNetConnectOptions;
-    const pipe = _isPipe(options);
-    debug("pipe", pipe, path);
-
-    if (!this._handle) {
-      this._handle = pipe
-        ? new Pipe(PipeConstants.SOCKET)
-        : new TCP(TCPConstants.SOCKET);
-
-      _initSocketHandle(this);
-    }
-
-    if (cb !== null) {
-      this.once("connect", cb);
-    }
-
-    this._unrefTimer();
-
-    this.connecting = true;
-
-    if (pipe) {
-      validateString(path, "options.path");
-      defaultTriggerAsyncIdScope(
-        this[asyncIdSymbol],
-        _internalConnect,
-        this,
-        path,
-      );
-    } else {
-      _lookupAndConnect(this, options as TcpSocketConnectOptions);
-    }
+Socket.prototype.setNoDelay = function (noDelay) {
+  if (!this._handle) {
+    this.once(
+      "connect",
+      noDelay ? this.setNoDelay : () => this.setNoDelay(noDelay),
+    );
 
     return this;
   }
 
-  /**
-   * Pauses the reading of data. That is, `"data"` events will not be emitted.
-   * Useful to throttle back an upload.
-   *
-   * @return The socket itself.
-   */
-  override pause(): this {
-    if (
-      !this.connecting &&
-      this._handle &&
-      this._handle.reading
-    ) {
-      this._handle.reading = false;
+  const newValue = noDelay === undefined ? true : !!noDelay;
 
-      if (!this.destroyed) {
-        const err = this._handle.readStop();
-
-        if (err) {
-          this.destroy(errnoException(err, "read"));
-        }
-      }
-    }
-
-    return Duplex.prototype.pause.call(this) as unknown as this;
+  if (
+    "setNoDelay" in this._handle &&
+    this._handle.setNoDelay &&
+    newValue !== this[kSetNoDelay]
+  ) {
+    this[kSetNoDelay] = newValue;
+    this._handle.setNoDelay(newValue);
   }
 
-  /**
-   * Resumes reading after a call to `socket.pause()`.
-   *
-   * @return The socket itself.
-   */
-  override resume(): this {
-    if (
-      !this.connecting &&
-      this._handle &&
-      !this._handle.reading
-    ) {
-      _tryReadStart(this);
-    }
+  return this;
+};
 
-    return Duplex.prototype.resume.call(this) as this;
-  }
-
-  /**
-   * Sets the socket to timeout after `timeout` milliseconds of inactivity on
-   * the socket. By default `net.Socket` do not have a timeout.
-   *
-   * When an idle timeout is triggered the socket will receive a `"timeout"` event but the connection will not be severed. The user must manually call `socket.end()` or `socket.destroy()` to
-   * end the connection.
-   *
-   * If `timeout` is `0`, then the existing idle timeout is disabled.
-   *
-   * The optional `callback` parameter will be added as a one-time listener for the `"timeout"` event.
-   * @return The socket itself.
-   */
-  setTimeout = setStreamTimeout;
-
-  /**
-   * Enable/disable the use of Nagle's algorithm.
-   *
-   * When a TCP connection is created, it will have Nagle's algorithm enabled.
-   *
-   * Nagle's algorithm delays data before it is sent via the network. It attempts
-   * to optimize throughput at the expense of latency.
-   *
-   * Passing `true` for `noDelay` or not passing an argument will disable Nagle's
-   * algorithm for the socket. Passing `false` for `noDelay` will enable Nagle's
-   * algorithm.
-   *
-   * @param noDelay
-   * @return The socket itself.
-   */
-  setNoDelay(noDelay?: boolean): this {
-    if (!this._handle) {
-      this.once(
-        "connect",
-        noDelay ? this.setNoDelay : () => this.setNoDelay(noDelay),
-      );
-
-      return this;
-    }
-
-    // Backwards compatibility: assume true when `noDelay` is omitted
-    const newValue = noDelay === undefined ? true : !!noDelay;
-
-    if (
-      "setNoDelay" in this._handle &&
-      this._handle.setNoDelay &&
-      newValue !== this[kSetNoDelay]
-    ) {
-      this[kSetNoDelay] = newValue;
-      this._handle.setNoDelay(newValue);
-    }
+Socket.prototype.setKeepAlive = function (enable, initialDelay) {
+  if (!this._handle) {
+    this.once("connect", () => this.setKeepAlive(enable, initialDelay));
 
     return this;
   }
 
-  /**
-   * Enable/disable keep-alive functionality, and optionally set the initial
-   * delay before the first keepalive probe is sent on an idle socket.
-   *
-   * Set `initialDelay` (in milliseconds) to set the delay between the last
-   * data packet received and the first keepalive probe. Setting `0` for`initialDelay` will leave the value unchanged from the default
-   * (or previous) setting.
-   *
-   * Enabling the keep-alive functionality will set the following socket options:
-   *
-   * - `SO_KEEPALIVE=1`
-   * - `TCP_KEEPIDLE=initialDelay`
-   * - `TCP_KEEPCNT=10`
-   * - `TCP_KEEPINTVL=1`
-   *
-   * @param enable
-   * @param initialDelay
-   * @return The socket itself.
-   */
-  setKeepAlive(enable: boolean, initialDelay?: number): this {
-    if (!this._handle) {
-      this.once("connect", () => this.setKeepAlive(enable, initialDelay));
+  if ("setKeepAlive" in this._handle) {
+    this._handle.setKeepAlive(enable, ~~(initialDelay / 1000));
+  }
 
-      return this;
-    }
+  return this;
+};
 
-    if ("setKeepAlive" in this._handle) {
-      this._handle.setKeepAlive(enable, ~~(initialDelay! / 1000));
-    }
+Socket.prototype.address = function () {
+  return this._getsockname();
+};
+
+Socket.prototype.unref = function () {
+  if (!this._handle) {
+    this.once("connect", this.unref);
 
     return this;
   }
 
-  /**
-   * Returns the bound `address`, the address `family` name and `port` of the
-   * socket as reported by the operating system:`{ port: 12346, family: "IPv4", address: "127.0.0.1" }`
-   */
-  address(): AddressInfo | Record<string, never> {
-    return this._getsockname();
+  if (typeof this._handle.unref === "function") {
+    this._handle.unref();
   }
 
-  /**
-   * Calling `unref()` on a socket will allow the program to exit if this is the only
-   * active socket in the event system. If the socket is already `unref`ed calling`unref()` again will have no effect.
-   *
-   * @return The socket itself.
-   */
-  unref(): this {
-    if (!this._handle) {
-      this.once("connect", this.unref);
+  return this;
+};
 
-      return this;
-    }
-
-    if (typeof this._handle.unref === "function") {
-      this._handle.unref();
-    }
+Socket.prototype.ref = function () {
+  if (!this._handle) {
+    this.once("connect", this.ref);
 
     return this;
   }
 
-  /**
-   * Opposite of `unref()`, calling `ref()` on a previously `unref`ed socket will_not_ let the program exit if it's the only socket left (the default behavior).
-   * If the socket is `ref`ed calling `ref` again will have no effect.
-   *
-   * @return The socket itself.
-   */
-  ref(): this {
-    if (!this._handle) {
-      this.once("connect", this.ref);
-
-      return this;
-    }
-
-    if (typeof this._handle.ref === "function") {
-      this._handle.ref();
-    }
-
-    return this;
+  if (typeof this._handle.ref === "function") {
+    this._handle.ref();
   }
 
-  /**
-   * This property shows the number of characters buffered for writing. The buffer
-   * may contain strings whose length after encoding is not yet known. So this number
-   * is only an approximation of the number of bytes in the buffer.
-   *
-   * `net.Socket` has the property that `socket.write()` always works. This is to
-   * help users get up and running quickly. The computer cannot always keep up
-   * with the amount of data that is written to a socket. The network connection
-   * simply might be too slow. Node.js will internally queue up the data written to a
-   * socket and send it out over the wire when it is possible.
-   *
-   * The consequence of this internal buffering is that memory may grow.
-   * Users who experience large or growing `bufferSize` should attempt to
-   * "throttle" the data flows in their program with `socket.pause()` and `socket.resume()`.
-   *
-   * @deprecated Use `writableLength` instead.
-   */
-  get bufferSize(): number {
+  return this;
+};
+
+Object.defineProperty(Socket.prototype, "bufferSize", {
+  get: function () {
     if (this._handle) {
       return this.writableLength;
     }
 
     return 0;
-  }
+  },
+});
 
-  /**
-   * The amount of received bytes.
-   */
-  get bytesRead(): number {
+Object.defineProperty(Socket.prototype, "bytesRead", {
+  get: function () {
     return this._handle ? this._handle.bytesRead : this[kBytesRead];
-  }
+  },
+});
 
-  /**
-   * The amount of bytes sent.
-   */
-  get bytesWritten(): number | undefined {
+Object.defineProperty(Socket.prototype, "bytesWritten", {
+  get: function () {
     let bytes = this._bytesDispatched;
     const data = this._pendingData;
     const encoding = this._pendingEncoding;
@@ -1631,95 +1480,79 @@ export class Socket extends Duplex {
     }
 
     for (const el of writableBuffer) {
-      bytes += el!.chunk instanceof Buffer
-        ? el!.chunk.length
-        : Buffer.byteLength(el!.chunk, el!.encoding);
+      bytes += el.chunk instanceof Buffer
+        ? el.chunk.length
+        : Buffer.byteLength(el.chunk, el.encoding);
     }
 
     if (Array.isArray(data)) {
-      // Was a writev, iterate over chunks to get total length
       for (let i = 0; i < data.length; i++) {
         const chunk = data[i];
 
-        // deno-lint-ignore no-explicit-any
-        if ((data as any).allBuffers || chunk instanceof Buffer) {
+        if (data.allBuffers || chunk instanceof Buffer) {
           bytes += chunk.length;
         } else {
           bytes += Buffer.byteLength(chunk.chunk, chunk.encoding);
         }
       }
     } else if (data) {
-      // Writes are either a string or a Buffer.
       if (typeof data !== "string") {
-        bytes += (data as Buffer).length;
+        bytes += data.length;
       } else {
         bytes += Buffer.byteLength(data, encoding);
       }
     }
 
     return bytes;
-  }
+  },
+});
 
-  /**
-   * If `true`,`socket.connect(options[, connectListener])` was
-   * called and has not yet finished. It will stay `true` until the socket becomes
-   * connected, then it is set to `false` and the `"connect"` event is emitted. Note
-   * that the `socket.connect(options[, connectListener])` callback is a listener for the `"connect"` event.
-   */
-  connecting = false;
-
-  /**
-   * The string representation of the local IP address the remote client is
-   * connecting on. For example, in a server listening on `"0.0.0.0"`, if a client
-   * connects on `"192.168.1.1"`, the value of `socket.localAddress` would be`"192.168.1.1"`.
-   */
-  get localAddress(): string {
+Object.defineProperty(Socket.prototype, "localAddress", {
+  get: function () {
     return this._getsockname().address;
-  }
+  },
+});
 
-  /**
-   * The numeric representation of the local port. For example, `80` or `21`.
-   */
-  get localPort(): number {
+Object.defineProperty(Socket.prototype, "localPort", {
+  get: function () {
     return this._getsockname().port;
-  }
+  },
+});
 
-  /**
-   * The string representation of the local IP family. `"IPv4"` or `"IPv6"`.
-   */
-  get localFamily(): string | undefined {
+Object.defineProperty(Socket.prototype, "localFamily", {
+  get: function () {
     return this._getsockname().family;
-  }
+  },
+});
 
-  /**
-   * The string representation of the remote IP address. For example,`"74.125.127.100"` or `"2001:4860:a005::68"`. Value may be `undefined` if
-   * the socket is destroyed (for example, if the client disconnected).
-   */
-  get remoteAddress(): string | undefined {
+Object.defineProperty(Socket.prototype, "remoteAddress", {
+  get: function () {
     return this._getpeername().address;
-  }
+  },
+});
 
-  /**
-   * The string representation of the remote IP family. `"IPv4"` or `"IPv6"`.
-   */
-  get remoteFamily(): string | undefined {
+Object.defineProperty(Socket.prototype, "remoteFamily", {
+  get: function () {
     const { family } = this._getpeername();
 
     return family ? `IPv${family}` : family;
-  }
+  },
+});
 
-  /**
-   * The numeric representation of the remote port. For example, `80` or `21`.
-   */
-  get remotePort(): number | undefined {
+Object.defineProperty(Socket.prototype, "remotePort", {
+  get: function () {
     return this._getpeername().port;
-  }
+  },
+});
 
-  get pending(): boolean {
+Object.defineProperty(Socket.prototype, "pending", {
+  get: function () {
     return !this._handle || this.connecting;
-  }
+  },
+});
 
-  get readyState(): string {
+Object.defineProperty(Socket.prototype, "readyState", {
+  get: function () {
     if (this.connecting) {
       return "opening";
     } else if (this.readable && this.writable) {
@@ -1730,296 +1563,257 @@ export class Socket extends Duplex {
       return "writeOnly";
     }
     return "closed";
-  }
+  },
+});
 
-  /**
-   * Half-closes the socket. i.e., it sends a FIN packet. It is possible the
-   * server will still send some data.
-   *
-   * See `writable.end()` for further details.
-   *
-   * @param encoding Only used when data is `string`.
-   * @param cb Optional callback for when the socket is finished.
-   * @return The socket itself.
-   */
-  override end(cb?: () => void): this;
-  override end(buffer: Uint8Array | string, cb?: () => void): this;
-  override end(
-    data: Uint8Array | string,
-    encoding?: Encodings,
-    cb?: () => void,
-  ): this;
-  override end(
-    data?: Uint8Array | string | (() => void),
-    encoding?: Encodings | (() => void),
-    cb?: () => void,
-  ): this {
-    Duplex.prototype.end.call(this, data, encoding as Encodings, cb);
-    DTRACE_NET_STREAM_END(this);
+Socket.prototype.end = function (data, encoding, cb) {
+  Duplex.prototype.end.call(this, data, encoding, cb);
+  DTRACE_NET_STREAM_END(this);
 
-    return this;
-  }
+  return this;
+};
 
-  /**
-   * @param size Optional argument to specify how much data to read.
-   */
-  override read(
-    size?: number,
-  ): string | Uint8Array | Buffer | null | undefined {
-    if (
-      this[kBuffer] &&
-      !this.connecting &&
-      this._handle &&
-      !this._handle.reading
-    ) {
-      _tryReadStart(this);
-    }
-
-    return Duplex.prototype.read.call(this, size);
-  }
-
-  destroySoon() {
-    if (this.writable) {
-      this.end();
-    }
-
-    if (this.writableFinished) {
-      this.destroy();
-    } else {
-      this.once("finish", this.destroy);
-    }
-  }
-
-  _unrefTimer() {
-    // deno-lint-ignore no-this-alias
-    for (let s = this; s !== null; s = s._parent) {
-      if (s[kTimeout]) {
-        s[kTimeout].refresh();
-      }
-    }
-  }
-
-  // The user has called .end(), and all the bytes have been
-  // sent out to the other side.
-  // deno-lint-ignore no-explicit-any
-  override _final(cb: any): any {
-    // If still connecting - defer handling `_final` until 'connect' will happen
-    if (this.pending) {
-      debug("_final: not yet connected");
-      return this.once("connect", () => this._final(cb));
-    }
-
-    if (!this._handle) {
-      return cb();
-    }
-
-    debug("_final: not ended, call shutdown()");
-
-    const req = new ShutdownWrap<Handle>();
-    req.oncomplete = _afterShutdown;
-    req.handle = this._handle;
-    req.callback = cb;
-    const err = this._handle.shutdown(req);
-
-    if (err === 1 || err === codeMap.get("ENOTCONN")) {
-      // synchronous finish
-      return cb();
-    } else if (err !== 0) {
-      return cb(errnoException(err, "shutdown"));
-    }
-  }
-
-  _onTimeout() {
-    const handle = this._handle;
-    const lastWriteQueueSize = this[kLastWriteQueueSize];
-
-    if (lastWriteQueueSize > 0 && handle) {
-      // `lastWriteQueueSize !== writeQueueSize` means there is
-      // an active write in progress, so we suppress the timeout.
-      const { writeQueueSize } = handle;
-
-      if (lastWriteQueueSize !== writeQueueSize) {
-        this[kLastWriteQueueSize] = writeQueueSize;
-        this._unrefTimer();
-
-        return;
-      }
-    }
-
-    debug("_onTimeout");
-    this.emit("timeout");
-  }
-
-  override _read(size?: number) {
-    debug("_read");
-    if (this.connecting || !this._handle) {
-      debug("_read wait for connection");
-      this.once("connect", () => this._read(size));
-    } else if (!this._handle.reading) {
-      _tryReadStart(this);
-    }
-  }
-
-  override _destroy(exception: Error | null, cb: (err: Error | null) => void) {
-    debug("destroy");
-    this.connecting = false;
-
-    // deno-lint-ignore no-this-alias
-    for (let s = this; s !== null; s = s._parent) {
-      clearTimeout(s[kTimeout]);
-    }
-
-    debug("close");
-    if (this._handle) {
-      debug("close handle");
-      const isException = exception ? true : false;
-      // `bytesRead` and `kBytesWritten` should be accessible after `.destroy()`
-      this[kBytesRead] = this._handle.bytesRead;
-      this[kBytesWritten] = this._handle.bytesWritten;
-
-      this._handle.close(() => {
-        this._handle!.onread = _noop;
-        this._handle = null;
-        this._sockname = undefined;
-
-        debug("emit close");
-        this.emit("close", isException);
-      });
-      cb(exception);
-    } else {
-      cb(exception);
-      nextTick(_emitCloseNT, this);
-    }
-
-    if (this._server) {
-      debug("has server");
-      this._server._connections--;
-
-      if (this._server._emitCloseIfDrained) {
-        this._server._emitCloseIfDrained();
-      }
-    }
-  }
-
-  _getpeername(): AddressInfo | Record<string, never> {
-    if (!this._handle || !("getpeername" in this._handle) || this.connecting) {
-      return this._peername || {};
-    } else if (!this._peername) {
-      this._peername = {};
-      this._handle.getpeername(this._peername);
-    }
-
-    return this._peername;
-  }
-
-  _getsockname(): AddressInfo | Record<string, never> {
-    if (!this._handle || !("getsockname" in this._handle)) {
-      return {};
-    } else if (!this._sockname) {
-      this._sockname = {};
-      this._handle.getsockname(this._sockname);
-    }
-
-    return this._sockname;
-  }
-
-  _writeGeneric(
-    writev: boolean,
-    // deno-lint-ignore no-explicit-any
-    data: any,
-    encoding: string,
-    cb: (error?: Error | null) => void,
+Socket.prototype.read = function (size) {
+  if (
+    this[kBuffer] &&
+    !this.connecting &&
+    this._handle &&
+    !this._handle.reading
   ) {
-    // If we are still connecting, then buffer this for later.
-    // The Writable logic will buffer up any more writes while
-    // waiting for this one to be done.
-    if (this.connecting) {
-      this._pendingData = data;
-      this._pendingEncoding = encoding;
-      this.once("connect", function connect(this: Socket) {
-        this._writeGeneric(writev, data, encoding, cb);
-      });
+    _tryReadStart(this);
+  }
+
+  return Duplex.prototype.read.call(this, size);
+};
+
+Socket.prototype.destroySoon = function () {
+  if (this.writable) {
+    this.end();
+  }
+
+  if (this.writableFinished) {
+    this.destroy();
+  } else {
+    this.once("finish", this.destroy);
+  }
+};
+
+Socket.prototype._unrefTimer = function () {
+  for (let s = this; s !== null; s = s._parent) {
+    if (s[kTimeout]) {
+      s[kTimeout].refresh();
+    }
+  }
+};
+
+Socket.prototype._final = function (cb) {
+  if (this.pending) {
+    debug("_final: not yet connected");
+    return this.once("connect", () => this._final(cb));
+  }
+
+  if (!this._handle) {
+    return cb();
+  }
+
+  debug("_final: not ended, call shutdown()");
+
+  const req = new ShutdownWrap();
+  req.oncomplete = _afterShutdown;
+  req.handle = this._handle;
+  req.callback = cb;
+  const err = this._handle.shutdown(req);
+
+  if (err === 1 || err === codeMap.get("ENOTCONN")) {
+    return cb();
+  } else if (err !== 0) {
+    return cb(errnoException(err, "shutdown"));
+  }
+};
+
+Socket.prototype._onTimeout = function () {
+  const handle = this._handle;
+  const lastWriteQueueSize = this[kLastWriteQueueSize];
+
+  if (lastWriteQueueSize > 0 && handle) {
+    const { writeQueueSize } = handle;
+
+    if (lastWriteQueueSize !== writeQueueSize) {
+      this[kLastWriteQueueSize] = writeQueueSize;
+      this._unrefTimer();
 
       return;
     }
+  }
 
-    this._pendingData = null;
-    this._pendingEncoding = "";
+  debug("_onTimeout");
+  this.emit("timeout");
+};
 
-    if (!this._handle) {
-      cb(new ERR_SOCKET_CLOSED());
+Socket.prototype._read = function (size) {
+  debug("_read");
+  if (this.connecting || !this._handle) {
+    debug("_read wait for connection");
+    this.once("connect", () => this._read(size));
+  } else if (!this._handle.reading) {
+    _tryReadStart(this);
+  }
+};
 
-      return false;
+Socket.prototype._destroy = function (exception, cb) {
+  debug("destroy");
+  this.connecting = false;
+
+  for (let s = this; s !== null; s = s._parent) {
+    clearTimeout(s[kTimeout]);
+  }
+
+  debug("close");
+  if (this._handle) {
+    debug("close handle");
+    const isException = exception ? true : false;
+    this[kBytesRead] = this._handle.bytesRead;
+    this[kBytesWritten] = this._handle.bytesWritten;
+
+    this._handle.close(() => {
+      this._handle.onread = _noop;
+      this._handle = null;
+      this._sockname = undefined;
+
+      debug("emit close");
+      this.emit("close", isException);
+    });
+    cb(exception);
+  } else {
+    cb(exception);
+    nextTick(_emitCloseNT, this);
+  }
+
+  if (this._server) {
+    debug("has server");
+    this._server._connections--;
+
+    if (this._server._emitCloseIfDrained) {
+      this._server._emitCloseIfDrained();
     }
+  }
+};
 
-    this._unrefTimer();
-
-    let req;
-
-    if (writev) {
-      req = writevGeneric(this, data, cb);
-    } else {
-      req = writeGeneric(this, data, encoding, cb);
-    }
-    if (req.async) {
-      this[kLastWriteQueueSize] = req.bytes;
-    }
+Socket.prototype._getpeername = function () {
+  if (!this._handle || !("getpeername" in this._handle) || this.connecting) {
+    return this._peername || {};
+  } else if (!this._peername) {
+    this._peername = {};
+    this._handle.getpeername(this._peername);
   }
 
-  // @ts-ignore Duplex defining as a property when want a method.
-  _writev(
-    // deno-lint-ignore no-explicit-any
-    chunks: Array<{ chunk: any; encoding: string }>,
-    cb: (error?: Error | null) => void,
-  ) {
-    this._writeGeneric(true, chunks, "", cb);
+  return this._peername;
+};
+
+Socket.prototype._getsockname = function () {
+  if (!this._handle || !("getsockname" in this._handle)) {
+    return {};
+  } else if (!this._sockname) {
+    this._sockname = {};
+    this._handle.getsockname(this._sockname);
   }
 
-  override _write(
-    // deno-lint-ignore no-explicit-any
-    data: any,
-    encoding: string,
-    cb: (error?: Error | null) => void,
-  ) {
-    this._writeGeneric(false, data, encoding, cb);
+  return this._sockname;
+};
+
+Socket.prototype._writeGeneric = function (
+  writev,
+  data,
+  encoding,
+  cb,
+) {
+  if (this.connecting) {
+    this._pendingData = data;
+    this._pendingEncoding = encoding;
+    this.once("connect", function connect() {
+      this._writeGeneric(writev, data, encoding, cb);
+    });
+
+    return;
   }
 
-  [kAfterAsyncWrite]() {
-    this[kLastWriteQueueSize] = 0;
+  this._pendingData = null;
+  this._pendingEncoding = "";
+
+  if (!this._handle) {
+    cb(new ERR_SOCKET_CLOSED());
+
+    return false;
   }
 
-  get [kUpdateTimer]() {
+  this._unrefTimer();
+
+  let req;
+
+  if (writev) {
+    req = writevGeneric(this, data, cb);
+  } else {
+    req = writeGeneric(this, data, encoding, cb);
+  }
+  if (req.async) {
+    this[kLastWriteQueueSize] = req.bytes;
+  }
+};
+
+Socket.prototype._writev = function (
+  chunks,
+  cb,
+) {
+  this._writeGeneric(true, chunks, "", cb);
+};
+
+Socket.prototype._write = function (
+  data,
+  encoding,
+  cb,
+) {
+  this._writeGeneric(false, data, encoding, cb);
+};
+
+Socket.prototype[kAfterAsyncWrite] = function () {
+  this[kLastWriteQueueSize] = 0;
+};
+
+Object.defineProperty(Socket.prototype, kUpdateTimer, {
+  get: function () {
     return this._unrefTimer;
-  }
+  },
+});
 
-  get _connecting(): boolean {
+Object.defineProperty(Socket.prototype, "_connecting", {
+  get: function () {
     return this.connecting;
-  }
+  },
+});
 
-  // Legacy alias. Having this is probably being overly cautious, but it doesn't
-  // really hurt anyone either. This can probably be removed safely if desired.
-  get _bytesDispatched(): number {
+Object.defineProperty(Socket.prototype, "_bytesDispatched", {
+  get: function () {
     return this._handle ? this._handle.bytesWritten : this[kBytesWritten];
-  }
+  },
+});
 
-  get _handle(): Handle | null {
+Object.defineProperty(Socket.prototype, "_handle", {
+  get: function () {
     return this[kHandle];
-  }
-
-  set _handle(v: Handle | null) {
+  },
+  set: function (v) {
     this[kHandle] = v;
-  }
+  },
+});
 
-  // deno-lint-ignore no-explicit-any
-  [kReinitializeHandle](handle: any) {
-    this._handle?.close();
+Socket.prototype[kReinitializeHandle] = function (handle) {
+  this._handle?.close();
 
-    this._handle = handle;
-    this._handle[ownerSymbol] = this;
+  this._handle = handle;
+  this._handle[ownerSymbol] = this;
 
-    _initSocketHandle(this);
-  }
-}
+  _initSocketHandle(this);
+};
 
 export const Stream = Socket;
 
