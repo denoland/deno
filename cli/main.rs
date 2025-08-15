@@ -271,29 +271,28 @@ async fn run_subcommand(
             ) = any_and_jserrorbox_downcast_ref::<
               worker::CreateCustomWorkerError,
             >(&script_err)
+              && flags.node_modules_dir.is_none()
             {
-              if flags.node_modules_dir.is_none() {
-                let mut flags = flags.deref().clone();
-                let watch = match &flags.subcommand {
-                  DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
-                  _ => unreachable!(),
-                };
-                flags.node_modules_dir =
-                  Some(deno_config::deno_json::NodeModulesDirMode::None);
-                // use the current lockfile, but don't write it out
-                if flags.frozen_lockfile.is_none() {
-                  flags.internal.lockfile_skip_write = true;
-                }
-                return tools::run::run_script(
-                  WorkerExecutionMode::Run,
-                  Arc::new(flags),
-                  watch,
-                  None,
-                  roots,
-                )
-                .boxed_local()
-                .await;
+              let mut flags = flags.deref().clone();
+              let watch = match &flags.subcommand {
+                DenoSubcommand::Run(run_flags) => run_flags.watch.clone(),
+                _ => unreachable!(),
+              };
+              flags.node_modules_dir =
+                Some(deno_config::deno_json::NodeModulesDirMode::None);
+              // use the current lockfile, but don't write it out
+              if flags.frozen_lockfile.is_none() {
+                flags.internal.lockfile_skip_write = true;
               }
+              return tools::run::run_script(
+                WorkerExecutionMode::Run,
+                Arc::new(flags),
+                watch,
+                None,
+                roots,
+              )
+              .boxed_local()
+              .await;
             }
             let script_err_msg = script_err.to_string();
             if script_err_msg.starts_with(MODULE_NOT_FOUND)
@@ -610,13 +609,13 @@ async fn resolve_flags_and_init(
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
   }
-  if flags.node_conditions.is_empty() {
-    if let Ok(conditions) = std::env::var("DENO_CONDITIONS") {
-      flags.node_conditions = conditions
-        .split(",")
-        .map(|c| c.trim().to_string())
-        .collect();
-    }
+  if flags.node_conditions.is_empty()
+    && let Ok(conditions) = std::env::var("DENO_CONDITIONS")
+  {
+    flags.node_conditions = conditions
+      .split(",")
+      .map(|c| c.trim().to_string())
+      .collect();
   }
 
   // Tunnel is initialized before OTEL since
@@ -733,9 +732,17 @@ fn wait_for_start(
     use tokio::io::BufReader;
     use tokio::net::TcpListener;
     use tokio::net::UnixSocket;
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
     use tokio_vsock::VsockAddr;
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
     use tokio_vsock::VsockListener;
 
     init_v8(&Flags::default());
@@ -775,7 +782,11 @@ fn wait_for_start(
         let (rx, tx) = stream.into_split();
         (Box::new(rx), Box::new(tx))
       }
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Some(("vsock", addr)) => {
         let Some((cid, port)) = addr.split_once(':') else {
           deno_core::anyhow::bail!("invalid vsock addr");
@@ -929,72 +940,71 @@ async fn initialize_tunnel(
     metadata.insert("entrypoint".into(), entrypoint);
   }
 
-  let (tunnel, mut events) =
-    match deno_runtime::deno_net::tunnel::TunnelConnection::connect(
-      addr,
-      hostname.to_owned(),
-      tls_config.clone(),
-      deno_runtime::deno_net::tunnel::Authentication::App {
-        token,
-        org: org.clone(),
-        app: app.clone(),
-      },
-      metadata.clone(),
-    )
-    .await
-    {
-      Ok(res) => res,
-      Err(deno_runtime::deno_net::tunnel::Error::Unauthorized) => {
-        tools::deploy::get_token_entry()?.delete_credential()?;
+  let on_event = |event| {
+    use deno_runtime::deno_net::tunnel::Event;
+    match event {
+      Event::Routed(addr) => {
+        let endpoint = if addr.port() == 443 {
+          format!("https://{}", addr.hostname())
+        } else {
+          format!("https://{}:{}", addr.hostname(), addr.port())
+        };
 
-        let token = auth_tunnel().await?;
-        deno_runtime::deno_net::tunnel::TunnelConnection::connect(
-          addr,
-          hostname.to_owned(),
-          tls_config,
-          deno_runtime::deno_net::tunnel::Authentication::App {
-            token,
-            org,
-            app,
-          },
-          metadata.clone(),
-        )
-        .await?
+        log::info!(
+          "{}",
+          colors::green(format!("You are connected to {endpoint}!"))
+        );
       }
-      Err(e) => return Err(e.into()),
-    };
-
-  let addr = tunnel.local_addr()?;
-
-  let endpoint = if addr.port() == 443 {
-    format!("https://{}", addr.hostname())
-  } else {
-    format!("https://{}:{}", addr.hostname(), addr.port())
+      Event::Reconnect(duration, reason) => {
+        let reason = if let Some(reason) = reason {
+          format!(" ({reason})")
+        } else {
+          "".into()
+        };
+        log::info!(
+          "{}",
+          colors::green(format!(
+            "Reconnecting tunnel in {}s...{}",
+            duration.as_secs(),
+            reason
+          ))
+        );
+      }
+      _ => {}
+    }
   };
 
-  tokio::spawn(async move {
-    while let Some(event) = events.next().await {
-      use deno_runtime::deno_net::tunnel::Event;
-      match event {
-        Event::Routed => {
-          log::info!(
-            "{}",
-            colors::green(format!("You are connected to {endpoint}!"))
-          );
-        }
-        Event::Reconnect(d) => {
-          log::info!(
-            "{}",
-            colors::green(format!(
-              "Reconnecting tunnel in {}s...",
-              d.as_secs()
-            ))
-          );
-        }
-        _ => {}
-      }
+  let tunnel = match deno_runtime::deno_net::tunnel::TunnelConnection::connect(
+    addr,
+    hostname.to_owned(),
+    tls_config.clone(),
+    deno_runtime::deno_net::tunnel::Authentication::App {
+      token,
+      org: org.clone(),
+      app: app.clone(),
+    },
+    metadata.clone(),
+    on_event,
+  )
+  .await
+  {
+    Ok(res) => res,
+    Err(deno_runtime::deno_net::tunnel::Error::Unauthorized) => {
+      tools::deploy::get_token_entry()?.delete_credential()?;
+
+      let token = auth_tunnel().await?;
+      deno_runtime::deno_net::tunnel::TunnelConnection::connect(
+        addr,
+        hostname.to_owned(),
+        tls_config,
+        deno_runtime::deno_net::tunnel::Authentication::App { token, org, app },
+        metadata.clone(),
+        on_event,
+      )
+      .await?
     }
-  });
+    Err(e) => return Err(e.into()),
+  };
 
   if let Some(metadata) = tunnel.metadata() {
     for (k, v) in metadata.env {

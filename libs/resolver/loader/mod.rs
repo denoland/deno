@@ -6,11 +6,14 @@ mod npm;
 mod module_loader;
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 
+use deno_cache_dir::file_fetcher::File;
 use deno_media_type::MediaType;
 #[cfg(all(feature = "graph", feature = "deno_ast"))]
 pub use module_loader::*;
 pub use npm::*;
+use parking_lot::RwLock;
 use url::Url;
 
 #[derive(Debug)]
@@ -58,5 +61,27 @@ impl LoadedModuleSource {
       LoadedModuleSource::String(text) => text.as_bytes(),
       LoadedModuleSource::Bytes(bytes) => bytes,
     }
+  }
+}
+
+#[allow(clippy::disallowed_types)]
+pub type MemoryFilesRc = crate::sync::MaybeArc<MemoryFiles>;
+
+#[derive(Debug, Default)]
+pub struct MemoryFiles(RwLock<HashMap<Url, File>>);
+
+impl MemoryFiles {
+  pub fn insert(&self, specifier: Url, file: File) -> Option<File> {
+    self.0.write().insert(specifier, file)
+  }
+
+  pub fn clear(&self) {
+    self.0.write().clear();
+  }
+}
+
+impl deno_cache_dir::file_fetcher::MemoryFiles for MemoryFiles {
+  fn get(&self, specifier: &Url) -> Option<File> {
+    self.0.read().get(specifier).cloned()
   }
 }

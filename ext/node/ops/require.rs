@@ -322,10 +322,10 @@ pub fn op_require_resolve_lookup_paths(
   {
     let module_paths = vec![];
     let mut paths = module_paths;
-    if let Some(mut parent_paths) = maybe_parent_paths {
-      if !parent_paths.is_empty() {
-        paths.append(&mut parent_paths);
-      }
+    if let Some(mut parent_paths) = maybe_parent_paths
+      && !parent_paths.is_empty()
+    {
+      paths.append(&mut parent_paths);
     }
 
     if !paths.is_empty() {
@@ -395,9 +395,21 @@ pub fn op_require_real_path<
   let path = ensure_read_permission::<P>(state, path)
     .map_err(RequireErrorKind::Permission)?;
   let sys = state.borrow::<TSys>();
-  let canonicalized_path = deno_path_util::strip_unc_prefix(
-    sys.fs_canonicalize(&path).map_err(RequireErrorKind::Io)?,
-  );
+  let canonicalized_path =
+    deno_path_util::strip_unc_prefix(match sys.fs_canonicalize(&path) {
+      Ok(path) => path,
+      Err(err) => {
+        if path.ends_with("$deno$eval.cjs")
+          || path.ends_with("$deno$eval.cts")
+          || path.ends_with("$deno$stdin.cjs")
+          || path.ends_with("$deno$stdin.cts")
+        {
+          path.to_path_buf()
+        } else {
+          return Err(RequireErrorKind::Io(err).into_box());
+        }
+      }
+    });
   Ok(canonicalized_path.to_string_lossy().into_owned())
 }
 
@@ -528,10 +540,10 @@ where
 #[op2]
 #[string]
 pub fn op_require_as_file_path(#[string] file_or_url: &str) -> Option<String> {
-  if let Ok(url) = Url::parse(file_or_url) {
-    if let Ok(p) = url.to_file_path() {
-      return Some(p.to_string_lossy().into_owned());
-    }
+  if let Ok(url) = Url::parse(file_or_url)
+    && let Ok(p) = url.to_file_path()
+  {
+    return Some(p.to_string_lossy().into_owned());
   }
 
   None // use original input

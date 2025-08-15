@@ -24,7 +24,7 @@
 // (https://github.com/nodejs/node/blob/ba06c5c509956dc413f91b755c1c93798bb700d4/src/string_decoder.cc)
 
 import { Buffer, constants } from "node:buffer";
-import { normalizeEncoding as castEncoding } from "ext:deno_node/_utils.ts";
+import { normalizeEncoding as castEncoding } from "ext:deno_node/internal/util.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
@@ -41,6 +41,7 @@ const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
+  NumberPrototypeToString,
   ObjectPrototypeIsPrototypeOf,
   String,
   TypedArrayPrototypeGetBuffer,
@@ -106,6 +107,7 @@ function normalizeBuffer(buf: Buffer) {
   }
 }
 
+const maxStringLengthHex = NumberPrototypeToString(MAX_STRING_LENGTH, 16);
 function bufferToString(
   buf: Buffer,
   encoding?: string,
@@ -114,7 +116,10 @@ function bufferToString(
 ): string {
   const len = (end ?? buf.length) - (start ?? 0);
   if (len > MAX_STRING_LENGTH) {
-    throw new NodeError("ERR_STRING_TOO_LONG", "string exceeds maximum length");
+    throw new NodeError(
+      "ERR_STRING_TOO_LONG",
+      `Cannot create a string longer than 0x${maxStringLengthHex} characters`,
+    );
   }
   // deno-lint-ignore prefer-primordials
   return buf.toString(encoding as Any, start, end);
@@ -132,7 +137,8 @@ function decode(this: StringDecoder, buf: Buffer) {
   let rest = "";
 
   if (
-    enc === Encoding.Utf8 || enc === Encoding.Utf16 || enc === Encoding.Base64
+    enc === Encoding.Utf8 || enc === Encoding.Utf16 ||
+    enc === Encoding.Base64 || enc === Encoding.Base64Url
   ) {
     // check if we need to finish an incomplete char from the last chunk
     // written. If we do, we copy the bytes into our `lastChar` buffer
@@ -242,7 +248,7 @@ function decode(this: StringDecoder, buf: Buffer) {
           this[kBufferedBytes] = 2;
           this[kMissingBytes] = 2;
         }
-      } else if (enc === Encoding.Base64) {
+      } else if (enc === Encoding.Base64 || enc === Encoding.Base64Url) {
         this[kBufferedBytes] = (buf.length - bufIdx) % 3;
         if (this[kBufferedBytes] > 0) {
           this[kMissingBytes] = 3 - this[kBufferedBytes];
@@ -302,6 +308,7 @@ function flush(this: StringDecoder) {
 enum Encoding {
   Utf8,
   Base64,
+  Base64Url,
   Utf16,
   Ascii,
   Latin1,
@@ -345,7 +352,11 @@ export function StringDecoder(this: Partial<StringDecoder>, encoding?: string) {
       break;
     case "base64":
       enc = Encoding.Base64;
-      bufLen = 3;
+      bufLen = 4;
+      break;
+    case "base64url":
+      enc = Encoding.Base64Url;
+      bufLen = 4;
       break;
     case "utf16le":
       enc = Encoding.Utf16;

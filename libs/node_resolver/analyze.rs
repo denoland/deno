@@ -406,12 +406,11 @@ impl<
             .pkg_json_resolver
             .load_package_json(&package_json_path)
             .map_err(JsErrorBox::from_err)?;
-          if let Some(package_json) = maybe_package_json {
-            if let Some(main) =
+          if let Some(package_json) = maybe_package_json
+            && let Some(main) =
               self.node_resolver.legacy_fallback_resolve(&package_json)
-            {
-              return Ok(Some(UrlOrPath::Path(d.join(main).clean())));
-            }
+          {
+            return Ok(Some(UrlOrPath::Path(d.join(main).clean())));
           }
 
           return Ok(Some(UrlOrPath::Path(d.join("index.js").clean())));
@@ -555,7 +554,7 @@ pub struct NodeCodeTranslator<
 
 #[derive(Debug, Default, Clone, Copy)]
 pub enum NodeCodeTranslatorMode {
-  Bundling,
+  Disabled,
   #[default]
   ModuleLoader,
 }
@@ -602,8 +601,7 @@ impl<
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
   ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
-    let all_exports = if matches!(self.mode, NodeCodeTranslatorMode::Bundling) {
-      // let the bundler handle it instead of the module loader
+    let all_exports = if matches!(self.mode, NodeCodeTranslatorMode::Disabled) {
       return Ok(source.unwrap());
     } else {
       let analysis = self
@@ -616,48 +614,10 @@ impl<
         ResolvedCjsAnalysis::Cjs(all_exports) => all_exports,
       }
     };
-
-    // todo(dsherret): use capacity_builder here to remove all these heap
-    // allocations and make the string writing faster
-    let mut temp_var_count = 0;
-    let mut source = vec![
-        r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
-        const require = __internalCreateRequire(import.meta.url);"#
-          .to_string(),
-      ];
-
-    source.push(format!(
-      r#"let mod;
-        if (import.meta.main) {{
-          mod = __internalModule._load("{0}", null, true)
-        }} else {{
-          mod = require("{0}");
-        }}"#,
-      url_to_file_path(entry_specifier)
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .replace('\\', "\\\\")
-        .replace('\'', "\\\'")
-        .replace('\"', "\\\"")
-    ));
-
-    for export in &all_exports {
-      if !matches!(export.as_str(), "default" | "module.exports") {
-        add_export(
-          &mut source,
-          export,
-          &format!("mod[{}]", to_double_quote_string(export)),
-          &mut temp_var_count,
-        );
-      }
-    }
-
-    source.push("export default mod;".to_string());
-    add_export(&mut source, "module.exports", "mod", &mut temp_var_count);
-
-    let translated_source = source.join("\n");
-    Ok(Cow::Owned(translated_source))
+    Ok(Cow::Owned(exports_to_wrapper_module(
+      entry_specifier,
+      &all_exports,
+    )))
   }
 }
 
@@ -734,10 +694,69 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   ])
 });
 
-fn add_export(
-  source: &mut Vec<String>,
-  name: &str,
-  initializer: &str,
+fn exports_to_wrapper_module(
+  entry_specifier: &Url,
+  all_exports: &BTreeSet<String>,
+) -> String {
+  let quoted_entry_specifier_text = to_double_quote_string(
+    url_to_file_path(entry_specifier).unwrap().to_str().unwrap(),
+  );
+  let export_names_with_quoted = all_exports
+    .iter()
+    .map(|export| (export.as_str(), to_double_quote_string(export)))
+    .collect::<Vec<_>>();
+  capacity_builder::StringBuilder::<String>::build(|builder| {
+      let mut temp_var_count = 0;
+      builder.append(
+        r#"import { createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
+const require = __internalCreateRequire(import.meta.url);
+let mod;
+if (import.meta.main) {
+  mod = __internalModule._load("#,
+      );
+      builder.append(&quoted_entry_specifier_text);
+      builder.append(
+        r#", null, true)
+} else {
+  mod = require("#,
+      );
+      builder.append(&quoted_entry_specifier_text);
+      builder.append(r#");
+}
+"#);
+
+      for (export_name, quoted_name) in &export_names_with_quoted {
+        if !matches!(*export_name, "default" | "module.exports") {
+          add_export(
+            builder,
+            export_name,
+            quoted_name,
+            |builder| {
+              builder.append("mod[");
+              builder.append(quoted_name);
+              builder.append("]");
+            },
+            &mut temp_var_count,
+          );
+        }
+      }
+
+      builder.append("export default mod;\n");
+      add_export(
+        builder,
+        "module.exports",
+        "\"module.exports\"",
+        |builder| builder.append("mod"),
+        &mut temp_var_count,
+      );
+    }).unwrap()
+}
+
+fn add_export<'a>(
+  builder: &mut capacity_builder::StringBuilder<'a, String>,
+  name: &'a str,
+  quoted_name: &'a str,
+  build_initializer: impl FnOnce(&mut capacity_builder::StringBuilder<'a, String>),
   temp_var_count: &mut usize,
 ) {
   fn is_valid_var_decl(name: &str) -> bool {
@@ -746,10 +765,12 @@ fn add_export(
       return false;
     }
 
-    if let Some(first) = name.chars().next() {
-      if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
-        return false;
-      }
+    if let Some(first) = name.chars().next()
+      && !first.is_ascii_alphabetic()
+      && first != '_'
+      && first != '$'
+    {
+      return false;
     }
 
     name
@@ -764,15 +785,21 @@ fn add_export(
     // we can't create an identifier with a reserved word or invalid identifier name,
     // so assign it to a temporary variable that won't have a conflict, then re-export
     // it as a string
-    source.push(format!(
-      "const __deno_export_{temp_var_count}__ = {initializer};"
-    ));
-    source.push(format!(
-      "export {{ __deno_export_{temp_var_count}__ as {} }};",
-      to_double_quote_string(name)
-    ));
+    builder.append("const __deno_export_");
+    builder.append(*temp_var_count);
+    builder.append("__ = ");
+    build_initializer(builder);
+    builder.append(";\nexport { __deno_export_");
+    builder.append(*temp_var_count);
+    builder.append("__ as ");
+    builder.append(quoted_name);
+    builder.append(" };\n");
   } else {
-    source.push(format!("export const {name} = {initializer};"));
+    builder.append("export const ");
+    builder.append(name);
+    builder.append(" = ");
+    build_initializer(builder);
+    builder.append(";\n");
   }
 }
 
@@ -783,30 +810,40 @@ fn to_double_quote_string(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+  use pretty_assertions::assert_eq;
+
   use super::*;
 
   #[test]
-  fn test_add_export() {
-    let mut temp_var_count = 0;
-    let mut source = vec![];
-
-    let exports = vec!["static", "server", "app", "dashed-export", "3d"];
-    for export in exports {
-      add_export(&mut source, export, "init", &mut temp_var_count);
-    }
+  fn test_exports_to_wrapper_module() {
+    let url = Url::parse("file:///test/test.ts").unwrap();
+    let exports = BTreeSet::from(
+      ["static", "server", "app", "dashed-export", "3d"].map(|s| s.to_string()),
+    );
+    let text = exports_to_wrapper_module(&url, &exports);
     assert_eq!(
-      source,
-      vec![
-        "const __deno_export_1__ = init;".to_string(),
-        "export { __deno_export_1__ as \"static\" };".to_string(),
-        "export const server = init;".to_string(),
-        "export const app = init;".to_string(),
-        "const __deno_export_2__ = init;".to_string(),
-        "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
-        "const __deno_export_3__ = init;".to_string(),
-        "export { __deno_export_3__ as \"3d\" };".to_string(),
-      ]
-    )
+      text,
+      r#"import { createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
+const require = __internalCreateRequire(import.meta.url);
+let mod;
+if (import.meta.main) {
+  mod = __internalModule._load("/test/test.ts", null, true)
+} else {
+  mod = require("/test/test.ts");
+}
+const __deno_export_1__ = mod["3d"];
+export { __deno_export_1__ as "3d" };
+export const app = mod["app"];
+const __deno_export_2__ = mod["dashed-export"];
+export { __deno_export_2__ as "dashed-export" };
+export const server = mod["server"];
+const __deno_export_3__ = mod["static"];
+export { __deno_export_3__ as "static" };
+export default mod;
+const __deno_export_4__ = mod;
+export { __deno_export_4__ as "module.exports" };
+"#
+    );
   }
 
   #[test]
