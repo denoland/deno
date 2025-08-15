@@ -85,8 +85,8 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
     self.get_closest_package_jsons(file_path).next().transpose()
   }
 
-  /// Gets the closest package.jsons, iterating from the nearest directory
-  /// to the furthest ancestor directory.
+  /// Gets the closest package.json files, iterating from the
+  /// nearest directory to the furthest ancestor directory.
   pub fn get_closest_package_jsons<'a>(
     &'a self,
     file_path: &'a Path,
