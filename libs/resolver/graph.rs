@@ -615,8 +615,7 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
-static RUN_WITH_SLOPPY_IMPORTS_MSG: &str =
-  "or run with --sloppy-imports";
+static RUN_WITH_SLOPPY_IMPORTS_MSG: &str = "or run with --sloppy-imports";
 
 fn enhanced_sloppy_imports_error_message(
   sys: &(impl sys_traits::FsMetadata + Clone),
