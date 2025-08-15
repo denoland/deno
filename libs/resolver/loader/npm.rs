@@ -115,7 +115,6 @@ pub struct NpmModuleLoader<
   TSys: NpmModuleLoaderSys,
 > {
   cjs_tracker: CjsTrackerRc<TInNpmPackageChecker, TSys>,
-  sys: TSys,
   node_code_translator: NodeCodeTranslatorRc<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
@@ -123,6 +122,7 @@ pub struct NpmModuleLoader<
     TNpmPackageFolderResolver,
     TSys,
   >,
+  sys: TSys,
 }
 
 impl<

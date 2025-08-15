@@ -40,6 +40,7 @@ use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
 use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
+use deno_resolver::loader::MemoryFiles;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::FeatureChecker;
@@ -304,6 +305,7 @@ struct CliFactoryServices {
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
+  memory_files: Arc<MemoryFiles>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
   module_graph_creator: Deferred<Arc<ModuleGraphCreator>>,
   module_info_cache: Deferred<Arc<ModuleInfoCache>>,
@@ -486,6 +488,7 @@ impl CliFactory {
         self.blob_store().clone(),
         self.http_cache()?.clone(),
         self.http_client_provider().clone(),
+        self.services.memory_files.clone(),
         self.sys(),
         CreateCliFileFetcherOptions {
           allow_remote: !cli_options.no_remote(),
@@ -499,6 +502,10 @@ impl CliFactory {
 
   pub fn fs(&self) -> &Arc<dyn deno_fs::FileSystem> {
     self.services.fs.get_or_init(|| Arc::new(RealFs))
+  }
+
+  pub fn memory_files(&self) -> &Arc<MemoryFiles> {
+    &self.services.memory_files
   }
 
   pub fn sys(&self) -> CliSys {
@@ -948,6 +955,7 @@ impl CliFactory {
       self.file_fetcher()?.clone(),
       in_npm_pkg_checker.clone(),
       self.main_module_graph_container().await?.clone(),
+      self.memory_files().clone(),
       self.module_load_preparer().await?.clone(),
       npm_registry_permission_checker,
       cli_npm_resolver.clone(),

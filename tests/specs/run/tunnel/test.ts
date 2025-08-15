@@ -22,9 +22,9 @@ const child = new Deno.Command(Deno.execPath(), {
     "client.ts",
   ],
   env: {
-    DENO_UNSTABLE_TUNNEL_TOKEN: "token",
-    DENO_UNSTABLE_TUNNEL_ORG: "org",
-    DENO_UNSTABLE_TUNNEL_APP: "app",
+    DENO_DEPLOY_TOKEN: "token",
+    DENO_DEPLOY_ORG: "org",
+    DENO_DEPLOY_APP: "app",
   },
   stdout: "inherit",
   stderr: "inherit",
