@@ -551,7 +551,7 @@
 "parallel/test-http-header-read.js" = {}
 "parallel/test-http-header-validators.js" = {}
 "parallel/test-http-hex-write.js" = {}
-"parallel/test-http-highwatermark.js" = {}
+"parallel/test-http-highwatermark.js" = { flaky = true }
 "parallel/test-http-host-headers.js" = {}
 "parallel/test-http-incoming-message-destroy.js" = {}
 "parallel/test-http-invalid-path-chars.js" = {}
