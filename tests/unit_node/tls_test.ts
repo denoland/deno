@@ -131,6 +131,51 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   await promise;
 });
 
+Deno.test("tls.connect after-read tls upgrade", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ctl = new AbortController();
+  const serve = Deno.serve({
+    port: 8444,
+    key,
+    cert,
+    signal: ctl.signal,
+  }, () => new Response("hello"));
+
+  await delay(200);
+
+  const socket = net.connect({
+    host: "localhost",
+    port: 8444,
+  });
+  socket.on("connect", () => {
+    socket.on("data", () => {});
+    socket.removeAllListeners("data");
+
+    const conn = tls.connect({
+      host: "localhost",
+      port: 8444,
+      socket,
+      secureContext: {
+        ca: rootCaCert,
+        // deno-lint-ignore no-explicit-any
+      } as any,
+    });
+
+    conn.setEncoding("utf8");
+    conn.write(`GET / HTTP/1.1\nHost: www.google.com\n\n`);
+
+    conn.on("data", (e) => {
+      assertStringIncludes(e, "hello");
+      conn.destroy();
+      ctl.abort();
+    });
+    conn.on("close", resolve);
+  });
+
+  await serve.finished;
+  await promise;
+});
+
 Deno.test("tls.createServer creates a TLS server", async () => {
   const deferred = Promise.withResolvers<void>();
   const server = tls.createServer(
