@@ -10,7 +10,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::WasmModule;
 use deno_media_type::MediaType;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 use url::Url;
 
 use super::DenoNpmModuleLoaderRc;
@@ -51,7 +51,7 @@ pub enum LoadPreparedModuleErrorKind {
   Graph(#[from] EnhancedGraphError),
   #[class(inherit)]
   #[error(transparent)]
-  ClosestPkgJson(#[from] ClosestPkgJsonError),
+  ClosestPkgJson(#[from] PackageJsonLoadError),
   #[class(inherit)]
   #[error(transparent)]
   LoadMaybeCjs(#[from] LoadMaybeCjsError),
