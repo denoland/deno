@@ -59,7 +59,6 @@ import {
   uvExceptionWithHostPort,
 } from "ext:deno_node/internal/errors.ts";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { Encodings } from "ext:deno_node/_utils.ts";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 import {
   kAfterAsyncWrite,
@@ -1598,6 +1597,7 @@ Socket.prototype.destroySoon = function () {
 };
 
 Socket.prototype._unrefTimer = function () {
+  // deno-lint-ignore no-this-alias
   for (let s = this; s !== null; s = s._parent) {
     if (s[kTimeout]) {
       s[kTimeout].refresh();
@@ -1663,6 +1663,7 @@ Socket.prototype._destroy = function (exception, cb) {
   debug("destroy");
   this.connecting = false;
 
+  // deno-lint-ignore no-this-alias
   for (let s = this; s !== null; s = s._parent) {
     clearTimeout(s[kTimeout]);
   }
