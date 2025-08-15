@@ -207,7 +207,11 @@ async fn clean_except(
   let sys = factory.sys();
   let options = factory.cli_options()?;
   let main_graph_container = factory.main_module_graph_container().await?;
-  let roots = main_graph_container.collect_specifiers(entrypoints)?;
+  let cwd = options.initial_cwd();
+  let roots = entrypoints
+    .iter()
+    .map(|e| deno_core::resolve_url_or_path(e, cwd).map_err(Into::into))
+    .collect::<Result<Vec<_>, AnyError>>()?;
   let http_cache = factory.global_http_cache()?;
   let local_or_global_http_cache = factory.http_cache()?.clone();
   let deno_dir = factory.deno_dir()?.clone();
