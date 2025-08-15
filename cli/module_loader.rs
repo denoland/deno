@@ -18,6 +18,7 @@ use std::time::SystemTime;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_cache_dir::file_fetcher::FetchLocalOptions;
+use deno_cache_dir::file_fetcher::MemoryFiles as _;
 use deno_core::FastString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleResolutionError;
@@ -60,6 +61,7 @@ use deno_resolver::loader::LoadCodeSourceError;
 use deno_resolver::loader::LoadPreparedModuleError;
 use deno_resolver::loader::LoadedModule;
 use deno_resolver::loader::LoadedModuleOrAsset;
+use deno_resolver::loader::MemoryFiles;
 use deno_resolver::loader::StrippingTypesNodeModulesError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
@@ -327,6 +329,7 @@ struct SharedCliModuleLoaderState {
   file_fetcher: Arc<CliFileFetcher>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
+  memory_files: Arc<MemoryFiles>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
@@ -388,6 +391,7 @@ impl CliModuleLoaderFactory {
     file_fetcher: Arc<CliFileFetcher>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
+    memory_files: Arc<MemoryFiles>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     npm_registry_permission_checker: Arc<
       NpmRegistryReadPermissionChecker<CliSys>,
@@ -416,6 +420,7 @@ impl CliModuleLoaderFactory {
         file_fetcher,
         in_npm_pkg_checker,
         main_module_graph_container,
+        memory_files,
         module_load_preparer,
         npm_registry_permission_checker,
         npm_resolver,
@@ -458,6 +463,7 @@ impl CliModuleLoaderFactory {
       sys: self.shared.sys.clone(),
       graph_container,
       in_npm_pkg_checker: self.shared.in_npm_pkg_checker.clone(),
+      memory_files: self.shared.memory_files.clone(),
       npm_registry_permission_checker: self
         .shared
         .npm_registry_permission_checker
@@ -1271,6 +1277,7 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
 struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+  memory_files: Arc<MemoryFiles>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
   graph_container: TGraphContainer,
@@ -1305,10 +1312,21 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   ) -> Result<FastString, JsErrorBox> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
-    let text = self
-      .sys
-      .fs_read_to_string_lossy(path)
-      .map_err(JsErrorBox::from_err)?;
+    let text_result = self.sys.fs_read_to_string_lossy(path);
+    let text = match text_result {
+      Ok(text) => text,
+      Err(err) => {
+        // only bother on error for performance reasons
+        if let Some(file) = deno_path_util::url_from_file_path(path)
+          .ok()
+          .and_then(|s| self.memory_files.get(&s))
+        {
+          Cow::Owned(String::from_utf8_lossy(&file.source).into_owned())
+        } else {
+          return Err(JsErrorBox::from_err(err));
+        }
+      }
+    };
     if media_type.is_emittable() {
       let specifier = deno_path_util::url_from_file_path(path)
         .map_err(JsErrorBox::from_err)?;

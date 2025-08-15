@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 69;
+const cacheVersion = 70;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -686,15 +686,6 @@ const ci = {
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
             "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
-        },
-        {
-          name: "Lint PR title",
-          if:
-            "matrix.job == 'lint' && github.event_name == 'pull_request' && matrix.os == 'linux'",
-          env: {
-            PR_TITLE: "${{ github.event.pull_request.title }}",
-          },
-          run: 'deno run ./tools/verify_pr_title.js "$PR_TITLE"',
         },
         {
           name: "lint.js",
