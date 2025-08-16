@@ -28,6 +28,7 @@ use deno_net::raw::NetworkStream;
 use deno_permissions::PermissionCheckError;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
 use deno_tls::create_client_config;
 use deno_tls::rustls::ClientConfig;
@@ -414,13 +415,14 @@ pub fn create_ws_client_config(
     .get_or_try_init()
     .map_err(HandshakeError::RootStoreError)?;
 
-  create_client_config(
+  create_client_config(TlsClientConfigOptions {
     root_cert_store,
-    vec![],
+    ca_certs: vec![],
     unsafely_ignore_certificate_errors,
-    TlsKeys::Null,
+    unsafely_disable_hostname_verification: false,
+    cert_chain_and_key: TlsKeys::Null,
     socket_use,
-  )
+  })
   .map_err(HandshakeError::Tls)
 }
 
