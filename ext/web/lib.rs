@@ -2,6 +2,7 @@
 
 mod blob;
 mod compression;
+mod event;
 mod message_port;
 mod stream_resource;
 mod timers;
@@ -36,6 +37,7 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
+use crate::event::ReportExceptionStackedCalls;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::Transferable;
@@ -80,6 +82,14 @@ deno_core::extension!(deno_web,
     compression::op_compression_new,
     compression::op_compression_write,
     compression::op_compression_finish,
+    event::op_event_dispatch,
+    event::op_event_get_target_listener_count,
+    event::op_event_get_target_listeners,
+    event::op_event_set_is_trusted,
+    event::op_event_set_target,
+    event::op_event_wrap_event_target,
+    event::op_event_report_error,
+    event::op_event_report_exception,
     op_now<P>,
     op_time_origin<P>,
     op_defer,
@@ -91,6 +101,16 @@ deno_core::extension!(deno_web,
     stream_resource::op_readable_stream_resource_write_sync,
     stream_resource::op_readable_stream_resource_close,
     stream_resource::op_readable_stream_resource_await_close,
+  ],
+  objects = [
+    event::Event,
+    event::EventTarget,
+    event::CustomEvent,
+    event::ErrorEvent,
+    event::PromiseRejectionEvent,
+    event::CloseEvent,
+    event::MessageEvent,
+    event::ProgressEvent,
   ],
   esm = [
     "00_infra.js",
@@ -122,6 +142,7 @@ deno_core::extension!(deno_web,
     if let Some(location) = options.maybe_location {
       state.put(Location(location));
     }
+    state.put(ReportExceptionStackedCalls::default());
     state.put(StartTime::default());
   }
 );
