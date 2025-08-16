@@ -229,7 +229,7 @@ Deno.test(
       hostname: "localhost",
       port,
       caCerts: [selfCert],
-      disableHostnameVerification: false,
+      unsafelyDisableHostnameVerification: false,
     });
 
     const w = new BufWriter(conn);
@@ -285,7 +285,7 @@ Deno.test(
       hostname: "localhost",
       port,
       caCerts: [selfCert],
-      disableHostnameVerification: true,
+      unsafelyDisableHostnameVerification: true,
     });
 
     const w = new BufWriter(conn);

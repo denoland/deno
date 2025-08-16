@@ -274,7 +274,7 @@ pub struct TlsClientConfigOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub ca_certs: Vec<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub disable_hostname_verification: bool,
+  pub unsafely_disable_hostname_verification: bool,
   pub cert_chain_and_key: TlsKeys,
   pub socket_use: SocketUse,
 }
@@ -286,7 +286,7 @@ pub fn create_client_config(
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    disable_hostname_verification,
+    unsafely_disable_hostname_verification,
     cert_chain_and_key: maybe_cert_chain_and_key,
     socket_use,
   } = options;
@@ -344,7 +344,7 @@ pub fn create_client_config(
 
   add_alpn(&mut client, socket_use);
 
-  if disable_hostname_verification {
+  if unsafely_disable_hostname_verification {
     let inner =
       rustls::client::WebPkiServerVerifier::builder(Arc::new(root_cert_store))
         .build()

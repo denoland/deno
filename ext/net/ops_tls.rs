@@ -233,7 +233,7 @@ pub struct ConnectTlsArgs {
   ca_certs: Vec<String>,
   alpn_protocols: Option<Vec<String>>,
   server_name: Option<String>,
-  disable_hostname_verification: Option<bool>,
+  unsafely_disable_hostname_verification: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -244,7 +244,7 @@ pub struct StartTlsArgs {
   hostname: String,
   alpn_protocols: Option<Vec<String>>,
   reject_unauthorized: Option<bool>,
-  disable_hostname_verification: Option<bool>,
+  unsafely_disable_hostname_verification: Option<bool>,
 }
 
 #[op2]
@@ -346,8 +346,8 @@ where
     Some(Vec::new())
   };
 
-  let disable_hostname_verification =
-    args.disable_hostname_verification.unwrap_or(false);
+  let unsafely_disable_hostname_verification =
+    args.unsafely_disable_hostname_verification.unwrap_or(false);
 
   let root_cert_store = state
     .borrow()
@@ -377,7 +377,7 @@ where
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    disable_hostname_verification,
+    unsafely_disable_hostname_verification,
     cert_chain_and_key: key_pair.take(),
     socket_use: SocketUse::GeneralSsl,
   })?;
@@ -420,8 +420,8 @@ where
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
-  let disable_hostname_verification =
-    args.disable_hostname_verification.unwrap_or(false);
+  let unsafely_disable_hostname_verification =
+    args.unsafely_disable_hostname_verification.unwrap_or(false);
 
   let cert_file = {
     let mut s = state.borrow_mut();
@@ -479,7 +479,7 @@ where
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    disable_hostname_verification,
+    unsafely_disable_hostname_verification,
     cert_chain_and_key: key_pair.take(),
     socket_use: SocketUse::GeneralSsl,
   })?;

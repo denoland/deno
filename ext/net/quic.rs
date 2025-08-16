@@ -579,7 +579,7 @@ where
       root_cert_store,
       ca_certs,
       unsafely_ignore_certificate_errors,
-      disable_hostname_verification: false,
+      unsafely_disable_hostname_verification: false,
       cert_chain_and_key: key_pair.take(),
       socket_use: SocketUse::GeneralSsl,
     })?

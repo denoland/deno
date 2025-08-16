@@ -100,7 +100,7 @@ export class TLSSocket extends net.Socket {
         opts.checkServerIdentity() == undefined
       ) {
         // If checkServerIdentity is no-op, we disable hostname verification.
-        tlsOptions.disableHostnameVerification = true;
+        tlsOptions.unsafelyDisableHostnameVerification = true;
       }
     } catch { /* pass */ }
 

@@ -1061,7 +1061,7 @@ pub fn create_http_client(
       ca_certs: options.ca_certs,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors,
-      disable_hostname_verification: false,
+      unsafely_disable_hostname_verification: false,
       cert_chain_and_key: options.client_cert_chain_and_key.into(),
       socket_use: deno_tls::SocketUse::Http,
     })

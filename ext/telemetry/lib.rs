@@ -802,7 +802,7 @@ mod hyper_client {
             root_cert_store: None,
             ca_certs,
             unsafely_ignore_certificate_errors: None,
-            disable_hostname_verification: false,
+            unsafely_disable_hostname_verification: false,
             cert_chain_and_key: keys,
             socket_use: SocketUse::Http,
           })?;

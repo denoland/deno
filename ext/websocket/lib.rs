@@ -419,7 +419,7 @@ pub fn create_ws_client_config(
     root_cert_store,
     ca_certs: vec![],
     unsafely_ignore_certificate_errors,
-    disable_hostname_verification: false,
+    unsafely_disable_hostname_verification: false,
     cert_chain_and_key: TlsKeys::Null,
     socket_use,
   })

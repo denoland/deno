@@ -922,7 +922,7 @@ async fn initialize_tunnel(
       root_cert_store: Some(root_cert_store),
       ca_certs: vec![],
       unsafely_ignore_certificate_errors: None,
-      disable_hostname_verification: false,
+      unsafely_disable_hostname_verification: false,
       cert_chain_and_key: deno_runtime::deno_tls::TlsKeys::Null,
       socket_use: deno_runtime::deno_tls::SocketUse::GeneralSsl,
     },

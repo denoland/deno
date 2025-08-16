@@ -58,7 +58,7 @@ async function connectTls({
   keyFormat = undefined,
   cert = undefined,
   key = undefined,
-  disableHostnameVerification = false,
+  unsafelyDisableHostnameVerification = false,
 }) {
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
@@ -74,7 +74,7 @@ async function connectTls({
   const serverName = arguments[0][serverNameSymbol] ?? null;
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
-    { caCerts, alpnProtocols, serverName, disableHostnameVerification },
+    { caCerts, alpnProtocols, serverName, unsafelyDisableHostnameVerification },
     keyPair,
   );
   localAddr.transport = "tcp";
@@ -189,14 +189,14 @@ async function startTls(
     hostname = "127.0.0.1",
     caCerts = [],
     alpnProtocols = undefined,
-    disableHostnameVerification = false,
+    unsafelyDisableHostnameVerification = false,
   } = { __proto__: null },
 ) {
   return startTlsInternal(conn, {
     hostname,
     caCerts,
     alpnProtocols,
-    disableHostnameVerification,
+    unsafelyDisableHostnameVerification,
   });
 }
 
@@ -207,7 +207,7 @@ function startTlsInternal(
     caCerts = [],
     alpnProtocols = undefined,
     rejectUnauthorized,
-    disableHostnameVerification,
+    unsafelyDisableHostnameVerification,
   },
 ) {
   const { 0: rid, 1: localAddr, 2: remoteAddr } = op_tls_start({
@@ -216,7 +216,7 @@ function startTlsInternal(
     caCerts,
     alpnProtocols,
     rejectUnauthorized,
-    disableHostnameVerification,
+    unsafelyDisableHostnameVerification,
   }, null);
   return new TlsConn(rid, remoteAddr, localAddr);
 }

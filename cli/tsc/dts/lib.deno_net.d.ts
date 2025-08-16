@@ -459,9 +459,12 @@ declare namespace Deno {
     /** If true, the certificate's common name or subject alternative names will not be
      * checked against the hostname provided in the options.
      *
+     * This disables hostname verification but still validates the certificate chain.
+     * Use with caution and only when connecting to known servers.
+     *
      * @default {false}
      */
-    disableHostnameVerification?: boolean;
+    unsafelyDisableHostnameVerification?: boolean;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -514,9 +517,12 @@ declare namespace Deno {
     /** If true, the certificate's common name or subject alternative names will not be
      * checked against the hostname provided in the options.
      *
+     * This disables hostname verification but still validates the certificate chain.
+     * Use with caution and only when connecting to known servers.
+     *
      * @default {false}
      */
-    disableHostnameVerification?: boolean;
+    unsafelyDisableHostnameVerification?: boolean;
   }
 
   /** Start TLS handshake from an existing connection using an optional list of
