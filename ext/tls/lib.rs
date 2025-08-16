@@ -256,8 +256,10 @@ pub fn create_default_root_cert_store() -> RootCertStore {
   root_cert_store
 }
 
+#[derive(Default)]
 pub enum SocketUse {
   /// General SSL: No ALPN
+  #[default]
   GeneralSsl,
   /// HTTP: h1 and h2
   Http,
@@ -275,12 +277,6 @@ pub struct TlsClientConfigOptions {
   pub disable_hostname_verification: bool,
   pub cert_chain_and_key: TlsKeys,
   pub socket_use: SocketUse,
-}
-
-impl Default for SocketUse {
-  fn default() -> Self {
-    SocketUse::GeneralSsl
-  }
 }
 
 pub fn create_client_config(
