@@ -1,0 +1,5 @@
+[WILDCARD]
+error: Expected a JavaScript or TypeScript module, but identified a Json module. Consider importing Json modules with an import attribute with the type of "json".
+  Specifier: file:///[WILDCARD]/data.json
+    at file:///[WILDCARD]
+[WILDCARD]
