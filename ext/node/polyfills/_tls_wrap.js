@@ -113,7 +113,6 @@ export class TLSSocket extends net.Socket {
     tlsOptions.alpnProtocols = opts.ALPNProtocols;
     tlsOptions.rejectUnauthorized = opts.rejectUnauthorized !== false;
 
-    console.log(tlsOptions);
     super({
       handle: _wrapHandle(tlsOptions, socket),
       ...opts,
@@ -204,8 +203,7 @@ export class TLSSocket extends net.Socket {
 
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-        } catch (e) {
-          console.log(e);
+        } catch {
           // TODO(kt3k): Handle this
         }
       };
