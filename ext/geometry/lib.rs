@@ -3058,8 +3058,8 @@ pub fn op_geometry_matrix_set_matrix_value<'a>(
     return Err(GeometryError::IllegalInvocation);
   }
   let matrix =
-  cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, input)
-    .unwrap();
+    cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, input)
+      .unwrap();
   let transform_list = String::convert(
     scope,
     transform_list,
