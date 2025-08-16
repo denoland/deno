@@ -31,13 +31,14 @@ import {
   op_node_os_user_info,
 } from "ext:core/ops";
 
-import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "node:process";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { osUptime } from "ext:deno_os/30_os.js";
 import { Buffer } from "ext:deno_node/internal/buffer.mjs";
 import { primordials } from "ext:core/mod.js";
+import { validateInt32 } from "ext:deno_node/internal/validators.mjs";
+import { denoErrorToNodeSystemError } from "ext:deno_node/internal/errors.ts";
 
 const {
   ObjectDefineProperties,
@@ -176,8 +177,12 @@ export function freemem(): number {
 
 /** Not yet implemented */
 export function getPriority(pid = 0): number {
-  validateIntegerRange(pid, "pid");
-  return op_node_os_get_priority(pid);
+  validateInt32(pid, "pid");
+  try {
+    return op_node_os_get_priority(pid);
+  } catch (error) {
+    throw denoErrorToNodeSystemError(error as Error, "uv_os_getpriority");
+  }
 }
 
 /** Returns the string path of the current user's home directory. */
@@ -266,10 +271,15 @@ export function setPriority(pid: number, priority?: number) {
     priority = pid;
     pid = 0;
   }
-  validateIntegerRange(pid, "pid");
-  validateIntegerRange(priority, "priority", -20, 19);
 
-  op_node_os_set_priority(pid, priority);
+  validateInt32(pid, "pid");
+  validateInt32(priority, "priority", -20, 19);
+
+  try {
+    op_node_os_set_priority(pid, priority);
+  } catch (error) {
+    throw denoErrorToNodeSystemError(error as Error, "uv_os_setpriority");
+  }
 }
 
 /** Returns the operating system's default directory for temporary files as a string. */
