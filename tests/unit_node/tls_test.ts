@@ -349,3 +349,52 @@ Deno.test({
   }
   assertEquals(new TextDecoder().decode(stdout), "");
 });
+
+Deno.test("mTLS client certificate authentication", async () => {
+  const clientKey = key;
+  const clientCert = cert;
+
+  const server = tls.createServer({
+    key,
+    cert,
+    requestCert: true,
+    rejectUnauthorized: true,
+    ca: [rootCaCert],
+  }, (socket) => {
+    socket.write("mTLS success!");
+    socket.end();
+  });
+
+  const { promise, resolve, reject } = Promise.withResolvers<string>();
+
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any)?.port;
+
+    const client = tls.connect({
+      host: "localhost",
+      port,
+      key: clientKey,
+      cert: clientCert,
+      ca: rootCaCert,
+    });
+
+    client.setEncoding("utf8");
+    let data = "";
+    client.on("data", (chunk) => {
+      data += chunk;
+    });
+
+    client.on("end", () => {
+      resolve(data);
+    });
+
+    client.on("error", (err) => {
+      reject(err);
+    });
+  });
+
+  const result = await promise;
+  assertEquals(result, "mTLS success!");
+  server.close();
+});
