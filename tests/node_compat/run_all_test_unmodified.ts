@@ -22,7 +22,9 @@ import {
   usesNodeTestModule,
 } from "./common.ts";
 import { generateTestSerialId } from "./test.ts";
+import { join } from "@std/path/join";
 
+const testSuitePath = "tests/node_compat/runner/suite";
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
@@ -171,10 +173,10 @@ export async function runSingle(
 ): Promise<NodeTestFileReport> {
   const testSerialId = generateTestSerialId();
   let cmd: Deno.ChildProcess | undefined;
-  const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
+  const testPath_ = "test/" + testPath;
   let usesNodeTest = false;
   try {
-    const source = await Deno.readTextFile(testPath_);
+    const source = await Deno.readTextFile(join(testSuitePath, testPath_));
     usesNodeTest = usesNodeTestModule(source);
     if (NODE_IGNORED_TEST_CASES.has(testPath)) {
       return { result: NodeTestFileResult.IGNORED, usesNodeTest };
@@ -195,6 +197,7 @@ export async function runSingle(
       },
       stdout: "piped",
       stderr: "piped",
+      cwd: testSuitePath,
     }).spawn();
     const result = await deadline(cmd.output(), TIMEOUT);
     if (result.code === 0) {
