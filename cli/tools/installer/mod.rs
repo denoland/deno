@@ -329,6 +329,7 @@ async fn install_global(
     Default::default(),
     deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
+    factory.memory_files().clone(),
     factory.sys(),
     CreateCliFileFetcherOptions {
       allow_remote: true,

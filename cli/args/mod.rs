@@ -678,14 +678,23 @@ impl CliOptions {
             resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
           }
           DenoSubcommand::Eval(_) => {
-            resolve_url_or_path("./$deno$eval.mts", self.initial_cwd())?
+            let specifier = format!(
+              "./$deno$eval.{}",
+              self.flags.ext.as_deref().unwrap_or("mts")
+            );
+            deno_path_util::resolve_path(&specifier, self.initial_cwd())?
           }
-          DenoSubcommand::Repl(_) => {
-            resolve_url_or_path("./$deno$repl.mts", self.initial_cwd())?
-          }
+          DenoSubcommand::Repl(_) => deno_path_util::resolve_path(
+            "./$deno$repl.mts",
+            self.initial_cwd(),
+          )?,
           DenoSubcommand::Run(run_flags) => {
             if run_flags.is_stdin() {
-              resolve_url_or_path("./$deno$stdin.mts", self.initial_cwd())?
+              let specifier = format!(
+                "./$deno$stdin.{}",
+                self.flags.ext.as_deref().unwrap_or("mts")
+              );
+              deno_path_util::resolve_path(&specifier, self.initial_cwd())?
             } else {
               let default_resolve = || {
                 let url =
@@ -738,15 +747,10 @@ impl CliOptions {
     &self,
   ) -> HashMap<ModuleSpecifier, HashMap<String, String>> {
     let maybe_main_specifier = self.resolve_main_module().ok();
-    // TODO(Cre3per): This mapping moved to deno_ast with https://github.com/denoland/deno_ast/issues/133 and should be available in deno_ast >= 0.25.0 via `MediaType::from_path(...).as_media_type()`
-    let maybe_content_type =
-      self.flags.ext.as_ref().and_then(|el| match el.as_str() {
-        "ts" => Some("text/typescript"),
-        "tsx" => Some("text/tsx"),
-        "js" => Some("text/javascript"),
-        "jsx" => Some("text/jsx"),
-        _ => None,
-      });
+    let maybe_content_type = self.flags.ext.as_ref().and_then(|ext| {
+      let media_type = MediaType::from_filename(&format!("file.{}", ext));
+      media_type.as_content_type()
+    });
 
     if let (Some(main_specifier), Some(content_type)) =
       (maybe_main_specifier, maybe_content_type)

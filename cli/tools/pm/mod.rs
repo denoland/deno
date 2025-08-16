@@ -425,6 +425,7 @@ pub async fn add(
     Default::default(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
+    cli_factory.memory_files().clone(),
     cli_factory.sys(),
     CreateCliFileFetcherOptions {
       allow_remote: true,
