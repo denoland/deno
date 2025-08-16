@@ -34,6 +34,7 @@ use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfigResolver;
 use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
+use deno_resolver::file_fetcher::GraphLoaderReporterRc;
 use deno_resolver::graph::EnhanceGraphErrorMode;
 use deno_resolver::graph::enhance_graph_error;
 use deno_resolver::graph::enhanced_integrity_error_message;
@@ -604,7 +605,7 @@ pub struct ModuleGraphBuilder {
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   lockfile: Option<Arc<CliLockfile>>,
-  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+  maybe_reporter: Option<Arc<dyn deno_graph::source::Reporter>>,
   module_info_cache: Arc<ModuleInfoCache>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
@@ -615,6 +616,7 @@ pub struct ModuleGraphBuilder {
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
+  load_reporter: Option<GraphLoaderReporterRc>,
 }
 
 impl ModuleGraphBuilder {
@@ -627,7 +629,7 @@ impl ModuleGraphBuilder {
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
     lockfile: Option<Arc<CliLockfile>>,
-    maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+    maybe_reporter: Option<Arc<dyn deno_graph::source::Reporter>>,
     module_info_cache: Arc<ModuleInfoCache>,
     npm_graph_resolver: Arc<CliNpmGraphResolver>,
     npm_installer: Option<Arc<CliNpmInstaller>>,
@@ -638,6 +640,7 @@ impl ModuleGraphBuilder {
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
+    load_reporter: Option<GraphLoaderReporterRc>,
   ) -> Self {
     Self {
       caches,
@@ -647,7 +650,7 @@ impl ModuleGraphBuilder {
       global_http_cache,
       in_npm_pkg_checker,
       lockfile,
-      maybe_file_watcher_reporter,
+      maybe_reporter,
       module_info_cache,
       npm_graph_resolver,
       npm_installer,
@@ -658,6 +661,7 @@ impl ModuleGraphBuilder {
       root_permissions_container,
       sys,
       compiler_options_resolver,
+      load_reporter,
     }
   }
 
@@ -696,10 +700,7 @@ impl ModuleGraphBuilder {
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
     );
-    let maybe_file_watcher_reporter = self
-      .maybe_file_watcher_reporter
-      .as_ref()
-      .map(|r| r.as_reporter());
+    let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
     self
       .build_graph_with_npm_resolution_and_build_options(
@@ -717,7 +718,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(self.npm_graph_resolver.as_ref()),
           module_analyzer: &analyzer,
           module_info_cacher: self.module_info_cache.as_ref(),
-          reporter: maybe_file_watcher_reporter,
+          reporter: maybe_reporter,
           resolver: Some(&graph_resolver),
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
@@ -926,6 +927,7 @@ impl ModuleGraphBuilder {
       deno_resolver::file_fetcher::DenoGraphLoaderOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions: Some(permissions),
+        reporter: self.load_reporter.clone(),
       },
     )
   }
@@ -1013,10 +1015,6 @@ impl FileWatcherReporter {
       watcher_communicator,
       file_paths: Default::default(),
     }
-  }
-
-  pub fn as_reporter(&self) -> &dyn deno_graph::source::Reporter {
-    self
   }
 }
 

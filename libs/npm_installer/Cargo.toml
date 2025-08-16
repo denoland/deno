@@ -32,6 +32,7 @@ deno_resolver = { workspace = true, features = ["graph", "sync"] }
 deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_unsync.workspace = true
+dyn-clone.workspace = true
 futures.workspace = true
 log.workspace = true
 once_cell.workspace = true
