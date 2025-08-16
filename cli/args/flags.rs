@@ -2661,7 +2661,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .long("ext")
           .help("Set content type of the supplied file")
           .value_parser([
-            "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
+            "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json", "jsonc", "css", "scss",
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb", "sql", "vto", "njk"
           ])
@@ -4457,7 +4457,7 @@ fn executable_ext_arg() -> Arg {
   Arg::new("ext")
     .long("ext")
     .help("Set content type of the supplied file")
-    .value_parser(["ts", "tsx", "js", "jsx"])
+    .value_parser(["ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs"])
 }
 
 fn location_arg() -> Arg {

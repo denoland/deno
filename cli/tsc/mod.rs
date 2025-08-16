@@ -454,7 +454,7 @@ impl TypeCheckingCjsTracker {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     is_script: bool,
-  ) -> Result<bool, node_resolver::errors::ClosestPkgJsonError> {
+  ) -> Result<bool, node_resolver::errors::PackageJsonLoadError> {
     self
       .cjs_tracker
       .is_cjs_with_known_is_script(specifier, media_type, is_script)
@@ -646,7 +646,7 @@ pub enum LoadError {
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
   #[error("{0}")]
-  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
 }
 
 #[derive(Debug, Serialize)]

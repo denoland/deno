@@ -25,7 +25,7 @@ use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
@@ -74,10 +74,6 @@ pub enum RequireErrorKind {
   #[properties(inherit)]
   #[error(transparent)]
   PackageJsonLoad(#[from] node_resolver::errors::PackageJsonLoadError),
-  #[class(generic)]
-  #[properties(inherit)]
-  #[error(transparent)]
-  ClosestPkgJson(#[from] ClosestPkgJsonError),
   #[class(generic)]
   #[properties(inherit)]
   #[error(transparent)]
@@ -395,9 +391,21 @@ pub fn op_require_real_path<
   let path = ensure_read_permission::<P>(state, path)
     .map_err(RequireErrorKind::Permission)?;
   let sys = state.borrow::<TSys>();
-  let canonicalized_path = deno_path_util::strip_unc_prefix(
-    sys.fs_canonicalize(&path).map_err(RequireErrorKind::Io)?,
-  );
+  let canonicalized_path =
+    deno_path_util::strip_unc_prefix(match sys.fs_canonicalize(&path) {
+      Ok(path) => path,
+      Err(err) => {
+        if path.ends_with("$deno$eval.cjs")
+          || path.ends_with("$deno$eval.cts")
+          || path.ends_with("$deno$stdin.cjs")
+          || path.ends_with("$deno$stdin.cts")
+        {
+          path.to_path_buf()
+        } else {
+          return Err(RequireErrorKind::Io(err).into_box());
+        }
+      }
+    });
   Ok(canonicalized_path.to_string_lossy().into_owned())
 }
 
@@ -606,8 +614,8 @@ pub fn op_require_resolve_exports<
 }
 
 deno_error::js_error_wrapper!(
-  ClosestPkgJsonError,
-  JsClosestPkgJsonError,
+  PackageJsonLoadError,
+  JsPackageJsonLoadError,
   "Error"
 );
 
@@ -615,7 +623,7 @@ deno_error::js_error_wrapper!(
 pub fn op_require_is_maybe_cjs(
   state: &mut OpState,
   #[string] filename: &str,
-) -> Result<bool, JsClosestPkgJsonError> {
+) -> Result<bool, JsPackageJsonLoadError> {
   let filename = Path::new(filename);
   let Ok(url) = url_from_file_path(filename) else {
     return Ok(false);
