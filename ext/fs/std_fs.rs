@@ -5,6 +5,7 @@
 use std::borrow::Cow;
 use std::fs;
 use std::io;
+use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
@@ -657,7 +658,14 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         use std::os::unix::fs::PermissionsExt;
         builder.mode(fs::symlink_metadata(from)?.permissions().mode());
       }
-      builder.create(to)?;
+
+      // The target directory might already exists. If it does,
+      // continue copying all entries instead of aborting.
+      if let Err(err) = builder.create(to)
+        && err.kind() != ErrorKind::AlreadyExists
+      {
+        return Err(FsError::Io(err));
+      }
 
       let mut entries: Vec<_> = fs::read_dir(from)?
         .map(|res| res.map(|e| e.file_name()))
@@ -779,16 +787,21 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
   if let Ok(m) = fs::metadata(to)
     && m.is_dir()
   {
-    return cp_(
-      source_meta,
-      from,
-      &to.join(from.file_name().ok_or_else(|| {
-        io::Error::new(
-          io::ErrorKind::InvalidInput,
-          "the source path is not a valid file",
-        )
-      })?),
-    );
+    // Only target sub dir when source is not a dir itself
+    if let Ok(from_meta) = fs::metadata(from)
+      && !from_meta.is_dir()
+    {
+      return cp_(
+        source_meta,
+        from,
+        &to.join(from.file_name().ok_or_else(|| {
+          io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the source path is not a valid file",
+          )
+        })?),
+      );
+    }
   }
 
   if let Ok(m) = fs::symlink_metadata(to)
