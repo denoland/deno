@@ -3048,21 +3048,31 @@ pub fn op_geometry_matrix_to_string<'a>(
   }
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_geometry_matrix_set_matrix_value<'a>(
   scope: &mut v8::HandleScope<'a>,
   input: v8::Local<'a, v8::Value>,
-  #[string] transform_list: &str,
-) -> Result<v8::Local<'a, v8::Value>, GeometryError> {
+  transform_list: v8::Local<'a, v8::Value>,
+) -> Result<(), GeometryError> {
   if cppgc::try_unwrap_cppgc_proto_object::<DOMMatrix>(scope, input).is_none() {
     return Err(GeometryError::IllegalInvocation);
   }
   let matrix =
-    cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, input)
-      .unwrap();
-  let Ok(transform_list) = TransformList::parse_string(transform_list) else {
+  cppgc::try_unwrap_cppgc_proto_object::<DOMMatrixReadOnly>(scope, input)
+    .unwrap();
+  let transform_list = String::convert(
+    scope,
+    transform_list,
+    "Failed to execute 'setMatrixValue' on 'DOMMatrix'".into(),
+    (|| Cow::Borrowed("Argument 1")).into(),
+    &Default::default(),
+  )?;
+  if transform_list.is_empty() {
+    return Ok(());
+  }
+  let Ok(transform_list) = TransformList::parse_string(&transform_list) else {
     return Err(GeometryError::FailedToParse);
   };
   matrix.set_matrix_value_inner(&transform_list)?;
-  Ok(input)
+  Ok(())
 }
