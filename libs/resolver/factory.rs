@@ -61,6 +61,7 @@ use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::import_map::WorkspaceExternalImportMapLoader;
 use crate::import_map::WorkspaceExternalImportMapLoaderRc;
+use crate::loader::AllowJsonImports;
 use crate::loader::DenoNpmModuleLoaderRc;
 use crate::loader::NpmModuleLoader;
 use crate::lockfile::LockfileLock;
@@ -680,6 +681,7 @@ pub struct ResolverFactoryOptions {
   #[cfg(feature = "graph")]
   pub on_mapped_resolution_diagnostic:
     Option<crate::graph::OnMappedResolutionDiagnosticFn>,
+  pub allow_json_imports: AllowJsonImports,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -1053,6 +1055,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.npm_module_loader()?.clone(),
         self.parsed_source_cache.clone(),
         self.workspace_factory.sys.clone(),
+        self.options.allow_json_imports,
       )))
     })
   }

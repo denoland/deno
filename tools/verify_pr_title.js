@@ -64,8 +64,7 @@ if (validPrefixes.some((prefix) => prTitle.startsWith(prefix))) {
     console.error(`  - ${prefix}`);
   }
   console.error(
-    "\nPlease fix the PR title according to https://www.conventionalcommits.org " +
-      "then push an empty commit to reset the CI.",
+    "\nPlease fix the PR title according to https://www.conventionalcommits.org",
   );
   Deno.exit(1);
 }

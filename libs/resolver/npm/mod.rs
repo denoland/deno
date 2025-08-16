@@ -582,7 +582,7 @@ impl<
                 )
                 .into_box(),
               ),
-              PackageResolveErrorKind::ClosestPkgJson(_)
+              PackageResolveErrorKind::PkgJsonLoad(_)
               | PackageResolveErrorKind::InvalidModuleSpecifier(_)
               | PackageResolveErrorKind::ExportsResolve(_)
               | PackageResolveErrorKind::SubpathResolve(_) => Err(
