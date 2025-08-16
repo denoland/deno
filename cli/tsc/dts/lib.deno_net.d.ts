@@ -456,6 +456,12 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
+    /** If true, the certificate's common name or subject alternative names will not be
+     * checked against the hostname provided in the options.
+     *
+     * @default {false}
+     */
+    disableHostnameVerification?: boolean;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -505,6 +511,12 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
+    /** If true, the certificate's common name or subject alternative names will not be
+     * checked against the hostname provided in the options.
+     *
+     * @default {false}
+     */
+    disableHostnameVerification?: boolean;
   }
 
   /** Start TLS handshake from an existing connection using an optional list of
