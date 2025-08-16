@@ -35,7 +35,7 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { startTlsInternal } from "ext:deno_net/02_tls.js";
-import { core, internals } from "ext:core/mod.js";
+import { internals } from "ext:core/mod.js";
 import {
   op_tls_canonicalize_ipv4_address,
   op_tls_key_null,
