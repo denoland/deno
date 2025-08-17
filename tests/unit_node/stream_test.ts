@@ -3,7 +3,12 @@
 import { assert, assertEquals } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
 import { finished, pipeline } from "node:stream/promises";
-import { getDefaultHighWaterMark, Stream, Writable } from "node:stream";
+import {
+  getDefaultHighWaterMark,
+  promises,
+  Stream,
+  Writable,
+} from "node:stream";
 import { TextEncoderStream } from "node:stream/web";
 import { createReadStream, createWriteStream } from "node:fs";
 import { EventEmitter } from "node:events";
@@ -77,4 +82,19 @@ Deno.test("Writable toWeb", async () => {
     .pipeTo(webWritable);
 
   await finished(nodeWritable);
+});
+
+// https://github.com/denoland/deno/issues/30423
+Deno.test("exported `promises` from node:stream works", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue("asd");
+      controller.close();
+    },
+  });
+  const promise = promises.finished(stream as unknown as NodeJS.ReadableStream);
+  for await (const chunk of stream) {
+    assertEquals(chunk, "asd");
+  }
+  await promise;
 });
