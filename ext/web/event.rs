@@ -149,7 +149,7 @@ impl Event {
   fn dispatch<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
-    state: &mut OpState,
+    state: &Rc<RefCell<OpState>>,
     event_object: v8::Local<'a, v8::Object>,
     target: &EventTarget,
     target_object: v8::Global<v8::Object>,
@@ -258,7 +258,7 @@ impl Event {
   fn invoke<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
-    state: &mut OpState,
+    state: &Rc<RefCell<OpState>>,
     event_object: v8::Local<'a, v8::Object>,
     target: &EventTarget,
     target_object: v8::Global<v8::Object>,
@@ -319,7 +319,7 @@ impl Event {
   fn inner_invoke<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
-    state: &mut OpState,
+    state: &Rc<RefCell<OpState>>,
     event_object: v8::Local<'a, v8::Object>,
     target_object: v8::Global<v8::Object>,
     typ: &String,
@@ -687,7 +687,7 @@ pub fn op_event_set_target(
 #[op2(reentrant)]
 pub fn op_event_dispatch<'a>(
   scope: &mut v8::HandleScope<'a>,
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   #[global] target_object: v8::Global<v8::Object>,
   event_object: v8::Local<'a, v8::Object>,
   #[global] target_override: Option<v8::Global<v8::Object>>,
@@ -701,7 +701,7 @@ pub fn op_event_dispatch<'a>(
       .unwrap();
   event.dispatch(
     scope,
-    state,
+    &state,
     event_object,
     &target,
     target_object,
@@ -1464,11 +1464,12 @@ impl Default for ReportExceptionStackedCalls {
 // https://html.spec.whatwg.org/#report-the-exception
 fn report_exception<'a>(
   scope: &mut v8::HandleScope<'a>,
-  state: &mut OpState,
+  state: &Rc<RefCell<OpState>>,
   exception: v8::Local<'a, v8::Value>,
 ) {
   // Avoid recursing `reportException()` via error handlers more than once.
   let callable = {
+    let mut state = state.borrow_mut();
     let stacked_calls = state.borrow_mut::<ReportExceptionStackedCalls>();
     stacked_calls.0 += 1;
     stacked_calls.0 == 1
@@ -1539,6 +1540,7 @@ fn report_exception<'a>(
     dispatch_exception(scope, exception, false);
   }
 
+  let mut state = state.borrow_mut();
   let stacked_calls = state.borrow_mut::<ReportExceptionStackedCalls>();
   stacked_calls.0 -= 1;
 }
@@ -1546,24 +1548,24 @@ fn report_exception<'a>(
 #[op2(fast, reentrant, required(1))]
 pub fn op_event_report_exception<'a>(
   scope: &mut v8::HandleScope<'a>,
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   exception: v8::Local<'a, v8::Value>,
 ) {
-  report_exception(scope, state, exception);
+  report_exception(scope, &state, exception);
 }
 
 #[op2(fast, reentrant, required(1))]
 pub fn op_event_report_error<'a>(
   #[this] this: v8::Global<v8::Object>,
   scope: &mut v8::HandleScope<'a>,
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   exception: v8::Local<'a, v8::Value>,
 ) -> Result<(), EventError> {
   let global = scope.get_current_context().global(scope);
   if global != this {
     return Err(EventError::Illegal);
   }
-  report_exception(scope, state, exception);
+  report_exception(scope, &state, exception);
   Ok(())
 }
 
@@ -1768,7 +1770,7 @@ impl EventTarget {
     &self,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::HandleScope<'a>,
-    state: &mut OpState,
+    state: Rc<RefCell<OpState>>,
     event_object: v8::Local<'a, v8::Object>,
   ) -> Result<bool, EventError> {
     let Some(event) =
@@ -1805,7 +1807,7 @@ impl EventTarget {
       return Err(EventError::InvalidState);
     }
 
-    Ok(event.dispatch(scope, state, event_object, self, this, None))
+    Ok(event.dispatch(scope, &state, event_object, self, this, None))
   }
 }
 

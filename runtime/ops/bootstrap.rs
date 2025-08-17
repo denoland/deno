@@ -142,12 +142,12 @@ pub fn op_bootstrap_color_depth(state: &mut OpState) -> i32 {
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_no_color(_state: &mut OpState) -> bool {
+pub fn op_bootstrap_no_color() -> bool {
   !deno_terminal::colors::use_color()
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_stdout_no_color(_state: &mut OpState) -> bool {
+pub fn op_bootstrap_stdout_no_color() -> bool {
   if deno_terminal::colors::force_color() {
     return false;
   }
@@ -156,7 +156,7 @@ pub fn op_bootstrap_stdout_no_color(_state: &mut OpState) -> bool {
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_stderr_no_color(_state: &mut OpState) -> bool {
+pub fn op_bootstrap_stderr_no_color() -> bool {
   if deno_terminal::colors::force_color() {
     return false;
   }
