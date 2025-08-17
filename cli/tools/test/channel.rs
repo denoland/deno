@@ -441,7 +441,7 @@ impl TestEventSender {
 #[cfg(test)]
 mod tests {
   use deno_core::unsync::spawn;
-  use deno_core::unsync::spawn_blocking;
+  use deno_core::unsync::spawn_blocking_always;
 
   use super::*;
   use crate::tools::test::TestResult;
@@ -466,7 +466,7 @@ mod tests {
       eprintln!("done");
       queue
     });
-    let send_handle = spawn_blocking(move || {
+    let send_handle = spawn_blocking_always(move || {
       worker.stdout.write_all(&[1; 100_000]).unwrap();
       eprintln!("Wrote bytes");
       worker.sender.send(TestEvent::StepWait(1)).unwrap();
@@ -513,7 +513,7 @@ mod tests {
       eprintln!("Receiver closed");
       queue
     });
-    let send_handle = spawn_blocking(move || {
+    let send_handle = spawn_blocking_always(move || {
       for _ in 0..100000 {
         worker.sender.send(TestEvent::StepWait(1)).unwrap();
       }
@@ -539,7 +539,7 @@ mod tests {
       eprintln!("Receiver closed");
       queue
     });
-    let send_handle = spawn_blocking(move || {
+    let send_handle = spawn_blocking_always(move || {
       for _ in 0..25000 {
         // Write one pipe buffer's worth of message here. We try a few different sizes of potentially
         // blocking writes.
@@ -577,7 +577,7 @@ mod tests {
       eprintln!("Receiver closed");
       queue
     });
-    let send_handle = spawn_blocking(move || {
+    let send_handle = spawn_blocking_always(move || {
       let mut stdout = Some(stdout);
       let mut stderr = Some(stderr);
       for i in 0..100000 {
@@ -630,7 +630,7 @@ mod tests {
       i
     });
     let send_handle: deno_core::unsync::JoinHandle<()> =
-      spawn_blocking(move || {
+      spawn_blocking_always(move || {
         for i in 0..MESSAGE_COUNT {
           worker
             .stderr

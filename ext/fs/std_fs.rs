@@ -12,7 +12,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_optional;
 use deno_io::StdFileResourceInner;
 use deno_io::fs::File;
 use deno_io::fs::FsError;
@@ -110,14 +110,14 @@ impl FileSystem for RealFs {
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()> {
-    spawn_blocking(move || mkdir(&path, recursive, mode)).await?
+    spawn_blocking_optional(move || mkdir(&path, recursive, mode)).await?
   }
 
   fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
     chmod(path, mode)
   }
   async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()> {
-    spawn_blocking(move || chmod(&path, mode)).await?
+    spawn_blocking_optional(move || chmod(&path, mode)).await?
   }
 
   fn chown_sync(
@@ -134,7 +134,7 @@ impl FileSystem for RealFs {
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
-    spawn_blocking(move || chown(&path, uid, gid)).await?
+    spawn_blocking_optional(move || chown(&path, uid, gid)).await?
   }
 
   fn remove_sync(&self, path: &CheckedPath, recursive: bool) -> FsResult<()> {
@@ -145,7 +145,7 @@ impl FileSystem for RealFs {
     path: CheckedPathBuf,
     recursive: bool,
   ) -> FsResult<()> {
-    spawn_blocking(move || remove(&path, recursive)).await?
+    spawn_blocking_optional(move || remove(&path, recursive)).await?
   }
 
   fn copy_file_sync(
@@ -160,7 +160,7 @@ impl FileSystem for RealFs {
     from: CheckedPathBuf,
     to: CheckedPathBuf,
   ) -> FsResult<()> {
-    spawn_blocking(move || copy_file(&from, &to)).await?
+    spawn_blocking_optional(move || copy_file(&from, &to)).await?
   }
 
   fn cp_sync(&self, fro: &CheckedPath, to: &CheckedPath) -> FsResult<()> {
@@ -171,28 +171,28 @@ impl FileSystem for RealFs {
     fro: CheckedPathBuf,
     to: CheckedPathBuf,
   ) -> FsResult<()> {
-    spawn_blocking(move || cp(&fro, &to)).await?
+    spawn_blocking_optional(move || cp(&fro, &to)).await?
   }
 
   fn stat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
     stat(path)
   }
   async fn stat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
-    spawn_blocking(move || stat(&path)).await?
+    spawn_blocking_optional(move || stat(&path)).await?
   }
 
   fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
     lstat(path)
   }
   async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
-    spawn_blocking(move || lstat(&path)).await?
+    spawn_blocking_optional(move || lstat(&path)).await?
   }
 
   fn exists_sync(&self, path: &CheckedPath) -> bool {
     exists(path)
   }
   async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
-    spawn_blocking(move || exists(&path))
+    spawn_blocking_optional(move || exists(&path))
       .await
       .map_err(Into::into)
   }
@@ -201,7 +201,7 @@ impl FileSystem for RealFs {
     realpath(path)
   }
   async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
-    spawn_blocking(move || realpath(&path)).await?
+    spawn_blocking_optional(move || realpath(&path)).await?
   }
 
   fn read_dir_sync(&self, path: &CheckedPath) -> FsResult<Vec<FsDirEntry>> {
@@ -211,7 +211,7 @@ impl FileSystem for RealFs {
     &self,
     path: CheckedPathBuf,
   ) -> FsResult<Vec<FsDirEntry>> {
-    spawn_blocking(move || read_dir(&path)).await?
+    spawn_blocking_optional(move || read_dir(&path)).await?
   }
 
   fn rename_sync(
@@ -226,7 +226,7 @@ impl FileSystem for RealFs {
     oldpath: CheckedPathBuf,
     newpath: CheckedPathBuf,
   ) -> FsResult<()> {
-    spawn_blocking(move || fs::rename(oldpath, newpath))
+    spawn_blocking_optional(move || fs::rename(oldpath, newpath))
       .await?
       .map_err(Into::into)
   }
@@ -240,7 +240,7 @@ impl FileSystem for RealFs {
     path: CheckedPathBuf,
     mode: u32,
   ) -> FsResult<()> {
-    spawn_blocking(move || lchmod(&path, mode)).await?
+    spawn_blocking_optional(move || lchmod(&path, mode)).await?
   }
 
   fn link_sync(
@@ -255,7 +255,7 @@ impl FileSystem for RealFs {
     oldpath: CheckedPathBuf,
     newpath: CheckedPathBuf,
   ) -> FsResult<()> {
-    spawn_blocking(move || fs::hard_link(oldpath, newpath))
+    spawn_blocking_optional(move || fs::hard_link(oldpath, newpath))
       .await?
       .map_err(Into::into)
   }
@@ -274,14 +274,15 @@ impl FileSystem for RealFs {
     newpath: CheckedPathBuf,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
-    spawn_blocking(move || symlink(&oldpath, &newpath, file_type)).await?
+    spawn_blocking_optional(move || symlink(&oldpath, &newpath, file_type))
+      .await?
   }
 
   fn read_link_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
     fs::read_link(path).map_err(Into::into)
   }
   async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
-    spawn_blocking(move || fs::read_link(path))
+    spawn_blocking_optional(move || fs::read_link(path))
       .await?
       .map_err(Into::into)
   }
@@ -294,7 +295,7 @@ impl FileSystem for RealFs {
     path: CheckedPathBuf,
     len: u64,
   ) -> FsResult<()> {
-    spawn_blocking(move || truncate(&path, len)).await?
+    spawn_blocking_optional(move || truncate(&path, len)).await?
   }
 
   fn utime_sync(
@@ -319,7 +320,7 @@ impl FileSystem for RealFs {
   ) -> FsResult<()> {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    spawn_blocking(move || {
+    spawn_blocking_optional(move || {
       filetime::set_file_times(path, atime, mtime).map_err(Into::into)
     })
     .await?
@@ -348,7 +349,7 @@ impl FileSystem for RealFs {
   ) -> FsResult<()> {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    spawn_blocking(move || {
+    spawn_blocking_optional(move || {
       filetime::set_symlink_file_times(path, atime, mtime).map_err(Into::into)
     })
     .await?
@@ -369,7 +370,7 @@ impl FileSystem for RealFs {
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
-    spawn_blocking(move || lchown(&path, uid, gid)).await?
+    spawn_blocking_optional(move || lchown(&path, uid, gid)).await?
   }
 
   fn write_file_sync(
@@ -395,7 +396,7 @@ impl FileSystem for RealFs {
     data: Vec<u8>,
   ) -> FsResult<()> {
     let mut file = open_with_checked_path(options, &path.as_checked_path())?;
-    spawn_blocking(move || {
+    spawn_blocking_optional(move || {
       #[cfg(unix)]
       if let Some(mode) = options.mode {
         use std::os::unix::fs::PermissionsExt;
@@ -430,7 +431,7 @@ impl FileSystem for RealFs {
       },
       &path.as_checked_path(),
     )?;
-    spawn_blocking(move || {
+    spawn_blocking_optional(move || {
       let mut buf = Vec::new();
       file.read_to_end(&mut buf)?;
       Ok::<_, FsError>(Cow::Owned(buf))

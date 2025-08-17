@@ -16,7 +16,7 @@ use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::parking_lot::RwLock;
 use deno_core::unsync::spawn;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_always;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use tokio_util::sync::CancellationToken;
@@ -294,7 +294,7 @@ impl TestRun {
       };
       let token = self.token.clone();
 
-      spawn_blocking(move || {
+      spawn_blocking_always(move || {
         if fail_fast_tracker.should_stop() {
           return Ok(());
         }

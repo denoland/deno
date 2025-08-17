@@ -12,7 +12,7 @@ use deno_core::BufMutView;
 use deno_core::ByteString;
 use deno_core::Resource;
 use deno_core::parking_lot::Mutex;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_optional;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use rusqlite::params;
@@ -124,7 +124,7 @@ impl SqliteBackedCache {
   ) -> Result<i64, CacheError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    spawn_blocking(move || {
+    spawn_blocking_optional(move || {
       let db = db.lock();
       db.execute(
         "INSERT OR IGNORE INTO cache_storage (cache_name) VALUES (?1)",
@@ -152,7 +152,7 @@ impl SqliteBackedCache {
     cache_name: String,
   ) -> Result<bool, CacheError> {
     let db = self.connection.clone();
-    spawn_blocking(move || {
+    spawn_blocking_optional(move || {
       let db = db.lock();
       let cache_exists = db.query_row(
         "SELECT count(id) FROM cache_storage WHERE cache_name = ?1",
@@ -174,7 +174,7 @@ impl SqliteBackedCache {
   ) -> Result<bool, CacheError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    spawn_blocking(move || {
+    spawn_blocking_optional(move || {
       let db = db.lock();
       let maybe_cache_id = db
         .query_row(
@@ -261,7 +261,7 @@ impl SqliteBackedCache {
   > {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    let (query_result, request) = spawn_blocking(move || {
+    let (query_result, request) = spawn_blocking_optional(move || {
       let db = db.lock();
       let result = db.query_row(
         "SELECT response_body_key, response_headers, response_status, response_status_text, request_headers
@@ -337,7 +337,7 @@ impl SqliteBackedCache {
     request: CacheDeleteRequest,
   ) -> Result<bool, CacheError> {
     let db = self.connection.clone();
-    spawn_blocking(move || {
+    spawn_blocking_optional(move || {
       // TODO(@satyarohith): remove the response body from disk if one exists
       let db = db.lock();
       let rows_effected = db.execute(
@@ -355,7 +355,7 @@ async fn insert_cache_asset(
   put: CachePutRequest,
   response_body_key: Option<String>,
 ) -> Result<Option<String>, CacheError> {
-  spawn_blocking(move || {
+  spawn_blocking_optional(move || {
     let maybe_response_body = {
       let db = db.lock();
       db.query_row(

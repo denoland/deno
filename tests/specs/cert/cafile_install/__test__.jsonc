@@ -12,6 +12,9 @@
       "-g",
       "https://localhost:5545/echo.ts"
     ],
+    "envs": {
+      "DENO_UNSTABLE_SINGLE_THREADED": ""
+    },
     "output": "[WILDCARD]"
   }, {
     "if": "windows",

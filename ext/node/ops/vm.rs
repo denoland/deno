@@ -203,7 +203,7 @@ impl ContextifyScript {
     let result = if timeout != -1 {
       let timed_out = timed_out.clone();
       let (tx, rx) = std::sync::mpsc::channel();
-      deno_core::unsync::spawn_blocking(move || {
+      deno_core::unsync::spawn_blocking_always(move || {
         if rx
           .recv_timeout(Duration::from_millis(timeout as _))
           .is_err()

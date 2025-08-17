@@ -47,7 +47,7 @@ use deno_core::stats::RuntimeActivityStatsFactory;
 use deno_core::stats::RuntimeActivityStatsFilter;
 use deno_core::stats::RuntimeActivityType;
 use deno_core::unsync::spawn;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_always;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -1298,7 +1298,7 @@ async fn test_specifiers(
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
-    spawn_blocking(move || {
+    spawn_blocking_always(move || {
       create_and_run_current_thread(test_specifier(
         worker_factory,
         permissions_container,

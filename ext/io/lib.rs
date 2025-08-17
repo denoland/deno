@@ -38,7 +38,7 @@ use deno_core::ResourceHandleFd;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::TaskQueue;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_always;
 use deno_error::JsErrorBox;
 #[cfg(windows)]
 use deno_subprocess_windows::Stdio as StdStdio;
@@ -546,7 +546,7 @@ impl StdFileResourceInner {
           }
         }
       };
-      let (cell_value, result) = spawn_blocking(move || {
+      let (cell_value, result) = spawn_blocking_always(move || {
         let result = action(&mut cell_value);
         (cell_value, result)
       })
@@ -574,7 +574,7 @@ impl StdFileResourceInner {
     let acquire_fut = self.cell_async_task_queue.acquire();
     async move {
       let _permit = acquire_fut.await;
-      spawn_blocking(action).await.unwrap()
+      spawn_blocking_always(action).await.unwrap()
     }
   }
 

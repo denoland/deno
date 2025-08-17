@@ -618,6 +618,15 @@ async fn resolve_flags_and_init(
       .collect();
   }
 
+  // Configure spawn_blocking_optional before first use.
+  deno_core::unsync::set_spawn_blocking_optional_use_current_thread(
+    flags
+      .unstable_config
+      .features
+      .iter()
+      .any(|f| f == "single-threaded"),
+  );
+
   // Tunnel is initialized before OTEL since
   // OTEL data is submitted via the tunnel.
   if let Some(host) = flags

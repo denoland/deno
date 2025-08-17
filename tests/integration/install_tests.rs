@@ -25,6 +25,7 @@ fn install_basic() {
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
       ("DENO_INSTALL_ROOT", ""),
+      ("DENO_UNSTABLE_SINGLE_THREADED", ""),
     ])
     .run();
 
@@ -99,6 +100,7 @@ fn install_basic_global() {
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
       ("DENO_INSTALL_ROOT", ""),
+      ("DENO_UNSTABLE_SINGLE_THREADED", ""),
     ])
     .run();
 
@@ -169,6 +171,7 @@ fn install_custom_dir_env_var() {
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
       ("DENO_INSTALL_ROOT", temp_dir_str.as_str()),
+      ("DENO_UNSTABLE_SINGLE_THREADED", ""),
     ])
     .run()
     .skip_output_check()
@@ -210,6 +213,7 @@ fn installer_test_custom_dir_with_bin() {
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
       ("DENO_INSTALL_ROOT", temp_dir_with_bin.as_str()),
+      ("DENO_UNSTABLE_SINGLE_THREADED", ""),
     ])
     .run()
     .skip_output_check()

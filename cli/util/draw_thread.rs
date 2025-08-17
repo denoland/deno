@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use console_static_text::ConsoleStaticText;
 use deno_core::parking_lot::Mutex;
-use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::spawn_blocking_always;
 use deno_runtime::ops::tty::ConsoleSize;
 use once_cell::sync::Lazy;
 
@@ -173,7 +173,7 @@ impl DrawThread {
     internal_state.has_draw_thread = true;
 
     let drawer_id = internal_state.drawer_id;
-    spawn_blocking(move || {
+    spawn_blocking_always(move || {
       let mut previous_size = console_size();
       loop {
         let mut delay_ms = 120;

@@ -1794,7 +1794,7 @@ impl Inner {
       })?;
 
     // spawn a blocking task to allow doing other work while this is occurring
-    let text_edits = deno_core::unsync::spawn_blocking({
+    let text_edits = deno_core::unsync::spawn_blocking_always({
       let mut fmt_options = fmt_config.options.clone();
       let config_data = self.config.tree.data_for_specifier(&module.specifier);
       #[allow(clippy::nonminimal_bool)] // clippy's suggestion is more confusing
