@@ -328,11 +328,9 @@ Deno.test({
     }).spawn();
 
     const originalPriority = os.getPriority(child.pid);
-    assertNotEquals(originalPriority, os.constants.priority.PRIORITY_HIGHEST);
-    os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGHEST);
+    assertNotEquals(originalPriority, os.constants.priority.PRIORITY_HIGH);
+    os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGH);
 
-    // Setting to `PRIORITY_HIGHEST` without privilege escalation
-    // will be silently reduced to `PRIORITY_HIGH`
     assertEquals(
       os.getPriority(child.pid),
       os.constants.priority.PRIORITY_HIGH,
