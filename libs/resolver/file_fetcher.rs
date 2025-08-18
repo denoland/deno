@@ -34,30 +34,11 @@ use futures::FutureExt;
 use futures::future::LocalBoxFuture;
 use http::header;
 use node_resolver::InNpmPackageChecker;
-use parking_lot::Mutex;
 use thiserror::Error;
 use url::Url;
 
+use crate::loader::MemoryFilesRc;
 use crate::npm::DenoInNpmPackageChecker;
-
-#[derive(Debug, Default)]
-struct MemoryFiles(Mutex<HashMap<Url, File>>);
-
-impl MemoryFiles {
-  pub fn insert(&self, specifier: Url, file: File) -> Option<File> {
-    self.0.lock().insert(specifier, file)
-  }
-
-  pub fn clear(&self) {
-    self.0.lock().clear();
-  }
-}
-
-impl deno_cache_dir::file_fetcher::MemoryFiles for MemoryFiles {
-  fn get(&self, specifier: &Url) -> Option<File> {
-    self.0.lock().get(specifier).cloned()
-  }
-}
 
 #[derive(Debug, Boxed, JsError)]
 pub struct FetchError(pub Box<FetchErrorKind>);
@@ -149,8 +130,6 @@ pub trait PermissionedFileFetcherSys:
 #[allow(clippy::disallowed_types)]
 type PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient> =
   crate::sync::MaybeArc<PermissionedFileFetcher<TBlobStore, TSys, THttpClient>>;
-#[allow(clippy::disallowed_types)]
-type MemoryFilesRc = crate::sync::MaybeArc<MemoryFiles>;
 
 pub struct PermissionedFileFetcherOptions {
   pub allow_remote: bool,
@@ -179,10 +158,10 @@ impl<
     blob_store: TBlobStore,
     http_cache: HttpCacheRc,
     http_client: THttpClient,
+    memory_files: MemoryFilesRc,
     sys: TSys,
     options: PermissionedFileFetcherOptions,
   ) -> Self {
-    let memory_files = crate::sync::new_rc(MemoryFiles::default());
     let auth_tokens = AuthTokens::new_from_sys(&sys);
     let file_fetcher = deno_cache_dir::file_fetcher::FileFetcher::new(
       blob_store,

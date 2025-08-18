@@ -840,20 +840,6 @@ Module._resolveFilename = function (
   if (filename) {
     return op_require_real_path(filename);
   }
-  const requireStack = [];
-  for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
-    ArrayPrototypePush(requireStack, cursor.filename || cursor.id);
-  }
-  let message = `Cannot find module '${request}'`;
-  if (requireStack.length > 0) {
-    message = message + "\nRequire stack:\n- " +
-      ArrayPrototypeJoin(requireStack, "\n- ");
-  }
-  // eslint-disable-next-line no-restricted-syntax
-  const err = new Error(message);
-  err.code = "MODULE_NOT_FOUND";
-  err.requireStack = requireStack;
-
   // fallback and attempt to resolve bare specifiers using
   // the global cache when not using --node-modules-dir
   if (
@@ -875,7 +861,29 @@ Module._resolveFilename = function (
     }
   }
 
-  // throw the original error
+  if (
+    typeof request === "string" &&
+    (StringPrototypeEndsWith(request, "$deno$eval.cjs") ||
+      StringPrototypeEndsWith(request, "$deno$eval.cts") ||
+      StringPrototypeEndsWith(request, "$deno$stdin.cjs") ||
+      StringPrototypeEndsWith(request, "$deno$stdin.cts"))
+  ) {
+    return request;
+  }
+
+  const requireStack = [];
+  for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
+    ArrayPrototypePush(requireStack, cursor.filename || cursor.id);
+  }
+  let message = `Cannot find module '${request}'`;
+  if (requireStack.length > 0) {
+    message = message + "\nRequire stack:\n- " +
+      ArrayPrototypeJoin(requireStack, "\n- ");
+  }
+  // eslint-disable-next-line no-restricted-syntax
+  const err = new Error(message);
+  err.code = "MODULE_NOT_FOUND";
+  err.requireStack = requireStack;
   throw err;
 };
 
@@ -919,9 +927,7 @@ Module.prototype.load = function (filename) {
   // Canonicalize the path so it's not pointing to the symlinked directory
   // in `node_modules` directory of the referrer.
   this.filename = op_require_real_path(filename);
-  this.paths = Module._nodeModulePaths(
-    pathDirname(this.filename),
-  );
+  this.paths = Module._nodeModulePaths(pathDirname(this.filename));
   const extension = findLongestRegisteredExtension(filename);
   Module._extensions[extension](this, this.filename);
   this.loaded = true;
