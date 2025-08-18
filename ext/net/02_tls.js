@@ -206,6 +206,7 @@ function startTlsInternal(
     hostname = "127.0.0.1",
     caCerts = [],
     alpnProtocols = undefined,
+    keyPair = null,
     rejectUnauthorized,
     unsafelyDisableHostnameVerification,
   },
@@ -217,7 +218,7 @@ function startTlsInternal(
     alpnProtocols,
     rejectUnauthorized,
     unsafelyDisableHostnameVerification,
-  }, null);
+  }, keyPair);
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 
