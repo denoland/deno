@@ -4,7 +4,7 @@ use deno_media_type::MediaType;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 use sys_traits::FsRead;
 use url::Url;
 
@@ -52,7 +52,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
     &self,
     specifier: &Url,
     media_type: MediaType,
-  ) -> Result<bool, ClosestPkgJsonError> {
+  ) -> Result<bool, PackageJsonLoadError> {
     self.treat_as_cjs_with_is_script(specifier, media_type, None)
   }
 
@@ -86,7 +86,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
     specifier: &Url,
     media_type: MediaType,
     is_script: bool,
-  ) -> Result<bool, ClosestPkgJsonError> {
+  ) -> Result<bool, PackageJsonLoadError> {
     self.treat_as_cjs_with_is_script(specifier, media_type, Some(is_script))
   }
 
@@ -95,7 +95,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
     specifier: &Url,
     media_type: MediaType,
     is_script: Option<bool>,
-  ) -> Result<bool, ClosestPkgJsonError> {
+  ) -> Result<bool, PackageJsonLoadError> {
     let kind = match self
       .get_known_mode_with_is_script(specifier, media_type, is_script)
     {
@@ -276,7 +276,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
   fn check_based_on_pkg_json(
     &self,
     specifier: &Url,
-  ) -> Result<ResolutionMode, ClosestPkgJsonError> {
+  ) -> Result<ResolutionMode, PackageJsonLoadError> {
     if self.in_npm_pkg_checker.in_npm_package(specifier) {
       let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
         return Ok(ResolutionMode::Require);

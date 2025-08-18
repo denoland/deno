@@ -1446,6 +1446,8 @@ impl ConfigData {
         bare_node_builtins: false,
         unstable_sloppy_imports: false,
         on_mapped_resolution_diagnostic: None,
+        allow_json_imports:
+          deno_resolver::loader::AllowJsonImports::WithAttribute,
       },
     );
     let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
