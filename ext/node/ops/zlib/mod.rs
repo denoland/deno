@@ -598,6 +598,9 @@ impl BrotliEncoder {
         std::ptr::null_mut(),
       );
       for (i, &value) in params.iter().enumerate() {
+        if value == 0xFFFFFFFF {
+          continue; // Skip setting the parameter, same as C API.
+        }
         ffi::compressor::BrotliEncoderSetParameter(
           state,
           encoder_param(i as u32),
