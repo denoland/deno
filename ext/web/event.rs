@@ -427,6 +427,7 @@ impl Event {
   }
 
   // legacy
+  // TODO(petamoriken): #[undefined] macro does not work properly
   #[required(1)]
   fn init_event<'a>(
     &self,
@@ -765,6 +766,7 @@ impl CustomEvent {
   }
 
   // legacy
+  // TODO(petamoriken): #[undefined] macro does not work properly
   #[required(1)]
   fn init_custom_event<'a>(
     &self,
@@ -1269,6 +1271,7 @@ impl MessageEvent {
 
   // legacy
   #[required(1)]
+  #[undefined]
   fn init_message_event<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
@@ -1281,10 +1284,9 @@ impl MessageEvent {
     #[global] source: Option<v8::Global<v8::Object>>,
     ports: Option<v8::Local<'a, v8::Value>>,
     #[proto] event: &Event,
-  ) -> Result<v8::Local<'a, v8::Primitive>, EventError> {
-    let undefined = v8::undefined(scope);
+  ) -> Result<(), EventError> {
     if event.dispatch_flag.get() {
-      return Ok(undefined);
+      return Ok(());
     }
 
     event.typ.replace(typ);
@@ -1330,7 +1332,7 @@ impl MessageEvent {
       let ports = v8::Global::new(scope, ports);
       self.ports.replace(ports);
     }
-    Ok(undefined)
+    Ok(())
   }
 
   #[getter]
@@ -1585,6 +1587,27 @@ fn get_value<'a>(
   }
 }
 
+#[derive(WebIDL, Debug)]
+#[webidl(dictionary)]
+pub struct EventListenerOptions {
+  #[webidl(default = false)]
+  capture: bool,
+}
+
+#[derive(WebIDL, Debug)]
+#[webidl(dictionary)]
+pub struct AddEventListenerOptions {
+  #[webidl(default = false)]
+  capture: bool,
+  #[webidl(default = false)]
+  passive: bool,
+  #[webidl(default = false)]
+  once: bool,
+  // #[webidl(default = false)]
+  // resist_stop_immediate_propagation: bool,
+  // signal: v8::Global<v8::Object>
+}
+
 #[derive(Debug)]
 struct EventListener {
   callback: v8::Global<v8::Object>,
@@ -1639,31 +1662,20 @@ impl EventTarget {
         if options.is_object()
           && let Some(options) = options.to_object(scope)
         {
-          #[inline]
-          fn to_bool<'a>(
-            scope: &mut v8::HandleScope<'a>,
-            options: v8::Local<'a, v8::Object>,
-            str: &'static str,
-            is_symbol: bool,
-          ) -> bool {
-            let str = v8::String::new(scope, str).unwrap();
-            let key: v8::Local<v8::Value> = if is_symbol {
-              v8::Symbol::for_key(scope, str).into()
-            } else {
-              str.into()
-            };
-            match options.get(scope, key) {
-              Some(value) => value.to_boolean(scope).is_true(),
-              None => false,
-            }
-          }
-
-          let capture = to_bool(scope, options, "capture", false);
-          let passive = to_bool(scope, options, "passive", false);
-          let once = to_bool(scope, options, "once", false);
-          let resist_stop_immediate_propagation =
-            to_bool(scope, options, "Deno.stopImmediatePropagation", true);
-          (capture, passive, once, resist_stop_immediate_propagation)
+          let key = v8::String::new(scope, "Deno.stopImmediatePropagation").unwrap();
+          let symbol = v8::Symbol::for_key(scope, key);
+          let resist_stop_immediate_propagation = match options.get(scope, symbol.into()) {
+            Some(value) => value.to_boolean(scope).is_true(),
+            None => false,
+          };
+          let options = AddEventListenerOptions::convert(
+            scope,
+            options.into(),
+            "Failed to execute 'addEventListener' on 'EventTarget'".into(),
+            (|| "Argument 3)".into()).into(),
+            &Default::default(),
+          )?;
+          (options.capture, options.passive, options.once, resist_stop_immediate_propagation)
         } else {
           (options.to_boolean(scope).is_true(), false, false, false)
         }
@@ -1707,7 +1719,6 @@ impl EventTarget {
       removed: Cell::new(false),
       resist_stop_immediate_propagation,
     }));
-
     Ok(())
   }
 
@@ -1719,17 +1730,18 @@ impl EventTarget {
     #[webidl] typ: String,
     callback: Option<v8::Local<'a, v8::Object>>,
     options: Option<v8::Local<'a, v8::Value>>,
-  ) {
+  ) -> Result<(), EventError> {
     let capture = match options {
       Some(options) => {
-        if options.is_object()
-          && let Some(options) = options.to_object(scope)
-        {
-          let key = v8::String::new(scope, "capture").unwrap();
-          match options.get(scope, key.into()) {
-            Some(value) => value.to_boolean(scope).is_true(),
-            None => false,
-          }
+        if options.is_object() {
+          let options = EventListenerOptions::convert(
+            scope,
+            options,
+            "Failed to execute 'removeEventListener' on 'EventTarget'".into(),
+            (|| "Argument 3".into()).into(),
+            &Default::default(),
+          )?;
+          options.capture
         } else {
           options.to_boolean(scope).is_true()
         }
@@ -1739,11 +1751,11 @@ impl EventTarget {
 
     let callback = match callback {
       None => {
-        return;
+        return Ok(());
       }
       Some(callback) => {
         if callback.is_null() {
-          return;
+          return Ok(());
         }
         callback
       }
@@ -1751,7 +1763,7 @@ impl EventTarget {
 
     let mut listeners = self.listeners.borrow_mut();
     let Some(listeners) = listeners.get_mut(&typ) else {
-      return;
+      return Ok(());
     };
     if let Some((index, listener)) =
       listeners.iter().enumerate().find(|(_, listener)| {
@@ -1761,6 +1773,7 @@ impl EventTarget {
       listener.removed.set(true);
       listeners.remove(index);
     }
+    Ok(())
   }
 
   #[fast]
