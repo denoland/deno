@@ -10,8 +10,8 @@ let modeAsync: number;
 let modeSync: number;
 // On Windows chmod is only able to manipulate write permission
 if (Deno.build.os === "windows") {
-  modeAsync = 0o400; // read-only
-  modeSync = 0o600; // read-write
+  modeAsync = 0o444; // read-only
+  modeSync = 0o666; // read-write
 } else {
   modeAsync = 0o777;
   modeSync = 0o644;
@@ -32,11 +32,7 @@ Deno.test(
 
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    if (Deno.build.os === "windows") {
-      assert(fileInfo.mode & 0o777 & modeSync);
-    } else {
-      assertEquals(fileInfo.mode & 0o777, modeSync);
-    }
+    assertEquals(fileInfo.mode & 0o777, modeSync);
   },
 );
 
@@ -55,11 +51,7 @@ Deno.test(
 
     const fileInfo = Deno.statSync(fileUrl);
     assert(fileInfo.mode);
-    if (Deno.build.os === "windows") {
-      assert(fileInfo.mode & 0o777 & modeSync);
-    } else {
-      assertEquals(fileInfo.mode & 0o777, modeSync);
-    }
+    assertEquals(fileInfo.mode & 0o777, modeSync);
 
     Deno.removeSync(tempDir, { recursive: true });
   },
@@ -89,11 +81,7 @@ Deno.test(
     // Change actual file mode, not symlink
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    if (Deno.build.os === "windows") {
-      assert(fileInfo.mode & 0o777 & modeSync);
-    } else {
-      assertEquals(fileInfo.mode & 0o777, modeSync);
-    }
+    assertEquals(fileInfo.mode & 0o777, modeSync);
 
     symlinkInfo = Deno.lstatSync(symlinkName);
     assert(symlinkInfo.mode);
@@ -133,11 +121,7 @@ Deno.test(
 
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    if (Deno.build.os === "windows") {
-      assert(fileInfo.mode & 0o777 & modeAsync);
-    } else {
-      assertEquals(fileInfo.mode & 0o777, modeAsync);
-    }
+    assertEquals(fileInfo.mode & 0o777, modeAsync);
   },
 );
 
@@ -156,11 +140,7 @@ Deno.test(
 
     const fileInfo = Deno.statSync(fileUrl);
     assert(fileInfo.mode);
-    if (Deno.build.os === "windows") {
-      assert(fileInfo.mode & 0o777 & modeAsync);
-    } else {
-      assertEquals(fileInfo.mode & 0o777, modeAsync);
-    }
+    assertEquals(fileInfo.mode & 0o777, modeAsync);
 
     Deno.removeSync(tempDir, { recursive: true });
   },
@@ -189,11 +169,7 @@ Deno.test(
     // Just change actual file mode, not symlink
     const fileInfo = Deno.statSync(filename);
     assert(fileInfo.mode);
-    if (Deno.build.os === "windows") {
-      assert(fileInfo.mode & 0o777 & modeAsync);
-    } else {
-      assertEquals(fileInfo.mode & 0o777, modeAsync);
-    }
+    assertEquals(fileInfo.mode & 0o777, modeAsync);
 
     symlinkInfo = Deno.lstatSync(symlinkName);
     assert(symlinkInfo.mode);

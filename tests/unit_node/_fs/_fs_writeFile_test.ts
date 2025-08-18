@@ -18,8 +18,8 @@ let modeAsync: number;
 let modeSync: number;
 // On Windows chmod is only able to manipulate write permission
 if (Deno.build.os === "windows") {
-  modeAsync = 0o400; // read-only
-  modeSync = 0o600; // read-write
+  modeAsync = 0o444; // read-only
+  modeSync = 0o666; // read-write
 } else {
   modeAsync = 0o777;
   modeSync = 0o644;
@@ -218,11 +218,7 @@ Deno.test({
   await Deno.remove(filename);
   assertEquals(res, null);
   assert(fileInfo && fileInfo.mode);
-  if (Deno.build.os === "windows") {
-    assert(fileInfo.mode & 0o777 & modeAsync);
-  } else {
-    assertEquals(fileInfo.mode & 0o777, modeAsync);
-  }
+  assertEquals(fileInfo.mode & 0o777, modeAsync);
 });
 
 Deno.test(
@@ -251,11 +247,7 @@ Deno.test(
     const fileInfo = await Deno.stat(filename);
     await Deno.remove(filename);
     assert(fileInfo.mode);
-    if (Deno.build.os === "windows") {
-      assert(fileInfo.mode & 0o777 & modeAsync);
-    } else {
-      assertEquals(fileInfo.mode & 0o777, modeAsync);
-    }
+    assertEquals(fileInfo.mode & 0o777, modeAsync);
   },
 );
 
@@ -372,10 +364,6 @@ Deno.test(
     const fileInfo = Deno.statSync(filename);
     Deno.removeSync(filename);
     assert(fileInfo && fileInfo.mode);
-    if (Deno.build.os === "windows") {
-      assert(fileInfo.mode & 0o777 & modeSync);
-    } else {
-      assertEquals(fileInfo.mode & 0o777, modeSync);
-    }
+    assertEquals(fileInfo.mode & 0o777, modeSync);
   },
 );
