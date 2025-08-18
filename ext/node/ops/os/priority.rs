@@ -64,6 +64,7 @@ mod impl_ {
   use winapi::um::winbase::NORMAL_PRIORITY_CLASS;
   use winapi::um::winbase::REALTIME_PRIORITY_CLASS;
   use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
+  use winapi::um::winnt::PROCESS_SET_INFORMATION;
 
   // Taken from: https://github.com/libuv/libuv/blob/a877ca2435134ef86315326ef4ef0c16bdbabf17/include/uv.h#L1318-L1323
   const PRIORITY_LOW: i32 = 19;
@@ -111,7 +112,7 @@ mod impl_ {
       let handle = if pid == 0 {
         GetCurrentProcess()
       } else {
-        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid as DWORD)
+        OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid as DWORD)
       };
       if handle == NULL {
         Err(std::io::Error::last_os_error().into())

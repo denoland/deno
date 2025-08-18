@@ -294,6 +294,9 @@ Deno.test({
 Deno.test({
   name:
     "os.setPriority() throw os permission denied error & os.getPriority() doesn't",
+  // Windows allows setting process priority without privilege escalation up to `PRIORITY_HIGH`.
+  // Setting to `PRIORITY_HIGHEST` will be silently reduced to `PRIORITY_HIGH`.
+  ignore: Deno.build.os === "windows",
   async fn() {
     const child = new Deno.Command(Deno.execPath(), {
       args: ["eval", "while (true) { console.log('foo') }"],
@@ -311,6 +314,32 @@ Deno.test({
       "uv_os_setpriority returned EACCES (permission denied)",
     );
     os.getPriority(child.pid);
+    child.kill();
+    await child.status;
+  },
+});
+
+Deno.test({
+  name: "os.setPriority() works on Windows",
+  ignore: Deno.build.os !== "windows",
+  async fn() {
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "while (true) { console.log('foo') }"],
+    }).spawn();
+
+    const originalPriority = os.getPriority(child.pid);
+    assertNotEquals(originalPriority, os.constants.priority.PRIORITY_HIGHEST);
+    os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGHEST);
+
+    // Setting to `PRIORITY_HIGHEST` without privilege escalation
+    // will be silently reduced to `PRIORITY_HIGH`
+    assertEquals(
+      os.getPriority(child.pid),
+      os.constants.priority.PRIORITY_HIGH,
+    );
+
+    os.setPriority(child.pid, originalPriority);
+    assertEquals(os.getPriority(child.pid), originalPriority);
     child.kill();
     await child.status;
   },
