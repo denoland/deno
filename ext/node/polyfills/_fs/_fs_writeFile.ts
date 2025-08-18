@@ -13,7 +13,6 @@ import {
   isFileOptions,
   WriteFileOptions,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { isWindows } from "ext:deno_node/_util/os.ts";
 import {
   AbortError,
   denoErrorToNodeError,
@@ -90,9 +89,7 @@ export function writeFile(
       const rid = await getRid(pathOrRid, flag);
       file = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
 
-      // ignore mode because it's not supported on windows
-      // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
-      if (!isRid && mode && !isWindows) {
+      if (!isRid && mode) {
         await Deno.chmod(pathOrRid as string, mode);
       }
 
@@ -148,9 +145,7 @@ export function writeFileSync(
     const rid = getRidSync(pathOrRid, flag);
     file = new FsFile(rid, Symbol.for("Deno.internal.FsFile"));
 
-    // ignore mode because it's not supported on windows
-    // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
-    if (!isRid && mode && !isWindows) {
+    if (!isRid && mode) {
       Deno.chmodSync(pathOrRid as string, mode);
     }
 

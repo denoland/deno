@@ -462,12 +462,27 @@ fn chmod(path: &Path, mode: u32) -> FsResult<()> {
   Ok(())
 }
 
-// TODO: implement chmod for Windows (#4357)
 #[cfg(not(unix))]
-fn chmod(path: &Path, _mode: u32) -> FsResult<()> {
-  // Still check file/dir exists on Windows
-  std::fs::metadata(path)?;
-  Err(FsError::NotSupported)
+fn chmod(path: &Path, mode: u32) -> FsResult<()> {
+  use std::os::windows::ffi::OsStrExt;
+
+  // Windows chmod doesn't follow symlinks unlike the UNIX counterpart,
+  // so we have to resolve the symlink manually
+  let resolved_path = deno_path_util::strip_unc_prefix(path.canonicalize()?);
+
+  let wchar_path = resolved_path
+    .as_os_str()
+    .encode_wide()
+    .chain(std::iter::once(0))
+    .collect::<Vec<_>>();
+
+  // SAFETY: `path` is a null-terminated string.
+  let result =
+    unsafe { libc::wchmod(wchar_path.as_ptr(), mode as libc::c_int) };
+  if result != 0 {
+    return Err(io::Error::last_os_error().into());
+  }
+  Ok(())
 }
 
 #[cfg(unix)]
