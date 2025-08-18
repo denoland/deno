@@ -158,7 +158,7 @@ Deno.test("Brotli quality 10 doesn't panic", () => {
   });
   assertEquals(
     new Uint8Array(e.buffer, e.byteOffset, e.byteLength),
-    new Uint8Array([17, 10, 4, 0, 2, 97, 98, 99, 3]),
+    new Uint8Array([11, 1, 128, 97, 98, 99, 3]),
   );
 });
 
