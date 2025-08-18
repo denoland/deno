@@ -332,7 +332,8 @@ impl<
                 .ensure_package(&package.id.nv, dist)
                 .await
                 .map_err(JsErrorBox::from_err)?;
-              let pb_guard = self.reporter.on_initializing(&package.id.nv.to_string());
+              let pb_guard =
+                self.reporter.on_initializing(&package.id.nv.to_string());
               let _initialization_guard =
                 install_reporter.as_ref().map(|install_reporter| {
                   install_reporter.initializing(&package.id.nv);
