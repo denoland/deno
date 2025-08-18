@@ -74,6 +74,41 @@ Deno.test({
 });
 
 Deno.test({
+  name: "String decoder is encoding base64url correctly",
+  fn() {
+    let decoder;
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(decoder.write(Buffer.from("E1", "hex")), "");
+    assertEquals(decoder.end(), "4Q");
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(decoder.write(Buffer.from("E18B", "hex")), "");
+    assertEquals(decoder.end(), "4Ys");
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(decoder.write(Buffer.from("\ufffd")), "77-9");
+    assertEquals(decoder.end(), "");
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(
+      decoder.write(Buffer.from("\ufffd\ufffd\ufffd")),
+      "77-977-977-9",
+    );
+    assertEquals(decoder.end(), "");
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(decoder.write(Buffer.from("EFBFBDE2", "hex")), "77-9");
+    assertEquals(decoder.end(), "4g");
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(decoder.write(Buffer.from("F1", "hex")), "");
+    assertEquals(decoder.write(Buffer.from("41F2", "hex")), "8UHy");
+    assertEquals(decoder.end(), "");
+  },
+});
+
+Deno.test({
   name: "String decoder is encoding hex correctly",
   fn() {
     let decoder;

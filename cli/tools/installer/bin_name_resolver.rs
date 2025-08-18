@@ -31,22 +31,21 @@ impl<'a> BinNameResolver<'a> {
     // perform a request, and see if it redirects another file instead.
     let mut url = url.clone();
 
-    if matches!(url.scheme(), "http" | "https") && url.path() == "/" {
-      if let Ok(client) = self.http_client_provider.get_or_create() {
-        if let Ok(redirected_url) = client
-          .get_redirected_url(url.clone(), &Default::default())
-          .await
-        {
-          url = redirected_url;
-        }
-      }
+    if matches!(url.scheme(), "http" | "https")
+      && url.path() == "/"
+      && let Ok(client) = self.http_client_provider.get_or_create()
+      && let Ok(redirected_url) = client
+        .get_redirected_url(url.clone(), &Default::default())
+        .await
+    {
+      url = redirected_url;
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&url) {
-      if let Some(sub_path) = npm_ref.sub_path() {
-        if !sub_path.contains('/') {
-          return Some(sub_path.to_string());
-        }
+      if let Some(sub_path) = npm_ref.sub_path()
+        && !sub_path.contains('/')
+      {
+        return Some(sub_path.to_string());
       }
 
       match self.resolve_name_from_npm(&npm_ref).await {
@@ -64,12 +63,11 @@ impl<'a> BinNameResolver<'a> {
       if !npm_ref.req().name.contains('/') {
         return Some(npm_ref.into_inner().req.name.into_string());
       }
-      if let Some(scope_and_pkg) = npm_ref.req().name.strip_prefix('@') {
-        if let Some((scope, package)) = scope_and_pkg.split_once('/') {
-          if package == "cli" {
-            return Some(scope.to_string());
-          }
-        }
+      if let Some(scope_and_pkg) = npm_ref.req().name.strip_prefix('@')
+        && let Some((scope, package)) = scope_and_pkg.split_once('/')
+        && package == "cli"
+      {
+        return Some(scope.to_string());
       }
 
       return None;
@@ -88,10 +86,10 @@ impl<'a> BinNameResolver<'a> {
     let path = PathBuf::from(percent_decode.decode_utf8_lossy().as_ref());
 
     let mut stem = path.file_stem()?.to_string_lossy();
-    if matches!(stem.as_ref(), "main" | "mod" | "index" | "cli") {
-      if let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
-        stem = parent_name.to_string_lossy();
-      }
+    if matches!(stem.as_ref(), "main" | "mod" | "index" | "cli")
+      && let Some(parent_name) = path.parent().and_then(|p| p.file_name())
+    {
+      stem = parent_name.to_string_lossy();
     }
 
     // if atmark symbol appears in the index other than 0 (e.g. `foo@bar`) we use

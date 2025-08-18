@@ -19,13 +19,6 @@ pub async fn deploy(mut flags: Flags) -> Result<i32, AnyError> {
   flags.node_modules_dir = Some(NodeModulesDirMode::None);
   flags.no_lock = true;
 
-  if let Ok(url) = std::env::var("DENO_DEPLOY_URL") {
-    let args = flags.argv;
-    let mut new_args = vec![String::from("--endpoint"), url];
-    new_args.extend(args);
-    flags.argv = new_args;
-  }
-
   let mut factory = CliFactory::from_flags(Arc::new(flags));
 
   let maybe_specifier_override =

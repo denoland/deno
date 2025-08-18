@@ -24,7 +24,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
@@ -139,7 +139,8 @@ pub trait NodeRequireLoader {
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
-  fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError>;
+  fn is_maybe_cjs(&self, specifier: &Url)
+  -> Result<bool, PackageJsonLoadError>;
 
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     default_resolve_require_node_module_paths(from)
@@ -619,7 +620,7 @@ deno_core::extension!(deno_node,
     "internal/http2/util.ts",
     "internal/idna.ts",
     "internal/net.ts",
-    "internal/normalize_encoding.mjs",
+    "internal/normalize_encoding.ts",
     "internal/options.ts",
     "internal/primordials.mjs",
     "internal/process/per_thread.mjs",

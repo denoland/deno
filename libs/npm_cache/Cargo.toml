@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_npm_cache"
-version = "0.31.0"
+version = "0.32.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,7 +24,7 @@ deno_path_util.workspace = true
 deno_semver.workspace = true
 deno_unsync.workspace = true
 faster-hex.workspace = true
-flate2 = { workspace = true, features = ["zlib-ng-compat"] }
+flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
 log.workspace = true
 parking_lot.workspace = true
@@ -41,6 +41,9 @@ url.workspace = true
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 deno_error = { workspace = true, features = ["serde", "serde_json", "tokio"] }
 deno_unsync = { workspace = true, features = ["tokio"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+flate2 = { workspace = true, features = ["rust_backend"] }
 
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["real"] }
