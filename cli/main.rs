@@ -870,7 +870,7 @@ async fn initialize_tunnel(
     let _ = tools::deploy::get_token_entry()?.delete_credential();
   }
 
-  let token = if let Ok(token) = std::env::var("DENO_UNSTABLE_TUNNEL_TOKEN") {
+  let token = if let Ok(token) = std::env::var("DENO_DEPLOY_TOKEN") {
     token
   } else {
     match tools::deploy::get_token_entry()?.get_password() {
@@ -894,8 +894,8 @@ async fn initialize_tunnel(
   };
 
   let (org, app) = if let (Ok(org), Ok(app)) = (
-    std::env::var("DENO_UNSTABLE_TUNNEL_ORG"),
-    std::env::var("DENO_UNSTABLE_TUNNEL_APP"),
+    std::env::var("DENO_DEPLOY_ORG"),
+    std::env::var("DENO_DEPLOY_APP"),
   ) {
     (org, app)
   } else {

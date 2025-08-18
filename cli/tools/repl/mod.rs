@@ -298,7 +298,8 @@ async fn run_json(mut repl_session: ReplSession) -> Result<i32, AnyError> {
   #[serde(tag = "type")]
   enum ReplMessage {
     Run { code: String, output: bool },
-    RunOutput { output: String },
+    RunSuccess { output: Option<String> },
+    RunFailure { text: String },
     Error { error: String },
   }
 
@@ -352,38 +353,47 @@ async fn run_json(mut repl_session: ReplSession) -> Result<i32, AnyError> {
             exception_details,
           } = evaluate_response.value;
 
-          if exception_details.is_some() {
+          let msg = if let Some(exception_details) = exception_details {
             repl_session.set_last_thrown_error(&result).await?;
+
+            ReplMessage::RunFailure {
+              text: exception_details.text,
+            }
           } else {
             repl_session
               .language_server
               .commit_text(&evaluate_response.ts_code)
               .await;
             repl_session.set_last_eval_result(&result).await?;
-          }
 
-          if output {
-            let response = repl_session
-              .call_function_on_repl_internal_obj(
-                "function (object) { return this.String(object); }".into(),
-                &[result],
-              )
-              .await?;
-            let output = response
-              .result
-              .value
-              .map(|v| v.as_str().unwrap().to_string())
-              .or(response.result.description)
-              .unwrap_or_else(|| "something went wrong".into());
+            let output = if output {
+              let response = repl_session
+                .call_function_on_repl_internal_obj(
+                  "function (object) { return this.String(object); }".into(),
+                  &[result],
+                )
+                .await?;
+              let output = response
+                .result
+                .value
+                .map(|v| v.as_str().unwrap().to_string())
+                .or(response.result.description)
+                .unwrap_or_else(|| "something went wrong".into());
+              Some(output)
+            } else {
+              None
+            };
 
-            let buf = serde_json::to_vec(&ReplMessage::RunOutput { output })?;
-            sender
-              .write_all_buf(
-                &mut Bytes::from_owner((buf.len() as u32).to_le_bytes())
-                  .chain(Bytes::from(buf)),
-              )
-              .await?;
-          }
+            ReplMessage::RunSuccess { output }
+          };
+
+          let buf = serde_json::to_vec(&msg)?;
+          sender
+            .write_all_buf(
+              &mut Bytes::from_owner((buf.len() as u32).to_le_bytes())
+                .chain(Bytes::from(buf)),
+            )
+            .await?;
         }
         Err(err) => {
           let buf = serde_json::to_vec(&ReplMessage::Error {
