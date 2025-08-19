@@ -25,7 +25,7 @@ impl<T> InfallibleResultExt<T> for Result<T, Infallible> {
 
 pub fn js_error_downcast_ref(
   err: &AnyError,
-) -> Option<&deno_runtime::deno_core::error::JsError> {
+) -> Option<&Box<deno_runtime::deno_core::error::JsError>> {
   any_and_jserrorbox_downcast_ref(err).or_else(|| {
     err
       .downcast_ref::<CoreError>()

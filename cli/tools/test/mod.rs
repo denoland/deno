@@ -688,7 +688,7 @@ async fn configure_main_worker(
       Ok(()) => Ok(()),
       Err(CoreErrorKind::Js(err)) => send_test_event(
         &op_state,
-        TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+        TestEvent::UncaughtError(specifier.to_string(), err),
       )
       .map_err(|e| CoreErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()),
       Err(err) => Err(err.into_box()),
@@ -742,7 +742,7 @@ pub async fn test_specifier(
       CoreErrorKind::Js(err) => {
         send_test_event(
           &worker.js_runtime.op_state(),
-          TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+          TestEvent::UncaughtError(specifier.to_string(), err),
         )?;
         Ok(())
       }
@@ -1059,7 +1059,7 @@ async fn run_tests_for_worker_inner(
         CoreErrorKind::Js(js_error) => {
           send_test_event(
             &state_rc,
-            TestEvent::UncaughtError(specifier.to_string(), Box::new(js_error)),
+            TestEvent::UncaughtError(specifier.to_string(), js_error),
           )?;
           fail_fast_tracker.add_failure();
           send_test_event(
