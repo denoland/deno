@@ -25,6 +25,7 @@ use crate::args::Flags;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
@@ -207,7 +208,12 @@ async fn clean_except(
   let sys = factory.sys();
   let options = factory.cli_options()?;
   let main_graph_container = factory.main_module_graph_container().await?;
-  let roots = main_graph_container.collect_specifiers(entrypoints)?;
+  let roots = main_graph_container.collect_specifiers(
+    entrypoints,
+    CollectSpecifiersOptions {
+      include_ignored_specified: true,
+    },
+  )?;
   let http_cache = factory.global_http_cache()?;
   let local_or_global_http_cache = factory.http_cache()?.clone();
   let deno_dir = factory.deno_dir()?.clone();

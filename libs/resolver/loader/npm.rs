@@ -41,7 +41,7 @@ pub enum NpmModuleLoadError {
   StrippingTypesNodeModules(#[from] StrippingTypesNodeModulesError),
   #[class(inherit)]
   #[error(transparent)]
-  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
   #[class(inherit)]
   #[error(transparent)]
   TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),

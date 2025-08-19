@@ -43,6 +43,7 @@ use crate::ops;
 use crate::tools::test::TestFilter;
 use crate::tools::test::format_test_error;
 use crate::util::file_watcher;
+use crate::util::fs::CollectSpecifiersOptions;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
@@ -452,8 +453,11 @@ pub async fn run_benchmarks(
     .iter()
     .map(|(_, bench_options)| {
       collect_specifiers(
-        bench_options.files.clone(),
-        cli_options.vendor_dir_path().map(ToOwned::to_owned),
+        CollectSpecifiersOptions {
+          file_patterns: bench_options.files.clone(),
+          vendor_folder: cli_options.vendor_dir_path().map(ToOwned::to_owned),
+          include_ignored_specified: false,
+        },
         is_supported_bench_path,
       )
     })
@@ -550,8 +554,13 @@ pub async fn run_benchmarks_with_watch(
           .iter()
           .map(|(_, bench_options)| {
             collect_specifiers(
-              bench_options.files.clone(),
-              cli_options.vendor_dir_path().map(ToOwned::to_owned),
+              CollectSpecifiersOptions {
+                file_patterns: bench_options.files.clone(),
+                vendor_folder: cli_options
+                  .vendor_dir_path()
+                  .map(ToOwned::to_owned),
+                include_ignored_specified: false,
+              },
               is_supported_bench_path,
             )
           })

@@ -39,6 +39,7 @@ use crate::args::resolve_no_prompt;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
@@ -231,7 +232,12 @@ pub(crate) async fn install_from_entrypoints(
   let factory = CliFactory::from_flags(flags.clone());
   let emitter = factory.emitter()?;
   let main_graph_container = factory.main_module_graph_container().await?;
-  let specifiers = main_graph_container.collect_specifiers(entrypoints)?;
+  let specifiers = main_graph_container.collect_specifiers(
+    entrypoints,
+    CollectSpecifiersOptions {
+      include_ignored_specified: true,
+    },
+  )?;
   main_graph_container
     .check_specifiers(
       &specifiers,
@@ -371,9 +377,12 @@ async fn install_global(
   factory
     .main_module_graph_container()
     .await?
-    .load_and_type_check_files(std::slice::from_ref(
-      &install_flags_global.module_url,
-    ))
+    .load_and_type_check_files(
+      std::slice::from_ref(&install_flags_global.module_url),
+      CollectSpecifiersOptions {
+        include_ignored_specified: true,
+      },
+    )
     .await?;
 
   if matches!(flags.config_flag, ConfigFlag::Discover)

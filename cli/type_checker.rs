@@ -409,7 +409,7 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
 /// Converts the list of ambient module names to regex string
 pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
   let mut regex_string = String::with_capacity(ambient_modules.len() * 8);
-  regex_string.push('(');
+  regex_string.push_str("^(");
   let last = ambient_modules.len() - 1;
   for (idx, part) in ambient_modules.iter().enumerate() {
     let trimmed = part.trim_matches('"');
@@ -420,7 +420,7 @@ pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
       regex_string.push('|');
     }
   }
-  regex_string.push(')');
+  regex_string.push_str(")$");
   regex_string
 }
 
@@ -1097,6 +1097,6 @@ mod test {
       "*.css".to_string(),
       "$virtual/module".to_string(),
     ]);
-    assert_eq!(result, r"(foo|.*\.css|\$virtual/module)");
+    assert_eq!(result, r"^(foo|.*\.css|\$virtual/module)$");
   }
 }

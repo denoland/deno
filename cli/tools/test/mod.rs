@@ -81,6 +81,7 @@ use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
+use crate::util::fs::CollectSpecifiersOptions;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
@@ -1537,15 +1538,21 @@ fn collect_specifiers_with_test_mode(
   // todo(dsherret): there's no need to collect twice as it's slow
   let vendor_folder = cli_options.vendor_dir_path();
   let module_specifiers = collect_specifiers(
-    files.clone(),
-    vendor_folder.map(ToOwned::to_owned),
+    CollectSpecifiersOptions {
+      file_patterns: files.clone(),
+      vendor_folder: vendor_folder.map(ToOwned::to_owned),
+      include_ignored_specified: false,
+    },
     is_supported_test_path_predicate,
   )?;
 
   if *include_inline {
     return collect_specifiers(
-      files,
-      vendor_folder.map(ToOwned::to_owned),
+      CollectSpecifiersOptions {
+        file_patterns: files,
+        vendor_folder: vendor_folder.map(ToOwned::to_owned),
+        include_ignored_specified: false,
+      },
       |e| is_supported_test_ext(e.path),
     )
     .map(|specifiers| {
@@ -1787,8 +1794,13 @@ pub async fn run_tests_with_watch(
           .iter()
           .map(|(_, test_options)| {
             collect_specifiers(
-              test_options.files.clone(),
-              cli_options.vendor_dir_path().map(ToOwned::to_owned),
+              CollectSpecifiersOptions {
+                file_patterns: test_options.files.clone(),
+                vendor_folder: cli_options
+                  .vendor_dir_path()
+                  .map(ToOwned::to_owned),
+                include_ignored_specified: false,
+              },
               if workspace_test_options.doc {
                 Box::new(|e: WalkEntry| is_supported_test_ext(e.path))
                   as Box<dyn Fn(WalkEntry) -> bool>

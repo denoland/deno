@@ -75,7 +75,7 @@ use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
@@ -1359,7 +1359,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   fn is_maybe_cjs(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<bool, ClosestPkgJsonError> {
+  ) -> Result<bool, PackageJsonLoadError> {
     let media_type = MediaType::from_specifier(specifier);
     self.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }

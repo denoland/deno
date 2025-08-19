@@ -2713,6 +2713,31 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   return ex;
 }
 
+export const denoErrorToNodeSystemError = hideStackFrames((
+  e: Error,
+  syscall: string,
+): Error => {
+  const osErrno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof osErrno === "undefined") {
+    return e;
+  }
+
+  const uvErrno = mapSysErrnoToUvErrno(osErrno);
+  const { 0: code, 1: message } = uvErrmapGet(uvErrno) || uvUnmappedError;
+  const ctx: NodeSystemErrorCtx = {
+    errno: uvErrno,
+    code,
+    message,
+    syscall,
+  };
+
+  return new NodeSystemError(
+    "ERR_SYSTEM_ERROR",
+    ctx,
+    "A system error occurred",
+  );
+});
+
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
   const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
     ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
@@ -3128,6 +3153,7 @@ export default {
   codes,
   connResetException,
   denoErrorToNodeError,
+  denoErrorToNodeSystemError,
   dnsException,
   errnoException,
   errorMap,

@@ -200,7 +200,7 @@
     "ext:deno_node/repl.ts": "../ext/node/polyfills/repl.ts",
     "node:stream": "../ext/node/polyfills/stream.ts",
     "node:stream/consumers": "../ext/node/polyfills/stream/consumers.mjs",
-    "node:stream/promises": "../ext/node/polyfills/stream/promises.mjs",
+    "node:stream/promises": "../ext/node/polyfills/stream/promises.js",
     "node:stream/web": "../ext/node/polyfills/stream/web.ts",
     "node:string_decoder": "../ext/node/polyfills/string_decoder.ts",
     "node:sys": "../ext/node/polyfills/sys.ts",
