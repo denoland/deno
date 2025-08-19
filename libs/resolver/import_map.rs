@@ -14,7 +14,7 @@ pub struct ExternalImportMap {
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceExternalImportMapLoaderRc<TSys> =
-  crate::sync::MaybeArc<WorkspaceExternalImportMapLoader<TSys>>;
+  deno_maybe_sync::MaybeArc<WorkspaceExternalImportMapLoader<TSys>>;
 
 #[derive(Debug)]
 pub struct WorkspaceExternalImportMapLoader<TSys: sys_traits::FsRead> {

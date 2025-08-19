@@ -1083,7 +1083,7 @@ pub enum ToLockConfigError {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type ConfigFileRc = crate::sync::MaybeArc<ConfigFile>;
+pub type ConfigFileRc = deno_maybe_sync::MaybeArc<ConfigFile>;
 
 #[derive(Clone, Debug)]
 pub struct ConfigFile {
@@ -1133,7 +1133,7 @@ impl ConfigFile {
       }
       match ConfigFile::read(sys, &file_path) {
         Ok(cf) => {
-          let cf = crate::sync::new_rc(cf);
+          let cf = deno_maybe_sync::new_rc(cf);
           log::debug!("Config file found at '{}'", file_path.display());
           if let Some(cache) = maybe_cache {
             cache.set(file_path, cf.clone());
