@@ -18893,6 +18893,51 @@ console.log(invalid, validBytes, validText);
   client.shutdown();
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/30380.
+#[test]
+#[timeout(300_000)]
+fn lsp_will_rename_files_js_to_ts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let file = temp_dir.source_file("main.ts", "import \"./other.js\";\n");
+  let other_file = temp_dir.source_file("other.js", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "workspace/willRenameFiles",
+    json!({
+      "files": [
+        {
+          "oldUri": other_file.uri(),
+          "newUri": temp_dir.path().join("other.ts").uri_file(),
+        },
+      ],
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": { "uri": file.uri(), "version": 1 },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 8 },
+                "end": { "line": 0, "character": 18 },
+              },
+              "newText": "./other.ts",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
 #[test]
 #[timeout(300_000)]
 fn lsp_push_diagnostics() {
