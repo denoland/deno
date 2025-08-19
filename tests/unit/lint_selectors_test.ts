@@ -466,12 +466,7 @@ Deno.test("Parser - Attr", () => {
 
 // See https://github.com/denoland/deno/issues/30460
 Deno.test("Parser - Attr regex", () => {
-  assertEquals(testParse("Foo[bar=/^[a-z]$/]"), [[
-    {
-      elem: ELEM_NODE,
-      type: 1,
-      wildcard: false,
-    },
+  assertEquals(testParse("[bar=/^[a-z]$/]"), [[
     {
       type: ATTR_BIN_NODE,
       op: BinOp.Equal,
@@ -480,12 +475,7 @@ Deno.test("Parser - Attr regex", () => {
     },
   ]]);
 
-  assertEquals(testParse("Foo[bar=/^[a-z\\]]foo$/]"), [[
-    {
-      elem: ELEM_NODE,
-      type: 1,
-      wildcard: false,
-    },
+  assertEquals(testParse("[bar=/^[a-z\\]]foo$/]"), [[
     {
       type: ATTR_BIN_NODE,
       op: BinOp.Equal,
