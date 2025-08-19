@@ -24,7 +24,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
@@ -152,7 +152,8 @@ pub trait NodeRequireLoader {
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
-  fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError>;
+  fn is_maybe_cjs(&self, specifier: &Url)
+  -> Result<bool, PackageJsonLoadError>;
 
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     default_resolve_require_node_module_paths(from)
@@ -252,6 +253,7 @@ deno_core::extension!(deno_node,
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::buffer::op_transcode,
+    ops::constant::op_node_fs_constants,
     ops::buffer::op_node_decode_utf8,
     ops::crypto::op_node_check_prime_async,
     ops::crypto::op_node_check_prime_bytes_async,
@@ -631,7 +633,7 @@ deno_core::extension!(deno_node,
     "internal/http2/util.ts",
     "internal/idna.ts",
     "internal/net.ts",
-    "internal/normalize_encoding.mjs",
+    "internal/normalize_encoding.ts",
     "internal/options.ts",
     "internal/primordials.mjs",
     "internal/process/per_thread.mjs",
@@ -689,7 +691,7 @@ deno_core::extension!(deno_node,
     "node:_stream_transform" = "internal/streams/transform.js",
     "node:_stream_writable" = "internal/streams/writable.js",
     "node:_tls_common" = "_tls_common.ts",
-    "node:_tls_wrap" = "_tls_wrap.ts",
+    "node:_tls_wrap" = "_tls_wrap.js",
     "node:assert" = "assert.ts",
     "node:assert/strict" = "assert/strict.ts",
     "node:async_hooks" = "async_hooks.ts",

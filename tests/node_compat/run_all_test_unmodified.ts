@@ -23,6 +23,7 @@ import {
 } from "./common.ts";
 import { generateTestSerialId } from "./test.ts";
 
+const testSuitePath = new URL(import.meta.resolve("./runner/suite/"));
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
@@ -171,10 +172,11 @@ export async function runSingle(
 ): Promise<NodeTestFileReport> {
   const testSerialId = generateTestSerialId();
   let cmd: Deno.ChildProcess | undefined;
-  const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
+  const testPath_ = "test/" + testPath;
   let usesNodeTest = false;
   try {
-    const source = await Deno.readTextFile(testPath_);
+    const testFileUrl = new URL(testPath_, testSuitePath);
+    const source = await Deno.readTextFile(testFileUrl);
     usesNodeTest = usesNodeTestModule(source);
     if (NODE_IGNORED_TEST_CASES.has(testPath)) {
       return { result: NodeTestFileResult.IGNORED, usesNodeTest };
@@ -195,6 +197,7 @@ export async function runSingle(
       },
       stdout: "piped",
       stderr: "piped",
+      cwd: testSuitePath,
     }).spawn();
     const result = await deadline(cmd.output(), TIMEOUT);
     if (result.code === 0) {
@@ -227,7 +230,8 @@ export async function runSingle(
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
       return runSingle(testPath, { flaky, retry: retry + 1 });
-    } else if (flaky && retry < 3) {
+    } else if (flaky && retry < 5) {
+      await new Promise((resolve) => setTimeout(resolve, 100 * retry));
       return runSingle(testPath, { flaky, retry: retry + 1 });
     } else {
       return {

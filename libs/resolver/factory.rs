@@ -61,6 +61,7 @@ use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::import_map::WorkspaceExternalImportMapLoader;
 use crate::import_map::WorkspaceExternalImportMapLoaderRc;
+use crate::loader::AllowJsonImports;
 use crate::loader::DenoNpmModuleLoaderRc;
 use crate::loader::NpmModuleLoader;
 use crate::lockfile::LockfileLock;
@@ -354,12 +355,11 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
               // `deno_dir` can be symlink in macOS or on the CI
               if let Ok(deno_dir) =
                 canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
+                && pkg_json.path.starts_with(deno_dir)
               {
-                if pkg_json.path.starts_with(deno_dir) {
-                  // if the package.json is in deno_dir, then do not use node_modules
-                  // next to it as local node_modules dir
-                  return Ok(NodeModulesDirMode::None);
-                }
+                // if the package.json is in deno_dir, then do not use node_modules
+                // next to it as local node_modules dir
+                return Ok(NodeModulesDirMode::None);
               }
             }
 
@@ -583,7 +583,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       let dir = match &self.options.config_discovery {
         ConfigDiscoveryOption::DiscoverCwd => WorkspaceDirectory::discover(
           &self.sys,
-          WorkspaceDiscoverStart::Paths(&[self.initial_cwd.clone()]),
+          WorkspaceDiscoverStart::Paths(std::slice::from_ref(
+            &self.initial_cwd,
+          )),
           &resolve_workspace_discover_options(),
         )?,
         ConfigDiscoveryOption::Discover { start_paths } => {
@@ -679,6 +681,7 @@ pub struct ResolverFactoryOptions {
   #[cfg(feature = "graph")]
   pub on_mapped_resolution_diagnostic:
     Option<crate::graph::OnMappedResolutionDiagnosticFn>,
+  pub allow_json_imports: AllowJsonImports,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -1052,6 +1055,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.npm_module_loader()?.clone(),
         self.parsed_source_cache.clone(),
         self.workspace_factory.sys.clone(),
+        self.options.allow_json_imports,
       )))
     })
   }

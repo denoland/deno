@@ -1025,7 +1025,11 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
+      15: standalone,
     } = runtimeOptions;
+
+    denoNs.build.standalone = standalone;
+
     closeOnIdle = runtimeOptions[14];
 
     performance.setTimeOrigin();
@@ -1089,6 +1093,7 @@ function bootstrapWorkerRuntime(
     }
 
     // Not available in workers
+    const moduleSpecifier = finalDenoNs.mainModule;
     delete finalDenoNs.mainModule;
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
@@ -1121,6 +1126,7 @@ function bootstrapWorkerRuntime(
         workerId,
         maybeWorkerMetadata: workerMetadata,
         nodeDebug,
+        moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
       });
     }
   } else {

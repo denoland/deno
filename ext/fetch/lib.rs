@@ -735,17 +735,15 @@ pub async fn op_fetch_send(
       // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
       // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
 
-      if let FetchError::ClientSend(err_src) = &err {
-        if let Some(client_err) = std::error::Error::source(&err_src.source) {
-          if let Some(err_src) = client_err.downcast_ref::<hyper::Error>() {
-            if let Some(err_src) = std::error::Error::source(err_src) {
-              return Ok(FetchResponse {
-                error: Some((err.to_string(), err_src.to_string())),
-                ..Default::default()
-              });
-            }
-          }
-        }
+      if let FetchError::ClientSend(err_src) = &err
+        && let Some(client_err) = std::error::Error::source(&err_src.source)
+        && let Some(err_src) = client_err.downcast_ref::<hyper::Error>()
+        && let Some(err_src) = std::error::Error::source(err_src)
+      {
+        return Ok(FetchResponse {
+          error: Some((err.to_string(), err_src.to_string())),
+          ..Default::default()
+        });
       }
 
       return Err(err);
@@ -798,7 +796,7 @@ pub struct FetchRequestResource {
 }
 
 impl Resource for FetchRequestResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchRequest".into()
   }
 }
@@ -806,7 +804,7 @@ impl Resource for FetchRequestResource {
 pub struct FetchCancelHandle(pub Rc<CancelHandle>);
 
 impl Resource for FetchCancelHandle {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchCancelHandle".into()
   }
 
@@ -855,7 +853,7 @@ impl FetchResponseResource {
 }
 
 impl Resource for FetchResponseResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchResponse".into()
   }
 
@@ -930,7 +928,7 @@ pub struct HttpClientResource {
 }
 
 impl Resource for HttpClientResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpClient".into()
   }
 }
@@ -1179,12 +1177,20 @@ pub fn create_http_client(
       Proxy::Unix { .. } => {
         return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
       }
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Proxy::Vsock { cid, port } => {
         let target = proxy::Target::new_vsock(cid, port);
         proxy::Intercept::all(target)
       }
-      #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+      #[cfg(not(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      )))]
       Proxy::Vsock { .. } => {
         return Err(HttpClientCreateError::VsockProxyNotSupported);
       }

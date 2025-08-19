@@ -607,6 +607,9 @@ function setNodeGetters(ctx) {
     const name = getString(ctx.strTable, id);
 
     Object.defineProperty(FacadeNode.prototype, name, {
+      // The `parent` key is expected to be non-enumerable.
+      // See the npm `zimmerframe` library.
+      enumerable: name !== "parent",
       get() {
         return readValue(
           this[INTERNAL_CTX],

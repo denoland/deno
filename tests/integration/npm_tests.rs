@@ -1105,9 +1105,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .new_command()
       .args("run --cached-only main.ts")
       .run();
-    output.assert_matches_text(concat!(
-      "error: Could not find npm package '@denotest/esm-basic' matching '1.0.0'.\n",
-    ));
+    output.assert_matches_text("error: Could not find npm package '@denotest/esm-basic' matching '1.0.0'.\n");
     output.assert_exit_code(1);
 
     // now try running, it should work and only initialize the new package
@@ -1394,13 +1392,7 @@ fn top_level_install_package_json_explicit_opt_in() {
       "text": "",
     }
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], file_uri],
-    }),
-  );
+  client.cache_specifier(&file_uri);
 
   assert!(node_modules_dir.join("@denotest").exists());
 }
