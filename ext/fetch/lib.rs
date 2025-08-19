@@ -243,17 +243,15 @@ impl From<ClientSendError> for FetchError {
     // defined in hyper_util and not publically accessible. Then our actual DnsResolveError is the source of the
     // `ConnectError`. Since we can't downcast to `ConnectError`, just
     // try checking the source of the source.
-    if let Some(source) = value.source.source() {
-      if let Some(source) = source.source() {
-        if let Some(DnsResolveError::Permission(
-          PermissionCheckError::PermissionDenied(denied),
-        )) = source.downcast_ref::<DnsResolveError>()
-        {
-          return FetchError::Permission(
-            PermissionCheckError::PermissionDenied(denied.clone()),
-          );
-        }
-      }
+    if let Some(source) = value.source.source()
+      && let Some(source) = source.source()
+      && let Some(DnsResolveError::Permission(
+        PermissionCheckError::PermissionDenied(denied),
+      )) = source.downcast_ref::<DnsResolveError>()
+    {
+      return FetchError::Permission(PermissionCheckError::PermissionDenied(
+        denied.clone(),
+      ));
     }
     FetchError::ClientSend(value)
   }
