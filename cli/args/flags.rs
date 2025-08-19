@@ -601,7 +601,7 @@ pub enum DenoSubcommand {
 }
 
 impl DenoSubcommand {
-  pub fn watch_flags(&self) -> Option<WatchFlagsRef> {
+  pub fn watch_flags(&self) -> Option<WatchFlagsRef<'_>> {
     match self {
       Self::Run(RunFlags {
         watch: Some(flags), ..
@@ -1388,19 +1388,17 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
         ErrorKind::MissingRequiredArgument => {
           if let Some(clap::error::ContextValue::Strings(s)) =
             e.get(clap::error::ContextKind::InvalidArg)
+            && s.len() == 1
+            && s[0] == "--global"
+            && args.iter().any(|arg| arg == "install")
           {
-            if s.len() == 1
-              && s[0] == "--global"
-              && args.iter().any(|arg| arg == "install")
-            {
-              e.insert(
-                clap::error::ContextKind::Usage,
-                clap::error::ContextValue::StyledStr(
-                  "Note: Permission flags can only be used in a global setting"
-                    .into(),
-                ),
-              );
-            }
+            e.insert(
+              clap::error::ContextKind::Usage,
+              clap::error::ContextValue::StyledStr(
+                "Note: Permission flags can only be used in a global setting"
+                  .into(),
+              ),
+            );
           }
 
           e
@@ -2685,7 +2683,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .long("ext")
           .help("Set content type of the supplied file")
           .value_parser([
-            "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
+            "ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs", "md", "json", "jsonc", "css", "scss",
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
             "ipynb", "sql", "vto", "njk"
           ])
@@ -4534,7 +4532,7 @@ fn executable_ext_arg() -> Arg {
   Arg::new("ext")
     .long("ext")
     .help("Set content type of the supplied file")
-    .value_parser(["ts", "tsx", "js", "jsx"])
+    .value_parser(["ts", "tsx", "js", "jsx", "mts", "mjs", "cts", "cjs"])
 }
 
 fn location_arg() -> Arg {

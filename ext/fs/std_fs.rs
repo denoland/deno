@@ -5,6 +5,7 @@
 use std::borrow::Cow;
 use std::fs;
 use std::io;
+use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
@@ -112,10 +113,21 @@ impl FileSystem for RealFs {
     spawn_blocking(move || mkdir(&path, recursive, mode)).await?
   }
 
+  #[cfg(unix)]
   fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
     chmod(path, mode)
   }
+  #[cfg(not(unix))]
+  fn chmod_sync(&self, path: &CheckedPath, mode: i32) -> FsResult<()> {
+    chmod(path, mode)
+  }
+
+  #[cfg(unix)]
   async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()> {
+    spawn_blocking(move || chmod(&path, mode)).await?
+  }
+  #[cfg(not(unix))]
+  async fn chmod_async(&self, path: CheckedPathBuf, mode: i32) -> FsResult<()> {
     spawn_blocking(move || chmod(&path, mode)).await?
   }
 
@@ -461,12 +473,26 @@ fn chmod(path: &Path, mode: u32) -> FsResult<()> {
   Ok(())
 }
 
-// TODO: implement chmod for Windows (#4357)
 #[cfg(not(unix))]
-fn chmod(path: &Path, _mode: u32) -> FsResult<()> {
-  // Still check file/dir exists on Windows
-  std::fs::metadata(path)?;
-  Err(FsError::NotSupported)
+fn chmod(path: &Path, mode: i32) -> FsResult<()> {
+  use std::os::windows::ffi::OsStrExt;
+
+  // Windows chmod doesn't follow symlinks unlike the UNIX counterpart,
+  // so we have to resolve the symlink manually
+  let resolved_path = realpath(path)?;
+
+  let wchar_path = resolved_path
+    .as_os_str()
+    .encode_wide()
+    .chain(std::iter::once(0))
+    .collect::<Vec<_>>();
+
+  // SAFETY: `path` is a null-terminated string.
+  let result = unsafe { libc::wchmod(wchar_path.as_ptr(), mode) };
+  if result != 0 {
+    return Err(io::Error::last_os_error().into());
+  }
+  Ok(())
 }
 
 #[cfg(unix)]
@@ -657,7 +683,14 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         use std::os::unix::fs::PermissionsExt;
         builder.mode(fs::symlink_metadata(from)?.permissions().mode());
       }
-      builder.create(to)?;
+
+      // The target directory might already exists. If it does,
+      // continue copying all entries instead of aborting.
+      if let Err(err) = builder.create(to)
+        && err.kind() != ErrorKind::AlreadyExists
+      {
+        return Err(FsError::Io(err));
+      }
 
       let mut entries: Vec<_> = fs::read_dir(from)?
         .map(|res| res.map(|e| e.file_name()))
@@ -776,8 +809,13 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     }
   }
 
-  if let Ok(m) = fs::metadata(to) {
-    if m.is_dir() {
+  if let Ok(m) = fs::metadata(to)
+    && m.is_dir()
+  {
+    // Only target sub dir when source is not a dir itself
+    if let Ok(from_meta) = fs::metadata(from)
+      && !from_meta.is_dir()
+    {
       return cp_(
         source_meta,
         from,
@@ -791,16 +829,16 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     }
   }
 
-  if let Ok(m) = fs::symlink_metadata(to) {
-    if is_identical(&source_meta, &m) {
-      return Err(
-        io::Error::new(
-          io::ErrorKind::InvalidInput,
-          "the source and destination are the same file",
-        )
-        .into(),
-      );
-    }
+  if let Ok(m) = fs::symlink_metadata(to)
+    && is_identical(&source_meta, &m)
+  {
+    return Err(
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "the source and destination are the same file",
+      )
+      .into(),
+    );
   }
 
   cp_(source_meta, from, to)

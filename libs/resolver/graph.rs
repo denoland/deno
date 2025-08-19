@@ -25,6 +25,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPath;
+use node_resolver::errors::NodeJsErrorCoded;
 use url::Url;
 
 use crate::DenoResolveError;
@@ -49,9 +50,9 @@ pub struct FoundPackageJsonDepFlag(AtomicFlag);
 pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
 
 impl ResolveWithGraphError {
-  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+  pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
-      ResolveWithGraphErrorKind::CouldNotResolve(err) => {
+      ResolveWithGraphErrorKind::CouldNotResolveNpmNv(err) => {
         err.source.maybe_specifier()
       }
       ResolveWithGraphErrorKind::ResolveNpmReqRef(err) => {
@@ -85,7 +86,7 @@ impl ResolveWithGraphError {
 pub enum ResolveWithGraphErrorKind {
   #[error(transparent)]
   #[class(inherit)]
-  CouldNotResolve(#[from] CouldNotResolveError),
+  CouldNotResolveNpmNv(#[from] CouldNotResolveNpmNvError),
   #[error(transparent)]
   #[class(inherit)]
   ResolvePkgFolderFromDenoModule(
@@ -108,11 +109,17 @@ pub enum ResolveWithGraphErrorKind {
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(inherit)]
 #[error("Could not resolve '{reference}'")]
-pub struct CouldNotResolveError {
-  reference: deno_semver::npm::NpmPackageNvReference,
+pub struct CouldNotResolveNpmNvError {
+  pub reference: deno_semver::npm::NpmPackageNvReference,
   #[source]
   #[inherit]
-  source: node_resolver::errors::PackageSubpathFromDenoModuleResolveError,
+  pub source: node_resolver::errors::PackageSubpathFromDenoModuleResolveError,
+}
+
+impl NodeJsErrorCoded for CouldNotResolveNpmNvError {
+  fn code(&self) -> node_resolver::errors::NodeJsErrorCode {
+    self.source.code()
+  }
 }
 
 impl FoundPackageJsonDepFlag {
@@ -359,7 +366,7 @@ impl<
           resolution_mode,
           resolution_kind,
         )
-        .map_err(|source| CouldNotResolveError {
+        .map_err(|source| CouldNotResolveNpmNvError {
           reference: nv_ref.clone(),
           source,
         })?
@@ -394,14 +401,14 @@ impl<
           reference,
           ..
         } => {
-          if let Some(on_warning) = &self.on_warning {
-            if self.warned_pkgs.insert(reference.req().clone()) {
-              on_warning(MappedResolutionDiagnosticWithPosition {
-                diagnostic,
-                referrer,
-                start: referrer_range_start,
-              });
-            }
+          if let Some(on_warning) = &self.on_warning
+            && self.warned_pkgs.insert(reference.req().clone())
+          {
+            on_warning(MappedResolutionDiagnosticWithPosition {
+              diagnostic,
+              referrer,
+              start: referrer_range_start,
+            });
           }
         }
       }
@@ -556,13 +563,12 @@ pub fn enhance_graph_error(
     }
   };
 
-  if let Some(range) = error.maybe_range() {
-    if mode == EnhanceGraphErrorMode::ShowRange
-      && !range.specifier.as_str().contains("/$deno$eval")
-    {
-      message.push_str("\n    at ");
-      message.push_str(&format_range_with_colors(range));
-    }
+  if let Some(range) = error.maybe_range()
+    && mode == EnhanceGraphErrorMode::ShowRange
+    && !range.specifier.as_str().contains("/$deno$eval")
+  {
+    message.push_str("\n    at ");
+    message.push_str(&format_range_with_colors(range));
   }
   message
 }
@@ -609,8 +615,7 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
-static RUN_WITH_SLOPPY_IMPORTS_MSG: &str =
-  "or run with --unstable-sloppy-imports";
+static RUN_WITH_SLOPPY_IMPORTS_MSG: &str = "or run with --sloppy-imports";
 
 fn enhanced_sloppy_imports_error_message(
   sys: &(impl sys_traits::FsMetadata + Clone),
@@ -778,32 +783,29 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
     if range.specifier.scheme() == "file" {
       maybe_specifier = Some(specifier);
     }
-  } else if let ResolutionError::ResolverError { error, range, .. } = error {
-    if range.specifier.scheme() == "file" {
-      match error.as_ref() {
-        ResolveError::Specifier(specifier_error) => {
-          if let SpecifierError::ImportPrefixMissing { specifier, .. } =
-            specifier_error
-          {
-            maybe_specifier = Some(specifier);
-          }
+  } else if let ResolutionError::ResolverError { error, range, .. } = error
+    && range.specifier.scheme() == "file"
+  {
+    match error.as_ref() {
+      ResolveError::Specifier(specifier_error) => {
+        if let SpecifierError::ImportPrefixMissing { specifier, .. } =
+          specifier_error
+        {
+          maybe_specifier = Some(specifier);
         }
-        ResolveError::Other(other_error) => {
-          if let Some(SpecifierError::ImportPrefixMissing {
-            specifier, ..
-          }) = other_error.get_ref().downcast_ref::<SpecifierError>()
-          {
-            maybe_specifier = Some(specifier);
-          }
+      }
+      ResolveError::Other(other_error) => {
+        if let Some(SpecifierError::ImportPrefixMissing { specifier, .. }) =
+          other_error.get_ref().downcast_ref::<SpecifierError>()
+        {
+          maybe_specifier = Some(specifier);
         }
-        ResolveError::ImportMap(import_map_err) => {
-          if let ImportMapErrorKind::UnmappedBareSpecifier(
-            specifier,
-            _referrer,
-          ) = import_map_err.as_kind()
-          {
-            maybe_specifier = Some(specifier);
-          }
+      }
+      ResolveError::ImportMap(import_map_err) => {
+        if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _referrer) =
+          import_map_err.as_kind()
+        {
+          maybe_specifier = Some(specifier);
         }
       }
     }

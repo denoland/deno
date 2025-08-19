@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -13,12 +14,14 @@ use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::serde_json::json;
@@ -33,10 +36,11 @@ use deno_lib::args::get_root_cert_store;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
+use deno_resolver::deno_json::CompilerOptionsKey;
+use deno_resolver::loader::MemoryFilesRc;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_semver::jsr::JsrPackageReqReference;
-use indexmap::Equivalent;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::error;
@@ -44,6 +48,7 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
+use tokio::sync::OnceCell;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::unbounded_channel;
@@ -70,9 +75,8 @@ use super::config::UpdateImportsOnFileMoveEnabled;
 use super::config::WorkspaceSettings;
 use super::diagnostics;
 use super::diagnostics::DiagnosticDataSpecifier;
-use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
-use super::diagnostics::DiagnosticsState;
+use super::diagnostics::DiagnosticsUpdateMessage;
 use super::documents::Document;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
@@ -106,6 +110,7 @@ use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::config::ConfigWatchedFileType;
+use crate::lsp::diagnostics::generate_module_diagnostics;
 use crate::lsp::lint::LspLinterResolver;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
@@ -166,6 +171,44 @@ pub fn to_lsp_range(referrer: &deno_graph::Range) -> lsp_types::Range {
   }
 }
 
+#[derive(Debug)]
+struct DidChangeBatchQueueEntry {
+  version: i32,
+  content_changes: Vec<TextDocumentContentChangeEvent>,
+}
+
+#[derive(Debug)]
+struct DidChangeBatchQueue {
+  uri: Uri,
+  entries: Mutex<VecDeque<(DidChangeBatchQueueEntry, CancellationToken)>>,
+}
+
+impl DidChangeBatchQueue {
+  fn new(uri: Uri) -> Self {
+    DidChangeBatchQueue {
+      uri,
+      entries: Default::default(),
+    }
+  }
+
+  fn enqueue(&self, entry: DidChangeBatchQueueEntry) -> CancellationToken {
+    let token = CancellationToken::new();
+    self.entries.lock().push_back((entry, token.clone()));
+    token
+  }
+
+  fn dequeue(&self) -> Option<DidChangeBatchQueueEntry> {
+    let (entry, token) = self.entries.lock().pop_front()?;
+    token.cancel();
+    Some(entry)
+  }
+
+  fn clear(&self) {
+    let entries = std::mem::take(&mut *self.entries.lock());
+    entries.into_iter().for_each(|(_, token)| token.cancel());
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct LanguageServer {
   client: Client,
@@ -177,6 +220,7 @@ pub struct LanguageServer {
   /// `workspace/configuration` requests in the `initialize` handler. See:
   /// https://github.com/Microsoft/language-server-protocol/issues/567#issuecomment-2085131917
   init_flag: AsyncFlag,
+  did_change_batch_queue: RefCell<Option<Arc<DidChangeBatchQueue>>>,
   performance: Arc<Performance>,
 }
 
@@ -237,15 +281,20 @@ impl LanguageServerTaskQueue {
   }
 }
 
+pub type OnceCellMap<K, V> = DashMap<K, Arc<OnceCell<V>>>;
+
 pub struct Inner {
+  /// (_, notebook_uri) -> _
+  ambient_modules_regex_cache:
+    OnceCellMap<(CompilerOptionsKey, Option<Arc<Uri>>), Option<regex::Regex>>,
   pub cache: LspCache,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
   compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
   /// Configuration information.
   pub config: Config,
-  diagnostics_state: Arc<diagnostics::DiagnosticsState>,
-  diagnostics_server: diagnostics::DiagnosticsServer,
+  diagnostics_cache: OnceCellMap<Arc<Uri>, Arc<Vec<Diagnostic>>>,
+  diagnostics_server: Option<diagnostics::DiagnosticsServer>,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
   pub document_modules: DocumentModules,
@@ -279,7 +328,6 @@ impl std::fmt::Debug for Inner {
       .field("cache", &self.cache)
       .field("client", &self.client)
       .field("config", &self.config)
-      .field("diagnostics_state", &self.diagnostics_state)
       .field("diagnostics_server", &self.diagnostics_server)
       .field("document_modules", &self.document_modules)
       .field("http_client_provider", &self.http_client_provider)
@@ -315,6 +363,7 @@ impl LanguageServer {
         performance.clone(),
       ))),
       init_flag: Default::default(),
+      did_change_batch_queue: Default::default(),
       performance,
     }
   }
@@ -368,10 +417,10 @@ impl LanguageServer {
 
       // Update the lockfile on the file system with anything new
       // found after caching
-      if let Ok(Some(lockfile)) = factory.maybe_lockfile().await {
-        if let Err(err) = &lockfile.write_if_changed() {
-          lsp_warn!("{:#}", err);
-        }
+      if let Ok(Some(lockfile)) = factory.maybe_lockfile().await
+        && let Err(err) = &lockfile.write_if_changed()
+      {
+        lsp_warn!("{:#}", err);
       }
 
       Ok(())
@@ -383,6 +432,7 @@ impl LanguageServer {
     let mark = self
       .performance
       .mark_with_args("lsp.cache", (&specifiers, &referrer));
+    *self.did_change_batch_queue.borrow_mut() = None;
     let prepare_cache_result = self.inner.write().await.prepare_cache(
       specifiers,
       referrer,
@@ -405,6 +455,7 @@ impl LanguageServer {
         }
 
         // now get the lock back to update with the new information
+        *self.did_change_batch_queue.borrow_mut() = None;
         self.inner.write().await.post_cache().await;
         self.performance.measure(mark);
       }
@@ -416,24 +467,6 @@ impl LanguageServer {
     }
 
     Ok(Some(json!(true)))
-  }
-
-  /// This request is only used by the lsp integration tests to
-  /// coordinate the tests receiving the latest diagnostics.
-  pub async fn latest_diagnostic_batch_index_request(
-    &self,
-    _token: CancellationToken,
-  ) -> LspResult<Option<Value>> {
-    self.init_flag.wait_raised().await;
-    Ok(
-      self
-        .inner
-        .read()
-        .await
-        .diagnostics_server
-        .latest_batch_index()
-        .map(|v| v.into()),
-    )
   }
 
   pub async fn performance_request(
@@ -525,6 +558,7 @@ impl LanguageServer {
         for (folder_uri, _) in folders.as_ref() {
           folder_settings.push((folder_uri.clone(), configs.next().unwrap()));
         }
+        *self.did_change_batch_queue.borrow_mut() = None;
         self
           .inner
           .write()
@@ -550,24 +584,18 @@ impl Inner {
       CliNpmSearchApi::new(module_registry.file_fetcher.clone());
     let config = Config::default();
     let ts_server = Arc::new(TsServer::new(performance.clone()));
-    let diagnostics_state = Arc::new(DiagnosticsState::default());
-    let diagnostics_server = DiagnosticsServer::new(
-      client.clone(),
-      performance.clone(),
-      ts_server.clone(),
-      diagnostics_state.clone(),
-    );
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
       panic!("Could not resolve current working directory")
     });
 
     Self {
+      ambient_modules_regex_cache: Default::default(),
       cache,
       client,
       compiler_options_resolver: Default::default(),
       config,
-      diagnostics_state,
-      diagnostics_server,
+      diagnostics_cache: Default::default(),
+      diagnostics_server: None,
       document_modules: Default::default(),
       http_client_provider,
       initial_cwd: initial_cwd.clone(),
@@ -906,10 +934,10 @@ impl Inner {
           .into_iter()
           .map(|folder| {
             let mut url = uri_to_url(&folder.uri);
-            if !url.path().ends_with('/') {
-              if let Ok(mut path_segments) = url.path_segments_mut() {
-                path_segments.push("");
-              }
+            if !url.path().ends_with('/')
+              && let Ok(mut path_segments) = url.path_segments_mut()
+            {
+              path_segments.push("");
             }
             (Arc::new(url), folder)
           })
@@ -918,30 +946,30 @@ impl Inner {
       // rootUri is deprecated by the LSP spec. If it's specified, merge it into
       // workspace_folders.
       #[allow(deprecated)]
-      if let Some(root_uri) = params.root_uri {
-        if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
-          let mut root_url = uri_to_url(&root_uri);
-          let name = root_url
-            .path_segments()
-            .and_then(|mut s| s.next_back())
-            .unwrap_or_default()
-            .to_string();
-          if !root_url.path().ends_with('/') {
-            if let Ok(mut path_segments) = root_url.path_segments_mut() {
-              path_segments.push("");
-            }
-          }
-          workspace_folders.insert(
-            0,
-            (
-              Arc::new(root_url),
-              WorkspaceFolder {
-                uri: root_uri,
-                name,
-              },
-            ),
-          );
+      if let Some(root_uri) = params.root_uri
+        && !workspace_folders.iter().any(|(_, f)| f.uri == root_uri)
+      {
+        let mut root_url = uri_to_url(&root_uri);
+        let name = root_url
+          .path_segments()
+          .and_then(|mut s| s.next_back())
+          .unwrap_or_default()
+          .to_string();
+        if !root_url.path().ends_with('/')
+          && let Ok(mut path_segments) = root_url.path_segments_mut()
+        {
+          path_segments.push("");
         }
+        workspace_folders.insert(
+          0,
+          (
+            Arc::new(root_url),
+            WorkspaceFolder {
+              uri: root_uri,
+              name,
+            },
+          ),
+        );
       }
       self.config.set_workspace_folders(workspace_folders);
       if let Some(options) = params.initialization_options {
@@ -953,7 +981,15 @@ impl Inner {
       self.config.set_client_capabilities(params.capabilities);
     }
 
-    self.diagnostics_server.start();
+    if !self.config.diagnostic_capable() {
+      let mut diagnostics_server = DiagnosticsServer::new(
+        self.client.clone(),
+        self.performance.clone(),
+        self.ts_server.clone(),
+      );
+      diagnostics_server.start();
+      self.diagnostics_server = Some(diagnostics_server);
+    }
     self
       .ts_server
       .set_inspector_server_addr(self.config.internal_inspect().to_address());
@@ -1136,6 +1172,7 @@ impl Inner {
       Default::default(),
       GlobalOrLocalHttpCache::Global(self.cache.global().clone()),
       self.http_client_provider.clone(),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
@@ -1284,7 +1321,6 @@ impl Inner {
     if document.is_diagnosable() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info();
-      self.diagnostics_server.invalidate(&[document.uri.as_ref()]);
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Opened)],
         ProjectScopesChange::None,
@@ -1296,49 +1332,43 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn did_change(&mut self, params: DidChangeTextDocumentParams) {
-    let mark = self.performance.mark_with_args("lsp.did_change", &params);
+  fn did_change_batched(&mut self, batch_queue: Arc<DidChangeBatchQueue>) {
+    let mark = self
+      .performance
+      .mark_with_args("lsp.did_change_batched", &batch_queue.uri);
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if params
-      .text_document
+    if batch_queue
       .uri
       .scheme()
       .is_some_and(|s| s.eq_lowercase("deno"))
     {
+      batch_queue.clear();
       return;
     }
-    let document = match self.document_modules.change_document(
-      &params.text_document.uri,
-      params.text_document.version,
-      params.content_changes,
-    ) {
-      Ok(doc) => doc,
-      Err(err) => {
-        error!("{:#}", err);
-        return;
+    let mut document = None;
+    while let Some(entry) = batch_queue.dequeue() {
+      match self.document_modules.change_document(
+        &batch_queue.uri,
+        entry.version,
+        entry.content_changes,
+      ) {
+        Ok(doc) => {
+          document = Some(doc);
+        }
+        Err(err) => {
+          error!("{:#}", err);
+          return;
+        }
       }
-    };
-    if document.is_diagnosable() {
-      let old_scopes_with_node_specifier =
-        self.document_modules.scopes_with_node_specifier();
+    }
+    if let Some(document) = document
+      && document.is_diagnosable()
+    {
       self.refresh_dep_info();
-      let mut config_changed = false;
-      if !self
-        .document_modules
-        .scopes_with_node_specifier()
-        .equivalent(&old_scopes_with_node_specifier)
-      {
-        config_changed = true;
-      }
-      self.diagnostics_server.invalidate(&[&document.uri]);
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Modified)],
-        if config_changed {
-          ProjectScopesChange::Config
-        } else {
-          ProjectScopesChange::None
-        },
+        ProjectScopesChange::None,
       );
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -1347,7 +1377,7 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn did_save(&mut self, params: DidSaveTextDocumentParams) {
+  async fn did_save(&self, params: DidSaveTextDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.did_save");
     let Ok(Some(document)) = self
       .get_document(
@@ -1362,14 +1392,38 @@ impl Inner {
     else {
       return;
     };
+    let has_no_cache_diagnostics = async || {
+      if let Some(diagnostics_server) = &self.diagnostics_server {
+        diagnostics_server
+          .state
+          .has_no_cache_diagnostics(document.uri())
+      } else {
+        let Ok(Some(module)) = self.get_primary_module(&document) else {
+          return false;
+        };
+        self
+          .get_module_diagnostics(&module, &Default::default())
+          .await
+          .ok()
+          .iter()
+          .flat_map(|d| d.iter())
+          .any(|d| {
+            let Some(NumberOrString::String(code)) = &d.code else {
+              return false;
+            };
+            matches!(
+              code.as_str(),
+              "no-cache" | "not-installed-jsr" | "not-installed-npm"
+            )
+          })
+      }
+    };
     if !self
       .config
       .workspace_settings_for_uri(document.uri())
       .cache_on_save
       || !self.config.uri_enabled(document.uri())
-      || !self
-        .diagnostics_state
-        .has_no_cache_diagnostics(document.uri())
+      || !has_no_cache_diagnostics().await
     {
       return;
     }
@@ -1420,7 +1474,9 @@ impl Inner {
     {
       return;
     }
-    self.diagnostics_state.clear(&params.text_document.uri);
+    if let Some(diagnostics_server) = &self.diagnostics_server {
+      diagnostics_server.state.clear(&params.text_document.uri);
+    }
     let document = match self
       .document_modules
       .close_document(&params.text_document.uri)
@@ -1433,7 +1489,6 @@ impl Inner {
     };
     if document.is_diagnosable() {
       self.refresh_dep_info();
-      self.diagnostics_server.invalidate(&[&document.uri]);
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Closed)],
         ProjectScopesChange::None,
@@ -1457,12 +1512,6 @@ impl Inner {
     if !diagnosable_documents.is_empty() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info();
-      self.diagnostics_server.invalidate(
-        &diagnosable_documents
-          .iter()
-          .map(|d| d.uri.as_ref())
-          .collect::<Vec<_>>(),
-      );
       self.project_changed(
         diagnosable_documents
           .into_iter()
@@ -1489,39 +1538,19 @@ impl Inner {
       .filter(|(d, _)| d.is_diagnosable())
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
-      let old_scopes_with_node_specifier =
-        self.document_modules.scopes_with_node_specifier();
       self.refresh_dep_info();
-      let mut config_changed = false;
-      if !self
-        .document_modules
-        .scopes_with_node_specifier()
-        .equivalent(&old_scopes_with_node_specifier)
-      {
-        config_changed = true;
-      }
-      self.diagnostics_server.invalidate(
-        &diagnosable_documents
-          .iter()
-          .map(|(d, _)| d.uri.as_ref())
-          .collect::<Vec<_>>(),
-      );
       self.project_changed(
         diagnosable_documents
           .into_iter()
           .map(|(d, k)| (Document::Open(d), k))
           .collect(),
-        if config_changed {
-          ProjectScopesChange::Config
-        } else {
-          ProjectScopesChange::None
-        },
+        ProjectScopesChange::None,
       );
       self.send_diagnostics_update();
     }
   }
 
-  fn notebook_did_save(&mut self, params: DidSaveNotebookDocumentParams) {
+  async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.notebook_did_save");
     let Some(cell_uris) = self
       .document_modules
@@ -1537,12 +1566,14 @@ impl Inner {
       return;
     };
     for cell_uri in cell_uris {
-      self.did_save(DidSaveTextDocumentParams {
-        text_document: TextDocumentIdentifier {
-          uri: cell_uri.as_ref().clone(),
-        },
-        text: None,
-      });
+      self
+        .did_save(DidSaveTextDocumentParams {
+          text_document: TextDocumentIdentifier {
+            uri: cell_uri.as_ref().clone(),
+          },
+          text: None,
+        })
+        .await;
     }
   }
 
@@ -1557,12 +1588,6 @@ impl Inner {
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
       self.refresh_dep_info();
-      self.diagnostics_server.invalidate(
-        &diagnosable_documents
-          .iter()
-          .map(|d| d.uri.as_ref())
-          .collect::<Vec<_>>(),
-      );
       self.project_changed(
         diagnosable_documents
           .into_iter()
@@ -1606,7 +1631,6 @@ impl Inner {
     self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
     self.refresh_documents_config();
-    self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
     self.send_testing_update();
   }
@@ -1666,7 +1690,6 @@ impl Inner {
       }
       self.refresh_linter_resolver();
       self.refresh_documents_config();
-      self.diagnostics_server.invalidate_all();
       self.project_changed(
         changes
           .iter()
@@ -1679,6 +1702,11 @@ impl Inner {
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.send_diagnostics_update();
+      if self.config.diagnostic_capable()
+        && self.config.diagnostic_refresh_capable()
+      {
+        self.client.refresh_diagnostics();
+      }
       self.send_testing_update();
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
         self.config.tree.watched_file_type(s).and_then(|t| {
@@ -2067,9 +2095,15 @@ impl Inner {
       .collect();
     let mut code_actions = CodeActionCollection::default();
     if !fixable_diagnostics.is_empty() {
-      let file_diagnostics = self
-        .diagnostics_server
-        .get_ts_diagnostics(document.uri(), document.open().map(|d| d.version));
+      let file_diagnostics =
+        if let Some(diagnostics_server) = &self.diagnostics_server {
+          diagnostics_server.state.ts_diagnostics(document.uri())
+        } else {
+          self
+            .get_module_diagnostics(&module, token)
+            .await
+            .unwrap_or_default()
+        };
       let mut includes_no_cache = false;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
@@ -2161,7 +2195,31 @@ impl Inner {
       }
       if includes_no_cache {
         let no_cache_diagnostics =
-          self.diagnostics_state.no_cache_diagnostics(document.uri());
+          if let Some(diagnostics_server) = &self.diagnostics_server {
+            diagnostics_server
+              .state
+              .no_cache_diagnostics(document.uri())
+          } else {
+            Arc::new(
+              self
+                .get_module_diagnostics(&module, token)
+                .await
+                .ok()
+                .iter()
+                .flat_map(|d| d.iter())
+                .filter(|d| {
+                  let Some(NumberOrString::String(code)) = &d.code else {
+                    return false;
+                  };
+                  matches!(
+                    code.as_str(),
+                    "no-cache" | "not-installed-jsr" | "not-installed-npm"
+                  )
+                })
+                .cloned()
+                .collect::<Vec<_>>(),
+            )
+          };
         let uncached_deps = no_cache_diagnostics
           .iter()
           .filter_map(|d| {
@@ -2175,7 +2233,7 @@ impl Inner {
         if uncached_deps.len() > 1 {
           code_actions.add_cache_all_action(
             &module.specifier,
-            no_cache_diagnostics.to_owned(),
+            no_cache_diagnostics.as_ref().clone(),
           );
         }
       }
@@ -2423,7 +2481,7 @@ impl Inner {
   pub fn get_ts_response_import_mapper(
     &self,
     module: &DocumentModule,
-  ) -> TsResponseImportMapper {
+  ) -> TsResponseImportMapper<'_> {
     TsResponseImportMapper::new(
       &self.document_modules,
       module.scope.clone(),
@@ -2457,27 +2515,25 @@ impl Inner {
     let mut code_lenses = Vec::new();
     if settings.code_lens.test
       && self.config.specifier_enabled_for_test(&module.specifier)
-    {
-      if let Some(Ok(parsed_source)) = &module
+      && let Some(Ok(parsed_source)) = &module
         .open_data
         .as_ref()
         .and_then(|d| d.parsed_source.as_ref())
-      {
-        code_lenses.extend(
-          code_lens::collect_test(&module.specifier, parsed_source, token)
-            .map_err(|err| {
-              if token.is_cancelled() {
-                LspError::request_cancelled()
-              } else {
-                error!(
-                  "Error getting test code lenses for \"{}\": {:#}",
-                  &module.specifier, err
-                );
-                LspError::internal_error()
-              }
-            })?,
-        );
-      }
+    {
+      code_lenses.extend(
+        code_lens::collect_test(&module.specifier, parsed_source, token)
+          .map_err(|err| {
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              error!(
+                "Error getting test code lenses for \"{}\": {:#}",
+                &module.specifier, err
+              );
+              LspError::internal_error()
+            }
+          })?,
+      );
     }
     if settings.code_lens.implementations || settings.code_lens.references {
       let navigation_tree = self.get_navigation_tree(&module, token).await?;
@@ -2988,6 +3044,119 @@ impl Inner {
     };
     self.performance.measure(mark);
     Ok(completion_item)
+  }
+
+  async fn diagnostic(
+    &self,
+    params: DocumentDiagnosticParams,
+    token: &CancellationToken,
+  ) -> LspResult<DocumentDiagnosticReportResult> {
+    let _mark = self.performance.measure_scope("lsp.diagnostic");
+    if params
+      .previous_result_id
+      .as_ref()
+      .and_then(|i| i.parse::<usize>().ok())
+      .is_some_and(|i| i >= self.project_version)
+    {
+      return Ok(DocumentDiagnosticReportResult::Report(
+        DocumentDiagnosticReport::Unchanged(
+          RelatedUnchangedDocumentDiagnosticReport {
+            related_documents: None,
+            unchanged_document_diagnostic_report:
+              UnchangedDocumentDiagnosticReport {
+                result_id: self.project_version.to_string(),
+              },
+          },
+        ),
+      ));
+    }
+    let empty_result = || {
+      DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(
+        RelatedFullDocumentDiagnosticReport {
+          related_documents: None,
+          full_document_diagnostic_report: FullDocumentDiagnosticReport {
+            result_id: Some(self.project_version.to_string()),
+            items: Vec::new(),
+          },
+        },
+      ))
+    };
+    let Some(document) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(empty_result());
+    };
+    let module = match self.get_primary_module(&document)? {
+      Some(module) => module,
+      None => {
+        let url = uri_to_url(document.uri());
+        if url.scheme() == "file"
+          && !self.resolver.in_node_modules(&url)
+          && !self.cache.in_cache_directory(&url)
+        {
+          return Ok(empty_result());
+        }
+        // If this document represents a non-local module, the module may not be
+        // retrievable until its referrer is known through some other request.
+        // Wait and try one more time.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let Some(module) = self.get_primary_module(&document)? else {
+          return Ok(empty_result());
+        };
+        module
+      }
+    };
+    let diagnostics = self.get_module_diagnostics(&module, token).await?;
+    Ok(DocumentDiagnosticReportResult::Report(
+      DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+        related_documents: None,
+        full_document_diagnostic_report: FullDocumentDiagnosticReport {
+          result_id: Some(self.project_version.to_string()),
+          items: diagnostics.as_ref().clone(),
+        },
+      }),
+    ))
+  }
+
+  async fn get_module_diagnostics(
+    &self,
+    module: &Arc<DocumentModule>,
+    token: &CancellationToken,
+  ) -> Result<Arc<Vec<Diagnostic>>, LspError> {
+    let diagnostics_cell = self
+      .diagnostics_cache
+      .entry(module.uri.clone())
+      .or_default()
+      .clone();
+    diagnostics_cell
+      .get_or_try_init(async || {
+        let diagnostics = generate_module_diagnostics(
+          module,
+          &self.snapshot(),
+          &self.ts_server,
+          &self.ambient_modules_regex_cache,
+          token,
+        )
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!(
+              "Unable to generate diagnostics for \"{}\": {:#}",
+              &module.specifier, err
+            );
+            LspError::internal_error()
+          }
+        })?;
+        Ok(Arc::new(diagnostics))
+      })
+      .await
+      .cloned()
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -3799,6 +3968,8 @@ impl Inner {
     documents: Vec<(Document, ChangeKind)>,
     scopes_change: ProjectScopesChange,
   ) {
+    self.ambient_modules_regex_cache.clear();
+    self.diagnostics_cache.clear();
     self.project_version += 1; // increment before getting the snapshot
     self.ts_server.project_changed(
       self.snapshot(),
@@ -3838,21 +4009,23 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn send_diagnostics_update(&self) {
-    let snapshot = DiagnosticServerUpdateMessage {
-      snapshot: self.snapshot(),
-    };
-    if let Err(err) = self.diagnostics_server.update(snapshot) {
-      error!("Cannot update diagnostics: {:#}", err);
+    if let Some(diagnostics_server) = &self.diagnostics_server {
+      let snapshot = DiagnosticsUpdateMessage {
+        snapshot: self.snapshot(),
+      };
+      if let Err(err) = diagnostics_server.update(snapshot) {
+        error!("Cannot update diagnostics: {:#}", err);
+      }
     }
   }
 
   /// Send a message to the testing server to look for any changes in tests and
   /// update the client.
   fn send_testing_update(&self) {
-    if let Some(testing_server) = &self.maybe_testing_server {
-      if let Err(err) = testing_server.update(self.snapshot()) {
-        error!("Cannot update testing server: {:#}", err);
-      }
+    if let Some(testing_server) = &self.maybe_testing_server
+      && let Err(err) = testing_server.update(self.snapshot())
+    {
+      error!("Cannot update testing server: {:#}", err);
     }
   }
 }
@@ -3881,6 +4054,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .cache(specifiers, referrer, options.force_global_cache)
         .await
     } else if params.command == "deno.reloadImportRegistries" {
+      *self.did_change_batch_queue.borrow_mut() = None;
       self.inner.write().await.reload_import_registries().await
     } else {
       Ok(None)
@@ -3947,41 +4121,66 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self.inner.write().await.did_open(params);
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.did_change(params);
+    let (batch_queue, token) = {
+      let existing = self.did_change_batch_queue.borrow_mut().take();
+      let batch_queue = existing
+        .filter(|q| q.uri == params.text_document.uri)
+        .unwrap_or_else(|| {
+          Arc::new(DidChangeBatchQueue::new(params.text_document.uri))
+        });
+      let token = batch_queue.enqueue(DidChangeBatchQueueEntry {
+        version: params.text_document.version,
+        content_changes: params.content_changes,
+      });
+      *self.did_change_batch_queue.borrow_mut() = Some(batch_queue.clone());
+      (batch_queue, token)
+    };
+    tokio::select! {
+      biased;
+      _ = token.cancelled() => {}
+      mut inner = self.inner.write() => {
+        inner.did_change_batched(batch_queue);
+      }
+    }
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.did_save(params);
+    self.inner.read().await.did_save(params).await;
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self.inner.write().await.did_close(params);
   }
 
   async fn notebook_did_open(&self, params: DidOpenNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self.inner.write().await.notebook_did_open(params)
   }
 
   async fn notebook_did_change(&self, params: DidChangeNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self.inner.write().await.notebook_did_change(params)
   }
 
   async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
-    self.inner.write().await.notebook_did_save(params)
+    self.inner.read().await.notebook_did_save(params).await
   }
 
   async fn notebook_did_close(&self, params: DidCloseNotebookDocumentParams) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self.inner.write().await.notebook_did_close(params)
   }
 
@@ -3994,6 +4193,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       .performance
       .mark_with_args("lsp.did_change_configuration", &params);
     self.refresh_configuration().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self
       .inner
       .write()
@@ -4008,6 +4208,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: DidChangeWatchedFilesParams,
   ) {
     self.init_flag.wait_raised().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self
       .inner
       .write()
@@ -4024,12 +4225,14 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let mark = self
       .performance
       .mark_with_args("lsp.did_change_workspace_folders", &params);
+    *self.did_change_batch_queue.borrow_mut() = None;
     self
       .inner
       .write()
       .await
       .pre_did_change_workspace_folders(params);
     self.refresh_configuration().await;
+    *self.did_change_batch_queue.borrow_mut() = None;
     self
       .inner
       .write()
@@ -4198,6 +4401,15 @@ impl tower_lsp::LanguageServer for LanguageServer {
       .await
       .completion_resolve(params, &token)
       .await
+  }
+
+  async fn diagnostic(
+    &self,
+    params: DocumentDiagnosticParams,
+    token: CancellationToken,
+  ) -> LspResult<DocumentDiagnosticReportResult> {
+    self.init_flag.wait_raised().await;
+    self.inner.read().await.diagnostic(params, &token).await
   }
 
   async fn goto_implementation(
@@ -4411,25 +4623,25 @@ impl Inner {
       let Ok(scope_uri) = url_to_uri(scope_url) else {
         continue;
       };
-      if let Some(config_file) = config_data.maybe_deno_json() {
-        if let Ok(file_uri) = url_to_uri(&config_file.specifier) {
-          config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri: scope_uri.clone(),
-            file_uri,
-            typ: lsp_custom::DenoConfigurationChangeType::Added,
-            configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
-          });
-        }
+      if let Some(config_file) = config_data.maybe_deno_json()
+        && let Ok(file_uri) = url_to_uri(&config_file.specifier)
+      {
+        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+          scope_uri: scope_uri.clone(),
+          file_uri,
+          typ: lsp_custom::DenoConfigurationChangeType::Added,
+          configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
+        });
       }
-      if let Some(package_json) = config_data.maybe_pkg_json() {
-        if let Ok(file_uri) = url_to_uri(&package_json.specifier()) {
-          config_events.push(lsp_custom::DenoConfigurationChangeEvent {
-            scope_uri,
-            file_uri,
-            typ: lsp_custom::DenoConfigurationChangeType::Added,
-            configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
-          });
-        }
+      if let Some(package_json) = config_data.maybe_pkg_json()
+        && let Ok(file_uri) = url_to_uri(&package_json.specifier())
+      {
+        config_events.push(lsp_custom::DenoConfigurationChangeEvent {
+          scope_uri,
+          file_uri,
+          typ: lsp_custom::DenoConfigurationChangeType::Added,
+          configuration_type: lsp_custom::DenoConfigurationType::PackageJson,
+        });
       }
     }
     if !config_events.is_empty() {
@@ -4533,10 +4745,14 @@ impl Inner {
   async fn post_cache(&mut self) {
     self.resolver.did_cache();
     self.refresh_dep_info();
-    self.diagnostics_server.invalidate_all();
     self.project_changed(vec![], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
+    if self.config.diagnostic_capable()
+      && self.config.diagnostic_refresh_capable()
+    {
+      self.client.refresh_diagnostics();
+    }
     self.send_testing_update();
   }
 
@@ -4551,10 +4767,10 @@ impl Inner {
       .into_iter()
       .map(|folder| {
         let mut url = uri_to_url(&folder.uri);
-        if !url.path().ends_with('/') {
-          if let Ok(mut path_segments) = url.path_segments_mut() {
-            path_segments.push("");
-          }
+        if !url.path().ends_with('/')
+          && let Ok(mut path_segments) = url.path_segments_mut()
+        {
+          path_segments.push("");
         }
         (Arc::new(url), folder)
       })
@@ -4579,7 +4795,6 @@ impl Inner {
     self.dispatch_cache_jsx_import_sources();
     self.refresh_linter_resolver();
     self.refresh_documents_config();
-    self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
     self.send_testing_update();
   }

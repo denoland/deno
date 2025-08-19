@@ -11,6 +11,9 @@ export const generateTestSerialId = () => ++testSerialId;
 
 interface SingleFileConfig {
   flaky?: boolean;
+  windows?: boolean;
+  darwin?: boolean;
+  linux?: boolean;
 }
 
 type Config = {
@@ -40,10 +43,26 @@ async function run(name: string, testConfig: SingleFileConfig) {
   assert(result.result === "pass", `Test "${name}" failed: ${msg}`);
 }
 
+function computeIgnores(testConfig: SingleFileConfig): boolean {
+  if (testConfig.windows === false && Deno.build.os === "windows") {
+    return true;
+  } else if (testConfig.linux === false && Deno.build.os === "linux") {
+    return true;
+  } else if (testConfig.darwin === false && Deno.build.os === "darwin") {
+    return true;
+  }
+
+  return false;
+}
+
 for (const [name, testConfig] of sequentialTests) {
-  Deno.test("Node compat: " + name, async () => {
-    await run(name, testConfig);
-  });
+  Deno.test(
+    "Node compat: " + name,
+    { ignore: computeIgnores(testConfig) },
+    async () => {
+      await run(name, testConfig);
+    },
+  );
 }
 
 Deno.test("Node compat: parallel tests", async (t) => {
@@ -53,6 +72,7 @@ Deno.test("Node compat: parallel tests", async (t) => {
     ([name, testConfig]) =>
       t.step({
         name,
+        ignore: computeIgnores(testConfig),
         fn: () => run(name, testConfig),
         sanitizeExit: false,
         sanitizeOps: false,

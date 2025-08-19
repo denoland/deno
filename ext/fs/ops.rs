@@ -298,6 +298,7 @@ where
   Ok(())
 }
 
+#[cfg(unix)]
 #[op2(fast, stack_trace)]
 pub fn op_fs_chmod_sync<P>(
   state: &mut OpState,
@@ -317,11 +318,57 @@ where
   Ok(())
 }
 
+#[cfg(not(unix))]
+#[op2(fast, stack_trace)]
+pub fn op_fs_chmod_sync<P>(
+  state: &mut OpState,
+  #[string] path: &str,
+  mode: i32,
+) -> Result<(), FsOpsError>
+where
+  P: FsPermissions + 'static,
+{
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::WriteNoFollow,
+    "Deno.chmodSync()",
+  )?;
+  let fs = state.borrow::<FileSystemRc>();
+  fs.chmod_sync(&path, mode).context_path("chmod", &path)?;
+  Ok(())
+}
+
+#[cfg(unix)]
 #[op2(async, stack_trace)]
 pub async fn op_fs_chmod_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   mode: u32,
+) -> Result<(), FsOpsError>
+where
+  P: FsPermissions + 'static,
+{
+  let (fs, path) = {
+    let mut state = state.borrow_mut();
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.chmod()",
+    )?;
+    (state.borrow::<FileSystemRc>().clone(), path)
+  };
+  fs.chmod_async(path.as_owned(), mode)
+    .await
+    .context_path("chmod", &path)?;
+  Ok(())
+}
+
+#[cfg(not(unix))]
+#[op2(async, stack_trace)]
+pub async fn op_fs_chmod_async<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+  mode: i32,
 ) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
@@ -1485,10 +1532,10 @@ where
   if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
 
-    if let Some(cancel_rid) = cancel_rid {
-      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-        res.close();
-      }
+    if let Some(cancel_rid) = cancel_rid
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
     };
 
     res?.context_path("writefile", &path)?;
@@ -1551,10 +1598,10 @@ where
   let buf = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
 
-    if let Some(cancel_rid) = cancel_rid {
-      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-        res.close();
-      }
+    if let Some(cancel_rid) = cancel_rid
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
     };
 
     res?.context_path("readfile", &path)?
@@ -1621,10 +1668,10 @@ where
   let str = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
 
-    if let Some(cancel_rid) = cancel_rid {
-      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-        res.close();
-      }
+    if let Some(cancel_rid) = cancel_rid
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
     };
 
     res?.context_path("readfile", &path)?

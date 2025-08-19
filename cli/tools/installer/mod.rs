@@ -39,6 +39,7 @@ use crate::args::resolve_no_prompt;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
@@ -136,16 +137,16 @@ fn get_installer_bin_dir(
 }
 
 fn get_installer_root() -> Result<PathBuf, AnyError> {
-  if let Some(env_dir) = env::var_os("DENO_INSTALL_ROOT") {
-    if !env_dir.is_empty() {
-      let env_dir = PathBuf::from(env_dir);
-      return canonicalize_path_maybe_not_exists(&env_dir).with_context(|| {
-        format!(
-          "Canonicalizing DENO_INSTALL_ROOT ('{}').",
-          env_dir.display()
-        )
-      });
-    }
+  if let Some(env_dir) = env::var_os("DENO_INSTALL_ROOT")
+    && !env_dir.is_empty()
+  {
+    let env_dir = PathBuf::from(env_dir);
+    return canonicalize_path_maybe_not_exists(&env_dir).with_context(|| {
+      format!(
+        "Canonicalizing DENO_INSTALL_ROOT ('{}').",
+        env_dir.display()
+      )
+    });
   }
   // Note: on Windows, the $HOME environment variable may be set by users or by
   // third party software, but it is non-standard and should not be relied upon.
@@ -179,10 +180,10 @@ pub async fn uninstall(
     get_installer_bin_dir(&cwd, uninstall_flags.root.as_deref())?;
 
   // ensure directory exists
-  if let Ok(metadata) = fs::metadata(&installation_dir) {
-    if !metadata.is_dir() {
-      return Err(anyhow!("Installation path is not a directory"));
-    }
+  if let Ok(metadata) = fs::metadata(&installation_dir)
+    && !metadata.is_dir()
+  {
+    return Err(anyhow!("Installation path is not a directory"));
   }
 
   let file_path = installation_dir.join(&uninstall_flags.name);
@@ -231,7 +232,12 @@ pub(crate) async fn install_from_entrypoints(
   let factory = CliFactory::from_flags(flags.clone());
   let emitter = factory.emitter()?;
   let main_graph_container = factory.main_module_graph_container().await?;
-  let specifiers = main_graph_container.collect_specifiers(entrypoints)?;
+  let specifiers = main_graph_container.collect_specifiers(
+    entrypoints,
+    CollectSpecifiersOptions {
+      include_ignored_specified: true,
+    },
+  )?;
   main_graph_container
     .check_specifiers(
       &specifiers,
@@ -329,6 +335,7 @@ async fn install_global(
     Default::default(),
     deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
+    factory.memory_files().clone(),
     factory.sys(),
     CreateCliFileFetcherOptions {
       allow_remote: true,
@@ -370,7 +377,12 @@ async fn install_global(
   factory
     .main_module_graph_container()
     .await?
-    .load_and_type_check_files(&[install_flags_global.module_url.clone()])
+    .load_and_type_check_files(
+      std::slice::from_ref(&install_flags_global.module_url),
+      CollectSpecifiersOptions {
+        include_ignored_specified: true,
+      },
+    )
     .await?;
 
   if matches!(flags.config_flag, ConfigFlag::Discover)

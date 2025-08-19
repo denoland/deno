@@ -41,7 +41,7 @@ pub enum NpmModuleLoadError {
   StrippingTypesNodeModules(#[from] StrippingTypesNodeModulesError),
   #[class(inherit)]
   #[error(transparent)]
-  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
   #[class(inherit)]
   #[error(transparent)]
   TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),
@@ -115,7 +115,6 @@ pub struct NpmModuleLoader<
   TSys: NpmModuleLoaderSys,
 > {
   cjs_tracker: CjsTrackerRc<TInNpmPackageChecker, TSys>,
-  sys: TSys,
   node_code_translator: NodeCodeTranslatorRc<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
@@ -123,6 +122,7 @@ pub struct NpmModuleLoader<
     TNpmPackageFolderResolver,
     TSys,
   >,
+  sys: TSys,
 }
 
 impl<
@@ -232,7 +232,7 @@ impl<
 }
 
 #[inline(always)]
-fn from_utf8_lossy_cow(bytes: Cow<[u8]>) -> Cow<str> {
+fn from_utf8_lossy_cow(bytes: Cow<'_, [u8]>) -> Cow<'_, str> {
   match bytes {
     Cow::Borrowed(bytes) => String::from_utf8_lossy(bytes),
     Cow::Owned(bytes) => Cow::Owned(from_utf8_lossy_owned(bytes)),

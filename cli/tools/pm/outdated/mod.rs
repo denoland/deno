@@ -189,6 +189,7 @@ pub async fn outdated(
     Default::default(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
+    factory.memory_files().clone(),
     factory.sys(),
     CreateCliFileFetcherOptions {
       allow_remote: true,

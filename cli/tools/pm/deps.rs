@@ -19,6 +19,7 @@ use deno_core::futures::future::try_join;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::serde_json;
+use deno_npm::registry::NpmPackageInfo;
 use deno_package_json::PackageJsonDepsMap;
 use deno_package_json::PackageJsonRc;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -65,7 +66,7 @@ impl DepLocation {
     matches!(self, DepLocation::DenoJson(..))
   }
 
-  pub fn file_path(&self) -> Cow<std::path::Path> {
+  pub fn file_path(&self) -> Cow<'_, std::path::Path> {
     match self {
       DepLocation::DenoJson(arc, _, kind) => match kind {
         ImportMapKind::Inline => {
@@ -714,13 +715,29 @@ impl DepManager {
           async {
             let semver_req = &dep.req;
             let _permit = npm_sema.acquire().await;
-            let semver_compatible =
+            let mut semver_compatible =
               self.npm_fetch_resolver.req_to_nv(semver_req).await;
             let info =
               self.npm_fetch_resolver.package_info(&semver_req.name).await;
             let latest = info
               .and_then(|info| {
                 let latest_tag = info.dist_tags.get("latest")?;
+
+                // see https://github.com/denoland/deno_npm/blob/722fbecb5bdbd93241e5fc774cc1deaebd40365b/src/resolution/common.rs#L117-L125
+                let can_use_latest = npm_version_satisfies(
+                  latest_tag,
+                  &semver_req.version_req,
+                  &info,
+                );
+
+                if can_use_latest {
+                  semver_compatible = Some(PackageNv {
+                    name: semver_req.name.clone(),
+                    version: latest_tag.clone(),
+                  });
+                  return Some(latest_tag.clone());
+                }
+
                 let lower_bound = &semver_compatible.as_ref()?.version;
                 if latest_tag >= lower_bound {
                   Some(latest_tag.clone())
@@ -928,6 +945,17 @@ impl DepManager {
 
     Ok(())
   }
+}
+
+fn npm_version_satisfies(
+  version: &Version,
+  version_req: &VersionReq,
+  npm_info: &NpmPackageInfo,
+) -> bool {
+  if let Some(tag) = version_req.tag() {
+    return npm_info.dist_tags.get(tag) == Some(version);
+  }
+  version_req.matches(version)
 }
 
 fn get_or_create_updater<'a>(

@@ -36,7 +36,11 @@ import {
 } from "ext:deno_node/internal/util/types.ts";
 import { startTlsInternal } from "ext:deno_net/02_tls.js";
 import { internals } from "ext:core/mod.js";
-import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
+import {
+  op_tls_canonicalize_ipv4_address,
+  op_tls_key_null,
+  op_tls_key_static,
+} from "ext:core/ops";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -81,14 +85,30 @@ export class TLSSocket extends net.Socket {
       "localhost";
     tlsOptions.hostname = hostname;
 
-    const _cert = tlsOptions?.secureContext?.cert;
-    const _key = tlsOptions?.secureContext?.key;
-
+    const cert = tlsOptions?.secureContext?.cert;
+    const key = tlsOptions?.secureContext?.key;
+    const hasTlsKey = key !== undefined &&
+      cert !== undefined;
+    const keyPair = hasTlsKey
+      ? op_tls_key_static(cert, key)
+      : op_tls_key_null();
     let caCerts = tlsOptions?.secureContext?.ca;
-    if (typeof caCerts === "string") caCerts = [caCerts];
-    else if (isArrayBufferView(caCerts) || isAnyArrayBuffer(caCerts)) {
+    if (typeof caCerts === "string") {
+      caCerts = [caCerts];
+    } else if (isArrayBufferView(caCerts) || isAnyArrayBuffer(caCerts)) {
       caCerts = [new TextDecoder().decode(caCerts)];
+    } else if (Array.isArray(caCerts)) {
+      caCerts = caCerts.map((cert) => {
+        if (typeof cert === "string") {
+          return cert;
+        } else if (isArrayBufferView(cert) || isAnyArrayBuffer(cert)) {
+          return new TextDecoder().decode(cert);
+        }
+        return cert;
+      });
     }
+
+    tlsOptions.keyPair = keyPair;
     tlsOptions.caCerts = caCerts;
     tlsOptions.alpnProtocols = opts.ALPNProtocols;
     tlsOptions.rejectUnauthorized = opts.rejectUnauthorized !== false;
@@ -99,6 +119,7 @@ export class TLSSocket extends net.Socket {
       manualStart: true, // This prevents premature reading from TLS handle
     });
     if (socket) {
+      this.on("close", () => this._parent?.emit("close"));
       this._parent = socket;
     }
     this._tlsOptions = tlsOptions;
