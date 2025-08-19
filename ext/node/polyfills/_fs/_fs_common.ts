@@ -7,15 +7,6 @@ const {
   ReflectApply,
   Error,
 } = primordials;
-import {
-  O_APPEND,
-  O_CREAT,
-  O_EXCL,
-  O_RDONLY,
-  O_RDWR,
-  O_TRUNC,
-  O_WRONLY,
-} from "ext:deno_node/_fs/_fs_constants.ts";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
 import {
@@ -52,11 +43,6 @@ export type ReadOptions = {
 export interface WriteFileOptions extends FileOptions {
   mode?: number;
 }
-
-export type OpOpenOptions = Deno.OpenOptions & {
-  customFlags?: number;
-  mode?: number;
-};
 
 export function isFileOptions(
   fileOptions: string | WriteFileOptions | undefined,
@@ -127,54 +113,6 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
   }
 
   throw new Error(`The value "${encoding}" is invalid for option "encoding"`);
-}
-
-export function getOpenOptions(
-  flag: number | undefined,
-  mode: number | undefined,
-): OpOpenOptions {
-  if (typeof flag !== "number") {
-    return { create: true, append: true, mode };
-  }
-
-  const openOptions: OpOpenOptions = { mode };
-  let customFlags = flag;
-
-  if ((flag & O_APPEND) === O_APPEND) {
-    openOptions.append = true;
-    customFlags &= ~O_APPEND;
-  }
-  if ((flag & O_CREAT) === O_CREAT) {
-    openOptions.create = true;
-    openOptions.write = true;
-    customFlags &= ~O_CREAT;
-  }
-  if ((flag & O_EXCL) === O_EXCL) {
-    openOptions.createNew = true;
-    openOptions.read = true;
-    openOptions.write = true;
-    customFlags &= ~O_EXCL;
-  }
-  if ((flag & O_TRUNC) === O_TRUNC) {
-    openOptions.truncate = true;
-    customFlags &= ~O_TRUNC;
-  }
-  if ((flag & O_RDONLY) === O_RDONLY) {
-    openOptions.read = true;
-    customFlags &= ~O_RDONLY;
-  }
-  if ((flag & O_WRONLY) === O_WRONLY) {
-    openOptions.write = true;
-    customFlags &= ~O_WRONLY;
-  }
-  if ((flag & O_RDWR) === O_RDWR) {
-    openOptions.read = true;
-    openOptions.write = true;
-    customFlags &= ~O_RDWR;
-  }
-  openOptions.customFlags = customFlags;
-
-  return openOptions;
 }
 
 export { isUint32 as isFd } from "ext:deno_node/internal/validators.mjs";

@@ -131,6 +131,52 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   await promise;
 });
 
+Deno.test("tls.connect after-read tls upgrade", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ctl = new AbortController();
+  const serve = Deno.serve({
+    port: 8444,
+    key,
+    cert,
+    signal: ctl.signal,
+  }, () => new Response("hello"));
+
+  await delay(200);
+
+  const socket = net.connect({
+    host: "localhost",
+    port: 8444,
+  });
+  socket.on("connect", () => {
+    socket.on("data", () => {});
+    socket.on("close", resolve);
+
+    socket.removeAllListeners("data");
+
+    const conn = tls.connect({
+      host: "localhost",
+      port: 8444,
+      socket,
+      secureContext: {
+        ca: rootCaCert,
+        // deno-lint-ignore no-explicit-any
+      } as any,
+    });
+
+    conn.setEncoding("utf8");
+    conn.write(`GET / HTTP/1.1\nHost: www.google.com\n\n`);
+
+    conn.on("data", (e) => {
+      assertStringIncludes(e, "hello");
+      conn.destroy();
+      ctl.abort();
+    });
+  });
+
+  await serve.finished;
+  await promise;
+});
+
 Deno.test("tls.createServer creates a TLS server", async () => {
   const deferred = Promise.withResolvers<void>();
   const server = tls.createServer(
@@ -303,4 +349,53 @@ Deno.test({
     throw new Error(`stderr: ${new TextDecoder().decode(stderr)}`);
   }
   assertEquals(new TextDecoder().decode(stdout), "");
+});
+
+Deno.test("mTLS client certificate authentication", async () => {
+  const clientKey = key;
+  const clientCert = cert;
+
+  const server = tls.createServer({
+    key,
+    cert,
+    requestCert: true,
+    rejectUnauthorized: true,
+    ca: [rootCaCert],
+  }, (socket) => {
+    socket.write("mTLS success!");
+    socket.end();
+  });
+
+  const { promise, resolve, reject } = Promise.withResolvers<string>();
+
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any)?.port;
+
+    const client = tls.connect({
+      host: "localhost",
+      port,
+      key: clientKey,
+      cert: clientCert,
+      ca: rootCaCert,
+    });
+
+    client.setEncoding("utf8");
+    let data = "";
+    client.on("data", (chunk) => {
+      data += chunk;
+    });
+
+    client.on("end", () => {
+      resolve(data);
+    });
+
+    client.on("error", (err) => {
+      reject(err);
+    });
+  });
+
+  const result = await promise;
+  assertEquals(result, "mTLS success!");
+  server.close();
 });

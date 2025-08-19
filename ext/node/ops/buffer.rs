@@ -156,7 +156,10 @@ pub fn op_node_decode_utf8<'a>(
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 enum BufferError {
-  #[error("String too long")]
+  #[error(
+    "Cannot create a string longer than 0x{:x} characters",
+    v8::String::MAX_LENGTH
+  )]
   #[class(generic)]
   #[property("code" = "ERR_STRING_TOO_LONG")]
   StringTooLong,

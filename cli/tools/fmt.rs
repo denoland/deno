@@ -1237,12 +1237,12 @@ fn get_typescript_config_builder(
     builder.indent_width(indent_width);
   }
 
-  if let Some(single_quote) = options.single_quote {
-    if single_quote {
-      builder.quote_style(
-        dprint_plugin_typescript::configuration::QuoteStyle::PreferSingle,
-      );
-    }
+  if let Some(single_quote) = options.single_quote
+    && single_quote
+  {
+    builder.quote_style(
+      dprint_plugin_typescript::configuration::QuoteStyle::PreferSingle,
+    );
   }
 
   if let Some(semi_colons) = options.semi_colons {
@@ -1619,7 +1619,7 @@ pub struct FileContents<'a> {
   pub had_bom: bool,
 }
 
-fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
+fn read_file_contents(file_path: &Path) -> Result<FileContents<'_>, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);

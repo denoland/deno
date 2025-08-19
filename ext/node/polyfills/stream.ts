@@ -173,6 +173,7 @@ export {
   getDefaultHighWaterMark,
   PassThrough,
   pipeline,
+  promises,
   Readable,
   setDefaultHighWaterMark,
   Stream,

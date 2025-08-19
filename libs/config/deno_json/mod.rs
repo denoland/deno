@@ -1353,7 +1353,7 @@ impl ConfigFile {
   pub fn to_import_map_value(
     &self,
     sys: &impl FsRead,
-  ) -> Result<Option<(Cow<Url>, serde_json::Value)>, ConfigFileError> {
+  ) -> Result<Option<(Cow<'_, Url>, serde_json::Value)>, ConfigFileError> {
     // has higher precedence over the path
     if self.json.imports.is_some() || self.json.scopes.is_some() {
       Ok(Some((
@@ -1983,28 +1983,26 @@ impl ConfigFile {
       // add jsxImportSource
       if let Some(serde_json::Value::String(value)) =
         compiler_options.get("jsxImportSource")
+        && let Some(dep_req) = value_to_dep_req(value)
       {
-        if let Some(dep_req) = value_to_dep_req(value) {
-          set.insert(dep_req);
-        }
+        set.insert(dep_req);
       }
       // add jsxImportSourceTypes
       if let Some(serde_json::Value::String(value)) =
         compiler_options.get("jsxImportSourceTypes")
+        && let Some(dep_req) = value_to_dep_req(value)
       {
-        if let Some(dep_req) = value_to_dep_req(value) {
-          set.insert(dep_req);
-        }
+        set.insert(dep_req);
       }
       // add the dependencies in the types array
       if let Some(serde_json::Value::Array(types)) =
         compiler_options.get("types")
       {
         for value in types {
-          if let serde_json::Value::String(value) = value {
-            if let Some(dep_req) = value_to_dep_req(value) {
-              set.insert(dep_req);
-            }
+          if let serde_json::Value::String(value) = value
+            && let Some(dep_req) = value_to_dep_req(value)
+          {
+            set.insert(dep_req);
           }
         }
       }

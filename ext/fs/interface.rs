@@ -117,8 +117,15 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     mode: Option<u32>,
   ) -> FsResult<()>;
 
+  #[cfg(unix)]
   fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()>;
+  #[cfg(not(unix))]
+  fn chmod_sync(&self, path: &CheckedPath, mode: i32) -> FsResult<()>;
+
+  #[cfg(unix)]
   async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()>;
+  #[cfg(not(unix))]
+  async fn chmod_async(&self, path: CheckedPathBuf, mode: i32) -> FsResult<()>;
 
   fn chown_sync(
     &self,
