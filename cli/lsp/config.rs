@@ -1172,6 +1172,24 @@ impl Config {
     .unwrap_or(false)
   }
 
+  /// Whether or not the client supports pull-based diagnostics.
+  pub fn diagnostic_capable(&self) -> bool {
+    (|| {
+      let text_document = self.client_capabilities.text_document.as_ref()?;
+      Some(text_document.diagnostic.is_some())
+    })()
+    .unwrap_or(false)
+  }
+
+  /// Whether or not the client supports pull-based diagnostics.
+  pub fn diagnostic_refresh_capable(&self) -> bool {
+    (|| {
+      let workspace = self.client_capabilities.workspace.as_ref()?;
+      workspace.diagnostic.as_ref()?.refresh_support
+    })()
+    .unwrap_or(false)
+  }
+
   pub fn line_folding_only_capable(&self) -> bool {
     (|| {
       let text_document = self.client_capabilities.text_document.as_ref()?;
