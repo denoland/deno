@@ -4901,19 +4901,28 @@ impl Inner {
           error!("Failed to convert range to text_span: {:#}", err);
           LspError::internal_error()
         })?;
-    let maybe_inlay_hints = self
+    let mut inlay_hints = self
       .ts_server
       .provide_inlay_hints(self.snapshot(), &module, text_span, token)
-      .await
-      .map_err(|err| {
-        if token.is_cancelled() {
-          LspError::request_cancelled()
-        } else {
-          error!("Unable to get inlay hints from TypeScript: {:#}", err);
-          LspError::internal_error()
-        }
-      })?;
-    let maybe_inlay_hints = maybe_inlay_hints
+      .await;
+    // Silence tsc debug failures.
+    // See https://github.com/denoland/deno/issues/30455.
+    // TODO(nayeemrmn): Keeps tabs on whether this is still necessary.
+    if let Err(err) = &inlay_hints
+      && err.to_string().contains("Debug Failure")
+    {
+      lsp_warn!("Unable to get inlay hints from TypeScript: {:#}", err);
+      inlay_hints = Ok(None)
+    }
+    let inlay_hints = inlay_hints.map_err(|err| {
+      if token.is_cancelled() {
+        LspError::request_cancelled()
+      } else {
+        error!("Unable to get inlay hints from TypeScript: {:#}", err);
+        LspError::internal_error()
+      }
+    })?;
+    let inlay_hints = inlay_hints
       .map(|hints| {
         hints
           .into_iter()
@@ -4927,7 +4936,7 @@ impl Inner {
       })
       .transpose()?;
     self.performance.measure(mark);
-    Ok(maybe_inlay_hints)
+    Ok(inlay_hints)
   }
 
   async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {
