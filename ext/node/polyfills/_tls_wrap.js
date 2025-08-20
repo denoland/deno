@@ -313,7 +313,7 @@ class JSStreamSocket {
 
     (async () => {
       while (true) {
-	      await Promise.resolve();
+        await Promise.resolve();
         const buf = new Uint8Array(1024 * 16);
         const nread = await core.read(this.#duplexRid, buf);
         this.stream.write(buf.subarray(0, nread));
@@ -326,12 +326,13 @@ class JSStreamSocket {
   }
 
   read(buf) {
-	  console.log("JSStreamSocket: reading data", buf.byteLength);
-    return core.read(this.#duplexRid, buf);
+    console.log("JSStreamSocket: reading decrypted data", buf.byteLength);
+    // Read decrypted application data from the TLS stream, not the duplex
+    return core.read(this.#rid, buf);
   }
 
   write(data) {
-    return core.write(this.#duplexRid, data);
+    return core.write(this.#rid, data);
   }
 
   [internals.getPeerCertificate](detailed) {

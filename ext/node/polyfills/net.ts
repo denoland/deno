@@ -1598,7 +1598,7 @@ Socket.prototype.destroySoon = function () {
 
 Socket.prototype._unrefTimer = function () {
   // deno-lint-ignore no-this-alias
-  for (let s = this; s !== null; s = s._parent) {
+  for (let s = this; s != null; s = s._parent) {
     if (s[kTimeout]) {
       s[kTimeout].refresh();
     }

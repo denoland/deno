@@ -368,7 +368,7 @@ impl JSDuplexResource {
       .lock()
       .map_err(|_| Error::new(ErrorKind::Other, "Failed to acquire lock"))?;
 
-      dbg!("JSDuplexResource::read - waiting for data");
+    dbg!("JSDuplexResource::read - waiting for data");
     match receiver.recv().await {
       Some(bytes) => {
         let len = std::cmp::min(data.len(), bytes.len());
