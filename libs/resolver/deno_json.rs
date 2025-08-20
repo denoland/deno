@@ -1078,9 +1078,6 @@ impl CompilerOptionsResolver {
         logged_warnings.clone(),
         overrides.clone(),
       ));
-    if root_dir.has_deno_or_pkg_json() {
-      ts_config_collector.add_root(root_dir.dir_path().join("tsconfig.json"));
-    }
     for dir in workspace.resolve_member_dirs() {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
