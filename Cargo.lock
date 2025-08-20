@@ -1806,6 +1806,7 @@ dependencies = [
  "boxed_error",
  "capacity_builder",
  "deno_error",
+ "deno_maybe_sync",
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
@@ -2073,6 +2074,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_io",
+ "deno_maybe_sync",
  "deno_path_util",
  "deno_permissions",
  "filetime",
@@ -2285,6 +2287,13 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.12",
+]
+
+[[package]]
+name = "deno_maybe_sync"
+version = "0.0.1"
+dependencies = [
+ "dashmap",
 ]
 
 [[package]]
@@ -2578,6 +2587,7 @@ version = "0.15.0"
 dependencies = [
  "boxed_error",
  "deno_error",
+ "deno_maybe_sync",
  "deno_path_util",
  "deno_semver",
  "indexmap 2.9.0",
@@ -2684,6 +2694,7 @@ dependencies = [
  "deno_error",
  "deno_graph",
  "deno_lockfile",
+ "deno_maybe_sync",
  "deno_media_type",
  "deno_npm",
  "deno_package_json",
@@ -5953,6 +5964,7 @@ dependencies = [
  "dashmap",
  "deno_error",
  "deno_graph",
+ "deno_maybe_sync",
  "deno_media_type",
  "deno_package_json",
  "deno_path_util",

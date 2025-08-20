@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_maybe_sync::new_rc;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonLoadError;
 use deno_package_json::PackageJsonRc;
@@ -38,7 +39,6 @@ use crate::glob::FilePatterns;
 use crate::glob::PathOrPattern;
 use crate::glob::PathOrPatternSet;
 use crate::glob::is_glob_pattern;
-use crate::sync::new_rc;
 use crate::util::is_skippable_io_error;
 use crate::workspace::ConfigReadError;
 use crate::workspace::Workspace;
