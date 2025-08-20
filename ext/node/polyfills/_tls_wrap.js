@@ -296,7 +296,6 @@ export class TLSSocket extends net.Socket {
 
 class JSStreamSocket {
   #rid;
-  #duplexRid;
 
   constructor(stream) {
     this.stream = stream;
@@ -305,20 +304,28 @@ class JSStreamSocket {
   init(options) {
     op_node_tls_start(options, tlsStreamRids);
     this.#rid = tlsStreamRids[0];
-    this.#duplexRid = tlsStreamRids[1];
+    const channelRid = tlsStreamRids[1];
 
     this.stream.on("data", (data) => {
-      core.write(this.#duplexRid, data);
+      core.write(channelRid, data);
     });
 
+    const buf = new Uint8Array(1024 * 16);
     (async () => {
       while (true) {
-        await Promise.resolve();
-        const buf = new Uint8Array(1024 * 16);
-        const nread = await core.read(this.#duplexRid, buf);
-        this.stream.write(buf.subarray(0, nread));
+        try {
+          const nread = await core.read(channelRid, buf);
+          this.stream.write(buf.slice(0, nread));
+        } catch {
+          break;
+        }
       }
     })();
+
+    this.stream.on("close", () => {
+      core.close(this.#rid);
+      core.close(channelRid);
+    });
   }
 
   handshake() {
@@ -332,17 +339,11 @@ class JSStreamSocket {
   write(data) {
     return core.write(this.#rid, data);
   }
-
-  [internals.getPeerCertificate](detailed) {
-    // TODO
-    throw new Error("JSStreamSocket.getPeerCertificate not implemented");
-  }
 }
 
 function startTls(wrap, handle, options) {
   if (wrap instanceof JSStreamSocket) {
     options.caCerts ??= [];
-
     wrap.init(options);
     return wrap;
   } else {
