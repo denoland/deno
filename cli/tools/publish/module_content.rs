@@ -206,13 +206,14 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
         import_source
       ));
     }
-    if !leading_comments_has_re(&JSX_FACTORY_RE) {
+    let is_classic = jsx_options.jsx_runtime == "classic";
+    if is_classic && !leading_comments_has_re(&JSX_FACTORY_RE) {
       add_text_change(format!(
         "/** @jsxFactory {} */",
         jsx_options.jsx_factory,
       ));
     }
-    if !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
+    if is_classic && !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
       add_text_change(format!(
         "/** @jsxFragmentFactory {} */",
         jsx_options.jsx_fragment_factory,
@@ -311,7 +312,7 @@ mod test {
     run_test(&[
       (
         "/deno.json",
-        r#"{ "workspace": ["package-a", "package-b", "package-c"] }"#,
+        r#"{ "workspace": ["package-a", "package-b", "package-c", "package-d"] }"#,
         None,
       ),
       (
@@ -355,17 +356,28 @@ mod test {
         None,
       ),
       (
+        "/package-d/deno.json",
+        r#"{
+        "compilerOptions": { "jsx": "react" },
+        "imports": {
+          "react": "npm:react"
+          "@types/react": "npm:@types/react"
+        }
+      }"#,
+        None,
+      ),
+      (
         "/package-a/main.tsx",
         "export const component = <div></div>;",
         Some(
-          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;",
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react */export const component = <div></div>;",
         ),
       ),
       (
         "/package-b/main.tsx",
         "export const componentB = <div></div>;",
         Some(
-          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const componentB = <div></div>;",
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react */export const componentB = <div></div>;",
         ),
       ),
       (
@@ -389,7 +401,14 @@ mod test {
         "/package-c/main.tsx",
         "export const component = <div></div>;",
         Some(
-          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;",
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react */export const component = <div></div>;",
+        ),
+      ),
+      (
+        "/package-d/main.tsx",
+        "export const component = <div></div>;",
+        Some(
+          "/** @jsxRuntime classic *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;",
         ),
       ),
     ]);
