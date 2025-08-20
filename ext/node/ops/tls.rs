@@ -157,19 +157,19 @@ impl UnderlyingStream for JSStreamSocket {
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<std::io::Result<()>> {
     // Check if we have buffered data
-    if let Ok(buffer) = self.read_buffer.lock() {
-      if !buffer.is_empty() {
-        return Poll::Ready(Ok(()));
-      }
+    if let Ok(buffer) = self.read_buffer.lock()
+      && !buffer.is_empty()
+    {
+      return Poll::Ready(Ok(()));
     }
 
-    if let Ok(closed) = self.closed.lock() {
-      if *closed {
-        return Poll::Ready(Err(Error::new(
-          ErrorKind::UnexpectedEof,
-          "Stream closed",
-        )));
-      }
+    if let Ok(closed) = self.closed.lock()
+      && *closed
+    {
+      return Poll::Ready(Err(Error::new(
+        ErrorKind::UnexpectedEof,
+        "Stream closed",
+      )));
     }
 
     // Try to poll for data without consuming it
@@ -195,7 +195,7 @@ impl UnderlyingStream for JSStreamSocket {
         Poll::Pending => Poll::Pending,
       }
     } else {
-      Poll::Ready(Err(Error::new(ErrorKind::Other, "Failed to acquire lock")))
+      Poll::Ready(Err(Error::other("Failed to acquire lock")))
     }
   }
 
@@ -203,13 +203,13 @@ impl UnderlyingStream for JSStreamSocket {
     &self,
     _cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<std::io::Result<()>> {
-    if let Ok(closed) = self.closed.lock() {
-      if *closed {
-        return Poll::Ready(Err(Error::new(
-          ErrorKind::BrokenPipe,
-          "Stream closed",
-        )));
-      }
+    if let Ok(closed) = self.closed.lock()
+      && *closed
+    {
+      return Poll::Ready(Err(Error::new(
+        ErrorKind::BrokenPipe,
+        "Stream closed",
+      )));
     }
 
     // For bounded sender, check if channel is ready
@@ -224,25 +224,25 @@ impl UnderlyingStream for JSStreamSocket {
   }
 
   fn try_read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
-    if let Ok(closed) = self.closed.lock() {
-      if *closed {
-        return Err(Error::new(ErrorKind::UnexpectedEof, "Stream closed"));
-      }
+    if let Ok(closed) = self.closed.lock()
+      && *closed
+    {
+      return Err(Error::new(ErrorKind::UnexpectedEof, "Stream closed"));
     }
 
     // Check if we have buffered data first
-    if let Ok(mut buffer) = self.read_buffer.lock() {
-      if let Some(data) = buffer.pop_front() {
-        let len = std::cmp::min(buf.len(), data.len());
-        buf[..len].copy_from_slice(&data[..len]);
+    if let Ok(mut buffer) = self.read_buffer.lock()
+      && let Some(data) = buffer.pop_front()
+    {
+      let len = std::cmp::min(buf.len(), data.len());
+      buf[..len].copy_from_slice(&data[..len]);
 
-        // If there's leftover data, put it back in the buffer
-        if data.len() > len {
-          buffer.push_front(data.slice(len..));
-        }
-
-        return Ok(len);
+      // If there's leftover data, put it back in the buffer
+      if data.len() > len {
+        buffer.push_front(data.slice(len..));
       }
+
+      return Ok(len);
     }
 
     // Try to read from channel non-blocking
@@ -253,10 +253,10 @@ impl UnderlyingStream for JSStreamSocket {
           buf[..len].copy_from_slice(&data[..len]);
 
           // If there's leftover data, store it in buffer
-          if data.len() > len {
-            if let Ok(mut buffer) = self.read_buffer.lock() {
-              buffer.push_front(data.slice(len..));
-            }
+          if data.len() > len
+            && let Ok(mut buffer) = self.read_buffer.lock()
+          {
+            buffer.push_front(data.slice(len..));
           }
 
           Ok(len)
@@ -272,15 +272,15 @@ impl UnderlyingStream for JSStreamSocket {
         }
       }
     } else {
-      Err(Error::new(ErrorKind::Other, "Failed to acquire lock"))
+      Err(Error::other("Failed to acquire lock"))
     }
   }
 
   fn try_write(&self, buf: &[u8]) -> std::io::Result<usize> {
-    if let Ok(closed) = self.closed.lock() {
-      if *closed {
-        return Err(Error::new(ErrorKind::BrokenPipe, "Stream closed"));
-      }
+    if let Ok(closed) = self.closed.lock()
+      && *closed
+    {
+      return Err(Error::new(ErrorKind::BrokenPipe, "Stream closed"));
     }
 
     if self.writable.is_closed() {
@@ -349,36 +349,40 @@ impl JSDuplexResource {
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
     // First check if we have buffered data from previous partial read
-    if let Ok(mut buffer) = self.read_buffer.lock() {
-      if let Some(buffered_data) = buffer.pop_front() {
-        let len = std::cmp::min(data.len(), buffered_data.len());
-        data[..len].copy_from_slice(&buffered_data[..len]);
+    if let Ok(mut buffer) = self.read_buffer.lock()
+      && let Some(buffered_data) = buffer.pop_front()
+    {
+      let len = std::cmp::min(data.len(), buffered_data.len());
+      data[..len].copy_from_slice(&buffered_data[..len]);
 
-        // If there's remaining data, put it back in buffer
-        if buffered_data.len() > len {
-          buffer.push_front(buffered_data.slice(len..));
-        }
-
-        return Ok(len);
+      // If there's remaining data, put it back in buffer
+      if buffered_data.len() > len {
+        buffer.push_front(buffered_data.slice(len..));
       }
+
+      return Ok(len);
     }
 
     // No buffered data, receive new data from channel
-    let mut receiver = self
-      .readable
-      .lock()
-      .map_err(|_| Error::new(ErrorKind::Other, "Failed to acquire lock"))?;
+    let bytes = {
+      #[allow(clippy::await_holding_lock)]
+      let mut receiver = self
+        .readable
+        .lock()
+        .map_err(|_| Error::other("Failed to acquire lock"))?;
+      receiver.recv().await
+    };
 
-    match receiver.recv().await {
+    match bytes {
       Some(bytes) => {
         let len = std::cmp::min(data.len(), bytes.len());
         data[..len].copy_from_slice(&bytes[..len]);
 
         // If there's remaining data, buffer it for next read
-        if bytes.len() > len {
-          if let Ok(mut buffer) = self.read_buffer.lock() {
-            buffer.push_back(bytes.slice(len..));
-          }
+        if bytes.len() > len
+          && let Ok(mut buffer) = self.read_buffer.lock()
+        {
+          buffer.push_back(bytes.slice(len..));
         }
 
         Ok(len)
