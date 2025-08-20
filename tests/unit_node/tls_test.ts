@@ -320,6 +320,46 @@ Deno.test("tls connect upgrade tcp", async () => {
 });
 
 Deno.test({
+  name: "tls connect upgrade js socket wrapper",
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  class SocketWrapper extends stream.Duplex {
+    socket: net.Socket;
+
+    constructor() {
+      super();
+      this.socket = new net.Socket();
+    }
+
+    // deno-lint-ignore no-explicit-any
+    override _write(chunk: any, encoding: any, callback: any) {
+      this.socket.write(chunk, encoding, callback);
+    }
+
+    override _read() {
+    }
+
+    connect(port: number, host: string) {
+      this.socket.connect(port, host);
+      this.socket.on("data", (data) => this.push(data));
+      this.socket.on("end", () => this.push(null));
+    }
+  }
+
+  const socket = new SocketWrapper();
+  socket.connect(443, "google.com");
+
+  const secure = tls.connect({ socket, host: "google.com" });
+  secure.on("secureConnect", () => resolve());
+
+  await promise;
+  socket.destroy();
+});
+
+Deno.test({
   name: "[node/tls] tls.Server.unref() works",
   ignore: Deno.build.os === "windows",
 }, async () => {
