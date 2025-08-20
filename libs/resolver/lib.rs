@@ -70,10 +70,10 @@ mod sync {
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc<TSys> =
-  crate::sync::MaybeArc<WorkspaceResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<WorkspaceResolver<TSys>>;
 
 #[allow(clippy::disallowed_types)]
-pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
+pub(crate) type NpmCacheDirRc = deno_maybe_sync::MaybeArc<NpmCacheDir>;
 
 #[derive(Debug, Clone)]
 pub struct DenoResolution {
@@ -248,7 +248,7 @@ pub type RawDenoResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,

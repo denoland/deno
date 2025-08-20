@@ -20,6 +20,9 @@ use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverError;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
+use deno_maybe_sync::new_rc;
 pub use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use futures::future::FutureExt;
@@ -79,9 +82,6 @@ use crate::npm::managed::NpmResolutionCellRc;
 use crate::npmrc::NpmRcDiscoverError;
 use crate::npmrc::ResolvedNpmRcRc;
 use crate::npmrc::discover_npmrc_from_workspace;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
-use crate::sync::new_rc;
 use crate::workspace::FsCacheOptions;
 use crate::workspace::PackageJsonDepResolution;
 use crate::workspace::SloppyImportsOptions;
@@ -96,9 +96,11 @@ type Deferred<T> = once_cell::sync::OnceCell<T>;
 type Deferred<T> = once_cell::unsync::OnceCell<T>;
 
 #[allow(clippy::disallowed_types)]
-pub type WorkspaceDirectoryRc = crate::sync::MaybeArc<WorkspaceDirectory>;
+type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 #[allow(clippy::disallowed_types)]
-pub type WorkspaceRc = crate::sync::MaybeArc<Workspace>;
+pub type WorkspaceDirectoryRc = deno_maybe_sync::MaybeArc<WorkspaceDirectory>;
+#[allow(clippy::disallowed_types)]
+pub type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
 
 pub type DenoCjsModuleExportAnalyzerRc<TSys> = CjsModuleExportAnalyzerRc<
   DenoCjsCodeAnalyzer<TSys>,
@@ -215,7 +217,7 @@ pub struct WorkspaceFactoryOptions {
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceFactoryRc<TSys> =
-  crate::sync::MaybeArc<WorkspaceFactory<TSys>>;
+  deno_maybe_sync::MaybeArc<WorkspaceFactory<TSys>>;
 
 #[sys_traits::auto_impl]
 pub trait WorkspaceFactorySys:
@@ -499,7 +501,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           npm_package_info_provider,
         )
         .await?
-        .map(crate::sync::new_rc);
+        .map(deno_maybe_sync::new_rc);
 
         Ok(maybe_lock_file)
       })

@@ -18,7 +18,8 @@ pub struct DenoDirOptions {
 pub trait DenoDirSys: DiskCacheSys + ResolveDenoDirSys + Clone {}
 
 #[allow(clippy::disallowed_types)]
-pub type DenoDirProviderRc<TSys> = crate::sync::MaybeArc<DenoDirProvider<TSys>>;
+pub type DenoDirProviderRc<TSys> =
+  deno_maybe_sync::MaybeArc<DenoDirProvider<TSys>>;
 
 /// Lazily creates the deno dir which might be useful in scenarios
 /// where functionality wants to continue if the DENO_DIR can't be created.

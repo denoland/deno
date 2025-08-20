@@ -2074,6 +2074,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_io",
+ "deno_maybe_sync",
  "deno_path_util",
  "deno_permissions",
  "filetime",
@@ -2586,6 +2587,7 @@ version = "0.15.0"
 dependencies = [
  "boxed_error",
  "deno_error",
+ "deno_maybe_sync",
  "deno_path_util",
  "deno_semver",
  "indexmap 2.9.0",
@@ -5962,6 +5964,7 @@ dependencies = [
  "dashmap",
  "deno_error",
  "deno_graph",
+ "deno_maybe_sync",
  "deno_media_type",
  "deno_package_json",
  "deno_path_util",
