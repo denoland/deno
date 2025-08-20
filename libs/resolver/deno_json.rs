@@ -1082,16 +1082,18 @@ impl CompilerOptionsResolver {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       }
-      workspace_configs.insert(
-        dir.dir_url().clone(),
-        CompilerOptionsData::new(
-          dir.to_configured_compiler_options_sources(),
-          CompilerOptionsSourceKind::DenoJson,
-          Some(dir.dir_url().clone()),
-          logged_warnings.clone(),
-          overrides.clone(),
-        ),
-      );
+      if dir.dir_url() != root_dir.dir_url() {
+        workspace_configs.insert(
+          dir.dir_url().clone(),
+          CompilerOptionsData::new(
+            dir.to_configured_compiler_options_sources(),
+            CompilerOptionsSourceKind::DenoJson,
+            Some(dir.dir_url().clone()),
+            logged_warnings.clone(),
+            overrides.clone(),
+          ),
+        );
+      }
     }
     Self {
       workspace_configs,
