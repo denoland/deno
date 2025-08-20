@@ -405,6 +405,7 @@ export class LibuvStreamWrap extends HandleWrap {
       }
     }
 
+    console.log("read override", nread);
     nread ??= MapPrototypeGet(codeMap, "EOF")!;
 
     streamBaseState[kReadBytesOrError] = nread;

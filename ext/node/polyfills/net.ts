@@ -1664,7 +1664,7 @@ Socket.prototype._destroy = function (exception, cb) {
   this.connecting = false;
 
   // deno-lint-ignore no-this-alias
-  for (let s = this; s !== null; s = s._parent) {
+  for (let s = this; s != null; s = s._parent) {
     clearTimeout(s[kTimeout]);
   }
 

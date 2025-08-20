@@ -35,8 +35,10 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { startTlsInternal } from "ext:deno_net/02_tls.js";
-import { internals } from "ext:core/mod.js";
+import { core, internals } from "ext:core/mod.js";
 import {
+  op_node_tls_handshake,
+  op_node_tls_start,
   op_tls_canonicalize_ipv4_address,
   op_tls_key_null,
   op_tls_key_static,
@@ -46,6 +48,8 @@ const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
 const kPendingSession = Symbol("pendingSession");
 const kRes = Symbol("res");
+
+const tlsStreamRids = new Uint32Array(2);
 
 let debug = debuglog("tls", (fn) => {
   debug = fn;
@@ -160,10 +164,17 @@ export class TLSSocket extends net.Socket {
 
     /** Wraps the given socket and adds the tls capability to the underlying
      * handle */
-    function _wrapHandle(tlsOptions, wrap) {
+    function _wrapHandle(tlsOptions, socket) {
       let handle;
+      let wrap;
 
-      if (wrap) {
+      if (socket) {
+        if (socket instanceof net.Socket && socket._handle) {
+          wrap = socket;
+        } else {
+          wrap = new JSStreamSocket(socket);
+        }
+
         handle = wrap._handle;
       }
 
@@ -188,13 +199,14 @@ export class TLSSocket extends net.Socket {
         }
 
         try {
-          const conn = await startTlsInternal(
-            handle[kStreamBaseField],
+          const conn = await startTls(
+            wrap,
+            handle,
             options,
           );
           try {
             const hs = await conn.handshake();
-            if (hs.alpnProtocol) {
+            if (hs?.alpnProtocol) {
               tlssock.alpnProtocol = hs.alpnProtocol;
             } else {
               tlssock.alpnProtocol = false;
@@ -215,7 +227,8 @@ export class TLSSocket extends net.Socket {
 
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-        } catch {
+        } catch (e) {
+          console.log(e);
           // TODO(kt3k): Handle this
         }
       };
@@ -267,9 +280,74 @@ export class TLSSocket extends net.Socket {
     // TODO(kt3k): implement this
   }
 
+  setMaxSendFragment(_maxSendFragment) {
+    // TODO(littledivy): implement this
+  }
+
   getPeerCertificate(detailed = false) {
     const conn = this[kHandle]?.[kStreamBaseField];
     if (conn) return conn[internals.getPeerCertificate](detailed);
+  }
+
+  getCipher() {
+    return "";
+  }
+}
+
+class JSStreamSocket {
+  #rid;
+  #duplexRid;
+
+  constructor(stream) {
+    this.stream = stream;
+  }
+
+  init(options) {
+    op_node_tls_start(options, tlsStreamRids);
+    this.#rid = tlsStreamRids[0];
+    this.#duplexRid = tlsStreamRids[1];
+
+    this.stream.on("data", (data) => {
+      core.write(this.#duplexRid, data);
+    });
+
+    (async () => {
+      while (true) {
+	      await Promise.resolve();
+        const buf = new Uint8Array(1024 * 16);
+        const nread = await core.read(this.#duplexRid, buf);
+        this.stream.write(buf.subarray(0, nread));
+      }
+    })();
+  }
+
+  handshake() {
+    return op_node_tls_handshake(this.#rid);
+  }
+
+  read(buf) {
+	  console.log("JSStreamSocket: reading data", buf.byteLength);
+    return core.read(this.#duplexRid, buf);
+  }
+
+  write(data) {
+    return core.write(this.#duplexRid, data);
+  }
+
+  [internals.getPeerCertificate](detailed) {
+    // TODO
+    throw new Error("JSStreamSocket.getPeerCertificate not implemented");
+  }
+}
+
+function startTls(wrap, handle, options) {
+  if (wrap instanceof JSStreamSocket) {
+    options.caCerts ??= [];
+
+    wrap.init(options);
+    return wrap;
+  } else {
+    return startTlsInternal(handle[kStreamBaseField], options);
   }
 }
 
