@@ -326,8 +326,6 @@ class JSStreamSocket {
   }
 
   read(buf) {
-    console.log("JSStreamSocket: reading decrypted data", buf.byteLength);
-    // Read decrypted application data from the TLS stream, not the duplex
     return core.read(this.#rid, buf);
   }
 

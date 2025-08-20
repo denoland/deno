@@ -1,12 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::future::Future;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::task::Context;
 use std::task::Poll;
 
@@ -97,8 +100,6 @@ pub fn op_tls_canonicalize_ipv4_address(
 }
 
 // Two pairs of byte channels
-use std::sync::Arc;
-use std::sync::Mutex;
 
 struct ReadableFuture<'a> {
   socket: &'a JSStreamSocket,
@@ -125,22 +126,22 @@ impl<'a> Future for WritableFuture<'a> {
 }
 
 #[derive(Debug)]
-struct JSStreamSocket {
-  readable: Arc<Mutex<tokio::sync::mpsc::UnboundedReceiver<Bytes>>>,
-  writable: tokio::sync::mpsc::UnboundedSender<Bytes>,
-  read_buffer: Arc<Mutex<Option<Bytes>>>,
+pub struct JSStreamSocket {
+  readable: Arc<Mutex<tokio::sync::mpsc::Receiver<Bytes>>>,
+  writable: tokio::sync::mpsc::Sender<Bytes>,
+  read_buffer: Arc<Mutex<VecDeque<Bytes>>>,
   closed: Arc<Mutex<bool>>,
 }
 
 impl JSStreamSocket {
   pub fn new(
-    readable: tokio::sync::mpsc::UnboundedReceiver<Bytes>,
-    writable: tokio::sync::mpsc::UnboundedSender<Bytes>,
+    readable: tokio::sync::mpsc::Receiver<Bytes>,
+    writable: tokio::sync::mpsc::Sender<Bytes>,
   ) -> Self {
     Self {
       readable: Arc::new(Mutex::new(readable)),
       writable,
-      read_buffer: Arc::new(Mutex::new(None)),
+      read_buffer: Arc::new(Mutex::new(VecDeque::new())),
       closed: Arc::new(Mutex::new(false)),
     }
   }
@@ -155,7 +156,7 @@ impl UnderlyingStream for JSStreamSocket {
   ) -> std::task::Poll<std::io::Result<()>> {
     // Check if we have buffered data
     if let Ok(buffer) = self.read_buffer.lock() {
-      if buffer.is_some() {
+      if !buffer.is_empty() {
         return Poll::Ready(Ok(()));
       }
     }
@@ -175,7 +176,7 @@ impl UnderlyingStream for JSStreamSocket {
         Poll::Ready(Some(data)) => {
           // Store the data in buffer for try_read
           if let Ok(mut buffer) = self.read_buffer.lock() {
-            *buffer = Some(data);
+            buffer.push_back(data);
           }
           Poll::Ready(Ok(()))
         }
@@ -209,7 +210,7 @@ impl UnderlyingStream for JSStreamSocket {
       }
     }
 
-    // For unbounded sender, we're always ready to write unless closed
+    // For bounded sender, check if channel is ready
     if self.writable.is_closed() {
       if let Ok(mut closed) = self.closed.lock() {
         *closed = true;
@@ -229,13 +230,13 @@ impl UnderlyingStream for JSStreamSocket {
 
     // Check if we have buffered data first
     if let Ok(mut buffer) = self.read_buffer.lock() {
-      if let Some(data) = buffer.take() {
+      if let Some(data) = buffer.pop_front() {
         let len = std::cmp::min(buf.len(), data.len());
         buf[..len].copy_from_slice(&data[..len]);
 
         // If there's leftover data, put it back in the buffer
         if data.len() > len {
-          *buffer = Some(data.slice(len..));
+          buffer.push_front(data.slice(len..));
         }
 
         return Ok(len);
@@ -252,7 +253,7 @@ impl UnderlyingStream for JSStreamSocket {
           // If there's leftover data, store it in buffer
           if data.len() > len {
             if let Ok(mut buffer) = self.read_buffer.lock() {
-              *buffer = Some(data.slice(len..));
+              buffer.push_front(data.slice(len..));
             }
           }
 
@@ -289,13 +290,16 @@ impl UnderlyingStream for JSStreamSocket {
 
     // Convert buffer to Bytes and send
     let data = Bytes::copy_from_slice(buf);
-    match self.writable.send(data) {
+    match self.writable.try_send(data) {
       Ok(()) => Ok(buf.len()),
-      Err(_) => {
+      Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+        Err(Error::new(ErrorKind::WouldBlock, "Channel full"))
+      }
+      Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
         if let Ok(mut closed) = self.closed.lock() {
           *closed = true;
         }
-        Err(Error::new(ErrorKind::BrokenPipe, "Failed to send data"))
+        Err(Error::new(ErrorKind::BrokenPipe, "Channel closed"))
       }
     }
   }
@@ -343,18 +347,20 @@ impl UnderlyingStream for JSStreamSocket {
 }
 
 struct JSDuplexResource {
-  readable: Arc<Mutex<tokio::sync::mpsc::UnboundedReceiver<Bytes>>>,
-  writable: tokio::sync::mpsc::UnboundedSender<Bytes>,
+  readable: Arc<Mutex<tokio::sync::mpsc::Receiver<Bytes>>>,
+  writable: tokio::sync::mpsc::Sender<Bytes>,
+  read_buffer: Arc<Mutex<VecDeque<Bytes>>>,
 }
 
 impl JSDuplexResource {
   pub fn new(
-    readable: tokio::sync::mpsc::UnboundedReceiver<Bytes>,
-    writable: tokio::sync::mpsc::UnboundedSender<Bytes>,
+    readable: tokio::sync::mpsc::Receiver<Bytes>,
+    writable: tokio::sync::mpsc::Sender<Bytes>,
   ) -> Self {
     Self {
       readable: Arc::new(Mutex::new(readable)),
       writable,
+      read_buffer: Arc::new(Mutex::new(VecDeque::new())),
     }
   }
 
@@ -362,20 +368,39 @@ impl JSDuplexResource {
     self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
-    // Try to receive data from the readable channel
+    // First check if we have buffered data from previous partial read
+    if let Ok(mut buffer) = self.read_buffer.lock() {
+      if let Some(buffered_data) = buffer.pop_front() {
+        let len = std::cmp::min(data.len(), buffered_data.len());
+        data[..len].copy_from_slice(&buffered_data[..len]);
+
+        // If there's remaining data, put it back in buffer
+        if buffered_data.len() > len {
+          buffer.push_front(buffered_data.slice(len..));
+        }
+
+        return Ok(len);
+      }
+    }
+
+    // No buffered data, receive new data from channel
     let mut receiver = self
       .readable
       .lock()
       .map_err(|_| Error::new(ErrorKind::Other, "Failed to acquire lock"))?;
 
-    dbg!("JSDuplexResource::read - waiting for data");
     match receiver.recv().await {
       Some(bytes) => {
         let len = std::cmp::min(data.len(), bytes.len());
         data[..len].copy_from_slice(&bytes[..len]);
-        dbg!("JSDuplexResource::read - received data: {:?}", &data[..len]);
-        // If there's more data than our buffer can hold, we lose it
-        // This is a limitation of the current design
+
+        // If there's remaining data, buffer it for next read
+        if bytes.len() > len {
+          if let Ok(mut buffer) = self.read_buffer.lock() {
+            buffer.push_back(bytes.slice(len..));
+          }
+        }
+
         Ok(len)
       }
       None => {
@@ -395,6 +420,7 @@ impl JSDuplexResource {
     self
       .writable
       .send(bytes)
+      .await
       .map_err(|_| Error::new(ErrorKind::BrokenPipe, "Channel closed"))?;
 
     Ok(data.len())
@@ -531,28 +557,22 @@ pub fn op_node_tls_start(
       ))
     })?;
 
-  // Create channels for bidirectional communication between JS and TLS
-  // network_to_tls: Raw network data from JS to TLS (ServerHello, etc.)
-  // tls_to_network: TLS data from TLS to JS network (ClientHello, etc.)
   let (network_to_tls_tx, network_to_tls_rx) =
-    tokio::sync::mpsc::unbounded_channel::<Bytes>();
+    tokio::sync::mpsc::channel::<Bytes>(1024);
   let (tls_to_network_tx, tls_to_network_rx) =
-    tokio::sync::mpsc::unbounded_channel::<Bytes>();
+    tokio::sync::mpsc::channel::<Bytes>(1024);
 
-  // JSStreamSocket acts as the network interface for the TLS connection
-  // TLS reads network data and writes network data through this
   let js_stream = JSStreamSocket::new(network_to_tls_rx, tls_to_network_tx);
 
-  // Set up TLS configuration using deno_tls utilities
   let tls_null = TlsKeysHolder::from(TlsKeys::Null);
   let mut tls_config = create_client_config(
-    Default::default(), // root_cert_store
+    Default::default(),
     ca_certs,
     if reject_unauthorized {
       None
     } else {
       Some(Vec::new())
-    }, // unsafely_ignore_certificate_errors
+    },
     tls_null.take(),
     SocketUse::GeneralSsl,
   )?;
