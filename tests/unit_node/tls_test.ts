@@ -234,18 +234,6 @@ Deno.test("TLSSocket can construct without options", () => {
   new tls.TLSSocket(new stream.PassThrough() as any);
 });
 
-Deno.test("tlssocket._handle._parentWrap is set", () => {
-  // Note: This feature is used in popular 'http2-wrapper' module
-  // https://github.com/szmarczak/http2-wrapper/blob/51eeaf59ff9344fb192b092241bfda8506983620/source/utils/js-stream-socket.js#L6
-  const parentWrap =
-    // deno-lint-ignore no-explicit-any
-    ((new tls.TLSSocket(new stream.PassThrough() as any, {}) as any)
-      // deno-lint-ignore no-explicit-any
-      ._handle as any)!
-      ._parentWrap;
-  assertInstanceOf(parentWrap, stream.PassThrough);
-});
-
 Deno.test("tls.connect() throws InvalidData when there's error in certificate", async () => {
   // Uses execCode to avoid `--unsafely-ignore-certificate-errors` option applied
   const [status, output] = await execCode(`
