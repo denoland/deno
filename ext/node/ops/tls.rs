@@ -22,6 +22,10 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
+use deno_net::DefaultTlsOptions;
+use deno_net::UnsafelyIgnoreCertificateErrors;
+use deno_net::ops::NetError;
+use deno_net::ops::TlsHandshakeInfo;
 use deno_net::ops_tls::TlsStreamResource;
 use deno_tls::SocketUse;
 use deno_tls::TlsKeys;
@@ -98,8 +102,6 @@ pub fn op_tls_canonicalize_ipv4_address(
 
   Some(canonical_ip)
 }
-
-// Two pairs of byte channels
 
 struct ReadableFuture<'a> {
   socket: &'a JSStreamSocket,
@@ -288,7 +290,6 @@ impl UnderlyingStream for JSStreamSocket {
       return Err(Error::new(ErrorKind::BrokenPipe, "Channel closed"));
     }
 
-    // Convert buffer to Bytes and send
     let data = Bytes::copy_from_slice(buf);
     match self.writable.try_send(data) {
       Ok(()) => Ok(buf.len()),
@@ -312,33 +313,12 @@ impl UnderlyingStream for JSStreamSocket {
     WritableFuture { socket: self }
   }
 
-  fn shutdown(&self, how: std::net::Shutdown) -> std::io::Result<()> {
-    match how {
-      std::net::Shutdown::Read => {
-        // Close the read side - mark as closed
-        if let Ok(mut closed) = self.closed.lock() {
-          *closed = true;
-        }
-        // We can't actually close the receiver side of the channel
-        // but we can mark it as closed for our purposes
-        Ok(())
-      }
-      std::net::Shutdown::Write => {
-        // Close the write side
-        // The UnboundedSender doesn't have a direct close method,
-        // but dropping it will close the channel
-        if let Ok(mut closed) = self.closed.lock() {
-          *closed = true;
-        }
-        Ok(())
-      }
-      std::net::Shutdown::Both => {
-        if let Ok(mut closed) = self.closed.lock() {
-          *closed = true;
-        }
-        Ok(())
-      }
+  fn shutdown(&self, _: std::net::Shutdown) -> std::io::Result<()> {
+    if let Ok(mut closed) = self.closed.lock() {
+      *closed = true;
     }
+
+    Ok(())
   }
 
   fn into_std(self) -> Option<std::io::Result<Self::StdType>> {
@@ -414,7 +394,6 @@ impl JSDuplexResource {
     self: Rc<Self>,
     data: &[u8],
   ) -> Result<usize, std::io::Error> {
-    // Convert data to Bytes and send through the writable channel
     let bytes = Bytes::copy_from_slice(data);
 
     self
@@ -445,44 +424,40 @@ pub struct StartJSTlsArgs {
   reject_unauthorized: Option<bool>,
 }
 
-// TLS stream resource similar to TlsStreamResource but for JSStreamSocket
-#[derive(Debug)]
-enum JSStreamTlsInner {
-  JSSocket {
-    rd: AsyncRefCell<TlsStreamRead<JSStreamSocket>>,
-    wr: AsyncRefCell<TlsStreamWrite<JSStreamSocket>>,
-  },
-}
-
 #[derive(Debug)]
 pub struct JSStreamTlsResource {
-  inner: JSStreamTlsInner,
+  rd: AsyncRefCell<TlsStreamRead<JSStreamSocket>>,
+  wr: AsyncRefCell<TlsStreamWrite<JSStreamSocket>>,
 }
 
 impl JSStreamTlsResource {
-  pub fn new_js(
+  pub fn new(
     (rd, wr): (
       TlsStreamRead<JSStreamSocket>,
       TlsStreamWrite<JSStreamSocket>,
     ),
   ) -> Self {
     Self {
-      inner: JSStreamTlsInner::JSSocket {
-        rd: AsyncRefCell::new(rd),
-        wr: AsyncRefCell::new(wr),
-      },
+      rd: AsyncRefCell::new(rd),
+      wr: AsyncRefCell::new(wr),
     }
   }
 
-  pub async fn handshake(self: &Rc<Self>) -> Result<(), std::io::Error> {
-    let mut wr = RcRef::map(self, |r| match &r.inner {
-      JSStreamTlsInner::JSSocket { wr, .. } => wr,
-    })
-    .borrow_mut()
-    .await;
+  pub async fn handshake(
+    self: &Rc<Self>,
+  ) -> Result<TlsHandshakeInfo, std::io::Error> {
+    let mut wr = RcRef::map(self, |r| &r.wr).borrow_mut().await;
 
-    wr.handshake().await?;
-    Ok(())
+    let handshake = wr.handshake().await?;
+
+    let alpn_protocol = handshake.alpn.map(|alpn| alpn.into());
+    let peer_certificates = handshake.peer_certificates.clone();
+    let tls_info = TlsHandshakeInfo {
+      alpn_protocol,
+      peer_certificates,
+    };
+
+    Ok(tls_info)
   }
 
   pub async fn read(
@@ -490,11 +465,8 @@ impl JSStreamTlsResource {
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
     use tokio::io::AsyncReadExt;
-    let mut rd = RcRef::map(&self, |r| match &r.inner {
-      JSStreamTlsInner::JSSocket { rd, .. } => rd,
-    })
-    .borrow_mut()
-    .await;
+
+    let mut rd = RcRef::map(&self, |r| &r.rd).borrow_mut().await;
     rd.read(data).await
   }
 
@@ -503,11 +475,8 @@ impl JSStreamTlsResource {
     data: &[u8],
   ) -> Result<usize, std::io::Error> {
     use tokio::io::AsyncWriteExt;
-    let mut wr = RcRef::map(&self, |r| match &r.inner {
-      JSStreamTlsInner::JSSocket { wr, .. } => wr,
-    })
-    .borrow_mut()
-    .await;
+
+    let mut wr = RcRef::map(&self, |r| &r.wr).borrow_mut().await;
     let nwritten = wr.write(data).await?;
     wr.flush().await?;
     Ok(nwritten)
@@ -523,25 +492,19 @@ impl Resource for JSStreamTlsResource {
   }
 }
 
-// TLS op that creates both a TLS stream and user duplex, returning both RIDs
 #[op2]
 pub fn op_node_tls_start(
   state: Rc<RefCell<OpState>>,
   #[serde] args: StartJSTlsArgs,
   #[buffer] output: &mut [u32],
-) -> Result<(), deno_tls::TlsError> {
+) -> Result<(), NetError> {
   let reject_unauthorized = args.reject_unauthorized.unwrap_or(true);
   let hostname = match &*args.hostname {
     "" => "localhost".to_string(),
     n => n.to_string(),
   };
 
-  if output.len() < 2 {
-    return Err(deno_tls::TlsError::UnableAddPemFileToCert(Error::new(
-      ErrorKind::InvalidInput,
-      "Output buffer must have at least 2 elements",
-    )));
-  }
+  assert_eq!(output.len(), 2);
 
   let ca_certs = args
     .ca_certs
@@ -549,30 +512,36 @@ pub fn op_node_tls_start(
     .map(|s| s.into_bytes())
     .collect::<Vec<_>>();
 
-  let hostname_dns =
-    ServerName::try_from(hostname.to_string()).map_err(|_| {
-      deno_tls::TlsError::UnableAddPemFileToCert(Error::new(
-        ErrorKind::InvalidInput,
-        format!("Invalid hostname: {}", hostname),
-      ))
-    })?;
+  let hostname_dns = ServerName::try_from(hostname.to_string())
+    .map_err(|_| NetError::InvalidHostname(hostname))?;
+  // --unsafely-ignore-certificate-errors overrides the `rejectUnauthorized` option.
+  let unsafely_ignore_certificate_errors = if reject_unauthorized {
+    state
+      .borrow()
+      .try_borrow::<UnsafelyIgnoreCertificateErrors>()
+      .and_then(|it| it.0.clone())
+  } else {
+    Some(Vec::new())
+  };
+
+  let root_cert_store = state
+    .borrow()
+    .borrow::<DefaultTlsOptions>()
+    .root_cert_store()
+    .map_err(NetError::RootCertStore)?;
 
   let (network_to_tls_tx, network_to_tls_rx) =
-    tokio::sync::mpsc::channel::<Bytes>(1024);
+    tokio::sync::mpsc::channel::<Bytes>(10);
   let (tls_to_network_tx, tls_to_network_rx) =
-    tokio::sync::mpsc::channel::<Bytes>(1024);
+    tokio::sync::mpsc::channel::<Bytes>(10);
 
   let js_stream = JSStreamSocket::new(network_to_tls_rx, tls_to_network_tx);
 
   let tls_null = TlsKeysHolder::from(TlsKeys::Null);
   let mut tls_config = create_client_config(
-    Default::default(),
+    root_cert_store,
     ca_certs,
-    if reject_unauthorized {
-      None
-    } else {
-      Some(Vec::new())
-    },
+    unsafely_ignore_certificate_errors,
     tls_null.take(),
     SocketUse::GeneralSsl,
   )?;
@@ -589,21 +558,16 @@ pub fn op_node_tls_start(
     NonZeroUsize::new(65536),
   );
 
-  // Create the TLS resource
-  let tls_resource = JSStreamTlsResource::new_js(tls_stream.into_split());
-
-  // Create the duplex resource that JS will interact with
-  // JS writes network data (from socket) here, reads network data (to socket) from here
+  let tls_resource = JSStreamTlsResource::new(tls_stream.into_split());
   let user_duplex = JSDuplexResource::new(tls_to_network_rx, network_to_tls_tx);
 
   let (tls_rid, duplex_rid) = {
-    let mut state_ = state.borrow_mut();
-    let tls_rid = state_.resource_table.add(tls_resource);
-    let duplex_rid = state_.resource_table.add(user_duplex);
+    let mut state = state.borrow_mut();
+    let tls_rid = state.resource_table.add(tls_resource);
+    let duplex_rid = state.resource_table.add(user_duplex);
     (tls_rid, duplex_rid)
   };
 
-  // Return both RIDs in the output buffer
   output[0] = tls_rid;
   output[1] = duplex_rid;
 
@@ -611,15 +575,15 @@ pub fn op_node_tls_start(
 }
 
 #[op2(async)]
+#[serde]
 pub async fn op_node_tls_handshake(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) {
+) -> Result<TlsHandshakeInfo, NetError> {
   let resource = state
     .borrow()
     .resource_table
     .get::<JSStreamTlsResource>(rid)
-    .unwrap();
-
-  resource.handshake().await.unwrap()
+    .map_err(|_| NetError::ListenerClosed)?;
+  resource.handshake().await.map_err(Into::into)
 }
