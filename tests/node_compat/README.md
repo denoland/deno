@@ -23,16 +23,20 @@ platform-specific and behavioral settings for each test.
 
 Each test entry can include the following optional configuration properties:
 
-- **`flaky`** (boolean): Marks a test as flaky. It will be run at most 3
-  times before being considered failed.
+- **`flaky`** (boolean): Marks a test as flaky. It will be run at most 3 times
+  before being considered failed.
 
-- **`windows`** (boolean): Controls whether the test should run on Windows. Defaults to `true`.
+- **`windows`** (boolean): Controls whether the test should run on Windows.
+  Defaults to `true`.
 
-- **`darwin`** (boolean): Controls whether the test should run on macOS. Defaults to `true`.
+- **`darwin`** (boolean): Controls whether the test should run on macOS.
+  Defaults to `true`.
 
-- **`linux`** (boolean): Controls whether the test should run on Linux. Defaults to `true`.
+- **`linux`** (boolean): Controls whether the test should run on Linux. Defaults
+  to `true`.
 
-- **`reason`** (string): Optional explanation for why a test is marked as skipped.
+- **`reason`** (string): Optional explanation for why a test is marked as
+  skipped.
 
 ### Examples
 
