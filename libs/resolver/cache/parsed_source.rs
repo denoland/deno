@@ -46,11 +46,11 @@ impl<'a> LazyGraphSourceParser<'a> {
 type ArcStr = std::sync::Arc<str>;
 
 #[allow(clippy::disallowed_types)]
-pub type ParsedSourceCacheRc = crate::sync::MaybeArc<ParsedSourceCache>;
+pub type ParsedSourceCacheRc = deno_maybe_sync::MaybeArc<ParsedSourceCache>;
 
 #[derive(Debug, Default)]
 pub struct ParsedSourceCache {
-  sources: crate::sync::MaybeDashMap<Url, ParsedSource>,
+  sources: deno_maybe_sync::MaybeDashMap<Url, ParsedSource>,
 }
 
 impl ParsedSourceCache {

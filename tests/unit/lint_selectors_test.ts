@@ -464,6 +464,27 @@ Deno.test("Parser - Attr", () => {
   ]]);
 });
 
+// See https://github.com/denoland/deno/issues/30460
+Deno.test("Parser - Attr regex", () => {
+  assertEquals(testParse("[bar=/^[a-z]$/]"), [[
+    {
+      type: ATTR_BIN_NODE,
+      op: BinOp.Equal,
+      prop: [2],
+      value: /^[a-z]$/,
+    },
+  ]]);
+
+  assertEquals(testParse("[bar=/^[a-z\\]]foo$/]"), [[
+    {
+      type: ATTR_BIN_NODE,
+      op: BinOp.Equal,
+      prop: [2],
+      value: /^[a-z\]]foo$/,
+    },
+  ]]);
+});
+
 Deno.test("Parser - Attr nested", () => {
   assertEquals(testParse("[foo.bar]"), [[
     {

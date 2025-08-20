@@ -96,7 +96,7 @@ pub trait NpmModuleLoaderSys: NodeCodeTranslatorSys {}
 
 #[allow(clippy::disallowed_types)]
 pub type DenoNpmModuleLoaderRc<TSys> =
-  crate::sync::MaybeArc<DenoNpmModuleLoader<TSys>>;
+  deno_maybe_sync::MaybeArc<DenoNpmModuleLoader<TSys>>;
 
 pub type DenoNpmModuleLoader<TSys> = NpmModuleLoader<
   crate::cjs::analyzer::DenoCjsCodeAnalyzer<TSys>,

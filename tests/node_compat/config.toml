@@ -440,6 +440,8 @@
 "parallel/test-fs-internal-assertencoding.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
+"parallel/test-fs-make-callback.js" = {}
+"parallel/test-fs-makeStatsCallback.js" = {}
 "parallel/test-fs-open-flags.js" = {}
 "parallel/test-fs-open-no-close.js" = {}
 "parallel/test-fs-open-numeric-flags.js" = {}
