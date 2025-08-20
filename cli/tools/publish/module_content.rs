@@ -231,11 +231,12 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
       self.compiler_options_resolver.for_specifier(specifier);
     let jsx_config = compiler_options.jsx_import_source_config()?;
     let transpile_options = &compiler_options.transpile_options()?.transpile;
-    let jsx_runtime = if transpile_options.jsx_automatic {
-      "automatic"
-    } else {
-      "classic"
-    };
+    let jsx_runtime =
+      if transpile_options.jsx_automatic || transpile_options.precompile_jsx {
+        "automatic"
+      } else {
+        "classic"
+      };
     let mut unfurl_import_source =
       |import_source: &str, referrer: &Url, resolution_kind: ResolutionKind| {
         let maybe_import_source = self
@@ -310,7 +311,7 @@ mod test {
     run_test(&[
       (
         "/deno.json",
-        r#"{ "workspace": ["package-a", "package-b"] }"#,
+        r#"{ "workspace": ["package-a", "package-b", "package-c"] }"#,
         None,
       ),
       (
@@ -331,6 +332,21 @@ mod test {
         "/package-b/deno.json",
         r#"{
         "compilerOptions": { "jsx": "react-jsx" },
+        "imports": {
+          "react": "npm:react"
+          "@types/react": "npm:@types/react"
+        }
+      }"#,
+        None,
+      ),
+      (
+        "/package-c/deno.json",
+        r#"{
+        "compilerOptions": {
+          "jsx": "precompile",
+          "jsxImportSource": "react",
+          "jsxImportSourceTypes": "@types/react",
+        },
         "imports": {
           "react": "npm:react"
           "@types/react": "npm:@types/react"
@@ -367,6 +383,13 @@ mod test {
         /** @jsxFactory h2 */
         /** @jsxRuntime automatic */
         export const component = <div></div>;",
+        ),
+      ),
+      (
+        "/package-c/main.tsx",
+        "export const component = <div></div>;",
+        Some(
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;",
         ),
       ),
     ]);
