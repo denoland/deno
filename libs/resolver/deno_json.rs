@@ -15,6 +15,7 @@ use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_error::JsError;
+use deno_maybe_sync::new_rc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
@@ -43,15 +44,14 @@ use crate::factory::WorkspaceDirectoryProvider;
 use crate::npm::DenoInNpmPackageChecker;
 use crate::npm::NpmResolver;
 use crate::npm::NpmResolverSys;
-use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
+type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 #[allow(clippy::disallowed_types)]
-type CompilerOptionsRc = crate::sync::MaybeArc<CompilerOptions>;
+type CompilerOptionsRc = deno_maybe_sync::MaybeArc<CompilerOptions>;
 #[allow(clippy::disallowed_types)]
 pub type CompilerOptionsTypesRc =
-  crate::sync::MaybeArc<Vec<(Url, Vec<String>)>>;
+  deno_maybe_sync::MaybeArc<Vec<(Url, Vec<String>)>>;
 
 /// A structure that represents a set of options that were ignored and the
 /// path those options came from.
@@ -207,7 +207,8 @@ pub struct JsxImportSourceConfig {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type JsxImportSourceConfigRc = crate::sync::MaybeArc<JsxImportSourceConfig>;
+pub type JsxImportSourceConfigRc =
+  deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
 
 #[derive(Debug, Clone, Error, JsError)]
 #[class(type)]
@@ -337,16 +338,16 @@ pub struct TranspileAndEmitOptions {
 #[cfg(feature = "deno_ast")]
 #[allow(clippy::disallowed_types)]
 pub type TranspileAndEmitOptionsRc =
-  crate::sync::MaybeArc<TranspileAndEmitOptions>;
+  deno_maybe_sync::MaybeArc<TranspileAndEmitOptions>;
 
 #[derive(Debug, Default)]
 struct LoggedWarnings {
   experimental_decorators: AtomicFlag,
-  folders: crate::sync::MaybeDashSet<Url>,
+  folders: deno_maybe_sync::MaybeDashSet<Url>,
 }
 
 #[allow(clippy::disallowed_types)]
-type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
+type LoggedWarningsRc = deno_maybe_sync::MaybeArc<LoggedWarnings>;
 
 #[derive(Default, Debug)]
 struct MemoizedValues {
@@ -676,7 +677,7 @@ impl TsConfigFileFilter {
 }
 
 #[allow(clippy::disallowed_types)]
-type TsConfigFileFilterRc = crate::sync::MaybeArc<TsConfigFileFilter>;
+type TsConfigFileFilterRc = deno_maybe_sync::MaybeArc<TsConfigFileFilter>;
 
 #[derive(Debug)]
 pub struct TsConfigData {
@@ -1221,7 +1222,7 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
 
 #[allow(clippy::disallowed_types)]
 pub type CompilerOptionsResolverRc =
-  crate::sync::MaybeArc<CompilerOptionsResolver>;
+  deno_maybe_sync::MaybeArc<CompilerOptionsResolver>;
 
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.

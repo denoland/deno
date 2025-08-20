@@ -17,6 +17,8 @@ use deno_error::JsErrorBox;
 use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use futures::FutureExt;
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
@@ -30,15 +32,13 @@ use crate::cjs::CjsTrackerRc;
 use crate::deno_json::CompilerOptionsParseError;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::deno_json::TranspileAndEmitOptions;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 #[allow(clippy::disallowed_types)] // ok because we always store source text as Arc<str>
 type ArcStr = std::sync::Arc<str>;
 
 #[allow(clippy::disallowed_types)]
 pub type EmitterRc<TInNpmPackageChecker, TSys> =
-  crate::sync::MaybeArc<Emitter<TInNpmPackageChecker, TSys>>;
+  deno_maybe_sync::MaybeArc<Emitter<TInNpmPackageChecker, TSys>>;
 
 #[sys_traits::auto_impl]
 pub trait EmitterSys: EmitCacheSys {}

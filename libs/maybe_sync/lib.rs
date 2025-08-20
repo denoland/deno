@@ -9,6 +9,7 @@ mod inner {
   pub use core::marker::Send as MaybeSend;
   pub use core::marker::Sync as MaybeSync;
   pub use std::sync::Arc as MaybeArc;
+  pub use std::sync::OnceLock as MaybeOnceLock;
 
   pub use dashmap::DashMap as MaybeDashMap;
   pub use dashmap::DashSet as MaybeDashSet;
@@ -16,6 +17,7 @@ mod inner {
 
 #[cfg(not(feature = "sync"))]
 mod inner {
+  pub use std::cell::OnceCell as MaybeOnceLock;
   use std::cell::Ref;
   use std::cell::RefCell;
   use std::collections::HashMap;

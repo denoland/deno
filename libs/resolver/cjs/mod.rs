@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_maybe_sync::MaybeDashMap;
 use deno_media_type::MediaType;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
@@ -8,13 +9,11 @@ use node_resolver::errors::PackageJsonLoadError;
 use sys_traits::FsRead;
 use url::Url;
 
-use crate::sync::MaybeDashMap;
-
 pub mod analyzer;
 
 #[allow(clippy::disallowed_types)]
 pub type CjsTrackerRc<TInNpmPackageChecker, TSys> =
-  crate::sync::MaybeArc<CjsTracker<TInNpmPackageChecker, TSys>>;
+  deno_maybe_sync::MaybeArc<CjsTracker<TInNpmPackageChecker, TSys>>;
 
 /// Keeps track of what module specifiers were resolved as CJS.
 ///

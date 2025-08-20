@@ -29,5 +29,5 @@ disallowed-methods = [
   { path = "std::fs::write", reason = "File system operations should be done using the sys_traits crate" },
 ]
 disallowed-types = [
-  { path = "std::sync::Arc", reason = "use crate::sync::MaybeArc instead" },
+  { path = "std::sync::Arc", reason = "use deno_maybe_sync::MaybeArc instead" },
 ]

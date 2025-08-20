@@ -105,7 +105,7 @@ pub struct LoadUnpreparedModuleError {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type ModuleLoaderRc<TSys> = crate::sync::MaybeArc<ModuleLoader<TSys>>;
+pub type ModuleLoaderRc<TSys> = deno_maybe_sync::MaybeArc<ModuleLoader<TSys>>;
 
 #[sys_traits::auto_impl]
 pub trait ModuleLoaderSys:

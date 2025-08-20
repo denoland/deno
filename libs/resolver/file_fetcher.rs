@@ -129,7 +129,9 @@ pub trait PermissionedFileFetcherSys:
 
 #[allow(clippy::disallowed_types)]
 type PermissionedFileFetcherRc<TBlobStore, TSys, THttpClient> =
-  crate::sync::MaybeArc<PermissionedFileFetcher<TBlobStore, TSys, THttpClient>>;
+  deno_maybe_sync::MaybeArc<
+    PermissionedFileFetcher<TBlobStore, TSys, THttpClient>,
+  >;
 
 pub struct PermissionedFileFetcherOptions {
   pub allow_remote: bool,

@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 
 use deno_error::JsErrorBox;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use deno_media_type::MediaType;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
@@ -14,8 +16,6 @@ use url::Url;
 
 use super::CjsTrackerRc;
 use crate::npm::DenoInNpmPackageChecker;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 #[cfg(feature = "deno_ast")]
 mod deno_ast;
@@ -44,7 +44,7 @@ pub enum DenoCjsAnalysis {
 pub struct NodeAnalysisCacheSourceHash(pub u64);
 
 #[allow(clippy::disallowed_types)]
-pub type NodeAnalysisCacheRc = crate::sync::MaybeArc<dyn NodeAnalysisCache>;
+pub type NodeAnalysisCacheRc = deno_maybe_sync::MaybeArc<dyn NodeAnalysisCache>;
 
 pub trait NodeAnalysisCache: MaybeSend + MaybeSync {
   fn compute_source_hash(&self, source: &str) -> NodeAnalysisCacheSourceHash;
@@ -100,7 +100,7 @@ pub trait ModuleForExportAnalysis {
 
 #[allow(clippy::disallowed_types)]
 pub type ModuleExportAnalyzerRc =
-  crate::sync::MaybeArc<dyn ModuleExportAnalyzer>;
+  deno_maybe_sync::MaybeArc<dyn ModuleExportAnalyzer>;
 
 #[allow(clippy::disallowed_types)]
 type ArcStr = std::sync::Arc<str>;
@@ -130,7 +130,7 @@ impl ModuleExportAnalyzer for NotImplementedModuleExportAnalyzer {
 
 #[allow(clippy::disallowed_types)]
 pub type DenoCjsCodeAnalyzerRc<TSys> =
-  crate::sync::MaybeArc<DenoCjsCodeAnalyzer<TSys>>;
+  deno_maybe_sync::MaybeArc<DenoCjsCodeAnalyzer<TSys>>;
 
 pub struct DenoCjsCodeAnalyzer<TSys: DenoCjsCodeAnalyzerSys> {
   cache: NodeAnalysisCacheRc,

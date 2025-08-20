@@ -15,8 +15,8 @@ use crate::errors::PackageJsonLoadError;
 pub trait NodePackageJsonCache:
   deno_package_json::PackageJsonCache
   + std::fmt::Debug
-  + crate::sync::MaybeSend
-  + crate::sync::MaybeSync
+  + deno_maybe_sync::MaybeSend
+  + deno_maybe_sync::MaybeSync
 {
   fn as_deno_package_json_cache(
     &self,
@@ -27,8 +27,8 @@ impl<T> NodePackageJsonCache for T
 where
   T: deno_package_json::PackageJsonCache
     + std::fmt::Debug
-    + crate::sync::MaybeSend
-    + crate::sync::MaybeSync,
+    + deno_maybe_sync::MaybeSend
+    + deno_maybe_sync::MaybeSync,
 {
   fn as_deno_package_json_cache(
     &self,
@@ -38,7 +38,8 @@ where
 }
 
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonCacheRc = crate::sync::MaybeArc<dyn NodePackageJsonCache>;
+pub type PackageJsonCacheRc =
+  deno_maybe_sync::MaybeArc<dyn NodePackageJsonCache>;
 
 thread_local! {
   static CACHE: RefCell<HashMap<PathBuf, PackageJsonRc>> = RefCell::new(HashMap::new());
@@ -65,7 +66,7 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
 
 #[allow(clippy::disallowed_types)]
 pub type PackageJsonResolverRc<TSys> =
-  crate::sync::MaybeArc<PackageJsonResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<PackageJsonResolver<TSys>>;
 
 #[derive(Debug)]
 pub struct PackageJsonResolver<TSys: FsRead> {

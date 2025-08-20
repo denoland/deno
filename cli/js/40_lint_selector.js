@@ -159,6 +159,26 @@ export class Lexer {
     this.value = this.getSlice();
   }
 
+  readBinAttrValue() {
+    const s = this.i;
+    let depth = 0;
+    while (this.token !== Token.EOF) {
+      if (this.token === Token.BracketClose) {
+        if (depth-- <= 0) {
+          break;
+        }
+      } else if (this.token === Token.BracketOpen) {
+        depth++;
+      }
+
+      this.next();
+    }
+
+    this.start = s;
+    this.end = this.i - 1;
+    this.value = this.getSlice();
+  }
+
   getSlice() {
     return this.input.slice(this.start, this.end);
   }
@@ -258,6 +278,11 @@ export class Lexer {
           this.token = Token.Minus;
           this.step();
           return;
+        case Char.BackSlash: {
+          this.step();
+          this.step();
+          continue;
+        }
 
         case Char.Plus:
         case Char.Tilde:
@@ -518,7 +543,7 @@ export function parseSelector(input, toElem, toAttr) {
 
       if (lex.token === Token.Op) {
         const op = getAttrOp(lex.value);
-        lex.readAsWordUntil(Token.BracketClose);
+        lex.readBinAttrValue();
 
         const value = getFromRawValue(lex.value);
         current.push({ type: ATTR_BIN_NODE, prop, op, value });

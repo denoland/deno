@@ -34,5 +34,5 @@ disallowed-methods = [
   { path = "std::path::Path::exists", reason = "File system operations should be done using FileSystem trait" },
 ]
 disallowed-types = [
-  { path = "std::sync::Arc", reason = "use crate::sync::MaybeArc instead" },
+  { path = "std::sync::Arc", reason = "use deno_maybe_sync::MaybeArc instead" },
 ]

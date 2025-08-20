@@ -265,7 +265,7 @@ pub type NodeResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   NodeResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,

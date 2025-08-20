@@ -149,6 +149,8 @@ Deno.test("tls.connect after-read tls upgrade", async () => {
   });
   socket.on("connect", () => {
     socket.on("data", () => {});
+    socket.on("close", resolve);
+
     socket.removeAllListeners("data");
 
     const conn = tls.connect({
@@ -169,7 +171,6 @@ Deno.test("tls.connect after-read tls upgrade", async () => {
       conn.destroy();
       ctl.abort();
     });
-    conn.on("close", resolve);
   });
 
   await serve.finished;

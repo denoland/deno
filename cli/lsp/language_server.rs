@@ -108,6 +108,7 @@ use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
+use crate::lsp::analysis::fix_ts_import_changes_for_file_rename;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::diagnostics::generate_module_diagnostics;
@@ -3889,8 +3890,25 @@ impl Inner {
             LspError::internal_error()
           }
         })?;
-        changes_with_modules
-          .extend(changes.into_iter().map(|c| (c, module.clone())));
+        let changes = fix_ts_import_changes_for_file_rename(
+          changes,
+          &rename.new_uri,
+          &module,
+          self,
+          token,
+        )
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!("Unable to fix import changes: {:#}", err);
+            LspError::internal_error()
+          }
+        })?;
+        if !changes.is_empty() {
+          changes_with_modules
+            .extend(changes.into_iter().map(|c| (c, module.clone())));
+        }
       }
     }
     file_text_changes_to_workspace_edit(&changes_with_modules, self, token)

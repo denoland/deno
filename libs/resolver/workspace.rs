@@ -14,6 +14,8 @@ use deno_config::deno_json::ConfigFileError;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::Workspace;
 use deno_error::JsError;
+use deno_maybe_sync::MaybeDashMap;
+use deno_maybe_sync::new_rc;
 use deno_media_type::MediaType;
 use deno_npm::registry::NpmPackageVersionInfo;
 use deno_package_json::PackageJsonDepValue;
@@ -50,11 +52,9 @@ use thiserror::Error;
 use url::Url;
 
 use crate::collections::FolderScopedMap;
-use crate::sync::MaybeDashMap;
-use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
+type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 
 #[derive(Debug)]
 struct PkgJsonResolverFolderConfig {
@@ -647,7 +647,7 @@ pub fn sloppy_imports_resolve<TSys: FsMetadata>(
 
 #[allow(clippy::disallowed_types)]
 type SloppyImportsResolverRc<T> =
-  crate::sync::MaybeArc<SloppyImportsResolver<T>>;
+  deno_maybe_sync::MaybeArc<SloppyImportsResolver<T>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompilerOptionsRootDirsDiagnostic {
@@ -1662,7 +1662,7 @@ impl BaseUrl<'_> {
 
 #[allow(clippy::disallowed_types)] // ok, because definition
 pub type WorkspaceNpmLinkPackagesRc =
-  crate::sync::MaybeArc<WorkspaceNpmLinkPackages>;
+  deno_maybe_sync::MaybeArc<WorkspaceNpmLinkPackages>;
 
 #[derive(Debug, Default)]
 pub struct WorkspaceNpmLinkPackages(

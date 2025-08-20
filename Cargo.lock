@@ -1806,6 +1806,7 @@ dependencies = [
  "boxed_error",
  "capacity_builder",
  "deno_error",
+ "deno_maybe_sync",
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
@@ -2073,6 +2074,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_io",
+ "deno_maybe_sync",
  "deno_path_util",
  "deno_permissions",
  "filetime",
@@ -2285,6 +2287,13 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.12",
+]
+
+[[package]]
+name = "deno_maybe_sync"
+version = "0.0.1"
+dependencies = [
+ "dashmap",
 ]
 
 [[package]]
@@ -2580,6 +2589,7 @@ version = "0.15.0"
 dependencies = [
  "boxed_error",
  "deno_error",
+ "deno_maybe_sync",
  "deno_path_util",
  "deno_semver",
  "indexmap 2.9.0",
@@ -2686,6 +2696,7 @@ dependencies = [
  "deno_error",
  "deno_graph",
  "deno_lockfile",
+ "deno_maybe_sync",
  "deno_media_type",
  "deno_npm",
  "deno_package_json",
@@ -3472,9 +3483,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.18.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "845fdbe59bf4088f7def60adc1b3383884d432d78d86ea8b30860d4e65f2bc43"
+checksum = "bf64cbcb37dba109c63d30a42f1f4cca7a01ea40006ae1b2aa285906d226d24e"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -3487,9 +3498,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.95.9"
+version = "0.95.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee438b36aa41448c12864fb9a41d2a7a2121ec2e9074f8049c4f62d102dbd65a"
+checksum = "83cbb60779bfcb1f133387838bfa06dc5362576270d67857de225e453b587ae2"
 dependencies = [
  "anyhow",
  "capacity_builder",
@@ -5955,6 +5966,7 @@ dependencies = [
  "dashmap",
  "deno_error",
  "deno_graph",
+ "deno_maybe_sync",
  "deno_media_type",
  "deno_package_json",
  "deno_path_util",

@@ -23,14 +23,12 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
-mod sync;
-
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonRc = crate::sync::MaybeArc<PackageJson>;
+pub type PackageJsonRc = deno_maybe_sync::MaybeArc<PackageJson>;
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonDepsRc = crate::sync::MaybeArc<PackageJsonDeps>;
+pub type PackageJsonDepsRc = deno_maybe_sync::MaybeArc<PackageJsonDeps>;
 #[allow(clippy::disallowed_types)]
-type PackageJsonDepsRcCell = crate::sync::MaybeOnceLock<PackageJsonDepsRc>;
+type PackageJsonDepsRcCell = deno_maybe_sync::MaybeOnceLock<PackageJsonDepsRc>;
 
 pub trait PackageJsonCache {
   fn get(&self, path: &Path) -> Option<PackageJsonRc>;
@@ -248,7 +246,7 @@ impl PackageJson {
         Ok(file_text) => {
           let pkg_json =
             PackageJson::load_from_string(path.to_path_buf(), &file_text)?;
-          let pkg_json = crate::sync::new_rc(pkg_json);
+          let pkg_json = deno_maybe_sync::new_rc(pkg_json);
           if let Some(cache) = maybe_cache {
             cache.set(path.to_path_buf(), pkg_json.clone());
           }
