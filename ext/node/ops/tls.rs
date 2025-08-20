@@ -344,6 +344,7 @@ impl JSDuplexResource {
     }
   }
 
+  #[allow(clippy::await_holding_lock)]
   pub async fn read(
     self: Rc<Self>,
     data: &mut [u8],
@@ -365,7 +366,6 @@ impl JSDuplexResource {
 
     // No buffered data, receive new data from channel
     let bytes = {
-      #[allow(clippy::await_holding_lock)]
       let mut receiver = self
         .readable
         .lock()
