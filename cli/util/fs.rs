@@ -74,18 +74,29 @@ pub fn canonicalize_path_maybe_not_exists(
   )
 }
 
+pub struct CollectSpecifiersOptions {
+  pub file_patterns: FilePatterns,
+  pub vendor_folder: Option<PathBuf>,
+  /// Whether to include paths that are specified even if they're ignored.
+  pub include_ignored_specified: bool,
+}
+
 /// Collects module specifiers that satisfy the given predicate as a file path, by recursively walking `include`.
 /// Specifiers that start with http and https are left intact.
 /// Note: This ignores all .git and node_modules folders.
 pub fn collect_specifiers(
-  mut files: FilePatterns,
-  vendor_folder: Option<PathBuf>,
+  options: CollectSpecifiersOptions,
   predicate: impl Fn(WalkEntry) -> bool,
 ) -> Result<Vec<ModuleSpecifier>, AnyError> {
+  let CollectSpecifiersOptions {
+    mut file_patterns,
+    vendor_folder,
+    include_ignored_specified: always_include_specified,
+  } = options;
   let mut prepared = vec![];
 
-  // break out the remote specifiers
-  if let Some(include_mut) = &mut files.include {
+  // break out the remote specifiers and explicitly specified paths
+  if let Some(include_mut) = &mut file_patterns.include {
     let includes = std::mem::take(include_mut);
     let path_or_patterns = includes.into_path_or_patterns();
     let mut result = Vec::with_capacity(path_or_patterns.len());
@@ -94,7 +105,9 @@ pub fn collect_specifiers(
         PathOrPattern::Path(path) => {
           if path.is_dir() {
             result.push(PathOrPattern::Path(path));
-          } else if !files.exclude.matches_path(&path) {
+          } else if always_include_specified
+            || !file_patterns.exclude.matches_path(&path)
+          {
             let url = specifier_from_file_path(&path)?;
             prepared.push(url);
           }
@@ -119,7 +132,7 @@ pub fn collect_specifiers(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(vendor_folder)
-    .collect_file_patterns(&CliSys::default(), files);
+    .collect_file_patterns(&CliSys::default(), file_patterns);
   let mut collected_files_as_urls = collected_files
     .iter()
     .map(|f| specifier_from_file_path(f).unwrap())
@@ -217,24 +230,27 @@ mod tests {
     };
 
     let result = collect_specifiers(
-      FilePatterns {
-        base: root_dir_path.to_path_buf(),
-        include: Some(
-          PathOrPatternSet::from_include_relative_path_or_patterns(
-            root_dir_path.as_path(),
-            &[
-              "http://localhost:8080".to_string(),
-              "./".to_string(),
-              "https://localhost:8080".to_string(),
-            ],
-          )
-          .unwrap(),
-        ),
-        exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
-          ignore_dir_path.to_path_buf(),
-        )]),
+      CollectSpecifiersOptions {
+        file_patterns: FilePatterns {
+          base: root_dir_path.to_path_buf(),
+          include: Some(
+            PathOrPatternSet::from_include_relative_path_or_patterns(
+              root_dir_path.as_path(),
+              &[
+                "http://localhost:8080".to_string(),
+                "./".to_string(),
+                "https://localhost:8080".to_string(),
+              ],
+            )
+            .unwrap(),
+          ),
+          exclude: PathOrPatternSet::new(vec![PathOrPattern::Path(
+            ignore_dir_path.to_path_buf(),
+          )]),
+        },
+        vendor_folder: None,
+        include_ignored_specified: false,
       },
-      None,
       predicate,
     )
     .unwrap();
@@ -268,19 +284,22 @@ mod tests {
       "file://"
     };
     let result = collect_specifiers(
-      FilePatterns {
-        base: root_dir_path.to_path_buf(),
-        include: Some(PathOrPatternSet::new(vec![
-          PathOrPattern::new(&format!(
-            "{}{}",
-            scheme,
-            root_dir_path.join("child").to_string().replace('\\', "/")
-          ))
-          .unwrap(),
-        ])),
-        exclude: Default::default(),
+      CollectSpecifiersOptions {
+        file_patterns: FilePatterns {
+          base: root_dir_path.to_path_buf(),
+          include: Some(PathOrPatternSet::new(vec![
+            PathOrPattern::new(&format!(
+              "{}{}",
+              scheme,
+              root_dir_path.join("child").to_string().replace('\\', "/")
+            ))
+            .unwrap(),
+          ])),
+          exclude: Default::default(),
+        },
+        vendor_folder: None,
+        include_ignored_specified: false,
       },
-      None,
       predicate,
     )
     .unwrap();

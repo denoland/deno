@@ -72,7 +72,7 @@ impl LoadedModuleSource {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type MemoryFilesRc = crate::sync::MaybeArc<MemoryFiles>;
+pub type MemoryFilesRc = deno_maybe_sync::MaybeArc<MemoryFiles>;
 
 #[derive(Debug, Default)]
 pub struct MemoryFiles(RwLock<HashMap<Url, File>>);

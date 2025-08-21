@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
+use deno_maybe_sync::new_rc;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepWorkspaceReq;
@@ -61,14 +62,13 @@ use crate::glob::FilePatterns;
 use crate::glob::PathOrPattern;
 use crate::glob::PathOrPatternParseError;
 use crate::glob::PathOrPatternSet;
-use crate::sync::new_rc;
 
 mod discovery;
 
 #[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
+type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 #[allow(clippy::disallowed_types)]
-type WorkspaceRc = crate::sync::MaybeArc<Workspace>;
+type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolverWorkspaceJsrPackage {
@@ -1317,11 +1317,11 @@ impl Workspace {
 #[derive(Debug, Clone)]
 struct WorkspaceDirConfig<T> {
   #[allow(clippy::disallowed_types)]
-  member: crate::sync::MaybeArc<T>,
+  member: deno_maybe_sync::MaybeArc<T>,
   // will be None when it doesn't exist or the member config
   // is the root config
   #[allow(clippy::disallowed_types)]
-  root: Option<crate::sync::MaybeArc<T>>,
+  root: Option<deno_maybe_sync::MaybeArc<T>>,
 }
 
 #[derive(Debug, Error, JsError)]
