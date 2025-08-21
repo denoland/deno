@@ -64,7 +64,10 @@ import {
   readableStreamForRidUnrefableUnref,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import {
+  addSignalAlgorithm,
+  removeSignalAlgorithm,
+} from "ext:deno_web/03_abort_signal.js";
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
 async function write(rid, data) {
@@ -78,7 +81,7 @@ async function resolveDns(query, recordType, options) {
     options.signal.throwIfAborted();
     cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
-    options.signal[abortSignal.add](abortHandler);
+    addSignalAlgorithm(options.signal, abortHandler);
   }
 
   try {
@@ -91,7 +94,7 @@ async function resolveDns(query, recordType, options) {
     return ArrayPrototypeMap(res, (recordWithTtl) => recordWithTtl.data);
   } finally {
     if (options?.signal) {
-      options.signal[abortSignal.remove](abortHandler);
+      removeSignalAlgorithm(options.signal, abortHandler);
 
       // always throw the abort error when aborted
       options.signal.throwIfAborted();
@@ -691,7 +694,7 @@ async function connect(args) {
         args.signal.throwIfAborted();
         cancelRid = createCancelHandle();
         abortHandler = () => core.tryClose(cancelRid);
-        args.signal[abortSignal.add](abortHandler);
+        addSignalAlgorithm(args.signal, abortHandler);
       }
       const port = validatePort(args.port);
 
@@ -711,7 +714,7 @@ async function connect(args) {
         return new TcpConn(rid, remoteAddr, localAddr);
       } finally {
         if (args?.signal) {
-          args.signal[abortSignal.remove](abortHandler);
+          removeSignalAlgorithm(args.signal, abortHandler);
           args.signal.throwIfAborted();
         }
       }

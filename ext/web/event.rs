@@ -1,8 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::extra_unused_lifetimes)]
+
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
@@ -10,23 +15,27 @@ use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
 use deno_core::cppgc;
+use deno_core::cppgc::Ptr;
 use deno_core::error::JsError;
 use deno_core::error::dispatch_exception;
+use deno_core::error::to_v8_error;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::Global;
+use deno_core::webidl::ContextFn;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlErrorKind;
+use deno_error::JsErrorBox;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EventError {
   #[class(type)]
-  #[error("parameter 2 is not of type 'Object'")]
+  #[error("Argument 2 is not of type 'Object'")]
   InvalidListenerType,
   #[class(type)]
-  #[error("parameter 1 is expected Event")]
+  #[error("Argument 1 is expected Event")]
   ExpectedEvent,
   #[class(type)]
   #[error("Illegal invocation")]
@@ -695,7 +704,7 @@ pub fn op_event_dispatch<'a>(
 ) -> bool {
   let target = v8::Local::new(scope, &target_object);
   let target =
-    cppgc::try_unwrap_cppgc_object::<EventTarget>(scope, target.into())
+    cppgc::try_unwrap_cppgc_proto_object::<EventTarget>(scope, target.into())
       .unwrap();
   let event =
     cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event_object.into())
@@ -1614,7 +1623,6 @@ struct EventListener {
   capture: bool,
   passive: bool,
   once: bool,
-  signal: Option<v8::Global<v8::Object>>,
   removed: Cell<bool>,
   // This field exists for simulating Node.js behavior, implemented in https://github.com/nodejs/node/commit/bcd35c334ec75402ee081f1c4da128c339f70c24
   // Some internal event listeners in Node.js can ignore `e.stopImmediatePropagation()` calls　from the earlier event listeners.
@@ -1623,7 +1631,7 @@ struct EventListener {
 
 #[derive(Debug)]
 pub struct EventTarget {
-  listeners: RefCell<HashMap<String, Vec<Rc<EventListener>>>>,
+  listeners: Rc<RefCell<HashMap<String, Vec<Rc<EventListener>>>>>,
 }
 
 impl GarbageCollected for EventTarget {
@@ -1632,14 +1640,21 @@ impl GarbageCollected for EventTarget {
   }
 }
 
-#[op2]
+impl EventTarget {
+  #[inline]
+  fn new() -> EventTarget {
+    EventTarget {
+      listeners: Rc::new(RefCell::new(HashMap::new())),
+    }
+  }
+}
+
+#[op2(base)]
 impl EventTarget {
   #[constructor]
   #[cppgc]
-  fn new(_: bool) -> EventTarget {
-    EventTarget {
-      listeners: RefCell::new(HashMap::new()),
-    }
+  fn constructor(_: bool) -> EventTarget {
+    EventTarget::new()
   }
 
   #[required(2)]
@@ -1651,39 +1666,87 @@ impl EventTarget {
     callback: Option<v8::Local<'a, v8::Value>>,
     options: Option<v8::Local<'a, v8::Value>>,
   ) -> Result<(), EventError> {
-    let (
-      capture,
-      passive,
-      once,
-      resist_stop_immediate_propagation,
-      /* signal */
-    ) = match options {
-      Some(options) => {
-        if options.is_object()
-          && let Some(options) = options.to_object(scope)
-        {
-          let key = v8::String::new(scope, "Deno.stopImmediatePropagation").unwrap();
-          let symbol = v8::Symbol::for_key(scope, key);
-          let resist_stop_immediate_propagation = match options.get(scope, symbol.into()) {
-            Some(value) => value.to_boolean(scope).is_true(),
-            None => false,
-          };
-          let options = AddEventListenerOptions::convert(
-            scope,
-            options.into(),
-            "Failed to execute 'addEventListener' on 'EventTarget'".into(),
-            (|| "Argument 3)".into()).into(),
-            &Default::default(),
-          )?;
-          (options.capture, options.passive, options.once, resist_stop_immediate_propagation)
-        } else {
-          (options.to_boolean(scope).is_true(), false, false, false)
-        }
-      }
-      None => (false, false, false, false),
-    };
+    let prefix = "Failed to execute 'addEventListener' on 'EventTarget'";
 
-    // TODO(petamoriken): signal have already aborted
+    let (capture, passive, once, resist_stop_immediate_propagation, signal) =
+      match options {
+        Some(options) => {
+          if let Ok(options) = options.try_cast::<v8::Object>() {
+            let key =
+              v8::String::new(scope, "Deno.stopImmediatePropagation").unwrap();
+            let symbol = v8::Symbol::for_key(scope, key);
+            let resist_stop_immediate_propagation =
+              match options.get(scope, symbol.into()) {
+                Some(value) => value.to_boolean(scope).is_true(),
+                None => false,
+              };
+
+            // TODO(petamoriken): Validate AbortSignal
+            let key = v8::String::new(scope, "signal").unwrap();
+            let signal = match options.get(scope, key.into()) {
+              Some(value) => {
+                if value.is_undefined() {
+                  None
+                } else {
+                  if !value.is_object() {
+                    return Err(EventError::WebIDL(WebIdlError::new(
+                      prefix.into(),
+                      (|| {
+                        "'signal' of 'AddEventListenerOptions' (Argument 3)"
+                          .into()
+                      })
+                      .into(),
+                      WebIdlErrorKind::ConvertToConverterType("object"),
+                    )));
+                  }
+                  Some(value.cast::<v8::Object>())
+                }
+              }
+              None => None,
+            };
+
+            let options = AddEventListenerOptions::convert(
+              scope,
+              options.into(),
+              prefix.into(),
+              (|| "Argument 3".into()).into(),
+              &Default::default(),
+            )?;
+
+            (
+              options.capture,
+              options.passive,
+              options.once,
+              resist_stop_immediate_propagation,
+              signal,
+            )
+          } else {
+            (
+              options.to_boolean(scope).is_true(),
+              false,
+              false,
+              false,
+              None,
+            )
+          }
+        }
+        None => (false, false, false, false, None),
+      };
+
+    let aborted = match signal {
+      Some(signal) => {
+        let key = v8::String::new(scope, "aborted").unwrap();
+        signal
+          .get(scope, key.into())
+          .unwrap()
+          .to_boolean(scope)
+          .is_true()
+      }
+      None => false,
+    };
+    if aborted {
+      return Ok(());
+    }
 
     let callback = match callback {
       None => {
@@ -1696,7 +1759,7 @@ impl EventTarget {
         if !callback.is_object() {
           return Err(EventError::InvalidListenerType);
         }
-        callback.to_object(scope).unwrap()
+        callback.cast::<v8::Object>()
       }
     };
 
@@ -1715,7 +1778,6 @@ impl EventTarget {
       capture,
       passive,
       once,
-      signal: None,
       removed: Cell::new(false),
       resist_stop_immediate_propagation,
     }));
@@ -1829,13 +1891,7 @@ pub fn op_event_wrap_event_target<'a>(
   scope: &mut v8::HandleScope<'a>,
   obj: v8::Local<'a, v8::Object>,
 ) {
-  cppgc::wrap_object(
-    scope,
-    obj,
-    EventTarget {
-      listeners: RefCell::new(HashMap::new()),
-    },
-  );
+  cppgc::wrap_object1(scope, obj, EventTarget::new());
 }
 
 #[op2]
@@ -1867,4 +1923,379 @@ pub fn op_event_get_target_listener_count<'a>(
     Some(listeners) => listeners.len() as u32,
     None => 0,
   }
+}
+
+pub struct AbortSignal {
+  reason: RefCell<Option<v8::Global<v8::Value>>>,
+  algorithms: RefCell<HashSet<v8::Global<v8::Function>>>,
+  dependent: Cell<bool>,
+  source_signals: RefCell<Vec<v8::Weak<v8::Value>>>,
+  dependent_signals: RefCell<Vec<v8::Weak<v8::Value>>>,
+}
+
+impl GarbageCollected for AbortSignal {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"AbortSignal"
+  }
+}
+
+impl AbortSignal {
+  #[inline]
+  fn new() -> AbortSignal {
+    AbortSignal {
+      reason: RefCell::new(None),
+      algorithms: RefCell::new(HashSet::new()),
+      dependent: Cell::new(false),
+      source_signals: RefCell::new(Vec::new()),
+      dependent_signals: RefCell::new(Vec::new()),
+    }
+  }
+
+  // https://dom.spec.whatwg.org/#create-a-dependent-abort-signal
+  fn new_with_dependent<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    result_signal_object: v8::Local<'a, v8::Object>,
+    signal_values: Vec<v8::Local<'a, v8::Value>>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'_>,
+  ) -> Result<AbortSignal, EventError> {
+    let result_signal = AbortSignal::new();
+    result_signal.dependent.set(true);
+
+    {
+      let result_signal_weak =
+        v8::Weak::new(scope, result_signal_object.cast::<v8::Value>());
+      let mut result_source_signal = result_signal.source_signals.borrow_mut();
+      for signal_value in signal_values {
+        let Some(signal) = cppgc::try_unwrap_cppgc_proto_object::<AbortSignal>(
+          scope,
+          signal_value,
+        ) else {
+          return Err(EventError::WebIDL(WebIdlError::new(
+            prefix,
+            context,
+            WebIdlErrorKind::ConvertToConverterType("AbortSignal"),
+          )));
+        };
+        if !signal.dependent.get() {
+          let signal_weak = v8::Weak::new(scope, signal_value);
+          result_source_signal.push(signal_weak);
+          signal
+            .dependent_signals
+            .borrow_mut()
+            .push(result_signal_weak.clone());
+        } else {
+          for source_signal_weak in signal.source_signals.borrow().iter() {
+            if let Some(source_signal_value) =
+              source_signal_weak.to_local(scope)
+            {
+              let source_signal = cppgc::try_unwrap_cppgc_proto_object::<
+                AbortSignal,
+              >(scope, source_signal_value)
+              .unwrap();
+              result_source_signal.push(source_signal_weak.clone());
+              source_signal
+                .dependent_signals
+                .borrow_mut()
+                .push(result_signal_weak.clone());
+            }
+          }
+        }
+      }
+    }
+
+    Ok(result_signal)
+  }
+
+  #[inline]
+  fn aborted_inner(&self) -> bool {
+    self.reason.borrow().is_some()
+  }
+
+  // https://dom.spec.whatwg.org/#abortsignal-add
+  #[inline]
+  fn add(&self, algorithm: v8::Global<v8::Function>) {
+    if self.aborted_inner() {
+      return;
+    }
+    self.algorithms.borrow_mut().insert(algorithm);
+  }
+
+  // https://dom.spec.whatwg.org/#abortsignal-remove
+  #[inline]
+  fn remove(&self, algorithm: v8::Global<v8::Function>) {
+    self.algorithms.borrow_mut().remove(&algorithm);
+  }
+
+  // https://dom.spec.whatwg.org/#abortsignal-signal-abort
+  fn signal_abort<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    state: &Rc<RefCell<OpState>>,
+    signal_object: v8::Local<'a, v8::Object>,
+    reason: Option<v8::Local<'a, v8::Value>>,
+  ) {
+    if self.aborted_inner() {
+      return;
+    }
+
+    let reason = if let Some(reason) = reason
+      && !reason.is_undefined()
+    {
+      reason
+    } else {
+      let error = JsErrorBox::new(
+        "DOMExceptionAbortError",
+        "The signal has been aborted",
+      );
+      to_v8_error(scope, &error)
+    };
+    let reason = v8::Global::new(scope, reason);
+    self.reason.replace(Some(reason.clone()));
+
+    let mut dependent_signals_to_abort = Vec::new();
+    {
+      let dependent_signals = self.dependent_signals.borrow();
+      for dependent_signal_weak in &*dependent_signals {
+        if let Some(dependent_signal_value) =
+          dependent_signal_weak.to_local(scope)
+        {
+          let dependent_signal = cppgc::try_unwrap_cppgc_proto_object::<
+            AbortSignal,
+          >(scope, dependent_signal_value)
+          .unwrap();
+          if !dependent_signal.aborted_inner() {
+            dependent_signal.reason.replace(Some(reason.clone()));
+            dependent_signals_to_abort
+              .push((dependent_signal, dependent_signal_value));
+          }
+        }
+      }
+    }
+
+    self.run_abort_steps(scope, state, signal_object);
+
+    for (dependent_signal, dependent_signal_value) in dependent_signals_to_abort
+    {
+      dependent_signal.run_abort_steps(
+        scope,
+        state,
+        dependent_signal_value.cast(),
+      );
+    }
+  }
+
+  // https://dom.spec.whatwg.org/#run-the-abort-steps
+  #[inline]
+  fn run_abort_steps<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    state: &Rc<RefCell<OpState>>,
+    signal_object: v8::Local<'a, v8::Object>,
+  ) {
+    {
+      let algorithms = self.algorithms.borrow();
+      for algorithm in algorithms.iter() {
+        let func = v8::Local::new(scope, algorithm);
+        func.call(scope, signal_object.into(), &[]);
+      }
+    }
+
+    self.algorithms.borrow_mut().clear();
+
+    let target: Ptr<EventTarget> = cppgc::try_unwrap_cppgc_proto_object::<
+      EventTarget,
+    >(scope, signal_object.into())
+    .unwrap();
+    let event_object = {
+      let event = Event::new("abort".to_string(), None);
+      event.is_trusted.set(true);
+      cppgc::make_cppgc_proto_object(scope, event)
+    };
+    let event =
+      cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event_object.into())
+        .unwrap();
+    let signal_object = v8::Global::new(scope, signal_object);
+    event.dispatch(scope, state, event_object, &target, signal_object, None);
+  }
+}
+
+#[op2(inherit = EventTarget)]
+impl AbortSignal {
+  #[static_method]
+  fn abort<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    reason: Option<v8::Local<'a, v8::Value>>,
+  ) -> v8::Local<'a, v8::Object> {
+    let event_target = EventTarget::new();
+    let abort_signal = AbortSignal::new();
+
+    let reason = if let Some(reason) = reason
+      && !reason.is_undefined()
+    {
+      reason
+    } else {
+      let error = JsErrorBox::new(
+        "DOMExceptionAbortError",
+        "The signal has been aborted",
+      );
+      to_v8_error(scope, &error)
+    };
+    let reason = v8::Global::new(scope, reason);
+    abort_signal.reason.replace(Some(reason));
+
+    let obj = cppgc::make_cppgc_empty_object::<AbortSignal>(scope);
+    cppgc::wrap_object2(scope, obj, (event_target, abort_signal))
+  }
+
+  #[static_method]
+  fn any<'a>(
+    scope: &mut v8::HandleScope<'a>,
+    signals: v8::Local<'a, v8::Array>,
+  ) -> Result<v8::Local<'a, v8::Object>, EventError> {
+    let prefix = "Failed to execute 'AbortSignal.any'";
+    let context = || "Argument 1".into();
+    let signals = Vec::<v8::Local<'a, v8::Value>>::convert(
+      scope,
+      signals.into(),
+      prefix.into(),
+      context.into(),
+      &Default::default(),
+    )?;
+    let event_target = EventTarget::new();
+    let obj = cppgc::make_cppgc_empty_object::<AbortSignal>(scope);
+    let abort_signal = AbortSignal::new_with_dependent(
+      scope,
+      obj,
+      signals,
+      prefix.into(),
+      context.into(),
+    )?;
+
+    Ok(cppgc::wrap_object2(
+      scope,
+      obj,
+      (event_target, abort_signal),
+    ))
+  }
+
+  #[getter]
+  fn aborted(&self) -> bool {
+    self.aborted_inner()
+  }
+
+  #[getter]
+  fn reason<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Value> {
+    if let Some(reason) = &*self.reason.borrow() {
+      v8::Local::new(scope, reason)
+    } else {
+      v8::undefined(scope).into()
+    }
+  }
+}
+
+#[op2]
+pub fn op_event_create_abort_signal<'a>(
+  scope: &mut v8::HandleScope<'a>,
+) -> v8::Local<'a, v8::Object> {
+  let event_target = EventTarget::new();
+  let abort_signal = AbortSignal::new();
+
+  let obj = cppgc::make_cppgc_empty_object::<AbortSignal>(scope);
+  cppgc::wrap_object2(scope, obj, (event_target, abort_signal))
+}
+
+#[op2]
+pub fn op_event_create_dependent_abort_signal<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  signals: v8::Local<'a, v8::Array>,
+  #[string] prefix: String,
+) -> Result<v8::Local<'a, v8::Object>, EventError> {
+  let context = || "Argument 1".into();
+  let signals = Vec::<v8::Local<'a, v8::Value>>::convert(
+    scope,
+    signals.into(),
+    prefix.clone().into(),
+    context.into(),
+    &Default::default(),
+  )?;
+  let event_target = EventTarget::new();
+  let obj = cppgc::make_cppgc_empty_object::<AbortSignal>(scope);
+  let abort_signal = AbortSignal::new_with_dependent(
+    scope,
+    obj,
+    signals,
+    prefix.into(),
+    context.into(),
+  )?;
+
+  Ok(cppgc::wrap_object2(
+    scope,
+    obj,
+    (event_target, abort_signal),
+  ))
+}
+
+#[op2]
+pub fn op_event_add_abort_algorithm(
+  #[cppgc] signal: &AbortSignal,
+  #[global] algorithm: v8::Global<v8::Function>,
+) {
+  signal.add(algorithm);
+}
+
+#[op2]
+pub fn op_event_remove_abort_algorithm(
+  #[cppgc] signal: &AbortSignal,
+  #[global] algorithm: v8::Global<v8::Function>,
+) {
+  signal.remove(algorithm);
+}
+
+#[op2(fast)]
+pub fn op_event_signal_abort<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  state: Rc<RefCell<OpState>>,
+  signal_object: v8::Local<'a, v8::Object>,
+  reason: Option<v8::Local<'a, v8::Value>>,
+) {
+  let signal = cppgc::try_unwrap_cppgc_proto_object::<AbortSignal>(
+    scope,
+    signal_object.into(),
+  )
+  .unwrap();
+  signal.signal_abort(scope, &state, signal_object, reason);
+}
+
+#[op2]
+pub fn op_event_get_source_signals<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  #[cppgc] signal: &AbortSignal,
+) -> v8::Local<'a, v8::Array> {
+  let mut elements = Vec::new();
+  let source_signals = signal.source_signals.borrow();
+  for source_signal in source_signals.iter() {
+    if let Some(source_signal) = source_signal.to_local(scope) {
+      elements.push(source_signal);
+    }
+  }
+  v8::Array::new_with_elements(scope, &elements)
+}
+
+#[op2]
+pub fn op_event_get_dependent_signals<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  #[cppgc] signal: &AbortSignal,
+) -> v8::Local<'a, v8::Array> {
+  let mut elements = Vec::new();
+  let dependent_signals = signal.dependent_signals.borrow();
+  for dependent_signal in dependent_signals.iter() {
+    if let Some(source_signal) = dependent_signal.to_local(scope) {
+      elements.push(source_signal);
+    }
+  }
+  v8::Array::new_with_elements(scope, &elements)
 }
