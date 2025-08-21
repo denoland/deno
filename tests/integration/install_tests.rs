@@ -332,7 +332,7 @@ fn check_local_by_default() {
   let temp_dir_str = temp_dir.path().to_string();
   let script_path =
     util::testdata_path().join("./install/check_local_by_default.ts");
-  let script_path_str = script_path.to_string_lossy().to_string();
+  let script_path_str = script_path.to_string_lossy().into_owned();
   context
     .new_command()
     .args_vec(["install", "-g", "--allow-import", script_path_str.as_str()])
@@ -356,7 +356,7 @@ fn check_local_by_default2() {
   let temp_dir_str = temp_dir.path().to_string();
   let script_path =
     util::testdata_path().join("./install/check_local_by_default2.ts");
-  let script_path_str = script_path.to_string_lossy().to_string();
+  let script_path_str = script_path.to_string_lossy().into_owned();
   context
     .new_command()
     .args_vec(["install", "-g", "--allow-import", script_path_str.as_str()])
@@ -411,8 +411,9 @@ fn show_prefix_hint_on_global_install() {
     output.assert_exit_code(1);
 
     let output_text = output.combined_output();
-    let expected_text =
-      format!("error: {pkg} is missing a prefix. Did you mean `deno install -g {pkg_req}`?");
+    let expected_text = format!(
+      "error: {pkg} is missing a prefix. Did you mean `deno install -g {pkg_req}`?"
+    );
     assert_contains!(output_text, &expected_text);
   }
 

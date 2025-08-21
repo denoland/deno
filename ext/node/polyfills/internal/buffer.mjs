@@ -22,6 +22,7 @@ const {
   Float64Array,
   MathFloor,
   MathMin,
+  MathTrunc,
   Number,
   NumberIsInteger,
   NumberIsNaN,
@@ -45,7 +46,6 @@ const {
   SymbolFor,
   SymbolSpecies,
   SymbolToPrimitive,
-  TypeError,
   TypeErrorPrototype,
   TypedArrayPrototypeCopyWithin,
   TypedArrayPrototypeFill,
@@ -63,6 +63,7 @@ import {
   op_is_ascii,
   op_is_utf8,
   op_node_call_is_from_dependency,
+  op_node_decode_utf8,
   op_transcode,
 } from "ext:core/ops";
 
@@ -174,8 +175,8 @@ function showFlaggedDeprecation() {
 }
 
 class FastBuffer extends Uint8Array {
-  constructor(arg0, arg1, arg2) {
-    super(arg0, arg1, arg2);
+  constructor(bufferOrLength, byteOffset, length) {
+    super(bufferOrLength, byteOffset, length);
   }
 }
 
@@ -379,6 +380,10 @@ const of = (...items) => {
 };
 Buffer.of = of;
 
+/**
+ * @param {unknown} size
+ * @returns {asserts size is number}
+ */
 function assertSize(size) {
   validateNumber(size, "size", 0, kMaxLength);
 }
@@ -410,12 +415,34 @@ function _allocUnsafe(size) {
   return createBuffer(size < 0 ? 0 : checked(size) | 0);
 }
 
+/**
+ * @param {number} size
+ * @returns {FastBuffer}
+ */
+function allocate(size) {
+  if (size <= 0) {
+    return new FastBuffer();
+  }
+  if (size < (Buffer.poolSize >>> 1)) {
+    if (size > (poolSize - poolOffset)) {
+      createPool();
+    }
+    const b = new FastBuffer(allocPool, poolOffset, size);
+    poolOffset += size;
+    alignPool();
+    return b;
+  }
+  return new FastBuffer(size);
+}
+
 Buffer.allocUnsafe = function allocUnsafe(size) {
-  return _allocUnsafe(size);
+  assertSize(size);
+  return allocate(size);
 };
 
 Buffer.allocUnsafeSlow = function allocUnsafeSlow(size) {
-  return _allocUnsafe(size);
+  assertSize(size);
+  return new FastBuffer(size);
 };
 
 function fromString(string, encoding) {
@@ -665,9 +692,21 @@ Buffer.prototype.swap64 = function swap64() {
   return this;
 };
 
+function decodeUtf8(buffer, start, end) {
+  return op_node_decode_utf8(
+    buffer,
+    start,
+    end,
+  );
+}
+
 Buffer.prototype.toString = function toString(encoding, start, end) {
   if (arguments.length === 0) {
-    return this.utf8Slice(0, this.length);
+    return decodeUtf8(
+      this,
+      0,
+      this.length,
+    );
   }
 
   const len = this.length;
@@ -678,6 +717,9 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
     return "";
   } else {
     start |= 0;
+    if (start <= 0) {
+      start = 0;
+    }
   }
 
   if (end === undefined || end > len) {
@@ -690,8 +732,12 @@ Buffer.prototype.toString = function toString(encoding, start, end) {
     return "";
   }
 
-  if (encoding === undefined) {
-    return this.utf8Slice(start, end);
+  if (encoding === undefined || encoding === "utf8") {
+    return decodeUtf8(
+      this,
+      start,
+      end,
+    );
   }
 
   const ops = getEncodingOps(encoding);
@@ -1041,9 +1087,15 @@ Buffer.prototype.ucs2Write = function ucs2Write(string, offset, length) {
   );
 };
 
-Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
-  return _utf8Slice(this, string, offset, length);
-};
+Buffer.prototype.utf8Slice = utf8Slice;
+
+function utf8Slice(start, end) {
+  return decodeUtf8(
+    this,
+    start,
+    end,
+  );
+}
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
   // deno-lint-ignore prefer-primordials
@@ -1154,7 +1206,7 @@ function _base64Slice(buf, start, end) {
     return forgivingBase64Encode(buf.slice(start, end));
   }
 }
-const decoder = new TextDecoder();
+const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 function _utf8Slice(buf, start, end) {
   try {
@@ -1191,6 +1243,35 @@ function _hexSlice(buf, start, end) {
   }
   return out;
 }
+
+function adjustOffset(offset, length) {
+  // Use Math.trunc() to convert offset to an integer value that can be larger
+  // than an Int32. Hence, don't use offset | 0 or similar techniques.
+  offset = MathTrunc(offset);
+  if (offset === 0) {
+    return 0;
+  }
+  if (offset < 0) {
+    offset += length;
+    return offset > 0 ? offset : 0;
+  }
+  if (offset < length) {
+    return offset;
+  }
+  return NumberIsNaN(offset) ? 0 : length;
+}
+
+Buffer.prototype.subarray = function subarray(start, end) {
+  const srcLength = this.length;
+  start = adjustOffset(start, srcLength);
+  end = end !== undefined ? adjustOffset(end, srcLength) : srcLength;
+  const newLength = end > start ? end - start : 0;
+  return new FastBuffer(
+    TypedArrayPrototypeGetBuffer(this),
+    TypedArrayPrototypeGetByteOffset(this) + start,
+    newLength,
+  );
+};
 
 Buffer.prototype.slice = function slice(start, end) {
   return this.subarray(start, end);
@@ -2614,6 +2695,13 @@ export function boundsError(value, length, type) {
   );
 }
 
+/**
+ * @param {number} value
+ * @param {string} name
+ * @param {number} min
+ * @param {number} max
+ * @returns {asserts value is number}
+ */
 export function validateNumber(value, name, min = undefined, max) {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);

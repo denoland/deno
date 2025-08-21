@@ -33,6 +33,7 @@
     "cli/tsc/dts/typescript.d.ts",
     "cli/tools/doc/prism.css",
     "cli/tools/doc/prism.js",
+    "ext/node/polyfills/deps",
     "ext/websocket/autobahn/reports",
     "gh-pages",
     "libs/config/testdata",
@@ -43,6 +44,7 @@
     "tests/node_compat/test",
     "tests/registry/",
     "tests/specs/bench/default_ts",
+    "tests/specs/compile/bytes_and_text_imports",
     "tests/specs/fmt",
     "tests/specs/lint/bom",
     "tests/specs/lint/default_ts",
@@ -50,7 +52,6 @@
     "tests/specs/publish/no_check_surfaces_syntax_error",
     "tests/specs/run/default_ts",
     "tests/specs/test/default_ts",
-    "tests/testdata/byte_order_mark.ts",
     "tests/testdata/encoding",
     "tests/testdata/file_extensions/ts_with_js_extension.js",
     "tests/testdata/fmt/",
@@ -61,6 +62,7 @@
     "tests/testdata/lint/glob/",
     "tests/testdata/malformed_config/",
     "tests/testdata/run/byte_order_mark.ts",
+    "tests/testdata/run/invalid_utf8.ts",
     "tests/testdata/run/error_syntax_empty_trailing_line.mjs",
     "tests/testdata/run/inline_js_source_map*",
     "tests/testdata/test/markdown_windows.md",
@@ -69,17 +71,18 @@
     "tests/wpt/runner/manifest.json",
     "tests/wpt/suite",
     "third_party",
+    "tests/specs/run/bytes_and_text_imports",
     "tests/specs/run/shebang_with_json_imports_tsc",
     "tests/specs/run/shebang_with_json_imports_swc",
     "tests/specs/run/ext_flag_takes_precedence_over_extension",
     "tests/specs/run/error_syntax_empty_trailing_line/error_syntax_empty_trailing_line.mjs"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.94.0.wasm",
+    "https://plugins.dprint.dev/typescript-0.95.9.wasm",
     "https://plugins.dprint.dev/json-0.20.0.wasm",
-    "https://plugins.dprint.dev/markdown-0.18.0.wasm",
+    "https://plugins.dprint.dev/markdown-0.19.0.wasm",
     "https://plugins.dprint.dev/toml-0.7.0.wasm",
     "https://plugins.dprint.dev/exec-0.5.1.json@492414e39dea4dccc07b4af796d2f4efdb89e84bae2bd4e1e924c0cc050855bf",
-    "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.5.0.wasm"
+    "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.5.1.wasm"
   ]
 }

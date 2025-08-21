@@ -5,8 +5,8 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::io::stdin;
 use std::io::Read;
+use std::io::stdin;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -20,8 +20,8 @@ use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
+use deno_core::futures::future::LocalBoxFuture;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::unsync::future::LocalFutureExt;
@@ -29,12 +29,12 @@ use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use log::debug;
-use reporters::create_reporter;
 use reporters::LintReporter;
+use reporters::create_reporter;
 
 use crate::args::CliOptions;
-use crate::args::CliTsConfigResolver;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
@@ -64,11 +64,12 @@ mod rules;
 pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
-pub use plugins::create_runner_and_load_plugins;
+pub use plugins::PluginHostProxy;
 pub use plugins::PluginLogger;
-pub use rules::collect_no_slow_type_diagnostics;
+pub use plugins::create_runner_and_load_plugins;
 pub use rules::ConfiguredRules;
 pub use rules::LintRuleProvider;
+pub use rules::collect_no_slow_type_diagnostics;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
@@ -90,7 +91,7 @@ pub async fn lint(
   let cli_options = factory.cli_options()?;
   let lint_rule_provider = factory.lint_rule_provider().await?;
   let is_stdin = lint_flags.is_stdin();
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let compiler_options_resolver = factory.compiler_options_resolver()?;
   let workspace_lint_options =
     cli_options.resolve_workspace_lint_options(&lint_flags)?;
   let success = if is_stdin {
@@ -99,14 +100,14 @@ pub async fn lint(
       lint_rule_provider,
       workspace_lint_options,
       lint_flags,
-      tsconfig_resolver,
+      compiler_options_resolver,
     )?
   } else {
     let mut linter = WorkspaceLinter::new(
       factory.caches()?.clone(),
       lint_rule_provider,
       factory.module_graph_creator().await?.clone(),
-      tsconfig_resolver.clone(),
+      compiler_options_resolver.clone(),
       cli_options.start_dir.clone(),
       &workspace_lint_options,
     );
@@ -165,7 +166,7 @@ async fn lint_with_watch_inner(
     factory.caches()?.clone(),
     factory.lint_rule_provider().await?,
     factory.module_graph_creator().await?.clone(),
-    factory.tsconfig_resolver()?.clone(),
+    factory.compiler_options_resolver()?.clone(),
     cli_options.start_dir.clone(),
     &cli_options.resolve_workspace_lint_options(&lint_flags)?,
   );
@@ -245,7 +246,7 @@ struct WorkspaceLinter {
   caches: Arc<Caches>,
   lint_rule_provider: LintRuleProvider,
   module_graph_creator: Arc<ModuleGraphCreator>,
-  tsconfig_resolver: Arc<CliTsConfigResolver>,
+  compiler_options_resolver: Arc<CompilerOptionsResolver>,
   workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
   workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
@@ -258,7 +259,7 @@ impl WorkspaceLinter {
     caches: Arc<Caches>,
     lint_rule_provider: LintRuleProvider,
     module_graph_creator: Arc<ModuleGraphCreator>,
-    tsconfig_resolver: Arc<CliTsConfigResolver>,
+    compiler_options_resolver: Arc<CompilerOptionsResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
   ) -> Self {
@@ -268,7 +269,7 @@ impl WorkspaceLinter {
       caches,
       lint_rule_provider,
       module_graph_creator,
-      tsconfig_resolver,
+      compiler_options_resolver,
       workspace_dir,
       reporter_lock,
       workspace_module_graph: None,
@@ -341,7 +342,7 @@ impl WorkspaceLinter {
       configured_rules: lint_rules,
       fix: lint_options.fix,
       deno_lint_config: resolve_lint_config(
-        &self.tsconfig_resolver,
+        &self.compiler_options_resolver,
         member_dir.dir_url(),
       )?,
       maybe_plugin_runner: plugin_runner,
@@ -351,10 +352,10 @@ impl WorkspaceLinter {
     let reporter_lock = self.reporter_lock.clone();
 
     let mut futures = Vec::with_capacity(2);
-    if linter.has_package_rules() {
-      if let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths) {
-        futures.push(fut);
-      }
+    if linter.has_package_rules()
+      && let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths)
+    {
+      futures.push(fut);
     }
 
     let maybe_incremental_cache_ = maybe_incremental_cache.clone();
@@ -365,10 +366,10 @@ impl WorkspaceLinter {
         let file_text = deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
         // don't bother rechecking this file if it didn't have any diagnostics before
-        if let Some(incremental_cache) = &maybe_incremental_cache_ {
-          if incremental_cache.is_file_same(&file_path, &file_text) {
-            return Ok(());
-          }
+        if let Some(incremental_cache) = &maybe_incremental_cache_
+          && incremental_cache.is_file_same(&file_path, &file_text)
+        {
+          return Ok(());
         }
 
         let r = linter.lint_file(
@@ -376,17 +377,16 @@ impl WorkspaceLinter {
           file_text,
           cli_options.ext_flag().as_deref(),
         );
-        if let Ok((file_source, file_diagnostics)) = &r {
-          if let Some(incremental_cache) = &maybe_incremental_cache_ {
-            if file_diagnostics.is_empty() {
-              // update the incremental cache if there were no diagnostics
-              incremental_cache.update_file(
-                &file_path,
-                // ensure the returned text is used here as it may have been modified via --fix
-                file_source.text(),
-              )
-            }
-          }
+        if let Ok((file_source, file_diagnostics)) = &r
+          && let Some(incremental_cache) = &maybe_incremental_cache_
+          && file_diagnostics.is_empty()
+        {
+          // update the incremental cache if there were no diagnostics
+          incremental_cache.update_file(
+            &file_path,
+            // ensure the returned text is used here as it may have been modified via --fix
+            file_source.text(),
+          )
         }
 
         let success = handle_lint_result(
@@ -428,7 +428,7 @@ impl WorkspaceLinter {
     linter: &Arc<CliLinter>,
     member_dir: &WorkspaceDirectory,
     paths: &[PathBuf],
-  ) -> Option<LocalBoxFuture<Result<(), AnyError>>> {
+  ) -> Option<LocalBoxFuture<'_, Result<(), AnyError>>> {
     if self.workspace_module_graph.is_none() {
       let module_graph_creator = self.module_graph_creator.clone();
       let packages = self.workspace_dir.jsr_packages_for_publish();
@@ -577,7 +577,7 @@ fn lint_stdin(
   lint_rule_provider: LintRuleProvider,
   workspace_lint_options: WorkspaceLintOptions,
   lint_flags: LintFlags,
-  tsconfig_resolver: &CliTsConfigResolver,
+  compiler_options_resolver: &CompilerOptionsResolver,
 ) -> Result<bool, AnyError> {
   let start_dir = &cli_options.start_dir;
   let reporter_lock = Arc::new(Mutex::new(create_reporter(
@@ -586,7 +586,7 @@ fn lint_stdin(
   let lint_config = start_dir
     .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
   let deno_lint_config =
-    resolve_lint_config(tsconfig_resolver, start_dir.dir_url())?;
+    resolve_lint_config(compiler_options_resolver, start_dir.dir_url())?;
   let lint_options = LintOptions::resolve(lint_config, &lint_flags)?;
   let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
     lint_options.rules,
@@ -654,11 +654,12 @@ fn handle_lint_result(
 }
 
 fn resolve_lint_config(
-  tsconfig_resolver: &CliTsConfigResolver,
+  compiler_options_resolver: &CompilerOptionsResolver,
   specifier: &ModuleSpecifier,
 ) -> Result<deno_lint::linter::LintConfig, AnyError> {
-  let transpile_options = &tsconfig_resolver
-    .transpile_and_emit_options(specifier)?
+  let transpile_options = &compiler_options_resolver
+    .for_specifier(specifier)
+    .transpile_options()?
     .transpile;
   Ok(deno_lint::linter::LintConfig {
     default_jsx_factory: (!transpile_options.jsx_automatic)

@@ -10,21 +10,21 @@ mod impl_ {
   use std::io;
   use std::rc::Rc;
 
-  use deno_core::op2;
-  use deno_core::serde;
-  use deno_core::serde::Serializer;
-  use deno_core::serde_json;
-  use deno_core::v8;
   use deno_core::CancelFuture;
   use deno_core::OpState;
   use deno_core::RcRef;
   use deno_core::ResourceId;
   use deno_core::ToV8;
+  use deno_core::op2;
+  use deno_core::serde;
+  use deno_core::serde::Serializer;
+  use deno_core::serde_json;
+  use deno_core::v8;
   use deno_error::JsErrorBox;
+  pub use deno_process::ipc::INITIAL_CAPACITY;
   use deno_process::ipc::IpcJsonStreamError;
   pub use deno_process::ipc::IpcJsonStreamResource;
   pub use deno_process::ipc::IpcRefTracker;
-  pub use deno_process::ipc::INITIAL_CAPACITY;
   use serde::Serialize;
 
   /// Wrapper around v8 value that implements Serialize.
@@ -107,11 +107,11 @@ mod impl_ {
       )
       .unwrap()
       .into();
-      if let Some(to_json) = object.get(scope, to_json_key) {
-        if let Ok(to_json) = to_json.try_cast::<v8::Function>() {
-          let json_value = to_json.call(scope, object.into(), &[]).unwrap();
-          return serialize_v8_value(scope, json_value, ser);
-        }
+      if let Some(to_json) = object.get(scope, to_json_key)
+        && let Ok(to_json) = to_json.try_cast::<v8::Function>()
+      {
+        let json_value = to_json.call(scope, object.into(), &[]).unwrap();
+        return serialize_v8_value(scope, json_value, ser);
       }
 
       let keys = object
@@ -192,7 +192,7 @@ mod impl_ {
     // ideally we would just return `Result<(impl Future, bool), ..>`, but that's not
     // supported by `op2` currently.
     queue_ok: v8::Local<'a, v8::Array>,
-  ) -> Result<impl Future<Output = Result<(), io::Error>>, IpcError> {
+  ) -> Result<impl Future<Output = Result<(), io::Error>> + use<>, IpcError> {
     let mut serialized = Vec::with_capacity(64);
     let mut ser = serde_json::Serializer::new(&mut serialized);
     serialize_v8_value(scope, value, &mut ser).map_err(IpcError::SerdeJson)?;
@@ -277,9 +277,9 @@ mod impl_ {
 
   #[cfg(test)]
   mod tests {
-    use deno_core::v8;
     use deno_core::JsRuntime;
     use deno_core::RuntimeOptions;
+    use deno_core::v8;
 
     fn wrap_expr(s: &str) -> String {
       format!("(function () {{ return {s}; }})()")

@@ -4,8 +4,8 @@ use std::fmt::Write as _;
 
 use color_print::cformat;
 use color_print::cstr;
-use deno_core::error::format_frame;
 use deno_core::error::JsError;
+use deno_core::error::format_frame;
 use deno_terminal::colors;
 
 #[derive(Debug, Clone)]
@@ -122,7 +122,8 @@ fn format_maybe_source_line(
   if column_number as usize > source_line.len() {
     return format!(
       "\n{} Couldn't format source line: Column {} is out of bounds (source may have changed at runtime)",
-      colors::yellow("Warning"), column_number,
+      colors::yellow("Warning"),
+      column_number,
     );
   }
 
@@ -145,7 +146,7 @@ fn format_maybe_source_line(
   format!("\n{indent}{source_line}\n{indent}{color_underline}")
 }
 
-fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
+fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference<'_>> {
   let mut history = Vec::<&JsError>::new();
 
   let mut current_error: &JsError = js_error;
@@ -206,11 +207,11 @@ fn format_js_error_inner(
 
   s.push_str(&js_error.exception_message);
 
-  if let Some(circular) = &circular {
-    if js_error.is_same_error(circular.reference.to) {
-      write!(s, " {}", colors::cyan(format!("<ref *{}>", circular.index)))
-        .unwrap();
-    }
+  if let Some(circular) = &circular
+    && js_error.is_same_error(circular.reference.to)
+  {
+    write!(s, " {}", colors::cyan(format!("<ref *{}>", circular.index)))
+      .unwrap();
   }
 
   if let Some(aggregated) = &js_error.aggregated {
@@ -303,7 +304,7 @@ fn format_js_error_inner(
   s
 }
 
-fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
+fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
       || msg.contains("exports is not defined")
@@ -311,21 +312,28 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
     {
       if let Some(file_name) =
         e.frames.first().and_then(|f| f.file_name.as_ref())
+        && (file_name.ends_with(".mjs") || file_name.ends_with(".mts"))
       {
-        if file_name.ends_with(".mjs") || file_name.ends_with(".mts") {
-          return vec![];
-        }
+        return vec![];
       }
       return vec![
         FixSuggestion::info_multiline(&[
-          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when the closest"),
-          cstr!("<u>package.json</> has a <i>\"type\": \"commonjs\"</> option.")
+          cstr!(
+            "Deno supports CommonJS modules in <u>.cjs</> files, or when the closest"
+          ),
+          cstr!(
+            "<u>package.json</> has a <i>\"type\": \"commonjs\"</> option."
+          ),
         ]),
         FixSuggestion::hint_multiline(&[
           "Rewrite this module to ESM,",
           cstr!("or change the file extension to <u>.cjs</u>,"),
-          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option,"),
-          cstr!("or pass <i>--unstable-detect-cjs</> flag to detect CommonJS when loading."),
+          cstr!(
+            "or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option,"
+          ),
+          cstr!(
+            "or pass <i>--unstable-detect-cjs</> flag to detect CommonJS when loading."
+          ),
         ]),
         FixSuggestion::docs("https://docs.deno.com/go/commonjs"),
       ];
@@ -405,11 +413,9 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         ),
       ];
     } else if msg.contains("client error (Connect): invalid peer certificate") {
-      return vec![
-        FixSuggestion::hint(
-          "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
-        ),
-      ];
+      return vec![FixSuggestion::hint(
+        "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
+      )];
     // Try to capture errors like:
     // ```
     // Uncaught Error: Cannot find module '../build/Release/canvas.node'
@@ -422,18 +428,14 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
       && msg.contains(".node'")
     {
       return vec![
-        FixSuggestion::info_multiline(
-          &[
-            "Trying to execute an npm package using Node-API addons,",
-            "these packages require local `node_modules` directory to be present."
-          ]
-        ),
-        FixSuggestion::hint_multiline(
-          &[
-            "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
-            "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory."
-          ]
-        )
+        FixSuggestion::info_multiline(&[
+          "Trying to execute an npm package using Node-API addons,",
+          "these packages require local `node_modules` directory to be present.",
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
+          "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory.",
+        ]),
       ];
     } else if msg.contains("document is not defined") {
       return vec![
@@ -441,8 +443,12 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "<u>document</> global is not available in Deno."
         )),
         FixSuggestion::hint_multiline(&[
-          cstr!("Use a library like <u>happy-dom</>, <u>deno_dom</>, <u>linkedom</> or <u>JSDom</>"),
-          cstr!("and setup the <u>document</> global according to the library documentation."),
+          cstr!(
+            "Use a library like <u>happy-dom</>, <u>deno_dom</>, <u>linkedom</> or <u>JSDom</>"
+          ),
+          cstr!(
+            "and setup the <u>document</> global according to the library documentation."
+          ),
         ]),
       ];
     }

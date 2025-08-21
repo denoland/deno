@@ -3,8 +3,8 @@
 use std::cell::RefCell;
 use std::thread;
 
-use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use deno_core::v8;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use serde::Serialize;
@@ -36,6 +36,8 @@ pub enum WorkerExecutionMode {
   },
   /// `deno jupyter`
   Jupyter,
+  /// `deno deploy`
+  Deploy,
 }
 
 impl WorkerExecutionMode {
@@ -51,6 +53,7 @@ impl WorkerExecutionMode {
       WorkerExecutionMode::ServeMain { .. }
       | WorkerExecutionMode::ServeWorker { .. } => 7,
       WorkerExecutionMode::Jupyter => 8,
+      WorkerExecutionMode::Deploy => 9,
     }
   }
 }

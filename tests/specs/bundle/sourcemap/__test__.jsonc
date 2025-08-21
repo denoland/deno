@@ -5,7 +5,7 @@
       "steps": [
         {
           "args": "bundle --sourcemap=linked --output=out2.js main.ts",
-          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "sourcemap_linked.out"
         },
         {
           "args": [
@@ -27,7 +27,7 @@
       "steps": [
         {
           "args": "bundle --sourcemap=external --output=out3.js main.ts",
-          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "sourcemap_external.out"
         },
         {
           "args": [
@@ -49,7 +49,7 @@
       "steps": [
         {
           "args": "bundle --sourcemap=inline --output=out4.js main.ts",
-          "output": "[WILDCARD]\nbundled in [WILDCARD]s\n"
+          "output": "sourcemap_inline.out"
         },
         {
           "args": [

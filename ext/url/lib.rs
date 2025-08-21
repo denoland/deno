@@ -2,12 +2,12 @@
 
 mod urlpattern;
 
-use deno_core::op2;
-use deno_core::url::form_urlencoded;
-use deno_core::url::quirks;
-use deno_core::url::Url;
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_core::url::Url;
+use deno_core::url::form_urlencoded;
+use deno_core::url::quirks;
 use deno_error::JsErrorBox;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -236,8 +236,7 @@ pub fn op_url_parse_search_params(
 pub fn op_url_stringify_search_params(
   #[serde] args: Vec<(String, String)>,
 ) -> String {
-  let search = form_urlencoded::Serializer::new(String::new())
+  form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)
-    .finish();
-  search
+    .finish()
 }

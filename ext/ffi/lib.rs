@@ -1,9 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
-use std::path::PathBuf;
+use std::path::Path;
 
 mod call;
 mod callback;
@@ -14,25 +15,25 @@ mod r#static;
 mod symbol;
 mod turbocall;
 
+pub use call::CallError;
 use call::op_ffi_call_nonblocking;
 use call::op_ffi_call_ptr;
 use call::op_ffi_call_ptr_nonblocking;
-pub use call::CallError;
+pub use callback::CallbackError;
 use callback::op_ffi_unsafe_callback_close;
 use callback::op_ffi_unsafe_callback_create;
 use callback::op_ffi_unsafe_callback_ref;
-pub use callback::CallbackError;
 use deno_permissions::PermissionCheckError;
 pub use denort_helper::DenoRtNativeAddonLoader;
 pub use denort_helper::DenoRtNativeAddonLoaderRc;
-use dlfcn::op_ffi_load;
 pub use dlfcn::DlfcnError;
 use dlfcn::ForeignFunction;
+use dlfcn::op_ffi_load;
 pub use ir::IRError;
-use r#static::op_ffi_get_static;
-pub use r#static::StaticError;
 pub use repr::ReprError;
 use repr::*;
+pub use r#static::StaticError;
+use r#static::op_ffi_get_static;
 use symbol::NativeType;
 use symbol::Symbol;
 
@@ -50,10 +51,10 @@ pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
 pub trait FfiPermissions {
   fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_partial_with_path(
+  fn check_partial_with_path<'a>(
     &mut self,
-    path: &str,
-  ) -> Result<PathBuf, PermissionCheckError>;
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 }
 
 impl FfiPermissions for deno_permissions::PermissionsContainer {
@@ -63,10 +64,10 @@ impl FfiPermissions for deno_permissions::PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_partial_with_path(
+  fn check_partial_with_path<'a>(
     &mut self,
-    path: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_ffi_partial_with_path(
       self, path,
     )

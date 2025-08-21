@@ -33,6 +33,10 @@ impl CacheDBHash {
         .finish(),
     )
   }
+
+  pub fn inner(&self) -> u64 {
+    self.0
+  }
 }
 
 impl rusqlite::types::ToSql for CacheDBHash {
@@ -385,14 +389,14 @@ fn open_connection(
   };
 
   // reduce logging for readonly file system
-  if let rusqlite::Error::SqliteFailure(ffi_err, _) = &err {
-    if ffi_err.code == rusqlite::ErrorCode::ReadOnly {
-      log::debug!(
-        "Failed creating cache db. Folder readonly: {}",
-        path.display()
-      );
-      return handle_failure_mode(config, err, open_connection_and_init);
-    }
+  if let rusqlite::Error::SqliteFailure(ffi_err, _) = &err
+    && ffi_err.code == rusqlite::ErrorCode::ReadOnly
+  {
+    log::debug!(
+      "Failed creating cache db. Folder readonly: {}",
+      path.display()
+    );
+    return handle_failure_mode(config, err, open_connection_and_init);
   }
 
   // ensure the parent directory exists
@@ -423,7 +427,11 @@ fn open_connection(
   // Failed, try deleting it
   let is_tty = std::io::stderr().is_terminal();
   log::log!(
-    if is_tty { log::Level::Warn } else { log::Level::Trace },
+    if is_tty {
+      log::Level::Warn
+    } else {
+      log::Level::Trace
+    },
     "Could not initialize cache database '{}', deleting and retrying... ({err:?})",
     path.to_string_lossy()
   );
@@ -601,9 +609,9 @@ mod tests {
   }
 
   fn assert_same_serialize_deserialize(original_hash: CacheDBHash) {
+    use rusqlite::ToSql;
     use rusqlite::types::FromSql;
     use rusqlite::types::ValueRef;
-    use rusqlite::ToSql;
 
     let value = original_hash.to_sql().unwrap();
     match value {

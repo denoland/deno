@@ -926,10 +926,9 @@ const RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
 const _readAll = Symbol("[[readAll]]");
 const _original = Symbol("[[original]]");
 /**
- * Create a new ReadableStream object that is backed by a Resource that
- * implements `Resource::read_return`. This object contains enough metadata to
- * allow callers to bypass the JavaScript ReadableStream implementation and
- * read directly from the underlying resource if they so choose (FastStream).
+ * Create a new ReadableStream object that is backed by a resource that
+ * implements reading operations. This object contains enough metadata to
+ * allow callers to access the underlying resource if needed.
  *
  * @param {number} rid The resource ID to read from.
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
@@ -1000,11 +999,11 @@ function readableStreamForRid(rid, autoClose = true, cfn, onError) {
 const promiseSymbol = SymbolFor("__promise");
 const _isUnref = Symbol("isUnref");
 /**
- * Create a new ReadableStream object that is backed by a Resource that
- * implements `Resource::read_return`. This readable stream supports being
+ * Create a new ReadableStream object that is backed by a resource that
+ * implements reading operations. This readable stream supports being
  * refed and unrefed by calling `readableStreamForRidUnrefableRef` and
  * `readableStreamForRidUnrefableUnref` on it. Unrefable streams are not
- * FastStream compatible.
+ * compatible with fast-path resource-backed streams.
  *
  * @param {number} rid The resource ID to read from.
  * @returns {ReadableStream<Uint8Array>}
@@ -1155,7 +1154,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
  * `Resource::write` / `Resource::write_all`. This object contains enough
  * metadata to allow callers to bypass the JavaScript WritableStream
  * implementation and write directly to the underlying resource if they so
- * choose (FastStream).
+ * choose.
  *
  * @param {number} rid The resource ID to write to.
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
@@ -6905,6 +6904,8 @@ webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
 );
 
 internals.resourceForReadableStream = resourceForReadableStream;
+internals.readableStreamForRid = readableStreamForRid;
+internals.writableStreamForRid = writableStreamForRid;
 
 export default {
   // Non-Public

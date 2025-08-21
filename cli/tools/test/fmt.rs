@@ -7,6 +7,7 @@ use deno_core::stats::RuntimeActivity;
 use deno_core::stats::RuntimeActivityDiff;
 use deno_core::stats::RuntimeActivityTrace;
 use deno_core::stats::RuntimeActivityType;
+use deno_runtime::fmt_errors::format_js_error;
 use phf::phf_map;
 
 use super::*;
@@ -16,13 +17,13 @@ pub fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
   let Ok(url) = Url::parse(path_or_url) else {
     return "<anonymous>".to_string();
   };
-  if url.scheme() == "file" {
-    if let Some(mut r) = cwd.make_relative(&url) {
-      if !r.starts_with("../") {
-        r = format!("./{r}");
-      }
-      return to_percent_decoded_str(&r);
+  if url.scheme() == "file"
+    && let Some(mut r) = cwd.make_relative(&url)
+  {
+    if !r.starts_with("../") {
+      r = format!("./{r}");
     }
+    return to_percent_decoded_str(&r);
   }
   path_or_url.to_string()
 }
@@ -124,10 +125,14 @@ fn format_sanitizer_accum(
       let hint = resource_close_hint(&item_name);
 
       let value = if appeared {
-        format!("{name} was {action1} during the test, but not {action2} during the test. {hint}")
+        format!(
+          "{name} was {action1} during the test, but not {action2} during the test. {hint}"
+        )
       } else {
-        format!("{name} was {action1} before the test started, but was {action2} during the test. \
-          Do not close resources in a test that were not created during that test.")
+        format!(
+          "{name} was {action1} before the test started, but was {action2} during the test. \
+          Do not close resources in a test that were not created during that test."
+        )
       };
       output.push(value);
     } else if item_type == RuntimeActivityType::AsyncOp {
@@ -144,7 +149,9 @@ fn format_sanitizer_accum(
       let mut value = if let Some([operation, hint]) =
         OP_DETAILS.get(&item_name)
       {
-        format!("{count_str} async operation{plural} to {operation} {tense} {phrase}. This is often caused by not {hint}.")
+        format!(
+          "{count_str} async operation{plural} to {operation} {tense} {phrase}. This is often caused by not {hint}."
+        )
       } else {
         format!(
           "{count_str} async call{plural} to {item_name} {tense} {phrase}."
@@ -168,7 +175,9 @@ fn format_sanitizer_accum(
       } else {
         "started before the test, but completed during the test. Intervals and timers should not complete in a test if they were not started in that test"
       };
-      let mut value = format!("{count_str} timer{plural} {tense} {phrase}. This is often caused by not calling `clearTimeout`.");
+      let mut value = format!(
+        "{count_str} timer{plural} {tense} {phrase}. This is often caused by not calling `clearTimeout`."
+      );
       value += &if let Some(trace) = trace {
         format!(" The operation {tense} started here:\n{trace}")
       } else {
@@ -187,7 +196,9 @@ fn format_sanitizer_accum(
       } else {
         "started before the test, but completed during the test. Intervals and timers should not complete in a test if they were not started in that test"
       };
-      let mut value = format!("{count_str} interval{plural} {tense} {phrase}. This is often caused by not calling `clearInterval`.");
+      let mut value = format!(
+        "{count_str} interval{plural} {tense} {phrase}. This is often caused by not calling `clearInterval`."
+      );
       value += &if let Some(trace) = trace {
         format!(" The operation {tense} started here:\n{trace}")
       } else {
@@ -266,35 +277,67 @@ fn pretty_resource_name(
 fn resource_close_hint(name: &str) -> &'static str {
   match name {
     "fsFile" => "Close the file handle by calling `file.close()`.",
-    "fetchRequest" => "Await the promise returned from `fetch()` or abort the fetch with an abort signal.",
-    "fetchRequestBody" => "Terminate the request body `ReadableStream` by closing or erroring it.",
-    "fetchResponse" => "Consume or close the response body `ReadableStream`, e.g `await resp.text()` or `await resp.body.cancel()`.",
+    "fetchRequest" => {
+      "Await the promise returned from `fetch()` or abort the fetch with an abort signal."
+    }
+    "fetchRequestBody" => {
+      "Terminate the request body `ReadableStream` by closing or erroring it."
+    }
+    "fetchResponse" => {
+      "Consume or close the response body `ReadableStream`, e.g `await resp.text()` or `await resp.body.cancel()`."
+    }
     "httpClient" => "Close the HTTP client by calling `httpClient.close()`.",
-    "dynamicLibrary" => "Unload the dynamic library by calling `dynamicLibrary.close()`.",
-    "httpConn" => "Close the inbound HTTP connection by calling `httpConn.close()`.",
-    "httpStream" => "Close the inbound HTTP request by responding with `e.respondWith()` or closing the HTTP connection.",
+    "dynamicLibrary" => {
+      "Unload the dynamic library by calling `dynamicLibrary.close()`."
+    }
+    "httpConn" => {
+      "Close the inbound HTTP connection by calling `httpConn.close()`."
+    }
+    "httpStream" => {
+      "Close the inbound HTTP request by responding with `e.respondWith()` or closing the HTTP connection."
+    }
     "tcpStream" => "Close the TCP connection by calling `tcpConn.close()`.",
-    "unixStream" => "Close the Unix socket connection by calling `unixConn.close()`.",
+    "unixStream" => {
+      "Close the Unix socket connection by calling `unixConn.close()`."
+    }
     "tlsStream" => "Close the TLS connection by calling `tlsConn.close()`.",
     "tlsListener" => "Close the TLS listener by calling `tlsListener.close()`.",
-    "unixListener" => "Close the Unix socket listener by calling `unixListener.close()`.",
-    "unixDatagram" => "Close the Unix datagram socket by calling `unixDatagram.close()`.",
+    "unixListener" => {
+      "Close the Unix socket listener by calling `unixListener.close()`."
+    }
+    "unixDatagram" => {
+      "Close the Unix datagram socket by calling `unixDatagram.close()`."
+    }
     "tcpListener" => "Close the TCP listener by calling `tcpListener.close()`.",
     "udpSocket" => "Close the UDP socket by calling `udpSocket.close()`.",
     "timer" => "Clear the timer by calling `clearInterval` or `clearTimeout`.",
-    "textDecoder" => "Close the text decoder by calling `textDecoder.decode('')` or `await textDecoderStream.readable.cancel()`.",
+    "textDecoder" => {
+      "Close the text decoder by calling `textDecoder.decode('')` or `await textDecoderStream.readable.cancel()`."
+    }
     "messagePort" => "Close the message port by calling `messagePort.close()`.",
     "webSocketStream" => "Close the WebSocket by calling `webSocket.close()`.",
     "fsEvents" => "Close the file system watcher by calling `watcher.close()`.",
-    "childStdin" => "Close the child process stdin by calling `proc.stdin.close()`.",
-    "childStdout" => "Close the child process stdout by calling `proc.stdout.close()` or `await child.stdout.cancel()`.",
-    "childStderr" => "Close the child process stderr by calling `proc.stderr.close()` or `await child.stderr.cancel()`.",
-    "child" => "Close the child process by calling `proc.kill()` or `proc.close()`.",
-    "signal" => "Clear the signal listener by calling `Deno.removeSignalListener`.",
+    "childStdin" => {
+      "Close the child process stdin by calling `proc.stdin.close()`."
+    }
+    "childStdout" => {
+      "Close the child process stdout by calling `proc.stdout.close()` or `await child.stdout.cancel()`."
+    }
+    "childStderr" => {
+      "Close the child process stderr by calling `proc.stderr.close()` or `await child.stderr.cancel()`."
+    }
+    "child" => {
+      "Close the child process by calling `proc.kill()` or `proc.close()`."
+    }
+    "signal" => {
+      "Clear the signal listener by calling `Deno.removeSignalListener`."
+    }
     "stdin" => "Close the stdin pipe by calling `Deno.stdin.close()`.",
     "stdout" => "Close the stdout pipe by calling `Deno.stdout.close()`.",
     "stderr" => "Close the stderr pipe by calling `Deno.stderr.close()`.",
-    "compression" => "Close the compression stream by calling `await stream.writable.close()`.",
+    "compression" => {
+      "Close the compression stream by calling `await stream.writable.close()`."
+    }
     _ => "Close the resource before the end of the test.",
   }
 }
@@ -402,7 +445,11 @@ mod tests {
 
   // https://github.com/denoland/deno/issues/13729
   // https://github.com/denoland/deno/issues/13938
-  leak_format_test!(op_unknown, true, [RuntimeActivity::AsyncOp(0, None, "op_unknown")], 
+  leak_format_test!(
+    op_unknown,
+    true,
+    [RuntimeActivity::AsyncOp(0, None, "op_unknown")],
     " - An async call to op_unknown was started in this test, but never completed.\n\
-    To get more details where leaks occurred, run again with the --trace-leaks flag.\n");
+    To get more details where leaks occurred, run again with the --trace-leaks flag.\n"
+  );
 }

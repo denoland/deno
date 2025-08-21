@@ -5,7 +5,6 @@ use std::cell::RefCell;
 use std::future::poll_fn;
 use std::rc::Rc;
 
-use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::DetachedBuffer;
@@ -13,12 +12,13 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::op2;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::sync::mpsc::error::TryRecvError;
-use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::error::TryRecvError;
+use tokio::sync::mpsc::unbounded_channel;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MessagePortError {
@@ -123,7 +123,7 @@ pub struct MessagePortResource {
 }
 
 impl Resource for MessagePortResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "messagePort".into()
   }
 
@@ -220,10 +220,10 @@ pub fn op_message_port_post_message(
   #[serde] data: JsMessageData,
 ) -> Result<(), MessagePortError> {
   for js_transferable in &data.transferables {
-    if let JsTransferable::MessagePort(id) = js_transferable {
-      if *id == rid {
-        return Err(MessagePortError::TransferSelf);
-      }
+    if let JsTransferable::MessagePort(id) = js_transferable
+      && *id == rid
+    {
+      return Err(MessagePortError::TransferSelf);
     }
   }
 

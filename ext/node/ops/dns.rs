@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use deno_error::JsError;
 use deno_net::ops::NetPermToken;
 use deno_permissions::PermissionCheckError;

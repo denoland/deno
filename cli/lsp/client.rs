@@ -12,10 +12,11 @@ use lsp_types::Uri;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
-use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
+use super::config::WorkspaceSettings;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
+use crate::lsp::logging::lsp_warn;
 use crate::lsp::repl::get_repl_workspace_settings;
 
 #[derive(Debug)]
@@ -69,17 +70,19 @@ impl Client {
     });
   }
 
-  /// This notification is sent to the client during internal testing
-  /// purposes only in order to let the test client know when the latest
-  /// diagnostics have been published.
-  pub fn send_diagnostic_batch_notification(
-    &self,
-    params: lsp_custom::DiagnosticBatchNotificationParams,
-  ) {
+  pub fn send_diagnostic_batch_start_notification(&self) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
     spawn(async move {
-      client.send_diagnostic_batch_notification(params).await;
+      client.send_diagnostic_batch_start_notification().await;
+    });
+  }
+
+  pub fn send_diagnostic_batch_end_notification(&self) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client.send_diagnostic_batch_end_notification().await;
     });
   }
 
@@ -140,6 +143,16 @@ impl Client {
       client.show_message(message_type, message).await;
     });
   }
+
+  pub fn refresh_diagnostics(&self) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      if let Err(err) = client.refresh_diagnostics().await {
+        lsp_warn!("Client failed to refresh diagnostics: ${err:#}");
+      }
+    });
+  }
 }
 
 /// DANGER: The methods on this client should only be called outside
@@ -176,10 +189,8 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
   );
-  async fn send_diagnostic_batch_notification(
-    &self,
-    params: lsp_custom::DiagnosticBatchNotificationParams,
-  );
+  async fn send_diagnostic_batch_start_notification(&self);
+  async fn send_diagnostic_batch_end_notification(&self);
   async fn send_test_notification(&self, params: TestingNotification);
   async fn send_did_refresh_deno_configuration_tree_notification(
     &self,
@@ -193,6 +204,7 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::DidUpgradeCheckNotificationParams,
   );
+  async fn refresh_diagnostics(&self) -> Result<(), AnyError>;
   async fn workspace_configuration(
     &self,
     scopes: Vec<Option<lsp::Uri>>,
@@ -228,13 +240,17 @@ impl ClientTrait for TowerClient {
       .await
   }
 
-  async fn send_diagnostic_batch_notification(
-    &self,
-    params: lsp_custom::DiagnosticBatchNotificationParams,
-  ) {
+  async fn send_diagnostic_batch_start_notification(&self) {
     self
       .0
-      .send_notification::<lsp_custom::DiagnosticBatchNotification>(params)
+      .send_notification::<lsp_custom::DiagnosticBatchStartNotification>(())
+      .await
+  }
+
+  async fn send_diagnostic_batch_end_notification(&self) {
+    self
+      .0
+      .send_notification::<lsp_custom::DiagnosticBatchEndNotification>(())
       .await
   }
 
@@ -297,6 +313,14 @@ impl ClientTrait for TowerClient {
       .0
       .send_notification::<lsp_custom::DidUpgradeCheckNotification>(params)
       .await
+  }
+
+  async fn refresh_diagnostics(&self) -> Result<(), AnyError> {
+    self
+      .0
+      .send_request::<lsp::request::WorkspaceDiagnosticRefresh>(())
+      .await
+      .map_err(|err| anyhow!("{err:#}"))
   }
 
   async fn workspace_configuration(
@@ -386,12 +410,9 @@ impl ClientTrait for ReplClient {
   ) {
   }
 
-  async fn send_diagnostic_batch_notification(
-    &self,
-    _params: lsp_custom::DiagnosticBatchNotificationParams,
-  ) {
-  }
+  async fn send_diagnostic_batch_start_notification(&self) {}
 
+  async fn send_diagnostic_batch_end_notification(&self) {}
   async fn send_test_notification(&self, _params: TestingNotification) {}
 
   async fn send_did_refresh_deno_configuration_tree_notification(
@@ -410,6 +431,10 @@ impl ClientTrait for ReplClient {
     &self,
     _params: lsp_custom::DidUpgradeCheckNotificationParams,
   ) {
+  }
+
+  async fn refresh_diagnostics(&self) -> Result<(), AnyError> {
+    Ok(())
   }
 
   async fn workspace_configuration(

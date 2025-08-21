@@ -130,7 +130,7 @@ impl ConfiguredRules {
     self.rules.iter().all(|r| r.supports_incremental_cache())
   }
 
-  pub fn incremental_cache_state(&self) -> impl std::hash::Hash {
+  pub fn incremental_cache_state(&self) -> impl std::hash::Hash + use<> {
     // use a hash of the rule names in order to bust the cache
     let mut codes = self.rules.iter().map(|r| r.code()).collect::<Vec<_>>();
     // ensure this is stable by sorting it
@@ -234,16 +234,16 @@ fn filtered_rules(
         true
       };
 
-      if let Some(includes) = &maybe_include {
-        if includes.contains(&rule.code().to_owned()) {
-          passes |= true;
-        }
+      if let Some(includes) = &maybe_include
+        && includes.contains(&rule.code().to_owned())
+      {
+        passes |= true;
       }
 
-      if let Some(excludes) = &maybe_exclude {
-        if excludes.contains(&rule.code().to_owned()) {
-          passes &= false;
-        }
+      if let Some(excludes) = &maybe_exclude
+        && excludes.contains(&rule.code().to_owned())
+      {
+        passes &= false;
       }
 
       passes

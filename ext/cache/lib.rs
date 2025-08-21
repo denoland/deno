@@ -9,15 +9,15 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use deno_core::op2;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::op2;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
 use deno_error::JsErrorBox;
 use futures::Stream;
 use tokio::io::AsyncRead;
@@ -304,7 +304,7 @@ impl CacheResponseResource {
 impl Resource for CacheResponseResource {
   deno_core::impl_readable_byob!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "CacheResponseResource".into()
   }
 }

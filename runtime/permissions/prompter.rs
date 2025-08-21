@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 
 /// Helper function to make control characters visible so users can see the underlying filename.
 #[cfg(not(target_arch = "wasm32"))]
-fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
+fn escape_control_characters(s: &str) -> std::borrow::Cow<'_, str> {
   use deno_terminal::colors;
 
   if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
@@ -193,8 +193,8 @@ fn clear_stdin(
   use winapi::um::wincontypes::INPUT_RECORD;
   use winapi::um::wincontypes::KEY_EVENT;
   use winapi::um::winnt::HANDLE;
-  use winapi::um::winuser::MapVirtualKeyW;
   use winapi::um::winuser::MAPVK_VK_TO_VSC;
+  use winapi::um::winuser::MapVirtualKeyW;
   use winapi::um::winuser::VK_RETURN;
 
   // SAFETY: winapi calls
@@ -218,7 +218,8 @@ fn clear_stdin(
   return Ok(());
 
   unsafe fn flush_input_buffer(stdin: HANDLE) -> Result<(), std::io::Error> {
-    let success = FlushConsoleInputBuffer(stdin);
+    // SAFETY: winapi calls
+    let success = unsafe { FlushConsoleInputBuffer(stdin) };
     if success != TRUE {
       return Err(std::io::Error::other(format!(
         "Could not flush the console input buffer: {}",
@@ -231,24 +232,28 @@ fn clear_stdin(
   unsafe fn emulate_enter_key_press(
     stdin: HANDLE,
   ) -> Result<(), std::io::Error> {
-    // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
-    let mut input_record: INPUT_RECORD = std::mem::zeroed();
-    input_record.EventType = KEY_EVENT;
-    input_record.Event.KeyEvent_mut().bKeyDown = TRUE;
-    input_record.Event.KeyEvent_mut().wRepeatCount = 1;
-    input_record.Event.KeyEvent_mut().wVirtualKeyCode = VK_RETURN as WORD;
-    input_record.Event.KeyEvent_mut().wVirtualScanCode =
-      MapVirtualKeyW(VK_RETURN as UINT, MAPVK_VK_TO_VSC) as WORD;
-    *input_record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() = '\r' as WCHAR;
+    // SAFETY: winapi calls
+    unsafe {
+      // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
+      let mut input_record: INPUT_RECORD = std::mem::zeroed();
+      input_record.EventType = KEY_EVENT;
+      input_record.Event.KeyEvent_mut().bKeyDown = TRUE;
+      input_record.Event.KeyEvent_mut().wRepeatCount = 1;
+      input_record.Event.KeyEvent_mut().wVirtualKeyCode = VK_RETURN as WORD;
+      input_record.Event.KeyEvent_mut().wVirtualScanCode =
+        MapVirtualKeyW(VK_RETURN as UINT, MAPVK_VK_TO_VSC) as WORD;
+      *input_record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() =
+        '\r' as WCHAR;
 
-    let mut record_written = 0;
-    let success =
-      WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
-    if success != TRUE {
-      return Err(std::io::Error::other(format!(
-        "Could not emulate enter key press: {}",
-        std::io::Error::last_os_error()
-      )));
+      let mut record_written = 0;
+      let success =
+        WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
+      if success != TRUE {
+        return Err(std::io::Error::other(format!(
+          "Could not emulate enter key press: {}",
+          std::io::Error::last_os_error()
+        )));
+      }
     }
     Ok(())
   }
@@ -258,8 +263,10 @@ fn clear_stdin(
   ) -> Result<bool, std::io::Error> {
     let mut buffer = Vec::with_capacity(1);
     let mut events_read = 0;
-    let success =
-      PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read);
+    // SAFETY: winapi calls
+    let success = unsafe {
+      PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read)
+    };
     if success != TRUE {
       return Err(std::io::Error::other(format!(
         "Could not peek the console input buffer: {}",
@@ -334,9 +341,17 @@ impl PermissionPrompter for TtyPrompter {
 
     #[allow(clippy::print_stderr)]
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
-      eprintln!("❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.", message.len(), MAX_PERMISSION_PROMPT_LENGTH);
-      eprintln!("❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.");
-      eprintln!("❌ Run again with --allow-{name} to bypass this check if this is really what you want to do.");
+      eprintln!(
+        "❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.",
+        message.len(),
+        MAX_PERMISSION_PROMPT_LENGTH
+      );
+      eprintln!(
+        "❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests."
+      );
+      eprintln!(
+        "❌ Run again with --allow-{name} to bypass this check if this is really what you want to do."
+      );
       return PromptResponse::Deny;
     }
 
@@ -363,7 +378,9 @@ impl PermissionPrompter for TtyPrompter {
 
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: String = if is_unary {
-      format!("[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)")
+      format!(
+        "[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)"
+      )
     } else {
       "[y/n] (y = yes, allow; n = no, deny)".to_string()
     };
@@ -412,7 +429,9 @@ impl PermissionPrompter for TtyPrompter {
       );
       writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
       let msg = if crate::is_standalone() {
-        format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
+        format!(
+          "Specify the required permissions during compile time using `deno compile --allow-{name}`."
+        )
       } else {
         format!("Run again with --allow-{name} to bypass this prompt.")
       };

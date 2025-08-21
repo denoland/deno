@@ -9,12 +9,12 @@ use std::sync::Arc;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_error::JsErrorBox;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::NpmPackageCacheFolderId;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_path_util::fs::atomic_write_file_with_retries;
-use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use deno_semver::Version;
+use deno_semver::package::PackageNv;
 use parking_lot::Mutex;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
@@ -37,16 +37,17 @@ mod rt;
 mod tarball;
 mod tarball_extract;
 
-pub use fs_util::hard_link_dir_recursive;
-pub use fs_util::hard_link_file;
 pub use fs_util::HardLinkDirRecursiveError;
 pub use fs_util::HardLinkFileError;
-pub use registry_info::get_package_url;
+pub use fs_util::hard_link_dir_recursive;
+pub use fs_util::hard_link_file;
 pub use registry_info::RegistryInfoProvider;
 pub use registry_info::SerializedCachedPackageInfo;
+pub use registry_info::get_package_url;
 pub use remote::maybe_auth_header_value_for_npm_registry;
 pub use tarball::EnsurePackageError;
 pub use tarball::TarballCache;
+pub use tarball::TarballCacheReporter;
 
 use self::rt::spawn_blocking;
 
@@ -364,7 +365,9 @@ pub enum WithFolderSyncLockError {
     source: std::io::Error,
   },
   #[class(inherit)]
-  #[error("Error creating package sync lock file at '{path}'. Maybe try manually deleting this folder.")]
+  #[error(
+    "Error creating package sync lock file at '{path}'. Maybe try manually deleting this folder."
+  )]
   CreateLockFile {
     path: PathBuf,
     #[source]
@@ -375,7 +378,9 @@ pub enum WithFolderSyncLockError {
   #[error(transparent)]
   Action(#[from] JsErrorBox),
   #[class(generic)]
-  #[error("Failed setting up package cache directory for {package}, then failed cleaning it up.\n\nOriginal error:\n\n{error}\n\nRemove error:\n\n{remove_error}\n\nPlease manually delete this folder or you will run into issues using this package in the future:\n\n{output_folder}")]
+  #[error(
+    "Failed setting up package cache directory for {package}, then failed cleaning it up.\n\nOriginal error:\n\n{error}\n\nRemove error:\n\n{remove_error}\n\nPlease manually delete this folder or you will run into issues using this package in the future:\n\n{output_folder}"
+  )]
   SetUpPackageCacheDir {
     package: Box<PackageNv>,
     error: Box<WithFolderSyncLockError>,
@@ -432,15 +437,15 @@ fn with_folder_sync_lock(
   match inner(sys, output_folder, action) {
     Ok(()) => Ok(()),
     Err(err) => {
-      if let Err(remove_err) = sys.fs_remove_dir_all(output_folder) {
-        if remove_err.kind() != std::io::ErrorKind::NotFound {
-          return Err(WithFolderSyncLockError::SetUpPackageCacheDir {
-            package: Box::new(package.clone()),
-            error: Box::new(err),
-            remove_error: remove_err,
-            output_folder: output_folder.to_path_buf(),
-          });
-        }
+      if let Err(remove_err) = sys.fs_remove_dir_all(output_folder)
+        && remove_err.kind() != std::io::ErrorKind::NotFound
+      {
+        return Err(WithFolderSyncLockError::SetUpPackageCacheDir {
+          package: Box::new(package.clone()),
+          error: Box::new(err),
+          remove_error: remove_err,
+          output_folder: output_folder.to_path_buf(),
+        });
       }
       Err(err)
     }

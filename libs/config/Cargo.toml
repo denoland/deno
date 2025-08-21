@@ -1,7 +1,7 @@
 # Copyright 2018-2025 the Deno authors. MIT license.
 [package]
 name = "deno_config"
-version = "0.58.0"
+version = "0.64.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,15 +13,16 @@ path = "lib.rs"
 
 [features]
 default = ["workspace"]
-deno_json = ["jsonc-parser", "glob", "ignore", "import_map", "phf"]
+deno_json = ["deno_semver", "jsonc-parser", "glob", "ignore", "import_map"]
 package_json = ["deno_package_json"]
-sync = ["deno_package_json/sync"]
-workspace = ["deno_json", "deno_semver", "package_json"]
+sync = ["deno_maybe_sync/sync", "deno_package_json/sync"]
+workspace = ["deno_json", "package_json"]
 
 [dependencies]
 boxed_error.workspace = true
 capacity_builder = { workspace = true }
 deno_error = { workspace = true, features = ["url"] }
+deno_maybe_sync.workspace = true
 deno_package_json = { workspace = true, optional = true }
 deno_path_util.workspace = true
 deno_semver = { workspace = true, optional = true }
@@ -31,8 +32,6 @@ import_map = { workspace = true, features = ["ext"], optional = true }
 indexmap = { workspace = true, features = ["serde"] }
 jsonc-parser = { workspace = true, features = ["serde"], optional = true }
 log.workspace = true
-percent-encoding.workspace = true
-phf = { workspace = true, features = ["macros"], optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sys_traits.workspace = true

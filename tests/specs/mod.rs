@@ -8,20 +8,20 @@ use std::panic::AssertUnwindSafe;
 use std::rc::Rc;
 
 use anyhow::Context;
-use file_test_runner::collection::collect_tests_or_exit;
-use file_test_runner::collection::strategies::FileTestMapperStrategy;
-use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
+use file_test_runner::TestResult;
 use file_test_runner::collection::CollectOptions;
 use file_test_runner::collection::CollectTestsError;
 use file_test_runner::collection::CollectedCategoryOrTest;
 use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::CollectedTestCategory;
-use file_test_runner::TestResult;
+use file_test_runner::collection::collect_tests_or_exit;
+use file_test_runner::collection::strategies::FileTestMapperStrategy;
+use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use test_util::tests_path;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
+use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
 
@@ -67,10 +67,10 @@ impl MultiTestMetaData {
       multi_test_meta_data: &MultiTestMetaData,
       value: &mut JsonMap,
     ) {
-      if let Some(base) = &multi_test_meta_data.base {
-        if !value.contains_key("base") {
-          value.insert("base".to_string(), base.clone().into());
-        }
+      if let Some(base) = &multi_test_meta_data.base
+        && !value.contains_key("base")
+      {
+        value.insert("base".to_string(), base.clone().into());
       }
       if multi_test_meta_data.temp_dir && !value.contains_key("tempDir") {
         value.insert("tempDir".to_string(), true.into());

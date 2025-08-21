@@ -2,13 +2,13 @@
 
 use flaky_test::flaky_test;
 use test_util as util;
+use test_util::TempDir;
 use test_util::assert_contains;
 use test_util::env_vars_for_npm_tests;
 use test_util::http_server;
-use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
-use util::assert_not_contains;
 use util::DenoChild;
+use util::assert_not_contains;
 
 /// Logs to stderr every time next_line() is called
 struct LoggingLines<R>
@@ -2037,7 +2037,7 @@ async fn bundle_watch() {
     .spawn()
     .unwrap();
   let (_, mut stderr_lines) = child_lines(&mut child);
-  wait_contains("bundled in", &mut stderr_lines).await;
+  wait_contains("Bundled 1 module in", &mut stderr_lines).await;
   let contents = t.path().join("output.js").read_to_string();
   assert_contains!(contents, "console.log(\"hello\");");
 
@@ -2049,7 +2049,7 @@ async fn bundle_watch() {
 "#,
   );
   wait_contains("File change detected", &mut stderr_lines).await;
-  wait_contains("bundled in", &mut stderr_lines).await;
+  wait_contains("Bundled 1 module in", &mut stderr_lines).await;
   let contents = t.path().join("output.js").read_to_string();
   assert_contains!(contents, "console.log(\"hello world\");");
 

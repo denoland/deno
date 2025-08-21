@@ -1591,9 +1591,6 @@ declare namespace Deno {
    * console.log(Deno.execPath());  // e.g. "/home/alice/.local/bin/deno"
    * ```
    *
-   * Requires `allow-read` permission.
-   *
-   * @tags allow-read
    * @category Runtime
    */
   export function execPath(): string;
@@ -2704,7 +2701,8 @@ declare namespace Deno {
    * | 1      | execute only |
    * | 0      | no permission |
    *
-   * NOTE: This API currently throws on Windows
+   * Note: On Windows, only the read and write permissions can be modified.
+   * Distinctions between owner, group, and others are not supported.
    *
    * Requires `allow-write` permission.
    *
@@ -2721,8 +2719,6 @@ declare namespace Deno {
    * ```
    *
    * For a full description, see {@linkcode Deno.chmod}.
-   *
-   * NOTE: This API currently throws on Windows
    *
    * Requires `allow-write` permission.
    *
@@ -3812,6 +3808,20 @@ declare namespace Deno {
      *
      * @default {false} */
     windowsRawArguments?: boolean;
+
+    /** Whether to detach the spawned process from the current process.
+     * This allows the spawned process to continue running after the current
+     * process exits.
+     *
+     * Note: In order to allow the current process to exit, you need to ensure
+     * you call `unref()` on the child process.
+     *
+     * In addition, the stdio streams – if inherited or piped – may keep the
+     * current process from exiting until the streams are closed.
+     *
+     * @default {false}
+     */
+    detached?: boolean;
   }
 
   /**
@@ -4072,6 +4082,21 @@ declare namespace Deno {
     path?: string | URL;
   }
 
+  /** The permission descriptor for the `allow-import` and `deny-import` permissions, which controls
+   * access to importing from remote hosts via the network. The option `host` allows scoping the
+   * permission for outbound connection to a specific host and port.
+   *
+   * @category Permissions */
+  export interface ImportPermissionDescriptor {
+    name: "import";
+    /** Optional host string of the form `"<hostname>[:<port>]"`. Examples:
+     *
+     *      "github.com"
+     *      "deno.land:8080"
+     */
+    host?: string;
+  }
+
   /** Permission descriptors which define a permission and can be queried,
    * requested, or revoked.
    *
@@ -4087,7 +4112,8 @@ declare namespace Deno {
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
     | SysPermissionDescriptor
-    | FfiPermissionDescriptor;
+    | FfiPermissionDescriptor
+    | ImportPermissionDescriptor;
 
   /** The interface which defines what event types are supported by
    * {@linkcode PermissionStatus} instances.

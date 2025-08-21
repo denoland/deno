@@ -6,13 +6,13 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
-use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
-use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_core::futures::stream::FuturesUnordered;
 use deno_npm_installer::PackageCaching;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_semver::Version;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::Version;
 
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
@@ -25,6 +25,9 @@ pub async fn cache_top_level_deps(
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
+  let _clear_guard = factory
+    .text_only_progress_bar()
+    .deferred_keep_initialize_alive();
   let npm_installer = factory.npm_installer().await?;
   npm_installer
     .ensure_top_level_package_json_install()
@@ -51,8 +54,7 @@ pub async fn cache_top_level_deps(
       .await;
     let graph = graph_permit.graph_mut();
     if let Some(lockfile) = factory.maybe_lockfile().await? {
-      let lockfile = lockfile.lock();
-      crate::graph_util::fill_graph_from_lockfile(graph, &lockfile);
+      lockfile.fill_graph(graph);
     }
 
     let mut roots = Vec::new();
@@ -70,6 +72,7 @@ pub async fn cache_top_level_deps(
           .and_then(|name| Some((name, pkg_json.version.as_deref()?)))
       })
       .collect::<HashMap<_, _>>();
+    let workspace_jsr_packages = resolver.jsr_packages();
 
     for entry in import_map.imports().entries().chain(
       import_map
@@ -83,49 +86,58 @@ pub async fn cache_top_level_deps(
       match specifier.scheme() {
         "jsr" => {
           let specifier_str = specifier.as_str();
-          if let Ok(req) = JsrPackageReqReference::from_str(specifier_str) {
-            if let Some(sub_path) = req.sub_path() {
-              if sub_path.ends_with('/') {
-                continue;
-              }
-              roots.push(specifier.clone());
-              continue;
-            }
-            if !seen_reqs.insert(req.req().clone()) {
-              continue;
-            }
-            let resolved_req = graph.packages.mappings().get(req.req());
-            let resolved_req = resolved_req.and_then(|nv| {
-              // the version might end up being upgraded to a newer version that's already in
-              // the graph (due to a reverted change), in which case our exports could end up
-              // being wrong. to avoid that, see if there's a newer version that matches the version
-              // req.
-              let versions =
-                graph.packages.versions_by_name(&req.req().name)?;
-              let mut best = nv;
-              for version in versions {
-                if version.version > best.version
-                  && req.req().version_req.matches(&version.version)
-                {
-                  best = version;
-                }
-              }
-              Some(best)
-            });
-
-            let jsr_resolver = jsr_resolver.clone();
-            info_futures.push(async move {
-              let nv = if let Some(req) = resolved_req {
-                Cow::Borrowed(req)
-              } else {
-                Cow::Owned(jsr_resolver.req_to_nv(req.req()).await?)
-              };
-              if let Some(info) = jsr_resolver.package_version_info(&nv).await {
-                return Some((specifier.clone(), info));
-              }
-              None
-            });
+          let Ok(req_ref) = JsrPackageReqReference::from_str(specifier_str)
+          else {
+            continue;
+          };
+          if workspace_jsr_packages
+            .iter()
+            .any(|pkg| pkg.matches_req(req_ref.req()))
+          {
+            // do not install a workspace jsr package
+            continue;
           }
+          if let Some(sub_path) = req_ref.sub_path() {
+            if sub_path.ends_with('/') {
+              continue;
+            }
+            roots.push(specifier.clone());
+            continue;
+          }
+          if !seen_reqs.insert(req_ref.req().clone()) {
+            continue;
+          }
+          let resolved_req = graph.packages.mappings().get(req_ref.req());
+          let resolved_req = resolved_req.and_then(|nv| {
+            // the version might end up being upgraded to a newer version that's already in
+            // the graph (due to a reverted change), in which case our exports could end up
+            // being wrong. to avoid that, see if there's a newer version that matches the version
+            // req.
+            let versions =
+              graph.packages.versions_by_name(&req_ref.req().name)?;
+            let mut best = nv;
+            for version in versions {
+              if version.version > best.version
+                && req_ref.req().version_req.matches(&version.version)
+              {
+                best = version;
+              }
+            }
+            Some(best)
+          });
+
+          let jsr_resolver = jsr_resolver.clone();
+          info_futures.push(async move {
+            let nv = if let Some(req) = resolved_req {
+              Cow::Borrowed(req)
+            } else {
+              Cow::Owned(jsr_resolver.req_to_nv(req_ref.req()).await?)
+            };
+            if let Some(info) = jsr_resolver.package_version_info(&nv).await {
+              return Some((specifier.clone(), info));
+            }
+            None
+          });
         }
         "npm" => {
           let Ok(req_ref) =
@@ -152,12 +164,11 @@ pub async fn cache_top_level_deps(
           if entry.key.ends_with('/') && specifier.as_str().ends_with('/') {
             continue;
           }
-          if specifier.scheme() == "file" {
-            if let Ok(path) = specifier.to_file_path() {
-              if !path.is_file() {
-                continue;
-              }
-            }
+          if specifier.scheme() == "file"
+            && let Ok(path) = specifier.to_file_path()
+            && !path.is_file()
+          {
+            continue;
           }
           roots.push(specifier.clone());
         }

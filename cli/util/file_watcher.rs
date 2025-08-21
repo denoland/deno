@@ -11,23 +11,22 @@ use std::time::Duration;
 
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
-use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_lib::util::result::js_error_downcast_ref;
 use deno_runtime::fmt_errors::format_js_error;
 use log::info;
-use notify::event::Event as NotifyEvent;
-use notify::event::EventKind;
 use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
+use notify::event::Event as NotifyEvent;
+use notify::event::EventKind;
 use tokio::select;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::error::SendError;
 use tokio::time::sleep;
 
 use crate::args::Flags;
@@ -83,10 +82,9 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let error_string = match any_and_jserrorbox_downcast_ref::<CoreError>(&err)
-    {
-      Some(CoreError::Js(e)) => format_js_error(e),
-      _ => format!("{err:?}"),
+    let error_string = match js_error_downcast_ref(&err) {
+      Some(e) => format_js_error(e),
+      None => format!("{err:?}"),
     };
     log::error!(
       "{}: {}",

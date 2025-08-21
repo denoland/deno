@@ -8,7 +8,6 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -19,17 +18,19 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::op2;
+use hickory_proto::ProtoError;
+use hickory_proto::ProtoErrorKind;
 use hickory_proto::rr::rdata::caa::Value;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
-use hickory_proto::ProtoError;
-use hickory_proto::ProtoErrorKind;
+use hickory_resolver::ResolveError;
+use hickory_resolver::ResolveErrorKind;
 use hickory_resolver::config::NameServerConfigGroup;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
 use hickory_resolver::system_conf;
-use hickory_resolver::ResolveError;
-use hickory_resolver::ResolveErrorKind;
+use quinn::rustls;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -39,12 +40,13 @@ use socket2::Type;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
+use crate::NetPermissions;
 use crate::io::TcpStreamResource;
 use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
-use crate::NetPermissions;
+use crate::tunnel::TunnelAddr;
 
 pub type Fd = u32;
 
@@ -52,6 +54,9 @@ pub type Fd = u32;
 #[serde(rename_all = "camelCase")]
 pub struct TlsHandshakeInfo {
   pub alpn_protocol: Option<ByteString>,
+  #[serde(skip_serializing)]
+  pub peer_certificates:
+    Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -64,6 +69,15 @@ impl From<SocketAddr> for IpAddr {
   fn from(addr: SocketAddr) -> Self {
     Self {
       hostname: addr.ip().to_string(),
+      port: addr.port(),
+    }
+  }
+}
+
+impl From<TunnelAddr> for IpAddr {
+  fn from(addr: TunnelAddr) -> Self {
+    Self {
+      hostname: addr.hostname(),
       port: addr.port(),
     }
   }
@@ -155,6 +169,9 @@ pub enum NetError {
   #[class(generic)]
   #[error("VSOCK is not supported on this platform")]
   VsockUnsupported,
+  #[class(generic)]
+  #[error("Tunnel is not open")]
+  TunnelMissing,
 }
 
 pub(crate) fn accept_err(e: std::io::Error) -> NetError {
@@ -513,10 +530,10 @@ where
     TcpStream::connect(&addr).await
   };
 
-  if let Some(cancel_rid) = resource_abort_id {
-    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-      res.close();
-    }
+  if let Some(cancel_rid) = resource_abort_id
+    && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+  {
+    res.close();
   }
 
   let tcp_stream = match tcp_stream_result {
@@ -541,7 +558,7 @@ struct UdpSocketResource {
 }
 
 impl Resource for UdpSocketResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "udpSocket".into()
   }
 
@@ -621,7 +638,7 @@ where
       target_os = "linux"
     ))]
     socket_tmp.set_reuse_address(true)?;
-    #[cfg(all(unix, not(target_os = "linux")))]
+    #[cfg(all(unix, not(any(target_os = "android", target_os = "linux"))))]
     socket_tmp.set_reuse_port(true)?;
   }
   let socket_addr = socket2::SockAddr::from(addr);
@@ -679,7 +696,7 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_vsock<NP>(
@@ -727,7 +744,11 @@ where
   ))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
 #[op2]
 #[serde]
 pub fn op_net_connect_vsock<NP>() -> Result<(), NetError>
@@ -737,7 +758,7 @@ where
   Err(NetError::VsockUnsupported)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_vsock<NP>(
@@ -770,7 +791,11 @@ where
   Ok((rid, local_addr.cid(), local_addr.port()))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
 #[op2]
 #[serde]
 pub fn op_net_listen_vsock<NP>() -> Result<(), NetError>
@@ -780,7 +805,7 @@ where
   Err(NetError::VsockUnsupported)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(async)]
 #[serde]
 pub async fn op_net_accept_vsock(
@@ -819,11 +844,60 @@ pub async fn op_net_accept_vsock(
   ))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
 #[op2]
 #[serde]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
+}
+
+#[op2]
+#[serde]
+pub fn op_net_listen_tunnel(
+  state: &mut OpState,
+) -> Result<(ResourceId, IpAddr), NetError> {
+  let Some(listener) = super::tunnel::get_tunnel() else {
+    return Err(NetError::TunnelMissing);
+  };
+  let listener = listener.clone();
+  let local_addr = listener.local_addr()?.into();
+  let rid = state
+    .resource_table
+    .add(crate::raw::NetworkListenerResource::new(listener));
+  Ok((rid, local_addr))
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_net_accept_tunnel(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<NetworkListenerResource<crate::tunnel::TunnelConnection>>(rid)
+    .map_err(|_| NetError::ListenerClosed)?;
+  let listener = RcRef::map(&resource, |r| &r.listener)
+    .try_borrow_mut()
+    .ok_or_else(|| NetError::AcceptTaskOngoing)?;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let (stream, _) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(accept_err)?;
+  let local_addr = stream.local_addr()?;
+  let remote_addr = stream.peer_addr()?;
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(crate::tunnel::TunnelStreamResource::new(stream));
+  Ok((rid, local_addr.into(), remote_addr.into()))
 }
 
 #[derive(Serialize, Eq, PartialEq, Debug)]
@@ -964,10 +1038,10 @@ where
   let lookup = if let Some(cancel_handle) = cancel_handle {
     let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
 
-    if let Some(cancel_rid) = cancel_rid {
-      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-        res.close();
-      }
+    if let Some(cancel_rid) = cancel_rid
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
     };
 
     lookup_rv?
@@ -1142,18 +1216,21 @@ mod tests {
   use std::net::Ipv6Addr;
   use std::net::ToSocketAddrs;
   use std::path::Path;
-  use std::path::PathBuf;
   use std::sync::Arc;
   use std::sync::Mutex;
 
-  use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
+  use deno_core::futures::FutureExt;
+  use deno_permissions::CheckedPath;
+  use deno_permissions::OpenAccessKind;
   use deno_permissions::PermissionCheckError;
+  use hickory_proto::rr::Name;
+  use hickory_proto::rr::rdata::SOA;
   use hickory_proto::rr::rdata::a::A;
   use hickory_proto::rr::rdata::aaaa::AAAA;
-  use hickory_proto::rr::rdata::caa::KeyValue;
   use hickory_proto::rr::rdata::caa::CAA;
+  use hickory_proto::rr::rdata::caa::KeyValue;
   use hickory_proto::rr::rdata::mx::MX;
   use hickory_proto::rr::rdata::name::ANAME;
   use hickory_proto::rr::rdata::name::CNAME;
@@ -1162,9 +1239,7 @@ mod tests {
   use hickory_proto::rr::rdata::naptr::NAPTR;
   use hickory_proto::rr::rdata::srv::SRV;
   use hickory_proto::rr::rdata::txt::TXT;
-  use hickory_proto::rr::rdata::SOA;
   use hickory_proto::rr::record_data::RData;
-  use hickory_proto::rr::Name;
   use socket2::SockRef;
 
   use super::*;
@@ -1356,28 +1431,13 @@ mod tests {
       Ok(())
     }
 
-    fn check_read(
+    fn check_open<'a>(
       &mut self,
-      p: &str,
+      path: Cow<'a, Path>,
+      _access_kind: OpenAccessKind,
       _api_name: &str,
-    ) -> Result<PathBuf, PermissionCheckError> {
-      Ok(PathBuf::from(p))
-    }
-
-    fn check_write(
-      &mut self,
-      p: &str,
-      _api_name: &str,
-    ) -> Result<PathBuf, PermissionCheckError> {
-      Ok(PathBuf::from(p))
-    }
-
-    fn check_write_path<'a>(
-      &mut self,
-      p: Cow<'a, Path>,
-      _api_name: &str,
-    ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-      Ok(p)
+    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+      Ok(CheckedPath::unsafe_new(path))
     }
 
     fn check_vsock(

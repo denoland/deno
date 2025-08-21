@@ -28,20 +28,21 @@ use std::collections::HashMap;
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
+use std::path::Path;
 use std::path::PathBuf;
 pub use std::ptr;
 use std::rc::Rc;
 use std::thread_local;
 
+use deno_core::ExternalOpsTracker;
+use deno_core::OpState;
+use deno_core::V8CrossThreadTaskSpawner;
 use deno_core::op2;
 use deno_core::parking_lot::RwLock;
 use deno_core::url::Url;
 // Expose common stuff for ease of use.
 // `use deno_napi::*`
 pub use deno_core::v8;
-use deno_core::ExternalOpsTracker;
-use deno_core::OpState;
-use deno_core::V8CrossThreadTaskSpawner;
 use deno_permissions::PermissionCheckError;
 pub use denort_helper::DenoRtNativeAddonLoader;
 pub use denort_helper::DenoRtNativeAddonLoaderRc;
@@ -450,7 +451,7 @@ impl Env {
   }
 
   #[inline]
-  pub fn scope(&self) -> v8::CallbackScope {
+  pub fn scope(&self) -> v8::CallbackScope<'_> {
     // SAFETY: `v8::Local` is always non-null pointer; the `HandleScope` is
     // already on the stack, but we don't have access to it.
     let context = unsafe {
@@ -525,14 +526,20 @@ deno_core::extension!(deno_napi,
 
 pub trait NapiPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError>;
+  fn check<'a>(
+    &mut self,
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl NapiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check(&mut self, path: &str) -> Result<PathBuf, PermissionCheckError> {
+  fn check<'a>(
+    &mut self,
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_ffi(self, path)
   }
 }
@@ -552,7 +559,7 @@ fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   isolate: *mut v8::Isolate,
   op_state: Rc<RefCell<OpState>>,
-  #[string] path: String,
+  #[string] path: &str,
   global: v8::Local<'scope, v8::Object>,
   buffer_constructor: v8::Local<'scope, v8::Function>,
   report_error: v8::Local<'scope, v8::Function>,
@@ -571,7 +578,7 @@ where
   ) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
-    let path = permissions.check(&path)?;
+    let path = permissions.check(Cow::Borrowed(Path::new(path)))?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
@@ -636,16 +643,17 @@ where
   let exports = v8::Object::new(scope);
 
   let maybe_exports = if let Some(module_to_register) = maybe_module {
-    NAPI_LOADED_MODULES
-      .write()
-      .insert(path, NapiModuleHandle(module_to_register));
+    NAPI_LOADED_MODULES.write().insert(
+      real_path.to_path_buf(),
+      NapiModuleHandle(module_to_register),
+    );
     // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
     let nm = unsafe { &*module_to_register };
     assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
   } else if let Some(module_to_register) =
-    { NAPI_LOADED_MODULES.read().get(&path).copied() }
+    { NAPI_LOADED_MODULES.read().get(real_path.as_ref()).copied() }
   {
     // SAFETY: this originated from `napi_register_module`, so the
     // pointer should still be valid.
@@ -653,14 +661,19 @@ where
     assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
-  } else if let Ok(init) = unsafe {
-    library.get::<napi_register_module_v1>(b"napi_register_module_v1")
-  } {
-    // Initializer callback.
-    // SAFETY: we are going blind, calling the register function on the other side.
-    unsafe { init(env_ptr, exports.into()) }
   } else {
-    return Err(NApiError::ModuleNotFound(path));
+    match unsafe {
+      library.get::<napi_register_module_v1>(b"napi_register_module_v1")
+    } {
+      Ok(init) => {
+        // Initializer callback.
+        // SAFETY: we are going blind, calling the register function on the other side.
+        unsafe { init(env_ptr, exports.into()) }
+      }
+      _ => {
+        return Err(NApiError::ModuleNotFound(path.into_owned()));
+      }
+    }
   };
 
   let exports = maybe_exports.unwrap_or(exports.into());

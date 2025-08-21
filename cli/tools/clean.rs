@@ -9,12 +9,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::GlobalOrLocalHttpCache;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_graph::packages::PackageSpecifiers;
 use deno_graph::ModuleGraph;
+use deno_graph::packages::PackageSpecifiers;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsCreateDirAll;
@@ -25,6 +25,7 @@ use crate::args::Flags;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
@@ -130,18 +131,18 @@ impl PathTrie {
     self.rewrites.push((from, to));
   }
 
-  fn rewrite(&self, s: &Path) -> PathBuf {
+  fn rewrite<'a>(&self, s: Cow<'a, Path>) -> Cow<'a, Path> {
     let normalized = deno_path_util::normalize_path(s);
     for (from, to) in &self.rewrites {
       if normalized.starts_with(from) {
-        return to.join(normalized.strip_prefix(from).unwrap());
+        return Cow::Owned(to.join(normalized.strip_prefix(from).unwrap()));
       }
     }
     normalized
   }
 
-  fn insert(&mut self, s: &Path) {
-    let normalized = self.rewrite(s);
+  fn insert(&mut self, s: PathBuf) {
+    let normalized = self.rewrite(Cow::Owned(s));
     let components = normalized.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
@@ -162,7 +163,7 @@ impl PathTrie {
   }
 
   fn find(&self, s: &Path) -> Option<Found> {
-    let normalized = self.rewrite(s);
+    let normalized = self.rewrite(Cow::Borrowed(s));
     let components = normalized.components().map(|c| c.as_os_str());
     let mut node = self.root;
 
@@ -207,7 +208,12 @@ async fn clean_except(
   let sys = factory.sys();
   let options = factory.cli_options()?;
   let main_graph_container = factory.main_module_graph_container().await?;
-  let roots = main_graph_container.collect_specifiers(entrypoints)?;
+  let roots = main_graph_container.collect_specifiers(
+    entrypoints,
+    CollectSpecifiersOptions {
+      include_ignored_specified: true,
+    },
+  )?;
   let http_cache = factory.global_http_cache()?;
   let local_or_global_http_cache = factory.http_cache()?.clone();
   let deno_dir = factory.deno_dir()?.clone();
@@ -280,17 +286,17 @@ async fn clean_except(
   }
 
   for url in &keep {
-    if url.scheme() == "http" || url.scheme() == "https" {
-      if let Ok(path) = http_cache.local_path_for_url(url) {
-        keep_paths_trie.insert(&path);
-      }
+    if (url.scheme() == "http" || url.scheme() == "https")
+      && let Ok(path) = http_cache.local_path_for_url(url)
+    {
+      keep_paths_trie.insert(path);
     }
     if let Some(path) = deno_dir
       .gen_cache
       .get_cache_filename_with_extension(url, "js")
     {
       let path = deno_dir.gen_cache.location.join(path);
-      keep_paths_trie.insert(&path);
+      keep_paths_trie.insert(path);
     }
   }
 
@@ -299,7 +305,7 @@ async fn clean_except(
   // TODO(nathanwhit): remove once we don't need packuments for creating the snapshot from lockfile
   for package in snap.all_system_packages(&options.npm_system_info()) {
     keep_paths_trie.insert(
-      &npm_cache
+      npm_cache
         .package_name_folder(&package.id.nv.name)
         .join("registry.json"),
     );
@@ -311,7 +317,7 @@ async fn clean_except(
     if node_modules_path.is_some() {
       node_modules_keep.insert(package.get_package_cache_folder_id());
     }
-    keep_paths_trie.insert(&npm_cache.package_folder_for_id(
+    keep_paths_trie.insert(npm_cache.package_folder_for_id(
       &deno_npm::NpmPackageCacheFolderId {
         nv: package.id.nv.clone(),
         copy_index: package.copy_index,
@@ -354,38 +360,38 @@ async fn clean_except(
   }
 
   let mut vendor_cleaned = CleanState::default();
-  if let Some(vendor_dir) = options.vendor_dir_path() {
-    if let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache {
-      let mut trie = PathTrie::new();
-      if deno_dir_root_canonical != deno_dir.root {
-        trie.add_rewrite(deno_dir.root.clone(), deno_dir_root_canonical);
+  if let Some(vendor_dir) = options.vendor_dir_path()
+    && let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache
+  {
+    let mut trie = PathTrie::new();
+    if deno_dir_root_canonical != deno_dir.root {
+      trie.add_rewrite(deno_dir.root.clone(), deno_dir_root_canonical);
+    }
+    let cache = cache.clone();
+    add_jsr_meta_paths(graph, &mut trie, jsr_url, &|_url| {
+      if let Ok(Some(path)) = cache.local_path_for_url(_url) {
+        Ok(path)
+      } else {
+        panic!("should not happen")
       }
-      let cache = cache.clone();
-      add_jsr_meta_paths(graph, &mut trie, jsr_url, &|_url| {
-        if let Ok(Some(path)) = cache.local_path_for_url(_url) {
-          Ok(path)
+    })?;
+    for url in keep {
+      if url.scheme() == "http" || url.scheme() == "https" {
+        if let Ok(Some(path)) = cache.local_path_for_url(url) {
+          trie.insert(path);
         } else {
           panic!("should not happen")
         }
-      })?;
-      for url in keep {
-        if url.scheme() == "http" || url.scheme() == "https" {
-          if let Ok(Some(path)) = cache.local_path_for_url(url) {
-            trie.insert(&path);
-          } else {
-            panic!("should not happen")
-          }
-        }
       }
-
-      walk_removing(
-        &mut vendor_cleaned,
-        WalkDir::new(vendor_dir).contents_first(false),
-        &trie,
-        vendor_dir,
-        dry_run,
-      )?;
     }
+
+    walk_removing(
+      &mut vendor_cleaned,
+      WalkDir::new(vendor_dir).contents_first(false),
+      &trie,
+      vendor_dir,
+      dry_run,
+    )?;
   }
 
   if !dry_run {
@@ -432,13 +438,13 @@ fn add_jsr_meta_paths(
       continue;
     };
     let keep = url_to_path(&base_url.join("meta.json").unwrap())?;
-    path_trie.insert(&keep);
+    path_trie.insert(keep);
     let keep = url_to_path(
       &base_url
         .join(&format!("{}_meta.json", package.version))
         .unwrap(),
     )?;
-    path_trie.insert(&keep);
+    path_trie.insert(keep);
   }
   Ok(())
 }
@@ -527,7 +533,7 @@ fn clean_node_modules(
           "failed to clean node_modules directory at {}",
           dir.display()
         )
-      })
+      });
     }
   };
 
@@ -581,7 +587,9 @@ fn clean_node_modules(
 }
 
 // node_modules/.deno/chalk@5.0.1/node_modules/chalk -> chalk@5.0.1
-fn node_modules_package_actual_dir_to_name(path: &Path) -> Option<Cow<str>> {
+fn node_modules_package_actual_dir_to_name(
+  path: &Path,
+) -> Option<Cow<'_, str>> {
   path
     .parent()?
     .parent()?
@@ -602,17 +610,17 @@ fn clean_node_modules_symlinks(
     if ty.is_symlink() {
       let target = std::fs::read_link(entry.path())?;
       let name = node_modules_package_actual_dir_to_name(&target);
-      if let Some(name) = name {
-        if !keep_names.contains(&*name) {
-          if dry_run {
-            #[allow(clippy::print_stderr)]
-            {
-              eprintln!(" {}", entry.path().display());
-            }
-          } else {
-            on_remove(&name);
-            remove_file(state, &entry.path(), None)?;
+      if let Some(name) = name
+        && !keep_names.contains(&*name)
+      {
+        if dry_run {
+          #[allow(clippy::print_stderr)]
+          {
+            eprintln!(" {}", entry.path().display());
           }
+        } else {
+          on_remove(&name);
+          remove_file(state, &entry.path(), None)?;
         }
       }
     }
@@ -646,33 +654,33 @@ fn remove_file(
   }
   state.files_removed += 1;
   state.update_progress();
-  if let Err(e) = std::fs::remove_file(path)
+  match std::fs::remove_file(path)
     .with_context(|| format!("Failed to remove file: {}", path.display()))
   {
-    if cfg!(windows) {
-      if let Ok(meta) = path.symlink_metadata() {
-        if meta.is_symlink() {
-          std::fs::remove_dir(path).with_context(|| {
-            format!("Failed to remove symlink: {}", path.display())
-          })?;
-          return Ok(());
-        }
+    Err(e) => {
+      if cfg!(windows)
+        && let Ok(meta) = path.symlink_metadata()
+        && meta.is_symlink()
+      {
+        std::fs::remove_dir(path).with_context(|| {
+          format!("Failed to remove symlink: {}", path.display())
+        })?;
+        return Ok(());
       }
+      Err(e)
     }
-    Err(e)
-  } else {
-    Ok(())
+    _ => Ok(()),
   }
 }
 
 #[cfg(test)]
 mod tests {
+  use std::path::Path;
+
   use super::Found::*;
 
   #[test]
   fn path_trie() {
-    use std::path::Path;
-
     let mut trie = super::PathTrie::new();
 
     #[cfg(unix)]
@@ -757,7 +765,7 @@ mod tests {
 
     for pth in paths {
       let path = Path::new(pth);
-      trie.insert(path);
+      trie.insert(path.into());
     }
 
     for (input, expect) in cases {

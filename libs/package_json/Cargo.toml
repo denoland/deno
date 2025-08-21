@@ -1,7 +1,7 @@
 # Copyright 2018-2025 the Deno authors. MIT license.
 [package]
 name = "deno_package_json"
-version = "0.10.0"
+version = "0.16.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,11 +12,12 @@ description = "package.json implementation for the Deno CLI"
 path = "lib.rs"
 
 [features]
-sync = []
+sync = ["deno_maybe_sync/sync"]
 
 [dependencies]
 boxed_error.workspace = true
 deno_error = { workspace = true, features = ["serde", "serde_json"] }
+deno_maybe_sync.workspace = true
 deno_path_util.workspace = true
 deno_semver.workspace = true
 indexmap = { workspace = true, features = ["serde"] }

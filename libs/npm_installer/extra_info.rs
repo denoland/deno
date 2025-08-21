@@ -4,9 +4,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use deno_error::JsErrorBox;
-use deno_npm::registry::NpmRegistryApi;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::registry::NpmRegistryApi;
 use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_semver::package::PackageNv;
 use parking_lot::RwLock;

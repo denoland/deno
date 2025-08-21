@@ -864,3 +864,30 @@ Deno.test("[node/worker_threads] Worker runs async ops correctly", async () => {
 
   await recvMessage.promise;
 });
+
+Deno.test("[node/worker_threads] Worker works with CJS require", async () => {
+  const recvMessage = Promise.withResolvers<void>();
+  const worker = new workerThreads.Worker(
+    `
+    const assert = require("assert");
+    require("worker_threads").parentPort.on("message", ({ port }) => {
+      assert(port instanceof MessagePort);
+
+      port.postMessage("Hello from worker");
+    });
+    `,
+    { eval: true },
+  );
+
+  const channel = new workerThreads.MessageChannel();
+  worker.postMessage({ port: channel.port2 }, [channel.port2]);
+  channel.port1.on("message", (msg) => {
+    assertEquals(msg, "Hello from worker");
+    channel.port1.close();
+    channel.port2.close();
+    worker.terminate();
+    recvMessage.resolve();
+  });
+
+  await recvMessage.promise;
+});

@@ -5,11 +5,11 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use deno_core::JsBuffer;
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
-use deno_core::JsBuffer;
 
 use crate::create_host_defined_options;
 
@@ -190,10 +190,10 @@ impl ContextifyScript {
 
     let mut run = || {
       let r = script.run(scope);
-      if r.is_some() {
-        if let Some(mtask_queue) = microtask_queue {
-          mtask_queue.perform_checkpoint(scope);
-        }
+      if r.is_some()
+        && let Some(mtask_queue) = microtask_queue
+      {
+        mtask_queue.perform_checkpoint(scope);
       }
       r
     };
@@ -501,6 +501,7 @@ pub fn create_v8_context<'a>(
 #[derive(Debug, Clone)]
 struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
+#[allow(clippy::unnecessary_unwrap)]
 pub fn init_global_template<'a>(
   scope: &mut v8::HandleScope<'a, ()>,
   mode: ContextInitMode,
@@ -750,26 +751,25 @@ fn property_setter<'s>(
     return v8::Intercepted::No;
   }
 
-  if is_declared_on_sandbox {
-    if let Some(desc) = sandbox.get_own_property_descriptor(scope, key) {
-      if !desc.is_undefined() {
-        let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
-        // We have to specify the return value for any contextual or get/set
-        // property
-        let get_key =
-          v8::String::new_external_onebyte_static(scope, b"get").unwrap();
-        let set_key =
-          v8::String::new_external_onebyte_static(scope, b"set").unwrap();
-        if desc_obj
-          .has_own_property(scope, get_key.into())
-          .unwrap_or(false)
-          || desc_obj
-            .has_own_property(scope, set_key.into())
-            .unwrap_or(false)
-        {
-          return v8::Intercepted::Yes;
-        }
-      }
+  if is_declared_on_sandbox
+    && let Some(desc) = sandbox.get_own_property_descriptor(scope, key)
+    && !desc.is_undefined()
+  {
+    let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
+    // We have to specify the return value for any contextual or get/set
+    // property
+    let get_key =
+      v8::String::new_external_onebyte_static(scope, b"get").unwrap();
+    let set_key =
+      v8::String::new_external_onebyte_static(scope, b"set").unwrap();
+    if desc_obj
+      .has_own_property(scope, get_key.into())
+      .unwrap_or(false)
+      || desc_obj
+        .has_own_property(scope, set_key.into())
+        .unwrap_or(false)
+    {
+      return v8::Intercepted::Yes;
     }
   }
 
@@ -792,11 +792,11 @@ fn property_descriptor<'s>(
   };
   let scope = &mut v8::ContextScope::new(scope, context);
 
-  if sandbox.has_own_property(scope, key).unwrap_or(false) {
-    if let Some(desc) = sandbox.get_own_property_descriptor(scope, key) {
-      rv.set(desc);
-      return v8::Intercepted::Yes;
-    }
+  if sandbox.has_own_property(scope, key).unwrap_or(false)
+    && let Some(desc) = sandbox.get_own_property_descriptor(scope, key)
+  {
+    rv.set(desc);
+    return v8::Intercepted::Yes;
   }
 
   v8::Intercepted::No

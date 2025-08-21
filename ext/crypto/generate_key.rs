@@ -2,15 +2,15 @@
 
 use aws_lc_rs::rand::SecureRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
+use deno_core::ToJsBuffer;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
-use deno_core::ToJsBuffer;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
 use once_cell::sync::Lazy;
-use rsa::pkcs1::EncodeRsaPrivateKey;
 use rsa::BigUint;
 use rsa::RsaPrivateKey;
+use rsa::pkcs1::EncodeRsaPrivateKey;
 use serde::Deserialize;
 
 use crate::shared::*;

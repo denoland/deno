@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use deno_core::futures::TryFutureExt;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -11,6 +10,7 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::futures::TryFutureExt;
 use deno_error::JsErrorBox;
 use socket2::SockRef;
 use tokio::io::AsyncRead;
@@ -108,7 +108,7 @@ impl Resource for TcpStreamResource {
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "tcpStream".into()
   }
 
@@ -177,7 +177,7 @@ impl Resource for UnixStreamResource {
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "unixStream".into()
   }
 
@@ -190,14 +190,22 @@ impl Resource for UnixStreamResource {
   }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 pub type VsockStreamResource =
   FullDuplexResource<tokio_vsock::OwnedReadHalf, tokio_vsock::OwnedWriteHalf>;
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
 pub struct VsockStreamResource;
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
 impl VsockStreamResource {
   fn read(self: Rc<Self>, _data: &mut [u8]) -> AsyncResult<usize> {
     unreachable!()
@@ -218,7 +226,7 @@ impl Resource for VsockStreamResource {
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "vsockStream".into()
   }
 

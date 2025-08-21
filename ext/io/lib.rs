@@ -21,10 +21,6 @@ use std::rc::Rc;
 #[cfg(windows)]
 use std::sync::Arc;
 
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
-use deno_core::unsync::TaskQueue;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -39,6 +35,10 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
+use deno_core::futures::TryFutureExt;
+use deno_core::op2;
+use deno_core::unsync::TaskQueue;
+use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
 #[cfg(windows)]
 use deno_subprocess_windows::Stdio as StdStdio;
@@ -69,18 +69,18 @@ mod winpipe;
 
 mod bi_pipe;
 
-pub use bi_pipe::bi_pipe_pair_raw;
 pub use bi_pipe::BiPipe;
 pub use bi_pipe::BiPipeRead;
 pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
-pub use pipe::pipe;
+pub use bi_pipe::bi_pipe_pair_raw;
 pub use pipe::AsyncPipeRead;
 pub use pipe::AsyncPipeWrite;
 pub use pipe::PipeRead;
 pub use pipe::PipeWrite;
 pub use pipe::RawPipeHandle;
+pub use pipe::pipe;
 
 /// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
 pub trait AsRawIoHandle {
@@ -420,7 +420,7 @@ where
 pub type ChildStdinResource = WriteOnlyResource<process::ChildStdin>;
 
 impl Resource for ChildStdinResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStdin".into()
   }
 
@@ -436,7 +436,7 @@ pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
 impl Resource for ChildStdoutResource {
   deno_core::impl_readable_byob!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStdout".into()
   }
 
@@ -450,7 +450,7 @@ pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
 impl Resource for ChildStderrResource {
   deno_core::impl_readable_byob!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStderr".into()
   }
 
@@ -566,7 +566,7 @@ impl StdFileResourceInner {
   fn with_blocking_task<F, R: 'static + Send>(
     &self,
     action: F,
-  ) -> impl Future<Output = R>
+  ) -> impl Future<Output = R> + use<F, R>
   where
     F: FnOnce() -> R + Send + 'static,
   {
@@ -1058,7 +1058,7 @@ impl crate::fs::File for StdFileResourceInner {
 pub struct ReadCancelResource(Rc<CancelHandle>);
 
 impl Resource for ReadCancelResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "readCancel".into()
   }
 

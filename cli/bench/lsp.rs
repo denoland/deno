@@ -7,11 +7,11 @@ use std::time::Duration;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use lsp_types::Uri;
-use test_util::lsp::LspClientBuilder;
 use test_util::PathRef;
+use test_util::lsp::LspClientBuilder;
 use tower_lsp::lsp_types as lsp;
 
 static FIXTURE_CODE_LENS_TS: &str = include_str!("testdata/code_lens.ts");
@@ -87,7 +87,6 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
   patch_uris(&mut requests, &apps);
 
   let mut client = LspClientBuilder::new()
-    .use_diagnostic_sync(false)
     .set_root_dir(apps.clone())
     .deno_exe(deno_exe)
     .build();
@@ -162,10 +161,7 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
 /// the end of the document and does a level of hovering and gets quick fix
 /// code actions.
 fn bench_big_file_edits(deno_exe: &Path) -> Duration {
-  let mut client = LspClientBuilder::new()
-    .use_diagnostic_sync(false)
-    .deno_exe(deno_exe)
-    .build();
+  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
   client.initialize_default();
   let (method, _): (String, Option<Value>) = client.read_notification();
   assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
@@ -185,12 +181,7 @@ fn bench_big_file_edits(deno_exe: &Path) -> Duration {
     }),
   );
 
-  let (method, _): (String, Option<Value>) = client.read_notification();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _): (String, Option<Value>) = client.read_notification();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _): (String, Option<Value>) = client.read_notification();
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  client.diagnostic("file:///testdata/db.ts");
 
   let messages: Vec<FixtureMessage> =
     serde_json::from_slice(FIXTURE_DB_MESSAGES).unwrap();
@@ -222,10 +213,7 @@ fn bench_big_file_edits(deno_exe: &Path) -> Duration {
 }
 
 fn bench_code_lens(deno_exe: &Path) -> Duration {
-  let mut client = LspClientBuilder::new()
-    .use_diagnostic_sync(false)
-    .deno_exe(deno_exe)
-    .build();
+  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
   client.initialize_default();
   let (method, _): (String, Option<Value>) = client.read_notification();
   assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
@@ -252,13 +240,6 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
     }),
   );
 
-  let (method, _): (String, Option<Value>) = client.read_notification();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _): (String, Option<Value>) = client.read_notification();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _): (String, Option<Value>) = client.read_notification();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-
   let res = client.write_request_with_res_as::<Vec<lsp::CodeLens>>(
     "textDocument/codeLens",
     json!({
@@ -277,10 +258,7 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
 }
 
 fn bench_find_replace(deno_exe: &Path) -> Duration {
-  let mut client = LspClientBuilder::new()
-    .use_diagnostic_sync(false)
-    .deno_exe(deno_exe)
-    .build();
+  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
   client.initialize_default();
   let (method, _): (String, Option<Value>) = client.read_notification();
   assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
@@ -300,11 +278,6 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
         }
       }),
     );
-  }
-
-  for _ in 0..3 {
-    let (method, _): (String, Option<Value>) = client.read_notification();
-    assert_eq!(method, "textDocument/publishDiagnostics");
   }
 
   for i in 0..10 {
@@ -352,11 +325,6 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
     );
   }
 
-  for _ in 0..3 {
-    let (method, _): (String, Option<Value>) = client.read_notification();
-    assert_eq!(method, "textDocument/publishDiagnostics");
-  }
-
   client.write_request("shutdown", json!(null));
   client.write_notification("exit", json!(null));
 
@@ -365,10 +333,7 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
 
 /// A test that starts up the LSP, opens a single line document, and exits.
 fn bench_startup_shutdown(deno_exe: &Path) -> Duration {
-  let mut client = LspClientBuilder::new()
-    .use_diagnostic_sync(false)
-    .deno_exe(deno_exe)
-    .build();
+  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
   client.initialize_default();
   let (method, _): (String, Option<Value>) = client.read_notification();
   assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
@@ -387,13 +352,6 @@ fn bench_startup_shutdown(deno_exe: &Path) -> Duration {
       }
     }),
   );
-
-  let (method, _): (String, Option<Value>) = client.read_notification();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _): (String, Option<Value>) = client.read_notification();
-  assert_eq!(method, "textDocument/publishDiagnostics");
-  let (method, _): (String, Option<Value>) = client.read_notification();
-  assert_eq!(method, "textDocument/publishDiagnostics");
 
   client.write_request("shutdown", json!(null));
 

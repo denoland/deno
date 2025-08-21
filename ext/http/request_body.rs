@@ -2,19 +2,19 @@
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::ready;
 use std::task::Poll;
+use std::task::ready;
 
 use bytes::Bytes;
-use deno_core::futures::stream::Peekable;
-use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
-use deno_core::futures::TryFutureExt;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
+use deno_core::futures::stream::Peekable;
 use deno_error::JsErrorBox;
 use hyper::body::Body;
 use hyper::body::Incoming;
@@ -79,7 +79,7 @@ impl HttpRequestBody {
 }
 
 impl Resource for HttpRequestBody {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "requestBody".into()
   }
 

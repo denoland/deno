@@ -24,7 +24,6 @@ use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VfsEntryRef;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualFile;
-use deno_runtime::deno_fs::AccessCheckCb;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_fs::FsFileType;
@@ -37,13 +36,15 @@ use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
+use deno_runtime::deno_permissions::CheckedPath;
+use deno_runtime::deno_permissions::CheckedPathBuf;
 #[cfg(windows)]
 use deno_subprocess_windows::Stdio as StdStdio;
+use sys_traits::FsCopy;
 use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
 use sys_traits::boxed::FsReadDirBoxed;
-use sys_traits::FsCopy;
 use url::Url;
 
 #[derive(Debug, Clone)]
@@ -78,8 +79,8 @@ impl DenoRtSys {
 
   fn copy_to_real_path(
     &self,
-    oldpath: &Path,
-    newpath: &Path,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
   ) -> std::io::Result<u64> {
     let old_file = self.0.file_entry(oldpath)?;
     let old_file_bytes = self.0.read_file_all(old_file)?;
@@ -94,9 +95,9 @@ impl DenoRtSys {
           truncate: true,
           append: false,
           create_new: false,
+          custom_flags: None,
           mode: None,
         },
-        None,
         &old_file_bytes,
       )
       .map_err(|err| err.into_io_error())?;
@@ -114,7 +115,7 @@ impl FileSystem for DenoRtSys {
     RealFs.tmp_dir()
   }
 
-  fn chdir(&self, path: &Path) -> FsResult<()> {
+  fn chdir(&self, path: &CheckedPath) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.chdir(path)
   }
@@ -125,32 +126,30 @@ impl FileSystem for DenoRtSys {
 
   fn open_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     options: OpenOptions,
-    access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn DenoFile>> {
     if self.0.is_path_within(path) {
       Ok(Rc::new(self.0.open_file(path)?))
     } else {
-      RealFs.open_sync(path, options, access_check)
+      RealFs.open_sync(path, options)
     }
   }
   async fn open_async<'a>(
     &'a self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     options: OpenOptions,
-    access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn DenoFile>> {
     if self.0.is_path_within(&path) {
       Ok(Rc::new(self.0.open_file(&path)?))
     } else {
-      RealFs.open_async(path, options, access_check).await
+      RealFs.open_async(path, options).await
     }
   }
 
   fn mkdir_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()> {
@@ -159,7 +158,7 @@ impl FileSystem for DenoRtSys {
   }
   async fn mkdir_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()> {
@@ -167,18 +166,31 @@ impl FileSystem for DenoRtSys {
     RealFs.mkdir_async(path, recursive, mode).await
   }
 
-  fn chmod_sync(&self, path: &Path, mode: u32) -> FsResult<()> {
+  #[cfg(unix)]
+  fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.chmod_sync(path, mode)
   }
-  async fn chmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()> {
+  #[cfg(not(unix))]
+  fn chmod_sync(&self, path: &CheckedPath, mode: i32) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.chmod_sync(path, mode)
+  }
+
+  #[cfg(unix)]
+  async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.chmod_async(path, mode).await
+  }
+  #[cfg(not(unix))]
+  async fn chmod_async(&self, path: CheckedPathBuf, mode: i32) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.chmod_async(path, mode).await
   }
 
   fn chown_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
@@ -187,7 +199,7 @@ impl FileSystem for DenoRtSys {
   }
   async fn chown_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
@@ -195,9 +207,23 @@ impl FileSystem for DenoRtSys {
     RealFs.chown_async(path, uid, gid).await
   }
 
+  fn lchmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.lchmod_sync(path, mode)
+  }
+
+  async fn lchmod_async(
+    &self,
+    path: CheckedPathBuf,
+    mode: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.lchmod_async(path, mode).await
+  }
+
   fn lchown_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
@@ -207,7 +233,7 @@ impl FileSystem for DenoRtSys {
 
   async fn lchown_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
@@ -215,16 +241,24 @@ impl FileSystem for DenoRtSys {
     RealFs.lchown_async(path, uid, gid).await
   }
 
-  fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()> {
+  fn remove_sync(&self, path: &CheckedPath, recursive: bool) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.remove_sync(path, recursive)
   }
-  async fn remove_async(&self, path: PathBuf, recursive: bool) -> FsResult<()> {
+  async fn remove_async(
+    &self,
+    path: CheckedPathBuf,
+    recursive: bool,
+  ) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.remove_async(path, recursive).await
   }
 
-  fn copy_file_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
+  fn copy_file_sync(
+    &self,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
+  ) -> FsResult<()> {
     self.error_if_in_vfs(newpath)?;
     if self.0.is_path_within(oldpath) {
       self
@@ -237,16 +271,19 @@ impl FileSystem for DenoRtSys {
   }
   async fn copy_file_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
   ) -> FsResult<()> {
     self.error_if_in_vfs(&newpath)?;
     if self.0.is_path_within(&oldpath) {
       let fs = self.clone();
       tokio::task::spawn_blocking(move || {
-        fs.copy_to_real_path(&oldpath, &newpath)
-          .map(|_| ())
-          .map_err(FsError::Io)
+        fs.copy_to_real_path(
+          &oldpath.as_checked_path(),
+          &newpath.as_checked_path(),
+        )
+        .map(|_| ())
+        .map_err(FsError::Io)
       })
       .await?
     } else {
@@ -254,25 +291,29 @@ impl FileSystem for DenoRtSys {
     }
   }
 
-  fn cp_sync(&self, from: &Path, to: &Path) -> FsResult<()> {
+  fn cp_sync(&self, from: &CheckedPath, to: &CheckedPath) -> FsResult<()> {
     self.error_if_in_vfs(to)?;
 
     RealFs.cp_sync(from, to)
   }
-  async fn cp_async(&self, from: PathBuf, to: PathBuf) -> FsResult<()> {
+  async fn cp_async(
+    &self,
+    from: CheckedPathBuf,
+    to: CheckedPathBuf,
+  ) -> FsResult<()> {
     self.error_if_in_vfs(&to)?;
 
     RealFs.cp_async(from, to).await
   }
 
-  fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
+  fn stat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
     if self.0.is_path_within(path) {
       Ok(self.0.stat(path)?.as_fs_stat())
     } else {
       RealFs.stat_sync(path)
     }
   }
-  async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat> {
+  async fn stat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
     if self.0.is_path_within(&path) {
       Ok(self.0.stat(&path)?.as_fs_stat())
     } else {
@@ -280,14 +321,14 @@ impl FileSystem for DenoRtSys {
     }
   }
 
-  fn lstat_sync(&self, path: &Path) -> FsResult<FsStat> {
+  fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
     if self.0.is_path_within(path) {
       Ok(self.0.lstat(path)?.as_fs_stat())
     } else {
       RealFs.lstat_sync(path)
     }
   }
-  async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
+  async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
     if self.0.is_path_within(&path) {
       Ok(self.0.lstat(&path)?.as_fs_stat())
     } else {
@@ -295,14 +336,14 @@ impl FileSystem for DenoRtSys {
     }
   }
 
-  fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf> {
+  fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
     if self.0.is_path_within(path) {
       Ok(self.0.canonicalize(path)?)
     } else {
       RealFs.realpath_sync(path)
     }
   }
-  async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf> {
+  async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
     if self.0.is_path_within(&path) {
       Ok(self.0.canonicalize(&path)?)
     } else {
@@ -310,14 +351,17 @@ impl FileSystem for DenoRtSys {
     }
   }
 
-  fn read_dir_sync(&self, path: &Path) -> FsResult<Vec<FsDirEntry>> {
+  fn read_dir_sync(&self, path: &CheckedPath) -> FsResult<Vec<FsDirEntry>> {
     if self.0.is_path_within(path) {
       Ok(self.0.read_dir(path)?)
     } else {
       RealFs.read_dir_sync(path)
     }
   }
-  async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>> {
+  async fn read_dir_async(
+    &self,
+    path: CheckedPathBuf,
+  ) -> FsResult<Vec<FsDirEntry>> {
     if self.0.is_path_within(&path) {
       Ok(self.0.read_dir(&path)?)
     } else {
@@ -325,30 +369,38 @@ impl FileSystem for DenoRtSys {
     }
   }
 
-  fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
+  fn rename_sync(
+    &self,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
+  ) -> FsResult<()> {
     self.error_if_in_vfs(oldpath)?;
     self.error_if_in_vfs(newpath)?;
     RealFs.rename_sync(oldpath, newpath)
   }
   async fn rename_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
   ) -> FsResult<()> {
     self.error_if_in_vfs(&oldpath)?;
     self.error_if_in_vfs(&newpath)?;
     RealFs.rename_async(oldpath, newpath).await
   }
 
-  fn link_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
+  fn link_sync(
+    &self,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
+  ) -> FsResult<()> {
     self.error_if_in_vfs(oldpath)?;
     self.error_if_in_vfs(newpath)?;
     RealFs.link_sync(oldpath, newpath)
   }
   async fn link_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
   ) -> FsResult<()> {
     self.error_if_in_vfs(&oldpath)?;
     self.error_if_in_vfs(&newpath)?;
@@ -357,8 +409,8 @@ impl FileSystem for DenoRtSys {
 
   fn symlink_sync(
     &self,
-    oldpath: &Path,
-    newpath: &Path,
+    oldpath: &CheckedPath,
+    newpath: &CheckedPath,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
     self.error_if_in_vfs(oldpath)?;
@@ -367,8 +419,8 @@ impl FileSystem for DenoRtSys {
   }
   async fn symlink_async(
     &self,
-    oldpath: PathBuf,
-    newpath: PathBuf,
+    oldpath: CheckedPathBuf,
+    newpath: CheckedPathBuf,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
     self.error_if_in_vfs(&oldpath)?;
@@ -376,14 +428,14 @@ impl FileSystem for DenoRtSys {
     RealFs.symlink_async(oldpath, newpath, file_type).await
   }
 
-  fn read_link_sync(&self, path: &Path) -> FsResult<PathBuf> {
+  fn read_link_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
     if self.0.is_path_within(path) {
       Ok(self.0.read_link(path)?)
     } else {
       RealFs.read_link_sync(path)
     }
   }
-  async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf> {
+  async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
     if self.0.is_path_within(&path) {
       Ok(self.0.read_link(&path)?)
     } else {
@@ -391,18 +443,22 @@ impl FileSystem for DenoRtSys {
     }
   }
 
-  fn truncate_sync(&self, path: &Path, len: u64) -> FsResult<()> {
+  fn truncate_sync(&self, path: &CheckedPath, len: u64) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.truncate_sync(path, len)
   }
-  async fn truncate_async(&self, path: PathBuf, len: u64) -> FsResult<()> {
+  async fn truncate_async(
+    &self,
+    path: CheckedPathBuf,
+    len: u64,
+  ) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.truncate_async(path, len).await
   }
 
   fn utime_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -413,7 +469,7 @@ impl FileSystem for DenoRtSys {
   }
   async fn utime_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -427,7 +483,7 @@ impl FileSystem for DenoRtSys {
 
   fn lutime_sync(
     &self,
-    path: &Path,
+    path: &CheckedPath,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -438,7 +494,7 @@ impl FileSystem for DenoRtSys {
   }
   async fn lutime_async(
     &self,
-    path: PathBuf,
+    path: CheckedPathBuf,
     atime_secs: i64,
     atime_nanos: u32,
     mtime_secs: i64,
@@ -454,7 +510,15 @@ impl FileSystem for DenoRtSys {
 impl sys_traits::BaseFsHardLink for DenoRtSys {
   #[inline]
   fn base_fs_hard_link(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
-    self.link_sync(src, dst).map_err(|err| err.into_io_error())
+    self
+      .link_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(src)),
+        &CheckedPath::unsafe_new(Cow::Borrowed(dst)),
+      )
+      .map_err(|err| err.into_io_error())
   }
 }
 
@@ -462,7 +526,12 @@ impl sys_traits::BaseFsRead for DenoRtSys {
   #[inline]
   fn base_fs_read(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>> {
     self
-      .read_file_sync(path, None)
+      .read_file_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(path)),
+      )
       .map_err(|err| err.into_io_error())
   }
 }
@@ -562,6 +631,7 @@ fn not_supported(name: &str) -> std::io::Error {
 impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
   type Metadata = BoxedFsMetadataValue;
 
+  #[allow(mismatched_lifetime_syntaxes)]
   fn file_name(&self) -> Cow<std::ffi::OsStr> {
     Cow::Borrowed(self.metadata.name.as_ref())
   }
@@ -574,7 +644,7 @@ impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
     Ok(BoxedFsMetadataValue(Box::new(self.metadata.clone())))
   }
 
-  fn path(&self) -> Cow<Path> {
+  fn path(&self) -> Cow<'_, Path> {
     Cow::Owned(self.parent_path.join(&self.metadata.name))
   }
 }
@@ -603,7 +673,14 @@ impl sys_traits::BaseFsReadDir for DenoRtSys {
 impl sys_traits::BaseFsCanonicalize for DenoRtSys {
   #[inline]
   fn base_fs_canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
-    self.realpath_sync(path).map_err(|err| err.into_io_error())
+    self
+      .realpath_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(path)),
+      )
+      .map_err(|err| err.into_io_error())
   }
 }
 
@@ -641,7 +718,13 @@ impl sys_traits::BaseFsCopy for DenoRtSys {
       .error_if_in_vfs(to)
       .map_err(|err| err.into_io_error())?;
     if self.0.is_path_within(from) {
-      self.copy_to_real_path(from, to)
+      self.copy_to_real_path(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(from)),
+        &CheckedPath::unsafe_new(Cow::Borrowed(to)),
+      )
     } else {
       #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
       sys_traits::impls::RealSys.fs_copy(from, to)
@@ -668,7 +751,14 @@ impl sys_traits::BaseFsCreateDir for DenoRtSys {
     options: &sys_traits::CreateDirOptions,
   ) -> std::io::Result<()> {
     self
-      .mkdir_sync(path, options.recursive, options.mode)
+      .mkdir_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(path)),
+        options.recursive,
+        options.mode,
+      )
       .map_err(|err| err.into_io_error())
   }
 }
@@ -677,7 +767,13 @@ impl sys_traits::BaseFsRemoveFile for DenoRtSys {
   #[inline]
   fn base_fs_remove_file(&self, path: &Path) -> std::io::Result<()> {
     self
-      .remove_sync(path, false)
+      .remove_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(path)),
+        false,
+      )
       .map_err(|err| err.into_io_error())
   }
 }
@@ -686,7 +782,13 @@ impl sys_traits::BaseFsRename for DenoRtSys {
   #[inline]
   fn base_fs_rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
     self
-      .rename_sync(from, to)
+      .rename_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(from)),
+        &CheckedPath::unsafe_new(Cow::Borrowed(to)),
+      )
       .map_err(|err| err.into_io_error())
   }
 }
@@ -879,7 +981,14 @@ impl sys_traits::BaseFsOpen for DenoRtSys {
 impl sys_traits::BaseFsSymlinkDir for DenoRtSys {
   fn base_fs_symlink_dir(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
     self
-      .symlink_sync(src, dst, Some(FsFileType::Directory))
+      .symlink_sync(
+        // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
+        // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
+        // rather than this calling into `deno_fs::FileSystem`
+        &CheckedPath::unsafe_new(Cow::Borrowed(src)),
+        &CheckedPath::unsafe_new(Cow::Borrowed(dst)),
+        Some(FsFileType::Directory),
+      )
       .map_err(|err| err.into_io_error())
   }
 }
@@ -978,7 +1087,7 @@ impl VfsRoot {
     &self,
     path: &Path,
     case_sensitivity: FileSystemCaseSensitivity,
-  ) -> std::io::Result<(PathBuf, VfsEntryRef)> {
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'_>)> {
     self.find_entry_no_follow_inner(path, &mut HashSet::new(), case_sensitivity)
   }
 
@@ -1080,7 +1189,10 @@ impl FileBackedVfsFile {
         if offset >= 0 {
           *current_pos += offset as u64;
         } else if -offset as u64 > *current_pos {
-          return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file."));
+          return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "An attempt was made to move the file pointer before the beginning of the file.",
+          ));
         } else {
           *current_pos -= -offset as u64;
         }
@@ -1397,7 +1509,7 @@ impl FileBackedVfs {
   pub fn read_dir_with_metadata(
     &self,
     path: &Path,
-  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry>> {
+  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry> + use<>> {
     let dir = self.dir_entry(path)?;
     let path = path.to_path_buf();
     Ok(
@@ -1528,8 +1640,8 @@ mod test {
   use std::io::Write;
 
   use deno_lib::standalone::virtual_fs::VfsBuilder;
-  use test_util::assert_contains;
   use test_util::TempDir;
+  use test_util::assert_contains;
 
   use super::*;
 
@@ -1763,10 +1875,7 @@ mod test {
     file.read_to_buf(&mut buf).unwrap();
     assert_eq!(buf, b"23");
     assert_eq!(
-      file
-        .seek(SeekFrom::Current(-5))
-        .unwrap_err()
-        .to_string(),
+      file.seek(SeekFrom::Current(-5)).unwrap_err().to_string(),
       "An attempt was made to move the file pointer before the beginning of the file."
     );
     // go beyond the file length, then back

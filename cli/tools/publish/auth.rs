@@ -30,12 +30,12 @@ fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {
     let url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL");
     let token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
     match (url, token) {
-        (Ok(url), Ok(token)) => Some(Ok((url, token))),
-        (Err(_), Err(_)) => Some(Err(anyhow::anyhow!(
-          "No means to authenticate. Pass a token to `--token`, or enable tokenless publishing from GitHub Actions using OIDC. Learn more at https://deno.co/ghoidc"
-        ))),
-        _ => None,
-      }
+      (Ok(url), Ok(token)) => Some(Ok((url, token))),
+      (Err(_), Err(_)) => Some(Err(anyhow::anyhow!(
+        "No means to authenticate. Pass a token to `--token`, or enable tokenless publishing from GitHub Actions using OIDC. Learn more at https://deno.co/ghoidc"
+      ))),
+      _ => None,
+    }
   } else {
     None
   }

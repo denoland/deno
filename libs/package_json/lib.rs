@@ -10,11 +10,11 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
-use deno_semver::npm::NpmVersionReqParseError;
-use deno_semver::package::PackageReq;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
 use deno_semver::VersionReqSpecifierParseError;
+use deno_semver::npm::NpmVersionReqParseError;
+use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use serde::Serialize;
 use serde_json::Map;
@@ -23,14 +23,12 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
-mod sync;
-
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonRc = crate::sync::MaybeArc<PackageJson>;
+pub type PackageJsonRc = deno_maybe_sync::MaybeArc<PackageJson>;
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonDepsRc = crate::sync::MaybeArc<PackageJsonDeps>;
+pub type PackageJsonDepsRc = deno_maybe_sync::MaybeArc<PackageJsonDeps>;
 #[allow(clippy::disallowed_types)]
-type PackageJsonDepsRcCell = crate::sync::MaybeOnceLock<PackageJsonDepsRc>;
+type PackageJsonDepsRcCell = deno_maybe_sync::MaybeOnceLock<PackageJsonDepsRc>;
 
 pub trait PackageJsonCache {
   fn get(&self, path: &Path) -> Option<PackageJsonRc>;
@@ -120,12 +118,12 @@ impl PackageJsonDepValue {
           return Ok(Self::JsrReq(PackageReq {
             name: name.into(),
             version_req,
-          }))
+          }));
         }
         Err(err) => {
           return Err(
             PackageJsonDepValueParseErrorKind::JsrVersionReq(err).into_box(),
-          )
+          );
         }
       }
     }
@@ -199,7 +197,9 @@ pub enum PackageJsonLoadError {
     #[inherit]
     source: serde_json::Error,
   },
-  #[error("\"exports\" cannot contains some keys starting with '.' and some not.\nThe exports object must either be an object of package subpath keys\nor an object of main entry condition name keys only.")]
+  #[error(
+    "\"exports\" cannot contain some keys starting with '.' and some not.\nThe exports object must either be an object of package subpath keys\nor an object of main entry condition name keys only."
+  )]
   #[class(type)]
   InvalidExports,
 }
@@ -240,14 +240,13 @@ impl PackageJson {
     maybe_cache: Option<&dyn PackageJsonCache>,
     path: &Path,
   ) -> Result<PackageJsonRc, PackageJsonLoadError> {
-    if let Some(item) = maybe_cache.and_then(|c| c.get(path)) {
-      Ok(item)
-    } else {
-      match sys.fs_read_to_string_lossy(path) {
+    match maybe_cache.and_then(|c| c.get(path)) {
+      Some(item) => Ok(item),
+      _ => match sys.fs_read_to_string_lossy(path) {
         Ok(file_text) => {
           let pkg_json =
             PackageJson::load_from_string(path.to_path_buf(), &file_text)?;
-          let pkg_json = crate::sync::new_rc(pkg_json);
+          let pkg_json = deno_maybe_sync::new_rc(pkg_json);
           if let Some(cache) = maybe_cache {
             cache.set(path.to_path_buf(), pkg_json.clone());
           }
@@ -257,7 +256,7 @@ impl PackageJson {
           path: path.to_path_buf(),
           source: err,
         }),
-      }
+      },
     }
   }
 

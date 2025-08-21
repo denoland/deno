@@ -3,8 +3,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::ffi::c_void;
-use std::future::poll_fn;
 use std::future::Future;
+use std::future::poll_fn;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
@@ -14,10 +14,6 @@ use std::task::Poll;
 use std::task::Waker;
 
 use bytes::BytesMut;
-use deno_core::external;
-use deno_core::op2;
-use deno_core::serde_v8::V8Slice;
-use deno_core::unsync::TaskQueue;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::CancelFuture;
@@ -29,6 +25,10 @@ use deno_core::RcLike;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::external;
+use deno_core::op2;
+use deno_core::serde_v8::V8Slice;
+use deno_core::unsync::TaskQueue;
 use futures::TryFutureExt;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -120,10 +120,13 @@ impl BoundedBufferChannelInner {
   /// calling this.
   #[inline(always)]
   unsafe fn next_unsafe(&mut self) -> &mut V8Slice<u8> {
-    self
-      .buffers
-      .get_unchecked_mut(self.ring_consumer as usize)
-      .assume_init_mut()
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      self
+        .buffers
+        .get_unchecked_mut(self.ring_consumer as usize)
+        .assume_init_mut()
+    }
   }
 
   /// # Safety
@@ -132,10 +135,13 @@ impl BoundedBufferChannelInner {
   /// calling this.
   #[inline(always)]
   unsafe fn take_next_unsafe(&mut self) -> V8Slice<u8> {
-    let res = std::ptr::read(self.next_unsafe());
-    self.ring_consumer = (self.ring_consumer + 1) % BUFFER_CHANNEL_SIZE;
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      let res = std::ptr::read(self.next_unsafe());
+      self.ring_consumer = (self.ring_consumer + 1) % BUFFER_CHANNEL_SIZE;
 
-    res
+      res
+    }
   }
 
   fn drain(&mut self, mut f: impl FnMut(V8Slice<u8>)) {
@@ -204,10 +210,10 @@ impl BoundedBufferChannelInner {
 
     if self.write_waker.is_some() {
       // We may be able to write again if we have buffer and byte room in the channel
-      if self.can_write() {
-        if let Some(waker) = self.write_waker.take() {
-          waker.wake();
-        }
+      if self.can_write()
+        && let Some(waker) = self.write_waker.take()
+      {
+        waker.wake();
       }
     }
 
@@ -315,7 +321,7 @@ struct BoundedBufferChannel {
 impl BoundedBufferChannel {
   // TODO(mmastrac): in release mode we should be able to make this an UnsafeCell
   #[inline(always)]
-  fn inner(&self) -> RefMut<BoundedBufferChannelInner> {
+  fn inner(&self) -> RefMut<'_, BoundedBufferChannelInner> {
     self.inner.borrow_mut()
   }
 
@@ -370,7 +376,7 @@ struct ReadableStreamResource {
 }
 
 impl ReadableStreamResource {
-  pub fn cancel_handle(self: &Rc<Self>) -> impl RcLike<CancelHandle> {
+  pub fn cancel_handle(self: &Rc<Self>) -> impl RcLike<CancelHandle> + use<> {
     RcRef::map(self, |s| &s.cancel_handle).clone()
   }
 
@@ -401,7 +407,7 @@ impl ReadableStreamResource {
 }
 
 impl Resource for ReadableStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     Cow::Borrowed("readableStream")
   }
 
@@ -587,7 +593,7 @@ pub fn op_readable_stream_resource_close(sender: *const c_void) {
 pub fn op_readable_stream_resource_await_close(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> impl Future<Output = ()> {
+) -> impl Future<Output = ()> + use<> {
   let completion = state
     .resource_table
     .get::<ReadableStreamResource>(rid)
@@ -614,8 +620,8 @@ impl Drop for ReadableStreamResourceData {
 #[cfg(test)]
 mod tests {
   use std::cell::OnceCell;
-  use std::sync::atomic::AtomicUsize;
   use std::sync::OnceLock;
+  use std::sync::atomic::AtomicUsize;
   use std::time::Duration;
 
   use deno_core::v8;

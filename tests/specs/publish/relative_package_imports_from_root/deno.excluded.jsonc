@@ -1,0 +1,14 @@
+{
+  "workspace": ["./add"],
+  "name": "@denotest/root",
+  "version": "1.0.0",
+  "license": "MIT",
+  "exports": "./mod.ts",
+  "publish": {
+    "include": [
+      // since mod.ts is not included, this should just show a
+      // diagnostic for that and not for the relative package imports
+      "add/**/*"
+    ]
+  }
+}

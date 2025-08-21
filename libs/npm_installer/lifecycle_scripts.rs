@@ -7,12 +7,12 @@ use std::path::PathBuf;
 
 use anyhow::Error as AnyError;
 use deno_error::JsErrorBox;
-use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
-use deno_semver::package::PackageNv;
+use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
+use deno_semver::package::PackageNv;
 use sys_traits::FsMetadata;
 
 use crate::CachedNpmPackageExtraInfoProvider;
@@ -154,7 +154,7 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
     &mut self,
     package: &'a NpmResolutionPackage,
     extra: &NpmPackageExtraInfo,
-    package_path: Cow<Path>,
+    package_path: Cow<'_, Path>,
   ) {
     if has_lifecycle_scripts(self.sys, extra, &package_path) {
       if self.can_run_scripts(&package.id.nv) {

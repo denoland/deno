@@ -10,15 +10,15 @@ use denokv_proto::CommitResult;
 use denokv_proto::ReadRangeOutput;
 use denokv_proto::WatchStream;
 
-use crate::remote::RemoteDbHandlerPermissions;
-use crate::sqlite::SqliteDbHandler;
-use crate::sqlite::SqliteDbHandlerPermissions;
 use crate::AtomicWrite;
 use crate::Database;
 use crate::DatabaseHandler;
 use crate::QueueMessageHandle;
 use crate::ReadRange;
 use crate::SnapshotReadOptions;
+use crate::remote::RemoteDbHandlerPermissions;
+use crate::sqlite::SqliteDbHandler;
+use crate::sqlite::SqliteDbHandlerPermissions;
 
 pub struct MultiBackendDbHandler {
   backends: Vec<(&'static [&'static str], Box<dyn DynamicDbHandler>)>,
@@ -61,8 +61,21 @@ impl DatabaseHandler for MultiBackendDbHandler {
   async fn open(
     &self,
     state: Rc<RefCell<OpState>>,
-    path: Option<String>,
+    mut path: Option<String>,
   ) -> Result<Self::DB, JsErrorBox> {
+    if path.is_none()
+      && let Ok(x) = std::env::var("DENO_KV_DEFAULT_PATH")
+      && !x.is_empty()
+    {
+      path = Some(x);
+    }
+
+    if let Some(path) = &mut path
+      && let Ok(prefix) = std::env::var("DENO_KV_PATH_PREFIX")
+    {
+      *path = format!("{}{}", prefix, path);
+    }
+
     for (prefixes, handler) in &self.backends {
       for &prefix in *prefixes {
         if prefix.is_empty() {
