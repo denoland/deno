@@ -475,7 +475,10 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
         continue;
       };
       match s {
-        deno_package_json::PackageJsonDepValue::File(_) => todo!(),
+        deno_package_json::PackageJsonDepValue::File(_) => {
+          // TODO(nathanwhit)
+          // TODO(bartlomieju)
+        }
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           normal_deps.insert(package_req.name.to_string());
         }
