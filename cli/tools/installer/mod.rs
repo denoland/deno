@@ -534,54 +534,65 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   installed_normal_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
   installed_dev_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
 
-  if !install_reporter.stats.intialized_npm.is_empty()
-    || !install_reporter.stats.downloaded_jsr.is_empty()
+  let rep = install_reporter;
+
+  if !rep.stats.intialized_npm.is_empty()
+    || !rep.stats.downloaded_jsr.is_empty()
   {
     log::info!(
       "Packages: {}",
-      deno_terminal::colors::green(format!(
-        "+{}",
-        install_reporter.stats.intialized_npm.len()
-          + install_reporter.stats.downloaded_jsr.len()
-      ))
+      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
     );
     log::info!(
       "{}",
       deno_terminal::colors::green("+".repeat(
-        install_reporter.stats.intialized_npm.len()
-          + install_reporter.stats.downloaded_jsr.len()
+        rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
       ))
     );
   }
 
   log::info!(
-    "Progress: resolved {}, reused: {}, downloaded: {}, added: {}, done",
-    deno_terminal::colors::cyan(
-      install_reporter.stats.resolved_npm.len()
-        + install_reporter.stats.resolved_jsr.len()
+    "resolved: {}, reused: {}, downloaded: {}, added: {}",
+    deno_terminal::colors::green(
+      rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len()
     ),
-    deno_terminal::colors::cyan(
-      install_reporter.stats.reused_npm.get()
-        + install_reporter.stats.reused_jsr.len()
+    deno_terminal::colors::green(
+      rep.stats.reused_npm.get() + rep.stats.reused_jsr.len()
     ),
-    deno_terminal::colors::cyan(
-      install_reporter.stats.downloaded_npm.get()
-        + install_reporter.stats.downloaded_jsr.len()
+    deno_terminal::colors::green(
+      rep.stats.downloaded_npm.get() + rep.stats.downloaded_jsr.len()
     ),
-    deno_terminal::colors::cyan(
-      install_reporter.stats.intialized_npm.len()
-        + install_reporter.stats.downloaded_jsr.len()
+    deno_terminal::colors::green(
+      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
     ),
   );
 
   log::info!("");
 
-  if !installed_normal_deps.is_empty() {
+  if !installed_normal_deps.is_empty() || !rep.stats.downloaded_jsr.is_empty() {
     log::info!("{}", deno_terminal::colors::cyan("dependencies:"));
+    let mut jsr_packages = rep
+      .stats
+      .downloaded_jsr
+      .clone()
+      .into_iter()
+      .collect::<Vec<_>>();
+    jsr_packages.sort_by(|a, b| a.cmp(&b));
+    for pkg in jsr_packages {
+      let (name, version) = pkg.rsplit_once("@").unwrap();
+      log::info!(
+        "{} {}{} {}",
+        deno_terminal::colors::green("+"),
+        deno_terminal::colors::gray("jsr:"),
+        name,
+        deno_terminal::colors::gray(version)
+      );
+    }
     for pkg in &installed_normal_deps {
       log::info!(
-        "{} {} {}",
+        "{} {}{} {}",
         deno_terminal::colors::green("+"),
+        deno_terminal::colors::gray("npm:"),
         pkg.nv.name,
         deno_terminal::colors::gray(pkg.nv.version.to_string())
       );
@@ -592,8 +603,9 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
     log::info!("{}", deno_terminal::colors::cyan("devDependencies:"));
     for pkg in &installed_dev_deps {
       log::info!(
-        "{} {} {}",
+        "{} {}{} {}",
         deno_terminal::colors::green("+"),
+        deno_terminal::colors::gray("npm:"),
         pkg.nv.name,
         deno_terminal::colors::gray(pkg.nv.version.to_string())
       );
