@@ -206,13 +206,14 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
         import_source
       ));
     }
-    if !leading_comments_has_re(&JSX_FACTORY_RE) {
+    let is_classic = jsx_options.jsx_runtime == "classic";
+    if is_classic && !leading_comments_has_re(&JSX_FACTORY_RE) {
       add_text_change(format!(
         "/** @jsxFactory {} */",
         jsx_options.jsx_factory,
       ));
     }
-    if !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
+    if is_classic && !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
       add_text_change(format!(
         "/** @jsxFragmentFactory {} */",
         jsx_options.jsx_fragment_factory,
@@ -231,11 +232,12 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
       self.compiler_options_resolver.for_specifier(specifier);
     let jsx_config = compiler_options.jsx_import_source_config()?;
     let transpile_options = &compiler_options.transpile_options()?.transpile;
-    let jsx_runtime = if transpile_options.jsx_automatic {
-      "automatic"
-    } else {
-      "classic"
-    };
+    let jsx_runtime =
+      if transpile_options.jsx_automatic || transpile_options.precompile_jsx {
+        "automatic"
+      } else {
+        "classic"
+      };
     let mut unfurl_import_source =
       |import_source: &str, referrer: &Url, resolution_kind: ResolutionKind| {
         let maybe_import_source = self
@@ -309,7 +311,7 @@ mod test {
     run_test(&[
       (
         "/deno.json",
-        r#"{ "workspace": ["package-a", "package-b"] }"#,
+        r#"{ "workspace": ["package-a", "package-b", "package-c", "package-d"] }"#,
         None,
       ),
       (
@@ -338,17 +340,43 @@ mod test {
         None,
       ),
       (
+        "/package-c/deno.json",
+        r#"{
+        "compilerOptions": {
+          "jsx": "precompile",
+          "jsxImportSource": "react",
+          "jsxImportSourceTypes": "@types/react",
+        },
+        "imports": {
+          "react": "npm:react"
+          "@types/react": "npm:@types/react"
+        }
+      }"#,
+        None,
+      ),
+      (
+        "/package-d/deno.json",
+        r#"{
+        "compilerOptions": { "jsx": "react" },
+        "imports": {
+          "react": "npm:react"
+          "@types/react": "npm:@types/react"
+        }
+      }"#,
+        None,
+      ),
+      (
         "/package-a/main.tsx",
         "export const component = <div></div>;",
         Some(
-          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;",
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react */export const component = <div></div>;",
         ),
       ),
       (
         "/package-b/main.tsx",
         "export const componentB = <div></div>;",
         Some(
-          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const componentB = <div></div>;",
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react */export const componentB = <div></div>;",
         ),
       ),
       (
@@ -366,6 +394,20 @@ mod test {
         /** @jsxFactory h2 */
         /** @jsxRuntime automatic */
         export const component = <div></div>;",
+        ),
+      ),
+      (
+        "/package-c/main.tsx",
+        "export const component = <div></div>;",
+        Some(
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react */export const component = <div></div>;",
+        ),
+      ),
+      (
+        "/package-d/main.tsx",
+        "export const component = <div></div>;",
+        Some(
+          "/** @jsxRuntime classic *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;",
         ),
       ),
     ]);

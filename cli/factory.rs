@@ -302,7 +302,7 @@ struct CliFactoryServices {
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
-  maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
+  graph_reporter: Deferred<Option<Arc<dyn deno_graph::source::Reporter>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   memory_files: Arc<MemoryFiles>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
@@ -318,6 +318,8 @@ struct CliFactoryServices {
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
+  install_reporter:
+    Deferred<Option<Arc<crate::tools::installer::InstallReporter>>>,
 }
 
 #[derive(Debug, Default)]
@@ -567,6 +569,10 @@ impl CliFactory {
           None => Arc::new(NullLifecycleScriptsExecutor),
         },
         self.text_only_progress_bar().clone(),
+        self
+          .install_reporter()?
+          .cloned()
+          .map(|r| r as Arc<dyn deno_npm_installer::InstallReporter>),
         NpmInstallerFactoryOptions {
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
@@ -579,6 +585,22 @@ impl CliFactory {
         },
       ))
     })
+  }
+
+  pub fn install_reporter(
+    &self,
+  ) -> Result<Option<&Arc<crate::tools::installer::InstallReporter>>, AnyError>
+  {
+    self
+      .services
+      .install_reporter
+      .get_or_try_init(|| match self.cli_options()?.sub_command() {
+        DenoSubcommand::Install(InstallFlags::Local(_)) => Ok(Some(Arc::new(
+          crate::tools::installer::InstallReporter::new(),
+        ))),
+        _ => Ok(None),
+      })
+      .map(|opt| opt.as_ref())
   }
 
   pub async fn npm_installer(&self) -> Result<&Arc<CliNpmInstaller>, AnyError> {
@@ -621,15 +643,25 @@ impl CliFactory {
     self.resolver_factory()?.deno_resolver().await
   }
 
-  pub fn maybe_file_watcher_reporter(&self) -> &Option<FileWatcherReporter> {
-    let maybe_file_watcher_reporter = self
-      .watcher_communicator
-      .as_ref()
-      .map(|i| FileWatcherReporter::new(i.clone()));
-    self
-      .services
-      .maybe_file_watcher_reporter
-      .get_or_init(|| maybe_file_watcher_reporter)
+  pub fn graph_reporter(
+    &self,
+  ) -> Result<&Option<Arc<dyn deno_graph::source::Reporter>>, AnyError> {
+    match self.cli_options()?.sub_command() {
+      DenoSubcommand::Install(_) => {
+        self.services.graph_reporter.get_or_try_init(|| {
+          self.install_reporter().map(|opt| {
+            opt.map(|r| r.clone() as Arc<dyn deno_graph::source::Reporter>)
+          })
+        })
+      }
+      _ => Ok(self.services.graph_reporter.get_or_init(|| {
+        self
+          .watcher_communicator
+          .as_ref()
+          .map(|i| FileWatcherReporter::new(i.clone()))
+          .map(|i| Arc::new(i) as Arc<dyn deno_graph::source::Reporter>)
+      })),
+    }
   }
 
   pub fn module_info_cache(&self) -> Result<&Arc<ModuleInfoCache>, AnyError> {
@@ -735,7 +767,7 @@ impl CliFactory {
             self.global_http_cache()?.clone(),
             self.in_npm_pkg_checker()?.clone(),
             self.maybe_lockfile().await?.cloned(),
-            self.maybe_file_watcher_reporter().clone(),
+            self.graph_reporter()?.clone(),
             self.module_info_cache()?.clone(),
             self.npm_graph_resolver().await?.clone(),
             self.npm_installer_if_managed().await?.cloned(),
@@ -746,6 +778,9 @@ impl CliFactory {
             self.root_permissions_container()?.clone(),
             self.sys(),
             self.compiler_options_resolver()?.clone(),
+            self.install_reporter()?.cloned().map(|r| {
+              r as Arc<dyn deno_resolver::file_fetcher::GraphLoaderReporter>
+            }),
           )))
         }
         .boxed_local(),

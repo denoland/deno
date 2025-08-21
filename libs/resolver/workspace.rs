@@ -1780,6 +1780,7 @@ mod test {
   use std::path::PathBuf;
 
   use deno_config::workspace::WorkspaceDirectory;
+  use deno_config::workspace::WorkspaceDirectoryRc;
   use deno_config::workspace::WorkspaceDiscoverOptions;
   use deno_config::workspace::WorkspaceDiscoverStart;
   use deno_npm::registry::NpmPeerDependencyMeta;

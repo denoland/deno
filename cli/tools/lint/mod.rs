@@ -17,6 +17,7 @@ use deno_config::deno_json::LintRulesConfig;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;

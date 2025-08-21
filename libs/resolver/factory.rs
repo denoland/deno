@@ -14,9 +14,9 @@ use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
+use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceDiscoverError;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
@@ -94,13 +94,6 @@ use crate::workspace::WorkspaceResolver;
 type Deferred<T> = once_cell::sync::OnceCell<T>;
 #[cfg(not(feature = "sync"))]
 type Deferred<T> = once_cell::unsync::OnceCell<T>;
-
-#[allow(clippy::disallowed_types)]
-type UrlRc = deno_maybe_sync::MaybeArc<Url>;
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceDirectoryRc = deno_maybe_sync::MaybeArc<WorkspaceDirectory>;
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
 
 pub type DenoCjsModuleExportAnalyzerRc<TSys> = CjsModuleExportAnalyzerRc<
   DenoCjsCodeAnalyzer<TSys>,

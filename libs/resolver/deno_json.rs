@@ -14,6 +14,7 @@ use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceRc;
 use deno_error::JsError;
 use deno_maybe_sync::new_rc;
 use deno_path_util::normalize_path;
@@ -40,7 +41,6 @@ use url::Url;
 
 use crate::collections::FolderScopedWithUnscopedMap;
 use crate::factory::ConfigDiscoveryOption;
-use crate::factory::WorkspaceRc;
 use crate::npm::DenoInNpmPackageChecker;
 use crate::npm::NpmResolver;
 use crate::npm::NpmResolverSys;
@@ -1082,16 +1082,18 @@ impl CompilerOptionsResolver {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       }
-      workspace_configs.insert(
-        dir.dir_url().clone(),
-        CompilerOptionsData::new(
-          dir.to_configured_compiler_options_sources(),
-          CompilerOptionsSourceKind::DenoJson,
-          Some(dir.dir_url().clone()),
-          logged_warnings.clone(),
-          overrides.clone(),
-        ),
-      );
+      if dir.dir_url() != root_dir.dir_url() {
+        workspace_configs.insert(
+          dir.dir_url().clone(),
+          CompilerOptionsData::new(
+            dir.to_configured_compiler_options_sources(),
+            CompilerOptionsSourceKind::DenoJson,
+            Some(dir.dir_url().clone()),
+            logged_warnings.clone(),
+            overrides.clone(),
+          ),
+        );
+      }
     }
     Self {
       workspace_configs,

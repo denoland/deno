@@ -1479,6 +1479,7 @@ impl ConfigData {
       )),
       Arc::new(NullLifecycleScriptsExecutor),
       pb,
+      None,
       NpmInstallerFactoryOptions {
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,

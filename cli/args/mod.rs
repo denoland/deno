@@ -31,6 +31,7 @@ pub use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;

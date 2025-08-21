@@ -72,7 +72,9 @@ mod discovery;
 #[allow(clippy::disallowed_types)]
 type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 #[allow(clippy::disallowed_types)]
-type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
+pub type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
+#[allow(clippy::disallowed_types)]
+pub type WorkspaceDirectoryRc = deno_maybe_sync::MaybeArc<WorkspaceDirectory>;
 #[allow(clippy::disallowed_types)]
 type WorkspaceDirectoryRc = deno_maybe_sync::MaybeArc<WorkspaceDirectory>;
 
@@ -445,17 +447,19 @@ impl Workspace {
     link: BTreeMap<UrlRc, ConfigFolder>,
     vendor_dir: Option<PathBuf>,
   ) -> Self {
-    let root_dir = new_rc(root.folder_url());
+    let root_dir_url = new_rc(root.folder_url());
     let mut config_folders = IndexMap::with_capacity(members.len() + 1);
-    config_folders
-      .insert(root_dir.clone(), FolderConfigs::from_config_folder(root));
+    config_folders.insert(
+      root_dir_url.clone(),
+      FolderConfigs::from_config_folder(root),
+    );
     config_folders.extend(members.into_iter().map(
       |(folder_url, config_folder)| {
         (folder_url, FolderConfigs::from_config_folder(config_folder))
       },
     ));
     Workspace {
-      root_dir_url: root_dir,
+      root_dir_url,
       config_folders,
       links: link
         .into_iter()
