@@ -131,7 +131,7 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Bundle(bundle_flags) => spawn_subcommand(async {
       log::warn!(
-        "⚠️ {} is experimental and subject to changes",
+        "⚠️  {} is experimental and subject to changes",
         colors::cyan("deno bundle")
       );
       tools::bundle::bundle(flags, bundle_flags).await
@@ -406,7 +406,7 @@ async fn run_subcommand(
       1,
     ),
     DenoSubcommand::Vendor => exit_with_message(
-      "⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
+      "⚠️  `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       1,
     ),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
