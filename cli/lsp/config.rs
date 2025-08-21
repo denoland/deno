@@ -1291,7 +1291,6 @@ impl ConfigData {
             maybe_vendor_override: None,
           },
         )
-        .map(Arc::new)
         .map_err(AnyError::from)
       }
       Err(()) => Err(anyhow!("Scope '{}' was not a directory path.", scope)),
@@ -1310,10 +1309,10 @@ impl ConfigData {
       Err(err) => {
         lsp_warn!("  Couldn't open workspace \"{}\": {}", scope.as_str(), err);
         let member_dir =
-          Arc::new(WorkspaceDirectory::empty(WorkspaceDirectoryEmptyOptions {
+          WorkspaceDirectory::empty(WorkspaceDirectoryEmptyOptions {
             root_dir: scope.clone(),
             use_vendor_dir: VendorEnablement::Disable,
-          }));
+          });
         let mut data = Self::load_inner(
           member_dir,
           scope.clone(),
@@ -1798,7 +1797,7 @@ impl ConfigTree {
       .values()
       .filter_map(|data| {
         let workspace_root_scope_uri =
-          Some(data.member_dir.workspace.root_dir())
+          Some(data.member_dir.workspace.root_dir_url())
             .filter(|s| *s != data.member_dir.dir_url())
             .and_then(|s| url_to_uri(s).ok());
         Some(lsp_custom::DenoConfigurationData {
@@ -1969,18 +1968,14 @@ impl ConfigTree {
       .fs_create_dir_all(config_path.parent().unwrap())
       .unwrap();
     memory_sys.fs_write(&config_path, json_text).unwrap();
-    let workspace_dir = Arc::new(
-      WorkspaceDirectory::discover(
-        &memory_sys,
-        deno_config::workspace::WorkspaceDiscoverStart::ConfigFile(
-          &config_path,
-        ),
-        &deno_config::workspace::WorkspaceDiscoverOptions {
-          ..Default::default()
-        },
-      )
-      .unwrap(),
-    );
+    let workspace_dir = WorkspaceDirectory::discover(
+      &memory_sys,
+      deno_config::workspace::WorkspaceDiscoverStart::ConfigFile(&config_path),
+      &deno_config::workspace::WorkspaceDiscoverOptions {
+        ..Default::default()
+      },
+    )
+    .unwrap();
     let data = Arc::new(
       ConfigData::load_inner(
         workspace_dir,

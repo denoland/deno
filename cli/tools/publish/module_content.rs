@@ -288,7 +288,6 @@ mod test {
   use deno_path_util::url_from_file_path;
   use deno_resolver::deno_json::CompilerOptionsOverrides;
   use deno_resolver::factory::ConfigDiscoveryOption;
-  use deno_resolver::factory::WorkspaceDirectoryProvider;
   use deno_resolver::npm::ByonmNpmResolverCreateOptions;
   use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
   use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -485,7 +484,7 @@ mod test {
     ));
     let compiler_options_resolver = Arc::new(CompilerOptionsResolver::new(
       &sys,
-      &WorkspaceDirectoryProvider::from_initial_dir(&Arc::new(workspace_dir)),
+      &workspace_dir.workspace,
       &node_resolver,
       &ConfigDiscoveryOption::DiscoverCwd,
       &CompilerOptionsOverrides::default(),
