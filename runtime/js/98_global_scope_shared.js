@@ -335,6 +335,12 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
 
-unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {};
+unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
+  Buffer: core.propWritable(Buffer),
+  clearImmediate: core.propWritable(clearImmediate),
+  global: core.propWritable(globalThis),
+  process: core.propWritable(process),
+  setImmediate: core.propWritable(setImmediate),
+};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };
