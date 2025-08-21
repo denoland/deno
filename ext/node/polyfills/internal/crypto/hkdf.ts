@@ -39,6 +39,7 @@ import {
 } from "ext:deno_node/internal/util/types.ts";
 import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
 import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
+import { Buffer } from "node:buffer";
 
 // Consume raw bytes for any ArrayBufferView/ArrayBuffer; strings via toBuf.
 function toRawBytes(x: unknown): Buffer {
