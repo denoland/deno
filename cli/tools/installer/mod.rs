@@ -552,7 +552,7 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   }
 
   log::info!(
-    "resolved: {}, reused: {}, downloaded: {}, added: {}",
+    "Resolved: {}, reused: {}, downloaded: {}, added: {}",
     deno_terminal::colors::green(
       rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len()
     ),
@@ -570,7 +570,7 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   log::info!("");
 
   if !installed_normal_deps.is_empty() || !rep.stats.downloaded_jsr.is_empty() {
-    log::info!("{}", deno_terminal::colors::cyan("dependencies:"));
+    log::info!("{}", deno_terminal::colors::cyan("Dependencies:"));
     let mut jsr_packages = rep
       .stats
       .downloaded_jsr
@@ -600,7 +600,7 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
     log::info!("");
   }
   if !installed_dev_deps.is_empty() {
-    log::info!("{}", deno_terminal::colors::cyan("devDependencies:"));
+    log::info!("{}", deno_terminal::colors::cyan("Dev dependencies:"));
     for pkg in &installed_dev_deps {
       log::info!(
         "{} {}{} {}",
