@@ -577,7 +577,7 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
       .clone()
       .into_iter()
       .collect::<Vec<_>>();
-    jsr_packages.sort_by(|a, b| a.cmp(&b));
+    jsr_packages.sort();
     for pkg in jsr_packages {
       let (name, version) = pkg.rsplit_once("@").unwrap();
       log::info!(
