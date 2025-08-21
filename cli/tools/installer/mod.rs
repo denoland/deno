@@ -552,25 +552,24 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
         rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
       ))
     );
+
+    log::info!(
+      "Resolved: {}, reused: {}, downloaded: {}, added: {}",
+      deno_terminal::colors::green(
+        rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len()
+      ),
+      deno_terminal::colors::green(
+        rep.stats.reused_npm.get() + rep.stats.reused_jsr.len()
+      ),
+      deno_terminal::colors::green(
+        rep.stats.downloaded_npm.get() + rep.stats.downloaded_jsr.len()
+      ),
+      deno_terminal::colors::green(
+        rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
+      ),
+    );
+    log::info!("");
   }
-
-  log::info!(
-    "Resolved: {}, reused: {}, downloaded: {}, added: {}",
-    deno_terminal::colors::green(
-      rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len()
-    ),
-    deno_terminal::colors::green(
-      rep.stats.reused_npm.get() + rep.stats.reused_jsr.len()
-    ),
-    deno_terminal::colors::green(
-      rep.stats.downloaded_npm.get() + rep.stats.downloaded_jsr.len()
-    ),
-    deno_terminal::colors::green(
-      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-    ),
-  );
-
-  log::info!("");
 
   if !installed_normal_deps.is_empty() || !rep.stats.downloaded_jsr.is_empty() {
     log::info!("{}", deno_terminal::colors::cyan("Dependencies:"));
