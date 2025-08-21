@@ -614,7 +614,7 @@ fn handle_workspace_with_members<TSys: FsRead + FsMetadata + FsReadDir>(
       if !root_workspace.config_folders.contains_key(key) {
         return Err(
           WorkspaceDiscoverErrorKind::ConfigNotWorkspaceMember {
-            workspace_url: (**root_workspace.root_dir()).clone(),
+            workspace_url: (**root_workspace.root_dir_url()).clone(),
             config_url: config_folder_config_specifier(config_folder)
               .into_owned(),
           }
@@ -770,7 +770,7 @@ fn resolve_workspace_for_config_folder<
           .set_vendor_folder(maybe_vendor_dir.clone())
           .collect_file_patterns(
             sys,
-            FilePatterns {
+            &FilePatterns {
               base: dir_path.to_path_buf(),
               include: Some(PathOrPatternSet::new(patterns)),
               exclude: PathOrPatternSet::new(Vec::new()),
