@@ -8,9 +8,9 @@ https://github.com/denoland/deno_install
 
 ### 2.4.5 / 2025.08.21
 
-- feat(install): more informative deno install output (#30387)
 - feat(lsp): pull-based diagnostics (#30325)
 - feat(unstable/install): `DENO_INSTALL_ARCH` env var (#30473)
+- feat(unstable/install): more informative deno install output (#30387)
 - fix(bundle): allow json imports without attribute in deno bundle, support
   require of json (#30413)
 - fix(cache): cache excluded modules explicitly provided on the command line
