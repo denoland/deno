@@ -108,6 +108,7 @@ use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
+use crate::lsp::analysis::fix_ts_import_changes_for_file_rename;
 use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::diagnostics::generate_module_diagnostics;
@@ -3889,8 +3890,25 @@ impl Inner {
             LspError::internal_error()
           }
         })?;
-        changes_with_modules
-          .extend(changes.into_iter().map(|c| (c, module.clone())));
+        let changes = fix_ts_import_changes_for_file_rename(
+          changes,
+          &rename.new_uri,
+          &module,
+          self,
+          token,
+        )
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!("Unable to fix import changes: {:#}", err);
+            LspError::internal_error()
+          }
+        })?;
+        if !changes.is_empty() {
+          changes_with_modules
+            .extend(changes.into_iter().map(|c| (c, module.clone())));
+        }
       }
     }
     file_text_changes_to_workspace_edit(&changes_with_modules, self, token)
@@ -4901,19 +4919,28 @@ impl Inner {
           error!("Failed to convert range to text_span: {:#}", err);
           LspError::internal_error()
         })?;
-    let maybe_inlay_hints = self
+    let mut inlay_hints = self
       .ts_server
       .provide_inlay_hints(self.snapshot(), &module, text_span, token)
-      .await
-      .map_err(|err| {
-        if token.is_cancelled() {
-          LspError::request_cancelled()
-        } else {
-          error!("Unable to get inlay hints from TypeScript: {:#}", err);
-          LspError::internal_error()
-        }
-      })?;
-    let maybe_inlay_hints = maybe_inlay_hints
+      .await;
+    // Silence tsc debug failures.
+    // See https://github.com/denoland/deno/issues/30455.
+    // TODO(nayeemrmn): Keeps tabs on whether this is still necessary.
+    if let Err(err) = &inlay_hints
+      && err.to_string().contains("Debug Failure")
+    {
+      lsp_warn!("Unable to get inlay hints from TypeScript: {:#}", err);
+      inlay_hints = Ok(None)
+    }
+    let inlay_hints = inlay_hints.map_err(|err| {
+      if token.is_cancelled() {
+        LspError::request_cancelled()
+      } else {
+        error!("Unable to get inlay hints from TypeScript: {:#}", err);
+        LspError::internal_error()
+      }
+    })?;
+    let inlay_hints = inlay_hints
       .map(|hints| {
         hints
           .into_iter()
@@ -4927,7 +4954,7 @@ impl Inner {
       })
       .transpose()?;
     self.performance.measure(mark);
-    Ok(maybe_inlay_hints)
+    Ok(inlay_hints)
   }
 
   async fn reload_import_registries(&mut self) -> LspResult<Option<Value>> {

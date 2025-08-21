@@ -869,9 +869,6 @@ async fn initialize_tunnel(
   let mut factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let mut cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
-  if deploy_config.is_none() {
-    let _ = tools::deploy::get_token_entry()?.delete_credential();
-  }
 
   let token = if let Ok(token) = std::env::var("DENO_DEPLOY_TOKEN") {
     token
