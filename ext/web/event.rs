@@ -271,7 +271,7 @@ impl Event {
     event_object: v8::Local<'a, v8::Object>,
     target: &EventTarget,
     target_object: v8::Global<v8::Object>,
-    path: &Vec<Path>,
+    path: &[Path],
     path_index: usize,
     phase: InvokePhase,
   ) {
@@ -762,9 +762,7 @@ impl CustomEvent {
     )?;
     let event = Event::new(typ, event_init.into_option());
 
-    let detail = if init.is_object()
-      && let Some(init) = init.to_object(scope)
-    {
+    let detail = if let Ok(init) = init.try_cast::<v8::Object>() {
       get_value(scope, init, "detail")
         .map(|detail| v8::Global::new(scope, detail))
     } else {
@@ -906,9 +904,7 @@ impl ErrorEvent {
       Event::new(typ, None)
     };
 
-    let error = if init.is_object()
-      && let Some(init) = init.to_object(scope)
-    {
+    let error = if let Ok(init) = init.try_cast::<v8::Object>() {
       get_value(scope, init, "error").map(|error| v8::Global::new(scope, error))
     } else {
       None
@@ -931,12 +927,12 @@ impl ErrorEvent {
 
   #[getter]
   fn lineno(&self) -> u32 {
-    self.lineno.clone()
+    self.lineno
   }
 
   #[getter]
   fn colno(&self) -> u32 {
-    self.colno.clone()
+    self.colno
   }
 
   #[getter]
@@ -965,6 +961,7 @@ impl GarbageCollected for PromiseRejectionEvent {
 }
 
 impl PromiseRejectionEvent {
+  #[inline]
   fn new(
     promise: v8::Global<v8::Object>,
     reason: Option<v8::Global<v8::Value>>,
@@ -996,8 +993,7 @@ impl PromiseRejectionEvent {
     let promise = {
       let promise = get_value(scope, init, "promise");
       if let Some(promise) = promise
-        && promise.is_object()
-        && let Some(promise) = promise.to_object(scope)
+        && let Ok(promise) = promise.try_cast::<v8::Object>()
       {
         v8::Global::new(scope, promise)
       } else {
@@ -1065,6 +1061,7 @@ impl GarbageCollected for CloseEvent {
 }
 
 impl CloseEvent {
+  #[inline]
   fn new(init: Option<CloseEventInit>) -> CloseEvent {
     let (was_clean, code, reason) = if let Some(init) = init {
       (init.was_clean, init.code, init.reason)
@@ -1222,16 +1219,13 @@ impl MessageEvent {
       Event::new(typ, None)
     };
 
-    let (data, source, ports) = if init.is_object()
-      && let Some(init) = init.to_object(scope)
+    let (data, source, ports) = if let Ok(init) = init.try_cast::<v8::Object>()
     {
       let data = get_value(scope, init, "data")
         .map(|value| v8::Global::new(scope, value));
       // TODO(petamoriken): Validate Window or MessagePort
       let source = if let Some(source) = get_value(scope, init, "source") {
-        if source.is_object()
-          && let Some(source) = source.to_object(scope)
-        {
+        if let Ok(source) = source.try_cast::<v8::Object>() {
           Some(v8::Global::new(scope, source))
         } else {
           return Err(EventError::WebIDL(WebIdlError::new(
@@ -1464,13 +1458,8 @@ impl ProgressEvent {
   }
 }
 
+#[derive(Default)]
 pub(crate) struct ReportExceptionStackedCalls(u32);
-
-impl Default for ReportExceptionStackedCalls {
-  fn default() -> Self {
-    ReportExceptionStackedCalls(0)
-  }
-}
 
 // https://html.spec.whatwg.org/#report-the-exception
 fn report_exception<'a>(
@@ -1525,8 +1514,8 @@ fn report_exception<'a>(
         }),
       );
       let error_event = ErrorEvent {
-        message: message.unwrap_or(String::new()),
-        filename: file_name.unwrap_or(String::new()),
+        message: message.unwrap_or_default(),
+        filename: file_name.unwrap_or_default(),
         lineno: line_number.unwrap_or(0) as u32,
         colno: column_number.unwrap_or(0) as u32,
         error: Some(v8::Global::new(scope, exception)),
@@ -1539,7 +1528,7 @@ fn report_exception<'a>(
         .unwrap();
     let global = scope.get_current_context().global(scope);
     let target =
-      cppgc::try_unwrap_cppgc_object::<EventTarget>(scope, global.into())
+      cppgc::try_unwrap_cppgc_proto_object::<EventTarget>(scope, global.into())
         .unwrap();
     let global = v8::Global::new(scope, global);
     event.dispatch(scope, state, event_object, &target, global, None)
