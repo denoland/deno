@@ -8,11 +8,11 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
-use log::info;
-use log::warn;
 use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::json;
+use log::info;
+use log::warn;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
