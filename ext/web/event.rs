@@ -2137,6 +2137,7 @@ impl AbortSignal {
     cppgc::wrap_object2(scope, obj, (event_target, abort_signal))
   }
 
+  #[required(1)]
   #[static_method]
   fn any<'a>(
     scope: &mut v8::HandleScope<'a>,
@@ -2166,6 +2167,17 @@ impl AbortSignal {
       obj,
       (event_target, abort_signal),
     ))
+  }
+
+  fn throw_if_aborted<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Value> {
+    if let Some(reason) = &*self.reason.borrow() {
+      let reason = v8::Local::new(scope, reason);
+      scope.throw_exception(reason);
+    }
+    v8::undefined(scope).into()
   }
 
   #[getter]
