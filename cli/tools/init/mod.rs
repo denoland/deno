@@ -18,7 +18,6 @@ use log::info;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InitFlags;
-use crate::args::InternalFlags;
 use crate::args::PermissionFlags;
 use crate::args::RunFlags;
 use crate::colors;
