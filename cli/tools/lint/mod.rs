@@ -31,7 +31,6 @@ use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_resolver::deno_json::CompilerOptionsResolver;
-use deno_resolver::factory::WorkspaceDirectoryRc;
 use log::debug;
 use reporters::LintReporter;
 use reporters::create_reporter;

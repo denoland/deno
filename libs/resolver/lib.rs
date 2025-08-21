@@ -64,10 +64,6 @@ pub mod npmrc;
 mod rt;
 pub mod workspace;
 
-mod sync {
-  pub use deno_maybe_sync::*;
-}
-
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<WorkspaceResolver<TSys>>;

@@ -75,8 +75,6 @@ type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 pub type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceDirectoryRc = deno_maybe_sync::MaybeArc<WorkspaceDirectory>;
-#[allow(clippy::disallowed_types)]
-type WorkspaceDirectoryRc = deno_maybe_sync::MaybeArc<WorkspaceDirectory>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolverWorkspaceJsrPackage {
