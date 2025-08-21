@@ -14,6 +14,7 @@ use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceRc;
 use deno_error::JsError;
 use deno_maybe_sync::new_rc;
 use deno_path_util::normalize_path;
@@ -40,7 +41,6 @@ use url::Url;
 
 use crate::collections::FolderScopedWithUnscopedMap;
 use crate::factory::ConfigDiscoveryOption;
-use crate::factory::WorkspaceDirectoryProvider;
 use crate::npm::DenoInNpmPackageChecker;
 use crate::npm::NpmResolver;
 use crate::npm::NpmResolverSys;
@@ -1043,7 +1043,7 @@ impl Default for CompilerOptionsResolver {
 impl CompilerOptionsResolver {
   pub fn new<TSys: FsRead, NSys: NpmResolverSys>(
     sys: &TSys,
-    workspace_directory_provider: &WorkspaceDirectoryProvider,
+    workspace: &WorkspaceRc,
     node_resolver: &TsConfigNodeResolver<NSys>,
     config_discover: &ConfigDiscoveryOption,
     overrides: &CompilerOptionsOverrides,
@@ -1069,7 +1069,7 @@ impl CompilerOptionsResolver {
       &logged_warnings,
       overrides.clone(),
     );
-    let root_dir = workspace_directory_provider.root();
+    let root_dir = workspace.root_dir();
     let mut workspace_configs =
       FolderScopedWithUnscopedMap::new(CompilerOptionsData::new(
         root_dir.to_configured_compiler_options_sources(),
@@ -1078,17 +1078,17 @@ impl CompilerOptionsResolver {
         logged_warnings.clone(),
         overrides.clone(),
       ));
-    for (dir_url, dir) in workspace_directory_provider.entries() {
+    for dir in workspace.resolve_member_dirs() {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       }
-      if let Some(dir_url) = dir_url {
+      if dir.dir_url() != root_dir.dir_url() {
         workspace_configs.insert(
-          dir_url.clone(),
+          dir.dir_url().clone(),
           CompilerOptionsData::new(
             dir.to_configured_compiler_options_sources(),
             CompilerOptionsSourceKind::DenoJson,
-            Some(dir_url.clone()),
+            Some(dir.dir_url().clone()),
             logged_warnings.clone(),
             overrides.clone(),
           ),
