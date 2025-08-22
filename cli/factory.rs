@@ -1042,6 +1042,7 @@ impl CliFactory {
       self.maybe_lockfile().await?.cloned(),
       self.npm_installer_if_managed().await?.cloned(),
       npm_resolver.clone(),
+      self.text_only_progress_bar().clone(),
       self.sys(),
       self.create_cli_main_worker_options()?,
       self.root_permissions_container()?.clone(),
