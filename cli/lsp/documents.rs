@@ -2113,6 +2113,7 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
       Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
@@ -2261,6 +2262,7 @@ console.log(b, "hello deno");
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
       let compiler_options_resolver =
         Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
         &compiler_options_resolver,
@@ -2306,6 +2308,7 @@ console.log(b, "hello deno");
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
       let compiler_options_resolver =
         Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
         &compiler_options_resolver,

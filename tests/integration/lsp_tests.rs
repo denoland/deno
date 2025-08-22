@@ -17022,6 +17022,61 @@ fn lsp_tsconfig_node_modules_dts_diagnostics() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_tsconfig_root_dirs() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "extends": "./subdir/tsconfig.json",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "subdir/tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "rootDirs": ["..", "types"],
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("subdir/types/foo.d.ts", "export type Foo = string;\n");
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"
+      import type { Foo } from "./foo.d.ts";
+      const foo: Foo = 1;
+      console.log(foo);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 2, "character": 12 },
+          "end": { "line": 2, "character": 15 },
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'number' is not assignable to type 'string'.",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()

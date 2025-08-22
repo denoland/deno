@@ -18,6 +18,7 @@ use deno_config::workspace::WorkspaceRc;
 use deno_error::JsError;
 use deno_maybe_sync::new_rc;
 use deno_path_util::normalize_path;
+use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
@@ -365,6 +366,7 @@ struct MemoizedValues {
     Result<Option<JsxImportSourceConfigRc>, ToMaybeJsxImportSourceConfigError>,
   >,
   check_js: OnceCell<bool>,
+  root_dirs: OnceCell<Vec<Url>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -600,6 +602,38 @@ impl CompilerOptionsData {
             .as_bool()
         })
         .unwrap_or(false)
+    })
+  }
+
+  pub fn root_dirs(&self) -> &Vec<Url> {
+    self.memoized.root_dirs.get_or_init(|| {
+      let Some((source_specifier, root_dirs)) =
+        self.sources.iter().rev().find_map(|s| {
+          Some((
+            &s.specifier,
+            s.compiler_options
+              .as_ref()?
+              .0
+              .as_object()?
+              .get("rootDirs")?
+              .as_array()?,
+          ))
+        })
+      else {
+        return Vec::new();
+      };
+      root_dirs
+        .iter()
+        .filter_map(|s| {
+          url_from_directory_path(
+            &url_to_file_path(source_specifier)
+              .ok()?
+              .parent()?
+              .join(s.as_str()?),
+          )
+          .ok()
+        })
+        .collect()
     })
   }
 
@@ -926,12 +960,19 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       });
     let include = object
       .and_then(|o| {
-        PathOrPatternSet::from_include_relative_path_or_patterns(
-          dir_path,
+        PathOrPatternSet::from_absolute_paths(
           &o.get("include")?
             .as_array()?
             .iter()
-            .filter_map(|v| Some(v.as_str()?.to_string()))
+            .filter_map(|v| {
+              let path = Path::new(v.as_str()?);
+              let absolute_path = if path.is_absolute() {
+                normalize_path(Cow::Borrowed(path))
+              } else {
+                normalize_path(Cow::Owned(dir_path.join(path)))
+              };
+              Some(absolute_path.to_string_lossy().into_owned())
+            })
             .collect::<Vec<_>>(),
         )
         .ok()
@@ -945,12 +986,19 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       .or_else(|| files.is_some().then(Default::default));
     let exclude = object
       .and_then(|o| {
-        PathOrPatternSet::from_exclude_relative_path_or_patterns(
-          dir_path,
+        PathOrPatternSet::from_absolute_paths(
           &o.get("exclude")?
             .as_array()?
             .iter()
-            .filter_map(|v| Some(v.as_str()?.to_string()))
+            .filter_map(|v| {
+              let path = Path::new(v.as_str()?);
+              let absolute_path = if path.is_absolute() {
+                normalize_path(Cow::Borrowed(path))
+              } else {
+                normalize_path(Cow::Owned(dir_path.join(path)))
+              };
+              Some(absolute_path.to_string_lossy().into_owned())
+            })
             .collect::<Vec<_>>(),
         )
         .ok()
@@ -1169,6 +1217,10 @@ impl CompilerOptionsResolver {
 
   pub fn size(&self) -> usize {
     self.workspace_configs.count() + self.ts_configs.len()
+  }
+
+  pub fn has_root_dirs(&self) -> bool {
+    self.entries().any(|(_, d, _)| !d.root_dirs().is_empty())
   }
 
   pub fn new_for_dirs_by_scope<TSys: FsRead, NSys: NpmResolverSys>(
