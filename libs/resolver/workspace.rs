@@ -1611,12 +1611,11 @@ mod test {
   use sys_traits::impls::InMemorySys;
   use url::Url;
 
+  use super::*;
   use crate::factory::ConfigDiscoveryOption;
   use crate::npm::CreateInNpmPkgCheckerOptions;
   use crate::npm::DenoInNpmPackageChecker;
   use crate::npm::NpmResolverSys;
-
-  use super::*;
 
   pub struct UnreachableSys;
 
