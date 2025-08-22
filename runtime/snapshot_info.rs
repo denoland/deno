@@ -61,6 +61,7 @@ impl deno_fetch::FetchPermissions for Permissions {
   }
 }
 
+#[cfg(feature = "ffi")]
 impl deno_ffi::FfiPermissions for Permissions {
   fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -228,7 +229,10 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_broadcast_channel::deno_broadcast_channel::init(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
     ),
+    #[cfg(feature = "ffi")]
     deno_ffi::deno_ffi::init::<Permissions>(None),
+    #[cfg(not(feature = "ffi"))]
+    crate::shared::deno_ffi::init(),
     deno_net::deno_net::init::<Permissions>(None, None),
     deno_tls::deno_tls::init(),
     deno_kv::deno_kv::init(
