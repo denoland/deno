@@ -562,10 +562,12 @@ impl CliFactory {
           self.text_only_progress_bar().clone(),
         )),
         match resolver_factory.npm_resolver()?.as_managed() {
-          Some(managed_npm_resolver) => Arc::new(
-            DenoTaskLifeCycleScriptsExecutor::new(managed_npm_resolver.clone()),
-          )
-            as Arc<dyn LifecycleScriptsExecutor>,
+          Some(managed_npm_resolver) => {
+            Arc::new(DenoTaskLifeCycleScriptsExecutor::new(
+              managed_npm_resolver.clone(),
+              self.text_only_progress_bar().clone(),
+            )) as Arc<dyn LifecycleScriptsExecutor>
+          }
           None => Arc::new(NullLifecycleScriptsExecutor),
         },
         self.text_only_progress_bar().clone(),
