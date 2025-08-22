@@ -67,5 +67,6 @@ twox-hash.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+node_resolver.workspace = true
 sys_traits = { workspace = true, features = ["memory", "real", "serde_json"] }
 test_util.workspace = true

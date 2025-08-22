@@ -28,6 +28,7 @@ use indexmap::IndexSet;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolver;
+use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 #[cfg(feature = "sync")]
 use once_cell::sync::OnceCell;
@@ -43,7 +44,6 @@ use url::Url;
 use crate::collections::FolderScopedWithUnscopedMap;
 use crate::factory::ConfigDiscoveryOption;
 use crate::npm::DenoInNpmPackageChecker;
-use crate::npm::NpmResolver;
 use crate::npm::NpmResolverSys;
 
 #[allow(clippy::disallowed_types)]
@@ -743,29 +743,38 @@ fn is_maybe_directory_error(err: &std::io::Error) -> bool {
     || cfg!(windows) && kind == ErrorKind::PermissionDenied
 }
 
-type TsConfigNodeResolver<TSys> = NodeResolver<
+pub(crate) type TsConfigNodeResolver<TSys, TNpfr> = NodeResolver<
   DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
-  NpmResolver<TSys>,
+  TNpfr,
   TSys,
 >;
 
-type GetNodeResolverFn<'a, NSys> =
-  Box<dyn Fn(&Url) -> Option<&'a TsConfigNodeResolver<NSys>> + 'a>;
+type GetNodeResolverFn<'a, NSys, TNpfr> =
+  Box<dyn Fn(&Url) -> Option<&'a TsConfigNodeResolver<NSys, TNpfr>> + 'a>;
 
-struct TsConfigCollector<'a, 'b, TSys: FsRead, NSys: NpmResolverSys> {
+struct TsConfigCollector<
+  'a,
+  'b,
+  TSys: FsRead,
+  NSys: NpmResolverSys,
+  TNpfr: NpmPackageFolderResolver,
+> {
   roots: BTreeSet<PathBuf>,
   collected: IndexMap<UrlRc, Rc<TsConfigData>>,
   read_cache: HashMap<PathBuf, Result<Rc<TsConfigData>, Rc<std::io::Error>>>,
   currently_reading: IndexSet<PathBuf>,
   sys: &'a TSys,
-  get_node_resolver: GetNodeResolverFn<'b, NSys>,
+  get_node_resolver: GetNodeResolverFn<'b, NSys, TNpfr>,
   logged_warnings: &'a LoggedWarningsRc,
   overrides: CompilerOptionsOverrides,
 }
 
-impl<TSys: FsRead + std::fmt::Debug, NSys: NpmResolverSys> std::fmt::Debug
-  for TsConfigCollector<'_, '_, TSys, NSys>
+impl<
+  TSys: FsRead + std::fmt::Debug,
+  NSys: NpmResolverSys,
+  TNpfr: NpmPackageFolderResolver,
+> std::fmt::Debug for TsConfigCollector<'_, '_, TSys, NSys, TNpfr>
 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("TsConfigCollector")
@@ -779,12 +788,17 @@ impl<TSys: FsRead + std::fmt::Debug, NSys: NpmResolverSys> std::fmt::Debug
   }
 }
 
-impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
-  TsConfigCollector<'a, 'b, TSys, NSys>
+impl<
+  'a,
+  'b,
+  TSys: FsRead,
+  NSys: NpmResolverSys,
+  TNpfr: NpmPackageFolderResolver,
+> TsConfigCollector<'a, 'b, TSys, NSys, TNpfr>
 {
   fn new(
     sys: &'a TSys,
-    get_node_resolver: GetNodeResolverFn<'b, NSys>,
+    get_node_resolver: GetNodeResolverFn<'b, NSys, TNpfr>,
     logged_warnings: &'a LoggedWarningsRc,
     overrides: CompilerOptionsOverrides,
   ) -> Self {
@@ -1089,10 +1103,14 @@ impl Default for CompilerOptionsResolver {
 }
 
 impl CompilerOptionsResolver {
-  pub fn new<TSys: FsRead, NSys: NpmResolverSys>(
+  pub fn new<
+    TSys: FsRead,
+    NSys: NpmResolverSys,
+    TNpfr: NpmPackageFolderResolver,
+  >(
     sys: &TSys,
     workspace: &WorkspaceRc,
-    node_resolver: &TsConfigNodeResolver<NSys>,
+    node_resolver: &TsConfigNodeResolver<NSys, TNpfr>,
     config_discover: &ConfigDiscoveryOption,
     overrides: &CompilerOptionsOverrides,
   ) -> Self {
@@ -1223,10 +1241,14 @@ impl CompilerOptionsResolver {
     self.entries().any(|(_, d, _)| !d.root_dirs().is_empty())
   }
 
-  pub fn new_for_dirs_by_scope<TSys: FsRead, NSys: NpmResolverSys>(
+  pub fn new_for_dirs_by_scope<
+    TSys: FsRead,
+    NSys: NpmResolverSys,
+    TNpfr: NpmPackageFolderResolver,
+  >(
     sys: &TSys,
     dirs_by_scope: BTreeMap<&UrlRc, &WorkspaceDirectory>,
-    get_node_resolver: GetNodeResolverFn<'_, NSys>,
+    get_node_resolver: GetNodeResolverFn<'_, NSys, TNpfr>,
   ) -> Self {
     let logged_warnings = new_rc(LoggedWarnings::default());
     let mut ts_config_collector = TsConfigCollector::new(

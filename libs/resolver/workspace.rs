@@ -1597,10 +1597,24 @@ mod test {
   use deno_path_util::url_from_directory_path;
   use deno_path_util::url_from_file_path;
   use deno_semver::VersionReq;
+  use node_resolver::DenoIsBuiltInNodeModuleChecker;
+  use node_resolver::NodeResolver;
+  use node_resolver::NodeResolverOptions;
+  use node_resolver::NpmPackageFolderResolver;
+  use node_resolver::PackageJsonResolver;
+  use node_resolver::cache::NodeResolutionSys;
+  use node_resolver::errors::PackageFolderResolveError;
+  use node_resolver::errors::PackageFolderResolveErrorKind;
+  use node_resolver::errors::PackageNotFoundError;
   use serde_json::json;
   use sys_traits::FsCanonicalize;
   use sys_traits::impls::InMemorySys;
   use url::Url;
+
+  use crate::factory::ConfigDiscoveryOption;
+  use crate::npm::CreateInNpmPkgCheckerOptions;
+  use crate::npm::DenoInNpmPackageChecker;
+  use crate::npm::NpmResolverSys;
 
   use super::*;
 
@@ -1641,6 +1655,42 @@ mod test {
     } else {
       PathBuf::from("/home/user")
     }
+  }
+
+  #[derive(Debug)]
+  struct TestNpmPackageFolderResolver;
+
+  impl NpmPackageFolderResolver for TestNpmPackageFolderResolver {
+    fn resolve_package_folder_from_package(
+      &self,
+      specifier: &str,
+      referrer: &node_resolver::UrlOrPathRef,
+    ) -> Result<PathBuf, PackageFolderResolveError> {
+      Err(PackageFolderResolveError(Box::new(
+        PackageFolderResolveErrorKind::PackageNotFound(PackageNotFoundError {
+          package_name: specifier.to_string(),
+          referrer: referrer.display(),
+          referrer_extra: None,
+        }),
+      )))
+    }
+  }
+
+  #[allow(clippy::disallowed_types)]
+  fn setup_node_resolver<TSys: NpmResolverSys>(
+    sys: &TSys,
+  ) -> crate::deno_json::TsConfigNodeResolver<TSys, TestNpmPackageFolderResolver>
+  {
+    let package_json_resolver =
+      new_rc(PackageJsonResolver::new(sys.clone(), None));
+    NodeResolver::new(
+      DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm),
+      DenoIsBuiltInNodeModuleChecker,
+      TestNpmPackageFolderResolver,
+      package_json_resolver,
+      NodeResolutionSys::new(sys.clone(), None),
+      NodeResolverOptions::default(),
+    )
   }
 
   #[test]
@@ -2200,6 +2250,14 @@ mod test {
       },
     )
     .unwrap();
+    let compiler_options_resolver = new_rc(CompilerOptionsResolver::new(
+      &sys,
+      &workspace_dir.workspace,
+      &setup_node_resolver(&sys),
+      &ConfigDiscoveryOption::DiscoverCwd,
+      &Default::default(),
+    ));
+    resolver.set_compiler_options_resolver(compiler_options_resolver);
     let root_dir_url = workspace_dir.workspace.root_dir_url();
 
     let referrer = root_dir_url.join("member/foo/mod.ts").unwrap();
@@ -2316,6 +2374,14 @@ mod test {
       },
     )
     .unwrap();
+    let compiler_options_resolver = new_rc(CompilerOptionsResolver::new(
+      &sys,
+      &workspace_dir.workspace,
+      &setup_node_resolver(&sys),
+      &ConfigDiscoveryOption::DiscoverCwd,
+      &Default::default(),
+    ));
+    resolver.set_compiler_options_resolver(compiler_options_resolver);
     let root_dir_url = workspace_dir.workspace.root_dir_url();
 
     let referrer = root_dir_url.join("subdir/mod.ts").unwrap();
