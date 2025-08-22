@@ -320,25 +320,57 @@ function asHex(ab: ArrayBuffer | Uint8Array): string {
 
 Deno.test("crypto.hkdf (async) - strings match sync", async () => {
   const secret = "secret", keyLen = 10;
-  const syncHex  = asHex(hkdfSync("sha256", secret, "salt", "info", keyLen));
-  const asyncHex = asHex(await hkdfAsyncP("sha256", secret, "salt", "info", keyLen));
+  const syncHex = asHex(hkdfSync("sha256", secret, "salt", "info", keyLen));
+  const asyncHex = asHex(
+    await hkdfAsyncP("sha256", secret, "salt", "info", keyLen),
+  );
   assertEquals(asyncHex, syncHex);
 });
 
 Deno.test("crypto.hkdf (async) - TypedArray array-like inputs match sync", async () => {
   const secret = "secret", keyLen = 10;
   const cases = [
-    { name: "Int8Array",   salt: new Int8Array(Buffer.from("salt")),   info: new Int8Array(Buffer.from("info")) },
-    { name: "Uint8Array",  salt: new Uint8Array(Buffer.from("salt")),  info: new Uint8Array(Buffer.from("info")) },
-    { name: "Int16Array",  salt: new Int16Array(Buffer.from("salt")),  info: new Int16Array(Buffer.from("info")) },
-    { name: "Uint16Array", salt: new Uint16Array(Buffer.from("salt")), info: new Uint16Array(Buffer.from("info")) },
-    { name: "Int32Array",  salt: new Int32Array(Buffer.from("salt")),  info: new Int32Array(Buffer.from("info")) },
-    { name: "Uint32Array", salt: new Uint32Array(Buffer.from("salt")), info: new Uint32Array(Buffer.from("info")) },
+    {
+      name: "Int8Array",
+      salt: new Int8Array(Buffer.from("salt")),
+      info: new Int8Array(Buffer.from("info")),
+    },
+    {
+      name: "Uint8Array",
+      salt: new Uint8Array(Buffer.from("salt")),
+      info: new Uint8Array(Buffer.from("info")),
+    },
+    {
+      name: "Int16Array",
+      salt: new Int16Array(Buffer.from("salt")),
+      info: new Int16Array(Buffer.from("info")),
+    },
+    {
+      name: "Uint16Array",
+      salt: new Uint16Array(Buffer.from("salt")),
+      info: new Uint16Array(Buffer.from("info")),
+    },
+    {
+      name: "Int32Array",
+      salt: new Int32Array(Buffer.from("salt")),
+      info: new Int32Array(Buffer.from("info")),
+    },
+    {
+      name: "Uint32Array",
+      salt: new Uint32Array(Buffer.from("salt")),
+      info: new Uint32Array(Buffer.from("info")),
+    },
   ];
   for (const { name, salt, info } of cases) {
-    const syncHex  = asHex(hkdfSync("sha256", secret, salt, info, keyLen));
-    const asyncHex = asHex(await hkdfAsyncP("sha256", secret, salt, info, keyLen));
-    assertEquals(asyncHex, syncHex, `${name} async should equal sync for identical bytes`);
+    const syncHex = asHex(hkdfSync("sha256", secret, salt, info, keyLen));
+    const asyncHex = asHex(
+      await hkdfAsyncP("sha256", secret, salt, info, keyLen),
+    );
+    assertEquals(
+      asyncHex,
+      syncHex,
+      `${name} async should equal sync for identical bytes`,
+    );
   }
 });
 
@@ -347,17 +379,35 @@ Deno.test("crypto.hkdf (async) - mixed TypedArray types match sync", async () =>
 
   // Uint16 salt + Uint8 info (array-like)
   const saltU16 = new Uint16Array(Buffer.from("salt"));
-  const infoU8  = new Uint8Array(Buffer.from("info"));
+  const infoU8 = new Uint8Array(Buffer.from("info"));
 
-  const syncHex  = asHex(hkdfSync("sha256", secret, saltU16, infoU8, keyLen));
-  const asyncHex = asHex(await hkdfAsyncP("sha256", secret, saltU16, infoU8, keyLen));
-  assertEquals(asyncHex, syncHex, "mixed (Uint16 + Uint8) async should equal sync");
+  const syncHex = asHex(hkdfSync("sha256", secret, saltU16, infoU8, keyLen));
+  const asyncHex = asHex(
+    await hkdfAsyncP("sha256", secret, saltU16, infoU8, keyLen),
+  );
+  assertEquals(
+    asyncHex,
+    syncHex,
+    "mixed (Uint16 + Uint8) async should equal sync",
+  );
 
   // A couple more combos
   const combos = [
-    { salt: new Int8Array(Buffer.from("salt")),   info: new Uint16Array(Buffer.from("info")),   label: "Int8 + Uint16" },
-    { salt: new Uint32Array(Buffer.from("salt")), info: new Uint8Array(Buffer.from("info")),    label: "Uint32 + Uint8" },
-    { salt: new Int16Array(Buffer.from("salt")),  info: new Int32Array(Buffer.from("info")),    label: "Int16 + Int32" },
+    {
+      salt: new Int8Array(Buffer.from("salt")),
+      info: new Uint16Array(Buffer.from("info")),
+      label: "Int8 + Uint16",
+    },
+    {
+      salt: new Uint32Array(Buffer.from("salt")),
+      info: new Uint8Array(Buffer.from("info")),
+      label: "Uint32 + Uint8",
+    },
+    {
+      salt: new Int16Array(Buffer.from("salt")),
+      info: new Int32Array(Buffer.from("info")),
+      label: "Int16 + Int32",
+    },
   ];
   for (const { salt, info, label } of combos) {
     const sHex = asHex(hkdfSync("sha256", secret, salt, info, keyLen));
@@ -373,8 +423,10 @@ Deno.test("crypto.hkdf (async) - DataView inputs match sync", async () => {
   const dvSalt = new DataView(salt.buffer, salt.byteOffset, salt.byteLength);
   const dvInfo = new DataView(info.buffer, info.byteOffset, info.byteLength);
 
-  const syncHex  = asHex(hkdfSync("sha256", secret, dvSalt, dvInfo, keyLen));
-  const asyncHex = asHex(await hkdfAsyncP("sha256", secret, dvSalt, dvInfo, keyLen));
+  const syncHex = asHex(hkdfSync("sha256", secret, dvSalt, dvInfo, keyLen));
+  const asyncHex = asHex(
+    await hkdfAsyncP("sha256", secret, dvSalt, dvInfo, keyLen),
+  );
   assertEquals(asyncHex, syncHex);
 });
 
@@ -383,13 +435,29 @@ Deno.test("crypto.hkdf (async) - matches underlying ArrayBuffer bytes", async ()
   const saltTA = new Uint16Array(Buffer.from("salt"));
   const infoTA = new Uint16Array(Buffer.from("info"));
 
-  const asyncHexTA = asHex(await hkdfAsyncP("sha256", secret, saltTA, infoTA, keyLen));
+  const asyncHexTA = asHex(
+    await hkdfAsyncP("sha256", secret, saltTA, infoTA, keyLen),
+  );
 
-  const saltBytes = new Uint8Array(saltTA.buffer, saltTA.byteOffset, saltTA.byteLength);
-  const infoBytes = new Uint8Array(infoTA.buffer, infoTA.byteOffset, infoTA.byteLength);
-  const asyncHexBuf = asHex(await hkdfAsyncP("sha256", secret, saltBytes, infoBytes, keyLen));
+  const saltBytes = new Uint8Array(
+    saltTA.buffer,
+    saltTA.byteOffset,
+    saltTA.byteLength,
+  );
+  const infoBytes = new Uint8Array(
+    infoTA.buffer,
+    infoTA.byteOffset,
+    infoTA.byteLength,
+  );
+  const asyncHexBuf = asHex(
+    await hkdfAsyncP("sha256", secret, saltBytes, infoBytes, keyLen),
+  );
 
-  assertEquals(asyncHexTA, asyncHexBuf, "async TA result should equal async bytes result");
+  assertEquals(
+    asyncHexTA,
+    asyncHexBuf,
+    "async TA result should equal async bytes result",
+  );
 });
 
 Deno.test("crypto.hkdf (async) - error cases (invalid digest, oversized info)", async () => {
@@ -415,6 +483,10 @@ Deno.test("crypto.hkdf (async) - error cases (invalid digest, oversized info)", 
     } catch {
       rejected = true;
     }
-    assertEquals(rejected, true, "async hkdf should reject when info > 1024 bytes");
+    assertEquals(
+      rejected,
+      true,
+      "async hkdf should reject when info > 1024 bytes",
+    );
   })();
 });
