@@ -23,7 +23,6 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import { BlockList, SocketAddress } from "ext:deno_node/internal/blocklist.mjs";
 
 import { EventEmitter } from "node:events";
@@ -134,6 +133,9 @@ const kBytesWritten = Symbol("kBytesWritten");
 
 const DEFAULT_IPV4_ADDR = "0.0.0.0";
 const DEFAULT_IPV6_ADDR = "::";
+
+// Shared TextEncoder instance for stdio handles (lazy-initialized)
+let textEncoder: TextEncoder | null = null;
 
 let autoSelectFamilyDefault = true;
 let autoSelectFamilyAttemptTimeoutDefault = 250;
@@ -283,6 +285,129 @@ function _createHandle(fd: number, isServer: boolean): Handle {
   }
 
   throw new ERR_INVALID_FD_TYPE(type);
+}
+
+interface WritableLikeHandle {
+  // state
+  reading: boolean;
+  bytesRead: number;
+  readonly bytesWritten: number;
+  writeQueueSize: number;
+  onread?: (nread: number, buf: Uint8Array) => void;
+
+  // lifecycle / refs
+  getAsyncId(): number;
+  close(cb?: () => void): void;
+  ref(): void;
+  unref(): void;
+
+  // reads (no-op for stdio)
+  readStart(): number;
+  readStop(): number;
+
+  // optional toggles (no-ops)
+  setNoDelay?(v: boolean): void;
+  setKeepAlive?(v: boolean): void;
+
+  // Node stream_base entrypoints
+  writeBuffer(req: { oncomplete: (status: number) => void }, data: Uint8Array): number;
+  writeUtf8String(req: { oncomplete: (status: number) => void }, data: string): number;
+  writeAsciiString(req: { oncomplete: (status: number) => void }, data: string): number;
+  writeLatin1String(req: { oncomplete: (status: number) => void }, data: string): number;
+  writeUcs2String(req: { oncomplete: (status: number) => void }, data: string): number;
+
+  // used in _initSocketHandle if a user buffer is present
+  useUserBuffer?(buf: Uint8Array): void;
+
+  // used by _final()
+  shutdown?(req: { oncomplete: (status: number) => void }): number;
+}
+
+/**
+ * Stdio handle for fd 0/1/2:
+ * - fd=1 -> stdout, fd=2 -> stderr (sync writes)
+ * - fd=0 -> unsupported for writes (fail synchronously)
+ */
+function createStdioHandle(fd: number): WritableLikeHandle {
+  const writer: Deno.WriterSync | null =
+    fd === 1 ? Deno.stdout : (fd === 2 ? Deno.stderr : null);
+
+  let _bytesWritten = 0;
+
+  const complete = (req: { oncomplete: (status: number) => void }, status: number) => {
+    // Ensure the stream layer treats this as a synchronous completion.
+    (req as any).async = false;
+    req.oncomplete(status);
+  };
+
+  const doWrite = (req: { oncomplete: (status: number) => void }, buf: Uint8Array): number => {
+    try {
+      if (!writer) {
+        // stdin or unknown fd: fail synchronously
+        complete(req, -1);
+        return 0;
+      }
+      writer.writeSync(buf);           // synchronous write
+      _bytesWritten += buf.byteLength; // update counter
+      complete(req, 0);                // success
+      return 0;
+    } catch {
+      complete(req, -1);
+      return 0;
+    }
+  };
+
+  const writeUtf8   = (req: { oncomplete: (status: number) => void }, s: string) => {
+    // Lazy-initialize TextEncoder on first use, avoid creating a new instance for every write
+    if (!textEncoder) {
+      textEncoder = new TextEncoder();
+    }
+    return doWrite(req, textEncoder.encode(s));
+  };
+  const writeLatin1 = (req: { oncomplete: (status: number) => void }, s: string) =>
+    doWrite(req, Buffer.from(s, "latin1"));
+  const writeUcs2   = (req: { oncomplete: (status: number) => void }, s: string) =>
+    doWrite(req, Buffer.from(s, "ucs2"));
+
+  return {
+    // state
+    reading: false,
+    bytesRead: 0,
+    get bytesWritten() { return _bytesWritten; },
+    writeQueueSize: 0,
+    onread: undefined,
+
+    // lifecycle
+    getAsyncId: () => 0,
+    close: (cb?: () => void) => { cb?.(); }, // sync close
+    ref: () => {},
+    unref: () => {},
+
+    // reads (disabled)
+    readStart: () => 0,
+    readStop: () => 0,
+
+    // toggles (no-ops)
+    setNoDelay: (_: boolean) => {},
+    setKeepAlive: (_: boolean) => {},
+
+    // writes
+    writeBuffer: doWrite,
+    writeUtf8String: writeUtf8,
+    // ASCII & Latin1 both 8-bit paths
+    writeAsciiString: writeLatin1,
+    writeLatin1String: writeLatin1,
+    writeUcs2String: writeUcs2,
+
+    // compatibility no-ops
+    useUserBuffer: (_: Uint8Array) => {},
+
+    // allow Socket._final() to succeed without throwing
+    shutdown: (req: { oncomplete: (status: number) => void }) => {
+      complete(req, 0);
+      return 0;
+    },
+  };
 }
 
 // Returns an array [options, cb], where options is an object,
@@ -1242,7 +1367,19 @@ export function Socket(options) {
     this._handle = options.handle;
     this[asyncIdSymbol] = _getNewAsyncId(this._handle);
   } else if (options.fd !== undefined) {
-    notImplemented("net.Socket.prototype.constructor with fd option");
+    // Handle file descriptor option
+    const fd = options.fd;
+    validateInt32(fd, "fd", 0);
+
+    // Handle stdio file descriptors (0, 1, 2) with a custom handle
+    if (fd === 0 || fd === 1 || fd === 2) {
+      this._handle = createStdioHandle(fd);
+      this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+    } else {
+      // For other file descriptors, try to create a handle based on the type
+      this._handle = _createHandle(fd, false);
+      this[asyncIdSymbol] = _getNewAsyncId(this._handle);
+    }
   }
 
   const onread = options.onread;
