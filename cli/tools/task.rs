@@ -824,7 +824,8 @@ fn print_available_tasks(
 
     if let Some(config) = config.deno_json.as_ref() {
       let is_root = !is_cwd_root_dir
-        && config.folder_url == *workspace_dir.workspace.root_dir().as_ref();
+        && config.folder_url
+          == *workspace_dir.workspace.root_dir_url().as_ref();
 
       for (name, definition) in &config.tasks {
         if !seen_task_names.insert(name) {
@@ -841,7 +842,8 @@ fn print_available_tasks(
 
     if let Some(config) = config.package_json.as_ref() {
       let is_root = !is_cwd_root_dir
-        && config.folder_url == *workspace_dir.workspace.root_dir().as_ref();
+        && config.folder_url
+          == *workspace_dir.workspace.root_dir_url().as_ref();
       for (name, script) in &config.tasks {
         if !seen_task_names.insert(name) {
           continue; // already seen

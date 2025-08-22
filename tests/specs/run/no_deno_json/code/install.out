@@ -24,3 +24,12 @@ Initialize color-convert@2.0.1
 Initialize chalk@4.1.2
 Initialize @denotest/check-error@1.0.0
 [UNORDERED_END]
+Packages: [WILDLINE]
+[WILDLINE]
+Resolved: [WILDLINE], reused: [WILDLINE], downloaded: [WILDLINE], added: [WILDLINE]
+
+Dependencies:
+[WILDCARD]
+
+Dev dependencies:
+[WILDCARD]

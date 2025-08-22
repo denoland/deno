@@ -72,6 +72,9 @@
           "canonicalizedTempDir": {
             "type": "boolean"
           },
+          "flaky": {
+            "type": "boolean"
+          },
           "symlinkedTempDir": {
             "type": "boolean"
           },

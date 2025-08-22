@@ -132,7 +132,7 @@ pub fn collect_specifiers(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(vendor_folder)
-    .collect_file_patterns(&CliSys::default(), file_patterns);
+    .collect_file_patterns(&CliSys::default(), &file_patterns);
   let mut collected_files_as_urls = collected_files
     .iter()
     .map(|f| specifier_from_file_path(f).unwrap())

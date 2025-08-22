@@ -222,10 +222,9 @@ impl<TSys: NpmCacheSys> LifecycleScriptsStrategy
     log::warn!("┖─ {}", colors::bold("\"nodeModulesDir\": \"auto\""));
 
     for (package, _) in packages {
-      self.sys.fs_open(
-        self.warned_scripts_file(package),
-        &OpenOptions::new_write(),
-      )?;
+      let _ignore_err = self
+        .sys
+        .fs_open(self.warned_scripts_file(package), &OpenOptions::new_write());
     }
     Ok(())
   }

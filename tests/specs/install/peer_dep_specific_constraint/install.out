@@ -10,3 +10,9 @@ Download http://localhost:4260/@denotest/add/1.0.0.tgz
 Initialize @denotest/peer-dep-specific-constraint@1.0.0
 Initialize @denotest/add@1.0.0
 [UNORDERED_END]
+Packages: [WILDLINE]
+[WILDLINE]
+Resolved: [WILDLINE], reused: [WILDLINE], downloaded: [WILDLINE], added: [WILDLINE]
+
+Dependencies:
+[WILDCARD]

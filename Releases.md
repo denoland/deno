@@ -6,6 +6,42 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.4.5 / 2025.08.21
+
+- feat(lsp): pull-based diagnostics (#30325)
+- feat(unstable/install): `DENO_INSTALL_ARCH` env var (#30473)
+- feat(unstable/install): more informative deno install output (#30387)
+- fix(bundle): allow json imports without attribute in deno bundle, support
+  require of json (#30413)
+- fix(cache): cache excluded modules explicitly provided on the command line
+  (#30442)
+- fix(ext/node): TLS emit close event on parent socket (#30451)
+- fix(ext/node): `os.setPriority` and `os.getPriority` compatibility (#30383)
+- fix(ext/node): bad compression caused by invalid brotli params (#30437)
+- fix(ext/node): export `promises` from stream (#30427)
+- fix(ext/node): mTLS support for `node:tls` (#30426)
+- fix(ext/node): tls upgrades for used sockets (#30418)
+- fix(ext/node): validate callback on `fs.mkdtemp` and `fs.stat` (#30454)
+- fix(fmt): do not remove parens for jsdoc with `@satisfies` (#30453)
+- fix(lsp): fix import specifiers in file rename changes (#30458)
+- fix(lsp): silence tsc debug failures for inlay hints (#30456)
+- fix(node/fs): cp should not create subfolder when both source and target are
+  directories (#30408)
+- fix(outdated): use version tagged as latest if it satisfies the version req
+  (#30412)
+- fix(publish): handle precompile in jsx publishing (#30466)
+- fix(resolver): update "with --unstable-sloppy-imports" message to use
+  "--sloppy-imports" (#30421)
+- fix(std/fs): implement `chmod` on windows (#30436)
+- fix(test): set cwd when running node compatibility tests (#30422)
+- fix(unstable): fix json repl bugs (#30415)
+- fix(unstable): parsing regex in selector with character class (#30462)
+- fix: add missing cargo feature to 'deno_npm_cache' crate (#30397)
+- fix: enable keyring features and dont clear token when config is missing
+  (#30468)
+- fix: support cjs, cts, mjs, and mts for the `--ext` flag (#30398)
+- perf(ext/net): change the default TCP backlog to 512 (#30471)
+
 ### 2.4.4 / 2025.08.13
 
 - feat(unstable): add json repl (#30307)

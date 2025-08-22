@@ -901,7 +901,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           self
             .cli_options
             .workspace()
-            .root_dir()
+            .root_dir_url()
             .to_file_path()
             .unwrap(),
         );

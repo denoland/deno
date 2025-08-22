@@ -7,6 +7,7 @@ import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 
 const { ObjectCreate, ObjectAssign } = primordials;
 
@@ -354,6 +355,8 @@ export type statCallbackBigInt = (err: Error | null, stat: BigIntStats) => void;
 
 export type statCallback = (err: Error | null, stat: Stats) => void;
 
+const defaultOptions = { bigint: false };
+
 export function stat(path: string | URL, callback: statCallback): void;
 export function stat(
   path: string | URL,
@@ -367,21 +370,15 @@ export function stat(
 ): void;
 export function stat(
   path: string | URL,
-  optionsOrCallback: statCallback | statCallbackBigInt | statOptions,
-  maybeCallback?: statCallback | statCallbackBigInt,
+  options: statCallback | statCallbackBigInt | statOptions = defaultOptions,
+  callback?: statCallback | statCallbackBigInt,
 ) {
-  const callback =
-    (typeof optionsOrCallback === "function"
-      ? optionsOrCallback
-      : maybeCallback) as (
-        ...args: [Error] | [null, BigIntStats | Stats]
-      ) => void;
-  const options = typeof optionsOrCallback === "object"
-    ? optionsOrCallback
-    : { bigint: false };
-
+  if (typeof options === "function") {
+    callback = options;
+    options = defaultOptions;
+  }
+  callback = makeCallback(callback);
   path = getValidatedPath(path).toString();
-  if (!callback) throw new Error("No callback function supplied");
 
   Deno.stat(path).then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
@@ -409,7 +406,7 @@ export function statSync(
 ): BigIntStats;
 export function statSync(
   path: string | URL,
-  options: statOptions = { bigint: false, throwIfNoEntry: true },
+  options: statOptions = { ...defaultOptions, throwIfNoEntry: true },
 ): Stats | BigIntStats | undefined {
   path = getValidatedPath(path).toString();
 

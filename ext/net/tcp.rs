@@ -170,7 +170,8 @@ fn bind_socket_and_listen(
   socket.set_reuse_address(true)?;
   socket.set_nonblocking(true)?;
   socket.bind(&socket_addr.into())?;
-  socket.listen(128)?;
+  // Kernel will round it up to the next power of 2 + 1.
+  socket.listen(511)?;
   let listener = socket.into();
   Ok(listener)
 }

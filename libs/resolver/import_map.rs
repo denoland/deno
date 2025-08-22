@@ -3,8 +3,7 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-
-use crate::factory::WorkspaceRc;
+use deno_config::workspace::WorkspaceRc;
 
 #[derive(Debug, Clone)]
 pub struct ExternalImportMap {

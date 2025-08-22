@@ -4,12 +4,10 @@
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { mkdir, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import {
-  ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_OPT_VALUE_ENCODING,
-} from "ext:deno_node/internal/errors.ts";
+import { ERR_INVALID_OPT_VALUE_ENCODING } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
+import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 
 const {
   ObjectPrototypeIsPrototypeOf,
@@ -36,16 +34,16 @@ export function mkdtemp(
 ): void;
 export function mkdtemp(
   prefix: string,
-  optionsOrCallback: { encoding: string } | string | mkdtempCallback,
-  maybeCallback?: mkdtempCallback,
+  options: { encoding: string } | string | mkdtempCallback | undefined,
+  callback?: mkdtempCallback,
 ) {
-  const callback: mkdtempCallback | undefined =
-    typeof optionsOrCallback == "function" ? optionsOrCallback : maybeCallback;
-  if (!callback) {
-    throw new ERR_INVALID_ARG_TYPE("callback", "function", callback);
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
   }
+  callback = makeCallback(callback);
 
-  const encoding: string | undefined = parseEncoding(optionsOrCallback);
+  const encoding: string | undefined = parseEncoding(options);
   const path = tempDirPath(prefix);
 
   mkdir(
