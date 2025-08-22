@@ -159,7 +159,7 @@ pub fn op_node_in_npm_package<
   #[string] path: &str,
 ) -> bool {
   let specifier = if deno_path_util::specifier_has_uri_scheme(path) {
-    match url::Url::parse(&path) {
+    match url::Url::parse(path) {
       Ok(url) => url,
       Err(_) => return false,
     }

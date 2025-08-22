@@ -289,8 +289,8 @@ export class ChildProcess extends EventEmitter {
         detached,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
-        // deno-lint-ignore no-explicit-any
         [kNeedsNpmProcessState]:
+          // deno-lint-ignore no-explicit-any
           (options ?? {} as any)[kNeedsNpmProcessState] ||
           includeNpmProcessState,
       }).spawn();
