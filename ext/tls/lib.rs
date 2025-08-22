@@ -172,18 +172,18 @@ impl NoServerNameVerification {
 impl ServerCertVerifier for NoServerNameVerification {
   fn verify_server_cert(
     &self,
-    _end_entity: &CertificateDer<'_>,
-    _intermediates: &[CertificateDer<'_>],
-    _server_name: &ServerName<'_>,
-    _ocsp: &[u8],
-    _now: rustls::pki_types::UnixTime,
+    end_entity: &CertificateDer<'_>,
+    intermediates: &[CertificateDer<'_>],
+    server_name: &ServerName<'_>,
+    ocsp: &[u8],
+    now: rustls::pki_types::UnixTime,
   ) -> Result<ServerCertVerified, rustls::Error> {
     match self.inner.verify_server_cert(
-      _end_entity,
-      _intermediates,
-      _server_name,
-      _ocsp,
-      _now,
+      end_entity,
+      intermediates,
+      server_name,
+      ocsp,
+      now,
     ) {
       Ok(scv) => Ok(scv),
       Err(rustls::Error::InvalidCertificate(cert_error)) => {
