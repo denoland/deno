@@ -451,8 +451,11 @@
 "parallel/test-fs-read-stream-encoding.js" = {}
 "parallel/test-fs-read-stream-fd-leak.js" = {}
 "parallel/test-fs-read-stream-fd.js" = {}
+"parallel/test-fs-read-stream-inherit.js" = {}
 "parallel/test-fs-read-stream-patch-open.js" = {}
+"parallel/test-fs-read-stream-resume.js" = {}
 "parallel/test-fs-read-stream-throw-type-error.js" = {}
+"parallel/test-fs-read-stream.js" = {}
 "parallel/test-fs-read-type.js" = {}
 "parallel/test-fs-read-zero-length.js" = {}
 "parallel/test-fs-readdir-pipe.js" = {}
@@ -472,6 +475,7 @@
 "parallel/test-fs-util-validateoffsetlength.js" = {}
 "parallel/test-fs-write-negativeoffset.js" = {}
 "parallel/test-fs-write-no-fd.js" = {}
+"parallel/test-fs-write-stream-encoding.js" = {}
 "parallel/test-global-console-exists.js" = {}
 "parallel/test-global-domexception.js" = {}
 "parallel/test-global-encoder.js" = {}
@@ -972,6 +976,7 @@
 "parallel/test-stream-event-names.js" = {}
 "parallel/test-stream-events-prepend.js" = {}
 "parallel/test-stream-filter.js" = {}
+"parallel/test-stream-flatMap.js" = {}
 "parallel/test-stream-forEach.js" = {}
 "parallel/test-stream-inheritance.js" = {}
 "parallel/test-stream-ispaused.js" = {}
@@ -1003,6 +1008,7 @@
 "parallel/test-stream-pipeline-queued-end-in-destroy.js" = {}
 "parallel/test-stream-pipeline-uncaught.js" = {}
 "parallel/test-stream-pipeline-with-empty-string.js" = {}
+"parallel/test-stream-preprocess.js" = {}
 "parallel/test-stream-promises.js" = {}
 "parallel/test-stream-push-order.js" = {}
 "parallel/test-stream-push-strings.js" = {}
