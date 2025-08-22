@@ -999,6 +999,7 @@
 "parallel/test-stream-pipe-without-listenerCount.js" = {}
 "parallel/test-stream-pipeline-async-iterator.js" = {}
 "parallel/test-stream-pipeline-duplex.js" = {}
+"parallel/test-stream-pipeline-http2.js" = {}
 "parallel/test-stream-pipeline-listeners.js" = {}
 "parallel/test-stream-pipeline-queued-end-in-destroy.js" = {}
 "parallel/test-stream-pipeline-uncaught.js" = {}
