@@ -306,6 +306,7 @@ function hkdfAsyncP(
   length: number,
 ): Promise<ArrayBuffer | Uint8Array> {
   return new Promise((resolve, reject) => {
+    // deno-lint-ignore no-explicit-any
     hkdf(digest, secret, salt as any, info as any, length, (err, derived) => {
       if (err) return reject(err);
       resolve(derived!);
