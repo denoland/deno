@@ -413,6 +413,7 @@ function spawnSync(command, {
   stderr = "piped",
   windowsRawArguments = false,
   [kInputOption]: input,
+  [kNeedsNpmProcessState]: needsNpmProcessState = false,
 } = { __proto__: null }) {
   if (stdin === "piped") {
     throw new TypeError(
@@ -433,7 +434,7 @@ function spawnSync(command, {
     windowsRawArguments,
     extraStdio: [],
     detached: false,
-    needsNpmProcessState: false,
+    needsNpmProcessState,
     input,
   });
   return {

@@ -24,7 +24,12 @@ async function sleep(msec: number) {
 }
 
 function listenTls(
-  options?: { alpnProtocols?: string[]; reusePort?: boolean },
+  options?: {
+    alpnProtocols?: string[];
+    reusePort?: boolean;
+    cert?: string;
+    key?: string;
+  },
 ): { listener: Deno.TlsListener; port: number; hostname: string } {
   const tlsOptions = { port: 0, hostname: "localhost", cert, key, ...options };
   const listener = Deno.listenTls(tlsOptions);
@@ -166,6 +171,123 @@ Deno.test(
     );
 
     const conn = await Deno.connectTls({ hostname, port, caCerts });
+    const w = new BufWriter(conn);
+    const r = new BufReader(conn);
+    const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
+    const writeResult = await w.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    await w.flush();
+    const tpr = new TextProtoReader(r);
+    const statusLine = await tpr.readLine();
+    assert(statusLine !== null, `line must be read: ${String(statusLine)}`);
+    const m = statusLine.match(/^(.+?) (.+?) (.+?)$/);
+    assert(m !== null, "must be matched");
+    const [_, proto, status, ok] = m;
+    assertEquals(proto, "HTTP/1.1");
+    assertEquals(status, "200");
+    assertEquals(ok, "OK");
+    const headers = await tpr.readMimeHeader();
+    assert(headers !== null);
+    const contentLength = parseInt(headers.get("content-length")!);
+    const bodyBuf = new Uint8Array(contentLength);
+    await r.readFull(bodyBuf);
+    assertEquals(decoder.decode(bodyBuf), "Hello World\n");
+    conn.close();
+    listener.close();
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function tlsHostnameVerification() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    const selfCert = Deno.readTextFileSync(
+      "tests/testdata/tls/self-signed-hostname.crt",
+    );
+    const selfKey = Deno.readTextFileSync(
+      "tests/testdata/tls/self-signed-hostname.key",
+    );
+    const { listener, hostname, port } = listenTls({
+      cert: selfCert,
+      key: selfKey,
+    });
+
+    listener.accept().then(
+      (conn) => {
+        assert(conn.remoteAddr != null);
+        assert(conn.localAddr != null);
+        setTimeout(() => {
+          conn.close();
+          resolve();
+        }, 0);
+      },
+    );
+
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port,
+      caCerts: [selfCert],
+      unsafelyDisableHostnameVerification: false,
+    });
+
+    const w = new BufWriter(conn);
+    const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
+    await assertRejects(
+      async () => {
+        await w.write(encoder.encode(body));
+        await w.flush();
+      },
+      Deno.errors.InvalidData,
+      'certificate not valid for name "localhost"; certificate is only valid for DnsName("valid.example.com")',
+    );
+    // Closie
+    conn.close();
+    listener.close();
+    await promise;
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function tlsDisableHostnameVerification() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+
+    const selfCert = Deno.readTextFileSync(
+      "tests/testdata/tls/self-signed-hostname.crt",
+    );
+    const selfKey = Deno.readTextFileSync(
+      "tests/testdata/tls/self-signed-hostname.key",
+    );
+    const { listener, hostname, port } = listenTls({
+      cert: selfCert,
+      key: selfKey,
+    });
+
+    const response = encoder.encode(
+      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nHello World\n",
+    );
+
+    listener.accept().then(
+      async (conn) => {
+        assert(conn.remoteAddr != null);
+        assert(conn.localAddr != null);
+        await conn.write(response);
+        setTimeout(() => {
+          conn.close();
+          resolve();
+        }, 0);
+      },
+    );
+
+    const conn = await Deno.connectTls({
+      hostname: "localhost",
+      port,
+      caCerts: [selfCert],
+      unsafelyDisableHostnameVerification: true,
+    });
+
     const w = new BufWriter(conn);
     const r = new BufReader(conn);
     const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
