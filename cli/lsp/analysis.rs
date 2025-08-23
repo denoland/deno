@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_ast::SourceRange;
@@ -55,6 +56,7 @@ use super::language_server;
 use super::resolver::LspResolver;
 use super::tsc;
 use crate::args::jsr_url;
+use crate::lsp::urls::uri_to_url;
 use crate::tools::lint::CliLinter;
 use crate::util::path::relative_specifier;
 
@@ -757,6 +759,43 @@ pub fn fix_ts_import_changes(
   Ok(r)
 }
 
+pub fn fix_ts_import_changes_for_file_rename(
+  changes: Vec<tsc::FileTextChanges>,
+  new_uri: &str,
+  module: &DocumentModule,
+  language_server: &language_server::Inner,
+  token: &CancellationToken,
+) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
+  let Ok(new_uri) = Uri::from_str(new_uri) else {
+    return Ok(Vec::new());
+  };
+  if !new_uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+    return Ok(Vec::new());
+  }
+  let new_url = uri_to_url(&new_uri);
+  let mut r = Vec::with_capacity(changes.len());
+  for mut change in changes {
+    if token.is_cancelled() {
+      return Err(anyhow!("request cancelled"));
+    }
+    let Ok(target_specifier) = resolve_url(&change.file_name) else {
+      continue;
+    };
+    let import_mapper = language_server.get_ts_response_import_mapper(module);
+    for text_change in &mut change.text_changes {
+      if let Some(new_specifier) = import_mapper
+        .check_specifier(&new_url, &target_specifier)
+        .or_else(|| relative_specifier(&target_specifier, &new_url))
+        .filter(|s| !s.contains("/node_modules/"))
+      {
+        text_change.new_text = new_specifier;
+      }
+    }
+    r.push(change);
+  }
+  Ok(r)
+}
+
 /// Fix tsc import code actions so that the module specifier is correct for
 /// resolution by Deno (includes the extension).
 fn fix_ts_import_action<'a>(
@@ -1297,12 +1336,15 @@ impl CodeActionCollection {
       // other diagnostics that could be bundled together in a "fix all" code
       // action
       file_diagnostics.iter().any(|d| {
-        if d == diagnostic || d.code.is_none() || diagnostic.code.is_none() {
-          false
-        } else {
-          d.code == diagnostic.code
-            || is_equivalent_code(&d.code, &diagnostic.code)
+        if d.source.as_deref() != Some(DiagnosticSource::Ts.as_lsp_source())
+          || d == diagnostic
+          || d.code.is_none()
+          || diagnostic.code.is_none()
+        {
+          return false;
         }
+        d.code == diagnostic.code
+          || is_equivalent_code(&d.code, &diagnostic.code)
       })
     }
   }

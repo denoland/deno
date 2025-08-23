@@ -130,6 +130,7 @@ export class TLSSocket extends net.Socket {
       manualStart: true, // This prevents premature reading from TLS handle
     });
     if (socket) {
+      this.on("close", () => this._parent?.emit("close"));
       this._parent = socket;
     }
     this._tlsOptions = tlsOptions;

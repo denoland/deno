@@ -14,6 +14,8 @@ use deno_config::deno_json::ConfigFileError;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::Workspace;
 use deno_error::JsError;
+use deno_maybe_sync::MaybeDashMap;
+use deno_maybe_sync::new_rc;
 use deno_media_type::MediaType;
 use deno_npm::registry::NpmPackageVersionInfo;
 use deno_package_json::PackageJsonDepValue;
@@ -50,11 +52,9 @@ use thiserror::Error;
 use url::Url;
 
 use crate::collections::FolderScopedMap;
-use crate::sync::MaybeDashMap;
-use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
+type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 
 #[derive(Debug)]
 struct PkgJsonResolverFolderConfig {
@@ -647,7 +647,7 @@ pub fn sloppy_imports_resolve<TSys: FsMetadata>(
 
 #[allow(clippy::disallowed_types)]
 type SloppyImportsResolverRc<T> =
-  crate::sync::MaybeArc<SloppyImportsResolver<T>>;
+  deno_maybe_sync::MaybeArc<SloppyImportsResolver<T>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompilerOptionsRootDirsDiagnostic {
@@ -957,7 +957,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
                 )
               }),
             None => (
-              Cow::Owned(workspace.root_dir().join("deno.json").unwrap()),
+              Cow::Owned(workspace.root_dir_url().join("deno.json").unwrap()),
               serde_json::Value::Object(Default::default()),
             ),
           };
@@ -1031,7 +1031,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       );
 
     Ok(Self {
-      workspace_root: workspace.root_dir().clone(),
+      workspace_root: workspace.root_dir_url().clone(),
       pkg_json_dep_resolution: options.pkg_json_dep_resolution,
       jsr_pkgs,
       maybe_import_map,
@@ -1662,7 +1662,7 @@ impl BaseUrl<'_> {
 
 #[allow(clippy::disallowed_types)] // ok, because definition
 pub type WorkspaceNpmLinkPackagesRc =
-  crate::sync::MaybeArc<WorkspaceNpmLinkPackages>;
+  deno_maybe_sync::MaybeArc<WorkspaceNpmLinkPackages>;
 
 #[derive(Debug, Default)]
 pub struct WorkspaceNpmLinkPackages(
@@ -1780,6 +1780,7 @@ mod test {
   use std::path::PathBuf;
 
   use deno_config::workspace::WorkspaceDirectory;
+  use deno_config::workspace::WorkspaceDirectoryRc;
   use deno_config::workspace::WorkspaceDiscoverOptions;
   use deno_config::workspace::WorkspaceDiscoverStart;
   use deno_npm::registry::NpmPeerDependencyMeta;
@@ -2389,7 +2390,7 @@ mod test {
       },
     )
     .unwrap();
-    let root_dir_url = workspace_dir.workspace.root_dir();
+    let root_dir_url = workspace_dir.workspace.root_dir_url();
 
     let referrer = root_dir_url.join("member/foo/mod.ts").unwrap();
     let resolution = resolver
@@ -2505,7 +2506,7 @@ mod test {
       },
     )
     .unwrap();
-    let root_dir_url = workspace_dir.workspace.root_dir();
+    let root_dir_url = workspace_dir.workspace.root_dir_url();
 
     let referrer = root_dir_url.join("subdir/mod.ts").unwrap();
     let resolution = resolver
@@ -2941,7 +2942,7 @@ mod test {
   fn workspace_at_start_dir(
     sys: &InMemorySys,
     start_dir: &Path,
-  ) -> WorkspaceDirectory {
+  ) -> WorkspaceDirectoryRc {
     WorkspaceDirectory::discover(
       sys,
       WorkspaceDiscoverStart::Paths(&[start_dir.to_path_buf()]),

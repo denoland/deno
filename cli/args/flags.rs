@@ -676,7 +676,14 @@ impl DenoSubcommand {
           }
         }
       }
-      _ => NpmSystemInfo::default(),
+      _ => {
+        let arch = std::env::var_os("DENO_INSTALL_ARCH");
+        if let Some(var) = arch.as_ref().and_then(|s| s.to_str()) {
+          NpmSystemInfo::from_rust(std::env::consts::OS, var)
+        } else {
+          NpmSystemInfo::default()
+        }
+      }
     }
   }
 }

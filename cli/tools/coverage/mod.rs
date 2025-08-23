@@ -531,7 +531,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), file_patterns);
+  .collect_file_patterns(&CliSys::default(), &file_patterns);
 
   let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),
