@@ -1,0 +1,10 @@
+fetch threw error: NotCapable: Requires net access to "127.0.0.1:0", run again with the --allow-net flag
+http.request threw error: AggregateError
+https.request threw error: AggregateError
+Deno.listen threw error: NotCapable: Requires net access to "127.0.0.1:3000", run again with the --allow-net flag
+Deno.listenTls threw error: NotCapable: Requires net access to "127.0.0.1:3000", run again with the --allow-net flag
+Deno.connectTls threw error: NotCapable: Requires net access to "127.0.0.1:3000", run again with the --allow-net flag
+Deno.listenDatagram threw error: NotCapable: Requires net access to "127.0.0.1:3000", run again with the --allow-net flag
+Deno.connect tcp threw error: NotCapable: Requires net access to "127.0.0.1:3000", run again with the --allow-net flag
+Deno.QuicEndpoint.listen threw error: NotCapable: Requires net access to "127.0.0.1:0", run again with the --allow-net flag
+Deno.connectQuic threw error: NotCapable: Requires net access to "127.0.0.1:3000", run again with the --allow-net flag
