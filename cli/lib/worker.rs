@@ -638,7 +638,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       ),
       blob_store: shared.blob_store.clone(),
       broadcast_channel: shared.broadcast_channel.clone(),
-      fetch_dns_resolver: Default::default(),
+      fetch_dns_resolver: if feature_checker.check("async-dns-resolver") {
+        deno_runtime::deno_fetch::dns::Resolver::hickory().unwrap_or_default()
+      } else {
+        Default::default()
+      },
       shared_array_buffer_store: Some(shared.shared_array_buffer_store.clone()),
       compiled_wasm_module_store: Some(
         shared.compiled_wasm_module_store.clone(),
