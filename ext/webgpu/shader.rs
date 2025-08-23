@@ -6,6 +6,7 @@ use deno_core::op2;
 use deno_core::webidl::WebIdlInterfaceConverter;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 pub struct GPUShaderModule {
   pub instance: Instance,
@@ -31,6 +32,12 @@ impl GarbageCollected for GPUShaderModule {
 
 #[op2]
 impl GPUShaderModule {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUShaderModule, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

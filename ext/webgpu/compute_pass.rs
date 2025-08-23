@@ -14,6 +14,7 @@ use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 pub struct GPUComputePassEncoder {
   pub instance: Instance,
@@ -31,6 +32,12 @@ impl GarbageCollected for GPUComputePassEncoder {
 
 #[op2]
 impl GPUComputePassEncoder {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUComputePassEncoder, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

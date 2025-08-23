@@ -15,6 +15,8 @@ pub use wgpu_core;
 pub use wgpu_types;
 use wgpu_types::PowerPreference;
 
+use crate::error::GPUGenericError;
+
 mod adapter;
 mod bind_group;
 mod bind_group_layout;
@@ -135,6 +137,12 @@ impl GarbageCollected for GPU {
 
 #[op2]
 impl GPU {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPU, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[async_method]
   #[cppgc]
   async fn request_adapter(

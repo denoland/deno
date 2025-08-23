@@ -16,6 +16,7 @@ use deno_core::webidl::WebIdlInterfaceConverter;
 
 use crate::Instance;
 use crate::buffer::GPUBuffer;
+use crate::error::GPUGenericError;
 use crate::sampler::GPUSampler;
 use crate::texture::GPUTextureView;
 
@@ -43,6 +44,12 @@ impl GarbageCollected for GPUBindGroup {
 
 #[op2]
 impl GPUBindGroup {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUBindGroup, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

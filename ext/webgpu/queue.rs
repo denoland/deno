@@ -10,6 +10,7 @@ use deno_error::JsErrorBox;
 use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::command_buffer::GPUCommandBuffer;
+use crate::error::GPUGenericError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureAspect;
 use crate::webidl::GPUExtent3D;
@@ -38,6 +39,12 @@ impl GarbageCollected for GPUQueue {
 
 #[op2]
 impl GPUQueue {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUQueue, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
