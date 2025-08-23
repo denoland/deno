@@ -101,7 +101,7 @@ pub trait ManagedNpmResolverSys: FsCanonicalize + FsMetadata + Clone {}
 
 #[allow(clippy::disallowed_types)]
 pub type ManagedNpmResolverRc<TSys> =
-  crate::sync::MaybeArc<ManagedNpmResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<ManagedNpmResolver<TSys>>;
 
 #[derive(Debug)]
 pub struct ManagedNpmResolver<TSys: ManagedNpmResolverSys> {

@@ -113,6 +113,17 @@ export class TLSSocket extends net.Socket {
     tlsOptions.alpnProtocols = opts.ALPNProtocols;
     tlsOptions.rejectUnauthorized = opts.rejectUnauthorized !== false;
 
+    try {
+      if (
+        opts.checkServerIdentity &&
+        typeof opts.checkServerIdentity == "function" &&
+        opts.checkServerIdentity() == undefined
+      ) {
+        // If checkServerIdentity is no-op, we disable hostname verification.
+        tlsOptions.unsafelyDisableHostnameVerification = true;
+      }
+    } catch { /* pass */ }
+
     super({
       handle: _wrapHandle(tlsOptions, socket),
       ...opts,

@@ -8,6 +8,7 @@
 
 import { core, internals } from "ext:core/mod.js";
 import {
+  op_node_in_npm_package,
   op_node_ipc_read,
   op_node_ipc_ref,
   op_node_ipc_unref,
@@ -254,7 +255,7 @@ export class ChildProcess extends EventEmitter {
       stderr = "pipe",
       ...extraStdio
     ] = normalizedStdio;
-    const [cmd, cmdArgs] = buildCommand(
+    const [cmd, cmdArgs, includeNpmProcessState] = buildCommand(
       command,
       args || [],
       shell,
@@ -288,8 +289,10 @@ export class ChildProcess extends EventEmitter {
         detached,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
-        // deno-lint-ignore no-explicit-any
-        [kNeedsNpmProcessState]: (options ?? {} as any)[kNeedsNpmProcessState],
+        [kNeedsNpmProcessState]:
+          // deno-lint-ignore no-explicit-any
+          (options ?? {} as any)[kNeedsNpmProcessState] ||
+          includeNpmProcessState,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -882,11 +885,12 @@ function buildCommand(
   args: string[],
   shell: string | boolean,
   env: Record<string, string | number | boolean>,
-): [string, string[]] {
+): [string, string[], boolean] {
+  let includeNpmProcessState = false;
   if (file === Deno.execPath()) {
     let nodeOptions: string[];
     // The user is trying to spawn another Deno process as Node.js.
-    [args, nodeOptions] = toDenoArgs(args);
+    [args, nodeOptions, includeNpmProcessState] = toDenoArgs(args);
 
     // Update NODE_OPTIONS if it exists
     if (nodeOptions.length > 0) {
@@ -925,7 +929,7 @@ function buildCommand(
     }
   }
 
-  return [file, args];
+  return [file, args, includeNpmProcessState];
 }
 
 function _createSpawnSyncError(
@@ -1043,7 +1047,13 @@ export function spawnSync(
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
-  [command, args] = buildCommand(command, args ?? [], shell, env);
+  let includeNpmProcessState = false;
+  [command, args, includeNpmProcessState] = buildCommand(
+    command,
+    args ?? [],
+    shell,
+    env,
+  );
   const input_ = normalizeInput(input);
 
   const result: SpawnSyncResult = {};
@@ -1059,6 +1069,9 @@ export function spawnSync(
       gid,
       windowsRawArguments: windowsVerbatimArguments,
       [kInputOption]: input_,
+      // deno-lint-ignore no-explicit-any
+      [kNeedsNpmProcessState]: (options as any)[kNeedsNpmProcessState] ||
+        includeNpmProcessState,
     }).outputSync();
 
     const status = output.signal ? null : output.code;
@@ -1191,15 +1204,16 @@ function wrapScriptForEval(sourceCode: string): string {
 }
 
 /** Returns deno args and NODE_OPTIONS for simulating Node.js cli */
-function toDenoArgs(args: string[]): [string[], string[]] {
+function toDenoArgs(args: string[]): [string[], string[], boolean] {
   if (args.length === 0) {
-    return [args, args];
+    return [args, args, false];
   }
 
   // Update this logic as more CLI arguments are mapped from Node to Deno.
   const denoArgs: string[] = [];
   const nodeOptions: string[] = [];
   let useRunArgs = true;
+  let needsNpmProcessState = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -1211,8 +1225,12 @@ function toDenoArgs(args: string[]): [string[], string[]] {
       // spawned as Deno, not Deno in Node compat mode. In this case, bail out
       // and return the original args.
       if (kDenoSubcommands.has(arg)) {
-        return [args, []];
+        return [args, [], false];
       }
+
+      // if the user is launching a script in the node_modules or
+      // global cache, include the process state
+      needsNpmProcessState = op_node_in_npm_package(arg);
 
       // Copy of the rest of the arguments to the output.
       for (let j = i; j < args.length; j++) {
@@ -1298,7 +1316,7 @@ function toDenoArgs(args: string[]): [string[], string[]] {
     denoArgs.unshift("run", "-A");
   }
 
-  return [denoArgs, nodeOptions];
+  return [denoArgs, nodeOptions, needsNpmProcessState];
 }
 
 const kControlDisconnect = Symbol("kControlDisconnect");

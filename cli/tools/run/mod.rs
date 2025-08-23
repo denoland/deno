@@ -143,6 +143,7 @@ pub async fn run_from_stdin(
     mtime: None,
     maybe_headers: None,
     source: source.into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   });
 
   let mut worker = worker_factory
@@ -247,6 +248,7 @@ pub async fn eval_command(
     mtime: None,
     maybe_headers: None,
     source: source_code.into_bytes().into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   });
 
   let worker_factory = factory.create_cli_main_worker_factory().await?;
