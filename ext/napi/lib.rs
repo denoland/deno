@@ -381,7 +381,7 @@ impl EnvShared {
 #[repr(C)]
 pub struct Env {
   context: NonNull<v8::Context>,
-  pub isolate_ptr: *mut v8::Isolate,
+  pub isolate_ptr: v8::UnsafeRawIsolatePtr,
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
@@ -400,7 +400,7 @@ unsafe impl Sync for Env {}
 impl Env {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    isolate_ptr: *mut v8::Isolate,
+    isolate_ptr: v8::UnsafeRawIsolatePtr,
     context: v8::Global<v8::Context>,
     global: v8::Global<v8::Object>,
     buffer_constructor: v8::Global<v8::Function>,
@@ -450,17 +450,21 @@ impl Env {
     unsafe { &mut *self.isolate_ptr }
   }
 
-  #[inline]
-  pub fn scope(&self) -> v8::CallbackScope<'_> {
-    // SAFETY: `v8::Local` is always non-null pointer; the `HandleScope` is
+  pub fn context(&self) -> v8::Local<v8::Context> {
+    // SAFETY: `v8::Local` is always non-null pointer; the `PinScope<'_, '_>` is
     // already on the stack, but we don't have access to it.
-    let context = unsafe {
+    unsafe {
       std::mem::transmute::<NonNull<v8::Context>, v8::Local<v8::Context>>(
         self.context,
       )
-    };
-    // SAFETY: there must be a `HandleScope` on the stack, this is ensured because
-    // we are in a V8 callback or the module has already opened a `HandleScope`
+    }
+  }
+
+  #[inline]
+  pub fn scope(&self) -> v8::CallbackScope<'_> {
+    let context = self.context();
+    // SAFETY: there must be a `PinScope<'_, '_>` on the stack, this is ensured because
+    // we are in a V8 callback or the module has already opened a `PinScope<'_, '_>`
     // using `napi_open_handle_scope`.
     unsafe { v8::CallbackScope::new(context) }
   }
@@ -556,8 +560,8 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
 
 #[op2(reentrant, stack_trace)]
 fn op_napi_open<NP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
-  isolate: *mut v8::Isolate,
+  scope: &mut v8::PinScope<'scope, '_>,
+  isolate: v8::UnsafeRawIsolatePtr,
   op_state: Rc<RefCell<OpState>>,
   #[string] path: &str,
   global: v8::Local<'scope, v8::Object>,

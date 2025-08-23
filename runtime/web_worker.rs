@@ -114,7 +114,7 @@ pub enum WorkerThreadType {
 impl<'s> WorkerThreadType {
   pub fn to_v8(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::String> {
     v8::String::new(
       scope,

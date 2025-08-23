@@ -54,7 +54,7 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
 }
 
 pub fn create_function<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   env: *mut Env,
   name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
@@ -75,7 +75,7 @@ pub fn create_function<'s>(
 }
 
 pub fn create_function_template<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   env: *mut Env,
   name: Option<v8::Local<v8::String>>,
   cb: napi_callback,

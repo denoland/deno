@@ -97,7 +97,7 @@ pub fn create_validate_import_attributes_callback(
   enable_raw_imports: Arc<AtomicBool>,
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
-    move |scope: &mut v8::HandleScope, attributes: &HashMap<String, String>| {
+    move |scope: &mut v8::PinScope<'_, '_>, attributes: &HashMap<String, String>| {
       let valid_attribute = |kind: &str| {
         enable_raw_imports.load(Ordering::Relaxed)
           && matches!(kind, "bytes" | "text")
@@ -1319,7 +1319,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
 
   fn get_host_defined_options<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<v8::Local<'s, v8::Data>> {
     self

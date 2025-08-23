@@ -111,7 +111,7 @@ pub enum InspectorConnectError {
 #[cppgc]
 pub fn op_inspector_connect<'s, P>(
   isolate: *mut v8::Isolate,
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   state: &mut OpState,
   connect_to_main_thread: bool,
   callback: v8::Local<'s, v8::Function>,

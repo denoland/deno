@@ -17,7 +17,7 @@ pub struct ContextifyScript {
 
 impl ContextifyScript {
   pub fn new(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     source_str: v8::Local<v8::String>,
   ) -> Result<Self, JsErrorBox> {
     let resource_name = v8::undefined(scope);
@@ -52,7 +52,7 @@ impl ContextifyScript {
   // TODO(littledivy): Support `options`
   pub fn eval_machine<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     _context: v8::Local<v8::Context>,
   ) -> Option<v8::Local<'s, v8::Value>> {
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -89,7 +89,7 @@ unsafe impl deno_core::GarbageCollected for ContextifyContext {
 
 impl ContextifyContext {
   pub fn attach(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     sandbox_obj: v8::Local<v8::Object>,
   ) {
     let tmp = init_global_template(scope, ContextInitMode::UseSnapshot);
@@ -98,7 +98,7 @@ impl ContextifyContext {
   }
 
   fn from_context(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     v8_context: v8::Local<v8::Context>,
     sandbox_obj: v8::Local<v8::Object>,
   ) {
@@ -147,7 +147,7 @@ impl ContextifyContext {
   }
 
   pub fn from_sandbox_obj<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     sandbox_obj: v8::Local<v8::Object>,
   ) -> Option<&'a Self> {
     let private_str =
@@ -166,7 +166,7 @@ impl ContextifyContext {
   }
 
   pub fn is_contextify_context(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     object: v8::Local<v8::Object>,
   ) -> bool {
     Self::from_sandbox_obj(scope, object).is_some()
@@ -174,14 +174,14 @@ impl ContextifyContext {
 
   pub fn context<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Context> {
     self.context.get(scope).unwrap()
   }
 
   fn global_proxy<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Object> {
     let ctx = self.context(scope);
     ctx.global(scope)
@@ -189,13 +189,13 @@ impl ContextifyContext {
 
   fn sandbox<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     self.sandbox.get(scope).unwrap()
   }
 
   fn get<'a, 'c>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     object: v8::Local<'a, v8::Object>,
   ) -> Option<&'c ContextifyContext> {
     let context = object.get_creation_context(scope)?;
@@ -219,11 +219,11 @@ pub enum ContextInitMode {
 }
 
 pub fn create_v8_context<'a>(
-  scope: &mut v8::HandleScope<'a, ()>,
+  scope: &mut v8::PinScope<'_, '_><'a, ()>,
   object_template: v8::Local<v8::ObjectTemplate>,
   mode: ContextInitMode,
 ) -> v8::Local<'a, v8::Context> {
-  let scope = &mut v8::EscapableHandleScope::new(scope);
+  let scope = &mut v8::EscapablePinScope<'_, '_>::new(scope);
 
   let context = if mode == ContextInitMode::UseSnapshot {
     v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX, Default::default())
@@ -253,7 +253,7 @@ pub fn create_v8_context<'a>(
 struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
 pub fn init_global_template<'a>(
-  scope: &mut v8::HandleScope<'a, ()>,
+  scope: &mut v8::PinScope<'_, '_><'a, ()>,
   mode: ContextInitMode,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
   let maybe_object_template_slot =
@@ -298,7 +298,7 @@ thread_local! {
 }
 
 pub fn init_global_template_inner<'a>(
-  scope: &mut v8::HandleScope<'a, ()>,
+  scope: &mut v8::PinScope<'_, '_><'a, ()>,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
   let global_object_template = v8::ObjectTemplate::new(scope);
   global_object_template.set_internal_field_count(3);
@@ -346,7 +346,7 @@ pub fn init_global_template_inner<'a>(
 }
 
 fn property_getter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut ret: v8::ReturnValue,
@@ -381,7 +381,7 @@ fn property_getter<'s>(
 }
 
 fn property_setter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
@@ -475,7 +475,7 @@ fn property_setter<'s>(
 }
 
 fn property_deleter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Boolean>,
@@ -496,7 +496,7 @@ fn property_deleter<'s>(
 }
 
 fn property_enumerator<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Array>,
 ) {
@@ -517,7 +517,7 @@ fn property_enumerator<'s>(
 }
 
 fn property_definer<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   desc: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
@@ -549,7 +549,7 @@ fn property_definer<'s>(
   let scope = &mut v8::ContextScope::new(scope, context);
 
   let define_prop_on_sandbox =
-    |scope: &mut v8::HandleScope,
+    |scope: &mut v8::PinScope<'_, '_>,
      desc_for_sandbox: &mut v8::PropertyDescriptor| {
       if desc.has_enumerable() {
         desc_for_sandbox.set_enumerable(desc.enumerable());
@@ -598,7 +598,7 @@ fn property_definer<'s>(
 }
 
 fn property_descriptor<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
@@ -622,7 +622,7 @@ fn property_descriptor<'s>(
 }
 
 fn uint32_to_name<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
 ) -> v8::Local<'s, v8::Name> {
   let int = v8::Integer::new_from_unsigned(scope, index);
@@ -631,7 +631,7 @@ fn uint32_to_name<'s>(
 }
 
 fn indexed_property_getter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
@@ -641,7 +641,7 @@ fn indexed_property_getter<'s>(
 }
 
 fn indexed_property_setter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
@@ -652,7 +652,7 @@ fn indexed_property_setter<'s>(
 }
 
 fn indexed_property_deleter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Boolean>,
@@ -675,7 +675,7 @@ fn indexed_property_deleter<'s>(
 }
 
 fn indexed_property_definer<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   descriptor: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
@@ -686,7 +686,7 @@ fn indexed_property_definer<'s>(
 }
 
 fn indexed_property_descriptor<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,

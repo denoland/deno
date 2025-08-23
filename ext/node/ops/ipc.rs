@@ -29,7 +29,7 @@ mod impl_ {
 
   /// Wrapper around v8 value that implements Serialize.
   struct SerializeWrapper<'a, 'b>(
-    RefCell<&'b mut v8::HandleScope<'a>>,
+    RefCell<&'b mut v8::PinScope<'a, '_>>,
     v8::Local<'a, v8::Value>,
   );
 
@@ -46,7 +46,7 @@ mod impl_ {
   /// This allows us to go from v8 values to JSON without having to
   /// deserialize into a `serde_json::Value` and then reserialize to JSON
   fn serialize_v8_value<'a, S: Serializer>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     ser: S,
   ) -> Result<S::Ok, S::Error> {
@@ -182,7 +182,7 @@ mod impl_ {
 
   #[op2(async)]
   pub fn op_node_ipc_write<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
     value: v8::Local<'a, v8::Value>,

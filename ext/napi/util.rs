@@ -126,11 +126,8 @@ pub(crate) unsafe fn check_new_from_utf8_len<'s>(
   };
   let result = {
     let env = unsafe { &mut *(env as *mut Env) };
-    v8::String::new_from_utf8(
-      &mut env.scope(),
-      string,
-      v8::NewStringType::Internalized,
-    )
+    v8::make_callback_scope!(unsafe scope, env.context());
+    v8::String::new_from_utf8(scope, string, v8::NewStringType::Internalized)
   };
   return_error_status_if_false!(env, result.is_some(), napi_generic_failure);
   Ok(result.unwrap())
@@ -243,8 +240,8 @@ macro_rules! napi_wrap {
       $crate::util::napi_clear_last_error(env);
 
       let scope_env = unsafe { &mut *env_ptr };
-      let scope = &mut scope_env.scope();
-      let try_catch = &mut v8::TryCatch::new(scope);
+      deno_core::v8::make_callback_scope!(unsafe scope, scope_env.context());
+      deno_core::v8::make_try_catch!(try_catch, scope);
 
       #[inline(always)]
       fn inner $( < $( $x ),* > )? ( $env: & $( $lt )? mut Env , $( $ident : $ty ),* ) -> napi_status $body

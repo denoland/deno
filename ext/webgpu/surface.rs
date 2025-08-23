@@ -142,7 +142,7 @@ impl GPUCanvasContext {
 
   fn get_current_texture<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<v8::Local<'s, v8::Object>, SurfaceError> {
     let config = self.config.borrow();
     let Some(config) = config.as_ref() else {

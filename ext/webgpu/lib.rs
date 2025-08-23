@@ -107,7 +107,7 @@ deno_core::extension!(
 #[cppgc]
 pub fn op_create_gpu(
   state: &mut OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   webidl_brand: v8::Local<v8::Value>,
   set_event_target_data: v8::Local<v8::Value>,
   error_event_class: v8::Local<v8::Value>,
