@@ -265,7 +265,7 @@ pub type NodeResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   NodeResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -463,7 +463,7 @@ impl<
       let pkg_config = self
         .pkg_json_resolver
         .get_closest_package_json(referrer.path()?)
-        .map_err(PackageImportsResolveErrorKind::ClosestPkgJson)
+        .map_err(PackageImportsResolveErrorKind::PkgJsonLoad)
         .map_err(|err| PackageImportsResolveError(Box::new(err)))?;
       Ok((
         self.package_imports_resolve_internal(

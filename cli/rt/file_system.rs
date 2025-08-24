@@ -166,11 +166,24 @@ impl FileSystem for DenoRtSys {
     RealFs.mkdir_async(path, recursive, mode).await
   }
 
+  #[cfg(unix)]
   fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.chmod_sync(path, mode)
   }
+  #[cfg(not(unix))]
+  fn chmod_sync(&self, path: &CheckedPath, mode: i32) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.chmod_sync(path, mode)
+  }
+
+  #[cfg(unix)]
   async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.chmod_async(path, mode).await
+  }
+  #[cfg(not(unix))]
+  async fn chmod_async(&self, path: CheckedPathBuf, mode: i32) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.chmod_async(path, mode).await
   }

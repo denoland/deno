@@ -39,7 +39,7 @@ use crate::workspace::sloppy_imports_resolve;
 
 #[allow(clippy::disallowed_types)]
 pub type FoundPackageJsonDepFlagRc =
-  crate::sync::MaybeArc<FoundPackageJsonDepFlag>;
+  deno_maybe_sync::MaybeArc<FoundPackageJsonDepFlag>;
 
 /// A flag that indicates if a package.json dependency was
 /// found during resolution.
@@ -141,7 +141,7 @@ pub struct MappedResolutionDiagnosticWithPosition<'a> {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type OnMappedResolutionDiagnosticFn = crate::sync::MaybeArc<
+pub type OnMappedResolutionDiagnosticFn = deno_maybe_sync::MaybeArc<
   dyn Fn(MappedResolutionDiagnosticWithPosition) + Send + Sync,
 >;
 
@@ -168,7 +168,7 @@ pub type DenoResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -193,7 +193,7 @@ pub struct DenoResolver<
   >,
   sys: TSys,
   found_package_json_dep_flag: FoundPackageJsonDepFlagRc,
-  warned_pkgs: crate::sync::MaybeDashSet<PackageReq>,
+  warned_pkgs: deno_maybe_sync::MaybeDashSet<PackageReq>,
   on_warning: Option<OnMappedResolutionDiagnosticFn>,
 }
 
@@ -615,8 +615,7 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
-static RUN_WITH_SLOPPY_IMPORTS_MSG: &str =
-  "or run with --unstable-sloppy-imports";
+static RUN_WITH_SLOPPY_IMPORTS_MSG: &str = "or run with --sloppy-imports";
 
 fn enhanced_sloppy_imports_error_message(
   sys: &(impl sys_traits::FsMetadata + Clone),

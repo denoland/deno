@@ -10,14 +10,13 @@ use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonRc;
 use sys_traits::FsRead;
 
-use crate::errors::ClosestPkgJsonError;
 use crate::errors::PackageJsonLoadError;
 
 pub trait NodePackageJsonCache:
   deno_package_json::PackageJsonCache
   + std::fmt::Debug
-  + crate::sync::MaybeSend
-  + crate::sync::MaybeSync
+  + deno_maybe_sync::MaybeSend
+  + deno_maybe_sync::MaybeSync
 {
   fn as_deno_package_json_cache(
     &self,
@@ -28,8 +27,8 @@ impl<T> NodePackageJsonCache for T
 where
   T: deno_package_json::PackageJsonCache
     + std::fmt::Debug
-    + crate::sync::MaybeSend
-    + crate::sync::MaybeSync,
+    + deno_maybe_sync::MaybeSend
+    + deno_maybe_sync::MaybeSync,
 {
   fn as_deno_package_json_cache(
     &self,
@@ -39,7 +38,8 @@ where
 }
 
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonCacheRc = crate::sync::MaybeArc<dyn NodePackageJsonCache>;
+pub type PackageJsonCacheRc =
+  deno_maybe_sync::MaybeArc<dyn NodePackageJsonCache>;
 
 thread_local! {
   static CACHE: RefCell<HashMap<PathBuf, PackageJsonRc>> = RefCell::new(HashMap::new());
@@ -66,7 +66,7 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
 
 #[allow(clippy::disallowed_types)]
 pub type PackageJsonResolverRc<TSys> =
-  crate::sync::MaybeArc<PackageJsonResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<PackageJsonResolver<TSys>>;
 
 #[derive(Debug)]
 pub struct PackageJsonResolver<TSys: FsRead> {
@@ -82,18 +82,20 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
   pub fn get_closest_package_json(
     &self,
     file_path: &Path,
-  ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    let Some(parent_dir) = file_path.parent() else {
-      return Ok(None);
-    };
-    for current_dir in parent_dir.ancestors() {
-      let package_json_path = current_dir.join("package.json");
-      if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
-        return Ok(Some(pkg_json));
-      }
-    }
+  ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
+    self.get_closest_package_jsons(file_path).next().transpose()
+  }
 
-    Ok(None)
+  /// Gets the closest package.json files, iterating from the
+  /// nearest directory to the furthest ancestor directory.
+  pub fn get_closest_package_jsons<'a>(
+    &'a self,
+    file_path: &'a Path,
+  ) -> ClosestPackageJsonsIterator<'a, TSys> {
+    ClosestPackageJsonsIterator {
+      current_path: file_path,
+      resolver: self,
+    }
   }
 
   pub fn load_package_json(
@@ -115,7 +117,31 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
       {
         Ok(None)
       }
-      Err(err) => Err(PackageJsonLoadError::PackageJson(err)),
+      Err(err) => Err(PackageJsonLoadError(err)),
     }
+  }
+}
+
+pub struct ClosestPackageJsonsIterator<'a, TSys: FsRead> {
+  current_path: &'a Path,
+  resolver: &'a PackageJsonResolver<TSys>,
+}
+
+impl<'a, TSys: FsRead> Iterator for ClosestPackageJsonsIterator<'a, TSys> {
+  type Item = Result<PackageJsonRc, PackageJsonLoadError>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    while let Some(parent) = self.current_path.parent() {
+      self.current_path = parent;
+      let package_json_path = parent.join("package.json");
+      match self.resolver.load_package_json(&package_json_path) {
+        Ok(Some(value)) => return Some(Ok(value)),
+        Ok(None) => {
+          // skip
+        }
+        Err(err) => return Some(Err(err)),
+      }
+    }
+    None
   }
 }

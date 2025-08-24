@@ -71,7 +71,7 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
   pub fn collect_file_patterns<TSys: FsRead + FsMetadata + FsReadDir>(
     &self,
     sys: &TSys,
-    file_patterns: FilePatterns,
+    file_patterns: &FilePatterns,
   ) -> Vec<PathBuf> {
     fn is_pattern_matched(
       maybe_git_ignore: Option<&DirGitIgnores>,
@@ -301,8 +301,7 @@ mod test {
         .unwrap_or(false)
     });
 
-    let result =
-      file_collector.collect_file_patterns(&RealSys, file_patterns.clone());
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",
@@ -327,8 +326,7 @@ mod test {
       .ignore_git_folder()
       .ignore_node_modules()
       .set_vendor_folder(Some(child_dir_path.join("vendor").to_path_buf()));
-    let result =
-      file_collector.collect_file_patterns(&RealSys, file_patterns.clone());
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",
@@ -358,7 +356,7 @@ mod test {
         ignore_dir_path.to_path_buf(),
       )]),
     };
-    let result = file_collector.collect_file_patterns(&RealSys, file_patterns);
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",

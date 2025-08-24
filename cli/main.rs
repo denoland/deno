@@ -866,9 +866,6 @@ async fn initialize_tunnel(
   let mut factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let mut cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
-  if deploy_config.is_none() {
-    let _ = tools::deploy::get_token_entry()?.delete_credential();
-  }
 
   let token = if let Ok(token) = std::env::var("DENO_DEPLOY_TOKEN") {
     token
@@ -918,11 +915,14 @@ async fn initialize_tunnel(
   let root_cert_store = cert_store_provider.get_or_try_init()?.clone();
 
   let tls_config = deno_runtime::deno_tls::create_client_config(
-    Some(root_cert_store),
-    vec![],
-    None,
-    deno_runtime::deno_tls::TlsKeys::Null,
-    deno_runtime::deno_tls::SocketUse::GeneralSsl,
+    deno_runtime::deno_tls::TlsClientConfigOptions {
+      root_cert_store: Some(root_cert_store),
+      ca_certs: vec![],
+      unsafely_ignore_certificate_errors: None,
+      unsafely_disable_hostname_verification: false,
+      cert_chain_and_key: deno_runtime::deno_tls::TlsKeys::Null,
+      socket_use: deno_runtime::deno_tls::SocketUse::GeneralSsl,
+    },
   )?;
 
   let mut metadata = HashMap::new();
