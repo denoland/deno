@@ -5,7 +5,9 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_graph::packages::JsrPackageInfo;
+use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
+use deno_semver::Version;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
@@ -24,6 +26,21 @@ pub struct JsrFetchResolver {
   file_fetcher: Arc<CliFileFetcher>,
 }
 
+fn select_version<'a, I>(versions: I, req: &PackageReq) -> Option<Version>
+where
+  I: IntoIterator<Item = (&'a Version, &'a JsrPackageInfoVersion)>,
+{
+  let mut versions = versions.into_iter().collect::<Vec<_>>();
+  versions.sort_by_key(|(v, _)| *v);
+  versions
+    .into_iter()
+    .rev()
+    .find(|(v, i)| {
+      !i.yanked && req.version_req.tag().is_none() && req.version_req.matches(v)
+    })
+    .map(|(v, _)| v.clone())
+}
+
 impl JsrFetchResolver {
   pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
     Self {
@@ -40,24 +57,66 @@ impl JsrFetchResolver {
     }
     let maybe_get_nv = || async {
       let name = req.name.clone();
-      let package_info = self.package_info(&name).await?;
+      let package_info = self.package_info(&name).await;
+      if package_info.is_none() {
+        log::debug!("no package info found for jsr:{name}");
+        return None;
+      }
+      let package_info = package_info?;
       // Find the first matching version of the package.
-      let mut versions = package_info.versions.iter().collect::<Vec<_>>();
-      versions.sort_by_key(|(v, _)| *v);
-      let version = versions
-        .into_iter()
-        .rev()
-        .find(|(v, i)| {
-          !i.yanked
-            && req.version_req.tag().is_none()
-            && req.version_req.matches(v)
-        })
-        .map(|(v, _)| v.clone())?;
+      let version = select_version(&package_info.versions, req);
+      let version = if let Some(version) = version {
+        version
+      } else {
+        let info = self.force_refresh_package_info(&name).await;
+        let Some(info) = info else {
+          log::debug!("no package info found for jsr:{name}");
+          return None;
+        };
+        let version = select_version(&info.versions, req);
+        let Some(version) = version else {
+          log::debug!("no matching version found for jsr:{req}");
+          return None;
+        };
+        version
+      };
       Some(PackageNv { name, version })
     };
     let nv = maybe_get_nv().await;
+
     self.nv_by_req.insert(req.clone(), nv.clone());
     nv
+  }
+
+  pub async fn force_refresh_package_info(
+    &self,
+    name: &str,
+  ) -> Option<Arc<JsrPackageInfo>> {
+    let meta_url = self.meta_url(name)?;
+    let file_fetcher = self.file_fetcher.clone();
+    let file = file_fetcher
+      .fetch_with_options(
+        &meta_url,
+        deno_resolver::file_fetcher::FetchPermissionsOptionRef::AllowAll,
+        deno_resolver::file_fetcher::FetchOptions {
+          maybe_cache_setting: Some(
+            &deno_cache_dir::file_fetcher::CacheSetting::ReloadAll,
+          ),
+          ..Default::default()
+        },
+      )
+      .await
+      .ok()?;
+    let info = serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()?;
+    let info = Arc::new(info);
+    self
+      .info_by_name
+      .insert(name.to_string(), Some(info.clone()));
+    Some(info)
+  }
+
+  fn meta_url(&self, name: &str) -> Option<deno_core::url::Url> {
+    jsr_url().join(&format!("{}/meta.json", name)).ok()
   }
 
   pub async fn package_info(&self, name: &str) -> Option<Arc<JsrPackageInfo>> {
@@ -65,7 +124,7 @@ impl JsrFetchResolver {
       return info.value().clone();
     }
     let fetch_package_info = || async {
-      let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
+      let meta_url = self.meta_url(name)?;
       let file = self
         .file_fetcher
         .fetch_bypass_permissions(&meta_url)
