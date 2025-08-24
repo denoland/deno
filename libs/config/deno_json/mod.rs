@@ -36,8 +36,15 @@ use crate::import_map::value_to_dep_req;
 use crate::import_map::values_to_set;
 use crate::util::is_skippable_io_error;
 
+mod permissions;
 mod ts;
 
+pub use permissions::AllowDenyPermissionConfig;
+pub use permissions::AllowDenyPermissionConfigValue;
+pub use permissions::PermissionConfigValue;
+pub use permissions::PermissionNameOrObject;
+pub use permissions::PermissionsConfig;
+pub use permissions::PermissionsObject;
 pub use ts::CompilerOptions;
 pub use ts::EmitConfigOptions;
 pub use ts::RawJsxCompilerOptions;
@@ -49,6 +56,11 @@ pub struct LintRulesConfig {
   pub include: Option<Vec<String>>,
   pub exclude: Option<Vec<String>>,
 }
+
+#[derive(Debug, JsError, Error)]
+#[class(generic)]
+#[error("Undefined permission: {0}")]
+pub struct UndefinedPermissionError(String);
 
 #[derive(Debug, JsError, Boxed)]
 pub struct IntoResolvedError(pub Box<IntoResolvedErrorKind>);
@@ -67,6 +79,9 @@ pub enum IntoResolvedErrorKind {
   #[class(inherit)]
   #[error("Invalid exclude: {0}")]
   InvalidExclude(crate::glob::FromExcludeRelativePathOrPatternsError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UndefinedPermission(#[from] UndefinedPermissionError),
 }
 
 #[derive(Debug, Error, JsError)]
@@ -507,12 +522,14 @@ struct SerializedTestConfig {
   pub exclude: Vec<String>,
   #[serde(rename = "files")]
   pub deprecated_files: serde_json::Value,
+  pub permissions: Option<PermissionNameOrObject>,
 }
 
 impl SerializedTestConfig {
   pub fn into_resolved(
     self,
     config_file_specifier: &Url,
+    permissions: &PermissionsConfig,
   ) -> Result<TestConfig, IntoResolvedError> {
     let (include, exclude) = (self.include, self.exclude);
     let files = SerializedFilesConfig { include, exclude };
@@ -523,6 +540,13 @@ impl SerializedTestConfig {
     }
     Ok(TestConfig {
       files: files.into_resolved(config_file_specifier)?,
+      permissions: match self.permissions {
+        Some(PermissionNameOrObject::Name(name)) => {
+          Some(Box::new(permissions.get(&name)?.clone()))
+        }
+        Some(PermissionNameOrObject::Object(obj)) => Some(obj),
+        None => None,
+      },
     })
   }
 }
@@ -530,12 +554,14 @@ impl SerializedTestConfig {
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct TestConfig {
   pub files: FilePatterns,
+  pub permissions: Option<Box<PermissionsObject>>,
 }
 
 impl TestConfig {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
       files: FilePatterns::new_with_base(base),
+      permissions: None,
     }
   }
 }
@@ -587,12 +613,14 @@ struct SerializedBenchConfig {
   pub exclude: Vec<String>,
   #[serde(rename = "files")]
   pub deprecated_files: serde_json::Value,
+  pub permissions: Option<PermissionNameOrObject>,
 }
 
 impl SerializedBenchConfig {
   pub fn into_resolved(
     self,
     config_file_specifier: &Url,
+    permissions: &PermissionsConfig,
   ) -> Result<BenchConfig, IntoResolvedError> {
     let (include, exclude) = (self.include, self.exclude);
     let files = SerializedFilesConfig { include, exclude };
@@ -603,6 +631,13 @@ impl SerializedBenchConfig {
     }
     Ok(BenchConfig {
       files: files.into_resolved(config_file_specifier)?,
+      permissions: match self.permissions {
+        Some(PermissionNameOrObject::Name(name)) => {
+          Some(Box::new(permissions.get(&name)?.clone()))
+        }
+        Some(PermissionNameOrObject::Object(obj)) => Some(obj),
+        None => None,
+      },
     })
   }
 }
@@ -610,14 +645,45 @@ impl SerializedBenchConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BenchConfig {
   pub files: FilePatterns,
+  pub permissions: Option<Box<PermissionsObject>>,
 }
 
 impl BenchConfig {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
       files: FilePatterns::new_with_base(base),
+      permissions: None,
     }
   }
+}
+
+/// `compile` config representation for serde
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+struct SerializedCompileConfig {
+  pub permissions: Option<PermissionNameOrObject>,
+}
+
+impl SerializedCompileConfig {
+  pub fn into_resolved(
+    self,
+    permissions: &PermissionsConfig,
+  ) -> Result<CompileConfig, IntoResolvedError> {
+    Ok(CompileConfig {
+      permissions: match self.permissions {
+        Some(PermissionNameOrObject::Name(name)) => {
+          Some(Box::new(permissions.get(&name)?.clone()))
+        }
+        Some(PermissionNameOrObject::Object(obj)) => Some(obj),
+        None => None,
+      },
+    })
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompileConfig {
+  pub permissions: Option<Box<PermissionsObject>>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -884,11 +950,13 @@ pub struct ConfigFileJson {
   pub tasks: Option<Value>,
   pub test: Option<Value>,
   pub bench: Option<Value>,
+  pub compile: Option<Value>,
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
   pub node_modules_dir: Option<Value>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
+  pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
 
@@ -1548,7 +1616,10 @@ impl ConfigFile {
     Ok(exclude)
   }
 
-  pub fn to_bench_config(&self) -> Result<BenchConfig, ToInvalidConfigError> {
+  pub fn to_bench_config(
+    &self,
+    permissions: &PermissionsConfig,
+  ) -> Result<BenchConfig, ToInvalidConfigError> {
     match self.json.bench.clone() {
       Some(config) => {
         let mut exclude_patterns = self.resolve_exclude_patterns()?;
@@ -1562,16 +1633,41 @@ impl ConfigFile {
         // top level excludes at the start because they're lower priority
         exclude_patterns.extend(std::mem::take(&mut serialized.exclude));
         serialized.exclude = exclude_patterns;
-        serialized.into_resolved(&self.specifier).map_err(|error| {
-          ToInvalidConfigError::InvalidConfig {
+        serialized
+          .into_resolved(&self.specifier, permissions)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
             config: "bench",
+            source: error,
+          })
+      }
+      None => Ok(BenchConfig {
+        files: self.to_exclude_files_config()?,
+        permissions: None,
+      }),
+    }
+  }
+
+  pub fn to_compile_config(
+    &self,
+    permissions: &PermissionsConfig,
+  ) -> Result<CompileConfig, ToInvalidConfigError> {
+    match self.json.compile.clone() {
+      Some(config) => {
+        let serialized: SerializedCompileConfig =
+          serde_json::from_value(config).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "compile",
+              source: error,
+            }
+          })?;
+        serialized.into_resolved(permissions).map_err(|error| {
+          ToInvalidConfigError::InvalidConfig {
+            config: "compile",
             source: error,
           }
         })
       }
-      None => Ok(BenchConfig {
-        files: self.to_exclude_files_config()?,
-      }),
+      None => Ok(CompileConfig { permissions: None }),
     }
   }
 
@@ -1631,7 +1727,10 @@ impl ConfigFile {
     }
   }
 
-  pub fn to_test_config(&self) -> Result<TestConfig, ToInvalidConfigError> {
+  pub(crate) fn to_test_config(
+    &self,
+    permissions: &PermissionsConfig,
+  ) -> Result<TestConfig, ToInvalidConfigError> {
     match self.json.test.clone() {
       Some(config) => {
         let mut exclude_patterns = self.resolve_exclude_patterns()?;
@@ -1645,16 +1744,31 @@ impl ConfigFile {
         // top level excludes at the start because they're lower priority
         exclude_patterns.extend(std::mem::take(&mut serialized.exclude));
         serialized.exclude = exclude_patterns;
-        serialized.into_resolved(&self.specifier).map_err(|error| {
-          ToInvalidConfigError::InvalidConfig {
+        serialized
+          .into_resolved(&self.specifier, permissions)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
             config: "test",
             source: error,
-          }
-        })
+          })
       }
       None => Ok(TestConfig {
         files: self.to_exclude_files_config()?,
+        permissions: None,
       }),
+    }
+  }
+
+  pub(crate) fn to_permissions_config(
+    &self,
+  ) -> Result<PermissionsConfig, ToInvalidConfigError> {
+    match self.json.permissions.clone() {
+      Some(config) => PermissionsConfig::parse(config).map_err(|error| {
+        ToInvalidConfigError::Parse {
+          config: "permissions",
+          source: error,
+        }
+      }),
+      None => Ok(Default::default()),
     }
   }
 
@@ -2191,7 +2305,7 @@ mod tests {
     let config_specifier = Url::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
 
-    let test_config = config_file.to_test_config().unwrap();
+    let test_config = config_file.to_test_config(&Default::default()).unwrap();
     assert_eq!(test_config.files.include, None);
     assert_eq!(
       test_config.files.exclude,
@@ -2202,7 +2316,8 @@ mod tests {
       .unwrap()
     );
 
-    let bench_config = config_file.to_bench_config().unwrap();
+    let bench_config =
+      config_file.to_bench_config(&Default::default()).unwrap();
     assert_eq!(
       bench_config.files.exclude,
       PathOrPatternSet::from_absolute_paths(&["/deno/foo/".to_string()])
