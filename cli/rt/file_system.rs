@@ -207,6 +207,17 @@ impl FileSystem for DenoRtSys {
     RealFs.chown_async(path, uid, gid).await
   }
 
+  fn exists_sync(&self, path: &CheckedPath) -> bool {
+    if self.error_if_in_vfs(path).is_err() {
+      return false;
+    }
+    RealFs.exists_sync(path)
+  }
+  async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.exists_async(path).await
+  }
+
   fn lchmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.lchmod_sync(path, mode)
