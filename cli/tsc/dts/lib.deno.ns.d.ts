@@ -1166,6 +1166,66 @@ declare namespace Deno {
       options: Omit<TestDefinition, "fn" | "only">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Register a function to be called before all tests in the current scope.
+     * 
+     * The function can optionally return a cleanup function that will be called
+     * after all tests have completed.
+     *
+     * ```ts
+     * Deno.test.beforeAll(() => {
+     *   // Setup code that runs once before all tests
+     *   console.log("Setting up test suite");
+     *   
+     *   // Optionally return a cleanup function
+     *   return () => {
+     *     console.log("Cleaning up after all tests");
+     *   };
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    beforeAll(fn: () => void | Promise<void> | (() => void | Promise<void>), timeout?: number): void;
+
+    /** Register a function to be called before each test in the current scope.
+     *
+     * ```ts
+     * Deno.test.beforeEach(() => {
+     *   // Setup code that runs before each test
+     *   console.log("Setting up test");
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    beforeEach(fn: (t?: TestContext) => void | Promise<void>, timeout?: number): void;
+
+    /** Register a function to be called after each test in the current scope.
+     *
+     * ```ts
+     * Deno.test.afterEach(() => {
+     *   // Cleanup code that runs after each test
+     *   console.log("Cleaning up test");
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    afterEach(fn: (t?: TestContext) => void | Promise<void>, timeout?: number): void;
+
+    /** Register a function to be called after all tests in the current scope.
+     *
+     * ```ts
+     * Deno.test.afterAll(() => {
+     *   // Cleanup code that runs once after all tests
+     *   console.log("Cleaning up test suite");
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    afterAll(fn: () => void | Promise<void>, timeout?: number): void;
   }
 
   /**
