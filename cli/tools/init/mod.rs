@@ -18,6 +18,7 @@ use log::info;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InitFlags;
+use crate::args::InternalFlags;
 use crate::args::PermissionFlags;
 use crate::args::RunFlags;
 use crate::colors;
@@ -341,12 +342,16 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     },
     allow_scripts: PackagesAllowedScripts::All,
     argv: args,
-    node_modules_dir: Some(NodeModulesDirMode::Auto),
+    node_modules_dir: Some(NodeModulesDirMode::None),
     subcommand: DenoSubcommand::Run(RunFlags {
       script: script_name,
       ..Default::default()
     }),
     reload: true,
+    internal: InternalFlags {
+      lockfile_skip_write: true,
+      ..Default::default()
+    },
     ..Default::default()
   };
   crate::tools::run::run_script(
