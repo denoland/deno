@@ -229,10 +229,29 @@ pub struct TestLocation {
   pub column_number: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum HookType {
+  BeforeAll,
+  BeforeEach,
+  AfterEach,
+  AfterAll,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub struct HookDescription {
+  pub id: usize,
+  pub hook_type: HookType,
+  pub origin: String,
+  pub location: TestLocation,
+}
+
 #[derive(Default)]
 pub(crate) struct TestContainer(
   TestDescriptions,
   Vec<v8::Global<v8::Function>>,
+  IndexMap<usize, (HookDescription, v8::Global<v8::Function>)>,  // hooks with their functions
 );
 
 impl TestContainer {
@@ -245,9 +264,18 @@ impl TestContainer {
     self.1.push(function)
   }
 
+  pub fn register_hook(
+    &mut self,
+    description: HookDescription,
+    function: v8::Global<v8::Function>,
+  ) {
+    self.2.insert(description.id, (description, function));
+  }
+
   pub fn is_empty(&self) -> bool {
     self.1.is_empty()
   }
+
 }
 
 #[derive(Default, Debug)]
@@ -872,7 +900,7 @@ pub async fn run_tests_for_worker(
 ) -> Result<(), RunTestsForWorkerErr> {
   let state_rc = worker.js_runtime.op_state();
   // Take whatever tests have been registered
-  let TestContainer(tests, test_functions) =
+  let TestContainer(tests, test_functions, hooks) =
     std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
 
   let tests: Arc<TestDescriptions> = tests.into();
@@ -882,6 +910,7 @@ pub async fn run_tests_for_worker(
     specifier,
     tests,
     test_functions,
+    hooks,
     options,
     fail_fast_tracker,
   )
@@ -891,11 +920,43 @@ pub async fn run_tests_for_worker(
   res
 }
 
+async fn execute_hooks(
+  worker: &mut MainWorker,
+  hooks: &IndexMap<usize, (HookDescription, v8::Global<v8::Function>)>,
+  hook_type: &HookType,
+) -> Result<(), RunTestsForWorkerErr> {
+  for (_, (desc, function)) in hooks {
+    if &desc.hook_type == hook_type {
+      // Call the hook function with no arguments (hooks typically don't need test context)
+      let call = worker.js_runtime.call_with_args(function, &[]);
+      let result = worker
+        .js_runtime
+        .with_event_loop_promise(call, PollEventLoopOptions::default())
+        .await;
+
+      match result {
+        Ok(_) => {
+          // Hook executed successfully
+        }
+        Err(error) => match error.into_kind() {
+          CoreErrorKind::Js(js_error) => {
+            // For now, just ignore hook errors - we might want to log them or fail the test run
+            eprintln!("Hook error: {}", js_error);
+          }
+          err => return Err(err.into_box().into()),
+        },
+      }
+    }
+  }
+  Ok(())
+}
+
 async fn run_tests_for_worker_inner(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
   tests: Arc<TestDescriptions>,
   test_functions: Vec<v8::Global<v8::Function>>,
+  hooks: IndexMap<usize, (HookDescription, v8::Global<v8::Function>)>,
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
 ) -> Result<(), RunTestsForWorkerErr> {
@@ -975,6 +1036,9 @@ async fn run_tests_for_worker_inner(
       .or_insert(1);
   }
 
+  // Execute beforeAll hooks
+  execute_hooks(worker, &hooks, &HookType::BeforeAll).await?;
+
   for (desc, function) in tests_to_run.into_iter() {
     if fail_fast_tracker.should_stop() {
       break;
@@ -1014,6 +1078,9 @@ async fn run_tests_for_worker_inner(
 
     // We always capture stats, regardless of sanitization state
     let before = stats.clone().capture(&filter);
+
+    // Execute beforeEach hooks
+    execute_hooks(worker, &hooks, &HookType::BeforeEach).await?;
 
     let earlier = Instant::now();
     let call = worker.js_runtime.call(&function);
@@ -1082,6 +1149,8 @@ async fn run_tests_for_worker_inner(
     };
     if matches!(result, TestResult::Failed(_)) {
       fail_fast_tracker.add_failure();
+      // Execute afterEach hooks even for failed tests
+      execute_hooks(worker, &hooks, &HookType::AfterEach).await?;
       let elapsed = earlier.elapsed().as_millis();
       send_test_event(
         &state_rc,
@@ -1106,6 +1175,8 @@ async fn run_tests_for_worker_inner(
       if !formatted.is_empty() {
         let failure = TestFailure::Leaked(formatted, trailer_notes);
         fail_fast_tracker.add_failure();
+        // Execute afterEach hooks even for leaked tests
+        execute_hooks(worker, &hooks, &HookType::AfterEach).await?;
         let elapsed = earlier.elapsed().as_millis();
         send_test_event(
           &state_rc,
@@ -1119,12 +1190,19 @@ async fn run_tests_for_worker_inner(
       }
     }
 
+    // Execute afterEach hooks
+    execute_hooks(worker, &hooks, &HookType::AfterEach).await?;
+
     let elapsed = earlier.elapsed().as_millis();
     send_test_event(
       &state_rc,
       TestEvent::Result(desc.id, result, elapsed as u64),
     )?;
   }
+
+  // Execute afterAll hooks
+  execute_hooks(worker, &hooks, &HookType::AfterAll).await?;
+
   Ok(())
 }
 
