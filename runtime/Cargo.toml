@@ -74,6 +74,7 @@ deno_websocket.workspace = true
 deno_webstorage.workspace = true
 node_resolver = { workspace = true, features = ["sync"] }
 
+async-trait.workspace = true
 color-print.workspace = true
 encoding_rs.workspace = true
 fastwebsockets.workspace = true
@@ -94,6 +95,7 @@ tokio.workspace = true
 tokio-metrics.workspace = true
 twox-hash.workspace = true
 uuid.workspace = true
+indexmap.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }

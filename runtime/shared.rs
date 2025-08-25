@@ -23,7 +23,8 @@ extension!(runtime,
     deno_napi,
     deno_http,
     deno_io,
-    deno_fs
+    deno_fs,
+    deno_bundle_runtime
   ],
   esm_entry_point = "ext:runtime/90_deno_ns.js",
   esm = [
@@ -36,6 +37,7 @@ extension!(runtime,
     "40_fs_events.js",
     "40_tty.js",
     "41_prompt.js",
+    "50_bundle.ts",
     "90_deno_ns.js",
     "98_global_scope_shared.js",
     "98_global_scope_window.js",
