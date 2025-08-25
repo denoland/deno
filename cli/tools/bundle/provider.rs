@@ -139,6 +139,7 @@ impl BundleProvider for CliBundleProvider {
   async fn bundle(
     &self,
     options: deno_runtime::ops::bundle::BundleOptions,
+    plugins: Option<deno_runtime::ops::bundle::Plugins>,
   ) -> Result<rt_bundle::BuildResponse, AnyError> {
     let mut flags_clone = (*self.flags).clone();
     let bundle_flags: crate::args::BundleFlags = options.into();
@@ -149,7 +150,7 @@ impl BundleProvider for CliBundleProvider {
         let flags = Arc::new(flags_clone);
         let write_output = bundle_flags.output_dir.is_some()
           || bundle_flags.output_path.is_some();
-        let bundler = super::bundle_init(flags, &bundle_flags).await?;
+        let bundler = super::bundle_init(flags, &bundle_flags, plugins).await?;
         let mut result = match bundler.build().await {
           Ok(result) => result,
           Err(e) => {
@@ -158,7 +159,12 @@ impl BundleProvider for CliBundleProvider {
           }
         };
         if write_output {
-          super::process_result(&result, &bundler.cwd, true)?;
+          super::process_result(
+            &result,
+            &bundler.cwd,
+            true,
+            bundle_flags.minify,
+          )?;
           result.output_files = None;
         }
         let result = convert_build_response(result);

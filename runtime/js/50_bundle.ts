@@ -1,11 +1,24 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 /// <reference path="../../cli/tsc/dts/lib.deno.unstable.d.ts" />
-import { op_bundle } from "ext:core/ops";
+import { op_bundle, PluginExecResultSenderWrapper } from "ext:core/ops";
 
 declare function op_bundle(
   options: Omit<Deno.bundle.Options, "plugins">,
   plugins: RustPluginInfo[] | null,
+  pluginExecutor:
+    | ((
+      hook: Hook,
+      type: HookType,
+      ids: number[],
+      sender: PluginExecResultSenderWrapper,
+      ...args: any[]
+    ) => Promise<void>)
+    | null,
 ): Promise<Omit<Deno.bundle.Result, "success">>;
+
+interface PluginExecResultSenderWrapper {
+  sendResult: (result: any) => void;
+}
 
 interface PluginInfo {
   id: number;
@@ -144,19 +157,20 @@ function getHookName(
 }
 
 function makePluginExecutor(
-  options: Deno.bundle.Options,
+  // options: Deno.bundle.Options,
   plugins: PluginInfo[],
 ) {
   if (!plugins.length) {
-    return (..._args: any) => null;
+    return (..._args: any) => Promise.resolve();
   }
 
   return async (
     hook: Hook,
     type: HookType,
     ids: number[],
+    sender: PluginExecResultSenderWrapper,
     ...args: any[]
-  ) => {
+  ): Promise<void> => {
     let result = null;
     const hookName = getHookName(hook);
     for (const id of ids) {
@@ -165,13 +179,14 @@ function makePluginExecutor(
         // @ts-ignore aaa
         result = await plugin[hookName].callback(...args);
         if (type === HookType.first && result) {
-          return { pluginId: id, result };
+          sender.sendResult({ pluginId: id, result });
+          return;
         } else if (type === HookType.sequential) {
           continue;
         }
       }
     }
-    return result;
+    sender.sendResult({ pluginId: null, result });
   };
 }
 
@@ -184,7 +199,11 @@ export async function bundle(
 
   const result = {
     success: false,
-    ...await op_bundle(options, forRust.length > 0 ? forRust : null),
+    ...await op_bundle(
+      options,
+      forRust.length > 0 ? forRust : null,
+      forRust.length > 0 ? makePluginExecutor(plugins) : null,
+    ),
   };
   result.success = result.errors.length === 0;
 

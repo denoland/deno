@@ -77,6 +77,7 @@ static DISABLE_HACK: LazyLock<bool> =
 pub async fn bundle_init(
   mut flags: Arc<Flags>,
   bundle_flags: &BundleFlags,
+  plugins: Option<deno_runtime::ops::bundle::Plugins>,
 ) -> Result<EsbuildBundler, AnyError> {
   {
     let flags_mut = Arc::make_mut(&mut flags);
@@ -113,6 +114,7 @@ pub async fn bundle_init(
       Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
     },
     on_end_tx,
+    js_plugins: plugins,
   });
 
   let resolved_entrypoints =
@@ -166,7 +168,7 @@ pub async fn bundle(
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
   }
-  let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
+  let bundler = bundle_init(flags.clone(), &bundle_flags, None).await?;
   let init_cwd = bundler.cwd.clone();
   let start = std::time::Instant::now();
   let response = bundler.build().await?;
@@ -509,6 +511,7 @@ pub struct DenoPluginHandler {
   module_loader: Arc<CliDenoResolverModuleLoader>,
   externals_matcher: Option<ExternalsMatcher>,
   on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
+  js_plugins: Option<deno_runtime::ops::bundle::Plugins>,
 }
 
 #[async_trait::async_trait(?Send)]
