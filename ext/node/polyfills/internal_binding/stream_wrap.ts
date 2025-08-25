@@ -355,7 +355,6 @@ export class LibuvStreamWrap extends HandleWrap {
     let buf = this.#buf;
 
     let nread: number | null;
-    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
 
     if (this.upgrading) {
       // Starting an upgrade, stop reading. Upgrading will resume reading.
@@ -363,6 +362,7 @@ export class LibuvStreamWrap extends HandleWrap {
       return;
     }
 
+    const ridBefore = this[kStreamBaseField]![internalRidSymbol];
     try {
       if (this[kStreamBaseField]![_readWithCancelHandle]) {
         const { cancelHandle, nread: p } = this[kStreamBaseField]!
