@@ -427,6 +427,14 @@ impl DatabaseSync {
     })
   }
 
+  // Returns "node:sqlite" for Node.js compatibility
+  #[getter]
+  #[symbol("sqlite-type")]
+  #[string]
+  fn sqlite_type(&self) -> &'static str {
+    "node:sqlite"
+  }
+
   // Opens the database specified by `location` of this instance.
   //
   // This method should only be used when the database is not opened
