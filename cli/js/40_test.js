@@ -121,9 +121,7 @@ function wrapOuter(fn, desc) {
       if (desc.ignore) {
         return "ignored";
       }
-      const result = await fn(desc) ?? "ok";
-      
-      return result;
+      return await fn(desc) ?? "ok";
     } catch (error) {
       return { failed: { jsError: core.destructureError(error) } };
     } finally {
@@ -135,7 +133,6 @@ function wrapOuter(fn, desc) {
     }
   };
 }
-
 
 function wrapInner(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
@@ -182,9 +179,7 @@ function wrapInner(fn) {
       };
     }
 
-    const context = MapPrototypeGet(testStates, desc.id).context;
-    
-    await fn(context);
+    await fn(MapPrototypeGet(testStates, desc.id).context);
     let failedSteps = 0;
     for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
       const state = MapPrototypeGet(testStates, childDesc.id);
@@ -364,7 +359,7 @@ function registerHook(hookType, fn) {
   }
 
   const location = core.currentUserCallSite();
-  
+
   op_register_hook(
     fn,
     hookType,
