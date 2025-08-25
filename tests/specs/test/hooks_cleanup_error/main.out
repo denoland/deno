@@ -1,0 +1,6 @@
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks_cleanup_error/main.ts
+running 2 tests from ./main.ts
+test should run normally ... ok ([WILDCARD])
+second test should also run ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed ([WILDCARD])

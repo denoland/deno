@@ -1186,7 +1186,7 @@ declare namespace Deno {
      *
      * @category Testing
      */
-    beforeAll(fn: () => void | Promise<void> | (() => void | Promise<void>), timeout?: number): void;
+    beforeAll(fn: () => void | Promise<void> | (() => void | Promise<void>)): void;
 
     /** Register a function to be called before each test in the current scope.
      *
@@ -1199,7 +1199,7 @@ declare namespace Deno {
      *
      * @category Testing
      */
-    beforeEach(fn: (t?: TestContext) => void | Promise<void>, timeout?: number): void;
+    beforeEach(fn: (t?: TestContext) => void | Promise<void>): void;
 
     /** Register a function to be called after each test in the current scope.
      *
@@ -1212,7 +1212,7 @@ declare namespace Deno {
      *
      * @category Testing
      */
-    afterEach(fn: (t?: TestContext) => void | Promise<void>, timeout?: number): void;
+    afterEach(fn: (t?: TestContext) => void | Promise<void>): void;
 
     /** Register a function to be called after all tests in the current scope.
      *
@@ -1225,7 +1225,7 @@ declare namespace Deno {
      *
      * @category Testing
      */
-    afterAll(fn: () => void | Promise<void>, timeout?: number): void;
+    afterAll(fn: () => void | Promise<void>): void;
   }
 
   /**

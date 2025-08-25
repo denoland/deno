@@ -80,17 +80,24 @@ const DenoNs = globalThis.Deno;
 /** @type {Map<number, TestState | TestStepState>} */
 const testStates = new Map();
 
-/** @type {Array<{fn: Function, timeout?: number}>} */
+/** @type {Array<{fn: Function}>} */
 const beforeAllHooks = [];
-/** @type {Array<{fn: Function, timeout?: number}>} */
+/** @type {Array<{fn: Function}>} */
 const beforeEachHooks = [];
-/** @type {Array<{fn: Function, timeout?: number}>} */
+/** @type {Array<{fn: Function}>} */
 const afterEachHooks = [];
-/** @type {Array<{fn: Function, timeout?: number}>} */
+/** @type {Array<{fn: Function}>} */
 const afterAllHooks = [];
 
 /** @type {Array<Function>} */
 const beforeAllCleanups = [];
+
+/** @type {Set<number>} */
+const registeredTopLevelTests = new Set();
+/** @type {Set<number>} */
+const completedTopLevelTests = new Set();
+let afterAllHooksRan = false;
+let beforeAllHooksRan = false;
 
 // Wrap test function in additional assertion that makes sure
 // that the test case does not accidentally exit prematurely.
@@ -134,29 +141,6 @@ function wrapOuter(fn, desc) {
       }
       const result = await fn(desc) ?? "ok";
       
-      // Run afterAll hooks and cleanups only for top-level tests and only if this is the last test
-      if (!desc.parent) {
-        // This is a simplified approach - in a real implementation, you'd track when all tests are done
-        // For now, we'll run afterAll after each top-level test
-        if (afterAllHooks.length > 0) {
-          try {
-            await runHooks(afterAllHooks, MapPrototypeGet(testStates, desc.id).context);
-          } catch (error) {
-            // Log but don't fail the test
-          }
-        }
-        
-        // Run cleanup functions from beforeAll
-        for (const cleanup of beforeAllCleanups) {
-          try {
-            await cleanup();
-          } catch (error) {
-            // Log but don't fail the test
-          }
-        }
-        beforeAllCleanups.length = 0; // Clear cleanups
-      }
-      
       return result;
     } catch (error) {
       return { failed: { jsError: core.destructureError(error) } };
@@ -166,18 +150,50 @@ function wrapOuter(fn, desc) {
         stepReportResult(childDesc, { failed: "incomplete" }, 0);
       }
       state.completed = true;
+      
+      // Handle afterAll hooks for top-level tests
+      if (!desc.parent) {
+        completedTopLevelTests.add(desc.id);
+        
+        // Check if all registered top-level tests have completed
+        if (!afterAllHooksRan && 
+            completedTopLevelTests.size === registeredTopLevelTests.size &&
+            registeredTopLevelTests.size > 0) {
+          afterAllHooksRan = true;
+          
+          // Run afterAll hooks
+          if (afterAllHooks.length > 0) {
+            try {
+              await runHooks(afterAllHooks, MapPrototypeGet(testStates, desc.id).context);
+            } catch (error) {
+              // Log but don't fail the test since it's already completed
+            }
+          }
+          
+          // Run cleanup functions from beforeAll
+          for (const cleanup of beforeAllCleanups) {
+            try {
+              await cleanup();
+            } catch (error) {
+              // Log but don't fail the test since it's already completed
+            }
+          }
+          beforeAllCleanups.length = 0; // Clear cleanups
+        }
+      }
     }
   };
 }
 
 async function runHooks(hooks, context = null) {
+  const cleanups = [];
   for (const hook of hooks) {
     const result = await hook.fn(context);
     if (typeof result === "function") {
-      return result;
+      ArrayPrototypePush(cleanups, result);
     }
   }
-  return null;
+  return cleanups.length > 0 ? cleanups : null;
 }
 
 function wrapInner(fn) {
@@ -227,12 +243,15 @@ function wrapInner(fn) {
 
     const context = MapPrototypeGet(testStates, desc.id).context;
     
-    // Run beforeAll hooks only for top-level tests
-    if (!desc.parent && beforeAllHooks.length > 0) {
+    // Run beforeAll hooks only once for the first top-level test
+    if (!desc.parent && !beforeAllHooksRan && beforeAllHooks.length > 0) {
+      beforeAllHooksRan = true;
       try {
-        const cleanup = await runHooks(beforeAllHooks, context);
-        if (cleanup) {
-          ArrayPrototypePush(beforeAllCleanups, cleanup);
+        const cleanups = await runHooks(beforeAllHooks, context);
+        if (cleanups) {
+          for (const cleanup of cleanups) {
+            ArrayPrototypePush(beforeAllCleanups, cleanup);
+          }
         }
       } catch (error) {
         return { failed: { jsError: core.destructureError(error) } };
@@ -413,6 +432,9 @@ function testInner(
     children: [],
     completed: false,
   });
+  
+  // Track top-level tests for afterAll hook execution
+  registeredTopLevelTests.add(testDesc.id);
 }
 
 // Main test function provided by Deno.
@@ -436,32 +458,32 @@ test.only = function (
   return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
 };
 
-test.beforeAll = function (fn, timeout) {
+test.beforeAll = function (fn) {
   if (typeof fn !== "function") {
     throw new TypeError("beforeAll hook must be a function");
   }
-  ArrayPrototypePush(beforeAllHooks, { fn, timeout });
+  ArrayPrototypePush(beforeAllHooks, { fn });
 };
 
-test.beforeEach = function (fn, timeout) {
+test.beforeEach = function (fn) {
   if (typeof fn !== "function") {
     throw new TypeError("beforeEach hook must be a function");
   }
-  ArrayPrototypePush(beforeEachHooks, { fn, timeout });
+  ArrayPrototypePush(beforeEachHooks, { fn });
 };
 
-test.afterEach = function (fn, timeout) {
+test.afterEach = function (fn) {
   if (typeof fn !== "function") {
     throw new TypeError("afterEach hook must be a function");
   }
-  ArrayPrototypePush(afterEachHooks, { fn, timeout });
+  ArrayPrototypePush(afterEachHooks, { fn });
 };
 
-test.afterAll = function (fn, timeout) {
+test.afterAll = function (fn) {
   if (typeof fn !== "function") {
     throw new TypeError("afterAll hook must be a function");
   }
-  ArrayPrototypePush(afterAllHooks, { fn, timeout });
+  ArrayPrototypePush(afterAllHooks, { fn });
 };
 
 function getFullName(desc) {

@@ -1,0 +1,6 @@
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks_afterall_error/main.ts
+running 2 tests from ./main.ts
+first test ... ok ([WILDCARD])
+second test ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed ([WILDCARD])
