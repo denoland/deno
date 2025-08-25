@@ -1,5 +1,9 @@
 Check file:///Users/ib/dev/deno/tests/specs/test/hooks_error_handling/main.ts
 running 1 test from ./main.ts
+test should not run ...
+------- output -------
+beforeAll hook running
+----- output end -----
 test should not run ... FAILED ([WILDCARD])
 
  ERRORS 

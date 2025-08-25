@@ -1,33 +1,38 @@
 Check file:///Users/ib/dev/deno/tests/specs/test/hooks_mixed_errors/main.ts
 running 5 tests from ./main.ts
+test 1 - should pass ...
+------- output -------
+beforeAll executed
+beforeEach executed for test 1
+test 1 executed
+afterEach executed for test 1
+----- output end -----
 test 1 - should pass ... ok ([WILDCARD])
+test 2 - should pass ...
+------- output -------
+beforeEach executed for test 2
+test 2 executed
+afterEach executed for test 2
+----- output end -----
 test 2 - should pass ... ok ([WILDCARD])
+test 3 - beforeEach fails ...
+------- output -------
+beforeEach executed for test 3
+----- output end -----
 test 3 - beforeEach fails ... FAILED ([WILDCARD])
+test 4 - afterEach fails ...
+------- output -------
+beforeEach executed for test 4
+test 4 executed
+afterEach executed for test 4
+----- output end -----
 test 4 - afterEach fails ... FAILED ([WILDCARD])
 test 5 - test itself fails ...
 ------- output -------
-Final logs: [
-  "beforeAll executed",
-  "beforeEach executed for test 1",
-  "test 1 executed",
-  "afterEach executed for test 1",
-  "beforeEach executed for test 2",
-  "test 2 executed",
-  "afterEach executed for test 2",
-  "beforeEach executed for test 3",
-  "beforeEach executed for test 4",
-  "test 4 executed",
-  "afterEach executed for test 4",
-  "beforeEach executed for test 5",
-  "test 5 executed",
-  "afterEach executed for test 5",
-  "afterAll executed"
-]
-Test 1 ran: true
-Test 2 ran: true
-Test 3 ran: false
-Test 4 ran: true
-Test 5 ran: true
+beforeEach executed for test 5
+test 5 executed
+afterEach executed for test 5
+afterAll executed
 ----- output end -----
 test 5 - test itself fails ... FAILED ([WILDCARD])
 
@@ -58,3 +63,5 @@ test 4 - afterEach fails => ./main.ts:51:6
 test 5 - test itself fails => ./main.ts:55:6
 
 FAILED | 2 passed | 3 failed ([WILDCARD])
+
+error: Test failed

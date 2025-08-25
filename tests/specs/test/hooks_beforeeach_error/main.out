@@ -1,20 +1,24 @@
 Check file:///Users/ib/dev/deno/tests/specs/test/hooks_beforeeach_error/main.ts
 running 3 tests from ./main.ts
+first test ...
+------- output -------
+beforeAll executed
+beforeEach executed for test 1
+first test executed
+afterEach executed for test 1
+----- output end -----
 first test ... ok ([WILDCARD])
+second test ...
+------- output -------
+beforeEach executed for test 2
+----- output end -----
 second test ... FAILED ([WILDCARD])
 third test ...
 ------- output -------
-Final logs: [
-  "beforeAll executed",
-  "beforeEach executed for test 1",
-  "first test executed",
-  "afterEach executed for test 1",
-  "beforeEach executed for test 2",
-  "beforeEach executed for test 3",
-  "third test executed",
-  "afterEach executed for test 3",
-  "afterAll executed"
-]
+beforeEach executed for test 3
+third test executed
+afterEach executed for test 3
+afterAll executed
 ----- output end -----
 third test ... ok ([WILDCARD])
 
@@ -31,3 +35,5 @@ error: Error: beforeEach hook failed on second test
 second test => ./main.ts:34:6
 
 FAILED | 2 passed | 1 failed ([WILDCARD])
+
+error: Test failed

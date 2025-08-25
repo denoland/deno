@@ -1,17 +1,16 @@
 // Test file to verify async error handling in hooks
-const logs: string[] = [];
 
 Deno.test.beforeAll(async () => {
-  logs.push("beforeAll started");
+  console.log("beforeAll started");
   await new Promise(resolve => setTimeout(resolve, 10));
-  logs.push("beforeAll completed");
+  console.log("beforeAll completed");
 });
 
 let testCount = 0;
 
 Deno.test.beforeEach(async () => {
   testCount++;
-  logs.push(`beforeEach started for test ${testCount}`);
+  console.log(`beforeEach started for test ${testCount}`);
   
   if (testCount === 2) {
     // Async rejection
@@ -20,35 +19,34 @@ Deno.test.beforeEach(async () => {
     });
   }
   
-  logs.push(`beforeEach completed for test ${testCount}`);
+  console.log(`beforeEach completed for test ${testCount}`);
 });
 
 Deno.test.afterEach(async () => {
-  logs.push(`afterEach started for test ${testCount}`);
+  console.log(`afterEach started for test ${testCount}`);
   
   if (testCount === 3) {
     // Async rejection in afterEach
     await Promise.reject(new Error("Async error in afterEach"));
   }
   
-  logs.push(`afterEach completed for test ${testCount}`);
+  console.log(`afterEach completed for test ${testCount}`);
 });
 
 Deno.test.afterAll(async () => {
-  logs.push("afterAll started");
+  console.log("afterAll started");
   await new Promise(resolve => setTimeout(resolve, 5));
-  logs.push("afterAll completed");
-  console.log("Final logs:", logs);
+  console.log("afterAll completed");
 });
 
 Deno.test("first test", () => {
-  logs.push("first test executed");
+  console.log("first test executed");
 });
 
 Deno.test("second test (beforeEach fails)", () => {
-  logs.push("second test executed");
+  console.log("second test executed");
 });
 
 Deno.test("third test (afterEach fails)", () => {
-  logs.push("third test executed");
+  console.log("third test executed");
 });

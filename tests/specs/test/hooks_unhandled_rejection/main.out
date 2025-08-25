@@ -1,6 +1,10 @@
 Check file:///Users/ib/dev/deno/tests/specs/test/hooks_unhandled_rejection/main.ts
 running 1 test from ./main.ts
 test with unhandled rejection in beforeEach ...
+------- output -------
+beforeAll executed
+beforeEach executed
+----- output end -----
 Uncaught error from ./main.ts FAILED
 test with unhandled rejection in beforeEach ... cancelled ([WILDCARD])
 
@@ -19,3 +23,5 @@ It most likely originated from a dangling promise, event/timeout handler or top-
 ./main.ts (uncaught error)
 
 FAILED | 0 passed | 2 failed ([WILDCARD])
+
+error: Test failed
