@@ -8,6 +8,7 @@ Deno.test("[node/sqlite] sqlite-type symbol", () => {
   const db = new DatabaseSync(":memory:");
   const sqliteTypeSymbol = Symbol.for("sqlite-type");
 
+  // @ts-ignore `sqliteTypeSymbol` is not available in `@types:node` for version 24.3
   assertEquals(db[sqliteTypeSymbol], "node:sqlite");
 
   db.close();
