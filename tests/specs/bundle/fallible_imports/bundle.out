@@ -1,0 +1,28 @@
+[WILDCARD]
+// node_modules/.deno/@denotest+fallible-imports@1.0.0/node_modules/@denotest/fallible-imports/mod.js
+var require_mod = __commonJS({
+  "node_modules/.deno/@denotest+fallible-imports@1.0.0/node_modules/@denotest/fallible-imports/mod.js"(exports, module) {
+    var chalk;
+    try {
+      chalk = __require("chalk");
+    } catch (e) {
+    }
+    module.exports = {
+      foo: "bar"
+    };
+  }
+});
+
+// main.ts
+var import_fallible_imports = __toESM(require_mod());
+
+// node_modules/.deno/@denotest+fallible-imports@1.0.0/node_modules/@denotest/fallible-imports/other.mjs
+try {
+  await import("chalk");
+} catch (e) {
+}
+var thing = "thing";
+
+// main.ts
+console.log(import_fallible_imports.foo);
+console.log(thing);

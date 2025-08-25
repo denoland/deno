@@ -1,0 +1,48 @@
+{
+  "tempDir": true,
+
+  "tests": {
+    "npm_ok": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "bundle main.ts",
+          "output": "bundle.out"
+        }
+      ]
+    },
+    "npm_bad": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "bundle bad.ts",
+          "output": "bad.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "local_ok": {
+      "steps": [
+        {
+          "args": "bundle local.ts",
+          "output": "local.out"
+        }
+      ]
+    },
+    "local_bad": {
+      "steps": [
+        {
+          "args": "bundle local_bad.ts",
+          "output": "local_bad.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}

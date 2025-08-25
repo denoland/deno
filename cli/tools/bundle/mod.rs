@@ -6,6 +6,7 @@ mod transform;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -19,6 +20,7 @@ use deno_ast::ModuleSpecifier;
 use deno_config::workspace::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
@@ -44,6 +46,7 @@ use esbuild_client::protocol::BuildResponse;
 use indexmap::IndexMap;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageSubpathResolveError;
 use sys_traits::EnvCurrentDir;
 
@@ -110,6 +113,7 @@ pub async fn bundle(
       Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
     },
     on_end_tx,
+    deferred_resolve_errors: Arc::new(Mutex::new(vec![])),
   });
   let start = std::time::Instant::now();
 
@@ -164,7 +168,11 @@ pub async fn bundle(
     .await;
   }
 
-  handle_esbuild_errors_and_warnings(&response, &init_cwd);
+  handle_esbuild_errors_and_warnings(
+    &response,
+    &init_cwd,
+    &plugin_handler.take_deferred_resolve_errors(),
+  );
 
   if response.errors.is_empty() {
     let metafile = metafile_from_response(&response)?;
@@ -236,7 +244,11 @@ async fn bundle_watch(
             .await?;
         }
         let response = bundler.rebuild().await?;
-        handle_esbuild_errors_and_warnings(&response, &bundler.cwd);
+        handle_esbuild_errors_and_warnings(
+          &response,
+          &bundler.cwd,
+          &bundler.plugin_handler.take_deferred_resolve_errors(),
+        );
         if response.errors.is_empty() {
           let metafile = metafile_from_response(&response)?;
           let output_infos = process_result(
@@ -403,12 +415,54 @@ var __require = createRequire(import.meta.url);
   }
 }
 
+fn format_location(
+  location: &esbuild_client::protocol::Location,
+  current_dir: &Path,
+) -> String {
+  let url =
+    deno_path_util::resolve_url_or_path(location.file.as_str(), current_dir)
+      .map(|url| deno_terminal::colors::cyan(url.into()))
+      .unwrap_or(deno_terminal::colors::cyan(location.file.clone()));
+
+  format!(
+    "{}:{}:{}",
+    url,
+    deno_terminal::colors::yellow(location.line),
+    deno_terminal::colors::yellow(location.column)
+  )
+}
+
+fn format_note(
+  note: &esbuild_client::protocol::Note,
+  current_dir: &Path,
+) -> String {
+  format!(
+    "{}: {}{}",
+    deno_terminal::colors::magenta("note"),
+    note.text,
+    if let Some(location) = &note.location {
+      format!("\n    {}", format_location(location, current_dir))
+    } else {
+      String::new()
+    }
+  )
+}
+
+// not very efficient, but it's only for error messages
+fn add_indent(s: &str, indent: &str) -> String {
+  let lines = s
+    .lines()
+    .map(|line| format!("{}{}", indent, line))
+    .collect::<Vec<_>>();
+  lines.join("\n")
+}
+
 fn format_message(
   message: &esbuild_client::protocol::Message,
   current_dir: &Path,
 ) -> String {
   format!(
-    "{}{}{}",
+    "{}{}{}{}",
     message.text,
     if message.id.is_empty() {
       String::new()
@@ -417,20 +471,20 @@ fn format_message(
     },
     if let Some(location) = &message.location {
       if !message.text.contains(" at ") {
-        format!(
-          "\n    at {}:{}:{}",
-          deno_path_util::resolve_url_or_path(
-            location.file.as_str(),
-            current_dir
-          )
-          .map(|url| deno_terminal::colors::cyan(url.into()))
-          .unwrap_or(deno_terminal::colors::cyan(location.file.clone())),
-          deno_terminal::colors::yellow(location.line),
-          deno_terminal::colors::yellow(location.column)
-        )
+        format!("\n    at {}", format_location(location, current_dir))
       } else {
         String::new()
       }
+    } else {
+      String::new()
+    },
+    if !message.notes.is_empty() {
+      let mut s = String::new();
+      for note in &message.notes {
+        s.push('\n');
+        s.push_str(&add_indent(&format_note(note, current_dir), "    "));
+      }
+      s
     } else {
       String::new()
     }
@@ -481,6 +535,11 @@ fn requested_type_from_map(
   }
 }
 
+pub struct DeferredResolveError {
+  path: String,
+  error: ResolveWithGraphError,
+}
+
 pub struct DenoPluginHandler {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: Arc<CliResolver>,
@@ -490,6 +549,13 @@ pub struct DenoPluginHandler {
   module_loader: Arc<CliDenoResolverModuleLoader>,
   externals_matcher: Option<ExternalsMatcher>,
   on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
+  deferred_resolve_errors: Arc<Mutex<Vec<DeferredResolveError>>>,
+}
+
+impl DenoPluginHandler {
+  fn take_deferred_resolve_errors(&self) -> Vec<DeferredResolveError> {
+    std::mem::take(&mut *self.deferred_resolve_errors.lock())
+  }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -685,6 +751,40 @@ impl BundleLoadError {
   }
 }
 
+fn maybe_ignorable_resolution_error(
+  error: &ResolveWithGraphError,
+) -> Option<String> {
+  if let deno_resolver::graph::ResolveWithGraphErrorKind::Resolve(e) =
+    error.as_kind()
+    && let deno_resolver::DenoResolveErrorKind::Node(node_err) = e.as_kind()
+    && let node_resolver::errors::NodeResolveErrorKind::PackageResolve(pkg_err) =
+      node_err.as_kind()
+    && let node_resolver::errors::PackageResolveErrorKind::PackageFolderResolve(
+      pkg_folder_err,
+    ) = pkg_err.as_kind()
+    && let node_resolver::errors::PackageFolderResolveErrorKind::PackageNotFound(
+      PackageNotFoundError { package_name, .. },
+    ) = pkg_folder_err.as_kind()
+  {
+    Some(package_name.to_string())
+  } else if let deno_resolver::graph::ResolveWithGraphErrorKind::Resolution(
+    deno_graph::ResolutionError::ResolverError {
+      error: resolve_error,
+      specifier,
+      ..
+    },
+  ) = error.as_kind()
+    && let deno_graph::source::ResolveError::ImportMap(import_map_err) =
+      resolve_error.deref()
+    && let import_map::ImportMapErrorKind::UnmappedBareSpecifier(..) =
+      import_map_err.as_kind()
+  {
+    Some(specifier.to_string())
+  } else {
+    None
+  }
+}
+
 impl DenoPluginHandler {
   async fn reload_specifiers(
     &self,
@@ -777,6 +877,22 @@ impl DenoPluginHandler {
       Ok(specifier) => Ok(Some(file_path_or_url(specifier)?)),
       Err(e) => {
         log::debug!("{}: {:?}", deno_terminal::colors::red("error"), e);
+        if let Some(specifier) = maybe_ignorable_resolution_error(&e) {
+          log::debug!(
+            "{}: resolution failed, but maybe ignorable",
+            deno_terminal::colors::red("warn")
+          );
+          self
+            .deferred_resolve_errors
+            .lock()
+            .push(DeferredResolveError {
+              path: specifier,
+              error: e,
+            });
+          // we return None here because this lets esbuild choose to ignore the failure
+          // for fallible imports/requires
+          return Ok(None);
+        }
         Err(BundleError::Resolver(e))
       }
     }
@@ -1174,11 +1290,41 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   builder.build().unwrap()
 }
 
+// extract the path from a message like "Could not resolve "path/to/file.ts""
+fn esbuild_resolve_error_path(
+  error: &esbuild_client::protocol::Message,
+) -> Option<String> {
+  let re = lazy_regex::regex!(r#"^Could not resolve "([^"]+)"#);
+  if let Some(captures) = re.captures(error.text.as_str()) {
+    Some(captures.get(1).unwrap().as_str().to_string())
+  } else {
+    None
+  }
+}
+
 fn handle_esbuild_errors_and_warnings(
   response: &BuildResponse,
   init_cwd: &Path,
+  deferred_resolve_errors: &[DeferredResolveError],
 ) {
   for error in &response.errors {
+    if let Some(path) = esbuild_resolve_error_path(error) {
+      if let Some(deferred_resolve_error) =
+        deferred_resolve_errors.iter().find(|e| e.path == path)
+      {
+        let error = protocol::Message {
+          // use our own error message, as it has more detail
+          text: deferred_resolve_error.error.to_string(),
+          ..error.clone()
+        };
+        log::error!(
+          "{}: {}",
+          deno_terminal::colors::red_bold("error"),
+          format_message(&error, init_cwd)
+        );
+        continue;
+      }
+    }
     log::error!(
       "{}: {}",
       deno_terminal::colors::red_bold("error"),
