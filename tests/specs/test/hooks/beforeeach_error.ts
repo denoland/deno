@@ -9,7 +9,7 @@ let testCount = 0;
 Deno.test.beforeEach(() => {
   testCount++;
   console.log(`beforeEach executed for test ${testCount}`);
-  
+
   // Throw error on second test
   if (testCount === 2) {
     throw new Error("beforeEach hook failed on second test");

@@ -1168,7 +1168,7 @@ declare namespace Deno {
     ): void;
 
     /** Register a function to be called before all tests in the current scope.
-     * 
+     *
      * The function can optionally return a cleanup function that will be called
      * after all tests have completed.
      *
@@ -1176,7 +1176,7 @@ declare namespace Deno {
      * Deno.test.beforeAll(() => {
      *   // Setup code that runs once before all tests
      *   console.log("Setting up test suite");
-     *   
+     *
      *   // Optionally return a cleanup function
      *   return () => {
      *     console.log("Cleaning up after all tests");
@@ -1186,7 +1186,9 @@ declare namespace Deno {
      *
      * @category Testing
      */
-    beforeAll(fn: () => void | Promise<void> | (() => void | Promise<void>)): void;
+    beforeAll(
+      fn: () => void | Promise<void> | (() => void | Promise<void>),
+    ): void;
 
     /** Register a function to be called before each test in the current scope.
      *

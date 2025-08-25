@@ -170,7 +170,6 @@ fn op_register_hook(
   Ok(())
 }
 
-
 #[op2]
 #[string]
 fn op_test_get_origin(state: &mut OpState) -> String {

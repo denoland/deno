@@ -2,7 +2,7 @@
 
 Deno.test.beforeAll(() => {
   console.log("beforeAll executed");
-  
+
   return () => {
     console.log("beforeAll cleanup executed");
   };

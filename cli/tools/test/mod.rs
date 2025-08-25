@@ -251,7 +251,7 @@ pub struct HookDescription {
 pub(crate) struct TestContainer(
   TestDescriptions,
   Vec<v8::Global<v8::Function>>,
-  IndexMap<usize, (HookDescription, v8::Global<v8::Function>)>,  // hooks with their functions
+  IndexMap<usize, (HookDescription, v8::Global<v8::Function>)>, // hooks with their functions
 );
 
 impl TestContainer {
@@ -275,7 +275,6 @@ impl TestContainer {
   pub fn is_empty(&self) -> bool {
     self.1.is_empty()
   }
-
 }
 
 #[derive(Default, Debug)]
@@ -1037,7 +1036,9 @@ async fn run_tests_for_worker_inner(
   }
 
   // Execute beforeAll hooks
-  if let Some(js_error) = execute_hooks(worker, &hooks, &HookType::BeforeAll).await? {
+  if let Some(js_error) =
+    execute_hooks(worker, &hooks, &HookType::BeforeAll).await?
+  {
     // beforeAll failed - this should fail the entire test run since no tests can proceed
     return Err(RunTestsForWorkerErr::Core(CoreError::from(js_error)));
   }
@@ -1084,10 +1085,13 @@ async fn run_tests_for_worker_inner(
     let earlier = Instant::now();
 
     // Execute beforeEach hooks
-    if let Some(js_error) = execute_hooks(worker, &hooks, &HookType::BeforeEach).await? {
+    if let Some(js_error) =
+      execute_hooks(worker, &hooks, &HookType::BeforeEach).await?
+    {
       // beforeEach failed - mark this test as failed and continue to afterEach
       let elapsed = earlier.elapsed().as_millis();
-      let test_result = TestResult::Failed(TestFailure::JsError(Box::new(js_error)));
+      let test_result =
+        TestResult::Failed(TestFailure::JsError(Box::new(js_error)));
       send_test_event(
         &state_rc,
         TestEvent::Result(desc.id, test_result, elapsed as u64),
@@ -1204,11 +1208,14 @@ async fn run_tests_for_worker_inner(
     }
 
     // Execute afterEach hooks
-    if let Some(js_error) = execute_hooks(worker, &hooks, &HookType::AfterEach).await? {
+    if let Some(js_error) =
+      execute_hooks(worker, &hooks, &HookType::AfterEach).await?
+    {
       // afterEach failed - mark this test as failed
       fail_fast_tracker.add_failure();
       let elapsed = earlier.elapsed().as_millis();
-      let test_result = TestResult::Failed(TestFailure::JsError(Box::new(js_error)));
+      let test_result =
+        TestResult::Failed(TestFailure::JsError(Box::new(js_error)));
       send_test_event(
         &state_rc,
         TestEvent::Result(desc.id, test_result, elapsed as u64),

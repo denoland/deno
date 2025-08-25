@@ -9,7 +9,7 @@ let testCount = 0;
 Deno.test.beforeEach(() => {
   testCount++;
   console.log(`beforeEach executed for test ${testCount}`);
-  
+
   if (testCount === 3) {
     throw new Error("beforeEach failed for test 3");
   }
@@ -17,7 +17,7 @@ Deno.test.beforeEach(() => {
 
 Deno.test.afterEach(() => {
   console.log(`afterEach executed for test ${testCount}`);
-  
+
   if (testCount === 4) {
     throw new Error("afterEach failed for test 4");
   }

@@ -6,12 +6,12 @@ Deno.test.beforeAll(() => {
 
 Deno.test.beforeEach(async () => {
   console.log("beforeEach executed");
-  
+
   // Create an unhandled promise rejection
   Promise.reject(new Error("Unhandled rejection in beforeEach"));
-  
+
   // Wait a bit to let the rejection propagate
-  await new Promise(resolve => setTimeout(resolve, 10));
+  await new Promise((resolve) => setTimeout(resolve, 10));
 });
 
 Deno.test.afterEach(() => {

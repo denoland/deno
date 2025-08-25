@@ -2,7 +2,7 @@
 
 Deno.test.beforeAll(() => {
   console.log("beforeAll 1 executed");
-  
+
   return () => {
     console.log("beforeAll 1 cleanup executed");
     throw new Error("beforeAll 1 cleanup failed");
@@ -11,17 +11,17 @@ Deno.test.beforeAll(() => {
 
 Deno.test.beforeAll(() => {
   console.log("beforeAll 2 executed");
-  
+
   return async () => {
     console.log("beforeAll 2 cleanup started");
-    await new Promise(resolve => setTimeout(resolve, 5));
+    await new Promise((resolve) => setTimeout(resolve, 5));
     console.log("beforeAll 2 cleanup completed");
   };
 });
 
 Deno.test.beforeAll(() => {
   console.log("beforeAll 3 executed");
-  
+
   return () => {
     console.log("beforeAll 3 cleanup executed");
     throw new Error("beforeAll 3 cleanup failed");

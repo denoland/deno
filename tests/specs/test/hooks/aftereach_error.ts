@@ -13,7 +13,7 @@ Deno.test.beforeEach(() => {
 
 Deno.test.afterEach(() => {
   console.log(`afterEach executed for test ${testCount}`);
-  
+
   // Throw error on second test
   if (testCount === 2) {
     throw new Error("afterEach hook failed on second test");
