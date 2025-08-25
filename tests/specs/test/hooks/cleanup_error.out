@@ -1,0 +1,22 @@
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks/cleanup_error.ts
+running 2 tests from ./cleanup_error.ts
+test should run normally ...
+------- output -------
+beforeAll 1 executed
+beforeAll 2 executed
+beforeAll 3 executed
+test executed
+----- output end -----
+test should run normally ... ok ([WILDCARD])
+second test should also run ...
+------- output -------
+second test executed
+afterAll executed
+beforeAll 1 cleanup executed
+beforeAll 2 cleanup started
+beforeAll 2 cleanup completed
+beforeAll 3 cleanup executed
+----- output end -----
+second test should also run ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed ([WILDCARD])

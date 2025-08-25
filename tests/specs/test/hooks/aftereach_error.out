@@ -1,0 +1,41 @@
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks/aftereach_error.ts
+running 3 tests from ./aftereach_error.ts
+first test ...
+------- output -------
+beforeAll executed
+beforeEach executed for test 1
+first test executed
+afterEach executed for test 1
+----- output end -----
+first test ... ok ([WILDCARD])
+second test ...
+------- output -------
+beforeEach executed for test 2
+second test executed
+afterEach executed for test 2
+----- output end -----
+second test ... FAILED ([WILDCARD])
+third test ...
+------- output -------
+beforeEach executed for test 3
+third test executed
+afterEach executed for test 3
+afterAll executed
+----- output end -----
+third test ... ok ([WILDCARD])
+
+ ERRORS 
+
+second test => ./aftereach_error.ts:34:6
+error: Error: afterEach hook failed on second test
+    throw new Error("afterEach hook failed on second test");
+          ^
+    at Object.fn (file:///Users/ib/dev/deno/tests/specs/test/hooks/aftereach_error.ts:20:11)
+
+ FAILURES 
+
+second test => ./aftereach_error.ts:34:6
+
+FAILED | 2 passed | 1 failed ([WILDCARD])
+
+error: Test failed

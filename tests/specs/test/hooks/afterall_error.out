@@ -1,0 +1,24 @@
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks/afterall_error.ts
+running 2 tests from ./afterall_error.ts
+first test ...
+------- output -------
+beforeAll executed
+beforeEach executed
+test executed
+afterEach executed
+----- output end -----
+first test ... ok ([WILDCARD])
+second test ...
+------- output -------
+beforeEach executed
+second test executed
+afterEach executed
+afterAll 1 executed
+afterAll 2 executed
+✅ Hook execution continued despite afterAll error
+afterAll 3 executed
+beforeAll cleanup executed
+----- output end -----
+second test ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed ([WILDCARD])

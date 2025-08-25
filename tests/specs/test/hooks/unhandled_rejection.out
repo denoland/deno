@@ -1,0 +1,27 @@
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks/unhandled_rejection.ts
+running 1 test from ./unhandled_rejection.ts
+test with unhandled rejection in beforeEach ...
+------- output -------
+beforeAll executed
+beforeEach executed
+----- output end -----
+Uncaught error from ./unhandled_rejection.ts FAILED
+test with unhandled rejection in beforeEach ... cancelled ([WILDCARD])
+
+ ERRORS 
+
+./unhandled_rejection.ts (uncaught error)
+error: (in promise) Error: Unhandled rejection in beforeEach
+  Promise.reject(new Error("Unhandled rejection in beforeEach"));
+                 ^
+    at Object.fn (file:///Users/ib/dev/deno/tests/specs/test/hooks/unhandled_rejection.ts:12:18)
+This error was not caught from a test and caused the test runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+ FAILURES 
+
+./unhandled_rejection.ts (uncaught error)
+
+FAILED | 0 passed | 2 failed ([WILDCARD])
+
+error: Test failed

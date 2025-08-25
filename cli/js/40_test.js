@@ -7,6 +7,7 @@ import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 const {
   op_register_test_step,
   op_register_test,
+  op_register_hook,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
@@ -177,6 +178,7 @@ function wrapInner(fn) {
         },
       };
     }
+
     await fn(MapPrototypeGet(testStates, desc.id).context);
     let failedSteps = 0;
     for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
@@ -194,6 +196,8 @@ function wrapInner(fn) {
 
 const registerTestIdRetBuf = new Uint32Array(1);
 const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
+const registerHookIdRetBuf = new Uint32Array(1);
+const registerHookIdRetBufU8 = new Uint8Array(registerHookIdRetBuf.buffer);
 
 // As long as we're using one isolate per test, we can cache the origin since it won't change
 let cachedOrigin = undefined;
@@ -342,6 +346,44 @@ test.only = function (
   maybeFn,
 ) {
   return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
+};
+
+function registerHook(hookType, fn) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_hook !== "function") {
+    return;
+  }
+
+  if (typeof fn !== "function") {
+    throw new TypeError(`${hookType} hook must be a function`);
+  }
+
+  const location = core.currentUserCallSite();
+
+  op_register_hook(
+    fn,
+    hookType,
+    location.fileName,
+    location.lineNumber,
+    location.columnNumber,
+    registerHookIdRetBufU8,
+  );
+}
+
+test.beforeAll = function (fn) {
+  registerHook("beforeAll", fn);
+};
+
+test.beforeEach = function (fn) {
+  registerHook("beforeEach", fn);
+};
+
+test.afterEach = function (fn) {
+  registerHook("afterEach", fn);
+};
+
+test.afterAll = function (fn) {
+  registerHook("afterAll", fn);
 };
 
 function getFullName(desc) {

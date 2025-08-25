@@ -1,0 +1,39 @@
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks/beforeeach_error.ts
+running 3 tests from ./beforeeach_error.ts
+first test ...
+------- output -------
+beforeAll executed
+beforeEach executed for test 1
+first test executed
+afterEach executed for test 1
+----- output end -----
+first test ... ok ([WILDCARD])
+second test ...
+------- output -------
+beforeEach executed for test 2
+----- output end -----
+second test ... FAILED ([WILDCARD])
+third test ...
+------- output -------
+beforeEach executed for test 3
+third test executed
+afterEach executed for test 3
+afterAll executed
+----- output end -----
+third test ... ok ([WILDCARD])
+
+ ERRORS 
+
+second test => ./beforeeach_error.ts:34:6
+error: Error: beforeEach hook failed on second test
+    throw new Error("beforeEach hook failed on second test");
+          ^
+    at Object.fn (file:///Users/ib/dev/deno/tests/specs/test/hooks/beforeeach_error.ts:16:11)
+
+ FAILURES 
+
+second test => ./beforeeach_error.ts:34:6
+
+FAILED | 2 passed | 1 failed ([WILDCARD])
+
+error: Test failed

@@ -12,6 +12,8 @@ use deno_runtime::deno_permissions::ChildPermissionsArg;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use uuid::Uuid;
 
+use crate::tools::test::HookDescription;
+use crate::tools::test::HookType;
 use crate::tools::test::TestContainer;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestEvent;
@@ -26,6 +28,7 @@ deno_core::extension!(deno_test,
     op_pledge_test_permissions,
     op_restore_test_permissions,
     op_register_test,
+    op_register_hook,
     op_register_test_step,
     op_test_get_origin,
     op_test_event_step_wait,
@@ -129,6 +132,40 @@ fn op_register_test(
   };
   let container = state.borrow_mut::<TestContainer>();
   container.register(description, function);
+  ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
+  Ok(())
+}
+
+#[op2]
+fn op_register_hook(
+  state: &mut OpState,
+  #[global] function: v8::Global<v8::Function>,
+  #[serde] hook_type: HookType,
+  #[string] file_name: String,
+  #[smi] line_number: u32,
+  #[smi] column_number: u32,
+  #[buffer] ret_buf: &mut [u8],
+) -> Result<(), JsErrorBox> {
+  if ret_buf.len() != 4 {
+    return Err(JsErrorBox::type_error(format!(
+      "Invalid ret_buf length: {}",
+      ret_buf.len()
+    )));
+  }
+  let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+  let origin = state.borrow::<ModuleSpecifier>().to_string();
+  let description = HookDescription {
+    id,
+    hook_type,
+    origin: origin.clone(),
+    location: TestLocation {
+      file_name,
+      line_number,
+      column_number,
+    },
+  };
+  let container = state.borrow_mut::<TestContainer>();
+  container.register_hook(description, function);
   ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
   Ok(())
 }
