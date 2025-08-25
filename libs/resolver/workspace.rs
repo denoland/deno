@@ -1756,7 +1756,7 @@ fn pkg_json_to_version_info(
     bundle_dependencies: pkg_json
       .bundle_dependencies
       .as_ref()
-      .map(|d| parse_stack_string_array(&d))
+      .map(|d| parse_stack_string_array(d))
       .unwrap_or_default(),
     optional_dependencies: parse_deps(pkg_json.optional_dependencies.as_ref()),
     peer_dependencies: parse_deps(pkg_json.peer_dependencies.as_ref()),
