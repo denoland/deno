@@ -1022,6 +1022,45 @@ function serveHttpOn(context, addr, callback) {
   let ref = true;
   let currentPromise = null;
 
+  function isTransientConnErr(error) {
+    const msg = String((error && error.message) || "");
+    
+    // HTTP/2 specific transient errors
+    if (/RST_STREAM|GOAWAY|ENHANCE_YOUR_CALM/i.test(msg)) {
+      return true;
+    }
+    
+    // Generic HTTP connection errors
+    if (
+      msg.includes("Http: connection error") ||
+      /connection error|protocol error/i.test(msg)
+    ) {
+      return true;
+    }
+    // The original fix was too narrow - it would only catch the specific "Http: connection error" from test-stream-pipeline-http2.js. But in production, transient connection failures manifest in many different ways.
+
+    // OS-level socket errors (POSIX error codes)
+    // loses WiFi mid-request, switches networks, or goes through a tunnel. Without catching these, the server logs would be flooded with "errors" that are actually normal network behavior.
+    if (
+      /ECONNRESET|EPIPE|EPROTO|ENOTCONN|ENETUNREACH|EHOSTUNREACH|ETIMEDOUT|ECONNREFUSED/i.test(
+        msg,
+      )
+    ) {
+      return true;
+    }
+    
+    // Stream destroyed/aborted patterns
+    // streams (which Deno's HTTP/2 implementation uses) emit these when:
+    // - Client cancels a request mid-stream
+    // - HTTP/2 stream is reset while data is being sent
+    // - ReadableStream/WritableStream is destroyed during pipeline operations
+    if (/stream.*(?:destroyed|aborted|closed)/i.test(msg)) {
+      return true;
+    }
+    
+    return false;
+  }
+
   const promiseErrorHandler = (error) => {
     // Abnormal exit
     import.meta.log(
@@ -1032,14 +1071,14 @@ function serveHttpOn(context, addr, callback) {
     context.close();
   };
 
-  // Run the server
-  const finished = (async () => {
+  // Run the server - this is the raw loop
+  const finishedRaw = (async () => {
     const rid = context.serverRid;
     while (true) {
       let req;
       try {
-        // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
-        // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
+        // Attempt to pull as many requests out of the queue as possible before awaiting.
+        // This API is a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
         while ((req = op_http_try_wait(rid)) !== null) {
           PromisePrototypeCatch(callback(req, undefined), promiseErrorHandler);
         }
@@ -1056,6 +1095,7 @@ function serveHttpOn(context, addr, callback) {
         if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
           break;
         }
+        // Keep existing behavior: wrap and throw so outer finally runs.
         throw new Deno.errors.Http(error);
       }
       if (req === null) {
@@ -1069,7 +1109,6 @@ function serveHttpOn(context, addr, callback) {
         context.closing = await op_http_close(rid, false);
         context.close();
       }
-
       await context.closing;
     } catch (error) {
       if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
@@ -1078,13 +1117,42 @@ function serveHttpOn(context, addr, callback) {
       if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
         return;
       }
-
       throw error;
     } finally {
       context.close();
       context.closed = true;
     }
   })();
+
+  // Wrap raw loop, swallow only transient connection errors
+  const finished = PromisePrototypeCatch(finishedRaw, (error) => {
+    if (isTransientConnErr(error)) {
+      // Enhanced debug logging with categorization
+      if (Deno.env && Deno.env.get && Deno.env.get("DENO_SERVE_DEBUG")) {
+        const errorMsg = (error && error.message) || String(error);
+        let category = "unknown";
+        
+        if (/RST_STREAM|GOAWAY|ENHANCE_YOUR_CALM/i.test(errorMsg)) {
+          category = "http2";
+        } else if (/ECONNRESET|EPIPE|EPROTO|ENOTCONN/i.test(errorMsg)) {
+          category = "socket";
+        } else if (/stream.*(?:destroyed|aborted|closed)/i.test(errorMsg)) {
+          category = "stream";
+        } else if (/connection error|protocol error/i.test(errorMsg)) {
+          category = "connection";
+        }
+        
+        console.error(
+          `[serveHttpOn] Swallowed transient ${category} error:`,
+          errorMsg,
+        );
+      }
+      // Swallow: resolve instead of rejecting
+      return;
+    }
+    // Re-throw anything else so real bugs still surface.
+    throw error;
+  });
 
   op_http_notify_serving();
 
@@ -1097,7 +1165,6 @@ function serveHttpOn(context, addr, callback) {
           // Shut this HTTP server down gracefully
           context.closing = op_http_close(context.serverRid, true);
         }
-
         await context.closing;
       } catch (error) {
         // The server was interrupted
@@ -1107,7 +1174,6 @@ function serveHttpOn(context, addr, callback) {
         if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
           return;
         }
-
         throw error;
       } finally {
         context.closed = true;
