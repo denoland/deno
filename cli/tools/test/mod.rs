@@ -924,7 +924,7 @@ async fn execute_hooks(
   worker: &mut MainWorker,
   hooks: &IndexMap<usize, (HookDescription, v8::Global<v8::Function>)>,
   hook_type: &HookType,
-) -> Result<(), RunTestsForWorkerErr> {
+) -> Result<Option<JsError>, RunTestsForWorkerErr> {
   for (_, (desc, function)) in hooks {
     if &desc.hook_type == hook_type {
       // Call the hook function with no arguments (hooks typically don't need test context)
@@ -938,14 +938,17 @@ async fn execute_hooks(
         Ok(_) => {
           // Hook executed successfully
         }
-        Err(error) => {
-          // Hook failed - propagate the error to fail the test run
-          return Err(error.into());
+        Err(error) => match error.into_kind() {
+          CoreErrorKind::Js(js_error) => {
+            // Hook failed - return the error to be handled by the caller
+            return Ok(Some(js_error));
+          }
+          err => return Err(err.into_box().into()),
         },
       }
     }
   }
-  Ok(())
+  Ok(None)
 }
 
 async fn run_tests_for_worker_inner(
@@ -1034,7 +1037,10 @@ async fn run_tests_for_worker_inner(
   }
 
   // Execute beforeAll hooks
-  execute_hooks(worker, &hooks, &HookType::BeforeAll).await?;
+  if let Some(js_error) = execute_hooks(worker, &hooks, &HookType::BeforeAll).await? {
+    // beforeAll failed - this should fail the entire test run since no tests can proceed
+    return Err(RunTestsForWorkerErr::Core(CoreError::from(js_error)));
+  }
 
   for (desc, function) in tests_to_run.into_iter() {
     if fail_fast_tracker.should_stop() {
@@ -1075,11 +1081,21 @@ async fn run_tests_for_worker_inner(
 
     // We always capture stats, regardless of sanitization state
     let before = stats.clone().capture(&filter);
+    let earlier = Instant::now();
 
     // Execute beforeEach hooks
-    execute_hooks(worker, &hooks, &HookType::BeforeEach).await?;
-
-    let earlier = Instant::now();
+    if let Some(js_error) = execute_hooks(worker, &hooks, &HookType::BeforeEach).await? {
+      // beforeEach failed - mark this test as failed and continue to afterEach
+      let elapsed = earlier.elapsed().as_millis();
+      let test_result = TestResult::Failed(TestFailure::JsError(Box::new(js_error)));
+      send_test_event(
+        &state_rc,
+        TestEvent::Result(desc.id, test_result, elapsed as u64),
+      )?;
+      // Still run afterEach hooks even though beforeEach failed
+      let _ = execute_hooks(worker, &hooks, &HookType::AfterEach).await;
+      continue;
+    }
     let call = worker.js_runtime.call(&function);
 
     let slow_state_rc = state_rc.clone();
@@ -1147,7 +1163,7 @@ async fn run_tests_for_worker_inner(
     if matches!(result, TestResult::Failed(_)) {
       fail_fast_tracker.add_failure();
       // Execute afterEach hooks even for failed tests
-      execute_hooks(worker, &hooks, &HookType::AfterEach).await?;
+      let _ = execute_hooks(worker, &hooks, &HookType::AfterEach).await;
       let elapsed = earlier.elapsed().as_millis();
       send_test_event(
         &state_rc,
@@ -1173,7 +1189,7 @@ async fn run_tests_for_worker_inner(
         let failure = TestFailure::Leaked(formatted, trailer_notes);
         fail_fast_tracker.add_failure();
         // Execute afterEach hooks even for leaked tests
-        execute_hooks(worker, &hooks, &HookType::AfterEach).await?;
+        let _ = execute_hooks(worker, &hooks, &HookType::AfterEach).await;
         let elapsed = earlier.elapsed().as_millis();
         send_test_event(
           &state_rc,
@@ -1188,7 +1204,17 @@ async fn run_tests_for_worker_inner(
     }
 
     // Execute afterEach hooks
-    execute_hooks(worker, &hooks, &HookType::AfterEach).await?;
+    if let Some(js_error) = execute_hooks(worker, &hooks, &HookType::AfterEach).await? {
+      // afterEach failed - mark this test as failed
+      fail_fast_tracker.add_failure();
+      let elapsed = earlier.elapsed().as_millis();
+      let test_result = TestResult::Failed(TestFailure::JsError(Box::new(js_error)));
+      send_test_event(
+        &state_rc,
+        TestEvent::Result(desc.id, test_result, elapsed as u64),
+      )?;
+      continue;
+    }
 
     let elapsed = earlier.elapsed().as_millis();
     send_test_event(
@@ -1198,7 +1224,7 @@ async fn run_tests_for_worker_inner(
   }
 
   // Execute afterAll hooks
-  execute_hooks(worker, &hooks, &HookType::AfterAll).await?;
+  let _ = execute_hooks(worker, &hooks, &HookType::AfterAll).await;
 
   Ok(())
 }
