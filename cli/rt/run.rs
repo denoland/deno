@@ -930,8 +930,6 @@ pub async fn run(
         SloppyImportsOptions::Disabled
       },
       Default::default(),
-      Default::default(),
-      Default::default(),
       sys.clone(),
     )
   };

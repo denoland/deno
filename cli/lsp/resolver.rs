@@ -28,6 +28,7 @@ use deno_path_util::url_to_file_path;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmResolvers;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfig;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
@@ -493,6 +494,19 @@ impl LspResolver {
       resolver.add_npm_reqs(npm_reqs);
     }
     Self { unscoped, by_scope }
+  }
+
+  pub fn set_compiler_options_resolver(
+    &self,
+    value: &Arc<CompilerOptionsResolver>,
+  ) {
+    for resolver in
+      std::iter::once(&self.unscoped).chain(self.by_scope.values())
+    {
+      resolver
+        .workspace_resolver
+        .set_compiler_options_resolver(value.clone());
+    }
   }
 
   pub fn snapshot(&self) -> Arc<Self> {
@@ -1040,8 +1054,6 @@ impl<'a> ResolverFactory<'a> {
               pkg_json_dep_resolution,
               Default::default(),
               Default::default(),
-              Default::default(),
-              Default::default(),
               CliSys::default(),
             )
           })
@@ -1054,8 +1066,6 @@ impl<'a> ResolverFactory<'a> {
             Vec::new(),
             Vec::new(),
             PackageJsonDepResolution::Disabled,
-            Default::default(),
-            Default::default(),
             Default::default(),
             Default::default(),
             self.sys.clone(),
