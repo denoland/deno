@@ -222,7 +222,6 @@ pub struct PackageJson {
   pub types: Option<String>,
   pub types_versions: Option<Map<String, Value>>,
   pub dependencies: Option<IndexMap<String, String>>,
-  #[serde(alias = "bundledDependencies")]
   pub bundle_dependencies: Option<Vec<String>>,
   pub dev_dependencies: Option<IndexMap<String, String>>,
   pub peer_dependencies: Option<IndexMap<String, String>>,
@@ -806,6 +805,9 @@ mod test {
       "optionalDependencies": {
         "optional": "1.1"
       },
+      "bundleDependencies": [
+        "name"
+      ],
       "peerDependencies": {
         "peer": "1.0"
       },
