@@ -330,12 +330,8 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
       .unwrap_or(false)
   }
 
-  fn exists_sync(&self, path: &CheckedPath) -> bool {
-    self.stat_sync(path).is_ok()
-  }
-  async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
-    Ok(self.stat_async(path).await.is_ok())
-  }
+  fn exists_sync(&self, path: &CheckedPath) -> bool;
+  async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool>;
 
   fn read_text_file_lossy_sync(
     &self,

@@ -2,6 +2,8 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { exists, existsSync } from "node:fs";
 import { promisify } from "node:util";
+import { join } from "@std/path";
+import { symlink } from "node:fs/promises";
 
 Deno.test("[std/node/fs] exists", async function () {
   const availableFile = await new Promise((resolve) => {
@@ -58,4 +60,29 @@ Deno.test("[std/node/fs] exists callback isn't called twice if error is thrown",
   await Deno.remove(tempFile);
   assert(!success);
   assertStringIncludes(new TextDecoder().decode(stderr), "Error: success");
+});
+
+Deno.test("[std/node/fs] exists should return false on invalid symlink", async () => {
+  const tmpDir = await Deno.makeTempDir();
+  const symlinkTarget = join(tmpDir, "noop.link");
+  const symlinkPath = join(tmpDir, "link");
+  try {
+    await symlink(symlinkTarget, symlinkPath);
+    const isExists = await promisify(exists)(symlinkPath);
+    assert(!isExists);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("[std/node/fs] existsSync should return false on invalid symlink", async () => {
+  const tmpDir = await Deno.makeTempDir();
+  const symlinkTarget = join(tmpDir, "noop.link");
+  const symlinkPath = join(tmpDir, "link");
+  try {
+    await symlink(symlinkTarget, symlinkPath);
+    assert(!existsSync(symlinkPath));
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
 });
