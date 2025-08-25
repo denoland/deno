@@ -28,6 +28,7 @@ import { ERR_SERVER_NOT_RUNNING } from "ext:deno_node/internal/errors.ts";
 import { EventEmitter } from "node:events";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
+  validateAbortSignal,
   validateBoolean,
   validateInteger,
   validateObject,
@@ -1913,6 +1914,26 @@ export function Server(opts, requestListener?: ServerHandler): ServerImpl {
   return new ServerImpl(opts, requestListener);
 }
 
+function _addAbortSignalOption(server: ServerImpl, options: ListenOptions) {
+  if (options?.signal === undefined) {
+    return;
+  }
+
+  validateAbortSignal(options.signal, "options.signal");
+  const { signal } = options;
+
+  const onAborted = () => {
+    server.close();
+  };
+
+  if (signal.aborted) {
+    nextTick(onAborted);
+  } else {
+    signal.addEventListener("abort", onAborted);
+    server.once("close", () => signal.removeEventListener("abort", onAborted));
+  }
+}
+
 export class ServerImpl extends EventEmitter {
   #addr: Deno.NetAddr | null = null;
   #hasClosed = false;
@@ -1959,6 +1980,8 @@ export class ServerImpl extends EventEmitter {
       validatePort(options.port, "options.port");
       port = options.port | 0;
     }
+
+    _addAbortSignalOption(this, options);
 
     // TODO(bnoordhuis) Node prefers [::] when host is omitted,
     // we on the other hand default to 0.0.0.0.
