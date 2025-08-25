@@ -3,9 +3,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use deno_core::OpState;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::OpState;
 use deno_error::JsErrorBox;
 
 deno_core::extension!(
@@ -166,11 +166,35 @@ pub struct Location {
   pub suggestion: String,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct OnResolveOptions {
+  pub filter: String,
+  pub namespace: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct OnLoadOptions {
+  pub filter: String,
+  pub namespace: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct PluginInfo {
+  pub name: String,
+  pub id: u32,
+  pub on_start: bool,
+  pub on_end: bool,
+  pub on_resolve: OnResolveOptions,
+  pub on_load: OnLoadOptions,
+  pub on_dispose: bool,
+}
+
 #[op2(async)]
 #[serde]
 pub async fn op_bundle(
   state: Rc<RefCell<OpState>>,
   #[serde] options: BundleOptions,
+  #[serde] plugins: Option<Vec<PluginInfo>>,
 ) -> Result<BuildResponse, JsErrorBox> {
   let state = state.borrow();
   let provider = state.borrow::<Arc<dyn BundleProvider>>().clone();
