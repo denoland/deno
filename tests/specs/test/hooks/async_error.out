@@ -1,5 +1,5 @@
-Check file:///Users/ib/dev/deno/tests/specs/test/hooks_async_error/main.ts
-running 3 tests from ./main.ts
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks/async_error.ts
+running 3 tests from ./async_error.ts
 first test ...
 ------- output -------
 beforeAll started
@@ -29,22 +29,22 @@ third test (afterEach fails) ... FAILED ([WILDCARD])
 
  ERRORS 
 
-second test (beforeEach fails) => ./main.ts:48:6
+second test (beforeEach fails) => ./async_error.ts:48:6
 error: Error: Async error in beforeEach
       setTimeout(() => reject(new Error("Async error in beforeEach")), 5);
                               ^
-    at file:///Users/ib/dev/deno/tests/specs/test/hooks_async_error/main.ts:19:31
+    at file:///Users/ib/dev/deno/tests/specs/test/hooks/async_error.ts:19:31
 
-third test (afterEach fails) => ./main.ts:52:6
+third test (afterEach fails) => ./async_error.ts:52:6
 error: Error: Async error in afterEach
     await Promise.reject(new Error("Async error in afterEach"));
                          ^
-    at Object.fn (file:///Users/ib/dev/deno/tests/specs/test/hooks_async_error/main.ts:31:26)
+    at Object.fn (file:///Users/ib/dev/deno/tests/specs/test/hooks/async_error.ts:31:26)
 
  FAILURES 
 
-second test (beforeEach fails) => ./main.ts:48:6
-third test (afterEach fails) => ./main.ts:52:6
+second test (beforeEach fails) => ./async_error.ts:48:6
+third test (afterEach fails) => ./async_error.ts:52:6
 
 FAILED | 1 passed | 2 failed ([WILDCARD])
 

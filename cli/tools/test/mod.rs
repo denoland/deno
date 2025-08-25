@@ -938,12 +938,9 @@ async fn execute_hooks(
         Ok(_) => {
           // Hook executed successfully
         }
-        Err(error) => match error.into_kind() {
-          CoreErrorKind::Js(js_error) => {
-            // For now, just ignore hook errors - we might want to log them or fail the test run
-            eprintln!("Hook error: {}", js_error);
-          }
-          err => return Err(err.into_box().into()),
+        Err(error) => {
+          // Hook failed - propagate the error to fail the test run
+          return Err(error.into());
         },
       }
     }

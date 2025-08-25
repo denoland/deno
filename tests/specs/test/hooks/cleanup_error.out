@@ -1,5 +1,5 @@
-Check file:///Users/ib/dev/deno/tests/specs/test/hooks_cleanup_error/main.ts
-running 2 tests from ./main.ts
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks/cleanup_error.ts
+running 2 tests from ./cleanup_error.ts
 test should run normally ...
 ------- output -------
 beforeAll 1 executed

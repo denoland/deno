@@ -1,5 +1,5 @@
-Check file:///Users/ib/dev/deno/tests/specs/test/hooks_aftereach_error/main.ts
-running 3 tests from ./main.ts
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks/aftereach_error.ts
+running 3 tests from ./aftereach_error.ts
 first test ...
 ------- output -------
 beforeAll executed
@@ -26,15 +26,15 @@ third test ... ok ([WILDCARD])
 
  ERRORS 
 
-second test => ./main.ts:34:6
+second test => ./aftereach_error.ts:34:6
 error: Error: afterEach hook failed on second test
     throw new Error("afterEach hook failed on second test");
           ^
-    at Object.fn (file:///Users/ib/dev/deno/tests/specs/test/hooks_aftereach_error/main.ts:20:11)
+    at Object.fn (file:///Users/ib/dev/deno/tests/specs/test/hooks/aftereach_error.ts:20:11)
 
  FAILURES 
 
-second test => ./main.ts:34:6
+second test => ./aftereach_error.ts:34:6
 
 FAILED | 2 passed | 1 failed ([WILDCARD])
 

@@ -1,5 +1,5 @@
-Check file:///Users/ib/dev/deno/tests/specs/test/hooks_afterall_error/main.ts
-running 2 tests from ./main.ts
+Check file:///Users/ib/dev/deno/tests/specs/test/hooks/afterall_error.ts
+running 2 tests from ./afterall_error.ts
 first test ...
 ------- output -------
 beforeAll executed
