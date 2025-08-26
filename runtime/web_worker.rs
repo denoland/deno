@@ -405,7 +405,7 @@ pub struct WebWorkerOptions {
   pub worker_type: WorkerThreadType,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
   pub enable_raw_imports: bool,
@@ -630,7 +630,7 @@ impl WebWorker {
     // Get our op metrics
     let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
       options.bootstrap.enable_op_summary_metrics,
-      options.strace_ops,
+      options.trace_ops,
     );
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
