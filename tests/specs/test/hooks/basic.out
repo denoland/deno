@@ -1,5 +1,5 @@
-Check [WILDCARD]main.ts
-running 3 tests from ./main.ts
+Check [WILDCARD]basic.ts
+running 3 tests from ./basic.ts
 ------- pre-test output -------
 beforeAll 1
 beforeAll 2
@@ -31,10 +31,10 @@ test 3
 afterEach 2
 afterEach 1
 ----- output end -----
------- post-test output ------
+third test ... ok ([WILDCARD])
+------- post-test output -------
 afterAll 2
 afterAll 1
----- post-test output end ----
-third test ... ok ([WILDCARD])
+----- post-test output end -----
 
 ok | 3 passed | 0 failed ([WILDCARD])
