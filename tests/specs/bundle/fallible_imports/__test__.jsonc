@@ -9,8 +9,12 @@
           "output": "[WILDCARD]"
         },
         {
-          "args": "bundle main.ts",
+          "args": "bundle -o out.js main.ts",
           "output": "bundle.out"
+        },
+        {
+          "args": "run out.js",
+          "output": "bar\nthing\n"
         }
       ]
     },
@@ -30,8 +34,12 @@
     "local_ok": {
       "steps": [
         {
-          "args": "bundle local.ts",
+          "args": "bundle -o out.js local.ts",
           "output": "local.out"
+        },
+        {
+          "args": "run out.js",
+          "output": "import failed\nafter import\n"
         }
       ]
     },

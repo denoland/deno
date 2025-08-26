@@ -1,7 +1,4 @@
 [WILDCARD]
-// local.ts
-try {
-  await import("bad");
-} catch (e) {
-  console.log(e);
-}
+Bundled 1 module in [WILDLINE]
+  out.js [WILDLINE]
+

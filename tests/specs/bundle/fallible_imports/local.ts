@@ -1,5 +1,7 @@
 try {
   await import("bad");
-} catch (e) {
-  console.log(e);
+} catch (_e) {
+  console.log("import failed");
 }
+
+console.log("after import");
