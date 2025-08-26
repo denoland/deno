@@ -903,7 +903,7 @@ pub async fn run_tests_for_worker(
 
   let tests: Arc<TestDescriptions> = tests.into();
   send_test_event(&state_rc, TestEvent::Register(tests.clone()))?;
-  let res = run_tests_for_worker_inner(
+  run_tests_for_worker_inner(
     worker,
     specifier,
     tests,
@@ -912,9 +912,7 @@ pub async fn run_tests_for_worker(
     options,
     fail_fast_tracker,
   )
-  .await;
-
-  res
+  .await
 }
 
 async fn run_tests_for_worker_inner(
