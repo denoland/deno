@@ -1045,39 +1045,37 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
   ) -> Result<(), std::io::Error> {
     if !packages.is_empty() {
+      log::warn!("{} {}", colors::yellow("╭"), colors::yellow_bold("Warning"));
+      log::warn!("{}", colors::yellow("│"));
       log::warn!(
-        "{} The following packages contained npm lifecycle scripts ({}) that were not executed:",
-        colors::yellow("Warning"),
-        colors::gray("preinstall/install/postinstall")
+        "{}  Ignored build scripts for packages:",
+        colors::yellow("│"),
       );
 
       for (package, _) in packages {
-        log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
+        log::warn!(
+          "{}  {}",
+          colors::yellow("│"),
+          colors::italic(format!("npm:{}", package.id.nv))
+        );
       }
 
-      log::warn!("┃");
-      log::warn!(
-        "┠─ {}",
-        colors::italic("This may cause the packages to not work correctly.")
-      );
-      log::warn!(
-        "┖─ {}",
-        colors::italic(
-          "To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"
-        )
-      );
+      log::warn!("{}", colors::yellow("│"));
+
       let packages_comma_separated = packages
         .iter()
         .map(|(p, _)| format!("npm:{}", p.id.nv))
         .collect::<Vec<_>>()
         .join(",");
       log::warn!(
-        "   {}",
+        "{}  Run \"{}\" to run build scripts.",
+        colors::yellow("│"),
         colors::bold(format!(
           "deno install --allow-scripts={}",
           packages_comma_separated
         ))
       );
+      log::warn!("{}", colors::yellow("╰─"));
 
       for (package, _) in packages {
         let _ignore_err =
