@@ -59,7 +59,7 @@ pub struct LintRulesConfig {
 
 #[derive(Debug, JsError, Error)]
 #[class(generic)]
-#[error("Undefined permission: {0}")]
+#[error("Could not find permission set '{0}' in deno.json")]
 pub struct UndefinedPermissionError(String);
 
 #[derive(Debug, JsError, Boxed)]

@@ -1,0 +1,5 @@
+[# this should NOT err because users should be able to unconditionally provide -P and have it not fail]
+prompt
+prompt
+prompt
+prompt
