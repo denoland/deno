@@ -49,6 +49,7 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageSubpathResolveError;
 use sys_traits::EnvCurrentDir;
+use tokio::sync::oneshot;
 
 use crate::args::BundleFlags;
 use crate::args::BundleFormat;
@@ -117,16 +118,24 @@ pub async fn bundle_init(
     js_plugins: plugins,
   });
 
-  let resolved_entrypoints =
-    resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
+  eprintln!("resolve_entrypoints");
+  let resolved_entrypoints = dbg!(resolve_entrypoints(
+    &resolver,
+    &init_cwd,
+    &bundle_flags.entrypoints
+  ))?;
+  eprintln!("prepare_module_load");
   let _ = plugin_handler
     .prepare_module_load(&resolved_entrypoints)
     .await;
 
+  eprintln!("resolve_roots");
   let roots =
     resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
+  eprintln!("prepare_module_load");
   let _ = plugin_handler.prepare_module_load(&roots).await;
 
+  eprintln!("EsbuildService::new");
   let esbuild = EsbuildService::new(
     esbuild_path,
     esbuild::ESBUILD_VERSION,
@@ -136,6 +145,8 @@ pub async fn bundle_init(
   .await
   .unwrap();
   let client = esbuild.client().clone();
+
+  eprintln!("made service");
 
   tokio::spawn(async move {
     let res = esbuild.wait_for_exit().await;
@@ -376,6 +387,7 @@ impl EsbuildBundler {
   }
 
   async fn build(&self) -> Result<BuildResponse, AnyError> {
+    eprintln!("EsbuildBundler::build");
     let response = self
       .client
       .send_build_request(self.make_build_request())
@@ -514,6 +526,56 @@ pub struct DenoPluginHandler {
   js_plugins: Option<deno_runtime::ops::bundle::Plugins>,
 }
 
+/*#[derive(Debug, Clone)]
+pub struct OnResolveArgs {
+    pub path: String,
+    pub importer: Option<String>,
+    pub kind: ImportKind,
+    pub namespace: Option<String>,
+    pub resolve_dir: Option<String>,
+    pub with: IndexMap<String, String>,
+} */
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum PluginImportKind {
+  EntryPoint,
+  ImportStatement,
+  RequireCall,
+  DynamicImport,
+  RequireResolve,
+  ImportRule,
+  ComposesFrom,
+  UrlToken,
+}
+
+impl From<protocol::ImportKind> for PluginImportKind {
+  fn from(kind: protocol::ImportKind) -> Self {
+    match kind {
+      protocol::ImportKind::EntryPoint => PluginImportKind::EntryPoint,
+      protocol::ImportKind::ImportStatement => {
+        PluginImportKind::ImportStatement
+      }
+      protocol::ImportKind::RequireCall => PluginImportKind::RequireCall,
+      protocol::ImportKind::DynamicImport => PluginImportKind::DynamicImport,
+      protocol::ImportKind::RequireResolve => PluginImportKind::RequireResolve,
+      protocol::ImportKind::ImportRule => PluginImportKind::ImportRule,
+      protocol::ImportKind::ComposesFrom => PluginImportKind::ComposesFrom,
+      protocol::ImportKind::UrlToken => PluginImportKind::UrlToken,
+    }
+  }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PluginOnResolveArgs {
+  path: String,
+  importer: Option<String>,
+  kind: PluginImportKind,
+  namespace: Option<String>,
+  resolve_dir: Option<String>,
+  with: IndexMap<String, String>,
+}
+
 #[async_trait::async_trait(?Send)]
 impl esbuild_client::PluginHandler for DenoPluginHandler {
   async fn on_resolve(
@@ -532,6 +594,76 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         ..Default::default()
       }));
     }
+
+    if let Some(js_plugins) = &self.js_plugins {
+      let (tx, rx) = oneshot::channel();
+      let request = deno_runtime::ops::bundle::PluginRequest::OnResolve {
+        plugin_ids: js_plugins
+          .info
+          .iter()
+          .filter_map(|p| {
+            p.on_resolve.as_ref().and_then(|o| {
+              dbg!(&o.filter).is_match(args.path.as_str()).then(|| p.id)
+            })
+          })
+          .collect(),
+        args: vec![serde_json::to_value(PluginOnResolveArgs {
+          path: args.path.clone(),
+          importer: args.importer.clone(),
+          kind: args.kind.into(),
+          namespace: args.namespace.clone(),
+          resolve_dir: args.resolve_dir.clone(),
+          with: args.with.clone(),
+        })?],
+        result: tx,
+      };
+      js_plugins.sender.send(request).await?;
+      let result = rx.await?;
+      eprintln!("result: {:?}", result);
+      if let Some(result) = result.result {
+        return Ok(Some(esbuild_client::OnResolveResult {
+          path: result.path,
+          external: result.external,
+          namespace: result.namespace,
+          suffix: result.suffix,
+          plugin_data: result.plugin_data,
+          watch_files: None,
+          watch_dirs: None,
+          errors: result.errors.map(|errors| {
+            errors
+              .into_iter()
+              .map(|message| esbuild_client::protocol::PartialMessage {
+                id: "dummy".into(),
+                plugin_name: "deno".into(),
+                text: message.text,
+                location: message.location.map(convert_location),
+                notes: message.notes.into_iter().map(convert_note).collect(),
+                ..Default::default()
+              })
+              .collect()
+          }),
+          warnings: result.warnings.map(|warnings| {
+            warnings
+              .into_iter()
+              .map(|message| esbuild_client::protocol::PartialMessage {
+                id: "dummy".into(),
+                plugin_name: "deno".into(),
+                text: message.text,
+                location: message.location.map(convert_location),
+                notes: message.notes.into_iter().map(convert_note).collect(),
+                ..Default::default()
+              })
+              .collect()
+          }),
+          side_effects: result.side_effects,
+          plugin_name: Some("deno".to_string()),
+        }));
+      } else {
+        eprintln!("no result");
+        // Ok(None)
+      }
+    }
+
     let result = self.bundle_resolve(
       &args.path,
       args.importer.as_deref(),
@@ -633,7 +765,32 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnStartArgs,
   ) -> Result<Option<esbuild_client::OnStartResult>, AnyError> {
-    Ok(None)
+    if let Some(js_plugins) = &self.js_plugins {
+      let (tx, rx) = oneshot::channel();
+      let request = deno_runtime::ops::bundle::PluginRequest::OnStart {
+        plugin_ids: js_plugins
+          .info
+          .iter()
+          .filter_map(|p| p.on_start.then(|| p.id))
+          .collect(),
+        args: vec![],
+        result: tx,
+      };
+      js_plugins.sender.send(request).await?;
+      let result = rx.await?;
+      Ok(Some(esbuild_client::OnStartResult {
+        errors: result
+          .result
+          .errors
+          .map(|e| e.into_iter().map(convert_partial_message).collect()),
+        warnings: result
+          .result
+          .warnings
+          .map(|w| w.into_iter().map(convert_partial_message).collect()),
+      }))
+    } else {
+      Ok(None)
+    }
   }
 
   async fn on_end(
@@ -643,6 +800,46 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     log::debug!("{}: {_args:?}", deno_terminal::colors::magenta("on_end"));
     self.on_end_tx.send(_args).await?;
     Ok(None)
+  }
+}
+
+fn convert_partial_message(
+  message: deno_runtime::ops::bundle::PartialMessage,
+) -> esbuild_client::protocol::PartialMessage {
+  esbuild_client::protocol::PartialMessage {
+    id: message.id.unwrap_or_default(),
+    plugin_name: message.plugin_name.unwrap_or_default(),
+    text: message.text.unwrap_or_default(),
+    location: message.location.map(convert_location),
+    notes: message
+      .notes
+      .map(|notes| notes.into_iter().map(convert_note).collect())
+      .unwrap_or_default(),
+    detail: message.detail.unwrap_or_default(),
+  }
+}
+
+fn convert_location(
+  location: deno_runtime::ops::bundle::Location,
+) -> esbuild_client::protocol::Location {
+  esbuild_client::protocol::Location {
+    file: location.file,
+    column: location.column,
+    line: location.line,
+    length: location.length,
+    namespace: location.namespace,
+    suggestion: location.suggestion,
+    // TODO(nathanwhit): add line_text
+    line_text: String::new(),
+  }
+}
+
+fn convert_note(
+  note: deno_runtime::ops::bundle::Note,
+) -> esbuild_client::protocol::Note {
+  esbuild_client::protocol::Note {
+    text: note.text,
+    location: note.location.map(convert_location),
   }
 }
 
@@ -1085,6 +1282,7 @@ fn resolve_entrypoints(
 
   let mut resolved = Vec::with_capacity(entrypoints.len());
 
+  eprintln!("resolving entrypoints");
   for e in &entrypoints {
     let r = resolver.resolve(
       e.as_str(),
@@ -1095,6 +1293,7 @@ fn resolve_entrypoints(
     )?;
     resolved.push(r);
   }
+  eprintln!("resolved entrypoints: {:?}", resolved);
   Ok(resolved)
 }
 

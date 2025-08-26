@@ -86,6 +86,7 @@ libc.workspace = true
 log.workspace = true
 notify.workspace = true
 once_cell.workspace = true
+regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file.workspace = true
 serde.workspace = true

@@ -90,17 +90,17 @@ pub enum PluginHookType {
 
 */
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginOnResolveResult {
-  pub errors: Vec<Message>,
-  pub warnings: Vec<Message>,
-  pub path: String,
-  pub external: bool,
-  pub side_effects: bool,
-  pub namespace: String,
-  pub suffix: String,
-  pub plugin_data: Option<u64>,
+  pub errors: Option<Vec<Message>>,
+  pub warnings: Option<Vec<Message>>,
+  pub path: Option<String>,
+  pub external: Option<bool>,
+  pub side_effects: Option<bool>,
+  pub namespace: Option<String>,
+  pub suffix: Option<String>,
+  pub plugin_data: Option<u32>,
 }
 
 pub enum PluginRequest {
@@ -112,12 +112,12 @@ pub enum PluginRequest {
   OnResolve {
     plugin_ids: Vec<u32>,
     args: Vec<serde_json::Value>,
-    result: oneshot::Sender<PluginResult<PluginOnResolveResult>>,
+    result: oneshot::Sender<PluginResult<Option<PluginOnResolveResult>>>,
   },
   OnLoad {
     plugin_ids: Vec<u32>,
     args: Vec<serde_json::Value>,
-    result: oneshot::Sender<PluginResult<PluginOnLoadResult>>,
+    result: oneshot::Sender<PluginResult<Option<PluginOnLoadResult>>>,
   },
   OnEnd {
     plugin_ids: Vec<u32>,
@@ -131,7 +131,7 @@ pub enum PluginRequest {
   },
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginOnLoadResult {
   pub plugin_name: Option<String>,
@@ -145,21 +145,21 @@ pub struct PluginOnLoadResult {
   pub watch_dirs: Option<Vec<String>>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginOnEndResult {
   pub errors: Option<Vec<PartialMessage>>,
   pub warnings: Option<Vec<PartialMessage>>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginOnStartResult {
   pub errors: Option<Vec<PartialMessage>>,
   pub warnings: Option<Vec<PartialMessage>>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginResult<T> {
   pub plugin_id: Option<u32>,
@@ -189,6 +189,7 @@ pub trait BundleProvider: Send + Sync {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BundleOptions {
   pub entrypoints: Vec<String>,
   #[serde(default)]
@@ -218,6 +219,7 @@ fn tru() -> bool {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum BundlePlatform {
   Browser,
   #[default]
@@ -225,6 +227,7 @@ pub enum BundlePlatform {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum BundleFormat {
   #[default]
   Esm,
@@ -233,6 +236,7 @@ pub enum BundleFormat {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum SourceMapType {
   #[default]
   Linked,
@@ -261,6 +265,7 @@ impl std::fmt::Display for SourceMapType {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum PackageHandling {
   #[default]
   Bundle,
@@ -276,6 +281,7 @@ impl std::fmt::Display for PackageHandling {
   }
 }
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Message {
   pub text: String,
   pub location: Option<Location>,
@@ -283,33 +289,38 @@ pub struct Message {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PartialMessage {
   pub id: Option<String>,
   pub plugin_name: Option<String>,
   pub text: Option<String>,
   pub location: Option<Location>,
   pub notes: Option<Vec<Note>>,
-  pub detail: Option<serde_json::Value>,
+  pub detail: Option<u32>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BuildOutputFile {
   pub path: String,
   pub contents: Option<Vec<u8>>,
   pub hash: String,
 }
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BuildResponse {
   pub errors: Vec<Message>,
   pub warnings: Vec<Message>,
   pub output_files: Option<Vec<BuildOutputFile>>,
 }
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Note {
   pub text: String,
   pub location: Option<Location>,
 }
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Location {
   pub file: String,
   pub namespace: String,
@@ -319,26 +330,39 @@ pub struct Location {
   pub suggestion: String,
 }
 
+fn deserialize_regex<'de, D>(deserializer: D) -> Result<regex::Regex, D::Error>
+where
+  D: serde::Deserializer<'de>,
+{
+  use serde::Deserialize;
+  let s = String::deserialize(deserializer)?;
+  regex::Regex::new(&s).map_err(serde::de::Error::custom)
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OnResolveOptions {
-  pub filter: String,
+  #[serde(deserialize_with = "deserialize_regex")]
+  pub filter: regex::Regex,
   pub namespace: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OnLoadOptions {
   pub filter: String,
   pub namespace: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginInfo {
   pub name: String,
   pub id: u32,
   pub on_start: bool,
   pub on_end: bool,
-  pub on_resolve: OnResolveOptions,
-  pub on_load: OnLoadOptions,
+  pub on_resolve: Option<OnResolveOptions>,
+  pub on_load: Option<OnLoadOptions>,
   pub on_dispose: bool,
 }
 
@@ -355,61 +379,99 @@ impl<T> ResultExt<T> for Result<T, Infallible> {
   }
 }
 
+type Bt = std::backtrace::Backtrace;
+
 #[derive(thiserror::Error, Debug, deno_error::JsError)]
 pub enum PluginExecError {
   #[class(generic)]
-  #[error("serde_v8 error: {0}")]
-  SerdeV8(#[from] serde_v8::Error),
+  #[error("serde_v8 error: {0}; from {1:?}")]
+  SerdeV8(serde_v8::Error, Bt),
+}
+
+impl From<serde_v8::Error> for PluginExecError {
+  fn from(e: serde_v8::Error) -> Self {
+    PluginExecError::SerdeV8(e, std::backtrace::Backtrace::capture())
+  }
 }
 
 impl PluginRequest {
   fn to_args<'s>(
-    &self,
+    self,
     scope: &mut v8::HandleScope<'s>,
   ) -> Result<Vec<v8::Local<'s, v8::Value>>, PluginExecError> {
     let mut v8_args = Vec::new();
     match self {
       PluginRequest::OnStart {
-        plugin_ids, args, ..
+        plugin_ids,
+        args,
+        result,
       } => {
         v8_args.push(PluginHook::OnStart.to_v8(scope).unwrap_infallible());
         v8_args
           .push(PluginHookType::Sequential.to_v8(scope).unwrap_infallible());
         v8_args.push(serde_v8::to_v8(scope, plugin_ids)?);
+        let sender = PluginExecResultSenderWrapper::from(
+          PluginExecResultSender::OnStart(result),
+        );
+        v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnResolve {
-        plugin_ids, args, ..
+        plugin_ids,
+        args,
+        result,
       } => {
         v8_args.push(PluginHook::OnResolve.to_v8(scope).unwrap_infallible());
         v8_args.push(PluginHookType::First.to_v8(scope).unwrap_infallible());
         v8_args.push(serde_v8::to_v8(scope, plugin_ids)?);
+        let sender = PluginExecResultSenderWrapper::from(
+          PluginExecResultSender::OnResolve(result),
+        );
+        v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnLoad {
-        plugin_ids, args, ..
+        plugin_ids,
+        args,
+        result,
       } => {
         v8_args.push(PluginHook::OnLoad.to_v8(scope).unwrap_infallible());
         v8_args.push(PluginHookType::First.to_v8(scope).unwrap_infallible());
         v8_args.push(serde_v8::to_v8(scope, plugin_ids)?);
+        let sender = PluginExecResultSenderWrapper::from(
+          PluginExecResultSender::OnLoad(result),
+        );
+        v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnEnd {
-        plugin_ids, args, ..
+        plugin_ids,
+        args,
+        result,
       } => {
         v8_args.push(PluginHook::OnEnd.to_v8(scope).unwrap_infallible());
         v8_args
           .push(PluginHookType::Sequential.to_v8(scope).unwrap_infallible());
         v8_args.push(serde_v8::to_v8(scope, plugin_ids)?);
+        let sender = PluginExecResultSenderWrapper::from(
+          PluginExecResultSender::OnEnd(result),
+        );
+        v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnDispose {
-        plugin_ids, args, ..
+        plugin_ids,
+        args,
+        result,
       } => {
         v8_args.push(PluginHook::OnDispose.to_v8(scope).unwrap_infallible());
         v8_args
           .push(PluginHookType::Sequential.to_v8(scope).unwrap_infallible());
         v8_args.push(serde_v8::to_v8(scope, plugin_ids)?);
+        let sender = PluginExecResultSenderWrapper::from(
+          PluginExecResultSender::OnDispose(result),
+        );
+        v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
     }
@@ -447,14 +509,16 @@ impl PluginRequest {
   // }
 }
 
+#[derive(Debug)]
 pub enum PluginExecResultSender {
   OnStart(oneshot::Sender<PluginResult<PluginOnStartResult>>),
-  OnResolve(oneshot::Sender<PluginResult<PluginOnResolveResult>>),
-  OnLoad(oneshot::Sender<PluginResult<PluginOnLoadResult>>),
+  OnResolve(oneshot::Sender<PluginResult<Option<PluginOnResolveResult>>>),
+  OnLoad(oneshot::Sender<PluginResult<Option<PluginOnLoadResult>>>),
   OnEnd(oneshot::Sender<PluginResult<PluginOnEndResult>>),
   OnDispose(oneshot::Sender<PluginResult<()>>),
 }
 
+#[derive(Debug)]
 struct PluginExecResultSenderWrapper {
   sender: Rc<RefCell<Option<PluginExecResultSender>>>,
 }
@@ -495,6 +559,7 @@ impl From<PluginRequest> for PluginExecResultSender {
   }
 }
 
+#[derive(Debug)]
 pub struct Plugins {
   pub sender: tokio::sync::mpsc::Sender<PluginRequest>,
   pub info: Vec<PluginInfo>,
@@ -503,11 +568,13 @@ pub struct Plugins {
 #[op2]
 impl PluginExecResultSenderWrapper {
   #[fast]
+  #[rename("sendResult")]
   fn send_result<'s>(
     &self,
     scope: &mut v8::HandleScope<'s>,
     res: v8::Local<'s, v8::Value>,
   ) -> Result<(), PluginExecError> {
+    eprintln!("PluginExecResultSenderWrapper::send_result: {:?}", self);
     let sender = self.sender.borrow_mut().take().unwrap();
     sender.send_result(scope, res)
   }
@@ -519,6 +586,7 @@ impl PluginExecResultSender {
     scope: &mut v8::HandleScope<'s>,
     res: v8::Local<'s, v8::Value>,
   ) -> Result<(), PluginExecError> {
+    eprintln!("PluginExecResultSender::send_result: {:?}", self);
     match self {
       PluginExecResultSender::OnStart(result) => {
         let res = serde_v8::from_v8(scope, res)?;
@@ -553,6 +621,7 @@ pub async fn op_bundle(
   #[serde] plugins: Option<Vec<PluginInfo>>,
   #[global] plugin_executor: Option<v8::Global<v8::Function>>,
 ) -> Result<BuildResponse, JsErrorBox> {
+  eprintln!("op_bundle: {:?}", options);
   let (provider, spawner) = {
     let state = state.borrow();
     let provider = state.borrow::<Arc<dyn BundleProvider>>().clone();
@@ -560,10 +629,12 @@ pub async fn op_bundle(
     (provider, spawner)
   };
 
+  eprintln!("have provider");
   let (plugins, plugin_executor_fut) = if let Some(plugin_executor) =
     plugin_executor
     && let Some(plugin_info) = plugins
   {
+    eprintln!("have plugin_executor and plugin_info");
     let (tx, mut rx) = tokio::sync::mpsc::channel::<PluginRequest>(1024);
     let fut = async move {
       loop {
@@ -574,10 +645,6 @@ pub async fn op_bundle(
         spawner.spawn(move |scope| {
           let tc = &mut v8::TryCatch::new(scope);
           let mut args = request.to_args(tc).unwrap();
-          let sender = PluginExecResultSenderWrapper::from(
-            PluginExecResultSender::from(request),
-          );
-          args.push(deno_core::cppgc::make_cppgc_object(tc, sender).into());
           let executor = v8::Local::new(tc, plugin_executor);
           let undef = v8::undefined(tc).into();
           let _res = executor.call(tc, undef, &args).unwrap();
@@ -593,11 +660,13 @@ pub async fn op_bundle(
       fut,
     )
   } else {
+    eprintln!("no plugin_executor and plugin_info");
     (None, async move {}.boxed_local())
   };
 
+  eprintln!("join");
   let (bundle_result, _) =
     tokio::join!(provider.bundle(options, plugins), plugin_executor_fut,);
-
+  eprintln!("bundle_result: {:?}", bundle_result);
   bundle_result.map_err(|e| JsErrorBox::generic(e.to_string()))
 }

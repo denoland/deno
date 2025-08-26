@@ -2,23 +2,23 @@
 /// <reference path="../../cli/tsc/dts/lib.deno.unstable.d.ts" />
 import { op_bundle, PluginExecResultSenderWrapper } from "ext:core/ops";
 
-declare function op_bundle(
-  options: Omit<Deno.bundle.Options, "plugins">,
-  plugins: RustPluginInfo[] | null,
-  pluginExecutor:
-    | ((
-      hook: Hook,
-      type: HookType,
-      ids: number[],
-      sender: PluginExecResultSenderWrapper,
-      ...args: any[]
-    ) => Promise<void>)
-    | null,
-): Promise<Omit<Deno.bundle.Result, "success">>;
+// declare function op_bundle(
+//   options: Omit<Deno.bundle.Options, "plugins">,
+//   plugins: RustPluginInfo[] | null,
+//   pluginExecutor:
+//     | ((
+//       hook: Hook,
+//       type: HookType,
+//       ids: number[],
+//       sender: PluginExecResultSenderWrapper,
+//       ...args: any[]
+//     ) => Promise<void>)
+//     | null,
+// ): Promise<Omit<Deno.bundle.Result, "success">>;
 
-interface PluginExecResultSenderWrapper {
-  sendResult: (result: any) => void;
-}
+// interface PluginExecResultSenderWrapper {
+//   sendResult: (result: any) => void;
+// }
 
 interface PluginInfo {
   id: number;
@@ -103,9 +103,41 @@ interface RustPluginInfo {
   id: number;
   onStart: boolean;
   onEnd: boolean;
-  onResolve: Deno.bundle.OnResolveOptions | null;
-  onLoad: Deno.bundle.OnLoadOptions | null;
+  onResolve:
+    | (Omit<Deno.bundle.OnResolveOptions, "filter"> & {
+      filter: string;
+    })
+    | null;
+  onLoad:
+    | (Omit<Deno.bundle.OnLoadOptions, "filter"> & {
+      filter: string;
+    })
+    | null;
   onDispose: boolean;
+}
+
+function onResolveToRustPluginInfo(
+  onResolve: Deno.bundle.OnResolveOptions | undefined,
+): RustPluginInfo["onResolve"] {
+  if (!onResolve) {
+    return null;
+  }
+  return {
+    ...onResolve,
+    filter: onResolve.filter.source,
+  };
+}
+
+function onLoadToRustPluginInfo(
+  onLoad: Deno.bundle.OnLoadOptions | undefined,
+): RustPluginInfo["onLoad"] {
+  if (!onLoad) {
+    return null;
+  }
+  return {
+    ...onLoad,
+    filter: onLoad.filter.source,
+  };
 }
 
 function toRustPluginInfo(plugins: PluginInfo[]): RustPluginInfo[] {
@@ -114,8 +146,8 @@ function toRustPluginInfo(plugins: PluginInfo[]): RustPluginInfo[] {
     id: plugin.id,
     onStart: !!plugin.onStart,
     onEnd: !!plugin.onEnd,
-    onResolve: plugin.onResolve?.options ?? null,
-    onLoad: plugin.onLoad?.options ?? null,
+    onResolve: onResolveToRustPluginInfo(plugin.onResolve?.options),
+    onLoad: onLoadToRustPluginInfo(plugin.onLoad?.options),
     onDispose: !!plugin.onDispose,
   }));
 }
@@ -156,6 +188,67 @@ function getHookName(
   }
 }
 
+function defaultResult<H extends Hook>(hook: H): HookTypes[H] {
+  switch (hook) {
+    case Hook.onStart:
+      return { errors: [], warnings: [] } as unknown as HookTypes[H];
+    case Hook.onResolve:
+      return null as unknown as HookTypes[H];
+    case Hook.onLoad:
+      return null as unknown as HookTypes[H];
+    case Hook.onEnd:
+      return { errors: [], warnings: [] } as unknown as HookTypes[H];
+    case Hook.onDispose:
+      return null as unknown as HookTypes[H];
+    default:
+      exhaustive(hook);
+  }
+}
+
+type HookTypes = {
+  [Hook.onStart]: Deno.bundle.OnStartResult;
+  [Hook.onResolve]: Deno.bundle.OnResolveResult;
+  [Hook.onLoad]: Deno.bundle.OnLoadResult;
+  [Hook.onEnd]: Deno.bundle.OnEndResult;
+  [Hook.onDispose]: void;
+};
+
+type Foo<T extends Hook> = HookTypes[T];
+
+function combineResult(
+  hook: Hook,
+  currentValue: HookTypes[Hook] | null,
+  newValue: HookTypes[Hook],
+): HookTypes[Hook] {
+  switch (hook) {
+    case Hook.onStart: {
+      return {
+        errors: [...(currentValue?.errors ?? []), ...(newValue?.errors ?? [])],
+        warnings: [
+          ...(currentValue?.warnings ?? []),
+          ...(newValue?.warnings ?? []),
+        ],
+      };
+    }
+    case Hook.onResolve:
+      return newValue;
+    case Hook.onLoad:
+      return newValue;
+    case Hook.onEnd:
+      return {
+        errors: [...(currentValue?.errors ?? []), ...(newValue?.errors ?? [])],
+        warnings: [
+          ...(currentValue?.warnings ?? []),
+          ...(newValue?.warnings ?? []),
+        ],
+      };
+    case Hook.onDispose:
+      return;
+    default:
+      exhaustive(hook);
+  }
+}
+
 function makePluginExecutor(
   // options: Deno.bundle.Options,
   plugins: PluginInfo[],
@@ -164,24 +257,30 @@ function makePluginExecutor(
     return (..._args: any) => Promise.resolve();
   }
 
-  return async (
-    hook: Hook,
+  return async <H extends Hook>(
+    hook: H,
     type: HookType,
     ids: number[],
     sender: PluginExecResultSenderWrapper,
-    ...args: any[]
+    args: any[],
   ): Promise<void> => {
-    let result = null;
+    let result: HookTypes[H] = defaultResult(hook);
     const hookName = getHookName(hook);
     for (const id of ids) {
       const plugin = plugins[id];
       if (plugin[hookName]) {
         // @ts-ignore aaa
-        result = await plugin[hookName].callback(...args);
-        if (type === HookType.first && result) {
+        const newResult = await plugin[hookName].callback(...args);
+        if (type === HookType.first && newResult) {
+          result = newResult as HookTypes[H];
           sender.sendResult({ pluginId: id, result });
           return;
         } else if (type === HookType.sequential) {
+          result = combineResult(
+            hook,
+            result,
+            newResult as HookTypes[H],
+          ) as HookTypes[H];
           continue;
         }
       }
@@ -190,16 +289,20 @@ function makePluginExecutor(
   };
 }
 
+const op_bundle_ = op_bundle;
+
 export async function bundle(
   options: Deno.bundle.Options,
 ): Promise<Deno.bundle.Result> {
   const plugins = await collectPluginInfo(options);
 
   const forRust = toRustPluginInfo(plugins);
+  console.log("plugins", plugins);
+  console.log("forRust", forRust);
 
   const result = {
     success: false,
-    ...await op_bundle(
+    ...await op_bundle_(
       options,
       forRust.length > 0 ? forRust : null,
       forRust.length > 0 ? makePluginExecutor(plugins) : null,

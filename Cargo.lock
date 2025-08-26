@@ -2809,6 +2809,7 @@ dependencies = [
  "notify",
  "ntapi",
  "once_cell",
+ "regex",
  "rustyline",
  "same-file",
  "serde",

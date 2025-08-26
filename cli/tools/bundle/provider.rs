@@ -148,16 +148,28 @@ impl BundleProvider for CliBundleProvider {
     std::thread::spawn(move || {
       deno_runtime::tokio_util::create_and_run_current_thread(async move {
         let flags = Arc::new(flags_clone);
-        let write_output = bundle_flags.output_dir.is_some()
+        let write_output = dbg!(&bundle_flags).output_dir.is_some()
           || bundle_flags.output_path.is_some();
-        let bundler = super::bundle_init(flags, &bundle_flags, plugins).await?;
+        eprintln!("bundle_init: {plugins:?}");
+        let bundler =
+          match super::bundle_init(flags, &bundle_flags, plugins).await {
+            Ok(bundler) => bundler,
+            Err(e) => {
+              eprintln!("bundle_init error: {e:?}");
+              let _ = tx.send(Err(e));
+              return Ok(());
+            }
+          };
+        eprintln!("bundler.build");
         let mut result = match bundler.build().await {
           Ok(result) => result,
           Err(e) => {
+            eprintln!("bundler.build error: {e:?}");
             let _ = tx.send(Err(e));
             return Ok(());
           }
         };
+        eprintln!("process_result");
         if write_output {
           super::process_result(
             &result,
@@ -167,12 +179,16 @@ impl BundleProvider for CliBundleProvider {
           )?;
           result.output_files = None;
         }
+        eprintln!("convert_build_response");
         let result = convert_build_response(result);
+        eprintln!("send result");
         let _ = tx.send(Ok(result));
         Ok::<_, AnyError>(())
       })
     });
+    eprintln!("rx.await");
     let response = rx.await??;
+    eprintln!("response: {:?}", response);
     Ok(response)
   }
 }
