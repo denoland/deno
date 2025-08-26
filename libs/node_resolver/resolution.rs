@@ -553,11 +553,10 @@ impl<
     // }
 
     let p_str = path.to_str().unwrap();
-    let path = if p_str.ends_with('/') {
-      PathBuf::from(&p_str[p_str.len() - 1..])
-    } else {
-      path
-    };
+    let path = p_str
+      .strip_suffix('/')
+      .map(Path::new)
+      .unwrap_or(path.as_path());
 
     let maybe_file_type = self.sys.get_file_type(&path);
     match maybe_file_type {
@@ -570,7 +569,7 @@ impl<
             .find(|e| self.sys.is_file(&path.join(e)));
           Err(
             UnsupportedDirImportError {
-              dir_url: UrlOrPath::Path(path),
+              dir_url: UrlOrPath::Path(path.to_path_buf()),
               maybe_referrer: maybe_referrer.map(|r| r.display()),
               suggested_file_name,
             }
@@ -607,7 +606,7 @@ impl<
         Ok(
           maybe_url
             .map(UrlOrPath::Url)
-            .unwrap_or(UrlOrPath::Path(path)),
+            .unwrap_or(UrlOrPath::Path(path.to_path_buf())),
         )
       }
       _ => {
@@ -626,7 +625,7 @@ impl<
           ModuleNotFoundError {
             suggested_ext: self
               .module_not_found_ext_suggestion(&path, resolved_method),
-            specifier: UrlOrPath::Path(path),
+            specifier: UrlOrPath::Path(path.to_path_buf()),
             maybe_referrer: maybe_referrer.map(|r| r.display()),
           }
           .into(),
