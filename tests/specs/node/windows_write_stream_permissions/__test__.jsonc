@@ -1,3 +1,5 @@
+// regression test for https://github.com/denoland/deno/issues/30534
+// as this should not require all write permissions
 {
   "if": "windows",
   "args": "run --allow-write=./env.js main.ts",
