@@ -161,8 +161,6 @@ pub struct PermissionsObject {
   pub ffi: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub sys: AllowDenyPermissionConfig,
-  #[serde(default)]
-  pub prompt: Option<bool>,
 }
 
 impl PermissionsObject {
@@ -182,12 +180,6 @@ impl PermissionsObject {
       run: self.run.merge(other.run),
       ffi: self.ffi.merge(other.ffi),
       sys: self.sys.merge(other.sys),
-      prompt: match (self.prompt, other.prompt) {
-        (Some(_), Some(b)) => Some(b),
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
-      },
     }
   }
 }

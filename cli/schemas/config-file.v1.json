@@ -48,23 +48,17 @@
         "net": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "run": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
         "ffi": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
-        "sys": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
-
-        "prompt": {
-          "type": "boolean",
-          "description": "Optional prompt permission."
-        }
+        "sys": { "$ref": "#/$defs/allowDenyPermissionConfigValue" }
       }
     },
     "permissionNameOrSet": {
       "description": "A permission set name to use or inline permission set.",
-      "anyOf": [
-        {
-          "type": "string",
-          "description": "Permission name."
-        },
-        { "$ref": "#/$defs/permissionSet" }
-      ]
+      "anyOf": [{
+        "type": "string",
+        "description": "Permission name."
+      }, {
+        "$ref": "#/$defs/permissionSet"
+      }]
     }
   },
   "properties": {
