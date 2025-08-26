@@ -1,8 +1,9 @@
 let testCount = 0;
+const logs: string[] = [];
 
 Deno.test.beforeEach(() => {
   testCount++;
-  console.log(`beforeEach executed for test ${testCount}`);
+  logs.push(`beforeEach executed for test ${testCount}`);
 
   // Throw error on second test
   if (testCount === 2) {
@@ -10,20 +11,28 @@ Deno.test.beforeEach(() => {
   }
 });
 
+Deno.test.beforeEach(() => {
+  logs.push(`beforeEach2 executed for test ${testCount}`);
+});
+
 Deno.test.afterEach(() => {
-  console.log(`afterEach executed for test ${testCount}`);
+  logs.push(`afterEach executed for test ${testCount}`);
 });
 
 Deno.test("first test", () => {
-  console.log("first test executed");
+  logs.push("first test executed");
 });
 
 // This test should fail because beforeEach throws
 Deno.test("second test", () => {
-  console.log("second test executed");
+  logs.push("second test executed");
 });
 
 // This test should still run
 Deno.test("third test", () => {
-  console.log("third test executed");
+  logs.push("third test executed");
 });
+
+globalThis.onunload = () => {
+  console.log(logs);
+};

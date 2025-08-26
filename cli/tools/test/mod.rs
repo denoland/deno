@@ -1064,8 +1064,118 @@ async fn run_tests_for_worker_inner(
     let earlier = Instant::now();
 
     // Execute beforeEach hooks (FIFO order)
+    let mut before_each_hook_errored = false;
     for before_each_hook in &test_hooks.before_each {
       let call = worker.js_runtime.call(before_each_hook);
+      if let Err(err) = worker
+        .js_runtime
+        .with_event_loop_promise(call, PollEventLoopOptions::default())
+        .await
+      {
+        match err.into_kind() {
+          CoreErrorKind::Js(err) => {
+            before_each_hook_errored = true;
+            let test_result =
+              TestResult::Failed(TestFailure::JsError(Box::new(err)));
+            fail_fast_tracker.add_failure();
+            let elapsed = earlier.elapsed().as_millis();
+            send_test_event(
+              &state_rc,
+              TestEvent::Result(desc.id, test_result, elapsed as u64),
+            )?;
+            break;
+          }
+          err => return Err(err.into_box().into()),
+        };
+      }
+    }
+
+    let result = if !before_each_hook_errored {
+      let call = worker.js_runtime.call(&function);
+
+      let slow_state_rc = state_rc.clone();
+      let slow_test_id = desc.id;
+      let slow_test_warning = spawn(async move {
+        // The slow test warning should pop up every DENO_SLOW_TEST_TIMEOUT*(2**n) seconds,
+        // with a duration that is doubling each time. So for a warning time of 60s,
+        // we should get a warning at 60s, 120s, 240s, etc.
+        let base_timeout =
+          env::var("DENO_SLOW_TEST_TIMEOUT").unwrap_or_default();
+        let base_timeout = base_timeout.parse().unwrap_or(60).max(1);
+        let mut multiplier = 1;
+        let mut elapsed = 0;
+        loop {
+          tokio::time::sleep(Duration::from_secs(
+            base_timeout * (multiplier - elapsed),
+          ))
+          .await;
+          if send_test_event(
+            &slow_state_rc,
+            TestEvent::Slow(
+              slow_test_id,
+              Duration::from_secs(base_timeout * multiplier).as_millis() as _,
+            ),
+          )
+          .is_err()
+          {
+            break;
+          }
+          multiplier *= 2;
+          elapsed += 1;
+        }
+      });
+
+      let result = worker
+        .js_runtime
+        .with_event_loop_promise(call, PollEventLoopOptions::default())
+        .await;
+      slow_test_warning.abort();
+      let result = match result {
+        Ok(r) => r,
+        Err(error) => match error.into_kind() {
+          CoreErrorKind::Js(js_error) => {
+            send_test_event(
+              &state_rc,
+              TestEvent::UncaughtError(
+                specifier.to_string(),
+                Box::new(js_error),
+              ),
+            )?;
+            fail_fast_tracker.add_failure();
+            send_test_event(
+              &state_rc,
+              TestEvent::Result(desc.id, TestResult::Cancelled, 0),
+            )?;
+            had_uncaught_error = true;
+            continue;
+          }
+          err => return Err(err.into_box().into()),
+        },
+      };
+
+      // Check the result before we check for leaks
+      let result = {
+        let scope = &mut worker.js_runtime.handle_scope();
+        let result = v8::Local::new(scope, result);
+        serde_v8::from_v8::<TestResult>(scope, result)?
+      };
+      if matches!(result, TestResult::Failed(_)) {
+        fail_fast_tracker.add_failure();
+        let elapsed = earlier.elapsed().as_millis();
+        send_test_event(
+          &state_rc,
+          TestEvent::Result(desc.id, result, elapsed as u64),
+        )?;
+        continue;
+      }
+      result
+    } else {
+      TestResult::Ignored
+    };
+
+    // Execute afterEach hooks (LIFO order)
+    for after_each_hook in test_hooks.after_each.iter().rev() {
+      let call = worker.js_runtime.call(after_each_hook);
       if let Err(err) = worker
         .js_runtime
         .with_event_loop_promise(call, PollEventLoopOptions::default())
@@ -1081,109 +1191,10 @@ async fn run_tests_for_worker_inner(
               &state_rc,
               TestEvent::Result(desc.id, test_result, elapsed as u64),
             )?;
+            break;
           }
           err => return Err(err.into_box().into()),
         };
-        continue;
-      }
-    }
-
-    let call = worker.js_runtime.call(&function);
-
-    let slow_state_rc = state_rc.clone();
-    let slow_test_id = desc.id;
-    let slow_test_warning = spawn(async move {
-      // The slow test warning should pop up every DENO_SLOW_TEST_TIMEOUT*(2**n) seconds,
-      // with a duration that is doubling each time. So for a warning time of 60s,
-      // we should get a warning at 60s, 120s, 240s, etc.
-      let base_timeout = env::var("DENO_SLOW_TEST_TIMEOUT").unwrap_or_default();
-      let base_timeout = base_timeout.parse().unwrap_or(60).max(1);
-      let mut multiplier = 1;
-      let mut elapsed = 0;
-      loop {
-        tokio::time::sleep(Duration::from_secs(
-          base_timeout * (multiplier - elapsed),
-        ))
-        .await;
-        if send_test_event(
-          &slow_state_rc,
-          TestEvent::Slow(
-            slow_test_id,
-            Duration::from_secs(base_timeout * multiplier).as_millis() as _,
-          ),
-        )
-        .is_err()
-        {
-          break;
-        }
-        multiplier *= 2;
-        elapsed += 1;
-      }
-    });
-
-    let result = worker
-      .js_runtime
-      .with_event_loop_promise(call, PollEventLoopOptions::default())
-      .await;
-    slow_test_warning.abort();
-    let result = match result {
-      Ok(r) => r,
-      Err(error) => match error.into_kind() {
-        CoreErrorKind::Js(js_error) => {
-          send_test_event(
-            &state_rc,
-            TestEvent::UncaughtError(specifier.to_string(), Box::new(js_error)),
-          )?;
-          fail_fast_tracker.add_failure();
-          send_test_event(
-            &state_rc,
-            TestEvent::Result(desc.id, TestResult::Cancelled, 0),
-          )?;
-          had_uncaught_error = true;
-          continue;
-        }
-        err => return Err(err.into_box().into()),
-      },
-    };
-
-    // Check the result before we check for leaks
-    let result = {
-      let scope = &mut worker.js_runtime.handle_scope();
-      let result = v8::Local::new(scope, result);
-      serde_v8::from_v8::<TestResult>(scope, result)?
-    };
-    if matches!(result, TestResult::Failed(_)) {
-      fail_fast_tracker.add_failure();
-      let elapsed = earlier.elapsed().as_millis();
-      send_test_event(
-        &state_rc,
-        TestEvent::Result(desc.id, result, elapsed as u64),
-      )?;
-      continue;
-    } else {
-      // Execute afterEach hooks (LIFO order)
-      for after_each_hook in test_hooks.after_each.iter().rev() {
-        let call = worker.js_runtime.call(after_each_hook);
-        if let Err(err) = worker
-          .js_runtime
-          .with_event_loop_promise(call, PollEventLoopOptions::default())
-          .await
-        {
-          match err.into_kind() {
-            CoreErrorKind::Js(err) => {
-              let test_result =
-                TestResult::Failed(TestFailure::JsError(Box::new(err)));
-              fail_fast_tracker.add_failure();
-              let elapsed = earlier.elapsed().as_millis();
-              send_test_event(
-                &state_rc,
-                TestEvent::Result(desc.id, test_result, elapsed as u64),
-              )?;
-            }
-            err => return Err(err.into_box().into()),
-          };
-          continue;
-        }
       }
     }
 
@@ -1216,11 +1227,13 @@ async fn run_tests_for_worker_inner(
       }
     }
 
-    let elapsed = earlier.elapsed().as_millis();
-    send_test_event(
-      &state_rc,
-      TestEvent::Result(desc.id, result, elapsed as u64),
-    )?;
+    if !before_each_hook_errored {
+      let elapsed = earlier.elapsed().as_millis();
+      send_test_event(
+        &state_rc,
+        TestEvent::Result(desc.id, result, elapsed as u64),
+      )?;
+    }
   }
 
   send_test_event(&state_rc, TestEvent::Completed)?;

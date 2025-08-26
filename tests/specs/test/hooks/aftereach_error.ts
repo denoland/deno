@@ -1,12 +1,17 @@
 let testCount = 0;
+const logs: string[] = [];
 
 Deno.test.beforeEach(() => {
   testCount++;
-  console.log(`beforeEach executed for test ${testCount}`);
+  logs.push(`beforeEach executed for test ${testCount}`);
 });
 
 Deno.test.afterEach(() => {
-  console.log(`afterEach executed for test ${testCount}`);
+  logs.push(`afterEach2 executed for test ${testCount}`);
+});
+
+Deno.test.afterEach(() => {
+  logs.push(`afterEach executed for test ${testCount}`);
 
   if (testCount === 1) {
     throw new Error("afterEach hook failed on second test");
@@ -14,9 +19,13 @@ Deno.test.afterEach(() => {
 });
 
 Deno.test("first test", () => {
-  console.log("first test executed");
+  logs.push("first test executed");
 });
 
 Deno.test("second test", () => {
-  console.log("second test executed");
+  logs.push("second test executed");
 });
+
+globalThis.onunload = () => {
+  console.log(logs);
+};
