@@ -249,7 +249,7 @@ pub struct WorkerOptions {
   // user code.
   pub should_wait_for_inspector_session: bool,
   /// If Some, print a low-level trace output for ops matching the given patterns.
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
 
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
@@ -271,7 +271,7 @@ impl Default for WorkerOptions {
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
-      strace_ops: Default::default(),
+      trace_ops: Default::default(),
       maybe_inspector_server: Default::default(),
       format_js_error_fn: Default::default(),
       origin_storage_dir: Default::default(),
@@ -290,7 +290,7 @@ impl Default for WorkerOptions {
 
 pub fn create_op_metrics(
   enable_op_summary_metrics: bool,
-  strace_ops: Option<Vec<String>>,
+  trace_ops: Option<Vec<String>>,
 ) -> (
   Option<Rc<OpMetricsSummaryTracker>>,
   Option<OpMetricsFactoryFn>,
@@ -299,7 +299,7 @@ pub fn create_op_metrics(
   let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
   let now = Instant::now();
   let max_len: Rc<std::cell::Cell<usize>> = Default::default();
-  if let Some(patterns) = strace_ops {
+  if let Some(patterns) = trace_ops {
     /// Match an op name against a list of patterns
     fn matches_pattern(patterns: &[String], name: &str) -> bool {
       let mut found_match = false;
@@ -424,7 +424,7 @@ impl MainWorker {
     // Get our op metrics
     let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
       options.bootstrap.enable_op_summary_metrics,
-      options.strace_ops,
+      options.trace_ops,
     );
 
     // Permissions: many ops depend on this
