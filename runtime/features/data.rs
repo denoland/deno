@@ -25,6 +25,14 @@ pub struct UnstableFeatureDescription {
 
 pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
   UnstableFeatureDescription {
+    name: "async-dns-resolver",
+    help_text: "Enable unstable async fetch DNS resolver",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
+    env_var: None,
+  },
+  UnstableFeatureDescription {
     name: "bare-node-builtins",
     help_text: "Enable unstable bare node builtins feature",
     show_in_help: true,
