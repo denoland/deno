@@ -258,9 +258,6 @@ impl TestContainer {
     &mut self,
     hook_type: String,
     function: v8::Global<v8::Function>,
-    _file_name: String,
-    _line_number: u32,
-    _column_number: u32,
   ) {
     match hook_type.as_str() {
       "beforeAll" => self.2.before_all.push(function),
@@ -1167,6 +1164,7 @@ async fn run_tests_for_worker_inner(
           &state_rc,
           TestEvent::Result(desc.id, result, elapsed as u64),
         )?;
+        // TODO: this is not correct - should run `afterEach` hooks first
         continue;
       }
       result
@@ -1198,6 +1196,10 @@ async fn run_tests_for_worker_inner(
         };
       }
     }
+
+    // if !matches!(result, TestResult::Failed(_)) {
+    //   continue;
+    // }
 
     // Await activity stabilization
     if let Some(diff) = wait_for_activity_to_stabilize(

@@ -137,14 +137,11 @@ fn op_register_test(
 #[op2]
 fn op_register_test_hook(
   state: &mut OpState,
-  #[global] function: v8::Global<v8::Function>,
   #[string] hook_type: String,
-  #[string] file_name: String,
-  #[smi] line_number: u32,
-  #[smi] column_number: u32,
+  #[global] function: v8::Global<v8::Function>,
 ) -> Result<(), JsErrorBox> {
   let container = state.borrow_mut::<TestContainer>();
-  container.register_hook(hook_type, function, file_name, line_number, column_number);
+  container.register_hook(hook_type, function);
   Ok(())
 }
 
