@@ -1,0 +1,5 @@
+{
+  "if": "windows",
+  "args": "run --allow-write=./env.js main.ts",
+  "output": ""
+}
