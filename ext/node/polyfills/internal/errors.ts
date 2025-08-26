@@ -2681,6 +2681,31 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   return ex;
 }
 
+export const denoErrorToNodeSystemError = hideStackFrames((
+  e: Error,
+  syscall: string,
+): Error => {
+  const osErrno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof osErrno === "undefined") {
+    return e;
+  }
+
+  const uvErrno = mapSysErrnoToUvErrno(osErrno);
+  const { 0: code, 1: message } = uvErrmapGet(uvErrno) || uvUnmappedError;
+  const ctx: NodeSystemErrorCtx = {
+    errno: uvErrno,
+    code,
+    message,
+    syscall,
+  };
+
+  return new NodeSystemError(
+    "ERR_SYSTEM_ERROR",
+    ctx,
+    "A system error occurred",
+  );
+});
+
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
   const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
     ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
@@ -2742,6 +2767,7 @@ export class NodeAggregateError extends AggregateError {
   }
 }
 
+codes.ERR_BUFFER_TOO_LARGE = ERR_BUFFER_TOO_LARGE;
 codes.ERR_IPC_CHANNEL_CLOSED = ERR_IPC_CHANNEL_CLOSED;
 codes.ERR_METHOD_NOT_IMPLEMENTED = ERR_METHOD_NOT_IMPLEMENTED;
 codes.ERR_INVALID_RETURN_VALUE = ERR_INVALID_RETURN_VALUE;
@@ -3087,6 +3113,7 @@ export default {
   codes,
   connResetException,
   denoErrorToNodeError,
+  denoErrorToNodeSystemError,
   dnsException,
   errnoException,
   errorMap,

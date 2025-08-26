@@ -30,8 +30,7 @@ impl AsyncId {
 }
 
 fn next_async_id(state: &mut OpState) -> i64 {
-  let async_id = state.borrow_mut::<AsyncId>().next();
-  async_id
+  state.borrow_mut::<AsyncId>().next()
 }
 
 #[op2(fast)]
@@ -183,12 +182,12 @@ impl HandleWrap {
   //
   // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L40-L46
   #[fast]
-  #[rename("r#ref")]
-  fn ref_(&self, state: &mut OpState) {
-    if self.is_alive() {
-      if let Some(handle) = self.handle {
-        state.uv_ref(handle);
-      }
+  #[rename("ref")]
+  fn ref_method(&self, state: &mut OpState) {
+    if self.is_alive()
+      && let Some(handle) = self.handle
+    {
+      state.uv_ref(handle);
     }
   }
 
@@ -197,10 +196,10 @@ impl HandleWrap {
   // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L49-L55
   #[fast]
   fn unref(&self, state: &mut OpState) {
-    if self.is_alive() {
-      if let Some(handle) = self.handle {
-        state.uv_unref(handle);
-      }
+    if self.is_alive()
+      && let Some(handle) = self.handle
+    {
+      state.uv_unref(handle);
     }
   }
 }

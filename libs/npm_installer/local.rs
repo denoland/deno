@@ -97,6 +97,7 @@ pub struct LocalNpmPackageInstaller<
   lifecycle_scripts_config: LifecycleScriptsConfig,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
+  install_reporter: Option<Arc<dyn crate::InstallReporter>>,
 }
 
 impl<
@@ -120,6 +121,17 @@ impl<
   }
 }
 
+struct InitializingGuard {
+  nv: PackageNv,
+  install_reporter: Arc<dyn crate::InstallReporter>,
+}
+
+impl Drop for InitializingGuard {
+  fn drop(&mut self) {
+    self.install_reporter.initialized(&self.nv);
+  }
+}
+
 impl<
   THttpClient: NpmCacheHttpClient,
   TReporter: Reporter,
@@ -139,6 +151,7 @@ impl<
     node_modules_folder: PathBuf,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
+    install_reporter: Option<Arc<dyn crate::InstallReporter>>,
   ) -> Self {
     Self {
       lifecycle_scripts_executor,
@@ -152,6 +165,7 @@ impl<
       lifecycle_scripts_config: lifecycle_scripts,
       root_node_modules_path: node_modules_folder,
       system_info,
+      install_reporter,
     }
   }
 
@@ -309,6 +323,8 @@ impl<
           let extra_info_provider = extra_info_provider.clone();
           let lifecycle_scripts = lifecycle_scripts.clone();
           let bin_entries_to_setup = bin_entries.clone();
+          let install_reporter = self.install_reporter.clone();
+
           cache_futures.push(
             async move {
               self
@@ -318,6 +334,14 @@ impl<
                 .map_err(JsErrorBox::from_err)?;
               let pb_guard =
                 self.reporter.on_initializing(&package.id.nv.to_string());
+              let _initialization_guard =
+                install_reporter.as_ref().map(|install_reporter| {
+                  install_reporter.initializing(&package.id.nv);
+                  InitializingGuard {
+                    nv: package.id.nv.clone(),
+                    install_reporter: install_reporter.clone(),
+                  }
+                });
               let sub_node_modules = folder_path.join("node_modules");
               let package_path = join_package_name(
                 Cow::Owned(sub_node_modules),
@@ -379,12 +403,12 @@ impl<
                 );
               }
 
-              if package.is_deprecated {
-                if let Some(deprecated) = &extra.deprecated {
-                  packages_with_deprecation_warnings
-                    .lock()
-                    .push((package.id.nv.clone(), deprecated.clone()));
-                }
+              if package.is_deprecated
+                && let Some(deprecated) = &extra.deprecated
+              {
+                packages_with_deprecation_warnings
+                  .lock()
+                  .push((package.id.nv.clone(), deprecated.clone()));
               }
 
               // finally stop showing the progress bar
@@ -1132,10 +1156,10 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
   }
 
   pub fn save(&self) -> bool {
-    if let Some(previous) = &self.previous {
-      if previous == &self.current {
-        return false; // nothing to save
-      }
+    if let Some(previous) = &self.previous
+      && previous == &self.current
+    {
+      return false; // nothing to save
     }
 
     const CACHE_PERM: u32 = 0o644;
@@ -1369,7 +1393,7 @@ fn create_initialized_file(
     })
 }
 
-fn join_package_name(mut path: Cow<Path>, package_name: &str) -> PathBuf {
+fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
   // ensure backslashes are used on windows
   for part in package_name.split('/') {
     match path {

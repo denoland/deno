@@ -531,7 +531,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), file_patterns);
+  .collect_file_patterns(&CliSys::default(), &file_patterns);
 
   let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),
@@ -586,7 +586,7 @@ fn filter_coverages(
         || e.url.starts_with("data:")
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.mjs")
-        || e.url.ends_with("$deno$stdin.mts")
+        || e.url.contains("/$deno$stdin.")
         || e.url.ends_with(".snap")
         || is_supported_test_path(Path::new(e.url.as_str()))
         || doc_test_re.is_match(e.url.as_str())

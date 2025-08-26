@@ -25,15 +25,17 @@ pub fn get_array_buffer_ptr(ab: v8::Local<v8::ArrayBuffer>) -> *mut c_void {
 
 struct BufferFinalizer {
   env: *mut Env,
-  finalize_cb: napi_finalize,
+  finalize_cb: Option<napi_finalize>,
   finalize_data: *mut c_void,
   finalize_hint: *mut c_void,
 }
 
 impl Drop for BufferFinalizer {
   fn drop(&mut self) {
-    unsafe {
-      (self.finalize_cb)(self.env as _, self.finalize_data, self.finalize_hint);
+    if let Some(finalize_cb) = self.finalize_cb {
+      unsafe {
+        finalize_cb(self.env as _, self.finalize_data, self.finalize_hint);
+      }
     }
   }
 }
@@ -56,7 +58,7 @@ pub(crate) fn make_external_backing_store(
   data: *mut c_void,
   byte_length: usize,
   finalize_data: *mut c_void,
-  finalize_cb: napi_finalize,
+  finalize_cb: Option<napi_finalize>,
   finalize_hint: *mut c_void,
 ) -> v8::UniqueRef<v8::BackingStore> {
   let finalizer = Box::new(BufferFinalizer {
@@ -120,8 +122,7 @@ pub(crate) unsafe fn check_new_from_utf8_len<'s>(
   let string = if len == NAPI_AUTO_LENGTH {
     unsafe { std::ffi::CStr::from_ptr(str_ as *const _) }.to_bytes()
   } else {
-    let string = unsafe { std::slice::from_raw_parts(str_ as *const u8, len) };
-    string
+    unsafe { std::slice::from_raw_parts(str_ as *const u8, len) }
   };
   let result = {
     let env = unsafe { &mut *(env as *mut Env) };

@@ -33,6 +33,7 @@ const {
   Array,
   MapPrototypeGet,
   ObjectPrototypeIsPrototypeOf,
+  PromiseResolve,
   PromisePrototypeThen,
   Symbol,
   TypedArrayPrototypeSlice,
@@ -345,6 +346,12 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
+    // Queue the read operation and allow TLS upgrades to complete.
+    //
+    // This is done to ensure that the resource is not locked up by
+    // op_read.
+    await PromiseResolve();
+
     let buf = this.#buf;
 
     let nread: number | null;

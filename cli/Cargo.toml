@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.4.3"
+version = "2.4.5"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -60,9 +60,6 @@ serde_json.workspace = true
 zstd.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
-
-[target.'cfg(unix)'.build-dependencies]
-glibc_version = "0.1.2"
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
@@ -136,7 +133,7 @@ indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 jupyter-protocol = "0.8.0"
 jupyter_runtime = { package = "runtimelib", version = "=0.28.0", default-features = false, features = ["tokio-runtime", "aws-lc-rs"] }
-keyring = { version = "4.0.0-rc.1", features = ["vendored"] }
+keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
@@ -198,7 +195,7 @@ deno_subprocess_windows.workspace = true
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 shell-escape = "=0.1.5"
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 
 [dev-dependencies]

@@ -25,6 +25,7 @@ use crate::args::Flags;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
@@ -207,7 +208,12 @@ async fn clean_except(
   let sys = factory.sys();
   let options = factory.cli_options()?;
   let main_graph_container = factory.main_module_graph_container().await?;
-  let roots = main_graph_container.collect_specifiers(entrypoints)?;
+  let roots = main_graph_container.collect_specifiers(
+    entrypoints,
+    CollectSpecifiersOptions {
+      include_ignored_specified: true,
+    },
+  )?;
   let http_cache = factory.global_http_cache()?;
   let local_or_global_http_cache = factory.http_cache()?.clone();
   let deno_dir = factory.deno_dir()?.clone();
@@ -280,10 +286,10 @@ async fn clean_except(
   }
 
   for url in &keep {
-    if url.scheme() == "http" || url.scheme() == "https" {
-      if let Ok(path) = http_cache.local_path_for_url(url) {
-        keep_paths_trie.insert(path);
-      }
+    if (url.scheme() == "http" || url.scheme() == "https")
+      && let Ok(path) = http_cache.local_path_for_url(url)
+    {
+      keep_paths_trie.insert(path);
     }
     if let Some(path) = deno_dir
       .gen_cache
@@ -354,38 +360,38 @@ async fn clean_except(
   }
 
   let mut vendor_cleaned = CleanState::default();
-  if let Some(vendor_dir) = options.vendor_dir_path() {
-    if let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache {
-      let mut trie = PathTrie::new();
-      if deno_dir_root_canonical != deno_dir.root {
-        trie.add_rewrite(deno_dir.root.clone(), deno_dir_root_canonical);
+  if let Some(vendor_dir) = options.vendor_dir_path()
+    && let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache
+  {
+    let mut trie = PathTrie::new();
+    if deno_dir_root_canonical != deno_dir.root {
+      trie.add_rewrite(deno_dir.root.clone(), deno_dir_root_canonical);
+    }
+    let cache = cache.clone();
+    add_jsr_meta_paths(graph, &mut trie, jsr_url, &|_url| {
+      if let Ok(Some(path)) = cache.local_path_for_url(_url) {
+        Ok(path)
+      } else {
+        panic!("should not happen")
       }
-      let cache = cache.clone();
-      add_jsr_meta_paths(graph, &mut trie, jsr_url, &|_url| {
-        if let Ok(Some(path)) = cache.local_path_for_url(_url) {
-          Ok(path)
+    })?;
+    for url in keep {
+      if url.scheme() == "http" || url.scheme() == "https" {
+        if let Ok(Some(path)) = cache.local_path_for_url(url) {
+          trie.insert(path);
         } else {
           panic!("should not happen")
         }
-      })?;
-      for url in keep {
-        if url.scheme() == "http" || url.scheme() == "https" {
-          if let Ok(Some(path)) = cache.local_path_for_url(url) {
-            trie.insert(path);
-          } else {
-            panic!("should not happen")
-          }
-        }
       }
-
-      walk_removing(
-        &mut vendor_cleaned,
-        WalkDir::new(vendor_dir).contents_first(false),
-        &trie,
-        vendor_dir,
-        dry_run,
-      )?;
     }
+
+    walk_removing(
+      &mut vendor_cleaned,
+      WalkDir::new(vendor_dir).contents_first(false),
+      &trie,
+      vendor_dir,
+      dry_run,
+    )?;
   }
 
   if !dry_run {
@@ -581,7 +587,9 @@ fn clean_node_modules(
 }
 
 // node_modules/.deno/chalk@5.0.1/node_modules/chalk -> chalk@5.0.1
-fn node_modules_package_actual_dir_to_name(path: &Path) -> Option<Cow<str>> {
+fn node_modules_package_actual_dir_to_name(
+  path: &Path,
+) -> Option<Cow<'_, str>> {
   path
     .parent()?
     .parent()?
@@ -602,17 +610,17 @@ fn clean_node_modules_symlinks(
     if ty.is_symlink() {
       let target = std::fs::read_link(entry.path())?;
       let name = node_modules_package_actual_dir_to_name(&target);
-      if let Some(name) = name {
-        if !keep_names.contains(&*name) {
-          if dry_run {
-            #[allow(clippy::print_stderr)]
-            {
-              eprintln!(" {}", entry.path().display());
-            }
-          } else {
-            on_remove(&name);
-            remove_file(state, &entry.path(), None)?;
+      if let Some(name) = name
+        && !keep_names.contains(&*name)
+      {
+        if dry_run {
+          #[allow(clippy::print_stderr)]
+          {
+            eprintln!(" {}", entry.path().display());
           }
+        } else {
+          on_remove(&name);
+          remove_file(state, &entry.path(), None)?;
         }
       }
     }
@@ -650,15 +658,14 @@ fn remove_file(
     .with_context(|| format!("Failed to remove file: {}", path.display()))
   {
     Err(e) => {
-      if cfg!(windows) {
-        if let Ok(meta) = path.symlink_metadata() {
-          if meta.is_symlink() {
-            std::fs::remove_dir(path).with_context(|| {
-              format!("Failed to remove symlink: {}", path.display())
-            })?;
-            return Ok(());
-          }
-        }
+      if cfg!(windows)
+        && let Ok(meta) = path.symlink_metadata()
+        && meta.is_symlink()
+      {
+        std::fs::remove_dir(path).with_context(|| {
+          format!("Failed to remove symlink: {}", path.display())
+        })?;
+        return Ok(());
       }
       Err(e)
     }

@@ -235,7 +235,7 @@ pub fn op_node_fs_constants() -> FsConstants {
   constants
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 #[op2]
 #[serde]
 pub fn op_node_fs_constants() -> FsConstants {

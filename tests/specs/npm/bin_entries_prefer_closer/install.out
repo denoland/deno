@@ -8,3 +8,9 @@ Initialize @denotest/transitive-bin@1.0.0
 Initialize @denotest/bin@1.0.0
 Initialize @denotest/bin@0.7.0
 [UNORDERED_END]
+Packages: [WILDLINE]
+[WILDLINE]
+Resolved: [WILDLINE], reused: [WILDLINE], downloaded: [WILDLINE], added: [WILDLINE]
+
+Dependencies:
+[WILDCARD]

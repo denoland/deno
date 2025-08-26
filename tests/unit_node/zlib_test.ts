@@ -2,6 +2,7 @@
 
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
+import { randomBytes } from "node:crypto";
 import {
   BrotliCompress,
   brotliCompress,
@@ -14,6 +15,7 @@ import {
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  deflateSync,
   gzip,
   gzipSync,
   unzipSync,
@@ -156,7 +158,7 @@ Deno.test("Brotli quality 10 doesn't panic", () => {
   });
   assertEquals(
     new Uint8Array(e.buffer, e.byteOffset, e.byteLength),
-    new Uint8Array([17, 10, 4, 0, 2, 97, 98, 99, 3]),
+    new Uint8Array([11, 1, 128, 97, 98, 99, 3]),
   );
 });
 
@@ -272,4 +274,15 @@ Deno.test("BrotliCompress", async () => {
 
   await deffered.promise;
   assertEquals(data, "hello");
+});
+
+Deno.test("ERR_BUFFER_TOO_LARGE works correctly", () => {
+  assertThrows(
+    () => {
+      deflateSync(randomBytes(1024), {
+        maxOutputLength: 1,
+      });
+    },
+    "Cannot create a Buffer larger than 1 bytes",
+  );
 });

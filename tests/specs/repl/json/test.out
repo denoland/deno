@@ -1,0 +1,4 @@
+{ type: "RunSuccess", output: null }
+hello
+{ type: "RunSuccess", output: "2" }
+{ type: "RunFailure", text: "Uncaught" }

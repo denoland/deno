@@ -12,7 +12,7 @@ use super::crypto::x509::CertificateObject;
 #[op2]
 #[serde]
 pub fn op_get_root_certificates() -> Vec<String> {
-  let certs = webpki_root_certs::TLS_SERVER_ROOT_CERTS
+  webpki_root_certs::TLS_SERVER_ROOT_CERTS
     .iter()
     .map(|cert| {
       let b64 = base64::engine::general_purpose::STANDARD.encode(cert);
@@ -30,8 +30,7 @@ pub fn op_get_root_certificates() -> Vec<String> {
       );
       pem
     })
-    .collect::<Vec<String>>();
-  certs
+    .collect::<Vec<String>>()
 }
 
 #[op2]

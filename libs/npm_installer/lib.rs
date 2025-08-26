@@ -13,6 +13,7 @@ use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::WorkspaceNpmLinkPackages;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
 mod bin_entries;
@@ -42,6 +43,7 @@ pub use self::extra_info::CachedNpmPackageExtraInfoProvider;
 pub use self::extra_info::ExpectedExtraInfo;
 pub use self::extra_info::NpmPackageExtraInfoProvider;
 use self::extra_info::NpmPackageExtraInfoProviderSys;
+pub use self::factory::InstallReporter;
 pub use self::factory::NpmInstallerFactory;
 pub use self::factory::NpmInstallerFactoryOptions;
 pub use self::factory::NpmInstallerFactorySys;
@@ -82,7 +84,16 @@ pub struct LifecycleScriptsConfig {
   pub explicit_install: bool,
 }
 
-pub trait Reporter: std::fmt::Debug + Send + Sync + Clone + 'static {
+pub trait InstallProgressReporter:
+  std::fmt::Debug + Send + Sync + 'static
+{
+  fn blocking(&self, message: &str);
+  fn initializing(&self, nv: &PackageNv);
+  fn initialized(&self, nv: &PackageNv);
+}
+pub trait Reporter:
+  std::fmt::Debug + Send + Sync + 'static + dyn_clone::DynClone
+{
   type Guard;
   type ClearGuard;
 
@@ -167,6 +178,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
     workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
+    install_reporter: Option<Arc<dyn InstallReporter>>,
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
       match maybe_node_modules_path {
@@ -179,13 +191,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
             workspace_link_packages,
           )),
           npm_install_deps_provider.clone(),
-          reporter.clone(),
+          dyn_clone::clone(reporter),
           npm_resolution.clone(),
           sys,
           tarball_cache,
           node_modules_folder,
           lifecycle_scripts,
           system_info,
+          install_reporter,
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
@@ -241,6 +254,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
     self
       .add_package_reqs_raw(packages, Some(caching))
       .await
@@ -267,35 +281,35 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       .add_package_reqs(packages)
       .await;
 
-    if result.dependencies_result.is_ok() {
-      if let Some(lockfile) = self.maybe_lockfile.as_ref() {
-        result.dependencies_result = lockfile.error_if_changed();
-      }
+    if result.dependencies_result.is_ok()
+      && let Some(lockfile) = self.maybe_lockfile.as_ref()
+    {
+      result.dependencies_result = lockfile.error_if_changed();
     }
-    if result.dependencies_result.is_ok() {
-      if let Some(caching) = caching {
-        // the async mutex is unfortunate, but needed to handle the edge case where two workers
-        // try to cache the same package at the same time. we need to hold the lock while we cache
-        // and since that crosses an await point, we need the async mutex.
-        //
-        // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
-        // while caching typically takes micro or milli seconds.
-        let _permit = self.install_queue.acquire().await;
-        let uncached = {
-          let cached_reqs = self.cached_reqs.lock();
-          packages
-            .iter()
-            .filter(|req| !cached_reqs.contains(req))
-            .collect::<Vec<_>>()
-        };
+    if result.dependencies_result.is_ok()
+      && let Some(caching) = caching
+    {
+      // the async mutex is unfortunate, but needed to handle the edge case where two workers
+      // try to cache the same package at the same time. we need to hold the lock while we cache
+      // and since that crosses an await point, we need the async mutex.
+      //
+      // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
+      // while caching typically takes micro or milli seconds.
+      let _permit = self.install_queue.acquire().await;
+      let uncached = {
+        let cached_reqs = self.cached_reqs.lock();
+        packages
+          .iter()
+          .filter(|req| !cached_reqs.contains(req))
+          .collect::<Vec<_>>()
+      };
 
-        if !uncached.is_empty() {
-          result.dependencies_result = self.cache_packages(caching).await;
-          if result.dependencies_result.is_ok() {
-            let mut cached_reqs = self.cached_reqs.lock();
-            for req in uncached {
-              cached_reqs.insert(req.clone());
-            }
+      if !uncached.is_empty() {
+        result.dependencies_result = self.cache_packages(caching).await;
+        if result.dependencies_result.is_ok() {
+          let mut cached_reqs = self.cached_reqs.lock();
+          for req in uncached {
+            cached_reqs.insert(req.clone());
           }
         }
       }

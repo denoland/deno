@@ -16,7 +16,7 @@ use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 
 pub trait NodeResolutionCache:
-  std::fmt::Debug + crate::sync::MaybeSend + crate::sync::MaybeSync
+  std::fmt::Debug + deno_maybe_sync::MaybeSend + deno_maybe_sync::MaybeSync
 {
   fn get_canonicalized(
     &self,
@@ -86,7 +86,8 @@ impl NodeResolutionCache for NodeResolutionThreadLocalCache {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NodeResolutionCacheRc = crate::sync::MaybeArc<dyn NodeResolutionCache>;
+pub type NodeResolutionCacheRc =
+  deno_maybe_sync::MaybeArc<dyn NodeResolutionCache>;
 
 #[derive(Debug, Default)]
 pub struct NodeResolutionSys<TSys> {
@@ -159,10 +160,10 @@ impl<TSys: FsMetadata> NodeResolutionSys<TSys> {
 
 impl<TSys: FsCanonicalize> BaseFsCanonicalize for NodeResolutionSys<TSys> {
   fn base_fs_canonicalize(&self, from: &Path) -> std::io::Result<PathBuf> {
-    if let Some(cache) = &self.cache {
-      if let Some(result) = cache.get_canonicalized(from) {
-        return result;
-      }
+    if let Some(cache) = &self.cache
+      && let Some(result) = cache.get_canonicalized(from)
+    {
+      return result;
     }
     let result = self.sys.base_fs_canonicalize(from);
     if let Some(cache) = &self.cache {
