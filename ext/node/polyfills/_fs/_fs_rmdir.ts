@@ -10,7 +10,6 @@ import {
   validateRmOptions,
   validateRmOptionsSync,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { resolve } from "node:path";
 import {
   denoErrorToNodeError,
   ERR_FS_RMDIR_ENOTDIR,
@@ -37,7 +36,7 @@ export function rmdir(
   optionsOrCallback: rmdirOptions | rmdirCallback,
   maybeCallback?: rmdirCallback,
 ) {
-  path = resolve(getValidatedPath(path) as string);
+  path = getValidatedPath(path) as string;
 
   const callback = typeof optionsOrCallback === "function"
     ? optionsOrCallback
