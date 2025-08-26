@@ -13,7 +13,9 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -114,6 +116,11 @@ use crate::tools::test::channel::ChannelClosedError;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
 const MAX_SANITIZER_LOOP_SPINS: usize = 16;
+
+static SLOW_TEST_TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
+  let base_timeout = env::var("DENO_SLOW_TEST_TIMEOUT").unwrap_or_default();
+  base_timeout.parse().unwrap_or(60).max(1)
+});
 
 #[derive(Default)]
 struct TopLevelSanitizerStats {
@@ -887,6 +894,34 @@ pub enum RunTestsForWorkerErr {
   SerdeV8(#[from] serde_v8::Error),
 }
 
+async fn slow_test_watchdog(state_rc: Rc<RefCell<OpState>>, test_id: usize) {
+  // The slow test warning should pop up every DENO_SLOW_TEST_TIMEOUT*(2**n) seconds,
+  // with a duration that is doubling each time. So for a warning time of 60s,
+  // we should get a warning at 60s, 120s, 240s, etc.
+  let base_timeout = *SLOW_TEST_TIMEOUT;
+  let mut multiplier = 1;
+  let mut elapsed = 0;
+  loop {
+    tokio::time::sleep(Duration::from_secs(
+      base_timeout * (multiplier - elapsed),
+    ))
+    .await;
+    if send_test_event(
+      &state_rc,
+      TestEvent::Slow(
+        test_id,
+        Duration::from_secs(base_timeout * multiplier).as_millis() as _,
+      ),
+    )
+    .is_err()
+    {
+      break;
+    }
+    multiplier *= 2;
+    elapsed += 1;
+  }
+}
+
 pub async fn run_tests_for_worker(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
@@ -1000,24 +1035,25 @@ async fn run_tests_for_worker_inner(
   // Execute beforeAll hooks (FIFO order)
   for before_all_hook in &test_hooks.before_all {
     let call = worker.js_runtime.call(before_all_hook);
-    if let Err(err) = worker
+    let result = worker
       .js_runtime
       .with_event_loop_promise(call, PollEventLoopOptions::default())
-      .await
-    {
-      tests_to_run = vec![];
+      .await;
+    let Err(err) = result else {
+      continue;
+    };
+    tests_to_run = vec![];
 
-      match err.into_kind() {
-        CoreErrorKind::Js(err) => {
-          send_test_event(
-            &state_rc,
-            TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
-          )?;
-          break;
-        }
-        err => return Err(err.into_box().into()),
-      };
-    }
+    match err.into_kind() {
+      CoreErrorKind::Js(err) => {
+        send_test_event(
+          &state_rc,
+          TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+        )?;
+        break;
+      }
+      err => return Err(err.into_box().into()),
+    };
   }
 
   for (desc, function) in tests_to_run.into_iter() {
@@ -1065,63 +1101,35 @@ async fn run_tests_for_worker_inner(
     let mut before_each_hook_errored = false;
     for before_each_hook in &test_hooks.before_each {
       let call = worker.js_runtime.call(before_each_hook);
-      if let Err(err) = worker
+      let result = worker
         .js_runtime
         .with_event_loop_promise(call, PollEventLoopOptions::default())
-        .await
-      {
-        match err.into_kind() {
-          CoreErrorKind::Js(err) => {
-            before_each_hook_errored = true;
-            let test_result =
-              TestResult::Failed(TestFailure::JsError(Box::new(err)));
-            fail_fast_tracker.add_failure();
-            let elapsed = earlier.elapsed().as_millis();
-            send_test_event(
-              &state_rc,
-              TestEvent::Result(desc.id, test_result, elapsed as u64),
-            )?;
-            break;
-          }
-          err => return Err(err.into_box().into()),
-        };
-      }
+        .await;
+      let Err(err) = result else {
+        continue;
+      };
+      match err.into_kind() {
+        CoreErrorKind::Js(err) => {
+          before_each_hook_errored = true;
+          let test_result =
+            TestResult::Failed(TestFailure::JsError(Box::new(err)));
+          fail_fast_tracker.add_failure();
+          let elapsed = earlier.elapsed().as_millis();
+          send_test_event(
+            &state_rc,
+            TestEvent::Result(desc.id, test_result, elapsed as u64),
+          )?;
+          break;
+        }
+        err => return Err(err.into_box().into()),
+      };
     }
 
     let result = if !before_each_hook_errored {
       let call = worker.js_runtime.call(&function);
 
-      let slow_state_rc = state_rc.clone();
-      let slow_test_id = desc.id;
-      let slow_test_warning = spawn(async move {
-        // The slow test warning should pop up every DENO_SLOW_TEST_TIMEOUT*(2**n) seconds,
-        // with a duration that is doubling each time. So for a warning time of 60s,
-        // we should get a warning at 60s, 120s, 240s, etc.
-        let base_timeout =
-          env::var("DENO_SLOW_TEST_TIMEOUT").unwrap_or_default();
-        let base_timeout = base_timeout.parse().unwrap_or(60).max(1);
-        let mut multiplier = 1;
-        let mut elapsed = 0;
-        loop {
-          tokio::time::sleep(Duration::from_secs(
-            base_timeout * (multiplier - elapsed),
-          ))
-          .await;
-          if send_test_event(
-            &slow_state_rc,
-            TestEvent::Slow(
-              slow_test_id,
-              Duration::from_secs(base_timeout * multiplier).as_millis() as _,
-            ),
-          )
-          .is_err()
-          {
-            break;
-          }
-          multiplier *= 2;
-          elapsed += 1;
-        }
-      });
+      let slow_test_warning =
+        spawn(slow_test_watchdog(state_rc.clone(), desc.id));
 
       let result = worker
         .js_runtime
@@ -1175,26 +1183,29 @@ async fn run_tests_for_worker_inner(
     // Execute afterEach hooks (LIFO order)
     for after_each_hook in test_hooks.after_each.iter().rev() {
       let call = worker.js_runtime.call(after_each_hook);
-      if let Err(err) = worker
+      let result = worker
         .js_runtime
         .with_event_loop_promise(call, PollEventLoopOptions::default())
-        .await
-      {
-        match err.into_kind() {
-          CoreErrorKind::Js(err) => {
-            let test_result =
-              TestResult::Failed(TestFailure::JsError(Box::new(err)));
-            fail_fast_tracker.add_failure();
-            let elapsed = earlier.elapsed().as_millis();
-            send_test_event(
-              &state_rc,
-              TestEvent::Result(desc.id, test_result, elapsed as u64),
-            )?;
-            break;
-          }
-          err => return Err(err.into_box().into()),
-        };
-      }
+        .await;
+
+      let Err(err) = result else {
+        continue;
+      };
+
+      match err.into_kind() {
+        CoreErrorKind::Js(err) => {
+          let test_result =
+            TestResult::Failed(TestFailure::JsError(Box::new(err)));
+          fail_fast_tracker.add_failure();
+          let elapsed = earlier.elapsed().as_millis();
+          send_test_event(
+            &state_rc,
+            TestEvent::Result(desc.id, test_result, elapsed as u64),
+          )?;
+          break;
+        }
+        err => return Err(err.into_box().into()),
+      };
     }
 
     // if !matches!(result, TestResult::Failed(_)) {
@@ -1244,22 +1255,25 @@ async fn run_tests_for_worker_inner(
   // Execute afterAll hooks (LIFO order)
   for after_all_hook in test_hooks.after_all.iter().rev() {
     let call = worker.js_runtime.call(after_all_hook);
-    if let Err(err) = worker
+    let result = worker
       .js_runtime
       .with_event_loop_promise(call, PollEventLoopOptions::default())
-      .await
-    {
-      match err.into_kind() {
-        CoreErrorKind::Js(err) => {
-          send_test_event(
-            &state_rc,
-            TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
-          )?;
-          break;
-        }
-        err => return Err(err.into_box().into()),
-      };
-    }
+      .await;
+
+    let Err(err) = result else {
+      continue;
+    };
+
+    match err.into_kind() {
+      CoreErrorKind::Js(err) => {
+        send_test_event(
+          &state_rc,
+          TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+        )?;
+        break;
+      }
+      err => return Err(err.into_box().into()),
+    };
   }
 
   Ok(())
