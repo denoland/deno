@@ -7,6 +7,7 @@ import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 const {
   op_register_test_step,
   op_register_test,
+  op_register_test_hook,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
@@ -342,6 +343,62 @@ test.only = function (
   maybeFn,
 ) {
   return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
+};
+
+test.beforeAll = function (fn) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test_hook !== "function") {
+    return;
+  }
+  
+  if (typeof fn !== "function") {
+    throw new TypeError("Expected a function for beforeAll hook");
+  }
+  
+  const location = core.currentUserCallSite();
+  op_register_test_hook(fn, "beforeAll", location.fileName, location.lineNumber, location.columnNumber);
+};
+
+test.beforeEach = function (fn) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test_hook !== "function") {
+    return;
+  }
+  
+  if (typeof fn !== "function") {
+    throw new TypeError("Expected a function for beforeEach hook");
+  }
+  
+  const location = core.currentUserCallSite();
+  op_register_test_hook(fn, "beforeEach", location.fileName, location.lineNumber, location.columnNumber);
+};
+
+test.afterEach = function (fn) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test_hook !== "function") {
+    return;
+  }
+  
+  if (typeof fn !== "function") {
+    throw new TypeError("Expected a function for afterEach hook");
+  }
+  
+  const location = core.currentUserCallSite();
+  op_register_test_hook(fn, "afterEach", location.fileName, location.lineNumber, location.columnNumber);
+};
+
+test.afterAll = function (fn) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test_hook !== "function") {
+    return;
+  }
+  
+  if (typeof fn !== "function") {
+    throw new TypeError("Expected a function for afterAll hook");
+  }
+  
+  const location = core.currentUserCallSite();
+  op_register_test_hook(fn, "afterAll", location.fileName, location.lineNumber, location.columnNumber);
 };
 
 function getFullName(desc) {

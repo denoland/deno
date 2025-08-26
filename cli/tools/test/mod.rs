@@ -233,7 +233,16 @@ pub struct TestLocation {
 pub(crate) struct TestContainer(
   TestDescriptions,
   Vec<v8::Global<v8::Function>>,
+  TestHooks,
 );
+
+#[derive(Default)]
+pub(crate) struct TestHooks {
+  pub before_all: Vec<v8::Global<v8::Function>>,
+  pub before_each: Vec<v8::Global<v8::Function>>,
+  pub after_each: Vec<v8::Global<v8::Function>>,
+  pub after_all: Vec<v8::Global<v8::Function>>,
+}
 
 impl TestContainer {
   pub fn register(
@@ -243,6 +252,23 @@ impl TestContainer {
   ) {
     self.0.tests.insert(description.id, description);
     self.1.push(function)
+  }
+
+  pub fn register_hook(
+    &mut self,
+    hook_type: String,
+    function: v8::Global<v8::Function>,
+    _file_name: String,
+    _line_number: u32,
+    _column_number: u32,
+  ) {
+    match hook_type.as_str() {
+      "beforeAll" => self.2.before_all.push(function),
+      "beforeEach" => self.2.before_each.push(function),
+      "afterEach" => self.2.after_each.push(function),
+      "afterAll" => self.2.after_all.push(function),
+      _ => {}
+    }
   }
 
   pub fn is_empty(&self) -> bool {
@@ -872,7 +898,7 @@ pub async fn run_tests_for_worker(
 ) -> Result<(), RunTestsForWorkerErr> {
   let state_rc = worker.js_runtime.op_state();
   // Take whatever tests have been registered
-  let TestContainer(tests, test_functions) =
+  let TestContainer(tests, test_functions, test_hooks) =
     std::mem::take(&mut *state_rc.borrow_mut().borrow_mut::<TestContainer>());
 
   let tests: Arc<TestDescriptions> = tests.into();
@@ -882,12 +908,12 @@ pub async fn run_tests_for_worker(
     specifier,
     tests,
     test_functions,
+    test_hooks,
     options,
     fail_fast_tracker,
   )
   .await;
 
-  _ = send_test_event(&state_rc, TestEvent::Completed);
   res
 }
 
@@ -896,6 +922,7 @@ async fn run_tests_for_worker_inner(
   specifier: &ModuleSpecifier,
   tests: Arc<TestDescriptions>,
   test_functions: Vec<v8::Global<v8::Function>>,
+  test_hooks: TestHooks,
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
 ) -> Result<(), RunTestsForWorkerErr> {
@@ -975,6 +1002,28 @@ async fn run_tests_for_worker_inner(
       .or_insert(1);
   }
 
+  // Execute beforeAll hooks (FIFO order)
+  for before_all_hook in &test_hooks.before_all {
+    let call = worker.js_runtime.call(before_all_hook);
+    if let Err(err) = worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await
+    {
+      tests_to_run = vec![];
+
+      match err.into_kind() {
+        CoreErrorKind::Js(err) => {
+          send_test_event(
+            &state_rc,
+            TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+          )?;
+        }
+        err => return Err(err.into_box().into()),
+      };
+    }
+  }
+
   for (desc, function) in tests_to_run.into_iter() {
     if fail_fast_tracker.should_stop() {
       break;
@@ -1014,8 +1063,33 @@ async fn run_tests_for_worker_inner(
 
     // We always capture stats, regardless of sanitization state
     let before = stats.clone().capture(&filter);
-
     let earlier = Instant::now();
+
+    // Execute beforeEach hooks (FIFO order)
+    for before_each_hook in &test_hooks.before_each {
+      let call = worker.js_runtime.call(before_each_hook);
+      if let Err(err) = worker
+        .js_runtime
+        .with_event_loop_promise(call, PollEventLoopOptions::default())
+        .await
+      {
+        match err.into_kind() {
+          CoreErrorKind::Js(err) => {
+            let test_result =
+              TestResult::Failed(TestFailure::JsError(Box::new(err)));
+            fail_fast_tracker.add_failure();
+            let elapsed = earlier.elapsed().as_millis();
+            send_test_event(
+              &state_rc,
+              TestEvent::Result(desc.id, test_result, elapsed as u64),
+            )?;
+          }
+          err => return Err(err.into_box().into()),
+        };
+        continue;
+      }
+    }
+
     let call = worker.js_runtime.call(&function);
 
     let slow_state_rc = state_rc.clone();
@@ -1088,6 +1162,31 @@ async fn run_tests_for_worker_inner(
         TestEvent::Result(desc.id, result, elapsed as u64),
       )?;
       continue;
+    } else {
+      // Execute afterEach hooks (LIFO order)
+      for after_each_hook in test_hooks.after_each.iter().rev() {
+        let call = worker.js_runtime.call(after_each_hook);
+        if let Err(err) = worker
+          .js_runtime
+          .with_event_loop_promise(call, PollEventLoopOptions::default())
+          .await
+        {
+          match err.into_kind() {
+            CoreErrorKind::Js(err) => {
+              let test_result =
+                TestResult::Failed(TestFailure::JsError(Box::new(err)));
+              fail_fast_tracker.add_failure();
+              let elapsed = earlier.elapsed().as_millis();
+              send_test_event(
+                &state_rc,
+                TestEvent::Result(desc.id, test_result, elapsed as u64),
+              )?;
+            }
+            err => return Err(err.into_box().into()),
+          };
+          continue;
+        }
+      }
     }
 
     // Await activity stabilization
@@ -1125,6 +1224,29 @@ async fn run_tests_for_worker_inner(
       TestEvent::Result(desc.id, result, elapsed as u64),
     )?;
   }
+
+  send_test_event(&state_rc, TestEvent::Completed)?;
+
+  // Execute afterAll hooks (LIFO order)
+  for after_all_hook in test_hooks.after_all.iter().rev() {
+    let call = worker.js_runtime.call(after_all_hook);
+    if let Err(err) = worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await
+    {
+      match err.into_kind() {
+        CoreErrorKind::Js(err) => {
+          send_test_event(
+            &state_rc,
+            TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+          )?;
+        }
+        err => return Err(err.into_box().into()),
+      };
+    }
+  }
+
   Ok(())
 }
 

@@ -1,0 +1,47 @@
+{
+  "tests": {
+    "basic": {
+      "args": "test basic.ts",
+      "output": "basic.out",
+      "exitCode": 0
+    },
+    "beforeeach_error": {
+      "args": "test beforeeach_error.ts",
+      "output": "beforeeach_error.out",
+      "exitCode": 1
+    },
+    "aftereach_error": {
+      "args": "test aftereach_error.ts",
+      "output": "aftereach_error.out",
+      "exitCode": 1
+    },
+    "afterall_error": {
+      "args": "test afterall_error.ts",
+      "output": "afterall_error.out"
+    },
+    "async_error": {
+      "args": "test async_error.ts",
+      "output": "async_error.out",
+      "exitCode": 1
+    },
+    "cleanup_error": {
+      "args": "test cleanup_error.ts",
+      "output": "cleanup_error.out"
+    },
+    "error_handling": {
+      "args": "test error_handling.ts",
+      "output": "error_handling.out",
+      "exitCode": 1
+    },
+    "mixed_errors": {
+      "args": "test mixed_errors.ts",
+      "output": "mixed_errors.out",
+      "exitCode": 1
+    },
+    "unhandled_rejection": {
+      "args": "test unhandled_rejection.ts",
+      "output": "unhandled_rejection.out",
+      "exitCode": 1
+    }
+  }
+}

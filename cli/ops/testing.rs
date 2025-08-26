@@ -27,6 +27,7 @@ deno_core::extension!(deno_test,
     op_restore_test_permissions,
     op_register_test,
     op_register_test_step,
+    op_register_test_hook,
     op_test_get_origin,
     op_test_event_step_wait,
     op_test_event_step_result_ok,
@@ -130,6 +131,20 @@ fn op_register_test(
   let container = state.borrow_mut::<TestContainer>();
   container.register(description, function);
   ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
+  Ok(())
+}
+
+#[op2]
+fn op_register_test_hook(
+  state: &mut OpState,
+  #[global] function: v8::Global<v8::Function>,
+  #[string] hook_type: String,
+  #[string] file_name: String,
+  #[smi] line_number: u32,
+  #[smi] column_number: u32,
+) -> Result<(), JsErrorBox> {
+  let container = state.borrow_mut::<TestContainer>();
+  container.register_hook(hook_type, function, file_name, line_number, column_number);
   Ok(())
 }
 
