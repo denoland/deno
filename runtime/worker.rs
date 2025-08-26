@@ -6,6 +6,7 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::sync::LazyLock;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -93,12 +94,13 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
 // TODO(bartlomieju): temporary measurement until we start supporting more
 // module types
 pub fn create_validate_import_attributes_callback(
-  enable_raw_imports: bool,
+  enable_raw_imports: Arc<AtomicBool>,
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
     move |scope: &mut v8::HandleScope, attributes: &HashMap<String, String>| {
       let valid_attribute = |kind: &str| {
-        enable_raw_imports && matches!(kind, "bytes" | "text")
+        enable_raw_imports.load(Ordering::Relaxed)
+          && matches!(kind, "bytes" | "text")
           || matches!(kind, "json")
       };
       for (key, value) in attributes {
@@ -468,7 +470,6 @@ impl MainWorker {
         compiled_wasm_module_store: services.compiled_wasm_module_store,
         extensions,
         op_metrics_factory_fn,
-        enable_raw_imports: options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: options.enable_stack_trace_arg_in_ops,
       })
     };
@@ -515,6 +516,13 @@ impl MainWorker {
         ) as Box<dyn Fn(_, _, &_)>,
       )
     }));
+
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .borrow::<EnableRawImports>()
+      .0
+      .store(options.enable_raw_imports, Ordering::Relaxed);
 
     js_runtime
       .lazy_init_extensions(vec![
@@ -1098,13 +1106,16 @@ struct CommonRuntimeOptions {
   compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   extensions: Vec<Extension>,
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
-  enable_raw_imports: bool,
   enable_stack_trace_arg_in_ops: bool,
 }
 
+struct EnableRawImports(Arc<AtomicBool>);
+
 #[allow(clippy::too_many_arguments)]
 fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
-  JsRuntime::new(RuntimeOptions {
+  let enable_raw_imports = Arc::new(AtomicBool::new(false));
+
+  let js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(opts.module_loader),
     startup_snapshot: opts.startup_snapshot,
     create_params: opts.create_params,
@@ -1125,7 +1136,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
       make_wait_for_inspector_disconnect_callback(),
     ),
     validate_import_attributes_cb: Some(
-      create_validate_import_attributes_callback(opts.enable_raw_imports),
+      create_validate_import_attributes_callback(enable_raw_imports.clone()),
     ),
     import_assertions_support: deno_core::ImportAssertionsSupport::Error,
     maybe_op_stack_trace_callback: opts
@@ -1135,7 +1146,14 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     v8_platform: None,
     custom_module_evaluation_cb: None,
     eval_context_code_cache_cbs: None,
-  })
+  });
+
+  js_runtime
+    .op_state()
+    .borrow_mut()
+    .put(EnableRawImports(enable_raw_imports));
+
+  js_runtime
 }
 
 pub fn create_permissions_stack_trace_callback()
@@ -1160,7 +1178,6 @@ pub struct UnconfiguredRuntimeOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub additional_extensions: Vec<Extension>,
-  pub enable_raw_imports: bool,
 }
 
 pub struct UnconfiguredRuntime {
@@ -1196,7 +1213,6 @@ impl UnconfiguredRuntime {
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       extensions,
       op_metrics_factory_fn: None,
-      enable_raw_imports: options.enable_raw_imports,
       enable_stack_trace_arg_in_ops: false,
     });
 

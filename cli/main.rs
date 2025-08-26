@@ -761,7 +761,6 @@ fn wait_for_start(
         roots.compiled_wasm_module_store.clone(),
       ),
       additional_extensions: vec![],
-      enable_raw_imports: false,
     });
 
     let (rx, mut tx): (
