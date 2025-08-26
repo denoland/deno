@@ -17,7 +17,8 @@
     },
     "afterall_error": {
       "args": "test afterall_error.ts",
-      "output": "afterall_error.out"
+      "output": "afterall_error.out",
+      "exitCode": 1
     },
     "async_error": {
       "args": "test async_error.ts",

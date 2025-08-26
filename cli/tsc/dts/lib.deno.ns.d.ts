@@ -1168,7 +1168,10 @@ declare namespace Deno {
     ): void;
 
     /** Register a function to be called before all tests in the current scope.
+     *
      * These functions are run in FIFO order (first in, first out).
+     *
+     * If an exception is raised during execution of this hook, the remaining `beforeAll` hooks will not be run.
      *
      * ```ts
      * Deno.test.beforeAll(() => {
@@ -1184,7 +1187,11 @@ declare namespace Deno {
     ): void;
 
     /** Register a function to be called before each test in the current scope.
+     *
      * These functions are run in FIFO order (first in, first out).
+     *
+     * If an exception is raised during execution of this hook, the remaining hooks will not be run and the currently running
+     * test case will be marked as failed.
      *
      * ```ts
      * Deno.test.beforeEach(() => {
@@ -1198,7 +1205,11 @@ declare namespace Deno {
     beforeEach(fn: () => void | Promise<void>): void;
 
     /** Register a function to be called after each test in the current scope.
+     *
      * These functions are run in LIFO order (last in, first out).
+     *
+     * If an exception is raised during execution of this hook, the remaining hooks will not be run and the currently running
+     * test case will be marked as failed.
      *
      * ```ts
      * Deno.test.afterEach(() => {
@@ -1211,8 +1222,11 @@ declare namespace Deno {
      */
     afterEach(fn: () => void | Promise<void>): void;
 
-    /** Register a function to be called after all tests in the current scope.
-     * These functions are run in LIFO order (last in, first out).
+    /** Register a function to be called after all tests in the current scope have finished running.
+     *
+     * These functions are run in the LIFO order (last in, first out).
+     *
+     * If an exception is raised during execution of this hook, the remaining `afterAll` hooks will not be run.
      *
      * ```ts
      * Deno.test.afterAll(() => {

@@ -1,50 +1,56 @@
+const logs: string[] = [];
+
 Deno.test.beforeAll(() => {
-  console.log("beforeAll 1");
+  logs.push("beforeAll 1");
 });
 
 Deno.test.beforeAll(() => {
-  console.log("beforeAll 2");
+  logs.push("beforeAll 2");
 });
 
 Deno.test.beforeAll(() => {
-  console.log("beforeAll 3");
+  logs.push("beforeAll 3");
 });
 
 // Multiple beforeEach hooks
 Deno.test.beforeEach(() => {
-  console.log("beforeEach 1");
+  logs.push("beforeEach 1");
 });
 
 Deno.test.beforeEach(() => {
-  console.log("beforeEach 2");
+  logs.push("beforeEach 2");
 });
 
 // Multiple afterEach hooks
 Deno.test.afterEach(() => {
-  console.log("afterEach 1");
+  logs.push("afterEach 1");
 });
 
 Deno.test.afterEach(() => {
-  console.log("afterEach 2");
+  logs.push("afterEach 2");
 });
 
 // Multiple afterAll hooks
 Deno.test.afterAll(() => {
-  console.log("afterAll 1");
+  logs.push("afterAll 1");
 });
 
 Deno.test.afterAll(() => {
-  console.log("afterAll 2");
+  logs.push("afterAll 2");
 });
 
 Deno.test("first test", () => {
-  console.log("test 1");
+  logs.push("test 1");
 });
 
 Deno.test("second test", () => {
-  console.log("test 2");
+  logs.push("test 2");
 });
 
 Deno.test("third test", () => {
-  console.log("test 3");
+  logs.push("test 3");
 });
+
+globalThis.onunload = () => {
+  console.log(logs);
+};
