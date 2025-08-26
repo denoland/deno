@@ -553,10 +553,10 @@ impl<
     // }
 
     let p_str = path.to_str().unwrap();
-    let path = p_str
-      .strip_suffix('/')
-      .map(Path::new)
-      .unwrap_or(path.as_path());
+    let path = match p_str.strip_suffix('/') {
+      Some(s) => Cow::Borrowed(Path::new(s)),
+      None => Cow::Owned(path),
+    };
 
     let maybe_file_type = self.sys.get_file_type(&path);
     match maybe_file_type {
@@ -569,7 +569,7 @@ impl<
             .find(|e| self.sys.is_file(&path.join(e)));
           Err(
             UnsupportedDirImportError {
-              dir_url: UrlOrPath::Path(path.to_path_buf()),
+              dir_url: UrlOrPath::Path(path.into_owned()),
               maybe_referrer: maybe_referrer.map(|r| r.display()),
               suggested_file_name,
             }
@@ -606,7 +606,7 @@ impl<
         Ok(
           maybe_url
             .map(UrlOrPath::Url)
-            .unwrap_or(UrlOrPath::Path(path.to_path_buf())),
+            .unwrap_or(UrlOrPath::Path(path.into_owned())),
         )
       }
       _ => {
@@ -625,7 +625,7 @@ impl<
           ModuleNotFoundError {
             suggested_ext: self
               .module_not_found_ext_suggestion(&path, resolved_method),
-            specifier: UrlOrPath::Path(path.to_path_buf()),
+            specifier: UrlOrPath::Path(path.into_owned()),
             maybe_referrer: maybe_referrer.map(|r| r.display()),
           }
           .into(),
