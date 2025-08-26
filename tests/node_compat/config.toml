@@ -1029,6 +1029,7 @@
 "parallel/test-stream-readable-error-end.js" = {}
 "parallel/test-stream-readable-event.js" = {}
 "parallel/test-stream-readable-flow-recursion.js" = {}
+"parallel/test-stream-readable-from-web-termination.js" = {}
 "parallel/test-stream-readable-hwm-0-async.js" = {}
 "parallel/test-stream-readable-hwm-0-no-flow-data.js" = {}
 "parallel/test-stream-readable-hwm-0.js" = {}
