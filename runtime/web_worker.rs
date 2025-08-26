@@ -649,7 +649,9 @@ impl WebWorker {
       inspector: true,
       op_metrics_factory_fn,
       validate_import_attributes_cb: Some(
-        create_validate_import_attributes_callback(options.enable_raw_imports),
+        create_validate_import_attributes_callback(Arc::new(AtomicBool::new(
+          options.enable_raw_imports,
+        ))),
       ),
       import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       maybe_op_stack_trace_callback: options
