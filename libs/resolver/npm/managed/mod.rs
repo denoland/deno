@@ -127,6 +127,7 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
         options.npm_cache_dir.clone(),
         options.npmrc.clone(),
         options.npm_resolution.clone(),
+        options.sys.clone(),
       )),
     };
 

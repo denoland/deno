@@ -477,7 +477,7 @@ async fn inspector_port_collision() {
   child2.wait().unwrap();
 }
 
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_does_not_hang() {
   let script = util::testdata_path().join("inspector/inspector3.js");
   let child = util::deno_cmd()

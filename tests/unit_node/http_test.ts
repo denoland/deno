@@ -2141,3 +2141,28 @@ Deno.test("[node/https] null ca, key and cert req options", {
   }).end();
   await promise;
 });
+
+Deno.test("[node/http] server.listen respects signal option", async () => {
+  const [exitCode, _output] = await execCode(`
+    import { createServer } from 'node:http';
+
+    const abortController = new AbortController();
+
+    const server = createServer((_req, res) => {
+      res.writeHead(404).end();
+    }).on('listening', () => {
+      // Precedes setTimeout and exits with 0
+      abortController.abort();
+      setTimeout(() => process.exit(1), 1000);
+    }).on('close', () => {
+      process.exit(0);
+    });
+
+    server.listen({
+      host: 'localhost',
+      port: 0,
+      signal: abortController.signal
+    });
+  `);
+  assertEquals(exitCode, 0);
+});
