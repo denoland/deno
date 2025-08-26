@@ -1016,6 +1016,7 @@ async fn run_tests_for_worker_inner(
             &state_rc,
             TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
           )?;
+          break;
         }
         err => return Err(err.into_box().into()),
       };

@@ -5,6 +5,11 @@
       "output": "basic.out",
       "exitCode": 0
     },
+    "beforeall_error": {
+      "args": "test beforeall_error.ts",
+      "output": "beforeall_error.out",
+      "exitCode": 1
+    },
     "beforeeach_error": {
       "args": "test beforeeach_error.ts",
       "output": "beforeeach_error.out",
@@ -20,6 +25,7 @@
       "output": "afterall_error.out",
       "exitCode": 1
     },
+    // not yet working correctly
     "async_error": {
       "args": "test async_error.ts",
       "output": "async_error.out",
