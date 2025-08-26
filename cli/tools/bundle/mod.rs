@@ -1295,11 +1295,8 @@ fn esbuild_resolve_error_path(
   error: &esbuild_client::protocol::Message,
 ) -> Option<String> {
   let re = lazy_regex::regex!(r#"^Could not resolve "([^"]+)"#);
-  if let Some(captures) = re.captures(error.text.as_str()) {
-    Some(captures.get(1).unwrap().as_str().to_string())
-  } else {
-    None
-  }
+  re.captures(error.text.as_str())
+    .map(|captures| captures.get(1).unwrap().as_str().to_string())
 }
 
 fn handle_esbuild_errors_and_warnings(
@@ -1308,22 +1305,21 @@ fn handle_esbuild_errors_and_warnings(
   deferred_resolve_errors: &[DeferredResolveError],
 ) {
   for error in &response.errors {
-    if let Some(path) = esbuild_resolve_error_path(error) {
-      if let Some(deferred_resolve_error) =
+    if let Some(path) = esbuild_resolve_error_path(error)
+      && let Some(deferred_resolve_error) =
         deferred_resolve_errors.iter().find(|e| e.path == path)
-      {
-        let error = protocol::Message {
-          // use our own error message, as it has more detail
-          text: deferred_resolve_error.error.to_string(),
-          ..error.clone()
-        };
-        log::error!(
-          "{}: {}",
-          deno_terminal::colors::red_bold("error"),
-          format_message(&error, init_cwd)
-        );
-        continue;
-      }
+    {
+      let error = protocol::Message {
+        // use our own error message, as it has more detail
+        text: deferred_resolve_error.error.to_string(),
+        ..error.clone()
+      };
+      log::error!(
+        "{}: {}",
+        deno_terminal::colors::red_bold("error"),
+        format_message(&error, init_cwd)
+      );
+      continue;
     }
     log::error!(
       "{}: {}",
