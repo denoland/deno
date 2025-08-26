@@ -107,6 +107,25 @@ pub struct RemoveFlags {
   pub packages: Vec<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VersionFlags {
+  pub increment: Option<VersionIncrement>,
+  pub dry_run: bool,
+  pub no_git_tag: bool,
+  pub git_commit_all: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum VersionIncrement {
+  Major,
+  Minor,
+  Patch,
+  Premajor,
+  Preminor,
+  Prepatch,
+  Prerelease,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BenchFlags {
   pub files: FileFlags,
@@ -576,6 +595,7 @@ pub enum DenoSubcommand {
   Types,
   Upgrade(UpgradeFlags),
   Vendor,
+  Version(VersionFlags),
   Publish(PublishFlags),
   Help(HelpFlags),
 }
@@ -1541,6 +1561,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
         "uninstall" => uninstall_parse(&mut flags, &mut m),
         "update" => outdated_parse(&mut flags, &mut m, true)?,
         "upgrade" => upgrade_parse(&mut flags, &mut m),
+        "version" => version_parse(&mut flags, &mut m),
         "vendor" => vendor_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
         _ => unreachable!(),
@@ -1803,6 +1824,7 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
+        .subcommand(version_subcommand())
         .subcommand(vendor_subcommand());
 
       let help = help_subcommand(&cmd);
@@ -3787,6 +3809,59 @@ different location, use the <c>--output</> flag:
   })
 }
 
+fn version_subcommand() -> Command {
+  command(
+    "version",
+    cstr!(
+      "Update version in configuration file.
+  <p(245)>deno version patch</>  # 1.0.0 -> 1.0.1
+  <p(245)>deno version minor</>  # 1.0.0 -> 1.1.0
+  <p(245)>deno version major</>  # 1.0.0 -> 2.0.0
+
+Additional options:
+  <p(245)>deno version patch --dry-run</>        # Show what would change
+  <p(245)>deno version patch --no-git-tag</>     # Don't create git tag
+  <p(245)>deno version patch --git-commit-all</> # Stage and commit all changes"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("increment")
+          .help("Version increment type")
+          .value_parser([
+            "major",
+            "minor",
+            "patch",
+            "premajor",
+            "preminor",
+            "prepatch",
+            "prerelease",
+          ])
+          .index(1),
+      )
+      .arg(
+        Arg::new("dry-run")
+          .long("dry-run")
+          .help("Show what would change without making changes")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("no-git-tag")
+          .long("no-git-tag")
+          .help("Don't create a git tag")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("git-commit-all")
+          .long("git-commit-all")
+          .help("Stage and commit all changes")
+          .action(ArgAction::SetTrue),
+      )
+  })
+}
+
 fn vendor_subcommand() -> Command {
   command("vendor",
       "`deno vendor` was removed in Deno 2.
@@ -4963,6 +5038,29 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_args_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
     packages: matches.remove_many::<String>("packages").unwrap().collect(),
+  });
+}
+
+fn version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let increment =
+    matches
+      .remove_one::<String>("increment")
+      .and_then(|s| match s.as_str() {
+        "major" => Some(VersionIncrement::Major),
+        "minor" => Some(VersionIncrement::Minor),
+        "patch" => Some(VersionIncrement::Patch),
+        "premajor" => Some(VersionIncrement::Premajor),
+        "preminor" => Some(VersionIncrement::Preminor),
+        "prepatch" => Some(VersionIncrement::Prepatch),
+        "prerelease" => Some(VersionIncrement::Prerelease),
+        _ => None,
+      });
+
+  flags.subcommand = DenoSubcommand::Version(VersionFlags {
+    increment,
+    dry_run: matches.get_flag("dry-run"),
+    no_git_tag: matches.get_flag("no-git-tag"),
+    git_commit_all: matches.get_flag("git-commit-all"),
   });
 }
 
