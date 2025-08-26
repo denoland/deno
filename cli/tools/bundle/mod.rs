@@ -1093,9 +1093,12 @@ fn resolve_roots(
         let package_folder = npm_resolver
           .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
           .unwrap();
-        let main_module = node_resolver
-          .resolve_binary_export(&package_folder, v.sub_path())
-          .unwrap();
+        let Ok(main_module) =
+          node_resolver.resolve_binary_export(&package_folder, v.sub_path())
+        else {
+          roots.push(url);
+          continue;
+        };
         Url::from_file_path(&main_module).unwrap()
       }
       _ => url,
