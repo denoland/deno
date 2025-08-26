@@ -1810,7 +1810,6 @@ mod test {
   use url::Url;
 
   use super::*;
-  use crate::factory::WorkspaceDirectoryRc;
 
   pub struct UnreachableSys;
 

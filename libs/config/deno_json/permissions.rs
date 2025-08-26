@@ -149,7 +149,7 @@ pub struct PermissionsObject {
   pub read: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub write: AllowDenyPermissionConfig,
-  #[serde(default)]
+  #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub import: AllowDenyPermissionConfig,
   #[serde(default, deserialize_with = "deserialize_allow_deny")]
   pub env: AllowDenyPermissionConfig,
