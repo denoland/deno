@@ -19,9 +19,14 @@ import {
   normalizeEncoding,
 } from "ext:deno_node/internal/util.mjs";
 import { AbortError } from "ext:deno_node/internal/errors.ts";
+import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import { Duplex, Readable, Writable } from "node:stream";
+
+let debug = debuglog("stream", (fn) => {
+  debug = fn;
+});
 
 function isWritableStream(object) {
   return object instanceof WritableStream;
@@ -508,9 +513,22 @@ export function newReadableStreamFromStreamReadable(
     if (Buffer.isBuffer(chunk) && !objectMode) {
       chunk = new Uint8Array(chunk);
     }
-    controller.enqueue(chunk);
-    if (controller.desiredSize <= 0) {
-      streamReadable.pause();
+    // Controller operations can fail if the stream is destroyed while
+    // emitting data (e.g., wrapper.destroy() called in the 'data' event).
+    // These errors are expected and can be safely ignored.
+    try {
+      controller.enqueue(chunk);
+      if (controller.desiredSize <= 0) {
+        streamReadable.pause();
+      }
+    } catch (controllerError) {
+      // Ignore errors from controller operations when the controller
+      // is already closed, cancelled, or errored. This can happen
+      // when the stream is destroyed during data emission.
+      debug(
+        "Ignoring controller.enqueue() error (stream destroyed during data emission):",
+        controllerError
+      );
     }
   }
 
@@ -526,10 +544,24 @@ export function newReadableStreamFromStreamReadable(
     // This is a protection against non-standard, legacy streams
     // that happen to emit an error event again after finished is called.
     streamReadable.on("error", () => {});
-    if (error) {
-      return controller.error(error);
+    
+    // Controller operations can fail if the stream is destroyed while
+    // processing the finish event. These errors are expected and safely ignored.
+    try {
+      if (error) {
+        controller.error(error);
+      } else {
+        controller.close();
+      }
+    } catch (controllerError) {
+      // Ignore errors from controller operations when the controller
+      // is already closed, cancelled, or errored. This can happen
+      // when the stream is destroyed during data emission.
+      debug(
+        `Ignoring controller.${error ? "error()" : "close()"} error (stream destroyed during data emission):`,
+        controllerError
+      );
     }
-    controller.close();
   });
 
   streamReadable.on("data", onData);
