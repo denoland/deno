@@ -5,6 +5,8 @@ mod externals;
 mod provider;
 mod transform;
 
+use deno_ast::ModuleKind;
+use deno_resolver::cache::ParsedSourceCache;
 pub use provider::CliBundleProvider;
 
 use std::borrow::Cow;
@@ -63,10 +65,12 @@ use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::module_loader::CliDenoResolverModuleLoader;
+use crate::module_loader::CliEmitter;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
+use crate::resolver::CliCjsTracker;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
@@ -116,6 +120,9 @@ pub async fn bundle_init(
     },
     on_end_tx,
     js_plugins: plugins,
+    parsed_source_cache: factory.parsed_source_cache()?.clone(),
+    cjs_tracker: factory.cjs_tracker()?.clone(),
+    emitter: factory.emitter()?.clone(),
   });
 
   eprintln!("resolve_entrypoints");
@@ -523,7 +530,12 @@ pub struct DenoPluginHandler {
   module_loader: Arc<CliDenoResolverModuleLoader>,
   externals_matcher: Option<ExternalsMatcher>,
   on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
+
   js_plugins: Option<deno_runtime::ops::bundle::Plugins>,
+
+  parsed_source_cache: Arc<ParsedSourceCache>,
+  cjs_tracker: Arc<CliCjsTracker>,
+  emitter: Arc<CliEmitter>,
 }
 
 /*#[derive(Debug, Clone)]
@@ -884,6 +896,19 @@ pub enum BundleLoadError {
   #[class(generic)]
   #[error("Emit error")]
   Emit(#[from] deno_ast::EmitError),
+  #[class(generic)]
+  #[error("Prepare module load error")]
+  PrepareModuleLoad(#[from] crate::module_loader::PrepareModuleLoadError),
+
+  #[class(generic)]
+  #[error("Package.json load error")]
+  PackageJsonLoadError(#[from] node_resolver::errors::PackageJsonLoadError),
+
+  #[class(generic)]
+  #[error("Emit parsed source helper error")]
+  EmitParsedSourceHelperError(
+    #[from] deno_resolver::emit::EmitParsedSourceHelperError,
+  ),
 }
 
 impl BundleLoadError {
@@ -1004,7 +1029,7 @@ impl DenoPluginHandler {
   async fn prepare_module_load(
     &self,
     specifiers: &[ModuleSpecifier],
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), BundleLoadError> {
     let mut graph_permit =
       self.module_graph_container.acquire_update_permit().await;
     let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
@@ -1044,23 +1069,15 @@ impl DenoPluginHandler {
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
-    let (specifier, media_type, loader) =
+    let (specifier, media_type) =
       if let RequestedModuleType::Bytes = requested_type {
-        (
-          specifier,
-          MediaType::Unknown,
-          esbuild_client::BuiltinLoader::Binary,
-        )
+        (specifier, MediaType::Unknown)
       } else if let RequestedModuleType::Text = requested_type {
-        (
-          specifier,
-          MediaType::Unknown,
-          esbuild_client::BuiltinLoader::Text,
-        )
-      } else if let Some((specifier, media_type, loader)) =
+        (specifier, MediaType::Unknown)
+      } else if let Some((specifier, media_type, _)) =
         self.specifier_and_type_from_graph(&specifier)?
       {
-        (specifier, media_type, loader)
+        (specifier, media_type)
       } else {
         log::debug!(
           "{}: no specifier and type from graph for {}",
@@ -1082,13 +1099,73 @@ impl DenoPluginHandler {
         if media_type == deno_media_type::MediaType::Unknown {
           return Ok(None);
         }
-        (specifier, media_type, media_type_to_loader(media_type))
+        (specifier, media_type)
       };
+
     let graph = self.module_graph_container.graph();
     let module_or_asset = self
       .module_loader
       .load(&graph, &specifier, None, requested_type)
-      .await?;
+      .await;
+    let module_or_asset = match module_or_asset {
+      Ok(module_or_asset) => module_or_asset,
+      Err(e) => match e.as_kind() {
+        LoadCodeSourceErrorKind::LoadUnpreparedModule(_) => {
+          let file = self
+            .file_fetcher
+            .fetch_bypass_permissions(&specifier)
+            .await?;
+          let media_type = MediaType::from_specifier_and_headers(
+            &specifier,
+            file.maybe_headers.as_ref(),
+          );
+          match requested_type {
+            RequestedModuleType::Text | RequestedModuleType::Bytes => {
+              return self
+                .create_module_response(
+                  &graph,
+                  &specifier,
+                  media_type,
+                  &file.source,
+                  Some(requested_type),
+                )
+                .map(Some);
+            }
+            RequestedModuleType::None
+            | RequestedModuleType::Json
+            | RequestedModuleType::Other(_) => {
+              if media_type.is_emittable() {
+                let str = String::from_utf8_lossy(&file.source);
+                let value = str.into();
+                let source = self
+                  .maybe_transpile(&file.url, media_type, &value, None)
+                  .await?;
+                return self
+                  .create_module_response(
+                    &graph,
+                    &file.url,
+                    media_type,
+                    source.as_bytes(),
+                    Some(requested_type),
+                  )
+                  .map(Some);
+              } else {
+                return self
+                  .create_module_response(
+                    &graph,
+                    &file.url,
+                    media_type,
+                    &file.source,
+                    Some(requested_type),
+                  )
+                  .map(Some);
+              }
+            }
+          }
+        }
+        _ => return Err(e.into()),
+      },
+    };
     let loaded_code = match module_or_asset {
       LoadedModuleOrAsset::Module(loaded_module) => loaded_module.source,
       LoadedModuleOrAsset::ExternalAsset {
@@ -1103,6 +1180,36 @@ impl DenoPluginHandler {
       ),
     };
 
+    Ok(Some(self.create_module_response(
+      &graph,
+      &specifier,
+      media_type,
+      loaded_code.as_bytes(),
+      Some(requested_type),
+    )?))
+  }
+
+  fn create_module_response(
+    &self,
+    graph: &deno_graph::ModuleGraph,
+    specifier: &Url,
+    media_type: MediaType,
+    source: &[u8],
+    requested_type: Option<&RequestedModuleType<'_>>,
+  ) -> Result<(Vec<u8>, esbuild_client::BuiltinLoader), BundleLoadError> {
+    match requested_type {
+      Some(RequestedModuleType::Text) => {
+        return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Text));
+      }
+      Some(RequestedModuleType::Bytes) => {
+        return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Binary));
+      }
+      Some(RequestedModuleType::Json) => {
+        return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Json));
+      }
+      Some(RequestedModuleType::Other(_) | RequestedModuleType::None)
+      | None => {}
+    }
     if matches!(
       media_type,
       MediaType::JavaScript
@@ -1113,17 +1220,47 @@ impl DenoPluginHandler {
         | MediaType::Cts
         | MediaType::Jsx
         | MediaType::Tsx
-    ) && !graph.roots.contains(&specifier)
+    ) && !graph.roots.contains(specifier)
     {
       let code = self.apply_transform(
         &specifier,
         media_type,
-        std::str::from_utf8(loaded_code.as_bytes())?,
+        std::str::from_utf8(source)?,
       )?;
-      Ok(Some((code.into_bytes(), loader)))
+      Ok((code.into_bytes(), media_type_to_loader(media_type)))
     } else {
-      Ok(Some((loaded_code.as_bytes().to_vec(), loader)))
+      Ok((source.to_vec(), media_type_to_loader(media_type)))
     }
+  }
+
+  async fn maybe_transpile(
+    &self,
+    specifier: &Url,
+    media_type: MediaType,
+    source: &Arc<str>,
+    is_known_script: Option<bool>,
+  ) -> Result<Arc<str>, BundleLoadError> {
+    let parsed_source = self.parsed_source_cache.get_matching_parsed_source(
+      specifier,
+      media_type,
+      source.clone(),
+    )?;
+    let is_cjs = if let Some(is_known_script) = is_known_script {
+      self.cjs_tracker.is_cjs_with_known_is_script(
+        specifier,
+        media_type,
+        is_known_script,
+      )?
+    } else {
+      self.cjs_tracker.is_maybe_cjs(specifier, media_type)?
+        && parsed_source.compute_is_script()
+    };
+    let module_kind = ModuleKind::from_is_cjs(is_cjs);
+    let source = self
+      .emitter
+      .maybe_emit_parsed_source(parsed_source, module_kind)
+      .await?;
+    Ok(source)
   }
 
   #[allow(clippy::result_large_err)]

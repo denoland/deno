@@ -644,7 +644,7 @@ pub async fn op_bundle(
         let plugin_executor = plugin_executor.clone();
         spawner.spawn(move |scope| {
           let tc = &mut v8::TryCatch::new(scope);
-          let mut args = request.to_args(tc).unwrap();
+          let args = request.to_args(tc).unwrap();
           let executor = v8::Local::new(tc, plugin_executor);
           let undef = v8::undefined(tc).into();
           let _res = executor.call(tc, undef, &args).unwrap();
