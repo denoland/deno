@@ -355,6 +355,14 @@ impl From<bool> for AllowPartial {
   }
 }
 
+struct PromptOptions<'a> {
+  name: &'static str,
+  msg: &'a str,
+  api_name: Option<&'a str>,
+  info: Option<&'a str>,
+  is_unary: bool,
+}
+
 impl PermissionState {
   #[inline(always)]
   fn log_perm_access(
@@ -370,26 +378,23 @@ impl PermissionState {
         colors::bold(&format!(
           "{}️  Granted {}",
           PERMISSION_EMOJI,
-          Self::fmt_access(name, info)
+          Self::fmt_access(name, info().as_deref())
         ))
       );
     }
   }
 
-  fn fmt_access(
-    name: &'static str,
-    info: impl FnOnce() -> Option<String>,
-  ) -> String {
+  fn fmt_access(name: &'static str, info: Option<&str>) -> String {
     format!(
       "{} access{}",
       name,
-      info().map(|info| format!(" to {info}")).unwrap_or_default(),
+      info.map(|info| format!(" to {info}")).unwrap_or_default(),
     )
   }
 
   fn permission_denied_error(
     name: &'static str,
-    info: impl FnOnce() -> Option<String>,
+    info: Option<&str>,
   ) -> PermissionDeniedError {
     PermissionDeniedError {
       access: Self::fmt_access(name, info),
@@ -398,30 +403,22 @@ impl PermissionState {
   }
 
   fn prompt(
-    name: &'static str,
-    api_name: Option<&str>,
-    info: impl Fn() -> Option<String>,
-    is_unary: bool,
+    options: PromptOptions<'_>,
   ) -> (Result<(), PermissionDeniedError>, bool) {
-    let msg = {
-      let info = info();
-      StringBuilder::<String>::build(|builder| {
-        builder.append(name);
-        builder.append(" access");
-        if let Some(info) = &info {
-          builder.append(" to ");
-          builder.append(info);
-        }
-      })
-      .unwrap()
-    };
-    match permission_prompt(&msg, name, api_name, is_unary) {
+    let PromptOptions {
+      name,
+      msg,
+      api_name,
+      info,
+      is_unary,
+    } = options;
+    match permission_prompt(msg, name, api_name, is_unary) {
       PromptResponse::Allow => {
-        Self::log_perm_access(name, info);
+        Self::log_perm_access(name, || info.map(|i| i.to_string()));
         (Ok(()), false)
       }
       PromptResponse::AllowAll => {
-        Self::log_perm_access(name, info);
+        Self::log_perm_access(name, || info.map(|i| i.to_string()));
         (Ok(()), true)
       }
       PromptResponse::Deny => {
@@ -444,10 +441,30 @@ impl PermissionState {
         (Ok(()), false, false)
       }
       PermissionState::Prompt if prompt => {
-        let (result, is_allow_all) = Self::prompt(name, api_name, info, true);
+        let info = info();
+        let msg = StringBuilder::<String>::build(|builder| {
+          builder.append(name);
+          builder.append(" access");
+          if let Some(info) = &info {
+            builder.append(" to ");
+            builder.append(info);
+          }
+        })
+        .unwrap();
+        let (result, is_allow_all) = Self::prompt(PromptOptions {
+          name,
+          msg: &msg,
+          api_name,
+          info: info.as_deref(),
+          is_unary: true,
+        });
         (result, true, is_allow_all)
       }
-      _ => (Err(Self::permission_denied_error(name, info)), false, false),
+      _ => (
+        Err(Self::permission_denied_error(name, info().as_deref())),
+        false,
+        false,
+      ),
     }
   }
 }
@@ -3508,22 +3525,33 @@ impl PermissionsContainer {
     context_path: &Path,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    let fmt_name =
-      || Some(format_display_name(context_path.to_string_lossy()).into_owned());
     if inner.all_granted() {
       Ok(())
-    } else if inner.any_prompt() {
-      let (result, _is_allow_all) =
-        PermissionState::prompt("all", None, fmt_name, false);
-      match result {
-        Ok(()) => {
-          inner.grant_all_permissions();
-          Ok(())
-        }
-        Err(err) => Err(err.into()),
-      }
     } else {
-      Err(PermissionState::permission_denied_error("all", fmt_name).into())
+      let display_name = format_display_name(context_path.to_string_lossy());
+      if inner.any_prompt() {
+        let msg = format!(
+          "all access in order to access {} -- {} This will elevate all permissions!",
+          display_name,
+          colors::yellow("Warning")
+        );
+        let (result, _is_allow_all) = PermissionState::prompt(PromptOptions {
+          name: "all",
+          msg: &msg,
+          api_name: None,
+          info: Some(display_name.as_ref()),
+          is_unary: false,
+        });
+        match result {
+          Ok(()) => {
+            inner.grant_all_permissions();
+            Ok(())
+          }
+          Err(err) => Err(err.into()),
+        }
+      } else {
+        Err(PermissionState::permission_denied_error("all", None).into())
+      }
     }
   }
 
