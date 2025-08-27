@@ -18,7 +18,7 @@ pub struct BlockListResource {
   blocklist: RefCell<BlockList>,
 }
 
-impl deno_core::GarbageCollected for BlockListResource {
+unsafe impl deno_core::GarbageCollected for BlockListResource {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"BlockListResource"
   }

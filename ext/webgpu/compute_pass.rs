@@ -24,7 +24,9 @@ pub struct GPUComputePassEncoder {
   pub label: String,
 }
 
-impl GarbageCollected for GPUComputePassEncoder {
+unsafe impl GarbageCollected for GPUComputePassEncoder {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUComputePassEncoder"
   }

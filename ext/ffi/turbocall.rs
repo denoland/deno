@@ -335,6 +335,9 @@ pub(crate) struct Turbocall {
   pub c_function_info: Box<fast_api::CFunctionInfo>,
 }
 
+unsafe impl Send for Turbocall {}
+unsafe impl Sync for Turbocall {}
+
 pub(crate) fn make_template(sym: &Symbol, trampoline: Trampoline) -> Turbocall {
   let param_info = std::iter::once(fast_api::Type::V8Value.as_info()) // Receiver
     .chain(sym.parameter_types.iter().map(|t| t.into()))

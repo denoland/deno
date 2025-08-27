@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::cell::OnceCell;
+use std::sync::OnceLock;
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -14,7 +14,7 @@ pub struct GPUCommandBuffer {
   pub id: wgpu_core::id::CommandBufferId,
   pub label: String,
 
-  pub consumed: OnceCell<()>,
+  pub consumed: OnceLock<()>,
 }
 
 impl Drop for GPUCommandBuffer {
@@ -29,7 +29,8 @@ impl deno_core::webidl::WebIdlInterfaceConverter for GPUCommandBuffer {
   const NAME: &'static str = "GPUCommandBuffer";
 }
 
-impl GarbageCollected for GPUCommandBuffer {
+unsafe impl GarbageCollected for GPUCommandBuffer {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUCommandBuffer"
   }
@@ -48,6 +49,7 @@ impl GPUCommandBuffer {
   fn label(&self) -> String {
     self.label.clone()
   }
+
   #[setter]
   #[string]
   fn label(&self, #[webidl] _label: String) {

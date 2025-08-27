@@ -13,13 +13,14 @@ use std::ptr::NonNull;
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::Local;
 use deno_core::v8::Value;
+use deno_core::v8::cppgc::GcCell;
 use deno_error::JsErrorBox;
 
+use crate::SameObject;
 use crate::surface::GPUCanvasContext;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -87,13 +88,14 @@ pub enum ByowError {
 // TODO(@littledivy): This will extend `OffscreenCanvas` when we add it.
 pub struct UnsafeWindowSurface {
   pub id: wgpu_core::id::SurfaceId,
-  pub width: RefCell<u32>,
-  pub height: RefCell<u32>,
+  pub width: GcCell<u32>,
+  pub height: GcCell<u32>,
 
   pub context: SameObject<GPUCanvasContext>,
 }
 
-impl GarbageCollected for UnsafeWindowSurface {
+unsafe impl GarbageCollected for UnsafeWindowSurface {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"UnsafeWindowSurface"
   }
@@ -143,8 +145,8 @@ impl UnsafeWindowSurface {
 
     Ok(UnsafeWindowSurface {
       id,
-      width: RefCell::new(options.width),
-      height: RefCell::new(options.height),
+      width: GcCell::new(options.width),
+      height: GcCell::new(options.height),
       context: SameObject::new(),
     })
   }
@@ -155,13 +157,13 @@ impl UnsafeWindowSurface {
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::HandleScope,
   ) -> v8::Global<v8::Object> {
-    self.context.get(scope, |_| GPUCanvasContext {
+    self.context.get(scope, |scope| GPUCanvasContext {
       surface_id: self.id,
-      width: self.width.clone(),
-      height: self.height.clone(),
-      config: RefCell::new(None),
-      texture: RefCell::new(None),
-      canvas: this,
+      width: GcCell::new(*self.width.get(scope)),
+      height: GcCell::new(*self.height.get(scope)),
+      config: GcCell::new(None),
+      texture: GcCell::new(None),
+      canvas: GcCell::new(this),
     })
   }
 
@@ -171,19 +173,19 @@ impl UnsafeWindowSurface {
       return Err(JsErrorBox::type_error("getContext was never called"));
     };
 
-    context.present().map_err(JsErrorBox::from_err)
+    context.present(scope).map_err(JsErrorBox::from_err)
   }
 
   #[fast]
   fn resize(&self, width: u32, height: u32, scope: &mut v8::HandleScope) {
-    self.width.replace(width);
-    self.height.replace(height);
+    self.width.set(scope, width);
+    self.height.set(scope, height);
 
     let Some(context) = self.context.try_unwrap(scope) else {
       return;
     };
 
-    context.resize_configure(width, height);
+    context.resize_configure(scope, width, height);
   }
 }
 

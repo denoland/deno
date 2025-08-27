@@ -7,7 +7,6 @@ use std::sync::Arc;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use tokio::sync::Mutex;
@@ -61,7 +60,9 @@ impl Drop for GPUAdapter {
   }
 }
 
-impl GarbageCollected for GPUAdapter {
+unsafe impl GarbageCollected for GPUAdapter {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUAdapter"
   }
@@ -255,7 +256,9 @@ pub enum CreateDeviceError {
 
 pub struct GPUSupportedLimits(pub wgpu_types::Limits);
 
-impl GarbageCollected for GPUSupportedLimits {
+unsafe impl GarbageCollected for GPUSupportedLimits {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUSupportedLimits"
   }
@@ -422,7 +425,9 @@ impl GPUSupportedLimits {
 
 pub struct GPUSupportedFeatures(v8::Global<v8::Value>);
 
-impl GarbageCollected for GPUSupportedFeatures {
+unsafe impl GarbageCollected for GPUSupportedFeatures {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUSupportedFeatures"
   }
@@ -465,7 +470,9 @@ pub struct GPUAdapterInfo {
   pub subgroup_max_size: u32,
 }
 
-impl GarbageCollected for GPUAdapterInfo {
+unsafe impl GarbageCollected for GPUAdapterInfo {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUAdapterInfo"
   }

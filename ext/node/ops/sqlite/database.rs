@@ -235,7 +235,8 @@ pub struct DatabaseSync {
   location: String,
 }
 
-impl GarbageCollected for DatabaseSync {
+unsafe impl GarbageCollected for DatabaseSync {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DatabaseSync"
   }
@@ -367,7 +368,8 @@ fn is_open(
   let db = cppgc::try_unwrap_cppgc_object::<DatabaseSync>(scope, this_.into())
     .ok_or(SqliteError::AlreadyClosed)?;
 
-  db.conn
+  unsafe { db.as_ref() }
+    .conn
     .borrow()
     .as_ref()
     .ok_or(SqliteError::AlreadyClosed)?;

@@ -11,15 +11,14 @@
 //! key lookup can handle closing one end of the pair, in which case they will just
 //! attempt to clean up the associated resources.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
 use std::future::poll_fn;
 use std::future::ready;
 use std::io::ErrorKind;
-use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use deno_core::futures::FutureExt;
 use deno_core::futures::future::Either;
@@ -66,9 +65,11 @@ pub enum TlsKeys {
   Resolver(TlsKeyResolver),
 }
 
-pub struct TlsKeysHolder(RefCell<TlsKeys>);
+pub struct TlsKeysHolder(Mutex<TlsKeys>);
 
-impl deno_core::GarbageCollected for TlsKeysHolder {
+unsafe impl deno_core::GarbageCollected for TlsKeysHolder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TlsKeyHolder"
   }
@@ -76,13 +77,13 @@ impl deno_core::GarbageCollected for TlsKeysHolder {
 
 impl TlsKeysHolder {
   pub fn take(&self) -> TlsKeys {
-    std::mem::take(&mut *self.0.borrow_mut())
+    std::mem::take(&mut *self.0.lock().unwrap())
   }
 }
 
 impl From<TlsKeys> for TlsKeysHolder {
   fn from(value: TlsKeys) -> Self {
-    TlsKeysHolder(RefCell::new(value))
+    TlsKeysHolder(Mutex::new(value))
   }
 }
 
@@ -116,12 +117,12 @@ struct TlsKeyResolverInner {
     String,
     broadcast::Sender<Result<TlsKey, ErrorType>>,
   )>,
-  cache: RefCell<HashMap<String, TlsKeyState>>,
+  cache: Mutex<HashMap<String, TlsKeyState>>,
 }
 
 #[derive(Clone)]
 pub struct TlsKeyResolver {
-  inner: Rc<TlsKeyResolverInner>,
+  inner: Arc<TlsKeyResolverInner>,
 }
 
 impl TlsKeyResolver {
@@ -180,13 +181,13 @@ pub fn new_resolver() -> (TlsKeyResolver, TlsKeyLookup) {
   let (resolution_tx, resolution_rx) = mpsc::unbounded_channel();
   (
     TlsKeyResolver {
-      inner: Rc::new(TlsKeyResolverInner {
+      inner: Arc::new(TlsKeyResolverInner {
         resolution_tx,
         cache: Default::default(),
       }),
     },
     TlsKeyLookup {
-      resolution_rx: RefCell::new(resolution_rx),
+      resolution_rx: Mutex::new(resolution_rx),
       pending: Default::default(),
     },
   )
@@ -199,7 +200,7 @@ impl TlsKeyResolver {
     &self,
     sni: String,
   ) -> impl Future<Output = Result<TlsKey, TlsKeyError>> + use<> {
-    let mut cache = self.inner.cache.borrow_mut();
+    let mut cache = self.inner.cache.lock().unwrap();
     let mut recv = match cache.get(&sni) {
       None => {
         let (tx, rx) = broadcast::channel(1);
@@ -218,7 +219,7 @@ impl TlsKeyResolver {
     let inner = self.inner.clone();
     let handle = spawn(async move {
       let res = recv.recv().await?;
-      let mut cache = inner.cache.borrow_mut();
+      let mut cache = inner.cache.lock().unwrap();
       match cache.get(&sni) {
         None | Some(TlsKeyState::Resolving(..)) => {
           cache.insert(sni, TlsKeyState::Resolved(res.clone()));
@@ -235,17 +236,18 @@ impl TlsKeyResolver {
 
 pub struct TlsKeyLookup {
   #[allow(clippy::type_complexity)]
-  resolution_rx: RefCell<
+  resolution_rx: Mutex<
     mpsc::UnboundedReceiver<(
       String,
       broadcast::Sender<Result<TlsKey, ErrorType>>,
     )>,
   >,
-  pending:
-    RefCell<HashMap<String, broadcast::Sender<Result<TlsKey, ErrorType>>>>,
+  pending: Mutex<HashMap<String, broadcast::Sender<Result<TlsKey, ErrorType>>>>,
 }
 
-impl deno_core::GarbageCollected for TlsKeyLookup {
+unsafe impl deno_core::GarbageCollected for TlsKeyLookup {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TlsKeyLookup"
   }
@@ -255,9 +257,9 @@ impl TlsKeyLookup {
   /// Multiple `poll` calls are safe, but this method is not starvation-safe. Generally
   /// only one `poll`er should be active at any time.
   pub async fn poll(&self) -> Option<String> {
-    match poll_fn(|cx| self.resolution_rx.borrow_mut().poll_recv(cx)).await {
+    match poll_fn(|cx| self.resolution_rx.lock().unwrap().poll_recv(cx)).await {
       Some((sni, sender)) => {
-        self.pending.borrow_mut().insert(sni.clone(), sender);
+        self.pending.lock().unwrap().insert(sni.clone(), sender);
         Some(sni)
       }
       _ => None,
@@ -268,7 +270,8 @@ impl TlsKeyLookup {
   pub fn resolve(&self, sni: String, res: Result<TlsKey, String>) {
     _ = self
       .pending
-      .borrow_mut()
+      .lock()
+      .unwrap()
       .remove(&sni)
       .unwrap()
       .send(res.map_err(|e| Arc::new(e.into_boxed_str())));

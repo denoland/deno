@@ -258,7 +258,9 @@ struct FunctionData {
   turbocall: Option<Turbocall>,
 }
 
-impl GarbageCollected for FunctionData {
+unsafe impl GarbageCollected for FunctionData {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"FunctionData"
   }
@@ -315,6 +317,7 @@ fn sync_fn_impl<'s>(
     args.data(),
   )
   .unwrap();
+  let data = unsafe { data.as_ref() };
   let out_buffer = match data.symbol.result_type {
     NativeType::Struct(_) => {
       let argc = args.length();

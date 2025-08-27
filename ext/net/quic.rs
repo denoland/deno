@@ -31,6 +31,8 @@ use deno_core::ResourceId;
 use deno_core::WriteOutcome;
 use deno_core::error::ResourceError;
 use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_permissions::PermissionCheckError;
@@ -216,7 +218,8 @@ struct EndpointResource {
   session_store: Arc<dyn ClientSessionStore>,
 }
 
-impl GarbageCollected for EndpointResource {
+unsafe impl GarbageCollected for EndpointResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"EndpointResource"
   }
@@ -301,7 +304,8 @@ impl Drop for ListenerResource {
   }
 }
 
-impl GarbageCollected for ListenerResource {
+unsafe impl GarbageCollected for ListenerResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ListenerResource"
   }
@@ -353,21 +357,20 @@ pub(crate) fn op_quic_endpoint_listen(
 
 struct ConnectionResource(
   quinn::Connection,
-  RefCell<Option<quinn::ZeroRttAccepted>>,
+  GcCell<Option<quinn::ZeroRttAccepted>>,
 );
 
-impl GarbageCollected for ConnectionResource {
+unsafe impl GarbageCollected for ConnectionResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ConnectionResource"
   }
 }
 
-struct IncomingResource(
-  RefCell<Option<quinn::Incoming>>,
-  Arc<QuicServerConfig>,
-);
+struct IncomingResource(GcCell<Option<quinn::Incoming>>, Arc<QuicServerConfig>);
 
-impl GarbageCollected for IncomingResource {
+unsafe impl GarbageCollected for IncomingResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"IncomingResource"
   }
@@ -380,7 +383,7 @@ pub(crate) async fn op_quic_listener_accept(
 ) -> Result<IncomingResource, QuicError> {
   match resource.0.accept().await {
     Some(incoming) => Ok(IncomingResource(
-      RefCell::new(Some(incoming)),
+      GcCell::new(Some(incoming)),
       resource.1.clone(),
     )),
     None => Err(QuicError::BadResource("QuicListener")),
@@ -395,9 +398,10 @@ pub(crate) fn op_quic_listener_stop(#[cppgc] resource: &ListenerResource) {
 #[op2]
 #[string]
 pub(crate) fn op_quic_incoming_local_ip(
+  isolate: &mut v8::Isolate,
   #[cppgc] incoming_resource: &IncomingResource,
 ) -> Result<Option<String>, QuicError> {
-  let Some(incoming) = incoming_resource.0.borrow_mut().take() else {
+  let Some(incoming) = incoming_resource.0.get_mut(isolate).take() else {
     return Err(QuicError::BadResource("QuicIncoming"));
   };
   Ok(incoming.local_ip().map(|ip| ip.to_string()))
@@ -406,9 +410,10 @@ pub(crate) fn op_quic_incoming_local_ip(
 #[op2]
 #[serde]
 pub(crate) fn op_quic_incoming_remote_addr(
+  isolate: &mut v8::Isolate,
   #[cppgc] incoming_resource: &IncomingResource,
 ) -> Result<Addr, QuicError> {
-  let Some(incoming) = incoming_resource.0.borrow_mut().take() else {
+  let Some(incoming) = incoming_resource.0.get_mut(isolate).take() else {
     return Err(QuicError::BadResource("QuicIncoming"));
   };
   let addr = incoming.remote_address();
@@ -420,19 +425,21 @@ pub(crate) fn op_quic_incoming_remote_addr(
 
 #[op2(fast)]
 pub(crate) fn op_quic_incoming_remote_addr_validated(
+  isolate: &mut v8::Isolate,
   #[cppgc] incoming_resource: &IncomingResource,
 ) -> Result<bool, QuicError> {
-  let Some(incoming) = incoming_resource.0.borrow_mut().take() else {
+  let Some(incoming) = incoming_resource.0.get_mut(isolate).take() else {
     return Err(QuicError::BadResource("QuicIncoming"));
   };
   Ok(incoming.remote_address_validated())
 }
 
 fn quic_incoming_accept(
+  isolate: &mut v8::Isolate,
   incoming_resource: &IncomingResource,
   transport_config: Option<TransportConfig>,
 ) -> Result<quinn::Connecting, QuicError> {
-  let Some(incoming) = incoming_resource.0.borrow_mut().take() else {
+  let Some(incoming) = incoming_resource.0.get_mut(isolate).take() else {
     return Err(QuicError::BadResource("QuicIncoming"));
   };
   match transport_config {
@@ -449,24 +456,28 @@ fn quic_incoming_accept(
 #[op2(async)]
 #[cppgc]
 pub(crate) async fn op_quic_incoming_accept(
+  isolate: &mut v8::Isolate,
   #[cppgc] incoming_resource: &IncomingResource,
   #[serde] transport_config: Option<TransportConfig>,
 ) -> Result<ConnectionResource, QuicError> {
-  let connecting = quic_incoming_accept(incoming_resource, transport_config)?;
+  let connecting =
+    quic_incoming_accept(isolate, incoming_resource, transport_config)?;
   let conn = connecting.await?;
-  Ok(ConnectionResource(conn, RefCell::new(None)))
+  Ok(ConnectionResource(conn, GcCell::new(None)))
 }
 
 #[op2]
 #[cppgc]
 pub(crate) fn op_quic_incoming_accept_0rtt(
+  isolate: &mut v8::Isolate,
   #[cppgc] incoming_resource: &IncomingResource,
   #[serde] transport_config: Option<TransportConfig>,
 ) -> Result<ConnectionResource, QuicError> {
-  let connecting = quic_incoming_accept(incoming_resource, transport_config)?;
+  let connecting =
+    quic_incoming_accept(isolate, incoming_resource, transport_config)?;
   match connecting.into_0rtt() {
     Ok((conn, zrtt_accepted)) => {
-      Ok(ConnectionResource(conn, RefCell::new(Some(zrtt_accepted))))
+      Ok(ConnectionResource(conn, GcCell::new(Some(zrtt_accepted))))
     }
     Err(_connecting) => {
       unreachable!("0.5-RTT always succeeds");
@@ -477,9 +488,10 @@ pub(crate) fn op_quic_incoming_accept_0rtt(
 #[op2]
 #[serde]
 pub(crate) fn op_quic_incoming_refuse(
+  isolate: &mut v8::Isolate,
   #[cppgc] incoming: &IncomingResource,
 ) -> Result<(), QuicError> {
-  let Some(incoming) = incoming.0.borrow_mut().take() else {
+  let Some(incoming) = incoming.0.get_mut(isolate).take() else {
     return Err(QuicError::BadResource("QuicIncoming"));
   };
   incoming.refuse();
@@ -489,18 +501,20 @@ pub(crate) fn op_quic_incoming_refuse(
 #[op2]
 #[serde]
 pub(crate) fn op_quic_incoming_ignore(
+  isolate: &mut v8::Isolate,
   #[cppgc] incoming: &IncomingResource,
 ) -> Result<(), QuicError> {
-  let Some(incoming) = incoming.0.borrow_mut().take() else {
+  let Some(incoming) = incoming.0.get_mut(isolate).take() else {
     return Err(QuicError::BadResource("QuicIncoming"));
   };
   incoming.ignore();
   Ok(())
 }
 
-struct ConnectingResource(RefCell<Option<quinn::Connecting>>);
+struct ConnectingResource(GcCell<Option<quinn::Connecting>>);
 
-impl GarbageCollected for ConnectingResource {
+unsafe impl GarbageCollected for ConnectingResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ConnectingResource"
   }
@@ -604,33 +618,35 @@ where
     &args.server_name.unwrap_or(args.addr.hostname),
   )?;
 
-  Ok(ConnectingResource(RefCell::new(Some(connecting))))
+  Ok(ConnectingResource(GcCell::new(Some(connecting))))
 }
 
 #[op2(async)]
 #[cppgc]
 pub(crate) async fn op_quic_connecting_1rtt(
+  isolate: &mut v8::Isolate,
   #[cppgc] connecting: &ConnectingResource,
 ) -> Result<ConnectionResource, QuicError> {
-  let Some(connecting) = connecting.0.borrow_mut().take() else {
+  let Some(connecting) = connecting.0.get_mut(isolate).take() else {
     return Err(QuicError::BadResource("QuicConnecting"));
   };
   let conn = connecting.await?;
-  Ok(ConnectionResource(conn, RefCell::new(None)))
+  Ok(ConnectionResource(conn, GcCell::new(None)))
 }
 
 #[op2]
 #[cppgc]
 pub(crate) fn op_quic_connecting_0rtt(
+  isolate: &mut v8::Isolate,
   #[cppgc] connecting_res: &ConnectingResource,
 ) -> Option<ConnectionResource> {
-  let connecting = connecting_res.0.borrow_mut().take()?;
+  let connecting = connecting_res.0.get_mut(isolate).take()?;
   match connecting.into_0rtt() {
     Ok((conn, zrtt_accepted)) => {
-      Some(ConnectionResource(conn, RefCell::new(Some(zrtt_accepted))))
+      Some(ConnectionResource(conn, GcCell::new(Some(zrtt_accepted))))
     }
     Err(connecting) => {
-      *connecting_res.0.borrow_mut() = Some(connecting);
+      *connecting_res.0.get_mut(isolate) = Some(connecting);
       None
     }
   }
@@ -706,9 +722,10 @@ pub(crate) async fn op_quic_connection_closed(
 
 #[op2(async)]
 pub(crate) async fn op_quic_connection_handshake(
+  isolate: &mut v8::Isolate,
   #[cppgc] connection: &ConnectionResource,
 ) {
-  let Some(zrtt_accepted) = connection.1.borrow_mut().take() else {
+  let Some(zrtt_accepted) = connection.1.get_mut(isolate).take() else {
     return;
   };
   zrtt_accepted.await;

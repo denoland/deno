@@ -2094,7 +2094,8 @@ enum Instrument {
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 
-impl GarbageCollected for Instrument {
+unsafe impl GarbageCollected for Instrument {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Instrument"
   }

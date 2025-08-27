@@ -302,7 +302,9 @@ pub struct Zlib {
   inner: RefCell<Option<ZlibInner>>,
 }
 
-impl deno_core::GarbageCollected for Zlib {
+unsafe impl deno_core::GarbageCollected for Zlib {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Zlib"
   }
@@ -561,7 +563,8 @@ pub struct BrotliEncoder {
   ctx: Rc<RefCell<Option<BrotliEncoderCtx>>>,
 }
 
-impl deno_core::GarbageCollected for BrotliEncoder {
+unsafe impl deno_core::GarbageCollected for BrotliEncoder {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"BrotliEncoder"
   }
@@ -726,7 +729,9 @@ pub struct BrotliDecoder {
   ctx: Rc<RefCell<Option<BrotliDecoderCtx>>>,
 }
 
-impl deno_core::GarbageCollected for BrotliDecoder {
+unsafe impl deno_core::GarbageCollected for BrotliDecoder {
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"BrotliDecoder"
   }

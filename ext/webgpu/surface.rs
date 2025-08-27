@@ -1,13 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::cell::RefCell;
-
 use deno_core::_ops::make_cppgc_object;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 use deno_error::JsErrorBox;
 use wgpu_types::SurfaceStatus;
 
@@ -39,16 +38,18 @@ pub struct Configuration {
 
 pub struct GPUCanvasContext {
   pub surface_id: wgpu_core::id::SurfaceId,
-  pub width: RefCell<u32>,
-  pub height: RefCell<u32>,
+  pub width: GcCell<u32>,
+  pub height: GcCell<u32>,
 
-  pub config: RefCell<Option<Configuration>>,
-  pub texture: RefCell<Option<v8::Global<v8::Object>>>,
+  pub config: GcCell<Option<Configuration>>,
+  pub texture: GcCell<Option<v8::Global<v8::Object>>>,
 
-  pub canvas: v8::Global<v8::Object>,
+  pub canvas: GcCell<v8::Global<v8::Object>>,
 }
 
-impl GarbageCollected for GPUCanvasContext {
+unsafe impl GarbageCollected for GPUCanvasContext {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUCanvasContext"
   }
@@ -64,12 +65,13 @@ impl GPUCanvasContext {
 
   #[getter]
   #[global]
-  fn canvas(&self) -> v8::Global<v8::Object> {
-    self.canvas.clone()
+  fn canvas(&self, isolate: &v8::Isolate) -> v8::Global<v8::Object> {
+    self.canvas.get(isolate).clone()
   }
 
   fn configure(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] configuration: GPUCanvasConfiguration,
   ) -> Result<(), JsErrorBox> {
     let usage = wgpu_types::TextureUsages::from_bits(configuration.usage)
@@ -78,8 +80,8 @@ impl GPUCanvasContext {
     let conf = wgpu_types::SurfaceConfiguration {
       usage,
       format,
-      width: *self.width.borrow(),
-      height: *self.height.borrow(),
+      width: *self.width.get(isolate),
+      height: *self.height.get(isolate),
       present_mode: configuration
         .present_mode
         .map(Into::into)
@@ -102,19 +104,22 @@ impl GPUCanvasContext {
 
     device.error_handler.push_error(err);
 
-    self.config.borrow_mut().replace(Configuration {
-      device,
-      usage: configuration.usage,
-      format: configuration.format,
-      surface_config: conf,
-    });
+    self.config.set(
+      isolate,
+      Some(Configuration {
+        device,
+        usage: configuration.usage,
+        format: configuration.format,
+        surface_config: conf,
+      }),
+    );
 
     Ok(())
   }
 
   #[fast]
-  fn unconfigure(&self) {
-    *self.config.borrow_mut() = None;
+  fn unconfigure(&self, isolate: &mut v8::Isolate) {
+    self.config.set(isolate, None);
   }
 
   #[global]
@@ -122,13 +127,13 @@ impl GPUCanvasContext {
     &self,
     scope: &mut v8::HandleScope,
   ) -> Result<v8::Global<v8::Object>, SurfaceError> {
-    let config = self.config.borrow();
+    let config = self.config.get(scope);
     let Some(config) = config.as_ref() else {
       return Err(SurfaceError::UnconfiguredContext);
     };
 
     {
-      if let Some(obj) = self.texture.borrow().as_ref() {
+      if let Some(obj) = self.texture.get(scope).as_ref() {
         return Ok(obj.clone());
       }
     }
@@ -150,8 +155,8 @@ impl GPUCanvasContext {
           queue_id: config.device.queue,
           label: "".to_string(),
           size: wgpu_types::Extent3d {
-            width: *self.width.borrow(),
-            height: *self.height.borrow(),
+            width: *self.width.get(scope),
+            height: *self.height.get(scope),
             depth_or_array_layers: 1,
           },
           mip_level_count: 0,
@@ -162,7 +167,7 @@ impl GPUCanvasContext {
         };
         let obj = make_cppgc_object(scope, texture);
         let obj = v8::Global::new(scope, obj);
-        *self.texture.borrow_mut() = Some(obj.clone());
+        self.texture.set(scope, Some(obj.clone()));
 
         Ok(obj)
       }
@@ -172,8 +177,8 @@ impl GPUCanvasContext {
 }
 
 impl GPUCanvasContext {
-  pub fn present(&self) -> Result<(), SurfaceError> {
-    let config = self.config.borrow();
+  pub fn present(&self, isolate: &mut v8::Isolate) -> Result<(), SurfaceError> {
+    let config = self.config.get(isolate);
     let Some(config) = config.as_ref() else {
       return Err(SurfaceError::UnconfiguredContext);
     };
@@ -181,17 +186,22 @@ impl GPUCanvasContext {
     config.device.instance.surface_present(self.surface_id)?;
 
     // next `get_current_texture` call would get a new texture
-    *self.texture.borrow_mut() = None;
+    self.texture.set(isolate, None);
 
     Ok(())
   }
 
-  pub fn resize_configure(&self, width: u32, height: u32) {
-    self.width.replace(width);
-    self.height.replace(height);
+  pub fn resize_configure(
+    &self,
+    isolate: &mut v8::Isolate,
+    width: u32,
+    height: u32,
+  ) {
+    self.width.set(isolate, width);
+    self.height.set(isolate, height);
 
-    let mut config = self.config.borrow_mut();
-    let Some(config) = &mut *config else {
+    let config = self.config.get_mut(isolate);
+    let Some(config) = config else {
       return;
     };
 

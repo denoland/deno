@@ -21,8 +21,8 @@ pub struct ContextifyScript {
   script: v8::TracedReference<v8::UnboundScript>,
 }
 
-impl v8::cppgc::GarbageCollected for ContextifyScript {
-  fn trace(&self, visitor: &v8::cppgc::Visitor) {
+unsafe impl v8::cppgc::GarbageCollected for ContextifyScript {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.script);
   }
 
@@ -261,8 +261,8 @@ pub struct ContextifyContext {
   sandbox: v8::TracedReference<v8::Object>,
 }
 
-impl deno_core::GarbageCollected for ContextifyContext {
-  fn trace(&self, visitor: &v8::cppgc::Visitor) {
+unsafe impl deno_core::GarbageCollected for ContextifyContext {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.context);
     visitor.trace(&self.sandbox);
   }
@@ -366,7 +366,7 @@ impl ContextifyContext {
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
         3,
-        &*ptr.unwrap() as *const ContextifyContext as _,
+        ptr.unwrap().as_ref() as *const ContextifyContext as _,
       );
     }
 
@@ -392,7 +392,7 @@ impl ContextifyContext {
           // SAFETY: the lifetime of the scope does not actually bind to
           // the lifetime of this reference at all, but the object we read
           // it from does, so it will be alive at least that long.
-          .map(|r| unsafe { &*(&*r as *const _) })
+          .map(|r| unsafe { &*(r.as_ref() as *const _) })
       })
   }
 

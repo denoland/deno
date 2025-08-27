@@ -35,7 +35,8 @@ impl Drop for GPUCommandEncoder {
   }
 }
 
-impl GarbageCollected for GPUCommandEncoder {
+unsafe impl GarbageCollected for GPUCommandEncoder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUCommandEncoder"
   }
