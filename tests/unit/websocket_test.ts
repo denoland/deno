@@ -867,3 +867,52 @@ Deno.test("websocket close ongoing handshake", async () => {
     assert(gotError2);
   }
 });
+
+Deno.test("WebSocket headers", async () => {
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+  const doneDeferred = Promise.withResolvers<void>();
+  await using server = Deno.serve({
+    handler: (request) => {
+      assertEquals(request.headers.get("Authorization"), "Bearer foo");
+      const {
+        response,
+        socket,
+      } = Deno.upgradeWebSocket(request);
+      socket.onerror = (e) => {
+        console.error(e);
+        fail();
+      };
+      socket.onmessage = (m) => {
+        socket.send(m.data);
+        socket.close(1001);
+      };
+      socket.onclose = () => doneDeferred.resolve();
+      return response;
+    },
+    port: servePort,
+    signal: ac.signal,
+    onListen: onListen(listeningDeferred.resolve),
+    onError: createOnErrorCb(ac),
+  });
+
+  await listeningDeferred.promise;
+  const def = Promise.withResolvers<void>();
+  const ws = new WebSocket(`ws://localhost:${servePort}`, {
+    headers: {
+      "Authorization": "Bearer foo",
+    },
+  });
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = (e) => {
+    console.error(e);
+    fail();
+  };
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
+
+  await def.promise;
+  await doneDeferred.promise;
+  ac.abort();
+  await server.finished;
+});
