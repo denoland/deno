@@ -1823,7 +1823,10 @@ mod test {
       permissions: PermissionsObject {
         all: None,
         read: AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::Some(vec!["./read-allow".to_string()]),
+          allow: PermissionConfigValue::Some(vec![
+            ".".to_string(),
+            "./read-allow".to_string(),
+          ]),
           deny: PermissionConfigValue::Some(vec!["./read-deny".to_string()]),
         },
         write: AllowDenyPermissionConfig {
@@ -1887,6 +1890,7 @@ mod test {
             .unwrap()
         ]),
         allow_read: Some(vec![
+          base_dir.clone().into_os_string().into_string().unwrap(),
           base_dir
             .join("read-allow")
             .into_os_string()
