@@ -202,7 +202,7 @@ declare namespace Deno {
      * plus 1). Different operating systems have different maximum limits.
      *
      * @default {511} */
-    backlog?: number;
+    tcpBacklog?: number;
   }
 
   /** @category Network */

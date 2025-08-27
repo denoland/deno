@@ -574,7 +574,7 @@ pub fn op_net_listen_tcp<NP>(
   #[serde] addr: IpAddr,
   reuse_port: bool,
   load_balanced: bool,
-  backlog: i32,
+  tcp_backlog: i32,
 ) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -590,9 +590,9 @@ where
     .ok_or_else(|| NetError::NoResolvedAddress)?;
 
   let listener = if load_balanced {
-    TcpListener::bind_load_balanced(addr, backlog)
+    TcpListener::bind_load_balanced(addr, tcp_backlog)
   } else {
-    TcpListener::bind_direct(addr, reuse_port, backlog)
+    TcpListener::bind_direct(addr, reuse_port, tcp_backlog)
   }?;
   let local_addr = listener.local_addr()?;
   let listener_resource = NetworkListenerResource::new(listener);
