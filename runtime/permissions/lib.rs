@@ -1240,10 +1240,6 @@ impl PathDescriptor {
   pub fn into_write(self) -> WriteDescriptor {
     WriteDescriptor(self)
   }
-
-  pub fn into_path_buf(self) -> PathBuf {
-    self.path
-  }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -2004,7 +2000,7 @@ impl<'a> RunQueryDescriptor<'a> {
     requested: &'a str,
     sys: &impl which::WhichSys,
   ) -> Result<Self, PathResolveError> {
-    if AllowRunDescriptor::is_path(requested) {
+    if is_path(requested) {
       let path = Path::new(requested);
       let resolved = PathQueryDescriptor::new(sys, Cow::Borrowed(path))?;
       Ok(RunQueryDescriptor::Path(resolved))
@@ -2111,7 +2107,7 @@ impl QueryDescriptor for RunQueryDescriptor<'_> {
           return true;
         }
         match &path.requested {
-          Some(requested) if AllowRunDescriptor::is_path(requested) => false,
+          Some(requested) if is_path(requested) => false,
           None => false, // is path
           Some(requested) => denies_run_name(requested, &other.0.path),
         }
@@ -2164,7 +2160,7 @@ impl AllowRunDescriptor {
     cwd: &Path,
     sys: &impl WhichSys,
   ) -> Result<AllowRunDescriptorParseResult, which::Error> {
-    let is_path = Self::is_path(text);
+    let is_path = is_path(text);
     let path = if is_path {
       Cow::Borrowed(Path::new(text))
     } else {
@@ -2192,14 +2188,6 @@ impl AllowRunDescriptor {
     Ok(AllowRunDescriptorParseResult::Descriptor(
       AllowRunDescriptor(path),
     ))
-  }
-
-  pub fn is_path(text: &str) -> bool {
-    if cfg!(windows) {
-      text.contains('/') || text.contains('\\') || Path::new(text).is_absolute()
-    } else {
-      text.contains('/')
-    }
   }
 }
 
@@ -2229,6 +2217,14 @@ impl DenyRunDescriptor {
     } else {
       DenyRunDescriptor::Name(text.to_string())
     }
+  }
+}
+
+fn is_path(text: &str) -> bool {
+  if cfg!(windows) {
+    text.contains('/') || text.contains('\\') || Path::new(text).is_absolute()
+  } else {
+    text.contains('/')
   }
 }
 
