@@ -3531,9 +3531,8 @@ impl PermissionsContainer {
       let display_name = format_display_name(context_path.to_string_lossy());
       if inner.any_prompt() {
         let msg = format!(
-          "all access in order to access {} -- {} This will elevate all permissions!",
+          "all access in order to access {} -- WARNING: This will open the sandbox and allow all actions!",
           display_name,
-          colors::yellow("Warning")
         );
         let (result, _is_allow_all) = PermissionState::prompt(PromptOptions {
           name: "all",
