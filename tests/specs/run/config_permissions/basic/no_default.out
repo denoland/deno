@@ -1,4 +1,5 @@
 [# this should NOT err because users should be able to unconditionally provide -P and have it not fail]
+Warning Permissions in the config file is unstable and may change in the future.
 prompt
 prompt
 prompt
