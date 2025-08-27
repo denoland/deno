@@ -401,6 +401,7 @@ impl PermissionState {
     name: &'static str,
     api_name: Option<&str>,
     info: impl Fn() -> Option<String>,
+    is_unary: bool,
   ) -> (Result<(), PermissionDeniedError>, bool) {
     let msg = {
       let info = info();
@@ -414,7 +415,7 @@ impl PermissionState {
       })
       .unwrap()
     };
-    match permission_prompt(&msg, name, api_name, true) {
+    match permission_prompt(&msg, name, api_name, is_unary) {
       PromptResponse::Allow => {
         Self::log_perm_access(name, info);
         (Ok(()), false)
@@ -443,7 +444,7 @@ impl PermissionState {
         (Ok(()), false, false)
       }
       PermissionState::Prompt if prompt => {
-        let (result, is_allow_all) = Self::prompt(name, api_name, info);
+        let (result, is_allow_all) = Self::prompt(name, api_name, info, true);
         (result, true, is_allow_all)
       }
       _ => (Err(Self::permission_denied_error(name, info)), false, false),
@@ -3328,7 +3329,6 @@ impl PermissionsContainer {
     blind_requested: Option<&str>,
     api_name: Option<&str>,
   ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-    // If somehow read or write aren't specified, use read
     let path = {
       let mut inner = self.inner.lock();
       if inner.all_granted() {
@@ -3514,7 +3514,7 @@ impl PermissionsContainer {
       Ok(())
     } else if inner.any_prompt() {
       let (result, _is_allow_all) =
-        PermissionState::prompt("all", None, fmt_name);
+        PermissionState::prompt("all", None, fmt_name, false);
       match result {
         Ok(()) => {
           inner.grant_all_permissions();
