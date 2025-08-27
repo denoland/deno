@@ -5157,6 +5157,18 @@ declare namespace Deno {
 
     /** Sets `SO_REUSEPORT` on POSIX systems. */
     reusePort?: boolean;
+
+    /** Maximum number of pending connections in the listen queue.
+     *
+     * This parameter controls how many incoming connections can be queued by the
+     * operating system while waiting for the application to accept them. If more
+     * connections arrive when the queue is full, they will be refused.
+     *
+     * The kernel may adjust this value (e.g., rounding up to the next power of 2
+     * plus 1). Different operating systems have different maximum limits.
+     *
+     * @default {511} */
+    backlog?: number;
   }
 
   /**

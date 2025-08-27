@@ -598,6 +598,7 @@ function listen(args) {
         },
         args.reusePort,
         args.loadBalanced ?? false,
+        args.backlog ?? 511,
       );
       addr.transport = "tcp";
       return new Listener(rid, addr, "tcp");
