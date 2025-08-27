@@ -816,32 +816,29 @@ impl LibMainWorker {
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_load_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_load_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, Box<JsError>> {
     self.worker.dispatch_beforeunload_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_process_beforeexit_event(
+    &mut self,
+  ) -> Result<bool, Box<JsError>> {
     self.worker.dispatch_process_beforeexit_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_unload_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_unload_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_process_exit_event()
   }
 
