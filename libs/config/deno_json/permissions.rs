@@ -83,22 +83,21 @@ fn deserialize_allow_deny<'de, D: serde::Deserializer<'de>>(
   de: D,
 ) -> Result<AllowDenyPermissionConfig, D::Error> {
   AllowDenyPermissionConfigValue::deserialize(de).map(|value| match value {
-    AllowDenyPermissionConfigValue::Boolean(b) => {
-      if b {
-        AllowDenyPermissionConfig {
-          allow: Some(PermissionConfigValue::All),
-          deny: None,
-        }
+    AllowDenyPermissionConfigValue::Boolean(b) => AllowDenyPermissionConfig {
+      allow: Some(if b {
+        PermissionConfigValue::All
       } else {
-        AllowDenyPermissionConfig {
-          allow: Some(PermissionConfigValue::None),
-          deny: None,
-        }
-      }
-    }
+        PermissionConfigValue::None
+      }),
+      deny: None,
+    },
     AllowDenyPermissionConfigValue::AllowList(allow) => {
       AllowDenyPermissionConfig {
-        allow: Some(PermissionConfigValue::Some(allow)),
+        allow: Some(if allow.is_empty() {
+          PermissionConfigValue::None
+        } else {
+          PermissionConfigValue::Some(allow)
+        }),
         deny: None,
       }
     }
@@ -310,7 +309,10 @@ mod test {
           "allow": ["test"],
           "deny": ["test-deny"],
         },
-        "write": []
+        "write": [],
+        "sys": {
+          "allow": []
+        }
       }))
       .unwrap(),
       PermissionsObject {
@@ -320,6 +322,14 @@ mod test {
           deny: Some(PermissionConfigValue::Some(vec![
             "test-deny".to_string()
           ])),
+        },
+        write: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::None),
+          deny: None
+        },
+        sys: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::None),
+          deny: None
         },
         ..Default::default()
       }
