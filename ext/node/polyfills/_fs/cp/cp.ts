@@ -4,11 +4,9 @@
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 import { chmodPromise } from "ext:deno_node/_fs/_fs_chmod.ts";
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
-import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { mkdirPromise } from "ext:deno_node/_fs/_fs_mkdir.ts";
 import { opendirPromise } from "ext:deno_node/_fs/_fs_opendir.ts";
 import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
-import { statPromise } from "ext:deno_node/_fs/_fs_stat.ts";
 import { symlinkPromise } from "ext:deno_node/_fs/_fs_symlink.ts";
 import { unlinkPromise } from "ext:deno_node/_fs/_fs_unlink.ts";
 import { utimesPromise } from "ext:deno_node/_fs/_fs_utimes.ts";
@@ -25,18 +23,30 @@ import {
   ERR_FS_EISDIR,
 } from "ext:deno_node/internal/errors.ts";
 import { primordials } from "ext:core/mod.js";
-import type { BigIntStats, Stats } from "node:fs";
 import type { CopyOptions } from "ext:deno_node/_fs/cp/cp.d.ts";
 
 const {
   ArrayPrototypeEvery,
   ArrayPrototypeFilter,
   Boolean,
-  PromisePrototypeThen,
-  PromiseReject,
+  ObjectPrototypeIsPrototypeOf,
   SafePromiseAll,
   StringPrototypeSplit,
 } = primordials;
+
+async function safeStatFn<T extends typeof Deno.stat>(
+  statFn: T,
+  path: string | URL,
+): Promise<Deno.FileInfo | undefined> {
+  try {
+    return await statFn(path);
+  } catch (error) {
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, error)) {
+      return;
+    }
+    throw error;
+  }
+}
 
 export async function cpFn(
   src: string,
@@ -50,10 +60,10 @@ export async function cpFn(
   return checkParentDir(destStat, src, dest, opts);
 }
 
-type CheckPathsResult = {
+export type CheckPathsResult = {
   __proto__: null;
-  srcStat: BigIntStats;
-  destStat: BigIntStats | null;
+  srcStat: Deno.FileInfo;
+  destStat: Deno.FileInfo | undefined;
   skipped: false;
 } | {
   __proto__: null;
@@ -67,7 +77,8 @@ async function checkPaths(
   dest: string,
   opts: CopyOptions,
 ): Promise<CheckPathsResult> {
-  // deno-lint-ignore prefer-primordials `filter` is a option property from `cpSync`
+  // `filter` is a option property from `cpSync`
+  // deno-lint-ignore prefer-primordials
   if (opts.filter && !(await opts.filter(src, dest))) {
     return { __proto__: null, skipped: true };
   }
@@ -82,7 +93,7 @@ async function checkPaths(
         code: "EINVAL",
       });
     }
-    if (srcStat.isDirectory() && !destStat.isDirectory()) {
+    if (srcStat.isDirectory && !destStat.isDirectory) {
       throw new ERR_FS_CP_DIR_TO_NON_DIR({
         message: `cannot overwrite non-directory ${dest} ` +
           `with directory ${src}`,
@@ -92,7 +103,7 @@ async function checkPaths(
         code: "EISDIR",
       });
     }
-    if (!srcStat.isDirectory() && destStat.isDirectory()) {
+    if (!srcStat.isDirectory && destStat.isDirectory) {
       throw new ERR_FS_CP_NON_DIR_TO_DIR({
         message: `cannot overwrite directory ${dest} ` +
           `with non-directory ${src}`,
@@ -104,7 +115,7 @@ async function checkPaths(
     }
   }
 
-  if (srcStat.isDirectory() && isSrcSubdir(src, dest)) {
+  if (srcStat.isDirectory && isSrcSubdir(src, dest)) {
     throw new ERR_FS_CP_EINVAL({
       message: `cannot copy ${src} to a subdirectory of self ${dest}`,
       path: dest,
@@ -117,10 +128,10 @@ async function checkPaths(
 }
 
 export function areIdentical(
-  srcStat: BigIntStats,
-  destStat: BigIntStats,
+  srcStat: Deno.FileInfo,
+  destStat: Deno.FileInfo,
 ): bigint | boolean {
-  return destStat?.ino && destStat?.dev && destStat.ino === srcStat.ino &&
+  return destStat.ino && destStat.dev && destStat.ino === srcStat.ino &&
     destStat.dev === srcStat.dev;
 }
 
@@ -128,21 +139,19 @@ function getStats(
   src: string,
   dest: string,
   opts: CopyOptions,
-): Promise<[BigIntStats, BigIntStats | null]> {
+): Promise<[Deno.FileInfo, Deno.FileInfo | undefined]> {
   const statFunc = opts.dereference
-    ? (file: string) => statPromise(file, { bigint: true })
-    : (file: string) => lstatPromise(file, { bigint: true });
+    ? (file: string) => Deno.stat(file)
+    : (file: string) => Deno.lstat(file);
+
   return SafePromiseAll([
     statFunc(src),
-    PromisePrototypeThen(statFunc(dest), undefined, (err) => {
-      if (err.code === "ENOENT") return null;
-      throw err;
-    }) as Promise<BigIntStats | null>,
+    safeStatFn(statFunc, dest),
   ]);
 }
 
 async function checkParentDir(
-  destStat: BigIntStats | null,
+  destStat: Deno.FileInfo | undefined,
   src: string,
   dest: string,
   opts: CopyOptions,
@@ -154,12 +163,9 @@ async function checkParentDir(
   return getStatsForCopy(destStat, src, dest, opts);
 }
 
-function pathExists(dest: string) {
-  return PromisePrototypeThen(
-    statPromise(dest),
-    () => true,
-    (err) => (err.code === "ENOENT" ? false : PromiseReject(err)),
-  );
+async function pathExists(dest: string): Promise<boolean> {
+  const hasStat = await safeStatFn(Deno.stat, dest);
+  return hasStat !== undefined;
 }
 
 // Recursively check if dest parent is a subdirectory of src.
@@ -168,7 +174,7 @@ function pathExists(dest: string) {
 // parent and stops once it reaches the src parent or the root path.
 async function checkParentPaths(
   src: string,
-  srcStat: BigIntStats,
+  srcStat: Deno.FileInfo,
   dest: string,
 ): Promise<void> {
   const srcParent = resolve(dirname(src));
@@ -176,14 +182,11 @@ async function checkParentPaths(
   if (destParent === srcParent || destParent === parse(destParent).root) {
     return;
   }
-  let destStat;
-  try {
-    destStat = await statPromise(destParent, { bigint: true });
-  } catch (err) {
-    //@ts-expect-error stat error always contains a code
-    if (err.code === "ENOENT") return;
-    throw err;
+  const destStat = await safeStatFn(Deno.stat, destParent);
+  if (!destStat) {
+    return;
   }
+
   if (areIdentical(srcStat, destStat)) {
     throw new ERR_FS_CP_EINVAL({
       message: `cannot copy ${src} to a subdirectory of self ${dest}`,
@@ -208,16 +211,16 @@ export function isSrcSubdir(src: string, dest: string): boolean {
 }
 
 async function getStatsForCopy(
-  destStat: BigIntStats | null,
+  destStat: Deno.FileInfo | undefined,
   src: string,
   dest: string,
   opts: CopyOptions,
 ) {
-  const statFn = opts.dereference ? statPromise : lstatPromise;
+  const statFn = opts.dereference ? Deno.stat : Deno.lstat;
   const srcStat = await statFn(src);
-  if (srcStat.isDirectory() && opts.recursive) {
+  if (srcStat.isDirectory && opts.recursive) {
     return onDir(srcStat, destStat, src, dest, opts);
-  } else if (srcStat.isDirectory()) {
+  } else if (srcStat.isDirectory) {
     throw new ERR_FS_EISDIR({
       message: `${src} is a directory (not copied)`,
       path: src,
@@ -226,14 +229,14 @@ async function getStatsForCopy(
       code: "EISDIR",
     });
   } else if (
-    srcStat.isFile() ||
-    srcStat.isCharacterDevice() ||
-    srcStat.isBlockDevice()
+    srcStat.isFile ||
+    srcStat.isCharDevice ||
+    srcStat.isBlockDevice
   ) {
     return onFile(srcStat, destStat, src, dest, opts);
-  } else if (srcStat.isSymbolicLink()) {
+  } else if (srcStat.isSymlink) {
     return onLink(destStat, src, dest, opts);
-  } else if (srcStat.isSocket()) {
+  } else if (srcStat.isSocket) {
     throw new ERR_FS_CP_SOCKET({
       message: `cannot copy a socket file: ${dest}`,
       path: dest,
@@ -241,7 +244,7 @@ async function getStatsForCopy(
       errno: EINVAL,
       code: "EINVAL",
     });
-  } else if (srcStat.isFIFO()) {
+  } else if (srcStat.isFifo) {
     throw new ERR_FS_CP_FIFO_PIPE({
       message: `cannot copy a FIFO pipe: ${dest}`,
       path: dest,
@@ -260,8 +263,8 @@ async function getStatsForCopy(
 }
 
 function onFile(
-  srcStat: Stats,
-  destStat: BigIntStats | null,
+  srcStat: Deno.FileInfo,
+  destStat: Deno.FileInfo | undefined,
   src: string,
   dest: string,
   opts: CopyOptions,
@@ -271,7 +274,7 @@ function onFile(
 }
 
 async function mayCopyFile(
-  srcStat: Stats,
+  srcStat: Deno.FileInfo,
   src: string,
   dest: string,
   opts: CopyOptions,
@@ -291,7 +294,7 @@ async function mayCopyFile(
 }
 
 async function _copyFile(
-  srcStat: Stats,
+  srcStat: Deno.FileInfo,
   src: string,
   dest: string,
   opts: CopyOptions,
@@ -342,13 +345,13 @@ async function setDestTimestamps(src: string, dest: string): Promise<void> {
   // The initial srcStat.atime cannot be trusted
   // because it is modified by the read(2) system call
   // (See https://nodejs.org/api/fs.html#fs_stat_time_values)
-  const updatedSrcStat = await statPromise(src);
+  const updatedSrcStat = await Deno.stat(src);
   return utimesPromise(dest, updatedSrcStat.atime, updatedSrcStat.mtime);
 }
 
 function onDir(
-  srcStat: Stats,
-  destStat: BigIntStats | null,
+  srcStat: Deno.FileInfo,
+  destStat: Deno.FileInfo | undefined,
   src: string,
   dest: string,
   opts: CopyOptions,
@@ -384,7 +387,7 @@ async function copyDir(
 }
 
 async function onLink(
-  destStat: BigIntStats | null,
+  destStat: Deno.FileInfo | null,
   src: string,
   dest: string,
   opts: CopyOptions,

@@ -5,11 +5,9 @@ import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 import { chmodSync } from "ext:deno_node/_fs/_fs_chmod.ts";
 import { copyFileSync } from "ext:deno_node/_fs/_fs_copy.ts";
 import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
 import { opendirSync } from "ext:deno_node/_fs/_fs_opendir.ts";
 import { readlinkSync } from "ext:deno_node/_fs/_fs_readlink.ts";
-import { statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { symlinkSync } from "ext:deno_node/_fs/_fs_symlink.ts";
 import { unlinkSync } from "ext:deno_node/_fs/_fs_unlink.ts";
 import { utimesSync } from "ext:deno_node/_fs/_fs_utimes.ts";
@@ -25,15 +23,22 @@ import {
   ERR_FS_EISDIR,
   ERR_INVALID_RETURN_VALUE,
 } from "ext:deno_node/internal/errors.ts";
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import type { CopySyncOptions } from "ext:deno_node/_fs/cp/cp.d.ts";
-import type { BigIntStats, Stats } from "node:fs";
-import { areIdentical, isSrcSubdir } from "ext:deno_node/_fs/cp/cp.ts";
+import {
+  areIdentical,
+  type CheckPathsResult,
+  isSrcSubdir,
+} from "ext:deno_node/_fs/cp/cp.ts";
 
 const {
   isPromise,
 } = core;
+
+const {
+  ObjectPrototypeIsPrototypeOf,
+} = primordials;
 
 const {
   errno: {
@@ -44,13 +49,28 @@ const {
   },
 } = os;
 
+function safeStatSyncFn<T extends typeof Deno.statSync>(
+  statFn: T,
+  path: string | URL,
+): Deno.FileInfo | undefined {
+  try {
+    return statFn(path);
+  } catch (error) {
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
 export function cpSyncFn(
   src: string,
   dest: string,
   opts: CopySyncOptions,
 ): void {
   if (opts.filter) {
-    // deno-lint-ignore prefer-primordials `filter` is a option property from `cpSync`
+    // `filter` is a option property from `cpSync`
+    // deno-lint-ignore prefer-primordials
     const shouldCopy = opts.filter(src, dest);
     if (isPromise(shouldCopy)) {
       throw new ERR_INVALID_RETURN_VALUE("boolean", "filter", shouldCopy);
@@ -64,24 +84,14 @@ export function cpSyncFn(
   return checkParentDir(destStat, src, dest, opts);
 }
 
-type CheckPathsSyncResult = {
-  __proto__: null;
-  srcStat: BigIntStats;
-  destStat: BigIntStats | undefined;
-  skipped: false;
-} | {
-  __proto__: null;
-  srcStat?: undefined;
-  destStat?: undefined;
-  skipped: true;
-};
 function checkPathsSync(
   src: string,
   dest: string,
   opts: CopySyncOptions,
-): CheckPathsSyncResult {
+): CheckPathsResult {
   if (opts.filter) {
-    // deno-lint-ignore prefer-primordials `filter` is a option property from `cpSync`
+    // `filter` is a option property from `cpSync`
+    // deno-lint-ignore prefer-primordials
     const shouldCopy = opts.filter(src, dest);
     if (isPromise(shouldCopy)) {
       throw new ERR_INVALID_RETURN_VALUE("boolean", "filter", shouldCopy);
@@ -100,7 +110,7 @@ function checkPathsSync(
         code: "EINVAL",
       });
     }
-    if (srcStat.isDirectory() && !destStat.isDirectory()) {
+    if (srcStat.isDirectory && !destStat.isDirectory) {
       throw new ERR_FS_CP_DIR_TO_NON_DIR({
         message: `cannot overwrite non-directory ${dest} ` +
           `with directory ${src}`,
@@ -110,7 +120,7 @@ function checkPathsSync(
         code: "EISDIR",
       });
     }
-    if (!srcStat.isDirectory() && destStat.isDirectory()) {
+    if (!srcStat.isDirectory && destStat.isDirectory) {
       throw new ERR_FS_CP_NON_DIR_TO_DIR({
         message: `cannot overwrite directory ${dest} ` +
           `with non-directory ${src}`,
@@ -122,7 +132,7 @@ function checkPathsSync(
     }
   }
 
-  if (srcStat.isDirectory() && isSrcSubdir(src, dest)) {
+  if (srcStat.isDirectory && isSrcSubdir(src, dest)) {
     throw new ERR_FS_CP_EINVAL({
       message: `cannot copy ${src} to a subdirectory of self ${dest}`,
       path: dest,
@@ -135,32 +145,29 @@ function checkPathsSync(
 }
 
 type GetStatsSyncResult = {
-  srcStat: BigIntStats;
-  destStat: BigIntStats | undefined;
+  srcStat: Deno.FileInfo;
+  destStat: Deno.FileInfo | undefined;
 };
 function getStatsSync(
   src: string,
   dest: string,
   opts: CopySyncOptions,
 ): GetStatsSyncResult {
-  const statFunc = opts.dereference ? statSync : lstatSync;
-  const srcStat = statFunc(src, { bigint: true, throwIfNoEntry: true });
-  const destStat = statFunc(dest, { bigint: true, throwIfNoEntry: false });
-  return { srcStat, destStat } as GetStatsSyncResult;
+  const statFunc = opts.dereference ? Deno.statSync : Deno.lstatSync;
+  const srcStat = statFunc(src);
+  const destStat = safeStatSyncFn(statFunc, dest);
+  return { srcStat, destStat };
 }
 
 function checkParentPathsSync(
   src: string,
-  srcStat: BigIntStats,
+  srcStat: Deno.FileInfo,
   dest: string,
 ): void {
   const srcParent = resolve(dirname(src));
   const destParent = resolve(dirname(dest));
   if (destParent === srcParent || destParent === parse(destParent).root) return;
-  const destStat = statSync(destParent, {
-    bigint: true,
-    throwIfNoEntry: false,
-  });
+  const destStat = safeStatSyncFn(Deno.statSync, destParent);
 
   if (destStat === undefined) {
     return;
@@ -179,7 +186,7 @@ function checkParentPathsSync(
 }
 
 function checkParentDir(
-  destStat: BigIntStats | undefined,
+  destStat: Deno.FileInfo | undefined,
   src: string,
   dest: string,
   opts: CopySyncOptions,
@@ -190,17 +197,17 @@ function checkParentDir(
 }
 
 function getStats(
-  destStat: BigIntStats | undefined,
+  destStat: Deno.FileInfo | undefined,
   src: string,
   dest: string,
   opts: CopySyncOptions,
 ): void {
-  const statSyncFn = opts.dereference ? statSync : lstatSync;
+  const statSyncFn = opts.dereference ? Deno.statSync : Deno.lstatSync;
   const srcStat = statSyncFn(src);
 
-  if (srcStat.isDirectory() && opts.recursive) {
+  if (srcStat.isDirectory && opts.recursive) {
     return onDir(srcStat, destStat, src, dest, opts);
-  } else if (srcStat.isDirectory()) {
+  } else if (srcStat.isDirectory) {
     throw new ERR_FS_EISDIR({
       message: `${src} is a directory (not copied)`,
       path: src,
@@ -209,14 +216,14 @@ function getStats(
       code: "EISDIR",
     });
   } else if (
-    srcStat.isFile() ||
-    srcStat.isCharacterDevice() ||
-    srcStat.isBlockDevice()
+    srcStat.isFile ||
+    srcStat.isCharDevice ||
+    srcStat.isBlockDevice
   ) {
     return onFile(srcStat, destStat, src, dest, opts);
-  } else if (srcStat.isSymbolicLink()) {
+  } else if (srcStat.isSymlink) {
     return onLink(destStat, src, dest, opts);
-  } else if (srcStat.isSocket()) {
+  } else if (srcStat.isSocket) {
     throw new ERR_FS_CP_SOCKET({
       message: `cannot copy a socket file: ${dest}`,
       path: dest,
@@ -224,7 +231,7 @@ function getStats(
       errno: EINVAL,
       code: "EINVAL",
     });
-  } else if (srcStat.isFIFO()) {
+  } else if (srcStat.isFifo) {
     throw new ERR_FS_CP_FIFO_PIPE({
       message: `cannot copy a FIFO pipe: ${dest}`,
       path: dest,
@@ -243,8 +250,8 @@ function getStats(
 }
 
 function onFile(
-  srcStat: Stats,
-  destStat: BigIntStats | undefined,
+  srcStat: Deno.FileInfo,
+  destStat: Deno.FileInfo | undefined,
   src: string,
   dest: string,
   opts: CopySyncOptions,
@@ -254,7 +261,7 @@ function onFile(
 }
 
 function mayCopyFile(
-  srcStat: Stats,
+  srcStat: Deno.FileInfo,
   src: string,
   dest: string,
   opts: CopySyncOptions,
@@ -274,7 +281,7 @@ function mayCopyFile(
 }
 
 function copyFile(
-  srcStat: Stats,
+  srcStat: Deno.FileInfo,
   src: string,
   dest: string,
   opts: CopySyncOptions,
@@ -308,13 +315,13 @@ function setDestTimestamps(src: string, dest: string): void {
   // The initial srcStat.atime cannot be trusted
   // because it is modified by the read(2) system call
   // (See https://nodejs.org/api/fs.html#fs_stat_time_values)
-  const updatedSrcStat = statSync(src);
+  const updatedSrcStat = Deno.statSync(src);
   return utimesSync(dest, updatedSrcStat.atime, updatedSrcStat.mtime);
 }
 
 function onDir(
-  srcStat: Stats,
-  destStat: BigIntStats | undefined,
+  srcStat: Deno.FileInfo,
+  destStat: Deno.FileInfo | undefined,
   src: string,
   dest: string,
   opts: CopySyncOptions,
@@ -353,7 +360,7 @@ function copyDir(src: string, dest: string, opts: CopySyncOptions): void {
 }
 
 function onLink(
-  destStat: BigIntStats | undefined,
+  destStat: Deno.FileInfo | undefined,
   src: string,
   dest: string,
   opts: CopySyncOptions,
@@ -383,7 +390,6 @@ function onLink(
   }
 
   if (
-    //NB(Tango992): We use `Deno.stat` because it's cheaper to call
     Deno.statSync(src).isDirectory && isSrcSubdir(resolvedSrc, resolvedDest)
   ) {
     throw new ERR_FS_CP_EINVAL({
@@ -399,7 +405,6 @@ function onLink(
   // dest in this case would result in removing src contents
   // and therefore a broken symlink would be created.
   if (
-    //NB(Tango992): We use `Deno.stat` because it's cheaper to call
     Deno.statSync(dest).isDirectory && isSrcSubdir(resolvedDest, resolvedSrc)
   ) {
     throw new ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY({
