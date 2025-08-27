@@ -871,6 +871,22 @@ Deno.test("websocket close ongoing handshake", async () => {
   }
 });
 
+function createOnErrorCb(ac: AbortController): (err: unknown) => Response {
+  return (err) => {
+    console.error(err);
+    ac.abort();
+    return new Response("Internal server error", { status: 500 });
+  };
+}
+
+function onListen(
+  resolve: (value: void | PromiseLike<void>) => void,
+): ({ hostname, port }: { hostname: string; port: number }) => void {
+  return () => {
+    resolve();
+  };
+}
+
 Deno.test("WebSocket headers", async () => {
   const ac = new AbortController();
   const listeningDeferred = Promise.withResolvers<void>();
