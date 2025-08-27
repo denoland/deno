@@ -23,7 +23,7 @@ pub use deno_config::deno_json::FmtOptionsConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::PermissionConfigValue;
-use deno_config::deno_json::PermissionsObject;
+use deno_config::deno_json::PermissionsObjectWithBase;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
 pub use deno_config::glob::FilePatterns;
@@ -48,6 +48,8 @@ use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
+use deno_runtime::deno_permissions::AllowRunDescriptor;
+use deno_runtime::deno_permissions::PathDescriptor;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::StackString;
@@ -1032,12 +1034,13 @@ impl CliOptions {
     // bury this in here to ensure people use cli_options.permissions_options()
     fn flags_to_options(
       flags: &PermissionFlags,
-      mut config: Option<&PermissionsObject>,
-    ) -> PermissionsOptions {
+      mut config: Option<&PermissionsObjectWithBase>,
+    ) -> Result<PermissionsOptions, AnyError> {
       fn handle_allow(
         allow_all: bool,
         value: Option<&Vec<String>>,
         config: Option<&PermissionConfigValue>,
+        parse_config_value: &impl Fn(&str) -> String,
       ) -> Option<Vec<String>> {
         if allow_all {
           assert!(value.is_none());
@@ -1047,7 +1050,12 @@ impl CliOptions {
         } else if let Some(config) = config {
           match config {
             PermissionConfigValue::All => Some(vec![]),
-            PermissionConfigValue::Some(items) => Some(items.clone()),
+            PermissionConfigValue::Some(items) => Some(
+              items
+                .iter()
+                .map(|value| parse_config_value(value))
+                .collect(),
+            ),
             PermissionConfigValue::None | PermissionConfigValue::NotPresent => {
               None
             }
@@ -1060,13 +1068,19 @@ impl CliOptions {
       fn handle_deny(
         value: Option<&Vec<String>>,
         config: Option<&PermissionConfigValue>,
+        parse_config_value: &impl Fn(&str) -> String,
       ) -> Option<Vec<String>> {
         if let Some(value) = value {
           Some(value.clone())
         } else if let Some(config) = config {
           match config {
             PermissionConfigValue::All => Some(vec![]),
-            PermissionConfigValue::Some(items) => Some(items.clone()),
+            PermissionConfigValue::Some(items) => Some(
+              items
+                .iter()
+                .map(|value| parse_config_value(value))
+                .collect(),
+            ),
             PermissionConfigValue::None | PermissionConfigValue::NotPresent => {
               None
             }
@@ -1080,91 +1094,146 @@ impl CliOptions {
         config = None;
       }
 
-      PermissionsOptions {
+      let config_dir = match &config {
+        Some(config) => {
+          let mut path = deno_path_util::url_to_file_path(&config.base)?;
+          path.pop();
+          Some(path)
+        }
+        None => None,
+      };
+
+      let make_fs_config_value_absolute = |value: &str| match &config_dir {
+        Some(dir_path) => PathDescriptor::new_known_cwd(
+          Cow::Borrowed(Path::new(value)),
+          dir_path,
+        )
+        .into_path_buf()
+        .into_os_string()
+        .into_string()
+        .unwrap(),
+        None => value.to_string(),
+      };
+      let make_run_config_value_absolute = |value: &str| match &config_dir {
+        Some(dir_path) => {
+          if AllowRunDescriptor::is_path(value) {
+            PathDescriptor::new_known_cwd(
+              Cow::Borrowed(Path::new(value)),
+              dir_path,
+            )
+            .into_path_buf()
+            .into_os_string()
+            .into_string()
+            .unwrap()
+          } else {
+            value.to_string()
+          }
+        }
+        None => value.to_string(),
+      };
+      let no_op = |value: &str| value.to_string();
+
+      Ok(PermissionsOptions {
         allow_all: if flags.allow_all {
           true
         } else {
-          config.and_then(|c| c.all).unwrap_or(false)
+          config.and_then(|c| c.permissions.all).unwrap_or(false)
         },
         allow_env: handle_allow(
           flags.allow_all,
           flags.allow_env.as_ref(),
-          config.map(|c| &c.env.allow),
+          config.map(|c| &c.permissions.env.allow),
+          &no_op,
         ),
         deny_env: handle_deny(
           flags.deny_env.as_ref(),
-          config.map(|c| &c.env.deny),
+          config.map(|c| &c.permissions.env.deny),
+          &no_op,
         ),
         allow_net: handle_allow(
           flags.allow_all,
           flags.allow_net.as_ref(),
-          config.map(|c| &c.net.allow),
+          config.map(|c| &c.permissions.net.allow),
+          &no_op,
         ),
         deny_net: handle_deny(
           flags.deny_net.as_ref(),
-          config.map(|c| &c.net.deny),
+          config.map(|c| &c.permissions.net.deny),
+          &no_op,
         ),
         allow_ffi: handle_allow(
           flags.allow_all,
           flags.allow_ffi.as_ref(),
-          config.map(|c| &c.ffi.allow),
+          config.map(|c| &c.permissions.ffi.allow),
+          &make_fs_config_value_absolute,
         ),
         deny_ffi: handle_deny(
           flags.deny_ffi.as_ref(),
-          config.map(|c| &c.ffi.deny),
+          config.map(|c| &c.permissions.ffi.deny),
+          &make_fs_config_value_absolute,
         ),
         allow_read: handle_allow(
           flags.allow_all,
           flags.allow_read.as_ref(),
-          config.map(|c| &c.read.allow),
+          config.map(|c| &c.permissions.read.allow),
+          &make_fs_config_value_absolute,
         ),
         deny_read: handle_deny(
           flags.deny_read.as_ref(),
-          config.map(|c| &c.read.deny),
+          config.map(|c| &c.permissions.read.deny),
+          &make_fs_config_value_absolute,
         ),
         allow_run: handle_allow(
           flags.allow_all,
           flags.allow_run.as_ref(),
-          config.map(|c| &c.run.allow),
+          config.map(|c| &c.permissions.run.allow),
+          &make_run_config_value_absolute,
         ),
         deny_run: handle_deny(
           flags.deny_run.as_ref(),
-          config.map(|c| &c.run.deny),
+          config.map(|c| &c.permissions.run.deny),
+          &make_run_config_value_absolute,
         ),
         allow_sys: handle_allow(
           flags.allow_all,
           flags.allow_sys.as_ref(),
-          config.map(|c| &c.sys.allow),
+          config.map(|c| &c.permissions.sys.allow),
+          &no_op,
         ),
         deny_sys: handle_deny(
           flags.deny_sys.as_ref(),
-          config.map(|c| &c.sys.deny),
+          config.map(|c| &c.permissions.sys.deny),
+          &no_op,
         ),
         allow_write: handle_allow(
           flags.allow_all,
           flags.allow_write.as_ref(),
-          config.map(|c| &c.write.allow),
+          config.map(|c| &c.permissions.write.allow),
+          &make_fs_config_value_absolute,
         ),
         deny_write: handle_deny(
           flags.deny_write.as_ref(),
-          config.map(|c| &c.write.deny),
+          config.map(|c| &c.permissions.write.deny),
+          &make_fs_config_value_absolute,
         ),
         allow_import: handle_allow(
           flags.allow_all,
           flags.allow_import.as_ref(),
-          config.map(|c| &c.import.allow),
+          config.map(|c| &c.permissions.import.allow),
+          &no_op,
         ),
         deny_import: handle_deny(
           flags.deny_import.as_ref(),
-          config.map(|c| &c.import.deny),
+          config.map(|c| &c.permissions.import.deny),
+          &no_op,
         ),
         prompt: !resolve_no_prompt(flags),
-      }
+      })
     }
 
     let config_permissions = self.resolve_config_permissions_for_dir(dir)?;
     let mut permissions_options =
-      flags_to_options(&self.flags.permissions, config_permissions);
+      flags_to_options(&self.flags.permissions, config_permissions)?;
     self.augment_import_permissions(&mut permissions_options);
     Ok(permissions_options)
   }
@@ -1172,7 +1241,7 @@ impl CliOptions {
   fn resolve_config_permissions_for_dir<'a>(
     &self,
     dir: &'a WorkspaceDirectory,
-  ) -> Result<Option<&'a PermissionsObject>, AnyError> {
+  ) -> Result<Option<&'a PermissionsObjectWithBase>, AnyError> {
     let config_permissions = if let Some(name) = &self.flags.permission_set {
       if name.is_empty() {
         let maybe_subcommand_permissions = match &self.flags.subcommand {

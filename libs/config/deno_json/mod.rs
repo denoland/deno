@@ -45,6 +45,7 @@ pub use permissions::PermissionConfigValue;
 pub use permissions::PermissionNameOrObject;
 pub use permissions::PermissionsConfig;
 pub use permissions::PermissionsObject;
+pub use permissions::PermissionsObjectWithBase;
 pub use ts::CompilerOptions;
 pub use ts::EmitConfigOptions;
 pub use ts::RawJsxCompilerOptions;
@@ -544,7 +545,12 @@ impl SerializedTestConfig {
         Some(PermissionNameOrObject::Name(name)) => {
           Some(Box::new(permissions.get(&name)?.clone()))
         }
-        Some(PermissionNameOrObject::Object(obj)) => Some(obj),
+        Some(PermissionNameOrObject::Object(permissions)) => {
+          Some(Box::new(PermissionsObjectWithBase {
+            base: config_file_specifier.clone(),
+            permissions: *permissions,
+          }))
+        }
         None => None,
       },
     })
@@ -554,7 +560,7 @@ impl SerializedTestConfig {
 #[derive(Clone, Debug, Hash, PartialEq)]
 pub struct TestConfig {
   pub files: FilePatterns,
-  pub permissions: Option<Box<PermissionsObject>>,
+  pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
 impl TestConfig {
@@ -635,7 +641,12 @@ impl SerializedBenchConfig {
         Some(PermissionNameOrObject::Name(name)) => {
           Some(Box::new(permissions.get(&name)?.clone()))
         }
-        Some(PermissionNameOrObject::Object(obj)) => Some(obj),
+        Some(PermissionNameOrObject::Object(permissions)) => {
+          Some(Box::new(PermissionsObjectWithBase {
+            base: config_file_specifier.clone(),
+            permissions: *permissions,
+          }))
+        }
         None => None,
       },
     })
@@ -645,7 +656,7 @@ impl SerializedBenchConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BenchConfig {
   pub files: FilePatterns,
-  pub permissions: Option<Box<PermissionsObject>>,
+  pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
 impl BenchConfig {
@@ -667,6 +678,7 @@ struct SerializedCompileConfig {
 impl SerializedCompileConfig {
   pub fn into_resolved(
     self,
+    config_file_specifier: &Url,
     permissions: &PermissionsConfig,
   ) -> Result<CompileConfig, IntoResolvedError> {
     Ok(CompileConfig {
@@ -674,7 +686,12 @@ impl SerializedCompileConfig {
         Some(PermissionNameOrObject::Name(name)) => {
           Some(Box::new(permissions.get(&name)?.clone()))
         }
-        Some(PermissionNameOrObject::Object(obj)) => Some(obj),
+        Some(PermissionNameOrObject::Object(permissions)) => {
+          Some(Box::new(PermissionsObjectWithBase {
+            base: config_file_specifier.clone(),
+            permissions: *permissions,
+          }))
+        }
         None => None,
       },
     })
@@ -683,7 +700,7 @@ impl SerializedCompileConfig {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CompileConfig {
-  pub permissions: Option<Box<PermissionsObject>>,
+  pub permissions: Option<Box<PermissionsObjectWithBase>>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -1660,12 +1677,12 @@ impl ConfigFile {
               source: error,
             }
           })?;
-        serialized.into_resolved(permissions).map_err(|error| {
-          ToInvalidConfigError::InvalidConfig {
+        serialized
+          .into_resolved(&self.specifier, permissions)
+          .map_err(|error| ToInvalidConfigError::InvalidConfig {
             config: "compile",
             source: error,
-          }
-        })
+          })
       }
       None => Ok(CompileConfig { permissions: None }),
     }
@@ -1762,12 +1779,11 @@ impl ConfigFile {
     &self,
   ) -> Result<PermissionsConfig, ToInvalidConfigError> {
     match self.json.permissions.clone() {
-      Some(config) => PermissionsConfig::parse(config).map_err(|error| {
-        ToInvalidConfigError::Parse {
+      Some(config) => PermissionsConfig::parse(config, &self.specifier)
+        .map_err(|error| ToInvalidConfigError::Parse {
           config: "permissions",
           source: error,
-        }
-      }),
+        }),
       None => Ok(Default::default()),
     }
   }

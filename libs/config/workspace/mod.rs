@@ -55,7 +55,7 @@ use crate::deno_json::LintRulesConfig;
 use crate::deno_json::NodeModulesDirMode;
 use crate::deno_json::NodeModulesDirParseError;
 use crate::deno_json::PermissionsConfig;
-use crate::deno_json::PermissionsObject;
+use crate::deno_json::PermissionsObjectWithBase;
 use crate::deno_json::PublishConfig;
 pub use crate::deno_json::TaskDefinition;
 use crate::deno_json::TestConfig;
@@ -1999,9 +1999,8 @@ impl WorkspaceDirectory {
     Ok(BenchConfig {
       files: combine_patterns(root_config.files, member_config.files),
       permissions: match (root_config.permissions, member_config.permissions) {
-        (Some(r), Some(m)) => Some(Box::new(r.clone().merge((*m).clone()))),
-        (Some(r), None) => Some(r),
-        (None, Some(m)) => Some(m),
+        (_, Some(m)) => Some(m),
+        (Some(r), _) => Some(r),
         (None, None) => None,
       },
     })
@@ -2033,9 +2032,8 @@ impl WorkspaceDirectory {
     };
     Ok(CompileConfig {
       permissions: match (root_config.permissions, member_config.permissions) {
-        (Some(r), Some(m)) => Some(Box::new(r.clone().merge((*m).clone()))),
-        (Some(r), None) => Some(r),
-        (None, Some(m)) => Some(m),
+        (_, Some(m)) => Some(m),
+        (Some(r), _) => Some(r),
         (None, None) => None,
       },
     })
@@ -2116,19 +2114,19 @@ impl WorkspaceDirectory {
 
   pub fn to_bench_permissions_config(
     &self,
-  ) -> Result<Option<&PermissionsObject>, ToInvalidConfigError> {
+  ) -> Result<Option<&PermissionsObjectWithBase>, ToInvalidConfigError> {
     Ok(self.to_bench_config_inner()?.permissions.as_deref())
   }
 
   pub fn to_compile_permissions_config(
     &self,
-  ) -> Result<Option<&PermissionsObject>, ToInvalidConfigError> {
+  ) -> Result<Option<&PermissionsObjectWithBase>, ToInvalidConfigError> {
     Ok(self.to_compile_config()?.permissions.as_deref())
   }
 
   pub fn to_test_permissions_config(
     &self,
-  ) -> Result<Option<&PermissionsObject>, ToInvalidConfigError> {
+  ) -> Result<Option<&PermissionsObjectWithBase>, ToInvalidConfigError> {
     Ok(self.to_test_config_inner()?.permissions.as_deref())
   }
 
@@ -2203,9 +2201,8 @@ impl WorkspaceDirectory {
     Ok(TestConfig {
       files: combine_patterns(root_config.files, member_config.files),
       permissions: match (root_config.permissions, member_config.permissions) {
-        (Some(r), Some(m)) => Some(Box::new(r.clone().merge((*m).clone()))),
-        (Some(r), None) => Some(r),
-        (None, Some(m)) => Some(m),
+        (_, Some(m)) => Some(m),
+        (Some(r), _) => Some(r),
         (None, None) => None,
       },
     })

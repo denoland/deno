@@ -1,9 +1,6 @@
 {
-  "workspace": [
-    "./a"
-  ],
   "permissions": {
-    "root": {
+    "member": {
       "read": ["./data"]
     }
   }

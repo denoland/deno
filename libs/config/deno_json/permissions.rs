@@ -2,6 +2,7 @@
 
 use indexmap::IndexMap;
 use serde::Deserialize;
+use url::Url;
 
 use super::UndefinedPermissionError;
 
@@ -140,6 +141,13 @@ pub enum PermissionNameOrObject {
   Object(Box<PermissionsObject>),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PermissionsObjectWithBase {
+  // TODO(dsherret): make this an Arc<Url>
+  pub base: Url,
+  pub permissions: PermissionsObject,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Default, Hash)]
 #[serde(default, deny_unknown_fields)]
 pub struct PermissionsObject {
@@ -163,58 +171,51 @@ pub struct PermissionsObject {
   pub sys: AllowDenyPermissionConfig,
 }
 
-impl PermissionsObject {
-  pub fn merge(self, other: Self) -> Self {
-    PermissionsObject {
-      all: match (self.all, other.all) {
-        (Some(_), Some(b)) => Some(b),
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
-      },
-      read: self.read.merge(other.read),
-      write: self.write.merge(other.write),
-      import: self.import.merge(other.import),
-      env: self.env.merge(other.env),
-      net: self.net.merge(other.net),
-      run: self.run.merge(other.run),
-      ffi: self.ffi.merge(other.ffi),
-      sys: self.sys.merge(other.sys),
-    }
-  }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct PermissionsConfig {
-  pub sets: IndexMap<String, PermissionsObject>,
+  pub sets: IndexMap<String, PermissionsObjectWithBase>,
 }
 
 impl PermissionsConfig {
-  pub fn parse(value: serde_json::Value) -> Result<Self, serde_json::Error> {
-    let sets = serde_json::from_value(value)?;
-    Ok(Self { sets })
+  pub fn parse(
+    value: serde_json::Value,
+    base: &Url,
+  ) -> Result<Self, serde_json::Error> {
+    let sets: IndexMap<String, PermissionsObject> =
+      serde_json::from_value(value)?;
+    Ok(Self {
+      sets: sets
+        .into_iter()
+        .map(|(k, permissions)| {
+          (
+            k,
+            PermissionsObjectWithBase {
+              base: base.clone(),
+              permissions,
+            },
+          )
+        })
+        .collect(),
+    })
   }
 
   pub fn get(
     &self,
     name: &str,
-  ) -> Result<&PermissionsObject, UndefinedPermissionError> {
+  ) -> Result<&PermissionsObjectWithBase, UndefinedPermissionError> {
     match self.sets.get(name) {
       Some(value) => Ok(value),
       None => Err(UndefinedPermissionError(name.to_string())),
     }
   }
 
-  pub fn merge(self, other: Self) -> Self {
+  pub fn merge(self, member: Self) -> Self {
     let mut sets = self.sets;
 
-    for (key, value) in other.sets {
-      if let Some(existing) = sets.swap_remove(key.as_str()) {
-        sets.insert(key, existing.merge(value));
-      } else {
-        sets.insert(key, value);
-      }
+    for (key, value) in member.sets {
+      sets.insert(key, value);
     }
+
     Self { sets }
   }
 }
