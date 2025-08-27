@@ -143,7 +143,6 @@ pub enum PermissionNameOrObject {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PermissionsObjectWithBase {
-  // TODO(dsherret): make this an Arc<Url>
   pub base: Url,
   pub permissions: PermissionsObject,
 }
@@ -213,6 +212,11 @@ impl PermissionsConfig {
     let mut sets = self.sets;
 
     for (key, value) in member.sets {
+      // When the same key exists in the root and the member, we overwrite
+      // with the member instead of merging because we don't want someone looking
+      // at a member config file and not realizing the permissions are extended
+      // in the root. In the future, we may add an explicit "extends" concept in
+      // permissions in order to support this scenario.
       sets.insert(key, value);
     }
 
