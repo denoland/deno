@@ -4434,7 +4434,6 @@ fn preload_arg() -> Arg {
     .long("preload")
     .alias("import")
     .value_name("FILE")
-    .use_value_delimiter(true)
     .action(ArgAction::Append)
     .help("A list of files that will be executed before the main module")
     .value_hint(ValueHint::FilePath)
@@ -12845,14 +12844,9 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       }
     );
 
-    let flags = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--preload",
-      "p1.js,./p2.js",
-      "main.ts"
-    ])
-    .unwrap();
+    let flags =
+      flags_from_vec(svec!["deno", "run", "--preload", "data:,()", "main.ts"])
+        .unwrap();
     assert_eq!(
       flags,
       Flags {
@@ -12860,7 +12854,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           script: "main.ts".into(),
           ..Default::default()
         }),
-        preload: svec!["p1.js", "./p2.js"],
+        preload: svec!["data:,()"],
         code_cache_enabled: true,
         ..Default::default()
       }
