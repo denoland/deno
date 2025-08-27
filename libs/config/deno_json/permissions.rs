@@ -6,13 +6,11 @@ use url::Url;
 
 use super::UndefinedPermissionError;
 
-#[derive(Default, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PermissionConfigValue {
   All,
   Some(Vec<String>),
   None,
-  #[default]
-  NotPresent,
 }
 
 impl<'de> serde::Deserialize<'de> for PermissionConfigValue {
@@ -55,13 +53,6 @@ impl<'de> serde::Deserialize<'de> for PermissionConfigValue {
         }
       }
 
-      fn visit_none<E>(self) -> Result<Self::Value, E>
-      where
-        E: serde::de::Error,
-      {
-        Ok(PermissionConfigValue::None)
-      }
-
       fn visit_unit<E>(self) -> Result<Self::Value, E>
       where
         E: serde::de::Error,
@@ -76,27 +67,8 @@ impl<'de> serde::Deserialize<'de> for PermissionConfigValue {
 #[derive(Deserialize, Default, Clone, Debug, PartialEq, Eq, Hash)]
 #[serde(default, deny_unknown_fields)]
 pub struct AllowDenyPermissionConfig {
-  pub allow: PermissionConfigValue,
-  pub deny: PermissionConfigValue,
-}
-
-impl PermissionConfigValue {
-  pub fn merge(self, other: Self) -> Self {
-    match (self, other) {
-      (PermissionConfigValue::NotPresent, other) => other,
-      (this, PermissionConfigValue::NotPresent) => this,
-      (_, other) => other,
-    }
-  }
-}
-
-impl AllowDenyPermissionConfig {
-  pub fn merge(self, other: Self) -> Self {
-    AllowDenyPermissionConfig {
-      allow: self.allow.merge(other.allow),
-      deny: self.deny.merge(other.deny),
-    }
-  }
+  pub allow: Option<PermissionConfigValue>,
+  pub deny: Option<PermissionConfigValue>,
 }
 
 #[derive(Deserialize)]
@@ -114,20 +86,20 @@ fn deserialize_allow_deny<'de, D: serde::Deserializer<'de>>(
     AllowDenyPermissionConfigValue::Boolean(b) => {
       if b {
         AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::All,
-          deny: PermissionConfigValue::None,
+          allow: Some(PermissionConfigValue::All),
+          deny: None,
         }
       } else {
         AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::None,
-          deny: PermissionConfigValue::None,
+          allow: Some(PermissionConfigValue::None),
+          deny: None,
         }
       }
     }
     AllowDenyPermissionConfigValue::AllowList(allow) => {
       AllowDenyPermissionConfig {
-        allow: PermissionConfigValue::Some(allow),
-        deny: PermissionConfigValue::None,
+        allow: Some(PermissionConfigValue::Some(allow)),
+        deny: None,
       }
     }
     AllowDenyPermissionConfigValue::Object(allow_deny) => allow_deny,
@@ -221,5 +193,156 @@ impl PermissionsConfig {
     }
 
     Self { sets }
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use pretty_assertions::assert_eq;
+  use serde_json::json;
+
+  use super::*;
+
+  #[test]
+  fn deserialize() {
+    assert_eq!(
+      serde_json::from_value::<PermissionsObject>(json!({
+        "all": true,
+        "read": true,
+        "write": true,
+        "import": true,
+        "env": true,
+        "net": true,
+        "run": true,
+        "ffi": true,
+        "sys": false,
+      }))
+      .unwrap(),
+      PermissionsObject {
+        all: Some(true),
+        read: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::All),
+          deny: None,
+        },
+        write: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::All),
+          deny: None,
+        },
+        import: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::All),
+          deny: None,
+        },
+        env: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::All),
+          deny: None,
+        },
+        net: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::All),
+          deny: None,
+        },
+        run: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::All),
+          deny: None,
+        },
+        ffi: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::All),
+          deny: None,
+        },
+        sys: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::None),
+          deny: None,
+        }
+      }
+    );
+
+    assert_eq!(
+      serde_json::from_value::<PermissionsObject>(json!({
+        "read": ["test"],
+        "write": ["test"],
+        "import": ["test"],
+        "env": ["test"],
+        "net": ["test"],
+        "run": ["test"],
+        "ffi": ["test"],
+        "sys": ["test"],
+      }))
+      .unwrap(),
+      PermissionsObject {
+        all: None,
+        read: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
+          deny: None
+        },
+        write: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
+          deny: None,
+        },
+        import: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
+          deny: None,
+        },
+        env: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
+          deny: None,
+        },
+        net: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
+          deny: None,
+        },
+        run: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
+          deny: None,
+        },
+        ffi: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
+          deny: None,
+        },
+        sys: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
+          deny: None,
+        }
+      }
+    );
+
+    assert_eq!(
+      serde_json::from_value::<PermissionsObject>(json!({
+        "read": {
+          "allow": ["test"],
+          "deny": ["test-deny"],
+        },
+        "write": []
+      }))
+      .unwrap(),
+      PermissionsObject {
+        all: None,
+        read: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::Some(vec!["test".to_string()])),
+          deny: Some(PermissionConfigValue::Some(vec![
+            "test-deny".to_string()
+          ])),
+        },
+        ..Default::default()
+      }
+    );
+
+    assert_eq!(
+      serde_json::from_value::<PermissionsObject>(json!({
+        "read": {
+          "allow": true,
+          "deny": ["test-deny"],
+        },
+      }))
+      .unwrap(),
+      PermissionsObject {
+        all: None,
+        read: AllowDenyPermissionConfig {
+          allow: Some(PermissionConfigValue::All),
+          deny: Some(PermissionConfigValue::Some(vec![
+            "test-deny".to_string()
+          ])),
+        },
+        ..Default::default()
+      }
+    );
   }
 }

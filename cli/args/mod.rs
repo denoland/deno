@@ -1548,27 +1548,35 @@ fn flags_to_permissions_options(
   mut config: Option<&PermissionsObjectWithBase>,
 ) -> Result<PermissionsOptions, AnyError> {
   fn handle_allow(
-    allow_all: bool,
+    allow_all_flag: bool,
+    allow_all_config: Option<bool>,
     value: Option<&Vec<String>>,
     config: Option<&PermissionConfigValue>,
     parse_config_value: &impl Fn(&str) -> String,
   ) -> Option<Vec<String>> {
-    if allow_all {
-      assert!(value.is_none());
-      Some(Vec::new())
+    if allow_all_flag {
+      Some(vec![])
     } else if let Some(value) = value {
       Some(value.clone())
     } else if let Some(config) = config {
       match config {
         PermissionConfigValue::All => Some(vec![]),
-        PermissionConfigValue::Some(items) => Some(
-          items
-            .iter()
-            .map(|value| parse_config_value(value))
-            .collect(),
-        ),
-        PermissionConfigValue::None | PermissionConfigValue::NotPresent => None,
+        PermissionConfigValue::Some(items) => {
+          if items.is_empty() {
+            None
+          } else {
+            Some(
+              items
+                .iter()
+                .map(|value| parse_config_value(value))
+                .collect(),
+            )
+          }
+        }
+        PermissionConfigValue::None => None,
       }
+    } else if allow_all_config == Some(true) {
+      Some(vec![])
     } else {
       None
     }
@@ -1590,7 +1598,7 @@ fn flags_to_permissions_options(
             .map(|value| parse_config_value(value))
             .collect(),
         ),
-        PermissionConfigValue::None | PermissionConfigValue::NotPresent => None,
+        PermissionConfigValue::None => None,
       }
     } else {
       None
@@ -1639,95 +1647,106 @@ fn flags_to_permissions_options(
   Ok(PermissionsOptions {
     allow_all: if flags.allow_all {
       true
+    } else if flags.has_permission() {
+      // downgrade the allow_all state if someone specified a permission flag
+      false
     } else {
       config.and_then(|c| c.permissions.all).unwrap_or(false)
     },
     allow_env: handle_allow(
       flags.allow_all,
+      config.and_then(|c| c.permissions.all),
       flags.allow_env.as_ref(),
-      config.map(|c| &c.permissions.env.allow),
+      config.and_then(|c| c.permissions.env.allow.as_ref()),
       &no_op,
     ),
     deny_env: handle_deny(
       flags.deny_env.as_ref(),
-      config.map(|c| &c.permissions.env.deny),
+      config.and_then(|c| c.permissions.env.deny.as_ref()),
       &no_op,
     ),
     allow_net: handle_allow(
       flags.allow_all,
+      config.and_then(|c| c.permissions.all),
       flags.allow_net.as_ref(),
-      config.map(|c| &c.permissions.net.allow),
+      config.and_then(|c| c.permissions.net.allow.as_ref()),
       &no_op,
     ),
     deny_net: handle_deny(
       flags.deny_net.as_ref(),
-      config.map(|c| &c.permissions.net.deny),
+      config.and_then(|c| c.permissions.net.deny.as_ref()),
       &no_op,
     ),
     allow_ffi: handle_allow(
       flags.allow_all,
+      config.and_then(|c| c.permissions.all),
       flags.allow_ffi.as_ref(),
-      config.map(|c| &c.permissions.ffi.allow),
+      config.and_then(|c| c.permissions.ffi.allow.as_ref()),
       &make_fs_config_value_absolute,
     ),
     deny_ffi: handle_deny(
       flags.deny_ffi.as_ref(),
-      config.map(|c| &c.permissions.ffi.deny),
+      config.and_then(|c| c.permissions.ffi.deny.as_ref()),
       &make_fs_config_value_absolute,
     ),
     allow_read: handle_allow(
       flags.allow_all,
+      config.and_then(|c| c.permissions.all),
       flags.allow_read.as_ref(),
-      config.map(|c| &c.permissions.read.allow),
+      config.and_then(|c| c.permissions.read.allow.as_ref()),
       &make_fs_config_value_absolute,
     ),
     deny_read: handle_deny(
       flags.deny_read.as_ref(),
-      config.map(|c| &c.permissions.read.deny),
+      config.and_then(|c| c.permissions.read.deny.as_ref()),
       &make_fs_config_value_absolute,
     ),
     allow_run: handle_allow(
       flags.allow_all,
+      config.and_then(|c| c.permissions.all),
       flags.allow_run.as_ref(),
-      config.map(|c| &c.permissions.run.allow),
+      config.and_then(|c| c.permissions.run.allow.as_ref()),
       &make_run_config_value_absolute,
     ),
     deny_run: handle_deny(
       flags.deny_run.as_ref(),
-      config.map(|c| &c.permissions.run.deny),
+      config.and_then(|c| c.permissions.run.deny.as_ref()),
       &make_run_config_value_absolute,
     ),
     allow_sys: handle_allow(
       flags.allow_all,
+      config.and_then(|c| c.permissions.all),
       flags.allow_sys.as_ref(),
-      config.map(|c| &c.permissions.sys.allow),
+      config.and_then(|c| c.permissions.sys.allow.as_ref()),
       &no_op,
     ),
     deny_sys: handle_deny(
       flags.deny_sys.as_ref(),
-      config.map(|c| &c.permissions.sys.deny),
+      config.and_then(|c| c.permissions.sys.deny.as_ref()),
       &no_op,
     ),
     allow_write: handle_allow(
       flags.allow_all,
+      config.and_then(|c| c.permissions.all),
       flags.allow_write.as_ref(),
-      config.map(|c| &c.permissions.write.allow),
+      config.and_then(|c| c.permissions.write.allow.as_ref()),
       &make_fs_config_value_absolute,
     ),
     deny_write: handle_deny(
       flags.deny_write.as_ref(),
-      config.map(|c| &c.permissions.write.deny),
+      config.and_then(|c| c.permissions.write.deny.as_ref()),
       &make_fs_config_value_absolute,
     ),
     allow_import: handle_allow(
       flags.allow_all,
+      config.and_then(|c| c.permissions.all),
       flags.allow_import.as_ref(),
-      config.map(|c| &c.permissions.import.allow),
+      config.and_then(|c| c.permissions.import.allow.as_ref()),
       &no_op,
     ),
     deny_import: handle_deny(
       flags.deny_import.as_ref(),
-      config.map(|c| &c.permissions.import.deny),
+      config.and_then(|c| c.permissions.import.deny.as_ref()),
       &no_op,
     ),
     prompt: !resolve_no_prompt(flags),
@@ -1823,45 +1842,63 @@ mod test {
       permissions: PermissionsObject {
         all: None,
         read: AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::Some(vec![
+          allow: Some(PermissionConfigValue::Some(vec![
             ".".to_string(),
             "./read-allow".to_string(),
-          ]),
-          deny: PermissionConfigValue::Some(vec!["./read-deny".to_string()]),
+          ])),
+          deny: Some(PermissionConfigValue::Some(vec![
+            "./read-deny".to_string(),
+          ])),
         },
         write: AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::Some(vec!["./write-allow".to_string()]),
-          deny: PermissionConfigValue::Some(vec!["./write-deny".to_string()]),
+          allow: Some(PermissionConfigValue::Some(vec![
+            "./write-allow".to_string(),
+          ])),
+          deny: Some(PermissionConfigValue::Some(vec![
+            "./write-deny".to_string(),
+          ])),
         },
         import: AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::Some(vec!["jsr.io".to_string()]),
-          deny: PermissionConfigValue::Some(vec!["example.com".to_string()]),
+          allow: Some(PermissionConfigValue::Some(vec!["jsr.io".to_string()])),
+          deny: Some(PermissionConfigValue::Some(vec![
+            "example.com".to_string(),
+          ])),
         },
         env: AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::Some(vec!["env-allow".to_string()]),
-          deny: PermissionConfigValue::Some(vec!["env-deny".to_string()]),
+          allow: Some(PermissionConfigValue::Some(vec![
+            "env-allow".to_string(),
+          ])),
+          deny: Some(PermissionConfigValue::Some(vec!["env-deny".to_string()])),
         },
         net: AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::Some(vec!["net-allow".to_string()]),
-          deny: PermissionConfigValue::Some(vec!["net-deny".to_string()]),
+          allow: Some(PermissionConfigValue::Some(vec![
+            "net-allow".to_string(),
+          ])),
+          deny: Some(PermissionConfigValue::Some(vec!["net-deny".to_string()])),
         },
         run: AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::Some(vec![
+          allow: Some(PermissionConfigValue::Some(vec![
             "run-allow".to_string(),
             "./relative-run-allow".to_string(),
-          ]),
-          deny: PermissionConfigValue::Some(vec![
+          ])),
+          deny: Some(PermissionConfigValue::Some(vec![
             "run-deny".to_string(),
             "./relative-run-deny".to_string(),
-          ]),
+          ])),
         },
         ffi: AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::Some(vec!["./ffi-allow".to_string()]),
-          deny: PermissionConfigValue::Some(vec!["./ffi-deny".to_string()]),
+          allow: Some(PermissionConfigValue::Some(vec![
+            "./ffi-allow".to_string(),
+          ])),
+          deny: Some(PermissionConfigValue::Some(vec![
+            "./ffi-deny".to_string(),
+          ])),
         },
         sys: AllowDenyPermissionConfig {
-          allow: PermissionConfigValue::Some(vec!["sys-allow".to_string()]),
-          deny: PermissionConfigValue::Some(vec!["sys-deny".to_string()]),
+          allow: Some(PermissionConfigValue::Some(vec![
+            "sys-allow".to_string(),
+          ])),
+          deny: Some(PermissionConfigValue::Some(vec!["sys-deny".to_string()])),
         },
       },
     };

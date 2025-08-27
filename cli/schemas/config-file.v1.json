@@ -9,10 +9,10 @@
     "permissionConfigValue": {
       "oneOf": [{
         "type": "boolean",
-        "description": "Allow (true) or deny (false) the permission."
+        "description": "Allow or deny the permission."
       }, {
         "type": "array",
-        "description": "Allow list.",
+        "description": "Subset of items to allow or deny depending on the context.",
         "items": { "type": "string" }
       }]
     },

@@ -643,7 +643,7 @@ async fn resolve_flags_and_init(
 
   if flags.permission_set.is_some() {
     log::warn!(
-      "{} Permissions in the config file is unstable and may change in the future.",
+      "{} Permissions in the config file is an experimental feature and may change in the future.",
       colors::yellow("Warning")
     );
   }

@@ -3878,10 +3878,10 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     .after_help(cstr!(r#"<y>Permission options:</>
 <y>Docs</>: <c>https://docs.deno.com/go/permissions</>
 
-  <g>-A, --allow-all</>                          Allow all permissions.
-  <g>--no-prompt</>                              Always throw if required permission wasn't passed.
-                                             <p(245)>Can also be set via the DENO_NO_PROMPT environment variable.</>
+  <g>-A, --allow-all</>                           Allow all permissions.
   <g>-P, --permission-set[=<<NAME>]</>            Loads the permission set from the config file.
+  <g>--no-prompt</>                               Always throw if required permission wasn't passed.
+                                             <p(245)>Can also be set via the DENO_NO_PROMPT environment variable.</>
   <g>-R, --allow-read[=<<PATH>...]</>             Allow file system read access. Optionally specify allowed paths.
                                              <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
   <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
@@ -3915,7 +3915,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
       <g>--deny-import[=<<IP_OR_HOSTNAME>...]</>  Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary.
                                              <p(245)>--deny-import  |  --deny-import="example.com:443,github.com:443"</>
-      <g>DENO_TRACE_PERMISSIONS</>               Environmental variable to enable stack traces in permission prompts.
+      <g>DENO_TRACE_PERMISSIONS</>                Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
 "#))
     .arg(
