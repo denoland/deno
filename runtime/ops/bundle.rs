@@ -7,10 +7,8 @@ use async_trait::async_trait;
 use deno_core::OpState;
 use deno_core::ToV8;
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
 use deno_core::op2;
 use deno_core::serde_json;
-use deno_core::serde_v8;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use tokio::sync::oneshot;
@@ -19,9 +17,6 @@ deno_core::extension!(
   deno_bundle_runtime,
   ops = [
     op_bundle,
-  ],
-  objects = [
-    PluginExecResultSenderWrapper,
   ],
   options = {
     bundle_provider: Option<Arc<dyn BundleProvider>>,
@@ -171,7 +166,6 @@ impl BundleProvider for () {
   async fn bundle(
     &self,
     _options: BundleOptions,
-    _plugins: Option<Plugins>,
   ) -> Result<BuildResponse, AnyError> {
     Err(deno_core::anyhow::anyhow!(
       "default BundleProvider does not do anything"
@@ -184,7 +178,6 @@ pub trait BundleProvider: Send + Sync {
   async fn bundle(
     &self,
     options: BundleOptions,
-    plugins: Option<Plugins>,
   ) -> Result<BuildResponse, AnyError>;
 }
 
@@ -330,343 +323,19 @@ pub struct Location {
   pub suggestion: String,
 }
 
-fn deserialize_regex<'de, D>(deserializer: D) -> Result<regex::Regex, D::Error>
-where
-  D: serde::Deserializer<'de>,
-{
-  use serde::Deserialize;
-  let s = String::deserialize(deserializer)?;
-  regex::Regex::new(&s).map_err(serde::de::Error::custom)
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OnResolveOptions {
-  #[serde(deserialize_with = "deserialize_regex")]
-  pub filter: regex::Regex,
-  pub namespace: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OnLoadOptions {
-  pub filter: String,
-  pub namespace: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PluginInfo {
-  pub name: String,
-  pub id: u32,
-  pub on_start: bool,
-  pub on_end: bool,
-  pub on_resolve: Option<OnResolveOptions>,
-  pub on_load: Option<OnLoadOptions>,
-  pub on_dispose: bool,
-}
-
-trait ResultExt<T> {
-  fn unwrap_infallible(self) -> T;
-}
-
-impl<T> ResultExt<T> for Result<T, Infallible> {
-  fn unwrap_infallible(self) -> T {
-    match self {
-      Ok(value) => value,
-      Err(never) => match never {},
-    }
-  }
-}
-
-type Bt = std::backtrace::Backtrace;
-
-#[derive(thiserror::Error, Debug, deno_error::JsError)]
-pub enum PluginExecError {
-  #[class(generic)]
-  #[error("serde_v8 error: {0}; from {1:?}")]
-  SerdeV8(serde_v8::Error, Bt),
-}
-
-impl From<serde_v8::Error> for PluginExecError {
-  fn from(e: serde_v8::Error) -> Self {
-    PluginExecError::SerdeV8(e, std::backtrace::Backtrace::capture())
-  }
-}
-
-impl PluginRequest {
-  fn to_args<'s>(
-    self,
-    scope: &mut v8::HandleScope<'s>,
-  ) -> Result<Vec<v8::Local<'s, v8::Value>>, PluginExecError> {
-    let mut v8_args = Vec::new();
-    match self {
-      PluginRequest::OnStart {
-        plugin_ids,
-        args,
-        result,
-      } => {
-        v8_args.push(PluginHook::OnStart.to_v8(scope).unwrap_infallible());
-        v8_args
-          .push(PluginHookType::Sequential.to_v8(scope).unwrap_infallible());
-        v8_args.push(serde_v8::to_v8(scope, plugin_ids)?);
-        let sender = PluginExecResultSenderWrapper::from(
-          PluginExecResultSender::OnStart(result),
-        );
-        v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
-        v8_args.push(serde_v8::to_v8(scope, args)?);
-      }
-      PluginRequest::OnResolve {
-        plugin_ids,
-        args,
-        result,
-      } => {
-        v8_args.push(PluginHook::OnResolve.to_v8(scope).unwrap_infallible());
-        v8_args.push(PluginHookType::First.to_v8(scope).unwrap_infallible());
-        v8_args.push(serde_v8::to_v8(scope, plugin_ids)?);
-        let sender = PluginExecResultSenderWrapper::from(
-          PluginExecResultSender::OnResolve(result),
-        );
-        v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
-        v8_args.push(serde_v8::to_v8(scope, args)?);
-      }
-      PluginRequest::OnLoad {
-        plugin_ids,
-        args,
-        result,
-      } => {
-        v8_args.push(PluginHook::OnLoad.to_v8(scope).unwrap_infallible());
-        v8_args.push(PluginHookType::First.to_v8(scope).unwrap_infallible());
-        v8_args.push(serde_v8::to_v8(scope, plugin_ids)?);
-        let sender = PluginExecResultSenderWrapper::from(
-          PluginExecResultSender::OnLoad(result),
-        );
-        v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
-        v8_args.push(serde_v8::to_v8(scope, args)?);
-      }
-      PluginRequest::OnEnd {
-        plugin_ids,
-        args,
-        result,
-      } => {
-        v8_args.push(PluginHook::OnEnd.to_v8(scope).unwrap_infallible());
-        v8_args
-          .push(PluginHookType::Sequential.to_v8(scope).unwrap_infallible());
-        v8_args.push(serde_v8::to_v8(scope, plugin_ids)?);
-        let sender = PluginExecResultSenderWrapper::from(
-          PluginExecResultSender::OnEnd(result),
-        );
-        v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
-        v8_args.push(serde_v8::to_v8(scope, args)?);
-      }
-      PluginRequest::OnDispose {
-        plugin_ids,
-        args,
-        result,
-      } => {
-        v8_args.push(PluginHook::OnDispose.to_v8(scope).unwrap_infallible());
-        v8_args
-          .push(PluginHookType::Sequential.to_v8(scope).unwrap_infallible());
-        v8_args.push(serde_v8::to_v8(scope, plugin_ids)?);
-        let sender = PluginExecResultSenderWrapper::from(
-          PluginExecResultSender::OnDispose(result),
-        );
-        v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
-        v8_args.push(serde_v8::to_v8(scope, args)?);
-      }
-    }
-    Ok(v8_args)
-  }
-
-  // fn send_result<'s>(
-  //   self,
-  //   scope: &mut v8::HandleScope<'s>,
-  //   res: v8::Local<'s, v8::Value>,
-  // ) -> Result<(), PluginExecError> {
-  //   match self {
-  //     PluginRequest::OnStart { result, .. } => {
-  //       let res = serde_v8::from_v8(scope, res)?;
-  //       let _ = result.send(res);
-  //     }
-  //     PluginRequest::OnResolve { result, .. } => {
-  //       let res = serde_v8::from_v8(scope, res)?;
-  //       let _ = result.send(res);
-  //     }
-  //     PluginRequest::OnLoad { result, .. } => {
-  //       let res = serde_v8::from_v8(scope, res)?;
-  //       let _ = result.send(res);
-  //     }
-  //     PluginRequest::OnEnd { result, .. } => {
-  //       let res = serde_v8::from_v8(scope, res)?;
-  //       let _ = result.send(res);
-  //     }
-  //     PluginRequest::OnDispose { result, .. } => {
-  //       let _ = result.send(());
-  //     }
-  //   }
-
-  //   Ok(())
-  // }
-}
-
-#[derive(Debug)]
-pub enum PluginExecResultSender {
-  OnStart(oneshot::Sender<PluginResult<PluginOnStartResult>>),
-  OnResolve(oneshot::Sender<PluginResult<Option<PluginOnResolveResult>>>),
-  OnLoad(oneshot::Sender<PluginResult<Option<PluginOnLoadResult>>>),
-  OnEnd(oneshot::Sender<PluginResult<PluginOnEndResult>>),
-  OnDispose(oneshot::Sender<PluginResult<()>>),
-}
-
-#[derive(Debug)]
-struct PluginExecResultSenderWrapper {
-  sender: Rc<RefCell<Option<PluginExecResultSender>>>,
-}
-
-impl From<PluginExecResultSender> for PluginExecResultSenderWrapper {
-  fn from(sender: PluginExecResultSender) -> Self {
-    PluginExecResultSenderWrapper {
-      sender: Rc::new(RefCell::new(Some(sender))),
-    }
-  }
-}
-
-impl deno_core::GarbageCollected for PluginExecResultSenderWrapper {
-  fn get_name(&self) -> &'static std::ffi::CStr {
-    c"PluginExecResultSenderWrapper"
-  }
-}
-
-impl From<PluginRequest> for PluginExecResultSender {
-  fn from(request: PluginRequest) -> Self {
-    match request {
-      PluginRequest::OnStart { result, .. } => {
-        PluginExecResultSender::OnStart(result)
-      }
-      PluginRequest::OnResolve { result, .. } => {
-        PluginExecResultSender::OnResolve(result)
-      }
-      PluginRequest::OnLoad { result, .. } => {
-        PluginExecResultSender::OnLoad(result)
-      }
-      PluginRequest::OnEnd { result, .. } => {
-        PluginExecResultSender::OnEnd(result)
-      }
-      PluginRequest::OnDispose { result, .. } => {
-        PluginExecResultSender::OnDispose(result)
-      }
-    }
-  }
-}
-
-#[derive(Debug)]
-pub struct Plugins {
-  pub sender: tokio::sync::mpsc::Sender<PluginRequest>,
-  pub info: Vec<PluginInfo>,
-}
-
-#[op2]
-impl PluginExecResultSenderWrapper {
-  #[fast]
-  #[rename("sendResult")]
-  fn send_result<'s>(
-    &self,
-    scope: &mut v8::HandleScope<'s>,
-    res: v8::Local<'s, v8::Value>,
-  ) -> Result<(), PluginExecError> {
-    eprintln!("PluginExecResultSenderWrapper::send_result: {:?}", self);
-    let sender = self.sender.borrow_mut().take().unwrap();
-    sender.send_result(scope, res)
-  }
-}
-
-impl PluginExecResultSender {
-  fn send_result<'s>(
-    self,
-    scope: &mut v8::HandleScope<'s>,
-    res: v8::Local<'s, v8::Value>,
-  ) -> Result<(), PluginExecError> {
-    eprintln!("PluginExecResultSender::send_result: {:?}", self);
-    match self {
-      PluginExecResultSender::OnStart(result) => {
-        let res = serde_v8::from_v8(scope, res)?;
-        let _ = result.send(res);
-      }
-      PluginExecResultSender::OnResolve(result) => {
-        let res = serde_v8::from_v8(scope, res)?;
-        let _ = result.send(res);
-      }
-      PluginExecResultSender::OnLoad(result) => {
-        let res = serde_v8::from_v8(scope, res)?;
-        let _ = result.send(res);
-      }
-      PluginExecResultSender::OnEnd(result) => {
-        let res = serde_v8::from_v8(scope, res)?;
-        let _ = result.send(res);
-      }
-      PluginExecResultSender::OnDispose(result) => {
-        let res = serde_v8::from_v8(scope, res)?;
-        let _ = result.send(res);
-      }
-    }
-    Ok(())
-  }
-}
-
 #[op2(async)]
 #[serde]
 pub async fn op_bundle(
   state: Rc<RefCell<OpState>>,
   #[serde] options: BundleOptions,
-  #[serde] plugins: Option<Vec<PluginInfo>>,
-  #[global] plugin_executor: Option<v8::Global<v8::Function>>,
 ) -> Result<BuildResponse, JsErrorBox> {
   eprintln!("op_bundle: {:?}", options);
-  let (provider, spawner) = {
+  let provider = {
     let state = state.borrow();
     let provider = state.borrow::<Arc<dyn BundleProvider>>().clone();
-    let spawner = state.borrow::<deno_core::V8TaskSpawner>().clone();
-    (provider, spawner)
+    provider
   };
 
-  eprintln!("have provider");
-  let (plugins, plugin_executor_fut) = if let Some(plugin_executor) =
-    plugin_executor
-    && let Some(plugin_info) = plugins
-  {
-    eprintln!("have plugin_executor and plugin_info");
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<PluginRequest>(1024);
-    let fut = async move {
-      loop {
-        let Some(request) = rx.recv().await else {
-          break;
-        };
-        let plugin_executor = plugin_executor.clone();
-        spawner.spawn(move |scope| {
-          let tc = &mut v8::TryCatch::new(scope);
-          let mut args = request.to_args(tc).unwrap();
-          let executor = v8::Local::new(tc, plugin_executor);
-          let undef = v8::undefined(tc).into();
-          let _res = executor.call(tc, undef, &args).unwrap();
-        });
-      }
-    }
-    .boxed_local();
-    (
-      Some(Plugins {
-        sender: tx,
-        info: plugin_info,
-      }),
-      fut,
-    )
-  } else {
-    eprintln!("no plugin_executor and plugin_info");
-    (None, async move {}.boxed_local())
-  };
-
-  eprintln!("join");
-  let (bundle_result, _) =
-    tokio::join!(provider.bundle(options, plugins), plugin_executor_fut,);
-  eprintln!("bundle_result: {:?}", bundle_result);
+  let bundle_result = provider.bundle(options).await;
   bundle_result.map_err(|e| JsErrorBox::generic(e.to_string()))
 }
