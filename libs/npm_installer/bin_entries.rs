@@ -500,7 +500,7 @@ fn symlink_bin_entry<'a>(
     .unwrap_or_else(|| Cow::Borrowed(&original));
 
   if let Ok(original_link) = sys.fs_read_link(&link)
-    && &*original_link == &*original_relative
+    && *original_link == *original_relative
   {
     return Ok(EntrySetupOutcome::Success);
   }
