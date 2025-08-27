@@ -2808,17 +2808,6 @@ impl Permissions {
       && self.ffi.prompt
       && self.import.prompt
   }
-
-  pub fn grant_all_permissions(&mut self) {
-    self.read = UnaryPermission::allow_all();
-    self.write = UnaryPermission::allow_all();
-    self.net = UnaryPermission::allow_all();
-    self.env = UnaryPermission::allow_all();
-    self.sys = UnaryPermission::allow_all();
-    self.run = UnaryPermission::allow_all();
-    self.ffi = UnaryPermission::allow_all();
-    self.import = UnaryPermission::allow_all();
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -3524,15 +3513,15 @@ impl PermissionsContainer {
     &self,
     context_path: &Path,
   ) -> Result<(), PermissionCheckError> {
-    let mut inner = self.inner.lock();
+    let inner = self.inner.lock();
     if inner.all_granted() {
       Ok(())
     } else {
       let display_name = format_display_name(context_path.to_string_lossy());
       if inner.any_prompt() {
         let msg = format!(
-          "all access in order to access {} -- WARNING: This will open the sandbox and allow all actions",
-          display_name,
+          "all access in order to access {} or run again with --allow-all to disable this prompt",
+          display_name
         );
         let (result, _is_allow_all) = PermissionState::prompt(PromptOptions {
           name: "all",
@@ -3542,14 +3531,17 @@ impl PermissionsContainer {
           is_unary: false,
         });
         match result {
-          Ok(()) => {
-            inner.grant_all_permissions();
-            Ok(())
-          }
+          Ok(()) => Ok(()),
           Err(err) => Err(err.into()),
         }
       } else {
-        Err(PermissionState::permission_denied_error("all", None).into())
+        Err(
+          PermissionState::permission_denied_error(
+            "all",
+            Some(display_name.as_ref()),
+          )
+          .into(),
+        )
       }
     }
   }
