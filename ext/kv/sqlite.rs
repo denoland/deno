@@ -3,8 +3,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::env::current_dir;
-use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::path::Path;
 use std::path::PathBuf;
@@ -17,7 +15,8 @@ use async_trait::async_trait;
 use deno_core::OpState;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
-use deno_path_util::normalize_path;
+use deno_permissions::CheckedPath;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
 pub use denokv_sqlite::SqliteBackendError;
 use denokv_sqlite::SqliteConfig;
@@ -38,36 +37,28 @@ pub struct SqliteDbHandler<P: SqliteDbHandlerPermissions + 'static> {
 
 pub trait SqliteDbHandlerPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_read(
-    &mut self,
-    p: &str,
-    api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError>;
-  #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_write<'a>(
+  fn check_open<'a>(
     &mut self,
     p: Cow<'a, Path>,
+    open_access: OpenAccessKind,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<CheckedPath<'a>, PermissionCheckError>;
 }
 
 impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_read(
-    &mut self,
-    p: &str,
-    api_name: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_read(self, p, api_name)
-  }
-
-  #[inline(always)]
-  fn check_write<'a>(
+  fn check_open<'a>(
     &mut self,
     p: Cow<'a, Path>,
+    open_access: OpenAccessKind,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    deno_permissions::PermissionsContainer::check_write_path(self, p, api_name)
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_open(
+      self,
+      p,
+      open_access,
+      Some(api_name),
+    )
   }
 }
 
@@ -105,16 +96,21 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
   ) -> Result<Self::DB, JsErrorBox> {
+    enum PathOrInMemory {
+      InMemory,
+      Path(PathBuf),
+    }
+
     #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
     fn validate_path<P: SqliteDbHandlerPermissions + 'static>(
       state: &RefCell<OpState>,
       path: Option<String>,
-    ) -> Result<Option<String>, JsErrorBox> {
+    ) -> Result<Option<PathOrInMemory>, JsErrorBox> {
       let Some(path) = path else {
         return Ok(None);
       };
       if path == ":memory:" {
-        return Ok(Some(path));
+        return Ok(Some(PathOrInMemory::InMemory));
       }
       if path.is_empty() {
         return Err(JsErrorBox::type_error("Filename cannot be empty"));
@@ -128,12 +124,13 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
         let mut state = state.borrow_mut();
         let permissions = state.borrow_mut::<P>();
         let path = permissions
-          .check_read(&path, "Deno.openKv")
+          .check_open(
+            Cow::Owned(PathBuf::from(path)),
+            OpenAccessKind::ReadWriteNoFollow,
+            "Deno.openKv",
+          )
           .map_err(JsErrorBox::from_err)?;
-        let path = permissions
-          .check_write(Cow::Owned(path), "Deno.openKv")
-          .map_err(JsErrorBox::from_err)?;
-        Ok(Some(path.to_string_lossy().to_string()))
+        Ok(Some(PathOrInMemory::Path(path.into_owned_path())))
       }
     }
 
@@ -142,7 +139,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     type ConnGen =
       Arc<dyn Fn() -> rusqlite::Result<rusqlite::Connection> + Send + Sync>;
     let (conn_gen, notifier_key): (ConnGen, _) = spawn_blocking(move || {
-      denokv_sqlite::sqlite_retry_loop(|| {
+      denokv_sqlite::sqlite_retry_loop(move || {
         let mode = match std::env::var("DENO_KV_DB_MODE")
           .unwrap_or_default()
           .as_str()
@@ -162,18 +159,22 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
           ));
         }
 
-        let (conn, notifier_key) = match (path.as_deref(), &default_storage_dir)
-        {
-          (Some(":memory:"), _) | (None, None) => (
+        let (conn, notifier_key) = match (path.as_ref(), &default_storage_dir) {
+          (Some(PathOrInMemory::InMemory), _) | (None, None) => (
             Arc::new(rusqlite::Connection::open_in_memory) as ConnGen,
             None,
           ),
-          (Some(path), _) => {
+          (Some(PathOrInMemory::Path(path)), _) => {
             let flags =
               OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
-            let resolved_path = canonicalize_path(&PathBuf::from(path))
+            let resolved_path =
+              deno_path_util::fs::canonicalize_path_maybe_not_exists(
+                // todo(dsherret): probably should use the FileSystem in the op state instead
+                &sys_traits::impls::RealSys,
+                path,
+              )
               .map_err(JsErrorBox::from_err)?;
-            let path = path.to_string();
+            let path = path.clone();
             (
               Arc::new(move || {
                 rusqlite::Connection::open_with_flags(&path, flags)
@@ -237,34 +238,5 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       config,
     )
     .map_err(|e| JsErrorBox::generic(e.to_string()))
-  }
-}
-
-/// Same as Path::canonicalize, but also handles non-existing paths.
-fn canonicalize_path(path: &Path) -> Result<PathBuf, std::io::Error> {
-  let path = normalize_path(path);
-  let mut path = path;
-  let mut names_stack = Vec::new();
-  loop {
-    match path.canonicalize() {
-      Ok(mut canonicalized_path) => {
-        for name in names_stack.into_iter().rev() {
-          canonicalized_path = canonicalized_path.join(name);
-        }
-        return Ok(canonicalized_path);
-      }
-      Err(err) if err.kind() == ErrorKind::NotFound => {
-        let file_name = path.file_name().map(|os_str| os_str.to_os_string());
-        if let Some(file_name) = file_name {
-          names_stack.push(file_name.to_str().unwrap().to_string());
-          path = path.parent().unwrap().to_path_buf();
-        } else {
-          names_stack.push(path.to_str().unwrap().to_string());
-          let current_dir = current_dir()?;
-          path.clone_from(&current_dir);
-        }
-      }
-      Err(err) => return Err(err),
-    }
   }
 }

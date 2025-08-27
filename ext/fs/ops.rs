@@ -25,15 +25,19 @@ use deno_error::JsErrorBox;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
+use deno_permissions::CheckedPath;
+use deno_permissions::CheckedPathBuf;
+use deno_permissions::OpenAccessKind;
+use deno_permissions::PathWithRequested;
 use deno_permissions::PermissionCheckError;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
+use serde::Deserialize;
 use serde::Serialize;
 
 use crate::FsPermissions;
 use crate::OpenOptions;
-use crate::interface::AccessCheckFn;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
@@ -77,17 +81,6 @@ pub enum FsOpsErrorKind {
   #[class(generic)]
   #[error("Invalid trailing character in suffix")]
   InvalidTrailingCharacter,
-  #[class("NotCapable")]
-  #[error("Requires {err} access to {path}, {}", print_not_capable_info(*.standalone, .err))]
-  NotCapableAccess {
-    // NotCapable
-    standalone: bool,
-    err: &'static str,
-    path: String,
-  },
-  #[class("NotCapable")]
-  #[error("permission denied: {0}")]
-  NotCapable(&'static str),
   #[class(inherit)]
   #[error(transparent)]
   Other(JsErrorBox),
@@ -101,76 +94,25 @@ impl From<FsError> for FsOpsError {
       FsError::NotSupported => {
         FsOpsErrorKind::Other(JsErrorBox::not_supported())
       }
-      FsError::NotCapable(err) => FsOpsErrorKind::NotCapable(err),
+      FsError::PermissionCheck(err) => FsOpsErrorKind::Permission(err),
     }
     .into_box()
   }
 }
 
-fn print_not_capable_info(standalone: bool, err: &'static str) -> String {
-  if standalone {
-    format!(
-      "specify the required permissions during compilation using `deno compile --allow-{err}`"
-    )
-  } else {
-    format!("run again with the --allow-{err} flag")
+fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
+  let read = open_options.read;
+  let write = open_options.write || open_options.append;
+  match (read, write) {
+    (true, true) => OpenAccessKind::ReadWrite,
+    (false, true) => OpenAccessKind::Write,
+    (true, false) | (false, false) => OpenAccessKind::Read,
   }
 }
 
-fn sync_permission_check<'a, P: FsPermissions + 'static>(
-  permissions: &'a mut P,
-  api_name: &'static str,
-) -> impl AccessCheckFn + 'a {
-  move |path, options, resolve| {
-    permissions.check(options, path, api_name, resolve)
-  }
-}
-
-fn async_permission_check<P: FsPermissions + 'static>(
-  state: Rc<RefCell<OpState>>,
-  api_name: &'static str,
-) -> impl AccessCheckFn + 'static {
-  move |path, options, resolve| {
-    let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
-    permissions.check(options, path, api_name, resolve)
-  }
-}
-
-fn map_permission_error(
-  operation: &'static str,
-  error: FsError,
-  path: &Path,
-) -> FsOpsError {
-  match error {
-    FsError::NotCapable(err) => {
-      let path = format!("{path:?}");
-      let (path, truncated) = if path.len() > 1024 {
-        (&path[0..1024], "...(truncated)")
-      } else {
-        (path.as_str(), "")
-      };
-
-      FsOpsErrorKind::NotCapableAccess {
-        standalone: deno_permissions::is_standalone(),
-        err,
-        path: format!("{path}{truncated}"),
-      }
-      .into_box()
-    }
-    err => Err::<(), _>(err)
-      .context_path(operation, path)
-      .err()
-      .unwrap(),
-  }
-}
-
-#[op2(stack_trace)]
+#[op2]
 #[string]
-pub fn op_fs_cwd<P>(state: &mut OpState) -> Result<String, FsOpsError>
-where
-  P: FsPermissions + 'static,
-{
+pub fn op_fs_cwd(state: &mut OpState) -> Result<String, FsOpsError> {
   let fs = state.borrow::<FileSystemRc>();
   let path = fs.cwd()?;
   let path_str = path_into_string(path.into_os_string())?;
@@ -185,9 +127,11 @@ pub fn op_fs_chdir<P>(
 where
   P: FsPermissions + 'static,
 {
-  let d = state
-    .borrow_mut::<P>()
-    .check_read(directory, "Deno.chdir()")?;
+  let d = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(directory)),
+    OpenAccessKind::ReadNoFollow,
+    "Deno.chdir()",
+  )?;
   state
     .borrow::<FileSystemRc>()
     .chdir(&d)
@@ -204,27 +148,57 @@ where
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
+#[derive(Deserialize, Default, Debug, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+struct FsOpenOptions {
+  read: bool,
+  write: bool,
+  create: bool,
+  truncate: bool,
+  append: bool,
+  create_new: bool,
+  mode: Option<u32>,
+}
+
+impl From<FsOpenOptions> for OpenOptions {
+  fn from(options: FsOpenOptions) -> Self {
+    OpenOptions {
+      read: options.read,
+      write: options.write,
+      create: options.create,
+      truncate: options.truncate,
+      append: options.append,
+      create_new: options.create_new,
+      custom_flags: None,
+      mode: options.mode,
+    }
+  }
+}
+
 #[op2(stack_trace)]
 #[smi]
 pub fn op_fs_open_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
-  #[serde] options: Option<OpenOptions>,
+  #[string] path: &str,
+  #[serde] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
-
-  let options = options.unwrap_or_else(OpenOptions::read);
+  let options = match options {
+    Some(options) => OpenOptions::from(options),
+    None => OpenOptions::read(),
+  };
+  let path = Path::new(path);
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let mut access_check =
-    sync_permission_check::<P>(state.borrow_mut(), "Deno.openSync()");
-  let file = fs
-    .open_sync(&path, options, Some(&mut access_check))
-    .map_err(|error| map_permission_error("open", error, &path))?;
-  drop(access_check);
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(path),
+    open_options_to_access_kind(&options),
+    "Deno.openSync()",
+  )?;
+  let file = fs.open_sync(&path, options).context_path("open", &path)?;
   let rid = state
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
@@ -236,21 +210,32 @@ where
 pub async fn op_fs_open_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-  #[serde] options: Option<OpenOptions>,
+  #[serde] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
+  let options = match options {
+    Some(options) => OpenOptions::from(options),
+    None => OpenOptions::read(),
+  };
   let path = PathBuf::from(path);
 
-  let options = options.unwrap_or_else(OpenOptions::read);
-  let mut access_check =
-    async_permission_check::<P>(state.clone(), "Deno.open()");
-  let fs = state.borrow().borrow::<FileSystemRc>().clone();
+  let (fs, path) = {
+    let mut state = state.borrow_mut();
+    (
+      state.borrow::<FileSystemRc>().clone(),
+      state.borrow_mut::<P>().check_open(
+        Cow::Owned(path),
+        open_options_to_access_kind(&options),
+        "Deno.open()",
+      )?,
+    )
+  };
   let file = fs
-    .open_async(path.clone(), options, Some(&mut access_check))
+    .open_async(path.as_owned(), options)
     .await
-    .map_err(|error| map_permission_error("open", error, &path))?;
+    .context_path("open", &path)?;
 
   let rid = state
     .borrow_mut()
@@ -262,7 +247,7 @@ where
 #[op2(stack_trace)]
 pub fn op_fs_mkdir_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
   recursive: bool,
   mode: Option<u32>,
 ) -> Result<(), FsOpsError>
@@ -271,9 +256,11 @@ where
 {
   let mode = mode.unwrap_or(0o777) & 0o777;
 
-  let path = state
-    .borrow_mut::<P>()
-    .check_write(&path, "Deno.mkdirSync()")?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::WriteNoFollow,
+    "Deno.mkdirSync()",
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.mkdir_sync(&path, recursive, Some(mode))
@@ -296,34 +283,62 @@ where
 
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_write(&path, "Deno.mkdir()")?;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.mkdir()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  fs.mkdir_async(path.clone(), recursive, Some(mode))
+  fs.mkdir_async(path.as_owned(), recursive, Some(mode))
     .await
     .context_path("mkdir", &path)?;
 
   Ok(())
 }
 
+#[cfg(unix)]
 #[op2(fast, stack_trace)]
 pub fn op_fs_chmod_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
   mode: u32,
 ) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_write(&path, "Deno.chmodSync()")?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::WriteNoFollow,
+    "Deno.chmodSync()",
+  )?;
   let fs = state.borrow::<FileSystemRc>();
   fs.chmod_sync(&path, mode).context_path("chmod", &path)?;
   Ok(())
 }
 
+#[cfg(not(unix))]
+#[op2(fast, stack_trace)]
+pub fn op_fs_chmod_sync<P>(
+  state: &mut OpState,
+  #[string] path: &str,
+  mode: i32,
+) -> Result<(), FsOpsError>
+where
+  P: FsPermissions + 'static,
+{
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::WriteNoFollow,
+    "Deno.chmodSync()",
+  )?;
+  let fs = state.borrow::<FileSystemRc>();
+  fs.chmod_sync(&path, mode).context_path("chmod", &path)?;
+  Ok(())
+}
+
+#[cfg(unix)]
 #[op2(async, stack_trace)]
 pub async fn op_fs_chmod_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -335,10 +350,39 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_write(&path, "Deno.chmod()")?;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.chmod()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
-  fs.chmod_async(path.clone(), mode)
+  fs.chmod_async(path.as_owned(), mode)
+    .await
+    .context_path("chmod", &path)?;
+  Ok(())
+}
+
+#[cfg(not(unix))]
+#[op2(async, stack_trace)]
+pub async fn op_fs_chmod_async<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+  mode: i32,
+) -> Result<(), FsOpsError>
+where
+  P: FsPermissions + 'static,
+{
+  let (fs, path) = {
+    let mut state = state.borrow_mut();
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.chmod()",
+    )?;
+    (state.borrow::<FileSystemRc>().clone(), path)
+  };
+  fs.chmod_async(path.as_owned(), mode)
     .await
     .context_path("chmod", &path)?;
   Ok(())
@@ -347,16 +391,18 @@ where
 #[op2(stack_trace)]
 pub fn op_fs_chown_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
   uid: Option<u32>,
   gid: Option<u32>,
 ) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_write(&path, "Deno.chownSync()")?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::WriteNoFollow,
+    "Deno.chownSync()",
+  )?;
   let fs = state.borrow::<FileSystemRc>();
   fs.chown_sync(&path, uid, gid)
     .context_path("chown", &path)?;
@@ -375,10 +421,14 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_write(&path, "Deno.chown()")?;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.chown()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
-  fs.chown_async(path.clone(), uid, gid)
+  fs.chown_async(path.as_owned(), uid, gid)
     .await
     .context_path("chown", &path)?;
   Ok(())
@@ -443,9 +493,18 @@ pub fn op_fs_remove_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_write(path, "Deno.removeSync()")?;
+  let path = Cow::Borrowed(Path::new(path));
+  let path = if recursive {
+    state.borrow_mut::<P>().check_open(
+      path,
+      OpenAccessKind::WriteNoFollow,
+      "Deno.removeSync()",
+    )?
+  } else {
+    state
+      .borrow_mut::<P>()
+      .check_write_partial(path, "Deno.removeSync()")?
+  };
 
   let fs = state.borrow::<FileSystemRc>();
   fs.remove_sync(&path, recursive)
@@ -465,20 +524,23 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
+    let path = Cow::Owned(PathBuf::from(path));
     let path = if recursive {
-      state
-        .borrow_mut::<P>()
-        .check_write(&path, "Deno.remove()")?
+      state.borrow_mut::<P>().check_open(
+        path,
+        OpenAccessKind::WriteNoFollow,
+        "Deno.remove()",
+      )?
     } else {
       state
         .borrow_mut::<P>()
-        .check_write_partial(&path, "Deno.remove()")?
+        .check_write_partial(path, "Deno.remove()")?
     };
 
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  fs.remove_async(path.clone(), recursive)
+  fs.remove_async(path.as_owned(), recursive)
     .await
     .context_path("remove", &path)?;
 
@@ -495,8 +557,16 @@ where
   P: FsPermissions + 'static,
 {
   let permissions = state.borrow_mut::<P>();
-  let from = permissions.check_read(from, "Deno.copyFileSync()")?;
-  let to = permissions.check_write(to, "Deno.copyFileSync()")?;
+  let from = permissions.check_open(
+    Cow::Borrowed(Path::new(from)),
+    OpenAccessKind::Read,
+    "Deno.copyFileSync()",
+  )?;
+  let to = permissions.check_open(
+    Cow::Borrowed(Path::new(to)),
+    OpenAccessKind::WriteNoFollow,
+    "Deno.copyFileSync()",
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.copy_file_sync(&from, &to)
@@ -517,12 +587,19 @@ where
   let (fs, from, to) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    let from = permissions.check_read(&from, "Deno.copyFile()")?;
-    let to = permissions.check_write(&to, "Deno.copyFile()")?;
+    let from = permissions.check_open(
+      Cow::Owned(PathBuf::from(from)),
+      OpenAccessKind::Read,
+      "Deno.copyFile()",
+    )?;
+    let to = permissions.check_open(
+      Cow::Owned(PathBuf::from(to)),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.copyFile()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), from, to)
   };
-
-  fs.copy_file_async(from.clone(), to.clone())
+  fs.copy_file_async(from.as_owned(), to.as_owned())
     .await
     .context_two_path("copy", &from, &to)?;
 
@@ -532,15 +609,17 @@ where
 #[op2(fast, stack_trace)]
 pub fn op_fs_stat_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
   #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_read(&path, "Deno.statSync()")?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::ReadNoFollow,
+    "Deno.statSync()",
+  )?;
   let fs = state.borrow::<FileSystemRc>();
   let stat = fs.stat_sync(&path).context_path("stat", &path)?;
   let serializable_stat = SerializableStat::from(stat);
@@ -560,11 +639,15 @@ where
   let (fs, path) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    let path = permissions.check_read(&path, "Deno.stat()")?;
+    let path = permissions.check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::ReadNoFollow,
+      "Deno.stat()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   let stat = fs
-    .stat_async(path.clone())
+    .stat_async(path.as_owned())
     .await
     .context_path("stat", &path)?;
   Ok(SerializableStat::from(stat))
@@ -573,15 +656,17 @@ where
 #[op2(fast, stack_trace)]
 pub fn op_fs_lstat_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
   #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_read(&path, "Deno.lstatSync()")?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::ReadNoFollow,
+    "Deno.lstatSync()",
+  )?;
   let fs = state.borrow::<FileSystemRc>();
   let stat = fs.lstat_sync(&path).context_path("lstat", &path)?;
   let serializable_stat = SerializableStat::from(stat);
@@ -601,11 +686,15 @@ where
   let (fs, path) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    let path = permissions.check_read(&path, "Deno.lstat()")?;
+    let path = permissions.check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::ReadNoFollow,
+      "Deno.lstat()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
   let stat = fs
-    .lstat_async(path.clone())
+    .lstat_async(path.as_owned())
     .await
     .context_path("lstat", &path)?;
   Ok(SerializableStat::from(stat))
@@ -615,18 +704,18 @@ where
 #[string]
 pub fn op_fs_realpath_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
 ) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
   let fs = state.borrow::<FileSystemRc>().clone();
   let permissions = state.borrow_mut::<P>();
-  let path = permissions.check_read(&path, "Deno.realPathSync()")?;
-  if path.is_relative() {
-    permissions.check_read_blind(&fs.cwd()?, "CWD", "Deno.realPathSync()")?;
-  }
-
+  let path = permissions.check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::ReadNoFollow,
+    "Deno.realPathSync()",
+  )?;
   let resolved_path =
     fs.realpath_sync(&path).context_path("realpath", &path)?;
 
@@ -647,14 +736,15 @@ where
     let mut state = state.borrow_mut();
     let fs = state.borrow::<FileSystemRc>().clone();
     let permissions = state.borrow_mut::<P>();
-    let path = permissions.check_read(&path, "Deno.realPath()")?;
-    if path.is_relative() {
-      permissions.check_read_blind(&fs.cwd()?, "CWD", "Deno.realPath()")?;
-    }
+    let path = permissions.check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::ReadNoFollow,
+      "Deno.realPath()",
+    )?;
     (fs, path)
   };
   let resolved_path = fs
-    .realpath_async(path.clone())
+    .realpath_async(path.as_owned())
     .await
     .context_path("realpath", &path)?;
 
@@ -666,14 +756,16 @@ where
 #[serde]
 pub fn op_fs_read_dir_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
 ) -> Result<Vec<FsDirEntry>, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_read(&path, "Deno.readDirSync()")?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::ReadNoFollow,
+    "Deno.readDirSync()",
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   let entries = fs.read_dir_sync(&path).context_path("readdir", &path)?;
@@ -692,14 +784,16 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_read(&path, "Deno.readDir()")?;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::ReadNoFollow,
+      "Deno.readDir()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   let entries = fs
-    .read_dir_async(path.clone())
+    .read_dir_async(path.as_owned())
     .await
     .context_path("readdir", &path)?;
 
@@ -709,16 +803,23 @@ where
 #[op2(fast, stack_trace)]
 pub fn op_fs_rename_sync<P>(
   state: &mut OpState,
-  #[string] oldpath: String,
-  #[string] newpath: String,
+  #[string] oldpath: &str,
+  #[string] newpath: &str,
 ) -> Result<(), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
   let permissions = state.borrow_mut::<P>();
-  let _ = permissions.check_read(&oldpath, "Deno.renameSync()")?;
-  let oldpath = permissions.check_write(&oldpath, "Deno.renameSync()")?;
-  let newpath = permissions.check_write(&newpath, "Deno.renameSync()")?;
+  let oldpath = permissions.check_open(
+    Cow::Borrowed(Path::new(oldpath)),
+    OpenAccessKind::ReadWriteNoFollow,
+    "Deno.renameSync()",
+  )?;
+  let newpath = permissions.check_open(
+    Cow::Borrowed(Path::new(newpath)),
+    OpenAccessKind::WriteNoFollow,
+    "Deno.renameSync()",
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.rename_sync(&oldpath, &newpath)
@@ -739,13 +840,20 @@ where
   let (fs, oldpath, newpath) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    _ = permissions.check_read(&oldpath, "Deno.rename()")?;
-    let oldpath = permissions.check_write(&oldpath, "Deno.rename()")?;
-    let newpath = permissions.check_write(&newpath, "Deno.rename()")?;
+    let oldpath = permissions.check_open(
+      Cow::Owned(PathBuf::from(oldpath)),
+      OpenAccessKind::ReadWriteNoFollow,
+      "Deno.rename()",
+    )?;
+    let newpath = permissions.check_open(
+      Cow::Owned(PathBuf::from(newpath)),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.rename()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), oldpath, newpath)
   };
 
-  fs.rename_async(oldpath.clone(), newpath.clone())
+  fs.rename_async(oldpath.as_owned(), newpath.as_owned())
     .await
     .context_two_path("rename", &oldpath, &newpath)?;
 
@@ -762,10 +870,16 @@ where
   P: FsPermissions + 'static,
 {
   let permissions = state.borrow_mut::<P>();
-  _ = permissions.check_read(oldpath, "Deno.linkSync()")?;
-  let oldpath = permissions.check_write(oldpath, "Deno.linkSync()")?;
-  _ = permissions.check_read(newpath, "Deno.linkSync()")?;
-  let newpath = permissions.check_write(newpath, "Deno.linkSync()")?;
+  let oldpath = permissions.check_open(
+    Cow::Borrowed(Path::new(oldpath)),
+    OpenAccessKind::ReadWriteNoFollow,
+    "Deno.linkSync()",
+  )?;
+  let newpath = permissions.check_open(
+    Cow::Borrowed(Path::new(newpath)),
+    OpenAccessKind::WriteNoFollow,
+    "Deno.linkSync()",
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.link_sync(&oldpath, &newpath)
@@ -786,14 +900,20 @@ where
   let (fs, oldpath, newpath) = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
-    _ = permissions.check_read(&oldpath, "Deno.link()")?;
-    let oldpath = permissions.check_write(&oldpath, "Deno.link()")?;
-    _ = permissions.check_read(&newpath, "Deno.link()")?;
-    let newpath = permissions.check_write(&newpath, "Deno.link()")?;
+    let oldpath = permissions.check_open(
+      Cow::Owned(PathBuf::from(oldpath)),
+      OpenAccessKind::ReadWriteNoFollow,
+      "Deno.link()",
+    )?;
+    let newpath = permissions.check_open(
+      Cow::Owned(PathBuf::from(newpath)),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.link()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), oldpath, newpath)
   };
 
-  fs.link_async(oldpath.clone(), newpath.clone())
+  fs.link_async(oldpath.as_owned(), newpath.as_owned())
     .await
     .context_two_path("link", &oldpath, &newpath)?;
 
@@ -810,12 +930,13 @@ pub fn op_fs_symlink_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let oldpath = PathBuf::from(oldpath);
-  let newpath = PathBuf::from(newpath);
-
   let permissions = state.borrow_mut::<P>();
   permissions.check_write_all("Deno.symlinkSync()")?;
   permissions.check_read_all("Deno.symlinkSync()")?;
+
+  // PERMISSIONS: ok because we verified --allow-write and --allow-read above
+  let oldpath = CheckedPath::unsafe_new(Cow::Borrowed(Path::new(oldpath)));
+  let newpath = CheckedPath::unsafe_new(Cow::Borrowed(Path::new(newpath)));
 
   let fs = state.borrow::<FileSystemRc>();
   fs.symlink_sync(&oldpath, &newpath, file_type)
@@ -834,9 +955,6 @@ pub async fn op_fs_symlink_async<P>(
 where
   P: FsPermissions + 'static,
 {
-  let oldpath = PathBuf::from(&oldpath);
-  let newpath = PathBuf::from(&newpath);
-
   let fs = {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
@@ -845,9 +963,17 @@ where
     state.borrow::<FileSystemRc>().clone()
   };
 
+  // PERMISSIONS: ok because we verified --allow-write and --allow-read above
+  let oldpath = CheckedPathBuf::unsafe_new(PathBuf::from(&oldpath));
+  let newpath = CheckedPathBuf::unsafe_new(PathBuf::from(&newpath));
+
   fs.symlink_async(oldpath.clone(), newpath.clone(), file_type)
     .await
-    .context_two_path("symlink", &oldpath, &newpath)?;
+    .context_two_path(
+      "symlink",
+      oldpath.as_checked_path(),
+      newpath.as_checked_path(),
+    )?;
 
   Ok(())
 }
@@ -856,14 +982,16 @@ where
 #[string]
 pub fn op_fs_read_link_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
 ) -> Result<String, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_read(&path, "Deno.readLink()")?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::ReadNoFollow,
+    "Deno.readLink()",
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
 
@@ -883,14 +1011,16 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_read(&path, "Deno.readLink()")?;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::ReadNoFollow,
+      "Deno.readLink()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   let target = fs
-    .read_link_async(path.clone())
+    .read_link_async(path.as_owned())
     .await
     .context_path("readlink", &path)?;
   let target_string = path_into_string(target.into_os_string())?;
@@ -906,9 +1036,11 @@ pub fn op_fs_truncate_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = state
-    .borrow_mut::<P>()
-    .check_write(path, "Deno.truncateSync()")?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::WriteNoFollow,
+    "Deno.truncateSync()",
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.truncate_sync(&path, len)
@@ -928,13 +1060,15 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state
-      .borrow_mut::<P>()
-      .check_write(&path, "Deno.truncate()")?;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.truncate()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
-  fs.truncate_async(path.clone(), len)
+  fs.truncate_async(path.as_owned(), len)
     .await
     .context_path("truncate", &path)?;
 
@@ -953,7 +1087,11 @@ pub fn op_fs_utime_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = state.borrow_mut::<P>().check_write(path, "Deno.utime()")?;
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::WriteNoFollow,
+    "Deno.utime()",
+  )?;
 
   let fs = state.borrow::<FileSystemRc>();
   fs.utime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
@@ -976,12 +1114,16 @@ where
 {
   let (fs, path) = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_write(&path, "Deno.utime()")?;
+    let path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(path)),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.utime()",
+    )?;
     (state.borrow::<FileSystemRc>().clone(), path)
   };
 
   fs.utime_async(
-    path.clone(),
+    path.as_owned(),
     atime_secs,
     atime_nanos,
     mtime_secs,
@@ -1015,10 +1157,13 @@ where
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
+    // PERMISSIONS: this is ok because we verified the directory above
+    let path = CheckedPath::unsafe_new(Cow::Owned(path));
     match fs.mkdir_sync(&path, false, Some(0o700)) {
       Ok(_) => {
         // PERMISSIONS: ensure the absolute path is not leaked
-        let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
+        let path =
+          strip_dir_prefix(&dir, dir_arg.as_deref(), path.into_owned_path())?;
         return path_into_string(path.into_os_string());
       }
       Err(FsError::Io(ref e)) if e.kind() == io::ErrorKind::AlreadyExists => {
@@ -1057,6 +1202,8 @@ where
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
+    // PERMISSIONS: ok because we verified the directory above
+    let path = CheckedPathBuf::unsafe_new(path);
     match fs
       .clone()
       .mkdir_async(path.clone(), false, Some(0o700))
@@ -1064,7 +1211,8 @@ where
     {
       Ok(_) => {
         // PERMISSIONS: ensure the absolute path is not leaked
-        let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
+        let path =
+          strip_dir_prefix(&dir, dir_arg.as_deref(), path.into_path_buf())?;
         return path_into_string(path.into_os_string());
       }
       Err(FsError::Io(ref e)) if e.kind() == io::ErrorKind::AlreadyExists => {
@@ -1109,10 +1257,13 @@ where
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
-    match fs.open_sync(&path, open_opts, None) {
+    // PERMISSIONS: this is fine because the dir was checked
+    let path = CheckedPath::unsafe_new(Cow::Owned(path));
+    match fs.open_sync(&path, open_opts) {
       Ok(_) => {
         // PERMISSIONS: ensure the absolute path is not leaked
-        let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
+        let path =
+          strip_dir_prefix(&dir, dir_arg.as_deref(), path.into_owned_path())?;
         return path_into_string(path.into_os_string());
       }
       Err(FsError::Io(ref e)) if e.kind() == io::ErrorKind::AlreadyExists => {
@@ -1158,10 +1309,13 @@ where
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
-    match fs.clone().open_async(path.clone(), open_opts, None).await {
+    // PERMISSIONS: this is fine because the dir was checked
+    let path = CheckedPathBuf::unsafe_new(path);
+    match fs.clone().open_async(path.clone(), open_opts).await {
       Ok(_) => {
         // PERMISSIONS: ensure the absolute path is not leaked
-        let path = strip_dir_prefix(&dir, dir_arg.as_deref(), path)?;
+        let path =
+          strip_dir_prefix(&dir, dir_arg.as_deref(), path.into_path_buf())?;
         return path_into_string(path.into_os_string());
       }
       Err(FsError::Io(ref e)) if e.kind() == io::ErrorKind::AlreadyExists => {
@@ -1194,46 +1348,58 @@ fn strip_dir_prefix(
   }
 }
 
-fn make_temp_check_sync<P>(
+fn make_temp_check_sync<'a, P>(
   state: &mut OpState,
-  dir: Option<&str>,
+  dir: Option<&'a str>,
   api_name: &str,
-) -> Result<(PathBuf, FileSystemRc), FsOpsError>
+) -> Result<(CheckedPath<'a>, FileSystemRc), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => state.borrow_mut::<P>().check_write(dir, api_name)?,
+    Some(dir) => state.borrow_mut::<P>().check_open(
+      Cow::Borrowed(Path::new(dir)),
+      OpenAccessKind::WriteNoFollow,
+      api_name,
+    )?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
-      state
-        .borrow_mut::<P>()
-        .check_write_blind(&dir, "TMP", api_name)?;
-      dir
+      state.borrow_mut::<P>().check_open_blind(
+        Cow::Owned(dir),
+        OpenAccessKind::WriteNoFollow,
+        "TMP",
+        api_name,
+      )?
     }
   };
   Ok((dir, fs))
 }
 
-fn make_temp_check_async<P>(
+fn make_temp_check_async<'a, P>(
   state: Rc<RefCell<OpState>>,
-  dir: Option<&str>,
+  dir: Option<&'a str>,
   api_name: &str,
-) -> Result<(PathBuf, FileSystemRc), FsOpsError>
+) -> Result<(CheckedPath<'a>, FileSystemRc), FsOpsError>
 where
   P: FsPermissions + 'static,
 {
   let mut state = state.borrow_mut();
   let fs = state.borrow::<FileSystemRc>().clone();
   let dir = match dir {
-    Some(dir) => state.borrow_mut::<P>().check_write(dir, api_name)?,
+    Some(dir) => state.borrow_mut::<P>().check_open(
+      Cow::Borrowed(Path::new(dir)),
+      OpenAccessKind::WriteNoFollow,
+      api_name,
+    )?,
     None => {
       let dir = fs.tmp_dir().context("tmpdir")?;
-      state
-        .borrow_mut::<P>()
-        .check_write_blind(&dir, "TMP", api_name)?;
-      dir
+      state.borrow_mut::<P>().check_open_blind(
+        Cow::Owned(dir),
+        OpenAccessKind::WriteNoFollow,
+        "TMP",
+        api_name,
+      )?
     }
   };
   Ok((dir, fs))
@@ -1304,7 +1470,7 @@ fn tmp_name(
 #[op2(stack_trace)]
 pub fn op_fs_write_file_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
   mode: Option<u32>,
   append: bool,
   create: bool,
@@ -1314,15 +1480,18 @@ pub fn op_fs_write_file_sync<P>(
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
+  let path = Path::new(path);
 
   let options = OpenOptions::write(create, append, create_new, mode);
   let fs = state.borrow::<FileSystemRc>().clone();
-  let mut access_check =
-    sync_permission_check::<P>(state.borrow_mut(), "Deno.writeFileSync()");
+  let path = state.borrow::<P>().check_open(
+    Cow::Borrowed(path),
+    OpenAccessKind::Write,
+    "Deno.writeFileSync()",
+  )?;
 
-  fs.write_file_sync(&path, options, Some(&mut access_check), &data)
-    .map_err(|error| map_permission_error("writefile", error, &path))?;
+  fs.write_file_sync(&path, options, &data)
+    .context_path("writefile", &path)?;
 
   Ok(())
 }
@@ -1346,36 +1515,32 @@ where
 
   let options = OpenOptions::write(create, append, create_new, mode);
 
-  let mut access_check =
-    async_permission_check::<P>(state.clone(), "Deno.writeFile()");
-  let (fs, cancel_handle) = {
+  let (fs, cancel_handle, path) = {
     let state = state.borrow_mut();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    (state.borrow::<FileSystemRc>().clone(), cancel_handle)
+    let path = state.borrow::<P>().check_open(
+      Cow::Owned(path),
+      OpenAccessKind::Write,
+      "Deno.writeFile()",
+    )?;
+    (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
-  let fut = fs.write_file_async(
-    path.clone(),
-    options,
-    Some(&mut access_check),
-    data.to_vec(),
-  );
+  let fut = fs.write_file_async(path.as_owned(), options, data.to_vec());
 
   if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
 
-    if let Some(cancel_rid) = cancel_rid {
-      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-        res.close();
-      }
+    if let Some(cancel_rid) = cancel_rid
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
     };
 
-    res?.map_err(|error| map_permission_error("writefile", error, &path))?;
+    res?.context_path("writefile", &path)?;
   } else {
-    fut
-      .await
-      .map_err(|error| map_permission_error("writefile", error, &path))?;
+    fut.await.context_path("writefile", &path)?;
   }
 
   Ok(())
@@ -1385,19 +1550,20 @@ where
 #[serde]
 pub fn op_fs_read_file_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
 ) -> Result<ToJsBuffer, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
+  let path = Path::new(path);
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let mut access_check =
-    sync_permission_check::<P>(state.borrow_mut(), "Deno.readFileSync()");
-  let buf = fs
-    .read_file_sync(&path, Some(&mut access_check))
-    .map_err(|error| map_permission_error("readfile", error, &path))?;
+  let path = state.borrow::<P>().check_open(
+    Cow::Borrowed(path),
+    OpenAccessKind::Read,
+    "Deno.readFileSync()",
+  )?;
+  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
   Ok(buf.into_owned().into_boxed_slice().into())
@@ -1415,31 +1581,32 @@ where
 {
   let path = PathBuf::from(path);
 
-  let mut access_check =
-    async_permission_check::<P>(state.clone(), "Deno.readFile()");
-  let (fs, cancel_handle) = {
+  let (fs, cancel_handle, path) = {
     let state = state.borrow();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    (state.borrow::<FileSystemRc>().clone(), cancel_handle)
+    let path = state.borrow::<P>().check_open(
+      Cow::Owned(path),
+      OpenAccessKind::Read,
+      "Deno.readFile()",
+    )?;
+    (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
-  let fut = fs.read_file_async(path.clone(), Some(&mut access_check));
+  let fut = fs.read_file_async(path.as_owned());
 
   let buf = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
 
-    if let Some(cancel_rid) = cancel_rid {
-      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-        res.close();
-      }
+    if let Some(cancel_rid) = cancel_rid
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
     };
 
-    res?.map_err(|error| map_permission_error("readfile", error, &path))?
+    res?.context_path("readfile", &path)?
   } else {
-    fut
-      .await
-      .map_err(|error| map_permission_error("readfile", error, &path))?
+    fut.await.context_path("readfile", &path)?
   };
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
@@ -1450,19 +1617,22 @@ where
 #[to_v8]
 pub fn op_fs_read_file_text_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
+  #[string] path: &str,
 ) -> Result<FastString, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
+  let path = Path::new(path);
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let mut access_check =
-    sync_permission_check::<P>(state.borrow_mut(), "Deno.readFileSync()");
+  let path = state.borrow::<P>().check_open(
+    Cow::Borrowed(path),
+    OpenAccessKind::Read,
+    "Deno.readFileSync()",
+  )?;
   let str = fs
-    .read_text_file_lossy_sync(&path, Some(&mut access_check))
-    .map_err(|error| map_permission_error("readfile", error, &path))?;
+    .read_text_file_lossy_sync(&path)
+    .context_path("readfile", &path)?;
   Ok(match str {
     Cow::Borrowed(text) => FastString::from_static(text),
     Cow::Owned(value) => value.into(),
@@ -1481,32 +1651,32 @@ where
 {
   let path = PathBuf::from(path);
 
-  let mut access_check =
-    async_permission_check::<P>(state.clone(), "Deno.readFile()");
-  let (fs, cancel_handle) = {
+  let (fs, cancel_handle, path) = {
     let state = state.borrow_mut();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    (state.borrow::<FileSystemRc>().clone(), cancel_handle)
+    let path = state.borrow::<P>().check_open(
+      Cow::Owned(path),
+      OpenAccessKind::Read,
+      "Deno.readFile()",
+    )?;
+    (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
-  let fut =
-    fs.read_text_file_lossy_async(path.clone(), Some(&mut access_check));
+  let fut = fs.read_text_file_lossy_async(path.as_owned());
 
   let str = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
 
-    if let Some(cancel_rid) = cancel_rid {
-      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-        res.close();
-      }
+    if let Some(cancel_rid) = cancel_rid
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
     };
 
-    res?.map_err(|error| map_permission_error("readfile", error, &path))?
+    res?.context_path("readfile", &path)?
   } else {
-    fut
-      .await
-      .map_err(|error| map_permission_error("readfile", error, &path))?
+    fut.await.context_path("readfile", &path)?
   };
 
   Ok(match str {
@@ -1749,9 +1919,9 @@ impl std::fmt::Display for OperationError {
 
     match &self.kind {
       OperationErrorKind::Bare => Ok(()),
-      OperationErrorKind::WithPath(path) => write!(f, " '{}'", path.display()),
+      OperationErrorKind::WithPath(path) => write!(f, " '{}'", path),
       OperationErrorKind::WithTwoPaths(from, to) => {
-        write!(f, " '{}' -> '{}'", from.display(), to.display())
+        write!(f, " '{}' -> '{}'", from, to)
       }
     }
   }
@@ -1770,8 +1940,8 @@ impl std::error::Error for OperationError {
 #[derive(Debug)]
 pub enum OperationErrorKind {
   Bare,
-  WithPath(PathBuf),
-  WithTwoPaths(PathBuf, PathBuf),
+  WithPath(String),
+  WithTwoPaths(String, String),
 }
 
 trait MapErrContext {
@@ -1783,13 +1953,17 @@ trait MapErrContext {
 
   fn context(self, desc: &'static str) -> Self::R;
 
-  fn context_path(self, operation: &'static str, path: &Path) -> Self::R;
-
-  fn context_two_path(
+  fn context_path<'a>(
     self,
     operation: &'static str,
-    from: &Path,
-    to: &Path,
+    path: impl AsRef<PathWithRequested<'a>>,
+  ) -> Self::R;
+
+  fn context_two_path<'a>(
+    self,
+    operation: &'static str,
+    from: impl AsRef<PathWithRequested<'a>>,
+    to: impl AsRef<PathWithRequested<'a>>,
   ) -> Self::R;
 }
 
@@ -1811,25 +1985,29 @@ impl<T> MapErrContext for Result<T, FsError> {
     })
   }
 
-  fn context_path(self, operation: &'static str, path: &Path) -> Self::R {
+  fn context_path<'a>(
+    self,
+    operation: &'static str,
+    path: impl AsRef<PathWithRequested<'a>>,
+  ) -> Self::R {
     self.context_fn(|err| OperationError {
       operation,
-      kind: OperationErrorKind::WithPath(path.to_path_buf()),
+      kind: OperationErrorKind::WithPath(path.as_ref().display().to_string()),
       err,
     })
   }
 
-  fn context_two_path(
+  fn context_two_path<'a>(
     self,
     operation: &'static str,
-    oldpath: &Path,
-    newpath: &Path,
+    oldpath: impl AsRef<PathWithRequested<'a>>,
+    newpath: impl AsRef<PathWithRequested<'a>>,
   ) -> Self::R {
     self.context_fn(|err| OperationError {
       operation,
       kind: OperationErrorKind::WithTwoPaths(
-        oldpath.to_path_buf(),
-        newpath.to_path_buf(),
+        oldpath.as_ref().display().to_string(),
+        newpath.as_ref().display().to_string(),
       ),
       err,
     })

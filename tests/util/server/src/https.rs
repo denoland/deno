@@ -29,7 +29,7 @@ pub enum SupportedHttpVersions {
 pub fn get_tls_listener_stream_from_tcp(
   tls_config: Arc<rustls::ServerConfig>,
   mut tcp: impl Stream<Item = Result<TcpStream, std::io::Error>> + Unpin + 'static,
-) -> impl Stream<Item = Result<TlsStream, std::io::Error>> + Unpin {
+) -> impl Stream<Item = Result<TlsStream<TcpStream>, std::io::Error>> + Unpin {
   async_stream::stream! {
     while let Some(result) = tcp.next().await {
       match result {
@@ -44,7 +44,7 @@ pub async fn get_tls_listener_stream(
   name: &'static str,
   port: u16,
   http: SupportedHttpVersions,
-) -> impl Stream<Item = Result<TlsStream, std::io::Error>> + Unpin {
+) -> impl Stream<Item = Result<TlsStream<TcpStream>, std::io::Error>> + Unpin {
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";

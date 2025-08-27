@@ -27,6 +27,7 @@ use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::error::CoreError;
+use deno_core::error::CoreErrorKind;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
@@ -37,6 +38,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::v8;
 use deno_cron::local::LocalCronHandler;
+use deno_error::JsErrorClass;
 use deno_fs::FileSystem;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
@@ -147,8 +149,8 @@ impl Serialize for WorkerControlEvent {
 
     match self {
       WorkerControlEvent::TerminalError(error) => {
-        let value = match error {
-          CoreError::Js(js_error) => {
+        let value = match error.as_kind() {
+          CoreErrorKind::Js(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
               Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
@@ -403,7 +405,7 @@ pub struct WebWorkerOptions {
   pub worker_type: WorkerThreadType,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
   pub enable_raw_imports: bool,
@@ -628,7 +630,7 @@ impl WebWorker {
     // Get our op metrics
     let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
       options.bootstrap.enable_op_summary_metrics,
-      options.strace_ops,
+      options.trace_ops,
     );
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -647,7 +649,9 @@ impl WebWorker {
       inspector: true,
       op_metrics_factory_fn,
       validate_import_attributes_cb: Some(
-        create_validate_import_attributes_callback(options.enable_raw_imports),
+        create_validate_import_attributes_callback(Arc::new(AtomicBool::new(
+          options.enable_raw_imports,
+        ))),
       ),
       import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       maybe_op_stack_trace_callback: options
@@ -1017,13 +1021,19 @@ fn print_worker_error(
   name: &str,
   format_js_error_fn: Option<&FormatJsErrorFn>,
 ) {
-  let error_str = match format_js_error_fn {
-    Some(format_js_error_fn) => match error {
-      CoreError::Js(js_error) => format_js_error_fn(js_error),
-      _ => error.to_string(),
-    },
-    None => error.to_string(),
-  };
+  let error_str = format_js_error_fn
+    .as_ref()
+    .and_then(|format_js_error_fn| {
+      let err = match error.as_kind() {
+        CoreErrorKind::Js(js_error) => js_error,
+        CoreErrorKind::JsBox(err) => {
+          err.get_ref().downcast_ref::<deno_core::error::JsError>()?
+        }
+        _ => return None,
+      };
+      Some(format_js_error_fn(err))
+    })
+    .unwrap_or_else(|| error.to_string());
   log::error!(
     "{}: Uncaught (in worker \"{}\") {}",
     colors::red_bold("error"),

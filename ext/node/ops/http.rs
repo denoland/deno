@@ -96,7 +96,7 @@ impl Debug for NodeHttpClientResponse {
 }
 
 impl deno_core::Resource for NodeHttpClientResponse {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "nodeHttpClientResponse".into()
   }
 }
@@ -178,8 +178,7 @@ where
         .map_err(ConnError::Resource)?;
       let resource =
         Rc::try_unwrap(resource_rc).map_err(|_e| ConnError::TlsStreamBusy)?;
-      let (read_half, write_half) = resource.into_inner();
-      let tcp_stream = read_half.unsplit(write_half);
+      let tcp_stream = resource.into_tls_stream();
       let io = TokioIo::new(tcp_stream);
       drop(state);
       let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
@@ -555,7 +554,7 @@ impl UpgradeStream {
 }
 
 impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchUpgradedStream".into()
   }
 
@@ -612,7 +611,7 @@ impl NodeHttpResponseResource {
 }
 
 impl Resource for NodeHttpResponseResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fetchResponse".into()
   }
 

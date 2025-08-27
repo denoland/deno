@@ -14,15 +14,17 @@ use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
+use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceDiscoverError;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
+use deno_maybe_sync::new_rc;
 pub use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_path_util::normalize_path;
 use futures::future::FutureExt;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -56,11 +58,14 @@ use crate::cjs::IsCjsResolutionMode;
 use crate::cjs::analyzer::DenoCjsCodeAnalyzer;
 use crate::cjs::analyzer::NodeAnalysisCacheRc;
 use crate::cjs::analyzer::NullNodeAnalysisCache;
-use crate::collections::FolderScopedMap;
+use crate::deno_json::CompilerOptionsOverrides;
 use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::import_map::WorkspaceExternalImportMapLoader;
 use crate::import_map::WorkspaceExternalImportMapLoaderRc;
+use crate::loader::AllowJsonImports;
+use crate::loader::DenoNpmModuleLoaderRc;
+use crate::loader::NpmModuleLoader;
 use crate::lockfile::LockfileLock;
 use crate::lockfile::LockfileLockRc;
 use crate::npm::ByonmNpmResolverCreateOptions;
@@ -77,9 +82,6 @@ use crate::npm::managed::NpmResolutionCellRc;
 use crate::npmrc::NpmRcDiscoverError;
 use crate::npmrc::ResolvedNpmRcRc;
 use crate::npmrc::discover_npmrc_from_workspace;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
-use crate::sync::new_rc;
 use crate::workspace::FsCacheOptions;
 use crate::workspace::PackageJsonDepResolution;
 use crate::workspace::SloppyImportsOptions;
@@ -92,13 +94,6 @@ use crate::workspace::WorkspaceResolver;
 type Deferred<T> = once_cell::sync::OnceCell<T>;
 #[cfg(not(feature = "sync"))]
 type Deferred<T> = once_cell::unsync::OnceCell<T>;
-
-#[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceDirectoryRc = crate::sync::MaybeArc<WorkspaceDirectory>;
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceRc = crate::sync::MaybeArc<Workspace>;
 
 pub type DenoCjsModuleExportAnalyzerRc<TSys> = CjsModuleExportAnalyzerRc<
   DenoCjsCodeAnalyzer<TSys>,
@@ -199,7 +194,7 @@ pub struct WorkspaceFactoryOptions {
   pub config_discovery: ConfigDiscoveryOption,
   pub is_package_manager_subcommand: bool,
   pub frozen_lockfile: Option<bool>,
-  pub lock_arg: Option<String>,
+  pub lock_arg: Option<PathBuf>,
   /// Whether to skip writing to the lockfile.
   pub lockfile_skip_write: bool,
   pub maybe_custom_deno_dir_root: Option<PathBuf>,
@@ -215,7 +210,7 @@ pub struct WorkspaceFactoryOptions {
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceFactoryRc<TSys> =
-  crate::sync::MaybeArc<WorkspaceFactory<TSys>>;
+  deno_maybe_sync::MaybeArc<WorkspaceFactory<TSys>>;
 
 #[sys_traits::auto_impl]
 pub trait WorkspaceFactorySys:
@@ -224,6 +219,7 @@ pub trait WorkspaceFactorySys:
   + crate::npm::NpmResolverSys
   + deno_cache_dir::GlobalHttpCacheSys
   + deno_cache_dir::LocalHttpCacheSys
+  + crate::loader::NpmModuleLoaderSys
 {
 }
 
@@ -240,7 +236,6 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
-  workspace_directory_provider: Deferred<WorkspaceDirectoryProviderRc>,
   workspace_external_import_map_loader:
     Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
   workspace_npm_link_packages: Deferred<WorkspaceNpmLinkPackagesRc>,
@@ -267,7 +262,6 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
       workspace_directory: Default::default(),
-      workspace_directory_provider: Default::default(),
       workspace_external_import_map_loader: Default::default(),
       workspace_npm_link_packages: Default::default(),
       initial_cwd,
@@ -351,12 +345,11 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
               // `deno_dir` can be symlink in macOS or on the CI
               if let Ok(deno_dir) =
                 canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
+                && pkg_json.path.starts_with(deno_dir)
               {
-                if pkg_json.path.starts_with(deno_dir) {
-                  // if the package.json is in deno_dir, then do not use node_modules
-                  // next to it as local node_modules dir
-                  return Ok(NodeModulesDirMode::None);
-                }
+                // if the package.json is in deno_dir, then do not use node_modules
+                // next to it as local node_modules dir
+                return Ok(NodeModulesDirMode::None);
               }
             }
 
@@ -484,11 +477,11 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           crate::lockfile::LockfileFlags {
             no_lock: self.options.no_lock,
             frozen_lockfile: self.options.frozen_lockfile,
-            lock: self
-              .options
-              .lock_arg
-              .as_ref()
-              .map(|p| self.initial_cwd.join(p)),
+            lock: self.options.lock_arg.as_ref().map(|path| {
+              #[cfg(not(target_arch = "wasm32"))]
+              debug_assert!(path.is_absolute());
+              path.clone()
+            }),
             skip_write: self.options.lockfile_skip_write,
             no_config: matches!(
               self.options.config_discovery,
@@ -501,7 +494,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           npm_package_info_provider,
         )
         .await?
-        .map(crate::sync::new_rc);
+        .map(deno_maybe_sync::new_rc);
 
         Ok(maybe_lock_file)
       })
@@ -580,7 +573,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       let dir = match &self.options.config_discovery {
         ConfigDiscoveryOption::DiscoverCwd => WorkspaceDirectory::discover(
           &self.sys,
-          WorkspaceDiscoverStart::Paths(&[self.initial_cwd.clone()]),
+          WorkspaceDiscoverStart::Paths(std::slice::from_ref(
+            &self.initial_cwd,
+          )),
           &resolve_workspace_discover_options(),
         )?,
         ConfigDiscoveryOption::Discover { start_paths } => {
@@ -591,10 +586,11 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           )?
         }
         ConfigDiscoveryOption::Path(path) => {
-          let config_path = normalize_path(self.initial_cwd.join(path));
+          #[cfg(not(target_arch = "wasm32"))]
+          debug_assert!(path.is_absolute());
           WorkspaceDirectory::discover(
             &self.sys,
-            WorkspaceDiscoverStart::ConfigFile(&config_path),
+            WorkspaceDiscoverStart::ConfigFile(path),
             &resolve_workspace_discover_options(),
           )?
         }
@@ -602,17 +598,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           WorkspaceDirectory::empty(resolve_empty_options())
         }
       };
-      Ok(new_rc(dir))
-    })
-  }
-
-  pub fn workspace_directory_provider(
-    &self,
-  ) -> Result<&WorkspaceDirectoryProviderRc, WorkspaceDiscoverError> {
-    self.workspace_directory_provider.get_or_try_init(|| {
-      Ok(new_rc(WorkspaceDirectoryProvider::from_initial_dir(
-        self.workspace_directory()?,
-      )))
+      Ok(dir)
     })
   }
 
@@ -659,6 +645,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
 
 #[derive(Default)]
 pub struct ResolverFactoryOptions {
+  pub compiler_options_overrides: CompilerOptionsOverrides,
   pub is_cjs_resolution_mode: IsCjsResolutionMode,
   pub node_analysis_cache: Option<NodeAnalysisCacheRc>,
   pub node_code_translator_mode: node_resolver::analyze::NodeCodeTranslatorMode,
@@ -674,6 +661,7 @@ pub struct ResolverFactoryOptions {
   #[cfg(feature = "graph")]
   pub on_mapped_resolution_diagnostic:
     Option<crate::graph::OnMappedResolutionDiagnosticFn>,
+  pub allow_json_imports: AllowJsonImports,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -691,6 +679,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   found_package_json_dep_flag: crate::graph::FoundPackageJsonDepFlagRc,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_code_translator: Deferred<DenoNodeCodeTranslatorRc<TSys>>,
+  npm_module_loader: Deferred<DenoNpmModuleLoaderRc<TSys>>,
   node_resolver: Deferred<
     NodeResolverRc<
       DenoInNpmPackageChecker,
@@ -713,9 +702,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   parsed_source_cache: crate::cache::ParsedSourceCacheRc,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
   #[cfg(all(feature = "graph", feature = "deno_ast"))]
-  prepared_module_loader: Deferred<
-    crate::loader::PreparedModuleLoaderRc<DenoInNpmPackageChecker, TSys>,
-  >,
+  module_loader: Deferred<crate::loader::ModuleLoaderRc<TSys>>,
   raw_deno_resolver: async_once_cell::OnceCell<DefaultRawDenoResolverRc<TSys>>,
   workspace_factory: WorkspaceFactoryRc<TSys>,
   workspace_resolver: async_once_cell::OnceCell<WorkspaceResolverRc<TSys>>,
@@ -744,6 +731,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       in_npm_package_checker: Default::default(),
       node_code_translator: Default::default(),
       node_resolver: Default::default(),
+      npm_module_loader: Default::default(),
       npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
@@ -751,7 +739,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       parsed_source_cache: Default::default(),
       pkg_json_resolver: Default::default(),
       #[cfg(all(feature = "graph", feature = "deno_ast"))]
-      prepared_module_loader: Default::default(),
+      module_loader: Default::default(),
       workspace_factory,
       workspace_resolver: Default::default(),
       options,
@@ -842,9 +830,10 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.compiler_options_resolver.get_or_try_init(|| {
       Ok(new_rc(CompilerOptionsResolver::new(
         &self.sys,
-        self.workspace_factory.workspace_directory_provider()?,
+        &self.workspace_factory.workspace_directory()?.workspace,
         self.node_resolver()?,
         &self.workspace_factory.options.config_discovery,
+        &self.options.compiler_options_overrides,
       )))
     })
   }
@@ -946,6 +935,18 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     })
   }
 
+  pub fn npm_module_loader(
+    &self,
+  ) -> Result<&DenoNpmModuleLoaderRc<TSys>, anyhow::Error> {
+    self.npm_module_loader.get_or_try_init(|| {
+      Ok(new_rc(NpmModuleLoader::new(
+        self.cjs_tracker()?.clone(),
+        self.node_code_translator()?.clone(),
+        self.workspace_factory.sys.clone(),
+      )))
+    })
+  }
+
   pub fn npm_resolution(&self) -> &NpmResolutionCellRc {
     &self.npm_resolution
   }
@@ -1021,20 +1022,20 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
   }
 
   #[cfg(all(feature = "graph", feature = "deno_ast"))]
-  pub fn prepared_module_loader(
+  pub fn module_loader(
     &self,
-  ) -> Result<
-    &crate::loader::PreparedModuleLoaderRc<DenoInNpmPackageChecker, TSys>,
-    anyhow::Error,
-  > {
-    self.prepared_module_loader.get_or_try_init(|| {
+  ) -> Result<&crate::loader::ModuleLoaderRc<TSys>, anyhow::Error> {
+    self.module_loader.get_or_try_init(|| {
       let cjs_tracker = self.cjs_tracker()?;
-      Ok(new_rc(crate::loader::PreparedModuleLoader::new(
+      Ok(new_rc(crate::loader::ModuleLoader::new(
         cjs_tracker.clone(),
         self.emitter()?.clone(),
+        self.in_npm_package_checker()?.clone(),
         self.node_code_translator()?.clone(),
+        self.npm_module_loader()?.clone(),
         self.parsed_source_cache.clone(),
         self.workspace_factory.sys.clone(),
+        self.options.allow_json_imports,
       )))
     })
   }
@@ -1132,64 +1133,3 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     )
   }
 }
-
-#[derive(Debug)]
-pub struct WorkspaceDirectoryProvider {
-  pub workspace: WorkspaceRc,
-  dirs: FolderScopedMap<Deferred<WorkspaceDirectoryRc>>,
-}
-
-impl WorkspaceDirectoryProvider {
-  pub fn from_initial_dir(dir: &WorkspaceDirectoryRc) -> Self {
-    let workspace = dir.workspace.clone();
-    let mut dirs = FolderScopedMap::new(Deferred::default());
-    for dir_url in workspace.config_folders().keys() {
-      if dir_url == workspace.root_dir() {
-        continue;
-      } else if dir_url == dir.dir_url() {
-        dirs.insert(dir_url.clone(), Deferred::from(dir.clone()));
-      } else {
-        dirs.insert(dir_url.clone(), Deferred::default());
-      }
-    }
-    Self { workspace, dirs }
-  }
-
-  pub fn for_specifier(&self, specifier: &Url) -> &WorkspaceDirectoryRc {
-    let (dir_url, dir) = self.dirs.entry_for_specifier(specifier);
-    dir.get_or_init(|| {
-      new_rc(
-        self
-          .workspace
-          .resolve_member_dir(dir_url.unwrap_or(self.workspace.root_dir())),
-      )
-    })
-  }
-
-  pub fn root(&self) -> &WorkspaceDirectoryRc {
-    self.dirs.unscoped.get_or_init(|| {
-      new_rc(self.workspace.resolve_member_dir(self.workspace.root_dir()))
-    })
-  }
-
-  pub fn entries(
-    &self,
-  ) -> impl Iterator<Item = (Option<&UrlRc>, &WorkspaceDirectoryRc)> {
-    self.dirs.entries().map(|(s, d)| {
-      (
-        s,
-        d.get_or_init(|| {
-          new_rc(
-            self
-              .workspace
-              .resolve_member_dir(s.unwrap_or(self.workspace.root_dir())),
-          )
-        }),
-      )
-    })
-  }
-}
-
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceDirectoryProviderRc =
-  crate::sync::MaybeArc<WorkspaceDirectoryProvider>;

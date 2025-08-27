@@ -1,0 +1,6 @@
+{
+  "include": ["*.dom.ts"],
+  "compilerOptions": {
+    "lib": ["esnext", "dom"]
+  }
+}

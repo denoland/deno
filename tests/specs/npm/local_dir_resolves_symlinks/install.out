@@ -21,3 +21,9 @@ Initialize get-intrinsic@1.2.0
 Initialize function-bind@1.1.1
 Initialize has-symbols@1.0.3
 [UNORDERED_END]
+Packages: [WILDLINE]
+[WILDLINE]
+Resolved: [WILDLINE], reused: [WILDLINE], downloaded: [WILDLINE], added: [WILDLINE]
+
+Dependencies:
+[WILDCARD]

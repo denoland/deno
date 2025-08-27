@@ -9,6 +9,7 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::error::CoreError;
+use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -28,30 +29,17 @@ use crate::args::CliLockfile;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
+use crate::tools::coverage::CoverageCollector;
+use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::progress_bar::ProgressBar;
 
-#[async_trait::async_trait(?Send)]
-pub trait HmrRunner: Send + Sync {
-  async fn start(&mut self) -> Result<(), CoreError>;
-  async fn stop(&mut self) -> Result<(), CoreError>;
-  async fn run(&mut self) -> Result<(), CoreError>;
-}
-
-#[async_trait::async_trait(?Send)]
-pub trait CoverageCollector: Send + Sync {
-  async fn start_collecting(&mut self) -> Result<(), CoreError>;
-  async fn stop_collecting(&mut self) -> Result<(), CoreError>;
-}
-
-pub type CreateHmrRunnerCb = Box<
-  dyn Fn(deno_core::LocalInspectorSession) -> Box<dyn HmrRunner> + Send + Sync,
->;
+pub type CreateHmrRunnerCb =
+  Box<dyn Fn(deno_core::LocalInspectorSession) -> HmrRunner + Send + Sync>;
 
 pub type CreateCoverageCollectorCb = Box<
-  dyn Fn(deno_core::LocalInspectorSession) -> Box<dyn CoverageCollector>
-    + Send
-    + Sync,
+  dyn Fn(deno_core::LocalInspectorSession) -> CoverageCollector + Send + Sync,
 >;
 
 pub struct CliMainWorkerOptions {
@@ -247,7 +235,7 @@ impl CliMainWorker {
 
   pub async fn maybe_setup_hmr_runner(
     &mut self,
-  ) -> Result<Option<Box<dyn HmrRunner>>, CoreError> {
+  ) -> Result<Option<HmrRunner>, CoreError> {
     let Some(setup_hmr_runner) = self.shared.create_hmr_runner.as_ref() else {
       return Ok(None);
     };
@@ -269,7 +257,7 @@ impl CliMainWorker {
 
   pub async fn maybe_setup_coverage_collector(
     &mut self,
-  ) -> Result<Option<Box<dyn CoverageCollector>>, CoreError> {
+  ) -> Result<Option<CoverageCollector>, CoreError> {
     let Some(create_coverage_collector) =
       self.shared.create_coverage_collector.as_ref()
     else {
@@ -294,7 +282,7 @@ impl CliMainWorker {
     &mut self,
     name: &'static str,
     source_code: &'static str,
-  ) -> Result<v8::Global<v8::Value>, CoreError> {
+  ) -> Result<v8::Global<v8::Value>, JsError> {
     self.worker.js_runtime().execute_script(name, source_code)
   }
 }
@@ -331,6 +319,7 @@ pub struct CliMainWorkerFactory {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_resolver: CliNpmResolver,
+  progress_bar: ProgressBar,
   root_permissions: PermissionsContainer,
   shared: Arc<SharedState>,
   sys: CliSys,
@@ -346,6 +335,7 @@ impl CliMainWorkerFactory {
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
+    progress_bar: ProgressBar,
     sys: CliSys,
     options: CliMainWorkerOptions,
     root_permissions: PermissionsContainer,
@@ -355,6 +345,7 @@ impl CliMainWorkerFactory {
       maybe_lockfile,
       npm_installer,
       npm_resolver,
+      progress_bar,
       root_permissions,
       sys,
       shared: Arc::new(SharedState {
@@ -421,6 +412,7 @@ impl CliMainWorkerFactory {
     {
       Ok(package_ref) => {
         if let Some(npm_installer) = &self.npm_installer {
+          let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
           let reqs = &[package_ref.req().clone()];
           npm_installer
             .add_package_reqs(

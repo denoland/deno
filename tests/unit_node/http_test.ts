@@ -2009,17 +2009,13 @@ Deno.test(
 
 Deno.test("[node/http] 'close' event is emitted when request finished", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
-  let socketCloseEmitted = false;
+
   const req = http.request("http://localhost:4545/echo.ts", async (res) => {
     res.on("close", resolve);
-    req.socket?.on("close", () => {
-      socketCloseEmitted = true;
-    });
     await text(res);
   });
   req.end();
   await promise;
-  assert(socketCloseEmitted);
 });
 
 Deno.test("[node/http] 'close' event is emitted on ServerResponse object when the client aborted the request in the middle", async () => {
@@ -2144,4 +2140,29 @@ Deno.test("[node/https] null ca, key and cert req options", {
     resolve();
   }).end();
   await promise;
+});
+
+Deno.test("[node/http] server.listen respects signal option", async () => {
+  const [exitCode, _output] = await execCode(`
+    import { createServer } from 'node:http';
+
+    const abortController = new AbortController();
+
+    const server = createServer((_req, res) => {
+      res.writeHead(404).end();
+    }).on('listening', () => {
+      // Precedes setTimeout and exits with 0
+      abortController.abort();
+      setTimeout(() => process.exit(1), 1000);
+    }).on('close', () => {
+      process.exit(0);
+    });
+
+    server.listen({
+      host: 'localhost',
+      port: 0,
+      signal: abortController.signal
+    });
+  `);
+  assertEquals(exitCode, 0);
 });

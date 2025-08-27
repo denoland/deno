@@ -188,47 +188,47 @@ console.log(version);"#,
     .assert_matches_text("0.1.0\n");
 }
 
+fn remove_version_from_meta_json(registry_json: &mut Value, version: &str) {
+  registry_json
+    .as_object_mut()
+    .unwrap()
+    .get_mut("versions")
+    .unwrap()
+    .as_object_mut()
+    .unwrap()
+    .remove(version);
+}
+
+fn remove_version_for_package(
+  deno_dir: &util::TempDir,
+  package: &str,
+  version: &str,
+) {
+  let specifier =
+    Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
+      .unwrap();
+  let cache = deno_cache_dir::GlobalHttpCache::new(
+    sys_traits::impls::RealSys,
+    deno_dir.path().join("remote").to_path_buf(),
+  );
+  let entry = cache
+    .get(&cache.cache_item_key(&specifier).unwrap(), None)
+    .unwrap()
+    .unwrap();
+  let mut registry_json: serde_json::Value =
+    serde_json::from_slice(&entry.content).unwrap();
+  remove_version_from_meta_json(&mut registry_json, version);
+  cache
+    .set(
+      &specifier,
+      entry.metadata.headers.clone(),
+      registry_json.to_string().as_bytes(),
+    )
+    .unwrap();
+}
+
 #[test]
 fn reload_info_not_found_cache_but_exists_remote() {
-  fn remove_version(registry_json: &mut Value, version: &str) {
-    registry_json
-      .as_object_mut()
-      .unwrap()
-      .get_mut("versions")
-      .unwrap()
-      .as_object_mut()
-      .unwrap()
-      .remove(version);
-  }
-
-  fn remove_version_for_package(
-    deno_dir: &util::TempDir,
-    package: &str,
-    version: &str,
-  ) {
-    let specifier =
-      Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
-        .unwrap();
-    let cache = deno_cache_dir::GlobalHttpCache::new(
-      sys_traits::impls::RealSys,
-      deno_dir.path().join("remote").to_path_buf(),
-    );
-    let entry = cache
-      .get(&cache.cache_item_key(&specifier).unwrap(), None)
-      .unwrap()
-      .unwrap();
-    let mut registry_json: serde_json::Value =
-      serde_json::from_slice(&entry.content).unwrap();
-    remove_version(&mut registry_json, version);
-    cache
-      .set(
-        &specifier,
-        entry.metadata.headers.clone(),
-        registry_json.to_string().as_bytes(),
-      )
-      .unwrap();
-  }
-
   // This tests that when a local machine doesn't have a version
   // specified in a dependency that exists in the npm registry
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
@@ -271,6 +271,48 @@ fn reload_info_not_found_cache_but_exists_remote() {
       "3\n",
     ))
     .assert_exit_code(0);
+}
+
+#[test]
+fn install_cache_busts_if_version_not_found() {
+  // Tests that if you try to deno install a package, if we can't find the version in the cached
+  // meta.json, we bust the cache to .
+  let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{ "imports": { "@denotest/has-pre-release": "jsr:@denotest/has-pre-release@2.0.0-beta.1" } }"#,
+  );
+
+  // cache successfully to the deno_dir
+  let output = test_context.new_command().args("install").run();
+  output.assert_matches_text(concat!(
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/meta.json\n",
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/2.0.0-beta.1_meta.json\n",
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/2.0.0-beta.1/mod.ts\n",
+  ));
+
+  // modify the package information in the cache to remove the latest version
+  remove_version_for_package(
+    deno_dir,
+    "@denotest/has-pre-release",
+    "2.0.0-beta.2",
+  );
+
+  temp_dir.write(
+    "deno.json",
+    r#"{ "imports": { "@denotest/has-pre-release": "jsr:@denotest/has-pre-release@2.0.0-beta.2" } }"#,
+  );
+
+  // should error when `--cache-only` is used now because the version is not in the cache
+  let output = test_context.new_command().args("install").run();
+  output.assert_matches_text(concat!(
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/meta.json\n",
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/2.0.0-beta.2_meta.json\n",
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/2.0.0-beta.2/mod.ts\n",
+  ));
+  output.assert_exit_code(0);
 }
 
 #[tokio::test]

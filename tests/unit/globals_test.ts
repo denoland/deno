@@ -200,3 +200,11 @@ Deno.test(function mapGroupBy() {
     quantity: 5,
   }]);
 });
+
+// Regression test for https://github.com/denoland/deno/issues/30012
+Deno.test(function globalGlobalIsWritable() {
+  // @ts-ignore the typings here are wrong
+  globalThis.global = "can write to `global`";
+  // @ts-ignore the typings here are wrong
+  globalThis.global = globalThis;
+});

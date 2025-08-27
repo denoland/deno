@@ -8,7 +8,6 @@ use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
-use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -16,7 +15,6 @@ use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_graph::CheckJsOption;
-use deno_graph::FillFromLockfileOptions;
 use deno_graph::GraphKind;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleError;
@@ -28,12 +26,15 @@ use deno_graph::ResolutionError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
+use deno_lib::util::result::downcast_ref_deno_resolve_error;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfigResolver;
+use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
+use deno_resolver::file_fetcher::GraphLoaderReporterRc;
 use deno_resolver::graph::EnhanceGraphErrorMode;
 use deno_resolver::graph::enhance_graph_error;
 use deno_resolver::graph::enhanced_integrity_error_message;
@@ -43,11 +44,11 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
 use indexmap::IndexMap;
+use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
 
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
-use crate::args::DenoSubcommand;
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::cache;
@@ -67,6 +68,7 @@ use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
+use crate::util::progress_bar::ProgressBar;
 
 #[derive(Clone)]
 pub struct GraphValidOptions<'a> {
@@ -77,7 +79,6 @@ pub struct GraphValidOptions<'a> {
   /// Otherwise, surfaces integrity errors as errors.
   pub exit_integrity_errors: bool,
   pub allow_unknown_media_types: bool,
-  pub ignore_graph_errors: bool,
   pub allow_unknown_jsr_exports: bool,
 }
 
@@ -106,7 +107,6 @@ pub fn graph_valid(
       check_js: options.check_js,
       kind: options.kind,
       allow_unknown_media_types: options.allow_unknown_media_types,
-      ignore_graph_errors: options.ignore_graph_errors,
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
     },
   );
@@ -125,30 +125,10 @@ pub fn graph_valid(
   }
 }
 
-pub fn fill_graph_from_lockfile(
-  graph: &mut ModuleGraph,
-  lockfile: &deno_lockfile::Lockfile,
-) {
-  graph.fill_from_lockfile(FillFromLockfileOptions {
-    redirects: lockfile
-      .content
-      .redirects
-      .iter()
-      .map(|(from, to)| (from.as_str(), to.as_str())),
-    package_specifiers: lockfile
-      .content
-      .packages
-      .specifiers
-      .iter()
-      .map(|(dep, id)| (dep, id.as_str())),
-  });
-}
-
 #[derive(Clone)]
 pub struct GraphWalkErrorsOptions<'a> {
   pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
-  pub ignore_graph_errors: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
 }
@@ -161,41 +141,10 @@ pub fn graph_walk_errors<'a>(
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions<'a>,
 ) -> impl Iterator<Item = JsErrorBox> + 'a {
-  fn should_ignore_resolution_error_for_types(err: &ResolutionError) -> bool {
-    match err {
-      ResolutionError::ResolverError { error, .. } => match error.as_ref() {
-        ResolveError::Specifier(_) => true,
-        ResolveError::ImportMap(err) => matches!(
-          err.as_kind(),
-          import_map::ImportMapErrorKind::UnmappedBareSpecifier { .. }
-        ),
-        ResolveError::Other(_) => false,
-      },
-      _ => false,
-    }
-  }
-
-  fn should_ignore_module_graph_error_for_types(
-    err: &ModuleGraphError,
-  ) -> bool {
-    match err {
-      ModuleGraphError::ResolutionError(err) => {
-        should_ignore_resolution_error_for_types(err)
-      }
-      ModuleGraphError::TypesResolutionError(err) => {
-        should_ignore_resolution_error_for_types(err)
-      }
-      ModuleGraphError::ModuleError(module_error) => {
-        matches!(module_error.as_kind(), ModuleErrorKind::Missing { .. })
-      }
-    }
-  }
-
   fn should_ignore_error(
     sys: &CliSys,
     graph_kind: GraphKind,
     allow_unknown_media_types: bool,
-    ignore_graph_errors: bool,
     error: &ModuleGraphError,
   ) -> bool {
     if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
@@ -203,11 +152,6 @@ pub fn graph_walk_errors<'a>(
         error.as_module_error_kind(),
         Some(ModuleErrorKind::UnsupportedMediaType { .. })
       )
-    {
-      return true;
-    }
-
-    if ignore_graph_errors && should_ignore_module_graph_error_for_types(error)
     {
       return true;
     }
@@ -233,7 +177,6 @@ pub fn graph_walk_errors<'a>(
         sys,
         graph.graph_kind(),
         options.allow_unknown_media_types,
-        options.ignore_graph_errors,
         &error,
       ) {
         log::debug!("Ignoring: {}", error);
@@ -312,13 +255,13 @@ pub fn module_error_for_tsc_diagnostic<'a>(
       maybe_referrer,
       err: ModuleLoadError::Loader(_),
     } => {
-      if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
-        if sys.fs_is_dir_no_err(path) {
-          return Some(ModuleNotFoundGraphErrorRef {
-            specifier,
-            maybe_range: maybe_referrer.as_ref(),
-          });
-        }
+      if let Ok(path) = deno_path_util::url_to_file_path(specifier)
+        && sys.fs_is_dir_no_err(path)
+      {
+        return Some(ModuleNotFoundGraphErrorRef {
+          specifier,
+          maybe_range: maybe_referrer.as_ref(),
+        });
       }
       None
     }
@@ -333,7 +276,24 @@ pub struct ModuleNotFoundNodeResolutionErrorRef<'a> {
 
 pub fn resolution_error_for_tsc_diagnostic(
   error: &ResolutionError,
-) -> Option<ModuleNotFoundNodeResolutionErrorRef> {
+) -> Option<ModuleNotFoundNodeResolutionErrorRef<'_>> {
+  fn is_module_not_found_code(code: NodeJsErrorCode) -> bool {
+    match code {
+      NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
+      | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
+      | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+      | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
+      | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+      | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
+      | NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+      | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
+      | NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
+      | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+      | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => false,
+      NodeJsErrorCode::ERR_MODULE_NOT_FOUND => true,
+    }
+  }
+
   match error {
     ResolutionError::ResolverError {
       error,
@@ -341,9 +301,11 @@ pub fn resolution_error_for_tsc_diagnostic(
       range,
     } => match error.as_ref() {
       ResolveError::Other(error) => {
-        // would be nice if there were an easier way of doing this
-        let text = error.to_string();
-        if text.contains("[ERR_MODULE_NOT_FOUND]") {
+        let is_module_not_found_error = downcast_ref_deno_resolve_error(error)
+          .and_then(|err| err.maybe_node_code())
+          .map(is_module_not_found_code)
+          .unwrap_or(false);
+        if is_module_not_found_error {
           Some(ModuleNotFoundNodeResolutionErrorRef {
             specifier,
             maybe_range: Some(range),
@@ -352,7 +314,7 @@ pub fn resolution_error_for_tsc_diagnostic(
           None
         }
       }
-      _ => None,
+      ResolveError::Specifier(_) | ResolveError::ImportMap(_) => None,
     },
     _ => None,
   }
@@ -643,16 +605,18 @@ pub struct ModuleGraphBuilder {
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   lockfile: Option<Arc<CliLockfile>>,
-  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+  maybe_reporter: Option<Arc<dyn deno_graph::source::Reporter>>,
   module_info_cache: Arc<ModuleInfoCache>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
+  progress_bar: ProgressBar,
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
+  load_reporter: Option<GraphLoaderReporterRc>,
 }
 
 impl ModuleGraphBuilder {
@@ -665,16 +629,18 @@ impl ModuleGraphBuilder {
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
     lockfile: Option<Arc<CliLockfile>>,
-    maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+    maybe_reporter: Option<Arc<dyn deno_graph::source::Reporter>>,
     module_info_cache: Arc<ModuleInfoCache>,
     npm_graph_resolver: Arc<CliNpmGraphResolver>,
     npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
+    progress_bar: ProgressBar,
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
+    load_reporter: Option<GraphLoaderReporterRc>,
   ) -> Self {
     Self {
       caches,
@@ -684,16 +650,18 @@ impl ModuleGraphBuilder {
       global_http_cache,
       in_npm_pkg_checker,
       lockfile,
-      maybe_file_watcher_reporter,
+      maybe_reporter,
       module_info_cache,
       npm_graph_resolver,
       npm_installer,
       npm_resolver,
       parsed_source_cache,
+      progress_bar,
       resolver,
       root_permissions_container,
       sys,
       compiler_options_resolver,
+      load_reporter,
     }
   }
 
@@ -716,6 +684,7 @@ impl ModuleGraphBuilder {
       }
     }
 
+    let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
@@ -731,10 +700,7 @@ impl ModuleGraphBuilder {
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
     );
-    let maybe_file_watcher_reporter = self
-      .maybe_file_watcher_reporter
-      .as_ref()
-      .map(|r| r.as_reporter());
+    let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
     self
       .build_graph_with_npm_resolution_and_build_options(
@@ -752,7 +718,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(self.npm_graph_resolver.as_ref()),
           module_analyzer: &analyzer,
           module_info_cacher: self.module_info_cache.as_ref(),
-          reporter: maybe_file_watcher_reporter,
+          reporter: maybe_reporter,
           resolver: Some(&graph_resolver),
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
@@ -762,10 +728,11 @@ impl ModuleGraphBuilder {
       )
       .await?;
 
-    if let Some(npm_installer) = &self.npm_installer {
-      if graph.has_node_specifier && graph.graph_kind().include_types() {
-        npm_installer.inject_synthetic_types_node_package().await?;
-      }
+    if let Some(npm_installer) = &self.npm_installer
+      && graph.has_node_specifier
+      && graph.graph_kind().include_types()
+    {
+      npm_installer.inject_synthetic_types_node_package().await?;
     }
 
     Ok(())
@@ -786,14 +753,13 @@ impl ModuleGraphBuilder {
       .specified_node_modules_dir()?
       .map(|m| m == NodeModulesDirMode::Auto)
       .unwrap_or(false)
+      && let Some(npm_installer) = &self.npm_installer
     {
-      if let Some(npm_installer) = &self.npm_installer {
-        let already_done = npm_installer
-          .ensure_top_level_package_json_install()
-          .await?;
-        if !already_done && matches!(npm_caching, NpmCachingStrategy::Eager) {
-          npm_installer.cache_packages(PackageCaching::All).await?;
-        }
+      let already_done = npm_installer
+        .ensure_top_level_package_json_install()
+        .await?;
+      if !already_done && matches!(npm_caching, NpmCachingStrategy::Eager) {
+        npm_installer.cache_packages(PackageCaching::All).await?;
       }
     }
 
@@ -802,8 +768,7 @@ impl ModuleGraphBuilder {
     if is_first_execution {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
-        let lockfile = lockfile.lock();
-        fill_graph_from_lockfile(graph, &lockfile);
+        lockfile.fill_graph(graph)
       }
     }
 
@@ -824,26 +789,23 @@ impl ModuleGraphBuilder {
           let mut imports_by_referrer = IndexMap::<_, Vec<_>>::with_capacity(
             self.compiler_options_resolver.size(),
           );
-          for (referrer, files) in self
-            .compiler_options_resolver
-            .ts_configs()
-            .iter()
-            .filter_map(|t| t.files())
+          for (_, compiler_options_data, maybe_files) in
+            self.compiler_options_resolver.entries()
           {
-            imports_by_referrer
-              .entry(referrer)
-              .or_default()
-              .extend(files.iter().map(|f| f.relative_specifier.clone()));
-          }
-          for (referrer, types) in self
-            .compiler_options_resolver
-            .all()
-            .flat_map(|d| d.compiler_options_types().as_ref())
-          {
-            imports_by_referrer
-              .entry(referrer)
-              .or_default()
-              .extend(types.clone());
+            if let Some((referrer, files)) = maybe_files {
+              imports_by_referrer
+                .entry(referrer.as_ref())
+                .or_default()
+                .extend(files.iter().map(|f| f.relative_specifier.clone()));
+            }
+            for (referrer, types) in
+              compiler_options_data.compiler_options_types().as_ref()
+            {
+              imports_by_referrer
+                .entry(referrer)
+                .or_default()
+                .extend(types.iter().cloned());
+            }
           }
           imports_by_referrer
             .into_iter()
@@ -868,35 +830,34 @@ impl ModuleGraphBuilder {
     let has_jsr_package_mappings_changed =
       graph.packages.mappings().len() != initial_package_mappings_len;
 
-    if has_redirects_changed
+    if (has_redirects_changed
       || has_jsr_package_deps_changed
-      || has_jsr_package_mappings_changed
+      || has_jsr_package_mappings_changed)
+      && let Some(lockfile) = &self.lockfile
     {
-      if let Some(lockfile) = &self.lockfile {
-        let mut lockfile = lockfile.lock();
-        // https redirects
-        if has_redirects_changed {
-          let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
-            !matches!(from.scheme(), "npm" | "file" | "deno")
-          });
-          for (from, to) in graph_redirects {
-            lockfile.insert_redirect(from.to_string(), to.to_string());
-          }
+      let mut lockfile = lockfile.lock();
+      // https redirects
+      if has_redirects_changed {
+        let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
+          !matches!(from.scheme(), "npm" | "file" | "deno")
+        });
+        for (from, to) in graph_redirects {
+          lockfile.insert_redirect(from.to_string(), to.to_string());
         }
-        // jsr package mappings
-        if has_jsr_package_mappings_changed {
-          for (from, to) in graph.packages.mappings() {
-            lockfile.insert_package_specifier(
-              JsrDepPackageReq::jsr(from.clone()),
-              to.version.to_custom_string::<SmallStackString>(),
-            );
-          }
+      }
+      // jsr package mappings
+      if has_jsr_package_mappings_changed {
+        for (from, to) in graph.packages.mappings() {
+          lockfile.insert_package_specifier(
+            JsrDepPackageReq::jsr(from.clone()),
+            to.version.to_custom_string::<SmallStackString>(),
+          );
         }
-        // jsr packages
-        if has_jsr_package_deps_changed {
-          for (nv, deps) in graph.packages.packages_with_deps() {
-            lockfile.add_package_deps(nv, deps.cloned());
-          }
+      }
+      // jsr packages
+      if has_jsr_package_deps_changed {
+        for (nv, deps) in graph.packages.packages_with_deps() {
+          lockfile.add_package_deps(nv, deps.cloned());
         }
       }
     }
@@ -966,6 +927,7 @@ impl ModuleGraphBuilder {
       deno_resolver::file_fetcher::DenoGraphLoaderOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions: Some(permissions),
+        reporter: self.load_reporter.clone(),
       },
     )
   }
@@ -1004,10 +966,6 @@ impl ModuleGraphBuilder {
         ),
         exit_integrity_errors: true,
         allow_unknown_media_types,
-        ignore_graph_errors: matches!(
-          self.cli_options.sub_command(),
-          DenoSubcommand::Check { .. }
-        ),
         allow_unknown_jsr_exports,
       },
     )
@@ -1032,10 +990,10 @@ pub fn has_graph_root_local_dependent_changed(
   );
   while let Some((s, _)) = dependent_specifiers.next() {
     if let Ok(path) = url_to_file_path(s) {
-      if let Ok(path) = canonicalize_path(&path) {
-        if canonicalized_changed_paths.contains(&path) {
-          return true;
-        }
+      if let Ok(path) = canonicalize_path(&path)
+        && canonicalized_changed_paths.contains(&path)
+      {
+        return true;
       }
     } else {
       // skip walking this remote module's dependencies
@@ -1057,10 +1015,6 @@ impl FileWatcherReporter {
       watcher_communicator,
       file_paths: Default::default(),
     }
-  }
-
-  pub fn as_reporter(&self) -> &dyn deno_graph::source::Reporter {
-    self
   }
 }
 

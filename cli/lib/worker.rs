@@ -313,7 +313,9 @@ pub enum ResolveNpmBinaryEntrypointError {
 pub enum ResolveNpmBinaryEntrypointFallbackError {
   #[class(inherit)]
   #[error(transparent)]
-  PackageSubpathResolve(node_resolver::errors::PackageSubpathResolveError),
+  PackageSubpathResolve(
+    node_resolver::errors::PackageSubpathFromDenoModuleResolveError,
+  ),
   #[class(generic)]
   #[error("Cannot find module '{0}'")]
   ModuleNotFound(UrlOrPath),
@@ -328,7 +330,7 @@ pub struct LibMainWorkerOptions {
   pub has_node_modules_dir: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
@@ -502,7 +504,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         worker_type: args.worker_type,
         stdio: stdio.clone(),
         cache_storage_dir,
-        strace_ops: shared.options.strace_ops.clone(),
+        trace_ops: shared.options.trace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
         enable_raw_imports: shared.options.enable_raw_imports,
@@ -688,7 +690,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
-      strace_ops: shared.options.strace_ops.clone(),
+      trace_ops: shared.options.trace_ops.clone(),
       cache_storage_dir,
       origin_storage_dir,
       stdio,

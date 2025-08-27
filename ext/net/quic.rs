@@ -35,6 +35,7 @@ use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_permissions::PermissionCheckError;
 use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsError;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
@@ -574,13 +575,14 @@ where
       ))
       .with_no_client_auth()
   } else {
-    create_client_config(
+    create_client_config(TlsClientConfigOptions {
       root_cert_store,
       ca_certs,
       unsafely_ignore_certificate_errors,
-      key_pair.take(),
-      SocketUse::GeneralSsl,
-    )?
+      unsafely_disable_hostname_verification: false,
+      cert_chain_and_key: key_pair.take(),
+      socket_use: SocketUse::GeneralSsl,
+    })?
   };
 
   if let Some(alpn_protocols) = args.alpn_protocols {
@@ -666,7 +668,7 @@ pub(crate) fn op_quic_connection_get_remote_addr(
 ) -> Result<Addr, QuicError> {
   let addr = connection.0.remote_address();
   Ok(Addr {
-    hostname: format!("{}", addr.ip()),
+    hostname: format!("{}", addr.ip().to_canonical()),
     port: addr.port(),
   })
 }
@@ -729,7 +731,7 @@ impl SendStreamResource {
 }
 
 impl Resource for SendStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "quicSendStream".into()
   }
 
@@ -766,7 +768,7 @@ impl RecvStreamResource {
 }
 
 impl Resource for RecvStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "quicReceiveStream".into()
   }
 
@@ -1202,7 +1204,7 @@ pub(crate) mod webtransport {
     };
 
     Ok((
-      url.to_string(),
+      url.into(),
       connect_tx_rid,
       connect_rx_rid,
       settings_tx_rid,

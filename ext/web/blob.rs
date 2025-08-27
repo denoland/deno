@@ -268,7 +268,7 @@ pub fn op_blob_create_object_url(
   let url = blob_store
     .insert_object_url(blob, maybe_location.map(|location| location.0.clone()));
 
-  Ok(url.to_string())
+  Ok(url.into())
 }
 
 #[op2(fast)]

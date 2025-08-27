@@ -47,7 +47,7 @@ pub struct NetworkListenerResource<T: NetworkStreamListenerTrait> {
 impl<T: NetworkStreamListenerTrait + 'static> Resource
   for NetworkListenerResource<T>
 {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     T::RESOURCE_NAME.into()
   }
 
@@ -257,7 +257,7 @@ macro_rules! network_stream {
 }
 
 #[cfg(unix)]
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 network_stream!(
   [
     Tcp,
@@ -270,7 +270,7 @@ network_stream!(
   [
     Tls,
     tls,
-    crate::ops_tls::TlsStream,
+    crate::ops_tls::TlsStream<tokio::net::TcpStream>,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
     TlsStreamResource
@@ -290,11 +290,23 @@ network_stream!(
     tokio_vsock::VsockListener,
     tokio_vsock::VsockAddr,
     crate::io::VsockStreamResource
+  ],
+  [
+    Tunnel,
+    tunnel,
+    crate::tunnel::TunnelStream,
+    crate::tunnel::TunnelConnection,
+    crate::tunnel::TunnelAddr,
+    crate::tunnel::TunnelStreamResource
   ]
 );
 
 #[cfg(unix)]
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
 network_stream!(
   [
     Tcp,
@@ -307,7 +319,7 @@ network_stream!(
   [
     Tls,
     tls,
-    crate::ops_tls::TlsStream,
+    crate::ops_tls::TlsStream<tokio::net::TcpStream>,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
     TlsStreamResource
@@ -319,6 +331,14 @@ network_stream!(
     tokio::net::UnixListener,
     tokio::net::unix::SocketAddr,
     crate::io::UnixStreamResource
+  ],
+  [
+    Tunnel,
+    tunnel,
+    crate::tunnel::TunnelStream,
+    crate::tunnel::TunnelConnection,
+    crate::tunnel::TunnelAddr,
+    crate::tunnel::TunnelStreamResource
   ]
 );
 
@@ -335,10 +355,18 @@ network_stream!(
   [
     Tls,
     tls,
-    crate::ops_tls::TlsStream,
+    crate::ops_tls::TlsStream<tokio::net::TcpStream>,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
     TlsStreamResource
+  ],
+  [
+    Tunnel,
+    tunnel,
+    crate::tunnel::TunnelStream,
+    crate::tunnel::TunnelConnection,
+    crate::tunnel::TunnelAddr,
+    crate::tunnel::TunnelStreamResource
   ]
 );
 
@@ -346,8 +374,9 @@ pub enum NetworkStreamAddress {
   Ip(std::net::SocketAddr),
   #[cfg(unix)]
   Unix(tokio::net::unix::SocketAddr),
-  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   Vsock(tokio_vsock::VsockAddr),
+  Tunnel(crate::tunnel::TunnelAddr),
 }
 
 impl From<std::net::SocketAddr> for NetworkStreamAddress {
@@ -363,10 +392,16 @@ impl From<tokio::net::unix::SocketAddr> for NetworkStreamAddress {
   }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 impl From<tokio_vsock::VsockAddr> for NetworkStreamAddress {
   fn from(value: tokio_vsock::VsockAddr) -> Self {
     NetworkStreamAddress::Vsock(value)
+  }
+}
+
+impl From<crate::tunnel::TunnelAddr> for NetworkStreamAddress {
+  fn from(value: crate::tunnel::TunnelAddr) -> Self {
+    NetworkStreamAddress::Tunnel(value)
   }
 }
 
@@ -382,10 +417,13 @@ pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("Unix socket is currently in use")]
   UnixBusy,
-  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   #[class("Busy")]
   #[error("Vsock socket is currently in use")]
   VsockBusy,
+  #[class("Busy")]
+  #[error("Tunnel socket is currently in use")]
+  TunnelBusy,
   #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
@@ -393,7 +431,7 @@ pub enum TakeNetworkStreamError {
   #[class(generic)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
-  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   #[class(generic)]
   #[error("Cannot reunite halves from different streams")]
   ReuniteVsock,
@@ -427,8 +465,7 @@ pub fn take_network_stream_resource(
     // This TLS connection might be used somewhere else.
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| TakeNetworkStreamError::TlsBusy)?;
-    let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.unsplit(write_half);
+    let tls_stream = resource.into_tls_stream();
     return Ok(NetworkStream::Tls(tls_stream));
   }
 
@@ -444,7 +481,7 @@ pub fn take_network_stream_resource(
     return Ok(NetworkStream::Unix(unix_stream));
   }
 
-  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   if let Ok(resource_rc) =
     resource_table.take::<crate::io::VsockStreamResource>(stream_rid)
   {
@@ -457,6 +494,15 @@ pub fn take_network_stream_resource(
     }
     let vsock_stream = read_half.unsplit(write_half);
     return Ok(NetworkStream::Vsock(vsock_stream));
+  }
+
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::tunnel::TunnelStreamResource>(stream_rid)
+  {
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| TakeNetworkStreamError::TunnelBusy)?;
+    let stream = resource.into_inner();
+    return Ok(NetworkStream::Tunnel(stream));
   }
 
   Err(TakeNetworkStreamError::Resource(

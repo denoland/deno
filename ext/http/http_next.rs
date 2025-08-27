@@ -55,6 +55,7 @@ use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 
 use super::fly_accept_encoding;
 use crate::LocalExecutor;
@@ -533,8 +534,8 @@ pub fn op_http_read_request_body(
 #[op2(fast)]
 pub fn op_http_set_response_header(
   external: *const c_void,
-  #[string(onebyte)] name: Cow<[u8]>,
-  #[string(onebyte)] value: Cow<[u8]>,
+  #[string(onebyte)] name: Cow<'_, [u8]>,
+  #[string(onebyte)] value: Cow<'_, [u8]>,
 ) {
   let http =
     // SAFETY: op is called with external.
@@ -662,14 +663,12 @@ fn is_response_compressible(headers: &HeaderMap) -> bool {
   if headers.contains_key(CONTENT_RANGE) {
     return false;
   }
-  if let Some(cache_control) = headers.get(CACHE_CONTROL) {
-    if let Ok(s) = std::str::from_utf8(cache_control.as_bytes()) {
-      if let Some(cache_control) = CacheControl::from_value(s) {
-        if cache_control.no_transform {
-          return false;
-        }
-      }
-    }
+  if let Some(cache_control) = headers.get(CACHE_CONTROL)
+    && let Ok(s) = std::str::from_utf8(cache_control.as_bytes())
+    && let Some(cache_control) = CacheControl::from_value(s)
+    && cache_control.no_transform
+  {
+    return false;
   }
   true
 }
@@ -699,13 +698,13 @@ fn modify_compressibility_from_response(
 /// If the user provided a ETag header for uncompressed data, we need to ensure it is a
 /// weak Etag header ("W/").
 fn weaken_etag(hmap: &mut HeaderMap) {
-  if let Some(etag) = hmap.get_mut(hyper::header::ETAG) {
-    if !etag.as_bytes().starts_with(b"W/") {
-      let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
-      v.extend(b"W/");
-      v.extend(etag.as_bytes());
-      *etag = v.try_into().unwrap();
-    }
+  if let Some(etag) = hmap.get_mut(hyper::header::ETAG)
+    && !etag.as_bytes().starts_with(b"W/")
+  {
+    let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
+    v.extend(b"W/");
+    v.extend(etag.as_bytes());
+    *etag = v.try_into().unwrap();
   }
 }
 
@@ -714,13 +713,13 @@ fn weaken_etag(hmap: &mut HeaderMap) {
 // to make sure cache services do not serve uncompressed data to clients that
 // support compression.
 fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
-  if let Some(v) = hmap.get_mut(hyper::header::VARY) {
-    if let Ok(s) = v.to_str() {
-      if !s.to_lowercase().contains("accept-encoding") {
-        *v = format!("Accept-Encoding, {s}").try_into().unwrap()
-      }
-      return;
+  if let Some(v) = hmap.get_mut(hyper::header::VARY)
+    && let Ok(s) = v.to_str()
+  {
+    if !s.to_lowercase().contains("accept-encoding") {
+      *v = format!("Accept-Encoding, {s}").try_into().unwrap()
     }
+    return;
   }
   hmap.insert(
     hyper::header::VARY,
@@ -948,7 +947,7 @@ async fn serve_http2_autodetect(
 }
 
 fn serve_https(
-  mut io: TlsStream,
+  mut io: TlsStream<TcpStream>,
   request_info: HttpConnectionProperties,
   lifetime: HttpLifetime,
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
@@ -1057,8 +1056,15 @@ where
     NetworkStream::Unix(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
     NetworkStream::Vsock(conn) => {
+      serve_http(conn, connection_properties, lifetime, tx, options)
+    }
+    NetworkStream::Tunnel(conn) => {
       serve_http(conn, connection_properties, lifetime, tx, options)
     }
   }
@@ -1108,7 +1114,7 @@ impl HttpJoinHandle {
 }
 
 impl Resource for HttpJoinHandle {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "http".into()
   }
 
@@ -1290,16 +1296,68 @@ pub async fn op_http_wait(
 
   // Filter out shutdown (ENOTCONN) errors
   if let Err(err) = res {
-    if let HttpNextError::Io(err) = &err {
-      if err.kind() == io::ErrorKind::NotConnected {
-        return Ok(null());
-      }
+    if is_normal_close(&err) {
+      return Ok(null());
     }
 
     return Err(err);
   }
 
   Ok(null())
+}
+
+fn is_normal_close(err: &(dyn std::error::Error + 'static)) -> bool {
+  if let Some(err) = err.downcast_ref::<HttpNextError>() {
+    if let HttpNextError::Io(err) = &err {
+      return is_normal_close(err);
+    }
+
+    if let HttpNextError::Other(err) = &err {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) = err.downcast_ref::<deno_error::JsErrorBox>() {
+    if let Some(err) = err.get_inner_ref() {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) = err.downcast_ref::<std::io::Error>() {
+    if err.kind() == io::ErrorKind::NotConnected {
+      return true;
+    }
+
+    if let Some(err) = err.get_ref() {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) = err.downcast_ref::<deno_net::tunnel::Error>() {
+    if let deno_net::tunnel::Error::QuinnConnection(err) = err {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) =
+    err.downcast_ref::<deno_net::tunnel::quinn::ConnectionError>()
+  {
+    if matches!(err, deno_net::tunnel::quinn::ConnectionError::LocallyClosed) {
+      return true;
+    }
+
+    return false;
+  }
+
+  false
 }
 
 /// Cancels the HTTP handle.
@@ -1433,7 +1491,7 @@ impl UpgradeStream {
 }
 
 impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpRawUpgradeStream".into()
   }
 

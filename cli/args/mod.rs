@@ -29,10 +29,10 @@ pub use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::CaData;
@@ -44,6 +44,7 @@ use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
@@ -452,6 +453,18 @@ impl WorkspaceMainModuleResolver {
           }
         }
       }
+      deno_resolver::workspace::MappedResolution::PackageJsonImport {
+        pkg_json,
+      } => self
+        .node_resolver
+        .resolve_package_import(
+          specifier,
+          Some(&node_resolver::UrlOrPathRef::from_url(cwd)),
+          Some(pkg_json),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Execution,
+        )?
+        .into_url()?,
     };
     Ok(url)
   }
@@ -666,14 +679,23 @@ impl CliOptions {
             resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
           }
           DenoSubcommand::Eval(_) => {
-            resolve_url_or_path("./$deno$eval.mts", self.initial_cwd())?
+            let specifier = format!(
+              "./$deno$eval.{}",
+              self.flags.ext.as_deref().unwrap_or("mts")
+            );
+            deno_path_util::resolve_path(&specifier, self.initial_cwd())?
           }
-          DenoSubcommand::Repl(_) => {
-            resolve_url_or_path("./$deno$repl.mts", self.initial_cwd())?
-          }
+          DenoSubcommand::Repl(_) => deno_path_util::resolve_path(
+            "./$deno$repl.mts",
+            self.initial_cwd(),
+          )?,
           DenoSubcommand::Run(run_flags) => {
             if run_flags.is_stdin() {
-              resolve_url_or_path("./$deno$stdin.mts", self.initial_cwd())?
+              let specifier = format!(
+                "./$deno$stdin.{}",
+                self.flags.ext.as_deref().unwrap_or("mts")
+              );
+              deno_path_util::resolve_path(&specifier, self.initial_cwd())?
             } else {
               let default_resolve = || {
                 let url =
@@ -726,15 +748,10 @@ impl CliOptions {
     &self,
   ) -> HashMap<ModuleSpecifier, HashMap<String, String>> {
     let maybe_main_specifier = self.resolve_main_module().ok();
-    // TODO(Cre3per): This mapping moved to deno_ast with https://github.com/denoland/deno_ast/issues/133 and should be available in deno_ast >= 0.25.0 via `MediaType::from_path(...).as_media_type()`
-    let maybe_content_type =
-      self.flags.ext.as_ref().and_then(|el| match el.as_str() {
-        "ts" => Some("text/typescript"),
-        "tsx" => Some("text/tsx"),
-        "js" => Some("text/javascript"),
-        "jsx" => Some("text/jsx"),
-        _ => None,
-      });
+    let maybe_content_type = self.flags.ext.as_ref().and_then(|ext| {
+      let media_type = MediaType::from_filename(&format!("file.{}", ext));
+      media_type.as_content_type()
+    });
 
     if let (Some(main_specifier), Some(content_type)) =
       (maybe_main_specifier, maybe_content_type)
@@ -807,7 +824,7 @@ impl CliOptions {
   pub fn resolve_fmt_options_for_members(
     &self,
     fmt_flags: &FmtFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, FmtOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
       fmt_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
@@ -841,7 +858,7 @@ impl CliOptions {
   pub fn resolve_lint_options_for_members(
     &self,
     lint_flags: &LintFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, LintOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, LintOptions)>, AnyError> {
     let cli_arg_patterns =
       lint_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
@@ -865,7 +882,7 @@ impl CliOptions {
   pub fn resolve_test_options_for_members(
     &self,
     test_flags: &TestFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, TestOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, TestOptions)>, AnyError> {
     let cli_arg_patterns =
       test_flags.files.as_file_patterns(self.initial_cwd())?;
     let workspace_dir_configs = self
@@ -889,7 +906,7 @@ impl CliOptions {
   pub fn resolve_bench_options_for_members(
     &self,
     bench_flags: &BenchFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, BenchOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
       bench_flags.files.as_file_patterns(self.initial_cwd())?;
     let workspace_dir_configs = self
@@ -916,18 +933,18 @@ impl CliOptions {
     &self.flags.ca_stores
   }
 
-  pub fn coverage_dir(&self) -> Option<String> {
+  pub fn coverage_dir(&self) -> Option<PathBuf> {
     match &self.flags.subcommand {
       DenoSubcommand::Test(test) => test
         .coverage_dir
         .as_ref()
-        .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
+        .map(|dir| self.initial_cwd.join(dir))
+        .or_else(|| env::var_os("DENO_COVERAGE_DIR").map(PathBuf::from)),
       DenoSubcommand::Run(flags) => flags
         .coverage_dir
         .as_ref()
-        .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
+        .map(|dir| self.initial_cwd.join(dir))
+        .or_else(|| env::var_os("DENO_COVERAGE_DIR").map(PathBuf::from)),
       _ => None,
     }
   }
@@ -1073,10 +1090,10 @@ impl CliOptions {
       imports
         .extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
       // also add the JSR_URL env var
-      if let Some(jsr_host) = allow_import_host_from_url(jsr_url()) {
-        if jsr_host != "jsr.io:443" {
-          imports.push(jsr_host);
-        }
+      if let Some(jsr_host) = allow_import_host_from_url(jsr_url())
+        && jsr_host != "jsr.io:443"
+      {
+        imports.push(jsr_host);
       }
       // include the cli arg urls
       for url in cli_arg_urls {
@@ -1135,8 +1152,8 @@ impl CliOptions {
     &self.flags.subcommand
   }
 
-  pub fn strace_ops(&self) -> &Option<Vec<String>> {
-    &self.flags.strace_ops
+  pub fn trace_ops(&self) -> &Option<Vec<String>> {
+    &self.flags.trace_ops
   }
 
   pub fn take_binary_npm_command_name(&self) -> Option<String> {
@@ -1271,12 +1288,11 @@ impl CliOptions {
     }
 
     for (_, folder) in self.workspace().config_folders() {
-      if let Some(deno_json) = &folder.deno_json {
-        if deno_json.specifier.scheme() == "file" {
-          if let Ok(path) = deno_json.specifier.to_file_path() {
-            full_paths.push(path);
-          }
-        }
+      if let Some(deno_json) = &folder.deno_json
+        && deno_json.specifier.scheme() == "file"
+        && let Ok(path) = deno_json.specifier.to_file_path()
+      {
+        full_paths.push(path);
       }
       if let Some(pkg_json) = &folder.pkg_json {
         full_paths.push(pkg_json.path.clone());
@@ -1327,7 +1343,7 @@ fn try_resolve_node_binary_main_entrypoint(
 ) -> Result<Option<Url>, AnyError> {
   // node allows running files at paths without a `.js` extension
   // or at directories with an index.js file
-  let path = deno_core::normalize_path(initial_cwd.join(specifier));
+  let path = initial_cwd.join(specifier);
   if path.is_dir() {
     let index_file = path.join("index.js");
     Ok(if index_file.is_file() {
@@ -1364,14 +1380,14 @@ fn resolve_import_map_specifier(
   current_dir: &Path,
 ) -> Result<Option<Url>, ImportMapSpecifierResolveError> {
   if let Some(import_map_path) = maybe_import_map_path {
-    if let Some(config_file) = &maybe_config_file {
-      if config_file.json.import_map.is_some() {
-        log::warn!(
-          "{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.",
-          colors::yellow("Warning"),
-          config_file.specifier,
-        );
-      }
+    if let Some(config_file) = &maybe_config_file
+      && config_file.json.import_map.is_some()
+    {
+      log::warn!(
+        "{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.",
+        colors::yellow("Warning"),
+        config_file.specifier,
+      );
     }
     let specifier =
       deno_path_util::resolve_url_or_path(import_map_path, current_dir)
@@ -1524,11 +1540,8 @@ mod test {
     let config_text = r#"{}"#;
     let config_specifier = Url::parse("file:///deno/deno.jsonc").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      None,
-      Some(&config_file),
-      &PathBuf::from("/"),
-    );
+    let actual =
+      resolve_import_map_specifier(None, Some(&config_file), Path::new("/"));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);
@@ -1536,7 +1549,7 @@ mod test {
 
   #[test]
   fn resolve_import_map_no_config() {
-    let actual = resolve_import_map_specifier(None, None, &PathBuf::from("/"));
+    let actual = resolve_import_map_specifier(None, None, Path::new("/"));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);

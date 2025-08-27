@@ -1,9 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
-use std::path::PathBuf;
+use std::path::Path;
 
 mod call;
 mod callback;
@@ -50,10 +51,10 @@ pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
 pub trait FfiPermissions {
   fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError>;
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check_partial_with_path(
+  fn check_partial_with_path<'a>(
     &mut self,
-    path: &str,
-  ) -> Result<PathBuf, PermissionCheckError>;
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 }
 
 impl FfiPermissions for deno_permissions::PermissionsContainer {
@@ -63,10 +64,10 @@ impl FfiPermissions for deno_permissions::PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_partial_with_path(
+  fn check_partial_with_path<'a>(
     &mut self,
-    path: &str,
-  ) -> Result<PathBuf, PermissionCheckError> {
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_ffi_partial_with_path(
       self, path,
     )

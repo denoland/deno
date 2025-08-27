@@ -6,6 +6,7 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::sync::LazyLock;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -71,10 +72,7 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
     let (tx, rx) = tokio::sync::watch::channel(());
 
     tokio::spawn(async move {
-      let mut sigusr2 = tokio::signal::unix::signal(
-        tokio::signal::unix::SignalKind::user_defined2(),
-      )
-      .unwrap();
+      let mut sigusr2 = deno_signals::signal_stream(libc::SIGUSR2).unwrap();
 
       loop {
         sigusr2.recv().await;
@@ -96,12 +94,13 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
 // TODO(bartlomieju): temporary measurement until we start supporting more
 // module types
 pub fn create_validate_import_attributes_callback(
-  enable_raw_imports: bool,
+  enable_raw_imports: Arc<AtomicBool>,
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
     move |scope: &mut v8::HandleScope, attributes: &HashMap<String, String>| {
       let valid_attribute = |kind: &str| {
-        enable_raw_imports && matches!(kind, "bytes" | "text")
+        enable_raw_imports.load(Ordering::Relaxed)
+          && matches!(kind, "bytes" | "text")
           || matches!(kind, "json")
       };
       for (key, value) in attributes {
@@ -252,7 +251,7 @@ pub struct WorkerOptions {
   // user code.
   pub should_wait_for_inspector_session: bool,
   /// If Some, print a low-level trace output for ops matching the given patterns.
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
 
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
@@ -274,7 +273,7 @@ impl Default for WorkerOptions {
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
-      strace_ops: Default::default(),
+      trace_ops: Default::default(),
       maybe_inspector_server: Default::default(),
       format_js_error_fn: Default::default(),
       origin_storage_dir: Default::default(),
@@ -293,7 +292,7 @@ impl Default for WorkerOptions {
 
 pub fn create_op_metrics(
   enable_op_summary_metrics: bool,
-  strace_ops: Option<Vec<String>>,
+  trace_ops: Option<Vec<String>>,
 ) -> (
   Option<Rc<OpMetricsSummaryTracker>>,
   Option<OpMetricsFactoryFn>,
@@ -302,7 +301,7 @@ pub fn create_op_metrics(
   let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
   let now = Instant::now();
   let max_len: Rc<std::cell::Cell<usize>> = Default::default();
-  if let Some(patterns) = strace_ops {
+  if let Some(patterns) = trace_ops {
     /// Match an op name against a list of patterns
     fn matches_pattern(patterns: &[String], name: &str) -> bool {
       let mut found_match = false;
@@ -427,7 +426,7 @@ impl MainWorker {
     // Get our op metrics
     let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
       options.bootstrap.enable_op_summary_metrics,
-      options.strace_ops,
+      options.trace_ops,
     );
 
     // Permissions: many ops depend on this
@@ -471,7 +470,6 @@ impl MainWorker {
         compiled_wasm_module_store: services.compiled_wasm_module_store,
         extensions,
         op_metrics_factory_fn,
-        enable_raw_imports: options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: options.enable_stack_trace_arg_in_ops,
       })
     };
@@ -518,6 +516,13 @@ impl MainWorker {
         ) as Box<dyn Fn(_, _, &_)>,
       )
     }));
+
+    js_runtime
+      .op_state()
+      .borrow_mut()
+      .borrow::<EnableRawImports>()
+      .0
+      .store(options.enable_raw_imports, Ordering::Relaxed);
 
     js_runtime
       .lazy_init_extensions(vec![
@@ -805,7 +810,7 @@ impl MainWorker {
     &mut self,
     script_name: &'static str,
     source_code: ModuleCodeString,
-  ) -> Result<v8::Global<v8::Value>, CoreError> {
+  ) -> Result<v8::Global<v8::Value>, JsError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
 
@@ -1101,13 +1106,16 @@ struct CommonRuntimeOptions {
   compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   extensions: Vec<Extension>,
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
-  enable_raw_imports: bool,
   enable_stack_trace_arg_in_ops: bool,
 }
 
+struct EnableRawImports(Arc<AtomicBool>);
+
 #[allow(clippy::too_many_arguments)]
 fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
-  JsRuntime::new(RuntimeOptions {
+  let enable_raw_imports = Arc::new(AtomicBool::new(false));
+
+  let js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(opts.module_loader),
     startup_snapshot: opts.startup_snapshot,
     create_params: opts.create_params,
@@ -1128,7 +1136,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
       make_wait_for_inspector_disconnect_callback(),
     ),
     validate_import_attributes_cb: Some(
-      create_validate_import_attributes_callback(opts.enable_raw_imports),
+      create_validate_import_attributes_callback(enable_raw_imports.clone()),
     ),
     import_assertions_support: deno_core::ImportAssertionsSupport::Error,
     maybe_op_stack_trace_callback: opts
@@ -1138,7 +1146,14 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     v8_platform: None,
     custom_module_evaluation_cb: None,
     eval_context_code_cache_cbs: None,
-  })
+  });
+
+  js_runtime
+    .op_state()
+    .borrow_mut()
+    .put(EnableRawImports(enable_raw_imports));
+
+  js_runtime
 }
 
 pub fn create_permissions_stack_trace_callback()
@@ -1163,7 +1178,6 @@ pub struct UnconfiguredRuntimeOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub additional_extensions: Vec<Extension>,
-  pub enable_raw_imports: bool,
 }
 
 pub struct UnconfiguredRuntime {
@@ -1199,7 +1213,6 @@ impl UnconfiguredRuntime {
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       extensions,
       op_metrics_factory_fn: None,
-      enable_raw_imports: options.enable_raw_imports,
       enable_stack_trace_arg_in_ops: false,
     });
 
@@ -1283,7 +1296,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
       .purge_and_prevent_code_cache(module_specifier)
   }
 
-  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<'_, [u8]>> {
     let v = self.0.borrow_mut().clone().unwrap();
     let v = v.get_source_map(file_name);
     v.map(|c| Cow::from(c.into_owned()))

@@ -1,11 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::ffi::c_char;
 use std::ffi::c_void;
+use std::path::Path;
 use std::ptr::null;
 use std::rc::Rc;
 
@@ -17,6 +19,7 @@ use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8_static_strings;
+use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
 use rusqlite::ffi as libsqlite3_sys;
 use rusqlite::ffi::SQLITE_DBCONFIG_DQS_DDL;
@@ -71,29 +74,29 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
-    if let Some(open) = obj.get(scope, open_string.into()) {
-      if !open.is_undefined() {
-        options.open = v8::Local::<v8::Boolean>::try_from(open)
-          .map_err(|_| {
-            Error::InvalidArgType(
-              "The \"options.open\" argument must be a boolean.",
-            )
-          })?
-          .is_true();
-      }
+    if let Some(open) = obj.get(scope, open_string.into())
+      && !open.is_undefined()
+    {
+      options.open = v8::Local::<v8::Boolean>::try_from(open)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.open\" argument must be a boolean.",
+          )
+        })?
+        .is_true();
     }
 
     let read_only_string = READ_ONLY_STRING.v8_string(scope).unwrap();
-    if let Some(read_only) = obj.get(scope, read_only_string.into()) {
-      if !read_only.is_undefined() {
-        options.read_only = v8::Local::<v8::Boolean>::try_from(read_only)
-          .map_err(|_| {
-            Error::InvalidArgType(
-              "The \"options.readOnly\" argument must be a boolean.",
-            )
-          })?
-          .is_true();
-      }
+    if let Some(read_only) = obj.get(scope, read_only_string.into())
+      && !read_only.is_undefined()
+    {
+      options.read_only = v8::Local::<v8::Boolean>::try_from(read_only)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.readOnly\" argument must be a boolean.",
+          )
+        })?
+        .is_true();
     }
 
     let enable_foreign_key_constraints_string =
@@ -102,9 +105,9 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         .unwrap();
     if let Some(enable_foreign_key_constraints) =
       obj.get(scope, enable_foreign_key_constraints_string.into())
+      && !enable_foreign_key_constraints.is_undefined()
     {
-      if !enable_foreign_key_constraints.is_undefined() {
-        options.enable_foreign_key_constraints =
+      options.enable_foreign_key_constraints =
           v8::Local::<v8::Boolean>::try_from(enable_foreign_key_constraints)
             .map_err(|_| {
               Error::InvalidArgType(
@@ -112,23 +115,21 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
             )
             })?
             .is_true();
-      }
     }
 
     let allow_extension_string =
       ALLOW_EXTENSION_STRING.v8_string(scope).unwrap();
     if let Some(allow_extension) = obj.get(scope, allow_extension_string.into())
+      && !allow_extension.is_undefined()
     {
-      if !allow_extension.is_undefined() {
-        options.allow_extension =
-          v8::Local::<v8::Boolean>::try_from(allow_extension)
-            .map_err(|_| {
-              Error::InvalidArgType(
-                "The \"options.allowExtension\" argument must be a boolean.",
-              )
-            })?
-            .is_true();
-      }
+      options.allow_extension =
+        v8::Local::<v8::Boolean>::try_from(allow_extension)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.allowExtension\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
     }
 
     let enable_double_quoted_string_literals_string =
@@ -137,9 +138,9 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         .unwrap();
     if let Some(enable_double_quoted_string_literals) =
       obj.get(scope, enable_double_quoted_string_literals_string.into())
+      && !enable_double_quoted_string_literals.is_undefined()
     {
-      if !enable_double_quoted_string_literals.is_undefined() {
-        options.enable_double_quoted_string_literals =
+      options.enable_double_quoted_string_literals =
             v8::Local::<v8::Boolean>::try_from(enable_double_quoted_string_literals)
                 .map_err(|_| {
                 Error::InvalidArgType(
@@ -147,7 +148,6 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
                 )
                 })?
                 .is_true();
-      }
     }
 
     Ok(options)
@@ -199,29 +199,29 @@ impl<'a> ApplyChangesetOptions<'a> {
     }
 
     let filter_string = FILTER_STRING.v8_string(scope).unwrap();
-    if let Some(filter) = obj.get(scope, filter_string.into()) {
-      if !filter.is_undefined() {
-        if !filter.is_function() {
-          return Err(Error::InvalidArgType(
-            "The \"options.filter\" argument must be a function.",
-          ));
-        }
-
-        options.filter = Some(filter);
+    if let Some(filter) = obj.get(scope, filter_string.into())
+      && !filter.is_undefined()
+    {
+      if !filter.is_function() {
+        return Err(Error::InvalidArgType(
+          "The \"options.filter\" argument must be a function.",
+        ));
       }
+
+      options.filter = Some(filter);
     }
 
     let on_conflict_string = ON_CONFLICT_STRING.v8_string(scope).unwrap();
-    if let Some(on_conflict) = obj.get(scope, on_conflict_string.into()) {
-      if !on_conflict.is_undefined() {
-        if !on_conflict.is_function() {
-          return Err(Error::InvalidArgType(
-            "The \"options.onConflict\" argument must be a function.",
-          ));
-        }
-
-        options.on_conflict = Some(on_conflict);
+    if let Some(on_conflict) = obj.get(scope, on_conflict_string.into())
+      && !on_conflict.is_undefined()
+    {
+      if !on_conflict.is_function() {
+        return Err(Error::InvalidArgType(
+          "The \"options.onConflict\" argument must be a function.",
+        ));
       }
+
+      options.on_conflict = Some(on_conflict);
     }
 
     Ok(Some(options))
@@ -294,7 +294,16 @@ fn open_db(
     return Ok(conn);
   }
 
-  perms.check_read_with_api_name(location, Some("node:sqlite"))?;
+  let location = perms
+    .check_open(
+      Cow::Borrowed(Path::new(location)),
+      match readonly {
+        true => OpenAccessKind::ReadNoFollow,
+        false => OpenAccessKind::ReadWriteNoFollow,
+      },
+      Some("node:sqlite"),
+    )?
+    .into_path();
 
   if readonly {
     let conn = rusqlite::Connection::open_with_flags(
@@ -320,8 +329,6 @@ fn open_db(
     conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     return Ok(conn);
   }
-
-  perms.check_write_with_api_name(location, Some("node:sqlite"))?;
 
   let conn = rusqlite::Connection::open(location)?;
 

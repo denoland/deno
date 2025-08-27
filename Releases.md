@@ -6,6 +6,179 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.4.5 / 2025.08.21
+
+- feat(lsp): pull-based diagnostics (#30325)
+- feat(unstable/install): `DENO_INSTALL_ARCH` env var (#30473)
+- feat(unstable/install): more informative deno install output (#30387)
+- fix(bundle): allow json imports without attribute in deno bundle, support
+  require of json (#30413)
+- fix(cache): cache excluded modules explicitly provided on the command line
+  (#30442)
+- fix(ext/node): TLS emit close event on parent socket (#30451)
+- fix(ext/node): `os.setPriority` and `os.getPriority` compatibility (#30383)
+- fix(ext/node): bad compression caused by invalid brotli params (#30437)
+- fix(ext/node): export `promises` from stream (#30427)
+- fix(ext/node): mTLS support for `node:tls` (#30426)
+- fix(ext/node): tls upgrades for used sockets (#30418)
+- fix(ext/node): validate callback on `fs.mkdtemp` and `fs.stat` (#30454)
+- fix(fmt): do not remove parens for jsdoc with `@satisfies` (#30453)
+- fix(lsp): fix import specifiers in file rename changes (#30458)
+- fix(lsp): silence tsc debug failures for inlay hints (#30456)
+- fix(node/fs): cp should not create subfolder when both source and target are
+  directories (#30408)
+- fix(outdated): use version tagged as latest if it satisfies the version req
+  (#30412)
+- fix(publish): handle precompile in jsx publishing (#30466)
+- fix(resolver): update "with --unstable-sloppy-imports" message to use
+  "--sloppy-imports" (#30421)
+- fix(std/fs): implement `chmod` on windows (#30436)
+- fix(test): set cwd when running node compatibility tests (#30422)
+- fix(unstable): fix json repl bugs (#30415)
+- fix(unstable): parsing regex in selector with character class (#30462)
+- fix: add missing cargo feature to 'deno_npm_cache' crate (#30397)
+- fix: enable keyring features and dont clear token when config is missing
+  (#30468)
+- fix: support cjs, cts, mjs, and mts for the `--ext` flag (#30398)
+- perf(ext/net): change the default TCP backlog to 512 (#30471)
+
+### 2.4.4 / 2025.08.13
+
+- feat(unstable): add json repl (#30307)
+- feat(unstable): allow setting headers on EventSource (#30278)
+- feat(unstable): allow specifying default path and path prefix (#30320)
+- feat(unstable): implement custom inspect for AtomicOperation (#30077)
+- fix(bundle): require of sub directory in npm package should consult
+  package.json (#30253)
+- fix(bundle): support importing directories with a package.json from an es
+  module when bundling (#30273)
+- fix(bundle): use non-node conditions for --platform=browser (#30250)
+- fix(check): do not surface code resolution errors in declaration file
+  dependencies (#30296)
+- fix(compile): ensure `Deno.build.standalone` is set in workers (#30335)
+- fix(ext/node): `fs.open` and `fs.openSync` compatibility (#30191)
+- fix(ext/node): `fs.rename` and `fs.renameSync` compatibility (#30245)
+- fix(ext/node): `fs.unlink` and `fs.unlinkSync` compatibility (#30257)
+- fix(ext/node): accept `base64url` encoding on StringDecoder (#30366)
+- fix(ext/node): assign 'ERR_BUFFER_TOO_LARGE' to codes (#30311)
+- fix(ext/node): avoid panic when `crypto.randomInt` has no arguments (#30314)
+- fix(ext/node): define fs constants correctly across platforms (#30113)
+- fix(ext/node): fs readv promisify compatibility (#30149)
+- fix(ext/node): handle large buffer correctly (#30369)
+- fix(ext/node): incorrect `ERR_INVALID_ARG_VALUE` constructor arguments
+  position (#30309)
+- fix(ext/node): make some `os` exported properties read only (#30374)
+- fix(ext/node): parse fs open options correctly (#30300)
+- fix(ext/node): support TLS for unix sockets (#30169)
+- fix(ext/node): use custom allocator for brotli (#30277)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal_binding/buffer.ts` (#30287)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal_binding/node_file.ts` (#30066)
+- fix(ext/node): worker_threads handles basic `require` calls (#30279)
+- fix(io): do not autoClose stdin readable stream (#30345)
+- fix(lsp): use referrer compiler options for node_modules files (#30275)
+- fix(publish): remove incorrect `relative-package-import` diagnostic when root
+  of workspace is package (#30333)
+- fix(unstable): lint node properties should be enumerable (#30391)
+- fix(unstable): update deno_tunnel for better reconnect errors (#30381)
+- fix(update): update version reqs even if locked to latest version (#30249)
+- fix: android build (#30360)
+- fix: improve handling of linked jsr packages in lockfile (#30289)
+- fix: make unmet peer dep error message less verbose (#30312)
+- fix: reduce progress bar flickering (#30349)
+- fix: upgrade @node/types to 24 (#30343)
+- fix: upgrade deno_core to 0.355.0 (#30352)
+- perf(napi): misc napi optimizations (#30291)
+- perf: use more efficient structuredClone API (#30258)
+- perf: reduce heap allocations and memory creating cjs wrapper module (#30344)
+
+### 2.4.3 / 2025.07.30
+
+- feat(unstable): add useful metadata to tunnel (#30161)
+- fix(bundle): don't force managed npm resolution (#30200)
+- fix(check): ensure module not found errors are surfaced (#30181)
+- fix(compile): do not error including npm packages that don't match current
+  system (#30188)
+- fix(compile): do not include managed npm deps when graph does not have any npm
+  pkgs (#30189)
+- fix(ext/node): `fs.read` and `fs.write` promisify compatibility (#30152)
+- fix(ext/node): add process._rawDebug (#30141)
+- fix(ext/node): fix segmentation fault when spkac is empty (#30207)
+- fix(ext/node): implement TLSSocket.getPeerCertificate (#30146)
+- fix(ext/node): implement tls.checkServerIdentitiy (#30148)
+- fix(ext/node): use Zlib base for brotli handles (#30112)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal_binding/_listen.ts` (#30100)
+- fix(ext/node): use primordials in
+  `ext/node/polyfills/internal_binding/pipe_wrap.ts` (#30241)
+- fix(ext/node): validate `fd` is integer on `fsync` and `fdatasync` (#30215)
+- fix(http): catch more tunnel close errors (#30236)
+- fix(lib/node): change ERR_INVALID_PACKAGE_TARGET to
+  ERR_PACKAGE_PATH_NOT_EXPORTED when no package.json#exports condition matches
+  (#29841)
+- fix(lsp): do not error for bytes or text import of json module (#30137)
+- fix(lsp): improve renaming a file with bytes or text imports (#30142)
+- fix(publish): improve diagnostic when importing from another package using a
+  relative import (#30203)
+- fix(regression): do not error when specifying `--config` flag with `../`
+  component (#30208)
+- fix(task): `--recursive` - order tasks by package dependencies (#30129)
+- fix(task): improve parsing of quotes in command substitution (#30162)
+- fix(task): show package name of task when --recursive (#30136)
+- fix(tsconfig): don't use tsc-compatible defaults for deno.json compiler
+  options (#30242)
+- fix: do not panic deserializing config with invalid number value (#30171)
+- fix: don't invoke `Proxy` getter trap on `console.log` (#30230)
+- fix: ensure coverage dir is stored absolute to prevent issues when cwd changes
+  (#30225)
+- fix: reduce change of corrupt lockfile error when updating dependencies in the
+  config file (#30239)
+- fix: support package.json imports in a Deno workspace (#30198)
+- fix: tunnels in processes that don't listen (#30178)
+- fix: update setTimeout and setInterval callback type to support strin…
+  (#30183)
+- fix: use 'deno_signals' crate for signal handling (#30204)
+- perf(buffer): optimize Buffer.subarray and Buffer.prototype.utf8Slice (#30213)
+
+### 2.4.2 / 2025.07.16
+
+- fix(bundle): default "jsxImportSource" to "react" (#30082)
+- fix(check): temporarily ignore ERR_TYPES_NOT_FOUND (#29926)
+- fix(ext/node): don't throw error on invalid path input on `exists` and
+  `existsSync` (#29971)
+- fix(ext/node): validate path parameters on `link` and `linkSync` (#30061)
+- fix(lint): do not panic for many overlapping lint fixes (#30104)
+- fix(lsp): tsconfig features for 'deno check' parity (#30007)
+- fix(tsconfig): prioritize deno.json if it has compiler options (#30056)
+- fix(tsconfig): use tsc defaults for 'strict' and 'noImplicitOverride' (#30045)
+- fix(unstable): support importing files in npm packages as bytes and text
+  (#30065)
+- fix: `global` global should be writeable (#30032)
+- fix: early init logging (#30034)
+- fix: new signal handling (#30029)
+- fix: upgrade deno_core to 0.352.1 (#30119)
+
+### 2.4.1 / 2025.07.08
+
+- feat(unstable/otel): support vsock transport for telemetry (#30001)
+- feat(unstable): tunnelling (#30022)
+- fix(bundle): don't use createRequire when targeting browser, make hack not
+  depend on variable names (#30023)
+- fix(bundle): make the "dynamic require" hack work on minified output (#29997)
+- fix(bundle): resolve "sloppy imports" in npm packages when bundling (#29989)
+- fix(ext/http2): fix oob buffer reads in http2 requests (#29969)
+- fix(serve): actually wire up resolving main module with import map for deno
+  serve (#29974)
+- fix(unstable): bytes and text imports from npm dependencies should require
+  `--allow-read` (#29990)
+- Revert "fix(ext/napi): ensure the finalizer callback will be called (…
+  (#30018)
+- Revert "fix(otel): flush data when terminating signal is received (#2…
+  (#30019)
+- perf: bust emit cache only on deno_ast version change (#29984)
+- perf: skip jsx transpile when disabled (#29995)
+
 ### 2.4.0 / 2025.07.01
 
 - feat(bundle): support text and bytes imports in bundle (#29908)

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_io"
-version = "0.119.0"
+version = "0.124.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,6 +17,7 @@ path = "lib.rs"
 async-trait.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+deno_permissions.workspace = true
 filetime.workspace = true
 fs3.workspace = true
 log.workspace = true
@@ -30,7 +31,7 @@ os_pipe.workspace = true
 libc.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-nix = { workspace = true, features = ["fs", "user"] }
+nix = { workspace = true, features = ["fs", "user", "socket"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase", "processenv", "errhandlingapi"] }

@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -17,7 +18,6 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 
 mod ops;
-pub mod signal;
 pub mod sys_info;
 
 pub use ops::signal::SignalError;
@@ -42,7 +42,7 @@ impl ExitCode {
 }
 
 pub fn exit(code: i32) -> ! {
-  deno_telemetry::flush();
+  deno_signals::run_exit();
   #[allow(clippy::disallowed_methods)]
   std::process::exit(code);
 }
@@ -81,10 +81,6 @@ deno_core::extension!(
     if let Some(exit_code) = options.exit_code {
       state.put::<ExitCode>(exit_code);
     }
-    #[cfg(unix)]
-    {
-      state.put(ops::signal::SignalState::default());
-    }
   }
 );
 
@@ -118,9 +114,10 @@ pub enum OsError {
 fn op_exec_path() -> Result<String, OsError> {
   let current_exe = env::current_exe().unwrap();
   // normalize path so it doesn't include '.' or '..' components
-  let path = normalize_path(current_exe);
+  let path = normalize_path(Cow::Owned(current_exe));
 
   path
+    .into_owned()
     .into_os_string()
     .into_string()
     .map_err(OsError::InvalidUtf8)

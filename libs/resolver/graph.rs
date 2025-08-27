@@ -19,11 +19,13 @@ use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
+use import_map::ImportMapErrorKind;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPath;
+use node_resolver::errors::NodeJsErrorCoded;
 use url::Url;
 
 use crate::DenoResolveError;
@@ -37,7 +39,7 @@ use crate::workspace::sloppy_imports_resolve;
 
 #[allow(clippy::disallowed_types)]
 pub type FoundPackageJsonDepFlagRc =
-  crate::sync::MaybeArc<FoundPackageJsonDepFlag>;
+  deno_maybe_sync::MaybeArc<FoundPackageJsonDepFlag>;
 
 /// A flag that indicates if a package.json dependency was
 /// found during resolution.
@@ -48,9 +50,9 @@ pub struct FoundPackageJsonDepFlag(AtomicFlag);
 pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
 
 impl ResolveWithGraphError {
-  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+  pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
-      ResolveWithGraphErrorKind::CouldNotResolve(err) => {
+      ResolveWithGraphErrorKind::CouldNotResolveNpmNv(err) => {
         err.source.maybe_specifier()
       }
       ResolveWithGraphErrorKind::ResolveNpmReqRef(err) => {
@@ -84,7 +86,7 @@ impl ResolveWithGraphError {
 pub enum ResolveWithGraphErrorKind {
   #[error(transparent)]
   #[class(inherit)]
-  CouldNotResolve(#[from] CouldNotResolveError),
+  CouldNotResolveNpmNv(#[from] CouldNotResolveNpmNvError),
   #[error(transparent)]
   #[class(inherit)]
   ResolvePkgFolderFromDenoModule(
@@ -107,11 +109,17 @@ pub enum ResolveWithGraphErrorKind {
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(inherit)]
 #[error("Could not resolve '{reference}'")]
-pub struct CouldNotResolveError {
-  reference: deno_semver::npm::NpmPackageNvReference,
+pub struct CouldNotResolveNpmNvError {
+  pub reference: deno_semver::npm::NpmPackageNvReference,
   #[source]
   #[inherit]
-  source: node_resolver::errors::PackageSubpathResolveError,
+  pub source: node_resolver::errors::PackageSubpathFromDenoModuleResolveError,
+}
+
+impl NodeJsErrorCoded for CouldNotResolveNpmNvError {
+  fn code(&self) -> node_resolver::errors::NodeJsErrorCode {
+    self.source.code()
+  }
 }
 
 impl FoundPackageJsonDepFlag {
@@ -133,7 +141,7 @@ pub struct MappedResolutionDiagnosticWithPosition<'a> {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type OnMappedResolutionDiagnosticFn = crate::sync::MaybeArc<
+pub type OnMappedResolutionDiagnosticFn = deno_maybe_sync::MaybeArc<
   dyn Fn(MappedResolutionDiagnosticWithPosition) + Send + Sync,
 >;
 
@@ -160,7 +168,7 @@ pub type DenoResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -185,7 +193,7 @@ pub struct DenoResolver<
   >,
   sys: TSys,
   found_package_json_dep_flag: FoundPackageJsonDepFlagRc,
-  warned_pkgs: crate::sync::MaybeDashSet<PackageReq>,
+  warned_pkgs: deno_maybe_sync::MaybeDashSet<PackageReq>,
   on_warning: Option<OnMappedResolutionDiagnosticFn>,
 }
 
@@ -302,18 +310,14 @@ impl<
         } else {
           match NpmPackageReqReference::from_specifier(&specifier) {
             Ok(reference) => {
-              if let Some(url) =
+              let url =
                 self.resolver.resolve_non_workspace_npm_req_ref_to_file(
                   &reference,
                   referrer,
                   options.mode,
                   options.kind,
-                )?
-              {
-                url.into_url()?
-              } else {
-                specifier.into_owned()
-              }
+                )?;
+              url.into_url()?
             }
             _ => specifier.into_owned(),
           }
@@ -329,7 +333,7 @@ impl<
     referrer: &Url,
     resolution_mode: node_resolver::ResolutionMode,
     resolution_kind: node_resolver::NodeResolutionKind,
-  ) -> Result<Option<node_resolver::UrlOrPath>, npm::ResolveNpmReqRefError> {
+  ) -> Result<node_resolver::UrlOrPath, npm::ResolveNpmReqRefError> {
     self.resolver.resolve_non_workspace_npm_req_ref_to_file(
       npm_req_ref,
       referrer,
@@ -362,7 +366,7 @@ impl<
           resolution_mode,
           resolution_kind,
         )
-        .map_err(|source| CouldNotResolveError {
+        .map_err(|source| CouldNotResolveNpmNvError {
           reference: nv_ref.clone(),
           source,
         })?
@@ -397,14 +401,14 @@ impl<
           reference,
           ..
         } => {
-          if let Some(on_warning) = &self.on_warning {
-            if self.warned_pkgs.insert(reference.req().clone()) {
-              on_warning(MappedResolutionDiagnosticWithPosition {
-                diagnostic,
-                referrer,
-                start: referrer_range_start,
-              });
-            }
+          if let Some(on_warning) = &self.on_warning
+            && self.warned_pkgs.insert(reference.req().clone())
+          {
+            on_warning(MappedResolutionDiagnosticWithPosition {
+              diagnostic,
+              referrer,
+              start: referrer_range_start,
+            });
           }
         }
       }
@@ -559,13 +563,12 @@ pub fn enhance_graph_error(
     }
   };
 
-  if let Some(range) = error.maybe_range() {
-    if mode == EnhanceGraphErrorMode::ShowRange
-      && !range.specifier.as_str().contains("/$deno$eval")
-    {
-      message.push_str("\n    at ");
-      message.push_str(&format_range_with_colors(range));
-    }
+  if let Some(range) = error.maybe_range()
+    && mode == EnhanceGraphErrorMode::ShowRange
+    && !range.specifier.as_str().contains("/$deno$eval")
+  {
+    message.push_str("\n    at ");
+    message.push_str(&format_range_with_colors(range));
   }
   message
 }
@@ -582,10 +585,22 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
     ))
   } else {
     get_import_prefix_missing_error(error).map(|specifier| {
-      format!(
-        "If you want to use a JSR or npm package, try running `deno add jsr:{}` or `deno add npm:{}`",
-        specifier, specifier
-      )
+      if specifier.starts_with("@std/") {
+        format!(
+          "If you want to use the JSR package, try running `deno add jsr:{}`",
+          specifier
+        )
+      } else if specifier.starts_with('@') {
+        format!(
+          "If you want to use a JSR or npm package, try running `deno add jsr:{0}` or `deno add npm:{0}`",
+          specifier
+        )
+      } else {
+        format!(
+          "If you want to use the npm package, try running `deno add npm:{0}`",
+          specifier
+        )
+      }
     })
   };
 
@@ -600,8 +615,7 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
-static RUN_WITH_SLOPPY_IMPORTS_MSG: &str =
-  "or run with --unstable-sloppy-imports";
+static RUN_WITH_SLOPPY_IMPORTS_MSG: &str = "or run with --sloppy-imports";
 
 fn enhanced_sloppy_imports_error_message(
   sys: &(impl sys_traits::FsMetadata + Clone),
@@ -769,34 +783,43 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
     if range.specifier.scheme() == "file" {
       maybe_specifier = Some(specifier);
     }
-  } else if let ResolutionError::ResolverError { error, range, .. } = error {
-    if range.specifier.scheme() == "file" {
-      match error.as_ref() {
-        ResolveError::Specifier(specifier_error) => {
-          if let SpecifierError::ImportPrefixMissing { specifier, .. } =
-            specifier_error
-          {
-            maybe_specifier = Some(specifier);
-          }
+  } else if let ResolutionError::ResolverError { error, range, .. } = error
+    && range.specifier.scheme() == "file"
+  {
+    match error.as_ref() {
+      ResolveError::Specifier(specifier_error) => {
+        if let SpecifierError::ImportPrefixMissing { specifier, .. } =
+          specifier_error
+        {
+          maybe_specifier = Some(specifier);
         }
-        ResolveError::Other(other_error) => {
-          if let Some(SpecifierError::ImportPrefixMissing {
-            specifier, ..
-          }) = other_error.as_any().downcast_ref::<SpecifierError>()
-          {
-            maybe_specifier = Some(specifier);
-          }
+      }
+      ResolveError::Other(other_error) => {
+        if let Some(SpecifierError::ImportPrefixMissing { specifier, .. }) =
+          other_error.get_ref().downcast_ref::<SpecifierError>()
+        {
+          maybe_specifier = Some(specifier);
         }
-        ResolveError::ImportMap(_) => {}
+      }
+      ResolveError::ImportMap(import_map_err) => {
+        if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _referrer) =
+          import_map_err.as_kind()
+        {
+          maybe_specifier = Some(specifier);
+        }
       }
     }
   }
 
-  // NOTE(bartlomieju): For now, return None if a specifier contains a dot or a space. This is because
-  // suggesting to `deno add bad-module.ts` makes no sense and is worse than not providing
-  // a suggestion at all. This should be improved further in the future
   if let Some(specifier) = maybe_specifier {
+    // NOTE(bartlomieju): For now, return None if a specifier contains a dot or a space. This is because
+    // suggesting to `deno add bad-module.ts` makes no sense and is worse than not providing
+    // a suggestion at all. This should be improved further in the future
     if specifier.contains('.') || specifier.contains(' ') {
+      return None;
+    }
+    // Do not return a hint for specifiers starting with `@`, but not containing a `/`
+    if specifier.starts_with('@') && !specifier.contains('/') {
       return None;
     }
   }

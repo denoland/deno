@@ -1,0 +1,6 @@
+{
+  "files": ["main.dom.ts", "globals.d.ts"],
+  "compilerOptions": {
+    "composite": true
+  }
+}

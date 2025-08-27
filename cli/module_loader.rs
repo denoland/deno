@@ -15,11 +15,13 @@ use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 
-use boxed_error::Boxed;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_cache_dir::file_fetcher::FetchLocalOptions;
+use deno_cache_dir::file_fetcher::MemoryFiles as _;
+use deno_core::FastString;
 use deno_core::ModuleLoader;
+use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
@@ -36,30 +38,32 @@ use deno_core::futures::io::BufReader;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use deno_graph::WalkOptions;
-use deno_lib::loader::ModuleCodeStringSource;
-use deno_lib::loader::NpmModuleLoadError;
-use deno_lib::loader::StrippingTypesNodeModulesError;
-use deno_lib::loader::module_type_from_media_type;
+use deno_lib::loader::as_deno_resolver_requested_module_type;
+use deno_lib::loader::loaded_module_source_to_module_source_code;
+use deno_lib::loader::module_type_from_media_and_requested_type;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
 use deno_lib::worker::ModuleLoaderFactory;
+use deno_path_util::PathToUrlError;
+use deno_path_util::resolve_url_or_path;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::file_fetcher::FetchOptions;
 use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::graph::ResolveWithGraphErrorKind;
 use deno_resolver::graph::ResolveWithGraphOptions;
+use deno_resolver::loader::LoadCodeSourceError;
 use deno_resolver::loader::LoadPreparedModuleError;
-use deno_resolver::loader::PreparedModuleOrAsset;
-use deno_resolver::loader::PreparedModuleSource;
+use deno_resolver::loader::LoadedModule;
+use deno_resolver::loader::LoadedModuleOrAsset;
+use deno_resolver::loader::MemoryFiles;
+use deno_resolver::loader::StrippingTypesNodeModulesError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
-use deno_resolver::npm::ResolveNpmReqRefError;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -68,11 +72,10 @@ use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use eszip::EszipV2;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
@@ -91,7 +94,6 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 use crate::graph_util::ModuleGraphBuilder;
-use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliResolver;
@@ -103,17 +105,10 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
 
-pub type CliNpmModuleLoader = deno_lib::loader::NpmModuleLoader<
-  CliCjsCodeAnalyzer,
-  DenoInNpmPackageChecker,
-  DenoIsBuiltInNodeModuleChecker,
-  CliNpmResolver,
-  CliSys,
->;
 pub type CliEmitter =
   deno_resolver::emit::Emitter<DenoInNpmPackageChecker, CliSys>;
-pub type CliPreparedModuleLoader =
-  deno_resolver::loader::PreparedModuleLoader<DenoInNpmPackageChecker, CliSys>;
+pub type CliDenoResolverModuleLoader =
+  deno_resolver::loader::ModuleLoader<CliSys>;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PrepareModuleLoadError {
@@ -190,7 +185,7 @@ impl ModuleLoadPreparer {
       allow_unknown_media_types,
       skip_graph_roots_validation,
     } = options;
-    let _pb_clear_guard = self.progress_bar.clear_guard();
+    let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut loader = self
       .module_graph_builder
@@ -280,7 +275,7 @@ impl ModuleLoadPreparer {
         .collect::<Vec<_>>()
         .join(", ")
     );
-    let _pb_clear_guard = self.progress_bar.clear_guard();
+    let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut loader = self
       .module_graph_builder
@@ -334,13 +329,13 @@ struct SharedCliModuleLoaderState {
   file_fetcher: Arc<CliFileFetcher>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
+  memory_files: Arc<MemoryFiles>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
-  npm_module_loader: CliNpmModuleLoader,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  prepared_module_loader: Arc<CliPreparedModuleLoader>,
+  module_loader: Arc<CliDenoResolverModuleLoader>,
   resolver: Arc<CliResolver>,
   sys: CliSys,
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
@@ -396,14 +391,14 @@ impl CliModuleLoaderFactory {
     file_fetcher: Arc<CliFileFetcher>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
+    memory_files: Arc<MemoryFiles>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
-    npm_module_loader: CliNpmModuleLoader,
     npm_registry_permission_checker: Arc<
       NpmRegistryReadPermissionChecker<CliSys>,
     >,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
-    prepared_module_loader: Arc<CliPreparedModuleLoader>,
+    module_loader: Arc<CliDenoResolverModuleLoader>,
     resolver: Arc<CliResolver>,
     sys: CliSys,
     maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
@@ -425,12 +420,12 @@ impl CliModuleLoaderFactory {
         file_fetcher,
         in_npm_pkg_checker,
         main_module_graph_container,
+        memory_files,
         module_load_preparer,
-        npm_module_loader,
         npm_registry_permission_checker,
         npm_resolver,
         parsed_source_cache,
-        prepared_module_loader,
+        module_loader,
         resolver,
         sys,
         in_flight_loads_tracker: InFlightModuleLoadsTracker {
@@ -468,6 +463,7 @@ impl CliModuleLoaderFactory {
       sys: self.shared.sys.clone(),
       graph_container,
       in_npm_pkg_checker: self.shared.in_npm_pkg_checker.clone(),
+      memory_files: self.shared.memory_files.clone(),
       npm_registry_permission_checker: self
         .shared
         .npm_registry_permission_checker
@@ -512,29 +508,10 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
   }
 }
 
-impl CliModuleLoaderFactory {
-  pub fn create_cli_module_loader(
-    &self,
-    root_permissions: PermissionsContainer,
-  ) -> CliModuleLoader<MainModuleGraphContainer> {
-    CliModuleLoader(Rc::new(CliModuleLoaderInner {
-      lib: self.shared.lib_window,
-      is_worker: false,
-      parent_permissions: root_permissions.clone(),
-      permissions: root_permissions,
-      graph_container: (*self.shared.main_module_graph_container).clone(),
-      shared: self.shared.clone(),
-      loaded_files: Default::default(),
-    }))
-  }
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(generic)]
-#[error("Loading unprepared module: {}{}", .specifier, .maybe_referrer.as_ref().map(|r| format!(", imported from: {}", r)).unwrap_or_default())]
-pub struct LoadUnpreparedModuleError {
-  specifier: ModuleSpecifier,
-  maybe_referrer: Option<ModuleSpecifier>,
+struct ModuleCodeStringSource {
+  pub code: ModuleSourceCode,
+  pub found_url: ModuleSpecifier,
+  pub module_type: ModuleType,
 }
 
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
@@ -550,129 +527,55 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   loaded_files: RefCell<HashSet<ModuleSpecifier>>,
 }
 
-#[derive(Debug, deno_error::JsError, Boxed)]
-#[class(inherit)]
-pub struct LoadCodeSourceError(pub Box<LoadCodeSourceErrorKind>);
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum LoadCodeSourceErrorKind {
+pub enum ResolveReferrerError {
   #[class(inherit)]
   #[error(transparent)]
-  NpmModuleLoad(#[from] NpmModuleLoadError),
+  UnableToGetCwd(#[from] UnableToGetCwdError),
   #[class(inherit)]
   #[error(transparent)]
-  LoadPreparedModule(#[from] LoadPreparedModuleError),
+  PathToUrl(#[from] PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
-  LoadUnpreparedModule(#[from] LoadUnpreparedModuleError),
-  #[class(inherit)]
-  #[error(transparent)]
-  Core(#[from] deno_core::error::ModuleLoaderError),
-  #[class(inherit)]
-  #[error(transparent)]
-  PathToUrl(#[from] deno_path_util::PathToUrlError),
-  #[class(inherit)]
-  #[error(transparent)]
-  NpmReqRef(#[from] ResolveNpmReqRefError),
-  #[class(inherit)]
-  #[error(transparent)]
-  Fetch(#[from] deno_resolver::file_fetcher::FetchError),
+  ModuleResolution(#[from] ModuleResolutionError),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CliModuleLoaderError {
   #[class(inherit)]
   #[error(transparent)]
+  Fetch(#[from] deno_resolver::file_fetcher::FetchError),
+  #[class(inherit)]
+  #[error(transparent)]
   LoadCodeSource(#[from] LoadCodeSourceError),
   #[class(inherit)]
   #[error(transparent)]
-  LoadPreparedModule(#[from] Box<LoadPreparedModuleError>),
-  #[class(generic)]
-  #[error(
-    "Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."
-  )]
-  MissingJsonAttribute,
+  LoadPreparedModule(#[from] LoadPreparedModuleError),
   #[class(inherit)]
   #[error(transparent)]
-  Core(#[from] Box<deno_core::error::ModuleLoaderError>),
+  PathToUrl(#[from] PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
-  Other(#[from] JsErrorBox),
-}
-
-impl<TGraphContainer: ModuleGraphContainer> CliModuleLoader<TGraphContainer> {
-  pub async fn load_module_source(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    requested_module_type: &RequestedModuleType,
-  ) -> Result<ModuleSource, CliModuleLoaderError> {
-    self
-      .0
-      .load_module_source(specifier, maybe_referrer, requested_module_type)
-      .await
-  }
+  ResolveNpmReqRef(#[from] deno_resolver::npm::ResolveNpmReqRefError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolveReferrer(#[from] ResolveReferrerError),
 }
 
 impl<TGraphContainer: ModuleGraphContainer>
   CliModuleLoaderInner<TGraphContainer>
 {
-  async fn load_module_source(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    requested_module_type: &RequestedModuleType,
-  ) -> Result<ModuleSource, CliModuleLoaderError> {
-    let code_source = self
-      .load_code_source(
-        specifier,
-        maybe_referrer,
-        /* is dynamic */ false,
-        requested_module_type,
-      )
-      .await?;
-
-    // If we loaded a JSON file, but the "requested_module_type" (that is computed from
-    // import attributes) is not JSON we need to fail.
-    if code_source.module_type == ModuleType::Json
-      && *requested_module_type != RequestedModuleType::Json
-    {
-      return Err(CliModuleLoaderError::MissingJsonAttribute);
-    }
-
-    Ok(ModuleSource::new_with_redirect(
-      code_source.module_type,
-      code_source.code,
-      specifier,
-      &code_source.found_url,
-      None,
-    ))
-  }
-
   async fn load_inner(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    is_dynamic: bool,
     requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleSource, ModuleLoaderError> {
     let code_source = self
-      .load_code_source(
-        specifier,
-        maybe_referrer,
-        is_dynamic,
-        requested_module_type,
-      )
+      .load_code_source(specifier, maybe_referrer, requested_module_type)
       .await
       .map_err(JsErrorBox::from_err)?;
 
-    // If we loaded a JSON file, but the "requested_module_type" (that is computed from
-    // import attributes) is not JSON we need to fail.
-    if code_source.module_type == ModuleType::Json
-      && *requested_module_type != RequestedModuleType::Json
-    {
-      return Err(JsErrorBox::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
-    }
     let code = if self.shared.is_inspecting
       || code_source.module_type == ModuleType::Wasm
     {
@@ -720,136 +623,99 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    is_dynamic: bool,
     requested_module_type: &RequestedModuleType,
-  ) -> Result<ModuleCodeStringSource, LoadCodeSourceError> {
-    fn as_deno_resolver_requested_module_type(
-      value: &RequestedModuleType,
-    ) -> deno_resolver::loader::RequestedModuleType<'_> {
-      match value {
-        RequestedModuleType::None => {
-          deno_resolver::loader::RequestedModuleType::None
-        }
-        RequestedModuleType::Json => {
-          deno_resolver::loader::RequestedModuleType::Json
-        }
-        RequestedModuleType::Text => {
-          deno_resolver::loader::RequestedModuleType::Text
-        }
-        RequestedModuleType::Bytes => {
-          deno_resolver::loader::RequestedModuleType::Bytes
-        }
-        RequestedModuleType::Other(text) => {
-          deno_resolver::loader::RequestedModuleType::Other(text)
-        }
-      }
-    }
+  ) -> Result<ModuleCodeStringSource, CliModuleLoaderError> {
+    // this loader maintains npm specifiers in dynamic imports when resolving
+    // so that they can be properly preloaded, but now we might receive them
+    // here, so we need to actually resolve them to a file: specifier here
+    let specifier = if let Ok(reference) =
+      NpmPackageReqReference::from_specifier(specifier)
+    {
+      let referrer = match maybe_referrer {
+        // if we're here, it means it was importing from a dynamic import
+        // and so there will be a referrer
+        Some(r) => Cow::Borrowed(r),
+        // but the repl may also end up here and it won't have
+        // a referrer so create a referrer for it here
+        None => Cow::Owned(self.resolve_referrer("")?),
+      };
+      Cow::Owned(
+        self
+          .shared
+          .resolver
+          .resolve_non_workspace_npm_req_ref_to_file(
+            &reference,
+            &referrer,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
+          )?
+          .into_url()?,
+      )
+    } else {
+      Cow::Borrowed(specifier)
+    };
 
     let graph = self.graph_container.graph();
+    let deno_resolver_requested_module_type =
+      as_deno_resolver_requested_module_type(requested_module_type);
     match self
       .shared
-      .prepared_module_loader
-      .load_prepared_module(
+      .module_loader
+      .load(
         &graph,
-        specifier,
-        &as_deno_resolver_requested_module_type(requested_module_type),
+        &specifier,
+        maybe_referrer,
+        &deno_resolver_requested_module_type,
       )
-      .await
-      .map_err(LoadCodeSourceError::from)?
+      .await?
     {
-      Some(module_or_asset) => match module_or_asset {
-        PreparedModuleOrAsset::Module(prepared_module) => {
-          Ok(ModuleCodeStringSource {
-            code: match prepared_module.source {
-              PreparedModuleSource::ArcStr(text) => {
-                ModuleSourceCode::String(text.into())
-              }
-              PreparedModuleSource::ArcBytes(bytes) => {
-                ModuleSourceCode::Bytes(bytes.into())
-              }
-            },
-            found_url: prepared_module.specifier.clone(),
-            module_type: match requested_module_type {
-              RequestedModuleType::Json => ModuleType::Json,
-              RequestedModuleType::Text => ModuleType::Text,
-              RequestedModuleType::Bytes => ModuleType::Bytes,
-              RequestedModuleType::None | RequestedModuleType::Other(_) => {
-                module_type_from_media_type(prepared_module.media_type)
-              }
-            },
-          })
-        }
-        PreparedModuleOrAsset::ExternalAsset { specifier } => {
-          self.load_asset(
-            specifier,
-            /* do not use dynamic import permissions because this was statically analyzable */ false,
-            requested_module_type
-          )
-          .await
-          .map_err(|err| LoadCodeSourceErrorKind::Fetch(err).into_box())
-        }
-      },
-      None => {
-        let specifier = if let Ok(reference) =
-          NpmPackageReqReference::from_specifier(specifier)
-        {
-          let referrer = match maybe_referrer {
-            // if we're here, it means it was importing from a dynamic import
-            // and so there will be a referrer
-            Some(r) => Cow::Borrowed(r),
-            // but the repl may also end up here and it won't have
-            // a referrer so create a referrer for it here
-            None => Cow::Owned(
-              self
-                .resolve_referrer("")
-                .map_err(LoadCodeSourceError::from)?,
-            ),
-          };
-          Cow::Owned(
-            self
-              .shared
-              .resolver
-              .resolve_non_workspace_npm_req_ref_to_file(
-                &reference,
-                &referrer,
-                ResolutionMode::Import,
-                NodeResolutionKind::Execution,
-              )
-              .map_err(LoadCodeSourceError::from)?
-              .unwrap()
-              .into_url()
-              .map_err(LoadCodeSourceError::from)?,
-          )
-        } else {
-          Cow::Borrowed(specifier)
-        };
-        if self.shared.in_npm_pkg_checker.in_npm_package(&specifier) {
-          return self
-            .shared
-            .npm_module_loader
-            .load(&specifier, maybe_referrer)
-            .await
-            .map_err(LoadCodeSourceError::from);
-        }
-
-        match requested_module_type {
-          RequestedModuleType::Text | RequestedModuleType::Bytes => self
-            .load_asset(&specifier, is_dynamic, requested_module_type)
-            .await
-            .map_err(LoadCodeSourceError::from),
-          _ => Err(LoadCodeSourceError::from(LoadUnpreparedModuleError {
-            specifier: specifier.into_owned(),
-            maybe_referrer: maybe_referrer.cloned(),
-          })),
-        }
+      LoadedModuleOrAsset::Module(prepared_module) => {
+        Ok(self.loaded_module_to_module_code_string_source(
+          prepared_module,
+          requested_module_type,
+        ))
       }
+      LoadedModuleOrAsset::ExternalAsset {
+        specifier,
+        statically_analyzable,
+      } => {
+        Ok(
+          self
+            .load_asset(
+              &specifier,
+              if statically_analyzable {
+                CheckSpecifierKind::Static
+              } else {
+                // force permissions
+                CheckSpecifierKind::Dynamic
+              },
+              requested_module_type,
+            )
+            .await?,
+        )
+      }
+    }
+  }
+
+  fn loaded_module_to_module_code_string_source(
+    &self,
+    loaded_module: LoadedModule,
+    requested_module_type: &RequestedModuleType,
+  ) -> ModuleCodeStringSource {
+    ModuleCodeStringSource {
+      code: loaded_module_source_to_module_source_code(loaded_module.source),
+      found_url: loaded_module.specifier.into_owned(),
+      module_type: module_type_from_media_and_requested_type(
+        loaded_module.media_type,
+        requested_module_type,
+      ),
     }
   }
 
   async fn load_asset(
     &self,
     specifier: &ModuleSpecifier,
-    is_dynamic: bool,
+    check_specifier_kind: CheckSpecifierKind,
     requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleCodeStringSource, deno_resolver::file_fetcher::FetchError>
   {
@@ -859,16 +725,11 @@ impl<TGraphContainer: ModuleGraphContainer>
       .fetch_with_options(
         specifier,
         FetchPermissionsOptionRef::Restricted(
-          if is_dynamic {
-            &self.permissions
-          } else {
-            &self.parent_permissions
+          match check_specifier_kind {
+            CheckSpecifierKind::Static => &self.permissions,
+            CheckSpecifierKind::Dynamic => &self.parent_permissions,
           },
-          if is_dynamic {
-            CheckSpecifierKind::Dynamic
-          } else {
-            CheckSpecifierKind::Static
-          },
+          check_specifier_kind,
         ),
         FetchOptions {
           local: FetchLocalOptions {
@@ -999,7 +860,7 @@ impl<TGraphContainer: ModuleGraphContainer>
   fn resolve_referrer(
     &self,
     referrer: &str,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> Result<ModuleSpecifier, ResolveReferrerError> {
     let referrer = if referrer.is_empty() && self.shared.is_repl {
       // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
       // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
@@ -1008,19 +869,16 @@ impl<TGraphContainer: ModuleGraphContainer>
       referrer
     };
 
-    if deno_core::specifier_has_uri_scheme(referrer) {
-      deno_core::resolve_url(referrer).map_err(|e| e.into())
+    Ok(if deno_path_util::specifier_has_uri_scheme(referrer) {
+      deno_core::resolve_url(referrer)?
     } else if referrer == "." {
       // main module, use the initial cwd
-      deno_core::resolve_path(referrer, &self.shared.initial_cwd)
-        .map_err(|e| JsErrorBox::from_err(e).into())
+      deno_path_util::resolve_path(referrer, &self.shared.initial_cwd)?
     } else {
       // this cwd check is slow, so try to avoid it
-      let cwd = std::env::current_dir()
-        .map_err(|e| JsErrorBox::from_err(UnableToGetCwdError(e)))?;
-      deno_core::resolve_path(referrer, &cwd)
-        .map_err(|e| JsErrorBox::from_err(e).into())
-    }
+      let cwd = std::env::current_dir().map_err(UnableToGetCwdError)?;
+      deno_path_util::resolve_path(referrer, &cwd)?
+    })
   }
 
   #[allow(clippy::result_large_err)]
@@ -1047,7 +905,9 @@ impl<TGraphContainer: ModuleGraphContainer>
       Ok(())
     }
 
-    let referrer = self.resolve_referrer(raw_referrer)?;
+    let referrer = self
+      .resolve_referrer(raw_referrer)
+      .map_err(JsErrorBox::from_err)?;
     let graph = self.graph_container.graph();
     let result = self.shared.resolver.resolve_with_graph(
       graph.as_ref(),
@@ -1078,15 +938,12 @@ impl<TGraphContainer: ModuleGraphContainer>
           match err.into_kind() {
             ResolveWithGraphErrorKind::Resolution(err) => {
               // todo(dsherret): why do we have a newline here? Document it.
-              return Err(
-                JsErrorBox::type_error(format!(
-                  "{}\n",
-                  err.to_string_with_range()
-                ))
-                .into(),
-              );
+              return Err(JsErrorBox::type_error(format!(
+                "{}\n",
+                err.to_string_with_range()
+              )));
             }
-            err => return Err(JsErrorBox::from_err(err).into()),
+            err => return Err(JsErrorBox::from_err(err)),
           }
         }
       }
@@ -1149,7 +1006,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    is_dynamic: bool,
+    _is_dynamic: bool,
     requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
     let inner = self.0.clone();
@@ -1168,7 +1025,6 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           .load_inner(
             &specifier,
             maybe_referrer.as_ref(),
-            is_dynamic,
             &requested_module_type,
           )
           .await
@@ -1322,7 +1178,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     std::future::ready(()).boxed_local()
   }
 
-  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<'_, [u8]>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
       // we should only be looking for emits for schemes that denote external
@@ -1334,7 +1190,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let source = self
       .0
       .shared
-      .prepared_module_loader
+      .module_loader
       .load_prepared_module_for_source_map_sync(&graph, &specifier)
       .ok()??;
     source_map_from_code(source.source.as_bytes()).map(Cow::Owned)
@@ -1421,6 +1277,7 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
 struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+  memory_files: Arc<MemoryFiles>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
   graph_container: TGraphContainer,
@@ -1435,12 +1292,12 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
-    path: &'a Path,
+    path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox> {
-    if let Ok(url) = deno_path_util::url_from_file_path(path) {
+    if let Ok(url) = deno_path_util::url_from_file_path(&path) {
       // allow reading if it's in the module graph
       if self.graph_container.graph().get(&url).is_some() {
-        return Ok(Cow::Borrowed(path));
+        return Ok(path);
       }
     }
     self
@@ -1452,13 +1309,24 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   fn load_text_file_lossy(
     &self,
     path: &Path,
-  ) -> Result<Cow<'static, str>, JsErrorBox> {
+  ) -> Result<FastString, JsErrorBox> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
-    let text = self
-      .sys
-      .fs_read_to_string_lossy(path)
-      .map_err(JsErrorBox::from_err)?;
+    let text_result = self.sys.fs_read_to_string_lossy(path);
+    let text = match text_result {
+      Ok(text) => text,
+      Err(err) => {
+        // only bother on error for performance reasons
+        if let Some(file) = deno_path_util::url_from_file_path(path)
+          .ok()
+          .and_then(|s| self.memory_files.get(&s))
+        {
+          Cow::Owned(String::from_utf8_lossy(&file.source).into_owned())
+        } else {
+          return Err(JsErrorBox::from_err(err));
+        }
+      }
+    };
     if media_type.is_emittable() {
       let specifier = deno_path_util::url_from_file_path(path)
         .map_err(JsErrorBox::from_err)?;
@@ -1467,9 +1335,9 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           specifier,
         }));
       }
-      self
+      let text = self
         .emitter
-        .emit_parsed_source_sync(
+        .maybe_emit_source_sync(
           &specifier,
           media_type,
           // this is probably not super accurate due to require esm, but probably ok.
@@ -1478,17 +1346,20 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           ModuleKind::Cjs,
           &text.into(),
         )
-        .map(Cow::Owned)
-        .map_err(JsErrorBox::from_err)
+        .map_err(JsErrorBox::from_err)?;
+      Ok(text.into())
     } else {
-      Ok(text)
+      Ok(match text {
+        Cow::Borrowed(s) => FastString::from_static(s),
+        Cow::Owned(s) => s.into(),
+      })
     }
   }
 
   fn is_maybe_cjs(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<bool, ClosestPkgJsonError> {
+  ) -> Result<bool, PackageJsonLoadError> {
     let media_type = MediaType::from_specifier(specifier);
     self.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
@@ -1585,9 +1456,9 @@ impl EszipModuleLoader {
         );
         deno_core::ModuleLoadResponse::Sync(Ok(module_source))
       }
-      None => {
-        deno_core::ModuleLoadResponse::Sync(Err(ModuleLoaderError::NotFound))
-      }
+      None => deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::generic(
+        "Module not found",
+      ))),
     }
   }
 }
@@ -1610,7 +1481,7 @@ mod tests {
     let source = "const a = 'hello';";
     let parsed_source_cache = Arc::new(ParsedSourceCache::default());
     let parsed_source = parsed_source_cache
-      .remove_or_parse_module(&specifier, source.into(), MediaType::JavaScript)
+      .remove_or_parse_module(&specifier, MediaType::JavaScript, source.into())
       .unwrap();
     parsed_source_cache.set_parsed_source(specifier, parsed_source);
 

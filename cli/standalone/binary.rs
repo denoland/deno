@@ -392,14 +392,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
-        let snapshot = managed
-          .resolution()
-          .serialized_valid_snapshot_for_system(&self.npm_system_info);
-        if !snapshot.as_serialized().packages.is_empty() {
-          self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
-          Some(snapshot)
-        } else {
+        if graph.npm_packages.is_empty() {
           None
+        } else {
+          let snapshot = managed
+            .resolution()
+            .serialized_valid_snapshot_for_system(&self.npm_system_info);
+          if !snapshot.as_serialized().packages.is_empty() {
+            self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
+            Some(snapshot)
+          } else {
+            None
+          }
         }
       }
       CliNpmResolver::Byonm(_) => {
@@ -464,7 +468,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               _ => ModuleKind::Esm,
             };
             let (source, source_map) =
-              self.emitter.emit_parsed_source_for_deno_compile(
+              self.emitter.emit_source_for_deno_compile(
                 &m.specifier,
                 m.media_type,
                 module_kind,
@@ -584,14 +588,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       );
     }
 
-    if let Some(import_map) = self.workspace_resolver.maybe_import_map() {
-      if let Ok(file_path) = url_to_file_path(import_map.base_url()) {
-        if let Some(import_map_parent_dir) = file_path.parent() {
-          // tell the vfs about the import map's parent directory in case it
-          // falls outside what the root of where the VFS will be based
-          vfs.add_possible_min_root_dir(import_map_parent_dir);
-        }
-      }
+    if let Some(import_map) = self.workspace_resolver.maybe_import_map()
+      && let Ok(file_path) = url_to_file_path(import_map.base_url())
+      && let Some(import_map_parent_dir) = file_path.parent()
+    {
+      // tell the vfs about the import map's parent directory in case it
+      // falls outside what the root of where the VFS will be based
+      vfs.add_possible_min_root_dir(import_map_parent_dir);
     }
     if let Some(node_modules_dir) = self.npm_resolver.root_node_modules_path() {
       // ensure the vfs doesn't go below the node_modules directory's parent
@@ -748,6 +751,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         jsr_pkgs: self
           .workspace_resolver
           .jsr_packages()
+          .iter()
           .map(|pkg| SerializedResolverWorkspaceJsrPackage {
             relative_base: root_dir_url.specifier_key(&pkg.base).into_owned(),
             name: pkg.name.clone(),
@@ -867,10 +871,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             .resolution()
             .all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
+          let current_system = NpmSystemInfo::default();
           for package in packages {
             let folder =
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
-            builder.add_dir_recursive(&folder)?;
+            if !package.system.matches_system(&current_system)
+              && !folder.exists()
+            {
+              log::warn!(
+                "{} Ignoring 'npm:{}' because it was not present on the current system.",
+                crate::colors::yellow("Warning"),
+                package.id
+              );
+            } else {
+              builder.add_dir_recursive(&folder)?;
+            }
           }
           Ok(())
         }
@@ -886,7 +901,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           self
             .cli_options
             .workspace()
-            .root_dir()
+            .root_dir_url()
             .to_file_path()
             .unwrap(),
         );

@@ -7,6 +7,9 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
+use deno_maybe_sync::new_rc;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -20,13 +23,15 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
+use node_resolver::errors::NodeJsErrorCode;
+use node_resolver::errors::NodeJsErrorCoded;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
-use node_resolver::errors::PackageSubpathResolveError;
+use node_resolver::errors::PackageSubpathFromDenoModuleResolveError;
 use node_resolver::errors::TypesNotFoundError;
 use node_resolver::types_package_name;
 use thiserror::Error;
@@ -45,9 +50,6 @@ pub use self::managed::ManagedNpmResolver;
 use self::managed::ManagedNpmResolverCreateOptions;
 pub use self::managed::ManagedNpmResolverRc;
 use self::managed::create_managed_in_npm_pkg_checker;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
-use crate::sync::new_rc;
 
 mod byonm;
 mod local;
@@ -105,7 +107,7 @@ pub struct NodeModulesOutOfDateError {
 pub struct MissingPackageNodeModulesFolderError {
   pub package_json_path: PathBuf,
   // Don't bother displaying this error, so don't name it "source"
-  pub inner: PackageSubpathResolveError,
+  pub inner: PackageSubpathFromDenoModuleResolveError,
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -122,6 +124,11 @@ pub enum ResolveIfForNpmPackageErrorKind {
   #[error(transparent)]
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
 }
+
+#[derive(Debug, Error, JsError)]
+#[error("npm specifiers were requested; but --no-npm is specified")]
+#[class("generic")]
+pub struct NoNpmError;
 
 #[derive(Debug, JsError)]
 #[class(inherit)]
@@ -147,8 +154,9 @@ impl std::fmt::Display for ResolveNpmReqRefError {
 pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
 
 impl ResolveReqWithSubPathError {
-  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+  pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
       ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(err) => {
         err.inner.maybe_specifier()
       }
@@ -169,22 +177,39 @@ pub enum ResolveReqWithSubPathErrorKind {
   MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
   #[class(inherit)]
   #[error(transparent)]
+  NoNpm(NoNpmError),
+  #[class(inherit)]
+  #[error(transparent)]
   ResolvePkgFolderFromDenoReq(
     #[from] ContextedResolvePkgFolderFromDenoReqError,
   ),
   #[class(inherit)]
   #[error(transparent)]
-  PackageSubpathResolve(#[from] PackageSubpathResolveError),
+  PackageSubpathResolve(#[from] PackageSubpathFromDenoModuleResolveError),
 }
 
 impl ResolveReqWithSubPathErrorKind {
   pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
     match self {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
       ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_)
       | ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
       ResolveReqWithSubPathErrorKind::PackageSubpathResolve(
         package_subpath_resolve_error,
       ) => package_subpath_resolve_error.as_types_not_found(),
+    }
+  }
+
+  pub fn maybe_code(&self) -> Option<NodeJsErrorCode> {
+    match self {
+      ResolveReqWithSubPathErrorKind::NoNpm(_) => None,
+      ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(_) => {
+        None
+      }
+      ResolveReqWithSubPathErrorKind::ResolvePkgFolderFromDenoReq(_) => None,
+      ResolveReqWithSubPathErrorKind::PackageSubpathResolve(e) => {
+        Some(e.code())
+      }
     }
   }
 }
@@ -339,7 +364,7 @@ pub type NpmReqResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   NpmReqResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -490,16 +515,16 @@ impl<
                 .unwrap(),
               )
             };
-          if let Some(req) = maybe_definitely_typed_req {
-            if let Ok(resolved) = self.resolve_req_with_sub_path(
+          if let Some(req) = maybe_definitely_typed_req
+            && let Ok(resolved) = self.resolve_req_with_sub_path(
               &req,
               sub_path,
               referrer,
               resolution_mode,
               resolution_kind,
-            ) {
-              return Ok(resolved);
-            }
+            )
+          {
+            return Ok(resolved);
           }
         }
         if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
@@ -557,7 +582,7 @@ impl<
                 )
                 .into_box(),
               ),
-              PackageResolveErrorKind::ClosestPkgJson(_)
+              PackageResolveErrorKind::PkgJsonLoad(_)
               | PackageResolveErrorKind::InvalidModuleSpecifier(_)
               | PackageResolveErrorKind::ExportsResolve(_)
               | PackageResolveErrorKind::SubpathResolve(_) => Err(
@@ -591,22 +616,21 @@ impl<
                     }
                     if let NpmResolver::Byonm(byonm_npm_resolver) =
                       &self.npm_resolver
-                    {
-                      if byonm_npm_resolver
+                      && byonm_npm_resolver
                         .find_ancestor_package_json_with_dep(
                           package_name,
                           referrer,
                         )
                         .is_some()
-                      {
-                        return Err(
-                          ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(
-                            NodeModulesOutOfDateError {
-                              specifier: specifier.to_string(),
-                            },
-                          ).into_box(),
-                        );
-                      }
+                    {
+                      return Err(
+                        ResolveIfForNpmPackageErrorKind::NodeModulesOutOfDate(
+                          NodeModulesOutOfDateError {
+                            specifier: specifier.to_string(),
+                          },
+                        )
+                        .into_box(),
+                      );
                     }
                     Ok(None)
                   }

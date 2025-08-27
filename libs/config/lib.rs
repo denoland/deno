@@ -10,7 +10,7 @@ pub mod deno_json;
 #[cfg(feature = "deno_json")]
 pub mod glob;
 #[cfg(feature = "deno_json")]
-mod sync;
+pub mod import_map;
 #[cfg(feature = "deno_json")]
 mod util;
 #[cfg(feature = "workspace")]

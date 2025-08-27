@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
@@ -16,8 +15,9 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
+use deno_resolver::deno_json::CompilerOptionsParseError;
 use deno_resolver::deno_json::CompilerOptionsResolver;
-use deno_resolver::factory::WorkspaceDirectoryProvider;
+use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::graph::maybe_additional_sloppy_imports_message;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_terminal::colors;
@@ -65,9 +65,7 @@ pub enum CheckError {
   FailedTypeChecking(#[from] FailedTypeCheckingError),
   #[class(inherit)]
   #[error(transparent)]
-  ToMaybeJsxImportSourceConfig(
-    #[from] deno_config::workspace::ToMaybeJsxImportSourceConfigError,
-  ),
+  ToMaybeJsxImportSourceConfig(#[from] ToMaybeJsxImportSourceConfigError),
   #[class(inherit)]
   #[error(transparent)]
   TscExec(#[from] tsc::ExecError),
@@ -76,7 +74,7 @@ pub enum CheckError {
   CompilerOptionTypesDeserialize(#[from] CompilerOptionTypesDeserializeError),
   #[class(inherit)]
   #[error(transparent)]
-  CompilerOptionsParse(#[from] deno_json::CompilerOptionsParseError),
+  CompilerOptionsParse(#[from] CompilerOptionsParseError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -107,7 +105,6 @@ pub struct TypeChecker {
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
-  workspace_directory_provider: Arc<WorkspaceDirectoryProvider>,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
 }
@@ -122,7 +119,6 @@ impl TypeChecker {
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
-    workspace_directory_provider: Arc<WorkspaceDirectoryProvider>,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
   ) -> Self {
@@ -134,7 +130,6 @@ impl TypeChecker {
       node_resolver,
       npm_resolver,
       sys,
-      workspace_directory_provider,
       compiler_options_resolver,
       code_cache,
     }
@@ -184,7 +179,7 @@ impl TypeChecker {
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<DiagnosticsByFolderIterator, CheckError> {
+  ) -> Result<DiagnosticsByFolderIterator<'_>, CheckError> {
     fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
       match resolver {
         CliNpmResolver::Byonm(_) => {
@@ -281,7 +276,7 @@ impl TypeChecker {
         .clone();
       let group_key = (compiler_options, imports.clone());
       let group = groups_by_key.entry(group_key).or_insert_with(|| {
-        let dir = self.workspace_directory_provider.for_specifier(root);
+        let dir = self.cli_options.workspace().resolve_member_dir(root);
         CheckGroup {
           roots: Default::default(),
           compiler_options,
@@ -289,8 +284,9 @@ impl TypeChecker {
           // this is slightly hacky. It's used as the referrer for resolving
           // npm imports in the key
           referrer: self
-            .workspace_directory_provider
-            .for_specifier(root)
+            .cli_options
+            .workspace()
+            .resolve_member_dir(root)
             .maybe_deno_json()
             .map(|d| d.specifier.clone())
             .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
@@ -314,7 +310,7 @@ fn resolve_graph_imports_for_compiler_options_data(
     .sources
     .iter()
     .map(|s| &s.specifier)
-    .filter_map(|s| graph.imports.get(s))
+    .filter_map(|s| graph.imports.get(s.as_ref()))
     .flat_map(|i| i.dependencies.values())
     .filter_map(|d| Some(graph.resolve(d.get_type().or_else(|| d.get_code())?)))
     .cloned()
@@ -410,7 +406,7 @@ impl Iterator for DiagnosticsByFolderRealIterator<'_> {
 /// Converts the list of ambient module names to regex string
 pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
   let mut regex_string = String::with_capacity(ambient_modules.len() * 8);
-  regex_string.push('(');
+  regex_string.push_str("^(");
   let last = ambient_modules.len() - 1;
   for (idx, part) in ambient_modules.iter().enumerate() {
     let trimmed = part.trim_matches('"');
@@ -421,7 +417,7 @@ pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
       regex_string.push('|');
     }
   }
-  regex_string.push(')');
+  regex_string.push_str(")$");
   regex_string
 }
 
@@ -481,11 +477,11 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     if !self.options.reload && !missing_diagnostics.has_diagnostic() {
       // do not type check if we know this is type checked
-      if let Some(check_hash) = maybe_check_hash {
-        if self.type_check_cache.has_check_hash(check_hash) {
-          log::debug!("Already type checked {}", &check_group.referrer);
-          return Ok(Default::default());
-        }
+      if let Some(check_hash) = maybe_check_hash
+        && self.type_check_cache.has_check_hash(check_hash)
+      {
+        log::debug!("Already type checked {}", &check_group.referrer);
+        return Ok(Default::default());
       }
     }
 
@@ -553,10 +549,10 @@ impl DiagnosticsByFolderRealIterator<'_> {
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
     let mut diagnostics = missing_diagnostics.filter(|d| {
-      if let Some(ambient_modules_regex) = &ambient_modules_regex {
-        if let Some(missing_specifier) = &d.missing_specifier {
-          return !ambient_modules_regex.is_match(missing_specifier);
-        }
+      if let Some(ambient_modules_regex) = &ambient_modules_regex
+        && let Some(missing_specifier) = &d.missing_specifier
+      {
+        return !ambient_modules_regex.is_match(missing_specifier);
       }
       true
     });
@@ -568,10 +564,10 @@ impl DiagnosticsByFolderRealIterator<'_> {
         .set_tsbuildinfo(first_root, &tsbuildinfo);
     }
 
-    if !diagnostics.has_diagnostic() {
-      if let Some(check_hash) = maybe_check_hash {
-        self.type_check_cache.add_check_hash(check_hash);
-      }
+    if !diagnostics.has_diagnostic()
+      && let Some(check_hash) = maybe_check_hash
+    {
+      self.type_check_cache.add_check_hash(check_hash);
     }
 
     log::debug!("{}", response.stats);
@@ -726,19 +722,19 @@ impl<'a> GraphWalker<'a> {
         Ok(Some(module)) => module,
         Ok(None) => continue,
         Err(err) => {
-          if !is_dynamic {
-            if let Some(err) = module_error_for_tsc_diagnostic(self.sys, err) {
-              self.missing_diagnostics.push(
-                tsc::Diagnostic::from_missing_error(
-                  err.specifier.as_str(),
-                  err.maybe_range,
-                  maybe_additional_sloppy_imports_message(
-                    self.sys,
-                    err.specifier,
-                  ),
+          if !is_dynamic
+            && let Some(err) = module_error_for_tsc_diagnostic(self.sys, err)
+          {
+            self
+              .missing_diagnostics
+              .push(tsc::Diagnostic::from_missing_error(
+                err.specifier.as_str(),
+                err.maybe_range,
+                maybe_additional_sloppy_imports_message(
+                  self.sys,
+                  err.specifier,
                 ),
-              );
-            }
+              ));
           }
           continue;
         }
@@ -792,21 +788,29 @@ impl<'a> GraphWalker<'a> {
               deno_graph::Resolution::Ok(resolution) => {
                 self.handle_specifier(&resolution.specifier, dep.is_dynamic);
               }
-              deno_graph::Resolution::Err(resolution_error) => {
-                if let Some(err) =
-                  resolution_error_for_tsc_diagnostic(resolution_error)
-                {
-                  self.missing_diagnostics.push(
-                    tsc::Diagnostic::from_missing_error(
-                      err.specifier,
-                      err.maybe_range,
-                      None,
-                    ),
-                  );
-                }
+              deno_graph::Resolution::Err(_) | deno_graph::Resolution::None => {
               }
-              deno_graph::Resolution::None => {}
             }
+          }
+
+          // only surface the code error if there's no type
+          let dep_to_check_error = if dep.maybe_type.is_none() {
+            &dep.maybe_code
+          } else {
+            &dep.maybe_type
+          };
+          if let deno_graph::Resolution::Err(resolution_error) =
+            dep_to_check_error
+            && let Some(err) =
+              resolution_error_for_tsc_diagnostic(resolution_error)
+          {
+            self
+              .missing_diagnostics
+              .push(tsc::Diagnostic::from_missing_error(
+                err.specifier,
+                err.maybe_range,
+                None,
+              ));
           }
         }
       }
@@ -856,17 +860,17 @@ impl<'a> GraphWalker<'a> {
           | MediaType::Sql
           | MediaType::Unknown => None,
         };
-        if result.is_some() {
-          if let Some(hasher) = &mut self.maybe_hasher {
-            hasher.write_str(module.specifier.as_str());
-            hasher.write_str(
-              // the fast check module will only be set when publishing
-              module
-                .fast_check_module()
-                .map(|s| s.source.as_ref())
-                .unwrap_or(&module.source.text),
-            );
-          }
+        if result.is_some()
+          && let Some(hasher) = &mut self.maybe_hasher
+        {
+          hasher.write_str(module.specifier.as_str());
+          hasher.write_str(
+            // the fast check module will only be set when publishing
+            module
+              .fast_check_module()
+              .map(|s| s.source.as_ref())
+              .unwrap_or(&module.source.text),
+          );
         }
         result
       }
@@ -1090,6 +1094,6 @@ mod test {
       "*.css".to_string(),
       "$virtual/module".to_string(),
     ]);
-    assert_eq!(result, r"(foo|.*\.css|\$virtual/module)");
+    assert_eq!(result, r"^(foo|.*\.css|\$virtual/module)$");
   }
 }

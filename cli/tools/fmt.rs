@@ -237,7 +237,7 @@ fn collect_fmt_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), files)
+  .collect_file_patterns(&CliSys::default(), &files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -1237,12 +1237,12 @@ fn get_typescript_config_builder(
     builder.indent_width(indent_width);
   }
 
-  if let Some(single_quote) = options.single_quote {
-    if single_quote {
-      builder.quote_style(
-        dprint_plugin_typescript::configuration::QuoteStyle::PreferSingle,
-      );
-    }
+  if let Some(single_quote) = options.single_quote
+    && single_quote
+  {
+    builder.quote_style(
+      dprint_plugin_typescript::configuration::QuoteStyle::PreferSingle,
+    );
   }
 
   if let Some(semi_colons) = options.semi_colons {
@@ -1619,7 +1619,7 @@ pub struct FileContents<'a> {
   pub had_bom: bool,
 }
 
-fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
+fn read_file_contents(file_path: &Path) -> Result<FileContents<'_>, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
@@ -1798,7 +1798,7 @@ mod test {
   #[test]
   fn test_format_ensure_stable_unstable_format() {
     let err = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
+      Path::new("mod.ts"),
       &FileContents {
         had_bom: false,
         text: "1".into(),
@@ -1815,7 +1815,7 @@ mod test {
   #[test]
   fn test_format_ensure_stable_error_first() {
     let err = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
+      Path::new("mod.ts"),
       &FileContents {
         had_bom: false,
         text: "1".into(),
@@ -1830,7 +1830,7 @@ mod test {
   #[test]
   fn test_format_ensure_stable_error_second() {
     let err = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
+      Path::new("mod.ts"),
       &FileContents {
         had_bom: false,
         text: "1".into(),
@@ -1853,7 +1853,7 @@ mod test {
   #[test]
   fn test_format_stable_after_two() {
     let result = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
+      Path::new("mod.ts"),
       &FileContents {
         had_bom: false,
         text: "1".into(),
@@ -1876,7 +1876,7 @@ mod test {
   #[test]
   fn test_single_quote_true_prefers_single_quote() {
     let file_text = format_file(
-      &PathBuf::from("test.ts"),
+      Path::new("test.ts"),
       &FileContents {
         had_bom: false,
         text: "console.log(\"there's\");\nconsole.log('hi');\nconsole.log(\"bye\")\n".into(),
@@ -1900,7 +1900,7 @@ mod test {
   #[test]
   fn test_formated_removes_utf8_bom() {
     let file_text = format_file(
-      &PathBuf::from("test.ts"),
+      Path::new("test.ts"),
       &FileContents {
         had_bom: true,
         text: "let a = 1;".into(),

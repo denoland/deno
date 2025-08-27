@@ -12,17 +12,14 @@ use deno_ast::SourceTextInfo;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::resolve_url_or_path;
 use deno_core::v8;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_from_file_path;
 use deno_runtime::WorkerExecutionMode;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
 use deno_runtime::worker::MainWorker;
 use tokio::sync::mpsc;
@@ -148,12 +145,7 @@ async fn create_plugin_runner_inner(
   let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$lint.mts", cli_options.initial_cwd()).unwrap();
-  let perm_parser = factory.permission_desc_parser()?;
-  let permissions = Permissions::from_options(
-    perm_parser.as_ref(),
-    &cli_options.permissions_options(),
-  )?;
-  let permissions = PermissionsContainer::new(perm_parser.clone(), permissions);
+  let permissions = factory.root_permissions_container()?.clone();
   // let npm_resolver = factory.npm_resolver().await?.clone();
   // let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
@@ -360,8 +352,7 @@ impl PluginHost {
 
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(&mut tc_scope, exception);
-      let core_err = CoreError::Js(error);
-      return Err(core_err.into());
+      return Err(error.into());
     }
     drop(tc_scope);
     Ok(())

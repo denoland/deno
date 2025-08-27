@@ -23,14 +23,12 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
-mod sync;
-
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonRc = crate::sync::MaybeArc<PackageJson>;
+pub type PackageJsonRc = deno_maybe_sync::MaybeArc<PackageJson>;
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonDepsRc = crate::sync::MaybeArc<PackageJsonDeps>;
+pub type PackageJsonDepsRc = deno_maybe_sync::MaybeArc<PackageJsonDeps>;
 #[allow(clippy::disallowed_types)]
-type PackageJsonDepsRcCell = crate::sync::MaybeOnceLock<PackageJsonDepsRc>;
+type PackageJsonDepsRcCell = deno_maybe_sync::MaybeOnceLock<PackageJsonDepsRc>;
 
 pub trait PackageJsonCache {
   fn get(&self, path: &Path) -> Option<PackageJsonRc>;
@@ -200,7 +198,7 @@ pub enum PackageJsonLoadError {
     source: serde_json::Error,
   },
   #[error(
-    "\"exports\" cannot contains some keys starting with '.' and some not.\nThe exports object must either be an object of package subpath keys\nor an object of main entry condition name keys only."
+    "\"exports\" cannot contain some keys starting with '.' and some not.\nThe exports object must either be an object of package subpath keys\nor an object of main entry condition name keys only."
   )]
   #[class(type)]
   InvalidExports,
@@ -224,6 +222,7 @@ pub struct PackageJson {
   pub types: Option<String>,
   pub types_versions: Option<Map<String, Value>>,
   pub dependencies: Option<IndexMap<String, String>>,
+  pub bundle_dependencies: Option<Vec<String>>,
   pub dev_dependencies: Option<IndexMap<String, String>>,
   pub peer_dependencies: Option<IndexMap<String, String>>,
   pub peer_dependencies_meta: Option<Value>,
@@ -248,7 +247,7 @@ impl PackageJson {
         Ok(file_text) => {
           let pkg_json =
             PackageJson::load_from_string(path.to_path_buf(), &file_text)?;
-          let pkg_json = crate::sync::new_rc(pkg_json);
+          let pkg_json = deno_maybe_sync::new_rc(pkg_json);
           if let Some(cache) = maybe_cache {
             cache.set(path.to_path_buf(), pkg_json.clone());
           }
@@ -281,6 +280,7 @@ impl PackageJson {
         imports: None,
         bin: None,
         dependencies: None,
+        bundle_dependencies: None,
         dev_dependencies: None,
         peer_dependencies: None,
         peer_dependencies_meta: None,
@@ -394,6 +394,10 @@ impl PackageJson {
     let dev_dependencies = package_json
       .remove("devDependencies")
       .and_then(parse_string_map);
+    let bundle_dependencies = package_json
+      .remove("bundleDependencies")
+      .or_else(|| package_json.remove("bundledDependencies"))
+      .and_then(parse_string_array);
     let peer_dependencies = package_json
       .remove("peerDependencies")
       .and_then(parse_string_map);
@@ -449,6 +453,7 @@ impl PackageJson {
       bin,
       dependencies,
       dev_dependencies,
+      bundle_dependencies,
       peer_dependencies,
       peer_dependencies_meta,
       optional_dependencies,
@@ -800,6 +805,9 @@ mod test {
       "optionalDependencies": {
         "optional": "1.1"
       },
+      "bundleDependencies": [
+        "name"
+      ],
       "peerDependencies": {
         "peer": "1.0"
       },

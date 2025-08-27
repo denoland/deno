@@ -275,6 +275,7 @@ pub enum DenoTaskLifecycleScriptsError {
 }
 
 pub struct DenoTaskLifeCycleScriptsExecutor {
+  progress_bar: ProgressBar,
   npm_resolver: ManagedNpmResolverRc<CliSys>,
 }
 
@@ -348,10 +349,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
           {
             continue;
           }
-          let pb = ProgressBar::new(
-            crate::util::progress_bar::ProgressBarStyle::TextOnly,
-          );
-          let _guard = pb.update_with_prompt(
+          let _guard = self.progress_bar.update_with_prompt(
             ProgressMessagePrompt::Initialize,
             &format!("{}: running '{script_name}' script", package.id.nv),
           );
@@ -444,8 +442,14 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
 }
 
 impl DenoTaskLifeCycleScriptsExecutor {
-  pub fn new(npm_resolver: ManagedNpmResolverRc<CliSys>) -> Self {
-    Self { npm_resolver }
+  pub fn new(
+    npm_resolver: ManagedNpmResolverRc<CliSys>,
+    progress_bar: ProgressBar,
+  ) -> Self {
+    Self {
+      npm_resolver,
+      progress_bar,
+    }
   }
 
   // take in all (non copy) packages from snapshot,
