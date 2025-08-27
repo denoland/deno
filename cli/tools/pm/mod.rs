@@ -896,6 +896,16 @@ async fn npm_install_after_modification(
   // npm install
   cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
 
+  let install_reporter = cli_factory.install_reporter()?.unwrap().clone();
+  let workspace = cli_factory.workspace_resolver().await?;
+  let npm_resolver = cli_factory.npm_resolver().await?;
+  super::installer::print_install_report(
+    &cli_factory.sys(),
+    &install_reporter,
+    workspace,
+    npm_resolver,
+  );
+
   if let Some(lockfile) = cli_factory.maybe_lockfile().await? {
     lockfile.write_if_changed()?;
   }

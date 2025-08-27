@@ -238,6 +238,7 @@ impl<
       LocalLifecycleScripts {
         sys: &self.sys,
         deno_local_registry_dir: &deno_local_registry_dir,
+        install_reporter: self.install_reporter.clone(),
       },
     )));
     let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
@@ -862,6 +863,7 @@ impl<
         LocalLifecycleScripts {
           sys: &self.sys,
           deno_local_registry_dir: &deno_local_registry_dir,
+          install_reporter: self.install_reporter.clone(),
         },
       ),
     );
@@ -1027,6 +1029,7 @@ fn ran_scripts_file(
 struct LocalLifecycleScripts<'a, TSys: FsOpen + FsMetadata> {
   sys: &'a TSys,
   deno_local_registry_dir: &'a Path,
+  install_reporter: Option<Arc<dyn crate::InstallReporter>>,
 }
 
 impl<TSys: FsOpen + FsMetadata> LocalLifecycleScripts<'_, TSys> {
@@ -1044,23 +1047,33 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
     &self,
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
   ) -> Result<(), std::io::Error> {
+    use std::fmt::Write;
+    use std::writeln;
     if !packages.is_empty() {
-      log::warn!(
+      let mut output = String::new();
+      let _ = writeln!(
+        &mut output,
         "{} The following packages contained npm lifecycle scripts ({}) that were not executed:",
         colors::yellow("Warning"),
-        colors::gray("preinstall/install/postinstall")
+        colors::gray("preinstall/install/postinstall"),
       );
 
       for (package, _) in packages {
-        log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
+        let _ = writeln!(
+          &mut output,
+          "┠─ {}",
+          colors::gray(format!("npm:{}", package.id.nv))
+        );
       }
 
-      log::warn!("┃");
-      log::warn!(
+      let _ = writeln!(&mut output, "┃");
+      let _ = writeln!(
+        &mut output,
         "┠─ {}",
         colors::italic("This may cause the packages to not work correctly.")
       );
-      log::warn!(
+      let _ = writeln!(
+        &mut output,
         "┖─ {}",
         colors::italic(
           "To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"
@@ -1071,7 +1084,8 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
         .map(|(p, _)| format!("npm:{}", p.id.nv))
         .collect::<Vec<_>>()
         .join(",");
-      log::warn!(
+      let _ = writeln!(
+        &mut output,
         "   {}",
         colors::bold(format!(
           "deno install --allow-scripts={}",
@@ -1079,9 +1093,29 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
         ))
       );
 
-      for (package, _) in packages {
-        let _ignore_err =
-          create_initialized_file(self.sys, &self.warned_scripts_file(package));
+      if let Some(install_reporter) = &self.install_reporter {
+        let paths = packages
+          .iter()
+          .map(|(package, _)| self.warned_scripts_file(package))
+          .collect::<Vec<_>>();
+        install_reporter.scripts_not_run_warning(
+          crate::lifecycle_scripts::LifecycleScriptsWarning::new(
+            output,
+            Box::new(move |sys| {
+              for path in paths {
+                let _ignore_err = create_initialized_file(sys, &path);
+              }
+            }),
+          ),
+        );
+      } else {
+        log::warn!("{}", output);
+        for (package, _) in packages {
+          let _ignore_err = create_initialized_file(
+            self.sys,
+            &self.warned_scripts_file(package),
+          );
+        }
       }
     }
     Ok(())
@@ -1377,12 +1411,12 @@ fn write_initialized_file(
   }
 }
 
-fn create_initialized_file(
-  sys: &impl FsOpen,
+fn create_initialized_file<F: sys_traits::boxed::FsOpenBoxed + ?Sized>(
+  sys: &F,
   path: &Path,
 ) -> Result<(), JsErrorBox> {
   sys
-    .fs_open(path, &sys_traits::OpenOptions::new_write())
+    .fs_open_boxed(path, &sys_traits::OpenOptions::new_write())
     .map(|_| ())
     .map_err(|err| {
       JsErrorBox::generic(format!(

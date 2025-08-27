@@ -90,6 +90,11 @@ pub trait InstallProgressReporter:
   fn blocking(&self, message: &str);
   fn initializing(&self, nv: &PackageNv);
   fn initialized(&self, nv: &PackageNv);
+
+  fn scripts_not_run_warning(
+    &self,
+    warning: crate::lifecycle_scripts::LifecycleScriptsWarning,
+  );
 }
 pub trait Reporter:
   std::fmt::Debug + Send + Sync + 'static + dyn_clone::DynClone
@@ -207,6 +212,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           npm_resolution.clone(),
           lifecycle_scripts,
           system_info,
+          install_reporter,
         )),
       };
     Self {
