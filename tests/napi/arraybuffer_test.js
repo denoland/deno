@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assert, assertEquals, loadTestLibrary } from "./common.js";
+import { Buffer } from "node:buffer";
 
 const typedarray = loadTestLibrary();
 
@@ -21,4 +22,9 @@ Deno.test("napi arraybuffer is detached", function () {
   [2, {}, "foo", null, undefined, new Uint8Array(10)].forEach((value) => {
     assert(!typedarray.is_detached(value));
   });
+});
+
+Deno.test("napi buffer finalizer may be null", () => {
+  const buf = typedarray.test_static_external_buffer();
+  assertEquals(buf, Buffer.from([1, 2, 3]));
 });

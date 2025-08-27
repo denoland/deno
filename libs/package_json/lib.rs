@@ -222,6 +222,7 @@ pub struct PackageJson {
   pub types: Option<String>,
   pub types_versions: Option<Map<String, Value>>,
   pub dependencies: Option<IndexMap<String, String>>,
+  pub bundle_dependencies: Option<Vec<String>>,
   pub dev_dependencies: Option<IndexMap<String, String>>,
   pub peer_dependencies: Option<IndexMap<String, String>>,
   pub peer_dependencies_meta: Option<Value>,
@@ -279,6 +280,7 @@ impl PackageJson {
         imports: None,
         bin: None,
         dependencies: None,
+        bundle_dependencies: None,
         dev_dependencies: None,
         peer_dependencies: None,
         peer_dependencies_meta: None,
@@ -392,6 +394,10 @@ impl PackageJson {
     let dev_dependencies = package_json
       .remove("devDependencies")
       .and_then(parse_string_map);
+    let bundle_dependencies = package_json
+      .remove("bundleDependencies")
+      .or_else(|| package_json.remove("bundledDependencies"))
+      .and_then(parse_string_array);
     let peer_dependencies = package_json
       .remove("peerDependencies")
       .and_then(parse_string_map);
@@ -447,6 +453,7 @@ impl PackageJson {
       bin,
       dependencies,
       dev_dependencies,
+      bundle_dependencies,
       peer_dependencies,
       peer_dependencies_meta,
       optional_dependencies,
@@ -798,6 +805,9 @@ mod test {
       "optionalDependencies": {
         "optional": "1.1"
       },
+      "bundleDependencies": [
+        "name"
+      ],
       "peerDependencies": {
         "peer": "1.0"
       },

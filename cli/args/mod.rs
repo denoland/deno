@@ -1151,8 +1151,8 @@ impl CliOptions {
     &self.flags.subcommand
   }
 
-  pub fn strace_ops(&self) -> &Option<Vec<String>> {
-    &self.flags.strace_ops
+  pub fn trace_ops(&self) -> &Option<Vec<String>> {
+    &self.flags.trace_ops
   }
 
   pub fn take_binary_npm_command_name(&self) -> Option<String> {
