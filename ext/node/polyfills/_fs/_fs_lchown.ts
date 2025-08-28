@@ -11,7 +11,6 @@ import {
   getValidatedPath,
   kMaxUserId,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import * as pathModule from "node:path";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
@@ -32,7 +31,7 @@ export function lchown(
   validateInteger(uid, "uid", -1, kMaxUserId);
   validateInteger(gid, "gid", -1, kMaxUserId);
 
-  op_node_lchown(pathModule.toNamespacedPath(path), uid, gid).then(
+  op_node_lchown(path, uid, gid).then(
     () => callback(null),
     callback,
   );
@@ -57,5 +56,5 @@ export function lchownSync(
   validateInteger(uid, "uid", -1, kMaxUserId);
   validateInteger(gid, "gid", -1, kMaxUserId);
 
-  op_node_lchown_sync(pathModule.toNamespacedPath(path), uid, gid);
+  op_node_lchown_sync(path, uid, gid);
 }
