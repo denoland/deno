@@ -310,11 +310,26 @@ interface WritableLikeHandle {
   setKeepAlive?(v: boolean): void;
 
   // Node stream_base entrypoints
-  writeBuffer(req: { oncomplete: (status: number) => void }, data: Uint8Array): number;
-  writeUtf8String(req: { oncomplete: (status: number) => void }, data: string): number;
-  writeAsciiString(req: { oncomplete: (status: number) => void }, data: string): number;
-  writeLatin1String(req: { oncomplete: (status: number) => void }, data: string): number;
-  writeUcs2String(req: { oncomplete: (status: number) => void }, data: string): number;
+  writeBuffer(
+    req: { oncomplete: (status: number) => void },
+    data: Uint8Array,
+  ): number;
+  writeUtf8String(
+    req: { oncomplete: (status: number) => void },
+    data: string,
+  ): number;
+  writeAsciiString(
+    req: { oncomplete: (status: number) => void },
+    data: string,
+  ): number;
+  writeLatin1String(
+    req: { oncomplete: (status: number) => void },
+    data: string,
+  ): number;
+  writeUcs2String(
+    req: { oncomplete: (status: number) => void },
+    data: string,
+  ): number;
 
   // used in _initSocketHandle if a user buffer is present
   useUserBuffer?(buf: Uint8Array): void;
@@ -329,27 +344,34 @@ interface WritableLikeHandle {
  * - fd=0 -> unsupported for writes (fail synchronously)
  */
 function createStdioHandle(fd: number): WritableLikeHandle {
-  const writer: Deno.WriterSync | null =
-    fd === 1 ? Deno.stdout : (fd === 2 ? Deno.stderr : null);
+  const writer: Deno.WriterSync | null = fd === 1
+    ? Deno.stdout
+    : (fd === 2 ? Deno.stderr : null);
 
   let _bytesWritten = 0;
 
-  const complete = (req: { oncomplete: (status: number) => void }, status: number) => {
+  const complete = (
+    req: { oncomplete: (status: number) => void; async?: boolean },
+    status: number,
+  ) => {
     // Ensure the stream layer treats this as a synchronous completion.
-    (req as any).async = false;
+    req.async = false;
     req.oncomplete(status);
   };
 
-  const doWrite = (req: { oncomplete: (status: number) => void }, buf: Uint8Array): number => {
+  const doWrite = (
+    req: { oncomplete: (status: number) => void; async?: boolean },
+    buf: Uint8Array,
+  ): number => {
     try {
       if (!writer) {
         // stdin or unknown fd: fail synchronously
         complete(req, -1);
         return 0;
       }
-      writer.writeSync(buf);           // synchronous write
+      writer.writeSync(buf); // synchronous write
       _bytesWritten += buf.byteLength; // update counter
-      complete(req, 0);                // success
+      complete(req, 0); // success
       return 0;
     } catch {
       complete(req, -1);
@@ -357,29 +379,40 @@ function createStdioHandle(fd: number): WritableLikeHandle {
     }
   };
 
-  const writeUtf8   = (req: { oncomplete: (status: number) => void }, s: string) => {
+  const writeUtf8 = (
+    req: { oncomplete: (status: number) => void; async?: boolean },
+    s: string,
+  ) => {
     // Lazy-initialize TextEncoder on first use, avoid creating a new instance for every write
     if (!textEncoder) {
       textEncoder = new TextEncoder();
     }
     return doWrite(req, textEncoder.encode(s));
   };
-  const writeLatin1 = (req: { oncomplete: (status: number) => void }, s: string) =>
-    doWrite(req, Buffer.from(s, "latin1"));
-  const writeUcs2   = (req: { oncomplete: (status: number) => void }, s: string) =>
-    doWrite(req, Buffer.from(s, "ucs2"));
+  const writeLatin1 = (
+    req: { oncomplete: (status: number) => void; async?: boolean },
+    s: string,
+  ) => doWrite(req, Buffer.from(s, "latin1"));
+  const writeUcs2 = (
+    req: { oncomplete: (status: number) => void; async?: boolean },
+    s: string,
+  ) => doWrite(req, Buffer.from(s, "ucs2"));
 
   return {
     // state
     reading: false,
     bytesRead: 0,
-    get bytesWritten() { return _bytesWritten; },
+    get bytesWritten() {
+      return _bytesWritten;
+    },
     writeQueueSize: 0,
     onread: undefined,
 
     // lifecycle
     getAsyncId: () => 0,
-    close: (cb?: () => void) => { cb?.(); }, // sync close
+    close: (cb?: () => void) => {
+      cb?.();
+    }, // sync close
     ref: () => {},
     unref: () => {},
 
