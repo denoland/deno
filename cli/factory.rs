@@ -1068,7 +1068,7 @@ impl CliFactory {
         .is_some(),
       inspect_brk: cli_options.inspect_brk().is_some(),
       inspect_wait: cli_options.inspect_wait().is_some(),
-      strace_ops: cli_options.strace_ops().clone(),
+      trace_ops: cli_options.trace_ops().clone(),
       is_standalone: false,
       auto_serve: std::env::var("DENO_AUTO_SERVE").is_ok(),
       is_inspecting: cli_options.is_inspecting(),
