@@ -23,7 +23,6 @@ import process from "node:process";
 import { Buffer } from "node:buffer";
 import { Duplex, Readable, Writable } from "node:stream";
 
-
 function isWritableStream(object) {
   return object instanceof WritableStream;
 }
