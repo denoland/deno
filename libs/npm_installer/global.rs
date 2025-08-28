@@ -196,31 +196,35 @@ impl<TSys: NpmCacheSys> LifecycleScriptsStrategy
     &self,
     packages: &[(&NpmResolutionPackage, PathBuf)],
   ) -> std::result::Result<(), std::io::Error> {
+    log::warn!("{} {}", colors::yellow("╭"), colors::yellow_bold("Warning"));
+    log::warn!("{}", colors::yellow("│"));
     log::warn!(
-      "{} The following packages contained npm lifecycle scripts ({}) that were not executed:",
-      colors::yellow("Warning"),
-      colors::gray("preinstall/install/postinstall")
+      "{}  Ignored build scripts for packages:",
+      colors::yellow("│"),
     );
     for (package, _) in packages {
-      log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
+      log::warn!(
+        "{}  {}",
+        colors::yellow("│"),
+        colors::italic(format!("npm:{}", package.id.nv))
+      );
     }
-    log::warn!("┃");
+    log::warn!("{}", colors::yellow("│"));
     log::warn!(
-      "┠─ {}",
-      colors::italic("This may cause the packages to not work correctly.")
+      "{}  Lifecycle scripts are only supported when using a `node_modules` directory.",
+      colors::yellow("│")
     );
     log::warn!(
-      "┠─ {}",
-      colors::italic(
-        "Lifecycle scripts are only supported when using a `node_modules` directory."
-      )
+      "{}  Enable it in your deno config file:",
+      colors::yellow("│")
     );
     log::warn!(
-      "┠─ {}",
-      colors::italic("Enable it in your deno config file:")
+      "{}  {}",
+      colors::yellow("│"),
+      colors::bold("\"nodeModulesDir\": \"auto\"")
     );
-    log::warn!("┖─ {}", colors::bold("\"nodeModulesDir\": \"auto\""));
-
+    log::warn!("{}", colors::yellow("╰─"));
+    log::warn!("");
     for (package, _) in packages {
       let _ignore_err = self
         .sys
