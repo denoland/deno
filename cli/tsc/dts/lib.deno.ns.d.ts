@@ -3719,8 +3719,50 @@ declare namespace Deno {
    */
   export class ChildProcess implements AsyncDisposable {
     get stdin(): WritableStream<Uint8Array<ArrayBufferLike>>;
-    get stdout(): ReadableStreamWithCollectors;
-    get stderr(): ReadableStreamWithCollectors;
+    get stdout(): ReadableStream<Uint8Array<ArrayBufferLike>> & {
+      /**
+       * Reads the stream to completion. It returns a promise that resolves with
+       * an `ArrayBuffer`.
+       */
+      arrayBuffer(): Promise<ArrayBuffer>;
+      /**
+       * Reads the stream to completion. It returns a promise that resolves with
+       * a `Uint8Array`.
+       */
+      bytes(): Promise<Uint8Array>;
+      /**
+       * Reads the stream to completion. It returns a promise that resolves with
+       * the result of parsing the body text as JSON.
+       */
+      json(): Promise<any>;
+      /**
+       * Reads the stream to completion. It returns a promise that resolves with
+       * a `USVString` (text).
+       */
+      text(): Promise<string>;
+    };
+    get stderr(): ReadableStream<Uint8Array<ArrayBufferLike>> & {
+      /**
+       * Reads the stream to completion. It returns a promise that resolves with
+       * an `ArrayBuffer`.
+       */
+      arrayBuffer(): Promise<ArrayBuffer>;
+      /**
+       * Reads the stream to completion. It returns a promise that resolves with
+       * a `Uint8Array`.
+       */
+      bytes(): Promise<Uint8Array>;
+      /**
+       * Reads the stream to completion. It returns a promise that resolves with
+       * the result of parsing the body text as JSON.
+       */
+      json(): Promise<any>;
+      /**
+       * Reads the stream to completion. It returns a promise that resolves with
+       * a `USVString` (text).
+       */
+      text(): Promise<string>;
+    };
     readonly pid: number;
     /** Get the status of the child. */
     readonly status: Promise<CommandStatus>;
@@ -3744,30 +3786,6 @@ declare namespace Deno {
     unref(): void;
 
     [Symbol.asyncDispose](): Promise<void>;
-  }
-
-  export class ReadableStreamWithCollectors
-    extends ReadableStream<Uint8Array<ArrayBuffer>> {
-    /**
-     * Reads the stream to completion. It returns a promise that resolves with
-     * an `ArrayBuffer`.
-     */
-    arrayBuffer(): Promise<ArrayBuffer>;
-    /**
-     * Reads the stream to completion. It returns a promise that resolves with
-     * a `Uint8Array`.
-     */
-    bytes(): Promise<Uint8Array>;
-    /**
-     * Reads the stream to completion. It returns a promise that resolves with
-     * the result of parsing the body text as JSON.
-     */
-    json(): Promise<any>;
-    /**
-     * Reads the stream to completion. It returns a promise that resolves with
-     * a `USVString` (text).
-     */
-    text(): Promise<string>;
   }
 
   /**
