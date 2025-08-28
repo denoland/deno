@@ -936,6 +936,7 @@ function serveInner(options, handler) {
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
     loadBalanced: options[kLoadBalanced] ?? false,
+    backlog: options.backlog,
   };
 
   if (options.certFile || options.keyFile) {
