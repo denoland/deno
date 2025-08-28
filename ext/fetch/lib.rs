@@ -1055,14 +1055,17 @@ pub fn create_http_client(
   user_agent: &str,
   options: CreateHttpClientOptions,
 ) -> Result<Client, HttpClientCreateError> {
-  let mut tls_config = deno_tls::create_client_config(
-    options.root_cert_store,
-    options.ca_certs,
-    options.unsafely_ignore_certificate_errors,
-    options.client_cert_chain_and_key.into(),
-    deno_tls::SocketUse::Http,
-  )
-  .map_err(HttpClientCreateError::Tls)?;
+  let mut tls_config =
+    deno_tls::create_client_config(deno_tls::TlsClientConfigOptions {
+      root_cert_store: options.root_cert_store,
+      ca_certs: options.ca_certs,
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors,
+      unsafely_disable_hostname_verification: false,
+      cert_chain_and_key: options.client_cert_chain_and_key.into(),
+      socket_use: deno_tls::SocketUse::Http,
+    })
+    .map_err(HttpClientCreateError::Tls)?;
 
   // Proxy TLS should not send ALPN
   tls_config.alpn_protocols.clear();

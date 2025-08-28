@@ -87,8 +87,8 @@ export class TLSSocket extends net.Socket {
 
     const cert = tlsOptions?.secureContext?.cert;
     const key = tlsOptions?.secureContext?.key;
-    const hasTlsKey = key !== undefined &&
-      cert !== undefined;
+    const hasTlsKey = key != undefined &&
+      cert != undefined;
     const keyPair = hasTlsKey
       ? op_tls_key_static(cert, key)
       : op_tls_key_null();
@@ -112,6 +112,17 @@ export class TLSSocket extends net.Socket {
     tlsOptions.caCerts = caCerts;
     tlsOptions.alpnProtocols = opts.ALPNProtocols;
     tlsOptions.rejectUnauthorized = opts.rejectUnauthorized !== false;
+
+    try {
+      if (
+        opts.checkServerIdentity &&
+        typeof opts.checkServerIdentity == "function" &&
+        opts.checkServerIdentity() == undefined
+      ) {
+        // If checkServerIdentity is no-op, we disable hostname verification.
+        tlsOptions.unsafelyDisableHostnameVerification = true;
+      }
+    } catch { /* pass */ }
 
     super({
       handle: _wrapHandle(tlsOptions, socket),
