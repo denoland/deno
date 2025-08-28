@@ -1007,7 +1007,7 @@ pub async fn run(
     has_node_modules_dir,
     inspect_brk: false,
     inspect_wait: false,
-    strace_ops: None,
+    trace_ops: None,
     is_inspecting: false,
     is_standalone: true,
     auto_serve: false,
