@@ -32,7 +32,6 @@ import {
   SymbolAsyncDispose,
 } from "ext:deno_web/00_infra.js";
 import { packageData } from "ext:deno_fetch/22_body.js";
-import { TextLineStream } from "ext:deno_fetch/27_eventsource.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   ReadableStream,
