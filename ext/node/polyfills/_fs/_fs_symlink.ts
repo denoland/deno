@@ -19,21 +19,29 @@ export type SymlinkType = "file" | "dir" | "junction";
 export function symlink(
   target: string | Buffer | URL,
   path: string | Buffer | URL,
-  type?: SymlinkType | CallbackWithError,
+  linkType?: SymlinkType | CallbackWithError,
   callback?: CallbackWithError,
 ) {
   if (callback === undefined) {
-    callback = makeCallback(type as CallbackWithError);
-    type = undefined;
+    callback = linkType as CallbackWithError;
+    linkType = undefined;
   } else {
-    validateOneOf(type, "type", ["dir", "file", "junction", null, undefined]);
+    validateOneOf(linkType, "type", [
+      "dir",
+      "file",
+      "junction",
+      null,
+      undefined,
+    ]);
   }
+
+  callback = makeCallback(callback);
   target = getValidatedPathToString(target, "target");
   path = getValidatedPathToString(path);
-  type ??= undefined;
+  linkType ??= undefined;
 
   PromisePrototypeThen(
-    op_node_symlink(target, path, type),
+    op_node_symlink(target, path, linkType),
     () => callback(null),
     callback,
   );
