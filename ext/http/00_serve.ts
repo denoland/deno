@@ -39,13 +39,16 @@ const {
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  RegExpPrototypeTest,
   SafeArrayIterator,
   SafePromisePrototypeFinally,
   SafePromiseAll,
+  SafeRegExp,
   PromisePrototypeThen,
   StringPrototypeIncludes,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
+  StringPrototypeToString,
   Symbol,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -1023,17 +1026,17 @@ function serveHttpOn(context, addr, callback) {
   let currentPromise = null;
 
   function isTransientConnErr(error) {
-    const msg = String((error && error.message) || "");
+    const msg = StringPrototypeToString((error && error.message) || "");
     
     // HTTP/2 specific transient errors
-    if (/RST_STREAM|GOAWAY|ENHANCE_YOUR_CALM/i.test(msg)) {
+    if (RegExpPrototypeTest(new SafeRegExp(/RST_STREAM|GOAWAY|ENHANCE_YOUR_CALM/i), msg)) {
       return true;
     }
     
     // Generic HTTP connection errors
     if (
-      msg.includes("Http: connection error") ||
-      /connection error|protocol error/i.test(msg)
+      StringPrototypeIncludes(msg, "Http: connection error") ||
+      RegExpPrototypeTest(new SafeRegExp(/connection error|protocol error/i), msg)
     ) {
       return true;
     }
@@ -1042,9 +1045,7 @@ function serveHttpOn(context, addr, callback) {
     // OS-level socket errors (POSIX error codes)
     // loses WiFi mid-request, switches networks, or goes through a tunnel. Without catching these, the server logs would be flooded with "errors" that are actually normal network behavior.
     if (
-      /ECONNRESET|EPIPE|EPROTO|ENOTCONN|ENETUNREACH|EHOSTUNREACH|ETIMEDOUT|ECONNREFUSED/i.test(
-        msg,
-      )
+      RegExpPrototypeTest(new SafeRegExp(/ECONNRESET|EPIPE|EPROTO|ENOTCONN|ENETUNREACH|EHOSTUNREACH|ETIMEDOUT|ECONNREFUSED/i), msg)
     ) {
       return true;
     }
@@ -1054,7 +1055,7 @@ function serveHttpOn(context, addr, callback) {
     // - Client cancels a request mid-stream
     // - HTTP/2 stream is reset while data is being sent
     // - ReadableStream/WritableStream is destroyed during pipeline operations
-    if (/stream.*(?:destroyed|aborted|closed)/i.test(msg)) {
+    if (RegExpPrototypeTest(new SafeRegExp(/stream.*(?:destroyed|aborted|closed)/i), msg)) {
       return true;
     }
     
@@ -1129,20 +1130,20 @@ function serveHttpOn(context, addr, callback) {
     if (isTransientConnErr(error)) {
       // Enhanced debug logging with categorization
       if (Deno.env && Deno.env.get && Deno.env.get("DENO_SERVE_DEBUG")) {
-        const errorMsg = (error && error.message) || String(error);
+        const errorMsg = (error && error.message) || StringPrototypeToString(error);
         let category = "unknown";
         
-        if (/RST_STREAM|GOAWAY|ENHANCE_YOUR_CALM/i.test(errorMsg)) {
+        if (RegExpPrototypeTest(new SafeRegExp(/RST_STREAM|GOAWAY|ENHANCE_YOUR_CALM/i), errorMsg)) {
           category = "http2";
-        } else if (/ECONNRESET|EPIPE|EPROTO|ENOTCONN/i.test(errorMsg)) {
+        } else if (RegExpPrototypeTest(new SafeRegExp(/ECONNRESET|EPIPE|EPROTO|ENOTCONN/i), errorMsg)) {
           category = "socket";
-        } else if (/stream.*(?:destroyed|aborted|closed)/i.test(errorMsg)) {
+        } else if (RegExpPrototypeTest(new SafeRegExp(/stream.*(?:destroyed|aborted|closed)/i), errorMsg)) {
           category = "stream";
-        } else if (/connection error|protocol error/i.test(errorMsg)) {
+        } else if (RegExpPrototypeTest(new SafeRegExp(/connection error|protocol error/i), errorMsg)) {
           category = "connection";
         }
         
-        console.error(
+        internals.trace(
           `[serveHttpOn] Swallowed transient ${category} error:`,
           errorMsg,
         );
