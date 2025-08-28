@@ -1124,7 +1124,10 @@ Deno.test({ permissions: { run: true } }, async function collectArrayBuffer() {
 
   const output = await process.stdout.arrayBuffer();
   assert(output instanceof ArrayBuffer);
-  assertEquals(new Uint8Array(output), new Uint8Array([ 104, 101, 108, 108, 111, 10 ]));
+  assertEquals(
+    new Uint8Array(output),
+    new Uint8Array([104, 101, 108, 108, 111, 10]),
+  );
 
   await process.status;
 });
@@ -1137,7 +1140,7 @@ Deno.test({ permissions: { run: true } }, async function collectBytes() {
 
   const output = await process.stdout.bytes();
   assert(output instanceof Uint8Array);
-  assertEquals(output, new Uint8Array([ 104, 101, 108, 108, 111, 10 ]));
+  assertEquals(output, new Uint8Array([104, 101, 108, 108, 111, 10]));
 
   await process.status;
 });
