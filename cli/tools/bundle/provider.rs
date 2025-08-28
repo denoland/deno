@@ -95,11 +95,11 @@ fn convert_location(
 ) -> rt_bundle::Location {
   rt_bundle::Location {
     file: location.file,
-    namespace: location.namespace,
+    namespace: Some(location.namespace),
     line: location.line,
     column: location.column,
-    length: location.length,
-    suggestion: location.suggestion,
+    length: Some(location.length),
+    suggestion: Some(location.suggestion),
   }
 }
 fn convert_message(
@@ -148,28 +148,28 @@ impl BundleProvider for CliBundleProvider {
     std::thread::spawn(move || {
       deno_runtime::tokio_util::create_and_run_current_thread(async move {
         let flags = Arc::new(flags_clone);
-        let write_output = dbg!(&bundle_flags).output_dir.is_some()
+        let write_output = bundle_flags.output_dir.is_some()
           || bundle_flags.output_path.is_some();
-        eprintln!("bundle_init: {plugins:?}");
+        log::trace!("bundle_init: {plugins:?}");
         let bundler =
           match super::bundle_init(flags, &bundle_flags, plugins).await {
             Ok(bundler) => bundler,
             Err(e) => {
-              eprintln!("bundle_init error: {e:?}");
+              log::trace!("bundle_init error: {e:?}");
               let _ = tx.send(Err(e));
               return Ok(());
             }
           };
-        eprintln!("bundler.build");
+        log::trace!("bundler.build");
         let mut result = match bundler.build().await {
           Ok(result) => result,
           Err(e) => {
-            eprintln!("bundler.build error: {e:?}");
+            log::trace!("bundler.build error: {e:?}");
             let _ = tx.send(Err(e));
             return Ok(());
           }
         };
-        eprintln!("process_result");
+        log::trace!("process_result");
         if write_output {
           super::process_result(
             &result,
@@ -179,16 +179,16 @@ impl BundleProvider for CliBundleProvider {
           )?;
           result.output_files = None;
         }
-        eprintln!("convert_build_response");
+        log::trace!("convert_build_response");
         let result = convert_build_response(result);
-        eprintln!("send result");
+        log::trace!("send result");
         let _ = tx.send(Ok(result));
         Ok::<_, AnyError>(())
       })
     });
-    eprintln!("rx.await");
+    log::trace!("rx.await");
     let response = rx.await??;
-    eprintln!("response: {:?}", response);
+    log::trace!("response: {:?}", response);
     Ok(response)
   }
 }

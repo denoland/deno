@@ -273,6 +273,7 @@ function makePluginExecutor(
         const newResult = await plugin[hookName].callback(...args);
         if (type === HookType.first && newResult) {
           result = newResult as HookTypes[H];
+          // console.log("result for hook", hookName, result);
           sender.sendResult({ pluginId: id, result });
           return;
         } else if (type === HookType.sequential) {
@@ -285,6 +286,7 @@ function makePluginExecutor(
         }
       }
     }
+    // console.log("result for hook", hookName, result);
     sender.sendResult({ pluginId: null, result });
   };
 }
@@ -297,8 +299,8 @@ export async function bundle(
   const plugins = await collectPluginInfo(options);
 
   const forRust = toRustPluginInfo(plugins);
-  console.log("plugins", plugins);
-  console.log("forRust", forRust);
+  // console.log("plugins", plugins);
+  // console.log("forRust", forRust);
 
   const result = {
     success: false,

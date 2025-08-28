@@ -179,13 +179,13 @@ declare namespace Deno {
     }
 
     export interface OnStartResult {
-      errors?: PartialMessage[];
-      warnings?: PartialMessage[];
+      errors?: Message[];
+      warnings?: Message[];
     }
 
     export interface OnEndResult {
-      errors?: PartialMessage[];
-      warnings?: PartialMessage[];
+      errors?: Message[];
+      warnings?: Message[];
     }
 
     /** Documentation: https://esbuild.github.io/plugins/#on-resolve-options */
@@ -221,8 +221,8 @@ declare namespace Deno {
     export interface OnResolveResult {
       pluginName?: string;
 
-      errors?: PartialMessage[];
-      warnings?: PartialMessage[];
+      errors?: Message[];
+      warnings?: Message[];
 
       path?: string;
       external?: boolean;
@@ -254,8 +254,8 @@ declare namespace Deno {
     export interface OnLoadResult {
       pluginName?: string;
 
-      errors?: PartialMessage[];
-      warnings?: PartialMessage[];
+      errors?: Message[];
+      warnings?: Message[];
 
       contents?: string | Uint8Array;
       resolveDir?: string;

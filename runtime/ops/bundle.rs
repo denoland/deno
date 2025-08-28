@@ -131,16 +131,28 @@ pub enum PluginRequest {
   },
 }
 
+fn deserialize_bytes<'de, D>(
+  deserializer: D,
+) -> Result<Option<Vec<u8>>, D::Error>
+where
+  D: serde::Deserializer<'de>,
+{
+  use serde::Deserialize;
+  let s = Option::<serde_v8::StringOrBuffer>::deserialize(deserializer)?;
+  Ok(s.map(|s| s.to_vec()))
+}
+
 #[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginOnLoadResult {
   pub plugin_name: Option<String>,
-  pub errors: Option<Vec<PartialMessage>>,
-  pub warnings: Option<Vec<PartialMessage>>,
+  pub errors: Option<Vec<Message>>,
+  pub warnings: Option<Vec<Message>>,
+  #[serde(deserialize_with = "deserialize_bytes")]
   pub contents: Option<Vec<u8>>,
   pub resolve_dir: Option<String>,
   pub loader: Option<String>,
-  pub plugin_data: Option<u64>,
+  pub plugin_data: Option<u32>,
   pub watch_files: Option<Vec<String>>,
   pub watch_dirs: Option<Vec<String>>,
 }
@@ -148,15 +160,15 @@ pub struct PluginOnLoadResult {
 #[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginOnEndResult {
-  pub errors: Option<Vec<PartialMessage>>,
-  pub warnings: Option<Vec<PartialMessage>>,
+  pub errors: Option<Vec<Message>>,
+  pub warnings: Option<Vec<Message>>,
 }
 
 #[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginOnStartResult {
-  pub errors: Option<Vec<PartialMessage>>,
-  pub warnings: Option<Vec<PartialMessage>>,
+  pub errors: Option<Vec<Message>>,
+  pub warnings: Option<Vec<Message>>,
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -323,11 +335,11 @@ pub struct Note {
 #[serde(rename_all = "camelCase")]
 pub struct Location {
   pub file: String,
-  pub namespace: String,
+  pub namespace: Option<String>,
   pub line: u32,
   pub column: u32,
-  pub length: u32,
-  pub suggestion: String,
+  pub length: Option<u32>,
+  pub suggestion: Option<String>,
 }
 
 fn deserialize_regex<'de, D>(deserializer: D) -> Result<regex::Regex, D::Error>
@@ -350,7 +362,8 @@ pub struct OnResolveOptions {
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OnLoadOptions {
-  pub filter: String,
+  #[serde(deserialize_with = "deserialize_regex")]
+  pub filter: regex::Regex,
   pub namespace: Option<String>,
 }
 
@@ -384,7 +397,7 @@ type Bt = std::backtrace::Backtrace;
 #[derive(thiserror::Error, Debug, deno_error::JsError)]
 pub enum PluginExecError {
   #[class(generic)]
-  #[error("serde_v8 error: {0}; from {1:?}")]
+  #[error("serde_v8 error: {0}; from {1}")]
   SerdeV8(serde_v8::Error, Bt),
 }
 
@@ -574,7 +587,7 @@ impl PluginExecResultSenderWrapper {
     scope: &mut v8::HandleScope<'s>,
     res: v8::Local<'s, v8::Value>,
   ) -> Result<(), PluginExecError> {
-    eprintln!("PluginExecResultSenderWrapper::send_result: {:?}", self);
+    // eprintln!("PluginExecResultSenderWrapper::send_result: {:?}", self);
     let sender = self.sender.borrow_mut().take().unwrap();
     sender.send_result(scope, res)
   }
@@ -586,7 +599,7 @@ impl PluginExecResultSender {
     scope: &mut v8::HandleScope<'s>,
     res: v8::Local<'s, v8::Value>,
   ) -> Result<(), PluginExecError> {
-    eprintln!("PluginExecResultSender::send_result: {:?}", self);
+    // eprintln!("PluginExecResultSender::send_result: {:?}", self);
     match self {
       PluginExecResultSender::OnStart(result) => {
         let res = serde_v8::from_v8(scope, res)?;
@@ -621,7 +634,7 @@ pub async fn op_bundle(
   #[serde] plugins: Option<Vec<PluginInfo>>,
   #[global] plugin_executor: Option<v8::Global<v8::Function>>,
 ) -> Result<BuildResponse, JsErrorBox> {
-  eprintln!("op_bundle: {:?}", options);
+  // eprintln!("op_bundle: {:?}", options);
   let (provider, spawner) = {
     let state = state.borrow();
     let provider = state.borrow::<Arc<dyn BundleProvider>>().clone();
@@ -629,12 +642,12 @@ pub async fn op_bundle(
     (provider, spawner)
   };
 
-  eprintln!("have provider");
+  // eprintln!("have provider");
   let (plugins, plugin_executor_fut) = if let Some(plugin_executor) =
     plugin_executor
     && let Some(plugin_info) = plugins
   {
-    eprintln!("have plugin_executor and plugin_info");
+    // eprintln!("have plugin_executor and plugin_info");
     let (tx, mut rx) = tokio::sync::mpsc::channel::<PluginRequest>(1024);
     let fut = async move {
       loop {
@@ -660,13 +673,13 @@ pub async fn op_bundle(
       fut,
     )
   } else {
-    eprintln!("no plugin_executor and plugin_info");
+    // eprintln!("no plugin_executor and plugin_info");
     (None, async move {}.boxed_local())
   };
 
-  eprintln!("join");
+  // eprintln!("join");
   let (bundle_result, _) =
     tokio::join!(provider.bundle(options, plugins), plugin_executor_fut,);
-  eprintln!("bundle_result: {:?}", bundle_result);
+  // eprintln!("bundle_result: {:?}", bundle_result);
   bundle_result.map_err(|e| JsErrorBox::generic(e.to_string()))
 }
