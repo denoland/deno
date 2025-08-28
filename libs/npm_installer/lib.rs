@@ -254,6 +254,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
     self
       .add_package_reqs_raw(packages, Some(caching))
       .await
