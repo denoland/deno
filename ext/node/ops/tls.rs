@@ -30,6 +30,7 @@ use deno_net::ops::NetError;
 use deno_net::ops::TlsHandshakeInfo;
 use deno_net::ops_tls::TlsStreamResource;
 use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use deno_tls::create_client_config;
@@ -523,13 +524,14 @@ pub fn op_node_tls_start(
   let js_stream = JSStreamSocket::new(network_to_tls_rx, tls_to_network_tx);
 
   let tls_null = TlsKeysHolder::from(TlsKeys::Null);
-  let mut tls_config = create_client_config(
+  let mut tls_config = create_client_config(TlsClientConfigOptions {
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    tls_null.take(),
-    SocketUse::GeneralSsl,
-  )?;
+    unsafely_disable_hostname_verification: false,
+    cert_chain_and_key: tls_null.take(),
+    socket_use: SocketUse::GeneralSsl,
+  })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
