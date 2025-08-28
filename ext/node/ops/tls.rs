@@ -10,6 +10,8 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
@@ -132,7 +134,7 @@ pub struct JSStreamSocket {
   readable: Arc<Mutex<tokio::sync::mpsc::Receiver<Bytes>>>,
   writable: tokio::sync::mpsc::Sender<Bytes>,
   read_buffer: Arc<Mutex<VecDeque<Bytes>>>,
-  closed: Arc<Mutex<bool>>,
+  closed: AtomicBool,
 }
 
 impl JSStreamSocket {
@@ -144,7 +146,7 @@ impl JSStreamSocket {
       readable: Arc::new(Mutex::new(readable)),
       writable,
       read_buffer: Arc::new(Mutex::new(VecDeque::new())),
-      closed: Arc::new(Mutex::new(false)),
+      closed: AtomicBool::new(false),
     }
   }
 }
@@ -163,9 +165,7 @@ impl UnderlyingStream for JSStreamSocket {
       return Poll::Ready(Ok(()));
     }
 
-    if let Ok(closed) = self.closed.lock()
-      && *closed
-    {
+    if self.closed.load(Ordering::Relaxed) {
       return Poll::Ready(Err(Error::new(
         ErrorKind::UnexpectedEof,
         "Stream closed",
@@ -184,9 +184,7 @@ impl UnderlyingStream for JSStreamSocket {
         }
         Poll::Ready(None) => {
           // Channel closed
-          if let Ok(mut closed) = self.closed.lock() {
-            *closed = true;
-          }
+          self.closed.store(true, Ordering::Relaxed);
           Poll::Ready(Err(Error::new(
             ErrorKind::UnexpectedEof,
             "Channel closed",
@@ -195,7 +193,7 @@ impl UnderlyingStream for JSStreamSocket {
         Poll::Pending => Poll::Pending,
       }
     } else {
-      Poll::Ready(Err(Error::other("Failed to acquire lock")))
+      panic!("Failed to acquire lock")
     }
   }
 
@@ -203,9 +201,7 @@ impl UnderlyingStream for JSStreamSocket {
     &self,
     _cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<std::io::Result<()>> {
-    if let Ok(closed) = self.closed.lock()
-      && *closed
-    {
+    if self.closed.load(Ordering::Relaxed) {
       return Poll::Ready(Err(Error::new(
         ErrorKind::BrokenPipe,
         "Stream closed",
@@ -214,9 +210,7 @@ impl UnderlyingStream for JSStreamSocket {
 
     // For bounded sender, check if channel is ready
     if self.writable.is_closed() {
-      if let Ok(mut closed) = self.closed.lock() {
-        *closed = true;
-      }
+      self.closed.store(true, Ordering::Relaxed);
       Poll::Ready(Err(Error::new(ErrorKind::BrokenPipe, "Channel closed")))
     } else {
       Poll::Ready(Ok(()))
@@ -224,9 +218,7 @@ impl UnderlyingStream for JSStreamSocket {
   }
 
   fn try_read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
-    if let Ok(closed) = self.closed.lock()
-      && *closed
-    {
+    if self.closed.load(Ordering::Relaxed) {
       return Err(Error::new(ErrorKind::UnexpectedEof, "Stream closed"));
     }
 
@@ -265,9 +257,7 @@ impl UnderlyingStream for JSStreamSocket {
           Err(Error::new(ErrorKind::WouldBlock, "No data available"))
         }
         Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
-          if let Ok(mut closed) = self.closed.lock() {
-            *closed = true;
-          }
+          self.closed.store(true, Ordering::Relaxed);
           Err(Error::new(ErrorKind::UnexpectedEof, "Channel closed"))
         }
       }
@@ -277,16 +267,12 @@ impl UnderlyingStream for JSStreamSocket {
   }
 
   fn try_write(&self, buf: &[u8]) -> std::io::Result<usize> {
-    if let Ok(closed) = self.closed.lock()
-      && *closed
-    {
+    if self.closed.load(Ordering::Relaxed) {
       return Err(Error::new(ErrorKind::BrokenPipe, "Stream closed"));
     }
 
     if self.writable.is_closed() {
-      if let Ok(mut closed) = self.closed.lock() {
-        *closed = true;
-      }
+      self.closed.store(true, Ordering::Relaxed);
       return Err(Error::new(ErrorKind::BrokenPipe, "Channel closed"));
     }
 
@@ -297,9 +283,7 @@ impl UnderlyingStream for JSStreamSocket {
         Err(Error::new(ErrorKind::WouldBlock, "Channel full"))
       }
       Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-        if let Ok(mut closed) = self.closed.lock() {
-          *closed = true;
-        }
+        self.closed.store(true, Ordering::Relaxed);
         Err(Error::new(ErrorKind::BrokenPipe, "Channel closed"))
       }
     }
@@ -314,10 +298,7 @@ impl UnderlyingStream for JSStreamSocket {
   }
 
   fn shutdown(&self, _: std::net::Shutdown) -> std::io::Result<()> {
-    if let Ok(mut closed) = self.closed.lock() {
-      *closed = true;
-    }
-
+    self.closed.store(true, Ordering::Relaxed);
     Ok(())
   }
 
