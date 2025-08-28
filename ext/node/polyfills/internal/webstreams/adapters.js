@@ -19,14 +19,9 @@ import {
   normalizeEncoding,
 } from "ext:deno_node/internal/util.mjs";
 import { AbortError } from "ext:deno_node/internal/errors.ts";
-import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import { Duplex, Readable, Writable } from "node:stream";
-
-let debug = debuglog("stream", (fn) => {
-  debug = fn;
-});
 
 function isWritableStream(object) {
   return object instanceof WritableStream;
@@ -509,39 +504,13 @@ export function newReadableStreamFromStreamReadable(
   let controller;
 
   function onData(chunk) {
-    try {
-      // If the stream is destroyed, don't process any more data
-      if (isDestroyed(streamReadable)) {
-        return;
-      }
-
-      // Copy the Buffer to detach it from the pool.
-      if (Buffer.isBuffer(chunk) && !objectMode) {
-        chunk = new Uint8Array(chunk);
-      }
-
-      try {
-        controller.enqueue(chunk);
-        if (controller.desiredSize <= 0) {
-          streamReadable.pause();
-        }
-      } catch (err) {
-        // If enqueue fails (e.g., because the stream is closed),
-        // pause the stream to prevent further reads
-        streamReadable.pause();
-        // Don't rethrow to prevent unhandled promise rejections
-        debug(
-          "Ignoring controller.enqueue() error (stream closed during data processing):",
-          err
-        );
-      }
-    } catch (err) {
-      // Catch any synchronous errors to prevent unhandled exceptions
+    // Copy the Buffer to detach it from the pool.
+    if (Buffer.isBuffer(chunk) && !objectMode) {
+      chunk = new Uint8Array(chunk);
+    }
+    controller.enqueue(chunk);
+    if (controller.desiredSize <= 0) {
       streamReadable.pause();
-      debug(
-        "Unexpected error in onData, pausing stream:",
-        err
-      );
     }
   }
 
@@ -550,36 +519,22 @@ export function newReadableStreamFromStreamReadable(
   let isCanceled = false;
 
   const cleanup = finished(streamReadable, (error) => {
-    // If we've already been canceled, don't try to close the controller
-    if (isCanceled) {
-      return;
-    }
-
     if (error?.code === "ERR_STREAM_PREMATURE_CLOSE") {
       const err = new AbortError(undefined, { cause: error });
       error = err;
     }
 
     cleanup();
-
     // This is a protection against non-standard, legacy streams
     // that happen to emit an error event again after finished is called.
     streamReadable.on("error", () => {});
-
-    try {
-      if (error) {
-        controller.error(error);
-      } else {
-        controller.close();
-      }
-    } catch (err) {
-      // Ignore errors from controller.close() or controller.error()
-      // as they typically mean the stream was already closed or errored
-      debug(
-        `Ignoring controller.${error ? "error()" : "close()"} error in cleanup (controller already terminated):`,
-        err
-      );
+    if (error) {
+      return controller.error(error);
     }
+    if (isCanceled) {
+      return;
+    }
+    controller.close();
   });
 
   streamReadable.on("data", onData);
@@ -593,43 +548,9 @@ export function newReadableStreamFromStreamReadable(
       streamReadable.resume();
     },
 
-    async cancel(reason) {
-      // Mark as canceled to prevent the finished callback from closing the controller
+    cancel(reason) {
       isCanceled = true;
-
-      // If the stream is already destroyed, resolve immediately
-      if (isDestroyed(streamReadable)) {
-        return;
-      }
-
-      // Create a promise that resolves when the stream is destroyed
-      return new Promise((resolve) => {
-        // Check again in case destroy was called in the meantime
-        if (isDestroyed(streamReadable)) {
-          return resolve();
-        }
-
-        // Remove the data listener to prevent more reads
-        streamReadable.removeListener("data", onData);
-
-        // Destroy the stream
-        destroy(streamReadable, reason, (err) => {
-          if (err) {
-            // If there's an error, try to forward it to the controller
-            // but don't fail if the controller is already closed
-            try {
-              controller.error(err);
-            } catch (controllerErr) {
-              // Ignore errors from controller.error()
-              debug(
-                "Ignoring controller.error() in cancel (controller already terminated):",
-                controllerErr
-              );
-            }
-          }
-          resolve();
-        });
-      });
+      destroy.call(streamReadable, reason);
     },
   }, strategy);
 }
