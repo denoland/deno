@@ -30,6 +30,11 @@
       "output": "mixed_errors.out",
       "exitCode": 1
     },
+    "before_after_each_error": {
+      "args": "test before_after_each_error.ts",
+      "output": "before_after_each_error.out",
+      "exitCode": 1
+    },
     "async_error": {
       "args": "test async_error.ts",
       "output": "async_error.out",

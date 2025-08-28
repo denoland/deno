@@ -25,30 +25,30 @@ test 5 - test itself fails ... FAILED ([WILDCARD])
 
  ERRORS 
 
-test 3 - beforeEach fails => ./mixed_errors.ts:28:6
+test 3 - beforeEach fails => ./mixed_errors.ts:29:6
 error: Error: beforeEach failed for test 3
     throw new Error("beforeEach failed for test 3");
           ^
-    at [WILDCARD]mixed_errors.ts:8:11
+    at [WILDCARD]mixed_errors.ts:9:11
 
-test 4 - afterEach fails => ./mixed_errors.ts:32:6
+test 4 - afterEach fails => ./mixed_errors.ts:33:6
 error: Error: afterEach failed for test 4
     throw new Error("afterEach failed for test 4");
           ^
-    at [WILDCARD]mixed_errors.ts:16:11
+    at [WILDCARD]mixed_errors.ts:17:11
 
-test 5 - test itself fails => ./mixed_errors.ts:36:6
+test 5 - test itself fails => ./mixed_errors.ts:37:6
 error: Error: test 5 failed
   throw new Error("test 5 failed");
         ^
-    at [WILDCARD]mixed_errors.ts:38:9
+    at [WILDCARD]mixed_errors.ts:39:9
 
  FAILURES 
 
-test 3 - beforeEach fails => ./mixed_errors.ts:28:6
-test 4 - afterEach fails => ./mixed_errors.ts:32:6
-test 5 - test itself fails => ./mixed_errors.ts:36:6
+test 3 - beforeEach fails => ./mixed_errors.ts:29:6
+test 4 - afterEach fails => ./mixed_errors.ts:33:6
+test 5 - test itself fails => ./mixed_errors.ts:37:6
 
-FAILED | 2 passed | 3 failed ([WILDCARD])
+FAILED | 2 passed | 3 failed (8ms)
 
 error: Test failed
