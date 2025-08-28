@@ -413,13 +413,6 @@ export const nullCheck = hideStackFrames(
   },
 );
 
-/** @import {SymlinkType} from "ext:deno_node/_fs/_fs_symlink.ts" */
-/**
- * @param {string} path
- * @param {SymlinkType} type
- * @param {string} linkPath
- * @returns {string}
- */
 export function preprocessSymlinkDestination(path, type, linkPath) {
   if (!isWindows) {
     // No preprocessing is needed on Unix.
