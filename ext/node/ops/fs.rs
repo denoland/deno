@@ -10,6 +10,7 @@ use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::op2;
 use deno_fs::FileSystemRc;
+use deno_fs::FsFileType;
 use deno_fs::OpenOptions;
 use deno_io::fs::FileResource;
 use deno_permissions::OpenAccessKind;
@@ -553,4 +554,135 @@ where
   };
   fs.lchmod_async(path.into_owned(), mode).await?;
   Ok(())
+}
+
+#[op2(stack_trace)]
+pub fn op_node_symlink_sync<P>(
+  state: &mut OpState,
+  #[string] target_path: &str,
+  #[string] link_path: &str,
+  #[serde] file_type: Option<FsFileType>,
+) -> Result<(), FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let target_path = state.borrow_mut::<P>().check_open(
+    Cow::Owned(PathBuf::from(target_path)),
+    OpenAccessKind::Read,
+    Some("node:fs.symlinkSync"),
+  )?;
+  let link_path = state.borrow_mut::<P>().check_open(
+    Cow::Owned(PathBuf::from(link_path)),
+    OpenAccessKind::Write,
+    Some("node:fs.symlinkSync"),
+  )?;
+  let fs = state.borrow::<FileSystemRc>();
+
+  #[cfg(unix)]
+  {
+    fs.symlink_sync(&target_path, &link_path, file_type)?;
+    Ok(())
+  }
+  #[cfg(windows)]
+  {
+    let file_type = match file_type {
+      Some(file_type) => Ok(file_type),
+      None => match fs.stat_sync(&target_path) {
+        Ok(metadata) => {
+          if metadata.is_directory {
+            Ok(FsFileType::Directory)
+          } else {
+            Ok(FsFileType::File)
+          }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+          Ok(FsFileType::File)
+        }
+        Err(err) => Err(FsError::Fs(err)),
+      },
+    }?;
+
+    fs.symlink_sync(&target_path, &link_path, Some(file_type))?;
+    Ok(())
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = target_path;
+    let _ = link_path;
+    let _ = fs;
+    Err(FsError::UnsupportedPlatform)
+  }
+}
+
+#[op2(async, stack_trace)]
+pub async fn op_node_symlink<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] target_path: String,
+  #[string] link_path: String,
+  #[serde] file_type: Option<FsFileType>,
+) -> Result<(), FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let (fs, target_path, link_path) = {
+    let mut state = state.borrow_mut();
+    let target_path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(target_path)),
+      OpenAccessKind::Read,
+      Some("node:fs.symlink"),
+    )?;
+    let link_path = state.borrow_mut::<P>().check_open(
+      Cow::Owned(PathBuf::from(link_path)),
+      OpenAccessKind::Write,
+      Some("node:fs.symlink"),
+    )?;
+    (
+      state.borrow::<FileSystemRc>().clone(),
+      target_path,
+      link_path,
+    )
+  };
+
+  #[cfg(unix)]
+  {
+    fs.symlink_async(
+      target_path.into_owned(),
+      link_path.into_owned(),
+      file_type,
+    )
+    .await?;
+    Ok(())
+  }
+  #[cfg(windows)]
+  {
+    let target_path_buf = target_path.into_owned();
+
+    let file_type = match file_type {
+      Some(file_type) => Ok(file_type),
+      None => match fs.stat_async(target_path_buf.clone()).await {
+        Ok(metadata) => {
+          if metadata.is_directory {
+            Ok(FsFileType::Directory)
+          } else {
+            Ok(FsFileType::File)
+          }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+          Ok(FsFileType::File)
+        }
+        Err(err) => Err(FsError::Fs(err)),
+      },
+    }?;
+
+    fs.symlink_async(target_path_buf, link_path.into_owned(), Some(file_type))
+      .await?;
+    Ok(())
+  }
+  #[cfg(not(any(unix, windows)))]
+  {
+    let _ = target_path;
+    let _ = link_path;
+    let _ = fs;
+    Err(FsError::UnsupportedPlatform)
+  }
 }

@@ -10,6 +10,7 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import type { Buffer } from "node:buffer";
 import { validateOneOf } from "ext:deno_node/internal/validators.mjs";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
+import { op_node_symlink, op_node_symlink_sync } from "ext:core/ops";
 
 const { PromisePrototypeThen } = primordials;
 
@@ -32,11 +33,7 @@ export function symlink(
   type ??= undefined;
 
   PromisePrototypeThen(
-    Deno.symlink(
-      target,
-      path,
-      { type },
-    ),
+    op_node_symlink(target, path, type),
     () => callback(null),
     callback,
   );
@@ -58,9 +55,5 @@ export function symlinkSync(
   path = getValidatedPathToString(path);
   type ??= undefined;
 
-  Deno.symlinkSync(
-    target,
-    path,
-    { type },
-  );
+  op_node_symlink_sync(target, path, type);
 }
