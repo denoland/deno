@@ -832,7 +832,10 @@ impl<
       let packages_with_deprecation_warnings =
         packages_with_deprecation_warnings.lock();
       if !packages_with_deprecation_warnings.is_empty() {
-        log::warn!(
+        use std::fmt::Write;
+        let mut output = String::new();
+        let _ = writeln!(
+          &mut output,
           "{} The following packages are deprecated:",
           colors::yellow("Warning")
         );
@@ -841,16 +844,23 @@ impl<
           packages_with_deprecation_warnings.iter().enumerate()
         {
           if idx != len - 1 {
-            log::warn!(
+            let _ = writeln!(
+              &mut output,
               "┠─ {}",
               colors::gray(format!("npm:{:?} ({})", package_nv, msg))
             );
           } else {
-            log::warn!(
+            let _ = write!(
+              &mut output,
               "┖─ {}",
               colors::gray(format!("npm:{:?} ({})", package_nv, msg))
             );
           }
+        }
+        if let Some(install_reporter) = &self.install_reporter {
+          install_reporter.deprecated_message(output);
+        } else {
+          log::warn!("{}", output);
         }
       }
     }
@@ -1048,7 +1058,6 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
   ) -> Result<(), std::io::Error> {
     use std::fmt::Write;
-    use std::writeln;
     if !packages.is_empty() {
       let mut output = String::new();
       let _ = writeln!(
@@ -1084,7 +1093,7 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
         .map(|(p, _)| format!("npm:{}", p.id.nv))
         .collect::<Vec<_>>()
         .join(",");
-      let _ = writeln!(
+      let _ = write!(
         &mut output,
         "   {}",
         colors::bold(format!(

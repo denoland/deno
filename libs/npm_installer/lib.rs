@@ -95,6 +95,8 @@ pub trait InstallProgressReporter:
     &self,
     warning: crate::lifecycle_scripts::LifecycleScriptsWarning,
   );
+
+  fn deprecated_message(&self, message: String);
 }
 pub trait Reporter:
   std::fmt::Debug + Send + Sync + 'static + dyn_clone::DynClone

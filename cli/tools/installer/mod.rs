@@ -124,6 +124,8 @@ pub struct InstallReporter {
   stats: Arc<InstallStats>,
 
   scripts_warnings: Arc<Mutex<Vec<LifecycleScriptsWarning>>>,
+
+  deprecation_messages: Arc<Mutex<Vec<String>>>,
 }
 
 impl InstallReporter {
@@ -131,11 +133,16 @@ impl InstallReporter {
     Self {
       stats: Arc::new(InstallStats::default()),
       scripts_warnings: Arc::new(Mutex::new(Vec::new())),
+      deprecation_messages: Arc::new(Mutex::new(Vec::new())),
     }
   }
 
   pub fn take_scripts_warnings(&self) -> Vec<LifecycleScriptsWarning> {
     std::mem::take(&mut *self.scripts_warnings.lock())
+  }
+
+  pub fn take_deprecation_message(&self) -> Vec<String> {
+    std::mem::take(&mut *self.deprecation_messages.lock())
   }
 }
 
@@ -158,6 +165,10 @@ impl deno_npm_installer::InstallProgressReporter for InstallReporter {
     warning: deno_npm_installer::lifecycle_scripts::LifecycleScriptsWarning,
   ) {
     self.scripts_warnings.lock().push(warning);
+  }
+
+  fn deprecated_message(&self, message: String) {
+    self.deprecation_messages.lock().push(message);
   }
 }
 
@@ -628,6 +639,11 @@ pub fn print_install_report(
   let warnings = install_reporter.take_scripts_warnings();
   for warning in warnings {
     log::warn!("{}", warning.into_message(sys));
+  }
+
+  let deprecation_messages = install_reporter.take_deprecation_message();
+  for message in deprecation_messages {
+    log::warn!("{}", message);
   }
 }
 

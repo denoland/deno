@@ -242,7 +242,7 @@ impl<TSys: NpmCacheSys> LifecycleScriptsStrategy
       "┠─ {}",
       colors::italic("Enable it in your deno config file:")
     );
-    let _ = writeln!(
+    let _ = write!(
       &mut output,
       "┖─ {}",
       colors::bold("\"nodeModulesDir\": \"auto\"")
