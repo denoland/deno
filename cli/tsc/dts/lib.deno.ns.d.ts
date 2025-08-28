@@ -3746,6 +3746,12 @@ declare namespace Deno {
     [Symbol.asyncDispose](): Promise<void>;
   }
 
+  /**
+   * The interface for stdout and stderr streams for child process returned from
+   * {@linkcode Deno.Command.spawn}.
+   *
+   * @category Subprocess
+   */
   export interface SubprocessReadableStream
     extends ReadableStream<Uint8Array<ArrayBufferLike>> {
     /**
