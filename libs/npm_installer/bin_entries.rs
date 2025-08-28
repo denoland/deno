@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -16,6 +17,7 @@ use sys_traits::FsFileSetPermissions;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsOpen;
+use sys_traits::FsReadLink;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsSymlinkFile;
 use sys_traits::FsWrite;
@@ -363,7 +365,13 @@ fn sort_by_depth(
 
 #[sys_traits::auto_impl]
 pub trait SetupBinEntrySys:
-  FsOpen + FsWrite + FsSymlinkFile + FsRemoveFile + FsCreateDirAll + FsMetadata
+  FsOpen
+  + FsWrite
+  + FsSymlinkFile
+  + FsRemoveFile
+  + FsCreateDirAll
+  + FsMetadata
+  + FsReadLink
 {
 }
 
@@ -472,7 +480,7 @@ impl EntrySetupOutcome<'_> {
 }
 
 fn symlink_bin_entry<'a>(
-  sys: &(impl FsOpen + FsSymlinkFile + FsRemoveFile),
+  sys: &(impl FsOpen + FsSymlinkFile + FsRemoveFile + FsReadLink),
   package: &'a NpmResolutionPackage,
   extra: &'a NpmPackageExtraInfo,
   bin_name: &'a str,
@@ -485,6 +493,16 @@ fn symlink_bin_entry<'a>(
 
   fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
     pathdiff::diff_paths(to, from)
+  }
+
+  let original_relative = relative_path(bin_node_modules_dir_path, &original)
+    .map(Cow::Owned)
+    .unwrap_or_else(|| Cow::Borrowed(&original));
+
+  if let Ok(original_link) = sys.fs_read_link(&link)
+    && *original_link == *original_relative
+  {
+    return Ok(EntrySetupOutcome::Success);
   }
 
   let found = make_executable_if_exists(sys, &original).map_err(|source| {
@@ -504,10 +522,7 @@ fn symlink_bin_entry<'a>(
     });
   }
 
-  let original_relative =
-    relative_path(bin_node_modules_dir_path, &original).unwrap_or(original);
-
-  if let Err(err) = sys.fs_symlink_file(&original_relative, &link) {
+  if let Err(err) = sys.fs_symlink_file(&*original_relative, &link) {
     if err.kind() == std::io::ErrorKind::AlreadyExists {
       // remove and retry
       sys.fs_remove_file(&link).map_err(|source| {
@@ -517,7 +532,7 @@ fn symlink_bin_entry<'a>(
         }
       })?;
       sys
-        .fs_symlink_file(&original_relative, &link)
+        .fs_symlink_file(&*original_relative, &link)
         .map_err(|source| BinEntriesError::SetUpBin {
           name: bin_name.to_string(),
           path: original_relative.to_path_buf(),

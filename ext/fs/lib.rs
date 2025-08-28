@@ -52,10 +52,6 @@ pub trait FsPermissions {
   ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn check_write_all(&self, api_name: &str)
   -> Result<(), PermissionCheckError>;
-
-  fn allows_all(&self) -> bool {
-    false
-  }
 }
 
 impl FsPermissions for deno_permissions::PermissionsContainer {
@@ -108,10 +104,6 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_all(self, api_name)
-  }
-
-  fn allows_all(&self) -> bool {
-    self.allows_all()
   }
 }
 
