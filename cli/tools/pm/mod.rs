@@ -901,7 +901,7 @@ async fn npm_install_after_modification(
     let npm_resolver = cli_factory.npm_resolver().await?;
     super::installer::print_install_report(
       &cli_factory.sys(),
-      &install_reporter,
+      install_reporter,
       workspace,
       npm_resolver,
     );
