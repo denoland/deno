@@ -828,6 +828,7 @@
 "parallel/test-path-extname.js" = {}
 "parallel/test-path-isabsolute.js" = {}
 "parallel/test-path-makelong.js" = {}
+"parallel/test-path-normalize.js" = {}
 "parallel/test-path-parse-format.js" = {}
 "parallel/test-path-posix-exists.js" = {}
 "parallel/test-path-resolve.js" = {}
