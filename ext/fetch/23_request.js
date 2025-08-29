@@ -272,7 +272,8 @@ class Request {
     if (signal === false) {
       const signal = newSignal();
       this[_signalCache] = signal;
-      signal[signalAbort](
+      signalAbort(
+        signal,
         new DOMException(MESSAGE_REQUEST_CANCELLED, "AbortError"),
       );
       return signal;
@@ -283,7 +284,8 @@ class Request {
       const signal = newSignal();
       this[_signalCache] = signal;
       this[_request].onCancel?.(() => {
-        signal[signalAbort](
+        signalAbort(
+          signal,
           new DOMException(MESSAGE_REQUEST_CANCELLED, "AbortError"),
         );
       });
@@ -609,7 +611,8 @@ const MESSAGE_REQUEST_CANCELLED = "The request has been cancelled.";
 
 function abortRequest(request) {
   if (request[_signalCache] !== undefined) {
-    request[_signal][signalAbort](
+    signalAbort(
+      request[_signal],
       new DOMException(MESSAGE_REQUEST_CANCELLED, "AbortError"),
     );
   } else {
