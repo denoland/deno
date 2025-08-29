@@ -562,10 +562,12 @@ impl CliFactory {
           self.text_only_progress_bar().clone(),
         )),
         match resolver_factory.npm_resolver()?.as_managed() {
-          Some(managed_npm_resolver) => Arc::new(
-            DenoTaskLifeCycleScriptsExecutor::new(managed_npm_resolver.clone()),
-          )
-            as Arc<dyn LifecycleScriptsExecutor>,
+          Some(managed_npm_resolver) => {
+            Arc::new(DenoTaskLifeCycleScriptsExecutor::new(
+              managed_npm_resolver.clone(),
+              self.text_only_progress_bar().clone(),
+            )) as Arc<dyn LifecycleScriptsExecutor>
+          }
           None => Arc::new(NullLifecycleScriptsExecutor),
         },
         self.text_only_progress_bar().clone(),
@@ -595,7 +597,9 @@ impl CliFactory {
       .services
       .install_reporter
       .get_or_try_init(|| match self.cli_options()?.sub_command() {
-        DenoSubcommand::Install(InstallFlags::Local(_)) => Ok(Some(Arc::new(
+        DenoSubcommand::Install(InstallFlags::Local(_))
+        | DenoSubcommand::Add(_)
+        | DenoSubcommand::Cache(_) => Ok(Some(Arc::new(
           crate::tools::installer::InstallReporter::new(),
         ))),
         _ => Ok(None),
@@ -1040,6 +1044,7 @@ impl CliFactory {
       self.maybe_lockfile().await?.cloned(),
       self.npm_installer_if_managed().await?.cloned(),
       npm_resolver.clone(),
+      self.text_only_progress_bar().clone(),
       self.sys(),
       self.create_cli_main_worker_options()?,
       self.root_permissions_container()?.clone(),
@@ -1065,7 +1070,7 @@ impl CliFactory {
         .is_some(),
       inspect_brk: cli_options.inspect_brk().is_some(),
       inspect_wait: cli_options.inspect_wait().is_some(),
-      strace_ops: cli_options.strace_ops().clone(),
+      trace_ops: cli_options.trace_ops().clone(),
       is_standalone: false,
       auto_serve: std::env::var("DENO_AUTO_SERVE").is_ok(),
       is_inspecting: cli_options.is_inspecting(),

@@ -16,12 +16,35 @@ import {
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
 import { primordials } from "ext:core/mod.js";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import process from "node:process";
 
-const { StringPrototypeSlice, StringPrototypeCharCodeAt, TypeError } =
-  primordials;
+const {
+  StringPrototypeReplace,
+  StringPrototypeCharCodeAt,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  SafeRegExp,
+} = primordials;
 
 export const sep = "/";
 export const delimiter = ":";
+
+const posixCwd = (() => {
+  if (isWindows) {
+    // Converts Windows' backslash path separators to POSIX forward slashes
+    // and truncates any drive indicator
+    const regexp = new SafeRegExp(/\\/g);
+    return () => {
+      const cwd = StringPrototypeReplace(process.cwd(), regexp, "/");
+      return StringPrototypeSlice(cwd, StringPrototypeIndexOf(cwd, "/"));
+    };
+  }
+
+  // We're already on POSIX, no need for any transformations
+  return () => process.cwd();
+})();
 
 // path.resolve([from ...], to)
 /**
@@ -29,23 +52,22 @@ export const delimiter = ":";
  * @param pathSegments an array of path segments
  */
 export function resolve(...pathSegments: string[]): string {
+  if (
+    pathSegments.length === 0 ||
+    (pathSegments.length === 1 &&
+      (pathSegments[0] === "" || pathSegments[0] === "."))
+  ) {
+    const cwd = posixCwd();
+    if (StringPrototypeCharCodeAt(cwd, 0) === CHAR_FORWARD_SLASH) {
+      return cwd;
+    }
+  }
   let resolvedPath = "";
   let resolvedAbsolute = false;
 
-  for (let i = pathSegments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
-    let path: string;
-
-    if (i >= 0) path = pathSegments[i];
-    else {
-      // deno-lint-ignore no-explicit-any
-      const { Deno } = globalThis as any;
-      if (typeof Deno?.cwd !== "function") {
-        throw new TypeError("Resolved a relative path without a CWD.");
-      }
-      path = Deno.cwd();
-    }
-
-    assertPath(path);
+  for (let i = pathSegments.length - 1; i >= 0 && !resolvedAbsolute; i--) {
+    const path = pathSegments[i];
+    validateString(path, `paths[${i}]`);
 
     // Skip empty entries
     if (path.length === 0) {
@@ -55,6 +77,12 @@ export function resolve(...pathSegments: string[]): string {
     resolvedPath = `${path}/${resolvedPath}`;
     resolvedAbsolute =
       StringPrototypeCharCodeAt(path, 0) === CHAR_FORWARD_SLASH;
+  }
+
+  if (!resolvedAbsolute) {
+    const cwd = posixCwd();
+    resolvedPath = `${cwd}/${resolvedPath}`;
+    resolvedAbsolute = StringPrototypeCharCodeAt(cwd, 0) === CHAR_FORWARD_SLASH;
   }
 
   // At this point the path should be resolved to a full absolute path, but
@@ -69,10 +97,9 @@ export function resolve(...pathSegments: string[]): string {
   );
 
   if (resolvedAbsolute) {
-    if (resolvedPath.length > 0) return `/${resolvedPath}`;
-    else return "/";
-  } else if (resolvedPath.length > 0) return resolvedPath;
-  else return ".";
+    return `/${resolvedPath}`;
+  }
+  return resolvedPath.length > 0 ? resolvedPath : ".";
 }
 
 /**
