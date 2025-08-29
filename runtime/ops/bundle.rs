@@ -224,6 +224,8 @@ pub struct BundleOptions {
   pub sourcemap: Option<SourceMapType>,
   #[serde(default)]
   pub platform: BundlePlatform,
+  #[serde(default = "tru")]
+  pub write: bool,
 }
 
 fn tru() -> bool {

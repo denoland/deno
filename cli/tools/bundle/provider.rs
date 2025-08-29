@@ -142,14 +142,14 @@ impl BundleProvider for CliBundleProvider {
     plugins: Option<deno_runtime::ops::bundle::Plugins>,
   ) -> Result<rt_bundle::BuildResponse, AnyError> {
     let mut flags_clone = (*self.flags).clone();
+    let write_output = options.write
+      && (options.output_dir.is_some() || options.output_path.is_some());
     let bundle_flags: crate::args::BundleFlags = options.into();
     flags_clone.subcommand = DenoSubcommand::Bundle(bundle_flags.clone());
     let (tx, rx) = tokio::sync::oneshot::channel();
     std::thread::spawn(move || {
       deno_runtime::tokio_util::create_and_run_current_thread(async move {
         let flags = Arc::new(flags_clone);
-        let write_output = bundle_flags.output_dir.is_some()
-          || bundle_flags.output_path.is_some();
         log::trace!("bundle_init: {plugins:?}");
         let bundler =
           match super::bundle_init(flags, &bundle_flags, plugins).await {

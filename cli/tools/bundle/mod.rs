@@ -126,6 +126,7 @@ pub async fn bundle_init(
     parsed_source_cache: factory.parsed_source_cache()?.clone(),
     cjs_tracker: factory.cjs_tracker()?.clone(),
     emitter: factory.emitter()?.clone(),
+    deferred_resolve_errors: Default::default(),
   });
 
   let resolved_entrypoints =
@@ -603,8 +604,6 @@ pub struct DeferredResolveError {
   error: ResolveWithGraphError,
 }
 
-
-
 pub struct DenoPluginHandler {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: Arc<CliResolver>,
@@ -625,7 +624,7 @@ pub struct DenoPluginHandler {
 
 impl DenoPluginHandler {
   fn take_deferred_resolve_errors(&self) -> Vec<DeferredResolveError> {
-    std::mem::take(&mut *self.inner.deferred_resolve_errors.lock())
+    std::mem::take(&mut *self.deferred_resolve_errors.lock())
   }
 }
 
@@ -1233,12 +1232,13 @@ impl DenoPluginHandler {
             "{}: resolution failed, but maybe ignorable",
             deno_terminal::colors::red("warn")
           );
-          self.inner.deferred_resolve_errors.lock().push(
-            DeferredResolveError {
+          self
+            .deferred_resolve_errors
+            .lock()
+            .push(DeferredResolveError {
               path: specifier,
               error: e,
-            },
-          );
+            });
           // we return None here because this lets esbuild choose to ignore the failure
           // for fallible imports/requires
           return Ok(None);
