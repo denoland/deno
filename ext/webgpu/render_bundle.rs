@@ -6,7 +6,7 @@ use std::num::NonZeroU64;
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::IntOptions;
@@ -129,7 +129,7 @@ impl GPURenderBundleEncoder {
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl(options(enforce_range = true))] index: u32,
-    #[webidl] bind_group: Nullable<Ptr<crate::bind_group::GPUBindGroup>>,
+    #[webidl] bind_group: Nullable<Ref<crate::bind_group::GPUBindGroup>>,
     dynamic_offsets: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_length: v8::Local<'a, v8::Value>,
@@ -213,7 +213,7 @@ impl GPURenderBundleEncoder {
 
   fn set_pipeline(
     &self,
-    #[webidl] pipeline: Ptr<crate::render_pipeline::GPURenderPipeline>,
+    #[webidl] pipeline: Ref<crate::render_pipeline::GPURenderPipeline>,
   ) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();
     let encoder = encoder.as_mut().ok_or_else(|| {
@@ -230,7 +230,7 @@ impl GPURenderBundleEncoder {
   #[required(2)]
   fn set_index_buffer(
     &self,
-    #[webidl] buffer: Ptr<GPUBuffer>,
+    #[webidl] buffer: Ref<GPUBuffer>,
     #[webidl] index_format: crate::render_pipeline::GPUIndexFormat,
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
@@ -253,7 +253,7 @@ impl GPURenderBundleEncoder {
   fn set_vertex_buffer(
     &self,
     #[webidl(options(enforce_range = true))] slot: u32,
-    #[webidl] buffer: Ptr<GPUBuffer>, // TODO(wgpu): support nullable buffer
+    #[webidl] buffer: Ref<GPUBuffer>, // TODO(wgpu): support nullable buffer
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) -> Result<(), JsErrorBox> {
@@ -323,7 +323,7 @@ impl GPURenderBundleEncoder {
   #[required(2)]
   fn draw_indirect(
     &self,
-    #[webidl] indirect_buffer: Ptr<GPUBuffer>,
+    #[webidl] indirect_buffer: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();
@@ -342,7 +342,7 @@ impl GPURenderBundleEncoder {
   #[required(2)]
   fn draw_indexed_indirect(
     &self,
-    #[webidl] indirect_buffer: Ptr<GPUBuffer>,
+    #[webidl] indirect_buffer: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();

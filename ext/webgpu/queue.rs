@@ -2,7 +2,7 @@
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Ref;
 use deno_core::futures::channel::oneshot;
 use deno_core::op2;
 use deno_error::JsErrorBox;
@@ -52,7 +52,7 @@ impl GPUQueue {
   #[required(1)]
   fn submit(
     &self,
-    #[webidl] command_buffers: Vec<Ptr<GPUCommandBuffer>>,
+    #[webidl] command_buffers: Vec<Ref<GPUCommandBuffer>>,
   ) -> Result<(), JsErrorBox> {
     let ids = command_buffers
       .into_iter()
@@ -93,7 +93,7 @@ impl GPUQueue {
   #[required(3)]
   fn write_buffer(
     &self,
-    #[webidl] buffer: Ptr<GPUBuffer>,
+    #[webidl] buffer: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] buffer_offset: u64,
     #[anybuffer] buf: &[u8],
     #[webidl(default = 0, options(enforce_range = true))] data_offset: u64,
@@ -153,7 +153,7 @@ impl GPUQueue {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPUTexelCopyTextureInfo {
-  pub texture: Ptr<GPUTexture>,
+  pub texture: Ref<GPUTexture>,
   #[webidl(default = 0)]
   #[options(enforce_range = true)]
   pub mip_level: u32,
