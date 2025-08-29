@@ -1006,10 +1006,11 @@ const _isUnref = Symbol("isUnref");
  * compatible with fast-path resource-backed streams.
  *
  * @param {number} rid The resource ID to read from.
+ * @param constructor A class that extends ReadableStream.
  * @returns {ReadableStream<Uint8Array>}
  */
-function readableStreamForRidUnrefable(rid) {
-  const stream = new ReadableStream(_brand);
+function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
+  const stream = new constructor(_brand);
   stream[promiseSymbol] = undefined;
   stream[_isUnref] = false;
   stream[_resourceBackingUnrefable] = { rid, autoClose: true };
