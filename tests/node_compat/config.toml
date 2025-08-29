@@ -826,6 +826,7 @@
 "parallel/test-path-makelong.js" = {}
 "parallel/test-path-parse-format.js" = {}
 "parallel/test-path-posix-exists.js" = {}
+"parallel/test-path-relative.js" = {}
 "parallel/test-path-resolve.js" = {}
 "parallel/test-path-win32-exists.js" = {}
 "parallel/test-path-zero-length-strings.js" = {}
