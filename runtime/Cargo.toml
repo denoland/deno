@@ -82,6 +82,7 @@ http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
+indexmap.workspace = true
 libc.workspace = true
 log.workspace = true
 notify.workspace = true
@@ -96,7 +97,6 @@ tokio.workspace = true
 tokio-metrics.workspace = true
 twox-hash.workspace = true
 uuid.workspace = true
-indexmap.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }

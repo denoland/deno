@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod bootstrap;
+pub mod bundle;
 pub mod fs_events;
 pub mod http;
 pub mod permissions;
@@ -8,7 +9,6 @@ pub mod runtime;
 pub mod tty;
 pub mod web_worker;
 pub mod worker_host;
-pub mod bundle;
 
 use std::sync::Arc;
 

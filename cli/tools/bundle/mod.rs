@@ -5,10 +5,6 @@ mod externals;
 mod provider;
 mod transform;
 
-use deno_ast::ModuleKind;
-use deno_resolver::cache::ParsedSourceCache;
-pub use provider::CliBundleProvider;
-
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ops::Deref;
@@ -21,6 +17,7 @@ use std::time::Duration;
 
 use deno_ast::EmitOptions;
 use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::TsTypeLib;
 use deno_core::error::AnyError;
@@ -32,6 +29,7 @@ use deno_error::JsError;
 use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_path_util::resolve_url_or_path;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::loader::LoadCodeSourceError;
@@ -53,6 +51,7 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageSubpathResolveError;
+pub use provider::CliBundleProvider;
 use sys_traits::EnvCurrentDir;
 use tokio::sync::oneshot;
 
