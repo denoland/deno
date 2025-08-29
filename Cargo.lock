@@ -1680,7 +1680,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.49.0"
+version = "0.50.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b80d223f51fb001a4100116ec14588d3798caca62e0c42cde7f91ef7c14c5925"
 dependencies = [
  "base64 0.22.1",
  "capacity_builder",
@@ -1951,7 +1953,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.182.0"
+version = "0.183.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02837b4ab5233d1ef04f2c6e328006999a368f2d0398c8ecad4f2a39c0cff918"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2102,7 +2106,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.99.0"
+version = "0.100.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "158e28e9dea84cf648762e4a6892f15124bae85ef4e7934058587ec85bcc0e70"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2269,7 +2275,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.77.0"
+version = "0.78.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d1e154f4e9593637d1f340d35b6597e13cfe5cd10eb293ec1168d75a3007955"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -3506,7 +3514,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.95.10"
+version = "0.95.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74aa5df06eb156f7df91bf17a0ca65fd349dfa22463c3eab0a019bab20df12df"
 dependencies = [
  "anyhow",
  "capacity_builder",
@@ -3781,7 +3791,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.98.0"
+version = "0.99.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0805eb66d4e61a9c815ebcae3332c3cce47ad45e3797dd71695f724f02797d74"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8469,9 +8481,9 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_lexer"
-version = "23.0.0"
+version = "23.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ce0ddc31928f622709555e3fd105e0ae679897c583f5d8a1df5236650fde859"
+checksum = "67c3bd958a5a67e2cc3f74abdd41fda688e54e7a25b866569260ef7018b67972"
 dependencies = [
  "arrayvec",
  "bitflags 2.8.0",
