@@ -391,11 +391,11 @@ fn create_temp_node_modules_parent_dir() -> Result<tempfile::TempDir, AnyError>
   let today = chrono::Utc::now().date_naive();
   // remove any old/stale temp dirs
   if let Err(err) =
-    attempt_temp_dir_garbage_collection(&root_temp_folder, &today)
+    attempt_temp_dir_garbage_collection(&root_temp_folder, today)
   {
     log::debug!("Failed init temp folder garbage collection: {:#?}", err);
   }
-  let day_folder = root_temp_folder.join(folder_name_for_date(&today));
+  let day_folder = root_temp_folder.join(folder_name_for_date(today));
   std::fs::create_dir_all(&day_folder)
     .with_context(|| format!("Failed creating '{}'", day_folder.display()))?;
   let temp_node_modules_parent_dir = tempfile::TempDir::new_in(&day_folder)?;
@@ -410,18 +410,18 @@ fn create_temp_node_modules_parent_dir() -> Result<tempfile::TempDir, AnyError>
 
 fn attempt_temp_dir_garbage_collection(
   root_temp_folder: &Path,
-  utc_now: &NaiveDate,
+  utc_now: NaiveDate,
 ) -> Result<(), AnyError> {
   let previous_day_str = folder_name_for_date(
-    &utc_now
+    utc_now
       .checked_sub_days(chrono::Days::new(1))
-      .unwrap_or_else(|| utc_now.clone()),
+      .unwrap_or(utc_now),
   );
   let current_day_str = folder_name_for_date(utc_now);
   let next_day_str = folder_name_for_date(
-    &utc_now
+    utc_now
       .checked_add_days(chrono::Days::new(1))
-      .unwrap_or_else(|| utc_now.clone()),
+      .unwrap_or(utc_now),
   );
   let progress_bar =
     ProgressBar::new(crate::util::progress_bar::ProgressBarStyle::TextOnly);
@@ -429,8 +429,9 @@ fn attempt_temp_dir_garbage_collection(
     crate::util::progress_bar::ProgressMessagePrompt::Cleaning,
     "old temp node_modules folders...",
   );
-  let mut cleaner = FsCleaner::new(Some(update_guard));
 
+  // remove any folders that aren't the current date +- 1 day
+  let mut cleaner = FsCleaner::new(Some(update_guard));
   for entry in std::fs::read_dir(root_temp_folder)? {
     let Ok(entry) = entry else {
       continue;
@@ -451,7 +452,7 @@ fn attempt_temp_dir_garbage_collection(
   Ok(())
 }
 
-fn folder_name_for_date(date: &chrono::NaiveDate) -> OsString {
+fn folder_name_for_date(date: chrono::NaiveDate) -> OsString {
   OsString::from(date.format("%Y-%m-%d").to_string())
 }
 
@@ -546,7 +547,7 @@ mod test {
     temp_dir.path().join("2020-05-15").create_dir_all();
     attempt_temp_dir_garbage_collection(
       temp_dir.path().as_path(),
-      &reference_date,
+      reference_date,
     )
     .unwrap();
     let mut entries = std::fs::read_dir(temp_dir.path())
