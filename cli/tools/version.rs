@@ -328,7 +328,7 @@ pub fn version_command(
 
   // Handle git operations only if we're in a git repository
   let is_git_repo = is_git_repository();
-  
+
   if version_flags.git_commit_all {
     if is_git_repo {
       commit_version_changes(&new_version.to_string())?;
