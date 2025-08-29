@@ -7,8 +7,6 @@ use tower_lsp::lsp_types as lsp;
 pub const PERFORMANCE_REQUEST: &str = "deno/performance";
 pub const TASK_REQUEST: &str = "deno/taskDefinitions";
 pub const VIRTUAL_TEXT_DOCUMENT: &str = "deno/virtualTextDocument";
-pub const LATEST_DIAGNOSTIC_BATCH_INDEX: &str =
-  "deno/internalLatestDiagnosticBatchIndex";
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,12 +35,6 @@ impl lsp::notification::Notification for RegistryStateNotification {
 #[serde(rename_all = "camelCase")]
 pub struct VirtualTextDocumentParams {
   pub text_document: lsp::TextDocumentIdentifier,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct DiagnosticBatchNotificationParams {
-  pub batch_index: usize,
-  pub messages_len: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -145,10 +137,19 @@ pub struct DidUpgradeCheckNotificationParams {
 }
 
 /// This notification is only sent for testing purposes
-/// in order to know what the latest diagnostics are.
-pub enum DiagnosticBatchNotification {}
+/// in order to group diagnostics.
+pub enum DiagnosticBatchStartNotification {}
 
-impl lsp::notification::Notification for DiagnosticBatchNotification {
-  type Params = DiagnosticBatchNotificationParams;
-  const METHOD: &'static str = "deno/internalTestDiagnosticBatch";
+impl lsp::notification::Notification for DiagnosticBatchStartNotification {
+  type Params = ();
+  const METHOD: &'static str = "deno/internalTestDiagnosticBatchStart";
+}
+
+/// This notification is only sent for testing purposes
+/// in order to group diagnostics.
+pub enum DiagnosticBatchEndNotification {}
+
+impl lsp::notification::Notification for DiagnosticBatchEndNotification {
+  type Params = ();
+  const METHOD: &'static str = "deno/internalTestDiagnosticBatchEnd";
 }

@@ -265,7 +265,7 @@ pub type NodeResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   NodeResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -463,7 +463,7 @@ impl<
       let pkg_config = self
         .pkg_json_resolver
         .get_closest_package_json(referrer.path()?)
-        .map_err(PackageImportsResolveErrorKind::ClosestPkgJson)
+        .map_err(PackageImportsResolveErrorKind::PkgJsonLoad)
         .map_err(|err| PackageImportsResolveError(Box::new(err)))?;
       Ok((
         self.package_imports_resolve_internal(
@@ -553,10 +553,9 @@ impl<
     // }
 
     let p_str = path.to_str().unwrap();
-    let path = if p_str.ends_with('/') {
-      PathBuf::from(&p_str[p_str.len() - 1..])
-    } else {
-      path
+    let path = match p_str.strip_suffix('/') {
+      Some(s) => Cow::Borrowed(Path::new(s)),
+      None => Cow::Owned(path),
     };
 
     let maybe_file_type = self.sys.get_file_type(&path);
@@ -570,7 +569,7 @@ impl<
             .find(|e| self.sys.is_file(&path.join(e)));
           Err(
             UnsupportedDirImportError {
-              dir_url: UrlOrPath::Path(path),
+              dir_url: UrlOrPath::Path(path.into_owned()),
               maybe_referrer: maybe_referrer.map(|r| r.display()),
               suggested_file_name,
             }
@@ -607,7 +606,7 @@ impl<
         Ok(
           maybe_url
             .map(UrlOrPath::Url)
-            .unwrap_or(UrlOrPath::Path(path)),
+            .unwrap_or(UrlOrPath::Path(path.into_owned())),
         )
       }
       _ => {
@@ -626,7 +625,7 @@ impl<
           ModuleNotFoundError {
             suggested_ext: self
               .module_not_found_ext_suggestion(&path, resolved_method),
-            specifier: UrlOrPath::Path(path),
+            specifier: UrlOrPath::Path(path.into_owned()),
             maybe_referrer: maybe_referrer.map(|r| r.display()),
           }
           .into(),

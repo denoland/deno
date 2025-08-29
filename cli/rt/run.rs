@@ -87,7 +87,7 @@ use node_resolver::ResolutionMode;
 use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionSys;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
@@ -644,7 +644,10 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     })
   }
 
-  fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError> {
+  fn is_maybe_cjs(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError> {
     let media_type = MediaType::from_specifier(specifier);
     self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
@@ -1004,7 +1007,7 @@ pub async fn run(
     has_node_modules_dir,
     inspect_brk: false,
     inspect_wait: false,
-    strace_ops: None,
+    trace_ops: None,
     is_inspecting: false,
     is_standalone: true,
     auto_serve: false,

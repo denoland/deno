@@ -131,7 +131,7 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Bundle(bundle_flags) => spawn_subcommand(async {
       log::warn!(
-        "⚠️ {} is experimental and subject to changes",
+        "⚠️  {} is experimental and subject to changes",
         colors::cyan("deno bundle")
       );
       tools::bundle::bundle(flags, bundle_flags).await
@@ -406,7 +406,7 @@ async fn run_subcommand(
       1,
     ),
     DenoSubcommand::Vendor => exit_with_message(
-      "⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
+      "⚠️  `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       1,
     ),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
@@ -761,7 +761,6 @@ fn wait_for_start(
         roots.compiled_wasm_module_store.clone(),
       ),
       additional_extensions: vec![],
-      enable_raw_imports: false,
     });
 
     let (rx, mut tx): (
@@ -866,11 +865,8 @@ async fn initialize_tunnel(
   let mut factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let mut cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
-  if deploy_config.is_none() {
-    let _ = tools::deploy::get_token_entry()?.delete_credential();
-  }
 
-  let token = if let Ok(token) = std::env::var("DENO_UNSTABLE_TUNNEL_TOKEN") {
+  let token = if let Ok(token) = std::env::var("DENO_DEPLOY_TOKEN") {
     token
   } else {
     match tools::deploy::get_token_entry()?.get_password() {
@@ -894,8 +890,8 @@ async fn initialize_tunnel(
   };
 
   let (org, app) = if let (Ok(org), Ok(app)) = (
-    std::env::var("DENO_UNSTABLE_TUNNEL_ORG"),
-    std::env::var("DENO_UNSTABLE_TUNNEL_APP"),
+    std::env::var("DENO_DEPLOY_ORG"),
+    std::env::var("DENO_DEPLOY_APP"),
   ) {
     (org, app)
   } else {
@@ -918,11 +914,14 @@ async fn initialize_tunnel(
   let root_cert_store = cert_store_provider.get_or_try_init()?.clone();
 
   let tls_config = deno_runtime::deno_tls::create_client_config(
-    Some(root_cert_store),
-    vec![],
-    None,
-    deno_runtime::deno_tls::TlsKeys::Null,
-    deno_runtime::deno_tls::SocketUse::GeneralSsl,
+    deno_runtime::deno_tls::TlsClientConfigOptions {
+      root_cert_store: Some(root_cert_store),
+      ca_certs: vec![],
+      unsafely_ignore_certificate_errors: None,
+      unsafely_disable_hostname_verification: false,
+      cert_chain_and_key: deno_runtime::deno_tls::TlsKeys::Null,
+      socket_use: deno_runtime::deno_tls::SocketUse::GeneralSsl,
+    },
   )?;
 
   let mut metadata = HashMap::new();

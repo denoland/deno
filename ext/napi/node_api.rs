@@ -319,7 +319,7 @@ fn napi_create_external_buffer<'s>(
   env: &'s mut Env,
   length: usize,
   data: *mut c_void,
-  finalize_cb: napi_finalize,
+  finalize_cb: Option<napi_finalize>,
   finalize_hint: *mut c_void,
   result: *mut napi_value<'s>,
 ) -> napi_status {

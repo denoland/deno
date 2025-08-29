@@ -14,12 +14,15 @@ use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
+use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceDiscoverError;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
+use deno_maybe_sync::new_rc;
 pub use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use futures::future::FutureExt;
@@ -55,12 +58,12 @@ use crate::cjs::IsCjsResolutionMode;
 use crate::cjs::analyzer::DenoCjsCodeAnalyzer;
 use crate::cjs::analyzer::NodeAnalysisCacheRc;
 use crate::cjs::analyzer::NullNodeAnalysisCache;
-use crate::collections::FolderScopedWithUnscopedMap;
 use crate::deno_json::CompilerOptionsOverrides;
 use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
 use crate::import_map::WorkspaceExternalImportMapLoader;
 use crate::import_map::WorkspaceExternalImportMapLoaderRc;
+use crate::loader::AllowJsonImports;
 use crate::loader::DenoNpmModuleLoaderRc;
 use crate::loader::NpmModuleLoader;
 use crate::lockfile::LockfileLock;
@@ -79,9 +82,6 @@ use crate::npm::managed::NpmResolutionCellRc;
 use crate::npmrc::NpmRcDiscoverError;
 use crate::npmrc::ResolvedNpmRcRc;
 use crate::npmrc::discover_npmrc_from_workspace;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
-use crate::sync::new_rc;
 use crate::workspace::FsCacheOptions;
 use crate::workspace::PackageJsonDepResolution;
 use crate::workspace::SloppyImportsOptions;
@@ -94,13 +94,6 @@ use crate::workspace::WorkspaceResolver;
 type Deferred<T> = once_cell::sync::OnceCell<T>;
 #[cfg(not(feature = "sync"))]
 type Deferred<T> = once_cell::unsync::OnceCell<T>;
-
-#[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceDirectoryRc = crate::sync::MaybeArc<WorkspaceDirectory>;
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceRc = crate::sync::MaybeArc<Workspace>;
 
 pub type DenoCjsModuleExportAnalyzerRc<TSys> = CjsModuleExportAnalyzerRc<
   DenoCjsCodeAnalyzer<TSys>,
@@ -217,7 +210,7 @@ pub struct WorkspaceFactoryOptions {
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceFactoryRc<TSys> =
-  crate::sync::MaybeArc<WorkspaceFactory<TSys>>;
+  deno_maybe_sync::MaybeArc<WorkspaceFactory<TSys>>;
 
 #[sys_traits::auto_impl]
 pub trait WorkspaceFactorySys:
@@ -243,7 +236,6 @@ pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
   npmrc: Deferred<(ResolvedNpmRcRc, Option<PathBuf>)>,
   node_modules_dir_mode: Deferred<NodeModulesDirMode>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
-  workspace_directory_provider: Deferred<WorkspaceDirectoryProviderRc>,
   workspace_external_import_map_loader:
     Deferred<WorkspaceExternalImportMapLoaderRc<TSys>>,
   workspace_npm_link_packages: Deferred<WorkspaceNpmLinkPackagesRc>,
@@ -270,7 +262,6 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       npmrc: Default::default(),
       node_modules_dir_mode: Default::default(),
       workspace_directory: Default::default(),
-      workspace_directory_provider: Default::default(),
       workspace_external_import_map_loader: Default::default(),
       workspace_npm_link_packages: Default::default(),
       initial_cwd,
@@ -503,7 +494,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           npm_package_info_provider,
         )
         .await?
-        .map(crate::sync::new_rc);
+        .map(deno_maybe_sync::new_rc);
 
         Ok(maybe_lock_file)
       })
@@ -607,17 +598,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
           WorkspaceDirectory::empty(resolve_empty_options())
         }
       };
-      Ok(new_rc(dir))
-    })
-  }
-
-  pub fn workspace_directory_provider(
-    &self,
-  ) -> Result<&WorkspaceDirectoryProviderRc, WorkspaceDiscoverError> {
-    self.workspace_directory_provider.get_or_try_init(|| {
-      Ok(new_rc(WorkspaceDirectoryProvider::from_initial_dir(
-        self.workspace_directory()?,
-      )))
+      Ok(dir)
     })
   }
 
@@ -680,6 +661,7 @@ pub struct ResolverFactoryOptions {
   #[cfg(feature = "graph")]
   pub on_mapped_resolution_diagnostic:
     Option<crate::graph::OnMappedResolutionDiagnosticFn>,
+  pub allow_json_imports: AllowJsonImports,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -848,7 +830,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.compiler_options_resolver.get_or_try_init(|| {
       Ok(new_rc(CompilerOptionsResolver::new(
         &self.sys,
-        self.workspace_factory.workspace_directory_provider()?,
+        &self.workspace_factory.workspace_directory()?.workspace,
         self.node_resolver()?,
         &self.workspace_factory.options.config_discovery,
         &self.options.compiler_options_overrides,
@@ -1053,6 +1035,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.npm_module_loader()?.clone(),
         self.parsed_source_cache.clone(),
         self.workspace_factory.sys.clone(),
+        self.options.allow_json_imports,
       )))
     })
   }
@@ -1150,64 +1133,3 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     )
   }
 }
-
-#[derive(Debug)]
-pub struct WorkspaceDirectoryProvider {
-  pub workspace: WorkspaceRc,
-  dirs: FolderScopedWithUnscopedMap<Deferred<WorkspaceDirectoryRc>>,
-}
-
-impl WorkspaceDirectoryProvider {
-  pub fn from_initial_dir(dir: &WorkspaceDirectoryRc) -> Self {
-    let workspace = dir.workspace.clone();
-    let mut dirs = FolderScopedWithUnscopedMap::new(Deferred::default());
-    for dir_url in workspace.config_folders().keys() {
-      if dir_url == workspace.root_dir() {
-        continue;
-      } else if dir_url == dir.dir_url() {
-        dirs.insert(dir_url.clone(), Deferred::from(dir.clone()));
-      } else {
-        dirs.insert(dir_url.clone(), Deferred::default());
-      }
-    }
-    Self { workspace, dirs }
-  }
-
-  pub fn for_specifier(&self, specifier: &Url) -> &WorkspaceDirectoryRc {
-    let (dir_url, dir) = self.dirs.entry_for_specifier(specifier);
-    dir.get_or_init(|| {
-      new_rc(
-        self
-          .workspace
-          .resolve_member_dir(dir_url.unwrap_or(self.workspace.root_dir())),
-      )
-    })
-  }
-
-  pub fn root(&self) -> &WorkspaceDirectoryRc {
-    self.dirs.unscoped.get_or_init(|| {
-      new_rc(self.workspace.resolve_member_dir(self.workspace.root_dir()))
-    })
-  }
-
-  pub fn entries(
-    &self,
-  ) -> impl Iterator<Item = (Option<&UrlRc>, &WorkspaceDirectoryRc)> {
-    self.dirs.entries().map(|(s, d)| {
-      (
-        s,
-        d.get_or_init(|| {
-          new_rc(
-            self
-              .workspace
-              .resolve_member_dir(s.unwrap_or(self.workspace.root_dir())),
-          )
-        }),
-      )
-    })
-  }
-}
-
-#[allow(clippy::disallowed_types)]
-pub type WorkspaceDirectoryProviderRc =
-  crate::sync::MaybeArc<WorkspaceDirectoryProvider>;

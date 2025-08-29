@@ -158,6 +158,72 @@ impl ServerCertVerifier for NoCertificateVerification {
   }
 }
 
+#[derive(Debug)]
+pub struct NoServerNameVerification {
+  inner: Arc<WebPkiServerVerifier>,
+}
+
+impl NoServerNameVerification {
+  pub fn new(inner: Arc<WebPkiServerVerifier>) -> Self {
+    Self { inner }
+  }
+}
+
+impl ServerCertVerifier for NoServerNameVerification {
+  fn verify_server_cert(
+    &self,
+    end_entity: &CertificateDer<'_>,
+    intermediates: &[CertificateDer<'_>],
+    server_name: &ServerName<'_>,
+    ocsp: &[u8],
+    now: rustls::pki_types::UnixTime,
+  ) -> Result<ServerCertVerified, rustls::Error> {
+    match self.inner.verify_server_cert(
+      end_entity,
+      intermediates,
+      server_name,
+      ocsp,
+      now,
+    ) {
+      Ok(scv) => Ok(scv),
+      Err(rustls::Error::InvalidCertificate(cert_error)) => {
+        if matches!(
+          cert_error,
+          rustls::CertificateError::NotValidForName
+            | rustls::CertificateError::NotValidForNameContext { .. }
+        ) {
+          Ok(ServerCertVerified::assertion())
+        } else {
+          Err(rustls::Error::InvalidCertificate(cert_error))
+        }
+      }
+      Err(e) => Err(e),
+    }
+  }
+
+  fn verify_tls12_signature(
+    &self,
+    message: &[u8],
+    cert: &CertificateDer<'_>,
+    dss: &DigitallySignedStruct,
+  ) -> Result<HandshakeSignatureValid, rustls::Error> {
+    self.inner.verify_tls12_signature(message, cert, dss)
+  }
+
+  fn verify_tls13_signature(
+    &self,
+    message: &[u8],
+    cert: &CertificateDer<'_>,
+    dss: &DigitallySignedStruct,
+  ) -> Result<HandshakeSignatureValid, rustls::Error> {
+    self.inner.verify_tls13_signature(message, cert, dss)
+  }
+
+  fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+    self.inner.supported_verify_schemes()
+  }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase", tag = "transport")]
 pub enum Proxy {
@@ -190,8 +256,10 @@ pub fn create_default_root_cert_store() -> RootCertStore {
   root_cert_store
 }
 
+#[derive(Default)]
 pub enum SocketUse {
   /// General SSL: No ALPN
+  #[default]
   GeneralSsl,
   /// HTTP: h1 and h2
   Http,
@@ -201,13 +269,27 @@ pub enum SocketUse {
   Http2Only,
 }
 
+#[derive(Default)]
+pub struct TlsClientConfigOptions {
+  pub root_cert_store: Option<RootCertStore>,
+  pub ca_certs: Vec<Vec<u8>>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub unsafely_disable_hostname_verification: bool,
+  pub cert_chain_and_key: TlsKeys,
+  pub socket_use: SocketUse,
+}
+
 pub fn create_client_config(
-  root_cert_store: Option<RootCertStore>,
-  ca_certs: Vec<Vec<u8>>,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  maybe_cert_chain_and_key: TlsKeys,
-  socket_use: SocketUse,
+  options: TlsClientConfigOptions,
 ) -> Result<ClientConfig, TlsError> {
+  let TlsClientConfigOptions {
+    root_cert_store,
+    ca_certs,
+    unsafely_ignore_certificate_errors,
+    unsafely_disable_hostname_verification,
+    cert_chain_and_key: maybe_cert_chain_and_key,
+    socket_use,
+  } = options;
   if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
     let client_config = ClientConfig::builder()
       .dangerous()
@@ -250,7 +332,7 @@ pub fn create_client_config(
   }
 
   let client_config =
-    ClientConfig::builder().with_root_certificates(root_cert_store);
+    ClientConfig::builder().with_root_certificates(root_cert_store.clone());
 
   let mut client = match maybe_cert_chain_and_key {
     TlsKeys::Static(TlsKey(cert_chain, private_key)) => client_config
@@ -261,6 +343,16 @@ pub fn create_client_config(
   };
 
   add_alpn(&mut client, socket_use);
+
+  if unsafely_disable_hostname_verification {
+    let inner =
+      rustls::client::WebPkiServerVerifier::builder(Arc::new(root_cert_store))
+        .build()
+        .expect("Failed to create WebPkiServerVerifier");
+    let verifier = Arc::new(NoServerNameVerification::new(inner));
+    client.dangerous().set_certificate_verifier(verifier);
+  }
+
   Ok(client)
 }
 

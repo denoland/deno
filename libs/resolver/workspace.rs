@@ -14,6 +14,8 @@ use deno_config::deno_json::ConfigFileError;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::Workspace;
 use deno_error::JsError;
+use deno_maybe_sync::MaybeDashMap;
+use deno_maybe_sync::new_rc;
 use deno_media_type::MediaType;
 use deno_npm::registry::NpmPackageVersionInfo;
 use deno_package_json::PackageJsonDepValue;
@@ -50,11 +52,9 @@ use thiserror::Error;
 use url::Url;
 
 use crate::collections::FolderScopedMap;
-use crate::sync::MaybeDashMap;
-use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
+type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 
 #[derive(Debug)]
 struct PkgJsonResolverFolderConfig {
@@ -647,7 +647,7 @@ pub fn sloppy_imports_resolve<TSys: FsMetadata>(
 
 #[allow(clippy::disallowed_types)]
 type SloppyImportsResolverRc<T> =
-  crate::sync::MaybeArc<SloppyImportsResolver<T>>;
+  deno_maybe_sync::MaybeArc<SloppyImportsResolver<T>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompilerOptionsRootDirsDiagnostic {
@@ -957,7 +957,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
                 )
               }),
             None => (
-              Cow::Owned(workspace.root_dir().join("deno.json").unwrap()),
+              Cow::Owned(workspace.root_dir_url().join("deno.json").unwrap()),
               serde_json::Value::Object(Default::default()),
             ),
           };
@@ -1031,7 +1031,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       );
 
     Ok(Self {
-      workspace_root: workspace.root_dir().clone(),
+      workspace_root: workspace.root_dir_url().clone(),
       pkg_json_dep_resolution: options.pkg_json_dep_resolution,
       jsr_pkgs,
       maybe_import_map,
@@ -1662,7 +1662,7 @@ impl BaseUrl<'_> {
 
 #[allow(clippy::disallowed_types)] // ok, because definition
 pub type WorkspaceNpmLinkPackagesRc =
-  crate::sync::MaybeArc<WorkspaceNpmLinkPackages>;
+  deno_maybe_sync::MaybeArc<WorkspaceNpmLinkPackages>;
 
 #[derive(Debug, Default)]
 pub struct WorkspaceNpmLinkPackages(
@@ -1731,8 +1731,12 @@ fn pkg_json_to_version_info(
       .unwrap_or_default()
   }
 
-  fn parse_array(v: &[String]) -> Vec<SmallStackString> {
+  fn parse_small_stack_string_array(v: &[String]) -> Vec<SmallStackString> {
     v.iter().map(|s| SmallStackString::from_str(s)).collect()
+  }
+
+  fn parse_stack_string_array(v: &[String]) -> Vec<StackString> {
+    v.iter().map(|s| StackString::from_str(s)).collect()
   }
 
   let Some(version) = &pkg_json.version else {
@@ -1749,6 +1753,11 @@ fn pkg_json_to_version_info(
       .as_ref()
       .and_then(|v| serde_json::from_value(v.clone()).ok()),
     dependencies: parse_deps(pkg_json.dependencies.as_ref()),
+    bundle_dependencies: pkg_json
+      .bundle_dependencies
+      .as_ref()
+      .map(|d| parse_stack_string_array(d))
+      .unwrap_or_default(),
     optional_dependencies: parse_deps(pkg_json.optional_dependencies.as_ref()),
     peer_dependencies: parse_deps(pkg_json.peer_dependencies.as_ref()),
     peer_dependencies_meta: pkg_json
@@ -1756,8 +1765,16 @@ fn pkg_json_to_version_info(
       .clone()
       .and_then(|m| serde_json::from_value(m).ok())
       .unwrap_or_default(),
-    os: pkg_json.os.as_deref().map(parse_array).unwrap_or_default(),
-    cpu: pkg_json.cpu.as_deref().map(parse_array).unwrap_or_default(),
+    os: pkg_json
+      .os
+      .as_deref()
+      .map(parse_small_stack_string_array)
+      .unwrap_or_default(),
+    cpu: pkg_json
+      .cpu
+      .as_deref()
+      .map(parse_small_stack_string_array)
+      .unwrap_or_default(),
     scripts: pkg_json
       .scripts
       .as_ref()
@@ -1780,6 +1797,7 @@ mod test {
   use std::path::PathBuf;
 
   use deno_config::workspace::WorkspaceDirectory;
+  use deno_config::workspace::WorkspaceDirectoryRc;
   use deno_config::workspace::WorkspaceDiscoverOptions;
   use deno_config::workspace::WorkspaceDiscoverStart;
   use deno_npm::registry::NpmPeerDependencyMeta;
@@ -2389,7 +2407,7 @@ mod test {
       },
     )
     .unwrap();
-    let root_dir_url = workspace_dir.workspace.root_dir();
+    let root_dir_url = workspace_dir.workspace.root_dir_url();
 
     let referrer = root_dir_url.join("member/foo/mod.ts").unwrap();
     let resolution = resolver
@@ -2505,7 +2523,7 @@ mod test {
       },
     )
     .unwrap();
-    let root_dir_url = workspace_dir.workspace.root_dir();
+    let root_dir_url = workspace_dir.workspace.root_dir_url();
 
     let referrer = root_dir_url.join("subdir/mod.ts").unwrap();
     let resolution = resolver
@@ -2941,7 +2959,7 @@ mod test {
   fn workspace_at_start_dir(
     sys: &InMemorySys,
     start_dir: &Path,
-  ) -> WorkspaceDirectory {
+  ) -> WorkspaceDirectoryRc {
     WorkspaceDirectory::discover(
       sys,
       WorkspaceDiscoverStart::Paths(&[start_dir.to_path_buf()]),
@@ -2981,6 +2999,9 @@ mod test {
   "peerDependencies": {
     "my-peer-dep": "^2"
   },
+  "bundleDependencies": [
+    "my-dep"
+  ],
   "peerDependenciesMeta": {
     "my-peer-dep": {
       "optional": true
@@ -3006,6 +3027,7 @@ mod test {
           StackString::from_static("my-dep"),
           StackString::from_static("1")
         )]),
+        bundle_dependencies: Vec::from([StackString::from_static("my-dep")]),
         optional_dependencies: HashMap::from([(
           StackString::from_static("optional-dep"),
           StackString::from_static("~1")

@@ -24,7 +24,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
@@ -139,7 +139,8 @@ pub trait NodeRequireLoader {
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
-  fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError>;
+  fn is_maybe_cjs(&self, specifier: &Url)
+  -> Result<bool, PackageJsonLoadError>;
 
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     default_resolve_require_node_module_paths(from)
@@ -447,6 +448,7 @@ deno_core::extension!(deno_node,
     ops::util::op_node_guess_handle_type,
     ops::util::op_node_view_has_buffer,
     ops::util::op_node_call_is_from_dependency<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::util::op_node_in_npm_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::worker_threads::op_worker_threads_filename<P, TSys>,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
@@ -458,6 +460,8 @@ deno_core::extension!(deno_node,
     ops::tls::op_get_root_certificates,
     ops::tls::op_tls_peer_certificate,
     ops::tls::op_tls_canonicalize_ipv4_address,
+    ops::tls::op_node_tls_start,
+    ops::tls::op_node_tls_handshake,
     ops::inspector::op_inspector_open<P>,
     ops::inspector::op_inspector_close,
     ops::inspector::op_inspector_url,

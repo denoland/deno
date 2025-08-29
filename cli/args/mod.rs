@@ -29,6 +29,7 @@ pub use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -678,14 +679,23 @@ impl CliOptions {
             resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
           }
           DenoSubcommand::Eval(_) => {
-            resolve_url_or_path("./$deno$eval.mts", self.initial_cwd())?
+            let specifier = format!(
+              "./$deno$eval.{}",
+              self.flags.ext.as_deref().unwrap_or("mts")
+            );
+            deno_path_util::resolve_path(&specifier, self.initial_cwd())?
           }
-          DenoSubcommand::Repl(_) => {
-            resolve_url_or_path("./$deno$repl.mts", self.initial_cwd())?
-          }
+          DenoSubcommand::Repl(_) => deno_path_util::resolve_path(
+            "./$deno$repl.mts",
+            self.initial_cwd(),
+          )?,
           DenoSubcommand::Run(run_flags) => {
             if run_flags.is_stdin() {
-              resolve_url_or_path("./$deno$stdin.mts", self.initial_cwd())?
+              let specifier = format!(
+                "./$deno$stdin.{}",
+                self.flags.ext.as_deref().unwrap_or("mts")
+              );
+              deno_path_util::resolve_path(&specifier, self.initial_cwd())?
             } else {
               let default_resolve = || {
                 let url =
@@ -738,15 +748,10 @@ impl CliOptions {
     &self,
   ) -> HashMap<ModuleSpecifier, HashMap<String, String>> {
     let maybe_main_specifier = self.resolve_main_module().ok();
-    // TODO(Cre3per): This mapping moved to deno_ast with https://github.com/denoland/deno_ast/issues/133 and should be available in deno_ast >= 0.25.0 via `MediaType::from_path(...).as_media_type()`
-    let maybe_content_type =
-      self.flags.ext.as_ref().and_then(|el| match el.as_str() {
-        "ts" => Some("text/typescript"),
-        "tsx" => Some("text/tsx"),
-        "js" => Some("text/javascript"),
-        "jsx" => Some("text/jsx"),
-        _ => None,
-      });
+    let maybe_content_type = self.flags.ext.as_ref().and_then(|ext| {
+      let media_type = MediaType::from_filename(&format!("file.{}", ext));
+      media_type.as_content_type()
+    });
 
     if let (Some(main_specifier), Some(content_type)) =
       (maybe_main_specifier, maybe_content_type)
@@ -819,7 +824,7 @@ impl CliOptions {
   pub fn resolve_fmt_options_for_members(
     &self,
     fmt_flags: &FmtFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, FmtOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
       fmt_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
@@ -853,7 +858,7 @@ impl CliOptions {
   pub fn resolve_lint_options_for_members(
     &self,
     lint_flags: &LintFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, LintOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, LintOptions)>, AnyError> {
     let cli_arg_patterns =
       lint_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
@@ -877,7 +882,7 @@ impl CliOptions {
   pub fn resolve_test_options_for_members(
     &self,
     test_flags: &TestFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, TestOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, TestOptions)>, AnyError> {
     let cli_arg_patterns =
       test_flags.files.as_file_patterns(self.initial_cwd())?;
     let workspace_dir_configs = self
@@ -901,7 +906,7 @@ impl CliOptions {
   pub fn resolve_bench_options_for_members(
     &self,
     bench_flags: &BenchFlags,
-  ) -> Result<Vec<(WorkspaceDirectory, BenchOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectoryRc, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
       bench_flags.files.as_file_patterns(self.initial_cwd())?;
     let workspace_dir_configs = self
@@ -1030,7 +1035,6 @@ impl CliOptions {
       }
 
       PermissionsOptions {
-        allow_all: flags.allow_all,
         allow_env: handle_allow(flags.allow_all, flags.allow_env.clone()),
         deny_env: flags.deny_env.clone(),
         allow_net: handle_allow(flags.allow_all, flags.allow_net.clone()),
@@ -1058,7 +1062,7 @@ impl CliOptions {
 
   fn augment_import_permissions(&self, options: &mut PermissionsOptions) {
     // do not add if the user specified --allow-all or --allow-import
-    if !options.allow_all && options.allow_import.is_none() {
+    if options.allow_import.is_none() {
       options.allow_import = Some(self.implicit_allow_import());
     }
     options.deny_import = options.deny_import.clone();
@@ -1147,8 +1151,8 @@ impl CliOptions {
     &self.flags.subcommand
   }
 
-  pub fn strace_ops(&self) -> &Option<Vec<String>> {
-    &self.flags.strace_ops
+  pub fn trace_ops(&self) -> &Option<Vec<String>> {
+    &self.flags.trace_ops
   }
 
   pub fn take_binary_npm_command_name(&self) -> Option<String> {
