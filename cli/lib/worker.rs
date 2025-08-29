@@ -39,6 +39,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::ops::bundle::BundleProvider;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -376,6 +377,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   storage_key_resolver: StorageKeyResolver,
   sys: TSys,
   options: LibMainWorkerOptions,
+  bundle_provider: Option<Arc<dyn BundleProvider>>,
 }
 
 impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
@@ -540,6 +542,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     sys: TSys,
     options: LibMainWorkerOptions,
     roots: LibWorkerFactoryRoots,
+    bundle_provider: Option<Arc<dyn BundleProvider>>,
   ) -> Self {
     Self {
       shared: Arc::new(LibWorkerFactorySharedState {
@@ -560,6 +563,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         storage_key_resolver,
         sys,
         options,
+        bundle_provider,
       }),
     }
   }
@@ -646,6 +650,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       feature_checker,
       permissions,
       v8_code_cache: shared.code_cache.clone(),
+      bundle_provider: shared.bundle_provider.clone(),
     };
 
     let options = WorkerOptions {

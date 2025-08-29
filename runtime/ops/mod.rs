@@ -8,6 +8,7 @@ pub mod runtime;
 pub mod tty;
 pub mod web_worker;
 pub mod worker_host;
+pub mod bundle;
 
 use std::sync::Arc;
 

@@ -9,6 +9,348 @@
 declare namespace Deno {
   export {}; // stop default export type behavior
 
+  export namespace bundle {
+    export type Platform = "browser" | "deno";
+
+    export type Format = "esm" | "cjs" | "iife";
+
+    export type SourceMapType = "linked" | "inline" | "external";
+
+    export type PackageHandling = "bundle" | "external";
+
+    export interface Options {
+      /**
+       * The entrypoints of the bundle.
+       */
+      entrypoints: string[];
+      /**
+       * Output file path.
+       */
+      outputPath?: string;
+      /**
+       * Output directory path.
+       */
+      outputDir?: string;
+      /**
+       * External modules to exclude from bundling.
+       */
+      external?: string[];
+      /**
+       * Bundle format.
+       */
+      format?: Format;
+      /**
+       * Whether to minify the output.
+       */
+      minify?: boolean;
+      /**
+       * Whether to enable code splitting.
+       */
+      codeSplitting?: boolean;
+      /**
+       * Whether to inline imports.
+       */
+      inlineImports?: boolean;
+      /**
+       * How to handle packages.
+       */
+      packages?: PackageHandling;
+      /**
+       * Source map configuration.
+       */
+      sourcemap?: SourceMapType;
+      /**
+       * Target platform.
+       */
+      platform?: Platform;
+
+      /**
+       * Whether to write the output to the filesystem.
+       *
+       * @default true if outputDir or outputPath is set, false otherwise
+       */
+      write?: boolean;
+
+      plugins?: Plugin[];
+    }
+
+    export interface MessageLocation {
+      file: string;
+      namespace?: string;
+      line: number;
+      column: number;
+      length: number;
+      suggestion?: string;
+    }
+
+    export interface MessageNote {
+      text: string;
+      location?: MessageLocation;
+    }
+
+    export interface Message {
+      text: string;
+      location?: MessageLocation;
+      notes?: MessageNote[];
+    }
+
+    export interface Result {
+      errors: Message[];
+      warnings: Message[];
+      success: boolean;
+      outputFiles?: {
+        path: string;
+        contents?: string;
+        hash: string;
+      }[];
+    }
+
+    export interface Plugin {
+      name: string;
+      setup: (build: PluginBuild) => void | Promise<void>;
+    }
+
+    export interface PluginBuild {
+      /** Documentation: https://esbuild.github.io/plugins/#build-options */
+      initialOptions: Options;
+
+      /** Documentation: https://esbuild.github.io/plugins/#resolve */
+      resolve(path: string, options?: ResolveOptions): Promise<ResolveResult>;
+
+      /** Documentation: https://esbuild.github.io/plugins/#on-start */
+      onStart(
+        callback: () =>
+          | OnStartResult
+          | null
+          | void
+          | Promise<OnStartResult | null | void>,
+      ): void;
+
+      /** Documentation: https://esbuild.github.io/plugins/#on-end */
+      onEnd(
+        callback: (
+          result: Result,
+        ) => OnEndResult | null | void | Promise<OnEndResult | null | void>,
+      ): void;
+
+      /** Documentation: https://esbuild.github.io/plugins/#on-resolve */
+      onResolve(
+        options: OnResolveOptions,
+        callback: (
+          args: OnResolveArgs,
+        ) =>
+          | OnResolveResult
+          | null
+          | undefined
+          | Promise<OnResolveResult | null | undefined>,
+      ): void;
+
+      /** Documentation: https://esbuild.github.io/plugins/#on-load */
+      onLoad(
+        options: OnLoadOptions,
+        callback: (
+          args: OnLoadArgs,
+        ) =>
+          | OnLoadResult
+          | null
+          | undefined
+          | Promise<OnLoadResult | null | undefined>,
+      ): void;
+
+      /** Documentation: https://esbuild.github.io/plugins/#on-dispose */
+      onDispose(callback: () => void): void;
+    }
+
+    /** Documentation: https://esbuild.github.io/plugins/#resolve-options */
+    export interface ResolveOptions {
+      pluginName?: string;
+      importer?: string;
+      namespace?: string;
+      resolveDir?: string;
+      kind?: ImportKind;
+      pluginData?: any;
+      with?: Record<string, string>;
+    }
+
+    /** Documentation: https://esbuild.github.io/plugins/#resolve-results */
+    export interface ResolveResult {
+      errors: Message[];
+      warnings: Message[];
+
+      path: string;
+      external: boolean;
+      sideEffects: boolean;
+      namespace: string;
+      suffix: string;
+      pluginData: any;
+    }
+
+    export interface OnStartResult {
+      errors?: Message[];
+      warnings?: Message[];
+    }
+
+    export interface OnEndResult {
+      errors?: Message[];
+      warnings?: Message[];
+    }
+
+    /** Documentation: https://esbuild.github.io/plugins/#on-resolve-options */
+    export interface OnResolveOptions {
+      filter: RegExp;
+      namespace?: string;
+    }
+
+    /** Documentation: https://esbuild.github.io/plugins/#on-resolve-arguments */
+    export interface OnResolveArgs {
+      path: string;
+      importer: string;
+      namespace: string;
+      resolveDir: string;
+      kind: ImportKind;
+      pluginData: any;
+      with: Record<string, string>;
+    }
+
+    export type ImportKind =
+      | "entry-point"
+      // JS
+      | "import-statement"
+      | "require-call"
+      | "dynamic-import"
+      | "require-resolve"
+      // CSS
+      | "import-rule"
+      | "composes-from"
+      | "url-token";
+
+    /** Documentation: https://esbuild.github.io/plugins/#on-resolve-results */
+    export interface OnResolveResult {
+      pluginName?: string;
+
+      errors?: Message[];
+      warnings?: Message[];
+
+      path?: string;
+      external?: boolean;
+      sideEffects?: boolean;
+      namespace?: string;
+      suffix?: string;
+      pluginData?: any;
+
+      watchFiles?: string[];
+      watchDirs?: string[];
+    }
+
+    /** Documentation: https://esbuild.github.io/plugins/#on-load-options */
+    export interface OnLoadOptions {
+      filter: RegExp;
+      namespace?: string;
+    }
+
+    /** Documentation: https://esbuild.github.io/plugins/#on-load-arguments */
+    export interface OnLoadArgs {
+      path: string;
+      namespace: string;
+      suffix: string;
+      pluginData: any;
+      with: Record<string, string>;
+    }
+
+    /** Documentation: https://esbuild.github.io/plugins/#on-load-results */
+    export interface OnLoadResult {
+      pluginName?: string;
+
+      errors?: Message[];
+      warnings?: Message[];
+
+      contents?: string | Uint8Array;
+      resolveDir?: string;
+      loader?: Loader;
+      pluginData?: any;
+
+      watchFiles?: string[];
+      watchDirs?: string[];
+    }
+
+    export interface PartialMessage {
+      id?: string;
+      pluginName?: string;
+      text?: string;
+      location?: Partial<MessageLocation> | null;
+      notes?: PartialNote[];
+      detail?: any;
+    }
+
+    export interface PartialNote {
+      text?: string;
+      location?: Partial<MessageLocation> | null;
+    }
+
+    type Loader =
+      | "js"
+      | "ts"
+      | "jsx"
+      | "css"
+      | "json"
+      | "text"
+      | "base64"
+      | "dataurl"
+      | "wasm"
+      | "binary"
+      | "file";
+  }
+
+  // type FilterPattern = string | RegExp;
+
+  // type ResolveIdResult = string | null | false | PartialResolvedId;
+
+  // interface PartialResolvedId {
+  //   id: string;
+  //   external?: boolean | "absolute" | "relative";
+  //   attributes?: Record<string, string> | null;
+  //   meta?: { [plugin: string]: any } | null;
+  //   moduleSideEffects?: boolean | "no-treeshake" | null;
+  //   resolvedBy?: string | null;
+  //   syntheticNamedExports?: boolean | string | null;
+  // }
+  // type LoadResult = string | null | SourceDescription;
+
+  // interface SourceDescription {
+  //   code: string;
+  //   map?: string | SourceMap;
+  //   ast?: ESTree.Program;
+  //   attributes?: { [key: string]: string } | null;
+  //   meta?: { [plugin: string]: any } | null;
+  //   moduleSideEffects?: boolean | "no-treeshake" | null;
+  //   syntheticNamedExports?: boolean | string | null;
+  // }
+
+  // export interface OnResolveOptions {
+  //   filter?: FilterPattern;
+  //   namespace?: string;
+  // }
+  // export interface Context {
+  //   onResolve(options: OnResolveOptions, handler): ResolveIdResult;
+  // }
+  // export interface Plugin {
+  //   name: string;
+
+  //   setup(context: {
+  //     onResolve(options: OnResolveOptions): ResolveIdResult;
+  //     onLoad(options: OnLoadOptions): LoadResult;
+  //   });
+  // }
+
+  // export interface PluginFilter {
+  //   id?: {
+  //     include?: FilterPattern | FilterPattern[];
+  //     exclude?: FilterPattern | FilterPattern[];
+  //   };
+  // }
+
+  export function bundle(options: bundle.Options): Promise<bundle.Result>;
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    *  Creates a presentable WebGPU surface from given window and
