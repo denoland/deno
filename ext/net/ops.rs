@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
-use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -40,13 +39,13 @@ use socket2::Type;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
 
+pub use crate::IpAddr;
 use crate::NetPermissions;
 use crate::io::TcpStreamResource;
 use crate::raw::NetworkListenerResource;
-use crate::resolve_addr::resolve_addr;
-use crate::resolve_addr::resolve_addr_sync;
+use crate::resolve_addr::resolve_addr_sync_with_permissions;
+use crate::resolve_addr::resolve_addr_with_permissions;
 use crate::tcp::TcpListener;
-use crate::tunnel::TunnelAddr;
 
 pub type Fd = u32;
 
@@ -57,30 +56,6 @@ pub struct TlsHandshakeInfo {
   #[serde(skip_serializing)]
   pub peer_certificates:
     Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct IpAddr {
-  pub hostname: String,
-  pub port: u16,
-}
-
-impl From<SocketAddr> for IpAddr {
-  fn from(addr: SocketAddr) -> Self {
-    Self {
-      hostname: addr.ip().to_string(),
-      port: addr.port(),
-    }
-  }
-}
-
-impl From<TunnelAddr> for IpAddr {
-  fn from(addr: TunnelAddr) -> Self {
-    Self {
-      hostname: addr.hostname(),
-      port: addr.port(),
-    }
-  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -264,10 +239,12 @@ where
       "Deno.DatagramConn.send()",
     )?;
   }
-  let addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or(NetError::NoResolvedAddress)?;
+  let addr = resolve_addr_with_permissions::<NP>(
+    &state,
+    "Deno.DatagramConn.send()",
+    addr,
+  )
+  .await?;
 
   let resource = state
     .borrow_mut()
@@ -511,10 +488,8 @@ where
       .check_net(&(&hostname_to_check, Some(addr.port)), "Deno.connect()")?;
   }
 
-  let addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
+  let addr =
+    resolve_addr_with_permissions::<NP>(&state, "Deno.connect()", addr).await?;
 
   let cancel_handle = resource_abort_id.and_then(|rid| {
     state
@@ -585,9 +560,12 @@ where
   state
     .borrow_mut::<NP>()
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
-  let addr = resolve_addr_sync(&addr.hostname, addr.port)?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
+
+  let addr = resolve_addr_sync_with_permissions::<NP, NetError>(
+    state,
+    "Deno.listen()",
+    &addr,
+  )?;
 
   let listener = if load_balanced {
     TcpListener::bind_load_balanced(addr, tcp_backlog)
@@ -613,9 +591,11 @@ where
   state
     .borrow_mut::<NP>()
     .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
-  let addr = resolve_addr_sync(&addr.hostname, addr.port)?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
+  let addr = resolve_addr_sync_with_permissions::<NP, NetError>(
+    state,
+    "Deno.listenDatagram()",
+    &addr,
+  )?;
 
   let domain = if addr.is_ipv4() {
     Domain::IPV4
@@ -1215,6 +1195,7 @@ fn format_rdata(
 mod tests {
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
+  use std::net::SocketAddr;
   use std::net::ToSocketAddrs;
   use std::path::Path;
   use std::sync::Arc;
@@ -1445,6 +1426,14 @@ mod tests {
       &mut self,
       _cid: u32,
       _port: u32,
+      _api_name: &str,
+    ) -> Result<(), PermissionCheckError> {
+      Ok(())
+    }
+
+    fn check_net_resolved_addr_is_not_denied(
+      &mut self,
+      _addr: &SocketAddr,
       _api_name: &str,
     ) -> Result<(), PermissionCheckError> {
       Ok(())
