@@ -2,5 +2,12 @@ Add npm:@denotest/deprecated-package@1.0.0
 Download http://localhost:4260/@denotest%2fdeprecated-package
 Download http://localhost:4260/@denotest/deprecated-package/1.0.0.tgz
 Initialize @denotest/deprecated-package@1.0.0
+Packages: 1
++
+Resolved: 0, reused: 0, downloaded: 2, added: 1
+
+Dependencies:
++ npm:@denotest/deprecated-package 1.0.0
+
 Warning The following packages are deprecated:
 ┖─ npm:@denotest/deprecated-package@1.0.0 (Deprecated version)

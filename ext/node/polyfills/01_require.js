@@ -306,8 +306,6 @@ let hasInspectBrk = false;
 let usesLocalNodeModulesDir = false;
 
 function stat(filename) {
-  // TODO: required only on windows
-  // filename = path.toNamespacedPath(filename);
   if (statCache !== null) {
     const result = statCache.get(filename);
     if (result !== undefined) {
