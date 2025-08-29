@@ -1287,6 +1287,10 @@ fn new_workspace_factory_options(
         is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),
       },
     ),
+    root_node_modules_dir_override: flags
+      .internal
+      .root_node_modules_dir_override
+      .clone(),
     vendor: flags.vendor,
   }
 }

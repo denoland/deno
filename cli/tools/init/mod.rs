@@ -335,6 +335,15 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     return Ok(print_manual_usage(&script_name, &args));
   }
 
+  let temp_node_modules_parent_dir = create_temp_node_modules_parent_dir()
+    .context("Failed creating temp directory for node_modules folder.")?;
+  let temp_node_modules_dir =
+    temp_node_modules_parent_dir.path().join("node_modules");
+  log::debug!(
+    "Creating node_modules directory at: {}",
+    temp_node_modules_dir.display()
+  );
+
   let new_flags = Flags {
     permissions: PermissionFlags {
       allow_all: true,
@@ -342,7 +351,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     },
     allow_scripts: PackagesAllowedScripts::All,
     argv: args,
-    node_modules_dir: Some(NodeModulesDirMode::None),
+    node_modules_dir: Some(NodeModulesDirMode::Auto),
     subcommand: DenoSubcommand::Run(RunFlags {
       script: script_name,
       ..Default::default()
@@ -350,18 +359,38 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     reload: true,
     internal: InternalFlags {
       lockfile_skip_write: true,
+      root_node_modules_dir_override: Some(temp_node_modules_dir),
       ..Default::default()
     },
     ..Default::default()
   };
-  crate::tools::run::run_script(
+  let result = crate::tools::run::run_script(
     WorkerExecutionMode::Run,
     new_flags.into(),
     None,
     None,
     Default::default(),
   )
-  .await
+  .await;
+  drop(temp_node_modules_parent_dir); // explicit drop for clarity
+  result
+}
+
+fn create_temp_node_modules_parent_dir() -> Result<tempfile::TempDir, AnyError>
+{
+  let root_temp_folder = std::env::temp_dir().join("deno_nm");
+  std::fs::create_dir_all(&root_temp_folder).with_context(|| {
+    format!("Failed creating '{}'", root_temp_folder.display())
+  })?;
+  let temp_node_modules_parent_dir =
+    tempfile::TempDir::new_in(&root_temp_folder)?;
+  // write a package.json to make this be considered a "node" project to deno
+  let package_json_path =
+    temp_node_modules_parent_dir.path().join("package.json");
+  std::fs::write(&package_json_path, "{}").with_context(|| {
+    format!("Failed creating '{}'", package_json_path.display())
+  })?;
+  Ok(temp_node_modules_parent_dir)
 }
 
 fn create_json_file(
