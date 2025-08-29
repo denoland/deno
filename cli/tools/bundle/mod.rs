@@ -107,29 +107,29 @@ pub async fn bundle_init(
   let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
   #[allow(clippy::arc_with_non_send_sync)]
   let plugin_handler = Arc::new(DenoPluginHandler {
-    file_fetcher: factory.file_fetcher()?.clone(),
-    resolver: resolver.clone(),
-    module_load_preparer,
-    module_graph_container,
-    permissions: root_permissions.clone(),
-    module_loader: module_loader.clone(),
-    externals_matcher: if bundle_flags.external.is_empty() {
-      None
-    } else {
-      Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
-    },
-    on_end_tx,
-    js_plugins: plugins,
-    parsed_source_cache: factory.parsed_source_cache()?.clone(),
-    cjs_tracker: factory.cjs_tracker()?.clone(),
-    emitter: factory.emitter()?.clone(),
+    inner: Arc::new(DenoPluginHandlerInner {
+      file_fetcher: factory.file_fetcher()?.clone(),
+      resolver: resolver.clone(),
+      module_load_preparer,
+      module_graph_container,
+      permissions: root_permissions.clone(),
+      module_loader: module_loader.clone(),
+      externals_matcher: if bundle_flags.external.is_empty() {
+        None
+      } else {
+        Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
+      },
+      on_end_tx,
+      js_plugins: plugins,
+      parsed_source_cache: factory.parsed_source_cache()?.clone(),
+      cjs_tracker: factory.cjs_tracker()?.clone(),
+      emitter: factory.emitter()?.clone(),
+      deferred_resolve_errors: Arc::new(Mutex::new(vec![])),
+    }),
   });
 
-  let resolved_entrypoints = resolve_entrypoints(
-    &resolver,
-    &init_cwd,
-    &bundle_flags.entrypoints
-  )?;
+  let resolved_entrypoints =
+    resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
   let _ = plugin_handler
     .prepare_module_load(&resolved_entrypoints)
     .await;
@@ -372,17 +372,17 @@ impl EsbuildBundler {
         name: "deno".into(),
         on_start: self
           .plugin_handler
+          .inner
           .js_plugins
           .as_ref()
           .is_some_and(|plugins| plugins.info.iter().any(|p| p.on_start)),
         on_end: matches!(self.mode, BundlingMode::Watch)
-          || 
-            self
-              .plugin_handler
-              .js_plugins
-              .as_ref()
-              .is_some_and(|plugins| plugins.info.iter().any(|p| p.on_end))
-          ,
+          || self
+            .plugin_handler
+            .inner
+            .js_plugins
+            .as_ref()
+            .is_some_and(|plugins| plugins.info.iter().any(|p| p.on_end)),
         on_resolve: (vec![protocol::OnResolveSetupOptions {
           id: 0,
           filter: ".*".into(),
@@ -405,7 +405,7 @@ impl EsbuildBundler {
       .unwrap();
 
     if self.mode == BundlingMode::OneShot
-      && let Some(js_plugins) = &self.plugin_handler.js_plugins
+      && let Some(js_plugins) = &self.plugin_handler.inner.js_plugins
       && js_plugins.info.iter().any(|p| p.on_end)
     {
       let (tx, rx) = oneshot::channel();
@@ -550,7 +550,13 @@ fn requested_type_from_map(
   }
 }
 
+#[derive(Clone)]
+
 pub struct DenoPluginHandler {
+  inner: Arc<DenoPluginHandlerInner>,
+}
+
+struct DenoPluginHandlerInner {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: Arc<CliResolver>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
@@ -714,7 +720,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnResolveArgs,
   ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
-    if let Some(matcher) = &self.externals_matcher
+    if let Some(matcher) = &self.inner.externals_matcher
       && matcher.is_pre_resolve_match(&args.path)
     {
       return Ok(Some(esbuild_client::OnResolveResult {
@@ -726,16 +732,16 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       }));
     }
 
-    if let Some(js_plugins) = &self.js_plugins {
+    if let Some(js_plugins) = &self.inner.js_plugins {
       let (tx, rx) = oneshot::channel();
       let request = deno_runtime::ops::bundle::PluginRequest::OnResolve {
         plugin_ids: js_plugins
           .info
           .iter()
           .filter_map(|p| {
-            p.on_resolve.as_ref().and_then(|o| {
-              o.filter.is_match(args.path.as_str()).then(|| p.id)
-            })
+            p.on_resolve
+              .as_ref()
+              .and_then(|o| o.filter.is_match(args.path.as_str()).then(|| p.id))
           })
           .collect(),
         args: vec![serde_json::to_value(PluginOnResolveArgs {
@@ -786,6 +792,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       // output file this import will end up in. We may have to use the metafile and rewrite at the end
       let is_external = r.starts_with("node:")
         || self
+          .inner
           .externals_matcher
           .as_ref()
           .map(|matcher| matcher.is_post_resolve_match(&r))
@@ -815,7 +822,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_load"));
-    if let Some(js_plugins) = &self.js_plugins {
+    if let Some(js_plugins) = &self.inner.js_plugins {
       let (tx, rx) = oneshot::channel();
       let request = deno_runtime::ops::bundle::PluginRequest::OnLoad {
         plugin_ids: js_plugins
@@ -887,7 +894,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnStartArgs,
   ) -> Result<Option<esbuild_client::OnStartResult>, AnyError> {
-    if let Some(js_plugins) = &self.js_plugins {
+    if let Some(js_plugins) = &self.inner.js_plugins {
       let (tx, rx) = oneshot::channel();
       let request = deno_runtime::ops::bundle::PluginRequest::OnStart {
         plugin_ids: js_plugins
@@ -913,8 +920,8 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnEndArgs,
   ) -> Result<Option<esbuild_client::OnEndResult>, AnyError> {
-    self.on_end_tx.send(_args).await?;
-    if let Some(js_plugins) = &self.js_plugins {
+    self.inner.on_end_tx.send(_args).await?;
+    if let Some(js_plugins) = &self.inner.js_plugins {
       let (tx, rx) = oneshot::channel();
       let request = deno_runtime::ops::bundle::PluginRequest::OnEnd {
         plugin_ids: js_plugins
@@ -1042,8 +1049,11 @@ impl DenoPluginHandler {
     &self,
     specifiers: &[PathBuf],
   ) -> Result<(), AnyError> {
-    let mut graph_permit =
-      self.module_graph_container.acquire_update_permit().await;
+    let mut graph_permit = self
+      .inner
+      .module_graph_container
+      .acquire_update_permit()
+      .await;
     let graph = graph_permit.graph_mut();
     let mut specifiers_vec = Vec::with_capacity(specifiers.len());
     for specifier in specifiers {
@@ -1051,8 +1061,14 @@ impl DenoPluginHandler {
       specifiers_vec.push(specifier);
     }
     self
+      .inner
       .module_load_preparer
-      .reload_specifiers(graph, specifiers_vec, false, self.permissions.clone())
+      .reload_specifiers(
+        graph,
+        specifiers_vec,
+        false,
+        self.inner.permissions.clone(),
+      )
       .await?;
     graph_permit.commit();
     Ok(())
@@ -1076,7 +1092,7 @@ impl DenoPluginHandler {
       with
     );
     let mut resolve_dir = resolve_dir.unwrap_or("").to_string();
-    let resolver = self.resolver.clone();
+    let resolver = self.inner.resolver.clone();
     if !resolve_dir.ends_with(std::path::MAIN_SEPARATOR) {
       resolve_dir.push(std::path::MAIN_SEPARATOR);
     }
@@ -1106,7 +1122,7 @@ impl DenoPluginHandler {
       import_kind_to_resolution_mode(kind)
     );
 
-    let graph = self.module_graph_container.graph();
+    let graph = self.inner.module_graph_container.graph();
     let result = resolver.resolve_with_graph(
       &graph,
       path,
@@ -1138,10 +1154,14 @@ impl DenoPluginHandler {
     &self,
     specifiers: &[ModuleSpecifier],
   ) -> Result<(), BundleLoadError> {
-    let mut graph_permit =
-      self.module_graph_container.acquire_update_permit().await;
+    let mut graph_permit = self
+      .inner
+      .module_graph_container
+      .acquire_update_permit()
+      .await;
     let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
     self
+      .inner
       .module_load_preparer
       .prepare_module_load(
         graph,
@@ -1149,7 +1169,7 @@ impl DenoPluginHandler {
         PrepareModuleLoadOptions {
           is_dynamic: false,
           lib: TsTypeLib::default(),
-          permissions: self.permissions.clone(),
+          permissions: self.inner.permissions.clone(),
           ext_overwrite: None,
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
@@ -1210,8 +1230,9 @@ impl DenoPluginHandler {
         (specifier, media_type)
       };
 
-    let graph = self.module_graph_container.graph();
+    let graph = self.inner.module_graph_container.graph();
     let module_or_asset = self
+      .inner
       .module_loader
       .load(&graph, &specifier, None, requested_type)
       .await;
@@ -1220,6 +1241,7 @@ impl DenoPluginHandler {
       Err(e) => match e.as_kind() {
         LoadCodeSourceErrorKind::LoadUnpreparedModule(_) => {
           let file = self
+            .inner
             .file_fetcher
             .fetch_bypass_permissions(&specifier)
             .await?;
@@ -1237,6 +1259,7 @@ impl DenoPluginHandler {
                   &file.source,
                   Some(requested_type),
                 )
+                .await
                 .map(Some);
             }
             RequestedModuleType::None
@@ -1256,6 +1279,7 @@ impl DenoPluginHandler {
                     source.as_bytes(),
                     Some(requested_type),
                   )
+                  .await
                   .map(Some);
               } else {
                 return self
@@ -1266,6 +1290,7 @@ impl DenoPluginHandler {
                     &file.source,
                     Some(requested_type),
                   )
+                  .await
                   .map(Some);
               }
             }
@@ -1281,23 +1306,28 @@ impl DenoPluginHandler {
         statically_analyzable: _,
       } => LoadedModuleSource::ArcBytes(
         self
+          .inner
           .file_fetcher
-          .fetch(&specifier, &self.permissions)
+          .fetch(&specifier, &self.inner.permissions)
           .await?
           .source,
       ),
     };
 
-    Ok(Some(self.create_module_response(
-      &graph,
-      &specifier,
-      media_type,
-      loaded_code.as_bytes(),
-      Some(requested_type),
-    )?))
+    Ok(Some(
+      self
+        .create_module_response(
+          &graph,
+          &specifier,
+          media_type,
+          loaded_code.as_bytes(),
+          Some(requested_type),
+        )
+        .await?,
+    ))
   }
 
-  fn create_module_response(
+  async fn create_module_response(
     &self,
     graph: &deno_graph::ModuleGraph,
     specifier: &Url,
@@ -1330,11 +1360,16 @@ impl DenoPluginHandler {
         | MediaType::Tsx
     ) && !graph.roots.contains(specifier)
     {
-      let code = self.apply_transform(
-        &specifier,
-        media_type,
-        std::str::from_utf8(source)?,
-      )?;
+      let me = self.clone();
+      let specifier = specifier.clone();
+      let source = source.to_vec();
+      let code = tokio::task::spawn_blocking(move || {
+        // TODO: fixme
+        let arc_source = Arc::<str>::from(String::from_utf8(source).unwrap());
+        me.apply_transform(&specifier, media_type, &arc_source)
+      })
+      .await
+      .unwrap()?;
       Ok((code.into_bytes(), media_type_to_loader(media_type)))
     } else {
       Ok((source.to_vec(), media_type_to_loader(media_type)))
@@ -1348,23 +1383,23 @@ impl DenoPluginHandler {
     source: &Arc<str>,
     is_known_script: Option<bool>,
   ) -> Result<Arc<str>, BundleLoadError> {
-    let parsed_source = self.parsed_source_cache.get_matching_parsed_source(
-      specifier,
-      media_type,
-      source.clone(),
-    )?;
+    let parsed_source = self
+      .inner
+      .parsed_source_cache
+      .get_matching_parsed_source(specifier, media_type, source.clone())?;
     let is_cjs = if let Some(is_known_script) = is_known_script {
-      self.cjs_tracker.is_cjs_with_known_is_script(
+      self.inner.cjs_tracker.is_cjs_with_known_is_script(
         specifier,
         media_type,
         is_known_script,
       )?
     } else {
-      self.cjs_tracker.is_maybe_cjs(specifier, media_type)?
+      self.inner.cjs_tracker.is_maybe_cjs(specifier, media_type)?
         && parsed_source.compute_is_script()
     };
     let module_kind = ModuleKind::from_is_cjs(is_cjs);
     let source = self
+      .inner
       .emitter
       .maybe_emit_parsed_source(parsed_source, module_kind)
       .await?;
@@ -1376,19 +1411,58 @@ impl DenoPluginHandler {
     &self,
     specifier: &ModuleSpecifier,
     media_type: deno_ast::MediaType,
-    code: &str,
+    code: &Arc<str>,
   ) -> Result<String, BundleLoadError> {
+    static MATCHER: std::sync::LazyLock<aho_corasick::AhoCorasick> =
+      std::sync::LazyLock::new(|| {
+        aho_corasick::AhoCorasickBuilder::new()
+          .build(["import", "meta", "main"])
+          .unwrap()
+      });
+
+    fn has_import_meta_main(s: &str) -> bool {
+      let iter = MATCHER.find_iter(s);
+      let mut got_0 = false;
+      let mut got_1 = false;
+      let mut got_2 = false;
+      for m in iter {
+        match m.pattern().as_usize() {
+          0 => {
+            got_0 = true;
+          }
+          1 => {
+            got_1 = true;
+          }
+          2 => {
+            got_2 = true;
+          }
+          _ => unreachable!(),
+        }
+        if got_0 && got_1 && got_2 {
+          return true;
+        }
+      }
+      got_0 && got_1 && got_2
+    }
+
+    if !has_import_meta_main(code) {
+      return Ok(code.to_string());
+    }
+    
+    let emit_cache = self.inner.emitter.emit_cache();
     let mut transform = transform::BundleImportMetaMainTransform::new(
       self
+        .inner
         .module_graph_container
         .graph()
         .roots
         .contains(specifier),
     );
+
     let parsed_source = deno_ast::parse_program_with_post_process(
       deno_ast::ParseParams {
         specifier: specifier.clone(),
-        text: code.into(),
+        text: code.clone(),
         media_type,
         capture_tokens: false,
         scope_analysis: false,
@@ -1409,7 +1483,10 @@ impl DenoPluginHandler {
         ..Default::default()
       },
     )?;
+
     Ok(code.text)
+    // eprintln!("oxc: {:?}", end - start);
+    // Ok(code.code)
   }
 
   #[allow(clippy::result_large_err)]
@@ -1424,7 +1501,7 @@ impl DenoPluginHandler {
     )>,
     BundleLoadError,
   > {
-    let graph = self.module_graph_container.graph();
+    let graph = self.inner.module_graph_container.graph();
     let Some(module) = graph.get(specifier) else {
       return Ok(None);
     };
@@ -1443,7 +1520,7 @@ impl DenoPluginHandler {
         return Err(BundleLoadError::WasmUnsupported);
       }
       deno_graph::Module::Npm(module) => {
-        let url = self.resolver.resolve_npm_nv_ref(
+        let url = self.inner.resolver.resolve_npm_nv_ref(
           &module.nv_reference,
           None,
           ResolutionMode::Import,

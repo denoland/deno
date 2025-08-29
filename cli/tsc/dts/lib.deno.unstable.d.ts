@@ -64,6 +64,13 @@ declare namespace Deno {
        */
       platform?: Platform;
 
+      /**
+       * Whether to write the output to the filesystem.
+       *
+       * @default true if outputDir or outputPath is set, false otherwise
+       */
+      write?: boolean;
+
       plugins?: Plugin[];
     }
 

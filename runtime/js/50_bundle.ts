@@ -2,24 +2,6 @@
 /// <reference path="../../cli/tsc/dts/lib.deno.unstable.d.ts" />
 import { op_bundle, PluginExecResultSenderWrapper } from "ext:core/ops";
 
-// declare function op_bundle(
-//   options: Omit<Deno.bundle.Options, "plugins">,
-//   plugins: RustPluginInfo[] | null,
-//   pluginExecutor:
-//     | ((
-//       hook: Hook,
-//       type: HookType,
-//       ids: number[],
-//       sender: PluginExecResultSenderWrapper,
-//       ...args: any[]
-//     ) => Promise<void>)
-//     | null,
-// ): Promise<Omit<Deno.bundle.Result, "success">>;
-
-// interface PluginExecResultSenderWrapper {
-//   sendResult: (result: any) => void;
-// }
-
 interface PluginInfo {
   id: number;
   name: string;
@@ -273,7 +255,6 @@ function makePluginExecutor(
         const newResult = await plugin[hookName].callback(...args);
         if (type === HookType.first && newResult) {
           result = newResult as HookTypes[H];
-          // console.log("result for hook", hookName, result);
           sender.sendResult({ pluginId: id, result });
           return;
         } else if (type === HookType.sequential) {
@@ -286,7 +267,6 @@ function makePluginExecutor(
         }
       }
     }
-    // console.log("result for hook", hookName, result);
     sender.sendResult({ pluginId: null, result });
   };
 }
@@ -299,8 +279,6 @@ export async function bundle(
   const plugins = await collectPluginInfo(options);
 
   const forRust = toRustPluginInfo(plugins);
-  // console.log("plugins", plugins);
-  // console.log("forRust", forRust);
 
   const result = {
     success: false,
