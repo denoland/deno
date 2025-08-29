@@ -145,10 +145,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(1)]
-  fn execute_bundles(
-    &self,
-    #[webidl] bundles: Vec<Ref<GPURenderBundle>>,
-  ) {
+  fn execute_bundles(&self, #[webidl] bundles: Vec<Ref<GPURenderBundle>>) {
     let err = self
       .instance
       .render_pass_execute_bundles(
