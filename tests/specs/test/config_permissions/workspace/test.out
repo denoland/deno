@@ -1,0 +1,16 @@
+[WILDCARD]
+Root: granted
+Member: prompt
+[WILDCARD]
+running 0 tests from ./main.test.ts
+[WILDCARD]
+Root: prompt
+Member: granted
+[WILDCARD]
+running 0 tests from ./a/main.test.ts
+[WILDCARD]
+Root: granted
+Member: prompt
+[WILDCARD]
+running 0 tests from ./b/main.test.ts
+[WILDCARD]

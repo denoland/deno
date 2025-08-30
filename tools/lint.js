@@ -295,6 +295,8 @@ async function ensureNoNonPermissionCapitalLetterShortFlags() {
     "L",
     // --allow-net
     "N",
+    // --permission-set
+    "P",
     // --allow-read
     "R",
     // --allow-sys

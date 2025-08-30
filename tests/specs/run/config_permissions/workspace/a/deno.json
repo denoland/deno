@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "member": {
+      "read": ["./data"]
+    }
+  }
+}

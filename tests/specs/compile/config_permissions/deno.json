@@ -1,0 +1,7 @@
+{
+  "compile": {
+    "permissions": {
+      "read": true
+    }
+  }
+}
