@@ -27,9 +27,10 @@ import { primordials } from "ext:core/mod.js";
 import process from "node:process";
 
 const {
-  ArrayPrototypeJoin,
-  ArrayPrototypeSlice,
   ArrayPrototypeIncludes,
+  ArrayPrototypeJoin,
+  ArrayPrototypePop,
+  ArrayPrototypeSlice,
   StringPrototypeCharCodeAt,
   StringPrototypeIncludes,
   StringPrototypeIndexOf,
@@ -550,10 +551,10 @@ export function relative(from: string, to: string): string {
     const fromSplit = StringPrototypeSplit(fromOrig, "\\");
     const toSplit = StringPrototypeSplit(toOrig, "\\");
     if (fromSplit[fromSplit.length - 1] === "") {
-      fromSplit.pop();
+      ArrayPrototypePop(fromSplit);
     }
     if (toSplit[toSplit.length - 1] === "") {
-      toSplit.pop();
+      ArrayPrototypePop(toSplit);
     }
 
     const fromLen = fromSplit.length;
