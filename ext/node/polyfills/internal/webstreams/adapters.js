@@ -502,6 +502,7 @@ export function newReadableStreamFromStreamReadable(
   const strategy = evaluateStrategyOrFallback(options?.strategy);
 
   let controller;
+  let wasCanceled = false;
 
   function onData(chunk) {
     // Copy the Buffer to detach it from the pool.
@@ -526,10 +527,12 @@ export function newReadableStreamFromStreamReadable(
     // This is a protection against non-standard, legacy streams
     // that happen to emit an error event again after finished is called.
     streamReadable.on("error", () => {});
+
     if (error) {
-      return controller.error(error);
+      controller.error(error);
+    } else if (!wasCanceled) {
+      controller.close();
     }
-    controller.close();
   });
 
   streamReadable.on("data", onData);
@@ -544,6 +547,7 @@ export function newReadableStreamFromStreamReadable(
     },
 
     cancel(reason) {
+      wasCanceled = true;
       destroy(streamReadable, reason);
     },
   }, strategy);
