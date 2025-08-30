@@ -18,7 +18,7 @@ import {
   copyFilePromise,
   copyFileSync,
 } from "ext:deno_node/_fs/_fs_copy.ts";
-import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.js";
+import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { fchmod, fchmodSync } from "ext:deno_node/_fs/_fs_fchmod.ts";
