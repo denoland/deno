@@ -1731,8 +1731,12 @@ fn pkg_json_to_version_info(
       .unwrap_or_default()
   }
 
-  fn parse_array(v: &[String]) -> Vec<SmallStackString> {
+  fn parse_small_stack_string_array(v: &[String]) -> Vec<SmallStackString> {
     v.iter().map(|s| SmallStackString::from_str(s)).collect()
+  }
+
+  fn parse_stack_string_array(v: &[String]) -> Vec<StackString> {
+    v.iter().map(|s| StackString::from_str(s)).collect()
   }
 
   let Some(version) = &pkg_json.version else {
@@ -1749,6 +1753,11 @@ fn pkg_json_to_version_info(
       .as_ref()
       .and_then(|v| serde_json::from_value(v.clone()).ok()),
     dependencies: parse_deps(pkg_json.dependencies.as_ref()),
+    bundle_dependencies: pkg_json
+      .bundle_dependencies
+      .as_ref()
+      .map(|d| parse_stack_string_array(d))
+      .unwrap_or_default(),
     optional_dependencies: parse_deps(pkg_json.optional_dependencies.as_ref()),
     peer_dependencies: parse_deps(pkg_json.peer_dependencies.as_ref()),
     peer_dependencies_meta: pkg_json
@@ -1756,8 +1765,16 @@ fn pkg_json_to_version_info(
       .clone()
       .and_then(|m| serde_json::from_value(m).ok())
       .unwrap_or_default(),
-    os: pkg_json.os.as_deref().map(parse_array).unwrap_or_default(),
-    cpu: pkg_json.cpu.as_deref().map(parse_array).unwrap_or_default(),
+    os: pkg_json
+      .os
+      .as_deref()
+      .map(parse_small_stack_string_array)
+      .unwrap_or_default(),
+    cpu: pkg_json
+      .cpu
+      .as_deref()
+      .map(parse_small_stack_string_array)
+      .unwrap_or_default(),
     scripts: pkg_json
       .scripts
       .as_ref()
@@ -2982,6 +2999,9 @@ mod test {
   "peerDependencies": {
     "my-peer-dep": "^2"
   },
+  "bundleDependencies": [
+    "my-dep"
+  ],
   "peerDependenciesMeta": {
     "my-peer-dep": {
       "optional": true
@@ -3007,6 +3027,7 @@ mod test {
           StackString::from_static("my-dep"),
           StackString::from_static("1")
         )]),
+        bundle_dependencies: Vec::from([StackString::from_static("my-dep")]),
         optional_dependencies: HashMap::from([(
           StackString::from_static("optional-dep"),
           StackString::from_static("~1")

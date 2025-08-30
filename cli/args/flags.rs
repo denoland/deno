@@ -752,6 +752,8 @@ pub struct InternalFlags {
   /// Used when the language server is configured with an
   /// explicit cache option.
   pub cache_path: Option<PathBuf>,
+  /// Override the path to use for the node_modules directory.
+  pub root_node_modules_dir_override: Option<PathBuf>,
   /// Only reads to the lockfile instead of writing to it.
   pub lockfile_skip_write: bool,
 }

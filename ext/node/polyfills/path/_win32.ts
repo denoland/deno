@@ -18,6 +18,7 @@ import {
   _format,
   assertPath,
   isPathSeparator,
+  isPosixPathSeparator,
   isWindowsDeviceRoot,
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
@@ -28,16 +29,58 @@ import process from "node:process";
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeSlice,
+  ArrayPrototypeIncludes,
   StringPrototypeCharCodeAt,
+  StringPrototypeIncludes,
+  StringPrototypeIndexOf,
   StringPrototypeRepeat,
   StringPrototypeSlice,
   StringPrototypeSplit,
   StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
   TypeError,
 } = primordials;
 
 export const sep = "\\";
 export const delimiter = ";";
+
+const WINDOWS_RESERVED_NAMES = [
+  "CON",
+  "PRN",
+  "AUX",
+  "NUL",
+  "COM1",
+  "COM2",
+  "COM3",
+  "COM4",
+  "COM5",
+  "COM6",
+  "COM7",
+  "COM8",
+  "COM9",
+  "LPT1",
+  "LPT2",
+  "LPT3",
+  "LPT4",
+  "LPT5",
+  "LPT6",
+  "LPT7",
+  "LPT8",
+  "LPT9",
+  "COM\xb9",
+  "COM\xb2",
+  "COM\xb3",
+  "LPT\xb9",
+  "LPT\xb2",
+  "LPT\xb3",
+];
+
+function isWindowsReservedName(path: string, colonIndex: number): boolean {
+  const devicePart = StringPrototypeToUpperCase(
+    StringPrototypeSlice(path, 0, colonIndex),
+  );
+  return ArrayPrototypeIncludes(WINDOWS_RESERVED_NAMES, devicePart);
+}
 
 /**
  * Resolves path segments into a `path`
@@ -237,46 +280,75 @@ export function normalize(path: string): string {
   const code = StringPrototypeCharCodeAt(path, 0);
 
   // Try to match a root
-  if (len > 1) {
-    if (isPathSeparator(code)) {
-      // Possible UNC root
+  if (len === 1) {
+    // `path` contains just a single char, exit early to avoid
+    // unnecessary work
+    return isPosixPathSeparator(code) ? "\\" : path;
+  }
+  if (isPathSeparator(code)) {
+    // Possible UNC root
 
-      // If we started with a separator, we know we at least have an absolute
-      // path of some kind (UNC or otherwise)
-      isAbsolute = true;
+    // If we started with a separator, we know we at least have an absolute
+    // path of some kind (UNC or otherwise)
+    isAbsolute = true;
 
-      if (isPathSeparator(StringPrototypeCharCodeAt(path, 1))) {
-        // Matched double path separator at beginning
-        let j = 2;
-        let last = j;
-        // Match 1 or more non-path separators
-        for (; j < len; ++j) {
-          if (isPathSeparator(StringPrototypeCharCodeAt(path, j))) break;
+    if (isPathSeparator(StringPrototypeCharCodeAt(path, 1))) {
+      // Matched double path separator at beginning
+      let j = 2;
+      let last = j;
+      // Match 1 or more non-path separators
+      while (
+        j < len &&
+        !isPathSeparator(StringPrototypeCharCodeAt(path, j))
+      ) {
+        j++;
+      }
+      if (j < len && j !== last) {
+        const firstPart = StringPrototypeSlice(path, last, j);
+        // Matched!
+        last = j;
+        // Match 1 or more path separators
+        while (
+          j < len &&
+          isPathSeparator(StringPrototypeCharCodeAt(path, j))
+        ) {
+          j++;
         }
         if (j < len && j !== last) {
-          const firstPart = StringPrototypeSlice(path, last, j);
           // Matched!
           last = j;
-          // Match 1 or more path separators
-          for (; j < len; ++j) {
-            if (!isPathSeparator(StringPrototypeCharCodeAt(path, j))) break;
+          // Match 1 or more non-path separators
+          while (
+            j < len &&
+            !isPathSeparator(StringPrototypeCharCodeAt(path, j))
+          ) {
+            j++;
           }
-          if (j < len && j !== last) {
-            // Matched!
-            last = j;
-            // Match 1 or more non-path separators
-            for (; j < len; ++j) {
-              if (isPathSeparator(StringPrototypeCharCodeAt(path, j))) break;
-            }
-            if (j === len) {
+          if (j === len || j !== last) {
+            if (firstPart === "." || firstPart === "?") {
+              // We matched a device root (e.g. \\\\.\\PHYSICALDRIVE0)
+              device = `\\\\${firstPart}`;
+              rootEnd = 4;
+              const colonIndex = StringPrototypeIndexOf(path, ":");
+              // Special case: handle \\?\COM1: or similar reserved device paths
+              const possibleDevice = StringPrototypeSlice(
+                path,
+                4,
+                colonIndex + 1,
+              );
+              if (
+                isWindowsReservedName(possibleDevice, possibleDevice.length - 1)
+              ) {
+                device = `\\\\?\\${possibleDevice}`;
+                rootEnd = 4 + possibleDevice.length;
+              }
+            } else if (j === len) {
               // We matched a UNC root only
               // Return the normalized version of the UNC root since there
               // is nothing left to process
-
               return `\\\\${firstPart}\\${StringPrototypeSlice(path, last)}\\`;
-            } else if (j !== last) {
+            } else {
               // We matched a UNC root with leftovers
-
               device = `\\\\${firstPart}\\${
                 StringPrototypeSlice(path, last, j)
               }`;
@@ -284,65 +356,77 @@ export function normalize(path: string): string {
             }
           }
         }
-      } else {
-        rootEnd = 1;
       }
-    } else if (isWindowsDeviceRoot(code)) {
-      // Possible device root
-
-      if (StringPrototypeCharCodeAt(path, 1) === CHAR_COLON) {
+    } else {
+      rootEnd = 1;
+    }
+  } else {
+    const colonIndex = StringPrototypeIndexOf(path, ":");
+    if (colonIndex > 0) {
+      if (isWindowsDeviceRoot(code) && colonIndex === 1) {
         device = StringPrototypeSlice(path, 0, 2);
         rootEnd = 2;
-        if (len > 2) {
-          if (isPathSeparator(StringPrototypeCharCodeAt(path, 2))) {
-            // Treat separator following drive name as an absolute path
-            // indicator
-            isAbsolute = true;
-            rootEnd = 3;
-          }
+        if (len > 2 && isPathSeparator(StringPrototypeCharCodeAt(path, 2))) {
+          isAbsolute = true;
+          rootEnd = 3;
         }
+      } else if (isWindowsReservedName(path, colonIndex)) {
+        device = StringPrototypeSlice(path, 0, colonIndex + 1);
+        rootEnd = colonIndex + 1;
       }
     }
-  } else if (isPathSeparator(code)) {
-    // `path` contains just a path separator, exit early to avoid unnecessary
-    // work
-    return "\\";
   }
 
-  let tail: string;
-  if (rootEnd < len) {
-    tail = normalizeString(
+  let tail = rootEnd < len
+    ? normalizeString(
       StringPrototypeSlice(path, rootEnd),
       !isAbsolute,
       "\\",
       isPathSeparator,
-    );
-  } else {
-    tail = "";
+    )
+    : "";
+  if (tail.length === 0 && !isAbsolute) {
+    tail = ".";
   }
-  if (tail.length === 0 && !isAbsolute) tail = ".";
   if (
-    tail.length > 0 && isPathSeparator(StringPrototypeCharCodeAt(path, len - 1))
+    tail.length > 0 &&
+    isPathSeparator(StringPrototypeCharCodeAt(path, len - 1))
   ) {
     tail += "\\";
   }
-  if (device === undefined) {
-    if (isAbsolute) {
-      if (tail.length > 0) return `\\${tail}`;
-      else return "\\";
-    } else if (tail.length > 0) {
-      return tail;
-    } else {
-      return "";
+  if (
+    !isAbsolute && device === undefined && StringPrototypeIncludes(path, ":")
+  ) {
+    // If the original path was not absolute and if we have not been able to
+    // resolve it relative to a particular device, we need to ensure that the
+    // `tail` has not become something that Windows might interpret as an
+    // absolute path. See CVE-2024-36139.
+    if (
+      tail.length >= 2 &&
+      isWindowsDeviceRoot(StringPrototypeCharCodeAt(tail, 0)) &&
+      StringPrototypeCharCodeAt(tail, 1) === CHAR_COLON
+    ) {
+      return `.\\${tail}`;
     }
-  } else if (isAbsolute) {
-    if (tail.length > 0) return `${device}\\${tail}`;
-    else return `${device}\\`;
-  } else if (tail.length > 0) {
-    return device + tail;
-  } else {
-    return device;
+    let index = StringPrototypeIndexOf(path, ":");
+
+    do {
+      if (
+        index === len - 1 ||
+        isPathSeparator(StringPrototypeCharCodeAt(path, index + 1))
+      ) {
+        return `.\\${tail}`;
+      }
+    } while ((index = StringPrototypeIndexOf(path, ":", index + 1)) !== -1);
   }
+  const colonIndex = StringPrototypeIndexOf(path, ":");
+  if (isWindowsReservedName(path, colonIndex)) {
+    return `.\\${device ?? ""}${tail}`;
+  }
+  if (device === undefined) {
+    return isAbsolute ? `\\${tail}` : tail;
+  }
+  return isAbsolute ? `${device}\\${tail}` : `${device}${tail}`;
 }
 
 /**
