@@ -194,6 +194,7 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
+    self.write_output_end();
     if !self.parallel {
       self.force_report_wait(description);
     }
