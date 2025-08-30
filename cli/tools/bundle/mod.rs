@@ -2,7 +2,10 @@
 
 mod esbuild;
 mod externals;
+mod provider;
 mod transform;
+
+pub use provider::CliBundleProvider;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -74,10 +77,10 @@ use crate::util::file_watcher::WatcherRestartMode;
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
 
-pub async fn bundle(
+pub async fn bundle_init(
   mut flags: Arc<Flags>,
-  bundle_flags: BundleFlags,
-) -> Result<(), AnyError> {
+  bundle_flags: &BundleFlags,
+) -> Result<EsbuildBundler, AnyError> {
   {
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
@@ -115,18 +118,25 @@ pub async fn bundle(
     on_end_tx,
     deferred_resolve_errors: Arc::new(Mutex::new(vec![])),
   });
-  let start = std::time::Instant::now();
 
-  let resolved_entrypoints =
-    resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
+  eprintln!("resolve_entrypoints");
+  let resolved_entrypoints = dbg!(resolve_entrypoints(
+    &resolver,
+    &init_cwd,
+    &bundle_flags.entrypoints
+  ))?;
+  eprintln!("prepare_module_load");
   let _ = plugin_handler
     .prepare_module_load(&resolved_entrypoints)
     .await;
 
+  eprintln!("resolve_roots");
   let roots =
     resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
+  eprintln!("prepare_module_load");
   let _ = plugin_handler.prepare_module_load(&roots).await;
 
+  eprintln!("EsbuildService::new");
   let esbuild = EsbuildService::new(
     esbuild_path,
     esbuild::ESBUILD_VERSION,
@@ -136,6 +146,8 @@ pub async fn bundle(
   .await
   .unwrap();
   let client = esbuild.client().clone();
+
+  eprintln!("made service");
 
   tokio::spawn(async move {
     let res = esbuild.wait_for_exit().await;
@@ -156,7 +168,24 @@ pub async fn bundle(
     esbuild_flags,
     entries,
   );
+
+  Ok(bundler)
+}
+
+pub async fn bundle(
+  mut flags: Arc<Flags>,
+  bundle_flags: BundleFlags,
+) -> Result<(), AnyError> {
+  {
+    let flags_mut = Arc::make_mut(&mut flags);
+    flags_mut.unstable_config.sloppy_imports = true;
+  }
+  let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
+  let init_cwd = bundler.cwd.clone();
+  let start = std::time::Instant::now();
   let response = bundler.build().await?;
+  let end = std::time::Instant::now();
+  let duration = end.duration_since(start);
 
   if bundle_flags.watch {
     return bundle_watch(
@@ -184,7 +213,7 @@ pub async fn bundle(
     )?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
-      print_finished_message(&metafile, &output_infos, start.elapsed())?;
+      print_finished_message(&metafile, &output_infos, duration)?;
     }
   }
 
@@ -367,6 +396,7 @@ impl EsbuildBundler {
   }
 
   async fn build(&self) -> Result<BuildResponse, AnyError> {
+    eprintln!("EsbuildBundler::build");
     let response = self
       .client
       .send_build_request(self.make_build_request())
@@ -557,7 +587,6 @@ impl DenoPluginHandler {
     std::mem::take(&mut *self.deferred_resolve_errors.lock())
   }
 }
-
 #[async_trait::async_trait(?Send)]
 impl esbuild_client::PluginHandler for DenoPluginHandler {
   async fn on_resolve(
@@ -576,6 +605,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         ..Default::default()
       }));
     }
+
     let result = self.bundle_resolve(
       &args.path,
       args.importer.as_deref(),
@@ -1179,6 +1209,7 @@ fn resolve_entrypoints(
 
   let mut resolved = Vec::with_capacity(entrypoints.len());
 
+  eprintln!("resolving entrypoints");
   for e in &entrypoints {
     let r = resolver.resolve(
       e.as_str(),
@@ -1189,6 +1220,7 @@ fn resolve_entrypoints(
     )?;
     resolved.push(r);
   }
+  eprintln!("resolved entrypoints: {:?}", resolved);
   Ok(resolved)
 }
 
@@ -1351,12 +1383,12 @@ fn is_js(path: &Path) -> bool {
   }
 }
 
-struct OutputFileInfo {
+pub struct OutputFileInfo {
   relative_path: PathBuf,
   size: usize,
   is_js: bool,
 }
-fn process_result(
+pub fn process_result(
   response: &BuildResponse,
   cwd: &Path,
   should_replace_require_shim: bool,

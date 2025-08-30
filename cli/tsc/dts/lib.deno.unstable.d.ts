@@ -9,6 +9,96 @@
 declare namespace Deno {
   export {}; // stop default export type behavior
 
+  export namespace bundle {
+    export type Platform = "browser" | "deno";
+
+    export type Format = "esm" | "cjs" | "iife";
+
+    export type SourceMapType = "linked" | "inline" | "external";
+
+    export type PackageHandling = "bundle" | "external";
+
+    export interface Options {
+      /**
+       * The entrypoints of the bundle.
+       */
+      entrypoints: string[];
+      /**
+       * Output file path.
+       */
+      outputPath?: string;
+      /**
+       * Output directory path.
+       */
+      outputDir?: string;
+      /**
+       * External modules to exclude from bundling.
+       */
+      external?: string[];
+      /**
+       * Bundle format.
+       */
+      format?: Format;
+      /**
+       * Whether to minify the output.
+       */
+      minify?: boolean;
+      /**
+       * Whether to enable code splitting.
+       */
+      codeSplitting?: boolean;
+      /**
+       * Whether to inline imports.
+       */
+      inlineImports?: boolean;
+      /**
+       * How to handle packages.
+       */
+      packages?: PackageHandling;
+      /**
+       * Source map configuration.
+       */
+      sourcemap?: SourceMapType;
+      /**
+       * Target platform.
+       */
+      platform?: Platform;
+    }
+
+    export interface MessageLocation {
+      file: string;
+      namespace?: string;
+      line: number;
+      column: number;
+      length: number;
+      suggestion?: string;
+    }
+
+    export interface MessageNote {
+      text: string;
+      location?: MessageLocation;
+    }
+
+    export interface Message {
+      text: string;
+      location?: MessageLocation;
+      notes?: MessageNote[];
+    }
+
+    export interface Result {
+      errors: Message[];
+      warnings: Message[];
+      success: boolean;
+      outputFiles?: {
+        path: string;
+        contents?: string;
+        hash: string;
+      }[];
+    }
+  }
+
+  export function bundle(options: bundle.Options): Promise<bundle.Result>;
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    *  Creates a presentable WebGPU surface from given window and

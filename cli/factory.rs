@@ -1036,6 +1036,9 @@ impl CliFactory {
       self.sys(),
       self.create_lib_main_worker_options()?,
       roots,
+      Some(Arc::new(crate::tools::bundle::CliBundleProvider::new(
+        self.flags.clone(),
+      ))),
     );
 
     Ok(CliMainWorkerFactory::new(

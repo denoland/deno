@@ -33,6 +33,7 @@ import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 import { unstableIds } from "ext:deno_features/flags.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+import { bundle } from "ext:runtime/50_bundle.ts";
 
 const { ObjectDefineProperties, Float64Array } = primordials;
 
@@ -170,6 +171,10 @@ const denoNs = {
 };
 
 const denoNsUnstableById = { __proto__: null };
+
+denoNsUnstableById[unstableIds.bundle] = {
+  bundle,
+};
 
 // denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
