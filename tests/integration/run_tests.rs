@@ -476,8 +476,8 @@ fn permissions_audit() {
   test_util::assertions::assert_wildcard_match(
     &file,
     r#"{"permission":"sys","value":"hostname"}
-{"permission":"read","value":"/var/folders/z4/03w24bpd7yx5st0g_66hgxr00000gn/T/"}
-{"permission":"write","value":"/var/folders/z4/03w24bpd7yx5st0g_66hgxr00000gn/T/"}
+{"permission":"read","value":"[WILDCARD]"}
+{"permission":"write","value":"[WILDCARD]"}
 {"permission":"env","value":"FOO"}
 "#,
   );
@@ -501,8 +501,8 @@ fn permissions_audit_with_traces() {
   test_util::assertions::assert_wildcard_match(
     &file,
     r#"{"permission":"sys","value":"hostname","stack":["Object.hostname (ext:deno_os/30_os.js:43:10)","file://[WILDCARD]/run/permissions_audit.ts:1:6"]}
-{"permission":"read","value":"/var/folders/z4/03w24bpd7yx5st0g_66hgxr00000gn/T/","stack":["op_fs_make_temp_dir_async (ext:core/00_infra.js:289:44)","Object.makeTempDir (ext:deno_fs/30_fs.js:168:10)","file://[WILDCARD]/run/permissions_audit.ts:2:12"]}
-{"permission":"write","value":"/var/folders/z4/03w24bpd7yx5st0g_66hgxr00000gn/T/","stack":["op_fs_make_temp_dir_async (ext:core/00_infra.js:289:44)","Object.makeTempDir (ext:deno_fs/30_fs.js:168:10)","file://[WILDCARD]/run/permissions_audit.ts:2:12"]}
+{"permission":"read","value":"[WILDCARD]","stack":["op_fs_make_temp_dir_async (ext:core/00_infra.js:289:44)","Object.makeTempDir (ext:deno_fs/30_fs.js:168:10)","file://[WILDCARD]/run/permissions_audit.ts:2:12"]}
+{"permission":"write","value":"[WILDCARD]","stack":["op_fs_make_temp_dir_async (ext:core/00_infra.js:289:44)","Object.makeTempDir (ext:deno_fs/30_fs.js:168:10)","file://[WILDCARD]/run/permissions_audit.ts:2:12"]}
 {"permission":"env","value":"FOO","stack":["Object.getEnv [as get] (ext:deno_os/30_os.js:124:10)","file://[WILDCARD]/run/permissions_audit.ts:3:10","eventLoopTick (ext:core/01_core.js:179:7)"]}
 "#,
   );
