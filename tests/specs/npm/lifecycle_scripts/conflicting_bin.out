@@ -10,3 +10,11 @@ Initialize @denotest/say-hello-on-install@1.0.0
 Initialize @denotest/say-hello@1.0.0
 Initialize @denotest/say-hello-on-install@1.0.0: running 'install' script
 [UNORDERED_END]
+Packages: 3
++++
+Resolved: 1, reused: 0, downloaded: 6, added: 3
+
+Dependencies:
++ npm:@denotest/better-say-hello 1.0.0
++ npm:@denotest/say-hello-on-install 1.0.0
+

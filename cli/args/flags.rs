@@ -752,6 +752,8 @@ pub struct InternalFlags {
   /// Used when the language server is configured with an
   /// explicit cache option.
   pub cache_path: Option<PathBuf>,
+  /// Override the path to use for the node_modules directory.
+  pub root_node_modules_dir_override: Option<PathBuf>,
   /// Only reads to the lockfile instead of writing to it.
   pub lockfile_skip_write: bool,
 }
@@ -4436,7 +4438,6 @@ fn preload_arg() -> Arg {
     .long("preload")
     .alias("import")
     .value_name("FILE")
-    .use_value_delimiter(true)
     .action(ArgAction::Append)
     .help("A list of files that will be executed before the main module")
     .value_hint(ValueHint::FilePath)
@@ -12847,14 +12848,9 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
       }
     );
 
-    let flags = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--preload",
-      "p1.js,./p2.js",
-      "main.ts"
-    ])
-    .unwrap();
+    let flags =
+      flags_from_vec(svec!["deno", "run", "--preload", "data:,()", "main.ts"])
+        .unwrap();
     assert_eq!(
       flags,
       Flags {
@@ -12862,7 +12858,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           script: "main.ts".into(),
           ..Default::default()
         }),
-        preload: svec!["p1.js", "./p2.js"],
+        preload: svec!["data:,()"],
         code_cache_enabled: true,
         ..Default::default()
       }
