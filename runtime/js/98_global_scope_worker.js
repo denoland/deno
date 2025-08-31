@@ -110,8 +110,8 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     configurable: true,
     enumerable: true,
     get() {
-      locks.LockManager;
-      throw new Error("not implemented");
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return locks.lockManager;
     },
   },
 });
