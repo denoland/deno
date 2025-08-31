@@ -1159,12 +1159,12 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
 pub fn create_permissions_stack_trace_callback()
 -> deno_core::OpStackTraceCallback {
   Box::new(|stack: Vec<deno_core::error::JsStackFrame>| {
-    deno_permissions::prompter::set_current_stacktrace(Box::new(|| {
+    deno_permissions::prompter::set_current_stacktrace(Box::new(move || {
       stack
-        .into_iter()
+        .iter()
         .map(|frame| {
           deno_core::error::format_frame::<deno_core::error::NoAnsiColors>(
-            &frame,
+            frame,
           )
         })
         .collect()
