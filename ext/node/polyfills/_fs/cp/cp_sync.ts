@@ -212,7 +212,7 @@ function getStats(
       message: `${src} is a directory (not copied)`,
       path: src,
       syscall: "cp",
-      errno: EINVAL,
+      errno: EISDIR,
       code: "EISDIR",
     });
   } else if (

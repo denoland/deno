@@ -130,7 +130,7 @@ async function checkPaths(
 export function areIdentical(
   srcStat: Deno.FileInfo,
   destStat: Deno.FileInfo,
-): bigint | boolean {
+): boolean {
   return destStat.ino && destStat.dev && destStat.ino === srcStat.ino &&
     destStat.dev === srcStat.dev;
 }
