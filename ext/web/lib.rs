@@ -2,6 +2,7 @@
 
 mod blob;
 mod compression;
+mod locks;
 mod message_port;
 mod stream_resource;
 mod timers;
@@ -111,6 +112,7 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
     "16_image_data.js",
+    "17_locks.js",
   ],
   lazy_loaded_esm = [ "webtransport.js" ],
   options = {

@@ -26,6 +26,7 @@ import * as request from "ext:deno_fetch/23_request.js";
 import * as response from "ext:deno_fetch/23_response.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as eventSource from "ext:deno_fetch/27_eventsource.js";
+import * as locks from "ext:deno_web/17_locks.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
@@ -70,6 +71,8 @@ const windowOrWorkerGlobalScope = {
     (image) => image.ImageBitmap,
     loadImage,
   ),
+  Lock: core.propNonEnumerable(locks.Lock),
+  LockManager: core.propNonEnumerable(locks.LockManager),
   MessageEvent: core.propNonEnumerable(event.MessageEvent),
   Performance: core.propNonEnumerable(performance.Performance),
   PerformanceEntry: core.propNonEnumerable(performance.PerformanceEntry),

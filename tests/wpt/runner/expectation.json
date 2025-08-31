@@ -17830,5 +17830,20 @@
     "request-credentials.window.html": false,
     "request-redirect.window.html": false,
     "eventsource-request-cancellation.window.html": false
+  },
+  "web-locks": {
+    "acquire.https.any.html": true,
+    "held.https.any.html": true,
+    "idlharness.https.any.html": true,
+    "ifAvailable.https.any.html": true,
+    "lock-attributes.https.any.html": true,
+    "mode-exclusive.https.any.html": true,
+    "mode-mixed.https.any.html": true,
+    "mode-shared.https.any.html": true,
+    "query-empty.https.any.html": true,
+    "query.https.any.html": true,
+    "resource-names.https.any.html": true,
+    "signal.https.any.html": true,
+    "steal.https.any.html": true
   }
 }
