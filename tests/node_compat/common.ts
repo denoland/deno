@@ -1,5 +1,24 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+import { parse } from "@std/toml";
+
+export interface SingleFileConfig {
+  flaky?: boolean;
+  windows?: boolean;
+  darwin?: boolean;
+  linux?: boolean;
+  /** Optional reason for ignoring the test */
+  reason?: string;
+}
+
+type Config = {
+  tests: Record<string, SingleFileConfig>;
+};
+
+export const configFile = await Deno.readTextFile(
+  new URL("./config.toml", import.meta.url),
+).then(parse) as Config;
+
 /** Checks if the test file uses `node:test` module */
 export function usesNodeTestModule(testSource: string): boolean {
   return testSource.includes("'node:test'");
