@@ -5745,7 +5745,7 @@ fn repl_parse(
 fn run_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-  mut app: Command,
+  app: Command,
   bare: bool,
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true, true)?;
@@ -5773,10 +5773,15 @@ fn run_parse(
       "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
     ));
       } else {
-        return Err(app.find_subcommand_mut("run").unwrap().error(
-          clap::error::ErrorKind::MissingRequiredArgument,
-          "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
-        ));
+        // When no script argument is provided, show available tasks like `deno task`
+        flags.subcommand = DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: None,
+          is_run: false,
+          recursive: false,
+          filter: None,
+          eval: false,
+        });
       }
     }
   }

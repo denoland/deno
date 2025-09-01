@@ -1,0 +1,5 @@
+{
+  "args": "run -q --config deno.json",
+  "output": "run_without_script_argument.out",
+  "exitCode": 0
+}
