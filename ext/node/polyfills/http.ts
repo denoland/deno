@@ -1838,7 +1838,8 @@ export class IncomingMessageForServer extends NodeReadable {
       destroy: (err, cb) => {
         reader?.cancel().catch(() => {
           // Don't throw error - it's propagated to the user via 'error' event.
-        }).finally(nextTick(onError, this, err, cb));
+        });
+        nextTick(onError, this, err, cb);
       },
     });
     this.url = "";

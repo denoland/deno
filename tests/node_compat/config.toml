@@ -1017,6 +1017,7 @@
 "parallel/test-stream-push-strings.js" = {}
 "parallel/test-stream-readable-aborted.js" = {}
 "parallel/test-stream-readable-add-chunk-during-data.js" = {}
+"parallel/test-stream-readable-async-iterators.js" = {}
 "parallel/test-stream-readable-constructor-set-methods.js" = {}
 "parallel/test-stream-readable-data.js" = {}
 "parallel/test-stream-readable-default-encoding.js" = {}
