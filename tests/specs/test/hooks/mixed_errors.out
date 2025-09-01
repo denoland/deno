@@ -19,7 +19,8 @@ test 5 - test itself fails ... FAILED ([WILDCARD])
   "test 4 executed",
   "afterEach executed for test 4",
   "beforeEach executed for test 5",
-  "test 5 executed"
+  "test 5 executed",
+  "afterEach executed for test 5"
 ]
 ----- post-test output end -----
 
@@ -49,6 +50,6 @@ test 3 - beforeEach fails => ./mixed_errors.ts:29:6
 test 4 - afterEach fails => ./mixed_errors.ts:33:6
 test 5 - test itself fails => ./mixed_errors.ts:37:6
 
-FAILED | 2 passed | 3 failed (8ms)
+FAILED | 2 passed | 3 failed ([WILDCARD])
 
 error: Test failed

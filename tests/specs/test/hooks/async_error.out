@@ -24,7 +24,7 @@ third test (afterEach fails) ... FAILED ([WILDCARD])
 ]
 ----- post-test output end -----
 
- ERRORS
+ ERRORS 
 
 second test (beforeEach fails) => ./async_error.ts:46:6
 error: (in promise) Error: Async error in beforeEach
@@ -38,7 +38,7 @@ error: (in promise) Error: Async error in afterEach
                          ^
     at [WILDCARD]async_error.ts:30:26
 
- FAILURES
+ FAILURES 
 
 second test (beforeEach fails) => ./async_error.ts:46:6
 third test (afterEach fails) => ./async_error.ts:50:6
