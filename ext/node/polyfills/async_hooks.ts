@@ -153,12 +153,10 @@ export class AsyncLocalStorage {
 export const executionAsyncId = internalExecutionAsyncId;
 
 export function triggerAsyncId() {
-  // TODO: Implement proper trigger async ID tracking
   return 0;
 }
 
 export function executionAsyncResource() {
-  // TODO: Implement proper resource tracking
   return {};
 }
 

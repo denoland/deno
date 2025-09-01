@@ -13,6 +13,7 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypePop,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   FunctionPrototypeApply,
@@ -78,7 +79,7 @@ export function executionAsyncId(): number {
 
 // Emit functions that work with the internal hook system
 export function emitBefore(asyncId: number): void {
-  executionAsyncIdStack.push(asyncId);
+  ArrayPrototypePush(executionAsyncIdStack, asyncId);
 
   // Call hooks if they exist
   const hooks = active_hooks.array;
@@ -92,7 +93,7 @@ export function emitBefore(asyncId: number): void {
   } catch (e) {
     // Clean up stack corruption on hook errors (Node.js pattern)
     if (executionAsyncIdStack.length > 1) {
-      executionAsyncIdStack.pop();
+      ArrayPrototypePop(executionAsyncIdStack);
     }
     throw e;
   }
@@ -111,7 +112,7 @@ export function emitAfter(asyncId: number): void {
   } finally {
     // Always pop stack even if hooks throw (Node.js pattern)
     if (executionAsyncIdStack.length > 1) {
-      executionAsyncIdStack.pop();
+      ArrayPrototypePop(executionAsyncIdStack);
     }
   }
 }

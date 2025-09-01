@@ -43,6 +43,9 @@ export function processTicksAndRejections() {
   do {
     // deno-lint-ignore no-cond-assign
     while (tock = queue.shift()) {
+      // FIXME(bartlomieju): Deno currently doesn't support async hooks
+      // const asyncId = tock[async_id_symbol];
+      // emitBefore(asyncId, tock[trigger_async_id_symbol], tock);
       const asyncId = tock.asyncId;
       emitBefore(asyncId);
 
@@ -78,8 +81,6 @@ export function processTicksAndRejections() {
         setAsyncContext(oldContext);
         emitDestroy(asyncId);
       }
-
-      // After already called in finally block above
     }
     core.runMicrotasks();
     // FIXME(bartlomieju): Deno currently doesn't unhandled rejections
