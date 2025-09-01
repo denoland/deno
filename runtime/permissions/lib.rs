@@ -35,6 +35,7 @@ pub mod prompter;
 pub mod which;
 pub use prompter::DeniedPrompter;
 pub use prompter::GetFormattedStackFn;
+use prompter::MAYBE_CURRENT_STACKTRACE;
 use prompter::PERMISSION_EMOJI;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
@@ -44,7 +45,6 @@ pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
 
 use self::which::WhichSys;
-use crate::prompter::MAYBE_CURRENT_STACKTRACE;
 
 pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 
@@ -70,27 +70,27 @@ fn write_audit<T>(flag_name: &str, value: T)
 where
   T: Serialize,
 {
-  if let Some(file) = AUDIT_FILE.get() {
-    let mut file = file.lock();
+  let Some(file) = AUDIT_FILE.get() else {
+    return;
+  };
 
-    let mut map = serde_json::Map::with_capacity(3);
-    let _ = map.insert(
-      "permission".into(),
-      serde_json::to_value(flag_name).unwrap(),
-    );
-    let _ = map.insert("value".into(), serde_json::to_value(value).unwrap());
+  let mut file = file.lock();
 
-    let get_stack = MAYBE_CURRENT_STACKTRACE.lock();
-    if let Some(stack) = get_stack.as_ref().map(|s| s()) {
-      let _ = map.insert("stack".into(), serde_json::to_value(&stack).unwrap());
-    }
+  let mut map = serde_json::Map::with_capacity(3);
+  let _ = map.insert(
+    "permission".into(),
+    serde_json::to_value(flag_name).unwrap(),
+  );
+  let _ = map.insert("value".into(), serde_json::to_value(value).unwrap());
 
-    file
-      .write_all(
-        format!("{}\n", serde_json::to_string(&map).unwrap()).as_bytes(),
-      )
-      .unwrap();
+  let get_stack = MAYBE_CURRENT_STACKTRACE.lock();
+  if let Some(stack) = get_stack.as_ref().map(|s| s()) {
+    let _ = map.insert("stack".into(), serde_json::to_value(&stack).unwrap());
   }
+
+  let _ = file.write_all(
+    format!("{}\n", serde_json::to_string(&map).unwrap()).as_bytes(),
+  );
 }
 
 /// Fast exit from permission check routines if this permission
