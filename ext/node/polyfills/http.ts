@@ -1881,6 +1881,7 @@ const kRawHeaders = Symbol("rawHeaders");
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #headers: Record<string, string>;
+  #aborted = false;
   url: string;
   method: string;
   socket: Socket | FakeSocket;
@@ -1910,7 +1911,8 @@ export class IncomingMessageForServer extends NodeReadable {
       destroy: (err, cb) => {
         reader?.cancel().catch(() => {
           // Don't throw error - it's propagated to the user via 'error' event.
-        }).finally(nextTick(onError, this, err, cb));
+        });
+        nextTick(onError, this, err, cb);
       },
     });
     this.url = "";
@@ -1926,7 +1928,7 @@ export class IncomingMessageForServer extends NodeReadable {
   }
 
   get aborted() {
-    return false;
+    return this.#aborted;
   }
 
   get httpVersion() {
@@ -1974,6 +1976,43 @@ export class IncomingMessageForServer extends NodeReadable {
     }
     this.socket.setTimeout(msecs);
     return this;
+  }
+
+  destroy(err?: Error) {
+    if (this.destroyed) {
+      return this;
+    }
+
+    // Set aborted state and emit aborted event
+    this.#aborted = true;
+    this.emit("aborted");
+
+    // Call the parent destroy method first
+    const result = super.destroy(err);
+
+    // For HTTP requests that have been aborted, ensure proper stream state
+    // This should be done after parent destroy to avoid conflicts
+    if (this._readableState) {
+      // Only set these if parent destroy didn't already handle them properly
+      if (!this._readableState.ended) {
+        this._readableState.ended = true;
+        this._readableState.endEmitted = true;
+      }
+
+      // Ensure close event is emitted if parent destroy didn't handle it
+      // Check on next tick to avoid race conditions with parent's close emission
+      nextTick(() => {
+        if (
+          !this._readableState?.closed &&
+          this._readableState?.emitClose !== false
+        ) {
+          this._readableState.closed = true;
+          this.emit("close");
+        }
+      });
+    }
+
+    return result;
   }
 }
 
