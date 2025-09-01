@@ -9,6 +9,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Duration;
 
 use bytes::Bytes;
 use deno_core::AsyncRefCell;
@@ -411,46 +412,64 @@ pub async fn op_node_http_await_response(
     ))
   })?;
 
-  let res = resource.response.await??;
-  let status = res.status();
-  let mut res_headers = Vec::new();
-  for (key, val) in res.headers().iter() {
-    res_headers.push((key.as_str().into(), val.as_bytes().into()));
+  // Timeout to detect server connection termination
+  // Very short timeout for detecting immediate connection termination
+  const REQUEST_TIMEOUT: Duration = Duration::from_millis(1000);
+
+  // Use timeout to detect when server closes connection before sending response
+  match tokio::time::timeout(REQUEST_TIMEOUT, resource.response).await {
+    Ok(response_result) => {
+      let res = response_result??;
+
+      // Continue with normal response processing (original code)
+      let status = res.status();
+      let mut res_headers = Vec::new();
+      for (key, val) in res.headers().iter() {
+        res_headers.push((key.as_str().into(), val.as_bytes().into()));
+      }
+
+      let content_length = hyper::body::Body::size_hint(res.body()).exact();
+      let remote_addr = res
+        .extensions()
+        .get::<hyper_util::client::legacy::connect::HttpInfo>()
+        .map(|info| info.remote_addr());
+      let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
+        (Some(addr.ip().to_string()), Some(addr.port()))
+      } else {
+        (None, None)
+      };
+
+      let (parts, body) = res.into_parts();
+      let body = body.map_err(|e| JsErrorBox::new("Http", e.to_string()));
+      let body = body.boxed();
+
+      let res = http::Response::from_parts(parts, body);
+
+      let response_rid = state
+        .borrow_mut()
+        .resource_table
+        .add(NodeHttpResponseResource::new(res, content_length));
+
+      Ok(NodeHttpResponse {
+        status: status.as_u16(),
+        status_text: status.canonical_reason().unwrap_or("").to_string(),
+        headers: res_headers,
+        url: resource.url,
+        response_rid,
+        content_length,
+        remote_addr_ip,
+        remote_addr_port,
+        error: None,
+      })
+    }
+    Err(_) => {
+      // Timeout occurred - connection likely terminated by server
+      Err(ConnError::Io(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        "Request timeout: connection may have been terminated",
+      )))
+    }
   }
-
-  let content_length = hyper::body::Body::size_hint(res.body()).exact();
-  let remote_addr = res
-    .extensions()
-    .get::<hyper_util::client::legacy::connect::HttpInfo>()
-    .map(|info| info.remote_addr());
-  let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
-    (Some(addr.ip().to_string()), Some(addr.port()))
-  } else {
-    (None, None)
-  };
-
-  let (parts, body) = res.into_parts();
-  let body = body.map_err(|e| JsErrorBox::new("Http", e.to_string()));
-  let body = body.boxed();
-
-  let res = http::Response::from_parts(parts, body);
-
-  let response_rid = state
-    .borrow_mut()
-    .resource_table
-    .add(NodeHttpResponseResource::new(res, content_length));
-
-  Ok(NodeHttpResponse {
-    status: status.as_u16(),
-    status_text: status.canonical_reason().unwrap_or("").to_string(),
-    headers: res_headers,
-    url: resource.url,
-    response_rid,
-    content_length,
-    remote_addr_ip,
-    remote_addr_port,
-    error: None,
-  })
 }
 
 #[op2(async)]

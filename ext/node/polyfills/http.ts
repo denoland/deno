@@ -700,7 +700,9 @@ class ClientRequest extends OutgoingMessage {
         if (
           err.message.includes("connection closed before message completed")
         ) {
-          // Node.js seems ignoring this error
+          // When the connection is closed before the message is completed,
+          // emit a connection reset error to match Node.js behavior
+          this.emit("error", connResetException("socket hang up"));
         } else if (err.message.includes("The signal has been aborted")) {
           // Remap this error
           this.emit("error", connResetException("socket hang up"));
