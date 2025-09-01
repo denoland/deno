@@ -165,64 +165,55 @@ export function relative(from: string, to: string): string {
 
   if (from === to) return "";
 
+  // Trim leading forward slashes.
   from = resolve(from);
   to = resolve(to);
 
   if (from === to) return "";
 
-  // Trim any leading backslashes
-  let fromStart = 1;
+  const fromStart = 1;
   const fromEnd = from.length;
-  for (; fromStart < fromEnd; ++fromStart) {
-    if (StringPrototypeCharCodeAt(from, fromStart) !== CHAR_FORWARD_SLASH) {
-      break;
-    }
-  }
   const fromLen = fromEnd - fromStart;
-
-  // Trim any leading backslashes
-  let toStart = 1;
-  const toEnd = to.length;
-  for (; toStart < toEnd; ++toStart) {
-    if (StringPrototypeCharCodeAt(to, toStart) !== CHAR_FORWARD_SLASH) break;
-  }
-  const toLen = toEnd - toStart;
+  const toStart = 1;
+  const toLen = to.length - toStart;
 
   // Compare paths to find the longest common path from root
   const length = fromLen < toLen ? fromLen : toLen;
   let lastCommonSep = -1;
   let i = 0;
-  for (; i <= length; ++i) {
-    if (i === length) {
-      if (toLen > length) {
-        if (StringPrototypeCharCodeAt(to, toStart + i) === CHAR_FORWARD_SLASH) {
-          // We get here if `from` is the exact base path for `to`.
-          // For example: from='/foo/bar'; to='/foo/bar/baz'
-          return StringPrototypeSlice(to, toStart + i + 1);
-        } else if (i === 0) {
-          // We get here if `from` is the root
-          // For example: from='/'; to='/foo'
-          return StringPrototypeSlice(to, toStart + i);
-        }
-      } else if (fromLen > length) {
-        if (
-          StringPrototypeCharCodeAt(from, fromStart + i) === CHAR_FORWARD_SLASH
-        ) {
-          // We get here if `to` is the exact base path for `from`.
-          // For example: from='/foo/bar/baz'; to='/foo/bar'
-          lastCommonSep = i;
-        } else if (i === 0) {
-          // We get here if `to` is the root.
-          // For example: from='/foo'; to='/'
-          lastCommonSep = 0;
-        }
-      }
-      break;
-    }
+  for (; i < length; i++) {
     const fromCode = StringPrototypeCharCodeAt(from, fromStart + i);
-    const toCode = StringPrototypeCharCodeAt(to, toStart + i);
-    if (fromCode !== toCode) break;
-    else if (fromCode === CHAR_FORWARD_SLASH) lastCommonSep = i;
+    if (fromCode !== StringPrototypeCharCodeAt(to, toStart + i)) {
+      break;
+    } else if (fromCode === CHAR_FORWARD_SLASH) {
+      lastCommonSep = i;
+    }
+  }
+  if (i === length) {
+    if (toLen > length) {
+      if (StringPrototypeCharCodeAt(to, toStart + i) === CHAR_FORWARD_SLASH) {
+        // We get here if `from` is the exact base path for `to`.
+        // For example: from='/foo/bar'; to='/foo/bar/baz'
+        return StringPrototypeSlice(to, toStart + i + 1);
+      }
+      if (i === 0) {
+        // We get here if `from` is the root
+        // For example: from='/'; to='/foo'
+        return StringPrototypeSlice(to, toStart + i);
+      }
+    } else if (fromLen > length) {
+      if (
+        StringPrototypeCharCodeAt(from, fromStart + i) === CHAR_FORWARD_SLASH
+      ) {
+        // We get here if `to` is the exact base path for `from`.
+        // For example: from='/foo/bar/baz'; to='/foo/bar'
+        lastCommonSep = i;
+      } else if (i === 0) {
+        // We get here if `to` is the root.
+        // For example: from='/foo/bar'; to='/'
+        lastCommonSep = 0;
+      }
+    }
   }
 
   let out = "";
@@ -232,22 +223,13 @@ export function relative(from: string, to: string): string {
     if (
       i === fromEnd || StringPrototypeCharCodeAt(from, i) === CHAR_FORWARD_SLASH
     ) {
-      if (out.length === 0) out += "..";
-      else out += "/..";
+      out += out.length === 0 ? ".." : "/..";
     }
   }
 
   // Lastly, append the rest of the destination (`to`) path that comes after
   // the common path parts
-  if (out.length > 0) {
-    return out + StringPrototypeSlice(to, toStart + lastCommonSep);
-  } else {
-    toStart += lastCommonSep;
-    if (StringPrototypeCharCodeAt(to, toStart) === CHAR_FORWARD_SLASH) {
-      ++toStart;
-    }
-    return StringPrototypeSlice(to, toStart);
-  }
+  return out + StringPrototypeSlice(to, toStart + lastCommonSep);
 }
 
 /**

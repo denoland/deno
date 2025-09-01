@@ -6,6 +6,7 @@ use deno_core::op2;
 use deno_core::webidl::WebIdlInterfaceConverter;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 pub struct GPUSampler {
   pub instance: Instance,
@@ -31,6 +32,12 @@ impl GarbageCollected for GPUSampler {
 
 #[op2]
 impl GPUSampler {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUSampler, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
