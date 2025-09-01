@@ -3,25 +3,23 @@ running 1 test from ./beforeall_error.ts
 Uncaught error from ./beforeall_error.ts FAILED
 ------- pre-test output -------
 [
-  "beforeAll 1 executed",
-  "afterAll 1 executed",
-  "afterAll 2 executed"
+  "beforeEach",
+  "test executed",
+  "afterEach"
 ]
 ----- pre-test output end -----
 
  ERRORS 
 
-./beforeall_error.ts (uncaught error)
-error: Error: beforeAll 1 failed
-  throw new Error("beforeAll 1 failed");
+first test => ./before_after_each_error.ts:11:6
+error: Error: test threw
+  throw new Error("test threw");
         ^
-    at [WILDCARD]beforeall_error.ts:5:9
-This error was not caught from a test and caused the test runner to fail on the referenced module.
-It most likely originated from a dangling promise, event/timeout handler or top-level code.
+    at [WILDCARD]before_after_each_error.ts:13:9
 
- FAILURES 
+ FAILURES
 
-./beforeall_error.ts (uncaught error)
+first test => ./before_after_each_error.ts:11:6
 
 FAILED | 0 passed | 1 failed ([WILDCARD])
 
