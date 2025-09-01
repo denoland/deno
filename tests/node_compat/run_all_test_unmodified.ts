@@ -107,7 +107,10 @@ enum NodeTestFileResult {
 }
 
 interface NonIgnoredTestFileReport {
-  result: NodeTestFileResult.PASS | NodeTestFileResult.FAIL;
+  result:
+    | NodeTestFileResult.PASS
+    | NodeTestFileResult.FAIL
+    | NodeTestFileResult.SKIP; // Currently skipped tests will not be written to the report
   error?: ErrorExit | ErrorTimeout | ErrorUnexpected;
 }
 
