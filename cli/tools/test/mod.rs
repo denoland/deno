@@ -796,6 +796,18 @@ pub fn worker_has_tests(worker: &mut MainWorker) -> bool {
   !state.borrow::<TestContainer>().is_empty()
 }
 
+// Each test needs a fresh reqwest connection pool to avoid inter-test weirdness with connections
+// failing. If we don't do this, a connection to a test server we just tore down might be re-used in
+// the next test.
+// TODO(mmastrac): this should be some sort of callback that we can implement for any subsystem
+pub fn worker_prepare_for_test(worker: &mut MainWorker) {
+  worker
+    .js_runtime
+    .op_state()
+    .borrow_mut()
+    .try_take::<deno_runtime::deno_fetch::Client>();
+}
+
 /// Yields to tokio to allow async work to process, and then polls
 /// the event loop once.
 #[must_use = "The event loop result should be checked"]
@@ -938,19 +950,11 @@ async fn run_tests_for_worker_inner(
   let sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
 
   for (desc, function) in tests_to_run.into_iter() {
+    worker_prepare_for_test(worker);
+
     if fail_fast_tracker.should_stop() {
       break;
     }
-
-    // Each test needs a fresh reqwest connection pool to avoid inter-test weirdness with connections
-    // failing. If we don't do this, a connection to a test server we just tore down might be re-used in
-    // the next test.
-    // TODO(mmastrac): this should be some sort of callback that we can implement for any subsystem
-    worker
-      .js_runtime
-      .op_state()
-      .borrow_mut()
-      .try_take::<deno_runtime::deno_fetch::Client>();
 
     if desc.ignore {
       event_tracker.ignored(desc)?;
