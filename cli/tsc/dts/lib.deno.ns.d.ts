@@ -2701,7 +2701,8 @@ declare namespace Deno {
    * | 1      | execute only |
    * | 0      | no permission |
    *
-   * NOTE: This API currently throws on Windows
+   * Note: On Windows, only the read and write permissions can be modified.
+   * Distinctions between owner, group, and others are not supported.
    *
    * Requires `allow-write` permission.
    *
@@ -2718,8 +2719,6 @@ declare namespace Deno {
    * ```
    *
    * For a full description, see {@linkcode Deno.chmod}.
-   *
-   * NOTE: This API currently throws on Windows
    *
    * Requires `allow-write` permission.
    *
@@ -3809,6 +3808,20 @@ declare namespace Deno {
      *
      * @default {false} */
     windowsRawArguments?: boolean;
+
+    /** Whether to detach the spawned process from the current process.
+     * This allows the spawned process to continue running after the current
+     * process exits.
+     *
+     * Note: In order to allow the current process to exit, you need to ensure
+     * you call `unref()` on the child process.
+     *
+     * In addition, the stdio streams – if inherited or piped – may keep the
+     * current process from exiting until the streams are closed.
+     *
+     * @default {false}
+     */
+    detached?: boolean;
   }
 
   /**
@@ -5144,6 +5157,18 @@ declare namespace Deno {
 
     /** Sets `SO_REUSEPORT` on POSIX systems. */
     reusePort?: boolean;
+
+    /** Maximum number of pending connections in the listen queue.
+     *
+     * This parameter controls how many incoming connections can be queued by the
+     * operating system while waiting for the application to accept them. If more
+     * connections arrive when the queue is full, they will be refused.
+     *
+     * The kernel may adjust this value (e.g., rounding up to the next power of 2
+     * plus 1). Different operating systems have different maximum limits.
+     *
+     * @default {511} */
+    tcpBacklog?: number;
   }
 
   /**

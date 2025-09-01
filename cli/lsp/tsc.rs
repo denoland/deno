@@ -12,12 +12,18 @@ use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::thread;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
+use deno_config::deno_json::CompilerOptions;
+use deno_core::JsRuntime;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_core::PollEventLoopOptions;
+use deno_core::RuntimeOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
@@ -26,23 +32,20 @@ use deno_core::futures::FutureExt;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
-use deno_core::serde::de;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde::de;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
 use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::JsRuntime;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_core::PollEventLoopOptions;
-use deno_core::RuntimeOptions;
+use deno_graph::source::Resolver;
 use deno_lib::util::result::InfallibleResultExt;
 use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::url_to_file_path;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -51,9 +54,9 @@ use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
 use lsp_types::Uri;
-use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -72,7 +75,6 @@ use tower_lsp::lsp_types as lsp;
 use super::code_lens;
 use super::code_lens::CodeLensData;
 use super::config;
-use super::config::LspCompilerOptions;
 use super::documents::DocumentModule;
 use super::documents::DocumentText;
 use super::language_server;
@@ -80,22 +82,23 @@ use super::language_server::StateSnapshot;
 use super::logging::lsp_log;
 use super::performance::Performance;
 use super::performance::PerformanceMark;
-use super::refactor::RefactorCodeActionData;
 use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::refactor::EXTRACT_CONSTANT;
 use super::refactor::EXTRACT_INTERFACE;
 use super::refactor::EXTRACT_TYPE;
+use super::refactor::RefactorCodeActionData;
 use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text::LineIndex;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
-use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
+use crate::args::jsr_url;
 use crate::lsp::documents::Document;
 use crate::lsp::logging::lsp_warn;
-use crate::tsc::ResolveArgs;
+use crate::lsp::resolver::SingleReferrerGraphResolver;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
+use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::v8::convert;
@@ -119,6 +122,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 
 type Request = (
   TscRequest,
+  CompilerOptionsKey,
   Option<Arc<Url>>,
   Option<Arc<Uri>>,
   Arc<StateSnapshot>,
@@ -296,9 +300,9 @@ impl Serialize for ChangeKind {
 pub struct PendingChange {
   pub modified_scripts: Vec<(String, ChangeKind)>,
   pub project_version: usize,
-  pub new_compiler_options_by_scope:
-    Option<BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>>,
-  pub new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
+  pub new_compiler_options_by_key:
+    Option<BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>>,
+  pub new_notebook_keys: Option<BTreeMap<Arc<Uri>, CompilerOptionsKey>>,
 }
 
 impl<'a> ToV8<'a> for PendingChange {
@@ -321,36 +325,31 @@ impl<'a> ToV8<'a> for PendingChange {
     };
     let project_version =
       v8::Integer::new_from_unsigned(scope, self.project_version as u32).into();
-    let new_compiler_options_by_scope =
-      if let Some(new_compiler_options_by_scope) =
-        self.new_compiler_options_by_scope
-      {
-        serde_v8::to_v8(
-          scope,
-          new_compiler_options_by_scope
-            .into_iter()
-            .collect::<Vec<_>>(),
-        )
+    let new_compiler_options_by_key = if let Some(new_compiler_options_by_key) =
+      self.new_compiler_options_by_key
+    {
+      serde_v8::to_v8(
+        scope,
+        new_compiler_options_by_key.into_iter().collect::<Vec<_>>(),
+      )
+      .unwrap_or_else(|err| {
+        lsp_warn!("Couldn't serialize ts configs: {err}");
+        v8::null(scope).into()
+      })
+    } else {
+      v8::null(scope).into()
+    };
+    let new_notebook_keys = if let Some(new_notebook_keys) =
+      self.new_notebook_keys
+    {
+      serde_v8::to_v8(scope, new_notebook_keys.into_iter().collect::<Vec<_>>())
         .unwrap_or_else(|err| {
           lsp_warn!("Couldn't serialize ts configs: {err}");
           v8::null(scope).into()
         })
-      } else {
-        v8::null(scope).into()
-      };
-    let new_notebook_scopes =
-      if let Some(new_notebook_scopes) = self.new_notebook_scopes {
-        serde_v8::to_v8(
-          scope,
-          new_notebook_scopes.into_iter().collect::<Vec<_>>(),
-        )
-        .unwrap_or_else(|err| {
-          lsp_warn!("Couldn't serialize ts configs: {err}");
-          v8::null(scope).into()
-        })
-      } else {
-        v8::null(scope).into()
-      };
+    } else {
+      v8::null(scope).into()
+    };
 
     Ok(
       v8::Array::new_with_elements(
@@ -358,8 +357,8 @@ impl<'a> ToV8<'a> for PendingChange {
         &[
           modified_scripts,
           project_version,
-          new_compiler_options_by_scope,
-          new_notebook_scopes,
+          new_compiler_options_by_key,
+          new_notebook_keys,
         ],
       )
       .into(),
@@ -372,18 +371,18 @@ impl PendingChange {
     &mut self,
     new_version: usize,
     modified_scripts: Vec<(String, ChangeKind)>,
-    new_compiler_options_by_scope: Option<
-      BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>,
+    new_compiler_options_by_key: Option<
+      BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>,
     >,
-    new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
+    new_notebook_keys: Option<BTreeMap<Arc<Uri>, CompilerOptionsKey>>,
   ) {
     use ChangeKind::*;
     self.project_version = self.project_version.max(new_version);
-    if let Some(new_compiler_options_by_scope) = new_compiler_options_by_scope {
-      self.new_compiler_options_by_scope = Some(new_compiler_options_by_scope);
+    if let Some(new_compiler_options_by_key) = new_compiler_options_by_key {
+      self.new_compiler_options_by_key = Some(new_compiler_options_by_key);
     }
-    if let Some(new_notebook_scopes) = new_notebook_scopes {
-      self.new_notebook_scopes = Some(new_notebook_scopes);
+    if let Some(new_notebook_keys) = new_notebook_keys {
+      self.new_notebook_keys = Some(new_notebook_keys);
     }
     for (spec, new) in modified_scripts {
       if let Some((_, current)) =
@@ -422,8 +421,6 @@ impl PendingChange {
     }
   }
 }
-
-pub type MaybeAmbientModules = Option<Vec<String>>;
 
 impl TsServer {
   pub fn new(performance: Arc<Performance>) -> Self {
@@ -500,10 +497,10 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     documents: &[(Document, ChangeKind)],
-    new_compiler_options_by_scope: Option<
-      BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>,
+    new_compiler_options_by_key: Option<
+      BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>,
     >,
-    new_notebook_scopes: Option<BTreeMap<Arc<Uri>, Option<Arc<Url>>>>,
+    new_notebook_keys: Option<BTreeMap<Arc<Uri>, CompilerOptionsKey>>,
   ) {
     let modified_scripts = documents
       .iter()
@@ -519,16 +516,16 @@ impl TsServer {
         pending_change.coalesce(
           snapshot.project_version,
           modified_scripts,
-          new_compiler_options_by_scope,
-          new_notebook_scopes,
+          new_compiler_options_by_key,
+          new_notebook_keys,
         );
       }
       pending => {
         let pending_change = PendingChange {
           modified_scripts,
           project_version: snapshot.project_version,
-          new_compiler_options_by_scope,
-          new_notebook_scopes,
+          new_compiler_options_by_key,
+          new_notebook_keys,
         };
         *pending = Some(pending_change);
       }
@@ -539,40 +536,55 @@ impl TsServer {
   pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
-    modules: &[Arc<DocumentModule>],
+    module: &DocumentModule,
     token: &CancellationToken,
-  ) -> Result<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules), AnyError>
-  {
-    let Some((scope, notebook_uri)) = modules
-      .first()
-      .map(|m| (m.scope.as_ref(), m.notebook_uri.as_ref()))
-    else {
-      return Ok(Default::default());
-    };
-    let specifiers = modules
-      .iter()
-      .map(|m| self.specifier_map.denormalize(&m.specifier, m.media_type))
-      .collect();
-    let req =
-      TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
+  ) -> Result<Vec<crate::tsc::Diagnostic>, AnyError> {
+    let req = TscRequest::GetDiagnostics((
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
+      snapshot.project_version,
+    ));
     self
-      .request::<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules)>(
+      .request::<Vec<crate::tsc::Diagnostic>>(
         snapshot,
         req,
-        scope,
-        notebook_uri,
+        &module.compiler_options_key,
+        module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
-      .and_then(|(mut diagnostics, ambient_modules)| {
-        for diagnostic in diagnostics.iter_mut().flatten() {
+      .and_then(|mut diagnostics| {
+        for diagnostic in &mut diagnostics {
           if token.is_cancelled() {
             return Err(anyhow!("request cancelled"));
           }
           normalize_diagnostic(diagnostic, &self.specifier_map)?;
         }
-        Ok((diagnostics, ambient_modules))
+        Ok(diagnostics)
       })
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn get_ambient_modules(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    compiler_options_key: &CompilerOptionsKey,
+    notebook_uri: Option<&Arc<Uri>>,
+    token: &CancellationToken,
+  ) -> Result<Vec<String>, AnyError> {
+    let req = TscRequest::GetAmbientModules;
+    self
+      .request::<Vec<String>>(
+        snapshot.clone(),
+        req,
+        compiler_options_key,
+        None,
+        notebook_uri,
+        token,
+      )
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -582,7 +594,14 @@ impl TsServer {
     }
     let req = TscRequest::CleanupSemanticCache;
     self
-      .request::<()>(snapshot.clone(), req, None, None, &Default::default())
+      .request::<()>(
+        snapshot.clone(),
+        req,
+        &Default::default(),
+        None,
+        None,
+        &Default::default(),
+      )
       .await
       .map_err(|err| {
         log::error!("Failed to request to tsserver {}", err);
@@ -609,6 +628,7 @@ impl TsServer {
       .request::<Option<Vec<ReferencedSymbol>>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -639,6 +659,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -653,7 +674,14 @@ impl TsServer {
   ) -> Result<Vec<String>, LspError> {
     let req = TscRequest::GetSupportedCodeFixes;
     self
-      .request(snapshot, req, None, None, &Default::default())
+      .request(
+        snapshot,
+        req,
+        &Default::default(),
+        None,
+        None,
+        &Default::default(),
+      )
       .await
       .map_err(|err| {
         log::error!("Unable to get fixable diagnostics: {}", err);
@@ -679,6 +707,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -718,6 +747,7 @@ impl TsServer {
       .request::<Vec<CodeFixAction>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -741,7 +771,7 @@ impl TsServer {
     trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
     token: &CancellationToken,
-  ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
+  ) -> Result<Vec<ApplicableRefactorInfo>, AnyError> {
     let trigger_kind = trigger_kind.map(|reason| match reason {
       lsp::CodeActionTriggerKind::INVOKED => "invoked",
       lsp::CodeActionTriggerKind::AUTOMATIC => "implicit",
@@ -763,15 +793,12 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
       )
       .await
-      .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -806,6 +833,7 @@ impl TsServer {
       .request::<CombinedCodeActions>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -850,6 +878,7 @@ impl TsServer {
       .request::<RefactorEditInfo>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -892,6 +921,7 @@ impl TsServer {
       .request::<Vec<FileTextChanges>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -933,6 +963,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -958,6 +989,7 @@ impl TsServer {
       .request::<Option<DefinitionInfoAndBoundSpan>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -989,6 +1021,7 @@ impl TsServer {
       .request::<Option<Vec<DefinitionInfo>>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1040,6 +1073,7 @@ impl TsServer {
       .request::<Option<CompletionInfo>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1088,6 +1122,7 @@ impl TsServer {
       .request::<Option<CompletionEntryDetails>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1119,6 +1154,7 @@ impl TsServer {
       .request::<Option<Vec<ImplementationLocation>>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1149,6 +1185,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1174,6 +1211,7 @@ impl TsServer {
       .request::<Vec<CallHierarchyIncomingCall>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1205,6 +1243,7 @@ impl TsServer {
       .request::<Vec<CallHierarchyOutgoingCall>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1239,6 +1278,7 @@ impl TsServer {
       .request::<Option<OneOrMany<CallHierarchyItem>>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1285,6 +1325,7 @@ impl TsServer {
       .request::<Option<Vec<RenameLocation>>>(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1319,6 +1360,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1348,6 +1390,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1376,6 +1419,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1390,13 +1434,21 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     search: String,
     max_result_count: Option<u32>,
+    compiler_options_key: &CompilerOptionsKey,
     scope: Option<&Arc<Url>>,
     notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
   ) -> Result<Vec<NavigateToItem>, AnyError> {
     let req = TscRequest::GetNavigateToItems((search, max_result_count, None));
     self
-      .request::<Vec<NavigateToItem>>(snapshot, req, scope, notebook_uri, token)
+      .request::<Vec<NavigateToItem>>(
+        snapshot,
+        req,
+        compiler_options_key,
+        scope,
+        notebook_uri,
+        token,
+      )
       .await
       .and_then(|mut items| {
         for item in &mut items {
@@ -1432,6 +1484,7 @@ impl TsServer {
       .request(
         snapshot,
         req,
+        &module.compiler_options_key,
         module.scope.as_ref(),
         module.notebook_uri.as_ref(),
         token,
@@ -1443,6 +1496,7 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     req: TscRequest,
+    compiler_options_key: &CompilerOptionsKey,
     scope: Option<&Arc<Url>>,
     notebook_uri: Option<&Arc<Uri>>,
     token: &CancellationToken,
@@ -1463,6 +1517,7 @@ impl TsServer {
       .sender
       .send((
         req,
+        compiler_options_key.clone(),
         scope.cloned(),
         notebook_uri.cloned(),
         snapshot,
@@ -1989,19 +2044,17 @@ impl QuickInfo {
       .display_parts
       .clone()
       .map(|p| display_parts_to_string(&p, module, language_server))
+      && !display_string.is_empty()
     {
-      if !display_string.is_empty() {
-        parts.push(format!("```typescript\n{}\n```", display_string));
-      }
+      parts.push(format!("```typescript\n{}\n```", display_string));
     }
     if let Some(documentation) = self
       .documentation
       .clone()
       .map(|p| display_parts_to_string(&p, module, language_server))
+      && !documentation.is_empty()
     {
-      if !documentation.is_empty() {
-        parts.push(documentation);
-      }
+      parts.push(documentation);
     }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
@@ -2054,12 +2107,11 @@ impl DocumentSpan {
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(
-        &target_specifier,
-        module.scope.as_deref(),
-      )?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
         (
@@ -2098,12 +2150,11 @@ impl DocumentSpan {
     language_server: &language_server::Inner,
   ) -> Option<ModuleSpecifier> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(
-        &target_specifier,
-        module.scope.as_deref(),
-      )?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
     let range = self.text_span.to_range(target_module.line_index.clone());
     let mut target = uri_to_url(&target_module.uri);
     target.set_fragment(Some(&format!(
@@ -2156,12 +2207,15 @@ impl NavigateToItem {
   pub fn to_symbol_information(
     &self,
     scope: Option<&Url>,
+    compiler_options_key: &CompilerOptionsKey,
     language_server: &language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(&target_specifier, scope)?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      scope,
+      Some(compiler_options_key),
+    )?;
     let range = self.text_span.to_range(target_module.line_index.clone());
     let location = lsp::Location {
       uri: target_module.uri.as_ref().clone(),
@@ -2205,11 +2259,11 @@ impl InlayHintDisplayPart {
   ) -> lsp::InlayHintLabelPart {
     let location = self.file.as_ref().and_then(|f| {
       let target_specifier = resolve_url(f).ok()?;
-      let target_module = language_server
-        .document_modules
-        .inspect_module_for_specifier(
+      let target_module =
+        language_server.document_modules.module_for_specifier(
           &target_specifier,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )?;
       let range = self
         .span
@@ -2531,11 +2585,11 @@ impl RenameLocation {
         includes_non_files = true;
         continue;
       }
-      let Some(target_module) = language_server
-        .document_modules
-        .inspect_module_for_specifier(
+      let Some(target_module) =
+        language_server.document_modules.module_for_specifier(
           &target_specifier,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )
       else {
         continue;
@@ -2752,14 +2806,11 @@ impl FileTextChanges {
     let target_module = if is_new_file {
       None
     } else {
-      Some(
-        language_server
-          .document_modules
-          .inspect_module_for_specifier(
-            &target_specifier,
-            module.scope.as_deref(),
-          )?,
-      )
+      Some(language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+        Some(&module.compiler_options_key),
+      )?)
     };
     let target_uri = target_module
       .as_ref()
@@ -2797,14 +2848,11 @@ impl FileTextChanges {
     let target_module = if is_new_file {
       None
     } else {
-      Some(
-        language_server
-          .document_modules
-          .inspect_module_for_specifier(
-            &target_specifier,
-            module.scope.as_deref(),
-          )?,
-      )
+      Some(language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+        Some(&module.compiler_options_key),
+      )?)
     };
     let target_uri = target_module
       .as_ref()
@@ -3256,12 +3304,11 @@ impl ReferenceEntry {
     let target_module = if target_specifier == *module.specifier {
       module.clone()
     } else {
-      language_server
-        .document_modules
-        .inspect_module_for_specifier(
-          &target_specifier,
-          module.scope.as_deref(),
-        )?
+      language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+        Some(&module.compiler_options_key),
+      )?
     };
     Some(lsp::Location {
       uri: target_module.uri.as_ref().clone(),
@@ -3314,18 +3361,21 @@ impl CallHierarchyItem {
     maybe_root_path: Option<&Path>,
   ) -> Option<(lsp::CallHierarchyItem, Arc<DocumentModule>)> {
     let target_specifier = resolve_url(&self.file).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(
-        &target_specifier,
-        module.scope.as_deref(),
-      )?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
 
     let use_file_name = self.is_source_file_item();
     let maybe_file_path = url_to_file_path(&target_module.specifier).ok();
     let name = if use_file_name {
       if let Some(file_path) = &maybe_file_path {
-        file_path.file_name().unwrap().to_string_lossy().to_string()
+        file_path
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .into_owned()
       } else {
         target_module.uri.to_string()
       }
@@ -3341,9 +3391,9 @@ impl CallHierarchyItem {
             .strip_prefix(root_path)
             .unwrap_or(parent_dir)
             .to_string_lossy()
-            .to_string()
+            .into_owned()
         } else {
-          parent_dir.to_string_lossy().to_string()
+          parent_dir.to_string_lossy().into_owned()
         }
       } else {
         String::new()
@@ -3934,13 +3984,11 @@ impl CompletionEntry {
       }
     } else if SUPPORTED_BUILTIN_NODE_MODULES
       .contains(&raw.module_specifier.as_str())
-    {
-      if let Ok(normalized) =
+      && let Ok(normalized) =
         resolve_url(&format!("node:{}", &raw.module_specifier))
-      {
-        self.auto_import_data =
-          Some(CompletionNormalizedAutoImportData { raw, normalized });
-      }
+    {
+      self.auto_import_data =
+        Some(CompletionNormalizedAutoImportData { raw, normalized });
     }
   }
 
@@ -4115,88 +4163,87 @@ impl CompletionEntry {
         }
       }
     }
-    if let Some(source) = &self.source {
-      if let Some(import_data) = &self.auto_import_data {
-        sort_text = format!("\u{ffff}{}", self.sort_text);
-        let mut display_source = source.clone();
-        let import_mapper =
-          language_server.get_ts_response_import_mapper(module);
-        let resolution_lookup = resolution_lookup_cache
-          .entry((import_data.normalized.clone(), module.specifier.clone()))
-          .or_insert_with(|| {
-            if let Some(specifier) = import_mapper
-              .check_specifier(&import_data.normalized, &module.specifier)
-            {
-              return ResolutionLookup::PrettySpecifier(specifier);
-            }
-            if language_server
-              .resolver
-              .in_node_modules(&import_data.normalized)
-              || language_server
-                .cache
-                .in_cache_directory(&import_data.normalized)
-              || import_data
-                .normalized
-                .as_str()
-                .starts_with(jsr_url().as_str())
-            {
-              return ResolutionLookup::Invalid;
-            }
-            if let Some(specifier) =
-              relative_specifier(&module.specifier, &import_data.normalized)
-            {
-              return ResolutionLookup::PrettySpecifier(specifier);
-            }
-            if Url::parse(&import_data.raw.module_specifier).is_ok() {
-              return ResolutionLookup::PrettySpecifier(
-                import_data.normalized.to_string(),
-              );
-            }
-            ResolutionLookup::Preserve
-          });
-        if let ResolutionLookup::Invalid = resolution_lookup {
-          return None;
-        }
-        if let ResolutionLookup::PrettySpecifier(new_specifier) =
-          resolution_lookup
-        {
-          let mut new_specifier = new_specifier.clone();
-          let mut new_deno_types_specifier = None;
-          if let Some(code_specifier) = language_server
+    if let Some(source) = &self.source
+      && let Some(import_data) = &self.auto_import_data
+    {
+      sort_text = format!("\u{ffff}{}", self.sort_text);
+      let mut display_source = source.clone();
+      let import_mapper = language_server.get_ts_response_import_mapper(module);
+      let resolution_lookup = resolution_lookup_cache
+        .entry((import_data.normalized.clone(), module.specifier.clone()))
+        .or_insert_with(|| {
+          if let Some(specifier) = import_mapper
+            .check_specifier(&import_data.normalized, &module.specifier)
+          {
+            return ResolutionLookup::PrettySpecifier(specifier);
+          }
+          if language_server
             .resolver
-            .get_scoped_resolver(module.scope.as_deref())
-            .deno_types_to_code_resolution(&import_data.normalized)
-            .and_then(|s| {
-              import_mapper
-                .check_specifier(&s, &module.specifier)
-                .or_else(|| relative_specifier(&module.specifier, &s))
-            })
+            .in_node_modules(&import_data.normalized)
+            || language_server
+              .cache
+              .in_cache_directory(&import_data.normalized)
+            || import_data
+              .normalized
+              .as_str()
+              .starts_with(jsr_url().as_str())
           {
-            new_deno_types_specifier =
-              Some(std::mem::replace(&mut new_specifier, code_specifier));
+            return ResolutionLookup::Invalid;
           }
-          display_source.clone_from(&new_specifier);
-          if new_specifier != import_data.raw.module_specifier
-            || new_deno_types_specifier.is_some()
+          if let Some(specifier) =
+            relative_specifier(&module.specifier, &import_data.normalized)
           {
-            specifier_rewrite = Some(CompletionSpecifierRewrite {
-              old_specifier: import_data.raw.module_specifier.clone(),
-              new_specifier,
-              new_deno_types_specifier,
-            });
+            return ResolutionLookup::PrettySpecifier(specifier);
           }
-        }
-        // We want relative or bare (import-mapped or otherwise) specifiers to
-        // appear at the top.
-        if resolve_url(&display_source).is_err() {
-          sort_text += "_0";
-        } else {
-          sort_text += "_1";
-        }
-        label_details
-          .get_or_insert_with(Default::default)
-          .description = Some(display_source);
+          if Url::parse(&import_data.raw.module_specifier).is_ok() {
+            return ResolutionLookup::PrettySpecifier(
+              import_data.normalized.to_string(),
+            );
+          }
+          ResolutionLookup::Preserve
+        });
+      if let ResolutionLookup::Invalid = resolution_lookup {
+        return None;
       }
+      if let ResolutionLookup::PrettySpecifier(new_specifier) =
+        resolution_lookup
+      {
+        let mut new_specifier = new_specifier.clone();
+        let mut new_deno_types_specifier = None;
+        if let Some(code_specifier) = language_server
+          .resolver
+          .get_scoped_resolver(module.scope.as_deref())
+          .deno_types_to_code_resolution(&import_data.normalized)
+          .and_then(|s| {
+            import_mapper
+              .check_specifier(&s, &module.specifier)
+              .or_else(|| relative_specifier(&module.specifier, &s))
+          })
+        {
+          new_deno_types_specifier =
+            Some(std::mem::replace(&mut new_specifier, code_specifier));
+        }
+        display_source.clone_from(&new_specifier);
+        if new_specifier != import_data.raw.module_specifier
+          || new_deno_types_specifier.is_some()
+        {
+          specifier_rewrite = Some(CompletionSpecifierRewrite {
+            old_specifier: import_data.raw.module_specifier.clone(),
+            new_specifier,
+            new_deno_types_specifier,
+          });
+        }
+      }
+      // We want relative or bare (import-mapped or otherwise) specifiers to
+      // appear at the top.
+      if resolve_url(&display_source).is_err() {
+        sort_text += "_0";
+      } else {
+        sort_text += "_1";
+      }
+      label_details
+        .get_or_insert_with(Default::default)
+        .description = Some(display_source);
     }
 
     let text_edit =
@@ -4517,7 +4564,7 @@ impl TscSpecifierMap {
     }
     // If the module's media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
-    if MediaType::from_path(Path::new(specifier.as_str())) != media_type {
+    if MediaType::from_path(Path::new(&specifier)) != media_type {
       specifier += media_type.as_ts_extension();
     }
     if specifier != original.as_str() {
@@ -4560,6 +4607,7 @@ struct State {
   response_tx: Option<oneshot::Sender<Result<String, AnyError>>>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
+  last_compiler_options_key: CompilerOptionsKey,
   last_scope: Option<Arc<Url>>,
   last_notebook_uri: Option<Arc<Uri>>,
   token: CancellationToken,
@@ -4583,6 +4631,7 @@ impl State {
       response_tx: None,
       state_snapshot,
       specifier_map,
+      last_compiler_options_key: Default::default(),
       last_scope: None,
       last_notebook_uri: None,
       token: Default::default(),
@@ -4603,10 +4652,11 @@ impl State {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Arc<DocumentModule>> {
-    self
-      .state_snapshot
-      .document_modules
-      .module_for_specifier(specifier, self.last_scope.as_deref())
+    self.state_snapshot.document_modules.module_for_specifier(
+      specifier,
+      self.last_scope.as_deref(),
+      Some(&self.last_compiler_options_key),
+    )
   }
 
   fn script_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
@@ -4679,26 +4729,38 @@ fn op_load<'s>(
     .performance
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
-  let module = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
-    None
-  } else {
-    state.get_module(&specifier)
-  };
-  let maybe_load_response = module.as_ref().map(|m| {
-    let data = if m.media_type == MediaType::Json && m.text.len() > 10_000_000 {
-      // VSCode's TS server types large JSON files this way.
-      DocumentText::Static("{}\n")
+  let maybe_load_response =
+    if let Some(source) = crate::tsc::load_raw_import_source(&specifier) {
+      Some(LoadResponse {
+        data: DocumentText::Static(source),
+        script_kind: crate::tsc::as_ts_script_kind(MediaType::TypeScript),
+        version: Some("1".to_string()),
+        is_cjs: false,
+        is_classic_script: false,
+      })
     } else {
-      m.text.clone()
+      let module = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
+        None
+      } else {
+        state.get_module(&specifier)
+      };
+      module.as_ref().map(|m| {
+        let data =
+          if m.media_type == MediaType::Json && m.text.len() > 10_000_000 {
+            // VSCode's TS server types large JSON files this way.
+            DocumentText::Static("{}\n")
+          } else {
+            m.text.clone()
+          };
+        LoadResponse {
+          data,
+          script_kind: crate::tsc::as_ts_script_kind(m.media_type),
+          version: state.script_version(&specifier),
+          is_cjs: m.resolution_mode == ResolutionMode::Require,
+          is_classic_script: m.notebook_uri.is_some(),
+        }
+      })
     };
-    LoadResponse {
-      data,
-      script_kind: crate::tsc::as_ts_script_kind(m.media_type),
-      version: state.script_version(&specifier),
-      is_cjs: m.resolution_mode == ResolutionMode::Require,
-      is_classic_script: m.notebook_uri.is_some(),
-    }
-  });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
   Ok(serialized)
@@ -4715,10 +4777,11 @@ fn op_release(
     .performance
     .mark_with_args("tsc.op.op_release", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
-  state
-    .state_snapshot
-    .document_modules
-    .release(&specifier, state.last_scope.as_deref());
+  state.state_snapshot.document_modules.release(
+    &specifier,
+    state.last_scope.as_deref(),
+    Some(&state.last_compiler_options_key),
+  );
   state.performance.measure(mark);
   Ok(())
 }
@@ -4737,7 +4800,7 @@ fn op_resolve(
 
 struct TscRequestArray {
   request: TscRequest,
-  scope: Option<Arc<Url>>,
+  compiler_options_key: CompilerOptionsKey,
   notebook_uri: Option<Arc<Uri>>,
   id: Smi<usize>,
   change: convert::OptionNull<PendingChange>,
@@ -4759,7 +4822,8 @@ impl<'a> ToV8<'a> for TscRequestArray {
       .unwrap()
       .into();
     let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
-    let scope_url = serde_v8::to_v8(scope, self.scope)?;
+    let compiler_options_key =
+      serde_v8::to_v8(scope, self.compiler_options_key)?;
     let notebook_uri = serde_v8::to_v8(scope, self.notebook_uri)?;
 
     let change = self.change.to_v8(scope).unwrap_infallible();
@@ -4767,7 +4831,14 @@ impl<'a> ToV8<'a> for TscRequestArray {
     Ok(
       v8::Array::new_with_elements(
         scope,
-        &[id, method_name, args, scope_url, notebook_uri, change],
+        &[
+          id,
+          method_name,
+          args,
+          compiler_options_key,
+          notebook_uri,
+          change,
+        ],
       )
       .into(),
     )
@@ -4790,6 +4861,7 @@ async fn op_poll_requests(
 
   let Some((
     request,
+    compiler_options_key,
     scope,
     notebook_uri,
     snapshot,
@@ -4810,7 +4882,10 @@ async fn op_poll_requests(
   state.response_tx = Some(response_tx);
   let id = state.last_id;
   state.last_id += 1;
-  state.last_scope.clone_from(&scope);
+  state
+    .last_compiler_options_key
+    .clone_from(&compiler_options_key);
+  state.last_scope = scope;
   state.last_notebook_uri.clone_from(&notebook_uri);
   let mark = state
     .performance
@@ -4820,7 +4895,7 @@ async fn op_poll_requests(
 
   Some(TscRequestArray {
     request,
-    scope,
+    compiler_options_key,
     notebook_uri,
     id: Smi(id),
     change: change.into(),
@@ -4840,7 +4915,12 @@ fn op_resolve_inner(
   let specifiers = state
     .state_snapshot
     .document_modules
-    .resolve(&args.specifiers, &referrer, state.last_scope.as_deref())
+    .resolve(
+      &args.specifiers,
+      &referrer,
+      state.last_scope.as_deref(),
+      Some(&state.last_compiler_options_key),
+    )
     .into_iter()
     .map(|o| {
       o.map(|(s, mt)| {
@@ -4868,6 +4948,7 @@ fn op_respond(
   let _span = super::logging::lsp_tracing_info_span!("op_respond").entered();
   let state = state.borrow_mut::<State>();
   state.performance.measure(state.mark.take().unwrap());
+  state.last_compiler_options_key = Default::default();
   state.last_scope = None;
   state.last_notebook_uri = None;
   let response = if !error.is_empty() {
@@ -4951,8 +5032,7 @@ fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScriptNames {
-  unscoped: IndexSet<String>,
-  by_scope: BTreeMap<Arc<Url>, IndexSet<String>>,
+  by_compiler_options_key: BTreeMap<CompilerOptionsKey, IndexSet<String>>,
   by_notebook_uri: BTreeMap<Arc<Uri>, IndexSet<String>>,
 }
 
@@ -4964,15 +5044,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_names");
   let mut result = ScriptNames {
-    unscoped: IndexSet::new(),
-    by_scope: BTreeMap::from_iter(
-      state
-        .state_snapshot
-        .document_modules
-        .scopes()
-        .into_iter()
-        .filter_map(|s| Some((s?, IndexSet::new()))),
-    ),
+    by_compiler_options_key: Default::default(),
     by_notebook_uri: Default::default(),
   };
 
@@ -4980,44 +5052,90 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     .state_snapshot
     .document_modules
     .scopes_with_node_specifier();
-  if scopes_with_node_specifier.contains(&None) {
-    result
-      .unscoped
-      .insert("asset:///node_types.d.ts".to_string());
-  }
-  for (scope, script_names) in &mut result.by_scope {
-    if scopes_with_node_specifier.contains(&Some(scope.clone())) {
+
+  // Insert global scripts.
+  for (compiler_options_key, compiler_options_data) in
+    state.state_snapshot.compiler_options_resolver.entries()
+  {
+    let script_names = result
+      .by_compiler_options_key
+      .entry(compiler_options_key.clone())
+      .or_default();
+    let scope = compiler_options_data
+      .workspace_dir_or_source_url
+      .as_ref()
+      .and_then(|s| state.state_snapshot.config.tree.scope_for_specifier(s))
+      .cloned();
+    if scopes_with_node_specifier.contains(&scope) {
       script_names.insert("asset:///node_types.d.ts".to_string());
     }
-  }
-
-  // inject these next because they're global
-  for (scope, script_names) in &mut result.by_scope {
     let scoped_resolver = state
       .state_snapshot
       .resolver
-      .get_scoped_resolver(Some(scope));
-    for (_, specifiers) in scoped_resolver.graph_imports_by_referrer() {
-      for specifier in specifiers {
-        let mut specifier = Cow::Borrowed(specifier);
+      .get_scoped_resolver(scope.as_deref());
+    for (referrer, relative_specifiers) in compiler_options_data
+      .ts_config_files
+      .iter()
+      .map(|(r, f)| {
+        let relative_specifiers =
+          Box::new(f.iter().map(|f| &f.relative_specifier))
+            as Box<dyn Iterator<Item = &String>>;
+        (r.as_ref(), relative_specifiers)
+      })
+      .chain(
+        compiler_options_data
+          .compiler_options_types
+          .iter()
+          .map(|(r, t)| (r, Box::new(t.iter()) as _)),
+      )
+    {
+      let resolver = SingleReferrerGraphResolver {
+        valid_referrer: referrer,
+        module_resolution_mode: ResolutionMode::Import,
+        cli_resolver: scoped_resolver.as_cli_resolver(),
+        jsx_import_source_config: compiler_options_data
+          .jsx_import_source_config
+          .as_deref(),
+      };
+      for relative_specifier in relative_specifiers {
+        let Ok(mut specifier) = resolver
+          .resolve(
+            relative_specifier,
+            &deno_graph::Range {
+              specifier: referrer.clone(),
+              range: deno_graph::PositionRange::zeroed(),
+              resolution_mode: None,
+            },
+            deno_graph::source::ResolutionKind::Types,
+          )
+          .inspect_err(|err| {
+            lsp_warn!(
+              "Failed to resolve {relative_specifier} from `compilerOptions.types`: {err:#}"
+            );
+          })
+        else {
+          continue;
+        };
         if let Ok(req_ref) =
           deno_semver::npm::NpmPackageReqReference::from_specifier(&specifier)
         {
           let Some((resolved, _)) = scoped_resolver.npm_to_file_url(
             &req_ref,
-            scope,
+            referrer,
             NodeResolutionKind::Types,
             ResolutionMode::Import,
           ) else {
-            lsp_log!("failed to resolve {req_ref} to file URL");
+            lsp_log!("Failed to resolve {req_ref} to a file URL.");
             continue;
           };
-          specifier = Cow::Owned(resolved);
+          specifier = resolved;
         }
-        let Some(module) = state
-          .state_snapshot
-          .document_modules
-          .module_for_specifier(&specifier, Some(scope.as_ref()))
+        let Some(module) =
+          state.state_snapshot.document_modules.module_for_specifier(
+            &specifier,
+            scope.as_deref(),
+            Some(compiler_options_key),
+          )
         else {
           continue;
         };
@@ -5043,12 +5161,18 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .document_modules
       .primary_scope(notebook_uri)
       .flatten();
+    let compiler_options_key = state
+      .state_snapshot
+      .compiler_options_resolver
+      .entry_for_specifier(&uri_to_url(notebook_uri))
+      .0;
 
     // Copy over the globals from the containing regular scopes.
-    let global_script_names = scope
-      .and_then(|s| result.by_scope.get(s))
-      .unwrap_or(&result.unscoped);
-    script_names.extend(global_script_names.iter().cloned());
+    if let Some(global_script_names) =
+      result.by_compiler_options_key.get(compiler_options_key)
+    {
+      script_names.extend(global_script_names.iter().cloned());
+    }
 
     // Add the cells as roots.
     script_names.extend(cell_uris.iter().filter_map(|u| {
@@ -5070,15 +5194,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   }
 
   // finally include the documents
-  for (scope, modules) in state
+  for modules in state
     .state_snapshot
     .document_modules
     .workspace_file_modules_by_scope()
+    .into_values()
   {
-    let script_names = scope
-      .as_deref()
-      .and_then(|s| result.by_scope.get_mut(s))
-      .unwrap_or(&mut result.unscoped);
     for module in modules {
       let is_open = module.open_data.is_some();
       let types_entry = (|| {
@@ -5092,8 +5213,13 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           &module.specifier,
           module.resolution_mode,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )
       })();
+      let script_names = result
+        .by_compiler_options_key
+        .entry(module.compiler_options_key.clone())
+        .or_default();
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
       if let Some((types_specifier, types_media_type)) = &types_entry {
@@ -5637,12 +5763,14 @@ pub struct CombinedCodeFixScope {
 }
 
 #[derive(Serialize, Clone, Copy)]
+#[allow(dead_code)]
 pub struct JsNull;
 
 #[derive(Debug, Clone, Serialize)]
 enum TscRequest {
-  GetDiagnostics((Vec<String>, usize)),
+  GetDiagnostics((String, usize)),
 
+  GetAmbientModules,
   CleanupSemanticCache,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
   FindReferences((String, u32)),
@@ -5761,6 +5889,7 @@ impl TscRequest {
       TscRequest::GetDiagnostics(args) => {
         ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))
       }
+      TscRequest::GetAmbientModules => ("$getAmbientModules", None),
       TscRequest::FindReferences(args) => {
         ("findReferences", Some(serde_v8::to_v8(scope, args)?))
       }
@@ -5855,6 +5984,7 @@ impl TscRequest {
   fn method(&self) -> &'static str {
     match self {
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
+      TscRequest::GetAmbientModules => "$getAmbientModules",
       TscRequest::CleanupSemanticCache => "$cleanupSemanticCache",
       TscRequest::FindReferences(_) => "findReferences",
       TscRequest::GetNavigationTree(_) => "getNavigationTree",
@@ -5903,17 +6033,19 @@ mod tests {
   use super::*;
   use crate::cache::HttpCache;
   use crate::lsp::cache::LspCache;
+  use crate::lsp::compiler_options::LspCompilerOptionsResolver;
   use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::DocumentModules;
   use crate::lsp::documents::LanguageId;
+  use crate::lsp::lint::LspLinterResolver;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
 
   async fn setup(
     deno_json_content: Value,
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (TempDir, TsServer, Arc<StateSnapshot>, LspCache) {
+  ) -> (TempDir, TsServer, Arc<StateSnapshot>) {
     let temp_dir = TempDir::new();
     let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let mut config = Config::default();
@@ -5929,9 +6061,17 @@ mod tests {
       .await;
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
+    let compiler_options_resolver =
+      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    let linter_resolver = Arc::new(LspLinterResolver::new(
+      &config,
+      &compiler_options_resolver,
+      &resolver,
+    ));
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
+      &compiler_options_resolver,
       &resolver,
       &cache,
       &Default::default(),
@@ -5950,7 +6090,10 @@ mod tests {
       project_version: 0,
       document_modules,
       config: Arc::new(config),
+      compiler_options_resolver,
+      linter_resolver,
       resolver,
+      cache: Arc::new(cache),
     });
     let performance = Arc::new(Performance::default());
     let ts_server = TsServer::new(performance);
@@ -5959,16 +6102,14 @@ mod tests {
       &[],
       Some(
         snapshot
-          .config
-          .tree
-          .data_by_scope()
-          .iter()
-          .map(|(s, d)| (s.clone(), d.compiler_options.clone()))
+          .compiler_options_resolver
+          .entries()
+          .map(|(k, d)| (k.clone(), d.compiler_options.clone()))
           .collect(),
       ),
       None,
     );
-    (temp_dir, ts_server, snapshot, cache)
+    (temp_dir, ts_server, snapshot)
   }
 
   fn setup_op_state(state_snapshot: Arc<StateSnapshot>) -> OpState {
@@ -6002,7 +6143,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_diagnostics() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({
         "compilerOptions": {
           "lib": [],
@@ -6026,37 +6167,32 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
-          "start": {
-            "line": 0,
-            "character": 0,
-          },
-          "end": {
-            "line": 0,
-            "character": 7
-          },
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 7 },
           "fileName": specifier,
           "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the \'lib\' compiler option to include 'dom'.",
           "sourceLine": "console.log(\"hello deno\");",
           "category": 1,
-          "code": 2584
+          "code": 2584,
         }
-      ]]),
+      ]),
     );
   }
 
   #[tokio::test]
   async fn test_get_diagnostics_lib() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({
         "compilerOptions": {
           "lib": ["dom"],
@@ -6080,18 +6216,19 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[tokio::test]
   async fn test_module_resolution() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6117,18 +6254,19 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[tokio::test]
   async fn test_bad_module_specifiers() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6150,15 +6288,16 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 1,
@@ -6175,13 +6314,13 @@ mod tests {
           "code": 6133,
           "reportsUnnecessary": true,
         }
-      ]]),
+      ]),
     );
   }
 
   #[tokio::test]
   async fn test_remote_modules() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6207,18 +6346,19 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[tokio::test]
   async fn test_partial_modules() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6247,15 +6387,16 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 1,
@@ -6287,13 +6428,13 @@ mod tests {
           "category": 1,
           "code": 1109
         }
-      ]]),
+      ]),
     );
   }
 
   #[tokio::test]
   async fn test_no_debug_failure() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6313,15 +6454,16 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 0,
@@ -6337,13 +6479,13 @@ mod tests {
           "category": 1,
           "code": 1003,
         }
-      ]]),
+      ]),
     );
   }
 
   #[tokio::test]
   async fn test_modify_sources() {
-    let (temp_dir, ts_server, snapshot, cache) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[(
         "a.ts",
@@ -6366,7 +6508,8 @@ mod tests {
       .map(|s| s.as_ref());
     let dep_specifier =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
-    cache
+    snapshot
+      .cache
       .global()
       .set(
         &dep_specifier,
@@ -6376,15 +6519,15 @@ mod tests {
       .unwrap();
     let module = snapshot
       .document_modules
-      .module_for_specifier(&specifier, scope)
+      .module_for_specifier(&specifier, scope, None)
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 2,
@@ -6400,14 +6543,15 @@ mod tests {
           "code": 2339,
           "category": 1,
         }
-      ]]),
+      ]),
     );
     let dep_document = snapshot
       .document_modules
       .documents
-      .get_for_specifier(&dep_specifier, scope, &cache)
+      .get_for_specifier(&dep_specifier, scope, &snapshot.cache)
       .unwrap();
-    cache
+    snapshot
+      .cache
       .global()
       .set(
         &dep_specifier,
@@ -6434,16 +6578,17 @@ mod tests {
         .tree
         .scope_for_specifier(&specifier)
         .map(|s| s.as_ref()),
+      None,
     );
     let module = snapshot
       .document_modules
-      .module_for_specifier(&specifier, scope)
+      .module_for_specifier(&specifier, scope, None)
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[test]
@@ -6491,7 +6636,7 @@ mod tests {
         character: 16,
       })
       .unwrap();
-    let (temp_dir, ts_server, snapshot, _) =
+    let (temp_dir, ts_server, snapshot) =
       setup(json!({}), &[("a.ts", fixture, 1, LanguageId::TypeScript)]).await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let module = snapshot
@@ -6503,6 +6648,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let info = ts_server
@@ -6668,7 +6814,7 @@ mod tests {
         character: 33,
       })
       .unwrap();
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({
         "fmt": {
           "semiColons": false,
@@ -6691,6 +6837,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let info = ts_server
@@ -6768,7 +6915,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_edits_for_file_rename() {
-    let (temp_dir, ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot) = setup(
       json!({}),
       &[
         ("a.ts", r#"import "./b.ts";"#, 1, LanguageId::TypeScript),
@@ -6786,6 +6933,7 @@ mod tests {
           .tree
           .scope_for_specifier(&specifier)
           .map(|s| s.as_ref()),
+        None,
       )
       .unwrap();
     let changes = ts_server
@@ -6845,7 +6993,7 @@ mod tests {
 
   #[tokio::test]
   async fn resolve_unknown_dependency() {
-    let (temp_dir, _, snapshot, _) =
+    let (temp_dir, _, snapshot) =
       setup(json!({}), &[("a.ts", "", 1, LanguageId::TypeScript)]).await;
     let mut state = setup_op_state(snapshot);
     let resolved = op_resolve_inner(
@@ -6871,8 +7019,8 @@ mod tests {
     fn change<S: AsRef<str>>(
       project_version: usize,
       scripts: impl IntoIterator<Item = (S, ChangeKind)>,
-      new_compiler_options_by_scope: Option<
-        BTreeMap<Arc<Url>, Arc<LspCompilerOptions>>,
+      new_compiler_options_by_key: Option<
+        BTreeMap<CompilerOptionsKey, Arc<CompilerOptions>>,
       >,
     ) -> PendingChange {
       PendingChange {
@@ -6881,8 +7029,8 @@ mod tests {
           .into_iter()
           .map(|(s, c)| (s.as_ref().into(), c))
           .collect(),
-        new_compiler_options_by_scope,
-        new_notebook_scopes: None,
+        new_compiler_options_by_key,
+        new_notebook_keys: None,
       }
     }
     let cases = [

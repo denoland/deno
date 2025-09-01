@@ -1,41 +1,66 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { op_node_fs_exists, op_node_fs_exists_sync } from "ext:core/ops";
+import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
+import { primordials } from "ext:core/mod.js";
+import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+import type { Buffer } from "node:buffer";
+import { kCustomPromisifiedSymbol } from "ext:deno_node/internal/util.mjs";
+import * as process from "node:process";
 
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+const { ObjectDefineProperty, Promise, PromisePrototypeThen } = primordials;
 
 type ExistsCallback = (exists: boolean) => void;
 
 /**
- * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these
- * are implemented. See https://github.com/denoland/deno/issues/3403
  * Deprecated in node api
  */
-export function exists(path: string | URL, callback: ExistsCallback) {
-  path = path instanceof URL ? pathFromURL(path) : path;
-  op_node_fs_exists(path).then(callback);
+export function exists(path: string | Buffer | URL, callback: ExistsCallback) {
+  callback = makeCallback(callback);
+
+  try {
+    path = getValidatedPathToString(path);
+  } catch {
+    callback(false);
+    return;
+  }
+
+  PromisePrototypeThen(
+    op_node_fs_exists(path),
+    callback,
+  );
 }
 
 // The callback of fs.exists doesn't have standard callback signature.
 // We need to provide special implementation for promisify.
 // See https://github.com/nodejs/node/pull/13316
-const kCustomPromisifiedSymbol = Symbol.for("nodejs.util.promisify.custom");
-Object.defineProperty(exists, kCustomPromisifiedSymbol, {
+ObjectDefineProperty(exists, kCustomPromisifiedSymbol, {
+  __proto__: null,
   value: (path: string | URL) => {
     return new Promise((resolve) => {
       exists(path, (exists) => resolve(exists));
     });
   },
+  enumerable: false,
+  writable: false,
+  configurable: true,
 });
 
-/**
- * TODO: Also accept 'path' parameter as a Node polyfill Buffer or URL type once these
- * are implemented. See https://github.com/denoland/deno/issues/3403
- */
-export function existsSync(path: string | URL): boolean {
-  path = path instanceof URL ? pathFromURL(path) : path;
+let showExistsDeprecation = true;
+export function existsSync(path: string | Buffer | URL): boolean {
+  try {
+    path = getValidatedPathToString(path);
+  } catch (err) {
+    // @ts-expect-error `code` is safe to check with optional chaining
+    if (showExistsDeprecation && err?.code === "ERR_INVALID_ARG_TYPE") {
+      process.emitWarning(
+        "Passing invalid argument types to fs.existsSync is deprecated",
+        "DeprecationWarning",
+        "DEP0187",
+      );
+      showExistsDeprecation = false;
+    }
+    return false;
+  }
   return op_node_fs_exists_sync(path);
 }

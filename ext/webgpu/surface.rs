@@ -2,16 +2,17 @@
 
 use std::cell::RefCell;
 
-use deno_core::op2;
-use deno_core::v8;
+use deno_core::_ops::make_cppgc_object;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
-use deno_core::_ops::make_cppgc_object;
 use deno_core::cppgc::Ptr;
+use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use wgpu_types::SurfaceStatus;
 
 use crate::device::GPUDevice;
+use crate::error::GPUGenericError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
 
@@ -55,6 +56,12 @@ impl GarbageCollected for GPUCanvasContext {
 
 #[op2]
 impl GPUCanvasContext {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUCanvasContext, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[global]
   fn canvas(&self) -> v8::Global<v8::Object> {

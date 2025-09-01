@@ -4,16 +4,16 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
 use aes::cipher::BlockEncryptMut;
 use aes::cipher::KeyIvInit;
 use aes::cipher::KeySizeUser;
 use aes::cipher::StreamCipher;
+use aes::cipher::block_padding::Pkcs7;
 use deno_core::Resource;
 use deno_error::JsErrorClass;
-use digest::generic_array::GenericArray;
 use digest::KeyInit;
+use digest::generic_array::GenericArray;
 
 type Tag = Option<Vec<u8>>;
 
@@ -169,13 +169,13 @@ impl DecipherContext {
 }
 
 impl Resource for CipherContext {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cryptoCipher".into()
   }
 }
 
 impl Resource for DecipherContext {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "cryptoDecipher".into()
   }
 }
@@ -530,10 +530,10 @@ impl Decipher {
           return Err(DecipherError::InvalidKeyLength);
         }
 
-        if let Some(tag_len) = auth_tag_length {
-          if !is_valid_gcm_tag_length(tag_len) {
-            return Err(DecipherError::InvalidAuthTag(tag_len));
-          }
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
         }
 
         let decipher =
@@ -546,10 +546,10 @@ impl Decipher {
           return Err(DecipherError::InvalidKeyLength);
         }
 
-        if let Some(tag_len) = auth_tag_length {
-          if !is_valid_gcm_tag_length(tag_len) {
-            return Err(DecipherError::InvalidAuthTag(tag_len));
-          }
+        if let Some(tag_len) = auth_tag_length
+          && !is_valid_gcm_tag_length(tag_len)
+        {
+          return Err(DecipherError::InvalidAuthTag(tag_len));
         }
 
         let decipher =
@@ -595,7 +595,7 @@ impl Decipher {
         Aes128Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
       _ => {
-        return Err(DecipherError::UnknownCipher(algorithm_name.to_string()))
+        return Err(DecipherError::UnknownCipher(algorithm_name.to_string()));
       }
     })
   }

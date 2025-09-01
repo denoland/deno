@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::Path;
@@ -13,11 +14,11 @@ use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 
 use super::FilePatterns;
-use crate::glob::gitignore::DirGitIgnores;
-use crate::glob::gitignore::GitIgnoreTree;
 use crate::glob::FilePatternsMatch;
 use crate::glob::PathKind;
 use crate::glob::PathOrPattern;
+use crate::glob::gitignore::DirGitIgnores;
+use crate::glob::gitignore::GitIgnoreTree;
 
 #[derive(Debug, Clone)]
 pub struct WalkEntry<'a> {
@@ -70,7 +71,7 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
   pub fn collect_file_patterns<TSys: FsRead + FsMetadata + FsReadDir>(
     &self,
     sys: &TSys,
-    file_patterns: FilePatterns,
+    file_patterns: &FilePatterns,
   ) -> Vec<PathBuf> {
     fn is_pattern_matched(
       maybe_git_ignore: Option<&DirGitIgnores>,
@@ -125,7 +126,7 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
     let mut visited_paths: HashSet<PathBuf> = HashSet::default();
     let file_patterns_by_base = file_patterns.split_by_base();
     for file_patterns in file_patterns_by_base {
-      let specified_path = normalize_path(&file_patterns.base);
+      let specified_path = normalize_path(Cow::Borrowed(&file_patterns.base));
       let mut pending_dirs = VecDeque::new();
       let mut handle_entry =
         |path: PathBuf,
@@ -165,7 +166,11 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
         };
 
       if let Ok(metadata) = sys.fs_metadata(&specified_path) {
-        handle_entry(specified_path.clone(), &metadata, &mut pending_dirs);
+        handle_entry(
+          specified_path.to_path_buf(),
+          &metadata,
+          &mut pending_dirs,
+        );
       }
 
       // use an iterator in order to minimize the number of file system operations
@@ -192,12 +197,12 @@ impl<TFilter: Fn(WalkEntry) -> bool> FileCollector<TFilter> {
       .file_name()
       .map(|dir_name| {
         let dir_name = dir_name.to_string_lossy().to_lowercase();
-        let is_ignored_file = match dir_name.as_str() {
+
+        match dir_name.as_str() {
           "node_modules" => self.ignore_node_modules,
           ".git" => self.ignore_git_folder,
           _ => false,
-        };
-        is_ignored_file
+        }
       })
       .unwrap_or(false)
       || self.is_vendor_folder(path)
@@ -296,8 +301,7 @@ mod test {
         .unwrap_or(false)
     });
 
-    let result =
-      file_collector.collect_file_patterns(&RealSys, file_patterns.clone());
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",
@@ -312,7 +316,7 @@ mod test {
     ];
     let mut file_names = result
       .into_iter()
-      .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
+      .map(|r| r.file_name().unwrap().to_string_lossy().into_owned())
       .collect::<Vec<_>>();
     file_names.sort();
     assert_eq!(file_names, expected);
@@ -322,8 +326,7 @@ mod test {
       .ignore_git_folder()
       .ignore_node_modules()
       .set_vendor_folder(Some(child_dir_path.join("vendor").to_path_buf()));
-    let result =
-      file_collector.collect_file_patterns(&RealSys, file_patterns.clone());
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",
@@ -335,7 +338,7 @@ mod test {
     ];
     let mut file_names = result
       .into_iter()
-      .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
+      .map(|r| r.file_name().unwrap().to_string_lossy().into_owned())
       .collect::<Vec<_>>();
     file_names.sort();
     assert_eq!(file_names, expected);
@@ -353,7 +356,7 @@ mod test {
         ignore_dir_path.to_path_buf(),
       )]),
     };
-    let result = file_collector.collect_file_patterns(&RealSys, file_patterns);
+    let result = file_collector.collect_file_patterns(&RealSys, &file_patterns);
     let expected = [
       "README.md",
       "a.ts",
@@ -366,7 +369,7 @@ mod test {
     ];
     let mut file_names = result
       .into_iter()
-      .map(|r| r.file_name().unwrap().to_string_lossy().to_string())
+      .map(|r| r.file_name().unwrap().to_string_lossy().into_owned())
       .collect::<Vec<_>>();
     file_names.sort();
     assert_eq!(file_names, expected);

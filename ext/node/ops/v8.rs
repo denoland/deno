@@ -2,11 +2,11 @@
 
 use std::ptr::NonNull;
 
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::FastString;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
@@ -73,12 +73,12 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
       .v8_string(scope)
       .unwrap()
       .into();
-    if let Some(v) = obj.get(scope, key) {
-      if let Ok(fun) = v.try_cast::<v8::Function>() {
-        return fun
-          .call(scope, obj.into(), &[shared_array_buffer.into()])
-          .and_then(|ret| ret.uint32_value(scope));
-      }
+    if let Some(v) = obj.get(scope, key)
+      && let Ok(fun) = v.try_cast::<v8::Function>()
+    {
+      return fun
+        .call(scope, obj.into(), &[shared_array_buffer.into()])
+        .and_then(|ret| ret.uint32_value(scope));
     }
     None
   }
@@ -119,11 +119,11 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
       .v8_string(scope)
       .unwrap()
       .into();
-    if let Some(v) = obj.get(scope, key) {
-      if let Ok(v) = v.try_cast::<v8::Function>() {
-        v.call(scope, obj.into(), &[object.into()])?;
-        return Some(true);
-      }
+    if let Some(v) = obj.get(scope, key)
+      && let Ok(v) = v.try_cast::<v8::Function>()
+    {
+      v.call(scope, obj.into(), &[object.into()])?;
+      return Some(true);
     }
 
     None
@@ -259,20 +259,20 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
       .unwrap()
       .into();
     let scope = &mut v8::AllowJavascriptExecutionScope::new(scope);
-    if let Some(v) = obj.get(scope, key) {
-      if let Ok(v) = v.try_cast::<v8::Function>() {
-        let result = v.call(scope, obj.into(), &[])?;
-        match result.try_cast() {
-          Ok(res) => return Some(res),
-          Err(_) => {
-            let msg =
-              FastString::from_static("readHostObject must return an object")
-                .v8_string(scope)
-                .unwrap();
-            let error = v8::Exception::type_error(scope, msg);
-            scope.throw_exception(error);
-            return None;
-          }
+    if let Some(v) = obj.get(scope, key)
+      && let Ok(v) = v.try_cast::<v8::Function>()
+    {
+      let result = v.call(scope, obj.into(), &[])?;
+      match result.try_cast() {
+        Ok(res) => return Some(res),
+        Err(_) => {
+          let msg =
+            FastString::from_static("readHostObject must return an object")
+              .v8_string(scope)
+              .unwrap();
+          let error = v8::Exception::type_error(scope, msg);
+          scope.throw_exception(error);
+          return None;
         }
       }
     }

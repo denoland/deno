@@ -5,22 +5,21 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::op2;
-use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_core::serde::Deserialize;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
-use deno_web::deserialize_js_transferables;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
+use deno_web::deserialize_js_transferables;
 use log::debug;
 
 use crate::ops::TestingFeaturesEnabled;
 use crate::tokio_util::create_and_run_current_thread;
-use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
 use crate::web_worker::WebWorkerHandle;
@@ -28,6 +27,7 @@ use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::web_worker::WorkerMetadata;
 use crate::web_worker::WorkerThreadType;
+use crate::web_worker::run_web_worker;
 use crate::worker::FormatJsErrorFn;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
@@ -156,10 +156,10 @@ fn op_create_worker(
   };
   let args_name = args.name;
   let worker_type = args.worker_type;
-  if let WorkerThreadType::Classic = worker_type {
-    if let TestingFeaturesEnabled(false) = state.borrow() {
-      return Err(CreateWorkerError::ClassicWorkers);
-    }
+  if let WorkerThreadType::Classic = worker_type
+    && let TestingFeaturesEnabled(false) = state.borrow()
+  {
+    return Err(CreateWorkerError::ClassicWorkers);
   }
 
   if args.permissions.is_some() {
@@ -261,10 +261,13 @@ fn op_create_worker(
 
 #[op2]
 fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
-  if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
-    worker_thread.terminate();
-  } else {
-    debug!("tried to terminate non-existent worker {}", id);
+  match state.borrow_mut::<WorkersTable>().remove(&id) {
+    Some(worker_thread) => {
+      worker_thread.terminate();
+    }
+    _ => {
+      debug!("tried to terminate non-existent worker {}", id);
+    }
   }
 }
 

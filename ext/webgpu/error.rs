@@ -17,10 +17,10 @@ use wgpu_core::command::CreateRenderBundleError;
 use wgpu_core::command::QueryError;
 use wgpu_core::command::RenderBundleError;
 use wgpu_core::command::RenderPassError;
-use wgpu_core::device::queue::QueueSubmitError;
-use wgpu_core::device::queue::QueueWriteError;
 use wgpu_core::device::DeviceError;
 use wgpu_core::device::WaitIdleError;
+use wgpu_core::device::queue::QueueSubmitError;
+use wgpu_core::device::queue::QueueWriteError;
 use wgpu_core::pipeline::CreateComputePipelineError;
 use wgpu_core::pipeline::CreateRenderPipelineError;
 use wgpu_core::pipeline::CreateShaderModuleError;
@@ -360,4 +360,11 @@ impl From<WaitIdleError> for GPUError {
   fn from(err: WaitIdleError) -> Self {
     GPUError::Validation(fmt_err(&err))
   }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum GPUGenericError {
+  #[class(type)]
+  #[error("Illegal constructor")]
+  InvalidConstructor,
 }

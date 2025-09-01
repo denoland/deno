@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_telemetry"
-version = "0.30.0"
+version = "0.36.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,6 +17,8 @@ path = "lib.rs"
 async-trait.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+deno_net.workspace = true
+deno_signals.workspace = true
 deno_tls.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -33,3 +35,7 @@ pin-project.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tower-service.workspace = true
+
+[target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
+tokio-vsock.workspace = true

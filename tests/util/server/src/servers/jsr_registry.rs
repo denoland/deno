@@ -7,22 +7,22 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Mutex;
 
-use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD_NO_PAD;
 use bytes::Bytes;
-use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::Empty;
 use http_body_util::Full;
-use hyper::body::Incoming;
+use http_body_util::combinators::UnsyncBoxBody;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
+use hyper::body::Incoming;
 use once_cell::sync::Lazy;
 use serde_json::json;
 
-use super::run_server;
 use super::ServerKind;
 use super::ServerOptions;
+use super::run_server;
 use crate::tests_path;
 
 pub async fn registry_server(port: u16) {
@@ -235,7 +235,7 @@ fn get_manifest_entries_for_dir(
         let checksum = format!("sha256-{}", get_checksum(&file_bytes));
         let relative_path = path
           .to_string_lossy()
-          .strip_prefix(&root_dir.to_string_lossy().to_string())
+          .strip_prefix(&root_dir.to_string_lossy().into_owned())
           .unwrap()
           .replace('\\', "/");
         manifest.insert(
@@ -254,7 +254,7 @@ fn get_manifest_entries_for_dir(
   DIR_MANIFEST_CACHE
     .lock()
     .unwrap()
-    .entry(dir.to_string_lossy().to_string())
+    .entry(dir.to_string_lossy().into_owned())
     .or_insert_with(|| {
       let mut manifest = BTreeMap::new();
       inner_fill(dir, dir, &mut manifest);

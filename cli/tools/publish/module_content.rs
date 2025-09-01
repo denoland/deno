@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -11,6 +12,8 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
+use deno_resolver::cache::LazyGraphSourceParser;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::workspace::ResolutionKind;
 use lazy_regex::Lazy;
@@ -21,14 +24,11 @@ use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
 use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
-use crate::cache::LazyGraphSourceParser;
-use crate::cache::ParsedSourceCache;
 use crate::sys::CliSys;
 
 struct JsxFolderOptions<'a> {
-  jsx_factory: &'a str,
-  jsx_fragment_factory: &'a str,
   jsx_runtime: &'static str,
+  jsx_classic: Option<Cow<'a, deno_ast::JsxClassicOptions>>,
   jsx_import_source: Option<String>,
   jsx_import_source_types: Option<String>,
 }
@@ -193,30 +193,32 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
         jsx_options.jsx_runtime,
       ));
     }
-    if module_info.jsx_import_source.is_none() {
-      if let Some(import_source) = jsx_options.jsx_import_source {
-        add_text_change(format!("/** @jsxImportSource {} */", import_source));
-      }
+    if module_info.jsx_import_source.is_none()
+      && let Some(import_source) = jsx_options.jsx_import_source
+    {
+      add_text_change(format!("/** @jsxImportSource {} */", import_source));
     }
-    if module_info.jsx_import_source_types.is_none() {
-      if let Some(import_source) = jsx_options.jsx_import_source_types {
+    if module_info.jsx_import_source_types.is_none()
+      && let Some(import_source) = jsx_options.jsx_import_source_types
+    {
+      add_text_change(format!(
+        "/** @jsxImportSourceTypes {} */",
+        import_source
+      ));
+    }
+    if let Some(classic_options) = &jsx_options.jsx_classic {
+      if !leading_comments_has_re(&JSX_FACTORY_RE) {
         add_text_change(format!(
-          "/** @jsxImportSourceTypes {} */",
-          import_source
+          "/** @jsxFactory {} */",
+          classic_options.factory,
         ));
       }
-    }
-    if !leading_comments_has_re(&JSX_FACTORY_RE) {
-      add_text_change(format!(
-        "/** @jsxFactory {} */",
-        jsx_options.jsx_factory,
-      ));
-    }
-    if !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
-      add_text_change(format!(
-        "/** @jsxFragmentFactory {} */",
-        jsx_options.jsx_fragment_factory,
-      ));
+      if !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
+        add_text_change(format!(
+          "/** @jsxFragmentFactory {} */",
+          classic_options.fragment_factory,
+        ));
+      }
     }
     Ok(())
   }
@@ -231,10 +233,12 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
       self.compiler_options_resolver.for_specifier(specifier);
     let jsx_config = compiler_options.jsx_import_source_config()?;
     let transpile_options = &compiler_options.transpile_options()?.transpile;
-    let jsx_runtime = if transpile_options.jsx_automatic {
-      "automatic"
-    } else {
-      "classic"
+    let jsx_runtime = match &transpile_options.jsx {
+      Some(
+        deno_ast::JsxRuntime::Automatic(_)
+        | deno_ast::JsxRuntime::Precompile(_),
+      ) => "automatic",
+      None | Some(deno_ast::JsxRuntime::Classic(_)) => "classic",
     };
     let mut unfurl_import_source =
       |import_source: &str, referrer: &Url, resolution_kind: ResolutionKind| {
@@ -268,10 +272,19 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
           ResolutionKind::Types,
         )
       });
+    let classic_options = match &transpile_options.jsx {
+      None => Some(Cow::Owned(deno_ast::JsxClassicOptions::default())),
+      Some(deno_ast::JsxRuntime::Classic(classic_options)) => {
+        Some(Cow::Borrowed(classic_options))
+      }
+      Some(
+        deno_ast::JsxRuntime::Precompile(_)
+        | deno_ast::JsxRuntime::Automatic(_),
+      ) => None,
+    };
     Ok(JsxFolderOptions {
       jsx_runtime,
-      jsx_factory: &transpile_options.jsx_factory,
-      jsx_fragment_factory: &transpile_options.jsx_fragment_factory,
+      jsx_classic: classic_options,
       jsx_import_source,
       jsx_import_source_types,
     })
@@ -284,22 +297,22 @@ mod test {
 
   use deno_config::workspace::WorkspaceDiscoverStart;
   use deno_path_util::url_from_file_path;
+  use deno_resolver::deno_json::CompilerOptionsOverrides;
   use deno_resolver::factory::ConfigDiscoveryOption;
-  use deno_resolver::factory::WorkspaceDirectoryProvider;
   use deno_resolver::npm::ByonmNpmResolverCreateOptions;
   use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
   use deno_resolver::npm::DenoInNpmPackageChecker;
   use deno_resolver::npm::NpmResolverCreateOptions;
   use deno_resolver::workspace::WorkspaceResolver;
-  use node_resolver::cache::NodeResolutionSys;
   use node_resolver::DenoIsBuiltInNodeModuleChecker;
   use node_resolver::NodeResolver;
   use node_resolver::NodeResolverOptions;
   use node_resolver::PackageJsonResolver;
+  use node_resolver::cache::NodeResolutionSys;
   use pretty_assertions::assert_eq;
-  use sys_traits::impls::InMemorySys;
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
+  use sys_traits::impls::InMemorySys;
 
   use super::*;
   use crate::npm::CliNpmResolver;
@@ -309,7 +322,7 @@ mod test {
     run_test(&[
       (
         "/deno.json",
-        r#"{ "workspace": ["package-a", "package-b"] }"#,
+        r#"{ "workspace": ["package-a", "package-b", "package-c", "package-d"] }"#,
         None,
       ),
       (
@@ -326,22 +339,56 @@ mod test {
     }"#,
         None,
       ),
-      ("/package-b/deno.json", r#"{
+      (
+        "/package-b/deno.json",
+        r#"{
         "compilerOptions": { "jsx": "react-jsx" },
         "imports": {
           "react": "npm:react"
           "@types/react": "npm:@types/react"
         }
-      }"#, None),
+      }"#,
+        None,
+      ),
+      (
+        "/package-c/deno.json",
+        r#"{
+        "compilerOptions": {
+          "jsx": "precompile",
+          "jsxImportSource": "react",
+          "jsxImportSourceTypes": "@types/react",
+        },
+        "imports": {
+          "react": "npm:react"
+          "@types/react": "npm:@types/react"
+        }
+      }"#,
+        None,
+      ),
+      (
+        "/package-d/deno.json",
+        r#"{
+        "compilerOptions": { "jsx": "react" },
+        "imports": {
+          "react": "npm:react"
+          "@types/react": "npm:@types/react"
+        }
+      }"#,
+        None,
+      ),
       (
         "/package-a/main.tsx",
         "export const component = <div></div>;",
-        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;"),
+        Some(
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react */export const component = <div></div>;",
+        ),
       ),
       (
         "/package-b/main.tsx",
         "export const componentB = <div></div>;",
-        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const componentB = <div></div>;"),
+        Some(
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react */export const componentB = <div></div>;",
+        ),
       ),
       (
         "/package-a/other.tsx",
@@ -352,13 +399,27 @@ mod test {
         /** @jsxRuntime automatic */
         export const component = <div></div>;",
         Some(
-        "/** @jsxImportSource npm:preact */
+          "/** @jsxImportSource npm:preact */
         /** @jsxFragmentFactory h1 */
         /** @jsxImportSourceTypes npm:@types/example */
         /** @jsxFactory h2 */
         /** @jsxRuntime automatic */
         export const component = <div></div>;",
-        )
+        ),
+      ),
+      (
+        "/package-c/main.tsx",
+        "export const component = <div></div>;",
+        Some(
+          "/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react */export const component = <div></div>;",
+        ),
+      ),
+      (
+        "/package-d/main.tsx",
+        "export const component = <div></div>;",
+        Some(
+          "/** @jsxRuntime classic *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;",
+        ),
       ),
     ]);
   }
@@ -415,10 +476,10 @@ mod test {
       )
       .unwrap(),
     );
-    let specifier_unfurler = SpecifierUnfurler::new(resolver, false);
+    let specifier_unfurler = SpecifierUnfurler::new(None, resolver, false);
     let package_json_resolver =
       Arc::new(PackageJsonResolver::new(sys.clone(), None));
-    let node_resolver = NodeResolver::new(
+    let node_resolver = Arc::new(NodeResolver::new(
       DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm),
       DenoIsBuiltInNodeModuleChecker,
       CliNpmResolver::new(NpmResolverCreateOptions::Byonm(
@@ -431,12 +492,13 @@ mod test {
       package_json_resolver,
       NodeResolutionSys::new(sys.clone(), None),
       NodeResolverOptions::default(),
-    );
+    ));
     let compiler_options_resolver = Arc::new(CompilerOptionsResolver::new(
       &sys,
-      &WorkspaceDirectoryProvider::from_initial_dir(&Arc::new(workspace_dir)),
+      &workspace_dir.workspace,
       &node_resolver,
       &ConfigDiscoveryOption::DiscoverCwd,
+      &CompilerOptionsOverrides::default(),
     ));
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),

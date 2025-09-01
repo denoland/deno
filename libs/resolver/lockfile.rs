@@ -5,29 +5,28 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Error as AnyError;
+use capacity_builder::StringBuilder;
 use deno_config::workspace::Workspace;
 use deno_error::JsErrorBox;
 use deno_lockfile::Lockfile;
 use deno_lockfile::NpmPackageInfoProvider;
 use deno_lockfile::WorkspaceMemberConfig;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
-use futures::stream::FuturesOrdered;
 use futures::TryStreamExt;
+use futures::stream::FuturesOrdered;
 use indexmap::IndexMap;
 use node_resolver::PackageJson;
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
 
 pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
@@ -35,7 +34,7 @@ pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 impl<T> NpmRegistryApiEx for T where T: NpmRegistryApi + MaybeSend + MaybeSync {}
 
 #[allow(clippy::disallowed_types)]
-type NpmRegistryApiRc = crate::sync::MaybeArc<dyn NpmRegistryApiEx>;
+type NpmRegistryApiRc = deno_maybe_sync::MaybeArc<dyn NpmRegistryApiEx>;
 
 pub struct LockfileNpmPackageInfoApiAdapter {
   api: NpmRegistryApiRc,
@@ -192,7 +191,7 @@ pub enum LockfileWriteError {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type LockfileLockRc<TSys> = crate::sync::MaybeArc<LockfileLock<TSys>>;
+pub type LockfileLockRc<TSys> = deno_maybe_sync::MaybeArc<LockfileLock<TSys>>;
 
 #[derive(Debug)]
 pub struct LockfileLock<TSys: LockfileSys> {
@@ -205,7 +204,7 @@ pub struct LockfileLock<TSys: LockfileSys> {
 
 impl<TSys: LockfileSys> LockfileLock<TSys> {
   /// Get the inner deno_lockfile::Lockfile.
-  pub fn lock(&self) -> Guard<Lockfile> {
+  pub fn lock(&self) -> Guard<'_, Lockfile> {
     Guard {
       guard: self.lockfile.lock(),
     }
@@ -222,6 +221,24 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     options: deno_lockfile::SetWorkspaceConfigOptions,
   ) {
     self.lockfile.lock().set_workspace_config(options);
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn fill_graph(&self, graph: &mut deno_graph::ModuleGraph) {
+    let lockfile = self.lockfile.lock();
+    graph.fill_from_lockfile(deno_graph::FillFromLockfileOptions {
+      redirects: lockfile
+        .content
+        .redirects
+        .iter()
+        .map(|(from, to)| (from.as_str(), to.as_str())),
+      package_specifiers: lockfile
+        .content
+        .packages
+        .specifiers
+        .iter()
+        .map(|(dep, id)| (dep, id.as_str())),
+    });
   }
 
   pub fn overwrite(&self) -> bool {
@@ -322,17 +339,17 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       api,
     )
     .await?;
-    let root_url = workspace.root_dir();
+    let root_url = workspace.root_dir_url();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
         dependencies: if let Some(map) = maybe_external_import_map {
-          import_map_deps(map)
+          deno_config::import_map::import_map_deps(map)
         } else {
           root_folder
             .deno_json
             .as_deref()
-            .map(deno_json_deps)
+            .map(|d| d.dependencies())
             .unwrap_or_default()
         },
       },
@@ -358,7 +375,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                 dependencies: folder
                   .deno_json
                   .as_deref()
-                  .map(deno_json_deps)
+                  .map(|d| d.dependencies())
                   .unwrap_or_default(),
               };
               if config.package_json_deps.is_empty()
@@ -396,11 +413,16 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
               .unwrap_or_default()
           }
 
-          let key = format!(
-            "npm:{}@{}",
-            pkg_json.name.as_ref()?,
-            pkg_json.version.as_ref()?
-          );
+          let name = pkg_json.name.as_ref()?;
+          let key = StringBuilder::<String>::build(|builder| {
+            builder.append("npm:");
+            builder.append(name);
+            if let Some(version) = &pkg_json.version {
+              builder.append('@');
+              builder.append(version);
+            }
+          })
+          .unwrap();
           // anything that affects npm resolution should go here in order to bust
           // the npm resolution when it changes
           let value = deno_lockfile::LockfileLinkContent {
@@ -416,6 +438,24 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           };
           Some((key, value))
         })
+        .chain(workspace.link_deno_jsons().filter_map(|deno_json| {
+          let name = deno_json.json.name.as_ref()?;
+          let key = StringBuilder::<String>::build(|builder| {
+            builder.append("jsr:");
+            builder.append(name);
+            if let Some(version) = &deno_json.json.version {
+              builder.append('@');
+              builder.append(version);
+            }
+          })
+          .unwrap();
+          let value = deno_lockfile::LockfileLinkContent {
+            dependencies: deno_json.dependencies(),
+            peer_dependencies: Default::default(),
+            peer_dependencies_meta: Default::default(),
+          };
+          Some((key, value))
+        }))
         .collect(),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
@@ -475,7 +515,9 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       let diff = crate::display::diff(&contents, &new_contents);
       // has an extra newline at the end
       let diff = diff.trim_end();
-      Err(JsErrorBox::generic(format!("The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}")))
+      Err(JsErrorBox::generic(format!(
+        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
+      )))
     } else {
       Ok(())
     }
@@ -542,99 +584,5 @@ impl<TSys: LockfileSys> deno_graph::source::Locker
       .0
       .lock()
       .insert_package(package_nv.clone(), checksum.into_string());
-  }
-}
-
-fn import_map_deps(
-  import_map: &serde_json::Value,
-) -> HashSet<JsrDepPackageReq> {
-  let values = imports_values(import_map.get("imports"))
-    .into_iter()
-    .chain(scope_values(import_map.get("scopes")));
-  values_to_set(values)
-}
-
-fn deno_json_deps(
-  config: &deno_config::deno_json::ConfigFile,
-) -> HashSet<JsrDepPackageReq> {
-  let values = imports_values(config.json.imports.as_ref())
-    .into_iter()
-    .chain(scope_values(config.json.scopes.as_ref()));
-  let mut set = values_to_set(values);
-
-  if let Some(serde_json::Value::Object(compiler_options)) =
-    &config.json.compiler_options
-  {
-    // add jsxImportSource
-    if let Some(serde_json::Value::String(value)) =
-      compiler_options.get("jsxImportSource")
-    {
-      if let Some(dep_req) = value_to_dep_req(value) {
-        set.insert(dep_req);
-      }
-    }
-    // add jsxImportSourceTypes
-    if let Some(serde_json::Value::String(value)) =
-      compiler_options.get("jsxImportSourceTypes")
-    {
-      if let Some(dep_req) = value_to_dep_req(value) {
-        set.insert(dep_req);
-      }
-    }
-    // add the dependencies in the types array
-    if let Some(serde_json::Value::Array(types)) = compiler_options.get("types")
-    {
-      for value in types {
-        if let serde_json::Value::String(value) = value {
-          if let Some(dep_req) = value_to_dep_req(value) {
-            set.insert(dep_req);
-          }
-        }
-      }
-    }
-  }
-
-  set
-}
-
-fn imports_values(value: Option<&serde_json::Value>) -> Vec<&String> {
-  let Some(obj) = value.and_then(|v| v.as_object()) else {
-    return Vec::new();
-  };
-  let mut items = Vec::with_capacity(obj.len());
-  for value in obj.values() {
-    if let serde_json::Value::String(value) = value {
-      items.push(value);
-    }
-  }
-  items
-}
-
-fn scope_values(value: Option<&serde_json::Value>) -> Vec<&String> {
-  let Some(obj) = value.and_then(|v| v.as_object()) else {
-    return Vec::new();
-  };
-  obj.values().flat_map(|v| imports_values(Some(v))).collect()
-}
-
-fn values_to_set<'a>(
-  values: impl Iterator<Item = &'a String>,
-) -> HashSet<JsrDepPackageReq> {
-  let mut entries = HashSet::new();
-  for value in values {
-    if let Some(dep_req) = value_to_dep_req(value) {
-      entries.insert(dep_req);
-    }
-  }
-  entries
-}
-
-fn value_to_dep_req(value: &str) -> Option<JsrDepPackageReq> {
-  if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
-    Some(JsrDepPackageReq::jsr(req_ref.into_inner().req))
-  } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
-    Some(JsrDepPackageReq::npm(req_ref.into_inner().req))
-  } else {
-    None
   }
 }

@@ -8,10 +8,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::unsync::spawn;
-use deno_core::url;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -23,15 +19,20 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_core::futures::TryFutureExt;
+use deno_core::op2;
+use deno_core::unsync::spawn;
+use deno_core::url;
 use deno_error::JsErrorBox;
 use deno_net::raw::NetworkStream;
 use deno_permissions::PermissionCheckError;
+use deno_tls::RootCertStoreProvider;
+use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
+use deno_tls::TlsKeys;
 use deno_tls::create_client_config;
 use deno_tls::rustls::ClientConfig;
 use deno_tls::rustls::ClientConnection;
-use deno_tls::RootCertStoreProvider;
-use deno_tls::SocketUse;
-use deno_tls::TlsKeys;
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollectorRead;
 use fastwebsockets::Frame;
@@ -39,18 +40,18 @@ use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
 use fastwebsockets::WebSocketWrite;
-use http::header::CONNECTION;
-use http::header::UPGRADE;
 use http::HeaderName;
 use http::HeaderValue;
 use http::Method;
 use http::Request;
 use http::StatusCode;
 use http::Uri;
+use http::header::CONNECTION;
+use http::header::UPGRADE;
 use once_cell::sync::Lazy;
-use rustls_tokio_stream::rustls::pki_types::ServerName;
-use rustls_tokio_stream::rustls::RootCertStore;
 use rustls_tokio_stream::TlsStream;
+use rustls_tokio_stream::rustls::RootCertStore;
+use rustls_tokio_stream::rustls::pki_types::ServerName;
 use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
@@ -143,7 +144,7 @@ pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 pub struct WsCancelResource(Rc<CancelHandle>);
 
 impl Resource for WsCancelResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webSocketCancel".into()
   }
 
@@ -414,13 +415,14 @@ pub fn create_ws_client_config(
     .get_or_try_init()
     .map_err(HandshakeError::RootStoreError)?;
 
-  create_client_config(
+  create_client_config(TlsClientConfigOptions {
     root_cert_store,
-    vec![],
+    ca_certs: vec![],
     unsafely_ignore_certificate_errors,
-    TlsKeys::Null,
+    unsafely_disable_hostname_verification: false,
+    cert_chain_and_key: TlsKeys::Null,
     socket_use,
-  )
+  })
   .map_err(HandshakeError::Tls)
 }
 
@@ -507,10 +509,10 @@ where
     None => handshake.await?,
   };
 
-  if let Some(cancel_rid) = cancel_handle {
-    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-      res.close();
-    }
+  if let Some(cancel_rid) = cancel_handle
+    && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+  {
+    res.close();
   }
 
   let mut state = state.borrow_mut();
@@ -601,7 +603,7 @@ impl ServerWebSocket {
 }
 
 impl Resource for ServerWebSocket {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "serverWebSocket".into()
   }
 }
@@ -632,13 +634,16 @@ fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
   deno_core::unsync::spawn(async move {
-    if let Err(err) = resource
+    match resource
       .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
       .await
     {
-      resource.set_error(Some(err.to_string()));
-    } else {
-      resource.buffered.set(resource.buffered.get() - len);
+      Err(err) => {
+        resource.set_error(Some(err.to_string()));
+      }
+      _ => {
+        resource.buffered.set(resource.buffered.get() - len);
+      }
     }
   });
 }
@@ -672,16 +677,19 @@ pub fn op_ws_send_text(
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
   deno_core::unsync::spawn(async move {
-    if let Err(err) = resource
+    match resource
       .write_frame(
         lock,
         Frame::new(true, OpCode::Text, None, data.into_bytes().into()),
       )
       .await
     {
-      resource.set_error(Some(err.to_string()));
-    } else {
-      resource.buffered.set(resource.buffered.get() - len);
+      Err(err) => {
+        resource.set_error(Some(err.to_string()));
+      }
+      _ => {
+        resource.buffered.set(resource.buffered.get() - len);
+      }
     }
   });
 }

@@ -5,7 +5,6 @@
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
  * ERR_REQUIRE_ESM
- * ERR_TLS_CERT_ALTNAME_INVALID
  * ERR_WORKER_INVALID_EXEC_ARGV
  * ERR_WORKER_PATH
  * ERR_QUIC_ERROR
@@ -2667,6 +2666,7 @@ export class ERR_INVALID_STATE extends NodeError {
 interface UvExceptionContext {
   syscall: string;
   path?: string;
+  dest?: string;
 }
 export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   const errno = extractOsErrorNumberFromErrorMessage(e);
@@ -2680,6 +2680,31 @@ export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
   });
   return ex;
 }
+
+export const denoErrorToNodeSystemError = hideStackFrames((
+  e: Error,
+  syscall: string,
+): Error => {
+  const osErrno = extractOsErrorNumberFromErrorMessage(e);
+  if (typeof osErrno === "undefined") {
+    return e;
+  }
+
+  const uvErrno = mapSysErrnoToUvErrno(osErrno);
+  const { 0: code, 1: message } = uvErrmapGet(uvErrno) || uvUnmappedError;
+  const ctx: NodeSystemErrorCtx = {
+    errno: uvErrno,
+    code,
+    message,
+    syscall,
+  };
+
+  return new NodeSystemError(
+    "ERR_SYSTEM_ERROR",
+    ctx,
+    "A system error occurred",
+  );
+});
 
 function extractOsErrorNumberFromErrorMessage(e: unknown): number | undefined {
   const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
@@ -2742,6 +2767,7 @@ export class NodeAggregateError extends AggregateError {
   }
 }
 
+codes.ERR_BUFFER_TOO_LARGE = ERR_BUFFER_TOO_LARGE;
 codes.ERR_IPC_CHANNEL_CLOSED = ERR_IPC_CHANNEL_CLOSED;
 codes.ERR_METHOD_NOT_IMPLEMENTED = ERR_METHOD_NOT_IMPLEMENTED;
 codes.ERR_INVALID_RETURN_VALUE = ERR_INVALID_RETURN_VALUE;
@@ -2769,6 +2795,7 @@ codes.ERR_STREAM_PUSH_AFTER_EOF = ERR_STREAM_PUSH_AFTER_EOF;
 codes.ERR_STREAM_UNSHIFT_AFTER_END_EVENT = ERR_STREAM_UNSHIFT_AFTER_END_EVENT;
 codes.ERR_STREAM_WRAP = ERR_STREAM_WRAP;
 codes.ERR_STREAM_WRITE_AFTER_END = ERR_STREAM_WRITE_AFTER_END;
+codes.ERR_BROTLI_INVALID_PARAM = ERR_BROTLI_INVALID_PARAM;
 
 // TODO(kt3k): assign all error classes here.
 
@@ -3086,6 +3113,7 @@ export default {
   codes,
   connResetException,
   denoErrorToNodeError,
+  denoErrorToNodeSystemError,
   dnsException,
   errnoException,
   errorMap,

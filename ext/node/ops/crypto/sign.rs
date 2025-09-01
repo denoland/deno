@@ -3,8 +3,8 @@ use core::ops::Add;
 
 use ecdsa::der::MaxOverhead;
 use ecdsa::der::MaxSize;
-use elliptic_curve::generic_array::ArrayLength;
 use elliptic_curve::FieldBytesSize;
+use elliptic_curve::generic_array::ArrayLength;
 use rand::rngs::OsRng;
 use rsa::signature::hazmat::PrehashSigner as _;
 use rsa::signature::hazmat::PrehashVerifier as _;
@@ -58,7 +58,9 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   FailedToSignDigestWithRsaPss,
   #[error("failed to sign digest with DSA")]
   FailedToSignDigestWithDsa,
-  #[error("rsa-pss with different mf1 hash algorithm and hash algorithm is not supported")]
+  #[error(
+    "rsa-pss with different mf1 hash algorithm and hash algorithm is not supported"
+  )]
   RsaPssHashAlgorithmUnsupported,
   #[error(
     "private key does not allow {actual} to be used, expected {expected}"
@@ -133,14 +135,13 @@ impl KeyObjectHandle {
         let pss = match_fixed_digest_with_oid!(
           digest_type,
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
-            if let Some(hash_algorithm) = hash_algorithm.take() {
-              if Some(hash_algorithm) != algorithm {
+            if let Some(hash_algorithm) = hash_algorithm.take()
+              && Some(hash_algorithm) != algorithm {
                 return Err(KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage {
                   actual: digest_type.to_string(),
                   expected: hash_algorithm.as_str().to_string(),
                 });
               }
-            }
             if let Some(salt_length) = salt_length {
               rsa::pss::Pss::new_with_salt::<D>(salt_length)
             } else {
@@ -253,14 +254,13 @@ impl KeyObjectHandle {
         let pss = match_fixed_digest_with_oid!(
           digest_type,
           fn <D>(algorithm: Option<RsaPssHashAlgorithm>) {
-            if let Some(hash_algorithm) = hash_algorithm.take() {
-              if Some(hash_algorithm) != algorithm {
+            if let Some(hash_algorithm) = hash_algorithm.take()
+              && Some(hash_algorithm) != algorithm {
                 return Err(KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage {
                   actual: digest_type.to_string(),
                   expected: hash_algorithm.as_str().to_string(),
                 });
               }
-            }
             if let Some(salt_length) = salt_length {
               rsa::pss::Pss::new_with_salt::<D>(salt_length)
             } else {

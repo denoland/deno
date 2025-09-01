@@ -11,13 +11,13 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
 use deno_lib::version::DENO_VERSION_INFO;
 use jupyter_protocol::messaging;
 use jupyter_runtime::ConnectionInfo;
@@ -742,9 +742,8 @@ fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
 
   let word = &line[start..end];
   let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-  let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
 
-  word
+  (word.strip_suffix(is_word_boundary).unwrap_or(word)) as _
 }
 
 // TODO(bartlomieju): dedup with repl::editor

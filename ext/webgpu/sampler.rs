@@ -1,11 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
-use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
+use deno_core::webidl::WebIdlInterfaceConverter;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 pub struct GPUSampler {
   pub instance: Instance,
@@ -31,6 +32,12 @@ impl GarbageCollected for GPUSampler {
 
 #[op2]
 impl GPUSampler {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUSampler, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

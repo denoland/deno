@@ -6,14 +6,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
 pub use wgpu_core;
 pub use wgpu_types;
 use wgpu_types::PowerPreference;
+
+use crate::error::GPUGenericError;
 
 mod adapter;
 mod bind_group;
@@ -135,6 +137,12 @@ impl GarbageCollected for GPU {
 
 #[op2]
 impl GPU {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPU, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[async_method]
   #[cppgc]
   async fn request_adapter(

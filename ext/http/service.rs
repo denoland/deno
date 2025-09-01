@@ -10,10 +10,10 @@ use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::OnceLock;
-use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
+use std::task::ready;
 
 use deno_core::BufView;
 use deno_core::OpState;
@@ -26,15 +26,15 @@ use hyper::body::Incoming;
 use hyper::body::SizeHint;
 use hyper::header::HeaderMap;
 use hyper::upgrade::OnUpgrade;
-use scopeguard::guard;
 use scopeguard::ScopeGuard;
+use scopeguard::guard;
 use tokio::sync::oneshot;
 
+use crate::OtelInfo;
+use crate::OtelInfoAttributes;
 use crate::request_properties::HttpConnectionProperties;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::ResponseStreamResult;
-use crate::OtelInfo;
-use crate::OtelInfoAttributes;
 
 pub type Request = hyper::Request<Incoming>;
 pub type Response = hyper::Response<HttpRecordResponse>;
@@ -104,7 +104,7 @@ impl<T> SignallingRc<T> {
     if Rc::strong_count(&self.0) == 1 {
       Poll::Ready(())
     } else {
-      self.0 .1.set(Some(cx.waker().clone()));
+      self.0.1.set(Some(cx.waker().clone()));
       Poll::Pending
     }
   }
@@ -121,10 +121,10 @@ impl<T> Drop for SignallingRc<T> {
   #[inline]
   fn drop(&mut self) {
     // Trigger the waker iff the refcount is about to become 1.
-    if Rc::strong_count(&self.0) == 2 {
-      if let Some(waker) = self.0 .1.take() {
-        waker.wake();
-      }
+    if Rc::strong_count(&self.0) == 2
+      && let Some(waker) = self.0.1.take()
+    {
+      waker.wake();
     }
   }
 }
@@ -133,7 +133,7 @@ impl<T> std::ops::Deref for SignallingRc<T> {
   type Target = T;
   #[inline]
   fn deref(&self) -> &Self::Target {
-    &self.0 .0
+    &self.0.0
   }
 }
 
@@ -321,7 +321,10 @@ fn trust_proxy_headers() -> bool {
 
   *TRUST_PROXY_HEADERS.get_or_init(|| {
     if let Some(v) = std::env::var_os(VAR_NAME) {
-      std::env::remove_var(VAR_NAME);
+      #[allow(clippy::undocumented_unsafe_blocks)]
+      unsafe {
+        std::env::remove_var(VAR_NAME)
+      };
       v == "1"
     } else {
       false
@@ -345,12 +348,13 @@ impl HttpRecord {
     };
     let request_body = Some(request_body.into());
     let (mut response_parts, _) = http::Response::new(()).into_parts();
-    let record =
-      if let Some((record, headers)) = server_state.borrow_mut().pool.pop() {
+    let record = match server_state.borrow_mut().pool.pop() {
+      Some((record, headers)) => {
         response_parts.headers = headers;
         http_trace!(record, "HttpRecord::reuse");
         record
-      } else {
+      }
+      _ => {
         #[cfg(feature = "__http_tracing")]
         {
           RECORD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -360,7 +364,8 @@ impl HttpRecord {
         let record = Rc::new(Self(RefCell::new(None)));
         http_trace!(record, "HttpRecord::new");
         record
-      };
+      }
+    };
     *record.0.borrow_mut() = Some(HttpRecordInner {
       server_state,
       request_info,
@@ -496,10 +501,10 @@ impl HttpRecord {
     // The request body might include actual resources.
     inner.request_body.take();
 
-    if inner.legacy_abort || !inner.response_body_finished {
-      if let Some(closed_channel) = inner.closed_channel.take() {
-        let _ = closed_channel.send(());
-      }
+    if (inner.legacy_abort || !inner.response_body_finished)
+      && let Some(closed_channel) = inner.closed_channel.take()
+    {
+      let _ = closed_channel.send(());
     }
   }
 
@@ -706,10 +711,10 @@ impl Body for HttpRecordResponse {
 
     if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
       let mut http = record.0.borrow_mut();
-      if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info {
-        if let Some(response_size) = &mut otel_info.response_size {
-          *response_size += buf.len() as u64;
-        }
+      if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info
+        && let Some(response_size) = &mut otel_info.response_size
+      {
+        *response_size += buf.len() as u64;
       }
     }
 
@@ -756,8 +761,8 @@ mod tests {
   use bytes::Buf;
   use deno_net::raw::NetworkStreamType;
   use hyper::body::Body;
-  use hyper::service::service_fn;
   use hyper::service::HttpService;
+  use hyper::service::service_fn;
   use hyper_util::rt::TokioIo;
 
   use super::*;

@@ -8,11 +8,11 @@ use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::resolve_url_or_path;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_lib::worker::LibWorkerFactoryRoots;
-use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::PackageCaching;
+use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_path_util::resolve_url_or_path;
 use deno_runtime::WorkerExecutionMode;
 use eszip::EszipV2;
 use jsonc_parser::ParseOptions;
@@ -43,10 +43,13 @@ To grant permissions, set them before the script argument. For example:
 fn set_npm_user_agent() {
   static ONCE: std::sync::Once = std::sync::Once::new();
   ONCE.call_once(|| {
-    std::env::set_var(
-      crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR,
-      crate::npm::get_npm_config_user_agent(),
-    );
+    #[allow(clippy::undocumented_unsafe_blocks)]
+    unsafe {
+      std::env::set_var(
+        crate::npm::NPM_CONFIG_USER_AGENT_ENV_VAR,
+        crate::npm::get_npm_config_user_agent(),
+      )
+    };
   });
 }
 
@@ -85,6 +88,7 @@ pub async fn run_script(
       node_resolver.clone(),
     ),
   ))?;
+  let preload_modules = cli_options.preload_modules()?;
 
   if main_module.scheme() == "npm" {
     set_npm_user_agent();
@@ -99,6 +103,7 @@ pub async fn run_script(
     .create_main_worker_with_unconfigured_runtime(
       mode,
       main_module.clone(),
+      preload_modules,
       unconfigured_runtime,
     )
     .await
@@ -119,6 +124,7 @@ pub async fn run_from_stdin(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
+  let preload_modules = cli_options.preload_modules()?;
 
   maybe_npm_install(&factory).await?;
 
@@ -135,12 +141,14 @@ pub async fn run_from_stdin(
     mtime: None,
     maybe_headers: None,
     source: source.into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   });
 
   let mut worker = worker_factory
     .create_main_worker_with_unconfigured_runtime(
       WorkerExecutionMode::Run,
       main_module.clone(),
+      preload_modules,
       unconfigured_runtime,
     )
     .await?;
@@ -172,6 +180,7 @@ async fn run_with_watch(
         );
         let cli_options = factory.cli_options()?;
         let main_module = cli_options.resolve_main_module()?;
+        let preload_modules = cli_options.preload_modules()?;
 
         if main_module.scheme() == "npm" {
           set_npm_user_agent();
@@ -184,7 +193,7 @@ async fn run_with_watch(
         let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
-          .create_main_worker(mode, main_module.clone())
+          .create_main_worker(mode, main_module.clone(), preload_modules)
           .await?;
 
         if watch_flags.hmr {
@@ -211,6 +220,7 @@ pub async fn eval_command(
   let cli_options = factory.cli_options()?;
   let file_fetcher = factory.file_fetcher()?;
   let main_module = cli_options.resolve_main_module()?;
+  let preload_modules = cli_options.preload_modules()?;
 
   maybe_npm_install(&factory).await?;
 
@@ -228,11 +238,16 @@ pub async fn eval_command(
     mtime: None,
     maybe_headers: None,
     source: source_code.into_bytes().into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   });
 
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(WorkerExecutionMode::Eval, main_module.clone())
+    .create_main_worker(
+      WorkerExecutionMode::Eval,
+      main_module.clone(),
+      preload_modules,
+    )
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -243,19 +258,21 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
   if cli_options.specified_node_modules_dir()? == Some(NodeModulesDirMode::Auto)
+    && let Some(npm_installer) = factory.npm_installer_if_managed().await?
   {
-    if let Some(npm_installer) = factory.npm_installer_if_managed().await? {
-      let already_done = npm_installer
-        .ensure_top_level_package_json_install()
-        .await?;
-      if !already_done
-        && matches!(
-          cli_options.default_npm_caching_strategy(),
-          NpmCachingStrategy::Eager
-        )
-      {
-        npm_installer.cache_packages(PackageCaching::All).await?;
-      }
+    let _clear_guard = factory
+      .text_only_progress_bar()
+      .deferred_keep_initialize_alive();
+    let already_done = npm_installer
+      .ensure_top_level_package_json_install()
+      .await?;
+    if !already_done
+      && matches!(
+        cli_options.default_npm_caching_strategy(),
+        NpmCachingStrategy::Eager
+      )
+    {
+      npm_installer.cache_packages(PackageCaching::All).await?;
     }
   }
   Ok(())
@@ -280,6 +297,8 @@ pub async fn run_eszip(
 
   let mode = WorkerExecutionMode::Run;
   let main_module = resolve_url_or_path(entrypoint, cli_options.initial_cwd())?;
+  let preload_modules = cli_options.preload_modules()?;
+
   let worker_factory = factory
     .create_cli_main_worker_factory_with_roots(roots)
     .await?;
@@ -287,6 +306,7 @@ pub async fn run_eszip(
     .create_main_worker_with_unconfigured_runtime(
       mode,
       main_module.clone(),
+      preload_modules,
       unconfigured_runtime,
     )
     .await?;

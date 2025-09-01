@@ -54,7 +54,9 @@ impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
   #[cfg(debug_assertions)]
   pub fn debug_assert_initialized(&self) {
     if !matches!(*self.sync_state.lock(), SyncState::Success) {
-      panic!("debug assert: npm resolution must be initialized before calling this code");
+      panic!(
+        "debug assert: npm resolution must be initialized before calling this code"
+      );
     }
   }
 

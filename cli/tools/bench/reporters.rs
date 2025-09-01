@@ -233,7 +233,13 @@ impl BenchReporter for ConsoleReporter {
         );
 
         if !stats.high_precision && stats.used_explicit_timers {
-          println!("{}", colors::yellow(format!("Warning: start() and end() calls in \"{}\" are ignored because it averages less\nthan 10µs per iteration. Remove them for better results.", &desc.name)));
+          println!(
+            "{}",
+            colors::yellow(format!(
+              "Warning: start() and end() calls in \"{}\" are ignored because it averages less\nthan 10µs per iteration. Remove them for better results.",
+              &desc.name
+            ))
+          );
         }
 
         self.group_measurements.push((desc, stats.clone()));
@@ -306,8 +312,12 @@ impl BenchReporter for ConsoleReporter {
       colors::red_bold("error"),
       format_test_error(&error, &TestFailureFormatOptions::default())
     );
-    println!("This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.");
-    println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
+    println!(
+      "This error was not caught from a benchmark and caused the bench runner to fail on the referenced module."
+    );
+    println!(
+      "It most likely originated from a dangling promise, event/timeout handler or top-level code."
+    );
     println!();
   }
 }

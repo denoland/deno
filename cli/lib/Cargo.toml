@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_lib"
-version = "0.26.0"
+version = "0.32.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,6 +14,7 @@ description = "Shared code between the Deno CLI and denort"
 path = "lib.rs"
 
 [dependencies]
+arc-swap.workspace = true
 aws-lc-rs.workspace = true
 base64.workspace = true
 capacity_builder.workspace = true

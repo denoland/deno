@@ -182,7 +182,21 @@ fn from_raw(
   stream: RawBiPipeHandle,
 ) -> Result<(BiPipeRead, BiPipeWrite), std::io::Error> {
   use std::os::fd::FromRawFd;
-  // Safety: The fd is part of a pair of connected sockets
+
+  use nix::sys::socket::AddressFamily;
+  use nix::sys::socket::SockaddrLike;
+  use nix::sys::socket::SockaddrStorage;
+  use nix::sys::socket::getsockname;
+
+  if getsockname::<SockaddrStorage>(stream)
+    .ok()
+    .and_then(|a| a.family())
+    != Some(AddressFamily::Unix)
+  {
+    return Err(std::io::Error::other("fd is not from BiPipe"));
+  }
+
+  // SAFETY: We validated above that this is from a unix stream.
   let unix_stream =
     unsafe { std::os::unix::net::UnixStream::from_raw_fd(stream) };
   unix_stream.set_nonblocking(true)?;
@@ -273,8 +287,8 @@ impl_async_write!(for BiPipe -> self.write_end);
 
 /// Creates both sides of a bidirectional pipe, returning the raw
 /// handles to the underlying OS resources.
-pub fn bi_pipe_pair_raw(
-) -> Result<(RawBiPipeHandle, RawBiPipeHandle), std::io::Error> {
+pub fn bi_pipe_pair_raw()
+-> Result<(RawBiPipeHandle, RawBiPipeHandle), std::io::Error> {
   #[cfg(unix)]
   {
     // SockFlag is broken on macOS

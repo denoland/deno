@@ -17,8 +17,8 @@ use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::CACHE_PERM;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -27,6 +27,7 @@ use deno_lib::args::CaData;
 use deno_lib::args::UnstableConfig;
 use deno_lib::shared::ReleaseChannel;
 use deno_lib::standalone::binary::CjsExportAnalysisEntry;
+use deno_lib::standalone::binary::MAGIC_BYTES;
 use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::NodeModules;
 use deno_lib::standalone::binary::RemoteModuleEntry;
@@ -35,20 +36,19 @@ use deno_lib::standalone::binary::SerializedWorkspaceResolver;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_lib::standalone::binary::SpecifierDataStore;
 use deno_lib::standalone::binary::SpecifierId;
-use deno_lib::standalone::binary::MAGIC_BYTES;
 use deno_lib::standalone::virtual_fs::BuiltVfs;
+use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 use deno_lib::standalone::virtual_fs::VfsBuilder;
 use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
-use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::util::text_encoding::is_valid_utf8;
 use deno_lib::util::v8::construct_v8_flags;
 use deno_lib::version::DENO_VERSION_INFO;
-use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
@@ -60,13 +60,13 @@ use indexmap::IndexMap;
 use node_resolver::analyze::ResolvedCjsAnalysis;
 
 use super::virtual_fs::output_vfs;
-use crate::args::get_default_v8_flags;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
+use crate::args::get_default_v8_flags;
 use crate::cache::DenoDir;
-use crate::emit::Emitter;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
+use crate::module_loader::CliEmitter;
 use crate::node::CliCjsModuleExportAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
@@ -201,7 +201,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   cjs_tracker: &'a CliCjsTracker,
   cli_options: &'a CliOptions,
   deno_dir: &'a DenoDir,
-  emitter: &'a Emitter,
+  emitter: &'a CliEmitter,
   file_fetcher: &'a CliFileFetcher,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a CliNpmResolver,
@@ -216,7 +216,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     cjs_tracker: &'a CliCjsTracker,
     cli_options: &'a CliOptions,
     deno_dir: &'a DenoDir,
-    emitter: &'a Emitter,
+    emitter: &'a CliEmitter,
     file_fetcher: &'a CliFileFetcher,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a CliNpmResolver,
@@ -392,14 +392,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
-        let snapshot = managed
-          .resolution()
-          .serialized_valid_snapshot_for_system(&self.npm_system_info);
-        if !snapshot.as_serialized().packages.is_empty() {
-          self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
-          Some(snapshot)
-        } else {
+        if graph.npm_packages.is_empty() {
           None
+        } else {
+          let snapshot = managed
+            .resolution()
+            .serialized_valid_snapshot_for_system(&self.npm_system_info);
+          if !snapshot.as_serialized().packages.is_empty() {
+            self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
+            Some(snapshot)
+          } else {
+            None
+          }
         }
       }
       CliNpmResolver::Byonm(_) => {
@@ -464,7 +468,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               _ => ModuleKind::Esm,
             };
             let (source, source_map) =
-              self.emitter.emit_parsed_source_for_deno_compile(
+              self.emitter.emit_source_for_deno_compile(
                 &m.specifier,
                 m.media_type,
                 module_kind,
@@ -584,14 +588,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       );
     }
 
-    if let Some(import_map) = self.workspace_resolver.maybe_import_map() {
-      if let Ok(file_path) = url_to_file_path(import_map.base_url()) {
-        if let Some(import_map_parent_dir) = file_path.parent() {
-          // tell the vfs about the import map's parent directory in case it
-          // falls outside what the root of where the VFS will be based
-          vfs.add_possible_min_root_dir(import_map_parent_dir);
-        }
-      }
+    if let Some(import_map) = self.workspace_resolver.maybe_import_map()
+      && let Ok(file_path) = url_to_file_path(import_map.base_url())
+      && let Some(import_map_parent_dir) = file_path.parent()
+    {
+      // tell the vfs about the import map's parent directory in case it
+      // falls outside what the root of where the VFS will be based
+      vfs.add_possible_min_root_dir(import_map_parent_dir);
     }
     if let Some(node_modules_dir) = self.npm_resolver.root_node_modules_path() {
       // ensure the vfs doesn't go below the node_modules directory's parent
@@ -697,7 +700,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       Some(env_filenames) => {
         let mut aggregated_env_vars = IndexMap::new();
         for env_filename in env_filenames.iter().rev() {
-          log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
+          log::info!(
+            "{} Environment variables from the file \"{}\" were embedded in the generated executable file",
+            crate::colors::yellow("Warning"),
+            env_filename
+          );
 
           let env_vars = get_file_env_vars(env_filename.to_string())?;
           aggregated_env_vars.extend(env_vars);
@@ -744,6 +751,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         jsr_pkgs: self
           .workspace_resolver
           .jsr_packages()
+          .iter()
           .map(|pkg| SerializedResolverWorkspaceJsrPackage {
             relative_base: root_dir_url.specifier_key(&pkg.base).into_owned(),
             name: pkg.name.clone(),
@@ -844,7 +852,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   fn fill_npm_vfs(&self, builder: &mut VfsBuilder) -> Result<(), AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
       if system_info != &NpmSystemInfo::default() {
-        log::warn!("{} The node_modules directory may be incompatible with the target system.", crate::colors::yellow("Warning"));
+        log::warn!(
+          "{} The node_modules directory may be incompatible with the target system.",
+          crate::colors::yellow("Warning")
+        );
       }
     }
 
@@ -860,10 +871,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             .resolution()
             .all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
+          let current_system = NpmSystemInfo::default();
           for package in packages {
             let folder =
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
-            builder.add_dir_recursive(&folder)?;
+            if !package.system.matches_system(&current_system)
+              && !folder.exists()
+            {
+              log::warn!(
+                "{} Ignoring 'npm:{}' because it was not present on the current system.",
+                crate::colors::yellow("Warning"),
+                package.id
+              );
+            } else {
+              builder.add_dir_recursive(&folder)?;
+            }
           }
           Ok(())
         }
@@ -879,7 +901,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           self
             .cli_options
             .workspace()
-            .root_dir()
+            .root_dir_url()
             .to_file_path()
             .unwrap(),
         );

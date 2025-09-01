@@ -10,16 +10,14 @@ use std::net::SocketAddrV4;
 use std::net::SocketAddrV6;
 use std::pin::pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 use std::time::Duration;
 
-use deno_core::error::ResourceError;
-use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
@@ -31,14 +29,17 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::WriteOutcome;
+use deno_core::error::ResourceError;
+use deno_core::op2;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_permissions::PermissionCheckError;
-use deno_tls::create_client_config;
 use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsError;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
+use deno_tls::create_client_config;
 use quinn::crypto::rustls::QuicClientConfig;
 use quinn::crypto::rustls::QuicServerConfig;
 use quinn::rustls::client::ClientSessionMemoryCache;
@@ -47,10 +48,10 @@ use quinn::rustls::client::Resumption;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::resolve_addr::resolve_addr_sync;
 use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
+use crate::resolve_addr::resolve_addr_sync;
 
 #[derive(Debug, thiserror::Error, JsError)]
 pub enum QuicError {
@@ -103,7 +104,9 @@ pub enum QuicError {
   #[error("Invalid {0} resource")]
   BadResource(&'static str),
   #[class(range)]
-  #[error("Connection has reached the maximum number of concurrent outgoing {0} streams")]
+  #[error(
+    "Connection has reached the maximum number of concurrent outgoing {0} streams"
+  )]
   MaxStreams(&'static str),
   #[class(generic)]
   #[error("Peer does not support WebTransport")]
@@ -572,13 +575,14 @@ where
       ))
       .with_no_client_auth()
   } else {
-    create_client_config(
+    create_client_config(TlsClientConfigOptions {
       root_cert_store,
       ca_certs,
       unsafely_ignore_certificate_errors,
-      key_pair.take(),
-      SocketUse::GeneralSsl,
-    )?
+      unsafely_disable_hostname_verification: false,
+      cert_chain_and_key: key_pair.take(),
+      socket_use: SocketUse::GeneralSsl,
+    })?
   };
 
   if let Some(alpn_protocols) = args.alpn_protocols {
@@ -664,7 +668,7 @@ pub(crate) fn op_quic_connection_get_remote_addr(
 ) -> Result<Addr, QuicError> {
   let addr = connection.0.remote_address();
   Ok(Addr {
-    hostname: format!("{}", addr.ip()),
+    hostname: format!("{}", addr.ip().to_canonical()),
     port: addr.port(),
   })
 }
@@ -727,7 +731,7 @@ impl SendStreamResource {
 }
 
 impl Resource for SendStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "quicSendStream".into()
   }
 
@@ -764,7 +768,7 @@ impl RecvStreamResource {
 }
 
 impl Resource for RecvStreamResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "quicReceiveStream".into()
   }
 
@@ -1012,9 +1016,9 @@ pub(crate) mod webtransport {
   use deno_core::futures::try_join;
   use deno_tls::rustls;
   use rustls::client::danger::ServerCertVerifier;
+  use rustls::crypto::CryptoProvider;
   use rustls::crypto::verify_tls12_signature;
   use rustls::crypto::verify_tls13_signature;
-  use rustls::crypto::CryptoProvider;
   use sha2::Digest;
   use sha2::Sha256;
 
@@ -1200,7 +1204,7 @@ pub(crate) mod webtransport {
     };
 
     Ok((
-      url.to_string(),
+      url.into(),
       connect_tx_rid,
       connect_rx_rid,
       settings_tx_rid,

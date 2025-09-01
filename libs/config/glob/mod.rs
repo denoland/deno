@@ -105,7 +105,7 @@ impl FilePatterns {
                 break;
               }
               PathGlobMatch::MatchedNegated => {
-                return FilePatternsMatch::Excluded
+                return FilePatternsMatch::Excluded;
               }
               PathGlobMatch::NotMatched => {
                 // keep going
@@ -180,16 +180,16 @@ impl FilePatterns {
       },
     );
     for p in &negated_excludes {
-      if let Some(base_path) = p.base_path() {
-        if !include_patterns_by_base_path.contains_key(&base_path) {
-          let has_any_base_parent = include_patterns_by_base_path
-            .keys()
-            .any(|k| base_path.starts_with(k))
-            || include_paths.iter().any(|p| base_path.starts_with(p));
-          // don't include an orphaned negated pattern
-          if has_any_base_parent {
-            include_patterns_by_base_path.insert(base_path, Vec::new());
-          }
+      if let Some(base_path) = p.base_path()
+        && !include_patterns_by_base_path.contains_key(&base_path)
+      {
+        let has_any_base_parent = include_patterns_by_base_path
+          .keys()
+          .any(|k| base_path.starts_with(k))
+          || include_paths.iter().any(|p| base_path.starts_with(p));
+        // don't include an orphaned negated pattern
+        if has_any_base_parent {
+          include_patterns_by_base_path.insert(base_path, Vec::new());
         }
       }
     }
@@ -311,7 +311,9 @@ pub enum PathOrPatternsMatch {
 #[derive(Debug, Error, JsError)]
 pub enum FromExcludeRelativePathOrPatternsError {
   #[class(type)]
-  #[error("The negation of '{negated_entry}' is never reached due to the higher priority '{entry}' exclude. Move '{negated_entry}' after '{entry}'.")]
+  #[error(
+    "The negation of '{negated_entry}' is never reached due to the higher priority '{entry}' exclude. Move '{negated_entry}' after '{entry}'."
+  )]
   HigherPriorityExclude {
     negated_entry: String,
     entry: String,
@@ -512,7 +514,11 @@ impl PathOrPattern {
       .map(|maybe_pattern| {
         maybe_pattern
           .map(PathOrPattern::Pattern)
-          .unwrap_or_else(|| PathOrPattern::Path(normalize_path(path)))
+          .unwrap_or_else(|| {
+            PathOrPattern::Path(
+              normalize_path(Cow::Borrowed(Path::new(path))).into_owned(),
+            )
+          })
       })
       .map_err(|err| err.into())
   }
@@ -528,9 +534,13 @@ impl PathOrPattern {
     } else if has_url_prefix(p) {
       PathOrPattern::new(p)
     } else if let Some(path) = p.strip_prefix('!') {
-      Ok(PathOrPattern::NegatedPath(normalize_path(base.join(path))))
+      Ok(PathOrPattern::NegatedPath(
+        normalize_path(Cow::Owned(base.join(path))).into_owned(),
+      ))
     } else {
-      Ok(PathOrPattern::Path(normalize_path(base.join(p))))
+      Ok(PathOrPattern::Path(
+        normalize_path(Cow::Owned(base.join(p))).into_owned(),
+      ))
     }
   }
 
@@ -649,7 +659,7 @@ impl GlobPattern {
     GlobPattern::new(&pattern)
   }
 
-  pub fn as_str(&self) -> Cow<str> {
+  pub fn as_str(&self) -> Cow<'_, str> {
     if self.is_negated {
       Cow::Owned(format!("!{}", self.pattern.as_str()))
     } else {
@@ -958,11 +968,9 @@ mod test {
     let temp_dir = TempDir::new().unwrap();
     let patterns = FilePatterns {
       base: temp_dir.path().to_path_buf(),
-      include: Some(PathOrPatternSet::new(vec![PathOrPattern::from_relative(
-        temp_dir.path(),
-        "./sub",
-      )
-      .unwrap()])),
+      include: Some(PathOrPatternSet::new(vec![
+        PathOrPattern::from_relative(temp_dir.path(), "./sub").unwrap(),
+      ])),
       exclude: PathOrPatternSet::new(vec![
         PathOrPattern::from_relative(temp_dir.path(), "./sub/ignored").unwrap(),
         PathOrPattern::from_relative(temp_dir.path(), "!./sub/ignored/test/**")
@@ -1004,11 +1012,9 @@ mod test {
     let temp_dir = TempDir::new().unwrap();
     let patterns = FilePatterns {
       base: temp_dir.path().to_path_buf(),
-      include: Some(PathOrPatternSet::new(vec![PathOrPattern::from_relative(
-        temp_dir.path(),
-        "./sub/**",
-      )
-      .unwrap()])),
+      include: Some(PathOrPatternSet::new(vec![
+        PathOrPattern::from_relative(temp_dir.path(), "./sub/**").unwrap(),
+      ])),
       exclude: PathOrPatternSet::new(vec![
         PathOrPattern::from_relative(temp_dir.path(), "./sub/ignored").unwrap(),
         PathOrPattern::from_relative(temp_dir.path(), "!./sub/ignored/test/**")
@@ -1463,7 +1469,10 @@ mod test {
     // error for invalid url
     {
       let err = PathOrPattern::from_relative(&cwd, "https://raw.githubusercontent.com%2Fdyedgreen%2Fdeno-sqlite%2Frework_api%2Fmod.ts").unwrap_err();
-      assert_eq!(format!("{:#}", err), "Invalid URL 'https://raw.githubusercontent.com%2Fdyedgreen%2Fdeno-sqlite%2Frework_api%2Fmod.ts'");
+      assert_eq!(
+        format!("{:#}", err),
+        "Invalid URL 'https://raw.githubusercontent.com%2Fdyedgreen%2Fdeno-sqlite%2Frework_api%2Fmod.ts'"
+      );
       assert_eq!(
         format!("{:#}", err.source().unwrap()),
         "invalid international domain name"

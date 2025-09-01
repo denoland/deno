@@ -4,6 +4,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::num::NonZeroU64;
 
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::v8;
@@ -12,13 +14,12 @@ use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlInterfaceConverter;
-use deno_core::GarbageCollected;
-use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 
-use crate::buffer::GPUBuffer;
-use crate::texture::GPUTextureFormat;
 use crate::Instance;
+use crate::buffer::GPUBuffer;
+use crate::error::GPUGenericError;
+use crate::texture::GPUTextureFormat;
 
 pub struct GPURenderBundleEncoder {
   pub instance: Instance,
@@ -36,6 +37,12 @@ impl GarbageCollected for GPURenderBundleEncoder {
 
 #[op2]
 impl GPURenderBundleEncoder {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPURenderBundleEncoder, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -411,6 +418,12 @@ impl GarbageCollected for GPURenderBundle {
 
 #[op2]
 impl GPURenderBundle {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPURenderBundle, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

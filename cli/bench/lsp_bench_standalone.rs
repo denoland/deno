@@ -1,17 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_bench_util::bencher::Bencher;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::benchmark_main;
-use deno_bench_util::bencher::Bencher;
-use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use test_util::lsp::LspClient;
+use deno_core::serde_json::json;
 use test_util::lsp::LspClientBuilder;
 
 // Intended to match the benchmark in quick-lint-js
 // https://github.com/quick-lint/quick-lint-js/blob/35207e6616267c6c81be63f47ce97ec2452d60df/benchmark/benchmark-lsp/lsp-benchmarks.cpp#L223-L268
 fn incremental_change_wait(bench: &mut Bencher) {
-  let mut client = LspClientBuilder::new().use_diagnostic_sync(false).build();
+  let mut client = LspClientBuilder::new().build();
   client.initialize_default();
   let (method, _): (String, Option<Value>) = client.read_notification();
   assert_eq!(method, "deno/didRefreshDenoConfigurationTree");
@@ -31,9 +30,7 @@ fn incremental_change_wait(bench: &mut Bencher) {
     }),
   );
 
-  let (method, _maybe_diag): (String, Option<Value>) =
-    client.read_notification();
-  assert_eq!(method, "textDocument/publishDiagnostics");
+  client.diagnostic("file:///testdata/express-router.js");
 
   let mut document_version: u64 = 0;
   bench.iter(|| {
@@ -54,36 +51,10 @@ fn incremental_change_wait(bench: &mut Bencher) {
         })
     );
 
-     wait_for_deno_lint_diagnostic(document_version, &mut client);
+    client.diagnostic("file:///testdata/express-router.js");
 
     document_version += 1;
   })
-}
-
-fn wait_for_deno_lint_diagnostic(
-  document_version: u64,
-  client: &mut LspClient,
-) {
-  loop {
-    let (method, maybe_diag): (String, Option<Value>) =
-      client.read_notification();
-    if method == "textDocument/publishDiagnostics" {
-      let d = maybe_diag.unwrap();
-      let msg = d.as_object().unwrap();
-      let version = msg.get("version").unwrap().as_u64().unwrap();
-      if document_version == version {
-        let diagnostics = msg.get("diagnostics").unwrap().as_array().unwrap();
-        for diagnostic in diagnostics {
-          let source = diagnostic.get("source").unwrap().as_str().unwrap();
-          if source == "deno-lint" {
-            return;
-          }
-        }
-      }
-    } else {
-      todo!() // handle_misc_message
-    }
-  }
 }
 
 benchmark_group!(benches, incremental_change_wait);

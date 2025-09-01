@@ -4,20 +4,20 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned as _;
 use deno_ast::swc::ast;
 use deno_ast::swc::atoms::Atom;
-use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::common::DUMMY_SP;
-use deno_ast::swc::ecma_visit::visit_mut_pass;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitMut;
 use deno_ast::swc::ecma_visit::VisitWith as _;
+use deno_ast::swc::ecma_visit::visit_mut_pass;
 use deno_ast::swc::utils as swc_utils;
-use deno_ast::MediaType;
-use deno_ast::SourceRangedForSpanned as _;
 use deno_cache_dir::file_fetcher::File;
-use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_core::error::AnyError;
 use regex::Regex;
 
 use crate::file_fetcher::TextDecodedFile;
@@ -247,6 +247,7 @@ fn extract_files_from_regex_blocks(
         mtime: None,
         maybe_headers: None,
         source: file_source.into_bytes().into(),
+        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
       };
       Some(TestOrSnippet {
         file,
@@ -616,6 +617,7 @@ fn generate_pseudo_file(
     mtime: None,
     maybe_headers: None,
     source: source.into_bytes().into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   })
 }
 
@@ -1307,6 +1309,7 @@ Deno.test("file:///main.ts$3-8.ts", async ()=>{
         maybe_headers: None,
         mtime: None,
         source: test.input.source.as_bytes().into(),
+        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
       };
       let got_decoded = extract_doc_tests(file)
         .unwrap()
@@ -1544,6 +1547,7 @@ add('1', '2');
         maybe_headers: None,
         mtime: None,
         source: test.input.source.as_bytes().into(),
+        loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
       };
       let got_decoded = extract_snippet_files(file)
         .unwrap()

@@ -8,8 +8,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::op2;
-use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -17,16 +15,18 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_error::builtin_classes::GENERIC_ERROR;
+use deno_core::op2;
+use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorClass;
+use deno_error::builtin_classes::GENERIC_ERROR;
 use deno_permissions::PermissionsContainer;
-use notify::event::Event as NotifyEvent;
-use notify::event::ModifyKind;
 use notify::Error as NotifyError;
 use notify::EventKind;
 use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
+use notify::event::Event as NotifyEvent;
+use notify::event::ModifyKind;
 use serde::Serialize;
 use tokio::sync::mpsc;
 
@@ -41,7 +41,7 @@ struct FsEventsResource {
 }
 
 impl Resource for FsEventsResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "fsEvents".into()
   }
 
@@ -92,14 +92,14 @@ impl From<NotifyEvent> for FsEvent {
   }
 }
 
-type WatchSender = (Vec<String>, mpsc::Sender<Result<FsEvent, NotifyError>>);
+type WatchSender = (Vec<PathBuf>, mpsc::Sender<Result<FsEvent, NotifyError>>);
 
 struct WatcherState {
   senders: Arc<Mutex<Vec<WatchSender>>>,
   watcher: RecommendedWatcher,
 }
 
-fn starts_with_canonicalized(path: &Path, prefix: &str) -> bool {
+fn starts_with_canonicalized(path: &Path, prefix: &Path) -> bool {
   #[allow(clippy::disallowed_methods)]
   let path = path.canonicalize().ok();
   #[allow(clippy::disallowed_methods)]
@@ -147,7 +147,7 @@ pub enum FsEventsError {
 
 fn start_watcher(
   state: &mut OpState,
-  paths: Vec<String>,
+  paths: Vec<PathBuf>,
   sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
 ) -> Result<(), FsEventsError> {
   if let Some(watcher) = state.try_borrow_mut::<WatcherState>() {
@@ -203,24 +203,36 @@ fn op_fs_events_open(
   recursive: bool,
   #[serde] paths: Vec<String>,
 ) -> Result<ResourceId, FsEventsError> {
+  let mut resolved_paths = Vec::with_capacity(paths.len());
+  {
+    let permissions_container = state.borrow_mut::<PermissionsContainer>();
+    for path in paths {
+      resolved_paths.push(
+        permissions_container
+          .check_open(
+            Cow::Owned(PathBuf::from(path)),
+            deno_permissions::OpenAccessKind::ReadNoFollow,
+            Some("Deno.watchFs()"),
+          )?
+          .into_owned_path(),
+      );
+    }
+  }
+
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, NotifyError>>(16);
 
-  start_watcher(state, paths.clone(), sender)?;
+  start_watcher(state, resolved_paths.clone(), sender)?;
 
   let recursive_mode = if recursive {
     RecursiveMode::Recursive
   } else {
     RecursiveMode::NonRecursive
   };
-  for path in &paths {
-    let path = state
-      .borrow_mut::<PermissionsContainer>()
-      .check_read(path, "Deno.watchFs()")?;
-
+  for path in &resolved_paths {
     let watcher = state.borrow_mut::<WatcherState>();
     watcher
       .watcher
-      .watch(&path, recursive_mode)
+      .watch(path, recursive_mode)
       .map_err(|e| FsEventsError::Notify(JsNotifyError(e)))?;
   }
   let resource = FsEventsResource {

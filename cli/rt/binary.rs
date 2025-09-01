@@ -8,36 +8,34 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_core::FastString;
 use deno_core::ModuleCodeBytes;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
+use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_lib::standalone::binary::DenoRtDeserializable;
+use deno_lib::standalone::binary::MAGIC_BYTES;
 use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::RemoteModuleEntry;
 use deno_lib::standalone::binary::SpecifierDataStore;
 use deno_lib::standalone::binary::SpecifierId;
-use deno_lib::standalone::binary::MAGIC_BYTES;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_media_type::MediaType;
+use deno_npm::NpmPackageId;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_npm::NpmPackageId;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_fs::RealFs;
-use deno_runtime::deno_io::fs::FsError;
-use deno_semver::package::PackageReq;
 use deno_semver::StackString;
+use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use sys_traits::FsRead;
 use thiserror::Error;
 
 use crate::file_system::FileBackedVfs;
@@ -90,7 +88,11 @@ pub fn extract_standalone(
     let fs_root = VfsRoot {
       dir: VirtualDirectory {
         // align the name of the directory with the root dir
-        name: root_path.file_name().unwrap().to_string_lossy().to_string(),
+        name: root_path
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .into_owned(),
         entries: vfs_root_entries,
       },
       root_path: root_path.clone(),
@@ -369,10 +371,12 @@ impl StandaloneModules {
           bytes
         }
         Err(err) if err.kind() == ErrorKind::NotFound => {
-          match RealFs.read_file_sync(&path, None) {
+          // actually use the real file system here
+          #[allow(clippy::disallowed_types)]
+          match sys_traits::impls::RealSys.fs_read(&path) {
             Ok(bytes) => bytes,
-            Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
-              return Ok(None)
+            Err(err) if err.kind() == ErrorKind::NotFound => {
+              return Ok(None);
             }
             Err(err) => return Err(JsErrorBox::from_err(err)),
           }
@@ -770,7 +774,7 @@ fn check_has_len(input: &[u8], len: usize) -> std::io::Result<()> {
   }
 }
 
-fn read_string_lossy(input: &[u8]) -> std::io::Result<(&[u8], Cow<str>)> {
+fn read_string_lossy(input: &[u8]) -> std::io::Result<(&[u8], Cow<'_, str>)> {
   let (input, data_bytes) = read_bytes_with_u32_len(input)?;
   Ok((input, String::from_utf8_lossy(data_bytes)))
 }

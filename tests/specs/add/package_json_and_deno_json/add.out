@@ -10,3 +10,11 @@ Initialize @denotest/esm-basic@1.0.0
 Initialize @denotest/say-hello@1.0.0
 Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
 [UNORDERED_END]
+Packages: 2
+++
+Resolved: 0, reused: 0, downloaded: 4, added: 2
+
+Dependencies:
++ npm:@denotest/esm-basic 1.0.0
++ npm:@denotest/say-hello 1.0.0
+

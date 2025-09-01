@@ -4,43 +4,30 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::error::Error;
-use std::future::pending;
 use std::future::Future;
 use std::future::Pending;
+use std::future::pending;
 use std::io;
 use std::io::Write;
 use std::mem::replace;
 use std::mem::take;
 use std::net::SocketAddr;
-use std::pin::pin;
 use std::pin::Pin;
+use std::pin::pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
+use std::task::ready;
 
+use async_compression::Level;
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
-use async_compression::Level;
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use cache_control::CacheControl;
-use deno_core::futures::channel::mpsc;
-use deno_core::futures::channel::oneshot;
-use deno_core::futures::future::select;
-use deno_core::futures::future::Either;
-use deno_core::futures::future::RemoteHandle;
-use deno_core::futures::future::Shared;
-use deno_core::futures::never::Never;
-use deno_core::futures::stream::Peekable;
-use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::unsync::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -54,18 +41,35 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
+use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
+use deno_core::futures::channel::mpsc;
+use deno_core::futures::channel::oneshot;
+use deno_core::futures::future::Either;
+use deno_core::futures::future::RemoteHandle;
+use deno_core::futures::future::Shared;
+use deno_core::futures::future::select;
+use deno_core::futures::never::Never;
+use deno_core::futures::stream::Peekable;
+use deno_core::op2;
+use deno_core::unsync::spawn;
 use deno_error::JsErrorBox;
 use deno_net::raw::NetworkStream;
 use deno_telemetry::Histogram;
 use deno_telemetry::MeterProvider;
-use deno_telemetry::UpDownCounter;
 use deno_telemetry::OTEL_GLOBALS;
+use deno_telemetry::UpDownCounter;
 use deno_websocket::ws_create_server_stream;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use hyper::server::conn::http1;
 use hyper::server::conn::http2;
 use hyper_util::rt::TokioIo;
+use hyper_v014::Body;
+use hyper_v014::HeaderMap;
+use hyper_v014::Request;
+use hyper_v014::Response;
 use hyper_v014::body::Bytes;
 use hyper_v014::body::HttpBody;
 use hyper_v014::body::SizeHint;
@@ -73,15 +77,12 @@ use hyper_v014::header::HeaderName;
 use hyper_v014::header::HeaderValue;
 use hyper_v014::server::conn::Http;
 use hyper_v014::service::Service;
-use hyper_v014::Body;
-use hyper_v014::HeaderMap;
-use hyper_v014::Request;
-use hyper_v014::Response;
 use once_cell::sync::OnceCell;
 use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 use tokio::sync::Notify;
 
 use crate::network_buffered_stream::NetworkBufferedStream;
@@ -731,7 +732,7 @@ impl HttpConnResource {
 }
 
 impl Resource for HttpConnResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpConn".into()
   }
 
@@ -854,7 +855,7 @@ impl HttpStreamReadResource {
 }
 
 impl Resource for HttpStreamReadResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpReadStream".into()
   }
 
@@ -898,7 +899,7 @@ impl Resource for HttpStreamReadResource {
               Err(err) => {
                 break Err(JsErrorBox::from_err(HttpError::HyperV014(
                   Arc::new(err),
-                )))
+                )));
               }
             },
             None => break Ok(BufView::empty()),
@@ -937,7 +938,7 @@ impl HttpStreamWriteResource {
 }
 
 impl Resource for HttpStreamWriteResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpWriteStream".into()
   }
 }
@@ -1050,7 +1051,7 @@ fn req_url(
   scheme: &'static str,
   addr: &HttpSocketAddr,
 ) -> String {
-  let host: Cow<str> = match addr {
+  let host: Cow<'_, str> = match addr {
     HttpSocketAddr::IpSocket(addr) => {
       if let Some(auth) = req.uri().authority() {
         match addr.port() {
@@ -1301,13 +1302,13 @@ fn http_response(
 // If user provided a ETag header for uncompressed data, we need to
 // ensure it is a Weak Etag header ("W/").
 fn weaken_etag(hmap: &mut hyper_v014::HeaderMap) {
-  if let Some(etag) = hmap.get_mut(hyper_v014::header::ETAG) {
-    if !etag.as_bytes().starts_with(b"W/") {
-      let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
-      v.extend(b"W/");
-      v.extend(etag.as_bytes());
-      *etag = v.try_into().unwrap();
-    }
+  if let Some(etag) = hmap.get_mut(hyper_v014::header::ETAG)
+    && !etag.as_bytes().starts_with(b"W/")
+  {
+    let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
+    v.extend(b"W/");
+    v.extend(etag.as_bytes());
+    *etag = v.try_into().unwrap();
   }
 }
 
@@ -1316,13 +1317,13 @@ fn weaken_etag(hmap: &mut hyper_v014::HeaderMap) {
 // to make sure cache services do not serve uncompressed data to clients that
 // support compression.
 fn ensure_vary_accept_encoding(hmap: &mut hyper_v014::HeaderMap) {
-  if let Some(v) = hmap.get_mut(hyper_v014::header::VARY) {
-    if let Ok(s) = v.to_str() {
-      if !s.to_lowercase().contains("accept-encoding") {
-        *v = format!("Accept-Encoding, {s}").try_into().unwrap()
-      }
-      return;
+  if let Some(v) = hmap.get_mut(hyper_v014::header::VARY)
+    && let Ok(s) = v.to_str()
+  {
+    if !s.to_lowercase().contains("accept-encoding") {
+      *v = format!("Accept-Encoding, {s}").try_into().unwrap()
     }
+    return;
   }
   hmap.insert(
     hyper_v014::header::VARY,
@@ -1375,10 +1376,10 @@ async fn op_http_write_resource(
   loop {
     match *wr {
       HttpResponseWriter::Headers(_) => {
-        return Err(HttpError::NoResponseHeaders)
+        return Err(HttpError::NoResponseHeaders);
       }
       HttpResponseWriter::Closed => {
-        return Err(HttpError::ResponseAlreadyCompleted)
+        return Err(HttpError::ResponseAlreadyCompleted);
       }
       _ => {}
     };
@@ -1433,10 +1434,10 @@ async fn op_http_write(
 
   if let Some(otel) = stream.otel_info.as_ref() {
     let mut maybe_otel_info = otel.borrow_mut();
-    if let Some(otel_info) = maybe_otel_info.as_mut() {
-      if let Some(response_size) = otel_info.response_size.as_mut() {
-        *response_size += buf.len() as u64;
-      }
+    if let Some(otel_info) = maybe_otel_info.as_mut()
+      && let Some(response_size) = otel_info.response_size.as_mut()
+    {
+      *response_size += buf.len() as u64;
     }
   }
 
@@ -1542,7 +1543,7 @@ async fn op_http_upgrade_websocket(
     HttpRequestReader::Headers(request) => request,
     _ => {
       return Err(HttpError::UpgradeBodyUsed)
-        .inspect_err(|e| handle_error_otel(&stream.otel_info, e))
+        .inspect_err(|e| handle_error_otel(&stream.otel_info, e));
     }
   };
 
@@ -1671,23 +1672,31 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
       Ok(res) => return res,
       Err(x) => x,
     };
-  let upgraded =
-    match maybe_extract_network_stream::<deno_net::ops_tls::TlsStream, _>(
-      upgraded,
-    ) {
-      Ok(res) => return res,
-      Err(x) => x,
-    };
+  let upgraded = match maybe_extract_network_stream::<
+    deno_net::ops_tls::TlsStream<TcpStream>,
+    _,
+  >(upgraded)
+  {
+    Ok(res) => return res,
+    Err(x) => x,
+  };
   #[cfg(unix)]
   let upgraded =
     match maybe_extract_network_stream::<tokio::net::UnixStream, _>(upgraded) {
       Ok(res) => return res,
       Err(x) => x,
     };
-  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   let upgraded =
     match maybe_extract_network_stream::<tokio_vsock::VsockStream, _>(upgraded)
     {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<deno_net::tunnel::TunnelStream, _>(
+      upgraded,
+    ) {
       Ok(res) => return res,
       Err(x) => x,
     };
@@ -1705,10 +1714,15 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
 #[op2]
 #[serde]
 pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
-  match std::env::var("DENO_SERVE_ADDRESS") {
-    Ok(val) => parse_serve_address(&val),
-    Err(_) => (0, String::new(), 0, false),
+  if let Ok(val) = std::env::var("DENO_SERVE_ADDRESS") {
+    return parse_serve_address(&val);
+  };
+
+  if deno_net::tunnel::get_tunnel().is_some() {
+    return (4, String::new(), 0, true);
   }
+
+  (0, String::new(), 0, false)
 }
 
 fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
@@ -1768,6 +1782,7 @@ fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
         None => (0, String::new(), 0, false),
       }
     }
+    Some(("tunnel", _)) => (4, String::new(), 0, duplicate),
     Some((_, _)) | None => {
       log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
       (0, String::new(), 0, false)

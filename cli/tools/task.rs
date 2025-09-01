@@ -1,9 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -15,14 +17,14 @@ use deno_config::workspace::TaskOrScript;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceMemberTasksConfig;
 use deno_config::workspace::WorkspaceTasksConfig;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::stream::futures_unordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::futures::future::LocalBoxFuture;
+use deno_core::futures::stream::futures_unordered;
 use deno_core::url::Url;
 use deno_npm_installer::PackageCaching;
 use deno_path_util::normalize_path;
@@ -44,6 +46,7 @@ use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
 use crate::util::fs::canonicalize_path;
+use crate::util::progress_bar::ProgressBar;
 
 #[derive(Debug)]
 struct PackageTaskInfo {
@@ -55,19 +58,25 @@ pub async fn execute_script(
   flags: Arc<Flags>,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() && !task_flags.eval {
-    bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
+    bail!(
+      "deno task couldn't find deno.json(c). See https://docs.deno.com/go/config"
+    )
   }
   let force_use_pkg_json =
     std::env::var_os(crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
       .map(|v| {
         // always remove so sub processes don't inherit this env var
-        std::env::remove_var(
-          crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME,
-        );
+
+        #[allow(clippy::undocumented_unsafe_blocks)]
+        unsafe {
+          std::env::remove_var(
+            crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME,
+          )
+        };
         v == "1"
       })
       .unwrap_or(false);
@@ -93,14 +102,16 @@ pub async fn execute_script(
     let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
     let workspace = cli_options.workspace();
-    for folder in workspace.config_folders() {
+    for (folder_url, folder) in
+      workspace.config_folders_sorted_by_dependencies()
+    {
       if !task_flags.recursive
-        && !matches_package(folder.1, force_use_pkg_json, &package_regex)
+        && !matches_package(folder, force_use_pkg_json, &package_regex)
       {
         continue;
       }
 
-      let member_dir = workspace.resolve_member_dir(folder.0);
+      let member_dir = workspace.resolve_member_dir(folder_url);
       let mut tasks_config = member_dir.to_tasks_config()?;
       if force_use_pkg_json {
         tasks_config = tasks_config.with_only_pkg_json();
@@ -168,7 +179,12 @@ pub async fn execute_script(
   let npm_installer = factory.npm_installer_if_managed().await?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
-  let env_vars = task_runner::real_env_vars();
+  let progress_bar = factory.text_only_progress_bar();
+  let mut env_vars = task_runner::real_env_vars();
+
+  if let Some(connected) = &flags.connected {
+    env_vars.insert("DENO_CONNECTED".into(), connected.into());
+  }
 
   let no_of_concurrent_tasks = if let Ok(value) = std::env::var("DENO_JOBS") {
     value.parse::<NonZeroUsize>().ok()
@@ -182,6 +198,7 @@ pub async fn execute_script(
     npm_installer: npm_installer.map(|n| n.as_ref()),
     npm_resolver,
     node_resolver: node_resolver.as_ref(),
+    progress_bar,
     env_vars,
     cli_options,
     maybe_lockfile,
@@ -194,6 +211,7 @@ pub async fn execute_script(
       return task_runner
         .run_deno_task(
           &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
+          None,
           "",
           &TaskDefinition {
             command: Some(task_flags.task.as_ref().unwrap().to_string()),
@@ -222,6 +240,7 @@ pub async fn execute_script(
 
 struct RunSingleOptions<'a> {
   task_name: &'a str,
+  package_name: Option<&'a str>,
   script: &'a str,
   cwd: PathBuf,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
@@ -234,6 +253,7 @@ struct TaskRunner<'a> {
   npm_installer: Option<&'a CliNpmInstaller>,
   npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
+  progress_bar: &'a ProgressBar,
   env_vars: HashMap<OsString, OsString>,
   cli_options: &'a CliOptions,
   maybe_lockfile: Option<Arc<CliLockfile>>,
@@ -342,10 +362,11 @@ impl<'a> TaskRunner<'a> {
           return Some(
             async move {
               match task.task_or_script {
-                TaskOrScript::Task(_, def) => {
+                TaskOrScript::Task { task: def, .. } => {
                   runner
                     .run_deno_task(
-                      task.folder_url,
+                      task.task_or_script.folder_url(),
+                      task.task_or_script.package_name(),
                       task.name,
                       def,
                       kill_signal,
@@ -353,12 +374,13 @@ impl<'a> TaskRunner<'a> {
                     )
                     .await
                 }
-                TaskOrScript::Script(scripts, _) => {
+                TaskOrScript::Script { details, .. } => {
                   runner
                     .run_npm_script(
-                      task.folder_url,
+                      task.task_or_script.folder_url(),
+                      task.task_or_script.package_name(),
                       task.name,
-                      scripts,
+                      &details.tasks,
                       kill_signal,
                       args,
                     )
@@ -384,10 +406,13 @@ impl<'a> TaskRunner<'a> {
 
     while context.has_remaining_tasks() {
       while queue.len() < self.concurrency {
-        if let Some(task) = context.get_next_task(self, kill_signal, args) {
-          queue.push(task);
-        } else {
-          break;
+        match context.get_next_task(self, kill_signal, args) {
+          Some(task) => {
+            queue.push(task);
+          }
+          _ => {
+            break;
+          }
         }
       }
 
@@ -411,17 +436,17 @@ impl<'a> TaskRunner<'a> {
   pub async fn run_deno_task(
     &self,
     dir_url: &Url,
+    package_name: Option<&str>,
     task_name: &str,
     definition: &TaskDefinition,
     kill_signal: KillSignal,
     argv: &'a [String],
   ) -> Result<i32, deno_core::anyhow::Error> {
     let Some(command) = &definition.command else {
-      log::info!(
-        "{} {} {}",
-        colors::green("Task"),
-        colors::cyan(task_name),
-        colors::gray("(no command)")
+      self.output_task(
+        task_name,
+        package_name,
+        &colors::gray("(no command)").to_string(),
       );
       return Ok(0);
     };
@@ -429,9 +454,11 @@ impl<'a> TaskRunner<'a> {
     self.maybe_npm_install().await?;
 
     let cwd = match &self.task_flags.cwd {
-      Some(path) => canonicalize_path(&PathBuf::from(path))
+      Some(path) => canonicalize_path(Path::new(path))
         .context("failed canonicalizing --cwd")?,
-      None => normalize_path(dir_url.to_file_path().unwrap()),
+      None => {
+        normalize_path(Cow::Owned(dir_url.to_file_path().unwrap())).into_owned()
+      }
     };
 
     let custom_commands = task_runner::resolve_custom_commands(
@@ -442,6 +469,7 @@ impl<'a> TaskRunner<'a> {
     self
       .run_single(RunSingleOptions {
         task_name,
+        package_name,
         script: command,
         cwd,
         custom_commands,
@@ -454,6 +482,7 @@ impl<'a> TaskRunner<'a> {
   pub async fn run_npm_script(
     &self,
     dir_url: &Url,
+    package_name: Option<&str>,
     task_name: &str,
     scripts: &IndexMap<String, String>,
     kill_signal: KillSignal,
@@ -463,8 +492,8 @@ impl<'a> TaskRunner<'a> {
     self.maybe_npm_install().await?;
 
     let cwd = match &self.task_flags.cwd {
-      Some(path) => canonicalize_path(&PathBuf::from(path))?,
-      None => normalize_path(dir_url.to_file_path().unwrap()),
+      Some(path) => Cow::Owned(canonicalize_path(Path::new(path))?),
+      None => normalize_path(Cow::Owned(dir_url.to_file_path().unwrap())),
     };
 
     // At this point we already checked if the task name exists in package.json.
@@ -485,8 +514,9 @@ impl<'a> TaskRunner<'a> {
         let exit_code = self
           .run_single(RunSingleOptions {
             task_name,
+            package_name,
             script,
-            cwd: cwd.clone(),
+            cwd: cwd.to_path_buf(),
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
             argv,
@@ -507,6 +537,7 @@ impl<'a> TaskRunner<'a> {
   ) -> Result<i32, AnyError> {
     let RunSingleOptions {
       task_name,
+      package_name,
       script,
       cwd,
       custom_commands,
@@ -514,8 +545,9 @@ impl<'a> TaskRunner<'a> {
       argv,
     } = opts;
 
-    output_task(
-      opts.task_name,
+    self.output_task(
+      task_name,
+      package_name,
       &task_runner::get_script_with_args(script, argv),
     );
 
@@ -539,6 +571,7 @@ impl<'a> TaskRunner<'a> {
 
   async fn maybe_npm_install(&self) -> Result<(), AnyError> {
     if let Some(npm_installer) = self.npm_installer {
+      self.progress_bar.deferred_keep_initialize_alive();
       npm_installer
         .ensure_top_level_package_json_install()
         .await?;
@@ -548,6 +581,26 @@ impl<'a> TaskRunner<'a> {
       }
     }
     Ok(())
+  }
+
+  fn output_task(
+    &self,
+    task_name: &str,
+    package_name: Option<&str>,
+    script: &str,
+  ) {
+    log::info!(
+      "{} {}{} {}",
+      colors::green("Task"),
+      colors::cyan(task_name),
+      package_name
+        .filter(
+          |_| self.task_flags.recursive || self.task_flags.filter.is_some()
+        )
+        .map(|p| format!(" ({})", colors::gray(p)))
+        .unwrap_or_default(),
+      script,
+    );
   }
 }
 
@@ -560,7 +613,6 @@ enum TaskError {
 struct ResolvedTask<'a> {
   id: usize,
   name: &'a str,
-  folder_url: &'a Url,
   task_or_script: TaskOrScript<'a>,
   dependencies: Vec<usize>,
 }
@@ -570,40 +622,31 @@ fn sort_tasks_topo<'a>(
   task_name: &str,
 ) -> Result<Vec<ResolvedTask<'a>>, TaskError> {
   trait TasksConfig {
-    fn task(
-      &self,
-      name: &str,
-    ) -> Option<(&Url, TaskOrScript, &dyn TasksConfig)>;
+    fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)>;
   }
 
   impl TasksConfig for WorkspaceTasksConfig {
-    fn task(
-      &self,
-      name: &str,
-    ) -> Option<(&Url, TaskOrScript, &dyn TasksConfig)> {
-      if let Some(member) = &self.member {
-        if let Some((dir_url, task_or_script)) = member.task(name) {
-          return Some((dir_url, task_or_script, self as &dyn TasksConfig));
-        }
+    fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)> {
+      if let Some(member) = &self.member
+        && let Some(task_or_script) = member.task(name)
+      {
+        return Some((task_or_script, self as &dyn TasksConfig));
       }
-      if let Some(root) = &self.root {
-        if let Some((dir_url, task_or_script)) = root.task(name) {
-          // switch to only using the root tasks for the dependencies
-          return Some((dir_url, task_or_script, root as &dyn TasksConfig));
-        }
+      if let Some(root) = &self.root
+        && let Some(task_or_script) = root.task(name)
+      {
+        // switch to only using the root tasks for the dependencies
+        return Some((task_or_script, root as &dyn TasksConfig));
       }
       None
     }
   }
 
   impl TasksConfig for WorkspaceMemberTasksConfig {
-    fn task(
-      &self,
-      name: &str,
-    ) -> Option<(&Url, TaskOrScript, &dyn TasksConfig)> {
-      self.task(name).map(|(dir_url, task_or_script)| {
-        (dir_url, task_or_script, self as &dyn TasksConfig)
-      })
+    fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)> {
+      self
+        .task(name)
+        .map(|task_or_script| (task_or_script, self as &dyn TasksConfig))
     }
   }
 
@@ -613,16 +656,14 @@ fn sort_tasks_topo<'a>(
     mut path: Vec<(&'a Url, &'a str)>,
     tasks_config: &'a dyn TasksConfig,
   ) -> Result<usize, TaskError> {
-    let Some((folder_url, task_or_script, tasks_config)) =
-      tasks_config.task(name)
-    else {
+    let Some((task_or_script, tasks_config)) = tasks_config.task(name) else {
       return Err(TaskError::NotFound(name.to_string()));
     };
 
-    if let Some(existing_task) = sorted
-      .iter()
-      .find(|task| task.name == name && task.folder_url == folder_url)
-    {
+    let folder_url = task_or_script.folder_url();
+    if let Some(existing_task) = sorted.iter().find(|task| {
+      task.name == name && task.task_or_script.folder_url() == folder_url
+    }) {
       // already exists
       return Ok(existing_task.id);
     }
@@ -635,7 +676,7 @@ fn sort_tasks_topo<'a>(
     }
 
     let mut dependencies: Vec<usize> = Vec::new();
-    if let TaskOrScript::Task(_, task) = task_or_script {
+    if let TaskOrScript::Task { task, .. } = task_or_script {
       dependencies.reserve(task.dependencies.len());
       for dep in &task.dependencies {
         let mut path = path.clone();
@@ -648,7 +689,6 @@ fn sort_tasks_topo<'a>(
     sorted.push(ResolvedTask {
       id,
       name,
-      folder_url,
       task_or_script,
       dependencies,
     });
@@ -674,34 +714,22 @@ fn matches_package(
   force_use_pkg_json: bool,
   regex: &Regex,
 ) -> bool {
-  if !force_use_pkg_json {
-    if let Some(deno_json) = &config.deno_json {
-      if let Some(name) = &deno_json.json.name {
-        if regex.is_match(name) {
-          return true;
-        }
-      }
-    }
+  if !force_use_pkg_json
+    && let Some(deno_json) = &config.deno_json
+    && let Some(name) = &deno_json.json.name
+    && regex.is_match(name)
+  {
+    return true;
   }
 
-  if let Some(package_json) = &config.pkg_json {
-    if let Some(name) = &package_json.name {
-      if regex.is_match(name) {
-        return true;
-      }
-    }
+  if let Some(package_json) = &config.pkg_json
+    && let Some(name) = &package_json.name
+    && regex.is_match(name)
+  {
+    return true;
   }
 
   false
-}
-
-fn output_task(task_name: &str, script: &str) {
-  log::info!(
-    "{} {} {}",
-    colors::green("Task"),
-    colors::cyan(task_name),
-    script,
-  );
 }
 
 fn print_available_tasks_workspace(
@@ -714,27 +742,25 @@ fn print_available_tasks_workspace(
   let workspace = cli_options.workspace();
 
   let mut matched = false;
-  for folder in workspace.config_folders() {
-    if !recursive
-      && !matches_package(folder.1, force_use_pkg_json, package_regex)
+  for (folder_url, folder) in workspace.config_folders() {
+    if !recursive && !matches_package(folder, force_use_pkg_json, package_regex)
     {
       continue;
     }
     matched = true;
 
-    let member_dir = workspace.resolve_member_dir(folder.0);
+    let member_dir = workspace.resolve_member_dir(folder_url);
     let mut tasks_config = member_dir.to_tasks_config()?;
 
     let mut pkg_name = folder
-      .1
       .deno_json
       .as_ref()
       .and_then(|deno| deno.json.name.clone())
-      .or(folder.1.pkg_json.as_ref().and_then(|pkg| pkg.name.clone()));
+      .or(folder.pkg_json.as_ref().and_then(|pkg| pkg.name.clone()));
 
     if force_use_pkg_json {
       tasks_config = tasks_config.with_only_pkg_json();
-      pkg_name = folder.1.pkg_json.as_ref().and_then(|pkg| pkg.name.clone());
+      pkg_name = folder.pkg_json.as_ref().and_then(|pkg| pkg.name.clone());
     }
 
     print_available_tasks(
@@ -748,7 +774,10 @@ fn print_available_tasks_workspace(
   if !matched {
     log::warn!(
       "{}",
-      colors::red(format!("No package name matched the filter '{}' in available 'deno.json' or 'package.json' files.", filter))
+      colors::red(format!(
+        "No package name matched the filter '{}' in available 'deno.json' or 'package.json' files.",
+        filter
+      ))
     );
   }
 
@@ -795,7 +824,8 @@ fn print_available_tasks(
 
     if let Some(config) = config.deno_json.as_ref() {
       let is_root = !is_cwd_root_dir
-        && config.folder_url == *workspace_dir.workspace.root_dir().as_ref();
+        && config.folder_url
+          == *workspace_dir.workspace.root_dir_url().as_ref();
 
       for (name, definition) in &config.tasks {
         if !seen_task_names.insert(name) {
@@ -812,7 +842,8 @@ fn print_available_tasks(
 
     if let Some(config) = config.package_json.as_ref() {
       let is_root = !is_cwd_root_dir
-        && config.folder_url == *workspace_dir.workspace.root_dir().as_ref();
+        && config.folder_url
+          == *workspace_dir.workspace.root_dir_url().as_ref();
       for (name, script) in &config.tasks {
         if !seen_task_names.insert(name) {
           continue; // already seen
@@ -910,7 +941,7 @@ fn visit_task_and_dependencies(
 
   visited.insert(name.to_string());
 
-  if let Some((_, TaskOrScript::Task(_, task))) = &tasks_config.task(name) {
+  if let Some(TaskOrScript::Task { task, .. }) = &tasks_config.task(name) {
     for dep in &task.dependencies {
       visit_task_and_dependencies(tasks_config, visited, dep);
     }
@@ -945,7 +976,9 @@ fn package_filter_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
   Regex::new(&regex_str)
 }
 
-fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
+fn arg_to_task_name_filter(
+  input: &str,
+) -> Result<TaskNameFilter<'_>, AnyError> {
   if !input.contains("*") {
     return Ok(TaskNameFilter::Exact(input));
   }

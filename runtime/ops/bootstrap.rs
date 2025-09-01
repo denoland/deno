@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use deno_terminal::colors::ColorLevel;
 use serde::Serialize;
 

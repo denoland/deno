@@ -12,27 +12,27 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm::NpmResolutionPackage;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::NpmResolutionPackage;
 use deno_npm_cache::NpmCacheHttpClientBytesResponse;
 use deno_npm_cache::NpmCacheHttpClientResponse;
-use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
-use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
-use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
-use deno_npm_installer::lifecycle_scripts::PackageWithScript;
-use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
 use deno_npm_installer::BinEntries;
 use deno_npm_installer::CachedNpmPackageExtraInfoProvider;
 use deno_npm_installer::ExpectedExtraInfo;
+use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
+use deno_npm_installer::lifecycle_scripts::PackageWithScript;
+use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use deno_task_shell::KillSignal;
 
 use crate::file_fetcher::CliFileFetcher;
@@ -275,6 +275,7 @@ pub enum DenoTaskLifecycleScriptsError {
 }
 
 pub struct DenoTaskLifeCycleScriptsExecutor {
+  progress_bar: ProgressBar,
   npm_resolver: ManagedNpmResolverRc<CliSys>,
 }
 
@@ -348,10 +349,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
           {
             continue;
           }
-          let pb = ProgressBar::new(
-            crate::util::progress_bar::ProgressBarStyle::TextOnly,
-          );
-          let _guard = pb.update_with_prompt(
+          let _guard = self.progress_bar.update_with_prompt(
             ProgressMessagePrompt::Initialize,
             &format!("{}: running '{script_name}' script", package.id.nv),
           );
@@ -444,8 +442,14 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
 }
 
 impl DenoTaskLifeCycleScriptsExecutor {
-  pub fn new(npm_resolver: ManagedNpmResolverRc<CliSys>) -> Self {
-    Self { npm_resolver }
+  pub fn new(
+    npm_resolver: ManagedNpmResolverRc<CliSys>,
+    progress_bar: ProgressBar,
+  ) -> Self {
+    Self {
+      npm_resolver,
+      progress_bar,
+    }
   }
 
   // take in all (non copy) packages from snapshot,

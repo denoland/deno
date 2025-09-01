@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 
+use deno_core::WebIDL;
 use deno_core::cppgc::Ptr;
 use deno_core::v8;
 use deno_core::webidl::ContextFn;
@@ -10,7 +11,6 @@ use deno_core::webidl::IntOptions;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlErrorKind;
-use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 
 #[derive(WebIDL)]
@@ -52,29 +52,36 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
     }
     if let Ok(obj) = value.try_cast::<v8::Object>() {
       let iter = v8::Symbol::get_iterator(scope);
-      if let Some(iter) = obj.get(scope, iter.into()) {
-        if !iter.is_undefined() {
-          let conv = <Vec<u32>>::convert(
-            scope,
-            value,
-            prefix.clone(),
-            context.borrowed(),
-            &IntOptions {
-              clamp: false,
-              enforce_range: true,
-            },
-          )?;
-          if !(conv.len() > 1 && conv.len() <= 3) {
-            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUExtent3D must have between 1 and 3 elements, received {} elements", conv.len()))));
-          }
-
-          let mut iter = conv.into_iter();
-          return Ok(GPUExtent3D::Sequence((
-            iter.next().unwrap(),
-            iter.next().unwrap_or(1),
-            iter.next().unwrap_or(1),
-          )));
+      if let Some(iter) = obj.get(scope, iter.into())
+        && !iter.is_undefined()
+      {
+        let conv = <Vec<u32>>::convert(
+          scope,
+          value,
+          prefix.clone(),
+          context.borrowed(),
+          &IntOptions {
+            clamp: false,
+            enforce_range: true,
+          },
+        )?;
+        if !(conv.len() > 1 && conv.len() <= 3) {
+          return Err(WebIdlError::other(
+            prefix,
+            context,
+            JsErrorBox::type_error(format!(
+              "A sequence of number used as a GPUExtent3D must have between 1 and 3 elements, received {} elements",
+              conv.len()
+            )),
+          ));
         }
+
+        let mut iter = conv.into_iter();
+        return Ok(GPUExtent3D::Sequence((
+          iter.next().unwrap(),
+          iter.next().unwrap_or(1),
+          iter.next().unwrap_or(1),
+        )));
       }
 
       return Ok(GPUExtent3D::Dict(GPUExtent3DDict::convert(
@@ -155,29 +162,36 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
     }
     if let Ok(obj) = value.try_cast::<v8::Object>() {
       let iter = v8::Symbol::get_iterator(scope);
-      if let Some(iter) = obj.get(scope, iter.into()) {
-        if !iter.is_undefined() {
-          let conv = <Vec<u32>>::convert(
-            scope,
-            value,
-            prefix.clone(),
-            context.borrowed(),
-            &IntOptions {
-              clamp: false,
-              enforce_range: true,
-            },
-          )?;
-          if conv.len() > 3 {
-            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUOrigin3D must have at most 3 elements, received {} elements", conv.len()))));
-          }
-
-          let mut iter = conv.into_iter();
-          return Ok(GPUOrigin3D::Sequence((
-            iter.next().unwrap_or(0),
-            iter.next().unwrap_or(0),
-            iter.next().unwrap_or(0),
-          )));
+      if let Some(iter) = obj.get(scope, iter.into())
+        && !iter.is_undefined()
+      {
+        let conv = <Vec<u32>>::convert(
+          scope,
+          value,
+          prefix.clone(),
+          context.borrowed(),
+          &IntOptions {
+            clamp: false,
+            enforce_range: true,
+          },
+        )?;
+        if conv.len() > 3 {
+          return Err(WebIdlError::other(
+            prefix,
+            context,
+            JsErrorBox::type_error(format!(
+              "A sequence of number used as a GPUOrigin3D must have at most 3 elements, received {} elements",
+              conv.len()
+            )),
+          ));
         }
+
+        let mut iter = conv.into_iter();
+        return Ok(GPUOrigin3D::Sequence((
+          iter.next().unwrap_or(0),
+          iter.next().unwrap_or(0),
+          iter.next().unwrap_or(0),
+        )));
       }
 
       return Ok(GPUOrigin3D::Dict(GPUOrigin3DDict::convert(
@@ -243,27 +257,34 @@ impl<'a> WebIdlConverter<'a> for GPUColor {
     }
     if let Ok(obj) = value.try_cast::<v8::Object>() {
       let iter = v8::Symbol::get_iterator(scope);
-      if let Some(iter) = obj.get(scope, iter.into()) {
-        if !iter.is_undefined() {
-          let conv = <Vec<f64>>::convert(
-            scope,
-            value,
-            prefix.clone(),
-            context.borrowed(),
-            options,
-          )?;
-          if conv.len() != 4 {
-            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUColor must have exactly 4 elements, received {} elements", conv.len()))));
-          }
-
-          let mut iter = conv.into_iter();
-          return Ok(GPUColor::Sequence((
-            iter.next().unwrap(),
-            iter.next().unwrap(),
-            iter.next().unwrap(),
-            iter.next().unwrap(),
-          )));
+      if let Some(iter) = obj.get(scope, iter.into())
+        && !iter.is_undefined()
+      {
+        let conv = <Vec<f64>>::convert(
+          scope,
+          value,
+          prefix.clone(),
+          context.borrowed(),
+          options,
+        )?;
+        if conv.len() != 4 {
+          return Err(WebIdlError::other(
+            prefix,
+            context,
+            JsErrorBox::type_error(format!(
+              "A sequence of number used as a GPUColor must have exactly 4 elements, received {} elements",
+              conv.len()
+            )),
+          ));
         }
+
+        let mut iter = conv.into_iter();
+        return Ok(GPUColor::Sequence((
+          iter.next().unwrap(),
+          iter.next().unwrap(),
+          iter.next().unwrap(),
+          iter.next().unwrap(),
+        )));
       }
 
       return Ok(GPUColor::Dict(GPUColorDict::convert(

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.200.0"
+version = "0.206.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,9 +18,12 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_features.workspace = true
 deno_permissions.workspace = true
+deno_signals.workspace = true
 deno_tls.workspace = true
+deno_tunnel.workspace = true
 hickory-proto.workspace = true
 hickory-resolver.workspace = true
+log.workspace = true
 pin-project.workspace = true
 quinn = { workspace = true, features = ["runtime-tokio", "rustls", "aws-lc-rs"] }
 rustls-tokio-stream.workspace = true
@@ -32,5 +35,5 @@ tokio.workspace = true
 url.workspace = true
 web-transport-proto.workspace = true
 
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true

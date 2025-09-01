@@ -162,7 +162,6 @@ function run({
 
 export const kExtraStdio = Symbol("extraStdio");
 export const kIpc = Symbol("ipc");
-export const kDetached = Symbol("detached");
 export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
@@ -179,7 +178,7 @@ function spawnChildInner(command, apiName, {
   stdout = "piped",
   stderr = "piped",
   windowsRawArguments = false,
-  [kDetached]: detached = false,
+  detached = false,
   [kExtraStdio]: extraStdio = [],
   [kIpc]: ipc = -1,
   [kNeedsNpmProcessState]: needsNpmProcessState = false,
@@ -230,6 +229,7 @@ const _extraPipeRids = Symbol("[[_extraPipeRids]]");
 
 internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
 internals.getExtraPipeRids = (process) => process[_extraPipeRids];
+internals.kExtraStdio = kExtraStdio;
 
 class ChildProcess {
   #rid;
@@ -413,6 +413,7 @@ function spawnSync(command, {
   stderr = "piped",
   windowsRawArguments = false,
   [kInputOption]: input,
+  [kNeedsNpmProcessState]: needsNpmProcessState = false,
 } = { __proto__: null }) {
   if (stdin === "piped") {
     throw new TypeError(
@@ -433,7 +434,7 @@ function spawnSync(command, {
     windowsRawArguments,
     extraStdio: [],
     detached: false,
-    needsNpmProcessState: false,
+    needsNpmProcessState,
     input,
   });
   return {

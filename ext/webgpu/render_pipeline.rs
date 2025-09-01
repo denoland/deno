@@ -1,19 +1,20 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlInterfaceConverter;
-use deno_core::GarbageCollected;
-use deno_core::WebIDL;
 use indexmap::IndexMap;
 
+use crate::Instance;
 use crate::bind_group_layout::GPUBindGroupLayout;
+use crate::error::GPUGenericError;
 use crate::sampler::GPUCompareFunction;
 use crate::shader::GPUShaderModule;
 use crate::texture::GPUTextureFormat;
 use crate::webidl::GPUPipelineLayoutOrGPUAutoLayoutMode;
-use crate::Instance;
 
 pub struct GPURenderPipeline {
   pub instance: Instance,
@@ -41,6 +42,12 @@ impl GarbageCollected for GPURenderPipeline {
 
 #[op2]
 impl GPURenderPipeline {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPURenderPipeline, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

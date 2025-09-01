@@ -2,11 +2,12 @@
 
 use std::cell::OnceCell;
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_core::op2;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 pub struct GPUCommandBuffer {
   pub instance: Instance,
@@ -36,6 +37,12 @@ impl GarbageCollected for GPUCommandBuffer {
 
 #[op2]
 impl GPUCommandBuffer {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUCommandBuffer, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

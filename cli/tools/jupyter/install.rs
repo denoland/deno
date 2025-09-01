@@ -5,8 +5,8 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -92,7 +92,7 @@ pub fn install(
   let current_exe_path = current_exe()
     .context("Failed to get current executable path")?
     .to_string_lossy()
-    .to_string();
+    .into_owned();
 
   // TODO(bartlomieju): add remaining fields as per
   // https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs

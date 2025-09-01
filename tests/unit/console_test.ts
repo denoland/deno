@@ -2177,7 +2177,7 @@ Deno.test(function inspectProxy() {
         },
       }),
     )),
-    `Object [MyProxy] { prop1: 5, prop2: 5 }`,
+    `{ prop1: 5, prop2: 5 }`,
   );
   assertEquals(
     stripAnsiCode(Deno.inspect(
@@ -2216,6 +2216,18 @@ Deno.test(function inspectProxy() {
       { showProxy: true },
     )),
     "Proxy [ [Function: fn], { get: [Function: get] } ]",
+  );
+
+  // Issue: https://github.com/denoland/deno/issues/30229
+  assertEquals(
+    stripAnsiCode(Deno.inspect(
+      new Proxy({}, {
+        get() {
+          throw new Error("fail");
+        },
+      }),
+    )),
+    "{}",
   );
 });
 

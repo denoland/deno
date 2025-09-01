@@ -50,7 +50,9 @@ pub enum SqliteError {
   #[property("code" = self.code())]
   InvalidBindValue(&'static str),
   #[class(generic)]
-  #[error("Cannot create bare named parameter '{0}' because of conflicting names '{1}' and '{2}'.")]
+  #[error(
+    "Cannot create bare named parameter '{0}' because of conflicting names '{1}' and '{2}'."
+  )]
   #[property("code" = self.code())]
   DuplicateNamedParameter(String, String, String),
   #[class(generic)]
@@ -89,7 +91,7 @@ pub enum SqliteError {
   #[error("session is not open")]
   #[property("code" = self.code())]
   SessionClosed,
-  #[class(generic)]
+  #[class(type)]
   #[error("Illegal constructor")]
   #[property("code" = self.code())]
   InvalidConstructor,
@@ -98,7 +100,9 @@ pub enum SqliteError {
   #[property("code" = self.code())]
   InvalidExpandedSql,
   #[class(range)]
-  #[error("The value of column {0} is too large to be represented as a JavaScript number: {1}")]
+  #[error(
+    "The value of column {0} is too large to be represented as a JavaScript number: {1}"
+  )]
   #[property("code" = self.code())]
   NumberTooLarge(i32, i64),
   #[class(type)]

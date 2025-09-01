@@ -4,16 +4,17 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 use deno_core::futures::channel::oneshot;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::WebIdlInterfaceConverter;
-use deno_core::GarbageCollected;
-use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 use wgpu_core::device::HostMap as MapMode;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
@@ -80,6 +81,12 @@ impl GarbageCollected for GPUBuffer {
 
 #[op2]
 impl GPUBuffer {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUBuffer, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

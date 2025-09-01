@@ -1,50 +1,39 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import type { Buffer } from "node:buffer";
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { primordials } from "ext:core/mod.js";
+import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
 
-/**
- * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these
- * are implemented. See https://github.com/denoland/deno/issues/3403
- */
+const { PromisePrototypeThen } = primordials;
+
 export function link(
-  existingPath: string | URL,
-  newPath: string | URL,
+  existingPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
   callback: CallbackWithError,
 ) {
-  existingPath = existingPath instanceof URL
-    ? pathFromURL(existingPath)
-    : existingPath;
-  newPath = newPath instanceof URL ? pathFromURL(newPath) : newPath;
+  existingPath = getValidatedPathToString(existingPath);
+  newPath = getValidatedPathToString(newPath);
 
-  Deno.link(existingPath, newPath).then(() => callback(null), callback);
+  PromisePrototypeThen(
+    Deno.link(existingPath, newPath),
+    () => callback(null),
+    callback,
+  );
 }
 
-/**
- * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these
- * are implemented. See https://github.com/denoland/deno/issues/3403
- */
 export const linkPromise = promisify(link) as (
-  existingPath: string | URL,
-  newPath: string | URL,
+  existingPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
 ) => Promise<void>;
 
-/**
- * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these
- * are implemented. See https://github.com/denoland/deno/issues/3403
- */
 export function linkSync(
-  existingPath: string | URL,
-  newPath: string | URL,
+  existingPath: string | Buffer | URL,
+  newPath: string | Buffer | URL,
 ) {
-  existingPath = existingPath instanceof URL
-    ? pathFromURL(existingPath)
-    : existingPath;
-  newPath = newPath instanceof URL ? pathFromURL(newPath) : newPath;
+  existingPath = getValidatedPathToString(existingPath);
+  newPath = getValidatedPathToString(newPath);
 
   Deno.linkSync(existingPath, newPath);
 }

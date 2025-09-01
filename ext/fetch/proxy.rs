@@ -15,9 +15,9 @@ use std::task::Poll;
 
 use deno_core::futures::TryFutureExt;
 use deno_tls::rustls::ClientConfig as TlsConfig;
+use http::Uri;
 use http::header::HeaderValue;
 use http::uri::Scheme;
-use http::Uri;
 use hyper_rustls::HttpsConnector;
 use hyper_rustls::MaybeHttpsStream;
 use hyper_util::client::legacy::connect::Connected;
@@ -28,10 +28,14 @@ use percent_encoding::percent_decode_str;
 use tokio::net::TcpStream;
 #[cfg(not(windows))]
 use tokio::net::UnixStream;
-use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
+use tokio_rustls::client::TlsStream;
 use tokio_socks::tcp::Socks5Stream;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+))]
 use tokio_vsock::VsockStream;
 use tower_service::Service;
 
@@ -77,7 +81,7 @@ pub(crate) enum Target {
   Unix {
     path: PathBuf,
   },
-  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   Vsock {
     cid: u32,
     port: u32,
@@ -94,25 +98,40 @@ enum Filter {
 pub(crate) fn from_env() -> Proxies {
   let mut intercepts = Vec::new();
 
-  if let Some(proxy) = parse_env_var("ALL_PROXY", Filter::All) {
-    intercepts.push(proxy);
-  } else if let Some(proxy) = parse_env_var("all_proxy", Filter::All) {
-    intercepts.push(proxy);
+  match parse_env_var("ALL_PROXY", Filter::All) {
+    Some(proxy) => {
+      intercepts.push(proxy);
+    }
+    _ => {
+      if let Some(proxy) = parse_env_var("all_proxy", Filter::All) {
+        intercepts.push(proxy);
+      }
+    }
   }
 
-  if let Some(proxy) = parse_env_var("HTTPS_PROXY", Filter::Https) {
-    intercepts.push(proxy);
-  } else if let Some(proxy) = parse_env_var("https_proxy", Filter::Https) {
-    intercepts.push(proxy);
+  match parse_env_var("HTTPS_PROXY", Filter::Https) {
+    Some(proxy) => {
+      intercepts.push(proxy);
+    }
+    _ => {
+      if let Some(proxy) = parse_env_var("https_proxy", Filter::Https) {
+        intercepts.push(proxy);
+      }
+    }
   }
 
   // In a CGI context, headers become environment variables. So, "Proxy:" becomes HTTP_PROXY.
   // To prevent an attacker from injecting a proxy, check if we are in CGI.
   if env::var_os("REQUEST_METHOD").is_none() {
-    if let Some(proxy) = parse_env_var("HTTP_PROXY", Filter::Http) {
-      intercepts.push(proxy);
-    } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Http) {
-      intercepts.push(proxy);
+    match parse_env_var("HTTP_PROXY", Filter::Http) {
+      Some(proxy) => {
+        intercepts.push(proxy);
+      }
+      _ => {
+        if let Some(proxy) = parse_env_var("http_proxy", Filter::Http) {
+          intercepts.push(proxy);
+        }
+      }
     }
   }
 
@@ -170,7 +189,11 @@ impl Intercept {
       Target::Unix { .. } => {
         // Auth not supported for Unix sockets
       }
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Target::Vsock { .. } => {
         // Auth not supported for Vsock sockets
       }
@@ -257,7 +280,7 @@ impl Target {
     Target::Unix { path }
   }
 
-  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   pub(crate) fn new_vsock(cid: u32, port: u32) -> Self {
     Target::Vsock { cid, port }
   }
@@ -425,10 +448,10 @@ impl Proxies {
   }
 
   fn intercept(&self, dst: &Uri) -> Option<&Intercept> {
-    if let Some(no_proxy) = self.no.as_ref() {
-      if no_proxy.contains(dst.host()?) {
-        return None;
-      }
+    if let Some(no_proxy) = self.no.as_ref()
+      && no_proxy.contains(dst.host()?)
+    {
+      return None;
     }
 
     for intercept in &self.intercepts {
@@ -466,7 +489,7 @@ pub enum Proxied<T> {
   #[cfg(not(windows))]
   Unix(TokioIo<UnixStream>),
   /// Forwarded via Vsock socket
-  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   Vsock(TokioIo<VsockStream>),
 }
 
@@ -572,7 +595,11 @@ where
             Ok(Proxied::Unix(TokioIo::new(io)))
           })
         }
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(
+          target_os = "android",
+          target_os = "linux",
+          target_os = "macos"
+        ))]
         Target::Vsock { cid, port } => Box::pin(async move {
           let addr = tokio_vsock::VsockAddr::new(cid, port);
           let io = VsockStream::connect(addr).await?;
@@ -689,7 +716,11 @@ where
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_read(cx, buf),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_read(cx, buf),
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Proxied::Vsock(ref mut p) => Pin::new(p).poll_read(cx, buf),
     }
   }
@@ -712,7 +743,11 @@ where
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write(cx, buf),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_write(cx, buf),
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Proxied::Vsock(ref mut p) => Pin::new(p).poll_write(cx, buf),
     }
   }
@@ -729,7 +764,11 @@ where
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_flush(cx),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_flush(cx),
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Proxied::Vsock(ref mut p) => Pin::new(p).poll_flush(cx),
     }
   }
@@ -746,7 +785,11 @@ where
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_shutdown(cx),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_shutdown(cx),
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Proxied::Vsock(ref mut p) => Pin::new(p).poll_shutdown(cx),
     }
   }
@@ -760,7 +803,11 @@ where
       Proxied::SocksTls(ref p) => p.is_write_vectored(),
       #[cfg(not(windows))]
       Proxied::Unix(ref p) => p.is_write_vectored(),
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Proxied::Vsock(ref p) => p.is_write_vectored(),
     }
   }
@@ -784,7 +831,11 @@ where
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
       #[cfg(not(windows))]
       Proxied::Unix(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Proxied::Vsock(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
     }
   }
@@ -796,9 +847,9 @@ where
 {
   fn connected(&self) -> Connected {
     match self {
-      Proxied::PassThrough(ref p) => p.connected(),
-      Proxied::HttpForward(ref p) => p.connected().proxy(true),
-      Proxied::HttpTunneled(ref p) => {
+      Proxied::PassThrough(p) => p.connected(),
+      Proxied::HttpForward(p) => p.connected().proxy(true),
+      Proxied::HttpTunneled(p) => {
         let tunneled_tls = p.inner().get_ref();
         if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
           tunneled_tls.0.connected().negotiated_h2()
@@ -806,8 +857,8 @@ where
           tunneled_tls.0.connected()
         }
       }
-      Proxied::Socks(ref p) => p.connected(),
-      Proxied::SocksTls(ref p) => {
+      Proxied::Socks(p) => p.connected(),
+      Proxied::SocksTls(p) => {
         let tunneled_tls = p.inner().get_ref();
         if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
           tunneled_tls.0.connected().negotiated_h2()
@@ -817,7 +868,11 @@ where
       }
       #[cfg(not(windows))]
       Proxied::Unix(_) => Connected::new(),
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Proxied::Vsock(_) => Connected::new(),
     }
   }

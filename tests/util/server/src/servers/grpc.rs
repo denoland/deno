@@ -8,9 +8,9 @@ use rustls_tokio_stream::TlsStream;
 use tokio::net::TcpStream;
 use tokio::task::LocalSet;
 
+use super::SupportedHttpVersions;
 use super::get_tcp_listener_stream;
 use super::get_tls_listener_stream;
-use super::SupportedHttpVersions;
 
 pub async fn h2_grpc_server(h2_grpc_port: u16, h2s_grpc_port: u16) {
   let mut tcp = get_tcp_listener_stream("grpc", h2_grpc_port).await;
@@ -34,7 +34,9 @@ pub async fn h2_grpc_server(h2_grpc_port: u16, h2s_grpc_port: u16) {
     Ok(())
   }
 
-  async fn serve_tls(socket: TlsStream) -> Result<(), anyhow::Error> {
+  async fn serve_tls(
+    socket: TlsStream<TcpStream>,
+  ) -> Result<(), anyhow::Error> {
     let mut connection = h2::server::handshake(socket).await?;
 
     while let Some(result) = connection.accept().await {
@@ -52,9 +54,11 @@ pub async fn h2_grpc_server(h2_grpc_port: u16, h2s_grpc_port: u16) {
     mut respond: h2::server::SendResponse<bytes::Bytes>,
   ) -> Result<(), anyhow::Error> {
     let body = request.body_mut();
+    let mut len = 0;
     while let Some(data) = body.data().await {
       let data = data?;
       let _ = body.flow_control().release_capacity(data.len());
+      len += data.len();
     }
 
     let maybe_recv_trailers = body.trailers().await?;
@@ -71,6 +75,10 @@ pub async fn h2_grpc_server(h2_grpc_port: u16, h2s_grpc_port: u16) {
     trailers.insert(
       HeaderName::from_static("opr"),
       HeaderValue::from_static("stv"),
+    );
+    trailers.insert(
+      HeaderName::from_static("req_body_len"),
+      HeaderValue::from(len),
     );
     if let Some(recv_trailers) = maybe_recv_trailers {
       for (key, value) in recv_trailers {

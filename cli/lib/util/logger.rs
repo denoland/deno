@@ -1,41 +1,46 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io::Write;
+use std::sync::Arc;
+use std::sync::OnceLock;
 
+use arc_swap::ArcSwap;
 use deno_runtime::deno_telemetry;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_telemetry::OtelConsoleConfig;
 
-struct CliLogger<FnOnLogStart: Fn(), FnOnLogEnd: Fn()> {
+struct CliLoggerInner {
   otel_console_config: OtelConsoleConfig,
   logger: env_logger::Logger,
-  on_log_start: FnOnLogStart,
-  on_log_end: FnOnLogEnd,
 }
 
-impl<FnOnLogStart: Fn(), FnOnLogEnd: Fn()> CliLogger<FnOnLogStart, FnOnLogEnd> {
+struct CliLogger {
+  inner: ArcSwap<CliLoggerInner>,
+  on_log_start: fn(),
+  on_log_end: fn(),
+}
+
+impl CliLogger {
   pub fn filter(&self) -> log::LevelFilter {
-    self.logger.filter()
+    self.inner.load().logger.filter()
   }
 }
 
-impl<FnOnLogStart: Fn() + Send + Sync, FnOnLogEnd: Fn() + Send + Sync> log::Log
-  for CliLogger<FnOnLogStart, FnOnLogEnd>
-{
+impl log::Log for CliLogger {
   fn enabled(&self, metadata: &log::Metadata) -> bool {
-    self.logger.enabled(metadata)
+    self.inner.load().logger.enabled(metadata)
   }
 
   fn log(&self, record: &log::Record) {
     if self.enabled(record.metadata()) {
       (self.on_log_start)();
 
-      match self.otel_console_config {
+      match self.inner.load().otel_console_config {
         OtelConsoleConfig::Ignore => {
-          self.logger.log(record);
+          self.inner.load().logger.log(record);
         }
         OtelConsoleConfig::Capture => {
-          self.logger.log(record);
+          self.inner.load().logger.log(record);
           deno_telemetry::handle_log(record);
         }
         OtelConsoleConfig::Replace => {
@@ -48,23 +53,20 @@ impl<FnOnLogStart: Fn() + Send + Sync, FnOnLogEnd: Fn() + Send + Sync> log::Log
   }
 
   fn flush(&self) {
-    self.logger.flush();
+    self.inner.load().logger.flush();
   }
 }
 
-pub struct InitLoggingOptions<FnOnLogStart: Fn(), FnOnLogEnd: Fn()> {
-  pub on_log_start: FnOnLogStart,
-  pub on_log_end: FnOnLogEnd,
+pub struct InitLoggingOptions {
+  pub on_log_start: fn(),
+  pub on_log_end: fn(),
   pub maybe_level: Option<log::Level>,
   pub otel_config: Option<OtelConfig>,
 }
 
-pub fn init<
-  FOnLogStart: Fn() + Send + Sync + 'static,
-  FnOnLogEnd: Fn() + Send + Sync + 'static,
->(
-  options: InitLoggingOptions<FOnLogStart, FnOnLogEnd>,
-) {
+static LOGGER: OnceLock<CliLogger> = OnceLock::new();
+
+pub fn init(options: InitLoggingOptions) {
   let log_level = options.maybe_level.unwrap_or(log::Level::Info);
   let logger = env_logger::Builder::from_env(
     env_logger::Env::new()
@@ -87,8 +89,10 @@ pub fn init<
   // https://github.com/swc-project/swc/blob/74d6478be1eb8cdf1df096c360c159db64b64d8a/crates/swc_ecma_codegen/src/macros.rs#L112
   // We suppress them here to avoid flooding our CI logs in integration tests.
   .filter_module("swc_ecma_codegen", log::LevelFilter::Off)
+  .filter_module("swc_common::source_map", log::LevelFilter::Off)
   .filter_module("swc_ecma_transforms_optimization", log::LevelFilter::Off)
   .filter_module("swc_ecma_parser", log::LevelFilter::Error)
+  .filter_module("swc_ecma_lexer", log::LevelFilter::Error)
   // Suppress span lifecycle logs since they are too verbose
   .filter_module("tracing::span", log::LevelFilter::Off)
   .filter_module("tower_lsp", log::LevelFilter::Trace)
@@ -127,19 +131,25 @@ pub fn init<
   })
   .build();
 
-  let cli_logger = CliLogger {
+  let otel_console_config = options
+    .otel_config
+    .map(|c| c.console)
+    .unwrap_or(OtelConsoleConfig::Ignore);
+
+  let cli_logger = LOGGER.get_or_init(move || CliLogger {
     on_log_start: options.on_log_start,
     on_log_end: options.on_log_end,
+    inner: ArcSwap::new(Arc::new(CliLoggerInner {
+      logger: env_logger::Builder::new().build(),
+      otel_console_config,
+    })),
+  });
+
+  cli_logger.inner.swap(Arc::new(CliLoggerInner {
     logger,
-    otel_console_config: options
-      .otel_config
-      .map(|c| c.console)
-      .unwrap_or(OtelConsoleConfig::Ignore),
-  };
-  let max_level = cli_logger.filter();
-  let r = log::set_boxed_logger(Box::new(cli_logger));
-  if r.is_ok() {
-    log::set_max_level(max_level);
-  }
-  r.expect("Could not install logger.");
+    otel_console_config,
+  }));
+
+  let _ = log::set_logger(cli_logger);
+  log::set_max_level(cli_logger.filter());
 }

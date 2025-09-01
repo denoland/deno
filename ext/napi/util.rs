@@ -25,15 +25,17 @@ pub fn get_array_buffer_ptr(ab: v8::Local<v8::ArrayBuffer>) -> *mut c_void {
 
 struct BufferFinalizer {
   env: *mut Env,
-  finalize_cb: napi_finalize,
+  finalize_cb: Option<napi_finalize>,
   finalize_data: *mut c_void,
   finalize_hint: *mut c_void,
 }
 
 impl Drop for BufferFinalizer {
   fn drop(&mut self) {
-    unsafe {
-      (self.finalize_cb)(self.env as _, self.finalize_data, self.finalize_hint);
+    if let Some(finalize_cb) = self.finalize_cb {
+      unsafe {
+        finalize_cb(self.env as _, self.finalize_data, self.finalize_hint);
+      }
     }
   }
 }
@@ -56,7 +58,7 @@ pub(crate) fn make_external_backing_store(
   data: *mut c_void,
   byte_length: usize,
   finalize_data: *mut c_void,
-  finalize_cb: napi_finalize,
+  finalize_cb: Option<napi_finalize>,
   finalize_hint: *mut c_void,
 ) -> v8::UniqueRef<v8::BackingStore> {
   let finalizer = Box::new(BufferFinalizer {
@@ -118,18 +120,17 @@ pub(crate) unsafe fn check_new_from_utf8_len<'s>(
   );
   return_error_status_if_false!(env, !str_.is_null(), napi_invalid_arg);
   let string = if len == NAPI_AUTO_LENGTH {
-    let result = unsafe { std::ffi::CStr::from_ptr(str_ as *const _) }.to_str();
-    return_error_status_if_false!(env, result.is_ok(), napi_generic_failure);
-    result.unwrap()
+    unsafe { std::ffi::CStr::from_ptr(str_ as *const _) }.to_bytes()
   } else {
-    let string = unsafe { std::slice::from_raw_parts(str_ as *const u8, len) };
-    let result = std::str::from_utf8(string);
-    return_error_status_if_false!(env, result.is_ok(), napi_generic_failure);
-    result.unwrap()
+    unsafe { std::slice::from_raw_parts(str_ as *const u8, len) }
   };
   let result = {
     let env = unsafe { &mut *(env as *mut Env) };
-    v8::String::new(&mut env.scope(), string)
+    v8::String::new_from_utf8(
+      &mut env.scope(),
+      string,
+      v8::NewStringType::Internalized,
+    )
   };
   return_error_status_if_false!(env, result.is_some(), napi_generic_failure);
   Ok(result.unwrap())
@@ -231,7 +232,7 @@ macro_rules! check_arg {
 macro_rules! napi_wrap {
   ( $( # [ $attr:meta ] )* $vis:vis fn $name:ident $( < $( $x:lifetime ),* > )? ( $env:ident : & $( $lt:lifetime )? mut Env $( , $ident:ident : $ty:ty )* $(,)? ) -> napi_status $body:block ) => {
     $( # [ $attr ] )*
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     $vis unsafe extern "C" fn $name $( < $( $x ),* > )? ( env_ptr : *mut Env , $( $ident : $ty ),* ) -> napi_status {
       let env: & $( $lt )? mut Env = $crate::check_env!(env_ptr);
 
@@ -248,10 +249,12 @@ macro_rules! napi_wrap {
       #[inline(always)]
       fn inner $( < $( $x ),* > )? ( $env: & $( $lt )? mut Env , $( $ident : $ty ),* ) -> napi_status $body
 
+      #[cfg(debug_assertions)]
       log::trace!("NAPI ENTER: {}", stringify!($name));
 
       let result = inner( env, $( $ident ),* );
 
+      #[cfg(debug_assertions)]
       log::trace!("NAPI EXIT: {} {}", stringify!($name), result);
 
       if let Some(exception) = try_catch.exception() {
@@ -271,15 +274,17 @@ macro_rules! napi_wrap {
 
   ( $( # [ $attr:meta ] )* $vis:vis fn $name:ident $( < $( $x:lifetime ),* > )? ( $( $ident:ident : $ty:ty ),* $(,)? ) -> napi_status $body:block ) => {
     $( # [ $attr ] )*
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     $vis unsafe extern "C" fn $name $( < $( $x ),* > )? ( $( $ident : $ty ),* ) -> napi_status {
       #[inline(always)]
       fn inner $( < $( $x ),* > )? ( $( $ident : $ty ),* ) -> napi_status $body
 
+      #[cfg(debug_assertions)]
       log::trace!("NAPI ENTER: {}", stringify!($name));
 
       let result = inner( $( $ident ),* );
 
+      #[cfg(debug_assertions)]
       log::trace!("NAPI EXIT: {} {}", stringify!($name), result);
 
       result

@@ -7,21 +7,21 @@ use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_semver::package::PackageNv;
-use futures::future::LocalBoxFuture;
 use futures::FutureExt;
+use futures::future::LocalBoxFuture;
 use parking_lot::Mutex;
 use url::Url;
 
-use crate::remote::maybe_auth_header_value_for_npm_registry;
-use crate::rt::spawn_blocking;
-use crate::rt::MultiRuntimeAsyncValueCreator;
-use crate::tarball_extract::verify_and_extract_tarball;
-use crate::tarball_extract::TarballExtractionMode;
 use crate::NpmCache;
 use crate::NpmCacheHttpClient;
 use crate::NpmCacheHttpClientResponse;
 use crate::NpmCacheSetting;
 use crate::NpmCacheSys;
+use crate::remote::maybe_auth_header_value_for_npm_registry;
+use crate::rt::MultiRuntimeAsyncValueCreator;
+use crate::rt::spawn_blocking;
+use crate::tarball_extract::TarballExtractionMode;
+use crate::tarball_extract::verify_and_extract_tarball;
 
 type LoadResult = Result<(), Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
@@ -47,6 +47,8 @@ pub struct TarballCache<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> {
   sys: TSys,
   npmrc: Arc<ResolvedNpmRc>,
   memory_cache: Mutex<HashMap<PackageNv, MemoryCacheItem>>,
+
+  reporter: Option<Arc<dyn TarballCacheReporter>>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -58,6 +60,12 @@ pub struct EnsurePackageError {
   source: Arc<JsErrorBox>,
 }
 
+pub trait TarballCacheReporter: std::fmt::Debug + Send + Sync {
+  fn download_started(&self, _nv: &PackageNv) {}
+  fn downloaded(&self, _nv: &PackageNv) {}
+  fn reused_cache(&self, _nv: &PackageNv) {}
+}
+
 impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   TarballCache<THttpClient, TSys>
 {
@@ -66,6 +74,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     http_client: Arc<THttpClient>,
     sys: TSys,
     npmrc: Arc<ResolvedNpmRc>,
+    reporter: Option<Arc<dyn TarballCacheReporter>>,
   ) -> Self {
     Self {
       cache,
@@ -73,6 +82,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       sys,
       npmrc,
       memory_cache: Default::default(),
+      reporter,
     }
   }
 
@@ -142,6 +152,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
   ) -> LoadFuture {
     let tarball_cache = self.clone();
     let sys = self.sys.clone();
+    let reporter = self.reporter.clone();
     async move {
       let registry_url = tarball_cache.npmrc.get_registry_url(&package_nv.name);
       let package_folder =
@@ -149,6 +160,9 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       let should_use_cache = tarball_cache.cache.should_use_cache_for_package(&package_nv);
       let package_folder_exists = tarball_cache.sys.fs_exists_no_err(&package_folder);
       if should_use_cache && package_folder_exists {
+        if let Some(reporter) = reporter {
+          reporter.reused_cache(&package_nv);
+        }
         return Ok(());
       } else if tarball_cache.cache.cache_setting() == &NpmCacheSetting::Only {
         return Err(JsErrorBox::new(
@@ -172,9 +186,16 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
         tarball_cache.npmrc.tarball_config(&tarball_uri);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_value_for_npm_registry(c).ok()?);
 
+      if let Some(reporter) = &reporter {
+        reporter.download_started(&package_nv);
+
+      }
       let result = tarball_cache.http_client
         .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header, None)
         .await;
+      if let Some(reporter) = &reporter {
+        reporter.downloaded(&package_nv);
+      }
       let maybe_bytes = match result {
         Ok(response) => match response {
           NpmCacheHttpClientResponse::NotModified => unreachable!(), // no e-tag
@@ -217,15 +238,20 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
           };
           let dist = dist.clone();
           let package_nv = package_nv.clone();
+          let reporter = reporter.clone();
           spawn_blocking(move || {
-            verify_and_extract_tarball(
+            let result = verify_and_extract_tarball(
               &sys,
               &package_nv,
               &bytes,
               &dist,
               &package_folder,
               extraction_mode,
-            )
+            );
+            if let Some(reporter) = reporter {
+              reporter.downloaded(&package_nv);
+            }
+            result
           })
           .await.map_err(JsErrorBox::from_err)?.map_err(JsErrorBox::from_err)
         }

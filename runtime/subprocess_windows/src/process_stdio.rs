@@ -27,16 +27,15 @@ use std::ptr::null_mut;
 
 use buffer::StdioBuffer;
 use windows_sys::Win32::Foundation::CloseHandle;
+use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
 use windows_sys::Win32::Foundation::DuplicateHandle;
 use windows_sys::Win32::Foundation::GetLastError;
-use windows_sys::Win32::Foundation::SetHandleInformation;
-use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
 use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT;
 use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+use windows_sys::Win32::Foundation::SetHandleInformation;
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 use windows_sys::Win32::Storage::FileSystem::CreateFileW;
-use windows_sys::Win32::Storage::FileSystem::GetFileType;
 use windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_READ;
 use windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_WRITE;
 use windows_sys::Win32::Storage::FileSystem::FILE_READ_ATTRIBUTES;
@@ -47,6 +46,7 @@ use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_DISK;
 use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_PIPE;
 use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_REMOTE;
 use windows_sys::Win32::Storage::FileSystem::FILE_TYPE_UNKNOWN;
+use windows_sys::Win32::Storage::FileSystem::GetFileType;
 use windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING;
 use windows_sys::Win32::System::Console::GetStdHandle;
 use windows_sys::Win32::System::Console::STD_ERROR_HANDLE;
@@ -317,10 +317,7 @@ unsafe fn handle_file_type_flags(handle: HANDLE) -> Result<u8, std::io::Error> {
     FILE_TYPE_UNKNOWN => {
       if unsafe { GetLastError() } != 0 {
         unsafe { CloseHandle(handle) };
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "Unknown file type",
-        ));
+        return Err(std::io::Error::other("Unknown file type"));
       }
       FOPEN | FDEV
     }

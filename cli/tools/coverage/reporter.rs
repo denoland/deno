@@ -13,8 +13,8 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_lib::version::DENO_VERSION_INFO;
 
-use super::util;
 use super::CoverageReport;
+use super::util;
 use crate::args::CoverageType;
 use crate::colors;
 
@@ -219,17 +219,17 @@ impl CoverageReporter for LcovCoverageReporter {
     file_reports.iter().for_each(|(report, file_text)| {
       self.report(report, file_text).unwrap();
     });
-    if let Some((report, _)) = file_reports.first() {
-      if let Some(ref output) = report.output {
-        if let Ok(path) = output.canonicalize() {
-          let url = Url::from_file_path(path).unwrap();
-          log::info!("Lcov coverage report has been generated at {}", url);
-        } else {
-          log::error!(
-            "Failed to resolve the output path of Lcov report: {}",
-            output.display()
-          );
-        }
+    if let Some((report, _)) = file_reports.first()
+      && let Some(ref output) = report.output
+    {
+      if let Ok(path) = output.canonicalize() {
+        let url = Url::from_file_path(path).unwrap();
+        log::info!("Lcov coverage report has been generated at {}", url);
+      } else {
+        log::error!(
+          "Failed to resolve the output path of Lcov report: {}",
+          output.display()
+        );
       }
     }
   }
@@ -392,11 +392,11 @@ impl DetailedCoverageReporter {
       const SEPARATOR: &str = "|";
 
       // Put a horizontal separator between disjoint runs of lines
-      if let Some(last_line) = last_line {
-        if last_line + 1 != line_index {
-          let dash = colors::gray("-".repeat(WIDTH + 1));
-          println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
-        }
+      if let Some(last_line) = last_line
+        && last_line + 1 != line_index
+      {
+        let dash = colors::gray("-".repeat(WIDTH + 1));
+        println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
       }
 
       println!(

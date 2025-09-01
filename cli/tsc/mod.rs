@@ -10,21 +10,20 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use deno_ast::MediaType;
+use deno_core::FastString;
+use deno_core::JsRuntime;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_core::RuntimeOptions;
 use deno_core::anyhow::Context;
 use deno_core::located_script_name;
 use deno_core::op2;
-use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
-use deno_core::FastString;
-use deno_core::JsRuntime;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_core::RuntimeOptions;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -32,16 +31,17 @@ use deno_graph::ResolutionResolved;
 use deno_lib::util::checksum;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::create_isolate_create_params;
-use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
+use deno_path_util::resolve_url_or_path;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
+use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
-use node_resolver::errors::NodeJsErrorCode;
-use node_resolver::errors::NodeJsErrorCoded;
-use node_resolver::errors::PackageSubpathResolveError;
-use node_resolver::resolve_specifier_into_node_modules;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::errors::NodeJsErrorCode;
+use node_resolver::errors::NodeJsErrorCoded;
+use node_resolver::errors::PackageSubpathFromDenoModuleResolveError;
+use node_resolver::resolve_specifier_into_node_modules;
 use once_cell::sync::Lazy;
 use thiserror::Error;
 
@@ -96,9 +96,7 @@ pub fn get_types_declaration_file_text() -> String {
 }
 
 macro_rules! maybe_compressed_source {
-  ($file: expr) => {{
-    maybe_compressed_source!(compressed = $file, uncompressed = $file)
-  }};
+  ($file: expr) => {{ maybe_compressed_source!(compressed = $file, uncompressed = $file) }};
   (compressed = $comp: expr, uncompressed = $uncomp: expr) => {{
     #[cfg(feature = "hmr")]
     {
@@ -313,24 +311,6 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
         ),
       },
     ),
-    (
-      "text_import.d.ts",
-      StaticAsset {
-        is_lib: false,
-        source: StaticAssetSource::Uncompressed(
-          "export const data: string;\nexport default data;\n",
-        ),
-      },
-    ),
-    (
-      "bytes_import.d.ts",
-      StaticAsset {
-        is_lib: false,
-        source: StaticAssetSource::Uncompressed(
-          "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n",
-        ),
-      },
-    ),
   ])
 });
 
@@ -392,7 +372,7 @@ fn get_hash(source: &str, hash_data: u64) -> String {
 
 /// Hash the URL so it can be sent to `tsc` in a supportable way
 fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
-  let hash = checksum::gen(&[specifier.path().as_bytes()]);
+  let hash = checksum::r#gen(&[specifier.path().as_bytes()]);
   format!(
     "{}:///{}{}",
     specifier.scheme(),
@@ -402,6 +382,7 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
 }
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[allow(dead_code)]
 pub struct EmittedFile {
   pub data: String,
   pub maybe_specifiers: Option<Vec<ModuleSpecifier>>,
@@ -473,7 +454,7 @@ impl TypeCheckingCjsTracker {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     is_script: bool,
-  ) -> Result<bool, node_resolver::errors::ClosestPkgJsonError> {
+  ) -> Result<bool, node_resolver::errors::PackageJsonLoadError> {
     self
       .cjs_tracker
       .is_cjs_with_known_is_script(specifier, media_type, is_script)
@@ -661,13 +642,11 @@ pub enum LoadError {
   #[error("{0}")]
   ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
   #[class(inherit)]
-  #[error(
-    "Error converting a string module specifier for \"op_resolve\": {0}"
-  )]
+  #[error("Error converting a string module specifier for \"op_resolve\": {0}")]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
   #[error("{0}")]
-  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
 }
 
 #[derive(Debug, Serialize)]
@@ -709,7 +688,7 @@ fn op_load_inner(
         return Err(LoadError::LoadFromNodeModule {
           path: file_path.display().to_string(),
           error: err,
-        })
+        });
       }
     };
     let code: Arc<str> = code.into();
@@ -744,6 +723,13 @@ fn op_load_inner(
     hash = get_maybe_hash(maybe_source, state.hash_data);
     media_type = MediaType::from_str(load_specifier);
     maybe_source.map(FastString::from_static)
+  } else if let Some(source) = load_raw_import_source(&specifier) {
+    return Ok(Some(LoadResponse {
+      data: FastString::from_static(source),
+      version: Some("1".to_string()),
+      script_kind: as_ts_script_kind(MediaType::TypeScript),
+      is_cjs: false,
+    }));
   } else {
     let specifier = if let Some(remapped_specifier) =
       state.maybe_remapped_specifier(load_specifier)
@@ -764,7 +750,7 @@ fn op_load_inner(
             version: Some("1".to_string()),
             script_kind: as_ts_script_kind(*media_type),
             is_cjs: false,
-          }))
+          }));
         }
         _ => None,
       },
@@ -842,19 +828,54 @@ fn op_load_inner(
   }))
 }
 
+pub fn load_raw_import_source(specifier: &Url) -> Option<&'static str> {
+  let raw_import = get_specifier_raw_import(specifier)?;
+  let source = match raw_import {
+    RawImportKind::Bytes => {
+      "const data: Uint8Array<ArrayBuffer>;\nexport default data;\n"
+    }
+    RawImportKind::Text => "export const data: string;\nexport default data;\n",
+  };
+  Some(source)
+}
+
+enum RawImportKind {
+  Bytes,
+  Text,
+}
+
+/// We store the raw import kind in the fragment of the Url
+/// like `#denoRawImport=text`. This is necessary because
+/// TypeScript can't handle different modules at the same
+/// specifier.
+fn get_specifier_raw_import(specifier: &Url) -> Option<RawImportKind> {
+  // this is purposefully relaxed about matching in order to keep the
+  // code less complex. If someone is doing something to cause this to
+  // incorrectly match then they most likely deserve the bug they sought.
+  let fragment = specifier.fragment()?;
+  let key_text = "denoRawImport=";
+  let raw_import_index = fragment.find(key_text)?;
+  let remaining = &fragment[raw_import_index + key_text.len()..];
+  if remaining.starts_with("text") {
+    Some(RawImportKind::Text)
+  } else if remaining.starts_with("bytes") {
+    Some(RawImportKind::Bytes)
+  } else {
+    None
+  }
+}
+
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ResolveError {
   #[class(inherit)]
-  #[error(
-    "Error converting a string module specifier for \"op_resolve\": {0}"
-  )]
+  #[error("Error converting a string module specifier for \"op_resolve\": {0}")]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
   #[error(transparent)]
   FilePathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error("{0}")]
-  PackageSubpathResolve(PackageSubpathResolveError),
+  PackageSubpathResolve(PackageSubpathFromDenoModuleResolveError),
   #[class(inherit)]
   #[error("{0}")]
   ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
@@ -1174,7 +1195,7 @@ pub enum ResolveNonGraphSpecifierTypesError {
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
   #[class(inherit)]
   #[error(transparent)]
-  PackageSubpathResolve(#[from] PackageSubpathResolveError),
+  PackageSubpathResolve(#[from] PackageSubpathFromDenoModuleResolveError),
 }
 
 fn resolve_non_graph_specifier_types(
@@ -1204,35 +1225,39 @@ fn resolve_non_graph_specifier_types(
         .and_then(|res| res.into_url())
         .ok(),
     )))
-  } else if let Ok(npm_req_ref) =
-    NpmPackageReqReference::from_str(raw_specifier)
-  {
-    debug_assert_eq!(resolution_mode, ResolutionMode::Import);
-    // todo(dsherret): add support for injecting this in the graph so
-    // we don't need this special code here.
-    // This could occur when resolving npm:@types/node when it is
-    // injected and not part of the graph
-    let package_folder = npm
-      .npm_resolver
-      .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)?;
-    let res_result = node_resolver.resolve_package_subpath_from_deno_module(
-      &package_folder,
-      npm_req_ref.sub_path(),
-      Some(referrer),
-      resolution_mode,
-      NodeResolutionKind::Types,
-    );
-    let maybe_url = match res_result {
-      Ok(url_or_path) => Some(url_or_path.into_url()?),
-      Err(err) => match err.code() {
-        NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-        | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
-        _ => return Err(err.into()),
-      },
-    };
-    Ok(Some(into_specifier_and_media_type(maybe_url)))
   } else {
-    Ok(None)
+    match NpmPackageReqReference::from_str(raw_specifier) {
+      Ok(npm_req_ref) => {
+        debug_assert_eq!(resolution_mode, ResolutionMode::Import);
+        // todo(dsherret): add support for injecting this in the graph so
+        // we don't need this special code here.
+        // This could occur when resolving npm:@types/node when it is
+        // injected and not part of the graph
+        let package_folder =
+          npm.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+            npm_req_ref.req(),
+            referrer,
+          )?;
+        let res_result = node_resolver
+          .resolve_package_subpath_from_deno_module(
+            &package_folder,
+            npm_req_ref.sub_path(),
+            Some(referrer),
+            resolution_mode,
+            NodeResolutionKind::Types,
+          );
+        let maybe_url = match res_result {
+          Ok(url_or_path) => Some(url_or_path.into_url()?),
+          Err(err) => match err.code() {
+            NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+            _ => return Err(err.into()),
+          },
+        };
+        Ok(Some(into_specifier_and_media_type(maybe_url)))
+      }
+      _ => Ok(None),
+    }
   }
 }
 
@@ -1279,7 +1304,7 @@ pub enum ExecError {
   ResponseNotSet,
   #[class(inherit)]
   #[error(transparent)]
-  Core(deno_core::error::CoreError),
+  Js(deno_core::error::JsError),
 }
 
 #[derive(Clone)]
@@ -1487,7 +1512,7 @@ pub fn exec(
 
   runtime
     .execute_script(located_script_name!(), exec_source)
-    .map_err(ExecError::Core)?;
+    .map_err(ExecError::Js)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -1512,10 +1537,10 @@ pub fn exec(
 
 #[cfg(test)]
 mod tests {
+  use deno_core::OpState;
   use deno_core::futures::future;
   use deno_core::parking_lot::Mutex;
   use deno_core::serde_json;
-  use deno_core::OpState;
   use deno_error::JsErrorBox;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
@@ -1656,7 +1681,10 @@ mod tests {
       "data:application/javascript,console.log(\"Hello%20Deno\");",
     )
     .unwrap();
-    assert_eq!(hash_url(&specifier, MediaType::JavaScript), "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js");
+    assert_eq!(
+      hash_url(&specifier, MediaType::JavaScript),
+      "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js"
+    );
   }
 
   #[tokio::test]

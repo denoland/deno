@@ -7,27 +7,27 @@ use std::net::SocketAddr;
 use std::net::SocketAddrV6;
 use std::path::PathBuf;
 
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use bytes::Bytes;
-use futures::future::LocalBoxFuture;
 use futures::FutureExt;
+use futures::future::LocalBoxFuture;
 use http::HeaderMap;
 use http::HeaderValue;
 use http_body_util::combinators::UnsyncBoxBody;
-use hyper::body::Incoming;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
+use hyper::body::Incoming;
 use sha2::Digest;
 
+use super::ServerKind;
+use super::ServerOptions;
 use super::custom_headers;
 use super::empty_body;
 use super::hyper_utils::HandlerOutput;
 use super::run_server;
 use super::string_body;
-use super::ServerKind;
-use super::ServerOptions;
 use crate::npm;
 use crate::root_path;
 
@@ -220,32 +220,31 @@ fn handle_custom_npm_registry_path(
       let file_resp = custom_headers("file.tgz", file_bytes);
       return Ok(Some(file_resp));
     }
-  } else if remainder.is_empty() {
-    if let Some(registry_file) =
+  } else if remainder.is_empty()
+    && let Some(registry_file) =
       test_npm_registry.registry_file(&package_name)?
+  {
+    let actual_etag = format!(
+      "\"{}\"",
+      BASE64_STANDARD.encode(sha2::Sha256::digest(&registry_file))
+    );
+    if headers.get("If-None-Match").and_then(|v| v.to_str().ok())
+      == Some(actual_etag.as_str())
     {
-      let actual_etag = format!(
-        "\"{}\"",
-        BASE64_STANDARD.encode(sha2::Sha256::digest(&registry_file))
-      );
-      if headers.get("If-None-Match").and_then(|v| v.to_str().ok())
-        == Some(actual_etag.as_str())
-      {
-        let mut response = Response::new(UnsyncBoxBody::new(
-          http_body_util::Full::new(Bytes::from(vec![])),
-        ));
-        *response.status_mut() = StatusCode::NOT_MODIFIED;
-        return Ok(Some(response));
-      }
-
-      let mut file_resp = custom_headers("registry.json", registry_file);
-      file_resp.headers_mut().append(
-        http::header::ETAG,
-        http::header::HeaderValue::from_str(&actual_etag).unwrap(),
-      );
-
-      return Ok(Some(file_resp));
+      let mut response = Response::new(UnsyncBoxBody::new(
+        http_body_util::Full::new(Bytes::from(vec![])),
+      ));
+      *response.status_mut() = StatusCode::NOT_MODIFIED;
+      return Ok(Some(response));
     }
+
+    let mut file_resp = custom_headers("registry.json", registry_file);
+    file_resp.headers_mut().append(
+      http::header::ETAG,
+      http::header::HeaderValue::from_str(&actual_etag).unwrap(),
+    );
+
+    return Ok(Some(file_resp));
   }
 
   Ok(None)

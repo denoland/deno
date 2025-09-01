@@ -16,6 +16,9 @@ use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileNpmPackageInfoApiAdapter;
 use futures::FutureExt;
 
+use crate::LifecycleScriptsConfig;
+use crate::NpmInstaller;
+use crate::Reporter;
 use crate::graph::NpmCachingStrategy;
 use crate::graph::NpmDenoGraphResolver;
 use crate::initializer::NpmResolutionInitializer;
@@ -23,9 +26,6 @@ use crate::initializer::NpmResolverManagedSnapshotOption;
 use crate::lifecycle_scripts::LifecycleScriptsExecutor;
 use crate::package_json::NpmInstallDepsProvider;
 use crate::resolution::NpmResolutionInstaller;
-use crate::LifecycleScriptsConfig;
-use crate::NpmInstaller;
-use crate::Reporter;
 
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
 type Deferred<T> = once_cell::sync::OnceCell<T>;
@@ -49,6 +49,23 @@ pub struct NpmInstallerFactoryOptions {
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
   /// Resolves the npm resolution snapshot from the environment.
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
+}
+
+pub trait InstallReporter:
+  deno_npm::resolution::Reporter
+  + deno_graph::source::Reporter
+  + deno_npm_cache::TarballCacheReporter
+  + crate::InstallProgressReporter
+{
+}
+
+impl<
+  T: deno_npm::resolution::Reporter
+    + deno_graph::source::Reporter
+    + deno_npm_cache::TarballCacheReporter
+    + crate::InstallProgressReporter,
+> InstallReporter for T
+{
 }
 
 pub struct NpmInstallerFactory<
@@ -77,19 +94,21 @@ pub struct NpmInstallerFactory<
     Deferred<Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>>,
   tarball_cache: Deferred<Arc<TarballCache<TNpmCacheHttpClient, TSys>>>,
   options: NpmInstallerFactoryOptions,
+  install_reporter: Option<Arc<dyn InstallReporter + 'static>>,
 }
 
 impl<
-    TNpmCacheHttpClient: NpmCacheHttpClient,
-    TReporter: Reporter,
-    TSys: NpmInstallerFactorySys,
-  > NpmInstallerFactory<TNpmCacheHttpClient, TReporter, TSys>
+  TNpmCacheHttpClient: NpmCacheHttpClient,
+  TReporter: Reporter,
+  TSys: NpmInstallerFactorySys,
+> NpmInstallerFactory<TNpmCacheHttpClient, TReporter, TSys>
 {
   pub fn new(
     resolver_factory: Arc<ResolverFactory<TSys>>,
     http_client: Arc<TNpmCacheHttpClient>,
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     reporter: TReporter,
+    install_reporter: Option<Arc<dyn InstallReporter + 'static>>,
     options: NpmInstallerFactoryOptions,
   ) -> Self {
     Self {
@@ -105,6 +124,7 @@ impl<
       npm_resolution_installer: Default::default(),
       registry_info_provider: Default::default(),
       tarball_cache: Default::default(),
+      install_reporter,
       options,
     }
   }
@@ -232,6 +252,10 @@ impl<
             .workspace_factory()
             .workspace_npm_link_packages()?
             .clone(),
+          self
+            .install_reporter
+            .as_ref()
+            .map(|r| r.clone() as Arc<dyn deno_npm::resolution::Reporter>),
         )))
       })
       .await
@@ -283,6 +307,7 @@ impl<
             self.options.lifecycle_scripts_config.clone(),
             self.resolver_factory.npm_system_info().clone(),
             workspace_npm_link_packages.clone(),
+            self.install_reporter.clone(),
           )))
         }
         .boxed_local(),
@@ -315,6 +340,10 @@ impl<
         self.http_client.clone(),
         workspace_factory.sys().clone(),
         workspace_factory.npmrc()?.clone(),
+        self
+          .install_reporter
+          .as_ref()
+          .map(|r| r.clone() as Arc<dyn deno_npm_cache::TarballCacheReporter>),
       )))
     })
   }

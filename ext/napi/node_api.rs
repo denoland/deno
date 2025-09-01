@@ -2,22 +2,22 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
+use deno_core::V8CrossThreadTaskSpawner;
 use deno_core::parking_lot::Condvar;
 use deno_core::parking_lot::Mutex;
-use deno_core::V8CrossThreadTaskSpawner;
 use napi_sym::napi_sym;
 
+use super::util::SendPtr;
 use super::util::get_array_buffer_ptr;
 use super::util::make_external_backing_store;
 use super::util::napi_clear_last_error;
 use super::util::napi_set_last_error;
-use super::util::SendPtr;
 use crate::check_arg;
 use crate::check_env;
 use crate::*;
@@ -319,7 +319,7 @@ fn napi_create_external_buffer<'s>(
   env: &'s mut Env,
   length: usize,
   data: *mut c_void,
-  finalize_cb: napi_finalize,
+  finalize_cb: Option<napi_finalize>,
   finalize_hint: *mut c_void,
   result: *mut napi_value<'s>,
 ) -> napi_status {
@@ -649,13 +649,13 @@ extern "C" fn default_call_js_cb(
   _context: *mut c_void,
   _data: *mut c_void,
 ) {
-  if let Some(js_callback) = *js_callback {
-    if let Ok(js_callback) = v8::Local::<v8::Function>::try_from(js_callback) {
-      let env = unsafe { &mut *(env as *mut Env) };
-      let scope = &mut env.scope();
-      let recv = v8::undefined(scope);
-      js_callback.call(scope, recv.into(), &[]);
-    }
+  if let Some(js_callback) = *js_callback
+    && let Ok(js_callback) = v8::Local::<v8::Function>::try_from(js_callback)
+  {
+    let env = unsafe { &mut *(env as *mut Env) };
+    let scope = &mut env.scope();
+    let recv = v8::undefined(scope);
+    js_callback.call(scope, recv.into(), &[]);
   }
 }
 
@@ -680,10 +680,12 @@ struct TsFn {
 
 impl Drop for TsFn {
   fn drop(&mut self) {
-    assert!(self
-      .is_closed
-      .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-      .is_ok());
+    assert!(
+      self
+        .is_closed
+        .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+        .is_ok()
+    );
 
     self.unref();
 
@@ -714,11 +716,7 @@ impl TsFn {
       Ordering::Relaxed,
       Ordering::Relaxed,
       |x| {
-        if x == 0 {
-          None
-        } else {
-          Some(x - 1)
-        }
+        if x == 0 { None } else { Some(x - 1) }
       },
     );
 

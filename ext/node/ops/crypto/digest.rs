@@ -2,8 +2,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::op2;
 use deno_core::GarbageCollected;
+use deno_core::op2;
 use digest::Digest;
 use digest::DynDigest;
 use digest::ExtendableOutput;
@@ -217,26 +217,26 @@ impl Hash {
   ) -> Result<Self, HashError> {
     match algorithm_name {
       "shake128" | "shake-128" => {
-        return Ok(Shake128(Default::default(), output_length))
+        return Ok(Shake128(Default::default(), output_length));
       }
       "shake256" | "shake-256" => {
-        return Ok(Shake256(Default::default(), output_length))
+        return Ok(Shake256(Default::default(), output_length));
       }
       "sha256" => {
         let digest = ring_sha2::RingSha256::new();
-        if let Some(length) = output_length {
-          if length != digest.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+        if let Some(length) = output_length
+          && length != digest.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
         }
         return Ok(Hash::FixedSize(Box::new(digest)));
       }
       "sha512" => {
         let digest = ring_sha2::RingSha512::new();
-        if let Some(length) = output_length {
-          if length != digest.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+        if let Some(length) = output_length
+          && length != digest.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
         }
         return Ok(Hash::FixedSize(Box::new(digest)));
       }
@@ -247,11 +247,10 @@ impl Hash {
       algorithm_name,
       fn <D>() {
         let digest: D = Digest::new();
-        if let Some(length) = output_length {
-          if length != digest.output_size() {
+        if let Some(length) = output_length
+          && length != digest.output_size() {
             return Err(HashError::OutputLengthMismatch);
           }
-        }
         FixedSize(Box::new(digest))
       },
       _ => {
@@ -290,10 +289,10 @@ impl Hash {
   ) -> Result<Self, HashError> {
     let hash = match self {
       FixedSize(context) => {
-        if let Some(length) = output_length {
-          if length != context.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+        if let Some(length) = output_length
+          && length != context.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
         }
         FixedSize(context.box_clone())
       }

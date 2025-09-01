@@ -7,12 +7,12 @@ use std::path::PathBuf;
 
 use anyhow::Error as AnyError;
 use deno_error::JsErrorBox;
-use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
-use deno_semver::package::PackageNv;
+use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
+use deno_semver::package::PackageNv;
 use sys_traits::FsMetadata;
 
 use crate::CachedNpmPackageExtraInfoProvider;
@@ -35,6 +35,40 @@ pub struct LifecycleScriptsExecutorOptions<'a> {
   pub system_packages: &'a [NpmResolutionPackage],
   pub packages_with_scripts: &'a [PackageWithScript<'a>],
   pub extra_info_provider: &'a CachedNpmPackageExtraInfoProvider,
+}
+
+pub struct LifecycleScriptsWarning {
+  message: String,
+
+  did_warn_fn: DidWarnFn,
+}
+
+impl std::fmt::Debug for LifecycleScriptsWarning {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("LifecycleScriptsWarning")
+      .field("message", &self.message)
+      .finish()
+  }
+}
+
+type DidWarnFn =
+  Box<dyn FnOnce(&dyn sys_traits::boxed::FsOpenBoxed) + Send + Sync>;
+
+impl LifecycleScriptsWarning {
+  pub(crate) fn new(message: String, did_warn_fn: DidWarnFn) -> Self {
+    Self {
+      message,
+      did_warn_fn,
+    }
+  }
+
+  pub fn into_message(
+    self,
+    sys: &dyn sys_traits::boxed::FsOpenBoxed,
+  ) -> String {
+    (self.did_warn_fn)(sys);
+    self.message
+  }
 }
 
 #[derive(Debug)]
@@ -154,7 +188,7 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
     &mut self,
     package: &'a NpmResolutionPackage,
     extra: &NpmPackageExtraInfo,
-    package_path: Cow<Path>,
+    package_path: Cow<'_, Path>,
   ) {
     if has_lifecycle_scripts(self.sys, extra, &package_path) {
       if self.can_run_scripts(&package.id.nv) {

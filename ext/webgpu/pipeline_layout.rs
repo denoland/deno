@@ -1,12 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::webidl::WebIdlInterfaceConverter;
-use deno_core::GarbageCollected;
-use deno_core::WebIDL;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 pub struct GPUPipelineLayout {
   pub instance: Instance,
@@ -32,6 +33,12 @@ impl GarbageCollected for GPUPipelineLayout {
 
 #[op2]
 impl GPUPipelineLayout {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUPipelineLayout, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
