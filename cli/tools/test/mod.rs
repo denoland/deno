@@ -115,6 +115,11 @@ use crate::tools::test::channel::ChannelClosedError;
 /// How many times we're allowed to spin the event loop before considering something a leak.
 const MAX_SANITIZER_LOOP_SPINS: usize = 16;
 
+static SLOW_TEST_TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
+  let base_timeout = env::var("DENO_SLOW_TEST_TIMEOUT").unwrap_or_default();
+  base_timeout.parse().unwrap_or(60).max(1)
+});
+
 #[derive(Default)]
 struct TopLevelSanitizerStats {
   map: HashMap<(RuntimeActivityType, Cow<'static, str>), usize>,
@@ -229,6 +234,7 @@ pub struct TestLocation {
   pub column_number: u32,
 }
 
+// TODO(Bartlomieju): use named fields instead of tuple
 #[derive(Default)]
 pub(crate) struct TestContainer(
   TestDescriptions,
@@ -864,6 +870,34 @@ pub enum RunTestsForWorkerErr {
   SerdeV8(#[from] serde_v8::Error),
 }
 
+async fn slow_test_watchdog(state_rc: Rc<RefCell<OpState>>, test_id: usize) {
+  // The slow test warning should pop up every DENO_SLOW_TEST_TIMEOUT*(2**n) seconds,
+  // with a duration that is doubling each time. So for a warning time of 60s,
+  // we should get a warning at 60s, 120s, 240s, etc.
+  let base_timeout = *SLOW_TEST_TIMEOUT;
+  let mut multiplier = 1;
+  let mut elapsed = 0;
+  loop {
+    tokio::time::sleep(Duration::from_secs(
+      base_timeout * (multiplier - elapsed),
+    ))
+    .await;
+    if send_test_event(
+      &state_rc,
+      TestEvent::Slow(
+        test_id,
+        Duration::from_secs(base_timeout * multiplier).as_millis() as _,
+      ),
+    )
+    .is_err()
+    {
+      break;
+    }
+    multiplier *= 2;
+    elapsed += 1;
+  }
+}
+
 pub async fn run_tests_for_worker(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
@@ -1018,36 +1052,8 @@ async fn run_tests_for_worker_inner(
     let earlier = Instant::now();
     let call = worker.js_runtime.call(&function);
 
-    let slow_state_rc = state_rc.clone();
-    let slow_test_id = desc.id;
-    let slow_test_warning = spawn(async move {
-      // The slow test warning should pop up every DENO_SLOW_TEST_TIMEOUT*(2**n) seconds,
-      // with a duration that is doubling each time. So for a warning time of 60s,
-      // we should get a warning at 60s, 120s, 240s, etc.
-      let base_timeout = env::var("DENO_SLOW_TEST_TIMEOUT").unwrap_or_default();
-      let base_timeout = base_timeout.parse().unwrap_or(60).max(1);
-      let mut multiplier = 1;
-      let mut elapsed = 0;
-      loop {
-        tokio::time::sleep(Duration::from_secs(
-          base_timeout * (multiplier - elapsed),
-        ))
-        .await;
-        if send_test_event(
-          &slow_state_rc,
-          TestEvent::Slow(
-            slow_test_id,
-            Duration::from_secs(base_timeout * multiplier).as_millis() as _,
-          ),
-        )
-        .is_err()
-        {
-          break;
-        }
-        multiplier *= 2;
-        elapsed += 1;
-      }
-    });
+    let slow_test_warning =
+      spawn(slow_test_watchdog(state_rc.clone(), desc.id));
 
     let result = worker
       .js_runtime
@@ -1966,15 +1972,10 @@ impl FailFastTracker {
     }
   }
 
-  pub fn add_failure(&self) -> bool {
-    if let Some(max_count) = &self.max_count {
-      self
-        .failure_count
-        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-        >= *max_count
-    } else {
-      false
-    }
+  pub fn add_failure(&self) {
+    self
+      .failure_count
+      .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
   }
 
   pub fn should_stop(&self) -> bool {
