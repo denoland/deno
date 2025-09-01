@@ -1005,6 +1005,7 @@
 "parallel/test-stream-pipe-same-destination-twice.js" = {}
 "parallel/test-stream-pipe-unpipe-streams.js" = {}
 "parallel/test-stream-pipe-without-listenerCount.js" = {}
+"parallel/test-stream-pipeline.js" = {}
 "parallel/test-stream-pipeline-async-iterator.js" = {}
 "parallel/test-stream-pipeline-duplex.js" = {}
 "parallel/test-stream-pipeline-listeners.js" = {}
