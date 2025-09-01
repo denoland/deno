@@ -1102,6 +1102,9 @@
 "parallel/test-stream-write-destroy.js" = {}
 "parallel/test-stream-write-drain.js" = {}
 "parallel/test-stream-write-final.js" = {}
+"parallel/test-stream-wrap-drain.js" = {}
+"parallel/test-stream-wrap-encoding.js" = {}
+"parallel/test-stream-wrap.js" = {}
 "parallel/test-stream-writev.js" = {}
 "parallel/test-stream2-base64-single-char-read-end.js" = {}
 "parallel/test-stream2-basic.js" = {}

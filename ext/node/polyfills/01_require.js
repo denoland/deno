@@ -119,6 +119,7 @@ import internalEventTarget from "ext:deno_node/internal/event_target.mjs";
 import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
 import internalHttp2Util from "ext:deno_node/internal/http2/util.ts";
+import internalJsStreamSocket from "ext:deno_node/internal/js_stream_socket.mjs";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.js";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.js";
@@ -223,6 +224,7 @@ function setupBuiltinModules() {
     "internal/fs/utils": internalFsUtils,
     "internal/http": internalHttp,
     "internal/http2/util": internalHttp2Util,
+    "internal/js_stream_socket": internalJsStreamSocket,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
