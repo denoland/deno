@@ -1089,6 +1089,7 @@ async fn run_tests_for_worker_inner(
     if matches!(result, TestResult::Failed(_)) {
       fail_fast_tracker.add_failure();
       let elapsed = earlier.elapsed().as_millis();
+      // TODO(bartlomieju): add a struct for tracking this
       send_test_event(
         &state_rc,
         TestEvent::Result(desc.id, result, elapsed as u64),
