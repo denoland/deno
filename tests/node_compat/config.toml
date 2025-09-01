@@ -591,6 +591,7 @@
 "parallel/test-http-res-write-end-dont-take-array.js" = {}
 "parallel/test-http-response-multiheaders.js" = {}
 "parallel/test-http-response-readable.js" = {}
+"parallel/test-http-response-setheaders.js" = {}
 "parallel/test-http-response-writehead-returns-this.js" = {}
 "parallel/test-http-server-delete-parser.js" = {}
 "parallel/test-http-server-method.query.js" = {}

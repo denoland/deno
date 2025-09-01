@@ -227,9 +227,19 @@ Deno.test("[node/http] .writeHead()", async (t) => {
     );
   });
 
-  await t.step("send status + headers array", async () => {
+  await t.step("send status + headers nested array", async () => {
     await testWriteHead(
       (res) => res.writeHead(200, [["foo", "bar"]]),
+      (res) => {
+        assertEquals(res.status, 200);
+        assertEquals(res.headers.get("foo"), "bar");
+      },
+    );
+  });
+
+  await t.step("send status + headers array", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(200, ["foo", "bar"]),
       (res) => {
         assertEquals(res.status, 200);
         assertEquals(res.headers.get("foo"), "bar");
