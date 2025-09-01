@@ -21,7 +21,6 @@ use deno_core::ResourceId;
 use deno_core::op2;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
-use hickory_proto::rr::rdata::caa::Value;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
 use hickory_resolver::ResolveError;
@@ -29,6 +28,7 @@ use hickory_resolver::ResolveErrorKind;
 use hickory_resolver::config::NameServerConfigGroup;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
+use hickory_resolver::name_server::TokioConnectionProvider;
 use hickory_resolver::system_conf;
 use quinn::rustls;
 use serde::Deserialize;
@@ -1024,7 +1024,11 @@ where
     }
   }
 
-  let resolver = hickory_resolver::Resolver::tokio(config, opts);
+  let provider = TokioConnectionProvider::default();
+  let resolver =
+    hickory_resolver::Resolver::builder_with_config(config, provider)
+      .with_options(opts)
+      .build();
 
   let lookup_fut = resolver.lookup(query, record_type);
 
@@ -1138,29 +1142,13 @@ fn format_rdata(
         .as_aname()
         .map(ToString::to_string)
         .map(DnsRecordData::Aname),
-      CAA => r.as_caa().map(|caa| DnsRecordData::Caa {
-        critical: caa.issuer_critical(),
-        tag: caa.tag().to_string(),
-        value: match caa.value() {
-          Value::Issuer(name, key_values) => {
-            let mut s = String::new();
-
-            if let Some(name) = name {
-              s.push_str(&name.to_string());
-            } else if name.is_none() && key_values.is_empty() {
-              s.push(';');
-            }
-
-            for key_value in key_values {
-              s.push_str("; ");
-              s.push_str(&key_value.to_string());
-            }
-
-            s
-          }
-          Value::Url(url) => url.to_string(),
-          Value::Unknown(data) => String::from_utf8(data.to_vec()).unwrap(),
-        },
+      CAA => r.as_caa().map(|caa| {
+        DnsRecordData::Caa {
+          critical: caa.issuer_critical(),
+          tag: caa.tag().to_string(),
+          // hickory_proto now handles CAA records encoding within the CAA struct, we can assume that it's safe to unwrap here
+          value: str::from_utf8(caa.raw_value()).unwrap().to_string(),
+        }
       }),
       CNAME => r
         .as_cname()

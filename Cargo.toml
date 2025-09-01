@@ -178,9 +178,9 @@ fs3 = "0.5.0"
 futures = "0.3.31"
 glob = "0.3.1"
 h2 = "0.4.6"
-hickory-proto = "0.25.0-alpha.4"
-hickory-resolver = { version = "0.25.0-alpha.4", features = ["tokio-runtime", "serde"] }
-hickory-server = "0.25.0-alpha.4"
+hickory-proto = "0.25.2"
+hickory-resolver = { version = "0.25.2", features = ["tokio", "serde"] }
+hickory-server = "0.25.2"
 http = "1.0"
 http-body = "1.0"
 http-body-util = "0.1.2"
