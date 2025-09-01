@@ -7,9 +7,9 @@
 import { core, primordials } from "ext:core/mod.js";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import {
-  newAsyncId,
   AsyncHook,
   executionAsyncId as internalExecutionAsyncId,
+  newAsyncId,
 } from "ext:deno_node/internal/async_hooks.ts";
 
 const {
@@ -231,7 +231,12 @@ export const asyncWrapProviders = ObjectFreeze({
 
 // Use the AsyncHook from the internal module
 export function createHook(callbacks: {
-  init?: (asyncId: number, type: string, triggerAsyncId: number, resource: unknown) => void;
+  init?: (
+    asyncId: number,
+    type: string,
+    triggerAsyncId: number,
+    resource: unknown,
+  ) => void;
   before?: (asyncId: number) => void;
   after?: (asyncId: number) => void;
   destroy?: (asyncId: number) => void;

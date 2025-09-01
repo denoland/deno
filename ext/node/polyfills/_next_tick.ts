@@ -4,17 +4,16 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-
 import { core } from "ext:core/mod.js";
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import { FixedQueue } from "ext:deno_node/internal/fixed_queue.ts";
 import {
-  emitInit,
-  emitBefore,
   emitAfter,
+  emitBefore,
   emitDestroy,
+  emitInit,
   executionAsyncId,
   newAsyncId as nextAsyncId,
 } from "ext:deno_node/internal/async_hooks.ts";
@@ -31,7 +30,6 @@ interface Tock {
   asyncId: number;
   triggerAsyncId: number;
 }
-
 
 let nextTickEnabled = false;
 export function enableNextTick() {
@@ -164,6 +162,6 @@ export function nextTick<T extends Array<unknown>>(
     callback,
     args: args_,
   };
-  emitInit(asyncId, 'TickObject', triggerAsyncId, tickObject);
+  emitInit(asyncId, "TickObject", triggerAsyncId, tickObject);
   queue.push(tickObject);
 }
