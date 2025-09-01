@@ -16,7 +16,7 @@ import * as location from "ext:deno_web/12_location.js";
 import * as console from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
-import * as locks from "ext:deno_web/17_locks.js";
+import * as webLocks from "ext:deno_web/17_locks.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 
 function memoizeLazy(f) {
@@ -109,9 +109,9 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     __proto__: null,
     configurable: true,
     enumerable: true,
-    get() {
+    get: function locks() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return locks.lockManager;
+      return webLocks.lockManager;
     },
   },
 });

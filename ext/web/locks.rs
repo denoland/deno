@@ -35,6 +35,7 @@ pub enum LockMode {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LockInfo {
   pub name: String,
   pub mode: LockMode,
@@ -42,6 +43,7 @@ pub struct LockInfo {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LockManagerSnapshot {
   pub held: Vec<LockInfo>,
   pub pending: Vec<LockInfo>,
@@ -63,7 +65,7 @@ pub struct LockResource {
 }
 
 impl Resource for LockResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "lock".into()
   }
 
@@ -92,23 +94,29 @@ impl WebLockManager {
     if_available: bool,
     steal: bool,
     client_id: String,
-  ) -> Option<LockResource> {
+  ) -> (
+    Option<LockResource>,
+    Option<oneshot::Receiver<Option<ResourceId>>>,
+  ) {
     // Check if we can grant the lock immediately
     if self.can_grant_lock(&name, &mode, if_available, steal) {
       if steal {
         self.steal_locks(&name, &client_id);
       }
 
-      Some(LockResource {
-        name,
-        mode,
-        client_id,
-      })
+      (
+        Some(LockResource {
+          name,
+          mode,
+          client_id,
+        }),
+        None,
+      )
     } else if if_available {
-      None
+      (None, None)
     } else {
       // Queue the request
-      let (sender, _receiver) = oneshot::channel();
+      let (sender, receiver) = oneshot::channel();
       let request = LockRequest {
         name,
         mode,
@@ -119,7 +127,7 @@ impl WebLockManager {
       };
 
       self.pending_requests.push_back(request);
-      None
+      (None, Some(receiver))
     }
   }
 
@@ -135,23 +143,6 @@ impl WebLockManager {
       client_id,
       resource_id,
     ));
-  }
-
-  pub fn release_lock(&mut self, resource_id: ResourceId) {
-    // Find and remove the lock from held_locks
-    for (_, locks) in self.held_locks.iter_mut() {
-      if let Some(pos) = locks.iter().position(|(_, _, id)| *id == resource_id)
-      {
-        locks.remove(pos);
-        break;
-      }
-    }
-
-    // Clean up empty entries
-    self.held_locks.retain(|_, locks| !locks.is_empty());
-
-    // Process pending requests
-    self.process_pending_requests();
   }
 
   pub fn query(&self) -> LockManagerSnapshot {
@@ -210,9 +201,40 @@ impl WebLockManager {
     }
   }
 
-  fn process_pending_requests(&mut self) {
-    // This would be more complex in a real implementation
-    // For now, we just keep the queue
+  fn process_pending_requests(
+    &mut self,
+  ) -> Vec<(LockResource, oneshot::Sender<Option<ResourceId>>)> {
+    let mut granted = Vec::new();
+
+    // Check which pending requests can now be granted
+    let mut i = 0;
+    while i < self.pending_requests.len() {
+      let request = &self.pending_requests[i];
+      if self.can_grant_lock(
+        &request.name,
+        &request.mode,
+        request.if_available,
+        request.steal,
+      ) {
+        let request = self.pending_requests.remove(i).unwrap();
+
+        if request.steal {
+          self.steal_locks(&request.name, &request.client_id);
+        }
+
+        let lock_resource = LockResource {
+          name: request.name.clone(),
+          mode: request.mode.clone(),
+          client_id: request.client_id.clone(),
+        };
+
+        granted.push((lock_resource, request.sender));
+      } else {
+        i += 1;
+      }
+    }
+
+    granted
   }
 }
 
@@ -234,7 +256,7 @@ pub async fn op_lock_request(
 
   let mut state_borrow = state.borrow_mut();
 
-  let lock_resource = {
+  let (lock_resource, receiver) = {
     let lock_manager = state_borrow
       .try_borrow_mut::<WebLockManager>()
       .ok_or(LockError::LockManagerNotAvailable)?;
@@ -259,7 +281,15 @@ pub async fn op_lock_request(
     lock_manager.add_held_lock(name, mode, client_id, resource_id);
 
     Ok(Some(resource_id))
+  } else if let Some(receiver) = receiver {
+    // Wait for the lock to become available
+    drop(state_borrow);
+    let result = receiver
+      .await
+      .map_err(|_| LockError::LockManagerNotAvailable)?;
+    Ok(result)
   } else {
+    // ifAvailable was true and lock not available
     Ok(None)
   }
 }
@@ -274,12 +304,50 @@ pub fn op_lock_release(
   let resource = state.resource_table.take::<LockResource>(resource_id)?;
   resource.close();
 
-  // Update lock manager
-  let lock_manager = state
-    .try_borrow_mut::<WebLockManager>()
-    .ok_or(LockError::LockManagerNotAvailable)?;
+  // Process lock release and pending requests
+  let granted_requests = {
+    let lock_manager = state
+      .try_borrow_mut::<WebLockManager>()
+      .ok_or(LockError::LockManagerNotAvailable)?;
 
-  lock_manager.release_lock(resource_id);
+    // Find and remove the lock from held_locks
+    for (_, locks) in lock_manager.held_locks.iter_mut() {
+      if let Some(pos) = locks.iter().position(|(_, _, id)| *id == resource_id)
+      {
+        locks.remove(pos);
+        break;
+      }
+    }
+
+    // Clean up empty entries
+    lock_manager.held_locks.retain(|_, locks| !locks.is_empty());
+
+    // Get pending requests that can now be granted
+    lock_manager.process_pending_requests()
+  };
+
+  // Grant the pending requests
+  for (lock_resource, sender) in granted_requests {
+    let name = lock_resource.name.clone();
+    let mode = lock_resource.mode.clone();
+    let client_id = lock_resource.client_id.clone();
+
+    let resource_id = state.resource_table.add(lock_resource);
+
+    // Add to held locks
+    let lock_manager = state
+      .try_borrow_mut::<WebLockManager>()
+      .ok_or(LockError::LockManagerNotAvailable)?;
+
+    lock_manager.held_locks.entry(name).or_default().push((
+      mode,
+      client_id,
+      resource_id,
+    ));
+
+    // Notify the waiting request
+    let _ = sender.send(Some(resource_id));
+  }
 
   Ok(())
 }

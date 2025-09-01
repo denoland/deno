@@ -3,6 +3,8 @@
 import { primordials } from "ext:core/mod.js";
 const {
   ObjectDefineProperty,
+  ObjectDefineProperties,
+  SymbolToStringTag,
   Promise,
   PromiseReject,
   PromiseResolve,
@@ -186,7 +188,18 @@ class LockManager {
       if (aborted) return;
 
       if (resourceId === null && options.ifAvailable) {
-        return null;
+        // Call callback with null when ifAvailable is true and lock not available
+        try {
+          const result = await callback(null);
+          if (!aborted) {
+            return result;
+          }
+        } catch (error) {
+          if (!aborted) {
+            throw error;
+          }
+        }
+        return;
       }
 
       if (resourceId === null) {
@@ -232,22 +245,35 @@ class LockManager {
     }
   }
 
-  query() {
+  // deno-lint-ignore require-await
+  async query() {
     webidl.assertBranded(this, LockManagerPrototype);
-    return PromiseResolve(op_lock_query());
+    return op_lock_query();
   }
 }
 
 const LockManagerPrototype = LockManager.prototype;
 
-ObjectDefineProperty(Lock.prototype, Symbol.toStringTag, {
-  value: "Lock",
-  configurable: true,
+ObjectDefineProperties(Lock.prototype, {
+  name: { __proto__: null, enumerable: true },
+  mode: { __proto__: null, enumerable: true },
+  [SymbolToStringTag]: {
+    configurable: true,
+    enumerable: false,
+    writable: false,
+  },
 });
 
-ObjectDefineProperty(LockManager.prototype, Symbol.toStringTag, {
-  value: "LockManager",
-  configurable: true,
+ObjectDefineProperties(LockManager.prototype, {
+  request: { __proto__: null, enumerable: true },
+  query: { __proto__: null, enumerable: true },
+  [SymbolToStringTag]: {
+    __proto__: null,
+    value: "LockManager",
+    configurable: true,
+    enumerable: false,
+    writable: false,
+  },
 });
 
 const lockManager = webidl.createBranded(LockManager);
