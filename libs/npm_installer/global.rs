@@ -35,6 +35,7 @@ pub struct GlobalNpmPackageInstaller<
   resolution: Arc<NpmResolutionCell>,
   lifecycle_scripts: LifecycleScriptsConfig,
   system_info: NpmSystemInfo,
+  install_reporter: Option<Arc<dyn crate::InstallReporter>>,
 }
 
 impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> std::fmt::Debug
@@ -61,6 +62,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
     resolution: Arc<NpmResolutionCell>,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
+    install_reporter: Option<Arc<dyn crate::InstallReporter>>,
   ) -> Self {
     Self {
       cache,
@@ -69,6 +71,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
       resolution,
       lifecycle_scripts,
       system_info,
+      install_reporter,
     }
   }
 
@@ -132,6 +135,7 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmPackageFsInstaller
         self.cache.as_ref(),
         &self.sys,
         &self.lifecycle_scripts.root_dir,
+        self.install_reporter.clone(),
       ),
     );
 
@@ -162,10 +166,17 @@ struct GlobalLifecycleScripts<'a, TSys: NpmCacheSys> {
   cache: &'a NpmCache<TSys>,
   sys: &'a TSys,
   path_hash: u64,
+
+  install_reporter: Option<Arc<dyn crate::InstallReporter>>,
 }
 
 impl<'a, TSys: NpmCacheSys> GlobalLifecycleScripts<'a, TSys> {
-  fn new(cache: &'a NpmCache<TSys>, sys: &'a TSys, root_dir: &Path) -> Self {
+  fn new(
+    cache: &'a NpmCache<TSys>,
+    sys: &'a TSys,
+    root_dir: &Path,
+    install_reporter: Option<Arc<dyn crate::InstallReporter>>,
+  ) -> Self {
     use std::hash::Hasher;
     let mut hasher = twox_hash::XxHash64::default();
     hasher.write(root_dir.to_string_lossy().as_bytes());
@@ -174,6 +185,7 @@ impl<'a, TSys: NpmCacheSys> GlobalLifecycleScripts<'a, TSys> {
       cache,
       sys,
       path_hash,
+      install_reporter,
     }
   }
 
@@ -196,35 +208,70 @@ impl<TSys: NpmCacheSys> LifecycleScriptsStrategy
     &self,
     packages: &[(&NpmResolutionPackage, PathBuf)],
   ) -> std::result::Result<(), std::io::Error> {
-    log::warn!(
+    use std::fmt::Write;
+    use std::writeln;
+    let mut output = String::new();
+    let _ = writeln!(
+      &mut output,
       "{} The following packages contained npm lifecycle scripts ({}) that were not executed:",
       colors::yellow("Warning"),
       colors::gray("preinstall/install/postinstall")
     );
     for (package, _) in packages {
-      log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
+      let _ = writeln!(
+        &mut output,
+        "┠─ {}",
+        colors::gray(format!("npm:{}", package.id.nv))
+      );
     }
-    log::warn!("┃");
-    log::warn!(
+    let _ = writeln!(&mut output, "┃");
+    let _ = writeln!(
+      &mut output,
       "┠─ {}",
       colors::italic("This may cause the packages to not work correctly.")
     );
-    log::warn!(
+    let _ = writeln!(
+      &mut output,
       "┠─ {}",
       colors::italic(
         "Lifecycle scripts are only supported when using a `node_modules` directory."
       )
     );
-    log::warn!(
+    let _ = writeln!(
+      &mut output,
       "┠─ {}",
       colors::italic("Enable it in your deno config file:")
     );
-    log::warn!("┖─ {}", colors::bold("\"nodeModulesDir\": \"auto\""));
+    let _ = write!(
+      &mut output,
+      "┖─ {}",
+      colors::bold("\"nodeModulesDir\": \"auto\"")
+    );
 
-    for (package, _) in packages {
-      let _ignore_err = self
-        .sys
-        .fs_open(self.warned_scripts_file(package), &OpenOptions::new_write());
+    if let Some(install_reporter) = &self.install_reporter {
+      let paths = packages
+        .iter()
+        .map(|(package, _)| self.warned_scripts_file(package))
+        .collect::<Vec<_>>();
+      install_reporter.scripts_not_run_warning(
+        crate::lifecycle_scripts::LifecycleScriptsWarning::new(
+          output,
+          Box::new(move |sys| {
+            for path in paths {
+              let _ignore_err =
+                sys.fs_open_boxed(&path, &OpenOptions::new_write());
+            }
+          }),
+        ),
+      );
+    } else {
+      log::warn!("{}", output);
+      for (package, _) in packages {
+        let _ignore_err = self.sys.fs_open(
+          self.warned_scripts_file(package),
+          &OpenOptions::new_write(),
+        );
+      }
     }
     Ok(())
   }

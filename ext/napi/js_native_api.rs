@@ -2938,7 +2938,7 @@ fn napi_create_external_arraybuffer<'s>(
   env: &'s mut Env,
   data: *mut c_void,
   byte_length: usize,
-  finalize_cb: napi_finalize,
+  finalize_cb: Option<napi_finalize>,
   finalize_hint: *mut c_void,
   result: *mut napi_value<'s>,
 ) -> napi_status {

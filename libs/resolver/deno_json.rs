@@ -1356,17 +1356,40 @@ fn compiler_options_to_transpile_and_emit_options(
       "error" => deno_ast::ImportsNotUsedAsValues::Error,
       _ => deno_ast::ImportsNotUsedAsValues::Remove,
     };
-  let (transform_jsx, jsx_automatic, jsx_development, precompile_jsx) =
-    match overrides.preserve_jsx {
-      true => (false, false, false, false),
-      false => match options.jsx.as_str() {
-        "react" => (true, false, false, false),
-        "react-jsx" => (true, true, false, false),
-        "react-jsxdev" => (true, true, true, false),
-        "precompile" => (false, false, false, true),
-        _ => (false, false, false, false),
-      },
-    };
+  let jsx = match overrides.preserve_jsx {
+    true => None,
+    false => match options.jsx.as_str() {
+      "react" => {
+        Some(deno_ast::JsxRuntime::Classic(deno_ast::JsxClassicOptions {
+          factory: options.jsx_factory,
+          fragment_factory: options.jsx_fragment_factory,
+        }))
+      }
+      "react-jsx" => Some(deno_ast::JsxRuntime::Automatic(
+        deno_ast::JsxAutomaticOptions {
+          development: false,
+          import_source: options.jsx_import_source,
+        },
+      )),
+      "react-jsxdev" => Some(deno_ast::JsxRuntime::Automatic(
+        deno_ast::JsxAutomaticOptions {
+          development: true,
+          import_source: options.jsx_import_source,
+        },
+      )),
+      "precompile" => Some(deno_ast::JsxRuntime::Precompile(
+        deno_ast::JsxPrecompileOptions {
+          automatic: deno_ast::JsxAutomaticOptions {
+            development: false,
+            import_source: options.jsx_import_source,
+          },
+          skip_elements: options.jsx_precompile_skip_elements,
+          dynamic_props: None,
+        },
+      )),
+      _ => None,
+    },
+  };
   let source_map = if options.inline_source_map {
     deno_ast::SourceMapOption::Inline
   } else if options.source_map {
@@ -1375,19 +1398,15 @@ fn compiler_options_to_transpile_and_emit_options(
     deno_ast::SourceMapOption::None
   };
   let transpile = deno_ast::TranspileOptions {
-    use_ts_decorators: options.experimental_decorators,
-    use_decorators_proposal: !options.experimental_decorators,
-    emit_metadata: options.emit_decorator_metadata,
+    decorators: if options.experimental_decorators {
+      deno_ast::DecoratorsTranspileOption::LegacyTypeScript {
+        emit_metadata: options.emit_decorator_metadata,
+      }
+    } else {
+      deno_ast::DecoratorsTranspileOption::Ecma
+    },
     imports_not_used_as_values,
-    jsx_automatic,
-    jsx_development,
-    jsx_factory: options.jsx_factory,
-    jsx_fragment_factory: options.jsx_fragment_factory,
-    jsx_import_source: options.jsx_import_source,
-    precompile_jsx,
-    precompile_jsx_skip_elements: options.jsx_precompile_skip_elements,
-    precompile_jsx_dynamic_props: None,
-    transform_jsx,
+    jsx,
     var_decl_imports: false,
     // todo(dsherret): support verbatim_module_syntax here properly
     verbatim_module_syntax: false,
