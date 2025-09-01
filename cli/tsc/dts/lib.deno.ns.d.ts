@@ -3753,7 +3753,7 @@ declare namespace Deno {
    * @category Subprocess
    */
   export interface SubprocessReadableStream
-    extends ReadableStream<Uint8Array<ArrayBufferLike>> {
+    extends ReadableStream<Uint8Array<ArrayBuffer>> {
     /**
      * Reads the stream to completion. It returns a promise that resolves with
      * an `ArrayBuffer`.
@@ -3768,7 +3768,7 @@ declare namespace Deno {
      * Reads the stream to completion. It returns a promise that resolves with
      * the result of parsing the body text as JSON.
      */
-    json(): Promise<unknown>;
+    json(): Promise<any>;
     /**
      * Reads the stream to completion. It returns a promise that resolves with
      * a `USVString` (text).
