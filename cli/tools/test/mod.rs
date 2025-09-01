@@ -1059,7 +1059,7 @@ async fn run_tests_for_worker_inner(
     })
     .await?;
 
-    // TODO(bartlomieju): this whole block/binding is bad
+    // TODO(bartlomieju): this whole block/binding could be reworked into something better
     let result = if !before_each_hook_errored {
       let call = worker.js_runtime.call(&function);
 
@@ -1119,9 +1119,6 @@ async fn run_tests_for_worker_inner(
     if matches!(result, TestResult::Failed(_)) {
       continue;
     }
-    // if !matches!(result, TestResult::Failed(_)) {
-    //   continue;
-    // }
 
     // Await activity stabilization
     if let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
