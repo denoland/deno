@@ -1091,15 +1091,15 @@ async fn run_tests_for_worker_inner(
         let result = v8::Local::new(scope, result);
         serde_v8::from_v8::<TestResult>(scope, result)?
       };
-      if matches!(result, TestResult::Failed(_)) {
-        fail_fast_tracker.add_failure();
-        event_tracker.result(desc, result, earlier.elapsed())?;
-        continue;
-      }
       result
     } else {
       TestResult::Ignored
     };
+
+    if matches!(result, TestResult::Failed(_)) {
+      fail_fast_tracker.add_failure();
+      event_tracker.result(desc, result.clone(), earlier.elapsed())?;
+    }
 
     // Execute afterEach hooks (LIFO order)
     call_hooks(worker, test_hooks.after_each.iter().rev(), |core_error| {
@@ -1116,6 +1116,9 @@ async fn run_tests_for_worker_inner(
     })
     .await?;
 
+    if matches!(result, TestResult::Failed(_)) {
+      continue;
+    }
     // if !matches!(result, TestResult::Failed(_)) {
     //   continue;
     // }

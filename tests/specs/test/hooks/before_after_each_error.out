@@ -1,13 +1,9 @@
-Check [WILDCARD]beforeall_error.ts
-running 1 test from ./beforeall_error.ts
-Uncaught error from ./beforeall_error.ts FAILED
-------- pre-test output -------
-[
-  "beforeEach",
-  "test executed",
-  "afterEach"
-]
------ pre-test output end -----
+Check [WILDCARD]before_after_each_error.ts
+running 1 test from ./before_after_each_error.ts
+first test ... FAILED ([WILDCARD])
+------- post-test output -------
+[ "beforeEach", "test executed", "afterEach" ]
+----- post-test output end -----
 
  ERRORS 
 
@@ -17,7 +13,7 @@ error: Error: test threw
         ^
     at [WILDCARD]before_after_each_error.ts:13:9
 
- FAILURES
+ FAILURES 
 
 first test => ./before_after_each_error.ts:11:6
 
