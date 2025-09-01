@@ -574,6 +574,7 @@ pub fn op_net_listen_tcp<NP>(
   #[serde] addr: IpAddr,
   reuse_port: bool,
   load_balanced: bool,
+  tcp_backlog: i32,
 ) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -589,9 +590,9 @@ where
     .ok_or_else(|| NetError::NoResolvedAddress)?;
 
   let listener = if load_balanced {
-    TcpListener::bind_load_balanced(addr)
+    TcpListener::bind_load_balanced(addr, tcp_backlog)
   } else {
-    TcpListener::bind_direct(addr, reuse_port)
+    TcpListener::bind_direct(addr, reuse_port, tcp_backlog)
   }?;
   let local_addr = listener.local_addr()?;
   let listener_resource = NetworkListenerResource::new(listener);
@@ -1483,7 +1484,7 @@ mod tests {
     let sockets = Arc::new(Mutex::new(vec![]));
     let clone_addr = addr.clone();
     let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-    let listener = TcpListener::bind_direct(addr, false).unwrap();
+    let listener = TcpListener::bind_direct(addr, false, 511).unwrap();
     let accept_fut = listener.accept().boxed_local();
     let store_fut = async move {
       let socket = accept_fut.await.unwrap();

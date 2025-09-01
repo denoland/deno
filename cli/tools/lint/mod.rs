@@ -662,11 +662,15 @@ fn resolve_lint_config(
     .for_specifier(specifier)
     .transpile_options()?
     .transpile;
+  let jsx_classic_options =
+    transpile_options.jsx.as_ref().and_then(|jsx| match jsx {
+      deno_ast::JsxRuntime::Classic(classic) => Some(classic),
+      _ => None,
+    });
   Ok(deno_lint::linter::LintConfig {
-    default_jsx_factory: (!transpile_options.jsx_automatic)
-      .then(|| transpile_options.jsx_factory.clone()),
-    default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
-      .then(|| transpile_options.jsx_fragment_factory.clone()),
+    default_jsx_factory: jsx_classic_options.map(|o| o.factory.clone()),
+    default_jsx_fragment_factory: jsx_classic_options
+      .map(|o| o.fragment_factory.clone()),
   })
 }
 

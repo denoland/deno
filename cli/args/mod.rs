@@ -1035,7 +1035,6 @@ impl CliOptions {
       }
 
       PermissionsOptions {
-        allow_all: flags.allow_all,
         allow_env: handle_allow(flags.allow_all, flags.allow_env.clone()),
         deny_env: flags.deny_env.clone(),
         allow_net: handle_allow(flags.allow_all, flags.allow_net.clone()),
@@ -1063,7 +1062,7 @@ impl CliOptions {
 
   fn augment_import_permissions(&self, options: &mut PermissionsOptions) {
     // do not add if the user specified --allow-all or --allow-import
-    if !options.allow_all && options.allow_import.is_none() {
+    if options.allow_import.is_none() {
       options.allow_import = Some(self.implicit_allow_import());
     }
     options.deny_import = options.deny_import.clone();

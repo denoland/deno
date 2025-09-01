@@ -30,6 +30,7 @@ use crate::adapter::GPUAdapterInfo;
 use crate::adapter::GPUSupportedFeatures;
 use crate::adapter::GPUSupportedLimits;
 use crate::command_encoder::GPUCommandEncoder;
+use crate::error::GPUGenericError;
 use crate::query_set::GPUQuerySet;
 use crate::render_bundle::GPURenderBundleEncoder;
 use crate::render_pipeline::GPURenderPipeline;
@@ -73,6 +74,12 @@ impl GarbageCollected for GPUDevice {
 // EventTarget is extended in JS
 #[op2]
 impl GPUDevice {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUDevice, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -886,6 +893,12 @@ impl GarbageCollected for GPUDeviceLostInfo {
 
 #[op2]
 impl GPUDeviceLostInfo {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUDeviceLostInfo, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn reason(&self) -> &'static str {
