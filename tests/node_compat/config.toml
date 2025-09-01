@@ -1092,6 +1092,7 @@
 "parallel/test-stream-writable-needdrain-state.js" = {}
 "parallel/test-stream-writable-null.js" = {}
 "parallel/test-stream-writable-properties.js" = {}
+"parallel/test-stream-writable-samecb-singletick.js" = {}
 "parallel/test-stream-writable-writable.js" = {}
 "parallel/test-stream-writable-write-cb-error.js" = {}
 "parallel/test-stream-writable-write-cb-twice.js" = {}
