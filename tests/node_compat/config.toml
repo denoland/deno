@@ -1030,6 +1030,7 @@
 "parallel/test-stream-readable-error-end.js" = {}
 "parallel/test-stream-readable-event.js" = {}
 "parallel/test-stream-readable-flow-recursion.js" = {}
+"parallel/test-stream-readable-from-web-termination.js" = {}
 "parallel/test-stream-readable-hwm-0-async.js" = {}
 "parallel/test-stream-readable-hwm-0-no-flow-data.js" = {}
 "parallel/test-stream-readable-hwm-0.js" = {}
@@ -1048,6 +1049,7 @@
 "parallel/test-stream-readable-setEncoding-existing-buffers.js" = {}
 "parallel/test-stream-readable-setEncoding-null.js" = {}
 "parallel/test-stream-readable-strategy-option.js" = {}
+"parallel/test-stream-readable-to-web-termination.js" = {}
 "parallel/test-stream-readable-unpipe-resume.js" = { flaky = true }
 "parallel/test-stream-readable-unshift.js" = {}
 "parallel/test-stream-readable-with-unimplemented-_read.js" = {}
