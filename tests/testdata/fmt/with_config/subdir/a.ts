@@ -68,8 +68,12 @@ Deno.test(
 			+ 'hello world foo bar baz'
 			+ 'hello world foo bar baz'
 
-		// checks typeLiteral.separatorKind=semiColon
+		// checks typeLiteral.separatorKind=comma
 		// checks spaceSurroundingProperties=false
 		type T = {a: 1, b: 2}
 	}
 )
+
+// checks spaceSurroundingProperties=false
+import {foo} from 'bar'
+export {foo} from 'bar'
