@@ -1723,8 +1723,6 @@ ServerResponse.prototype.writeHead = function (
           if (k) this.removeHeader(k);
         }
 
-        // Has to be done on separate loops because header keys can appear multiple times.
-        // Example: res.writeHead(200, [['set-cookie', 'A'], ['set-cookie', 'B']]);
         for (let i = 0; i < headers.length; i++) {
           const headerTuple = headers[i];
           const k = headerTuple[0];
