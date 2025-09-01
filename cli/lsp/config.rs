@@ -1441,6 +1441,7 @@ impl ConfigData {
         no_lock: false,
         no_npm: false,
         npm_process_state: None,
+        root_node_modules_dir_override: None,
         vendor: None,
       },
     );
