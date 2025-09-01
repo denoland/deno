@@ -918,21 +918,15 @@ pub async fn run_tests_for_worker(
   res
 }
 
-async fn run_tests_for_worker_inner(
-  worker: &mut MainWorker,
-  specifier: &ModuleSpecifier,
-  descs: Arc<TestDescriptions>,
+fn compute_tests_to_run(
+  descs: &TestDescriptions,
   test_functions: Vec<v8::Global<v8::Function>>,
-  options: &TestSpecifierOptions,
-  event_tracker: &TestEventTracker,
-  fail_fast_tracker: &FailFastTracker,
-) -> Result<(), RunTestsForWorkerErr> {
-  let unfiltered = descs.len();
-  // Build the test plan in a single pass
+  filter: TestFilter,
+) -> (Vec<(&TestDescription, v8::Global<v8::Function>)>, bool) {
   let mut tests_to_run = Vec::with_capacity(descs.len());
   let mut used_only = false;
   for ((_, d), f) in descs.tests.iter().zip(test_functions) {
-    if !options.filter.includes(&d.name) {
+    if !filter.includes(&d.name) {
       continue;
     }
 
@@ -949,22 +943,26 @@ async fn run_tests_for_worker_inner(
     }
     tests_to_run.push((d, f));
   }
+  (tests_to_run, used_only)
+}
 
-  if let Some(seed) = options.shuffle {
-    tests_to_run.shuffle(&mut SmallRng::seed_from_u64(seed));
+struct TestSanitizerHelper {
+  activity_stats: RuntimeActivityStatsFactory,
+  activity_filter: RuntimeActivityStatsFilter,
+  top_level_sanitizer_stats: TopLevelSanitizerStats,
+}
+
+impl TestSanitizerHelper {
+  fn capture_stats(&self) -> RuntimeActivityStats {
+    self.activity_stats.clone().capture(&self.activity_filter)
   }
+}
 
-  event_tracker.plan(TestPlan {
-    origin: specifier.to_string(),
-    total: tests_to_run.len(),
-    filtered_out: unfiltered - tests_to_run.len(),
-    used_only,
-  })?;
-
-  let mut had_uncaught_error = false;
+fn create_test_sanitizer_helper(
+  worker: &mut MainWorker,
+) -> TestSanitizerHelper {
   let stats = worker.js_runtime.runtime_activity_stats_factory();
   let ops = worker.js_runtime.op_names();
-
   // These particular ops may start and stop independently of tests, so we just filter them out
   // completely.
   let op_id_host_recv_message = ops
@@ -998,6 +996,41 @@ async fn run_tests_for_worker_inner(
       .or_insert(1);
   }
 
+  TestSanitizerHelper {
+    activity_stats: stats,
+    activity_filter: filter,
+    top_level_sanitizer_stats: top_level,
+  }
+}
+
+async fn run_tests_for_worker_inner(
+  worker: &mut MainWorker,
+  specifier: &ModuleSpecifier,
+  descs: Arc<TestDescriptions>,
+  test_functions: Vec<v8::Global<v8::Function>>,
+  options: &TestSpecifierOptions,
+  event_tracker: &TestEventTracker,
+  fail_fast_tracker: &FailFastTracker,
+) -> Result<(), RunTestsForWorkerErr> {
+  let unfiltered = descs.len();
+
+  let (mut tests_to_run, used_only) =
+    compute_tests_to_run(&descs, test_functions, options.filter.clone());
+
+  if let Some(seed) = options.shuffle {
+    tests_to_run.shuffle(&mut SmallRng::seed_from_u64(seed));
+  }
+
+  event_tracker.plan(TestPlan {
+    origin: specifier.to_string(),
+    total: tests_to_run.len(),
+    filtered_out: unfiltered - tests_to_run.len(),
+    used_only,
+  })?;
+
+  let mut had_uncaught_error = false;
+  let sanitizer_helper = create_test_sanitizer_helper(worker);
+
   for (desc, function) in tests_to_run.into_iter() {
     if fail_fast_tracker.should_stop() {
       break;
@@ -1030,7 +1063,7 @@ async fn run_tests_for_worker_inner(
     poll_event_loop(worker).await?;
 
     // We always capture stats, regardless of sanitization state
-    let before = stats.clone().capture(&filter);
+    let before_test_stats = sanitizer_helper.capture_stats();
 
     let earlier = Instant::now();
     let call = worker.js_runtime.call(&function);
@@ -1072,10 +1105,8 @@ async fn run_tests_for_worker_inner(
     // Await activity stabilization
     if let Some(diff) = wait_for_activity_to_stabilize(
       worker,
-      &stats,
-      &filter,
-      &top_level,
-      before,
+      &sanitizer_helper,
+      before_test_stats,
       desc.sanitize_ops,
       desc.sanitize_resources,
     )
@@ -1157,17 +1188,16 @@ fn is_empty(
 
 async fn wait_for_activity_to_stabilize(
   worker: &mut MainWorker,
-  stats: &RuntimeActivityStatsFactory,
-  filter: &RuntimeActivityStatsFilter,
-  top_level: &TopLevelSanitizerStats,
-  before: RuntimeActivityStats,
+  helper: &TestSanitizerHelper,
+  before_test_stats: RuntimeActivityStats,
   sanitize_ops: bool,
   sanitize_resources: bool,
 ) -> Result<Option<RuntimeActivityDiff>, CoreError> {
   // First, check to see if there's any diff at all. If not, just continue.
-  let after = stats.clone().capture(filter);
-  let mut diff = RuntimeActivityStats::diff(&before, &after);
-  if is_empty(top_level, &diff) {
+  let after_test_stats = helper.capture_stats();
+  let mut diff =
+    RuntimeActivityStats::diff(&before_test_stats, &after_test_stats);
+  if is_empty(&helper.top_level_sanitizer_stats, &diff) {
     // No activity, so we return early
     return Ok(None);
   }
@@ -1180,9 +1210,9 @@ async fn wait_for_activity_to_stabilize(
     // There was a diff, so let the event loop run once
     poll_event_loop(worker).await?;
 
-    let after = stats.clone().capture(filter);
-    diff = RuntimeActivityStats::diff(&before, &after);
-    if is_empty(top_level, &diff) {
+    let after_test_stats = helper.capture_stats();
+    diff = RuntimeActivityStats::diff(&before_test_stats, &after_test_stats);
+    if is_empty(&helper.top_level_sanitizer_stats, &diff) {
       return Ok(None);
     }
   }
@@ -1221,7 +1251,7 @@ async fn wait_for_activity_to_stabilize(
     });
   }
 
-  Ok(if is_empty(top_level, &diff) {
+  Ok(if is_empty(&helper.top_level_sanitizer_stats, &diff) {
     None
   } else {
     Some(diff)
