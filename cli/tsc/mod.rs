@@ -1296,7 +1296,6 @@ fn op_respond_inner(state: &mut OpState, args: RespondArgs) {
   state.maybe_response = Some(args);
 }
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ExecError {
   #[class(generic)]
@@ -1304,7 +1303,7 @@ pub enum ExecError {
   ResponseNotSet,
   #[class(inherit)]
   #[error(transparent)]
-  Js(deno_core::error::JsError),
+  Js(Box<deno_core::error::JsError>),
 }
 
 #[derive(Clone)]
