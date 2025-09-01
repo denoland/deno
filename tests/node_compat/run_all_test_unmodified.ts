@@ -107,10 +107,7 @@ enum NodeTestFileResult {
 }
 
 interface NonIgnoredTestFileReport {
-  result: Exclude<
-    NodeTestFileResult,
-    NodeTestFileResult.IGNORED
-  >;
+  result: NodeTestFileResult.PASS | NodeTestFileResult.FAIL;
   error?: ErrorExit | ErrorTimeout | ErrorUnexpected;
 }
 
