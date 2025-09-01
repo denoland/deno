@@ -941,6 +941,36 @@ fn compute_tests_to_run(
   (tests_to_run, used_only)
 }
 
+enum CallHookFlow {
+  Break,
+  Continue,
+}
+
+async fn call_hooks<H>(
+  worker: &mut MainWorker,
+  hook_fns: impl Iterator<Item = &v8::Global<v8::Function>>,
+  mut error_handler: H,
+) -> Result<(), RunTestsForWorkerErr>
+where
+  H: FnMut(CoreErrorKind) -> Result<CallHookFlow, RunTestsForWorkerErr>,
+{
+  for hook_fn in hook_fns {
+    let call = worker.js_runtime.call(hook_fn);
+    let result = worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await;
+    let Err(err) = result else {
+      continue;
+    };
+    match error_handler(err.into_kind())? {
+      CallHookFlow::Continue => continue,
+      CallHookFlow::Break => break,
+    }
+  }
+  Ok(())
+}
+
 async fn run_tests_for_worker_inner(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
@@ -971,25 +1001,17 @@ async fn run_tests_for_worker_inner(
   let sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
 
   // Execute beforeAll hooks (FIFO order)
-  for before_all_hook in &test_hooks.before_all {
-    let call = worker.js_runtime.call(before_all_hook);
-    let result = worker
-      .js_runtime
-      .with_event_loop_promise(call, PollEventLoopOptions::default())
-      .await;
-    let Err(err) = result else {
-      continue;
-    };
+  call_hooks(worker, test_hooks.before_all.iter(), |core_error| {
     tests_to_run = vec![];
-
-    match err.into_kind() {
+    match core_error {
       CoreErrorKind::Js(err) => {
         event_tracker.uncaught_error(specifier.to_string(), err)?;
-        break;
+        Ok(CallHookFlow::Break)
       }
-      err => return Err(err.into_box().into()),
-    };
-  }
+      err => Err(err.into_box().into()),
+    }
+  })
+  .await?;
 
   for (desc, function) in tests_to_run.into_iter() {
     worker_prepare_for_test(worker);
@@ -1021,28 +1043,21 @@ async fn run_tests_for_worker_inner(
 
     // Execute beforeEach hooks (FIFO order)
     let mut before_each_hook_errored = false;
-    for before_each_hook in &test_hooks.before_each {
-      let call = worker.js_runtime.call(before_each_hook);
-      let result = worker
-        .js_runtime
-        .with_event_loop_promise(call, PollEventLoopOptions::default())
-        .await;
-      let Err(err) = result else {
-        continue;
-      };
 
-      match err.into_kind() {
+    call_hooks(worker, test_hooks.before_each.iter(), |core_error| {
+      match core_error {
         CoreErrorKind::Js(err) => {
           before_each_hook_errored = true;
           let test_result =
             TestResult::Failed(TestFailure::JsError(Box::new(err)));
           fail_fast_tracker.add_failure();
           event_tracker.result(desc, test_result, earlier.elapsed())?;
-          break;
+          Ok(CallHookFlow::Break)
         }
-        err => return Err(err.into_box().into()),
-      };
-    }
+        err => Err(err.into_box().into()),
+      }
+    })
+    .await?;
 
     // TODO(bartlomieju): this whole block/binding is bad
     let result = if !before_each_hook_errored {
@@ -1087,27 +1102,19 @@ async fn run_tests_for_worker_inner(
     };
 
     // Execute afterEach hooks (LIFO order)
-    for after_each_hook in test_hooks.after_each.iter().rev() {
-      let call = worker.js_runtime.call(after_each_hook);
-      let result = worker
-        .js_runtime
-        .with_event_loop_promise(call, PollEventLoopOptions::default())
-        .await;
-      let Err(err) = result else {
-        continue;
-      };
-
-      match err.into_kind() {
+    call_hooks(worker, test_hooks.after_each.iter().rev(), |core_error| {
+      match core_error {
         CoreErrorKind::Js(err) => {
           let test_result =
             TestResult::Failed(TestFailure::JsError(Box::new(err)));
           fail_fast_tracker.add_failure();
           event_tracker.result(desc, test_result, earlier.elapsed())?;
-          break;
+          Ok(CallHookFlow::Break)
         }
-        err => return Err(err.into_box().into()),
-      };
-    }
+        err => Err(err.into_box().into()),
+      }
+    })
+    .await?;
 
     // if !matches!(result, TestResult::Failed(_)) {
     //   continue;
@@ -1145,25 +1152,16 @@ async fn run_tests_for_worker_inner(
   event_tracker.completed()?;
 
   // Execute afterAll hooks (LIFO order)
-  for after_all_hook in test_hooks.after_all.iter().rev() {
-    let call = worker.js_runtime.call(after_all_hook);
-    let result = worker
-      .js_runtime
-      .with_event_loop_promise(call, PollEventLoopOptions::default())
-      .await;
-
-    let Err(err) = result else {
-      continue;
-    };
-
-    match err.into_kind() {
+  call_hooks(worker, test_hooks.after_all.iter().rev(), |core_error| {
+    match core_error {
       CoreErrorKind::Js(err) => {
         event_tracker.uncaught_error(specifier.to_string(), err)?;
-        break;
+        Ok(CallHookFlow::Break)
       }
-      err => return Err(err.into_box().into()),
-    };
-  }
+      err => Err(err.into_box().into()),
+    }
+  })
+  .await?;
 
   Ok(())
 }
