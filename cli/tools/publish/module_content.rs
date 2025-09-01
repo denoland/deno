@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -26,9 +27,8 @@ use super::unfurl::SpecifierUnfurlerDiagnostic;
 use crate::sys::CliSys;
 
 struct JsxFolderOptions<'a> {
-  jsx_factory: &'a str,
-  jsx_fragment_factory: &'a str,
   jsx_runtime: &'static str,
+  jsx_classic: Option<Cow<'a, deno_ast::JsxClassicOptions>>,
   jsx_import_source: Option<String>,
   jsx_import_source_types: Option<String>,
 }
@@ -206,18 +206,19 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
         import_source
       ));
     }
-    let is_classic = jsx_options.jsx_runtime == "classic";
-    if is_classic && !leading_comments_has_re(&JSX_FACTORY_RE) {
-      add_text_change(format!(
-        "/** @jsxFactory {} */",
-        jsx_options.jsx_factory,
-      ));
-    }
-    if is_classic && !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
-      add_text_change(format!(
-        "/** @jsxFragmentFactory {} */",
-        jsx_options.jsx_fragment_factory,
-      ));
+    if let Some(classic_options) = &jsx_options.jsx_classic {
+      if !leading_comments_has_re(&JSX_FACTORY_RE) {
+        add_text_change(format!(
+          "/** @jsxFactory {} */",
+          classic_options.factory,
+        ));
+      }
+      if !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
+        add_text_change(format!(
+          "/** @jsxFragmentFactory {} */",
+          classic_options.fragment_factory,
+        ));
+      }
     }
     Ok(())
   }
@@ -232,12 +233,13 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
       self.compiler_options_resolver.for_specifier(specifier);
     let jsx_config = compiler_options.jsx_import_source_config()?;
     let transpile_options = &compiler_options.transpile_options()?.transpile;
-    let jsx_runtime =
-      if transpile_options.jsx_automatic || transpile_options.precompile_jsx {
-        "automatic"
-      } else {
-        "classic"
-      };
+    let jsx_runtime = match &transpile_options.jsx {
+      Some(
+        deno_ast::JsxRuntime::Automatic(_)
+        | deno_ast::JsxRuntime::Precompile(_),
+      ) => "automatic",
+      None | Some(deno_ast::JsxRuntime::Classic(_)) => "classic",
+    };
     let mut unfurl_import_source =
       |import_source: &str, referrer: &Url, resolution_kind: ResolutionKind| {
         let maybe_import_source = self
@@ -270,10 +272,19 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
           ResolutionKind::Types,
         )
       });
+    let classic_options = match &transpile_options.jsx {
+      None => Some(Cow::Owned(deno_ast::JsxClassicOptions::default())),
+      Some(deno_ast::JsxRuntime::Classic(classic_options)) => {
+        Some(Cow::Borrowed(classic_options))
+      }
+      Some(
+        deno_ast::JsxRuntime::Precompile(_)
+        | deno_ast::JsxRuntime::Automatic(_),
+      ) => None,
+    };
     Ok(JsxFolderOptions {
       jsx_runtime,
-      jsx_factory: &transpile_options.jsx_factory,
-      jsx_fragment_factory: &transpile_options.jsx_fragment_factory,
+      jsx_classic: classic_options,
       jsx_import_source,
       jsx_import_source_types,
     })

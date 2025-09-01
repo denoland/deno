@@ -703,11 +703,11 @@ pub fn fix_ts_import_changes(
     let target_module = if is_new_file {
       None
     } else {
-      let Some(target_module) = language_server
-        .document_modules
-        .inspect_module_for_specifier(
+      let Some(target_module) =
+        language_server.document_modules.module_for_specifier(
           &target_specifier,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )
       else {
         continue;

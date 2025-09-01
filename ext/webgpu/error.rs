@@ -361,3 +361,10 @@ impl From<WaitIdleError> for GPUError {
     GPUError::Validation(fmt_err(&err))
   }
 }
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum GPUGenericError {
+  #[class(type)]
+  #[error("Illegal constructor")]
+  InvalidConstructor,
+}

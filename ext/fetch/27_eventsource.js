@@ -6,8 +6,6 @@ import { primordials } from "ext:core/mod.js";
 import { op_utf8_to_byte_string } from "ext:core/ops";
 const {
   ArrayPrototypeFind,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSplice,
   Number,
   NumberIsFinite,
   NumberIsNaN,
@@ -200,16 +198,7 @@ class EventSource extends EventTarget {
     );
 
     if (this.#headers) {
-      const headerList = headerListFromHeaders(initialHeaders);
-      const headers = this.#headers ?? ArrayPrototypeSlice(
-        headerList,
-        0,
-        headerList.length,
-      );
-      if (headerList.length !== 0) {
-        ArrayPrototypeSplice(headerList, 0, headerList.length);
-      }
-      fillHeaders(initialHeaders, headers);
+      fillHeaders(initialHeaders, this.#headers);
     }
 
     const req = newInnerRequest(
