@@ -12,6 +12,7 @@ import { Buffer } from "node:buffer";
 import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
 import eos from "ext:deno_node/internal/streams/end-of-stream.js";
 import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
+import { codes } from "ext:deno_node/internal/errors.ts";
 import {
   getDefaultHighWaterMark,
   getHighWaterMark,
@@ -1468,7 +1469,25 @@ async function* createAsyncIterator(stream, options) {
       } else if (error === null) {
         return;
       } else {
-        await new Promise(next);
+        // Wait for next event, which could be data, error, or end
+        // Use a race condition with a timeout to prevent infinite hangs
+        await Promise.race([
+          new Promise(next),
+          new Promise((_, reject) => {
+            // Only timeout if we've been waiting too long and stream appears stuck
+            setTimeout(() => {
+              if (
+                stream.destroyed && stream._readableState?.destroyed &&
+                !stream._readableState?.ended &&
+                !stream._readableState?.endEmitted
+              ) {
+                const { ERR_STREAM_PREMATURE_CLOSE } = codes;
+                reject(new ERR_STREAM_PREMATURE_CLOSE());
+              }
+              // If conditions aren't met, just let the normal promise continue waiting
+            }, 100); // 100ms timeout before considering it stuck
+          }),
+        ]);
       }
     }
   } catch (err) {
