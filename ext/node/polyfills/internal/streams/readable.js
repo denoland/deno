@@ -845,9 +845,18 @@ Readable.prototype.read = function (n) {
   return ret;
 };
 
+function isStreamInInvalidEofState(state) {
+  // Stream is invalid for normal EOF handling if it has any flags set
+  // other than just kConstructed (e.g., already reading, ended, destroyed, or errored)
+  return (state[kState] &
+    (kReading | kEnded | kDestroyed | kErrored | kConstructed)) !==
+    kConstructed;
+}
+
 function onEofChunk(stream, state) {
   debug("onEofChunk");
   if ((state[kState] & kEnded) !== 0) return;
+
   const decoder = (state[kState] & kDecoder) !== 0
     ? state[kDecoderValue]
     : null;
@@ -860,19 +869,26 @@ function onEofChunk(stream, state) {
   }
   state[kState] |= kEnded;
 
+  // Handle EOF readable event emission
   if ((state[kState] & kSync) !== 0) {
     // If we are sync, wait until next tick to emit the data.
     // Otherwise we risk emitting data in the flow()
     // the readable code triggers during a read() call.
     emitReadable(stream);
-  } else {
-    // Emit 'readable' now to make sure it gets picked up.
-    state[kState] &= ~kNeedReadable;
-    state[kState] |= kEmittedReadable;
-    // We have to emit readable now that we are EOF. Modules
-    // in the ecosystem (e.g. dicer) rely on this event being sync.
-    emitReadable_(stream);
+    return;
   }
+
+  if (isStreamInInvalidEofState(state)) {
+    endReadable(stream);
+    return;
+  }
+
+  // Normal async mode - emit readable for ecosystem compatibility
+  // We have to emit readable now that we are EOF. Modules
+  // in the ecosystem (e.g. dicer) rely on this event being sync.
+  state[kState] &= ~kNeedReadable;
+  state[kState] |= kEmittedReadable;
+  emitReadable_(stream);
 }
 
 // Don't emit readable right away in sync mode, because this can trigger
