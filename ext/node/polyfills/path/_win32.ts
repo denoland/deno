@@ -28,10 +28,15 @@ import process from "node:process";
 
 const {
   ArrayPrototypeIncludes,
+  ArrayPrototypeJoin,
+  ArrayPrototypePop,
+  ArrayPrototypeSlice,
   StringPrototypeCharCodeAt,
   StringPrototypeIncludes,
   StringPrototypeIndexOf,
+  StringPrototypeRepeat,
   StringPrototypeSlice,
+  StringPrototypeSplit,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
   TypeError,
@@ -542,31 +547,79 @@ export function relative(from: string, to: string): string {
 
   if (from === to) return "";
 
+  if (fromOrig.length !== from.length || toOrig.length !== to.length) {
+    const fromSplit = StringPrototypeSplit(fromOrig, "\\");
+    const toSplit = StringPrototypeSplit(toOrig, "\\");
+    if (fromSplit[fromSplit.length - 1] === "") {
+      ArrayPrototypePop(fromSplit);
+    }
+    if (toSplit[toSplit.length - 1] === "") {
+      ArrayPrototypePop(toSplit);
+    }
+
+    const fromLen = fromSplit.length;
+    const toLen = toSplit.length;
+    const length = fromLen < toLen ? fromLen : toLen;
+
+    let i;
+    for (i = 0; i < length; i++) {
+      if (
+        StringPrototypeToLowerCase(fromSplit[i]) !==
+          StringPrototypeToLowerCase(toSplit[i])
+      ) {
+        break;
+      }
+    }
+
+    if (i === 0) {
+      return toOrig;
+    } else if (i === length) {
+      if (toLen > length) {
+        return ArrayPrototypeJoin(ArrayPrototypeSlice(toSplit, i), "\\");
+      }
+      if (fromLen > length) {
+        return StringPrototypeRepeat("..\\", fromLen - 1 - i) + "..";
+      }
+      return "";
+    }
+
+    return StringPrototypeRepeat("..\\", fromLen - i) +
+      ArrayPrototypeJoin(ArrayPrototypeSlice(toSplit, i), "\\");
+  }
+
   // Trim any leading backslashes
   let fromStart = 0;
-  let fromEnd = from.length;
-  for (; fromStart < fromEnd; ++fromStart) {
-    if (StringPrototypeCharCodeAt(from, fromStart) !== CHAR_BACKWARD_SLASH) {
-      break;
-    }
+  while (
+    fromStart < from.length &&
+    StringPrototypeCharCodeAt(from, fromStart) === CHAR_BACKWARD_SLASH
+  ) {
+    fromStart++;
   }
   // Trim trailing backslashes (applicable to UNC paths only)
-  for (; fromEnd - 1 > fromStart; --fromEnd) {
-    if (StringPrototypeCharCodeAt(from, fromEnd - 1) !== CHAR_BACKWARD_SLASH) {
-      break;
-    }
+  let fromEnd = from.length;
+  while (
+    fromEnd - 1 > fromStart &&
+    StringPrototypeCharCodeAt(from, fromEnd - 1) === CHAR_BACKWARD_SLASH
+  ) {
+    fromEnd--;
   }
   const fromLen = fromEnd - fromStart;
 
   // Trim any leading backslashes
   let toStart = 0;
-  let toEnd = to.length;
-  for (; toStart < toEnd; ++toStart) {
-    if (StringPrototypeCharCodeAt(to, toStart) !== CHAR_BACKWARD_SLASH) break;
+  while (
+    toStart < to.length &&
+    StringPrototypeCharCodeAt(to, toStart) === CHAR_BACKWARD_SLASH
+  ) {
+    toStart++;
   }
   // Trim trailing backslashes (applicable to UNC paths only)
-  for (; toEnd - 1 > toStart; --toEnd) {
-    if (StringPrototypeCharCodeAt(to, toEnd - 1) !== CHAR_BACKWARD_SLASH) break;
+  let toEnd = to.length;
+  while (
+    toEnd - 1 > toStart &&
+    StringPrototypeCharCodeAt(to, toEnd - 1) === CHAR_BACKWARD_SLASH
+  ) {
+    toEnd--;
   }
   const toLen = toEnd - toStart;
 
@@ -574,50 +627,57 @@ export function relative(from: string, to: string): string {
   const length = fromLen < toLen ? fromLen : toLen;
   let lastCommonSep = -1;
   let i = 0;
-  for (; i <= length; ++i) {
-    if (i === length) {
-      if (toLen > length) {
-        if (
-          StringPrototypeCharCodeAt(to, toStart + i) === CHAR_BACKWARD_SLASH
-        ) {
-          // We get here if `from` is the exact base path for `to`.
-          // For example: from='C:\\foo\\bar'; to='C:\\foo\\bar\\baz'
-          return StringPrototypeSlice(toOrig, toStart + i + 1);
-        } else if (i === 2) {
-          // We get here if `from` is the device root.
-          // For example: from='C:\\'; to='C:\\foo'
-          return StringPrototypeSlice(toOrig, toStart + i);
-        }
-      }
-      if (fromLen > length) {
-        if (
-          StringPrototypeCharCodeAt(from, fromStart + i) === CHAR_BACKWARD_SLASH
-        ) {
-          // We get here if `to` is the exact base path for `from`.
-          // For example: from='C:\\foo\\bar'; to='C:\\foo'
-          lastCommonSep = i;
-        } else if (i === 2) {
-          // We get here if `to` is the device root.
-          // For example: from='C:\\foo\\bar'; to='C:\\'
-          lastCommonSep = 3;
-        }
-      }
-      break;
-    }
+  for (; i < length; i++) {
     const fromCode = StringPrototypeCharCodeAt(from, fromStart + i);
-    const toCode = StringPrototypeCharCodeAt(to, toStart + i);
-    if (fromCode !== toCode) break;
-    else if (fromCode === CHAR_BACKWARD_SLASH) lastCommonSep = i;
+    if (fromCode !== StringPrototypeCharCodeAt(to, toStart + i)) {
+      break;
+    } else if (fromCode === CHAR_BACKWARD_SLASH) {
+      lastCommonSep = i;
+    }
   }
 
   // We found a mismatch before the first common path separator was seen, so
   // return the original `to`.
-  if (i !== length && lastCommonSep === -1) {
-    return toOrig;
+  if (i !== length) {
+    if (lastCommonSep === -1) {
+      return toOrig;
+    }
+  } else {
+    if (toLen > length) {
+      if (
+        StringPrototypeCharCodeAt(to, toStart + i) ===
+          CHAR_BACKWARD_SLASH
+      ) {
+        // We get here if `from` is the exact base path for `to`.
+        // For example: from='C:\\foo\\bar'; to='C:\\foo\\bar\\baz'
+        return StringPrototypeSlice(toOrig, toStart + i + 1);
+      }
+      if (i === 2) {
+        // We get here if `from` is the device root.
+        // For example: from='C:\\'; to='C:\\foo'
+        return StringPrototypeSlice(toOrig, toStart + i);
+      }
+    }
+    if (fromLen > length) {
+      if (
+        StringPrototypeCharCodeAt(from, fromStart + i) ===
+          CHAR_BACKWARD_SLASH
+      ) {
+        // We get here if `to` is the exact base path for `from`.
+        // For example: from='C:\\foo\\bar'; to='C:\\foo'
+        lastCommonSep = i;
+      } else if (i === 2) {
+        // We get here if `to` is the device root.
+        // For example: from='C:\\foo\\bar'; to='C:\\'
+        lastCommonSep = 3;
+      }
+    }
+    if (lastCommonSep === -1) {
+      lastCommonSep = 0;
+    }
   }
 
   let out = "";
-  if (lastCommonSep === -1) lastCommonSep = 0;
   // Generate the relative path based on the path difference between `to` and
   // `from`
   for (i = fromStart + lastCommonSep + 1; i <= fromEnd; ++i) {
@@ -625,22 +685,21 @@ export function relative(from: string, to: string): string {
       i === fromEnd ||
       StringPrototypeCharCodeAt(from, i) === CHAR_BACKWARD_SLASH
     ) {
-      if (out.length === 0) out += "..";
-      else out += "\\..";
+      out += out.length === 0 ? ".." : "\\..";
     }
   }
+
+  toStart += lastCommonSep;
 
   // Lastly, append the rest of the destination (`to`) path that comes after
   // the common path parts
   if (out.length > 0) {
-    return out + StringPrototypeSlice(toOrig, toStart + lastCommonSep, toEnd);
-  } else {
-    toStart += lastCommonSep;
-    if (StringPrototypeCharCodeAt(toOrig, toStart) === CHAR_BACKWARD_SLASH) {
-      ++toStart;
-    }
-    return StringPrototypeSlice(toOrig, toStart, toEnd);
+    return out + StringPrototypeSlice(toOrig, toStart, toEnd);
   }
+  if (StringPrototypeCharCodeAt(toOrig, toStart) === CHAR_BACKWARD_SLASH) {
+    ++toStart;
+  }
+  return StringPrototypeSlice(toOrig, toStart, toEnd);
 }
 
 /**
