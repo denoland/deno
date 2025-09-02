@@ -31,26 +31,10 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 use crate::sys::CliSys;
+use crate::util::fs::FsCleaner;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
-use crate::util::progress_bar::UpdateGuard;
-
-#[derive(Default)]
-struct CleanState {
-  files_removed: u64,
-  dirs_removed: u64,
-  bytes_removed: u64,
-  progress_guard: Option<UpdateGuard>,
-}
-
-impl CleanState {
-  fn update_progress(&self) {
-    if let Some(pg) = &self.progress_guard {
-      pg.set_position(self.files_removed + self.dirs_removed);
-    }
-  }
-}
 
 pub async fn clean(
   flags: Arc<Flags>,
@@ -69,17 +53,12 @@ pub async fn clean(
     let progress_guard =
       progress_bar.update_with_prompt(ProgressMessagePrompt::Cleaning, "");
     progress_guard.set_total_size(no_of_files.try_into().unwrap());
-    let mut state = CleanState {
-      files_removed: 0,
-      dirs_removed: 0,
-      bytes_removed: 0,
-      progress_guard: Some(progress_guard),
-    };
+    let mut cleaner = FsCleaner::new(Some(progress_guard));
 
-    rm_rf(&mut state, &deno_dir.root)?;
+    cleaner.rm_rf(&deno_dir.root)?;
 
     // Drop the guard so that progress bar disappears.
-    drop(state.progress_guard);
+    drop(cleaner.progress_guard);
 
     log::info!(
       "{} {} {}",
@@ -87,8 +66,8 @@ pub async fn clean(
       deno_dir.root.display(),
       colors::gray(&format!(
         "({} files, {})",
-        state.files_removed + state.dirs_removed,
-        display::human_size(state.bytes_removed as f64)
+        cleaner.files_removed + cleaner.dirs_removed,
+        display::human_size(cleaner.bytes_removed as f64)
       ))
     );
   }
@@ -202,7 +181,7 @@ async fn clean_except(
   entrypoints: &[String],
   dry_run: bool,
 ) -> Result<(), AnyError> {
-  let mut state = CleanState::default();
+  let mut state = FsCleaner::default();
 
   let factory = CliFactory::from_flags(flags.clone());
   let sys = factory.sys();
@@ -345,7 +324,7 @@ async fn clean_except(
     &deno_dir.root,
     dry_run,
   )?;
-  let mut node_modules_cleaned = CleanState::default();
+  let mut node_modules_cleaned = FsCleaner::default();
 
   if let Some(dir) = node_modules_path {
     // let npm_installer = factory.npm_installer_if_managed().await?.unwrap();
@@ -359,7 +338,7 @@ async fn clean_except(
     )?;
   }
 
-  let mut vendor_cleaned = CleanState::default();
+  let mut vendor_cleaned = FsCleaner::default();
   if let Some(vendor_dir) = options.vendor_dir_path()
     && let GlobalOrLocalHttpCache::Local(cache) = local_or_global_http_cache
   {
@@ -408,10 +387,10 @@ async fn clean_except(
   Ok(())
 }
 
-fn log_stats(state: &CleanState, dir: &Path) {
-  if state.bytes_removed == 0
-    && state.dirs_removed == 0
-    && state.files_removed == 0
+fn log_stats(cleaner: &FsCleaner, dir: &Path) {
+  if cleaner.bytes_removed == 0
+    && cleaner.dirs_removed == 0
+    && cleaner.files_removed == 0
   {
     return;
   }
@@ -420,8 +399,8 @@ fn log_stats(state: &CleanState, dir: &Path) {
     colors::green("Removed"),
     colors::gray(&format!(
       "{} files, {} from {}",
-      state.files_removed + state.dirs_removed,
-      display::human_size(state.bytes_removed as f64),
+      cleaner.files_removed + cleaner.dirs_removed,
+      display::human_size(cleaner.bytes_removed as f64),
       dir.display()
     ))
   );
@@ -451,7 +430,7 @@ fn add_jsr_meta_paths(
 
 // TODO(nathanwhit): use strategy pattern instead of branching on dry_run
 fn walk_removing(
-  state: &mut CleanState,
+  cleaner: &mut FsCleaner,
   walker: WalkDir,
   trie: &PathTrie,
   base: &Path,
@@ -481,7 +460,7 @@ fn walk_removing(
           eprintln!(" {}", entry.path().display());
         }
       } else {
-        rm_rf(state, entry.path())?;
+        cleaner.rm_rf(entry.path())?;
       }
       walker.skip_current_dir();
     } else if dry_run {
@@ -490,7 +469,7 @@ fn walk_removing(
         eprintln!(" {}", entry.path().display());
       }
     } else {
-      remove_file(state, entry.path(), Some(entry.metadata()?))?;
+      cleaner.remove_file(entry.path(), Some(entry.metadata()?))?;
     }
   }
 
@@ -498,7 +477,7 @@ fn walk_removing(
 }
 
 fn clean_node_modules(
-  state: &mut CleanState,
+  cleaner: &mut FsCleaner,
   keep_pkgs: &HashSet<deno_npm::NpmPackageCacheFolderId>,
   dir: &Path,
   dry_run: bool,
@@ -558,20 +537,26 @@ fn clean_node_modules(
         eprintln!(" {}", entry.path().display());
       }
     } else {
-      rm_rf(state, &entry.path())?;
+      cleaner.rm_rf(&entry.path())?;
     }
   }
 
   // remove top level symlinks from node_modules/<package> to node_modules/.deno/<package>
   // where the target doesn't exist (because it was removed above)
-  clean_node_modules_symlinks(state, &keep_names, dir, dry_run, &mut |name| {
-    setup_cache.remove_root_symlink(name);
-  })?;
+  clean_node_modules_symlinks(
+    cleaner,
+    &keep_names,
+    dir,
+    dry_run,
+    &mut |name| {
+      setup_cache.remove_root_symlink(name);
+    },
+  )?;
 
   // remove symlinks from node_modules/.deno/node_modules/<package> to node_modules/.deno/<package>
   // where the target doesn't exist (because it was removed above)
   clean_node_modules_symlinks(
-    state,
+    cleaner,
     &keep_names,
     &base.join("node_modules"),
     dry_run,
@@ -598,7 +583,7 @@ fn node_modules_package_actual_dir_to_name(
 }
 
 fn clean_node_modules_symlinks(
-  state: &mut CleanState,
+  cleaner: &mut FsCleaner,
   keep_names: &HashSet<String>,
   dir: &Path,
   dry_run: bool,
@@ -620,57 +605,12 @@ fn clean_node_modules_symlinks(
           }
         } else {
           on_remove(&name);
-          remove_file(state, &entry.path(), None)?;
+          cleaner.remove_file(&entry.path(), None)?;
         }
       }
     }
   }
   Ok(())
-}
-
-fn rm_rf(state: &mut CleanState, path: &Path) -> Result<(), AnyError> {
-  for entry in walkdir::WalkDir::new(path).contents_first(true) {
-    let entry = entry?;
-
-    if entry.file_type().is_dir() {
-      state.dirs_removed += 1;
-      state.update_progress();
-      std::fs::remove_dir_all(entry.path())?;
-    } else {
-      remove_file(state, entry.path(), entry.metadata().ok())?;
-    }
-  }
-
-  Ok(())
-}
-
-fn remove_file(
-  state: &mut CleanState,
-  path: &Path,
-  meta: Option<std::fs::Metadata>,
-) -> Result<(), AnyError> {
-  if let Some(meta) = meta {
-    state.bytes_removed += meta.len();
-  }
-  state.files_removed += 1;
-  state.update_progress();
-  match std::fs::remove_file(path)
-    .with_context(|| format!("Failed to remove file: {}", path.display()))
-  {
-    Err(e) => {
-      if cfg!(windows)
-        && let Ok(meta) = path.symlink_metadata()
-        && meta.is_symlink()
-      {
-        std::fs::remove_dir(path).with_context(|| {
-          format!("Failed to remove symlink: {}", path.display())
-        })?;
-        return Ok(());
-      }
-      Err(e)
-    }
-    _ => Ok(()),
-  }
 }
 
 #[cfg(test)]
