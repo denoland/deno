@@ -10,7 +10,7 @@ use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::TracedReference;
-use deno_core::v8::cppgc::Visitor;
+use deno_core::v8::cppgc::{Traced, Visitor};
 use deno_error::JsErrorBox;
 use wgpu_types::SurfaceStatus;
 
@@ -65,6 +65,8 @@ impl GarbageCollected for GPUCanvasContext {
     if let Some(config) = &*self.config.borrow() {
       config.trace(visitor);
     }
+    
+    self.texture.borrow().trace(visitor);
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -131,7 +133,7 @@ impl GPUCanvasContext {
 
   fn get_current_texture<'s>(
     &self,
-    scope: &'s mut v8::HandleScope,
+    scope: &mut v8::HandleScope<'s>,
   ) -> Result<v8::Local<'s, v8::Object>, SurfaceError> {
     let config = self.config.borrow();
     let Some(config) = config.as_ref() else {
