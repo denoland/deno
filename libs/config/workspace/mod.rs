@@ -1474,7 +1474,7 @@ struct CachedDirectoryValues {
 pub struct WorkspaceDirectory {
   pub workspace: WorkspaceRc,
   /// The directory that this context is for. This is generally the cwd.
-  pub dir_url: UrlRc,
+  dir_url: UrlRc,
   pkg_json: Option<WorkspaceDirConfig<PackageJson>>,
   deno_json: Option<WorkspaceDirConfig<ConfigFile>>,
   cached: CachedDirectoryValues,

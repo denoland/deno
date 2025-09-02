@@ -61,7 +61,6 @@ pub async fn execute_script(
   let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
-  eprintln!("start dir {:#?}", start_dir.dir_url);
   if !start_dir.has_deno_or_pkg_json() && !task_flags.eval {
     bail!(
       "deno task couldn't find deno.json(c) or package.json. See https://docs.deno.com/go/config"
