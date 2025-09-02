@@ -91,7 +91,7 @@ pub enum SqliteError {
   #[error("session is not open")]
   #[property("code" = self.code())]
   SessionClosed,
-  #[class(generic)]
+  #[class(type)]
   #[error("Illegal constructor")]
   #[property("code" = self.code())]
   InvalidConstructor,
