@@ -1584,49 +1584,6 @@ ServerResponse.prototype.setHeader = function (
   return this;
 };
 
-ServerResponse.prototype.setHeaders = function setHeaders(
-  this: ServerResponse,
-  headers: Headers | Map<string, string | string[]>,
-) {
-  if (this._header) {
-    throw new ERR_HTTP_HEADERS_SENT("set");
-  }
-
-  if (
-    !headers ||
-    ArrayIsArray(headers) ||
-    typeof headers.keys !== "function" ||
-    typeof headers.get !== "function"
-  ) {
-    throw new ERR_INVALID_ARG_TYPE("headers", ["Headers", "Map"], headers);
-  }
-
-  // Headers object joins multiple cookies with a comma when using
-  // the getter to retrieve the value,
-  // unless iterating over the headers directly.
-  // We also cannot safely split by comma.
-  // To avoid setHeader overwriting the previous value we push
-  // set-cookie values in array and set them all at once.
-  const cookies = [];
-
-  for (const { 0: key, 1: value } of headers) {
-    if (key === "set-cookie") {
-      if (ArrayIsArray(value)) {
-        cookies.push(...value);
-      } else {
-        cookies.push(value);
-      }
-      continue;
-    }
-    this.setHeader(key, value);
-  }
-  if (cookies.length) {
-    this.setHeader("set-cookie", cookies);
-  }
-
-  return this;
-};
-
 ServerResponse.prototype.appendHeader = function (
   this: ServerResponse,
   name: string,
@@ -1688,12 +1645,10 @@ ServerResponse.prototype.writeHead = function (
   statusMessageOrHeaders?:
     | string
     | Record<string, string | number | string[]>
-    | Array<[string, string]>
-    | Array<string>,
+    | Array<[string, string]>,
   maybeHeaders?:
     | Record<string, string | number | string[]>
-    | Array<[string, string]>
-    | Array<string>,
+    | Array<[string, string]>,
 ) {
   this.statusCode = status;
 
@@ -1709,36 +1664,9 @@ ServerResponse.prototype.writeHead = function (
 
   if (headers !== null) {
     if (ArrayIsArray(headers)) {
-      headers = headers as Array<[string, string]> | Array<string>;
-
-      // Headers should override previous headers but still
-      // allow explicit duplicates. To do so, we first remove any
-      // existing conflicts, then use appendHeader.
-
-      if (ArrayIsArray(headers[0])) {
-        headers = headers as Array<[string, string]>;
-        for (let i = 0; i < headers.length; i++) {
-          const headerTuple = headers[i];
-          const k = headerTuple[0];
-          if (k) this.removeHeader(k);
-        }
-
-        for (let i = 0; i < headers.length; i++) {
-          const headerTuple = headers[i];
-          const k = headerTuple[0];
-          if (k) this.appendHeader(k, headerTuple[1]);
-        }
-      } else {
-        headers = headers as Array<string>;
-        for (let i = 0; i < headers.length; i += 2) {
-          const k = headers[i];
-          this.removeHeader(k);
-        }
-
-        for (let i = 0; i < headers.length; i += 2) {
-          const k = headers[i];
-          if (k) this.appendHeader(k, headers[i + 1]);
-        }
+      headers = headers as Array<[string, string]>;
+      for (let i = 0; i < headers.length; i++) {
+        this.appendHeader(headers[i][0], headers[i][1]);
       }
     } else {
       headers = headers as Record<string, string>;
@@ -1881,7 +1809,6 @@ const kRawHeaders = Symbol("rawHeaders");
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #headers: Record<string, string>;
-  #aborted = false;
   url: string;
   method: string;
   socket: Socket | FakeSocket;
@@ -1911,8 +1838,7 @@ export class IncomingMessageForServer extends NodeReadable {
       destroy: (err, cb) => {
         reader?.cancel().catch(() => {
           // Don't throw error - it's propagated to the user via 'error' event.
-        });
-        nextTick(onError, this, err, cb);
+        }).finally(nextTick(onError, this, err, cb));
       },
     });
     this.url = "";
@@ -1928,7 +1854,7 @@ export class IncomingMessageForServer extends NodeReadable {
   }
 
   get aborted() {
-    return this.#aborted;
+    return false;
   }
 
   get httpVersion() {
@@ -1976,43 +1902,6 @@ export class IncomingMessageForServer extends NodeReadable {
     }
     this.socket.setTimeout(msecs);
     return this;
-  }
-
-  destroy(err?: Error) {
-    if (this.destroyed) {
-      return this;
-    }
-
-    // Set aborted state and emit aborted event
-    this.#aborted = true;
-    this.emit("aborted");
-
-    // Call the parent destroy method first
-    const result = super.destroy(err);
-
-    // For HTTP requests that have been aborted, ensure proper stream state
-    // This should be done after parent destroy to avoid conflicts
-    if (this._readableState) {
-      // Only set these if parent destroy didn't already handle them properly
-      if (!this._readableState.ended) {
-        this._readableState.ended = true;
-        this._readableState.endEmitted = true;
-      }
-
-      // Ensure close event is emitted if parent destroy didn't handle it
-      // Check on next tick to avoid race conditions with parent's close emission
-      nextTick(() => {
-        if (
-          !this._readableState?.closed &&
-          this._readableState?.emitClose !== false
-        ) {
-          this._readableState.closed = true;
-          this.emit("close");
-        }
-      });
-    }
-
-    return result;
   }
 }
 

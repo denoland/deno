@@ -104,18 +104,6 @@ function eos(stream, options, callback) {
     isWritableNodeStream(stream) === writable;
 
   let writableFinished = isWritableFinished(stream, false);
-  let readableFinished = isReadableFinished(stream, false);
-
-  // For PassThrough streams that are already completely finished, don't call callback
-  if (
-    stream.constructor?.name === "PassThrough" &&
-    readable && writable &&
-    readableFinished && writableFinished &&
-    !stream.destroyed
-  ) {
-    return nop;
-  }
-
   const onfinish = () => {
     writableFinished = true;
     // Stream should not be destroyed here. If it is that
@@ -134,6 +122,7 @@ function eos(stream, options, callback) {
     }
   };
 
+  let readableFinished = isReadableFinished(stream, false);
   const onend = () => {
     readableFinished = true;
     // Stream should not be destroyed here. If it is that

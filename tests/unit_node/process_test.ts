@@ -599,7 +599,7 @@ Deno.test({
 Deno.test({
   name: "process.stdin readable with null",
   async fn() {
-    const expected = ["65536", "end"];
+    const expected = ["65536", "null", "end"];
     const scriptPath = "./testdata/process_stdin.ts";
 
     const command = new Deno.Command(Deno.execPath(), {
