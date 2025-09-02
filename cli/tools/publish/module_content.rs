@@ -476,7 +476,6 @@ mod test {
       )
       .unwrap(),
     );
-    let specifier_unfurler = SpecifierUnfurler::new(None, resolver, false);
     let package_json_resolver =
       Arc::new(PackageJsonResolver::new(sys.clone(), None));
     let node_resolver = Arc::new(NodeResolver::new(
@@ -500,6 +499,8 @@ mod test {
       &ConfigDiscoveryOption::DiscoverCwd,
       &CompilerOptionsOverrides::default(),
     ));
+    resolver.set_compiler_options_resolver(compiler_options_resolver.clone());
+    let specifier_unfurler = SpecifierUnfurler::new(None, resolver, false);
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),
       specifier_unfurler,
