@@ -1,3 +1,5 @@
+Please specify a [SCRIPT_ARG] or a task name.
+
 Available tasks:
 - dev
     deno run --watch --allow-net server.ts

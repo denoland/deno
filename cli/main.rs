@@ -241,7 +241,25 @@ async fn run_subcommand(
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
-      if run_flags.is_stdin() {
+      if run_flags.print_task_list {
+        log::info!(
+          "Please specify a {} or a {}.\n",
+          colors::bold("[SCRIPT_ARG]"),
+          colors::bold("task name")
+        );
+        tools::task::execute_script(
+          flags,
+          TaskFlags {
+            cwd: None,
+            task: None,
+            is_run: true,
+            recursive: false,
+            filter: None,
+            eval: false,
+          },
+        )
+        .await
+      } else if run_flags.is_stdin() {
         // these futures are boxed to prevent stack overflows on Windows
         tools::run::run_from_stdin(flags.clone(), unconfigured_runtime, roots)
           .boxed_local()

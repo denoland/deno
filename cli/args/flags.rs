@@ -339,6 +339,7 @@ pub struct RunFlags {
   pub watch: Option<WatchFlagsWithPaths>,
   pub bare: bool,
   pub coverage_dir: Option<String>,
+  pub print_task_list: bool,
 }
 
 impl RunFlags {
@@ -349,6 +350,7 @@ impl RunFlags {
       watch: None,
       bare: false,
       coverage_dir: None,
+      print_task_list: false,
     }
   }
 
@@ -5764,6 +5766,7 @@ fn run_parse(
         watch: watch_arg_parse_with_paths(matches)?,
         bare,
         coverage_dir,
+        print_task_list: false,
       });
     }
     _ => {
@@ -5774,13 +5777,12 @@ fn run_parse(
     ));
       } else {
         // When no script argument is provided, show available tasks like `deno task`
-        flags.subcommand = DenoSubcommand::Task(TaskFlags {
-          cwd: None,
-          task: None,
-          is_run: false,
-          recursive: false,
-          filter: None,
-          eval: false,
+        flags.subcommand = DenoSubcommand::Run(RunFlags {
+          script: "".to_string(),
+          watch: None,
+          bare: false,
+          coverage_dir: None,
+          print_task_list: true,
         });
       }
     }
@@ -6748,6 +6750,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6774,6 +6777,7 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6801,6 +6805,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6828,6 +6833,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6855,6 +6861,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6883,6 +6890,7 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6914,6 +6922,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6944,6 +6953,7 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6971,6 +6981,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6999,6 +7010,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -7026,6 +7038,7 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -7065,6 +7078,7 @@ mod tests {
           watch: None,
           bare: false,
           coverage_dir: Some("foo".to_string()),
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -7381,6 +7395,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         permissions: PermissionFlags {
           deny_read: Some(vec![]),
@@ -8671,6 +8686,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         permissions: PermissionFlags {
           deny_net: Some(svec!["127.0.0.1"]),
@@ -8859,6 +8875,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         permissions: PermissionFlags {
           deny_sys: Some(svec!["hostname"]),
@@ -9159,6 +9176,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         ..Flags::default()
       }
@@ -9470,6 +9488,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         log_level: Some(Level::Error),
         code_cache_enabled: true,
@@ -9591,6 +9610,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         type_check_mode: TypeCheckMode::None,
         code_cache_enabled: true,
@@ -9763,6 +9783,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         node_modules_dir: Some(NodeModulesDirMode::Auto),
         code_cache_enabled: true,
@@ -10987,6 +11008,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
         code_cache_enabled: true,
@@ -11681,6 +11703,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         type_check_mode: TypeCheckMode::None,
         code_cache_enabled: true,
@@ -12235,6 +12258,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         config_flag: ConfigFlag::Disabled,
         code_cache_enabled: true,
