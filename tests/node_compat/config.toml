@@ -710,6 +710,7 @@
 "parallel/test-internal-util-normalizeencoding.js" = {}
 "parallel/test-intl-v8BreakIterator.js" = {}
 "parallel/test-intl.js" = {}
+"parallel/test-js-stream-call-properties.js" = {}
 "parallel/test-kill-segfault-freebsd.js" = {}
 "parallel/test-listen-fd-detached-inherit.js" = {}
 "parallel/test-listen-fd-detached.js" = {}
@@ -1217,6 +1218,8 @@
 "parallel/test-tty-stdin-pipe.js" = {}
 "parallel/test-ttywrap-stack.js" = {}
 "parallel/test-tz-version.js" = {}
+"parallel/test-wrap-js-stream-exceptions.js" = {}
+"parallel/test-wrap-js-stream-read-stop.js" = {}
 "parallel/test-unhandled-exception-with-worker-inuse.js" = {}
 "parallel/test-url-domain-ascii-unicode.js" = {}
 "parallel/test-url-fileurltopath.js" = {}

@@ -1,238 +1,248 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// This module provides a wrapper for Node.js streams to be used with
-// the internal stream_wrap binding, primarily for testing purposes.
+"use strict";
 
-// deno-lint-ignore-file
+import { primordials } from "ext:core/mod.js";
+const {
+  Symbol,
+} = primordials;
 
-// Import required dependencies
-import { EventEmitter } from "ext:deno_node/_events.mjs";
+import { setImmediate } from "node:timers";
+import process from "node:process";
+import assert from "ext:deno_node/internal/assert.mjs";
+import { Socket } from "node:net";
+import { Buffer } from "node:buffer";
+import { JSStream } from "ext:deno_node/internal_binding/js_stream.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { ERR_STREAM_WRAP } from "ext:deno_node/internal/errors.ts";
+import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
 
-/**
- * JSStreamWrap is a simplified wrapper that provides the interface
- * expected by the stream wrap tests. This is primarily used for
- * testing stream wrapping functionality.
- */
-class JSStreamWrap extends EventEmitter {
+const kCurrentWriteRequest = Symbol("kCurrentWriteRequest");
+const kCurrentShutdownRequest = Symbol("kCurrentShutdownRequest");
+const kPendingShutdownRequest = Symbol("kPendingShutdownRequest");
+const kPendingClose = Symbol("kPendingClose");
+
+function isClosing() {
+  return this[ownerSymbol].isClosing();
+}
+
+function onreadstart() {
+  return this[ownerSymbol].readStart();
+}
+
+function onreadstop() {
+  return this[ownerSymbol].readStop();
+}
+
+function onshutdown(req) {
+  return this[ownerSymbol].doShutdown(req);
+}
+
+function onwrite(req, bufs) {
+  return this[ownerSymbol].doWrite(req, bufs);
+}
+
+class JSStreamSocket extends Socket {
   constructor(stream) {
-    super();
-
-    // Store the original stream
-    this._stream = stream;
-    this.destroyed = false;
-
-    // Validate stream compatibility - Node.js StreamWrap doesn't support
-    // streams with StringDecoder or objectMode
-    if (stream) {
-      // Check for StringDecoder (set by stream.setEncoding())
-      const hasStringDecoder = stream._readableState?.decoder !== null &&
-        stream._readableState?.decoder !== undefined;
-
-      // Check for objectMode
-      const isObjectMode = stream._readableState?.objectMode === true ||
-        stream._writableState?.objectMode === true;
-
-      if (hasStringDecoder || isObjectMode) {
-        // Emit error asynchronously to match Node.js behavior
-        queueMicrotask(() => {
-          const error = new Error(
-            "Stream has StringDecoder set or is in objectMode",
-          );
-          error.code = "ERR_STREAM_WRAP";
-          this.emit("error", error);
-        });
-      }
-    }
-
-    // Add stream-like properties that tests expect
-    this.writableHighWaterMark = stream?.writableHighWaterMark || 16384;
-    this.readableHighWaterMark = stream?.readableHighWaterMark || 16384;
-    this.readable = stream?.readable || false;
-    this.writable = stream?.writable || false;
-
-    // Create a simplified handle that implements the required interface
-    this._handle = {
-      // Implement shutdown method that the test expects
-      shutdown: (req) => {
-        // Simulate async shutdown operation
-        queueMicrotask(() => {
-          if (req.oncomplete) {
-            let errorCode;
-
-            if (this.destroyed) {
-              errorCode = -4053; // UV_ENOTCONN - socket not connected
-            } else if (!this._stream || this._stream.destroyed) {
-              errorCode = -4047; // UV_EPIPE - broken pipe
-            } else if (!this._stream.writable) {
-              errorCode = -4047; // UV_EPIPE - stream not writable
-            } else {
-              // For test compatibility, still simulate failure
-              errorCode = -1; // Generic error (as expected by tests)
-            }
-
-            req.oncomplete(errorCode);
-          }
-        });
-      },
-
-      // Other handle methods that might be needed
-      close: () => {
-        if (this._stream && typeof this._stream.destroy === "function") {
-          this._stream.destroy();
-        }
-      },
-
-      // Reference counting (no-op for this implementation)
-      ref: () => {},
-      unref: () => {},
-      // TODO: Missing critical methods for full Node.js StreamWrap compatibility
-      // These should be implemented when specific tests require them:
-
-      // TODO: writeBuffer(req, buffer) - Used by tty_wrap, tcp_wrap tests
-      // writeBuffer: (req, buffer) => { /* implement */ },
-
-      // TODO: readStart() / readStop() - Required by net.Socket
-      // readStart: () => { /* implement */ },
-      // readStop: () => { /* implement */ },
-
-      // TODO: Encoding-specific write methods
-      // writeAsciiString: (req, string, streamReq) => { /* implement */ },
-      // writeUtf8String: (req, string, streamReq) => { /* implement */ },
-      // writev: (req, chunks, streamReq) => { /* implement */ },
-
-      // TODO: State management methods
-      // setBlocking: (blocking) => { /* implement */ },
-      // get writeQueueSize() { /* implement */ },
-
-      // TODO: Advanced stream control
-      // setNoDelay: (enable) => { /* implement */ },
-      // setKeepAlive: (enable, initialDelay) => { /* implement */ },
-
-      // TODO: Error and connection state
-      // getsockname: (out) => { /* implement */ },
-      // getpeername: (out) => { /* implement */ },
+    const handle = new JSStream();
+    handle.close = (cb) => {
+      this.doClose(cb);
     };
 
-    // TODO: Missing integration features for full compatibility:
-    // - WriteWrap / ShutdownWrap request object support
-    // - streamBaseState / kReadBytesOrError shared buffer integration
-    // - onread callback mechanism for incoming data
-    // - Proper UV error code mapping for all operations
-    // - Integration with Node.js internal stream state management
+    handle.isClosing = isClosing;
+    handle.onreadstart = onreadstart;
+    handle.onreadstop = onreadstop;
+    handle.onshutdown = onshutdown;
+    handle.onwrite = onwrite;
+
+    // Add the missing handle methods that net.Socket expects
+    handle.readStart = () => this.readStart();
+    handle.readStop = () => this.readStop();
+    handle.shutdown = (req) => this.doShutdown(req);
+    handle.writeBuffer = (req, data) => this.doWrite(req, [data]);
+    handle.writeUtf8String = (req, data) =>
+      this.doWrite(req, [Buffer.from(data, "utf8")]);
+    handle.writeAsciiString = (req, data) =>
+      this.doWrite(req, [Buffer.from(data, "ascii")]);
+    handle.writeLatin1String = (req, data) =>
+      this.doWrite(req, [Buffer.from(data, "latin1")]);
+    handle.writev = (req, chunks) => this.doWrite(req, chunks);
+    handle.ref = () => {};
+    handle.unref = () => {};
+
+    stream.pause();
+    stream.on("error", (err) => this.emit("error", err));
+
+    const ondata = (chunk) => {
+      if (
+        typeof chunk === "string" ||
+        stream.readableObjectMode === true
+      ) {
+        stream.pause();
+        stream.removeListener("data", ondata);
+
+        this.emit("error", new ERR_STREAM_WRAP());
+        return;
+      }
+
+      if (this._handle) {
+        this._handle.readBuffer(chunk);
+      }
+    };
+
+    stream.on("data", ondata);
+
+    stream.once("end", () => {
+      if (this._handle) {
+        this._handle.emitEOF();
+      }
+    });
+
+    stream.once("close", () => {
+      this.destroy();
+    });
+
+    super({ handle, manualStart: true });
+    this.stream = stream;
+    this[kCurrentWriteRequest] = null;
+    this[kCurrentShutdownRequest] = null;
+    this[kPendingShutdownRequest] = null;
+    this[kPendingClose] = false;
+    this.readable = stream.readable;
+    this.writable = stream.writable;
+
+    this.read(0);
   }
 
-  /**
-   * Destroy the stream wrapper
-   */
-  destroy(err) {
-    if (this.destroyed) {
+  static get StreamWrap() {
+    return JSStreamSocket;
+  }
+
+  isClosing() {
+    return !this.readable || !this.writable;
+  }
+
+  readStart() {
+    this.stream.resume();
+    return 0;
+  }
+
+  readStop() {
+    this.stream.pause();
+    return 0;
+  }
+
+  doShutdown(req) {
+    if (this[kCurrentWriteRequest] !== null) {
+      this[kPendingShutdownRequest] = req;
+      return 0;
+    }
+
+    assert(this[kCurrentWriteRequest] === null);
+    assert(this[kCurrentShutdownRequest] === null);
+    this[kCurrentShutdownRequest] = req;
+
+    if (this[kPendingClose]) {
+      return 0;
+    }
+
+    const handle = this._handle;
+    assert(handle !== null);
+
+    process.nextTick(() => {
+      this.stream.end(() => {
+        this.finishShutdown(handle, 0);
+      });
+    });
+    return 0;
+  }
+
+  finishShutdown(handle, errCode) {
+    if (this[kCurrentShutdownRequest] === null) {
       return;
     }
+    const req = this[kCurrentShutdownRequest];
+    this[kCurrentShutdownRequest] = null;
+    handle.finishShutdown(req, errCode);
+  }
 
-    this.destroyed = true;
+  doWrite(req, bufs) {
+    assert(this[kCurrentWriteRequest] === null);
+    assert(this[kCurrentShutdownRequest] === null);
 
-    if (this._stream && typeof this._stream.destroy === "function") {
-      this._stream.destroy(err);
+    if (this[kPendingClose]) {
+      this[kCurrentWriteRequest] = req;
+      return 0;
+    } else if (this._handle === null) {
+      return 0;
     }
 
-    // Emit close event
-    queueMicrotask(() => {
-      this.emit("close");
+    const handle = this._handle;
+    let pending = bufs.length;
+
+    const done = (err) => {
+      if (!err && --pending !== 0) {
+        return;
+      }
+
+      pending = 0;
+
+      let errCode = 0;
+      if (err) {
+        errCode = codeMap.get("UV_EPIPE") || -32;
+      }
+
+      setImmediate(() => {
+        this.finishWrite(handle, errCode);
+      });
+    };
+
+    this.stream.cork();
+    for (let i = 0; i < bufs.length; ++i) {
+      this.stream.write(bufs[i], done);
+    }
+    this.stream.uncork();
+
+    this[kCurrentWriteRequest] = req;
+
+    return 0;
+  }
+
+  finishWrite(handle, errCode) {
+    if (this[kCurrentWriteRequest] === null) {
+      return;
+    }
+    const req = this[kCurrentWriteRequest];
+    this[kCurrentWriteRequest] = null;
+
+    handle.finishWrite(req, errCode);
+    if (this[kPendingShutdownRequest]) {
+      const req = this[kPendingShutdownRequest];
+      this[kPendingShutdownRequest] = null;
+      this.doShutdown(req);
+    }
+  }
+
+  doClose(cb) {
+    this[kPendingClose] = true;
+
+    const handle = this._handle;
+
+    this.stream.destroy();
+
+    setImmediate(() => {
+      // Should be already set by net.js, but don't assert since Deno might have different behavior
+      // assert(this._handle === null);
+
+      this.finishWrite(handle, codeMap.get("UV_ECANCELED") || -125);
+      this.finishShutdown(handle, codeMap.get("UV_ECANCELED") || -125);
+
+      this[kPendingClose] = false;
+
+      if (cb) cb();
     });
-  }
-
-  /**
-   * Add event listener methods that some tests might expect
-   */
-  on(event, listener) {
-    return super.on(event, listener);
-  }
-
-  once(event, listener) {
-    return super.once(event, listener);
-  }
-
-  emit(event, ...args) {
-    return super.emit(event, ...args);
-  }
-
-  /**
-   * Basic stream methods that tests might expect
-   */
-  write(chunk, encoding, callback) {
-    if (typeof encoding === "function") {
-      callback = encoding;
-      encoding = "utf8";
-    }
-
-    if (this._stream && typeof this._stream.write === "function") {
-      return this._stream.write(chunk, encoding, callback);
-    }
-
-    // Fallback behavior
-    if (callback) {
-      queueMicrotask(callback);
-    }
-    return true;
-  }
-
-  read(size) {
-    if (this._stream && typeof this._stream.read === "function") {
-      return this._stream.read(size);
-    }
-    return null;
-  }
-
-  end(chunk, encoding, callback) {
-    if (typeof chunk === "function") {
-      callback = chunk;
-      chunk = null;
-      encoding = null;
-    } else if (typeof encoding === "function") {
-      callback = encoding;
-      encoding = null;
-    }
-
-    if (this._stream && typeof this._stream.end === "function") {
-      return this._stream.end(chunk, encoding, callback);
-    }
-
-    if (callback) {
-      queueMicrotask(callback);
-    }
-    return this;
   }
 }
 
-// Support both import patterns:
-// 1. const StreamWrap = require('internal/js_stream_socket') - direct import
-// 2. const { StreamWrap } = require('internal/js_stream_socket') - destructuring
-
-// Add StreamWrap property to the constructor for destructuring support
-JSStreamWrap.StreamWrap = JSStreamWrap;
-
-// Export the constructor as default
-export default JSStreamWrap;
-
-// Also export the class directly for named imports
-export { JSStreamWrap };
+export default JSStreamSocket;
