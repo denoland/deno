@@ -1118,6 +1118,7 @@
 "parallel/test-stream2-decode-partial.js" = {}
 "parallel/test-stream2-finish-pipe-error.js" = {}
 "parallel/test-stream2-finish-pipe.js" = {}
+"parallel/test-stream2-httpclient-response-end.js" = {}
 "parallel/test-stream2-large-read-stall.js" = {}
 "parallel/test-stream2-objects.js" = {}
 "parallel/test-stream2-pipe-error-handling.js" = {}
