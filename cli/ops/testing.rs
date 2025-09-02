@@ -127,8 +127,9 @@ fn op_register_test(
       column_number,
     },
   };
-  let container = state.borrow_mut::<TestContainer>();
-  container.register(description, function);
+  state
+    .borrow_mut::<TestContainer>()
+    .register(description, function);
   ret_buf.copy_from_slice(&(id as u32).to_le_bytes());
   Ok(())
 }
