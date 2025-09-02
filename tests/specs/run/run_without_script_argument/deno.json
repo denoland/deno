@@ -1,9 +1,0 @@
-{
-  "tasks": {
-    "dev": "deno run --watch --allow-net server.ts",
-    "test": "deno test --allow-read tests/",
-    "build": "deno compile --allow-net --output=./dist/app server.ts",
-    "lint": "deno lint",
-    "fmt": "deno fmt"
-  }
-}
