@@ -400,8 +400,10 @@ function assertAllExpectationsHaveTests(
 async function update() {
   assert(Array.isArray(rest), "filter must be array");
   const startTime = Date.now();
+  const expectation = getExpectation();
   const filter = new TestFilter(rest);
   const tests = discoverTestsToRun(filter, true);
+  assertAllExpectationsHaveTests(expectation, tests, filter);
   console.log(`Going to run ${tests.length} test files.`);
 
   const results = await runWithTestUtil(false, async () => {
