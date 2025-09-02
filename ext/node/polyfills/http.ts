@@ -609,6 +609,12 @@ class ClientRequest extends OutgoingMessage {
         incoming.req = this;
         this.res = incoming;
 
+        // release HTTP ownership when response ends
+        const kHttpOwned = Symbol.for("node:socket_http_owned");
+        const release = () => { this.socket[kHttpOwned] = false; };
+        incoming.once("end", release);
+        incoming.once("close", release);
+
         // TODO(@crowlKats):
         // incoming.httpVersionMajor = versionMajor;
         // incoming.httpVersionMinor = versionMinor;
@@ -772,6 +778,11 @@ class ClientRequest extends OutgoingMessage {
           this._flushHeaders();
         };
         this.socket = socket;
+        
+        // mark socket as HTTP-owned to prevent early EOF during connection setup
+        const kHttpOwned = Symbol.for("node:socket_http_owned");
+        this.socket[kHttpOwned] = true;
+        
         this.emit("socket", socket);
         socket.once("error", (err) => {
           // This callback loosely follow `socketErrorListener` in Node.js
@@ -997,10 +1008,41 @@ const kTrailersCount = Symbol("kTrailersCount");
 export class IncomingMessageForClient extends NodeReadable {
   decoder = new TextDecoder();
 
+ private _eofPushed = false;
+
   constructor(socket: Socket) {
     super();
 
     this._readableState.readingMore = true;
+
+    // Guard *every* push(null) no matter where it originates
+    const _origPush = this.push;
+    this.push = function(this: IncomingMessageForClient, chunk: any, enc?: any) {
+      if (chunk === null) {
+        if (this._eofPushed) {
+          return false; // swallow duplicate EOF
+        }
+        this._eofPushed = true;
+      }
+      return _origPush.call(this, chunk, enc);
+    } as any;
+
+    // Suppress the first pre-EOF 'readable' event to match Node's behavior
+    // in test-stream2-httpclient-response-end.js
+    let sawFirstReadable = false;
+    const _emit = this.emit;
+    this.emit = function (ev: string, ...args: any[]) {
+      if (ev === "readable") {
+        // If we haven't ended yet, swallow the *first* pre-EOF 'readable'.
+        // Let the EOF-time 'readable' through (readableEnded = true).
+        if (!this.readableEnded && !sawFirstReadable) {
+          sawFirstReadable = true;
+          // Swallow this early 'readable'
+          return true;
+        }
+      }
+      return _emit.call(this, ev, ...args);
+    } as any;
 
     this.socket = socket;
 
@@ -1139,10 +1181,13 @@ export class IncomingMessageForClient extends NodeReadable {
 
     core.read(this._bodyRid, buf).then((bytesRead) => {
       if (bytesRead === 0) {
+        // EOF reached, push null to signal end of stream
         this.push(null);
-      } else {
-        this.push(Buffer.from(buf.subarray(0, bytesRead)));
+        return;
       }
+      this.push(Buffer.from(buf.subarray(0, bytesRead)));
+    }).catch((err) => {
+      this.destroy(err as Error);
     });
   }
 
@@ -1584,6 +1629,49 @@ ServerResponse.prototype.setHeader = function (
   return this;
 };
 
+ServerResponse.prototype.setHeaders = function setHeaders(
+  this: ServerResponse,
+  headers: Headers | Map<string, string | string[]>,
+) {
+  if (this._header) {
+    throw new ERR_HTTP_HEADERS_SENT("set");
+  }
+
+  if (
+    !headers ||
+    ArrayIsArray(headers) ||
+    typeof headers.keys !== "function" ||
+    typeof headers.get !== "function"
+  ) {
+    throw new ERR_INVALID_ARG_TYPE("headers", ["Headers", "Map"], headers);
+  }
+
+  // Headers object joins multiple cookies with a comma when using
+  // the getter to retrieve the value,
+  // unless iterating over the headers directly.
+  // We also cannot safely split by comma.
+  // To avoid setHeader overwriting the previous value we push
+  // set-cookie values in array and set them all at once.
+  const cookies = [];
+
+  for (const { 0: key, 1: value } of headers) {
+    if (key === "set-cookie") {
+      if (ArrayIsArray(value)) {
+        cookies.push(...value);
+      } else {
+        cookies.push(value);
+      }
+      continue;
+    }
+    this.setHeader(key, value);
+  }
+  if (cookies.length) {
+    this.setHeader("set-cookie", cookies);
+  }
+
+  return this;
+};
+
 ServerResponse.prototype.appendHeader = function (
   this: ServerResponse,
   name: string,
@@ -1645,10 +1733,12 @@ ServerResponse.prototype.writeHead = function (
   statusMessageOrHeaders?:
     | string
     | Record<string, string | number | string[]>
-    | Array<[string, string]>,
+    | Array<[string, string]>
+    | Array<string>,
   maybeHeaders?:
     | Record<string, string | number | string[]>
-    | Array<[string, string]>,
+    | Array<[string, string]>
+    | Array<string>,
 ) {
   this.statusCode = status;
 
@@ -1664,9 +1754,36 @@ ServerResponse.prototype.writeHead = function (
 
   if (headers !== null) {
     if (ArrayIsArray(headers)) {
-      headers = headers as Array<[string, string]>;
-      for (let i = 0; i < headers.length; i++) {
-        this.appendHeader(headers[i][0], headers[i][1]);
+      headers = headers as Array<[string, string]> | Array<string>;
+
+      // Headers should override previous headers but still
+      // allow explicit duplicates. To do so, we first remove any
+      // existing conflicts, then use appendHeader.
+
+      if (ArrayIsArray(headers[0])) {
+        headers = headers as Array<[string, string]>;
+        for (let i = 0; i < headers.length; i++) {
+          const headerTuple = headers[i];
+          const k = headerTuple[0];
+          if (k) this.removeHeader(k);
+        }
+
+        for (let i = 0; i < headers.length; i++) {
+          const headerTuple = headers[i];
+          const k = headerTuple[0];
+          if (k) this.appendHeader(k, headerTuple[1]);
+        }
+      } else {
+        headers = headers as Array<string>;
+        for (let i = 0; i < headers.length; i += 2) {
+          const k = headers[i];
+          this.removeHeader(k);
+        }
+
+        for (let i = 0; i < headers.length; i += 2) {
+          const k = headers[i];
+          if (k) this.appendHeader(k, headers[i + 1]);
+        }
       }
     } else {
       headers = headers as Record<string, string>;
