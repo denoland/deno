@@ -1,0 +1,35 @@
+Check [WILDCARD]beforeeach_error.ts
+running 3 tests from ./beforeeach_error.ts
+first test ... ok ([WILDCARD])
+second test ... FAILED ([WILDCARD])
+third test ... ok ([WILDCARD])
+------- post-test output -------
+[
+  "beforeEach executed for test 1",
+  "beforeEach2 executed for test 1",
+  "first test executed",
+  "afterEach executed for test 1",
+  "beforeEach executed for test 2",
+  "afterEach executed for test 2",
+  "beforeEach executed for test 3",
+  "beforeEach2 executed for test 3",
+  "third test executed",
+  "afterEach executed for test 3"
+]
+----- post-test output end -----
+
+ ERRORS 
+
+second test => ./beforeeach_error.ts:27:6
+error: Error: beforeEach hook failed on second test
+    throw new Error("beforeEach hook failed on second test");
+          ^
+    at [WILDCARD]beforeeach_error.ts:10:11
+
+ FAILURES 
+
+second test => ./beforeeach_error.ts:27:6
+
+FAILED | 2 passed | 1 failed ([WILDCARD])
+
+error: Test failed

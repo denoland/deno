@@ -1,0 +1,21 @@
+{
+  "tests": {
+    "read_data": {
+      "args": "run -P=data-read main.ts",
+      "output": "read.out"
+    },
+    "write": {
+      "args": "run -P=data-write main.ts",
+      "output": "write.out"
+    },
+    "no_default": {
+      "args": "run -P main.ts",
+      "output": "no_default.out"
+    },
+    "not_found_set": {
+      "args": "run -P=non-existent main.ts",
+      "output": "not_found_set.out",
+      "exitCode": 1
+    }
+  }
+}
