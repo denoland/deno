@@ -1685,7 +1685,6 @@
         "Good parameters with JWK alg Ed25519: Ed25519 (jwk, object(crv, d, x, kty), Ed25519, true, [sign, sign])",
         "Good parameters with JWK alg EdDSA: Ed25519 (jwk, object(crv, d, x, kty), Ed25519, true, [sign, sign])"
       ],
-      "okp_importKey_Ed448.https.any.worker.html": false,
       "okp_importKey_X25519.https.any.html": true,
       "okp_importKey_X25519.https.any.worker.html": true,
       "okp_importKey_Ed448.tentative.https.any.html": false,
