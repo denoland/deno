@@ -103,6 +103,11 @@ pub struct AddFlags {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ApproveScriptsFlags {
+  pub packages: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RemoveFlags {
   pub packages: Vec<String>,
 }
@@ -546,6 +551,7 @@ impl std::fmt::Display for PackageHandling {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
+  ApproveScripts(ApproveScriptsFlags),
   Remove(RemoveFlags),
   Bench(BenchFlags),
   Bundle(BundleFlags),
@@ -1515,6 +1521,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
 
       match subcommand.as_str() {
         "add" => add_parse(&mut flags, &mut m)?,
+        "approve-scripts" => approve_scripts_parse(&mut flags, &mut m),
         "remove" => remove_parse(&mut flags, &mut m),
         "bench" => bench_parse(&mut flags, &mut m)?,
         "bundle" => bundle_parse(&mut flags, &mut m)?,
@@ -1777,6 +1784,7 @@ pub fn clap_root() -> Command {
     .defer(|cmd| {
       let cmd = cmd
         .subcommand(add_subcommand())
+        .subcommand(approve_scripts_subcommand())
         .subcommand(remove_subcommand())
         .subcommand(bench_subcommand())
         .subcommand(bundle_subcommand())
@@ -1874,6 +1882,28 @@ Or multiple dependencies at once:
       .arg(allow_scripts_arg())
       .args(lock_args())
       .args(default_registry_args())
+  })
+}
+
+fn approve_scripts_subcommand() -> Command {
+  command(
+    "approve-scripts",
+    cstr!(
+      "Approve packages to run lifecycle scripts.
+  <p(245)>deno approve-scripts</>
+
+You can pre-select packages for approval:
+  <p(245)>deno approve-scripts npm:esbuild npm:fsevents</>"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd.arg(
+      Arg::new("packages")
+        .help("List of packages to approve for lifecycle scripts")
+        .num_args(0..)
+        .action(ArgAction::Append),
+    )
   })
 }
 
@@ -4976,6 +5006,16 @@ fn add_parse_inner(
     dev,
     default_registry,
   }
+}
+
+fn approve_scripts_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let packages = if let Some(p) = matches.remove_many::<String>("packages") {
+    p.collect()
+  } else {
+    vec![]
+  };
+  flags.subcommand =
+    DenoSubcommand::ApproveScripts(ApproveScriptsFlags { packages });
 }
 
 fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {

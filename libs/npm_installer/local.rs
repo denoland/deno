@@ -877,6 +877,8 @@ impl<
         },
       ),
     );
+    eprintln!("sync resolution");
+    lifecycle_scripts.save_to_disk(&deno_local_registry_dir)?;
     lifecycle_scripts.warn_not_run_scripts()?;
 
     let packages_with_scripts = lifecycle_scripts.packages_with_scripts();

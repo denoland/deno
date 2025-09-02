@@ -14,6 +14,7 @@ use deno_semver::SmallStackString;
 use deno_semver::Version;
 use deno_semver::package::PackageNv;
 use sys_traits::FsMetadata;
+use sys_traits::FsWrite;
 
 use crate::CachedNpmPackageExtraInfoProvider;
 use crate::LifecycleScriptsConfig;
@@ -145,7 +146,7 @@ pub struct LifecycleScripts<'a, TSys: FsMetadata> {
   strategy: Box<dyn LifecycleScriptsStrategy + 'a>,
 }
 
-impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
+impl<'a, TSys: FsMetadata + FsWrite> LifecycleScripts<'a, TSys> {
   pub fn new<TLifecycleScriptsStrategy: LifecycleScriptsStrategy + 'a>(
     sys: &'a TSys,
     config: &'a LifecycleScriptsConfig,
@@ -218,6 +219,31 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
           .push((package, package_path.into_owned()));
       }
     }
+  }
+
+  pub fn save_to_disk(
+    &self,
+    deno_local_registry_dir: &Path,
+  ) -> Result<(), std::io::Error> {
+    if !self.packages_with_scripts_not_run.is_empty() {
+      let mut ignored_scripts: Vec<String> = self
+        .packages_with_scripts_not_run
+        .iter()
+        .map(|(package, _)| package.id.nv.name.to_string())
+        .collect();
+      eprintln!("sync resolution3 {:#?}", ignored_scripts);
+      // Sort alphabetically
+      ignored_scripts.sort();
+      let mut toml_content = String::new();
+      toml_content.push_str("ignored-scripts = [\n");
+      for package_name in &ignored_scripts {
+        toml_content.push_str(&format!("  \"{}\",\n", package_name));
+      }
+      let state_file_path = deno_local_registry_dir.join(".state.toml");
+      toml_content.push_str("]\n");
+      self.sys.fs_write(&state_file_path, toml_content)?;
+    }
+    Ok(())
   }
 
   pub fn warn_not_run_scripts(&self) -> Result<(), std::io::Error> {
