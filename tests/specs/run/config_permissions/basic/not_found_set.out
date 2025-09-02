@@ -1,0 +1,2 @@
+Warning Permissions in the config file is an experimental feature and may change in the future.
+error: Could not find permission set 'non-existent' in deno.json

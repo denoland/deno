@@ -5,7 +5,73 @@
   "description": "A JSON representation of a Deno configuration file.",
   "type": "object",
   "required": [],
+  "$defs": {
+    "permissionConfigValue": {
+      "oneOf": [{
+        "type": "boolean",
+        "description": "Allow or deny the permission."
+      }, {
+        "type": "array",
+        "description": "Subset of items to allow or deny depending on the context.",
+        "items": { "type": "string" }
+      }]
+    },
+    "allowDenyPermissionConfig": {
+      "type": "object",
+      "description": "Object form to allow and/or deny permissions.",
+      "additionalProperties": false,
+      "properties": {
+        "allow": { "$ref": "#/$defs/permissionConfigValue" },
+        "deny": { "$ref": "#/$defs/permissionConfigValue" }
+      }
+    },
+    "allowDenyPermissionConfigValue": {
+      "oneOf": [{
+        "$ref": "#/$defs/permissionConfigValue"
+      }, {
+        "$ref": "#/$defs/allowDenyPermissionConfig"
+      }]
+    },
+    "permissionSet": {
+      "type": "object",
+      "description": "Collection of permissions.",
+      "additionalProperties": false,
+      "properties": {
+        "all": {
+          "type": "boolean",
+          "description": "Allow all permissions for the program to run unrestricted."
+        },
+        "read": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "write": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "import": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "env": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "net": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "run": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "ffi": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "sys": { "$ref": "#/$defs/allowDenyPermissionConfigValue" }
+      }
+    },
+    "permissionNameOrSet": {
+      "description": "A permission set name to use or inline permission set.",
+      "anyOf": [{
+        "type": "string",
+        "description": "Permission name."
+      }, {
+        "$ref": "#/$defs/permissionSet"
+      }]
+    }
+  },
   "properties": {
+    "compile": {
+      "type": "object",
+      "description": "Configuration for `deno compile`.",
+      "additionalProperties": false,
+      "properties": {
+        "permissions": {
+          "$ref": "#/$defs/permissionNameOrSet"
+        }
+      }
+    },
     "compilerOptions": {
       "type": "object",
       "description": "Instructs the TypeScript compiler how to compile .ts files.",
@@ -622,6 +688,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "permissions": {
+          "$ref": "#/$defs/permissionNameOrSet"
         }
       }
     },
@@ -662,6 +731,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "permissions": {
+          "$ref": "#/$defs/permissionNameOrSet"
         }
       }
     },
