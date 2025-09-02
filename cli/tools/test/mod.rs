@@ -941,18 +941,13 @@ fn compute_tests_to_run(
   (tests_to_run, used_only)
 }
 
-enum CallHookFlow {
-  Break,
-  Continue,
-}
-
 async fn call_hooks<H>(
   worker: &mut MainWorker,
   hook_fns: impl Iterator<Item = &v8::Global<v8::Function>>,
   mut error_handler: H,
 ) -> Result<(), RunTestsForWorkerErr>
 where
-  H: FnMut(CoreErrorKind) -> Result<CallHookFlow, RunTestsForWorkerErr>,
+  H: FnMut(CoreErrorKind) -> Result<(), RunTestsForWorkerErr>,
 {
   for hook_fn in hook_fns {
     let call = worker.js_runtime.call(hook_fn);
@@ -963,14 +958,13 @@ where
     let Err(err) = result else {
       continue;
     };
-    match error_handler(err.into_kind())? {
-      CallHookFlow::Continue => continue,
-      CallHookFlow::Break => break,
-    }
+    error_handler(err.into_kind())?;
+    break;
   }
   Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_tests_for_worker_inner(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
@@ -1006,7 +1000,7 @@ async fn run_tests_for_worker_inner(
     match core_error {
       CoreErrorKind::Js(err) => {
         event_tracker.uncaught_error(specifier.to_string(), err)?;
-        Ok(CallHookFlow::Break)
+        Ok(())
       }
       err => Err(err.into_box().into()),
     }
@@ -1052,7 +1046,7 @@ async fn run_tests_for_worker_inner(
             TestResult::Failed(TestFailure::JsError(Box::new(err)));
           fail_fast_tracker.add_failure();
           event_tracker.result(desc, test_result, earlier.elapsed())?;
-          Ok(CallHookFlow::Break)
+          Ok(())
         }
         err => Err(err.into_box().into()),
       }
@@ -1086,12 +1080,9 @@ async fn run_tests_for_worker_inner(
       };
 
       // Check the result before we check for leaks
-      let result = {
-        let scope = &mut worker.js_runtime.handle_scope();
-        let result = v8::Local::new(scope, result);
-        serde_v8::from_v8::<TestResult>(scope, result)?
-      };
-      result
+      let scope = &mut worker.js_runtime.handle_scope();
+      let result = v8::Local::new(scope, result);
+      serde_v8::from_v8::<TestResult>(scope, result)?
     } else {
       TestResult::Ignored
     };
@@ -1109,7 +1100,7 @@ async fn run_tests_for_worker_inner(
             TestResult::Failed(TestFailure::JsError(Box::new(err)));
           fail_fast_tracker.add_failure();
           event_tracker.result(desc, test_result, earlier.elapsed())?;
-          Ok(CallHookFlow::Break)
+          Ok(())
         }
         err => Err(err.into_box().into()),
       }
@@ -1143,7 +1134,7 @@ async fn run_tests_for_worker_inner(
       }
     }
 
-    // TODO(bartlomieju): this is fishy
+    // TODO(bartlomieju): using `before_each_hook_errored` is fishy
     if !before_each_hook_errored {
       event_tracker.result(desc, result, earlier.elapsed())?;
     }
@@ -1156,7 +1147,7 @@ async fn run_tests_for_worker_inner(
     match core_error {
       CoreErrorKind::Js(err) => {
         event_tracker.uncaught_error(specifier.to_string(), err)?;
-        Ok(CallHookFlow::Break)
+        Ok(())
       }
       err => Err(err.into_box().into()),
     }
