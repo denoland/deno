@@ -802,6 +802,7 @@ pub struct Flags {
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
+  pub permission_set: Option<String>,
   pub eszip: bool,
   pub node_conditions: Vec<String>,
   pub preload: Vec<String>,
@@ -3881,8 +3882,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     .after_help(cstr!(r#"<y>Permission options:</>
 <y>Docs</>: <c>https://docs.deno.com/go/permissions</>
 
-  <g>-A, --allow-all</>                          Allow all permissions.
-  <g>--no-prompt</>                              Always throw if required permission wasn't passed.
+  <g>-A, --allow-all</>                           Allow all permissions.
+  <g>-P, --permission-set[=<<NAME>]</>            Loads the permission set from the config file.
+  <g>--no-prompt</>                               Always throw if required permission wasn't passed.
                                              <p(245)>Can also be set via the DENO_NO_PROMPT environment variable.</>
   <g>-R, --allow-read[=<<PATH>...]</>             Allow file system read access. Optionally specify allowed paths.
                                              <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"</>
@@ -3917,7 +3919,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
       <g>--deny-import[=<<IP_OR_HOSTNAME>...]</>  Deny importing from remote hosts. Optionally specify denied IP addresses and host names, with ports as necessary.
                                              <p(245)>--deny-import  |  --deny-import="example.com:443,github.com:443"</>
-      <g>DENO_TRACE_PERMISSIONS</>               Environmental variable to enable stack traces in permission prompts.
+      <g>DENO_TRACE_PERMISSIONS</>                Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
 "#))
     .arg(
@@ -3925,6 +3927,21 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         let mut arg = allow_all_arg().hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
+        }
+        arg
+      }
+    )
+    .arg(
+      {
+        let mut arg = Arg::new("permission-set")
+          .long("permission-set")
+          .action(ArgAction::Set)
+          .num_args(0..=1)
+          .require_equals(true)
+          .default_missing_value("")
+          .short('P');
+        if let Some(requires) = requires {
+          arg = arg.requires(requires);
         }
         arg
       }
@@ -4268,6 +4285,7 @@ fn allow_all_arg() -> Arg {
     .conflicts_with("allow-sys")
     .conflicts_with("allow-ffi")
     .conflicts_with("allow-import")
+    .conflicts_with("permission-set")
     .action(ArgAction::SetTrue)
     .help("Allow all permissions")
 }
@@ -6150,6 +6168,9 @@ fn permission_args_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
+  if let Some(set) = matches.remove_one::<String>("permission-set") {
+    flags.permission_set = Some(set);
+  }
   if let Some(read_wl) = matches.remove_many::<String>("allow-read") {
     let read_wl = read_wl
       .flat_map(flat_escape_split_commas)

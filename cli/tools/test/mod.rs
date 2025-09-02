@@ -51,7 +51,9 @@ use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
+use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
 use indexmap::IndexMap;
@@ -75,6 +77,7 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
+use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
@@ -199,11 +202,19 @@ pub struct TestLocation {
   pub column_number: u32,
 }
 
-// TODO(Bartlomieju): use named fields instead of tuple
 #[derive(Default)]
 pub(crate) struct TestContainer {
   descriptions: TestDescriptions,
   test_functions: Vec<v8::Global<v8::Function>>,
+  test_hooks: TestHooks,
+}
+
+#[derive(Default)]
+pub(crate) struct TestHooks {
+  pub before_all: Vec<v8::Global<v8::Function>>,
+  pub before_each: Vec<v8::Global<v8::Function>>,
+  pub after_each: Vec<v8::Global<v8::Function>>,
+  pub after_all: Vec<v8::Global<v8::Function>>,
 }
 
 impl TestContainer {
@@ -214,6 +225,20 @@ impl TestContainer {
   ) {
     self.descriptions.tests.insert(description.id, description);
     self.test_functions.push(function)
+  }
+
+  pub fn register_hook(
+    &mut self,
+    hook_type: String,
+    function: v8::Global<v8::Function>,
+  ) {
+    match hook_type.as_str() {
+      "beforeAll" => self.test_hooks.before_all.push(function),
+      "beforeEach" => self.test_hooks.before_each.push(function),
+      "afterEach" => self.test_hooks.after_each.push(function),
+      "afterAll" => self.test_hooks.after_all.push(function),
+      _ => {}
+    }
   }
 
   pub fn is_empty(&self) -> bool {
@@ -878,19 +903,17 @@ pub async fn run_tests_for_worker(
 
   let descriptions = Arc::new(container.descriptions);
   event_tracker.register(descriptions.clone())?;
-  let res = run_tests_for_worker_inner(
+  run_tests_for_worker_inner(
     worker,
     specifier,
     descriptions,
     container.test_functions,
+    container.test_hooks,
     options,
     event_tracker,
     fail_fast_tracker,
   )
-  .await;
-
-  _ = event_tracker.completed();
-  res
+  .await
 }
 
 fn compute_tests_to_run(
@@ -921,11 +944,36 @@ fn compute_tests_to_run(
   (tests_to_run, used_only)
 }
 
+async fn call_hooks<H>(
+  worker: &mut MainWorker,
+  hook_fns: impl Iterator<Item = &v8::Global<v8::Function>>,
+  mut error_handler: H,
+) -> Result<(), RunTestsForWorkerErr>
+where
+  H: FnMut(CoreErrorKind) -> Result<(), RunTestsForWorkerErr>,
+{
+  for hook_fn in hook_fns {
+    let call = worker.js_runtime.call(hook_fn);
+    let result = worker
+      .js_runtime
+      .with_event_loop_promise(call, PollEventLoopOptions::default())
+      .await;
+    let Err(err) = result else {
+      continue;
+    };
+    error_handler(err.into_kind())?;
+    break;
+  }
+  Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn run_tests_for_worker_inner(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
   descs: Arc<TestDescriptions>,
   test_functions: Vec<v8::Global<v8::Function>>,
+  test_hooks: TestHooks,
   options: &TestSpecifierOptions,
   event_tracker: &TestEventTracker,
   fail_fast_tracker: &FailFastTracker,
@@ -948,6 +996,19 @@ async fn run_tests_for_worker_inner(
 
   let mut had_uncaught_error = false;
   let sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
+
+  // Execute beforeAll hooks (FIFO order)
+  call_hooks(worker, test_hooks.before_all.iter(), |core_error| {
+    tests_to_run = vec![];
+    match core_error {
+      CoreErrorKind::Js(err) => {
+        event_tracker.uncaught_error(specifier.to_string(), err)?;
+        Ok(())
+      }
+      err => Err(err.into_box().into()),
+    }
+  })
+  .await?;
 
   for (desc, function) in tests_to_run.into_iter() {
     worker_prepare_for_test(worker);
@@ -976,39 +1037,80 @@ async fn run_tests_for_worker_inner(
     let before_test_stats = sanitizer_helper.capture_stats();
 
     let earlier = Instant::now();
-    let call = worker.js_runtime.call(&function);
 
-    let slow_test_warning =
-      spawn(slow_test_watchdog(event_tracker.clone(), desc.id));
+    // Execute beforeEach hooks (FIFO order)
+    let mut before_each_hook_errored = false;
 
-    let result = worker
-      .js_runtime
-      .with_event_loop_promise(call, PollEventLoopOptions::default())
-      .await;
-    slow_test_warning.abort();
-    let result = match result {
-      Ok(r) => r,
-      Err(error) => match error.into_kind() {
-        CoreErrorKind::Js(js_error) => {
-          event_tracker.uncaught_error(specifier.to_string(), js_error)?;
+    call_hooks(worker, test_hooks.before_each.iter(), |core_error| {
+      match core_error {
+        CoreErrorKind::Js(err) => {
+          before_each_hook_errored = true;
+          let test_result =
+            TestResult::Failed(TestFailure::JsError(Box::new(err)));
           fail_fast_tracker.add_failure();
-          event_tracker.cancelled(desc)?;
-          had_uncaught_error = true;
-          continue;
+          event_tracker.result(desc, test_result, earlier.elapsed())?;
+          Ok(())
         }
-        err => return Err(err.into_box().into()),
-      },
-    };
+        err => Err(err.into_box().into()),
+      }
+    })
+    .await?;
 
-    // Check the result before we check for leaks
-    let result = {
+    // TODO(bartlomieju): this whole block/binding could be reworked into something better
+    let result = if !before_each_hook_errored {
+      let call = worker.js_runtime.call(&function);
+
+      let slow_test_warning =
+        spawn(slow_test_watchdog(event_tracker.clone(), desc.id));
+
+      let result = worker
+        .js_runtime
+        .with_event_loop_promise(call, PollEventLoopOptions::default())
+        .await;
+      slow_test_warning.abort();
+      let result = match result {
+        Ok(r) => r,
+        Err(error) => match error.into_kind() {
+          CoreErrorKind::Js(js_error) => {
+            event_tracker.uncaught_error(specifier.to_string(), js_error)?;
+            fail_fast_tracker.add_failure();
+            event_tracker.cancelled(desc)?;
+            had_uncaught_error = true;
+            continue;
+          }
+          err => return Err(err.into_box().into()),
+        },
+      };
+
+      // Check the result before we check for leaks
       let scope = &mut worker.js_runtime.handle_scope();
       let result = v8::Local::new(scope, result);
       serde_v8::from_v8::<TestResult>(scope, result)?
+    } else {
+      TestResult::Ignored
     };
+
     if matches!(result, TestResult::Failed(_)) {
       fail_fast_tracker.add_failure();
-      event_tracker.result(desc, result, earlier.elapsed())?;
+      event_tracker.result(desc, result.clone(), earlier.elapsed())?;
+    }
+
+    // Execute afterEach hooks (LIFO order)
+    call_hooks(worker, test_hooks.after_each.iter().rev(), |core_error| {
+      match core_error {
+        CoreErrorKind::Js(err) => {
+          let test_result =
+            TestResult::Failed(TestFailure::JsError(Box::new(err)));
+          fail_fast_tracker.add_failure();
+          event_tracker.result(desc, test_result, earlier.elapsed())?;
+          Ok(())
+        }
+        err => Err(err.into_box().into()),
+      }
+    })
+    .await?;
+
+    if matches!(result, TestResult::Failed(_)) {
       continue;
     }
 
@@ -1035,8 +1137,26 @@ async fn run_tests_for_worker_inner(
       }
     }
 
-    event_tracker.result(desc, result, earlier.elapsed())?;
+    // TODO(bartlomieju): using `before_each_hook_errored` is fishy
+    if !before_each_hook_errored {
+      event_tracker.result(desc, result, earlier.elapsed())?;
+    }
   }
+
+  event_tracker.completed()?;
+
+  // Execute afterAll hooks (LIFO order)
+  call_hooks(worker, test_hooks.after_all.iter().rev(), |core_error| {
+    match core_error {
+      CoreErrorKind::Js(err) => {
+        event_tracker.uncaught_error(specifier.to_string(), err)?;
+        Ok(())
+      }
+      err => Err(err.into_box().into()),
+    }
+  })
+  .await?;
+
   Ok(())
 }
 
@@ -1045,7 +1165,8 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
-  root_permissions_container: &PermissionsContainer,
+  cli_options: &Arc<CliOptions>,
+  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
   specifiers: Vec<ModuleSpecifier>,
   preload_modules: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
@@ -1074,15 +1195,26 @@ async fn test_specifiers(
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    // Various test files should not share the same permissions in terms of
-    // `PermissionsContainer` - otherwise granting/revoking permissions in one
-    // file would have impact on other files, which is undesirable.
-    let permissions_container = root_permissions_container.deep_clone();
+    let specifier_dir = cli_options.workspace().resolve_member_dir(&specifier);
     let preload_modules = preload_modules.clone();
     let worker_sender = test_event_sender_factory.worker();
     let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
+    let cli_options = cli_options.clone();
+    let permission_desc_parser = permission_desc_parser.clone();
     spawn_blocking(move || {
+      // Various test files should not share the same permissions in terms of
+      // `PermissionsContainer` - otherwise granting/revoking permissions in one
+      // file would have impact on other files, which is undesirable.
+      let permissions =
+        cli_options.permissions_options_for_dir(&specifier_dir)?;
+      let permissions_container = PermissionsContainer::new(
+        permission_desc_parser.clone(),
+        Permissions::from_options(
+          permission_desc_parser.as_ref(),
+          &permissions,
+        )?,
+      );
       create_and_run_current_thread(test_specifier(
         worker_factory,
         permissions_container,
@@ -1454,7 +1586,8 @@ pub async fn run_tests(
   // Run tests
   test_specifiers(
     worker_factory,
-    factory.root_permissions_container()?,
+    cli_options,
+    factory.permission_desc_parser()?,
     specifiers_for_typecheck_and_test,
     preload_modules,
     TestSpecifiersOptions {
@@ -1664,7 +1797,8 @@ pub async fn run_tests_with_watch(
 
         test_specifiers(
           worker_factory,
-          factory.root_permissions_container()?,
+          &cli_options,
+          factory.permission_desc_parser()?,
           specifiers_for_typecheck_and_test,
           preload_modules,
           TestSpecifiersOptions {

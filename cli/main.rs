@@ -662,13 +662,18 @@ async fn resolve_flags_and_init(
     otel_config.clone(),
   )?;
 
+  if flags.permission_set.is_some() {
+    log::warn!(
+      "{} Permissions in the config file is an experimental feature and may change in the future.",
+      colors::yellow("Warning")
+    );
+  }
+
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
     log::warn!(
-      "⚠️  {}",
-      colors::yellow(
-        "The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
-      )
+      "{} The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
+      colors::yellow("Warning")
     );
   }
 

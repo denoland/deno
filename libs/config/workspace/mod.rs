@@ -41,6 +41,7 @@ use url::Url;
 use crate::UrlToFilePathError;
 use crate::deno_json;
 use crate::deno_json::BenchConfig;
+use crate::deno_json::CompileConfig;
 use crate::deno_json::CompilerOptions;
 use crate::deno_json::ConfigFile;
 use crate::deno_json::ConfigFileError;
@@ -53,6 +54,8 @@ use crate::deno_json::LinkConfigParseError;
 use crate::deno_json::LintRulesConfig;
 use crate::deno_json::NodeModulesDirMode;
 use crate::deno_json::NodeModulesDirParseError;
+use crate::deno_json::PermissionsConfig;
+use crate::deno_json::PermissionsObjectWithBase;
 use crate::deno_json::PublishConfig;
 pub use crate::deno_json::TaskDefinition;
 use crate::deno_json::TestConfig;
@@ -1466,7 +1469,9 @@ pub struct CompilerOptionsSource {
 
 #[derive(Debug, Clone, Default)]
 struct CachedDirectoryValues {
+  permissions: OnceLock<PermissionsConfig>,
   bench: OnceLock<BenchConfig>,
+  compile: OnceLock<CompileConfig>,
   test: OnceLock<TestConfig>,
 }
 
@@ -1982,15 +1987,55 @@ impl WorkspaceDirectory {
         files: FilePatterns::new_with_base(
           url_to_file_path(&self.dir_url).unwrap(),
         ),
+        permissions: None,
       });
     };
-    let member_config = deno_json.member.to_bench_config()?;
+    let permissions = self.to_permissions_config()?;
+    let member_config = deno_json.member.to_bench_config(permissions)?;
     let root_config = match &deno_json.root {
-      Some(root) => root.to_bench_config()?,
+      Some(root) => root.to_bench_config(permissions)?,
       None => return Ok(member_config),
     };
     Ok(BenchConfig {
       files: combine_patterns(root_config.files, member_config.files),
+      permissions: match (root_config.permissions, member_config.permissions) {
+        (_, Some(m)) => Some(m),
+        (Some(r), _) => Some(r),
+        (None, None) => None,
+      },
+    })
+  }
+
+  pub fn to_compile_config(
+    &self,
+  ) -> Result<&CompileConfig, ToInvalidConfigError> {
+    if let Some(config) = &self.cached.compile.get() {
+      Ok(config)
+    } else {
+      let config = self.to_compile_config_no_cache()?;
+      _ = self.cached.compile.set(config);
+      Ok(self.cached.compile.get().unwrap())
+    }
+  }
+
+  fn to_compile_config_no_cache(
+    &self,
+  ) -> Result<CompileConfig, ToInvalidConfigError> {
+    let Some(deno_json) = self.deno_json.as_ref() else {
+      return Ok(CompileConfig { permissions: None });
+    };
+    let permissions = self.to_permissions_config()?;
+    let member_config = deno_json.member.to_compile_config(permissions)?;
+    let root_config = match &deno_json.root {
+      Some(root) => root.to_compile_config(permissions)?,
+      None => return Ok(member_config),
+    };
+    Ok(CompileConfig {
+      permissions: match (root_config.permissions, member_config.permissions) {
+        (_, Some(m)) => Some(m),
+        (Some(r), _) => Some(r),
+        (None, None) => None,
+      },
     })
   }
 
@@ -2045,6 +2090,44 @@ impl WorkspaceDirectory {
         self.pkg_json.as_ref().map(|d| &d.member),
       )?,
     })
+  }
+
+  pub fn to_permissions_config(
+    &self,
+  ) -> Result<&PermissionsConfig, ToInvalidConfigError> {
+    if let Some(value) = self.cached.permissions.get() {
+      Ok(value)
+    } else {
+      let base = match self.deno_json.as_ref().and_then(|c| c.root.as_ref()) {
+        Some(value) => value.to_permissions_config()?,
+        None => Default::default(),
+      };
+      let member = match self.deno_json.as_ref().map(|c| &c.member) {
+        Some(value) => value.to_permissions_config()?,
+        None => Default::default(),
+      };
+      let value = base.merge(member);
+      _ = self.cached.permissions.set(value);
+      Ok(self.cached.permissions.get().unwrap())
+    }
+  }
+
+  pub fn to_bench_permissions_config(
+    &self,
+  ) -> Result<Option<&PermissionsObjectWithBase>, ToInvalidConfigError> {
+    Ok(self.to_bench_config_inner()?.permissions.as_deref())
+  }
+
+  pub fn to_compile_permissions_config(
+    &self,
+  ) -> Result<Option<&PermissionsObjectWithBase>, ToInvalidConfigError> {
+    Ok(self.to_compile_config()?.permissions.as_deref())
+  }
+
+  pub fn to_test_permissions_config(
+    &self,
+  ) -> Result<Option<&PermissionsObjectWithBase>, ToInvalidConfigError> {
+    Ok(self.to_test_config_inner()?.permissions.as_deref())
   }
 
   pub fn to_publish_config(
@@ -2105,16 +2188,23 @@ impl WorkspaceDirectory {
         files: FilePatterns::new_with_base(
           url_to_file_path(&self.dir_url).unwrap(),
         ),
+        permissions: None,
       });
     };
-    let member_config = deno_json.member.to_test_config()?;
+    let permissions = self.to_permissions_config()?;
+    let member_config = deno_json.member.to_test_config(permissions)?;
     let root_config = match &deno_json.root {
-      Some(root) => root.to_test_config()?,
+      Some(root) => root.to_test_config(permissions)?,
       None => return Ok(member_config),
     };
 
     Ok(TestConfig {
       files: combine_patterns(root_config.files, member_config.files),
+      permissions: match (root_config.permissions, member_config.permissions) {
+        (_, Some(m)) => Some(m),
+        (Some(r), _) => Some(r),
+        (None, None) => None,
+      },
     })
   }
 
@@ -3492,6 +3582,7 @@ pub mod test {
             root_dir().join("member").join("subdir")
           )]),
         },
+        permissions: None,
       }
     );
 
@@ -3514,6 +3605,7 @@ pub mod test {
             root_dir().join("member")
           )])),
         },
+        permissions: None,
       }
     );
   }
@@ -3542,6 +3634,7 @@ pub mod test {
           )])),
           exclude: Default::default(),
         },
+        permissions: None,
       }
     );
 
@@ -3564,6 +3657,7 @@ pub mod test {
             root_dir().join("member")
           )])),
         },
+        permissions: None,
       }
     );
   }
@@ -3657,6 +3751,7 @@ pub mod test {
           .unwrap(),
         BenchConfig {
           files: expected_files.clone(),
+          permissions: None,
         }
       );
       assert_eq!(
@@ -3684,6 +3779,7 @@ pub mod test {
           .unwrap(),
         TestConfig {
           files: expected_files.clone(),
+          permissions: None,
         }
       );
       assert_eq!(
