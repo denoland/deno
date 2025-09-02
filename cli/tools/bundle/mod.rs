@@ -812,8 +812,6 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       let result = rx.await?;
       if let Some(result) = result.result {
         return Ok(Some(plugin_resolve_result_to_proto(result)));
-      } else {
-        // Ok(None)
       }
     }
 
@@ -830,7 +828,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       Err(e) => {
         return Ok(Some(esbuild_client::OnResolveResult {
           errors: Some(vec![esbuild_client::protocol::PartialMessage {
-            id: "myerror".into(),
+            id: "deno_error".into(),
             plugin_name: "deno".into(),
             text: e.to_string(),
             ..Default::default()

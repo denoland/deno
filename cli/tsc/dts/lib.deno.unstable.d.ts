@@ -111,13 +111,10 @@ declare namespace Deno {
     }
 
     export interface PluginBuild {
-      /** Documentation: https://esbuild.github.io/plugins/#build-options */
       initialOptions: Options;
 
-      /** Documentation: https://esbuild.github.io/plugins/#resolve */
       resolve(path: string, options?: ResolveOptions): Promise<ResolveResult>;
 
-      /** Documentation: https://esbuild.github.io/plugins/#on-start */
       onStart(
         callback: () =>
           | OnStartResult
@@ -126,14 +123,12 @@ declare namespace Deno {
           | Promise<OnStartResult | null | void>,
       ): void;
 
-      /** Documentation: https://esbuild.github.io/plugins/#on-end */
       onEnd(
         callback: (
           result: Result,
         ) => OnEndResult | null | void | Promise<OnEndResult | null | void>,
       ): void;
 
-      /** Documentation: https://esbuild.github.io/plugins/#on-resolve */
       onResolve(
         options: OnResolveOptions,
         callback: (
@@ -145,7 +140,6 @@ declare namespace Deno {
           | Promise<OnResolveResult | null | undefined>,
       ): void;
 
-      /** Documentation: https://esbuild.github.io/plugins/#on-load */
       onLoad(
         options: OnLoadOptions,
         callback: (
@@ -157,11 +151,9 @@ declare namespace Deno {
           | Promise<OnLoadResult | null | undefined>,
       ): void;
 
-      /** Documentation: https://esbuild.github.io/plugins/#on-dispose */
       onDispose(callback: () => void): void;
     }
 
-    /** Documentation: https://esbuild.github.io/plugins/#resolve-options */
     export interface ResolveOptions {
       pluginName?: string;
       importer?: string;
@@ -172,7 +164,6 @@ declare namespace Deno {
       with?: Record<string, string>;
     }
 
-    /** Documentation: https://esbuild.github.io/plugins/#resolve-results */
     export interface ResolveResult {
       errors: Message[];
       warnings: Message[];
@@ -195,13 +186,11 @@ declare namespace Deno {
       warnings?: Message[];
     }
 
-    /** Documentation: https://esbuild.github.io/plugins/#on-resolve-options */
     export interface OnResolveOptions {
       filter: RegExp;
       namespace?: string;
     }
 
-    /** Documentation: https://esbuild.github.io/plugins/#on-resolve-arguments */
     export interface OnResolveArgs {
       path: string;
       importer: string;
@@ -224,7 +213,6 @@ declare namespace Deno {
       | "composes-from"
       | "url-token";
 
-    /** Documentation: https://esbuild.github.io/plugins/#on-resolve-results */
     export interface OnResolveResult {
       pluginName?: string;
 
@@ -242,13 +230,11 @@ declare namespace Deno {
       watchDirs?: string[];
     }
 
-    /** Documentation: https://esbuild.github.io/plugins/#on-load-options */
     export interface OnLoadOptions {
       filter: RegExp;
       namespace?: string;
     }
 
-    /** Documentation: https://esbuild.github.io/plugins/#on-load-arguments */
     export interface OnLoadArgs {
       path: string;
       namespace: string;
@@ -257,7 +243,6 @@ declare namespace Deno {
       with: Record<string, string>;
     }
 
-    /** Documentation: https://esbuild.github.io/plugins/#on-load-results */
     export interface OnLoadResult {
       pluginName?: string;
 
