@@ -6063,6 +6063,7 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
       Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let linter_resolver = Arc::new(LspLinterResolver::new(
       &config,
       &compiler_options_resolver,

@@ -1095,6 +1095,9 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             self.workspace_factory.sys.clone(),
             options,
           )?;
+          resolver.set_compiler_options_resolver(
+            self.compiler_options_resolver()?.clone(),
+          );
           if !resolver.diagnostics().is_empty() {
             // todo(dsherret): do not log this in this crate... that should be
             // a CLI responsibility
