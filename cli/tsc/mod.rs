@@ -382,6 +382,7 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
 }
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[allow(dead_code)]
 pub struct EmittedFile {
   pub data: String,
   pub maybe_specifiers: Option<Vec<ModuleSpecifier>>,
@@ -453,7 +454,7 @@ impl TypeCheckingCjsTracker {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     is_script: bool,
-  ) -> Result<bool, node_resolver::errors::ClosestPkgJsonError> {
+  ) -> Result<bool, node_resolver::errors::PackageJsonLoadError> {
     self
       .cjs_tracker
       .is_cjs_with_known_is_script(specifier, media_type, is_script)
@@ -645,7 +646,7 @@ pub enum LoadError {
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
   #[error("{0}")]
-  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
 }
 
 #[derive(Debug, Serialize)]
@@ -737,23 +738,7 @@ fn op_load_inner(
     } else {
       &specifier
     };
-    let maybe_module = match graph.try_get(specifier) {
-      Ok(maybe_module) => maybe_module,
-      Err(err) => match err.as_kind() {
-        deno_graph::ModuleErrorKind::UnsupportedMediaType {
-          media_type,
-          ..
-        } => {
-          return Ok(Some(LoadResponse {
-            data: FastString::from_static(""),
-            version: Some("1".to_string()),
-            script_kind: as_ts_script_kind(*media_type),
-            is_cjs: false,
-          }));
-        }
-        _ => None,
-      },
-    };
+    let maybe_module = graph.try_get(specifier).ok().flatten();
     let maybe_source = if let Some(module) = maybe_module {
       match module {
         Module::Js(module) => {

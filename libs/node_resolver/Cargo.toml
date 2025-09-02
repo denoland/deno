@@ -2,7 +2,7 @@
 
 [package]
 name = "node_resolver"
-version = "0.50.0"
+version = "0.52.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [features]
 graph = ["deno_graph"]
-sync = ["deno_package_json/sync"]
+sync = ["deno_maybe_sync/sync", "deno_package_json/sync"]
 
 [dependencies]
 anyhow.workspace = true
@@ -25,6 +25,7 @@ capacity_builder.workspace = true
 dashmap.workspace = true
 deno_error.workspace = true
 deno_graph = { workspace = true, optional = true }
+deno_maybe_sync.workspace = true
 deno_media_type.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true

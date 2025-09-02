@@ -124,11 +124,11 @@ impl PrettyTestReporter {
       TestStepResult::Ignored => colors::yellow("ignored").to_string(),
       TestStepResult::Failed(failure) => failure.format_label(),
     };
-    write!(&mut self.writer, " {}", status).ok();
-    if let TestStepResult::Failed(failure) = result {
-      if let Some(inline_summary) = failure.format_inline_summary() {
-        write!(&mut self.writer, " ({})", inline_summary).ok();
-      }
+    write!(&mut self.writer, " {status}").ok();
+    if let TestStepResult::Failed(failure) = result
+      && let Some(inline_summary) = failure.format_inline_summary()
+    {
+      write!(&mut self.writer, " ({})", inline_summary).ok();
     }
     if !matches!(result, TestStepResult::Failed(TestFailure::Incomplete)) {
       write!(
@@ -194,6 +194,7 @@ impl TestReporter for PrettyTestReporter {
   }
 
   fn report_wait(&mut self, description: &TestDescription) {
+    self.write_output_end();
     if !self.parallel {
       self.force_report_wait(description);
     }
@@ -283,11 +284,11 @@ impl TestReporter for PrettyTestReporter {
       TestResult::Failed(failure) => failure.format_label(),
       TestResult::Cancelled => colors::gray("cancelled").to_string(),
     };
-    write!(&mut self.writer, " {}", status).ok();
-    if let TestResult::Failed(failure) = result {
-      if let Some(inline_summary) = failure.format_inline_summary() {
-        write!(&mut self.writer, " ({})", inline_summary).ok();
-      }
+    write!(&mut self.writer, " {status}").ok();
+    if let TestResult::Failed(failure) = result
+      && let Some(inline_summary) = failure.format_inline_summary()
+    {
+      write!(&mut self.writer, " ({})", inline_summary).ok();
     }
     writeln!(
       &mut self.writer,

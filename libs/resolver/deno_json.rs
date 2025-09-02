@@ -14,7 +14,9 @@ use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceRc;
 use deno_error::JsError;
+use deno_maybe_sync::new_rc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
@@ -39,19 +41,17 @@ use url::Url;
 
 use crate::collections::FolderScopedWithUnscopedMap;
 use crate::factory::ConfigDiscoveryOption;
-use crate::factory::WorkspaceDirectoryProvider;
 use crate::npm::DenoInNpmPackageChecker;
 use crate::npm::NpmResolver;
 use crate::npm::NpmResolverSys;
-use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
+type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 #[allow(clippy::disallowed_types)]
-type CompilerOptionsRc = crate::sync::MaybeArc<CompilerOptions>;
+type CompilerOptionsRc = deno_maybe_sync::MaybeArc<CompilerOptions>;
 #[allow(clippy::disallowed_types)]
 pub type CompilerOptionsTypesRc =
-  crate::sync::MaybeArc<Vec<(Url, Vec<String>)>>;
+  deno_maybe_sync::MaybeArc<Vec<(Url, Vec<String>)>>;
 
 /// A structure that represents a set of options that were ignored and the
 /// path those options came from.
@@ -207,7 +207,8 @@ pub struct JsxImportSourceConfig {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type JsxImportSourceConfigRc = crate::sync::MaybeArc<JsxImportSourceConfig>;
+pub type JsxImportSourceConfigRc =
+  deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
 
 #[derive(Debug, Clone, Error, JsError)]
 #[class(type)]
@@ -337,16 +338,16 @@ pub struct TranspileAndEmitOptions {
 #[cfg(feature = "deno_ast")]
 #[allow(clippy::disallowed_types)]
 pub type TranspileAndEmitOptionsRc =
-  crate::sync::MaybeArc<TranspileAndEmitOptions>;
+  deno_maybe_sync::MaybeArc<TranspileAndEmitOptions>;
 
 #[derive(Debug, Default)]
 struct LoggedWarnings {
   experimental_decorators: AtomicFlag,
-  folders: crate::sync::MaybeDashSet<Url>,
+  folders: deno_maybe_sync::MaybeDashSet<Url>,
 }
 
 #[allow(clippy::disallowed_types)]
-type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
+type LoggedWarningsRc = deno_maybe_sync::MaybeArc<LoggedWarnings>;
 
 #[derive(Default, Debug)]
 struct MemoizedValues {
@@ -654,15 +655,15 @@ struct TsConfigFileFilter {
 impl TsConfigFileFilter {
   fn includes_path(&self, path: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
-    if let Some((_, files)) = &self.files {
-      if files.iter().any(|f| f.absolute_path == path) {
-        return true;
-      }
+    if let Some((_, files)) = &self.files
+      && files.iter().any(|f| f.absolute_path == path)
+    {
+      return true;
     }
-    if let Some(exclude) = &self.exclude {
-      if exclude.matches_path(path) {
-        return false;
-      }
+    if let Some(exclude) = &self.exclude
+      && exclude.matches_path(path)
+    {
+      return false;
     }
     if let Some(include) = &self.include {
       if include.matches_path(path) {
@@ -676,7 +677,7 @@ impl TsConfigFileFilter {
 }
 
 #[allow(clippy::disallowed_types)]
-type TsConfigFileFilterRc = crate::sync::MaybeArc<TsConfigFileFilter>;
+type TsConfigFileFilterRc = deno_maybe_sync::MaybeArc<TsConfigFileFilter>;
 
 #[derive(Debug)]
 pub struct TsConfigData {
@@ -823,7 +824,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
 
   fn read_ts_config_with_cache(
     &mut self,
-    path: Cow<Path>,
+    path: Cow<'_, Path>,
   ) -> Result<Rc<TsConfigData>, Rc<std::io::Error>> {
     let path = normalize_path(path);
     self
@@ -832,8 +833,7 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       .cloned()
       .unwrap_or_else(|| {
         if !self.currently_reading.insert(path.to_path_buf()) {
-          return Err(Rc::new(std::io::Error::new(
-            ErrorKind::Other,
+          return Err(Rc::new(std::io::Error::other(
             "Cycle detected while following `extends`.",
           )));
         }
@@ -1043,7 +1043,7 @@ impl Default for CompilerOptionsResolver {
 impl CompilerOptionsResolver {
   pub fn new<TSys: FsRead, NSys: NpmResolverSys>(
     sys: &TSys,
-    workspace_directory_provider: &WorkspaceDirectoryProvider,
+    workspace: &WorkspaceRc,
     node_resolver: &TsConfigNodeResolver<NSys>,
     config_discover: &ConfigDiscoveryOption,
     overrides: &CompilerOptionsOverrides,
@@ -1069,7 +1069,7 @@ impl CompilerOptionsResolver {
       &logged_warnings,
       overrides.clone(),
     );
-    let root_dir = workspace_directory_provider.root();
+    let root_dir = workspace.root_dir();
     let mut workspace_configs =
       FolderScopedWithUnscopedMap::new(CompilerOptionsData::new(
         root_dir.to_configured_compiler_options_sources(),
@@ -1078,17 +1078,17 @@ impl CompilerOptionsResolver {
         logged_warnings.clone(),
         overrides.clone(),
       ));
-    for (dir_url, dir) in workspace_directory_provider.entries() {
+    for dir in workspace.resolve_member_dirs() {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       }
-      if let Some(dir_url) = dir_url {
+      if dir.dir_url() != root_dir.dir_url() {
         workspace_configs.insert(
-          dir_url.clone(),
+          dir.dir_url().clone(),
           CompilerOptionsData::new(
             dir.to_configured_compiler_options_sources(),
             CompilerOptionsSourceKind::DenoJson,
-            Some(dir_url.clone()),
+            Some(dir.dir_url().clone()),
             logged_warnings.clone(),
             overrides.clone(),
           ),
@@ -1107,12 +1107,11 @@ impl CompilerOptionsResolver {
       .sources
       .iter()
       .any(|s| s.compiler_options.is_some())
+      && let Ok(path) = url_to_file_path(specifier)
     {
-      if let Ok(path) = url_to_file_path(specifier) {
-        for ts_config in &self.ts_configs {
-          if ts_config.filter.includes_path(&path) {
-            return &ts_config.compiler_options;
-          }
+      for ts_config in &self.ts_configs {
+        if ts_config.filter.includes_path(&path) {
+          return &ts_config.compiler_options;
         }
       }
     }
@@ -1129,15 +1128,14 @@ impl CompilerOptionsResolver {
       .sources
       .iter()
       .any(|s| s.compiler_options.is_some())
+      && let Ok(path) = url_to_file_path(specifier)
     {
-      if let Ok(path) = url_to_file_path(specifier) {
-        for (i, ts_config) in self.ts_configs.iter().enumerate() {
-          if ts_config.filter.includes_path(&path) {
-            return (
-              CompilerOptionsKey::TsConfig(i),
-              &ts_config.compiler_options,
-            );
-          }
+      for (i, ts_config) in self.ts_configs.iter().enumerate() {
+        if ts_config.filter.includes_path(&path) {
+          return (
+            CompilerOptionsKey::TsConfig(i),
+            &ts_config.compiler_options,
+          );
         }
       }
     }
@@ -1224,7 +1222,7 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
 
 #[allow(clippy::disallowed_types)]
 pub type CompilerOptionsResolverRc =
-  crate::sync::MaybeArc<CompilerOptionsResolver>;
+  deno_maybe_sync::MaybeArc<CompilerOptionsResolver>;
 
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
@@ -1284,17 +1282,40 @@ fn compiler_options_to_transpile_and_emit_options(
       "error" => deno_ast::ImportsNotUsedAsValues::Error,
       _ => deno_ast::ImportsNotUsedAsValues::Remove,
     };
-  let (transform_jsx, jsx_automatic, jsx_development, precompile_jsx) =
-    match overrides.preserve_jsx {
-      true => (false, false, false, false),
-      false => match options.jsx.as_str() {
-        "react" => (true, false, false, false),
-        "react-jsx" => (true, true, false, false),
-        "react-jsxdev" => (true, true, true, false),
-        "precompile" => (false, false, false, true),
-        _ => (false, false, false, false),
-      },
-    };
+  let jsx = match overrides.preserve_jsx {
+    true => None,
+    false => match options.jsx.as_str() {
+      "react" => {
+        Some(deno_ast::JsxRuntime::Classic(deno_ast::JsxClassicOptions {
+          factory: options.jsx_factory,
+          fragment_factory: options.jsx_fragment_factory,
+        }))
+      }
+      "react-jsx" => Some(deno_ast::JsxRuntime::Automatic(
+        deno_ast::JsxAutomaticOptions {
+          development: false,
+          import_source: options.jsx_import_source,
+        },
+      )),
+      "react-jsxdev" => Some(deno_ast::JsxRuntime::Automatic(
+        deno_ast::JsxAutomaticOptions {
+          development: true,
+          import_source: options.jsx_import_source,
+        },
+      )),
+      "precompile" => Some(deno_ast::JsxRuntime::Precompile(
+        deno_ast::JsxPrecompileOptions {
+          automatic: deno_ast::JsxAutomaticOptions {
+            development: false,
+            import_source: options.jsx_import_source,
+          },
+          skip_elements: options.jsx_precompile_skip_elements,
+          dynamic_props: None,
+        },
+      )),
+      _ => None,
+    },
+  };
   let source_map = if options.inline_source_map {
     deno_ast::SourceMapOption::Inline
   } else if options.source_map {
@@ -1303,19 +1324,15 @@ fn compiler_options_to_transpile_and_emit_options(
     deno_ast::SourceMapOption::None
   };
   let transpile = deno_ast::TranspileOptions {
-    use_ts_decorators: options.experimental_decorators,
-    use_decorators_proposal: !options.experimental_decorators,
-    emit_metadata: options.emit_decorator_metadata,
+    decorators: if options.experimental_decorators {
+      deno_ast::DecoratorsTranspileOption::LegacyTypeScript {
+        emit_metadata: options.emit_decorator_metadata,
+      }
+    } else {
+      deno_ast::DecoratorsTranspileOption::Ecma
+    },
     imports_not_used_as_values,
-    jsx_automatic,
-    jsx_development,
-    jsx_factory: options.jsx_factory,
-    jsx_fragment_factory: options.jsx_fragment_factory,
-    jsx_import_source: options.jsx_import_source,
-    precompile_jsx,
-    precompile_jsx_skip_elements: options.jsx_precompile_skip_elements,
-    precompile_jsx_dynamic_props: None,
-    transform_jsx,
+    jsx,
     var_decl_imports: false,
     // todo(dsherret): support verbatim_module_syntax here properly
     verbatim_module_syntax: false,

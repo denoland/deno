@@ -1,5 +1,0 @@
-{
-  "args": "run --quiet -",
-  "output": "1\n",
-  "input": "console.log(1)"
-}

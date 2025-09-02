@@ -182,7 +182,21 @@ fn from_raw(
   stream: RawBiPipeHandle,
 ) -> Result<(BiPipeRead, BiPipeWrite), std::io::Error> {
   use std::os::fd::FromRawFd;
-  // Safety: The fd is part of a pair of connected sockets
+
+  use nix::sys::socket::AddressFamily;
+  use nix::sys::socket::SockaddrLike;
+  use nix::sys::socket::SockaddrStorage;
+  use nix::sys::socket::getsockname;
+
+  if getsockname::<SockaddrStorage>(stream)
+    .ok()
+    .and_then(|a| a.family())
+    != Some(AddressFamily::Unix)
+  {
+    return Err(std::io::Error::other("fd is not from BiPipe"));
+  }
+
+  // SAFETY: We validated above that this is from a unix stream.
   let unix_stream =
     unsafe { std::os::unix::net::UnixStream::from_raw_fd(stream) };
   unix_stream.set_nonblocking(true)?;

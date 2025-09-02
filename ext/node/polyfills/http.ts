@@ -28,6 +28,7 @@ import { ERR_SERVER_NOT_RUNNING } from "ext:deno_node/internal/errors.ts";
 import { EventEmitter } from "node:events";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
+  validateAbortSignal,
   validateBoolean,
   validateInteger,
   validateObject,
@@ -1583,6 +1584,49 @@ ServerResponse.prototype.setHeader = function (
   return this;
 };
 
+ServerResponse.prototype.setHeaders = function setHeaders(
+  this: ServerResponse,
+  headers: Headers | Map<string, string | string[]>,
+) {
+  if (this._header) {
+    throw new ERR_HTTP_HEADERS_SENT("set");
+  }
+
+  if (
+    !headers ||
+    ArrayIsArray(headers) ||
+    typeof headers.keys !== "function" ||
+    typeof headers.get !== "function"
+  ) {
+    throw new ERR_INVALID_ARG_TYPE("headers", ["Headers", "Map"], headers);
+  }
+
+  // Headers object joins multiple cookies with a comma when using
+  // the getter to retrieve the value,
+  // unless iterating over the headers directly.
+  // We also cannot safely split by comma.
+  // To avoid setHeader overwriting the previous value we push
+  // set-cookie values in array and set them all at once.
+  const cookies = [];
+
+  for (const { 0: key, 1: value } of headers) {
+    if (key === "set-cookie") {
+      if (ArrayIsArray(value)) {
+        cookies.push(...value);
+      } else {
+        cookies.push(value);
+      }
+      continue;
+    }
+    this.setHeader(key, value);
+  }
+  if (cookies.length) {
+    this.setHeader("set-cookie", cookies);
+  }
+
+  return this;
+};
+
 ServerResponse.prototype.appendHeader = function (
   this: ServerResponse,
   name: string,
@@ -1644,10 +1688,12 @@ ServerResponse.prototype.writeHead = function (
   statusMessageOrHeaders?:
     | string
     | Record<string, string | number | string[]>
-    | Array<[string, string]>,
+    | Array<[string, string]>
+    | Array<string>,
   maybeHeaders?:
     | Record<string, string | number | string[]>
-    | Array<[string, string]>,
+    | Array<[string, string]>
+    | Array<string>,
 ) {
   this.statusCode = status;
 
@@ -1663,9 +1709,36 @@ ServerResponse.prototype.writeHead = function (
 
   if (headers !== null) {
     if (ArrayIsArray(headers)) {
-      headers = headers as Array<[string, string]>;
-      for (let i = 0; i < headers.length; i++) {
-        this.appendHeader(headers[i][0], headers[i][1]);
+      headers = headers as Array<[string, string]> | Array<string>;
+
+      // Headers should override previous headers but still
+      // allow explicit duplicates. To do so, we first remove any
+      // existing conflicts, then use appendHeader.
+
+      if (ArrayIsArray(headers[0])) {
+        headers = headers as Array<[string, string]>;
+        for (let i = 0; i < headers.length; i++) {
+          const headerTuple = headers[i];
+          const k = headerTuple[0];
+          if (k) this.removeHeader(k);
+        }
+
+        for (let i = 0; i < headers.length; i++) {
+          const headerTuple = headers[i];
+          const k = headerTuple[0];
+          if (k) this.appendHeader(k, headerTuple[1]);
+        }
+      } else {
+        headers = headers as Array<string>;
+        for (let i = 0; i < headers.length; i += 2) {
+          const k = headers[i];
+          this.removeHeader(k);
+        }
+
+        for (let i = 0; i < headers.length; i += 2) {
+          const k = headers[i];
+          if (k) this.appendHeader(k, headers[i + 1]);
+        }
       }
     } else {
       headers = headers as Record<string, string>;
@@ -1913,6 +1986,26 @@ export function Server(opts, requestListener?: ServerHandler): ServerImpl {
   return new ServerImpl(opts, requestListener);
 }
 
+function _addAbortSignalOption(server: ServerImpl, options: ListenOptions) {
+  if (options?.signal === undefined) {
+    return;
+  }
+
+  validateAbortSignal(options.signal, "options.signal");
+  const { signal } = options;
+
+  const onAborted = () => {
+    server.close();
+  };
+
+  if (signal.aborted) {
+    nextTick(onAborted);
+  } else {
+    signal.addEventListener("abort", onAborted);
+    server.once("close", () => signal.removeEventListener("abort", onAborted));
+  }
+}
+
 export class ServerImpl extends EventEmitter {
   #addr: Deno.NetAddr | null = null;
   #hasClosed = false;
@@ -1959,6 +2052,8 @@ export class ServerImpl extends EventEmitter {
       validatePort(options.port, "options.port");
       port = options.port | 0;
     }
+
+    _addAbortSignalOption(this, options);
 
     // TODO(bnoordhuis) Node prefers [::] when host is omitted,
     // we on the other hand default to 0.0.0.0.

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_http"
-version = "0.210.0"
+version = "0.212.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -57,7 +57,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
 
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 
 [dev-dependencies]

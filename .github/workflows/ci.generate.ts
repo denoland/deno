@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 68;
+const cacheVersion = 71;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -76,7 +76,7 @@ const prCachePath = [
 ].join("\n");
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
-const llvmVersion = 19;
+const llvmVersion = 20;
 const installPkgsCommand =
   `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
@@ -85,10 +85,10 @@ const sysRootStep = {
 export DEBIAN_FRONTEND=noninteractive
 # Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
-sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
+sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
 # Remove older clang before we install
 sudo apt-get -qq remove \
-  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' > /dev/null 2> /dev/null
+  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
@@ -686,15 +686,6 @@ const ci = {
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
             "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
-        },
-        {
-          name: "Lint PR title",
-          if:
-            "matrix.job == 'lint' && github.event_name == 'pull_request' && matrix.os == 'linux'",
-          env: {
-            PR_TITLE: "${{ github.event.pull_request.title }}",
-          },
-          run: 'deno run ./tools/verify_pr_title.js "$PR_TITLE"',
         },
         {
           name: "lint.js",

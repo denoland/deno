@@ -991,10 +991,6 @@ impl WeakDocumentModuleMap {
     }
   }
 
-  fn get_for_specifier(&self, specifier: &Url) -> Option<Arc<DocumentModule>> {
-    self.by_specifier.read().get(specifier)
-  }
-
   fn contains_specifier(&self, specifier: &Url) -> bool {
     self.by_specifier.read().contains_key(specifier)
   }
@@ -1195,10 +1191,10 @@ impl DocumentModules {
     if url.scheme() != "file" {
       return None;
     }
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
-      if let Some(remote_specifier) = self.cache.unvendored_specifier(&url) {
-        return Some(Arc::new(remote_specifier));
-      }
+    if uri.scheme().is_some_and(|s| s.eq_lowercase("file"))
+      && let Some(remote_specifier) = self.cache.unvendored_specifier(&url)
+    {
+      return Some(Arc::new(remote_specifier));
     }
     Some(Arc::new(url))
   }
@@ -1367,24 +1363,6 @@ impl DocumentModules {
   }
 
   /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_module_for_specifier(
-    &self,
-    specifier: &Url,
-    scope: Option<&Url>,
-  ) -> Option<Arc<DocumentModule>> {
-    let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = match JsrPackageReqReference::from_specifier(specifier) {
-      Ok(jsr_req_ref) => {
-        Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-      }
-      _ => Cow::Borrowed(specifier),
-    };
-    let specifier = scoped_resolver.resolve_redirects(&specifier)?;
-    let modules = self.modules_for_scope(scope)?;
-    modules.get_for_specifier(&specifier)
-  }
-
-  /// This will not create any module entries, only retrieve existing entries.
   pub fn inspect_primary_module(
     &self,
     document: &Document,
@@ -1478,10 +1456,10 @@ impl DocumentModules {
   }
 
   pub fn specifier_exists(&self, specifier: &Url, scope: Option<&Url>) -> bool {
-    if let Some(modules) = self.modules_for_scope(scope) {
-      if modules.contains_specifier(specifier) {
-        return true;
-      }
+    if let Some(modules) = self.modules_for_scope(scope)
+      && modules.contains_specifier(specifier)
+    {
+      return true;
     }
     if specifier.scheme() == "file" {
       return url_to_file_path(specifier)
@@ -1508,21 +1486,19 @@ impl DocumentModules {
         for dependency in module.dependencies.values() {
           let code_specifier = dependency.get_code();
           let type_specifier = dependency.get_type();
-          if let Some(dep) = code_specifier {
-            if dep.scheme() == "node" {
-              dep_info.has_node_specifier = true;
-            }
+          if let Some(dep) = code_specifier
+            && dep.scheme() == "node"
+          {
+            dep_info.has_node_specifier = true;
           }
-          if dependency.maybe_deno_types_specifier.is_some() {
-            if let (Some(code_specifier), Some(type_specifier)) =
+          if dependency.maybe_deno_types_specifier.is_some()
+            && let (Some(code_specifier), Some(type_specifier)) =
               (code_specifier, type_specifier)
-            {
-              if MediaType::from_specifier(type_specifier).is_declaration() {
-                dep_info
-                  .deno_types_to_code_resolutions
-                  .insert(type_specifier.clone(), code_specifier.clone());
-              }
-            }
+            && MediaType::from_specifier(type_specifier).is_declaration()
+          {
+            dep_info
+              .deno_types_to_code_resolutions
+              .insert(type_specifier.clone(), code_specifier.clone());
           }
         }
       };
@@ -1685,13 +1661,13 @@ impl DocumentModules {
     scope: Option<&Url>,
     compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Option<(Url, MediaType)> {
-    if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
-      if deno_node::is_builtin_node_module(module_name) {
-        // return itself for node: specifiers because during type checking
-        // we resolve to the ambient modules in the @types/node package
-        // rather than deno_std/node
-        return Some((specifier.clone(), MediaType::Dts));
-      }
+    if let Some(module_name) = specifier.as_str().strip_prefix("node:")
+      && deno_node::is_builtin_node_module(module_name)
+    {
+      // return itself for node: specifiers because during type checking
+      // we resolve to the ambient modules in the @types/node package
+      // rather than deno_std/node
+      return Some((specifier.clone(), MediaType::Dts));
     }
     let mut specifier = specifier.clone();
     let mut media_type = None;
@@ -1943,18 +1919,18 @@ impl OpenDocumentsGraphLoader<'_> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<deno_graph::source::LoadFuture> {
-    if specifier.scheme() == "file" {
-      if let Some(doc) = self.open_modules.get(specifier) {
-        return Some(
-          future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
-            content: Arc::from(doc.text.as_bytes().to_owned()),
-            mtime: None,
-            specifier: doc.specifier.as_ref().clone(),
-            maybe_headers: None,
-          })))
-          .boxed_local(),
-        );
-      }
+    if specifier.scheme() == "file"
+      && let Some(doc) = self.open_modules.get(specifier)
+    {
+      return Some(
+        future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
+          content: Arc::from(doc.text.as_bytes().to_owned()),
+          mtime: None,
+          specifier: doc.specifier.as_ref().clone(),
+          maybe_headers: None,
+        })))
+        .boxed_local(),
+      );
     }
     None
   }

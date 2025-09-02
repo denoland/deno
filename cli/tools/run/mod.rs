@@ -141,6 +141,7 @@ pub async fn run_from_stdin(
     mtime: None,
     maybe_headers: None,
     source: source.into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   });
 
   let mut worker = worker_factory
@@ -237,6 +238,7 @@ pub async fn eval_command(
     mtime: None,
     maybe_headers: None,
     source: source_code.into_bytes().into(),
+    loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
   });
 
   let worker_factory = factory.create_cli_main_worker_factory().await?;
@@ -256,22 +258,21 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
   if cli_options.specified_node_modules_dir()? == Some(NodeModulesDirMode::Auto)
+    && let Some(npm_installer) = factory.npm_installer_if_managed().await?
   {
-    if let Some(npm_installer) = factory.npm_installer_if_managed().await? {
-      let _clear_guard = factory
-        .text_only_progress_bar()
-        .deferred_keep_initialize_alive();
-      let already_done = npm_installer
-        .ensure_top_level_package_json_install()
-        .await?;
-      if !already_done
-        && matches!(
-          cli_options.default_npm_caching_strategy(),
-          NpmCachingStrategy::Eager
-        )
-      {
-        npm_installer.cache_packages(PackageCaching::All).await?;
-      }
+    let _clear_guard = factory
+      .text_only_progress_bar()
+      .deferred_keep_initialize_alive();
+    let already_done = npm_installer
+      .ensure_top_level_package_json_install()
+      .await?;
+    if !already_done
+      && matches!(
+        cli_options.default_npm_caching_strategy(),
+        NpmCachingStrategy::Eager
+      )
+    {
+      npm_installer.cache_packages(PackageCaching::All).await?;
     }
   }
   Ok(())

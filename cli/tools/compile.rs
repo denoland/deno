@@ -204,13 +204,13 @@ pub async fn compile_eszip(
   };
 
   let transpile_and_emit_options = compiler_options_resolver
-    .for_specifier(cli_options.workspace().root_dir())
+    .for_specifier(cli_options.workspace().root_dir_url())
     .transpile_options()?;
   let transpile_options = transpile_and_emit_options.transpile.clone();
   let emit_options = transpile_and_emit_options.emit.clone();
 
   let parser = parsed_source_cache.as_capturing_parser();
-  let root_dir_url = cli_options.workspace().root_dir();
+  let root_dir_url = cli_options.workspace().root_dir_url();
   log::debug!("Binary root dir: {}", root_dir_url);
   let relative_file_base = eszip::EszipRelativeFileBaseUrl::new(root_dir_url);
   let mut eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
@@ -405,10 +405,10 @@ fn get_module_roots_and_include_paths(
     } else {
       analyze_path(&url, &exclude_set, &mut searched_paths, |file_path| {
         let media_type = MediaType::from_path(file_path);
-        if is_module_graph_media_type(media_type) {
-          if let Ok(file_url) = url_from_file_path(file_path) {
-            module_roots.push(file_url);
-          }
+        if is_module_graph_media_type(media_type)
+          && let Ok(file_url) = url_from_file_path(file_path)
+        {
+          module_roots.push(file_url);
         }
       })?;
     }

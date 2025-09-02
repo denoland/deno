@@ -89,7 +89,7 @@ Deno.test("[node/net] net.connect().unref() works", async () => {
             const socket = net.connect(${port}, "${hostname}", () => {
               console.log("connected");
               socket.unref();
-              socket.on("data", (data) => console.log(data.toString()));
+              socket.on("data", (data) => data.toString());
               socket.write("GET / HTTP/1.1\\n\\n");
             });
           `,

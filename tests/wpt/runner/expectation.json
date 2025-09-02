@@ -14552,6 +14552,7 @@
     "eventhandlers.any.worker.html?wpt_flags=h2": true,
     "eventhandlers.any.worker.html?wss": true,
     "idlharness.any.html": [
+      "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",
@@ -14570,6 +14571,7 @@
       "Stringification of new CloseEvent(\"close\")"
     ],
     "idlharness.any.worker.html": [
+      "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",

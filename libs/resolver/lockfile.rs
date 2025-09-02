@@ -11,6 +11,8 @@ use deno_error::JsErrorBox;
 use deno_lockfile::Lockfile;
 use deno_lockfile::NpmPackageInfoProvider;
 use deno_lockfile::WorkspaceMemberConfig;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
@@ -25,8 +27,6 @@ use node_resolver::PackageJson;
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
 
 pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
@@ -34,7 +34,7 @@ pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 impl<T> NpmRegistryApiEx for T where T: NpmRegistryApi + MaybeSend + MaybeSync {}
 
 #[allow(clippy::disallowed_types)]
-type NpmRegistryApiRc = crate::sync::MaybeArc<dyn NpmRegistryApiEx>;
+type NpmRegistryApiRc = deno_maybe_sync::MaybeArc<dyn NpmRegistryApiEx>;
 
 pub struct LockfileNpmPackageInfoApiAdapter {
   api: NpmRegistryApiRc,
@@ -191,7 +191,7 @@ pub enum LockfileWriteError {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type LockfileLockRc<TSys> = crate::sync::MaybeArc<LockfileLock<TSys>>;
+pub type LockfileLockRc<TSys> = deno_maybe_sync::MaybeArc<LockfileLock<TSys>>;
 
 #[derive(Debug)]
 pub struct LockfileLock<TSys: LockfileSys> {
@@ -204,7 +204,7 @@ pub struct LockfileLock<TSys: LockfileSys> {
 
 impl<TSys: LockfileSys> LockfileLock<TSys> {
   /// Get the inner deno_lockfile::Lockfile.
-  pub fn lock(&self) -> Guard<Lockfile> {
+  pub fn lock(&self) -> Guard<'_, Lockfile> {
     Guard {
       guard: self.lockfile.lock(),
     }
@@ -339,7 +339,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       api,
     )
     .await?;
-    let root_url = workspace.root_dir();
+    let root_url = workspace.root_dir_url();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),

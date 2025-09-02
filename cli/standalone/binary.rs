@@ -262,7 +262,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         bail!(
           "The `--icon` flag is only available when targeting Windows (current: {})",
           target,
-        )
+        );
       }
     }
     self.write_standalone_binary(options, original_binary).await
@@ -588,14 +588,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       );
     }
 
-    if let Some(import_map) = self.workspace_resolver.maybe_import_map() {
-      if let Ok(file_path) = url_to_file_path(import_map.base_url()) {
-        if let Some(import_map_parent_dir) = file_path.parent() {
-          // tell the vfs about the import map's parent directory in case it
-          // falls outside what the root of where the VFS will be based
-          vfs.add_possible_min_root_dir(import_map_parent_dir);
-        }
-      }
+    if let Some(import_map) = self.workspace_resolver.maybe_import_map()
+      && let Ok(file_path) = url_to_file_path(import_map.base_url())
+      && let Some(import_map_parent_dir) = file_path.parent()
+    {
+      // tell the vfs about the import map's parent directory in case it
+      // falls outside what the root of where the VFS will be based
+      vfs.add_possible_min_root_dir(import_map_parent_dir);
     }
     if let Some(node_modules_dir) = self.npm_resolver.root_node_modules_path() {
       // ensure the vfs doesn't go below the node_modules directory's parent
@@ -722,7 +721,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       seed: self.cli_options.seed(),
       code_cache_key,
       location: self.cli_options.location_flag().clone(),
-      permissions: self.cli_options.permissions_options(),
+      permissions: self.cli_options.permissions_options()?,
       v8_flags: construct_v8_flags(
         &get_default_v8_flags(),
         self.cli_options.v8_flags(),
@@ -902,7 +901,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           self
             .cli_options
             .workspace()
-            .root_dir()
+            .root_dir_url()
             .to_file_path()
             .unwrap(),
         );

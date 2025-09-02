@@ -33,6 +33,7 @@ use crate::tools::coverage::CoverageCollector;
 use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::progress_bar::ProgressBar;
 
 pub type CreateHmrRunnerCb =
   Box<dyn Fn(deno_core::LocalInspectorSession) -> HmrRunner + Send + Sync>;
@@ -318,6 +319,7 @@ pub struct CliMainWorkerFactory {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
   npm_resolver: CliNpmResolver,
+  progress_bar: ProgressBar,
   root_permissions: PermissionsContainer,
   shared: Arc<SharedState>,
   sys: CliSys,
@@ -333,6 +335,7 @@ impl CliMainWorkerFactory {
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
+    progress_bar: ProgressBar,
     sys: CliSys,
     options: CliMainWorkerOptions,
     root_permissions: PermissionsContainer,
@@ -342,6 +345,7 @@ impl CliMainWorkerFactory {
       maybe_lockfile,
       npm_installer,
       npm_resolver,
+      progress_bar,
       root_permissions,
       sys,
       shared: Arc::new(SharedState {
@@ -408,6 +412,7 @@ impl CliMainWorkerFactory {
     {
       Ok(package_ref) => {
         if let Some(npm_installer) = &self.npm_installer {
+          let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
           let reqs = &[package_ref.req().clone()];
           npm_installer
             .add_package_reqs(

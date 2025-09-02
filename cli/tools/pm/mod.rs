@@ -189,10 +189,10 @@ impl ConfigUpdater {
 
         let (alias, value) = package_json_dependency_entry(selected);
 
-        if let Some(other) = other_dependencies {
-          if let Some(prop) = other.get(&alias) {
-            remove_prop_and_maybe_parent_prop(prop);
-          }
+        if let Some(other) = other_dependencies
+          && let Some(prop) = other.get(&alias)
+        {
+          remove_prop_and_maybe_parent_prop(prop);
         }
 
         match dependencies.get(&alias) {
@@ -390,18 +390,18 @@ pub async fn add(
       add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
     })?;
 
-  if let Some(deno) = &deno_config {
-    if deno.obj().get("importMap").is_some() {
-      bail!(
-        concat!(
-          "`deno {}` is not supported when configuration file contains an \"importMap\" field. ",
-          "Inline the import map into the Deno configuration file.\n",
-          "    at {}",
-        ),
-        cmd_name,
-        deno.display_path(),
-      );
-    }
+  if let Some(deno) = &deno_config
+    && deno.obj().get("importMap").is_some()
+  {
+    bail!(
+      concat!(
+        "`deno {}` is not supported when configuration file contains an \"importMap\" field. ",
+        "Inline the import map into the Deno configuration file.\n",
+        "    at {}",
+      ),
+      cmd_name,
+      deno.display_path(),
+    );
   }
 
   let start_dir = cli_factory.cli_options()?.start_dir.dir_path();
@@ -425,6 +425,7 @@ pub async fn add(
     Default::default(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
+    cli_factory.memory_files().clone(),
     cli_factory.sys(),
     CreateCliFileFetcherOptions {
       allow_remote: true,
@@ -670,18 +671,17 @@ async fn find_package_and_select_version_for_req(
           package_req: req.clone(),
         });
       }
-      if req.version_req.version_text() == "*" {
-        if let Some(pre_release_version) =
+      if req.version_req.version_text() == "*"
+        && let Some(pre_release_version) =
           main_resolver.latest_version(req).await
-        {
-          return Ok(PackageAndVersion::NotFound {
-            package: prefixed_name,
-            package_req: req.clone(),
-            help: Some(NotFoundHelp::PreReleaseVersion(
-              pre_release_version.clone(),
-            )),
-          });
-        }
+      {
+        return Ok(PackageAndVersion::NotFound {
+          package: prefixed_name,
+          package_req: req.clone(),
+          help: Some(NotFoundHelp::PreReleaseVersion(
+            pre_release_version.clone(),
+          )),
+        });
       }
 
       return Ok(PackageAndVersion::NotFound {
@@ -895,6 +895,17 @@ async fn npm_install_after_modification(
   npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
   cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
+
+  if let Some(install_reporter) = cli_factory.install_reporter()? {
+    let workspace = cli_factory.workspace_resolver().await?;
+    let npm_resolver = cli_factory.npm_resolver().await?;
+    super::installer::print_install_report(
+      &cli_factory.sys(),
+      install_reporter,
+      workspace,
+      npm_resolver,
+    );
+  }
 
   if let Some(lockfile) = cli_factory.maybe_lockfile().await? {
     lockfile.write_if_changed()?;
