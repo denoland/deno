@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use std::env;
 use std::future::Future;
 use std::io::IsTerminal;
+use std::io::Write as _;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -242,11 +243,13 @@ async fn run_subcommand(
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.print_task_list {
-        log::info!(
+        writeln!(
+          &mut std::io::stdout(),
           "Please specify a {} or a {}.\n",
           colors::bold("[SCRIPT_ARG]"),
           colors::bold("task name")
-        );
+        )?;
+        std::io::stdout().flush()?;
         tools::task::execute_script(
           flags,
           TaskFlags {
