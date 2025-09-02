@@ -1115,3 +1115,56 @@ Deno.test(
     Deno.removeSignalListener("SIGCHLD", cb);
   },
 );
+
+Deno.test({ permissions: { run: true } }, async function collectArrayBuffer() {
+  const process = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log('hello')"],
+    stdout: "piped",
+  }).spawn();
+
+  const output = await process.stdout.arrayBuffer();
+  assert(output instanceof ArrayBuffer);
+  assertEquals(
+    new Uint8Array(output),
+    new Uint8Array([104, 101, 108, 108, 111, 10]),
+  );
+
+  await process.status;
+});
+
+Deno.test({ permissions: { run: true } }, async function collectBytes() {
+  const process = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log('hello')"],
+    stdout: "piped",
+  }).spawn();
+
+  const output = await process.stdout.bytes();
+  assert(output instanceof Uint8Array);
+  assertEquals(output, new Uint8Array([104, 101, 108, 108, 111, 10]));
+
+  await process.status;
+});
+
+Deno.test({ permissions: { run: true } }, async function collectJSON() {
+  const process = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log(JSON.stringify({foo: 'bar'}))"],
+    stdout: "piped",
+  }).spawn();
+
+  const output = await process.stdout.json();
+  assertEquals(output, { foo: "bar" });
+
+  await process.status;
+});
+
+Deno.test({ permissions: { run: true } }, async function collectText() {
+  const process = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log('hello')"],
+    stdout: "piped",
+  }).spawn();
+
+  const output = await process.stdout.text();
+  assertEquals(output, "hello\n");
+
+  await process.status;
+});

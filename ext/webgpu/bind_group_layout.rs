@@ -5,6 +5,7 @@ use deno_core::WebIDL;
 use deno_core::op2;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 use crate::texture::GPUTextureViewDimension;
 
 pub struct GPUBindGroupLayout {
@@ -31,6 +32,12 @@ impl GarbageCollected for GPUBindGroupLayout {
 
 #[op2]
 impl GPUBindGroupLayout {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUBindGroupLayout, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

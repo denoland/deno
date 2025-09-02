@@ -543,4 +543,4 @@ webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
   webidl.converters["BodyInit_DOMString"],
 );
 
-export { extractBody, InnerBody, mixinBody };
+export { extractBody, InnerBody, mixinBody, packageData };

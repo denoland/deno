@@ -1,31 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { parse } from "@std/toml";
 import { runSingle } from "./run_all_test_unmodified.ts";
 import { assert } from "@std/assert";
 import { partition } from "@std/collections/partition";
 import { pooledMap } from "@std/async/pool";
+import { configFile, type SingleFileConfig } from "./common.ts";
 
 let testSerialId = 0;
 export const generateTestSerialId = () => ++testSerialId;
 
-interface SingleFileConfig {
-  flaky?: boolean;
-  windows?: boolean;
-  darwin?: boolean;
-  linux?: boolean;
-}
-
-type Config = {
-  tests: Record<string, SingleFileConfig>;
-};
-
-const configFile = await Deno.readTextFile(
-  new URL("./config.toml", import.meta.url),
-).then(parse);
-
 const [sequentialTests, parallelTests] = partition(
-  Object.entries((configFile as Config).tests),
+  Object.entries(configFile.tests),
   ([testName]) => testName.startsWith("sequential/"),
 );
 

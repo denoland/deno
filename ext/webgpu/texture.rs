@@ -14,6 +14,7 @@ use wgpu_types::TextureFormat;
 use wgpu_types::TextureViewDimension;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
@@ -73,6 +74,12 @@ impl GarbageCollected for GPUTexture {
 
 #[op2]
 impl GPUTexture {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUTexture, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -261,6 +268,12 @@ impl GarbageCollected for GPUTextureView {
 
 #[op2]
 impl GPUTextureView {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUTextureView, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

@@ -16,6 +16,7 @@ use deno_core::webidl::WebIdlError;
 
 use crate::Instance;
 use crate::buffer::GPUBuffer;
+use crate::error::GPUGenericError;
 use crate::render_bundle::GPURenderBundle;
 use crate::texture::GPUTextureView;
 use crate::webidl::GPUColor;
@@ -36,6 +37,12 @@ impl GarbageCollected for GPURenderPassEncoder {
 
 #[op2]
 impl GPURenderPassEncoder {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPURenderPassEncoder, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

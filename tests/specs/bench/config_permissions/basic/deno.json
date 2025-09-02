@@ -1,0 +1,7 @@
+{
+  "bench": {
+    "permissions": {
+      "read": true
+    }
+  }
+}

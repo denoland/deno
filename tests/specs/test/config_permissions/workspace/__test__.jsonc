@@ -1,0 +1,4 @@
+{
+  "args": "test -P",
+  "output": "test.out"
+}

@@ -1,0 +1,14 @@
+{
+  "workspace": [
+    "./a"
+  ],
+  "permissions": {
+    "root": {
+      "read": ["./data"]
+    },
+    // the member should overwrite this one instead of merging with it
+    "member": {
+      "read": ["./data"]
+    }
+  }
+}

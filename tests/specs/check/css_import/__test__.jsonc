@@ -16,8 +16,7 @@
     "exitCode": 1
   }, {
     "args": "check exists_and_try_uses.ts",
-    "output": "exists_and_try_uses.out",
-    "exitCode": 1
+    "output": "exists_and_try_uses.out"
   }, {
     "args": "check exists_dynamic_import.ts",
     "output": "Check file:///[WILDCARD]exists_dynamic_import.ts\n"
