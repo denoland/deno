@@ -905,7 +905,7 @@ function buildCommand(
 
   if (shell) {
     let command = [file, ...args].join(" ");
-    
+
     // Check if the command contains escaped variables that reference the Deno executable
     // When using escapePOSIXShell, the actual Deno path is stored in ESCAPED_* env vars
     const denoExecPath = Deno.execPath();
@@ -916,7 +916,10 @@ function buildCommand(
         if (key.startsWith("ESCAPED_") && value === denoExecPath) {
           // Found the Deno executable in escaped variables
           // Modify the command to include permission flags by reconstructing it
-          command = command.replace(`"\${${key}}"`, `"${denoExecPath}" -A --unstable-bare-node-builtins --unstable-node-globals --unstable-detect-cjs`);
+          command = command.replace(
+            `"\${${key}}"`,
+            `"${denoExecPath}" -A --unstable-bare-node-builtins --unstable-node-globals --unstable-detect-cjs`,
+          );
           // Remove the environment variable since we're now using the path directly
           delete env[key];
           break;
