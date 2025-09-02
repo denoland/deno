@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
@@ -139,7 +141,6 @@ impl BundleProvider for CliBundleProvider {
   async fn bundle(
     &self,
     options: deno_runtime::ops::bundle::BundleOptions,
-    plugins: Option<deno_runtime::ops::bundle::Plugins>,
   ) -> Result<rt_bundle::BuildResponse, AnyError> {
     let mut flags_clone = (*self.flags).clone();
     let write_output = options.write
@@ -150,16 +151,14 @@ impl BundleProvider for CliBundleProvider {
     std::thread::spawn(move || {
       deno_runtime::tokio_util::create_and_run_current_thread(async move {
         let flags = Arc::new(flags_clone);
-        log::trace!("bundle_init: {plugins:?}");
-        let bundler =
-          match super::bundle_init(flags, &bundle_flags, plugins).await {
-            Ok(bundler) => bundler,
-            Err(e) => {
-              log::trace!("bundle_init error: {e:?}");
-              let _ = tx.send(Err(e));
-              return Ok(());
-            }
-          };
+        let bundler = match super::bundle_init(flags, &bundle_flags).await {
+          Ok(bundler) => bundler,
+          Err(e) => {
+            log::trace!("bundle_init error: {e:?}");
+            let _ = tx.send(Err(e));
+            return Ok(());
+          }
+        };
         log::trace!("bundler.build");
         let mut result = match bundler.build().await {
           Ok(result) => result,
