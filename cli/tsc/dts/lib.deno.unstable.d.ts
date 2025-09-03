@@ -104,6 +104,12 @@ declare namespace Deno {
     }
   }
 
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Bundle Typescript/Javascript code
+   * @category Bundle
+   * @experimental
+   */
   export function bundle(options: bundle.Options): Promise<bundle.Result>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
