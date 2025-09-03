@@ -243,6 +243,16 @@ async fn run_subcommand(
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.print_task_list {
+        let task_flags = TaskFlags {
+          cwd: None,
+          task: None,
+          is_run: true,
+          recursive: false,
+          filter: None,
+          eval: false,
+        };
+        let mut flags = flags.deref().clone();
+        flags.subcommand = DenoSubcommand::Task(task_flags.clone());
         writeln!(
           &mut std::io::stdout(),
           "Please specify a {} or a {}.\n",
@@ -250,18 +260,9 @@ async fn run_subcommand(
           colors::bold("task name")
         )?;
         std::io::stdout().flush()?;
-        tools::task::execute_script(
-          flags,
-          TaskFlags {
-            cwd: None,
-            task: None,
-            is_run: true,
-            recursive: false,
-            filter: None,
-            eval: false,
-          },
-        )
-        .await
+        tools::task::execute_script(Arc::new(flags), task_flags)
+          .await
+          .map(|_| 1)
       } else if run_flags.is_stdin() {
         // these futures are boxed to prevent stack overflows on Windows
         tools::run::run_from_stdin(flags.clone(), unconfigured_runtime, roots)
