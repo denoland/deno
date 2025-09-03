@@ -1935,8 +1935,8 @@ fn lsp_inlay_hints() {
             "location": {
               "uri": "deno:/asset/lib.es5.d.ts",
               "range": {
-                "start": { "line": 1462, "character": 11 },
-                "end": { "line": 1462, "character": 21 },
+                "start": { "line": 1469, "character": 11 },
+                "end": { "line": 1469, "character": 21 },
               },
             },
           },
