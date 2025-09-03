@@ -54,7 +54,6 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
-use regex::Regex;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
@@ -453,8 +452,9 @@ fn should_fallback_on_run_error(script_err: &str) -> bool {
   {
     return true;
   }
-  let pattern = r"Import 'file:///.+?' failed\.\n\s+0: .+ \(os error \d+\)";
-  let re = Regex::new(pattern).unwrap();
+  let re = lazy_regex::regex!(
+    r"Import 'file:///.+?' failed\.\n\s+0: .+ \(os error \d+\)"
+  );
   re.is_match(script_err)
 }
 
