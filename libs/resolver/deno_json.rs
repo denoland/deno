@@ -18,6 +18,7 @@ use deno_config::workspace::WorkspaceRc;
 use deno_error::JsError;
 use deno_maybe_sync::new_rc;
 use deno_path_util::normalize_path;
+use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
@@ -27,6 +28,7 @@ use indexmap::IndexSet;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolver;
+use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 #[cfg(feature = "sync")]
 use once_cell::sync::OnceCell;
@@ -42,7 +44,6 @@ use url::Url;
 use crate::collections::FolderScopedWithUnscopedMap;
 use crate::factory::ConfigDiscoveryOption;
 use crate::npm::DenoInNpmPackageChecker;
-use crate::npm::NpmResolver;
 use crate::npm::NpmResolverSys;
 
 #[allow(clippy::disallowed_types)]
@@ -365,6 +366,7 @@ struct MemoizedValues {
     Result<Option<JsxImportSourceConfigRc>, ToMaybeJsxImportSourceConfigError>,
   >,
   check_js: OnceCell<bool>,
+  root_dirs: OnceCell<Vec<Url>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -603,6 +605,38 @@ impl CompilerOptionsData {
     })
   }
 
+  pub fn root_dirs(&self) -> &Vec<Url> {
+    self.memoized.root_dirs.get_or_init(|| {
+      let Some((source_specifier, root_dirs)) =
+        self.sources.iter().rev().find_map(|s| {
+          Some((
+            &s.specifier,
+            s.compiler_options
+              .as_ref()?
+              .0
+              .as_object()?
+              .get("rootDirs")?
+              .as_array()?,
+          ))
+        })
+      else {
+        return Vec::new();
+      };
+      root_dirs
+        .iter()
+        .filter_map(|s| {
+          url_from_directory_path(
+            &url_to_file_path(source_specifier)
+              .ok()?
+              .parent()?
+              .join(s.as_str()?),
+          )
+          .ok()
+        })
+        .collect()
+    })
+  }
+
   pub fn workspace_dir_or_source_url(&self) -> Option<&UrlRc> {
     self
       .workspace_dir_url
@@ -709,29 +743,38 @@ fn is_maybe_directory_error(err: &std::io::Error) -> bool {
     || cfg!(windows) && kind == ErrorKind::PermissionDenied
 }
 
-type TsConfigNodeResolver<TSys> = NodeResolver<
+pub(crate) type TsConfigNodeResolver<TSys, TNpfr> = NodeResolver<
   DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
-  NpmResolver<TSys>,
+  TNpfr,
   TSys,
 >;
 
-type GetNodeResolverFn<'a, NSys> =
-  Box<dyn Fn(&Url) -> Option<&'a TsConfigNodeResolver<NSys>> + 'a>;
+type GetNodeResolverFn<'a, NSys, TNpfr> =
+  Box<dyn Fn(&Url) -> Option<&'a TsConfigNodeResolver<NSys, TNpfr>> + 'a>;
 
-struct TsConfigCollector<'a, 'b, TSys: FsRead, NSys: NpmResolverSys> {
+struct TsConfigCollector<
+  'a,
+  'b,
+  TSys: FsRead,
+  NSys: NpmResolverSys,
+  TNpfr: NpmPackageFolderResolver,
+> {
   roots: BTreeSet<PathBuf>,
   collected: IndexMap<UrlRc, Rc<TsConfigData>>,
   read_cache: HashMap<PathBuf, Result<Rc<TsConfigData>, Rc<std::io::Error>>>,
   currently_reading: IndexSet<PathBuf>,
   sys: &'a TSys,
-  get_node_resolver: GetNodeResolverFn<'b, NSys>,
+  get_node_resolver: GetNodeResolverFn<'b, NSys, TNpfr>,
   logged_warnings: &'a LoggedWarningsRc,
   overrides: CompilerOptionsOverrides,
 }
 
-impl<TSys: FsRead + std::fmt::Debug, NSys: NpmResolverSys> std::fmt::Debug
-  for TsConfigCollector<'_, '_, TSys, NSys>
+impl<
+  TSys: FsRead + std::fmt::Debug,
+  NSys: NpmResolverSys,
+  TNpfr: NpmPackageFolderResolver,
+> std::fmt::Debug for TsConfigCollector<'_, '_, TSys, NSys, TNpfr>
 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("TsConfigCollector")
@@ -745,12 +788,17 @@ impl<TSys: FsRead + std::fmt::Debug, NSys: NpmResolverSys> std::fmt::Debug
   }
 }
 
-impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
-  TsConfigCollector<'a, 'b, TSys, NSys>
+impl<
+  'a,
+  'b,
+  TSys: FsRead,
+  NSys: NpmResolverSys,
+  TNpfr: NpmPackageFolderResolver,
+> TsConfigCollector<'a, 'b, TSys, NSys, TNpfr>
 {
   fn new(
     sys: &'a TSys,
-    get_node_resolver: GetNodeResolverFn<'b, NSys>,
+    get_node_resolver: GetNodeResolverFn<'b, NSys, TNpfr>,
     logged_warnings: &'a LoggedWarningsRc,
     overrides: CompilerOptionsOverrides,
   ) -> Self {
@@ -926,12 +974,19 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       });
     let include = object
       .and_then(|o| {
-        PathOrPatternSet::from_include_relative_path_or_patterns(
-          dir_path,
+        PathOrPatternSet::from_absolute_paths(
           &o.get("include")?
             .as_array()?
             .iter()
-            .filter_map(|v| Some(v.as_str()?.to_string()))
+            .filter_map(|v| {
+              let path = Path::new(v.as_str()?);
+              let absolute_path = if path.is_absolute() {
+                normalize_path(Cow::Borrowed(path))
+              } else {
+                normalize_path(Cow::Owned(dir_path.join(path)))
+              };
+              Some(absolute_path.to_string_lossy().into_owned())
+            })
             .collect::<Vec<_>>(),
         )
         .ok()
@@ -945,12 +1000,19 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       .or_else(|| files.is_some().then(Default::default));
     let exclude = object
       .and_then(|o| {
-        PathOrPatternSet::from_exclude_relative_path_or_patterns(
-          dir_path,
+        PathOrPatternSet::from_absolute_paths(
           &o.get("exclude")?
             .as_array()?
             .iter()
-            .filter_map(|v| Some(v.as_str()?.to_string()))
+            .filter_map(|v| {
+              let path = Path::new(v.as_str()?);
+              let absolute_path = if path.is_absolute() {
+                normalize_path(Cow::Borrowed(path))
+              } else {
+                normalize_path(Cow::Owned(dir_path.join(path)))
+              };
+              Some(absolute_path.to_string_lossy().into_owned())
+            })
             .collect::<Vec<_>>(),
         )
         .ok()
@@ -1041,10 +1103,14 @@ impl Default for CompilerOptionsResolver {
 }
 
 impl CompilerOptionsResolver {
-  pub fn new<TSys: FsRead, NSys: NpmResolverSys>(
+  pub fn new<
+    TSys: FsRead,
+    NSys: NpmResolverSys,
+    TNpfr: NpmPackageFolderResolver,
+  >(
     sys: &TSys,
     workspace: &WorkspaceRc,
-    node_resolver: &TsConfigNodeResolver<NSys>,
+    node_resolver: &TsConfigNodeResolver<NSys, TNpfr>,
     config_discover: &ConfigDiscoveryOption,
     overrides: &CompilerOptionsOverrides,
   ) -> Self {
@@ -1171,10 +1237,18 @@ impl CompilerOptionsResolver {
     self.workspace_configs.count() + self.ts_configs.len()
   }
 
-  pub fn new_for_dirs_by_scope<TSys: FsRead, NSys: NpmResolverSys>(
+  pub fn has_root_dirs(&self) -> bool {
+    self.entries().any(|(_, d, _)| !d.root_dirs().is_empty())
+  }
+
+  pub fn new_for_dirs_by_scope<
+    TSys: FsRead,
+    NSys: NpmResolverSys,
+    TNpfr: NpmPackageFolderResolver,
+  >(
     sys: &TSys,
     dirs_by_scope: BTreeMap<&UrlRc, &WorkspaceDirectory>,
-    get_node_resolver: GetNodeResolverFn<'_, NSys>,
+    get_node_resolver: GetNodeResolverFn<'_, NSys, TNpfr>,
   ) -> Self {
     let logged_warnings = new_rc(LoggedWarnings::default());
     let mut ts_config_collector = TsConfigCollector::new(
