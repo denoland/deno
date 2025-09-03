@@ -5651,7 +5651,7 @@ fn lsp_jsr_lockfile() {
     json!({
       "lint": {
         "rules": {
-          "tags": ["recommended"]
+          "tags": []
         }
       }
     })
@@ -6268,7 +6268,7 @@ fn lsp_code_actions_deno_cache_npm() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "import chalk from \"npm:chalk\";\n\nconsole.log(chalk.green);\n"
+      "text": "import chalk from \"npm:chalk@5\";\n\nconsole.log(chalk.green);\n"
     }
   }));
   assert_eq!(
@@ -6278,13 +6278,13 @@ fn lsp_code_actions_deno_cache_npm() {
       "diagnostics": [{
         "range": {
           "start": { "line": 0, "character": 18 },
-          "end": { "line": 0, "character": 29 }
+          "end": { "line": 0, "character": 31 }
         },
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "npm package \"chalk\" is not installed or doesn't exist.",
-        "data": { "specifier": "npm:chalk" }
+        "message": "npm package \"chalk@5\" is not installed or doesn't exist.",
+        "data": { "specifier": "npm:chalk@5" }
       }],
       "version": 1
     }))
@@ -6299,19 +6299,19 @@ fn lsp_code_actions_deno_cache_npm() {
       },
       "range": {
         "start": { "line": 0, "character": 18 },
-        "end": { "line": 0, "character": 29 }
+        "end": { "line": 0, "character": 31 }
       },
       "context": {
         "diagnostics": [{
           "range": {
             "start": { "line": 0, "character": 18 },
-            "end": { "line": 0, "character": 29 }
+            "end": { "line": 0, "character": 31 }
           },
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "npm package \"chalk\" is not installed or doesn't exist.",
-          "data": { "specifier": "npm:chalk" }
+          "message": "npm package \"chalk@5\" is not installed or doesn't exist.",
+          "data": { "specifier": "npm:chalk@5" }
         }],
         "only": ["quickfix"]
       }
@@ -6320,23 +6320,23 @@ fn lsp_code_actions_deno_cache_npm() {
   assert_eq!(
     res,
     json!([{
-      "title": "Install \"npm:chalk\" and its dependencies.",
+      "title": "Install \"npm:chalk@5\" and its dependencies.",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
           "start": { "line": 0, "character": 18 },
-          "end": { "line": 0, "character": 29 }
+          "end": { "line": 0, "character": 31 }
         },
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "npm package \"chalk\" is not installed or doesn't exist.",
-        "data": { "specifier": "npm:chalk" }
+        "message": "npm package \"chalk@5\" is not installed or doesn't exist.",
+        "data": { "specifier": "npm:chalk@5" }
       }],
       "command": {
         "title": "",
         "command": "deno.cache",
-        "arguments": [["npm:chalk"], "file:///a/file.ts"]
+        "arguments": [["npm:chalk@5"], "file:///a/file.ts"]
       }
     }])
   );
@@ -6356,7 +6356,7 @@ fn lsp_code_actions_deno_cache_all() {
       "version": 1,
       "text": r#"
         import * as a from "https://deno.land/x/a/mod.ts";
-        import chalk from "npm:chalk";
+        import chalk from "npm:chalk@5";
         console.log(a);
         console.log(chalk);
       "#,
@@ -6385,13 +6385,13 @@ fn lsp_code_actions_deno_cache_all() {
         {
           "range": {
             "start": { "line": 2, "character": 26 },
-            "end": { "line": 2, "character": 37 },
+            "end": { "line": 2, "character": 39 },
           },
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "npm package \"chalk\" is not installed or doesn't exist.",
-          "data": { "specifier": "npm:chalk" },
+          "message": "npm package \"chalk@5\" is not installed or doesn't exist.",
+          "data": { "specifier": "npm:chalk@5" },
         },
       ],
       "version": 1,
@@ -6478,13 +6478,13 @@ fn lsp_code_actions_deno_cache_all() {
           {
             "range": {
               "start": { "line": 2, "character": 26 },
-              "end": { "line": 2, "character": 37 },
+              "end": { "line": 2, "character": 39 },
             },
             "severity": 1,
             "code": "not-installed-npm",
             "source": "deno",
-            "message": "npm package \"chalk\" is not installed or doesn't exist.",
-            "data": { "specifier": "npm:chalk" },
+            "message": "npm package \"chalk@5\" is not installed or doesn't exist.",
+            "data": { "specifier": "npm:chalk@5" },
           },
         ],
         "command": {
@@ -6512,7 +6512,7 @@ fn lsp_npm_managed_no_export_diagnostic() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "import \"npm:chalk/non-existent\";\n",
+      "text": "import \"npm:chalk@5/non-existent\";\n",
     },
   }));
   client.cache_specifier("file:///a/file.ts");
@@ -6523,12 +6523,12 @@ fn lsp_npm_managed_no_export_diagnostic() {
       {
         "range": {
           "start": { "line": 0, "character": 7 },
-          "end": { "line": 0, "character": 31 },
+          "end": { "line": 0, "character": 33 },
         },
         "severity": 1,
         "code": "no-export-npm",
         "source": "deno",
-        "message": "NPM package \"chalk\" does not define an export \"non-existent\".",
+        "message": "NPM package \"chalk@5\" does not define an export \"non-existent\".",
       },
     ]),
   );
@@ -6550,7 +6550,7 @@ fn lsp_npm_managed_type_only_export_no_diagnostic() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "import \"npm:@minecraft/common\";\n",
+      "text": "import \"npm:@minecraft/common@1\";\n",
     },
   }));
   client.cache_specifier("file:///a/file.ts");
@@ -8943,7 +8943,7 @@ fn lsp_npm_types_nested_js_dts() {
   let file = source_file(
     temp_dir.path().join("file.ts"),
     r#"
-      import { someString } from "npm:@denotest/types-nested-js-dts";
+      import { someString } from "npm:@denotest/types-nested-js-dts@1";
       const someNumber: number = someString;
       console.log(someNumber);
     "#,
@@ -17396,7 +17396,7 @@ fn lsp_byonm() {
       "languageId": "typescript",
       "version": 1,
       "text": r#"
-        import "npm:chalk";
+        import "npm:chalk@5";
         import "@denotest/esm-basic";
       "#,
     },
@@ -17412,13 +17412,13 @@ fn lsp_byonm() {
           },
           "end": {
             "line": 1,
-            "character": 26,
+            "character": 28,
           },
         },
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": "Could not find a matching package for 'npm:chalk' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
+        "message": "Could not find a matching package for 'npm:chalk@5' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
       },
       {
         "range": {
@@ -17457,13 +17457,13 @@ fn lsp_byonm() {
           },
           "end": {
             "line": 1,
-            "character": 26,
+            "character": 28,
           },
         },
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": "Could not find a matching package for 'npm:chalk' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
+        "message": "Could not find a matching package for 'npm:chalk@5' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
       },
     ])
   );
