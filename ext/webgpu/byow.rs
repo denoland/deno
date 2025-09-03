@@ -160,7 +160,7 @@ impl UnsafeWindowSurface {
       width: self.width.clone(),
       height: self.height.clone(),
       config: RefCell::new(None),
-      texture: RefCell::new(None),
+      texture: RefCell::new(v8::TracedReference::empty()),
       canvas: this,
     })
   }
@@ -171,7 +171,7 @@ impl UnsafeWindowSurface {
       return Err(JsErrorBox::type_error("getContext was never called"));
     };
 
-    context.present().map_err(JsErrorBox::from_err)
+    context.present(scope).map_err(JsErrorBox::from_err)
   }
 
   #[fast]
