@@ -20,52 +20,6 @@ impl CliBundleProvider {
   }
 }
 
-impl From<rt_bundle::BundleFormat> for crate::args::BundleFormat {
-  fn from(value: rt_bundle::BundleFormat) -> Self {
-    match value {
-      rt_bundle::BundleFormat::Cjs => crate::args::BundleFormat::Cjs,
-      rt_bundle::BundleFormat::Esm => crate::args::BundleFormat::Esm,
-      rt_bundle::BundleFormat::Iife => crate::args::BundleFormat::Iife,
-    }
-  }
-}
-
-impl From<rt_bundle::BundlePlatform> for crate::args::BundlePlatform {
-  fn from(value: rt_bundle::BundlePlatform) -> Self {
-    match value {
-      rt_bundle::BundlePlatform::Browser => {
-        crate::args::BundlePlatform::Browser
-      }
-      rt_bundle::BundlePlatform::Deno => crate::args::BundlePlatform::Deno,
-    }
-  }
-}
-
-impl From<rt_bundle::PackageHandling> for crate::args::PackageHandling {
-  fn from(value: rt_bundle::PackageHandling) -> Self {
-    match value {
-      rt_bundle::PackageHandling::Bundle => {
-        crate::args::PackageHandling::Bundle
-      }
-      rt_bundle::PackageHandling::External => {
-        crate::args::PackageHandling::External
-      }
-    }
-  }
-}
-
-impl From<rt_bundle::SourceMapType> for crate::args::SourceMapType {
-  fn from(value: rt_bundle::SourceMapType) -> Self {
-    match value {
-      rt_bundle::SourceMapType::Inline => crate::args::SourceMapType::Inline,
-      rt_bundle::SourceMapType::External => {
-        crate::args::SourceMapType::External
-      }
-      rt_bundle::SourceMapType::Linked => crate::args::SourceMapType::Linked,
-    }
-  }
-}
-
 impl From<RtBundleOptions> for crate::args::BundleFlags {
   fn from(value: RtBundleOptions) -> Self {
     Self {

@@ -55,11 +55,7 @@ pub use provider::CliBundleProvider;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
-use crate::args::BundleFormat;
-use crate::args::BundlePlatform;
 use crate::args::Flags;
-use crate::args::PackageHandling;
-use crate::args::SourceMapType;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
@@ -76,6 +72,10 @@ use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
+use deno_bundle_runtime::BundleFormat;
+use deno_bundle_runtime::BundlePlatform;
+use deno_bundle_runtime::PackageHandling;
+use deno_bundle_runtime::SourceMapType;
 
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
@@ -1513,10 +1513,10 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   builder.metafile(true);
 
   match bundle_flags.platform {
-    crate::args::BundlePlatform::Browser => {
+    deno_bundle_runtime::BundlePlatform::Browser => {
       builder.platform(esbuild_client::Platform::Browser);
     }
-    crate::args::BundlePlatform::Deno => {}
+    deno_bundle_runtime::BundlePlatform::Deno => {}
   }
 
   builder.build().unwrap()

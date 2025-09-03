@@ -59,7 +59,6 @@ use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
-use crate::args::BundlePlatform;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::ConfigFlag;
@@ -110,6 +109,7 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use deno_bundle_runtime::BundlePlatform;
 
 struct CliRootCertStoreProvider {
   cell: OnceCell<RootCertStore>,

@@ -23,6 +23,10 @@ use clap::builder::styling::AnsiColor;
 use clap::error::ErrorKind;
 use clap::value_parser;
 use color_print::cstr;
+use deno_bundle_runtime::BundleFormat;
+use deno_bundle_runtime::BundlePlatform;
+use deno_bundle_runtime::PackageHandling;
+use deno_bundle_runtime::SourceMapType;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -486,61 +490,6 @@ pub struct BundleFlags {
   pub sourcemap: Option<SourceMapType>,
   pub platform: BundlePlatform,
   pub watch: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Copy)]
-pub enum BundlePlatform {
-  Browser,
-  Deno,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Copy)]
-pub enum BundleFormat {
-  Esm,
-  Cjs,
-  Iife,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Copy)]
-pub enum SourceMapType {
-  Linked,
-  Inline,
-  External,
-}
-
-impl std::fmt::Display for BundleFormat {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      BundleFormat::Esm => write!(f, "esm"),
-      BundleFormat::Cjs => write!(f, "cjs"),
-      BundleFormat::Iife => write!(f, "iife"),
-    }
-  }
-}
-
-impl std::fmt::Display for SourceMapType {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      SourceMapType::Linked => write!(f, "linked"),
-      SourceMapType::Inline => write!(f, "inline"),
-      SourceMapType::External => write!(f, "external"),
-    }
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Copy)]
-pub enum PackageHandling {
-  Bundle,
-  External,
-}
-
-impl std::fmt::Display for PackageHandling {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      PackageHandling::Bundle => write!(f, "bundle"),
-      PackageHandling::External => write!(f, "external"),
-    }
-  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
