@@ -2273,7 +2273,7 @@ async fn test_resolve_dns() {
     let records = Parser::new(
       &zone_file,
       None,
-      Some(Name::from_str("example.com").unwrap()),
+      Some(Name::from_str("example.com.").unwrap()),
     )
     .parse();
     if records.is_err() {
