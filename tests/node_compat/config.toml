@@ -474,7 +474,11 @@
 "parallel/test-fs-rmdir-type-check.js" = {}
 "parallel/test-fs-stream-fs-options.js" = {}
 "parallel/test-fs-stream-options.js" = {}
+"parallel/test-fs-symlink-buffer-path.js" = {}
 "parallel/test-fs-symlink-dir-junction.js" = {}
+"parallel/test-fs-symlink-dir-junction-relative.js" = {}
+"parallel/test-fs-symlink-dir.js" = {}
+"parallel/test-fs-symlink.js" = {}
 "parallel/test-fs-unlink-type-check.js" = {}
 "parallel/test-fs-util-validateoffsetlength.js" = {}
 "parallel/test-fs-write-negativeoffset.js" = {}
