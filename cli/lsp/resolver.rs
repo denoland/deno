@@ -1033,7 +1033,7 @@ impl<'a> ResolverFactory<'a> {
               sloppy_imports_options: if unstable_sloppy_imports {
                 SloppyImportsOptions::Enabled
               } else {
-                SloppyImportsOptions::Disabled
+                SloppyImportsOptions::Unspecified
               },
               fs_cache_options: FsCacheOptions::Disabled,
             },

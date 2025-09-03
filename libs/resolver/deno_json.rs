@@ -160,7 +160,25 @@ pub fn parse_compiler_options(
     // know about this option. It will still take this option into account
     // because the graph resolves the JSX import source to the types for TSC.
     if key != "types" && key != "jsxImportSourceTypes" {
-      if ALLOWED_COMPILER_OPTIONS.contains(key.as_str()) {
+      if (key == "module"
+        && value
+          .as_str()
+          .map(|s| {
+            matches!(
+              s.to_ascii_lowercase().as_str(),
+              "nodenext" | "esnext" | "preserve"
+            )
+          })
+          .unwrap_or(false))
+        || (key == "moduleResolution"
+          && value
+            .as_str()
+            .map(|s| {
+              matches!(s.to_ascii_lowercase().as_str(), "nodenext" | "bundler")
+            })
+            .unwrap_or(false))
+        || ALLOWED_COMPILER_OPTIONS.contains(key.as_str())
+      {
         allowed.insert(key, value.to_owned());
       } else {
         ignored.push(key);
@@ -210,6 +228,19 @@ pub struct JsxImportSourceConfig {
 #[allow(clippy::disallowed_types)]
 pub type JsxImportSourceConfigRc =
   deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+enum CompilerOptionsModule {
+  NodeNext,
+  EsNext,
+  Preserve,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum CompilerOptionsModuleResolution {
+  NodeNext,
+  Bundler,
+}
 
 #[derive(Debug, Clone, Error, JsError)]
 #[class(type)]
@@ -267,7 +298,6 @@ pub fn get_base_compiler_options_for_emit(
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
       "module": "NodeNext",
-      "moduleResolution": "NodeNext",
     })),
     CompilerOptionsType::Check { lib } => CompilerOptions::new(json!({
       "allowJs": true,
@@ -289,7 +319,6 @@ pub fn get_base_compiler_options_for_emit(
         (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom"],
       },
       "module": "NodeNext",
-      "moduleResolution": "NodeNext",
       "moduleDetection": "force",
       "noEmit": true,
       "noImplicitOverride": match source_kind {
@@ -365,6 +394,8 @@ struct MemoizedValues {
   jsx_import_source_config: OnceCell<
     Result<Option<JsxImportSourceConfigRc>, ToMaybeJsxImportSourceConfigError>,
   >,
+  module: OnceCell<CompilerOptionsModule>,
+  module_resolution: OnceCell<CompilerOptionsModuleResolution>,
   check_js: OnceCell<bool>,
   root_dirs: OnceCell<Vec<Url>>,
 }
@@ -585,6 +616,49 @@ impl CompilerOptionsData {
       })))
     });
     result.as_ref().map(|c| c.as_ref()).map_err(Clone::clone)
+  }
+
+  fn module(&self) -> CompilerOptionsModule {
+    *self.memoized.module.get_or_init(|| {
+      let value = self.sources.iter().rev().find_map(|s| {
+        s.compiler_options
+          .as_ref()?
+          .0
+          .as_object()?
+          .get("module")?
+          .as_str()
+      });
+      match value.map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("esnext") => CompilerOptionsModule::EsNext,
+        Some("preserve") => CompilerOptionsModule::Preserve,
+        _ => CompilerOptionsModule::NodeNext,
+      }
+    })
+  }
+
+  pub fn module_resolution(&self) -> CompilerOptionsModuleResolution {
+    *self.memoized.module_resolution.get_or_init(|| {
+      let value = self.sources.iter().rev().find_map(|s| {
+        s.compiler_options
+          .as_ref()?
+          .0
+          .as_object()?
+          .get("moduleResolution")?
+          .as_str()
+      });
+      match value.map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("nodenext") => CompilerOptionsModuleResolution::NodeNext,
+        Some("bundler") => CompilerOptionsModuleResolution::Bundler,
+        _ => match self.module() {
+          CompilerOptionsModule::NodeNext => {
+            CompilerOptionsModuleResolution::NodeNext
+          }
+          CompilerOptionsModule::EsNext | CompilerOptionsModule::Preserve => {
+            CompilerOptionsModuleResolution::Bundler
+          }
+        },
+      }
+    })
   }
 
   pub fn check_js(&self) -> bool {

@@ -1086,7 +1086,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             {
               SloppyImportsOptions::Enabled
             } else {
-              SloppyImportsOptions::Disabled
+              SloppyImportsOptions::Unspecified
             },
             fs_cache_options: FsCacheOptions::Enabled,
           };
