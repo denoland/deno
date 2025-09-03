@@ -1169,6 +1169,30 @@ impl Flags {
       }
     }
 
+    fn resolve_single_folder_path(
+      arg: &str,
+      current_dir: &Path,
+      maybe_resolve_directory: impl FnOnce(PathBuf) -> Option<PathBuf>,
+    ) -> Option<PathBuf> {
+      if let Ok(module_specifier) = resolve_url_or_path(arg, current_dir) {
+        if module_specifier.scheme() == "file"
+          || module_specifier.scheme() == "npm"
+        {
+          if let Ok(p) = url_to_file_path(&module_specifier) {
+            maybe_resolve_directory(p)
+          } else {
+            Some(current_dir.to_path_buf())
+          }
+        } else {
+          // When the entrypoint doesn't have file: scheme (it's the remote
+          // script), then we don't auto discover the config file.
+          None
+        }
+      } else {
+        Some(current_dir.to_path_buf())
+      }
+    }
+
     use DenoSubcommand::*;
     match &self.subcommand {
       Fmt(FmtFlags { files, .. }) => {
@@ -1181,25 +1205,10 @@ impl Flags {
       | Compile(CompileFlags {
         source_file: script,
         ..
-      }) => {
-        if let Ok(module_specifier) = resolve_url_or_path(script, current_dir) {
-          if module_specifier.scheme() == "file"
-            || module_specifier.scheme() == "npm"
-          {
-            if let Ok(p) = url_to_file_path(&module_specifier) {
-              p.parent().map(|parent| vec![parent.to_path_buf()])
-            } else {
-              Some(vec![current_dir.to_path_buf()])
-            }
-          } else {
-            // When the entrypoint doesn't have file: scheme (it's the remote
-            // script), then we don't auto discover config file.
-            None
-          }
-        } else {
-          Some(vec![current_dir.to_path_buf()])
-        }
-      }
+      }) => resolve_single_folder_path(script, current_dir, |mut p| {
+        if p.pop() { Some(p) } else { None }
+      })
+      .map(|p| vec![p]),
       Task(TaskFlags {
         cwd: Some(path), ..
       }) => {
@@ -1210,6 +1219,23 @@ impl Flags {
           Ok(path) => Some(vec![path]),
           Err(_) => Some(vec![current_dir.to_path_buf()]),
         }
+      }
+      Cache(CacheFlags { files, .. })
+      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(files))) => {
+        Some(vec![
+          files
+            .iter()
+            .filter_map(|file| {
+              resolve_single_folder_path(file, current_dir, |mut p| {
+                if p.is_dir() {
+                  return Some(p);
+                }
+                if p.pop() { Some(p) } else { None }
+              })
+            })
+            .next()
+            .unwrap_or_else(|| current_dir.to_path_buf()),
+        ])
       }
       _ => Some(vec![current_dir.to_path_buf()]),
     }
@@ -11235,6 +11261,16 @@ mod tests {
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
     assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    let flags = flags_from_vec(svec!["deno", "cache", "sub/test.js"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("sub")]));
+
+    let flags = flags_from_vec(svec!["deno", "cache", "."]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    let flags =
+      flags_from_vec(svec!["deno", "install", "-e", "sub/test.js"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("sub")]));
 
     let flags = flags_from_vec(svec![
       "deno",
