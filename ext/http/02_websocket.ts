@@ -26,9 +26,9 @@ import {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
   createWebSocketBranded,
+  SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
 
@@ -64,23 +64,12 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
     );
   }
 
-  const accept = op_http_websocket_accept_header(websocketKey);
-
-  const r = newInnerResponse(101);
-  r.headerList = [
-    ["upgrade", "websocket"],
-    ["connection", "Upgrade"],
-    ["sec-websocket-accept", accept],
-  ];
-
   const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
   const protocols = StringPrototypeSplit(protocolsStr, ", ");
+  let selectedProtocol;
   if (protocols && options.protocol) {
     if (ArrayPrototypeIncludes(protocols, options.protocol)) {
-      ArrayPrototypePush(r.headerList, [
-        "sec-websocket-protocol",
-        options.protocol,
-      ]);
+      selectedProtocol = options.protocol;
     } else {
       throw new TypeError(
         `Protocol '${options.protocol}' not in the request's protocol list (non negotiable)`,
@@ -90,13 +79,34 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
 
   const socket = createWebSocketBranded(WebSocket);
   setEventTargetData(socket);
-  socket[_server] = true;
+  socket[_role] = SERVER;
   // Nginx timeout is 60s, so default to a lower number: https://github.com/denoland/deno/pull/23985
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 30;
   socket[_idleTimeoutTimeout] = null;
 
   if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeWebSocket", r, socket);
+    return inner._wantsUpgrade(
+      "upgradeWebSocket",
+      socket,
+      websocketKey,
+      selectedProtocol,
+    );
+  }
+
+  const accept = op_http_websocket_accept_header(websocketKey);
+
+  const r = newInnerResponse(101);
+  r.headerList = [
+    ["upgrade", "websocket"],
+    ["connection", "Upgrade"],
+    ["sec-websocket-accept", accept],
+  ];
+
+  if (selectedProtocol) {
+    ArrayPrototypePush(r.headerList, [
+      "sec-websocket-protocol",
+      selectedProtocol,
+    ]);
   }
 
   const response = fromInnerResponse(r, "immutable");

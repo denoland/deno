@@ -76,7 +76,6 @@ import {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
   SERVER,
   WebSocket,
@@ -148,10 +147,10 @@ const UPGRADE_RESPONSE_SENTINEL = fromInnerResponse(
   "immutable",
 );
 
-function upgradeHttpRaw(req, conn) {
+function upgradeHttpRaw(req) {
   const inner = toInnerRequest(req);
-  if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeHttpRaw", conn);
+  if (inner?._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeHttpRaw");
   }
   throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
 }
@@ -175,7 +174,7 @@ class InnerRequest {
   constructor(external, context) {
     this.#external = external;
     this.#context = context;
-    this.#upgraded = false;
+    this.#upgraded = null;
     this.#completed = undefined;
   }
 
@@ -214,7 +213,6 @@ class InnerRequest {
     // upgradeHttpRaw is sync
     if (upgradeType == "upgradeHttpRaw") {
       const external = this.#external;
-      const underlyingConn = originalArgs[0];
 
       this.url();
       this.headerList;
@@ -226,8 +224,8 @@ class InnerRequest {
 
       const conn = new UpgradedConn(
         upgradeRid,
-        underlyingConn?.remoteAddr,
-        underlyingConn?.localAddr,
+        this.remoteAddr,
+        this.#context.listener.addr,
       );
 
       return { response: UPGRADE_RESPONSE_SENTINEL, conn };
@@ -235,8 +233,7 @@ class InnerRequest {
 
     // upgradeWebSocket is sync
     if (upgradeType == "upgradeWebSocket") {
-      const response = originalArgs[0];
-      const ws = originalArgs[1];
+      const { 0: ws, 1: websocketKey, 2: selectedProtocol } = originalArgs;
 
       const external = this.#external;
 
@@ -248,9 +245,11 @@ class InnerRequest {
       this.#upgraded = () => {
         goAhead.resolve();
       };
+
       const wsPromise = op_http_upgrade_websocket_next(
         external,
-        response.headerList,
+        websocketKey,
+        selectedProtocol,
       );
 
       // Start the upgrade in the background.
