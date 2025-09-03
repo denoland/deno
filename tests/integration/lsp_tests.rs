@@ -1935,8 +1935,8 @@ fn lsp_inlay_hints() {
             "location": {
               "uri": "deno:/asset/lib.es5.d.ts",
               "range": {
-                "start": { "line": 1462, "character": 11 },
-                "end": { "line": 1462, "character": 21 },
+                "start": { "line": 1469, "character": 11 },
+                "end": { "line": 1469, "character": 21 },
               },
             },
           },
@@ -5646,7 +5646,17 @@ fn lsp_code_actions_deno_cache_jsr() {
 fn lsp_jsr_lockfile() {
   let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write("./deno.json", json!({}).to_string());
+  temp_dir.write(
+    "./deno.json",
+    json!({
+      "lint": {
+        "rules": {
+          "tags": ["recommended"]
+        }
+      }
+    })
+    .to_string(),
+  );
   let lockfile = temp_dir.path().join("deno.lock");
   let integrity = context.get_jsr_package_integrity("@denotest/add/0.2.0");
   lockfile.write_json(&json!({
@@ -14995,6 +15005,11 @@ fn lsp_vendor_dir() {
     json!({
       "vendor": true,
       "lock": false,
+      "lint": {
+        "rules": {
+          "tags": ["recommended"]
+        }
+      }
     })
     .to_string(),
   );
@@ -15016,7 +15031,7 @@ fn lsp_vendor_dir() {
       .map(|d| d.message.as_str())
       .collect::<Vec<_>>(),
     vec![
-      "Uncached or missing remote URL: http://localhost:4545/subdir/mod1.ts"
+      "Uncached or missing remote URL: http://localhost:4545/subdir/mod1.ts",
     ]
   );
   assert!(!temp_dir.path().join("vendor").exists());
@@ -17361,6 +17376,13 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
 fn lsp_byonm() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
+  temp_dir.path().join("deno.json").write_json(&json!({
+    "lint": {
+      "rules": {
+        "tags": ["recommended"]
+      }
+    }
+  }));
   temp_dir.path().join("package.json").write_json(&json!({
     "dependencies": {
       "@denotest/esm-basic": "*",
@@ -18014,7 +18036,16 @@ fn lsp_cjs_import_dual() {
     .add_npm_env_vars()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.write("deno.json", r#"{}"#);
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}"#,
+  );
   temp_dir.write(
     "package.json",
     r#"{

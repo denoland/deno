@@ -75,6 +75,7 @@
         "no-implicit-declare-namespace-export",
         "no-import-assertions",
         "no-import-assign",
+        "no-import-prefix",
         "no-inferrable-types",
         "no-inner-declarations",
         "no-invalid-regexp",
