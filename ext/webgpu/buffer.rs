@@ -9,6 +9,8 @@ use deno_core::WebIDL;
 use deno_core::futures::channel::oneshot;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::TracedReference;
+use deno_core::v8::cppgc::GcCell;
 use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_error::JsErrorBox;
 use wgpu_core::device::HostMap as MapMode;
@@ -57,10 +59,10 @@ pub struct GPUBuffer {
   pub size: u64,
   pub usage: u32,
 
-  pub map_state: RefCell<&'static str>,
-  pub map_mode: RefCell<Option<MapMode>>,
+  pub map_state: GcCell<&'static str>,
+  pub map_mode: GcCell<Option<MapMode>>,
 
-  pub mapped_js_buffers: RefCell<Vec<v8::Global<v8::ArrayBuffer>>>,
+  pub mapped_js_buffers: GcCell<Vec<TracedReference<v8::ArrayBuffer>>>,
 }
 
 impl Drop for GPUBuffer {
@@ -111,13 +113,14 @@ impl GPUBuffer {
 
   #[getter]
   #[string]
-  fn map_state(&self) -> &'static str {
-    *self.map_state.borrow()
+  fn map_state(&self, isolate: &mut v8::Isolate) -> &'static str {
+    *self.map_state.get(isolate)
   }
 
   #[async_method]
   async fn map_async(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] mode: u32,
     #[webidl(default = 0)] offset: u64,
     #[webidl] size: Option<u64>,
@@ -138,7 +141,7 @@ impl GPUBuffer {
     };
 
     {
-      *self.map_state.borrow_mut() = "pending";
+      *self.map_state.get_mut(isolate) = "pending";
     }
 
     let (sender, receiver) =
@@ -192,8 +195,8 @@ impl GPUBuffer {
 
     tokio::try_join!(device_poll_fut, receiver_fut)?;
 
-    *self.map_state.borrow_mut() = "mapped";
-    *self.map_mode.borrow_mut() = Some(mode);
+    *self.map_state.get_mut(isolate) = "mapped";
+    *self.map_mode.get_mut(isolate) = Some(mode);
 
     Ok(())
   }
@@ -209,10 +212,12 @@ impl GPUBuffer {
       .buffer_get_mapped_range(self.id, offset, size)
       .map_err(BufferError::Access)?;
 
-    let mode = self.map_mode.borrow();
-    let mode = mode.as_ref().unwrap();
+    let mode = {
+      let mode = self.map_mode.get(scope);
+      *mode.as_ref().unwrap()
+    };
 
-    let bs = if mode == &MapMode::Write {
+    let bs = if mode == MapMode::Write {
       unsafe extern "C" fn noop_deleter_callback(
         _data: *mut std::ffi::c_void,
         _byte_length: usize,
@@ -240,11 +245,9 @@ impl GPUBuffer {
     let shared_bs = bs.make_shared();
     let ab = v8::ArrayBuffer::with_backing_store(scope, &shared_bs);
 
-    if mode == &MapMode::Write {
-      self
-        .mapped_js_buffers
-        .borrow_mut()
-        .push(v8::Global::new(scope, ab));
+    if mode == MapMode::Write {
+      let g = v8::TracedReference::new(scope, ab);
+      self.mapped_js_buffers.get_mut(scope).push(g);
     }
 
     Ok(ab)
@@ -252,8 +255,10 @@ impl GPUBuffer {
 
   #[nofast]
   fn unmap(&self, scope: &mut v8::HandleScope) -> Result<(), BufferError> {
-    for ab in self.mapped_js_buffers.replace(vec![]) {
-      let ab = ab.open(scope);
+    let mut mapped_js_buffers =
+      { self.mapped_js_buffers.get_mut(scope).drain(..).collect() };
+    for ab in mapped_js_buffers {
+      let ab = ab.get(scope);
       ab.detach(None);
     }
 
@@ -262,7 +267,7 @@ impl GPUBuffer {
       .buffer_unmap(self.id)
       .map_err(BufferError::Access)?;
 
-    *self.map_state.borrow_mut() = "unmapped";
+    *self.map_state.get_mut(scope) = "unmapped";
 
     Ok(())
   }

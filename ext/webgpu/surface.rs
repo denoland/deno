@@ -37,8 +37,8 @@ pub struct Configuration {
     wgpu_types::SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>,
 }
 
-impl GarbageCollected for Configuration {
-  fn trace(&self, visitor: &Visitor) {
+unsafe impl GarbageCollected for Configuration {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     self.device.trace(visitor);
   }
 
@@ -53,9 +53,9 @@ pub struct GPUCanvasContext {
   pub height: GcCell<u32>,
 
   pub config: GcCell<Option<Configuration>>,
-  pub texture: GcCell<Option<v8::Global<v8::Object>>>,
+  pub texture: GcCell<Option<v8::TracedReference<v8::Object>>>,
 
-  pub canvas: GcCell<v8::Global<v8::Object>>,
+  pub canvas: GcCell<v8::TracedReference<v8::Object>>,
 }
 
 unsafe impl GarbageCollected for GPUCanvasContext {
@@ -74,10 +74,12 @@ impl GPUCanvasContext {
     Err(GPUGenericError::InvalidConstructor)
   }
 
-  #[getter]
   #[global]
-  fn canvas(&self, isolate: &v8::Isolate) -> v8::Global<v8::Object> {
-    self.canvas.get(isolate).clone()
+  #[getter]
+  fn canvas(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+    let tr = self.canvas.get(scope);
+    let local = tr.get(scope).unwrap();
+    v8::Global::new(scope, local)
   }
 
   fn configure(
@@ -118,7 +120,7 @@ impl GPUCanvasContext {
     self.config.set(
       isolate,
       Some(Configuration {
-        device,
+        device: device.into(),
         usage: configuration.usage,
         format: configuration.format,
         surface_config: conf,
@@ -133,21 +135,24 @@ impl GPUCanvasContext {
     self.config.set(isolate, None);
   }
 
+  #[global]
   fn get_current_texture<'s>(
     &self,
     scope: &mut v8::HandleScope,
   ) -> Result<v8::Global<v8::Object>, SurfaceError> {
-    let config = self.config.get(scope);
-    let Some(config) = config.as_ref() else {
+    let Some(config) = self.config.get(scope).as_ref() else {
       return Err(SurfaceError::UnconfiguredContext);
     };
 
     {
-      if let Some(obj) = self.texture.get(scope).as_ref() {
-        return Ok(obj.clone());
+      if let Some(tr) = self.texture.get(scope).as_ref()
+        && let Some(local) = tr.get(scope)
+      {
+        return Ok(v8::Global::new(scope, local));
       }
     }
 
+    let config = self.config.get(scope).as_ref().unwrap();
     let output = config
       .device
       .instance
@@ -176,10 +181,12 @@ impl GPUCanvasContext {
           usage: config.usage,
         };
         let obj = make_cppgc_object(scope, texture);
-        let obj = v8::Global::new(scope, obj);
-        self.texture.set(scope, Some(obj.clone()));
+        let tr = v8::TracedReference::new(scope, obj);
+        let local = tr.get(scope).unwrap();
+        let global = v8::Global::new(scope, local);
+        self.texture.set(scope, Some(tr));
 
-        Ok(obj)
+        Ok(global)
       }
       _ => Err(SurfaceError::InvalidStatus),
     }

@@ -11,6 +11,7 @@ use brotli::enc::encode::BrotliEncoderStateStruct;
 use brotli::ffi;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 use deno_core::v8_static_strings;
 use deno_error::JsErrorBox;
 use libc::c_ulong;
@@ -51,7 +52,7 @@ struct ZlibInner {
   pending_close: bool,
   gzib_id_bytes_read: u32,
   result_buffer: Option<*mut u32>,
-  callback: Option<v8::Global<v8::Function>>,
+  callback: Option<v8::TracedReferencel<v8::Function>>,
   strm: StreamWrapper,
 }
 
@@ -299,7 +300,7 @@ impl ZlibInner {
 }
 
 pub struct Zlib {
-  inner: RefCell<Option<ZlibInner>>,
+  inner: GcCell<Option<ZlibInner>>,
 }
 
 unsafe impl deno_core::GarbageCollected for Zlib {
@@ -330,13 +331,13 @@ impl Zlib {
     };
 
     Ok(Zlib {
-      inner: RefCell::new(Some(inner)),
+      inner: GcCell::new(Some(inner)),
     })
   }
 
   #[fast]
-  pub fn close(&self) -> Result<(), ZlibError> {
-    let mut resource = self.inner.borrow_mut();
+  pub fn close(&self, isolate: &mut v8::Isolate) -> Result<(), ZlibError> {
+    let resource = self.inner.get_mut(isolate);
     let zlib = resource.as_mut().ok_or(ZlibError::NotInitialized)?;
 
     // If there is a pending write, defer the close until the write is done.
@@ -347,8 +348,8 @@ impl Zlib {
 
   #[fast]
   #[smi]
-  pub fn reset(&self) -> Result<i32, ZlibError> {
-    let mut zlib = self.inner.borrow_mut();
+  pub fn reset(&self, isolate: &mut v8::Isolate) -> Result<i32, ZlibError> {
+    let zlib = self.inner.get_mut(isolate);
     let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
     zlib.reset_stream();
@@ -359,6 +360,7 @@ impl Zlib {
   #[smi]
   pub fn init(
     &self,
+    isolate: &mut v8::Isolate,
     #[smi] window_bits: i32,
     #[smi] level: i32,
     #[smi] mem_level: i32,
@@ -367,7 +369,7 @@ impl Zlib {
     #[global] callback: v8::Global<v8::Function>,
     #[buffer] dictionary: Option<&[u8]>,
   ) -> Result<i32, ZlibError> {
-    let mut zlib = self.inner.borrow_mut();
+    let zlib = self.inner.get_mut(isolate);
     let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
     if !((window_bits == 0)
@@ -402,7 +404,10 @@ impl Zlib {
     zlib.dictionary = dictionary.map(|buf| buf.to_vec());
 
     zlib.result_buffer = Some(write_result.as_mut_ptr());
-    zlib.callback = Some(callback);
+    zlib.callback = {
+      let cb = v8::TracedReference::new(scope, callback);
+      Some(cb)
+    };
 
     Ok(zlib.err)
   }
@@ -422,7 +427,7 @@ impl Zlib {
     #[smi] out_len: u32,
   ) -> Result<(), ZlibError> {
     let err_info = {
-      let mut zlib = self.inner.borrow_mut();
+      let mut zlib = self.inner.get_mut(scope);
       let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
       let flush = Flush::try_from(flush)?;
@@ -457,7 +462,7 @@ impl Zlib {
     #[smi] out_len: u32,
   ) -> Result<(), ZlibError> {
     let (err_info, callback) = {
-      let mut zlib = self.inner.borrow_mut();
+      let mut zlib = self.inner.get_mut(scope);
       let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
       let flush = Flush::try_from(flush)?;
@@ -470,13 +475,11 @@ impl Zlib {
       };
       result[0] = zlib.strm.avail_out;
       result[1] = zlib.strm.avail_in;
-      (
-        zlib.get_error_info(),
-        v8::Local::new(
-          scope,
-          zlib.callback.as_ref().expect("callback not set"),
-        ),
-      )
+      let callback = {
+        let cb = zlib.callback.as_ref().expect("callback not set");
+        cb.get(scope).unwrap()
+      };
+      (zlib.get_error_info(), callback)
     };
 
     if !ZlibInner::check_error(err_info, scope, &this) {
@@ -514,9 +517,10 @@ pub enum ZlibError {
 #[op2]
 #[string]
 pub fn op_zlib_err_msg(
+  isolate: &mut v8::Isolate,
   #[cppgc] resource: &Zlib,
 ) -> Result<Option<String>, ZlibError> {
-  let mut zlib = resource.inner.borrow_mut();
+  let mut zlib = resource.inner.get_mut(isolate);
   let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
   let msg = zlib.strm.msg;
@@ -537,16 +541,22 @@ pub fn op_zlib_err_msg(
 
 #[op2(fast)]
 pub fn op_zlib_close_if_pending(
+  isolate: &mut v8::Isolate,
   #[cppgc] resource: &Zlib,
 ) -> Result<(), ZlibError> {
   let pending_close = {
-    let mut zlib = resource.inner.borrow_mut();
+    let zlib = resource.inner.get_mut(isolate);
     let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
     zlib.write_in_progress = false;
     zlib.pending_close
   };
-  if pending_close && let Some(mut res) = resource.inner.borrow_mut().take() {
+
+  if !pending_close {
+    return Ok(());
+  }
+
+  if let Some(mut res) = resource.inner.get_mut(isolate).take() {
     let _ = res.close();
   }
 

@@ -9,6 +9,7 @@ use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 use deno_core::webidl::IntOptions;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
@@ -25,7 +26,7 @@ pub struct GPURenderPassEncoder {
   pub instance: Instance,
   pub error_handler: super::error::ErrorHandler,
 
-  pub render_pass: RefCell<wgpu_core::command::RenderPass>,
+  pub render_pass: GcCell<wgpu_core::command::RenderPass>,
   pub label: String,
 }
 
@@ -58,6 +59,7 @@ impl GPURenderPassEncoder {
   #[required(6)]
   fn set_viewport(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] x: f32,
     #[webidl] y: f32,
     #[webidl] width: f32,
@@ -68,7 +70,7 @@ impl GPURenderPassEncoder {
     let err = self
       .instance
       .render_pass_set_viewport(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         x,
         y,
         width,
@@ -83,6 +85,7 @@ impl GPURenderPassEncoder {
   #[required(4)]
   fn set_scissor_rect(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] x: u32,
     #[webidl(options(enforce_range = true))] y: u32,
     #[webidl(options(enforce_range = true))] width: u32,
@@ -91,7 +94,7 @@ impl GPURenderPassEncoder {
     let err = self
       .instance
       .render_pass_set_scissor_rect(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         x,
         y,
         width,
@@ -102,11 +105,15 @@ impl GPURenderPassEncoder {
   }
 
   #[required(1)]
-  fn set_blend_constant(&self, #[webidl] color: GPUColor) {
+  fn set_blend_constant(
+    &self,
+    isolate: &mut v8::Isolate,
+    #[webidl] color: GPUColor,
+  ) {
     let err = self
       .instance
       .render_pass_set_blend_constant(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         color.into(),
       )
       .err();
@@ -116,12 +123,13 @@ impl GPURenderPassEncoder {
   #[required(1)]
   fn set_stencil_reference(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] reference: u32,
   ) {
     let err = self
       .instance
       .render_pass_set_stencil_reference(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         reference,
       )
       .err();
@@ -131,12 +139,13 @@ impl GPURenderPassEncoder {
   #[required(1)]
   fn begin_occlusion_query(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] query_index: u32,
   ) {
     let err = self
       .instance
       .render_pass_begin_occlusion_query(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         query_index,
       )
       .err();
@@ -144,20 +153,24 @@ impl GPURenderPassEncoder {
   }
 
   #[fast]
-  fn end_occlusion_query(&self) {
+  fn end_occlusion_query(&self, isolate: &mut v8::Isolate) {
     let err = self
       .instance
-      .render_pass_end_occlusion_query(&mut self.render_pass.borrow_mut())
+      .render_pass_end_occlusion_query(&mut self.render_pass.get_mut(isolate))
       .err();
     self.error_handler.push_error(err);
   }
 
   #[required(1)]
-  fn execute_bundles(&self, #[webidl] bundles: Vec<Ref<GPURenderBundle>>) {
+  fn execute_bundles(
+    &self,
+    isolate: &mut v8::Isolate,
+    #[webidl] bundles: Vec<Ref<GPURenderBundle>>,
+  ) {
     let err = self
       .instance
       .render_pass_execute_bundles(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         &bundles
           .into_iter()
           .map(|bundle| bundle.id)
@@ -168,19 +181,23 @@ impl GPURenderPassEncoder {
   }
 
   #[fast]
-  fn end(&self) {
+  fn end(&self, isolate: &mut v8::Isolate) {
     let err = self
       .instance
-      .render_pass_end(&mut self.render_pass.borrow_mut())
+      .render_pass_end(&mut self.render_pass.get_mut(isolate))
       .err();
     self.error_handler.push_error(err);
   }
 
-  fn push_debug_group(&self, #[webidl] group_label: String) {
+  fn push_debug_group(
+    &self,
+    isolate: &mut v8::Isolate,
+    #[webidl] group_label: String,
+  ) {
     let err = self
       .instance
       .render_pass_push_debug_group(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         &group_label,
         0, // wgpu#975
       )
@@ -189,19 +206,23 @@ impl GPURenderPassEncoder {
   }
 
   #[fast]
-  fn pop_debug_group(&self) {
+  fn pop_debug_group(&self, isolate: &mut v8::Isolate) {
     let err = self
       .instance
-      .render_pass_pop_debug_group(&mut self.render_pass.borrow_mut())
+      .render_pass_pop_debug_group(&mut self.render_pass.get_mut(isolate))
       .err();
     self.error_handler.push_error(err);
   }
 
-  fn insert_debug_marker(&self, #[webidl] marker_label: String) {
+  fn insert_debug_marker(
+    &self,
+    isolate: &mut v8::Isolate,
+    #[webidl] marker_label: String,
+  ) {
     let err = self
       .instance
       .render_pass_insert_debug_marker(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         &marker_label,
         0, // wgpu#975
       )
@@ -257,7 +278,7 @@ impl GPURenderPassEncoder {
       self
         .instance
         .render_pass_set_bind_group(
-          &mut self.render_pass.borrow_mut(),
+          &mut self.render_pass.get_mut(scope),
           index,
           bind_group.into_option().map(|bind_group| bind_group.id),
           offsets,
@@ -279,7 +300,7 @@ impl GPURenderPassEncoder {
       self
         .instance
         .render_pass_set_bind_group(
-          &mut self.render_pass.borrow_mut(),
+          &mut self.render_pass.get_mut(scope),
           index,
           bind_group.into_option().map(|bind_group| bind_group.id),
           &offsets,
@@ -294,11 +315,15 @@ impl GPURenderPassEncoder {
 
   fn set_pipeline(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] pipeline: Ref<crate::render_pipeline::GPURenderPipeline>,
   ) {
     let err = self
       .instance
-      .render_pass_set_pipeline(&mut self.render_pass.borrow_mut(), pipeline.id)
+      .render_pass_set_pipeline(
+        &mut self.render_pass.get_mut(isolate),
+        pipeline.id,
+      )
       .err();
     self.error_handler.push_error(err);
   }
@@ -306,6 +331,7 @@ impl GPURenderPassEncoder {
   #[required(2)]
   fn set_index_buffer(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] buffer: Ref<GPUBuffer>,
     #[webidl] index_format: crate::render_pipeline::GPUIndexFormat,
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
@@ -314,7 +340,7 @@ impl GPURenderPassEncoder {
     let err = self
       .instance
       .render_pass_set_index_buffer(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         buffer.id,
         index_format.into(),
         offset,
@@ -327,6 +353,7 @@ impl GPURenderPassEncoder {
   #[required(2)]
   fn set_vertex_buffer(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] slot: u32,
     #[webidl] buffer: Ref<GPUBuffer>, // TODO(wgpu): support nullable buffer
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
@@ -335,7 +362,7 @@ impl GPURenderPassEncoder {
     let err = self
       .instance
       .render_pass_set_vertex_buffer(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         slot,
         buffer.id,
         offset,
@@ -348,6 +375,7 @@ impl GPURenderPassEncoder {
   #[required(1)]
   fn draw(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] vertex_count: u32,
     #[webidl(default = 1, options(enforce_range = true))] instance_count: u32,
     #[webidl(default = 0, options(enforce_range = true))] first_vertex: u32,
@@ -356,7 +384,7 @@ impl GPURenderPassEncoder {
     let err = self
       .instance
       .render_pass_draw(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         vertex_count,
         instance_count,
         first_vertex,
@@ -369,6 +397,7 @@ impl GPURenderPassEncoder {
   #[required(1)]
   fn draw_indexed(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] index_count: u32,
     #[webidl(default = 1, options(enforce_range = true))] instance_count: u32,
     #[webidl(default = 0, options(enforce_range = true))] first_index: u32,
@@ -378,7 +407,7 @@ impl GPURenderPassEncoder {
     let err = self
       .instance
       .render_pass_draw_indexed(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         index_count,
         instance_count,
         first_index,
@@ -392,13 +421,14 @@ impl GPURenderPassEncoder {
   #[required(2)]
   fn draw_indirect(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] indirect_buffer: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) {
     let err = self
       .instance
       .render_pass_draw_indirect(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         indirect_buffer.id,
         indirect_offset,
       )
@@ -409,13 +439,14 @@ impl GPURenderPassEncoder {
   #[required(2)]
   fn draw_indexed_indirect(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] indirect_buffer: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) {
     let err = self
       .instance
       .render_pass_draw_indexed_indirect(
-        &mut self.render_pass.borrow_mut(),
+        &mut self.render_pass.get_mut(isolate),
         indirect_buffer.id,
         indirect_offset,
       )

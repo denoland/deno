@@ -13,6 +13,7 @@ use tokio::sync::Mutex;
 
 use super::device::GPUDevice;
 use crate::Instance;
+use crate::SameObject;
 use crate::error::GPUGenericError;
 use crate::webidl::GPUFeatureName;
 use crate::webidl::features_to_feature_names;
@@ -51,7 +52,7 @@ pub struct GPUAdapter {
 
   pub features: SameObject<GPUSupportedFeatures>,
   pub limits: SameObject<GPUSupportedLimits>,
-  pub info: Rc<SameObject<GPUAdapterInfo>>,
+  pub info: Arc<SameObject<GPUAdapterInfo>>,
 }
 
 impl Drop for GPUAdapter {
@@ -423,7 +424,7 @@ impl GPUSupportedLimits {
   }
 }
 
-pub struct GPUSupportedFeatures(v8::Global<v8::Value>);
+pub struct GPUSupportedFeatures(v8::TracedReference<v8::Value>);
 
 unsafe impl GarbageCollected for GPUSupportedFeatures {
   fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
@@ -445,7 +446,10 @@ impl GPUSupportedFeatures {
       set.add(scope, key.into());
     }
 
-    Self(v8::Global::new(scope, <v8::Local<v8::Value>>::from(set)))
+    Self(v8::TracedReference::new(
+      scope,
+      <v8::Local<v8::Value>>::from(set),
+    ))
   }
 }
 
@@ -459,8 +463,9 @@ impl GPUSupportedFeatures {
 
   #[global]
   #[symbol("setlike_set")]
-  fn set(&self) -> v8::Global<v8::Value> {
-    self.0.clone()
+  fn set(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Value> {
+    let local = self.0.get(scope).unwrap();
+    v8::Global::new(scope, local)
   }
 }
 

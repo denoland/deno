@@ -4,6 +4,8 @@ use std::cell::RefCell;
 use std::io::Write;
 
 use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 use flate2::Compression;
 use flate2::write::DeflateDecoder;
 use flate2::write::DeflateEncoder;
@@ -29,9 +31,10 @@ pub enum CompressionError {
 }
 
 #[derive(Debug)]
-struct CompressionResource(RefCell<Option<Inner>>);
+struct CompressionResource(GcCell<Option<Inner>>);
 
-impl deno_core::GarbageCollected for CompressionResource {
+unsafe impl deno_core::GarbageCollected for CompressionResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"CompressionResource"
   }
@@ -70,16 +73,17 @@ pub fn op_compression_new(
     }
     _ => return Err(CompressionError::UnsupportedFormat),
   };
-  Ok(CompressionResource(RefCell::new(Some(inner))))
+  Ok(CompressionResource(GcCell::new(Some(inner))))
 }
 
 #[op2]
 #[buffer]
 pub fn op_compression_write(
+  scope: &mut v8::HandleScope,
   #[cppgc] resource: &CompressionResource,
   #[anybuffer] input: &[u8],
 ) -> Result<Vec<u8>, CompressionError> {
-  let mut inner = resource.0.borrow_mut();
+  let mut inner = resource.0.get_mut(scope);
   let inner = inner.as_mut().ok_or(CompressionError::ResourceClosed)?;
   let out: Vec<u8> = match &mut *inner {
     Inner::DeflateDecoder(d) => {
@@ -120,12 +124,13 @@ pub fn op_compression_write(
 #[op2]
 #[buffer]
 pub fn op_compression_finish(
+  scope: &mut v8::HandleScope,
   #[cppgc] resource: &CompressionResource,
   report_errors: bool,
 ) -> Result<Vec<u8>, CompressionError> {
   let inner = resource
     .0
-    .borrow_mut()
+    .get_mut(scope)
     .take()
     .ok_or(CompressionError::ResourceClosed)?;
   let out = match inner {

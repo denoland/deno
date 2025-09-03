@@ -8,8 +8,10 @@ use std::sync::Arc;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::cppgc::UnsafePtr;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 pub use wgpu_core;
 pub use wgpu_types;
 use wgpu_types::PowerPreference;
@@ -195,7 +197,7 @@ impl GPU {
       instance: instance.clone(),
       features: SameObject::new(),
       limits: SameObject::new(),
-      info: Rc::new(SameObject::new()),
+      info: Arc::new(SameObject::new()),
       id,
     })
   }
@@ -220,7 +222,7 @@ fn transform_label<'a>(label: String) -> Option<std::borrow::Cow<'a, str>> {
 }
 
 pub(crate) struct SameObject<T> {
-  cell: std::sync::OnceLock<v8::Global<v8::Object>>,
+  cell: std::sync::OnceLock<v8::TracedReference<v8::Object>>,
   _phantom_data: std::marker::PhantomData<T>,
 }
 
@@ -241,31 +243,31 @@ impl<T: GarbageCollected + 'static> SameObject<T> {
   where
     F: FnOnce(&mut v8::HandleScope) -> T,
   {
-    self
-      .cell
-      .get_or_init(|| {
-        let v = f(scope);
-        let obj = deno_core::cppgc::make_cppgc_object(scope, v);
-        v8::Global::new(scope, obj)
-      })
-      .clone()
+    let tr = self.cell.get_or_init(|| {
+      let v = f(scope);
+      let obj = deno_core::cppgc::make_cppgc_object(scope, v);
+      v8::TracedReference::new(scope, obj)
+    });
+
+    let obj = tr.get(scope).unwrap();
+    v8::Global::new(scope, obj)
   }
 
   pub fn set(
     &self,
     scope: &mut v8::HandleScope,
     value: T,
-  ) -> Result<(), v8::Global<v8::Object>> {
+  ) -> Result<(), v8::TracedReference<v8::Object>> {
     let obj = deno_core::cppgc::make_cppgc_object(scope, value);
-    self.cell.set(v8::Global::new(scope, obj))
+    self.cell.set(v8::TracedReference::new(scope, obj))
   }
 
   pub fn try_unwrap(
     &self,
     scope: &mut v8::HandleScope,
-  ) -> Option<v8::cppgc::Ptr<T>> {
-    let obj = self.cell.get()?;
-    let val = v8::Local::new(scope, obj);
-    deno_core::gppgc::try_unwrap_cppgc_object(scope, val.cast())
+  ) -> Option<deno_core::cppgc::UnsafePtr<T>> {
+    let cell = self.cell.get()?;
+    let val = cell.get(scope)?;
+    deno_core::cppgc::try_unwrap_cppgc_object(scope, val.cast())
   }
 }

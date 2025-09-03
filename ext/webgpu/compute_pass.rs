@@ -8,19 +8,21 @@ use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 use deno_core::webidl::IntOptions;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 
 use crate::Instance;
+use crate::compute_pass;
 use crate::error::GPUGenericError;
 
 pub struct GPUComputePassEncoder {
   pub instance: Instance,
   pub error_handler: super::error::ErrorHandler,
 
-  pub compute_pass: RefCell<wgpu_core::command::ComputePass>,
+  pub compute_pass: GcCell<wgpu_core::command::ComputePass>,
   pub label: String,
 }
 
@@ -53,12 +55,13 @@ impl GPUComputePassEncoder {
 
   fn set_pipeline(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] pipeline: Ref<crate::compute_pipeline::GPUComputePipeline>,
   ) {
     let err = self
       .instance
       .compute_pass_set_pipeline(
-        &mut self.compute_pass.borrow_mut(),
+        self.compute_pass.get_mut(isolate),
         pipeline.id,
       )
       .err();
@@ -67,6 +70,7 @@ impl GPUComputePassEncoder {
 
   fn dispatch_workgroups(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] work_group_count_x: u32,
     #[webidl(default = 1, options(enforce_range = true))]
     work_group_count_y: u32,
@@ -76,7 +80,7 @@ impl GPUComputePassEncoder {
     let err = self
       .instance
       .compute_pass_dispatch_workgroups(
-        &mut self.compute_pass.borrow_mut(),
+        self.compute_pass.get_mut(isolate),
         work_group_count_x,
         work_group_count_y,
         work_group_count_z,
@@ -87,13 +91,14 @@ impl GPUComputePassEncoder {
 
   fn dispatch_workgroups_indirect(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] indirect_buffer: Ref<crate::buffer::GPUBuffer>,
     #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) {
     let err = self
       .instance
       .compute_pass_dispatch_workgroups_indirect(
-        &mut self.compute_pass.borrow_mut(),
+        self.compute_pass.get_mut(isolate),
         indirect_buffer.id,
         indirect_offset,
       )
@@ -102,19 +107,23 @@ impl GPUComputePassEncoder {
   }
 
   #[fast]
-  fn end(&self) {
+  fn end(&self, isolate: &mut v8::Isolate) {
     let err = self
       .instance
-      .compute_pass_end(&mut self.compute_pass.borrow_mut())
+      .compute_pass_end(self.compute_pass.get_mut(isolate))
       .err();
     self.error_handler.push_error(err);
   }
 
-  fn push_debug_group(&self, #[webidl] group_label: String) {
+  fn push_debug_group(
+    &self,
+    isolate: &mut v8::Isolate,
+    #[webidl] group_label: String,
+  ) {
     let err = self
       .instance
       .compute_pass_push_debug_group(
-        &mut self.compute_pass.borrow_mut(),
+        self.compute_pass.get_mut(isolate),
         &group_label,
         0, // wgpu#975
       )
@@ -123,19 +132,23 @@ impl GPUComputePassEncoder {
   }
 
   #[fast]
-  fn pop_debug_group(&self) {
+  fn pop_debug_group(&self, isolate: &mut v8::Isolate) {
     let err = self
       .instance
-      .compute_pass_pop_debug_group(&mut self.compute_pass.borrow_mut())
+      .compute_pass_pop_debug_group(self.compute_pass.get_mut(isolate))
       .err();
     self.error_handler.push_error(err);
   }
 
-  fn insert_debug_marker(&self, #[webidl] marker_label: String) {
+  fn insert_debug_marker(
+    &self,
+    isolate: &mut v8::Isolate,
+    #[webidl] marker_label: String,
+  ) {
     let err = self
       .instance
       .compute_pass_insert_debug_marker(
-        &mut self.compute_pass.borrow_mut(),
+        self.compute_pass.get_mut(isolate),
         &marker_label,
         0, // wgpu#975
       )
@@ -190,7 +203,7 @@ impl GPUComputePassEncoder {
       self
         .instance
         .compute_pass_set_bind_group(
-          &mut self.compute_pass.borrow_mut(),
+          self.compute_pass.get_mut(scope),
           index,
           bind_group.into_option().map(|bind_group| bind_group.id),
           offsets,
@@ -212,7 +225,7 @@ impl GPUComputePassEncoder {
       self
         .instance
         .compute_pass_set_bind_group(
-          &mut self.compute_pass.borrow_mut(),
+          self.compute_pass.get_mut(scope),
           index,
           bind_group.into_option().map(|bind_group| bind_group.id),
           &offsets,

@@ -33,6 +33,7 @@ use deno_core::futures::stream;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::DataError;
+use deno_core::v8::cppgc::GcCell;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use once_cell::sync::Lazy;
@@ -1296,7 +1297,7 @@ fn op_otel_log<'s>(
   if let Some(span) =
     deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
   {
-    let state = span.0.borrow();
+    let state = span.0.get_mut(scope);
     match &**state {
       OtelSpanState::Recording(span) => {
         log_record.set_trace_context(
@@ -1403,7 +1404,8 @@ fn owned_string<'s>(
 
 struct OtelTracer(InstrumentationScope);
 
-impl deno_core::GarbageCollected for OtelTracer {
+unsafe impl deno_core::GarbageCollected for OtelTracer {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelTracer"
   }
@@ -1454,10 +1456,10 @@ impl OtelTracer {
     let parent_span_id;
     match parent {
       Some(parent) => {
-        let parent = parent.0.borrow();
+        let parent = parent.0.get_mut(scope);
         let parent_span_context = match &**parent {
           OtelSpanState::Recording(span) => &span.span_context,
-          OtelSpanState::Done(span_context) => span_context,
+          OtelSpanState::Done(span_context) => &span_context,
         };
         span_context = SpanContext::new(
           parent_span_context.trace_id(),
@@ -1514,7 +1516,7 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
+    Ok(OtelSpan(GcCell::new(Box::new(OtelSpanState::Recording(
       span_data,
     )))))
   }
@@ -1581,7 +1583,7 @@ impl OtelTracer {
       links: SpanLinks::default(),
       instrumentation_scope: self.0.clone(),
     };
-    Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Recording(
+    Ok(OtelSpan(GcCell::new(Box::new(OtelSpanState::Recording(
       span_data,
     )))))
   }
@@ -1607,7 +1609,7 @@ struct InvalidSpanStatusCodeError;
 
 // boxed because of https://github.com/denoland/rusty_v8/issues/1676
 #[derive(Debug)]
-struct OtelSpan(RefCell<Box<OtelSpanState>>);
+struct OtelSpan(GcCell<Box<OtelSpanState>>);
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -1616,7 +1618,8 @@ enum OtelSpanState {
   Done(SpanContext),
 }
 
-impl deno_core::GarbageCollected for OtelSpan {
+unsafe impl deno_core::GarbageCollected for OtelSpan {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelSpan"
   }
@@ -1631,8 +1634,8 @@ impl OtelSpan {
   }
 
   #[serde]
-  fn span_context(&self) -> JsSpanContext {
-    let state = self.0.borrow();
+  fn span_context(&self, isolate: &mut v8::Isolate) -> JsSpanContext {
+    let state = self.0.get(isolate);
     let span_context = match &**state {
       OtelSpanState::Recording(span) => &span.span_context,
       OtelSpanState::Done(span_context) => span_context,
@@ -1647,10 +1650,11 @@ impl OtelSpan {
   #[fast]
   fn set_status<'s>(
     &self,
+    isolate: &mut v8::Isolate,
     #[smi] status: u8,
     #[string] error_description: String,
   ) -> Result<(), InvalidSpanStatusCodeError> {
-    let mut state = self.0.borrow_mut();
+    let mut state = self.0.get_mut(isolate);
     let OtelSpanState::Recording(span) = &mut **state else {
       return Ok(());
     };
@@ -1666,7 +1670,12 @@ impl OtelSpan {
   }
 
   #[fast]
-  fn add_event(&self, #[string] name: String, start_time: f64) {
+  fn add_event(
+    &self,
+    isolate: &mut v8::Isolate,
+    #[string] name: String,
+    start_time: f64,
+  ) {
     let start_time = if start_time.is_nan() {
       SystemTime::now()
     } else {
@@ -1674,7 +1683,7 @@ impl OtelSpan {
         .checked_add(Duration::from_secs_f64(start_time / 1000.0))
         .unwrap()
     };
-    let mut state = self.0.borrow_mut();
+    let mut state = self.0.get_mut(isolate);
     let OtelSpanState::Recording(span) = &mut **state else {
       return;
     };
@@ -1685,8 +1694,8 @@ impl OtelSpan {
   }
 
   #[fast]
-  fn drop_event(&self) {
-    let mut state = self.0.borrow_mut();
+  fn drop_event(&self, isolate: &mut v8::Isolate) {
+    let mut state = self.0.get_mut(isolate);
     match &mut **state {
       OtelSpanState::Recording(span) => {
         span.events.dropped_count += 1;
@@ -1696,7 +1705,7 @@ impl OtelSpan {
   }
 
   #[fast]
-  fn end(&self, end_time: f64) {
+  fn end(&self, isolate: &mut v8::Isolate, end_time: f64) {
     let end_time = if end_time.is_nan() {
       SystemTime::now()
     } else {
@@ -1705,7 +1714,7 @@ impl OtelSpan {
         .unwrap()
     };
 
-    let mut state = self.0.borrow_mut();
+    let mut state = self.0.get_mut(isolate);
     if let OtelSpanState::Recording(span) = &mut **state {
       let span_context = span.span_context.clone();
       if let OtelSpanState::Recording(mut span) = *std::mem::replace(
@@ -1759,7 +1768,7 @@ fn op_otel_span_attribute1<'s>(
   else {
     return;
   };
-  let mut state = span.0.borrow_mut();
+  let mut state = span.0.get_mut(scope);
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
       span_attributes(span, location)
@@ -1785,7 +1794,7 @@ fn op_otel_span_attribute2<'s>(
   else {
     return;
   };
-  let mut state = span.0.borrow_mut();
+  let mut state = span.0.get_mut(scope);
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
       span_attributes(span, location)
@@ -1815,7 +1824,7 @@ fn op_otel_span_attribute3<'s>(
   else {
     return;
   };
-  let mut state = span.0.borrow_mut();
+  let mut state = span.0.get_mut(&mut *scope);
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
       span_attributes(span, location)
@@ -1843,7 +1852,7 @@ fn op_otel_span_update_name<'s>(
   else {
     return;
   };
-  let mut state = span.0.borrow_mut();
+  let mut state = span.0.get_mut(scope);
   if let OtelSpanState::Recording(span) = &mut **state {
     span.name = Cow::Owned(name)
   }
@@ -1880,7 +1889,7 @@ fn op_otel_span_add_link<'s>(
   else {
     return true;
   };
-  let mut state = span.0.borrow_mut();
+  let mut state = span.0.get_mut(scope);
   if let OtelSpanState::Recording(span) = &mut **state {
     span.links.links.push(Link::new(
       span_context,
@@ -1893,7 +1902,8 @@ fn op_otel_span_add_link<'s>(
 
 struct OtelMeter(opentelemetry::metrics::Meter);
 
-impl deno_core::GarbageCollected for OtelMeter {
+unsafe impl deno_core::GarbageCollected for OtelMeter {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelMeter"
   }

@@ -9,6 +9,7 @@ use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 use deno_core::webidl::IntOptions;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
@@ -25,7 +26,7 @@ pub struct GPURenderBundleEncoder {
   pub instance: Instance,
   pub error_handler: super::error::ErrorHandler,
 
-  pub encoder: RefCell<Option<wgpu_core::command::RenderBundleEncoder>>,
+  pub encoder: GcCell<Option<wgpu_core::command::RenderBundleEncoder>>,
   pub label: String,
 }
 
@@ -58,14 +59,16 @@ impl GPURenderBundleEncoder {
   #[cppgc]
   fn finish(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] descriptor: GPURenderBundleDescriptor,
   ) -> GPURenderBundle {
     let wgpu_descriptor = wgpu_core::command::RenderBundleDescriptor {
       label: crate::transform_label(descriptor.label.clone()),
     };
 
+    let encoder = self.encoder.get_mut(isolate).take().unwrap();
     let (id, err) = self.instance.render_bundle_encoder_finish(
-      self.encoder.borrow_mut().take().unwrap(),
+      encoder,
       &wgpu_descriptor,
       None,
     );
@@ -81,9 +84,10 @@ impl GPURenderBundleEncoder {
 
   fn push_debug_group(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] group_label: String,
   ) -> Result<(), JsErrorBox> {
-    let mut encoder = self.encoder.borrow_mut();
+    let encoder = self.encoder.get_mut(isolate);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
@@ -102,8 +106,11 @@ impl GPURenderBundleEncoder {
   }
 
   #[fast]
-  fn pop_debug_group(&self) -> Result<(), JsErrorBox> {
-    let mut encoder = self.encoder.borrow_mut();
+  fn pop_debug_group(
+    &self,
+    isolate: &mut v8::Isolate,
+  ) -> Result<(), JsErrorBox> {
+    let encoder = self.encoder.get_mut(isolate);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
@@ -113,9 +120,10 @@ impl GPURenderBundleEncoder {
 
   fn insert_debug_marker(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] marker_label: String,
   ) -> Result<(), JsErrorBox> {
-    let mut encoder = self.encoder.borrow_mut();
+    let encoder = self.encoder.get_mut(isolate);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
@@ -142,7 +150,7 @@ impl GPURenderBundleEncoder {
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_length: v8::Local<'a, v8::Value>,
   ) -> Result<(), SetBindGroupError> {
-    let mut encoder = self.encoder.borrow_mut();
+    let mut encoder = self.encoder.get_mut(scope);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
@@ -221,9 +229,10 @@ impl GPURenderBundleEncoder {
 
   fn set_pipeline(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] pipeline: Ref<crate::render_pipeline::GPURenderPipeline>,
   ) -> Result<(), JsErrorBox> {
-    let mut encoder = self.encoder.borrow_mut();
+    let encoder = self.encoder.get_mut(isolate);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
@@ -238,12 +247,13 @@ impl GPURenderBundleEncoder {
   #[required(2)]
   fn set_index_buffer(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] buffer: Ref<GPUBuffer>,
     #[webidl] index_format: crate::render_pipeline::GPUIndexFormat,
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) -> Result<(), JsErrorBox> {
-    let mut encoder = self.encoder.borrow_mut();
+    let encoder = self.encoder.get_mut(isolate);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
@@ -260,12 +270,13 @@ impl GPURenderBundleEncoder {
   #[required(2)]
   fn set_vertex_buffer(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] slot: u32,
     #[webidl] buffer: Ref<GPUBuffer>, // TODO(wgpu): support nullable buffer
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) -> Result<(), JsErrorBox> {
-    let mut encoder = self.encoder.borrow_mut();
+    let encoder = self.encoder.get_mut(isolate);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
@@ -283,12 +294,13 @@ impl GPURenderBundleEncoder {
   #[required(1)]
   fn draw(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] vertex_count: u32,
     #[webidl(default = 1, options(enforce_range = true))] instance_count: u32,
     #[webidl(default = 0, options(enforce_range = true))] first_vertex: u32,
     #[webidl(default = 0, options(enforce_range = true))] first_instance: u32,
   ) -> Result<(), JsErrorBox> {
-    let mut encoder = self.encoder.borrow_mut();
+    let encoder = self.encoder.get_mut(isolate);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
@@ -306,13 +318,14 @@ impl GPURenderBundleEncoder {
   #[required(1)]
   fn draw_indexed(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl(options(enforce_range = true))] index_count: u32,
     #[webidl(default = 1, options(enforce_range = true))] instance_count: u32,
     #[webidl(default = 0, options(enforce_range = true))] first_index: u32,
     #[webidl(default = 0, options(enforce_range = true))] base_vertex: i32,
     #[webidl(default = 0, options(enforce_range = true))] first_instance: u32,
   ) -> Result<(), JsErrorBox> {
-    let mut encoder = self.encoder.borrow_mut();
+    let encoder = self.encoder.get_mut(isolate);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
@@ -331,10 +344,11 @@ impl GPURenderBundleEncoder {
   #[required(2)]
   fn draw_indirect(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] indirect_buffer: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) -> Result<(), JsErrorBox> {
-    let mut encoder = self.encoder.borrow_mut();
+    let encoder = self.encoder.get_mut(isolate);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
@@ -350,10 +364,11 @@ impl GPURenderBundleEncoder {
   #[required(2)]
   fn draw_indexed_indirect(
     &self,
+    isolate: &mut v8::Isolate,
     #[webidl] indirect_buffer: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) -> Result<(), JsErrorBox> {
-    let mut encoder = self.encoder.borrow_mut();
+    let encoder = self.encoder.get_mut(isolate);
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;

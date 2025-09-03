@@ -18,6 +18,7 @@ use deno_core::U16String;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
 use encoding_rs::DecoderResult;
@@ -303,7 +304,7 @@ fn op_encoding_new_decoder(
   };
 
   Ok(TextDecoderResource {
-    decoder: RefCell::new(decoder),
+    decoder: GcCell::new(decoder),
     fatal,
   })
 }
@@ -311,11 +312,12 @@ fn op_encoding_new_decoder(
 #[op2]
 #[serde]
 fn op_encoding_decode(
+  scope: &mut v8::HandleScope,
   #[anybuffer] data: &[u8],
   #[cppgc] resource: &TextDecoderResource,
   stream: bool,
 ) -> Result<U16String, WebError> {
-  let mut decoder = resource.decoder.borrow_mut();
+  let mut decoder = resource.decoder.get_mut(scope);
   let fatal = resource.fatal;
 
   let max_buffer_length = decoder
@@ -349,11 +351,12 @@ fn op_encoding_decode(
 }
 
 struct TextDecoderResource {
-  decoder: RefCell<Decoder>,
+  decoder: GcCell<Decoder>,
   fatal: bool,
 }
 
-impl deno_core::GarbageCollected for TextDecoderResource {
+unsafe impl deno_core::GarbageCollected for TextDecoderResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TextDecoderResource"
   }

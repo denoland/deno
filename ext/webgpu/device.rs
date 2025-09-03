@@ -4,10 +4,12 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::num::NonZeroU64;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::GarbageCollected;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_error::JsErrorBox;
 use wgpu_core::binding_model::BindingResource;
@@ -46,7 +48,7 @@ pub struct GPUDevice {
 
   pub features: SameObject<GPUSupportedFeatures>,
   pub limits: SameObject<GPUSupportedLimits>,
-  pub adapter_info: Rc<SameObject<GPUAdapterInfo>>,
+  pub adapter_info: Arc<SameObject<GPUAdapterInfo>>,
 
   pub queue_obj: SameObject<GPUQueue>,
 
@@ -175,17 +177,17 @@ impl GPUDevice {
       label: descriptor.label,
       size: descriptor.size,
       usage: descriptor.usage,
-      map_state: RefCell::new(if descriptor.mapped_at_creation {
+      map_state: GcCell::new(if descriptor.mapped_at_creation {
         "mapped"
       } else {
         "unmapped"
       }),
-      map_mode: RefCell::new(if descriptor.mapped_at_creation {
+      map_mode: GcCell::new(if descriptor.mapped_at_creation {
         Some(wgpu_core::device::HostMap::Write)
       } else {
         None
       }),
-      mapped_js_buffers: RefCell::new(vec![]),
+      mapped_js_buffers: GcCell::new(vec![]),
     })
   }
 
@@ -571,7 +573,7 @@ impl GPUDevice {
     GPURenderBundleEncoder {
       instance: self.instance.clone(),
       error_handler: self.error_handler.clone(),
-      encoder: RefCell::new(Some(encoder)),
+      encoder: GcCell::new(Some(encoder)),
       label: descriptor.label,
     }
   }
