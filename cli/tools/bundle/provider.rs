@@ -27,14 +27,14 @@ impl From<RtBundleOptions> for crate::args::BundleFlags {
       output_path: value.output_path,
       output_dir: value.output_dir,
       external: value.external,
-      format: value.format.into(),
+      format: value.format,
       minify: value.minify,
       code_splitting: value.code_splitting,
-      platform: value.platform.into(),
+      platform: value.platform,
       watch: false,
-      sourcemap: value.sourcemap.map(|s| s.into()),
+      sourcemap: value.sourcemap,
       inline_imports: value.inline_imports,
-      packages: value.packages.into(),
+      packages: value.packages,
     }
   }
 }
