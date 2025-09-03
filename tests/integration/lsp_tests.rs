@@ -3248,6 +3248,45 @@ fn lsp_goto_type_definition() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_goto_type_definition_builtin() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "new Response();\n",
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/typeDefinition",
+    json!({
+      "textDocument": { "uri": "file:///a/file.ts" },
+      "position": { "line": 0, "character": 4 },
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|v| v
+        .as_object()
+        .unwrap()
+        .get("targetUri")
+        .unwrap()
+        .as_str()
+        .unwrap())
+      .collect::<Vec<_>>(),
+    vec!["deno:/asset/lib.deno.fetch.d.ts"],
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_call_hierarchy() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5607,7 +5646,17 @@ fn lsp_code_actions_deno_cache_jsr() {
 fn lsp_jsr_lockfile() {
   let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write("./deno.json", json!({}).to_string());
+  temp_dir.write(
+    "./deno.json",
+    json!({
+      "lint": {
+        "rules": {
+          "tags": ["recommended"]
+        }
+      }
+    })
+    .to_string(),
+  );
   let lockfile = temp_dir.path().join("deno.lock");
   let integrity = context.get_jsr_package_integrity("@denotest/add/0.2.0");
   lockfile.write_json(&json!({
@@ -14956,6 +15005,11 @@ fn lsp_vendor_dir() {
     json!({
       "vendor": true,
       "lock": false,
+      "lint": {
+        "rules": {
+          "tags": ["recommended"]
+        }
+      }
     })
     .to_string(),
   );
@@ -14977,7 +15031,7 @@ fn lsp_vendor_dir() {
       .map(|d| d.message.as_str())
       .collect::<Vec<_>>(),
     vec![
-      "Uncached or missing remote URL: http://localhost:4545/subdir/mod1.ts"
+      "Uncached or missing remote URL: http://localhost:4545/subdir/mod1.ts",
     ]
   );
   assert!(!temp_dir.path().join("vendor").exists());
@@ -17022,6 +17076,61 @@ fn lsp_tsconfig_node_modules_dts_diagnostics() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_tsconfig_root_dirs() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "extends": "./subdir/tsconfig.json",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "subdir/tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "rootDirs": ["..", "types"],
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("subdir/types/foo.d.ts", "export type Foo = string;\n");
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"
+      import type { Foo } from "./foo.d.ts";
+      const foo: Foo = 1;
+      console.log(foo);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 2, "character": 12 },
+          "end": { "line": 2, "character": 15 },
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'number' is not assignable to type 'string'.",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17267,6 +17376,13 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
 fn lsp_byonm() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
+  temp_dir.path().join("deno.json").write_json(&json!({
+    "lint": {
+      "rules": {
+        "tags": ["recommended"]
+      }
+    }
+  }));
   temp_dir.path().join("package.json").write_json(&json!({
     "dependencies": {
       "@denotest/esm-basic": "*",
@@ -17920,7 +18036,16 @@ fn lsp_cjs_import_dual() {
     .add_npm_env_vars()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.write("deno.json", r#"{}"#);
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}"#,
+  );
   temp_dir.write(
     "package.json",
     r#"{

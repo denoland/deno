@@ -923,8 +923,6 @@ mod tests {
       deno_resolver::workspace::PackageJsonDepResolution::Enabled,
       SloppyImportsOptions::Enabled,
       Default::default(),
-      Default::default(),
-      Default::default(),
       CliSys::default(),
     );
     let unfurler =
@@ -1090,8 +1088,6 @@ export type * from "./c.d.ts";
         Arc::new(pkg_json_publishing),
       ],
       deno_resolver::workspace::PackageJsonDepResolution::Enabled,
-      Default::default(),
-      Default::default(),
       Default::default(),
       Default::default(),
       sys.clone(),

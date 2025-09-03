@@ -9,7 +9,6 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import type { Buffer } from "node:buffer";
-import * as pathModule from "node:path";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { op_node_open, op_node_open_sync } from "ext:core/ops";
 
@@ -69,7 +68,7 @@ export function open(
   callback = makeCallback(callback);
 
   PromisePrototypeThen(
-    op_node_open(pathModule.toNamespacedPath(path), flags, mode),
+    op_node_open(path, flags, mode),
     (rid: number) => callback(null, rid),
     (err: Error) =>
       callback(denoErrorToNodeError(err, { syscall: "open", path })),
@@ -110,7 +109,7 @@ export function openSync(
   const mode = parseFileMode(maybeMode, "mode", 0o666);
 
   try {
-    return op_node_open_sync(pathModule.toNamespacedPath(path), flags, mode);
+    return op_node_open_sync(path, flags, mode);
   } catch (err) {
     throw denoErrorToNodeError(err as Error, { syscall: "open", path });
   }

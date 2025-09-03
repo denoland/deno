@@ -597,7 +597,9 @@ impl CliFactory {
       .services
       .install_reporter
       .get_or_try_init(|| match self.cli_options()?.sub_command() {
-        DenoSubcommand::Install(InstallFlags::Local(_)) => Ok(Some(Arc::new(
+        DenoSubcommand::Install(InstallFlags::Local(_))
+        | DenoSubcommand::Add(_)
+        | DenoSubcommand::Cache(_) => Ok(Some(Arc::new(
           crate::tools::installer::InstallReporter::new(),
         ))),
         _ => Ok(None),
@@ -919,7 +921,7 @@ impl CliFactory {
         let desc_parser = self.permission_desc_parser()?.clone();
         let permissions = Permissions::from_options(
           desc_parser.as_ref(),
-          &self.cli_options()?.permissions_options(),
+          &self.cli_options()?.permissions_options()?,
         )?;
 
         Ok(PermissionsContainer::new(desc_parser, permissions))
@@ -1285,6 +1287,10 @@ fn new_workspace_factory_options(
         is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),
       },
     ),
+    root_node_modules_dir_override: flags
+      .internal
+      .root_node_modules_dir_override
+      .clone(),
     vendor: flags.vendor,
   }
 }

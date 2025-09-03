@@ -1356,6 +1356,13 @@ fn top_level_install_package_json_explicit_opt_in() {
     "Download http://localhost:4260/@denotest%2fesm-basic\n",
     "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
     "Initialize @denotest/esm-basic@1.0.0\n",
+    "Packages: 1\n",
+    "+\n",
+    "Resolved: 0, reused: 0, downloaded: 2, added: 1\n",
+    "\n",
+    "Dependencies:\n",
+    "+ npm:@denotest/esm-basic 1.0.0\n",
+    "\n"
   ));
 
   rm_created_files();

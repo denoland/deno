@@ -15,6 +15,7 @@ use deno_error::JsErrorBox;
 use wgpu_types::SurfaceStatus;
 
 use crate::device::GPUDevice;
+use crate::error::GPUGenericError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
 
@@ -76,6 +77,12 @@ impl GarbageCollected for GPUCanvasContext {
 
 #[op2]
 impl GPUCanvasContext {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUCanvasContext, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[global]
   fn canvas(&self) -> v8::Global<v8::Object> {
