@@ -4,7 +4,8 @@ import { op_bundle } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
 
-const { SafeArrayIterator, Uint8Array } = primordials;
+const { SafeArrayIterator, Uint8Array, ObjectPrototypeIsPrototypeOf } =
+  primordials;
 
 const decoder = new TextDecoder();
 
@@ -29,8 +30,12 @@ export async function bundle(
     const file = f as any;
     if (file.contents?.length === 0) {
       delete file.contents;
+      file.text = () => "";
     } else {
-      file.contents = decoder.decode(new Uint8Array(file.contents));
+      if (!ObjectPrototypeIsPrototypeOf(Uint8Array, file.contents)) {
+        file.contents = new Uint8Array(file.contents);
+      }
+      file.text = () => decoder.decode(file.contents ?? "");
     }
   }
   if (result.outputFiles?.length === 0) {

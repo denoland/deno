@@ -204,7 +204,7 @@ pub async fn bundle(
     let output_infos = process_result(
       &response,
       &init_cwd,
-      *DISABLE_HACK && matches!(bundle_flags.platform, BundlePlatform::Deno),
+      should_replace_require_shim(bundle_flags.platform),
       bundle_flags.minify,
     )?;
 
@@ -279,7 +279,7 @@ async fn bundle_watch(
           let output_infos = process_result(
             &response,
             &bundler.cwd,
-            *DISABLE_HACK && matches!(platform, BundlePlatform::Deno),
+            should_replace_require_shim(platform),
             minified,
           )?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
@@ -300,6 +300,10 @@ async fn bundle_watch(
   .await?;
 
   Ok(())
+}
+
+pub fn should_replace_require_shim(platform: BundlePlatform) -> bool {
+  *DISABLE_HACK && matches!(platform, BundlePlatform::Deno)
 }
 
 fn get_input_paths_for_watch(response: &BuildResponse) -> Vec<PathBuf> {
@@ -1576,6 +1580,37 @@ pub struct OutputFileInfo {
   size: usize,
   is_js: bool,
 }
+
+pub struct ProcessedContents {
+  contents: Option<Vec<u8>>,
+  is_js: bool,
+}
+
+pub fn maybe_process_contents(
+  file: &esbuild_client::protocol::BuildOutputFile,
+  should_replace_require_shim: bool,
+  minified: bool,
+) -> Result<ProcessedContents, AnyError> {
+  let path = Path::new(&file.path);
+  let is_js = is_js(path) || file.path.ends_with("<stdout>");
+  if is_js {
+    let string = String::from_utf8(file.contents.clone())?;
+    let string = if should_replace_require_shim {
+      replace_require_shim(&string, minified)
+    } else {
+      string
+    };
+    Ok(ProcessedContents {
+      contents: Some(string.into_bytes()),
+      is_js,
+    })
+  } else {
+    Ok(ProcessedContents {
+      contents: None,
+      is_js,
+    })
+  }
+}
 pub fn process_result(
   response: &BuildResponse,
   cwd: &Path,
@@ -1590,21 +1625,16 @@ pub fn process_result(
     .unwrap_or_default();
   let mut output_infos = Vec::new();
   for file in output_files.iter() {
+    let processed_contents =
+      maybe_process_contents(file, should_replace_require_shim, minified)?;
     let path = Path::new(&file.path);
     let relative_path =
       pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
-    let is_js = is_js(path);
-    let bytes = if is_js || file.path.ends_with("<stdout>") {
-      let string = String::from_utf8(file.contents.clone())?;
-      let string = if should_replace_require_shim {
-        replace_require_shim(&string, minified)
-      } else {
-        string
-      };
-      Cow::Owned(string.into_bytes())
-    } else {
-      Cow::Borrowed(&file.contents)
-    };
+    let is_js = processed_contents.is_js;
+    let bytes = processed_contents
+      .contents
+      .map(Cow::Owned)
+      .unwrap_or_else(|| Cow::Borrowed(&file.contents));
 
     if file.path.ends_with("<stdout>") {
       crate::display::write_to_stdout_ignore_sigpipe(bytes.as_slice())?;

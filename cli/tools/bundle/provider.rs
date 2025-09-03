@@ -90,6 +90,27 @@ pub fn convert_build_response(
   }
 }
 
+fn process_output_files(
+  bundle_flags: &crate::args::BundleFlags,
+  response: &mut esbuild_client::protocol::BuildResponse,
+) -> Result<(), AnyError> {
+  if let Some(files) = &mut response.output_files {
+    for file in files {
+      let processed_contents = crate::tools::bundle::maybe_process_contents(
+        file,
+        crate::tools::bundle::should_replace_require_shim(
+          bundle_flags.platform,
+        ),
+        bundle_flags.minify,
+      )?;
+      if let Some(contents) = processed_contents.contents {
+        file.contents = contents;
+      }
+    }
+  }
+  Ok(())
+}
+
 #[async_trait::async_trait]
 impl BundleProvider for CliBundleProvider {
   async fn bundle(
@@ -97,6 +118,7 @@ impl BundleProvider for CliBundleProvider {
     options: RtBundleOptions,
   ) -> Result<rt_bundle::BuildResponse, AnyError> {
     let mut flags_clone = (*self.flags).clone();
+    flags_clone.type_check_mode = crate::args::TypeCheckMode::None;
     let write_output = options.write
       && (options.output_dir.is_some() || options.output_path.is_some());
     let bundle_flags: crate::args::BundleFlags = options.into();
@@ -131,6 +153,8 @@ impl BundleProvider for CliBundleProvider {
             bundle_flags.minify,
           )?;
           result.output_files = None;
+        } else {
+          process_output_files(&bundle_flags, &mut result)?;
         }
         log::trace!("convert_build_response");
         let result = convert_build_response(result);

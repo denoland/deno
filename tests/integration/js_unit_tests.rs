@@ -17,6 +17,7 @@ util::unit_test_factory!(
     body_test,
     broadcast_channel_test,
     build_test,
+    bundle_test,
     cache_api_test,
     chmod_test,
     chown_test,
@@ -131,6 +132,10 @@ fn js_unit_test(test: String) {
     .arg("--unstable-vsock")
     .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
+
+  if test == "bundle_test" {
+    deno = deno.arg("--unstable-bundle");
+  }
 
   if test == "broadcast_channel_test" {
     deno = deno.arg("--unstable-broadcast-channel");
