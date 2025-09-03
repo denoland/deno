@@ -10,6 +10,7 @@ use std::ffi::c_void;
 use std::path::Path;
 use std::ptr::null;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
@@ -17,7 +18,9 @@ use deno_core::OpState;
 use deno_core::convert::OptionUndefined;
 use deno_core::cppgc;
 use deno_core::op2;
+use deno_core::parking_lot::Mutex;
 use deno_core::v8;
+use deno_core::v8::Data;
 use deno_core::v8_static_strings;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionsContainer;
@@ -229,11 +232,14 @@ impl<'a> ApplyChangesetOptions<'a> {
 }
 
 pub struct DatabaseSync {
-  conn: Rc<RefCell<Option<rusqlite::Connection>>>,
-  statements: Rc<RefCell<Vec<*mut libsqlite3_sys::sqlite3_stmt>>>,
+  conn: Arc<Mutex<Option<rusqlite::Connection>>>,
+  statements: Arc<Mutex<Vec<*mut libsqlite3_sys::sqlite3_stmt>>>,
   options: DatabaseSyncOptions,
   location: String,
 }
+
+unsafe impl Send for DatabaseSync {}
+unsafe impl Sync for DatabaseSync {}
 
 unsafe impl GarbageCollected for DatabaseSync {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
@@ -370,7 +376,7 @@ fn is_open(
 
   unsafe { db.as_ref() }
     .conn
-    .borrow()
+    .lock()
     .as_ref()
     .ok_or(SqliteError::AlreadyClosed)?;
 
@@ -422,8 +428,8 @@ impl DatabaseSync {
     };
 
     Ok(DatabaseSync {
-      conn: Rc::new(RefCell::new(db)),
-      statements: Rc::new(RefCell::new(Vec::new())),
+      conn: Arc::new(Mutex::new(db)),
+      statements: Arc::new(Mutex::new(Vec::new())),
       location,
       options,
     })
@@ -437,7 +443,7 @@ impl DatabaseSync {
   #[fast]
   #[undefined]
   fn open(&self, state: &mut OpState) -> Result<(), SqliteError> {
-    if self.conn.borrow().is_some() {
+    if self.conn.lock().is_some() {
       return Err(SqliteError::AlreadyOpen);
     }
 
@@ -464,7 +470,7 @@ impl DatabaseSync {
       self.options.enable_double_quoted_string_literals,
     );
 
-    *self.conn.borrow_mut() = Some(db);
+    *self.conn.lock() = Some(db);
 
     Ok(())
   }
@@ -474,12 +480,12 @@ impl DatabaseSync {
   #[fast]
   #[undefined]
   fn close(&self) -> Result<(), SqliteError> {
-    if self.conn.borrow().is_none() {
+    if self.conn.lock().is_none() {
       return Err(SqliteError::AlreadyClosed);
     }
 
     // Finalize all prepared statements
-    for stmt in self.statements.borrow_mut().drain(..) {
+    for stmt in self.statements.lock().drain(..) {
       if !stmt.is_null() {
         // SAFETY: `stmt` is a valid statement handle.
         unsafe {
@@ -488,7 +494,7 @@ impl DatabaseSync {
       }
     }
 
-    let _ = self.conn.borrow_mut().take();
+    let _ = self.conn.lock().take();
 
     Ok(())
   }
@@ -506,7 +512,7 @@ impl DatabaseSync {
     #[string]
     sql: &str,
   ) -> Result<(), SqliteError> {
-    let db = self.conn.borrow();
+    let db = self.conn.lock();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
     db.execute_batch(sql)?;
@@ -525,7 +531,7 @@ impl DatabaseSync {
     #[string]
     sql: &str,
   ) -> Result<StatementSync, SqliteError> {
-    let db = self.conn.borrow();
+    let db = self.conn.lock();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
     // SAFETY: lifetime of the connection is guaranteed by reference
@@ -550,12 +556,12 @@ impl DatabaseSync {
       return Err(SqliteError::PrepareFailed);
     }
 
-    self.statements.borrow_mut().push(raw_stmt);
+    self.statements.lock().push(raw_stmt);
 
     Ok(StatementSync {
       inner: raw_stmt,
-      db: Rc::downgrade(&self.conn),
-      statements: Rc::clone(&self.statements),
+      db: Arc::downgrade(&self.conn),
+      statements: Arc::clone(&self.statements),
       use_big_ints: Cell::new(false),
       allow_bare_named_params: Cell::new(true),
       is_iter_finished: false,
@@ -646,7 +652,7 @@ impl DatabaseSync {
       }
     }
 
-    let db = self.conn.borrow();
+    let db = self.conn.lock();
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
     // It is safe to use scope in the handlers because they are never
@@ -714,7 +720,7 @@ impl DatabaseSync {
     path: &str,
     #[string] entry_point: Option<String>,
   ) -> Result<(), SqliteError> {
-    let db = self.conn.borrow();
+    let db = self.conn.lock();
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
     if !self.options.allow_extension {
@@ -784,7 +790,7 @@ impl DatabaseSync {
     #[from_v8] options: OptionUndefined<SessionOptions>,
   ) -> Result<Session, SqliteError> {
     let options = options.0;
-    let db = self.conn.borrow();
+    let db = self.conn.lock();
     let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
 
     // SAFETY: lifetime of the connection is guaranteed by reference
@@ -829,7 +835,7 @@ impl DatabaseSync {
     Ok(Session {
       inner: raw_session,
       freed: Cell::new(false),
-      db: Rc::downgrade(&self.conn),
+      db: Arc::downgrade(&self.conn),
     })
   }
 }

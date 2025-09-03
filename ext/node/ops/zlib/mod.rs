@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use brotli::enc::StandardAlloc;
 use brotli::enc::encode::BrotliEncoderDestroyInstance;
@@ -10,6 +11,7 @@ use brotli::enc::encode::BrotliEncoderOperation;
 use brotli::enc::encode::BrotliEncoderStateStruct;
 use brotli::ffi;
 use deno_core::op2;
+use deno_core::parking_lot::Mutex;
 use deno_core::v8;
 use deno_core::v8::cppgc::GcCell;
 use deno_core::v8_static_strings;
@@ -52,7 +54,7 @@ struct ZlibInner {
   pending_close: bool,
   gzib_id_bytes_read: u32,
   result_buffer: Option<*mut u32>,
-  callback: Option<v8::TracedReferencel<v8::Function>>,
+  callback: Option<v8::TracedReference<v8::Function>>,
   strm: StreamWrapper,
 }
 
@@ -300,8 +302,11 @@ impl ZlibInner {
 }
 
 pub struct Zlib {
-  inner: GcCell<Option<ZlibInner>>,
+  inner: Arc<Mutex<Option<ZlibInner>>>,
 }
+
+unsafe impl Send for Zlib {}
+unsafe impl Sync for Zlib {}
 
 unsafe impl deno_core::GarbageCollected for Zlib {
   fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
@@ -331,13 +336,13 @@ impl Zlib {
     };
 
     Ok(Zlib {
-      inner: GcCell::new(Some(inner)),
+      inner: Arc::new(Mutex::new(Some(inner))),
     })
   }
 
   #[fast]
-  pub fn close(&self, isolate: &mut v8::Isolate) -> Result<(), ZlibError> {
-    let resource = self.inner.get_mut(isolate);
+  pub fn close(&self) -> Result<(), ZlibError> {
+    let mut resource = self.inner.lock();
     let zlib = resource.as_mut().ok_or(ZlibError::NotInitialized)?;
 
     // If there is a pending write, defer the close until the write is done.
@@ -348,8 +353,8 @@ impl Zlib {
 
   #[fast]
   #[smi]
-  pub fn reset(&self, isolate: &mut v8::Isolate) -> Result<i32, ZlibError> {
-    let zlib = self.inner.get_mut(isolate);
+  pub fn reset(&self) -> Result<i32, ZlibError> {
+    let mut zlib = self.inner.lock();
     let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
     zlib.reset_stream();
@@ -360,7 +365,7 @@ impl Zlib {
   #[smi]
   pub fn init(
     &self,
-    isolate: &mut v8::Isolate,
+    scope: &mut v8::HandleScope,
     #[smi] window_bits: i32,
     #[smi] level: i32,
     #[smi] mem_level: i32,
@@ -369,7 +374,7 @@ impl Zlib {
     #[global] callback: v8::Global<v8::Function>,
     #[buffer] dictionary: Option<&[u8]>,
   ) -> Result<i32, ZlibError> {
-    let zlib = self.inner.get_mut(isolate);
+    let mut zlib = self.inner.lock();
     let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
     if !((window_bits == 0)
@@ -405,7 +410,8 @@ impl Zlib {
 
     zlib.result_buffer = Some(write_result.as_mut_ptr());
     zlib.callback = {
-      let cb = v8::TracedReference::new(scope, callback);
+      let local = v8::Local::new(scope, callback);
+      let cb = v8::TracedReference::new(scope, local);
       Some(cb)
     };
 
@@ -427,7 +433,7 @@ impl Zlib {
     #[smi] out_len: u32,
   ) -> Result<(), ZlibError> {
     let err_info = {
-      let mut zlib = self.inner.get_mut(scope);
+      let mut zlib = self.inner.lock();
       let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
       let flush = Flush::try_from(flush)?;
@@ -462,7 +468,7 @@ impl Zlib {
     #[smi] out_len: u32,
   ) -> Result<(), ZlibError> {
     let (err_info, callback) = {
-      let mut zlib = self.inner.get_mut(scope);
+      let mut zlib = self.inner.lock();
       let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
       let flush = Flush::try_from(flush)?;
@@ -520,7 +526,7 @@ pub fn op_zlib_err_msg(
   isolate: &mut v8::Isolate,
   #[cppgc] resource: &Zlib,
 ) -> Result<Option<String>, ZlibError> {
-  let mut zlib = resource.inner.get_mut(isolate);
+  let mut zlib = resource.inner.lock();
   let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
   let msg = zlib.strm.msg;
@@ -545,7 +551,7 @@ pub fn op_zlib_close_if_pending(
   #[cppgc] resource: &Zlib,
 ) -> Result<(), ZlibError> {
   let pending_close = {
-    let zlib = resource.inner.get_mut(isolate);
+    let mut zlib = resource.inner.lock();
     let zlib = zlib.as_mut().ok_or(ZlibError::NotInitialized)?;
 
     zlib.write_in_progress = false;
@@ -556,7 +562,7 @@ pub fn op_zlib_close_if_pending(
     return Ok(());
   }
 
-  if let Some(mut res) = resource.inner.get_mut(isolate).take() {
+  if let Some(mut res) = resource.inner.lock().take() {
     let _ = res.close();
   }
 

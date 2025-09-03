@@ -1,9 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::GarbageCollected;
 use deno_core::op2;
+use deno_core::parking_lot::Mutex;
 use digest::Digest;
 use digest::DynDigest;
 use digest::ExtendableOutput;
@@ -12,7 +14,7 @@ use digest::Update;
 mod ring_sha2;
 
 pub struct Hasher {
-  pub hash: Rc<RefCell<Option<Hash>>>,
+  pub hash: Arc<Mutex<Option<Hash>>>,
 }
 
 unsafe impl GarbageCollected for Hasher {
@@ -21,6 +23,10 @@ unsafe impl GarbageCollected for Hasher {
     c"Hasher"
   }
 }
+
+// TODO(bartlomieju): fix GarbageCollected implementation
+unsafe impl Send for Hasher {}
+unsafe impl Sync for Hasher {}
 
 // Make prototype available for JavaScript
 #[op2]
@@ -40,12 +46,12 @@ impl Hasher {
     let hash = Hash::new(algorithm, output_length)?;
 
     Ok(Self {
-      hash: Rc::new(RefCell::new(Some(hash))),
+      hash: Arc::new(Mutex::new(Some(hash))),
     })
   }
 
   pub fn update(&self, data: &[u8]) -> bool {
-    if let Some(hash) = self.hash.borrow_mut().as_mut() {
+    if let Some(hash) = self.hash.lock().as_mut() {
       hash.update(data);
       true
     } else {
@@ -54,7 +60,7 @@ impl Hasher {
   }
 
   pub fn digest(&self) -> Option<Box<[u8]>> {
-    let hash = self.hash.borrow_mut().take()?;
+    let hash = self.hash.lock().take()?;
     Some(hash.digest_and_drop())
   }
 
@@ -62,13 +68,13 @@ impl Hasher {
     &self,
     output_length: Option<usize>,
   ) -> Result<Option<Self>, HashError> {
-    let hash = self.hash.borrow();
+    let hash = self.hash.lock();
     let Some(hash) = hash.as_ref() else {
       return Ok(None);
     };
     let hash = hash.clone_hash(output_length)?;
     Ok(Some(Self {
-      hash: Rc::new(RefCell::new(Some(hash))),
+      hash: Arc::new(Mutex::new(Some(hash))),
     }))
   }
 }

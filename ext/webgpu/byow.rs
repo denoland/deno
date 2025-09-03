@@ -157,13 +157,19 @@ impl UnsafeWindowSurface {
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::HandleScope,
   ) -> v8::Global<v8::Object> {
-    self.context.get(scope, |scope| GPUCanvasContext {
-      surface_id: self.id,
-      width: GcCell::new(*self.width.get(scope)),
-      height: GcCell::new(*self.height.get(scope)),
-      config: GcCell::new(None),
-      texture: GcCell::new(None),
-      canvas: GcCell::new(this),
+    self.context.get(scope, |scope| {
+      let tr = {
+        let local = v8::Local::new(scope, this);
+        v8::TracedReference::new(scope, local)
+      };
+      GPUCanvasContext {
+        surface_id: self.id,
+        width: GcCell::new(*self.width.get(scope)),
+        height: GcCell::new(*self.height.get(scope)),
+        config: GcCell::new(None),
+        texture: GcCell::new(None),
+        canvas: GcCell::new(tr),
+      }
     })
   }
 

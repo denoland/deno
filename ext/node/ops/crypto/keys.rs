@@ -7,6 +7,7 @@ use base64::Engine;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
 use deno_core::op2;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
@@ -1916,8 +1917,8 @@ pub async fn op_node_generate_secret_key_async(
 }
 
 struct KeyObjectHandlePair {
-  private_key: RefCell<Option<KeyObjectHandle>>,
-  public_key: RefCell<Option<KeyObjectHandle>>,
+  private_key: Mutex<Option<KeyObjectHandle>>,
+  public_key: Mutex<Option<KeyObjectHandle>>,
 }
 
 unsafe impl GarbageCollected for KeyObjectHandlePair {
@@ -1933,10 +1934,10 @@ impl KeyObjectHandlePair {
     public_key: AsymmetricPublicKey,
   ) -> Self {
     Self {
-      private_key: RefCell::new(Some(KeyObjectHandle::AsymmetricPrivate(
+      private_key: Mutex::new(Some(KeyObjectHandle::AsymmetricPrivate(
         private_key,
       ))),
-      public_key: RefCell::new(Some(KeyObjectHandle::AsymmetricPublic(
+      public_key: Mutex::new(Some(KeyObjectHandle::AsymmetricPublic(
         public_key,
       ))),
     }
@@ -1948,7 +1949,7 @@ impl KeyObjectHandlePair {
 pub fn op_node_get_public_key_from_pair(
   #[cppgc] pair: &KeyObjectHandlePair,
 ) -> Option<KeyObjectHandle> {
-  pair.public_key.borrow_mut().take()
+  pair.public_key.lock().take()
 }
 
 #[op2]
@@ -1956,7 +1957,7 @@ pub fn op_node_get_public_key_from_pair(
 pub fn op_node_get_private_key_from_pair(
   #[cppgc] pair: &KeyObjectHandlePair,
 ) -> Option<KeyObjectHandle> {
-  pair.private_key.borrow_mut().take()
+  pair.private_key.lock().take()
 }
 
 fn generate_rsa(

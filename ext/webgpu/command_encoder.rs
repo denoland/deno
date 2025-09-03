@@ -7,6 +7,7 @@ use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
+use deno_core::v8::cppgc::GcCell;
 use deno_error::JsErrorBox;
 use wgpu_core::command::PassChannel;
 use wgpu_types::TexelCopyBufferInfo;
@@ -136,7 +137,7 @@ impl GPUCommandEncoder {
     Ok(GPURenderPassEncoder {
       instance: self.instance.clone(),
       error_handler: self.error_handler.clone(),
-      render_pass: RefCell::new(render_pass),
+      render_pass: GcCell::new(render_pass),
       label: descriptor.label,
     })
   }
@@ -170,7 +171,7 @@ impl GPUCommandEncoder {
     GPUComputePassEncoder {
       instance: self.instance.clone(),
       error_handler: self.error_handler.clone(),
-      compute_pass: RefCell::new(compute_pass),
+      compute_pass: GcCell::new(compute_pass),
       label: descriptor.label,
     }
   }

@@ -258,7 +258,7 @@ impl GPUBuffer {
     let mut mapped_js_buffers =
       { self.mapped_js_buffers.get_mut(scope).drain(..).collect() };
     for ab in mapped_js_buffers {
-      let ab = ab.get(scope);
+      let ab: v8::Local<v8::ArrayBuffer> = ab.get(scope).unwrap();
       ab.detach(None);
     }
 

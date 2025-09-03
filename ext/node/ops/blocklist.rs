@@ -9,16 +9,19 @@ use std::net::SocketAddr;
 
 use deno_core::OpState;
 use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8::cppgc::GcCell;
 use ipnetwork::IpNetwork;
 use ipnetwork::Ipv4Network;
 use ipnetwork::Ipv6Network;
 use serde::Serialize;
 
 pub struct BlockListResource {
-  blocklist: RefCell<BlockList>,
+  blocklist: GcCell<BlockList>,
 }
 
 unsafe impl deno_core::GarbageCollected for BlockListResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"BlockListResource"
   }
@@ -82,43 +85,47 @@ pub fn op_socket_address_get_serialization(
 pub fn op_blocklist_new() -> BlockListResource {
   let blocklist = BlockList::new();
   BlockListResource {
-    blocklist: RefCell::new(blocklist),
+    blocklist: GcCell::new(blocklist),
   }
 }
 
 #[op2(fast)]
 pub fn op_blocklist_add_address(
+  isolate: &mut v8::Isolate,
   #[cppgc] wrap: &BlockListResource,
   #[string] addr: &str,
 ) -> Result<(), BlocklistError> {
-  wrap.blocklist.borrow_mut().add_address(addr)
+  wrap.blocklist.get_mut(isolate).add_address(addr)
 }
 
 #[op2(fast)]
 pub fn op_blocklist_add_range(
+  isolate: &mut v8::Isolate,
   #[cppgc] wrap: &BlockListResource,
   #[string] start: &str,
   #[string] end: &str,
 ) -> Result<bool, BlocklistError> {
-  wrap.blocklist.borrow_mut().add_range(start, end)
+  wrap.blocklist.get_mut(isolate).add_range(start, end)
 }
 
 #[op2(fast)]
 pub fn op_blocklist_add_subnet(
+  isolate: &mut v8::Isolate,
   #[cppgc] wrap: &BlockListResource,
   #[string] addr: &str,
   #[smi] prefix: u8,
 ) -> Result<(), BlocklistError> {
-  wrap.blocklist.borrow_mut().add_subnet(addr, prefix)
+  wrap.blocklist.get_mut(isolate).add_subnet(addr, prefix)
 }
 
 #[op2(fast)]
 pub fn op_blocklist_check(
+  isolate: &v8::Isolate,
   #[cppgc] wrap: &BlockListResource,
   #[string] addr: &str,
   #[string] r#type: &str,
 ) -> Result<bool, BlocklistError> {
-  wrap.blocklist.borrow().check(addr, r#type)
+  wrap.blocklist.get(isolate).check(addr, r#type)
 }
 
 struct BlockList {

@@ -3,11 +3,13 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::rc::Weak;
+use std::sync::Arc;
+use std::sync::Weak;
 
 use deno_core::GarbageCollected;
 use deno_core::ToV8;
 use deno_core::op2;
+use deno_core::parking_lot::Mutex;
 use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::v8_static_strings;
@@ -65,22 +67,20 @@ impl<'a> ToV8<'a> for RunStatementResult {
 #[derive(Debug)]
 pub struct StatementSync {
   pub inner: *mut ffi::sqlite3_stmt,
-  pub db: Weak<RefCell<Option<rusqlite::Connection>>>,
-  pub statements: Rc<RefCell<Vec<*mut ffi::sqlite3_stmt>>>,
+  pub db: Weak<Mutex<Option<rusqlite::Connection>>>,
+  pub statements: Arc<Mutex<Vec<*mut ffi::sqlite3_stmt>>>,
 
-  pub use_big_ints: Cell<bool>,
-  pub allow_bare_named_params: Cell<bool>,
+  pub use_big_ints: Mutex<bool>,
+  pub allow_bare_named_params: Mutex<bool>,
 
   pub is_iter_finished: bool,
 }
 
 impl Drop for StatementSync {
   fn drop(&mut self) {
-    if self.statements.borrow().contains(&self.inner) {
-      self
-        .statements
-        .borrow_mut()
-        .retain(|stmt| *stmt != self.inner);
+    let mut statements = self.statements.lock();
+    if statements.contains(&self.inner) {
+      statements.retain(|stmt| *stmt != self.inner);
       // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
       // no other references to this pointer exist.
       unsafe {
@@ -232,7 +232,7 @@ impl StatementSync {
       Ok(match ffi::sqlite3_column_type(self.inner, index) {
         ffi::SQLITE_INTEGER => {
           let value = ffi::sqlite3_column_int64(self.inner, index);
-          if self.use_big_ints.get() {
+          if self.use_big_ints.lock() {
             v8::BigInt::new_from_i64(scope, value).into()
           } else if value.abs() <= MAX_SAFE_JS_INTEGER {
             v8::Number::new(scope, value as f64).into()
@@ -392,7 +392,7 @@ impl StatementSync {
   fn check_error_code(&self, r: i32) -> Result<(), SqliteError> {
     if r != ffi::SQLITE_OK {
       let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
-      let db = db_rc.borrow();
+      let db = db_rc.lock();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
       // SAFETY: db.handle() is valid
@@ -573,7 +573,7 @@ impl StatementSync {
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<RunStatementResult, SqliteError> {
     let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
-    let db = db_rc.borrow();
+    let db = db_rc.lock();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
     self.bind_params(scope, params)?;
@@ -587,7 +587,7 @@ impl StatementSync {
     Ok(RunStatementResult {
       last_insert_rowid: db.last_insert_rowid(),
       changes: db.changes(),
-      use_big_ints: self.use_big_ints.get(),
+      use_big_ints: self.use_big_ints.lock(),
     })
   }
 
@@ -766,7 +766,7 @@ impl StatementSync {
     &self,
     #[validate(validators::read_big_ints_bool)] enabled: bool,
   ) -> Result<(), SqliteError> {
-    self.use_big_ints.set(enabled);
+    *self.use_big_ints.lock() = enabled;
     Ok(())
   }
 

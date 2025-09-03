@@ -4,6 +4,8 @@ use std::ffi::c_int;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
+use deno_core::parking_lot::Mutex;
+
 use super::mode::Flush;
 use super::mode::Mode;
 

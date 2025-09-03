@@ -10,6 +10,7 @@ use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use deno_core::futures::channel::mpsc;
 use deno_core::op2;
+use deno_core::parking_lot::Mutex;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 
@@ -81,7 +82,7 @@ pub fn op_inspector_emit_protocol_event(
 }
 
 struct JSInspectorSession {
-  tx: RefCell<Option<mpsc::UnboundedSender<String>>>,
+  tx: Mutex<Option<mpsc::UnboundedSender<String>>>,
 }
 
 unsafe impl GarbageCollected for JSInspectorSession {
@@ -161,7 +162,7 @@ where
   );
 
   Ok(JSInspectorSession {
-    tx: RefCell::new(Some(tx)),
+    tx: Mutex::new(Some(tx)),
   })
 }
 
@@ -170,12 +171,12 @@ pub fn op_inspector_dispatch(
   #[cppgc] session: &JSInspectorSession,
   #[string] message: String,
 ) {
-  if let Some(tx) = &*session.tx.borrow() {
+  if let Some(tx) = &*session.tx.lock() {
     let _ = tx.unbounded_send(message);
   }
 }
 
 #[op2(fast)]
 pub fn op_inspector_disconnect(#[cppgc] session: &JSInspectorSession) {
-  drop(session.tx.borrow_mut().take());
+  drop(session.tx.lock().take());
 }

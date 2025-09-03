@@ -3,12 +3,14 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::error::ResourceError;
 use deno_core::op2;
+use deno_core::parking_lot::Mutex;
 use deno_core::v8;
 
 pub struct AsyncId(i64);
@@ -86,7 +88,7 @@ enum State {
 
 pub struct HandleWrap {
   handle: Option<ResourceId>,
-  state: Rc<Cell<State>>,
+  state: Arc<Mutex<State>>,
 }
 
 unsafe impl GarbageCollected for HandleWrap {
@@ -100,12 +102,12 @@ impl HandleWrap {
   pub(crate) fn create(handle: Option<ResourceId>) -> Self {
     Self {
       handle,
-      state: Rc::new(Cell::new(State::Initialized)),
+      state: Arc::new(Mutex::new(State::Initialized)),
     }
   }
 
   fn is_alive(&self) -> bool {
-    self.state.get() != State::Closed
+    *self.state.lock() != State::Closed
   }
 }
 
@@ -138,7 +140,7 @@ impl HandleWrap {
     scope: &mut v8::HandleScope,
     #[global] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
-    if self.state.get() != State::Initialized {
+    if *self.state.lock() != State::Initialized {
       return Ok(());
     }
 
@@ -147,8 +149,11 @@ impl HandleWrap {
     //
     // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L135-L157
     let on_close = move |scope: &mut v8::HandleScope| {
-      assert!(state.get() == State::Closing);
-      state.set(State::Closed);
+      {
+        let mut s = state.lock();
+        assert!(*s == State::Closing);
+        *s = State::Closed;
+      }
 
       // Workaround for https://github.com/denoland/deno/pull/24656
       //
@@ -163,7 +168,7 @@ impl HandleWrap {
     };
 
     uv_close(scope, op_state, this, on_close);
-    self.state.set(State::Closing);
+    *self.state.lock() = State::Closing;
 
     Ok(())
   }
