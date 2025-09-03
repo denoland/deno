@@ -1203,12 +1203,10 @@ impl Flags {
       | Compile(CompileFlags {
         source_file: script,
         ..
-      }) => {
-        resolve_single_folder_path(script, current_dir, |mut p| {
-          if p.pop() { Some(p) } else { None }
-        })
-        .map(|p| vec![p])
-      }
+      }) => resolve_single_folder_path(script, current_dir, |mut p| {
+        if p.pop() { Some(p) } else { None }
+      })
+      .map(|p| vec![p]),
       Task(TaskFlags {
         cwd: Some(path), ..
       }) => {
