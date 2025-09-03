@@ -80,10 +80,10 @@ function chunkToString(chunk) {
 
 class InnerBody {
   /**
-   * @param {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} stream
+   * @param {ReadableStream<Uint8Array> | { body: Uint8Array | number | string, consumed: boolean }} stream
    */
   constructor(stream) {
-    /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | string, consumed: boolean }} */
+    /** @type {ReadableStream<Uint8Array> | { body: Uint8Array | number | string, consumed: boolean }} */
     this.streamOrStatic = stream ??
       { body: new Uint8Array(), consumed: false };
     /** @type {null | Uint8Array | string | Blob | FormData} */
@@ -100,6 +100,9 @@ class InnerBody {
       )
     ) {
       const { body, consumed } = this.streamOrStatic;
+      if (typeof body === "number") {
+        return null;
+      }
       if (consumed) {
         this.streamOrStatic = new ReadableStream();
         this.streamOrStatic.getReader();
@@ -131,6 +134,7 @@ class InnerBody {
       return this.streamOrStatic.locked ||
         isReadableStreamDisturbed(this.streamOrStatic);
     }
+    if (typeof this.streamOrStatic.body === "number") return true;
     return this.streamOrStatic.consumed;
   }
 

@@ -33,6 +33,7 @@ use deno_core::serde_v8::from_v8;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
 use deno_core::v8;
+use deno_error::JsErrorBox;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamReadHalf;
@@ -196,12 +197,13 @@ pub enum HttpNextError {
 
 #[op2(fast)]
 #[smi]
-pub fn op_http_upgrade_raw(
+pub fn op_http_upgrade_raw_with_parsing(
   state: &mut OpState,
   external: *const c_void,
 ) -> Result<ResourceId, HttpNextError> {
   // SAFETY: external is deleted before calling this op.
-  let http = unsafe { take_external!(external, "op_http_upgrade_raw") };
+  let http =
+    unsafe { take_external!(external, "op_http_upgrade_raw_with_parsing") };
 
   let upgrade = http.upgrade()?;
 
@@ -216,6 +218,28 @@ pub fn op_http_upgrade_raw(
   );
 
   Ok(state.resource_table.add(UpgradeStream::new(read, write)))
+}
+
+#[op2(async)]
+#[smi]
+pub async fn op_http_upgrade_raw(
+  state: Rc<RefCell<OpState>>,
+  external: *const c_void,
+) -> Result<ResourceId, HttpNextError> {
+  let upgrade = {
+    // SAFETY: op is called with external.
+    let http = unsafe { clone_external!(external, "op_http_upgrade_raw") };
+    http.upgrade()?
+  };
+
+  let upgraded = upgrade.await?;
+  let (stream, request_bytes) = extract_network_stream(upgraded);
+  let (r, w) = stream.into_split();
+
+  Ok(state.borrow_mut().resource_table.add(UpgradeStream::new(
+    Rc::new(AsyncRefCell::new(Some((r, request_bytes)))),
+    UpgradeStreamWriteState::Network(w),
+  )))
 }
 
 #[op2(async)]
@@ -767,6 +791,40 @@ pub async fn op_http_set_response_body_resource(
   );
 
   Ok(http.response_body_finished().await)
+}
+
+#[op2(async)]
+pub async fn op_http_set_response_upgrade(
+  state: Rc<RefCell<OpState>>,
+  external: *const c_void,
+  #[smi] rid: ResourceId,
+) -> Result<(), HttpNextError> {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { take_external!(external, "op_http_set_response_body_resource") };
+
+  let res = state
+    .borrow_mut()
+    .resource_table
+    .take::<deno_fetch::FetchResponseResource>(rid)?;
+  let mut res = res
+    .take()
+    .await
+    .map_err(|e| HttpNextError::Other(JsErrorBox::from_err(e)))?;
+  let res_upgrade = hyper::upgrade::on(&mut res).await?;
+
+  let req_upgrade = http.upgrade()?;
+  set_promise_complete(http, 101);
+
+  let req_upgrade = req_upgrade.await?;
+
+  let _ = tokio::io::copy_bidirectional(
+    &mut TokioIo::new(res_upgrade),
+    &mut TokioIo::new(req_upgrade),
+  )
+  .await;
+
+  Ok(())
 }
 
 #[op2(fast)]
