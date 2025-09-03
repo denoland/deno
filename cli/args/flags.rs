@@ -1205,7 +1205,6 @@ impl Flags {
         ..
       }) => {
         resolve_single_folder_path(script, current_dir, |mut p| {
-          // doesn't check if this is a path
           if p.pop() { Some(p) } else { None }
         })
         .map(|p| vec![p])
