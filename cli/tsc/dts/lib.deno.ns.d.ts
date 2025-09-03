@@ -6336,6 +6336,12 @@ declare namespace Deno {
      * @default {false}
      */
     allowHost?: boolean;
+    /** Whether HTTP upgrades are allowed or not.
+     *
+     * @default {false}
+     * @experimental **UNSTABLE**: New API, yet to be vetted.
+     */
+    allowUpgrades?: boolean;
     /** Sets the local address where the socket will connect from. */
     localAddress?: string;
   }

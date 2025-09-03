@@ -6,9 +6,11 @@ use std::future::Future;
 use std::future::poll_fn;
 use std::io;
 use std::pin::Pin;
+use std::pin::pin;
 use std::ptr::null;
 use std::rc::Rc;
 
+use bytes::Bytes;
 use cache_control::CacheControl;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -30,8 +32,11 @@ use deno_core::serde_v8::from_v8;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
 use deno_core::v8;
+use deno_error::JsErrorBox;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
+use deno_net::raw::NetworkStreamReadHalf;
+use deno_net::raw::NetworkStreamWriteHalf;
 use deno_websocket::ws_create_server_stream;
 use fly_accept_encoding::Encoding;
 use hyper::StatusCode;
@@ -63,12 +68,14 @@ use crate::Options;
 use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
+use crate::raw_upgrade::RawUpgrade;
 use crate::request_body::HttpRequestBody;
 use crate::request_properties::HttpConnectionProperties;
 use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::Compression;
 use crate::response_body::ResponseBytesInner;
+use crate::sec_websocket_accept;
 use crate::service::HttpRecord;
 use crate::service::HttpRecordResponse;
 use crate::service::HttpRequestBodyAutocloser;
@@ -77,7 +84,6 @@ use crate::service::SignallingRc;
 use crate::service::handle_request;
 use crate::service::http_general_trace;
 use crate::service::http_trace;
-use crate::websocket_upgrade::WebSocketUpgrade;
 
 type Request = hyper::Request<Incoming>;
 
@@ -156,7 +162,7 @@ pub enum HttpNextError {
   Io(#[from] io::Error),
   #[class(inherit)]
   #[error(transparent)]
-  WebSocketUpgrade(crate::websocket_upgrade::WebSocketUpgradeError),
+  RawUpgrade(crate::raw_upgrade::RawUpgradeError),
   #[class("Http")]
   #[error("{0}")]
   Hyper(#[from] hyper::Error),
@@ -188,73 +194,70 @@ pub enum HttpNextError {
 
 #[op2(fast)]
 #[smi]
-pub fn op_http_upgrade_raw(
-  state: &mut OpState,
+pub fn op_http_upgrade_raw_with_parsing(
+  state: Rc<RefCell<OpState>>,
   external: *const c_void,
 ) -> Result<ResourceId, HttpNextError> {
   // SAFETY: external is deleted before calling this op.
-  let http = unsafe { take_external!(external, "op_http_upgrade_raw") };
+  let http =
+    unsafe { take_external!(external, "op_http_upgrade_raw_with_parsing") };
 
-  // Stage 1: extract the upgrade future
   let upgrade = http.upgrade()?;
-  let (read, write) = tokio::io::duplex(1024);
-  let (read_rx, write_tx) = tokio::io::split(read);
-  let (mut write_rx, mut read_tx) = tokio::io::split(write);
-  spawn(async move {
-    let mut upgrade_stream = WebSocketUpgrade::<()>::default();
 
-    // Stage 2: Extract the Upgraded connection
+  let (d1, mut d2) = tokio::io::duplex(1024);
+  spawn(async move {
+    let mut upgrade_stream = RawUpgrade::<()>::default();
+
     let mut buf = [0; 1024];
-    let upgraded = loop {
-      let read = Pin::new(&mut write_rx).read(&mut buf).await?;
+    let (response, response_bytes) = loop {
+      let read = Pin::new(&mut d2).read(&mut buf).await?;
       match upgrade_stream.write(&buf[..read]) {
         Ok(None) => continue,
-        Ok(Some((response, bytes))) => {
-          let (response_parts, _) = response.into_parts();
-          *http.response_parts() = response_parts;
-          http.complete();
-          let mut upgraded = TokioIo::new(upgrade.await?);
-          upgraded.write_all(&bytes).await?;
-          break upgraded;
-        }
-        Err(err) => return Err(HttpNextError::WebSocketUpgrade(err)),
+        Ok(Some(to_send)) => break to_send,
+        Err(err) => return Err(HttpNextError::RawUpgrade(err)),
       }
     };
 
-    // Stage 3: Pump the data
-    let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
+    let (response_parts, ()) = response.into_parts();
+    *http.response_parts() = response_parts;
+    http.complete();
 
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = upgraded_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        read_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, HttpNextError>(())
-    });
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = write_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        upgraded_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, HttpNextError>(())
-    });
+    let (mut upgraded, request_bytes) = extract_network_stream(upgrade.await?);
+    upgraded.write_all(&response_bytes).await?;
+    d2.write_all(&request_bytes).await?;
 
-    Ok(())
+    tokio::io::copy_bidirectional(&mut d2, &mut upgraded).await?;
+
+    Ok::<_, HttpNextError>(())
   });
 
-  Ok(
-    state
-      .resource_table
-      .add(UpgradeStream::new(read_rx, write_tx)),
-  )
+  let (r, w) = tokio::io::split(d1);
+  Ok(state.borrow_mut().resource_table.add(UpgradeStream::new(
+    UpgradeStreamReadHalf::Duplex(r),
+    UpgradeStreamWriteHalf::Duplex(w),
+  )))
+}
+
+#[op2(async)]
+#[smi]
+pub async fn op_http_upgrade_raw(
+  state: Rc<RefCell<OpState>>,
+  external: *const c_void,
+) -> Result<ResourceId, HttpNextError> {
+  let upgrade = {
+    // SAFETY: op is called with external.
+    let http = unsafe { clone_external!(external, "op_http_upgrade_raw") };
+    http.upgrade()?
+  };
+
+  let upgraded = upgrade.await?;
+  let (stream, request_bytes) = extract_network_stream(upgraded);
+  let (r, w) = stream.into_split();
+
+  Ok(state.borrow_mut().resource_table.add(UpgradeStream::new(
+    UpgradeStreamReadHalf::Network(r, request_bytes),
+    UpgradeStreamWriteHalf::Network(w),
+  )))
 }
 
 #[op2(async)]
@@ -262,34 +265,46 @@ pub fn op_http_upgrade_raw(
 pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
   external: *const c_void,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[serde] websocket_key: ByteString,
+  #[serde] selected_protocol: Option<ByteString>,
 ) -> Result<ResourceId, HttpNextError> {
   let http =
     // SAFETY: external is deleted before calling this op.
     unsafe { take_external!(external, "op_http_upgrade_websocket_next") };
-  // Stage 1: set the response to 101 Switching Protocols and send it
+
   let upgrade = http.upgrade()?;
+
   {
-    {
-      http.otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
-    }
+    http.otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
+
     let mut response_parts = http.response_parts();
     response_parts.status = StatusCode::SWITCHING_PROTOCOLS;
 
-    for (name, value) in headers {
+    response_parts.headers.append(
+      HeaderName::from_static("upgrade"),
+      HeaderValue::from_static("websocket"),
+    );
+    response_parts.headers.append(
+      HeaderName::from_static("connection"),
+      HeaderValue::from_static("Upgrade"),
+    );
+    response_parts.headers.append(
+      HeaderName::from_static("sec-websocket-accept"),
+      HeaderValue::from_str(&sec_websocket_accept(&websocket_key)).unwrap(),
+    );
+
+    if let Some(selected_protocol) = selected_protocol {
       response_parts.headers.append(
-        HeaderName::from_bytes(&name).unwrap(),
-        HeaderValue::from_bytes(&value).unwrap(),
+        HeaderName::from_static("sec-websocket-protocol"),
+        HeaderValue::from_bytes(&selected_protocol).unwrap(),
       );
     }
   }
   http.complete();
 
-  // Stage 2: wait for the request to finish upgrading
   let upgraded = upgrade.await?;
-
-  // Stage 3: take the extracted raw network stream and upgrade it to a websocket, then return it
   let (stream, bytes) = extract_network_stream(upgraded);
+
   Ok(ws_create_server_stream(
     &mut state.borrow_mut(),
     stream,
@@ -827,6 +842,40 @@ pub async fn op_http_set_response_body_resource(
   );
 
   Ok(http.response_body_finished().await)
+}
+
+#[op2(async)]
+pub async fn op_http_set_response_upgrade(
+  state: Rc<RefCell<OpState>>,
+  external: *const c_void,
+  #[smi] rid: ResourceId,
+) -> Result<(), HttpNextError> {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { take_external!(external, "op_http_set_response_body_resource") };
+
+  let res = state
+    .borrow_mut()
+    .resource_table
+    .take::<deno_fetch::FetchResponseResource>(rid)?;
+  let mut res = res
+    .take()
+    .await
+    .map_err(|e| HttpNextError::Other(JsErrorBox::from_err(e)))?;
+  let res_upgrade = hyper::upgrade::on(&mut res).await?;
+
+  let req_upgrade = http.upgrade()?;
+  set_promise_complete(http, 101);
+
+  let req_upgrade = req_upgrade.await?;
+
+  let _ = tokio::io::copy_bidirectional(
+    &mut TokioIo::new(res_upgrade),
+    &mut TokioIo::new(req_upgrade),
+  )
+  .await;
+
+  Ok(())
 }
 
 #[op2(fast)]
@@ -1418,16 +1467,26 @@ pub async fn op_http_close(
   Ok(())
 }
 
+enum UpgradeStreamReadHalf {
+  Duplex(tokio::io::ReadHalf<tokio::io::DuplexStream>),
+  Network(NetworkStreamReadHalf, Bytes),
+}
+
+enum UpgradeStreamWriteHalf {
+  Duplex(tokio::io::WriteHalf<tokio::io::DuplexStream>),
+  Network(NetworkStreamWriteHalf),
+}
+
 struct UpgradeStream {
-  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
-  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
+  read: AsyncRefCell<UpgradeStreamReadHalf>,
+  write: AsyncRefCell<UpgradeStreamWriteHalf>,
   cancel_handle: CancelHandle,
 }
 
 impl UpgradeStream {
   pub fn new(
-    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
-    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
+    read: UpgradeStreamReadHalf,
+    write: UpgradeStreamWriteHalf,
   ) -> Self {
     Self {
       read: AsyncRefCell::new(read),
@@ -1444,7 +1503,18 @@ impl UpgradeStream {
     async {
       let read = RcRef::map(self, |this| &this.read);
       let mut read = read.borrow_mut().await;
-      Pin::new(&mut *read).read(buf).await
+      match &mut *read {
+        UpgradeStreamReadHalf::Duplex(d) => pin!(d).read(buf).await,
+        UpgradeStreamReadHalf::Network(d, bytes) => {
+          if !bytes.is_empty() {
+            let n = bytes.len().min(buf.len());
+            buf[0..n].copy_from_slice(&bytes.split_to(n));
+            Ok(n)
+          } else {
+            pin!(d).read(buf).await
+          }
+        }
+      }
     }
     .try_or_cancel(cancel_handle)
     .await
@@ -1455,7 +1525,10 @@ impl UpgradeStream {
     async {
       let write = RcRef::map(self, |this| &this.write);
       let mut write = write.borrow_mut().await;
-      Pin::new(&mut *write).write(buf).await
+      match &mut *write {
+        UpgradeStreamWriteHalf::Duplex(d) => pin!(d).write(buf).await,
+        UpgradeStreamWriteHalf::Network(d) => pin!(d).write(buf).await,
+      }
     }
     .try_or_cancel(cancel_handle)
     .await
@@ -1470,7 +1543,10 @@ impl UpgradeStream {
 
     let total = buf1.len() + buf2.len();
     let mut bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
-    let mut nwritten = wr.write_vectored(&bufs).await?;
+    let mut nwritten = match &mut *wr {
+      UpgradeStreamWriteHalf::Duplex(d) => d.write_vectored(&bufs).await?,
+      UpgradeStreamWriteHalf::Network(d) => d.write_vectored(&bufs).await?,
+    };
     if nwritten == total {
       return Ok(nwritten);
     }
@@ -1478,12 +1554,19 @@ impl UpgradeStream {
     // Slightly more optimized than (unstable) write_all_vectored for 2 iovecs.
     while nwritten <= buf1.len() {
       bufs[0] = std::io::IoSlice::new(&buf1[nwritten..]);
-      nwritten += wr.write_vectored(&bufs).await?;
+      nwritten += match &mut *wr {
+        UpgradeStreamWriteHalf::Duplex(d) => d.write_vectored(&bufs).await?,
+        UpgradeStreamWriteHalf::Network(d) => d.write_vectored(&bufs).await?,
+      };
     }
 
     // First buffer out of the way.
     if nwritten < total && nwritten > buf1.len() {
-      wr.write_all(&buf2[nwritten - buf1.len()..]).await?;
+      let buf = &buf2[nwritten - buf1.len()..];
+      match &mut *wr {
+        UpgradeStreamWriteHalf::Duplex(d) => d.write_all(buf).await?,
+        UpgradeStreamWriteHalf::Network(d) => d.write_all(buf).await?,
+      }
     }
 
     Ok(total)

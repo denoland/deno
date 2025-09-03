@@ -27,8 +27,10 @@ import {
   op_http_set_response_header,
   op_http_set_response_headers,
   op_http_set_response_trailers,
+  op_http_set_response_upgrade,
   op_http_try_wait,
   op_http_upgrade_raw,
+  op_http_upgrade_raw_with_parsing,
   op_http_upgrade_websocket_next,
   op_http_wait,
 } from "ext:core/ops";
@@ -76,7 +78,6 @@ import {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
   SERVER,
   WebSocket,
@@ -148,12 +149,20 @@ const UPGRADE_RESPONSE_SENTINEL = fromInnerResponse(
   "immutable",
 );
 
-function upgradeHttpRaw(req, conn) {
-  const inner = toInnerRequest(req);
-  if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeHttpRaw", conn);
+function upgradeHttpRaw(obj, parseResponse) {
+  const innerResponse = toInnerResponse(obj);
+  if (innerResponse?._wantsUpgrade) {
+    return innerResponse._wantsUpgrade("upgradeHttpRaw", parseResponse);
   }
-  throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
+
+  const innerRequest = toInnerRequest(obj);
+  if (innerRequest?._wantsUpgrade) {
+    return innerRequest._wantsUpgrade("upgradeHttpRaw", parseResponse);
+  }
+
+  throw new TypeError(
+    "'upgradeHttpRaw' may only be used with Deno.serve and fetch",
+  );
 }
 
 function addTrailers(resp, headerList) {
@@ -175,7 +184,7 @@ class InnerRequest {
   constructor(external, context) {
     this.#external = external;
     this.#context = context;
-    this.#upgraded = false;
+    this.#upgraded = null;
     this.#completed = undefined;
   }
 
@@ -214,29 +223,55 @@ class InnerRequest {
     // upgradeHttpRaw is sync
     if (upgradeType == "upgradeHttpRaw") {
       const external = this.#external;
-      const underlyingConn = originalArgs[0];
+      const { 0: parseResponse } = originalArgs;
 
       this.url();
       this.headerList;
       this.close();
 
-      this.#upgraded = () => {};
+      if (parseResponse) {
+        this.#upgraded = (response) => {
+          if (response !== UPGRADE_RESPONSE_SENTINEL) {
+            import.meta.log(
+              "error",
+              "Upgrade response was not returned from callback",
+            );
+            this.#context.close();
+          }
 
-      const upgradeRid = op_http_upgrade_raw(external);
+          return true;
+        };
 
-      const conn = new UpgradedConn(
-        upgradeRid,
-        underlyingConn?.remoteAddr,
-        underlyingConn?.localAddr,
-      );
+        const upgradeRid = op_http_upgrade_raw_with_parsing(external);
 
-      return { response: UPGRADE_RESPONSE_SENTINEL, conn };
+        const conn = new UpgradedConn(
+          upgradeRid,
+          this.remoteAddr,
+          this.#context.listener.addr,
+        );
+
+        return {
+          response: UPGRADE_RESPONSE_SENTINEL,
+          conn,
+        };
+      } else {
+        this.#upgraded = () => false;
+
+        const promise = op_http_upgrade_raw(external);
+
+        return PromisePrototypeThen(promise, (upgradeRid) => {
+          return new UpgradedConn(
+            upgradeRid,
+            this.remoteAddr,
+            this.#context.listener.addr,
+          );
+        });
+      }
     }
 
     // upgradeWebSocket is sync
     if (upgradeType == "upgradeWebSocket") {
-      const response = originalArgs[0];
-      const ws = originalArgs[1];
+      const { 0: ws, 1: websocketKey, 2: selectedProtocol } = originalArgs;
 
       const external = this.#external;
 
@@ -245,12 +280,23 @@ class InnerRequest {
       this.close();
 
       const goAhead = new Deferred();
-      this.#upgraded = () => {
+      this.#upgraded = (response) => {
+        if (response !== UPGRADE_RESPONSE_SENTINEL) {
+          import.meta.log(
+            "error",
+            "Upgrade response was not returned from callback",
+          );
+          this.#context.close();
+        }
+
         goAhead.resolve();
+        return true;
       };
+
       const wsPromise = op_http_upgrade_websocket_next(
         external,
-        response.headerList,
+        websocketKey,
+        selectedProtocol,
       );
 
       // Start the upgrade in the background.
@@ -281,6 +327,7 @@ class InnerRequest {
           ws.dispatchEvent(event);
         }
       })();
+
       return { response: UPGRADE_RESPONSE_SENTINEL, socket: ws };
     }
   }
@@ -538,13 +585,20 @@ function fastSyncResponseOrStream(
     rid = resourceForReadableStream(stream);
     autoClose = true;
   }
-  PromisePrototypeThen(
-    op_http_set_response_body_resource(req, rid, autoClose, status),
-    (success) => {
-      innerRequest?.close(success);
-      op_http_close_after_finish(req);
-    },
-  );
+
+  if (status === 101) {
+    PromisePrototypeThen(op_http_set_response_upgrade(req, rid), () => {
+      innerRequest?.close(true);
+    });
+  } else {
+    PromisePrototypeThen(
+      op_http_set_response_body_resource(req, rid, autoClose, status),
+      (success) => {
+        innerRequest?.close(success);
+        op_http_close_after_finish(req);
+      },
+    );
+  }
 }
 
 /**
@@ -615,16 +669,8 @@ function mapToCallback(context, callback, onError) {
     }
 
     const inner = toInnerResponse(response);
-    if (innerRequest?.[_upgraded]) {
-      // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
-      if (response !== UPGRADE_RESPONSE_SENTINEL) {
-        import.meta.log(
-          "error",
-          "Upgrade response was not returned from callback",
-        );
-        context.close();
-      }
-      innerRequest?.[_upgraded]();
+
+    if (innerRequest?.[_upgraded]?.(response)) {
       return;
     }
 

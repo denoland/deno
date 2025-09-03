@@ -85,6 +85,8 @@ use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tower::ServiceExt;
 use tower::retry;
 use tower_http::decompression::Decompression;
@@ -147,6 +149,7 @@ deno_core::extension!(deno_fetch,
     op_utf8_to_byte_string,
     op_fetch_custom_client<FP>,
     op_fetch_promise_is_settled,
+    op_fetch_upgrade_raw,
   ],
   esm = [
     "20_headers.js",
@@ -234,6 +237,12 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   PermissionCheck(PermissionCheckError),
+  #[class(generic)]
+  #[error(transparent)]
+  Hyper(#[from] hyper::Error),
+  #[class(range)]
+  #[error("Cannot upgrade a Response whose body is disturbed")]
+  CannotUpgradeDisturbed,
 }
 
 impl From<deno_fs::FsError> for FetchError {
@@ -650,13 +659,20 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
-  pub remote_addr_ip: Option<String>,
-  pub remote_addr_port: Option<u16>,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
   /// In the tuple, the first element is an error message and the second one is
   /// an error cause.
   pub error: Option<(String, String)>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtraResponseInfo {
+  pub remote_ip: String,
+  pub remote_port: u16,
+  pub local_ip: String,
+  pub local_port: u16,
 }
 
 #[op2(async)]
@@ -706,15 +722,6 @@ pub async fn op_fetch_send(
   }
 
   let content_length = hyper::body::Body::size_hint(res.body()).exact();
-  let remote_addr = res
-    .extensions()
-    .get::<hyper_util::client::legacy::connect::HttpInfo>()
-    .map(|info| info.remote_addr());
-  let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
-    (Some(addr.ip().to_string()), Some(addr.port()))
-  } else {
-    (None, None)
-  };
 
   let response_rid = state
     .borrow_mut()
@@ -728,8 +735,6 @@ pub async fn op_fetch_send(
     url,
     response_rid,
     content_length,
-    remote_addr_ip,
-    remote_addr_port,
     error: None,
   })
 }
@@ -790,11 +795,15 @@ impl FetchResponseResource {
     }
   }
 
-  pub async fn upgrade(self) -> Result<hyper::upgrade::Upgraded, hyper::Error> {
-    let reader = self.response_reader.into_inner();
-    match reader {
-      FetchResponseReader::Start(resp) => Ok(hyper::upgrade::on(resp).await?),
-      _ => unreachable!(),
+  pub async fn take(
+    self: Rc<Self>,
+  ) -> Result<http::Response<ResBody>, FetchError> {
+    let mut reader =
+      RcRef::map(&self, |r| &r.response_reader).borrow_mut().await;
+
+    match std::mem::take(&mut *reader) {
+      FetchResponseReader::Start(res) => Ok(res),
+      _ => Err(FetchError::CannotUpgradeDisturbed),
     }
   }
 }
@@ -867,6 +876,103 @@ impl Resource for FetchResponseResource {
   fn close(self: Rc<Self>) {
     self.cancel.cancel()
   }
+}
+
+struct UpgradeStream {
+  read: AsyncRefCell<(proxy::ProxiedReadHalf, Bytes)>,
+  write: AsyncRefCell<proxy::ProxiedWriteHalf>,
+  cancel_handle: CancelHandle,
+}
+
+impl UpgradeStream {
+  pub fn new(stream: proxy::Proxied, bytes: Bytes) -> Self {
+    let (read, write) = stream.into_split();
+    Self {
+      read: AsyncRefCell::new((read, bytes)),
+      write: AsyncRefCell::new(write),
+      cancel_handle: CancelHandle::new(),
+    }
+  }
+
+  async fn read(
+    self: Rc<Self>,
+    buf: &mut [u8],
+  ) -> Result<usize, std::io::Error> {
+    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    async {
+      let read = RcRef::map(self, |this| &this.read);
+
+      let mut read = read.borrow_mut().await;
+      if !read.1.is_empty() {
+        let n = read.1.len().min(buf.len());
+        buf[0..n].copy_from_slice(&read.1.split_to(n));
+        Ok(n)
+      } else {
+        Pin::new(&mut read.0).read(buf).await
+      }
+    }
+    .try_or_cancel(cancel_handle)
+    .await
+  }
+
+  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, std::io::Error> {
+    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    async {
+      let write = RcRef::map(self, |this| &this.write);
+      let mut write = write.borrow_mut().await;
+      Pin::new(&mut *write).write(buf).await
+    }
+    .try_or_cancel(cancel_handle)
+    .await
+  }
+}
+
+impl Resource for UpgradeStream {
+  fn name(&self) -> Cow<'_, str> {
+    "httpRawUpgradeStream".into()
+  }
+
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
+  fn close(self: Rc<Self>) {
+    self.cancel_handle.cancel();
+  }
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_fetch_upgrade_raw(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(ResourceId, Option<ExtraResponseInfo>), FetchError> {
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .take::<FetchResponseResource>(rid)?;
+
+  let mut res = resource.take().await?;
+
+  let upgraded = hyper::upgrade::on(&mut res).await?;
+  let parts = upgraded.downcast::<proxy::Proxied>().unwrap();
+
+  let info = res
+    .extensions()
+    .get::<hyper_util::client::legacy::connect::HttpInfo>()
+    .map(|info| ExtraResponseInfo {
+      remote_ip: info.remote_addr().ip().to_string(),
+      remote_port: info.remote_addr().port(),
+      local_ip: info.local_addr().ip().to_string(),
+      local_port: info.local_addr().port(),
+    });
+
+  Ok((
+    state
+      .borrow_mut()
+      .resource_table
+      .add(UpgradeStream::new(parts.io, parts.read_buf)),
+    info,
+  ))
 }
 
 pub struct HttpClientResource {
@@ -1196,15 +1302,13 @@ pub struct Client {
   inner: Decompression<
     retry::Retry<
       FetchRetry,
-      hyper_util::client::legacy::Client<Connector, ReqBody>,
+      hyper_util::client::legacy::Client<proxy::ProxyConnector, ReqBody>,
     >,
   >,
   // Used to check whether to include a proxy-authorization header
   proxies: Arc<proxy::Proxies>,
   user_agent: HeaderValue,
 }
-
-type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
 
 // clippy is wrong here
 #[allow(clippy::declare_interior_mutable_const)]
@@ -1291,6 +1395,7 @@ impl Client {
 }
 
 // This is a custom enum to allow the retry policy to clone the variants that could be retried.
+#[derive(Debug)]
 pub enum ReqBody {
   Full(http_body_util::Full<Bytes>),
   Empty(http_body_util::Empty<Bytes>),

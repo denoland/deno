@@ -15,9 +15,11 @@ import {
   op_fetch,
   op_fetch_promise_is_settled,
   op_fetch_send,
+  op_fetch_upgrade_raw,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
 } from "ext:core/ops";
+const { internalRidSymbol } = core;
 const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,
@@ -43,6 +45,7 @@ import { byteLowerCase } from "ext:deno_web/00_infra.js";
 import {
   errorReadableStream,
   getReadableStreamResourceBacking,
+  readableStreamDisturb,
   readableStreamForRid,
   ReadableStreamPrototype,
   resourceForReadableStream,
@@ -71,6 +74,7 @@ import {
   updateSpanFromRequest,
   updateSpanFromResponse,
 } from "ext:deno_telemetry/util.ts";
+import { UpgradedConn } from "ext:deno_net/01_net.js";
 
 const REQUEST_BODY_HEADER_NAMES = [
   "content-encoding",
@@ -175,7 +179,7 @@ async function mainFetch(req, recursive, terminator) {
     req.method,
     req.currentUrl(),
     req.headerList,
-    req.clientRid,
+    req.client?.[internalRidSymbol],
     reqBody !== null || reqRid !== null,
     reqBody,
     reqRid,
@@ -219,6 +223,8 @@ async function mainFetch(req, recursive, terminator) {
       return this.urlList[this.urlList.length - 1];
     },
     urlList: req.urlListProcessed,
+    info: resp.info,
+    _wantsUpgrade,
   };
   if (redirectStatus(resp.status)) {
     switch (req.redirectMode) {
@@ -235,7 +241,11 @@ async function mainFetch(req, recursive, terminator) {
     }
   }
 
-  if (nullBodyStatus(response.status)) {
+  if (req.client?.allowUpgrades && response.status === 101) {
+    response.body = new InnerBody(
+      createResponseBodyStream(resp.responseRid, terminator),
+    );
+  } else if (nullBodyStatus(response.status)) {
     core.close(resp.responseRid);
   } else {
     if (req.method === "HEAD" || req.method === "CONNECT") {
@@ -602,6 +612,30 @@ function handleWasmStreaming(source, rid) {
   } catch (err) {
     // 2.8
     core.abortWasmStreaming(rid, err);
+  }
+}
+
+async function _wantsUpgrade(upgradeType) {
+  if (upgradeType === "upgradeHttpRaw") {
+    if (!this.body || this.body.unusable()) {
+      throw new TypeError("Response cannot be upgraded");
+    }
+    readableStreamDisturb(this.body.streamOrStatic);
+    const { rid } = getReadableStreamResourceBacking(this.body.streamOrStatic);
+    const { 0: upgradeRid, 1: info } = await op_fetch_upgrade_raw(rid);
+    return new UpgradedConn(
+      upgradeRid,
+      {
+        transport: "tcp",
+        hostname: info.remoteIp,
+        port: info.remotePort,
+      },
+      {
+        transport: "tcp",
+        hostname: info.localIp,
+        port: info.localPort,
+      },
+    );
   }
 }
 

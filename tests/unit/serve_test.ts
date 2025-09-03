@@ -1452,7 +1452,8 @@ Deno.test(
     const { promise, resolve } = Promise.withResolvers<void>();
     await using server = Deno.serve({
       handler: async (request) => {
-        const { conn, response } = upgradeHttpRaw(request);
+        const { conn, response } = upgradeHttpRaw(request, true);
+
         const buf = new Uint8Array(1024);
         let read;
 
@@ -4497,3 +4498,59 @@ Deno.test(
     await server.finished;
   },
 );
+
+Deno.test(async function upgradeAPI() {
+  const server1 = Deno.serve({
+    port: 0,
+  }, (req) => {
+    (async () => {
+      const conn = await Deno.upgradeHttpRaw(req);
+      const b = new Uint8Array(8);
+      const n = await conn.read(b);
+      await conn.write(b.subarray(0, n!));
+      conn.close();
+    })();
+
+    return new Response(null, {
+      status: 101,
+      headers: {
+        upgrade: "test",
+      },
+    });
+  });
+
+  const client = Deno.createHttpClient({
+    allowUpgrades: true,
+  });
+
+  const server2 = Deno.serve({
+    port: 0,
+  }, async (req) => {
+    const res = await fetch(`http://localhost:${server1.addr.port}`, {
+      client,
+      body: req.body,
+      headers: req.headers,
+      method: req.method,
+    });
+    return res;
+  });
+
+  const res = await fetch(`http://localhost:${server2.addr.port}`, {
+    client,
+    headers: {
+      Upgrade: "test",
+    },
+  });
+
+  const conn = await Deno.upgradeHttpRaw(res);
+  await conn.write(new Uint8Array([1, 2, 3, 4]));
+  const b = new Uint8Array(8);
+  const n = await conn.read(b);
+  assertEquals(b.subarray(0, n!), new Uint8Array([1, 2, 3, 4]));
+
+  conn.close();
+
+  client.close();
+  server1.shutdown();
+  server2.shutdown();
+});
