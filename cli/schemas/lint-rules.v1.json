@@ -111,6 +111,7 @@
         "no-unsafe-negation",
         "no-unused-labels",
         "no-unused-vars",
+        "no-unversioned-import",
         "no-useless-rename",
         "no-var",
         "no-window",
