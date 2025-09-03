@@ -5651,11 +5651,7 @@ fn lsp_jsr_lockfile() {
     json!({
       "lint": {
         "rules": {
-<<<<<<< Updated upstream
-          "tags": ["recommended"]
-=======
           "tags": []
->>>>>>> Stashed changes
         }
       }
     })
@@ -8947,7 +8943,7 @@ fn lsp_npm_types_nested_js_dts() {
   let file = source_file(
     temp_dir.path().join("file.ts"),
     r#"
-      import { someString } from "npm:@denotest/types-nested-js-dts";
+      import { someString } from "npm:@denotest/types-nested-js-dts@1";
       const someNumber: number = someString;
       console.log(someNumber);
     "#,
