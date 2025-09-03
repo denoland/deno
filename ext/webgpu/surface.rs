@@ -3,7 +3,8 @@
 use deno_core::_ops::make_cppgc_object;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Member;
+use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::cppgc::GcCell;
@@ -29,11 +30,21 @@ pub enum SurfaceError {
 }
 
 pub struct Configuration {
-  pub device: Ptr<GPUDevice>,
+  pub device: Member<GPUDevice>,
   pub usage: u32,
   pub format: GPUTextureFormat,
   pub surface_config:
     wgpu_types::SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>,
+}
+
+impl GarbageCollected for Configuration {
+  fn trace(&self, visitor: &Visitor) {
+    self.device.trace(visitor);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUCanvasContextConfiguration"
+  }
 }
 
 pub struct GPUCanvasContext {
@@ -122,8 +133,7 @@ impl GPUCanvasContext {
     self.config.set(isolate, None);
   }
 
-  #[global]
-  fn get_current_texture(
+  fn get_current_texture<'s>(
     &self,
     scope: &mut v8::HandleScope,
   ) -> Result<v8::Global<v8::Object>, SurfaceError> {
@@ -221,7 +231,7 @@ impl GPUCanvasContext {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 struct GPUCanvasConfiguration {
-  device: Ptr<GPUDevice>,
+  device: Ref<GPUDevice>,
   format: GPUTextureFormat,
   #[webidl(default = wgpu_types::TextureUsages::RENDER_ATTACHMENT.bits())]
   #[options(enforce_range = true)]
