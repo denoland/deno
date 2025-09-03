@@ -10,7 +10,8 @@ use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::TracedReference;
-use deno_core::v8::cppgc::{Traced, Visitor};
+use deno_core::v8::cppgc::Traced;
+use deno_core::v8::cppgc::Visitor;
 use deno_error::JsErrorBox;
 use wgpu_types::SurfaceStatus;
 
@@ -66,7 +67,7 @@ impl GarbageCollected for GPUCanvasContext {
     if let Some(config) = &*self.config.borrow() {
       config.trace(visitor);
     }
-    
+
     self.texture.borrow().trace(visitor);
   }
 
@@ -181,7 +182,7 @@ impl GPUCanvasContext {
           usage: config.usage,
         };
         let obj = make_cppgc_object(scope, texture);
-        self.texture.borrow_mut().reset(scope, Some(obj.clone()));
+        self.texture.borrow_mut().reset(scope, Some(obj));
 
         Ok(obj)
       }

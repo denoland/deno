@@ -1045,8 +1045,7 @@ async fn run_tests_for_worker_inner(
       match core_error {
         CoreErrorKind::Js(err) => {
           before_each_hook_errored = true;
-          let test_result =
-            TestResult::Failed(TestFailure::JsError(Box::new(err)));
+          let test_result = TestResult::Failed(TestFailure::JsError(err));
           fail_fast_tracker.add_failure();
           event_tracker.result(desc, test_result, earlier.elapsed())?;
           Ok(())
@@ -1099,8 +1098,7 @@ async fn run_tests_for_worker_inner(
     call_hooks(worker, test_hooks.after_each.iter().rev(), |core_error| {
       match core_error {
         CoreErrorKind::Js(err) => {
-          let test_result =
-            TestResult::Failed(TestFailure::JsError(Box::new(err)));
+          let test_result = TestResult::Failed(TestFailure::JsError(err));
           fail_fast_tracker.add_failure();
           event_tracker.result(desc, test_result, earlier.elapsed())?;
           Ok(())
@@ -1922,9 +1920,9 @@ impl TestEventTracker {
   fn uncaught_error(
     &self,
     specifier: String,
-    error: JsError,
+    error: Box<JsError>,
   ) -> Result<(), ChannelClosedError> {
-    self.send_event(TestEvent::UncaughtError(specifier, Box::new(error)))
+    self.send_event(TestEvent::UncaughtError(specifier, error))
   }
 
   fn plan(&self, plan: TestPlan) -> Result<(), ChannelClosedError> {
