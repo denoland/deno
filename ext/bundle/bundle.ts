@@ -2,8 +2,11 @@
 /// <reference path="../../cli/tsc/dts/lib.deno.unstable.d.ts" />
 import { op_bundle } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
+import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
 
 const { SafeArrayIterator } = primordials;
+
+const decoder = new TextDecoder();
 
 export async function bundle(
   options: Deno.bundle.Options,
@@ -17,12 +20,15 @@ export async function bundle(
   result.success = result.errors.length === 0;
 
   for (
-    const file of new SafeArrayIterator(
-      result.outputFiles as Deno.bundle.Result["outputFiles"] ?? [],
+    const f of new SafeArrayIterator(
+      result.outputFiles as any ?? [],
     )
   ) {
+    const file = f as any;
     if (file.contents?.length === 0) {
       delete file.contents;
+    } else {
+      file.contents = decoder.decode(new Uint8Array(file.contents));
     }
   }
   if (result.outputFiles?.length === 0) {
