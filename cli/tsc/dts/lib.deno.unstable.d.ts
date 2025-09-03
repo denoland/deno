@@ -92,15 +92,17 @@ declare namespace Deno {
       notes?: MessageNote[];
     }
 
+    export interface OutputFile {
+      path: string;
+      contents?: string;
+      hash: string;
+    }
+
     export interface Result {
       errors: Message[];
       warnings: Message[];
       success: boolean;
-      outputFiles?: {
-        path: string;
-        contents?: string;
-        hash: string;
-      }[];
+      outputFiles?: OutputFile[];
     }
   }
 
@@ -110,7 +112,9 @@ declare namespace Deno {
    * @category Bundle
    * @experimental
    */
-  export function bundle(options: bundle.Options): Promise<bundle.Result>;
+  export function bundle(
+    options: Deno.bundle.Options,
+  ): Promise<Deno.bundle.Result>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *

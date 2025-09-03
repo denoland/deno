@@ -1,3 +1,5 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
 [package]
 name = "deno_bundle_runtime"
 version = "0.1.0"
@@ -10,6 +12,6 @@ repository.workspace = true
 async-trait.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
-serde.workspace = true
-regex.workspace = true
 deno_web.workspace = true
+regex.workspace = true
+serde.workspace = true

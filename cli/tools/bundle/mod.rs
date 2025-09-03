@@ -19,6 +19,10 @@ use deno_ast::EmitOptions;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
+use deno_bundle_runtime::BundleFormat;
+use deno_bundle_runtime::BundlePlatform;
+use deno_bundle_runtime::PackageHandling;
+use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
@@ -72,10 +76,6 @@ use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
-use deno_bundle_runtime::BundleFormat;
-use deno_bundle_runtime::BundlePlatform;
-use deno_bundle_runtime::PackageHandling;
-use deno_bundle_runtime::SourceMapType;
 
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
@@ -588,15 +588,6 @@ impl DenoPluginHandler {
   }
 }
 
-/*#[derive(Debug, Clone)]
-pub struct OnResolveArgs {
-    pub path: String,
-    pub importer: Option<String>,
-    pub kind: ImportKind,
-    pub namespace: Option<String>,
-    pub resolve_dir: Option<String>,
-    pub with: IndexMap<String, String>,
-} */
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum PluginImportKind {
@@ -1091,7 +1082,7 @@ impl DenoPluginHandler {
         LoadCodeSourceErrorKind::LoadUnpreparedModule(_) => {
           let file = self
             .file_fetcher
-            .fetch_bypass_permissions(&specifier)
+            .fetch(&specifier, &self.permissions)
             .await?;
           let media_type = MediaType::from_specifier_and_headers(
             &specifier,

@@ -4,7 +4,7 @@ import { op_bundle } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
 
-const { SafeArrayIterator } = primordials;
+const { SafeArrayIterator, Uint8Array } = primordials;
 
 const decoder = new TextDecoder();
 
@@ -21,9 +21,11 @@ export async function bundle(
 
   for (
     const f of new SafeArrayIterator(
+      // deno-lint-ignore no-explicit-any
       result.outputFiles as any ?? [],
     )
   ) {
+    // deno-lint-ignore no-explicit-any
     const file = f as any;
     if (file.contents?.length === 0) {
       delete file.contents;

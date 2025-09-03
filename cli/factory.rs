@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_bundle_runtime::BundlePlatform;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::WorkspaceDirectory;
@@ -109,7 +110,6 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use deno_bundle_runtime::BundlePlatform;
 
 struct CliRootCertStoreProvider {
   cell: OnceCell<RootCertStore>,
