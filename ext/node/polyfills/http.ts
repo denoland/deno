@@ -868,10 +868,21 @@ class ClientRequest extends OutgoingMessage {
     }
     // If we're aborting, we don't care about any more response data.
     if (this.res) {
-      this.res._dump();
+      // Convert to connection reset error to match Node.js behavior
+      // When a request is destroyed, the response should receive ECONNRESET
+      const resetError = connResetException("socket hang up");
+      this.res.destroy(resetError);
     }
 
     this[kError] = err;
+
+    // Only emit error event if we have an active response and an error occurred
+    // This matches Node.js behavior where request errors are only emitted when
+    // they affect an ongoing request/response cycle
+    if (err && this.res) {
+      this.emit("error", err);
+    }
+
     this.socket?.destroy(err);
 
     return this;
@@ -1715,7 +1726,7 @@ ServerResponse.prototype.writeHead = function (
       // allow explicit duplicates. To do so, we first remove any
       // existing conflicts, then use appendHeader.
 
-      if (ArrayIsArray(headers[0])) {
+      if (headers.length > 0 && ArrayIsArray(headers[0])) {
         headers = headers as Array<[string, string]>;
         for (let i = 0; i < headers.length; i++) {
           const headerTuple = headers[i];
@@ -1728,16 +1739,17 @@ ServerResponse.prototype.writeHead = function (
           const k = headerTuple[0];
           if (k) this.appendHeader(k, headerTuple[1]);
         }
-      } else {
+      } else if (headers.length > 0 && typeof headers[0] === "string") {
         headers = headers as Array<string>;
         for (let i = 0; i < headers.length; i += 2) {
           const k = headers[i];
-          this.removeHeader(k);
+          if (k) this.removeHeader(k);
         }
 
         for (let i = 0; i < headers.length; i += 2) {
           const k = headers[i];
-          if (k) this.appendHeader(k, headers[i + 1]);
+          const v = headers[i + 1];
+          if (k) this.appendHeader(k, v);
         }
       }
     } else {
@@ -1910,8 +1922,7 @@ export class IncomingMessageForServer extends NodeReadable {
       destroy: (err, cb) => {
         reader?.cancel().catch(() => {
           // Don't throw error - it's propagated to the user via 'error' event.
-        });
-        nextTick(onError, this, err, cb);
+        }).finally(() => nextTick(onError, this, err, cb));
       },
     });
     this.url = "";

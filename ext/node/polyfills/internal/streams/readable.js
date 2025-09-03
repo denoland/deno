@@ -1471,23 +1471,33 @@ async function* createAsyncIterator(stream, options) {
       } else {
         // Wait for next event, which could be data, error, or end
         // Use a race condition with a timeout to prevent infinite hangs
-        await Promise.race([
-          new Promise(next),
-          new Promise((_, reject) => {
-            // Only timeout if we've been waiting too long and stream appears stuck
-            setTimeout(() => {
-              if (
-                stream.destroyed && stream._readableState?.destroyed &&
-                !stream._readableState?.ended &&
-                !stream._readableState?.endEmitted
-              ) {
-                const { ERR_STREAM_PREMATURE_CLOSE } = codes;
-                reject(new ERR_STREAM_PREMATURE_CLOSE());
-              }
-              // If conditions aren't met, just let the normal promise continue waiting
-            }, 100); // 100ms timeout before considering it stuck
-          }),
-        ]);
+        let timeoutId;
+        try {
+          await Promise.race([
+            new Promise(next),
+            new Promise((_, reject) => {
+              // Only timeout if we've been waiting too long and stream appears stuck
+              // Give more time for proper error propagation, especially for network errors
+              timeoutId = setTimeout(() => {
+                if (
+                  stream.destroyed && stream._readableState?.destroyed &&
+                  !stream._readableState?.ended &&
+                  !stream._readableState?.endEmitted &&
+                  !stream._readableState?.errorEmitted
+                ) {
+                  const { ERR_STREAM_PREMATURE_CLOSE } = codes;
+                  reject(new ERR_STREAM_PREMATURE_CLOSE());
+                }
+                // If conditions aren't met, just let the normal promise continue waiting
+              }, 200); // Increased timeout to allow proper error propagation
+            }),
+          ]);
+        } finally {
+          // Always clear the timeout to prevent timer leaks
+          if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
+          }
+        }
       }
     }
   } catch (err) {
