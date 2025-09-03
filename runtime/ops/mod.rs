@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod bootstrap;
-pub mod bundle;
 pub mod fs_events;
 pub mod http;
 pub mod permissions;

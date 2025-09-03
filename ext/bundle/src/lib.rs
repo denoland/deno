@@ -12,8 +12,14 @@ use deno_error::JsErrorBox;
 
 deno_core::extension!(
   deno_bundle_runtime,
+  deps = [
+    deno_web
+  ],
   ops = [
     op_bundle,
+  ],
+  esm = [
+    "bundle.ts"
   ],
   options = {
     bundle_provider: Option<Arc<dyn BundleProvider>>,

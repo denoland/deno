@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
+use deno_bundle_runtime as rt_bundle;
+use deno_bundle_runtime::BundleOptions as RtBundleOptions;
+use deno_bundle_runtime::BundleProvider;
 use deno_core::error::AnyError;
-use deno_runtime::ops::bundle as rt_bundle;
-use deno_runtime::ops::bundle::BundleOptions;
-use deno_runtime::ops::bundle::BundleProvider;
 
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -66,8 +66,8 @@ impl From<rt_bundle::SourceMapType> for crate::args::SourceMapType {
   }
 }
 
-impl From<BundleOptions> for crate::args::BundleFlags {
-  fn from(value: BundleOptions) -> Self {
+impl From<RtBundleOptions> for crate::args::BundleFlags {
+  fn from(value: RtBundleOptions) -> Self {
     Self {
       entrypoints: value.entrypoints,
       output_path: value.output_path,
@@ -140,7 +140,7 @@ pub fn convert_build_response(
 impl BundleProvider for CliBundleProvider {
   async fn bundle(
     &self,
-    options: deno_runtime::ops::bundle::BundleOptions,
+    options: RtBundleOptions,
   ) -> Result<rt_bundle::BuildResponse, AnyError> {
     let mut flags_clone = (*self.flags).clone();
     let write_output = options.write

@@ -20,6 +20,7 @@ base64.workspace = true
 capacity_builder.workspace = true
 deno_error.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }
+deno_bundle_runtime.workspace = true
 deno_media_type.workspace = true
 deno_node = { workspace = true, features = ["sync_fs"] }
 deno_npm.workspace = true
