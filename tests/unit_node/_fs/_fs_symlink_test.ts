@@ -11,7 +11,7 @@ Deno.test({
         symlink("some/path", "some/other/path", "dir");
       },
       Error,
-      "No callback function supplied",
+      "The \"cb\" argument must be of type function. Received type string ('dir')",
     );
   },
 });

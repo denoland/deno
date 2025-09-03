@@ -13,6 +13,7 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypePop,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   FunctionPrototypeApply,
@@ -68,6 +69,64 @@ const {
   constants,
 } = async_wrap;
 export { newAsyncId };
+
+// Track execution context
+const executionAsyncIdStack: number[] = [0];
+
+export function executionAsyncId(): number {
+  return executionAsyncIdStack[executionAsyncIdStack.length - 1] || 0;
+}
+
+// Emit functions that work with the internal hook system
+export function emitBefore(asyncId: number): void {
+  ArrayPrototypePush(executionAsyncIdStack, asyncId);
+
+  // Call hooks if they exist
+  const hooks = active_hooks.array;
+  try {
+    for (let i = 0; i < hooks.length; i++) {
+      const hook = hooks[i];
+      if (hook[before_symbol]) {
+        hook[before_symbol](asyncId);
+      }
+    }
+  } catch (e) {
+    // Clean up stack corruption on hook errors (Node.js pattern)
+    if (executionAsyncIdStack.length > 1) {
+      ArrayPrototypePop(executionAsyncIdStack);
+    }
+    throw e;
+  }
+}
+
+export function emitAfter(asyncId: number): void {
+  // Call hooks if they exist
+  const hooks = active_hooks.array;
+  try {
+    for (let i = 0; i < hooks.length; i++) {
+      const hook = hooks[i];
+      if (hook[after_symbol]) {
+        hook[after_symbol](asyncId);
+      }
+    }
+  } finally {
+    // Always pop stack even if hooks throw (Node.js pattern)
+    if (executionAsyncIdStack.length > 1) {
+      ArrayPrototypePop(executionAsyncIdStack);
+    }
+  }
+}
+
+export function emitDestroy(asyncId: number): void {
+  // Call hooks if they exist
+  const hooks = active_hooks.array;
+  for (let i = 0; i < hooks.length; i++) {
+    const hook = hooks[i];
+    if (hook[destroy_symbol]) {
+      hook[destroy_symbol](asyncId);
+    }
+  }
+}
 const {
   kInit,
   kBefore,
@@ -165,6 +224,7 @@ function emitInitNative(
     restoreActiveHooks();
   }
 }
+export { emitInitNative as emitInit };
 
 function getHookArrays(): [AsyncHook[], number[] | Uint32Array] {
   if (active_hooks.call_depth === 0) {
@@ -273,44 +333,6 @@ function hasHooks(key: number) {
 export function enabledHooksExist() {
   return hasHooks(kCheck);
 }
-
-export function initHooksExist() {
-  return hasHooks(kInit);
-}
-
-export function afterHooksExist() {
-  return hasHooks(kAfter);
-}
-
-export function destroyHooksExist() {
-  return hasHooks(kDestroy);
-}
-
-export function promiseResolveHooksExist() {
-  return hasHooks(kPromiseResolve);
-}
-
-function emitInitScript(
-  asyncId: number,
-  // deno-lint-ignore no-explicit-any
-  type: any,
-  triggerAsyncId: number,
-  // deno-lint-ignore no-explicit-any
-  resource: any,
-) {
-  // Short circuit all checks for the common case. Which is that no hooks have
-  // been set. Do this to remove performance impact for embedders (and core).
-  if (!hasHooks(kInit)) {
-    return;
-  }
-
-  if (triggerAsyncId === null) {
-    triggerAsyncId = getDefaultTriggerAsyncId();
-  }
-
-  emitInitNative(asyncId, type, triggerAsyncId, resource);
-}
-export { emitInitScript as emitInit };
 
 export function hasAsyncIdStack() {
   return hasHooks(kStackLength);

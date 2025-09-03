@@ -1207,6 +1207,13 @@ impl Inner {
       &self.config,
       &self.resolver,
     ));
+    // TODO(nayeemrmn): This represents a circular dependency between
+    // `LspCompilerOptionsResolver` and `LspResolver` because the former uses
+    // the node resolver to resolve `extends` in tsconfig. Break out the node
+    // resolver from `LspResolver`.
+    self
+      .resolver
+      .set_compiler_options_resolver(&self.compiler_options_resolver.inner);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]

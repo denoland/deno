@@ -9,6 +9,14 @@ import { core } from "ext:core/mod.js";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import { FixedQueue } from "ext:deno_node/internal/fixed_queue.ts";
+import {
+  emitAfter,
+  emitBefore,
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
+  newAsyncId as nextAsyncId,
+} from "ext:deno_node/internal/async_hooks.ts";
 
 const {
   getAsyncContext,
@@ -19,6 +27,8 @@ interface Tock {
   callback: (...args: Array<unknown>) => void;
   args: Array<unknown>;
   snapshot: unknown;
+  asyncId: number;
+  triggerAsyncId: number;
 }
 
 let nextTickEnabled = false;
@@ -36,6 +46,8 @@ export function processTicksAndRejections() {
       // FIXME(bartlomieju): Deno currently doesn't support async hooks
       // const asyncId = tock[async_id_symbol];
       // emitBefore(asyncId, tock[trigger_async_id_symbol], tock);
+      const asyncId = tock.asyncId;
+      emitBefore(asyncId);
 
       const oldContext = getAsyncContext();
       try {
@@ -65,14 +77,10 @@ export function processTicksAndRejections() {
       } catch (e) {
         reportError(e);
       } finally {
-        // FIXME(bartlomieju): Deno currently doesn't support async hooks
-        // if (destroyHooksExist())
-        // emitDestroy(asyncId);
+        emitAfter(asyncId);
         setAsyncContext(oldContext);
+        emitDestroy(asyncId);
       }
-
-      // FIXME(bartlomieju): Deno currently doesn't support async hooks
-      // emitAfter(asyncId);
     }
     core.runMicrotasks();
     // FIXME(bartlomieju): Deno currently doesn't unhandled rejections
@@ -146,19 +154,15 @@ export function nextTick<T extends Array<unknown>>(
   if (queue.isEmpty()) {
     core.setHasTickScheduled(true);
   }
-  // FIXME(bartlomieju): Deno currently doesn't support async hooks
-  // const asyncId = newAsyncId();
-  // const triggerAsyncId = getDefaultTriggerAsyncId();
+  const asyncId = nextAsyncId();
+  const triggerAsyncId = executionAsyncId();
   const tickObject = {
-    // FIXME(bartlomieju): Deno currently doesn't support async hooks
-    // [async_id_symbol]: asyncId,
-    // [trigger_async_id_symbol]: triggerAsyncId,
+    asyncId,
+    triggerAsyncId,
     snapshot: getAsyncContext(),
     callback,
     args: args_,
   };
-  // FIXME(bartlomieju): Deno currently doesn't support async hooks
-  // if (initHooksExist())
-  //   emitInit(asyncId, 'TickObject', triggerAsyncId, tickObject);
+  emitInit(asyncId, "TickObject", triggerAsyncId, tickObject);
   queue.push(tickObject);
 }

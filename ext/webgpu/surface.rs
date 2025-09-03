@@ -5,9 +5,13 @@ use std::cell::RefCell;
 use deno_core::_ops::make_cppgc_object;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Member;
+use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::TracedReference;
+use deno_core::v8::cppgc::Traced;
+use deno_core::v8::cppgc::Visitor;
 use deno_error::JsErrorBox;
 use wgpu_types::SurfaceStatus;
 
@@ -30,11 +34,21 @@ pub enum SurfaceError {
 }
 
 pub struct Configuration {
-  pub device: Ptr<GPUDevice>,
+  pub device: Member<GPUDevice>,
   pub usage: u32,
   pub format: GPUTextureFormat,
   pub surface_config:
     wgpu_types::SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>,
+}
+
+impl GarbageCollected for Configuration {
+  fn trace(&self, visitor: &Visitor) {
+    self.device.trace(visitor);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUCanvasContextConfiguration"
+  }
 }
 
 pub struct GPUCanvasContext {
@@ -43,12 +57,20 @@ pub struct GPUCanvasContext {
   pub height: RefCell<u32>,
 
   pub config: RefCell<Option<Configuration>>,
-  pub texture: RefCell<Option<v8::Global<v8::Object>>>,
+  pub texture: RefCell<TracedReference<v8::Object>>,
 
   pub canvas: v8::Global<v8::Object>,
 }
 
 impl GarbageCollected for GPUCanvasContext {
+  fn trace(&self, visitor: &Visitor) {
+    if let Some(config) = &*self.config.borrow() {
+      config.trace(visitor);
+    }
+
+    self.texture.borrow().trace(visitor);
+  }
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUCanvasContext"
   }
@@ -103,7 +125,7 @@ impl GPUCanvasContext {
     device.error_handler.push_error(err);
 
     self.config.borrow_mut().replace(Configuration {
-      device,
+      device: device.into(),
       usage: configuration.usage,
       format: configuration.format,
       surface_config: conf,
@@ -117,19 +139,18 @@ impl GPUCanvasContext {
     *self.config.borrow_mut() = None;
   }
 
-  #[global]
-  fn get_current_texture(
+  fn get_current_texture<'s>(
     &self,
-    scope: &mut v8::HandleScope,
-  ) -> Result<v8::Global<v8::Object>, SurfaceError> {
+    scope: &mut v8::HandleScope<'s>,
+  ) -> Result<v8::Local<'s, v8::Object>, SurfaceError> {
     let config = self.config.borrow();
     let Some(config) = config.as_ref() else {
       return Err(SurfaceError::UnconfiguredContext);
     };
 
     {
-      if let Some(obj) = self.texture.borrow().as_ref() {
-        return Ok(obj.clone());
+      if let Some(obj) = self.texture.borrow().get(scope) {
+        return Ok(obj);
       }
     }
 
@@ -161,8 +182,7 @@ impl GPUCanvasContext {
           usage: config.usage,
         };
         let obj = make_cppgc_object(scope, texture);
-        let obj = v8::Global::new(scope, obj);
-        *self.texture.borrow_mut() = Some(obj.clone());
+        self.texture.borrow_mut().reset(scope, Some(obj));
 
         Ok(obj)
       }
@@ -172,7 +192,10 @@ impl GPUCanvasContext {
 }
 
 impl GPUCanvasContext {
-  pub fn present(&self) -> Result<(), SurfaceError> {
+  pub fn present(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) -> Result<(), SurfaceError> {
     let config = self.config.borrow();
     let Some(config) = config.as_ref() else {
       return Err(SurfaceError::UnconfiguredContext);
@@ -181,7 +204,7 @@ impl GPUCanvasContext {
     config.device.instance.surface_present(self.surface_id)?;
 
     // next `get_current_texture` call would get a new texture
-    *self.texture.borrow_mut() = None;
+    self.texture.borrow_mut().reset(scope, None);
 
     Ok(())
   }
@@ -211,7 +234,7 @@ impl GPUCanvasContext {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 struct GPUCanvasConfiguration {
-  device: Ptr<GPUDevice>,
+  device: Ref<GPUDevice>,
   format: GPUTextureFormat,
   #[webidl(default = wgpu_types::TextureUsages::RENDER_ATTACHMENT.bits())]
   #[options(enforce_range = true)]

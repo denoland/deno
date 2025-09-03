@@ -339,6 +339,7 @@ pub struct RunFlags {
   pub watch: Option<WatchFlagsWithPaths>,
   pub bare: bool,
   pub coverage_dir: Option<String>,
+  pub print_task_list: bool,
 }
 
 impl RunFlags {
@@ -349,6 +350,7 @@ impl RunFlags {
       watch: None,
       bare: false,
       coverage_dir: None,
+      print_task_list: false,
     }
   }
 
@@ -1167,6 +1169,30 @@ impl Flags {
       }
     }
 
+    fn resolve_single_folder_path(
+      arg: &str,
+      current_dir: &Path,
+      maybe_resolve_directory: impl FnOnce(PathBuf) -> Option<PathBuf>,
+    ) -> Option<PathBuf> {
+      if let Ok(module_specifier) = resolve_url_or_path(arg, current_dir) {
+        if module_specifier.scheme() == "file"
+          || module_specifier.scheme() == "npm"
+        {
+          if let Ok(p) = url_to_file_path(&module_specifier) {
+            maybe_resolve_directory(p)
+          } else {
+            Some(current_dir.to_path_buf())
+          }
+        } else {
+          // When the entrypoint doesn't have file: scheme (it's the remote
+          // script), then we don't auto discover the config file.
+          None
+        }
+      } else {
+        Some(current_dir.to_path_buf())
+      }
+    }
+
     use DenoSubcommand::*;
     match &self.subcommand {
       Fmt(FmtFlags { files, .. }) => {
@@ -1179,25 +1205,10 @@ impl Flags {
       | Compile(CompileFlags {
         source_file: script,
         ..
-      }) => {
-        if let Ok(module_specifier) = resolve_url_or_path(script, current_dir) {
-          if module_specifier.scheme() == "file"
-            || module_specifier.scheme() == "npm"
-          {
-            if let Ok(p) = url_to_file_path(&module_specifier) {
-              p.parent().map(|parent| vec![parent.to_path_buf()])
-            } else {
-              Some(vec![current_dir.to_path_buf()])
-            }
-          } else {
-            // When the entrypoint doesn't have file: scheme (it's the remote
-            // script), then we don't auto discover config file.
-            None
-          }
-        } else {
-          Some(vec![current_dir.to_path_buf()])
-        }
-      }
+      }) => resolve_single_folder_path(script, current_dir, |mut p| {
+        if p.pop() { Some(p) } else { None }
+      })
+      .map(|p| vec![p]),
       Task(TaskFlags {
         cwd: Some(path), ..
       }) => {
@@ -1208,6 +1219,23 @@ impl Flags {
           Ok(path) => Some(vec![path]),
           Err(_) => Some(vec![current_dir.to_path_buf()]),
         }
+      }
+      Cache(CacheFlags { files, .. })
+      | Install(InstallFlags::Local(InstallFlagsLocal::Entrypoints(files))) => {
+        Some(vec![
+          files
+            .iter()
+            .filter_map(|file| {
+              resolve_single_folder_path(file, current_dir, |mut p| {
+                if p.is_dir() {
+                  return Some(p);
+                }
+                if p.pop() { Some(p) } else { None }
+              })
+            })
+            .next()
+            .unwrap_or_else(|| current_dir.to_path_buf()),
+        ])
       }
       _ => Some(vec![current_dir.to_path_buf()]),
     }
@@ -5763,7 +5791,7 @@ fn repl_parse(
 fn run_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-  mut app: Command,
+  app: Command,
   bare: bool,
 ) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true, true)?;
@@ -5782,6 +5810,7 @@ fn run_parse(
         watch: watch_arg_parse_with_paths(matches)?,
         bare,
         coverage_dir,
+        print_task_list: false,
       });
     }
     _ => {
@@ -5791,10 +5820,14 @@ fn run_parse(
       "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
     ));
       } else {
-        return Err(app.find_subcommand_mut("run").unwrap().error(
-          clap::error::ErrorKind::MissingRequiredArgument,
-          "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
-        ));
+        // When no script argument is provided, show available tasks like `deno task`
+        flags.subcommand = DenoSubcommand::Run(RunFlags {
+          script: "".to_string(),
+          watch: None,
+          bare: false,
+          coverage_dir: None,
+          print_task_list: true,
+        });
       }
     }
   }
@@ -6764,6 +6797,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6790,6 +6824,7 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6817,6 +6852,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6844,6 +6880,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6871,6 +6908,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6899,6 +6937,7 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6930,6 +6969,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6960,6 +7000,7 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -6987,6 +7028,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -7015,6 +7057,7 @@ mod tests {
           }),
           bare: false,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -7042,6 +7085,7 @@ mod tests {
           }),
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -7081,6 +7125,7 @@ mod tests {
           watch: None,
           bare: false,
           coverage_dir: Some("foo".to_string()),
+          print_task_list: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -7120,7 +7165,7 @@ mod tests {
     );
 
     let r = flags_from_vec(svec!["deno", "run", "--v8-flags=--expose-gc"]);
-    assert!(r.is_err());
+    assert!(r.is_ok());
   }
 
   #[test]
@@ -7397,6 +7442,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         permissions: PermissionFlags {
           deny_read: Some(vec![]),
@@ -8687,6 +8733,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         permissions: PermissionFlags {
           deny_net: Some(svec!["127.0.0.1"]),
@@ -8875,6 +8922,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         permissions: PermissionFlags {
           deny_sys: Some(svec!["hostname"]),
@@ -9175,6 +9223,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         ..Flags::default()
       }
@@ -9486,6 +9535,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         log_level: Some(Level::Error),
         code_cache_enabled: true,
@@ -9607,6 +9657,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         type_check_mode: TypeCheckMode::None,
         code_cache_enabled: true,
@@ -9779,6 +9830,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         node_modules_dir: Some(NodeModulesDirMode::Auto),
         code_cache_enabled: true,
@@ -11003,6 +11055,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
         code_cache_enabled: true,
@@ -11208,6 +11261,16 @@ mod tests {
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
     assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    let flags = flags_from_vec(svec!["deno", "cache", "sub/test.js"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("sub")]));
+
+    let flags = flags_from_vec(svec!["deno", "cache", "."]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    let flags =
+      flags_from_vec(svec!["deno", "install", "-e", "sub/test.js"]).unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("sub")]));
 
     let flags = flags_from_vec(svec![
       "deno",
@@ -11697,6 +11760,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         type_check_mode: TypeCheckMode::None,
         code_cache_enabled: true,
@@ -12251,6 +12315,7 @@ mod tests {
           watch: None,
           bare: true,
           coverage_dir: None,
+          print_task_list: false,
         }),
         config_flag: ConfigFlag::Disabled,
         code_cache_enabled: true,
