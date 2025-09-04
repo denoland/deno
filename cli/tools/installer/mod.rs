@@ -52,6 +52,7 @@ use crate::jsr::JsrFetchResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::sys::CliSys;
+use crate::util::display;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod bin_name_resolver;
@@ -426,6 +427,7 @@ pub(crate) async fn install_from_entrypoints(
   flags: Arc<Flags>,
   entrypoints: &[String],
 ) -> Result<(), AnyError> {
+  let started = std::time::Instant::now();
   let factory = CliFactory::from_flags(flags.clone());
   let emitter = factory.emitter()?;
   let main_graph_container = factory.main_module_graph_container().await?;
@@ -450,6 +452,7 @@ pub(crate) async fn install_from_entrypoints(
 
   print_install_report(
     &factory.sys(),
+    started.elapsed(),
     &factory.install_reporter()?.unwrap().clone(),
     factory.workspace_resolver().await?,
     factory.npm_resolver().await?,
@@ -469,14 +472,16 @@ async fn install_local(
       install_from_entrypoints(flags, &entrypoints).await
     }
     InstallFlagsLocal::TopLevel => {
+      let start = std::time::Instant::now();
       let factory = CliFactory::from_flags(flags);
-      install_top_level(&factory).await
+      install_top_level(&factory, start).await
     }
   }
 }
 
 pub fn print_install_report(
   sys: &dyn sys_traits::boxed::FsOpenBoxed,
+  elapsed: std::time::Duration,
   install_reporter: &InstallReporter,
   workspace: &WorkspaceResolver<CliSys>,
   npm_resolver: &CliNpmResolver,
@@ -564,33 +569,80 @@ pub fn print_install_report(
   if !rep.stats.intialized_npm.is_empty()
     || !rep.stats.downloaded_jsr.is_empty()
   {
+    let total_installed =
+      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len();
     log::info!(
-      "Packages: {}",
-      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-    );
-    log::info!(
-      "{}",
-      deno_terminal::colors::green("+".repeat(
-        rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
+      "{} {} {} {}",
+      deno_terminal::colors::gray("Installed"),
+      deno_terminal::colors::bold(format!("{}", total_installed)),
+      deno_terminal::colors::gray(format!(
+        "package{}",
+        if total_installed > 1 { "s" } else { "" },
+      )),
+      deno_terminal::colors::gray(format!(
+        "in {}",
+        display::human_elapsed_with_ms_limit(elapsed.as_millis(), 3_000)
       ))
     );
 
+    let total_reused = rep.stats.reused_npm.get() + rep.stats.reused_jsr.len();
     log::info!(
-      "Resolved: {}, reused: {}, downloaded: {}, added: {}",
-      deno_terminal::colors::green(
-        rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.reused_npm.get() + rep.stats.reused_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.downloaded_npm.get() + rep.stats.downloaded_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-      ),
+      "{} {} {}",
+      deno_terminal::colors::gray("Reused"),
+      deno_terminal::colors::bold(format!("{}", total_reused)),
+      deno_terminal::colors::gray(format!(
+        "package{} from cache",
+        if total_reused == 1 { "" } else { "s" },
+      )),
     );
-    log::info!("");
+    log::info!(
+      "{}",
+      deno_terminal::colors::yellow_bold("+".repeat(total_reused))
+    );
+
+    let jsr_downloaded = rep.stats.downloaded_jsr.len();
+    log::info!(
+      "{} {} {}",
+      deno_terminal::colors::gray("Downloaded"),
+      deno_terminal::colors::bold(format!("{}", jsr_downloaded)),
+      deno_terminal::colors::gray(format!(
+        "package{} from JSR",
+        if jsr_downloaded == 1 { "" } else { "s" },
+      )),
+    );
+    log::info!(
+      "{}",
+      deno_terminal::colors::green("+".repeat(jsr_downloaded))
+    );
+
+    let npm_download = rep.stats.downloaded_npm.get();
+    log::info!(
+      "{} {} {}",
+      deno_terminal::colors::gray("Downloaded"),
+      deno_terminal::colors::bold(format!("{}", npm_download)),
+      deno_terminal::colors::gray(format!(
+        "package{} from npm",
+        if npm_download == 1 { "" } else { "s" },
+      )),
+    );
+    log::info!("{}", deno_terminal::colors::green("+".repeat(npm_download)));
+
+    // log::info!(
+    //   "Resolved: {}, reused: {}, downloaded: {}, added: {}",
+    //   deno_terminal::colors::green(
+    //     rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len()
+    //   ),
+    //   deno_terminal::colors::green(
+    //     rep.stats.reused_npm.get() + rep.stats.reused_jsr.len()
+    //   ),
+    //   deno_terminal::colors::green(
+    //     rep.stats.downloaded_npm.get() + rep.stats.downloaded_jsr.len()
+    //   ),
+    //   deno_terminal::colors::green(
+    //     rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
+    //   ),
+    // );
+    // log::info!("");
   }
 
   if !installed_normal_deps.is_empty() || !rep.stats.downloaded_jsr.is_empty() {
@@ -647,7 +699,10 @@ pub fn print_install_report(
   }
 }
 
-async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
+async fn install_top_level(
+  factory: &CliFactory,
+  started: std::time::Instant,
+) -> Result<(), AnyError> {
   // surface any errors in the package.json
   factory
     .npm_installer()
@@ -668,6 +723,7 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   let npm_resolver = factory.npm_resolver().await?;
   print_install_report(
     &factory.sys(),
+    started.elapsed(),
     &install_reporter,
     workspace,
     npm_resolver,
