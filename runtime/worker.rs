@@ -214,6 +214,8 @@ pub struct WorkerServiceOptions<
 
   /// V8 code cache for module and script source code.
   pub v8_code_cache: Option<Arc<dyn CodeCache>>,
+
+  pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
 }
 
 pub struct WorkerOptions {
@@ -602,6 +604,9 @@ impl MainWorker {
           options.create_web_worker_cb.clone(),
           options.format_js_error_fn.clone(),
         ),
+        deno_bundle_runtime::deno_bundle_runtime::args(
+          services.bundle_provider.clone(),
+        ),
       ])
       .unwrap();
 
@@ -805,12 +810,11 @@ impl MainWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  #[allow(clippy::result_large_err)]
   pub fn execute_script(
     &mut self,
     script_name: &'static str,
     source_code: ModuleCodeString,
-  ) -> Result<v8::Global<v8::Value>, JsError> {
+  ) -> Result<v8::Global<v8::Value>, Box<JsError>> {
     self.js_runtime.execute_script(script_name, source_code)
   }
 
@@ -939,8 +943,7 @@ impl MainWorker {
   /// Dispatches "load" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_load_event(&mut self) -> Result<(), Box<JsError>> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_load_event_fn =
@@ -957,8 +960,7 @@ impl MainWorker {
   /// Dispatches "unload" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_unload_event(&mut self) -> Result<(), Box<JsError>> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_unload_event_fn =
@@ -973,8 +975,7 @@ impl MainWorker {
   }
 
   /// Dispatches process.emit("exit") event for node compat.
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), Box<JsError>> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_process_exit_event_fn =
@@ -991,8 +992,7 @@ impl MainWorker {
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, Box<JsError>> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_beforeunload_event_fn =
@@ -1009,8 +1009,9 @@ impl MainWorker {
   }
 
   /// Dispatches process.emit("beforeExit") event for node compat.
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_process_beforeexit_event(
+    &mut self,
+  ) -> Result<bool, Box<JsError>> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_process_beforeexit_event_fn = v8::Local::new(
@@ -1084,6 +1085,7 @@ fn common_extensions<
     ops::permissions::deno_permissions::init(),
     ops::tty::deno_tty::init(),
     ops::http::deno_http_runtime::init(),
+    deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
     ops::bootstrap::deno_bootstrap::init(
       has_snapshot.then(Default::default),
       unconfigured_runtime,

@@ -927,7 +927,7 @@ pub async fn run(
       if metadata.unstable_config.sloppy_imports {
         SloppyImportsOptions::Enabled
       } else {
-        SloppyImportsOptions::Disabled
+        SloppyImportsOptions::Unspecified
       },
       Default::default(),
       sys.clone(),
@@ -1044,6 +1044,7 @@ pub async fn run(
     sys.clone(),
     lib_main_worker_options,
     Default::default(),
+    None,
   );
 
   // Initialize v8 once from the main thread.

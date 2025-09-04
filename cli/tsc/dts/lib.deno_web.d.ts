@@ -452,12 +452,6 @@ interface TextEncoderEncodeIntoResult {
   written: number;
 }
 
-/** @category Encoding */
-interface TextEncoder extends TextEncoderCommon {
-  /** Returns the result of running UTF-8's encoder. */
-  encode(input?: string): Uint8Array;
-  encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
-}
 /**
  * Allows you to convert a string into binary data (in the form of a Uint8Array)
  * given the encoding.
@@ -474,10 +468,13 @@ interface TextEncoder extends TextEncoderCommon {
  */
 interface TextEncoder extends TextEncoderCommon {
   /** Turns a string into binary data (in the form of a Uint8Array) using UTF-8 encoding. */
-  encode(input?: string): Uint8Array;
+  encode(input?: string): Uint8Array<ArrayBuffer>;
 
   /** Encodes a string into the destination Uint8Array and returns the result of the encoding. */
-  encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
+  encodeInto(
+    input: string,
+    dest: Uint8Array<ArrayBufferLike>,
+  ): TextEncoderEncodeIntoResult;
 }
 
 /** @category Encoding */
