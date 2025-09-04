@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::rc::Rc;
+use std::rc::Weak;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
@@ -1670,25 +1671,28 @@ impl EventTarget {
                 None => false,
               };
 
-            // TODO(petamoriken): Validate AbortSignal
             let key = v8::String::new(scope, "signal").unwrap();
             let signal = match options.get(scope, key.into()) {
               Some(value) => {
                 if value.is_undefined() {
                   None
                 } else {
-                  if !value.is_object() {
-                    return Err(EventError::WebIDL(WebIdlError::new(
-                      prefix.into(),
-                      (|| {
-                        "'signal' of 'AddEventListenerOptions' (Argument 3)"
-                          .into()
-                      })
-                      .into(),
-                      WebIdlErrorKind::ConvertToConverterType("object"),
-                    )));
+                  match cppgc::try_unwrap_cppgc_proto_object::<AbortSignal>(
+                    scope, value,
+                  ) {
+                    Some(signal) => Some(signal),
+                    None => {
+                      return Err(EventError::WebIDL(WebIdlError::new(
+                        prefix.into(),
+                        (|| {
+                          "'signal' of 'AddEventListenerOptions' (Argument 3)"
+                            .into()
+                        })
+                        .into(),
+                        WebIdlErrorKind::ConvertToConverterType("AbortSignal"),
+                      )));
+                    }
                   }
-                  Some(value.cast::<v8::Object>())
                 }
               }
               None => None,
@@ -1723,14 +1727,7 @@ impl EventTarget {
       };
 
     let aborted = match signal {
-      Some(signal) => {
-        let key = v8::String::new(scope, "aborted").unwrap();
-        signal
-          .get(scope, key.into())
-          .unwrap()
-          .to_boolean(scope)
-          .is_true()
-      }
+      Some(ref signal) => signal.aborted_inner(),
       None => false,
     };
     if aborted {
@@ -1751,6 +1748,7 @@ impl EventTarget {
         callback.cast::<v8::Object>()
       }
     };
+    let callback = v8::Global::new(scope, callback);
 
     let mut listeners = self.listeners.borrow_mut();
     let listeners = listeners.entry(typ.clone()).or_default();
@@ -1760,16 +1758,41 @@ impl EventTarget {
       }
     }
 
-    // TODO(petamoriken): add signal listeners
-
-    listeners.push(Rc::new(EventListener {
-      callback: Global::new(scope, callback),
+    let listener = Rc::new(EventListener {
+      callback,
       capture,
       passive,
       once,
       removed: Cell::new(false),
       resist_stop_immediate_propagation,
-    }));
+    });
+
+    if let Some(ref signal) = signal {
+      let abort_callback = |_scope: &mut v8::HandleScope,
+                            args: v8::FunctionCallbackArguments,
+                            _rv: v8::ReturnValue| {
+        let context = v8::Local::<v8::External>::try_from(args.data())
+          .expect("Abort algorithm expected external data");
+        // SAFETY: `context` is a valid pointer to a EventListener instance
+        let listener =
+          unsafe { Weak::from_raw(context.value() as *const EventListener) };
+        let Some(listener) = listener.upgrade() else {
+          return;
+        };
+        // TODO(petamoriken): remove listener from listeners
+        listener.removed.set(true);
+      };
+      let listener = Rc::downgrade(&listener);
+      let external = v8::External::new(scope, Weak::into_raw(listener) as _);
+      let abort_algorithm = v8::Function::builder(abort_callback)
+        .data(external.into())
+        .build(scope)
+        .expect("Failed to create abort algorithm");
+      let abort_algorithm = v8::Global::new(scope, abort_algorithm);
+      signal.add(abort_algorithm);
+    }
+
+    listeners.push(listener);
     Ok(())
   }
 
@@ -1835,7 +1858,7 @@ impl EventTarget {
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::HandleScope<'a>,
     state: Rc<RefCell<OpState>>,
-    event_object: v8::Local<'a, v8::Object>,
+    event_object: v8::Local<'a, v8::Value>,
   ) -> Result<bool, EventError> {
     let Some(event) =
       cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event_object.into())
