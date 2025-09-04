@@ -918,7 +918,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       location.setLocationHref(location_);
     }
 
-    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       // TODO(bartlomieju): in the future we might want to change the
@@ -928,6 +927,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       close: core.propWritable(windowClose),
       closed: core.propGetterOnly(() => windowIsClosing),
     });
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
     bootstrapOtel(otelConfig);
@@ -1041,7 +1041,6 @@ function bootstrapWorkerRuntime(
     delete globalThis.bootstrap;
     hasBootstrapped = true;
 
-    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     if (workerType === "node") {
       delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
       delete workerRuntimeGlobalProperties["self"];
@@ -1060,6 +1059,7 @@ function bootstrapWorkerRuntime(
         core.propWritable(importScripts),
       );
     }
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     bootstrapOtel(otelConfig);
