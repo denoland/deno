@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
 use deno_path_util::url_from_file_path;
@@ -376,6 +377,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   storage_key_resolver: StorageKeyResolver,
   sys: TSys,
   options: LibMainWorkerOptions,
+  bundle_provider: Option<Arc<dyn BundleProvider>>,
 }
 
 impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
@@ -540,6 +542,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     sys: TSys,
     options: LibMainWorkerOptions,
     roots: LibWorkerFactoryRoots,
+    bundle_provider: Option<Arc<dyn BundleProvider>>,
   ) -> Self {
     Self {
       shared: Arc::new(LibWorkerFactorySharedState {
@@ -560,6 +563,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         storage_key_resolver,
         sys,
         options,
+        bundle_provider,
       }),
     }
   }
@@ -646,6 +650,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       feature_checker,
       permissions,
       v8_code_cache: shared.code_cache.clone(),
+      bundle_provider: shared.bundle_provider.clone(),
     };
 
     let options = WorkerOptions {

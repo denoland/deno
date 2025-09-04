@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_bundle_runtime::BundlePlatform;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::WorkspaceDirectory;
@@ -59,7 +60,6 @@ use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
-use crate::args::BundlePlatform;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::ConfigFlag;
@@ -1036,6 +1036,9 @@ impl CliFactory {
       self.sys(),
       self.create_lib_main_worker_options()?,
       roots,
+      Some(Arc::new(crate::tools::bundle::CliBundleProvider::new(
+        self.flags.clone(),
+      ))),
     );
 
     Ok(CliMainWorkerFactory::new(

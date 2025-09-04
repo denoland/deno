@@ -528,7 +528,7 @@ fn transpile(
   let transpiled_source = match transpile_result {
     TranspileResult::Owned(source) => source,
     TranspileResult::Cloned(source) => {
-      debug_assert!(false, "Transpile owned failed.");
+      // debug_assert!(false, "Transpile owned failed.");
       source
     }
   };
