@@ -3,7 +3,7 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::ffi::c_void;
-use std::rc::Weak;
+use std::sync::Weak;
 
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
@@ -96,6 +96,10 @@ unsafe impl GarbageCollected for Session {
     c"Session"
   }
 }
+
+// TODO(bartlomieju): fix GarbageCollected implementation
+unsafe impl Send for Session {}
+unsafe impl Sync for Session {}
 
 impl Drop for Session {
   fn drop(&mut self) {

@@ -272,6 +272,10 @@ unsafe impl deno_core::GarbageCollected for ContextifyContext {
   }
 }
 
+// TODO(bartlomieju): fix GarbageCollected implementation
+unsafe impl Send for ContextifyContext {}
+unsafe impl Sync for ContextifyContext {}
+
 impl Drop for ContextifyContext {
   fn drop(&mut self) {
     if !self.microtask_queue.is_null() {

@@ -178,6 +178,10 @@ unsafe impl GarbageCollected for StatementSync {
   }
 }
 
+// TODO(bartlomieju): fix GarbageCollected implementation
+unsafe impl Send for StatementSync {}
+unsafe impl Sync for StatementSync {}
+
 impl StatementSync {
   // Clear the prepared statement back to its initial state.
   fn reset(&self) -> Result<(), SqliteError> {

@@ -54,6 +54,10 @@ unsafe impl v8::cppgc::GarbageCollected for Serializer<'_> {
   }
 }
 
+// TODO(bartlomieju): fix GarbageCollected implementation
+unsafe impl Send for Serializer<'_> {}
+unsafe impl Sync for Serializer<'_> {}
+
 impl SerializerDelegate {
   fn obj<'s>(
     &self,
@@ -235,6 +239,10 @@ unsafe impl deno_core::GarbageCollected for Deserializer<'_> {
     c"Deserializer"
   }
 }
+
+// TODO(bartlomieju): fix GarbageCollected implementation
+unsafe impl Send for Deserializer<'_> {}
+unsafe impl Sync for Deserializer<'_> {}
 
 pub struct DeserializerDelegate {
   obj: v8::TracedReference<v8::Object>,
