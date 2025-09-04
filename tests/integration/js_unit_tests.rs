@@ -124,8 +124,13 @@ fn js_unit_test(test: String) {
     .use_http_server()
     .build();
 
-  let mut deno = context
-    .new_command()
+  let mut deno = if test == "bundle_test" {
+    context.new_command()
+  } else {
+    util::deno_cmd()
+  };
+
+  deno = deno
     .current_dir(util::root_path())
     .arg("test")
     .arg("--config")
