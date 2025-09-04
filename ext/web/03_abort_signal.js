@@ -14,6 +14,7 @@ const {
   SymbolFor,
 } = primordials;
 import {
+  AbortController,
   AbortSignal,
   op_event_add_abort_algorithm,
   op_event_create_abort_signal,
@@ -159,38 +160,28 @@ defineEventHandler(AbortSignal.prototype, "abort");
 webidl.configureInterface(AbortSignal);
 const AbortSignalPrototype = AbortSignal.prototype;
 
-const signal = Symbol("[[signal]]");
-
-class AbortController {
-  [signal] = op_event_create_abort_signal();
-
-  constructor() {
-    this[webidl.brand] = webidl.brand;
-  }
-
-  get signal() {
-    webidl.assertBranded(this, AbortControllerPrototype);
-    return this[signal];
-  }
-
-  abort(reason) {
-    webidl.assertBranded(this, AbortControllerPrototype);
-    op_event_signal_abort(this[signal], reason);
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(AbortControllerPrototype, this),
-        keys: [
-          "signal",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
+ObjectDefineProperty(
+  AbortController.prototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(
+            AbortControllerPrototype,
+            this,
+          ),
+          keys: [
+            "signal",
+          ],
+        }),
+        inspectOptions,
+      );
+    },
+  },
+);
 
 webidl.configureInterface(AbortController);
 const AbortControllerPrototype = AbortController.prototype;

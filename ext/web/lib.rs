@@ -119,6 +119,7 @@ deno_core::extension!(deno_web,
     event::ProgressEvent,
     event::EventTarget,
     event::AbortSignal,
+    event::AbortController,
   ],
   esm = [
     "00_infra.js",

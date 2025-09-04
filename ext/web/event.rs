@@ -438,7 +438,6 @@ impl Event {
   }
 
   // legacy
-  // TODO(petamoriken): #[undefined] macro does not work properly
   #[required(1)]
   fn init_event<'a>(
     &self,
@@ -775,7 +774,6 @@ impl CustomEvent {
   }
 
   // legacy
-  // TODO(petamoriken): #[undefined] macro does not work properly
   #[required(1)]
   fn init_custom_event<'a>(
     &self,
@@ -2207,13 +2205,60 @@ impl AbortSignal {
   }
 }
 
+pub struct AbortController {
+  signal: v8::Global<v8::Object>,
+}
+
+impl GarbageCollected for AbortController {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"AbortController"
+  }
+}
+
+#[op2]
+impl AbortController {
+  #[constructor]
+  #[cppgc]
+  fn constructor<'a>(scope: &mut v8::HandleScope<'a>) -> AbortController {
+    let event_target = EventTarget::new();
+    let abort_signal = AbortSignal::new();
+    let signal = cppgc::make_cppgc_empty_object::<AbortSignal>(scope);
+    cppgc::wrap_object2(scope, signal, (event_target, abort_signal));
+    AbortController {
+      signal: v8::Global::new(scope, signal),
+    }
+  }
+
+  #[getter]
+  #[global]
+  fn signal(&self) -> v8::Global<v8::Object> {
+    self.signal.clone()
+  }
+
+  fn abort<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    state: Rc<RefCell<OpState>>,
+    reason: Option<v8::Local<'a, v8::Value>>,
+  ) -> v8::Local<'a, v8::Primitive> {
+    let undefined = v8::undefined(scope);
+    let signal_object = v8::Local::new(scope, self.signal.clone());
+    let signal = cppgc::try_unwrap_cppgc_proto_object::<AbortSignal>(
+      scope,
+      signal_object.into(),
+    )
+    .unwrap();
+    signal.signal_abort(scope, &state, signal_object, reason);
+    undefined
+  }
+}
+
 #[op2]
 pub fn op_event_create_abort_signal<'a>(
   scope: &mut v8::HandleScope<'a>,
 ) -> v8::Local<'a, v8::Object> {
   let event_target = EventTarget::new();
   let abort_signal = AbortSignal::new();
-
   let obj = cppgc::make_cppgc_empty_object::<AbortSignal>(scope);
   cppgc::wrap_object2(scope, obj, (event_target, abort_signal))
 }
@@ -2241,7 +2286,6 @@ pub fn op_event_create_dependent_abort_signal<'a>(
     prefix.into(),
     context.into(),
   )?;
-
   Ok(cppgc::wrap_object2(
     scope,
     obj,
