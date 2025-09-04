@@ -15,7 +15,6 @@ use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
 use deno_core::cppgc;
-use deno_core::cppgc::Ptr;
 use deno_core::error::JsError;
 use deno_core::error::dispatch_exception;
 use deno_core::error::to_v8_error;
@@ -39,7 +38,10 @@ pub enum EventError {
   ExpectedEvent,
   #[class(type)]
   #[error("Illegal invocation")]
-  Illegal,
+  InvalidCall,
+  #[class(type)]
+  #[error("Illegal constructor")]
+  InvalidConstructor,
   #[class("DOMExceptionInvalidStateError")]
   #[error("Invalid event state")]
   InvalidState,
@@ -1563,7 +1565,7 @@ pub fn op_event_report_error<'a>(
 ) -> Result<(), EventError> {
   let global = scope.get_current_context().global(scope);
   if global != this {
-    return Err(EventError::Illegal);
+    return Err(EventError::InvalidCall);
   }
   report_exception(scope, &state, exception);
   Ok(())
@@ -2092,9 +2094,10 @@ impl AbortSignal {
 
     self.algorithms.borrow_mut().clear();
 
-    let target: Ptr<EventTarget> = cppgc::try_unwrap_cppgc_proto_object::<
-      EventTarget,
-    >(scope, signal_object.into())
+    let target = cppgc::try_unwrap_cppgc_proto_object::<EventTarget>(
+      scope,
+      signal_object.into(),
+    )
     .unwrap();
     let event_object = {
       let event = Event::new("abort".to_string(), None);
@@ -2111,6 +2114,12 @@ impl AbortSignal {
 
 #[op2(inherit = EventTarget)]
 impl AbortSignal {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<AbortSignal, EventError> {
+    Err(EventError::InvalidConstructor)
+  }
+
   #[static_method]
   fn abort<'a>(
     scope: &mut v8::HandleScope<'a>,

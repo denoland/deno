@@ -507,7 +507,7 @@ function reportException(error) {
 
 // https://html.spec.whatwg.org/#dom-reporterror
 function reportError(error) {
-  op_event_report_error(error);
+  FunctionPrototypeCall(op_event_report_error, this, error);
 }
 
 export {
