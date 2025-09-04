@@ -927,7 +927,7 @@ pub async fn run(
       if metadata.unstable_config.sloppy_imports {
         SloppyImportsOptions::Enabled
       } else {
-        SloppyImportsOptions::Disabled
+        SloppyImportsOptions::Unspecified
       },
       Default::default(),
       sys.clone(),

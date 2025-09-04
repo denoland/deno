@@ -215,6 +215,43 @@
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
         },
+        "module": {
+          "description": "Specify what module code is generated.",
+          "type": ["string", "null"],
+          "anyOf": [
+            {
+              "enum": [
+                "esnext",
+                "nodenext",
+                "preserve"
+              ]
+            },
+            {
+              "pattern": "^([Ee][Ss][Nn][Ee][Xx][Tt]|[Nn][Oo][Dd][Ee][Nn][Ee][Xx][Tt]|[Pp][Rr][Ee][Ss][Ee][Rr][Vv][Ee])$"
+            }
+          ],
+          "markdownDescription": "Specify what module code is generated.\n\nSee more: https://www.typescriptlang.org/tsconfig#module"
+        },
+        "moduleResolution": {
+          "description": "Specify how TypeScript looks up a file from a given module specifier.",
+          "type": ["string", "null"],
+          "anyOf": [
+            {
+              "enum": [
+                "nodenext",
+                "bundler"
+              ],
+              "markdownEnumDescriptions": [
+                "This is the recommended setting for libraries and Node.js applications",
+                "This is the recommended setting in TypeScript 5.0+ for applications that use a bundler"
+              ]
+            },
+            {
+              "pattern": "^([Nn]ode[Nn]ext)|([Bb]undler))$"
+            }
+          ],
+          "markdownDescription": "Specify how TypeScript looks up a file from a given module specifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#moduleResolution"
+        },
         "noErrorTruncation": {
           "description": "Do not truncate error messages.",
           "type": "boolean",
