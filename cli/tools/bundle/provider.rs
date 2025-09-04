@@ -247,12 +247,13 @@ impl deno_bundle_runtime::BundleProvider for CliBundleProvider {
             Ok(bundler) => bundler,
             Err(e) => {
               log::trace!("bundle_init error: {e:?}");
-              return Err(e);
+              let _ = resolver_tx.send(Err(e));
+              return Ok(());
             }
           };
         let plugin_handler = bundler.plugin_handler.clone();
         let resolver = Arc::new(CliBundleResolver::new(plugin_handler.clone()));
-        let _ = resolver_tx.send(resolver);
+        let _ = resolver_tx.send(Ok(resolver));
         log::trace!("bundler.build");
         let mut result = match bundler.build().await {
           Ok(result) => result,
@@ -281,7 +282,7 @@ impl deno_bundle_runtime::BundleProvider for CliBundleProvider {
         Ok::<_, AnyError>(())
       })
     });
-    let resolver = resolver_rx.await?;
+    let resolver = resolver_rx.await??;
     let future = async move {
       log::trace!("rx.await");
       let response = rx.await??;

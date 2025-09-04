@@ -337,7 +337,7 @@ pub async fn op_bundle(
     && let Some(plugin_info) = plugins
     && let Some(set_resolver_cb) = set_resolver_cb
   {
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<PluginRequest>(1024);
+    let (tx, rx) = tokio::sync::mpsc::channel::<PluginRequest>(1024);
     let plugins = Plugins {
       sender: tx.clone(),
       info: plugin_info,
@@ -361,28 +361,7 @@ pub async fn op_bundle(
     })
     .await;
 
-    let fut = async move {
-      loop {
-        log::trace!("op_bundle: rx.recv");
-        let Some(request) = rx.recv().await else {
-          break;
-        };
-        if let PluginRequest::Done = request {
-          break;
-        }
-        log::trace!("op_bundle: rx.recv: {:?}", request);
-        let plugin_executor = plugin_executor.clone();
-        spawner.spawn(move |scope| {
-          let tc = &mut v8::TryCatch::new(scope);
-          let args = request.to_args(tc).unwrap();
-          let executor = v8::Local::new(tc, plugin_executor);
-          let undef = v8::undefined(tc).into();
-          log::trace!("op_bundle: executor.call");
-          let _res = executor.call(tc, undef, &args).unwrap();
-        });
-      }
-    }
-    .boxed_local();
+    let fut = plugin_executor_task(&spawner, plugin_executor, rx).boxed_local();
     (
       fut,
       async move {
@@ -405,6 +384,29 @@ pub async fn op_bundle(
   log::trace!("op_bundle: bundle_result: {:?}", bundle_result);
 
   bundle_result.map_err(|e| JsErrorBox::generic(e.to_string()))
+}
+
+pub async fn plugin_executor_task(
+  spawner: &deno_core::V8TaskSpawner,
+  plugin_executor: v8::Global<v8::Function>,
+  mut rx: tokio::sync::mpsc::Receiver<PluginRequest>,
+) {
+  loop {
+    let Some(request) = rx.recv().await else {
+      break;
+    };
+    if let PluginRequest::Done = request {
+      break;
+    }
+    let plugin_executor = plugin_executor.clone();
+    spawner.spawn(move |scope| {
+      let tc = &mut v8::TryCatch::new(scope);
+      let args = request.to_args(tc).unwrap();
+      let executor = v8::Local::new(tc, plugin_executor);
+      let undef = v8::undefined(tc).into();
+      let _res = executor.call(tc, undef, &args).unwrap();
+    });
+  }
 }
 
 // Plugin plumbing types and ops
