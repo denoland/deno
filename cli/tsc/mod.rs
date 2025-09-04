@@ -740,23 +740,7 @@ fn op_load_inner(
     } else {
       &specifier
     };
-    let maybe_module = match graph.try_get(specifier) {
-      Ok(maybe_module) => maybe_module,
-      Err(err) => match err.as_kind() {
-        deno_graph::ModuleErrorKind::UnsupportedMediaType {
-          media_type,
-          ..
-        } => {
-          return Ok(Some(LoadResponse {
-            data: FastString::from_static(""),
-            version: Some("1".to_string()),
-            script_kind: as_ts_script_kind(*media_type),
-            is_cjs: false,
-          }));
-        }
-        _ => None,
-      },
-    };
+    let maybe_module = graph.try_get(specifier).ok().flatten();
     let maybe_source = if let Some(module) = maybe_module {
       match module {
         Module::Js(module) => {
@@ -1298,7 +1282,6 @@ fn op_respond_inner(state: &mut OpState, args: RespondArgs) {
   state.maybe_response = Some(args);
 }
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ExecError {
   #[class(generic)]
@@ -1306,7 +1289,7 @@ pub enum ExecError {
   ResponseNotSet,
   #[class(inherit)]
   #[error(transparent)]
-  Js(deno_core::error::JsError),
+  Js(Box<deno_core::error::JsError>),
 }
 
 #[derive(Clone)]

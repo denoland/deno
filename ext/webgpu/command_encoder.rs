@@ -5,7 +5,7 @@ use std::cell::RefCell;
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_error::JsErrorBox;
 use wgpu_core::command::PassChannel;
@@ -15,6 +15,7 @@ use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::command_buffer::GPUCommandBuffer;
 use crate::compute_pass::GPUComputePassEncoder;
+use crate::error::GPUGenericError;
 use crate::queue::GPUTexelCopyTextureInfo;
 use crate::render_pass::GPULoadOp;
 use crate::render_pass::GPURenderPassEncoder;
@@ -42,6 +43,12 @@ impl GarbageCollected for GPUCommandEncoder {
 
 #[op2]
 impl GPUCommandEncoder {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUCommandEncoder, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -170,9 +177,9 @@ impl GPUCommandEncoder {
   #[required(5)]
   fn copy_buffer_to_buffer(
     &self,
-    #[webidl] source: Ptr<GPUBuffer>,
+    #[webidl] source: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] source_offset: u64,
-    #[webidl] destination: Ptr<GPUBuffer>,
+    #[webidl] destination: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] destination_offset: u64,
     #[webidl(options(enforce_range = true))] size: u64,
   ) {
@@ -297,7 +304,7 @@ impl GPUCommandEncoder {
   #[required(1)]
   fn clear_buffer(
     &self,
-    #[webidl] buffer: Ptr<GPUBuffer>,
+    #[webidl] buffer: Ref<GPUBuffer>,
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) {
@@ -311,10 +318,10 @@ impl GPUCommandEncoder {
   #[required(5)]
   fn resolve_query_set(
     &self,
-    #[webidl] query_set: Ptr<super::query_set::GPUQuerySet>,
+    #[webidl] query_set: Ref<super::query_set::GPUQuerySet>,
     #[webidl(options(enforce_range = true))] first_query: u32,
     #[webidl(options(enforce_range = true))] query_count: u32,
-    #[webidl] destination: Ptr<GPUBuffer>,
+    #[webidl] destination: Ref<GPUBuffer>,
     #[webidl(options(enforce_range = true))] destination_offset: u64,
   ) {
     let err = self
@@ -388,7 +395,7 @@ pub(crate) struct GPUCommandEncoderDescriptor {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPUTexelCopyBufferInfo {
-  pub buffer: Ptr<GPUBuffer>,
+  pub buffer: Ref<GPUBuffer>,
   #[webidl(default = 0)]
   #[options(enforce_range = true)]
   offset: u64,

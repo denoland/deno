@@ -121,6 +121,12 @@ impl Session {
 
 #[op2]
 impl Session {
+  #[constructor]
+  #[cppgc]
+  fn create(_: bool) -> Session {
+    unreachable!()
+  }
+
   // Closes the session.
   #[fast]
   #[undefined]

@@ -514,6 +514,7 @@ pub struct ListenTlsArgs {
   reuse_port: bool,
   #[serde(default)]
   load_balanced: bool,
+  tcp_backlog: i32,
 }
 
 #[op2(stack_trace)]
@@ -543,9 +544,9 @@ where
     .ok_or(NetError::NoResolvedAddress)?;
 
   let tcp_listener = if args.load_balanced {
-    TcpListener::bind_load_balanced(bind_addr)
+    TcpListener::bind_load_balanced(bind_addr, args.tcp_backlog)
   } else {
-    TcpListener::bind_direct(bind_addr, args.reuse_port)
+    TcpListener::bind_direct(bind_addr, args.reuse_port, args.tcp_backlog)
   }?;
   let local_addr = tcp_listener.local_addr()?;
   let alpn = args

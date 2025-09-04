@@ -5,8 +5,8 @@ import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
 import { primordials } from "ext:core/mod.js";
 import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Buffer } from "node:buffer";
-import * as pathModule from "node:path";
 import { kCustomPromisifiedSymbol } from "ext:deno_node/internal/util.mjs";
+import * as process from "node:process";
 
 const { ObjectDefineProperty, Promise, PromisePrototypeThen } = primordials;
 
@@ -26,7 +26,7 @@ export function exists(path: string | Buffer | URL, callback: ExistsCallback) {
   }
 
   PromisePrototypeThen(
-    op_node_fs_exists(pathModule.toNamespacedPath(path)),
+    op_node_fs_exists(path),
     callback,
   );
 }
@@ -46,11 +46,21 @@ ObjectDefineProperty(exists, kCustomPromisifiedSymbol, {
   configurable: true,
 });
 
+let showExistsDeprecation = true;
 export function existsSync(path: string | Buffer | URL): boolean {
   try {
     path = getValidatedPathToString(path);
-  } catch {
+  } catch (err) {
+    // @ts-expect-error `code` is safe to check with optional chaining
+    if (showExistsDeprecation && err?.code === "ERR_INVALID_ARG_TYPE") {
+      process.emitWarning(
+        "Passing invalid argument types to fs.existsSync is deprecated",
+        "DeprecationWarning",
+        "DEP0187",
+      );
+      showExistsDeprecation = false;
+    }
     return false;
   }
-  return op_node_fs_exists_sync(pathModule.toNamespacedPath(path));
+  return op_node_fs_exists_sync(path);
 }

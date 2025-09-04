@@ -22,7 +22,9 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
+use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
@@ -33,6 +35,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::unbounded_channel;
 
 use crate::args::BenchFlags;
+use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
@@ -40,6 +43,7 @@ use crate::factory::CliFactory;
 use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
+use crate::sys::CliSys;
 use crate::tools::test::TestFilter;
 use crate::tools::test::format_test_error;
 use crate::util::file_watcher;
@@ -169,10 +173,7 @@ async fn bench_specifier(
     Ok(()) => Ok(()),
     Err(CreateCustomWorkerError::Core(error)) => match error.into_kind() {
       CoreErrorKind::Js(error) => {
-        sender.send(BenchEvent::UncaughtError(
-          specifier.to_string(),
-          Box::new(error),
-        ))?;
+        sender.send(BenchEvent::UncaughtError(specifier.to_string(), error))?;
         Ok(())
       }
       error => Err(error.into_box().into()),
@@ -296,7 +297,8 @@ async fn bench_specifier_inner(
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
-  root_permissions_container: &PermissionsContainer,
+  cli_options: &Arc<CliOptions>,
+  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
   specifiers: Vec<ModuleSpecifier>,
   preload_modules: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
@@ -307,14 +309,25 @@ async fn bench_specifiers(
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
-    // Various test files should not share the same permissions in terms of
-    // `PermissionsContainer` - otherwise granting/revoking permissions in one
-    // file would have impact on other files, which is undesirable.
-    let permissions_container = root_permissions_container.deep_clone();
+    let specifier_dir = cli_options.workspace().resolve_member_dir(&specifier);
     let sender = sender.clone();
     let options = option_for_handles.clone();
     let preload_modules = preload_modules.clone();
+    let cli_options = cli_options.clone();
+    let permission_desc_parser = permission_desc_parser.clone();
     spawn_blocking(move || {
+      // Various test files should not share the same permissions in terms of
+      // `PermissionsContainer` - otherwise granting/revoking permissions in one
+      // file would have impact on other files, which is undesirable.
+      let permissions =
+        cli_options.permissions_options_for_dir(&specifier_dir)?;
+      let permissions_container = PermissionsContainer::new(
+        permission_desc_parser.clone(),
+        Permissions::from_options(
+          permission_desc_parser.as_ref(),
+          &permissions,
+        )?,
+      );
       let future = bench_specifier(
         worker_factory,
         permissions_container,
@@ -491,7 +504,8 @@ pub async fn run_benchmarks(
     Arc::new(factory.create_cli_main_worker_factory().await?);
   bench_specifiers(
     worker_factory,
-    factory.root_permissions_container()?,
+    cli_options,
+    factory.permission_desc_parser()?,
     specifiers,
     preload_modules,
     BenchSpecifierOptions {
@@ -625,7 +639,8 @@ pub async fn run_benchmarks_with_watch(
         let preload_modules = cli_options.preload_modules()?;
         bench_specifiers(
           worker_factory,
-          factory.root_permissions_container()?,
+          cli_options,
+          factory.permission_desc_parser()?,
           specifiers,
           preload_modules,
           BenchSpecifierOptions {
