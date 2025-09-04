@@ -379,28 +379,25 @@ impl SloppyImportsResolutionReason {
 
 #[derive(Debug)]
 struct SloppyImportsResolver<TSys: FsMetadata> {
-  compiler_options_resolver: RwLock<CompilerOptionsResolverRc>,
+  compiler_options_resolver: CompilerOptionsResolverCell,
   fs: CachedMetadataFs<TSys>,
   enabled_by_options: bool,
 }
 
 impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
-  fn new(fs: CachedMetadataFs<TSys>, options: SloppyImportsOptions) -> Self {
+  fn new(
+    fs: CachedMetadataFs<TSys>,
+    compiler_options_resolver: CompilerOptionsResolverCell,
+    options: SloppyImportsOptions,
+  ) -> Self {
     Self {
-      compiler_options_resolver: Default::default(),
       fs,
+      compiler_options_resolver,
       enabled_by_options: match options {
         SloppyImportsOptions::Enabled => true,
         SloppyImportsOptions::Unspecified => false,
       },
     }
-  }
-
-  pub fn set_compiler_options_resolver(
-    &self,
-    value: CompilerOptionsResolverRc,
-  ) {
-    *self.compiler_options_resolver.write() = value;
   }
 
   fn resolve(
@@ -660,6 +657,7 @@ pub fn sloppy_imports_resolve<TSys: FsMetadata>(
 ) -> Option<(Url, SloppyImportsResolutionReason)> {
   SloppyImportsResolver::new(
     CachedMetadataFs::new(sys, FsCacheOptions::Enabled),
+    Default::default(),
     SloppyImportsOptions::Enabled,
   )
   // The referrer is used to determine the applicable compiler options, which
@@ -785,6 +783,10 @@ impl fmt::Display for WorkspaceResolverDiagnostic<'_> {
   }
 }
 
+#[allow(clippy::disallowed_types)]
+type CompilerOptionsResolverCell =
+  deno_maybe_sync::MaybeArc<RwLock<CompilerOptionsResolverRc>>;
+
 #[derive(Debug)]
 pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   workspace_root: UrlRc,
@@ -794,7 +796,7 @@ pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   pkg_json_dep_resolution: PackageJsonDepResolution,
   sloppy_imports_options: SloppyImportsOptions,
   fs_cache_options: FsCacheOptions,
-  compiler_options_resolver: RwLock<CompilerOptionsResolverRc>,
+  compiler_options_resolver: CompilerOptionsResolverCell,
   sloppy_imports_resolver: SloppyImportsResolverRc<TSys>,
 }
 
@@ -913,8 +915,10 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       .collect::<BTreeMap<_, _>>();
 
     let fs = CachedMetadataFs::new(sys, options.fs_cache_options);
+    let compiler_options_resolver = CompilerOptionsResolverCell::default();
     let sloppy_imports_resolver = new_rc(SloppyImportsResolver::new(
       fs,
+      compiler_options_resolver.clone(),
       options.sloppy_imports_options,
     ));
 
@@ -926,7 +930,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       sloppy_imports_options: options.sloppy_imports_options,
       fs_cache_options: options.fs_cache_options,
-      compiler_options_resolver: Default::default(),
+      compiler_options_resolver,
       sloppy_imports_resolver,
     })
   }
@@ -966,8 +970,12 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       })
       .collect::<BTreeMap<_, _>>();
     let fs = CachedMetadataFs::new(sys, fs_cache_options);
-    let sloppy_imports_resolver =
-      new_rc(SloppyImportsResolver::new(fs, sloppy_imports_options));
+    let compiler_options_resolver = CompilerOptionsResolverCell::default();
+    let sloppy_imports_resolver = new_rc(SloppyImportsResolver::new(
+      fs,
+      compiler_options_resolver.clone(),
+      sloppy_imports_options,
+    ));
     Self {
       workspace_root,
       jsr_pkgs,
@@ -976,7 +984,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_dep_resolution,
       sloppy_imports_options,
       fs_cache_options,
-      compiler_options_resolver: Default::default(),
+      compiler_options_resolver,
       sloppy_imports_resolver,
     }
   }
@@ -1091,9 +1099,6 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     &self,
     value: CompilerOptionsResolverRc,
   ) {
-    self
-      .sloppy_imports_resolver
-      .set_compiler_options_resolver(value.clone());
     *self.compiler_options_resolver.write() = value;
   }
 
@@ -2119,8 +2124,11 @@ mod test {
     )
     .unwrap();
     let fs = CachedMetadataFs::new(sys.clone(), FsCacheOptions::Enabled);
-    let sloppy_imports_resolver =
-      SloppyImportsResolver::new(fs, SloppyImportsOptions::Enabled);
+    let sloppy_imports_resolver = SloppyImportsResolver::new(
+      fs,
+      Default::default(),
+      SloppyImportsOptions::Enabled,
+    );
     let referrer = root_url.join("main.ts").unwrap();
 
     // scenarios like resolving ./example.js to ./example.ts
