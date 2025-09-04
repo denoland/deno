@@ -1,8 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 /// <reference path="../../cli/tsc/dts/lib.deno.unstable.d.ts" />
 import { op_bundle } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+import { internals, primordials } from "ext:core/mod.js";
 import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+
+declare module "ext:core/mod.js" {
+  const internals: Record<string, unknown>;
+}
 
 const { SafeArrayIterator, Uint8Array, ObjectPrototypeIsPrototypeOf } =
   primordials;
@@ -223,8 +227,7 @@ function combineResult(
 
 function makePluginExecutor(
   plugins: PluginInfo[],
-  pluginBuild: Deno.bundle.PluginBuild,
-) {
+): PluginExecutor {
   if (!plugins.length) {
     return (..._args: unknown[]) => Promise.resolve();
   }
@@ -234,15 +237,8 @@ function makePluginExecutor(
     type: HookType,
     ids: number[],
     sender: { sendResult: (res: unknown) => void },
-    resolve: {
-      resolve: (
-        path: string,
-        options?: Deno.bundle.ResolveOptions,
-      ) => Promise<Deno.bundle.ResolveResult>;
-    },
     args: unknown[],
   ): Promise<void> => {
-    pluginBuild.resolve = resolve.resolve.bind(resolve);
     let result: HookTypes[H] = defaultResult(hook) as HookTypes[H];
     const hookName = getHookName(hook);
     for (const id of ids) {
@@ -268,17 +264,60 @@ function makePluginExecutor(
   };
 }
 
+type PluginExecutor = <H extends Hook>(
+  hook: H,
+  type: HookType,
+  ids: number[],
+  sender: { sendResult: (res: unknown) => void },
+  args: unknown[],
+) => Promise<void>;
+
+type SetResolverCb = (
+  resolve: {
+    resolve: (
+      path: string,
+      options?: Deno.bundle.ResolveOptions,
+    ) => Promise<Deno.bundle.ResolveResult>;
+  },
+) => void;
+
+async function setupPlugins(
+  options: Deno.bundle.Options,
+): Promise<
+  | {
+    options: Deno.bundle.Options;
+    forRust: RustPluginInfo[];
+    pluginExecutor: PluginExecutor;
+    setResolverCb: SetResolverCb;
+  }
+  | undefined
+> {
+  const [plugins, pluginBuild] = await collectPluginInfo(options);
+  if (!plugins.length) {
+    return undefined;
+  }
+  const forRust = toRustPluginInfo(plugins);
+  const pluginExecutor = makePluginExecutor(plugins);
+  const setResolverCb: SetResolverCb = (resolve) => {
+    pluginBuild!.resolve = resolve.resolve.bind(resolve);
+  };
+  return { options, forRust, pluginExecutor, setResolverCb };
+}
+
+internals.setupBundlePlugins = setupPlugins;
+
 export async function bundle(
   options: Deno.bundle.Options,
 ): Promise<Deno.bundle.Result> {
-  const [plugins, pluginBuild] = await collectPluginInfo(options);
-  const forRust = toRustPluginInfo(plugins);
+  const plug = await setupPlugins(options);
+  options = plug?.options ?? options;
   const result = {
     success: false,
     ...await op_bundle(
       options,
-      forRust.length > 0 ? forRust : null,
-      forRust.length > 0 ? makePluginExecutor(plugins, pluginBuild!) : null,
+      plug?.forRust,
+      plug?.pluginExecutor,
+      plug?.setResolverCb,
     ),
   };
   result.success = result.errors.length === 0;

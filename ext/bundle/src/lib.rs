@@ -301,6 +301,19 @@ pub struct OnLoadOptions {
   pub namespace: Option<String>,
 }
 
+async fn run_runtime_task<F, T>(spawner: &deno_core::V8TaskSpawner, f: F) -> T
+where
+  F: (FnOnce(&mut v8::HandleScope) -> T) + 'static,
+  T: Send + 'static,
+{
+  let (tx, rx) = tokio::sync::oneshot::channel::<T>();
+  spawner.spawn(move |scope| {
+    let result = f(scope);
+    let _ = tx.send(result);
+  });
+  rx.await.unwrap()
+}
+
 #[op2(async)]
 #[serde]
 pub async fn op_bundle(
@@ -308,6 +321,7 @@ pub async fn op_bundle(
   #[serde] options: BundleOptions,
   #[serde] plugins: Option<Vec<PluginInfo>>,
   #[global] plugin_executor: Option<v8::Global<v8::Function>>,
+  #[global] set_resolver_cb: Option<v8::Global<v8::Function>>,
 ) -> Result<BuildResponse, JsErrorBox> {
   log::trace!("op_bundle: {:?}", options);
   // eprintln!("op_bundle: {:?}", options);
@@ -321,6 +335,7 @@ pub async fn op_bundle(
   let (plugin_executor_fut, result_future) = if let Some(plugin_executor) =
     plugin_executor
     && let Some(plugin_info) = plugins
+    && let Some(set_resolver_cb) = set_resolver_cb
   {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<PluginRequest>(1024);
     let plugins = Plugins {
@@ -332,6 +347,19 @@ pub async fn op_bundle(
       .await
       .map_err(|e| JsErrorBox::generic(e.to_string()))?;
     let resolver = result_future.resolver.clone();
+    let plugin_resolver = PluginResolver {
+      resolver: resolver.clone(),
+    };
+
+    run_runtime_task(&spawner, move |scope| {
+      let resolver =
+        deno_core::cppgc::make_cppgc_object(scope, plugin_resolver);
+      let undef = v8::undefined(scope).into();
+      let args = vec![resolver.into()];
+      let set_resolver_cb = v8::Local::new(scope, set_resolver_cb);
+      let _res = set_resolver_cb.call(scope, undef, &args).unwrap();
+    })
+    .await;
 
     let fut = async move {
       loop {
@@ -344,14 +372,9 @@ pub async fn op_bundle(
         }
         log::trace!("op_bundle: rx.recv: {:?}", request);
         let plugin_executor = plugin_executor.clone();
-        let resolver = resolver.clone();
         spawner.spawn(move |scope| {
-          let resolver = PluginResolver {
-            resolver: resolver.clone(),
-          };
           let tc = &mut v8::TryCatch::new(scope);
-          let resolver = deno_core::cppgc::make_cppgc_object(tc, resolver);
-          let args = request.to_args(tc, resolver.into()).unwrap();
+          let args = request.to_args(tc).unwrap();
           let executor = v8::Local::new(tc, plugin_executor);
           let undef = v8::undefined(tc).into();
           log::trace!("op_bundle: executor.call");
@@ -578,7 +601,6 @@ impl PluginRequest {
   fn to_args<'s>(
     self,
     scope: &mut v8::HandleScope<'s>,
-    resolver: v8::Local<'s, v8::Value>,
   ) -> Result<Vec<v8::Local<'s, v8::Value>>, PluginExecError> {
     let mut v8_args = Vec::new();
     match self {
@@ -595,7 +617,6 @@ impl PluginRequest {
           PluginExecResultSender::OnStart(result),
         );
         v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
-        v8_args.push(resolver);
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnResolve {
@@ -610,7 +631,6 @@ impl PluginRequest {
           PluginExecResultSender::OnResolve(result),
         );
         v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
-        v8_args.push(resolver);
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnLoad {
@@ -625,7 +645,6 @@ impl PluginRequest {
           PluginExecResultSender::OnLoad(result),
         );
         v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
-        v8_args.push(resolver);
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnEnd {
@@ -641,7 +660,6 @@ impl PluginRequest {
           PluginExecResultSender::OnEnd(result),
         );
         v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
-        v8_args.push(resolver);
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnDispose {
@@ -657,7 +675,6 @@ impl PluginRequest {
           PluginExecResultSender::OnDispose(result),
         );
         v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
-        v8_args.push(resolver);
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::Done => {
