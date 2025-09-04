@@ -1403,7 +1403,9 @@ fn owned_string<'s>(
 
 struct OtelTracer(InstrumentationScope);
 
-impl deno_core::GarbageCollected for OtelTracer {
+unsafe impl deno_core::GarbageCollected for OtelTracer {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelTracer"
   }
@@ -1616,7 +1618,9 @@ enum OtelSpanState {
   Done(SpanContext),
 }
 
-impl deno_core::GarbageCollected for OtelSpan {
+unsafe impl deno_core::GarbageCollected for OtelSpan {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelSpan"
   }
@@ -1893,7 +1897,9 @@ fn op_otel_span_add_link<'s>(
 
 struct OtelMeter(opentelemetry::metrics::Meter);
 
-impl deno_core::GarbageCollected for OtelMeter {
+unsafe impl deno_core::GarbageCollected for OtelMeter {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelMeter"
   }
@@ -2094,7 +2100,9 @@ enum Instrument {
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 
-impl GarbageCollected for Instrument {
+unsafe impl GarbageCollected for Instrument {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Instrument"
   }

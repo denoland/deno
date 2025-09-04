@@ -90,7 +90,9 @@ pub struct Session {
   pub(crate) db: Weak<RefCell<Option<rusqlite::Connection>>>,
 }
 
-impl GarbageCollected for Session {
+unsafe impl GarbageCollected for Session {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Session"
   }

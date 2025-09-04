@@ -10,7 +10,6 @@ use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::TracedReference;
-use deno_core::v8::cppgc::Traced;
 use deno_core::v8::cppgc::Visitor;
 use deno_error::JsErrorBox;
 use wgpu_types::SurfaceStatus;
@@ -41,9 +40,9 @@ pub struct Configuration {
     wgpu_types::SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>,
 }
 
-impl GarbageCollected for Configuration {
-  fn trace(&self, visitor: &Visitor) {
-    self.device.trace(visitor);
+unsafe impl GarbageCollected for Configuration {
+  fn trace(&self, visitor: &mut Visitor) {
+    visitor.trace(&self.device);
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
@@ -62,13 +61,13 @@ pub struct GPUCanvasContext {
   pub canvas: v8::Global<v8::Object>,
 }
 
-impl GarbageCollected for GPUCanvasContext {
-  fn trace(&self, visitor: &Visitor) {
+unsafe impl GarbageCollected for GPUCanvasContext {
+  fn trace(&self, visitor: &mut Visitor) {
     if let Some(config) = &*self.config.borrow() {
       config.trace(visitor);
     }
 
-    self.texture.borrow().trace(visitor);
+    visitor.trace(&*self.texture.borrow());
   }
 
   fn get_name(&self) -> &'static std::ffi::CStr {

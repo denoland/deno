@@ -27,7 +27,9 @@ impl WebIdlInterfaceConverter for GPUQuerySet {
   const NAME: &'static str = "GPUQuerySet";
 }
 
-impl GarbageCollected for GPUQuerySet {
+unsafe impl GarbageCollected for GPUQuerySet {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUQuerySet"
   }

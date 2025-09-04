@@ -216,7 +216,9 @@ struct EndpointResource {
   session_store: Arc<dyn ClientSessionStore>,
 }
 
-impl GarbageCollected for EndpointResource {
+unsafe impl GarbageCollected for EndpointResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"EndpointResource"
   }
@@ -301,7 +303,9 @@ impl Drop for ListenerResource {
   }
 }
 
-impl GarbageCollected for ListenerResource {
+unsafe impl GarbageCollected for ListenerResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ListenerResource"
   }
@@ -356,7 +360,9 @@ struct ConnectionResource(
   RefCell<Option<quinn::ZeroRttAccepted>>,
 );
 
-impl GarbageCollected for ConnectionResource {
+unsafe impl GarbageCollected for ConnectionResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ConnectionResource"
   }
@@ -367,7 +373,9 @@ struct IncomingResource(
   Arc<QuicServerConfig>,
 );
 
-impl GarbageCollected for IncomingResource {
+unsafe impl GarbageCollected for IncomingResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"IncomingResource"
   }
@@ -500,7 +508,9 @@ pub(crate) fn op_quic_incoming_ignore(
 
 struct ConnectingResource(RefCell<Option<quinn::Connecting>>);
 
-impl GarbageCollected for ConnectingResource {
+unsafe impl GarbageCollected for ConnectingResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ConnectingResource"
   }

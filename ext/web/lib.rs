@@ -353,7 +353,9 @@ struct TextDecoderResource {
   fatal: bool,
 }
 
-impl deno_core::GarbageCollected for TextDecoderResource {
+unsafe impl deno_core::GarbageCollected for TextDecoderResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TextDecoderResource"
   }
