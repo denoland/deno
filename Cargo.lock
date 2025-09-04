@@ -2644,6 +2644,7 @@ name = "deno_permissions"
 version = "0.73.0"
 dependencies = [
  "capacity_builder",
+ "chrono",
  "deno_error",
  "deno_path_util",
  "deno_terminal 0.2.2",
@@ -2745,6 +2746,7 @@ dependencies = [
 name = "deno_runtime"
 version = "0.222.0"
 dependencies = [
+ "chrono",
  "color-print",
  "deno_ast",
  "deno_broadcast_channel",

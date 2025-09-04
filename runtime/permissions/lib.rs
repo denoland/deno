@@ -77,7 +77,7 @@ where
   let mut file = file.lock();
 
   let mut map = serde_json::Map::with_capacity(5);
-  let _ = map.insert("v".into(), serde_json::Value::Number(1.into()).unwrap());
+  let _ = map.insert("v".into(), serde_json::Value::Number(1.into()));
   let _ = map.insert(
     "datetime".into(),
     serde_json::Value::String(

@@ -74,6 +74,7 @@ deno_websocket.workspace = true
 deno_webstorage.workspace = true
 node_resolver = { workspace = true, features = ["sync"] }
 
+chrono = { workspace = true, features = ["now"] }
 color-print.workspace = true
 encoding_rs.workspace = true
 fastwebsockets.workspace = true
