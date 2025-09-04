@@ -102,6 +102,8 @@ declare namespace Deno {
        * @default true if outputDir or outputPath is set, false otherwise
        */
       write?: boolean;
+
+      plugins?: Plugin[];
     }
 
     /**
@@ -137,6 +139,159 @@ declare namespace Deno {
       text: string;
       location?: MessageLocation;
       notes?: MessageNote[];
+    }
+
+    export interface Plugin {
+      name: string;
+      setup: (build: PluginBuild) => void | Promise<void>;
+    }
+
+    export interface PluginBuild {
+      initialOptions: Options;
+
+      resolve(path: string, options?: ResolveOptions): Promise<ResolveResult>;
+
+      onStart(
+        callback: () =>
+          | OnStartResult
+          | null
+          | void
+          | Promise<OnStartResult | null | void>,
+      ): void;
+
+      onEnd(
+        callback: (
+          result: Result,
+        ) => OnEndResult | null | void | Promise<OnEndResult | null | void>,
+      ): void;
+
+      onResolve(
+        options: OnResolveOptions,
+        callback: (
+          args: OnResolveArgs,
+        ) =>
+          | OnResolveResult
+          | null
+          | undefined
+          | Promise<OnResolveResult | null | undefined>,
+      ): void;
+
+      onLoad(
+        options: OnLoadOptions,
+        callback: (
+          args: OnLoadArgs,
+        ) =>
+          | OnLoadResult
+          | null
+          | undefined
+          | Promise<OnLoadResult | null | undefined>,
+      ): void;
+
+      onDispose(callback: () => void): void;
+    }
+
+    export interface ResolveOptions {
+      pluginName?: string;
+      importer?: string;
+      namespace?: string;
+      resolveDir?: string;
+      kind?: ImportKind;
+      pluginData?: any;
+      with?: Record<string, string>;
+    }
+
+    export interface ResolveResult {
+      errors: Message[];
+      warnings: Message[];
+
+      path: string;
+      external: boolean;
+      sideEffects: boolean;
+      namespace: string;
+      suffix: string;
+      pluginData: any;
+    }
+
+    export interface OnStartResult {
+      errors?: Message[];
+      warnings?: Message[];
+    }
+
+    export interface OnEndResult {
+      errors?: Message[];
+      warnings?: Message[];
+    }
+
+    export interface OnResolveOptions {
+      filter: RegExp;
+      namespace?: string;
+    }
+
+    export interface OnResolveArgs {
+      path: string;
+      importer: string;
+      namespace: string;
+      resolveDir: string;
+      kind: ImportKind;
+      pluginData: any;
+      with: Record<string, string>;
+    }
+
+    export type ImportKind =
+      | "entry-point"
+      // JS
+      | "import-statement"
+      | "require-call"
+      | "dynamic-import"
+      | "require-resolve"
+      // CSS
+      | "import-rule"
+      | "composes-from"
+      | "url-token";
+
+    export interface OnResolveResult {
+      errors?: Message[];
+      warnings?: Message[];
+      path?: string;
+      external?: boolean;
+      sideEffects?: boolean;
+      namespace?: string;
+      suffix?: string;
+      pluginData?: any;
+    }
+
+    export interface OnLoadOptions {
+      filter: RegExp;
+      namespace?: string;
+    }
+
+    export interface OnLoadArgs {
+      path: string;
+      namespace: string;
+      suffix: string;
+      with: Record<string, string>;
+    }
+
+    export interface OnLoadResult {
+      errors?: Message[];
+      warnings?: Message[];
+      contents?: string | Uint8Array;
+      resolveDir?: string;
+      loader?:
+        | "js"
+        | "ts"
+        | "jsx"
+        | "json"
+        | "css"
+        | "text"
+        | "base64"
+        | "dataurl"
+        | "file"
+        | "copy"
+        | "empty";
+      pluginData?: any;
+      watchFiles?: string[];
+      watchDirs?: string[];
     }
 
     /**

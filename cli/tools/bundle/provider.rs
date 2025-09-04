@@ -5,6 +5,7 @@ use std::sync::Arc;
 use deno_bundle_runtime as rt_bundle;
 use deno_bundle_runtime::BundleOptions as RtBundleOptions;
 use deno_bundle_runtime::BundleProvider;
+use deno_bundle_runtime::Plugins as RtPlugins;
 use deno_core::error::AnyError;
 
 use crate::args::DenoSubcommand;
@@ -116,6 +117,7 @@ impl BundleProvider for CliBundleProvider {
   async fn bundle(
     &self,
     options: RtBundleOptions,
+    plugins: Option<RtPlugins>,
   ) -> Result<rt_bundle::BuildResponse, AnyError> {
     let mut flags_clone = (*self.flags).clone();
     flags_clone.type_check_mode = crate::args::TypeCheckMode::None;
@@ -127,7 +129,7 @@ impl BundleProvider for CliBundleProvider {
     std::thread::spawn(move || {
       deno_runtime::tokio_util::create_and_run_current_thread(async move {
         let flags = Arc::new(flags_clone);
-        let bundler = match super::bundle_init(flags, &bundle_flags).await {
+        let bundler = match super::bundle_init(flags, &bundle_flags, plugins).await {
           Ok(bundler) => bundler,
           Err(e) => {
             log::trace!("bundle_init error: {e:?}");
