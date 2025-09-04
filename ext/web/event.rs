@@ -1865,6 +1865,7 @@ impl EventTarget {
     else {
       return Err(EventError::ExpectedEvent);
     };
+    let event_object = event_object.cast::<v8::Object>();
 
     let typ = event.typ.borrow();
 
