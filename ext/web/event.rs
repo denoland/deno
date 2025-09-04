@@ -684,15 +684,24 @@ impl Event {
 }
 
 #[op2(fast)]
-pub fn op_event_set_is_trusted(#[cppgc] event: &Event, value: bool) {
+pub fn op_event_set_is_trusted<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  event: v8::Local<'a, v8::Value>,
+  value: bool,
+) {
+  let event =
+    cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event).unwrap();
   event.is_trusted.set(value);
 }
 
 #[op2]
-pub fn op_event_set_target(
-  #[cppgc] event: &Event,
+pub fn op_event_set_target<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  event: v8::Local<'a, v8::Value>,
   #[global] value: v8::Global<v8::Object>,
 ) {
+  let event =
+    cppgc::try_unwrap_cppgc_proto_object::<Event>(scope, event).unwrap();
   event.target.replace(Some(value));
 }
 
@@ -1910,9 +1919,12 @@ pub fn op_event_wrap_event_target<'a>(
 #[op2]
 pub fn op_event_get_target_listeners<'a>(
   scope: &mut v8::HandleScope<'a>,
-  #[cppgc] event_target: &EventTarget,
+  event_target: v8::Local<'a, v8::Value>,
   #[string] typ: String,
 ) -> v8::Local<'a, v8::Array> {
+  let event_target =
+    cppgc::try_unwrap_cppgc_proto_object::<EventTarget>(scope, event_target)
+      .unwrap();
   let listeners = event_target.listeners.borrow();
   match listeners.get(&typ) {
     Some(listeners) => {
@@ -1928,9 +1940,13 @@ pub fn op_event_get_target_listeners<'a>(
 
 #[op2(fast)]
 pub fn op_event_get_target_listener_count<'a>(
-  #[cppgc] event_target: &EventTarget,
+  scope: &mut v8::HandleScope<'a>,
+  event_target: v8::Local<'a, v8::Value>,
   #[string] typ: String,
 ) -> u32 {
+  let event_target =
+    cppgc::try_unwrap_cppgc_proto_object::<EventTarget>(scope, event_target)
+      .unwrap();
   let listeners = event_target.listeners.borrow();
   match listeners.get(&typ) {
     Some(listeners) => listeners.len() as u32,
@@ -2318,18 +2334,24 @@ pub fn op_event_create_dependent_abort_signal<'a>(
 }
 
 #[op2]
-pub fn op_event_add_abort_algorithm(
-  #[cppgc] signal: &AbortSignal,
+pub fn op_event_add_abort_algorithm<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  signal: v8::Local<'a, v8::Value>,
   #[global] algorithm: v8::Global<v8::Function>,
 ) {
+  let signal =
+    cppgc::try_unwrap_cppgc_proto_object::<AbortSignal>(scope, signal).unwrap();
   signal.add(algorithm);
 }
 
 #[op2]
-pub fn op_event_remove_abort_algorithm(
-  #[cppgc] signal: &AbortSignal,
+pub fn op_event_remove_abort_algorithm<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  signal: v8::Local<'a, v8::Value>,
   #[global] algorithm: v8::Global<v8::Function>,
 ) {
+  let signal =
+    cppgc::try_unwrap_cppgc_proto_object::<AbortSignal>(scope, signal).unwrap();
   signal.remove(algorithm);
 }
 
@@ -2351,8 +2373,10 @@ pub fn op_event_signal_abort<'a>(
 #[op2]
 pub fn op_event_get_source_signals<'a>(
   scope: &mut v8::HandleScope<'a>,
-  #[cppgc] signal: &AbortSignal,
+  signal: v8::Local<'a, v8::Value>,
 ) -> v8::Local<'a, v8::Array> {
+  let signal =
+    cppgc::try_unwrap_cppgc_proto_object::<AbortSignal>(scope, signal).unwrap();
   let mut elements = Vec::new();
   let source_signals = signal.source_signals.borrow();
   for source_signal in source_signals.iter() {
@@ -2366,8 +2390,10 @@ pub fn op_event_get_source_signals<'a>(
 #[op2]
 pub fn op_event_get_dependent_signals<'a>(
   scope: &mut v8::HandleScope<'a>,
-  #[cppgc] signal: &AbortSignal,
+  signal: v8::Local<'a, v8::Value>,
 ) -> v8::Local<'a, v8::Array> {
+  let signal =
+    cppgc::try_unwrap_cppgc_proto_object::<AbortSignal>(scope, signal).unwrap();
   let mut elements = Vec::new();
   let dependent_signals = signal.dependent_signals.borrow();
   for dependent_signal in dependent_signals.iter() {
