@@ -136,9 +136,12 @@ export function fork(
         execArgv.splice(index, rm);
       } else if (flag.startsWith("--no-warnings")) {
         execArgv[index] = "--quiet";
-      } else if (StringPrototypeStartsWith(arg, "--experimental-")) {
+      } else if (
+        StringPrototypeStartsWith(execArgv[index], "--experimental-")
+      ) {
         // `--experimental-*` args are ignored, because most experimental Node features
         // are implemented in Deno, but it doens't exactly match Deno's `--unstable-*` flags.
+        execArgv.splice(index, 1);
         index++;
       } else {
         index++;

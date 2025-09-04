@@ -1180,7 +1180,7 @@ Deno.test(async function experimentalFlag() {
   const timeout = withTimeout<void>();
   const child = CP.fork(file, [], {
     execArgv: ["--experimental-vm-modules"],
-    stdio: ["inherit", "inherit", "inherit"],
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
   });
   child.on("close", () => {
     timeout.resolve();
