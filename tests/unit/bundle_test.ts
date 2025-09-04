@@ -8,7 +8,7 @@ import {
   unindent,
 } from "./test_util.ts";
 
-import { join } from "@std/path";
+import { join, toFileUrl } from "@std/path";
 
 class TempDir implements AsyncDisposable, Disposable {
   private path: string;
@@ -289,7 +289,7 @@ Deno.test("bundle: returns errors for unresolved import", async () => {
 async function evalEsmString(code: string): Promise<any> {
   await using file = new TempFile({ suffix: ".js" });
   Deno.writeTextFileSync(file.path, code);
-  return await import(file.path);
+  return await import(toFileUrl(file.path).toString());
 }
 
 Deno.test("bundle: replaces require shim when platform is deno", async () => {
