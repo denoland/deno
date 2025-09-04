@@ -9,7 +9,7 @@
 /// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { internals, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
@@ -46,6 +46,7 @@ import {
   signalAbort,
 } from "ext:deno_web/03_abort_signal.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { internalRidSymbol } = core;
 
 const _request = Symbol("request");
 const _headers = Symbol("headers");
@@ -83,7 +84,7 @@ function processUrlList(urlList, urlListProcessed) {
  * @property {number} redirectCount
  * @property {(() => string)[]} urlList
  * @property {string[]} urlListProcessed
- * @property {HttpClient | null} client NOTE: non standard extension for `Deno.HttpClient`.
+ * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
  * @property {Blob | null} blobUrlEntry
  */
 
@@ -131,7 +132,7 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
     redirectCount: 0,
     urlList: [typeof url === "string" ? () => url : url],
     urlListProcessed: [],
-    client: null,
+    clientRid: null,
     blobUrlEntry,
     url() {
       if (this.urlListProcessed[0] === undefined) {
@@ -182,7 +183,7 @@ function cloneInnerRequest(request, skipBody = false) {
     redirectCount: request.redirectCount,
     urlList: [() => request.url()],
     urlListProcessed: [request.url()],
-    client: request.client,
+    clientRid: request.clientRid,
     blobUrlEntry: request.blobUrlEntry,
     url() {
       if (this.urlListProcessed[0] === undefined) {
@@ -392,7 +393,7 @@ class Request {
           "Argument 2",
         );
       }
-      request.client = init.client;
+      request.clientRid = init.client?.[internalRidSymbol] ?? null;
     }
 
     // 28.

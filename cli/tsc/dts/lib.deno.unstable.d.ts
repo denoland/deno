@@ -368,47 +368,6 @@ declare namespace Deno {
   ): DatagramConn;
 
   /** **UNSTABLE**: New API, yet to be vetted.
-   * A connection from an upgraded HTTP request or response.
-   * @category Network
-   * @experimental
-   */
-  export interface UpgradedConn extends Conn {}
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   * Upgrade a Deno.serve Request or a fetch Response into an UpgradedConn.
-   *
-   * ```ts
-   * Deno.serve((req) => {
-   *   (async () => {
-   *     const conn = await Deno.upgradeHttpRaw(req);
-   *   })();
-   *
-   *   return new Response(null, {
-   *     status: 101,
-   *     headers: {
-   *       Upgrade: "some-protocol"
-   *     },
-   *   });
-   * });
-   *
-   * const client = Deno.createHttpClient({ allowUpgrades: true });
-   *
-   * const res = await fetch('http://localhost:8000', {
-   *   client,
-   *   headers: { Upgrade: "some-protocol" },
-   * });
-   * const conn = await Deno.upgradeHttpRaw(res);
-   * ```
-   *
-   * @tags allow-net
-   * @category Network
-   * @experimental
-   */
-  export function upgradeHttpRaw(
-    obj: Request | Response,
-  ): Promise<UpgradedConn>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Open a new {@linkcode Deno.Kv} connection to persist data.
    *

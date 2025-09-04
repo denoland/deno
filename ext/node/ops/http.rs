@@ -34,7 +34,6 @@ use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
-use deno_fetch::ExtraResponseInfo;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchReturn;
 use deno_fetch::ResBody;
@@ -173,7 +172,7 @@ where
     &mut state.borrow_mut().resource_table,
     conn_rid,
   )
-  .unwrap();
+  .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?;
   let io = TokioIo::new(stream);
   let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
   tokio::task::spawn(conn.with_upgrades());
@@ -381,7 +380,7 @@ pub async fn op_node_http_await_response(
 pub async fn op_node_http_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(ResourceId, Option<ExtraResponseInfo>), ConnError> {
+) -> Result<(ResourceId, Option<(String, u16, String, u16)>), ConnError> {
   let raw_response = state
     .borrow_mut()
     .resource_table
@@ -400,12 +399,12 @@ pub async fn op_node_http_fetch_response_upgrade(
     (
       Ok(NetworkStreamAddress::Ip(local)),
       Ok(NetworkStreamAddress::Ip(peer)),
-    ) => Some(ExtraResponseInfo {
-      local_ip: local.ip().to_string(),
-      local_port: local.port(),
-      remote_ip: peer.ip().to_string(),
-      remote_port: peer.port(),
-    }),
+    ) => Some((
+      local.ip().to_string(),
+      local.port(),
+      peer.ip().to_string(),
+      peer.port(),
+    )),
     _ => None,
   };
 

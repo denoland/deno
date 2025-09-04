@@ -653,13 +653,13 @@ class ClientRequest extends OutgoingMessage {
             upgradeRid,
             {
               transport: "tcp",
-              hostname: info.remoteIp,
-              port: info.remotePort,
+              hostname: info[0],
+              port: info[1],
             },
             {
               transport: "tcp",
-              hostname: info.localIp,
-              port: info.localPort,
+              hostname: info[2],
+              port: info[3],
             },
           );
           const socket = new Socket({
@@ -2091,7 +2091,7 @@ export class ServerImpl extends EventEmitter {
       req[kRawHeaders] = request.headers;
 
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
-        const { conn, response } = upgradeHttpRaw(request, true);
+        const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({
           handle: new TCP(constants.SERVER, conn),
         });

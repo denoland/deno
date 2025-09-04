@@ -6,11 +6,9 @@ use std::future::Future;
 use std::future::poll_fn;
 use std::io;
 use std::pin::Pin;
-use std::pin::pin;
 use std::ptr::null;
 use std::rc::Rc;
 
-use bytes::Bytes;
 use cache_control::CacheControl;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -32,11 +30,8 @@ use deno_core::serde_v8::from_v8;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
 use deno_core::v8;
-use deno_error::JsErrorBox;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
-use deno_net::raw::NetworkStreamReadHalf;
-use deno_net::raw::NetworkStreamWriteHalf;
 use deno_websocket::ws_create_server_stream;
 use fly_accept_encoding::Encoding;
 use hyper::StatusCode;
@@ -194,7 +189,7 @@ pub enum HttpNextError {
 
 #[op2(fast)]
 #[smi]
-pub fn op_http_upgrade_raw_with_parsing(
+pub fn op_http_upgrade_raw(
   state: Rc<RefCell<OpState>>,
   external: *const c_void,
 ) -> Result<ResourceId, HttpNextError> {
@@ -232,32 +227,12 @@ pub fn op_http_upgrade_raw_with_parsing(
   });
 
   let (r, w) = tokio::io::split(d1);
-  Ok(state.borrow_mut().resource_table.add(UpgradeStream::new(
-    UpgradeStreamReadHalf::Duplex(r),
-    UpgradeStreamWriteHalf::Duplex(w),
-  )))
-}
-
-#[op2(async)]
-#[smi]
-pub async fn op_http_upgrade_raw(
-  state: Rc<RefCell<OpState>>,
-  external: *const c_void,
-) -> Result<ResourceId, HttpNextError> {
-  let upgrade = {
-    // SAFETY: op is called with external.
-    let http = unsafe { clone_external!(external, "op_http_upgrade_raw") };
-    http.upgrade()?
-  };
-
-  let upgraded = upgrade.await?;
-  let (stream, request_bytes) = extract_network_stream(upgraded);
-  let (r, w) = stream.into_split();
-
-  Ok(state.borrow_mut().resource_table.add(UpgradeStream::new(
-    UpgradeStreamReadHalf::Network(r, request_bytes),
-    UpgradeStreamWriteHalf::Network(w),
-  )))
+  Ok(
+    state
+      .borrow_mut()
+      .resource_table
+      .add(UpgradeStream::new(r, w)),
+  )
 }
 
 #[op2(async)]
@@ -842,40 +817,6 @@ pub async fn op_http_set_response_body_resource(
   );
 
   Ok(http.response_body_finished().await)
-}
-
-#[op2(async)]
-pub async fn op_http_set_response_upgrade(
-  state: Rc<RefCell<OpState>>,
-  external: *const c_void,
-  #[smi] rid: ResourceId,
-) -> Result<(), HttpNextError> {
-  let http =
-    // SAFETY: op is called with external.
-    unsafe { take_external!(external, "op_http_set_response_body_resource") };
-
-  let res = state
-    .borrow_mut()
-    .resource_table
-    .take::<deno_fetch::FetchResponseResource>(rid)?;
-  let mut res = res
-    .take()
-    .await
-    .map_err(|e| HttpNextError::Other(JsErrorBox::from_err(e)))?;
-  let res_upgrade = hyper::upgrade::on(&mut res).await?;
-
-  let req_upgrade = http.upgrade()?;
-  set_promise_complete(http, 101);
-
-  let req_upgrade = req_upgrade.await?;
-
-  let _ = tokio::io::copy_bidirectional(
-    &mut TokioIo::new(res_upgrade),
-    &mut TokioIo::new(req_upgrade),
-  )
-  .await;
-
-  Ok(())
 }
 
 #[op2(fast)]
@@ -1467,26 +1408,16 @@ pub async fn op_http_close(
   Ok(())
 }
 
-enum UpgradeStreamReadHalf {
-  Duplex(tokio::io::ReadHalf<tokio::io::DuplexStream>),
-  Network(NetworkStreamReadHalf, Bytes),
-}
-
-enum UpgradeStreamWriteHalf {
-  Duplex(tokio::io::WriteHalf<tokio::io::DuplexStream>),
-  Network(NetworkStreamWriteHalf),
-}
-
 struct UpgradeStream {
-  read: AsyncRefCell<UpgradeStreamReadHalf>,
-  write: AsyncRefCell<UpgradeStreamWriteHalf>,
+  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
+  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
   cancel_handle: CancelHandle,
 }
 
 impl UpgradeStream {
   pub fn new(
-    read: UpgradeStreamReadHalf,
-    write: UpgradeStreamWriteHalf,
+    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
+    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
   ) -> Self {
     Self {
       read: AsyncRefCell::new(read),
@@ -1503,18 +1434,7 @@ impl UpgradeStream {
     async {
       let read = RcRef::map(self, |this| &this.read);
       let mut read = read.borrow_mut().await;
-      match &mut *read {
-        UpgradeStreamReadHalf::Duplex(d) => pin!(d).read(buf).await,
-        UpgradeStreamReadHalf::Network(d, bytes) => {
-          if !bytes.is_empty() {
-            let n = bytes.len().min(buf.len());
-            buf[0..n].copy_from_slice(&bytes.split_to(n));
-            Ok(n)
-          } else {
-            pin!(d).read(buf).await
-          }
-        }
-      }
+      Pin::new(&mut *read).read(buf).await
     }
     .try_or_cancel(cancel_handle)
     .await
@@ -1525,10 +1445,7 @@ impl UpgradeStream {
     async {
       let write = RcRef::map(self, |this| &this.write);
       let mut write = write.borrow_mut().await;
-      match &mut *write {
-        UpgradeStreamWriteHalf::Duplex(d) => pin!(d).write(buf).await,
-        UpgradeStreamWriteHalf::Network(d) => pin!(d).write(buf).await,
-      }
+      Pin::new(&mut *write).write(buf).await
     }
     .try_or_cancel(cancel_handle)
     .await
@@ -1543,10 +1460,7 @@ impl UpgradeStream {
 
     let total = buf1.len() + buf2.len();
     let mut bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
-    let mut nwritten = match &mut *wr {
-      UpgradeStreamWriteHalf::Duplex(d) => d.write_vectored(&bufs).await?,
-      UpgradeStreamWriteHalf::Network(d) => d.write_vectored(&bufs).await?,
-    };
+    let mut nwritten = wr.write_vectored(&bufs).await?;
     if nwritten == total {
       return Ok(nwritten);
     }
@@ -1554,19 +1468,12 @@ impl UpgradeStream {
     // Slightly more optimized than (unstable) write_all_vectored for 2 iovecs.
     while nwritten <= buf1.len() {
       bufs[0] = std::io::IoSlice::new(&buf1[nwritten..]);
-      nwritten += match &mut *wr {
-        UpgradeStreamWriteHalf::Duplex(d) => d.write_vectored(&bufs).await?,
-        UpgradeStreamWriteHalf::Network(d) => d.write_vectored(&bufs).await?,
-      };
+      nwritten += wr.write_vectored(&bufs).await?;
     }
 
     // First buffer out of the way.
     if nwritten < total && nwritten > buf1.len() {
-      let buf = &buf2[nwritten - buf1.len()..];
-      match &mut *wr {
-        UpgradeStreamWriteHalf::Duplex(d) => d.write_all(buf).await?,
-        UpgradeStreamWriteHalf::Network(d) => d.write_all(buf).await?,
-      }
+      wr.write_all(&buf2[nwritten - buf1.len()..]).await?;
     }
 
     Ok(total)

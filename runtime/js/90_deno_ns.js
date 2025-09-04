@@ -195,7 +195,6 @@ denoNsUnstableById[unstableIds.net] = {
     op_net_listen_udp,
     op_net_listen_unixpacket,
   ),
-  upgradeHttpRaw: (obj) => serve.upgradeHttpRaw(obj),
 };
 
 ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
