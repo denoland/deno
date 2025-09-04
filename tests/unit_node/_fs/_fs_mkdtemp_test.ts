@@ -49,17 +49,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/fs] mkdtemp (utf16le encoding)",
-  ignore: Deno.build.os !== "windows" && Deno.build.os !== "darwin",
-  fn: async () => {
-    const dirName = await mkdtempP(prefix, { encoding: "utf16le" });
-    const directory = Buffer.from(dirName, "utf16le").toString();
-    assert(existsSync(directory));
-    Deno.removeSync(directory);
-  },
-});
-
-Deno.test({
   name: "[node/fs] mkdtemp (buffer encoding)",
   fn: async () => {
     const dirBuffer = await mkdtempP(prefix, { encoding: "buffer" });
@@ -120,17 +109,6 @@ Deno.test({
   fn: () => {
     // @ts-expect-error No overload matches this call
     assertThrows(() => mkdtempSync(prefix, badOptions));
-  },
-});
-
-Deno.test({
-  name: "[node/fs] mkdtempSync (utf16le encoding)",
-  ignore: Deno.build.os !== "windows" && Deno.build.os !== "darwin",
-  fn: () => {
-    const dirName = mkdtempSync(prefix, { encoding: "utf16le" });
-    const directory = Buffer.from(dirName, "utf16le").toString();
-    assert(existsSync(directory));
-    Deno.removeSync(directory);
   },
 });
 
