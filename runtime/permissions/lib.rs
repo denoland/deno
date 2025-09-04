@@ -76,7 +76,14 @@ where
 
   let mut file = file.lock();
 
-  let mut map = serde_json::Map::with_capacity(3);
+  let mut map = serde_json::Map::with_capacity(5);
+  let _ = map.insert("v".into(), serde_json::Value::Number(1.into()).unwrap());
+  let _ = map.insert(
+    "datetime".into(),
+    serde_json::Value::String(
+      chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    ),
+  );
   let _ = map.insert(
     "permission".into(),
     serde_json::to_value(flag_name).unwrap(),
