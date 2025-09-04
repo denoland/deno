@@ -2,13 +2,14 @@
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::webidl::WebIdlInterfaceConverter;
 use indexmap::IndexMap;
 
 use crate::Instance;
 use crate::bind_group_layout::GPUBindGroupLayout;
+use crate::error::GPUGenericError;
 use crate::shader::GPUShaderModule;
 use crate::webidl::GPUPipelineLayoutOrGPUAutoLayoutMode;
 
@@ -38,6 +39,12 @@ impl GarbageCollected for GPUComputePipeline {
 
 #[op2]
 impl GPUComputePipeline {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUComputePipeline, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -79,7 +86,7 @@ pub(crate) struct GPUComputePipelineDescriptor {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPUProgrammableStage {
-  pub module: Ptr<GPUShaderModule>,
+  pub module: Ref<GPUShaderModule>,
   pub entry_point: Option<String>,
   #[webidl(default = Default::default())]
   pub constants: IndexMap<String, f64>,

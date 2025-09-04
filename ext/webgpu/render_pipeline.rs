@@ -2,7 +2,7 @@
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlInterfaceConverter;
@@ -10,6 +10,7 @@ use indexmap::IndexMap;
 
 use crate::Instance;
 use crate::bind_group_layout::GPUBindGroupLayout;
+use crate::error::GPUGenericError;
 use crate::sampler::GPUCompareFunction;
 use crate::shader::GPUShaderModule;
 use crate::texture::GPUTextureFormat;
@@ -41,6 +42,12 @@ impl GarbageCollected for GPURenderPipeline {
 
 #[op2]
 impl GPURenderPipeline {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPURenderPipeline, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -163,7 +170,7 @@ impl From<GPUStencilOperation> for wgpu_types::StencilOperation {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPUVertexState {
-  pub module: Ptr<GPUShaderModule>,
+  pub module: Ref<GPUShaderModule>,
   pub entry_point: Option<String>,
   #[webidl(default = Default::default())]
   pub constants: IndexMap<String, f64>,
@@ -174,7 +181,7 @@ pub(crate) struct GPUVertexState {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPUFragmentState {
-  pub module: Ptr<GPUShaderModule>,
+  pub module: Ref<GPUShaderModule>,
   pub entry_point: Option<String>,
   #[webidl(default = Default::default())]
   pub constants: IndexMap<String, f64>,

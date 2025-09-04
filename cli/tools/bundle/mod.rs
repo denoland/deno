@@ -2,6 +2,7 @@
 
 mod esbuild;
 mod externals;
+mod provider;
 mod transform;
 
 use std::borrow::Cow;
@@ -16,7 +17,12 @@ use std::time::Duration;
 
 use deno_ast::EmitOptions;
 use deno_ast::MediaType;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
+use deno_bundle_runtime::BundleFormat;
+use deno_bundle_runtime::BundlePlatform;
+use deno_bundle_runtime::PackageHandling;
+use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
@@ -27,6 +33,7 @@ use deno_error::JsError;
 use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_path_util::resolve_url_or_path;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::graph::ResolveWithGraphError;
 use deno_resolver::graph::ResolveWithGraphOptions;
 use deno_resolver::loader::LoadCodeSourceError;
@@ -48,24 +55,23 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageSubpathResolveError;
+pub use provider::CliBundleProvider;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
-use crate::args::BundleFormat;
-use crate::args::BundlePlatform;
 use crate::args::Flags;
-use crate::args::PackageHandling;
-use crate::args::SourceMapType;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::module_loader::CliDenoResolverModuleLoader;
+use crate::module_loader::CliEmitter;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::PrepareModuleLoadOptions;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
+use crate::resolver::CliCjsTracker;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
@@ -74,10 +80,10 @@ use crate::util::file_watcher::WatcherRestartMode;
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
 
-pub async fn bundle(
+pub async fn bundle_init(
   mut flags: Arc<Flags>,
-  bundle_flags: BundleFlags,
-) -> Result<(), AnyError> {
+  bundle_flags: &BundleFlags,
+) -> Result<EsbuildBundler, AnyError> {
   {
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
@@ -113,9 +119,11 @@ pub async fn bundle(
       Some(ExternalsMatcher::new(&bundle_flags.external, &init_cwd))
     },
     on_end_tx,
-    deferred_resolve_errors: Arc::new(Mutex::new(vec![])),
+    parsed_source_cache: factory.parsed_source_cache()?.clone(),
+    cjs_tracker: factory.cjs_tracker()?.clone(),
+    emitter: factory.emitter()?.clone(),
+    deferred_resolve_errors: Default::default(),
   });
-  let start = std::time::Instant::now();
 
   let resolved_entrypoints =
     resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
@@ -142,7 +150,7 @@ pub async fn bundle(
     log::warn!("esbuild exited: {:?}", res);
   });
 
-  let esbuild_flags = configure_esbuild_flags(&bundle_flags);
+  let esbuild_flags = configure_esbuild_flags(bundle_flags);
   let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
   let bundler = EsbuildBundler::new(
     client,
@@ -156,7 +164,24 @@ pub async fn bundle(
     esbuild_flags,
     entries,
   );
+
+  Ok(bundler)
+}
+
+pub async fn bundle(
+  mut flags: Arc<Flags>,
+  bundle_flags: BundleFlags,
+) -> Result<(), AnyError> {
+  {
+    let flags_mut = Arc::make_mut(&mut flags);
+    flags_mut.unstable_config.sloppy_imports = true;
+  }
+  let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
+  let init_cwd = bundler.cwd.clone();
+  let start = std::time::Instant::now();
   let response = bundler.build().await?;
+  let end = std::time::Instant::now();
+  let duration = end.duration_since(start);
 
   if bundle_flags.watch {
     return bundle_watch(
@@ -171,7 +196,7 @@ pub async fn bundle(
   handle_esbuild_errors_and_warnings(
     &response,
     &init_cwd,
-    &plugin_handler.take_deferred_resolve_errors(),
+    &bundler.plugin_handler.take_deferred_resolve_errors(),
   );
 
   if response.errors.is_empty() {
@@ -179,12 +204,12 @@ pub async fn bundle(
     let output_infos = process_result(
       &response,
       &init_cwd,
-      *DISABLE_HACK && matches!(bundle_flags.platform, BundlePlatform::Deno),
+      should_replace_require_shim(bundle_flags.platform),
       bundle_flags.minify,
     )?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
-      print_finished_message(&metafile, &output_infos, start.elapsed())?;
+      print_finished_message(&metafile, &output_infos, duration)?;
     }
   }
 
@@ -254,7 +279,7 @@ async fn bundle_watch(
           let output_infos = process_result(
             &response,
             &bundler.cwd,
-            *DISABLE_HACK && matches!(platform, BundlePlatform::Deno),
+            should_replace_require_shim(platform),
             minified,
           )?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
@@ -277,6 +302,10 @@ async fn bundle_watch(
   Ok(())
 }
 
+pub fn should_replace_require_shim(platform: BundlePlatform) -> bool {
+  *DISABLE_HACK && matches!(platform, BundlePlatform::Deno)
+}
+
 fn get_input_paths_for_watch(response: &BuildResponse) -> Vec<PathBuf> {
   let metafile = serde_json::from_str::<esbuild_client::Metafile>(
     response
@@ -294,7 +323,7 @@ fn get_input_paths_for_watch(response: &BuildResponse) -> Vec<PathBuf> {
     .collect::<Vec<_>>()
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BundlingMode {
   OneShot,
   Watch,
@@ -372,6 +401,7 @@ impl EsbuildBundler {
       .send_build_request(self.make_build_request())
       .await
       .unwrap();
+
     Ok(response)
   }
 
@@ -550,12 +580,66 @@ pub struct DenoPluginHandler {
   externals_matcher: Option<ExternalsMatcher>,
   on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
   deferred_resolve_errors: Arc<Mutex<Vec<DeferredResolveError>>>,
+
+  parsed_source_cache: Arc<ParsedSourceCache>,
+  cjs_tracker: Arc<CliCjsTracker>,
+  emitter: Arc<CliEmitter>,
 }
 
 impl DenoPluginHandler {
   fn take_deferred_resolve_errors(&self) -> Vec<DeferredResolveError> {
     std::mem::take(&mut *self.deferred_resolve_errors.lock())
   }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum PluginImportKind {
+  EntryPoint,
+  ImportStatement,
+  RequireCall,
+  DynamicImport,
+  RequireResolve,
+  ImportRule,
+  ComposesFrom,
+  UrlToken,
+}
+
+impl From<protocol::ImportKind> for PluginImportKind {
+  fn from(kind: protocol::ImportKind) -> Self {
+    match kind {
+      protocol::ImportKind::EntryPoint => PluginImportKind::EntryPoint,
+      protocol::ImportKind::ImportStatement => {
+        PluginImportKind::ImportStatement
+      }
+      protocol::ImportKind::RequireCall => PluginImportKind::RequireCall,
+      protocol::ImportKind::DynamicImport => PluginImportKind::DynamicImport,
+      protocol::ImportKind::RequireResolve => PluginImportKind::RequireResolve,
+      protocol::ImportKind::ImportRule => PluginImportKind::ImportRule,
+      protocol::ImportKind::ComposesFrom => PluginImportKind::ComposesFrom,
+      protocol::ImportKind::UrlToken => PluginImportKind::UrlToken,
+    }
+  }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PluginOnResolveArgs {
+  path: String,
+  importer: Option<String>,
+  kind: PluginImportKind,
+  namespace: Option<String>,
+  resolve_dir: Option<String>,
+  with: IndexMap<String, String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PluginOnLoadArgs {
+  path: String,
+  namespace: String,
+  suffix: String,
+  with: IndexMap<String, String>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -576,6 +660,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         ..Default::default()
       }));
     }
+
     let result = self.bundle_resolve(
       &args.path,
       args.importer.as_deref(),
@@ -589,7 +674,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       Err(e) => {
         return Ok(Some(esbuild_client::OnResolveResult {
           errors: Some(vec![esbuild_client::protocol::PartialMessage {
-            id: "myerror".into(),
+            id: "deno_error".into(),
             plugin_name: "deno".into(),
             text: e.to_string(),
             ..Default::default()
@@ -633,6 +718,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
+    log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_load"));
     let result = self
       .bundle_load(&args.path, &requested_type_from_map(&args.with))
       .await;
@@ -684,7 +770,6 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnEndArgs,
   ) -> Result<Option<esbuild_client::OnEndResult>, AnyError> {
-    log::debug!("{}: {_args:?}", deno_terminal::colors::magenta("on_end"));
     self.on_end_tx.send(_args).await?;
     Ok(None)
   }
@@ -726,11 +811,27 @@ pub enum BundleLoadError {
   #[error("UTF-8 conversion error")]
   Utf8(#[from] std::str::Utf8Error),
   #[class(generic)]
+  #[error("UTF-8 conversion error")]
+  StringUtf8(#[from] std::string::FromUtf8Error),
+  #[class(generic)]
   #[error("Parse error")]
   Parse(#[from] deno_ast::ParseDiagnostic),
   #[class(generic)]
   #[error("Emit error")]
   Emit(#[from] deno_ast::EmitError),
+  #[class(generic)]
+  #[error("Prepare module load error")]
+  PrepareModuleLoad(#[from] crate::module_loader::PrepareModuleLoadError),
+
+  #[class(generic)]
+  #[error("Package.json load error")]
+  PackageJsonLoadError(#[from] node_resolver::errors::PackageJsonLoadError),
+
+  #[class(generic)]
+  #[error("Emit parsed source helper error")]
+  EmitParsedSourceHelperError(
+    #[from] deno_resolver::emit::EmitParsedSourceHelperError,
+  ),
 }
 
 impl BundleLoadError {
@@ -901,7 +1002,7 @@ impl DenoPluginHandler {
   async fn prepare_module_load(
     &self,
     specifiers: &[ModuleSpecifier],
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), BundleLoadError> {
     let mut graph_permit =
       self.module_graph_container.acquire_update_permit().await;
     let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
@@ -941,23 +1042,15 @@ impl DenoPluginHandler {
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
-    let (specifier, media_type, loader) =
+    let (specifier, media_type) =
       if let RequestedModuleType::Bytes = requested_type {
-        (
-          specifier,
-          MediaType::Unknown,
-          esbuild_client::BuiltinLoader::Binary,
-        )
+        (specifier, MediaType::Unknown)
       } else if let RequestedModuleType::Text = requested_type {
-        (
-          specifier,
-          MediaType::Unknown,
-          esbuild_client::BuiltinLoader::Text,
-        )
-      } else if let Some((specifier, media_type, loader)) =
+        (specifier, MediaType::Unknown)
+      } else if let Some((specifier, media_type, _)) =
         self.specifier_and_type_from_graph(&specifier)?
       {
-        (specifier, media_type, loader)
+        (specifier, media_type)
       } else {
         log::debug!(
           "{}: no specifier and type from graph for {}",
@@ -979,13 +1072,76 @@ impl DenoPluginHandler {
         if media_type == deno_media_type::MediaType::Unknown {
           return Ok(None);
         }
-        (specifier, media_type, media_type_to_loader(media_type))
+        (specifier, media_type)
       };
+
     let graph = self.module_graph_container.graph();
     let module_or_asset = self
       .module_loader
       .load(&graph, &specifier, None, requested_type)
-      .await?;
+      .await;
+    let module_or_asset = match module_or_asset {
+      Ok(module_or_asset) => module_or_asset,
+      Err(e) => match e.as_kind() {
+        LoadCodeSourceErrorKind::LoadUnpreparedModule(_) => {
+          let file = self
+            .file_fetcher
+            .fetch(&specifier, &self.permissions)
+            .await?;
+          let media_type = MediaType::from_specifier_and_headers(
+            &specifier,
+            file.maybe_headers.as_ref(),
+          );
+          match requested_type {
+            RequestedModuleType::Text | RequestedModuleType::Bytes => {
+              return self
+                .create_module_response(
+                  &graph,
+                  &specifier,
+                  media_type,
+                  &file.source,
+                  Some(requested_type),
+                )
+                .await
+                .map(Some);
+            }
+            RequestedModuleType::None
+            | RequestedModuleType::Json
+            | RequestedModuleType::Other(_) => {
+              if media_type.is_emittable() {
+                let str = String::from_utf8_lossy(&file.source);
+                let value = str.into();
+                let source = self
+                  .maybe_transpile(&file.url, media_type, &value, None)
+                  .await?;
+                return self
+                  .create_module_response(
+                    &graph,
+                    &file.url,
+                    media_type,
+                    source.as_bytes(),
+                    Some(requested_type),
+                  )
+                  .await
+                  .map(Some);
+              } else {
+                return self
+                  .create_module_response(
+                    &graph,
+                    &file.url,
+                    media_type,
+                    &file.source,
+                    Some(requested_type),
+                  )
+                  .await
+                  .map(Some);
+              }
+            }
+          }
+        }
+        _ => return Err(e.into()),
+      },
+    };
     let loaded_code = match module_or_asset {
       LoadedModuleOrAsset::Module(loaded_module) => loaded_module.source,
       LoadedModuleOrAsset::ExternalAsset {
@@ -1000,6 +1156,40 @@ impl DenoPluginHandler {
       ),
     };
 
+    Ok(Some(
+      self
+        .create_module_response(
+          &graph,
+          &specifier,
+          media_type,
+          loaded_code.as_bytes(),
+          Some(requested_type),
+        )
+        .await?,
+    ))
+  }
+
+  async fn create_module_response(
+    &self,
+    graph: &deno_graph::ModuleGraph,
+    specifier: &Url,
+    media_type: MediaType,
+    source: &[u8],
+    requested_type: Option<&RequestedModuleType<'_>>,
+  ) -> Result<(Vec<u8>, esbuild_client::BuiltinLoader), BundleLoadError> {
+    match requested_type {
+      Some(RequestedModuleType::Text) => {
+        return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Text));
+      }
+      Some(RequestedModuleType::Bytes) => {
+        return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Binary));
+      }
+      Some(RequestedModuleType::Json) => {
+        return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Json));
+      }
+      Some(RequestedModuleType::Other(_) | RequestedModuleType::None)
+      | None => {}
+    }
     if matches!(
       media_type,
       MediaType::JavaScript
@@ -1010,32 +1200,66 @@ impl DenoPluginHandler {
         | MediaType::Cts
         | MediaType::Jsx
         | MediaType::Tsx
-    ) && !graph.roots.contains(&specifier)
+    ) && !graph.roots.contains(specifier)
     {
-      let code = self.apply_transform(
-        &specifier,
-        media_type,
-        std::str::from_utf8(loaded_code.as_bytes())?,
-      )?;
-      Ok(Some((code.into_bytes(), loader)))
+      let module_graph_container = self.module_graph_container.clone();
+      let specifier = specifier.clone();
+      let code = source.to_vec();
+      let code = tokio::task::spawn_blocking(move || {
+        Self::apply_transform(
+          &module_graph_container,
+          &specifier,
+          media_type,
+          &String::from_utf8(code)?,
+        )
+      })
+      .await
+      .unwrap()?;
+      Ok((code.into_bytes(), media_type_to_loader(media_type)))
     } else {
-      Ok(Some((loaded_code.as_bytes().to_vec(), loader)))
+      Ok((source.to_vec(), media_type_to_loader(media_type)))
     }
+  }
+
+  async fn maybe_transpile(
+    &self,
+    specifier: &Url,
+    media_type: MediaType,
+    source: &Arc<str>,
+    is_known_script: Option<bool>,
+  ) -> Result<Arc<str>, BundleLoadError> {
+    let parsed_source = self.parsed_source_cache.get_matching_parsed_source(
+      specifier,
+      media_type,
+      source.clone(),
+    )?;
+    let is_cjs = if let Some(is_known_script) = is_known_script {
+      self.cjs_tracker.is_cjs_with_known_is_script(
+        specifier,
+        media_type,
+        is_known_script,
+      )?
+    } else {
+      self.cjs_tracker.is_maybe_cjs(specifier, media_type)?
+        && parsed_source.compute_is_script()
+    };
+    let module_kind = ModuleKind::from_is_cjs(is_cjs);
+    let source = self
+      .emitter
+      .maybe_emit_parsed_source(parsed_source, module_kind)
+      .await?;
+    Ok(source)
   }
 
   #[allow(clippy::result_large_err)]
   fn apply_transform(
-    &self,
+    module_graph_container: &MainModuleGraphContainer,
     specifier: &ModuleSpecifier,
     media_type: deno_ast::MediaType,
     code: &str,
   ) -> Result<String, BundleLoadError> {
     let mut transform = transform::BundleImportMetaMainTransform::new(
-      self
-        .module_graph_container
-        .graph()
-        .roots
-        .contains(specifier),
+      module_graph_container.graph().roots.contains(specifier),
     );
     let parsed_source = deno_ast::parse_program_with_post_process(
       deno_ast::ParseParams {
@@ -1284,10 +1508,10 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   builder.metafile(true);
 
   match bundle_flags.platform {
-    crate::args::BundlePlatform::Browser => {
+    deno_bundle_runtime::BundlePlatform::Browser => {
       builder.platform(esbuild_client::Platform::Browser);
     }
-    crate::args::BundlePlatform::Deno => {}
+    deno_bundle_runtime::BundlePlatform::Deno => {}
   }
 
   builder.build().unwrap()
@@ -1351,12 +1575,43 @@ fn is_js(path: &Path) -> bool {
   }
 }
 
-struct OutputFileInfo {
+pub struct OutputFileInfo {
   relative_path: PathBuf,
   size: usize,
   is_js: bool,
 }
-fn process_result(
+
+pub struct ProcessedContents {
+  contents: Option<Vec<u8>>,
+  is_js: bool,
+}
+
+pub fn maybe_process_contents(
+  file: &esbuild_client::protocol::BuildOutputFile,
+  should_replace_require_shim: bool,
+  minified: bool,
+) -> Result<ProcessedContents, AnyError> {
+  let path = Path::new(&file.path);
+  let is_js = is_js(path) || file.path.ends_with("<stdout>");
+  if is_js {
+    let string = String::from_utf8(file.contents.clone())?;
+    let string = if should_replace_require_shim {
+      replace_require_shim(&string, minified)
+    } else {
+      string
+    };
+    Ok(ProcessedContents {
+      contents: Some(string.into_bytes()),
+      is_js,
+    })
+  } else {
+    Ok(ProcessedContents {
+      contents: None,
+      is_js,
+    })
+  }
+}
+pub fn process_result(
   response: &BuildResponse,
   cwd: &Path,
   should_replace_require_shim: bool,
@@ -1370,21 +1625,16 @@ fn process_result(
     .unwrap_or_default();
   let mut output_infos = Vec::new();
   for file in output_files.iter() {
+    let processed_contents =
+      maybe_process_contents(file, should_replace_require_shim, minified)?;
     let path = Path::new(&file.path);
     let relative_path =
       pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
-    let is_js = is_js(path);
-    let bytes = if is_js || file.path.ends_with("<stdout>") {
-      let string = String::from_utf8(file.contents.clone())?;
-      let string = if should_replace_require_shim {
-        replace_require_shim(&string, minified)
-      } else {
-        string
-      };
-      Cow::Owned(string.into_bytes())
-    } else {
-      Cow::Borrowed(&file.contents)
-    };
+    let is_js = processed_contents.is_js;
+    let bytes = processed_contents
+      .contents
+      .map(Cow::Owned)
+      .unwrap_or_else(|| Cow::Borrowed(&file.contents));
 
     if file.path.ends_with("<stdout>") {
       crate::display::write_to_stdout_ignore_sigpipe(bytes.as_slice())?;

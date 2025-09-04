@@ -9,6 +9,7 @@ members = [
   "cli/rt",
   "cli/snapshot",
   "ext/broadcast_channel",
+  "ext/bundle",
   "ext/cache",
   "ext/canvas",
   "ext/console",
@@ -61,13 +62,13 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.50.0", features = ["transpiling"] }
-deno_core = { version = "0.355.0" }
+deno_core = { version = "0.356.0" }
 
 deno_cache_dir = "=0.25.0"
 deno_doc = "=0.183.0"
 deno_error = "=0.7.0"
 deno_graph = { version = "=0.100.0", default-features = false }
-deno_lint = "=0.78.0"
+deno_lint = "=0.80.0"
 deno_lockfile = "=0.31.2"
 deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
@@ -87,6 +88,7 @@ denokv_sqlite = { default-features = false, version = "0.12.0" }
 
 # exts
 deno_broadcast_channel = { version = "0.208.0", path = "./ext/broadcast_channel" }
+deno_bundle_runtime = { version = "0.1.0", path = "./ext/bundle" }
 deno_cache = { version = "0.146.0", path = "./ext/cache" }
 deno_canvas = { version = "0.83.0", path = "./ext/canvas" }
 deno_console = { version = "0.214.0", path = "./ext/console" }
@@ -269,7 +271,7 @@ tower-lsp = { package = "deno_tower_lsp", version = "=0.4.3", features = ["propo
 tower-service = "0.3.2"
 tracing = "0.1"
 tracing-opentelemetry = "0.28.0"
-tracing-subscriber = "0.3.19"
+tracing-subscriber = "0.3.20"
 twox-hash = { version = "=2.1.0", features = ["std", "xxhash64"], default-features = false }
 typed-arena = "=2.0.2"
 url = { version = "2.5", features = ["serde", "expose_internals"] }

@@ -1275,6 +1275,9 @@ function toDenoArgs(args: string[]): [string[], string[], boolean] {
         // ignore --permission flag
       } else if (arg === "--pending-deprecation") {
         nodeOptions.push(arg);
+      } else if (StringPrototypeStartsWith(arg, "--experimental-")) {
+        // `--experimental-*` args are ignored, because most experimental Node features
+        // are implemented in Deno, but it doens't exactly match Deno's `--unstable-*` flags.
       } else {
         // Not a known flag that expects a value. Just copy it to the output.
         denoArgs.push(arg);

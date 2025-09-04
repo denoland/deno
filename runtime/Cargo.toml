@@ -40,6 +40,7 @@ path = "lib.rs"
 [dependencies]
 deno_ast = { workspace = true, optional = true }
 deno_broadcast_channel.workspace = true
+deno_bundle_runtime.workspace = true
 deno_cache.workspace = true
 deno_canvas.workspace = true
 deno_console.workspace = true
@@ -74,7 +75,7 @@ deno_websocket.workspace = true
 deno_webstorage.workspace = true
 node_resolver = { workspace = true, features = ["sync"] }
 
-chrono = { workspace = true, features = ["now"] }
+async-trait.workspace = true
 color-print.workspace = true
 encoding_rs.workspace = true
 fastwebsockets.workspace = true
@@ -82,10 +83,12 @@ http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
+indexmap.workspace = true
 libc.workspace = true
 log.workspace = true
 notify.workspace = true
 once_cell.workspace = true
+regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file.workspace = true
 serde.workspace = true
