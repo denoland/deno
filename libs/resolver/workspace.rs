@@ -379,7 +379,7 @@ impl SloppyImportsResolutionReason {
 
 #[derive(Debug)]
 struct SloppyImportsResolver<TSys: FsMetadata> {
-  compiler_options_resolver: CompilerOptionsResolverCell,
+  compiler_options_resolver: CompilerOptionsResolverCellRc,
   fs: CachedMetadataFs<TSys>,
   enabled_by_options: bool,
 }
@@ -387,7 +387,7 @@ struct SloppyImportsResolver<TSys: FsMetadata> {
 impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
   fn new(
     fs: CachedMetadataFs<TSys>,
-    compiler_options_resolver: CompilerOptionsResolverCell,
+    compiler_options_resolver: CompilerOptionsResolverCellRc,
     options: SloppyImportsOptions,
   ) -> Self {
     Self {
@@ -784,7 +784,7 @@ impl fmt::Display for WorkspaceResolverDiagnostic<'_> {
 }
 
 #[allow(clippy::disallowed_types)]
-type CompilerOptionsResolverCell =
+type CompilerOptionsResolverCellRc =
   deno_maybe_sync::MaybeArc<RwLock<CompilerOptionsResolverRc>>;
 
 #[derive(Debug)]
@@ -796,7 +796,7 @@ pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   pkg_json_dep_resolution: PackageJsonDepResolution,
   sloppy_imports_options: SloppyImportsOptions,
   fs_cache_options: FsCacheOptions,
-  compiler_options_resolver: CompilerOptionsResolverCell,
+  compiler_options_resolver: CompilerOptionsResolverCellRc,
   sloppy_imports_resolver: SloppyImportsResolverRc<TSys>,
 }
 
@@ -915,7 +915,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       .collect::<BTreeMap<_, _>>();
 
     let fs = CachedMetadataFs::new(sys, options.fs_cache_options);
-    let compiler_options_resolver = CompilerOptionsResolverCell::default();
+    let compiler_options_resolver = CompilerOptionsResolverCellRc::default();
     let sloppy_imports_resolver = new_rc(SloppyImportsResolver::new(
       fs,
       compiler_options_resolver.clone(),
@@ -970,7 +970,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       })
       .collect::<BTreeMap<_, _>>();
     let fs = CachedMetadataFs::new(sys, fs_cache_options);
-    let compiler_options_resolver = CompilerOptionsResolverCell::default();
+    let compiler_options_resolver = CompilerOptionsResolverCellRc::default();
     let sloppy_imports_resolver = new_rc(SloppyImportsResolver::new(
       fs,
       compiler_options_resolver.clone(),
