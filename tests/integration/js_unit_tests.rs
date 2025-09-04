@@ -6,6 +6,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use test_util as util;
+use test_util::TestContextBuilder;
 
 util::unit_test_factory!(
   js_unit_test,
@@ -118,8 +119,13 @@ util::unit_test_factory!(
 
 fn js_unit_test(test: String) {
   let _g = util::http_server();
+  let context = TestContextBuilder::new()
+    .add_npm_env_vars()
+    .use_http_server()
+    .build();
 
-  let mut deno = util::deno_cmd()
+  let mut deno = context
+    .new_command()
     .current_dir(util::root_path())
     .arg("test")
     .arg("--config")
