@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Ref;
 use deno_core::v8;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::IntOptions;
@@ -323,7 +323,7 @@ pub(crate) enum GPUAutoLayoutMode {
 }
 
 pub(crate) enum GPUPipelineLayoutOrGPUAutoLayoutMode {
-  PipelineLayout(Ptr<crate::pipeline_layout::GPUPipelineLayout>),
+  PipelineLayout(Ref<crate::pipeline_layout::GPUPipelineLayout>),
   AutoLayoutMode(GPUAutoLayoutMode),
 }
 

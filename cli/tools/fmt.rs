@@ -237,7 +237,7 @@ fn collect_fmt_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), files)
+  .collect_file_patterns(&CliSys::default(), &files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -1398,6 +1398,12 @@ fn get_typescript_config_builder(
     options.space_surrounding_properties
   {
     builder.space_surrounding_properties(space_surrounding_properties);
+    builder.import_declaration_space_surrounding_named_imports(
+      space_surrounding_properties,
+    );
+    builder.export_declaration_space_surrounding_named_exports(
+      space_surrounding_properties,
+    );
   }
 
   builder

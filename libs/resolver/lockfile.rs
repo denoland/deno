@@ -339,7 +339,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       api,
     )
     .await?;
-    let root_url = workspace.root_dir();
+    let root_url = workspace.root_dir_url();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),

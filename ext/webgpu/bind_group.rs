@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8::HandleScope;
 use deno_core::v8::Local;
@@ -16,6 +16,7 @@ use deno_core::webidl::WebIdlInterfaceConverter;
 
 use crate::Instance;
 use crate::buffer::GPUBuffer;
+use crate::error::GPUGenericError;
 use crate::sampler::GPUSampler;
 use crate::texture::GPUTextureView;
 
@@ -43,6 +44,12 @@ impl GarbageCollected for GPUBindGroup {
 
 #[op2]
 impl GPUBindGroup {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUBindGroup, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -61,7 +68,7 @@ pub(crate) struct GPUBindGroupDescriptor {
   #[webidl(default = String::new())]
   pub label: String,
 
-  pub layout: Ptr<super::bind_group_layout::GPUBindGroupLayout>,
+  pub layout: Ref<super::bind_group_layout::GPUBindGroupLayout>,
   pub entries: Vec<GPUBindGroupEntry>,
 }
 
@@ -76,7 +83,7 @@ pub(crate) struct GPUBindGroupEntry {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPUBufferBinding {
-  pub buffer: Ptr<GPUBuffer>,
+  pub buffer: Ref<GPUBuffer>,
   #[webidl(default = 0)]
   #[options(enforce_range = true)]
   pub offset: u64,
@@ -85,8 +92,8 @@ pub(crate) struct GPUBufferBinding {
 }
 
 pub(crate) enum GPUBindingResource {
-  Sampler(Ptr<GPUSampler>),
-  TextureView(Ptr<GPUTextureView>),
+  Sampler(Ref<GPUSampler>),
+  TextureView(Ref<GPUTextureView>),
   BufferBinding(GPUBufferBinding),
 }
 
@@ -100,7 +107,7 @@ impl<'a> WebIdlConverter<'a> for GPUBindingResource {
     context: ContextFn<'b>,
     options: &Self::Options,
   ) -> Result<Self, WebIdlError> {
-    <Ptr<GPUSampler>>::convert(
+    <Ref<GPUSampler>>::convert(
       scope,
       value,
       prefix.clone(),
@@ -109,7 +116,7 @@ impl<'a> WebIdlConverter<'a> for GPUBindingResource {
     )
     .map(Self::Sampler)
     .or_else(|_| {
-      <Ptr<GPUTextureView>>::convert(
+      <Ref<GPUTextureView>>::convert(
         scope,
         value,
         prefix.clone(),

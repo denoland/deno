@@ -9,6 +9,171 @@
 declare namespace Deno {
   export {}; // stop default export type behavior
 
+  /**
+   * @category Bundler
+   * @experimental
+   */
+  export namespace bundle {
+    /**
+     * The target platform of the bundle.
+     * @category Bundler
+     * @experimental
+     */
+    export type Platform = "browser" | "deno";
+
+    /**
+     * The output format of the bundle.
+     * @category Bundler
+     * @experimental
+     */
+    export type Format = "esm" | "cjs" | "iife";
+
+    /**
+     * The source map type of the bundle.
+     * @category Bundler
+     * @experimental
+     */
+    export type SourceMapType = "linked" | "inline" | "external";
+
+    /**
+     * How to handle packages.
+     *
+     * - `bundle`: packages are inlined into the bundle.
+     * - `external`: packages are excluded from the bundle, and treated as external dependencies.
+     * @category Bundler
+     * @experimental
+     */
+    export type PackageHandling = "bundle" | "external";
+
+    /**
+     * Options for the bundle.
+     * @category Bundler
+     * @experimental
+     */
+    export interface Options {
+      /**
+       * The entrypoints of the bundle.
+       */
+      entrypoints: string[];
+      /**
+       * Output file path.
+       */
+      outputPath?: string;
+      /**
+       * Output directory path.
+       */
+      outputDir?: string;
+      /**
+       * External modules to exclude from bundling.
+       */
+      external?: string[];
+      /**
+       * Bundle format.
+       */
+      format?: Format;
+      /**
+       * Whether to minify the output.
+       */
+      minify?: boolean;
+      /**
+       * Whether to enable code splitting.
+       */
+      codeSplitting?: boolean;
+      /**
+       * Whether to inline imports.
+       */
+      inlineImports?: boolean;
+      /**
+       * How to handle packages.
+       */
+      packages?: PackageHandling;
+      /**
+       * Source map configuration.
+       */
+      sourcemap?: SourceMapType;
+      /**
+       * Target platform.
+       */
+      platform?: Platform;
+
+      /**
+       * Whether to write the output to the filesystem.
+       *
+       * @default true if outputDir or outputPath is set, false otherwise
+       */
+      write?: boolean;
+    }
+
+    /**
+     * The location of a message.
+     * @category Bundler
+     * @experimental
+     */
+    export interface MessageLocation {
+      file: string;
+      namespace?: string;
+      line: number;
+      column: number;
+      length: number;
+      suggestion?: string;
+    }
+
+    /**
+     * A note about a message.
+     * @category Bundler
+     * @experimental
+     */
+    export interface MessageNote {
+      text: string;
+      location?: MessageLocation;
+    }
+
+    /**
+     * A message emitted from the bundler.
+     * @category Bundler
+     * @experimental
+     */
+    export interface Message {
+      text: string;
+      location?: MessageLocation;
+      notes?: MessageNote[];
+    }
+
+    /**
+     * An output file in the bundle.
+     * @category Bundler
+     * @experimental
+     */
+    export interface OutputFile {
+      path: string;
+      contents?: Uint8Array;
+      hash: string;
+      text(): string;
+    }
+
+    /**
+     * The result of bundling.
+     * @category Bundler
+     * @experimental
+     */
+    export interface Result {
+      errors: Message[];
+      warnings: Message[];
+      success: boolean;
+      outputFiles?: OutputFile[];
+    }
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Bundle Typescript/Javascript code
+   * @category Bundle
+   * @experimental
+   */
+  export function bundle(
+    options: Deno.bundle.Options,
+  ): Promise<Deno.bundle.Result>;
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    *  Creates a presentable WebGPU surface from given window and

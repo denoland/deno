@@ -63,7 +63,7 @@ pub async fn execute_script(
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() && !task_flags.eval {
     bail!(
-      "deno task couldn't find deno.json(c). See https://docs.deno.com/go/config"
+      "deno task couldn't find deno.json(c) or package.json. See https://docs.deno.com/go/config"
     )
   }
   let force_use_pkg_json =
@@ -824,7 +824,8 @@ fn print_available_tasks(
 
     if let Some(config) = config.deno_json.as_ref() {
       let is_root = !is_cwd_root_dir
-        && config.folder_url == *workspace_dir.workspace.root_dir().as_ref();
+        && config.folder_url
+          == *workspace_dir.workspace.root_dir_url().as_ref();
 
       for (name, definition) in &config.tasks {
         if !seen_task_names.insert(name) {
@@ -841,7 +842,8 @@ fn print_available_tasks(
 
     if let Some(config) = config.package_json.as_ref() {
       let is_root = !is_cwd_root_dir
-        && config.folder_url == *workspace_dir.workspace.root_dir().as_ref();
+        && config.folder_url
+          == *workspace_dir.workspace.root_dir_url().as_ref();
       for (name, script) in &config.tasks {
         if !seen_task_names.insert(name) {
           continue; // already seen
