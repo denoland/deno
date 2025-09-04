@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload dynamic_import_conditional.js",
+  "output": "dynamic_import_conditional.js.out"
+}

@@ -1,8 +1,8 @@
-FROM mcr.microsoft.com/vscode/devcontainers/rust:1-bullseye
+FROM mcr.microsoft.com/devcontainers/rust:1
 
 # Install cmake
 RUN apt-get update \
-  && apt-get install -y cmake \
+  && apt-get install -y cmake clang \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Deno

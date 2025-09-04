@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --check error_for_await.ts",
+  "output": "error_for_await.ts.out",
+  "exitCode": 1
+}

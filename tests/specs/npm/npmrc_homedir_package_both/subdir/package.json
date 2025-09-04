@@ -1,0 +1,8 @@
+{
+  "name": "npmrc_homedir_package_both",
+  "version": "0.0.1",
+  "dependencies": {
+    "@denotest/basic": "1.0.0",
+    "@denotest2/basic": "1.0.0"
+  }
+}

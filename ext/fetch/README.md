@@ -57,8 +57,8 @@ Object.defineProperty(globalThis, "FormData", {
 ```
 
 Then from rust, provide
-`deno_fetch::deno_fetch::init_ops_and_esm<Permissions>(Default::default())` in
-the `extensions` field of your `RuntimeOptions`
+`deno_fetch::deno_fetch::init<Permissions>(Default::default())` in the
+`extensions` field of your `RuntimeOptions`
 
 Where:
 

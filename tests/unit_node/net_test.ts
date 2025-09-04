@@ -1,11 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-// deno-lint-ignore-file no-console
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
 import * as path from "@std/path";
 import * as http from "node:http";
+import * as dns from "node:dns";
+import util from "node:util";
+import console from "node:console";
 
 Deno.test("[node/net] close event emits after error event - when host is not found", async () => {
   const socket = net.createConnection(27009, "doesnotexist");
@@ -88,7 +89,7 @@ Deno.test("[node/net] net.connect().unref() works", async () => {
             const socket = net.connect(${port}, "${hostname}", () => {
               console.log("connected");
               socket.unref();
-              socket.on("data", (data) => console.log(data.toString()));
+              socket.on("data", (data) => data.toString());
               socket.write("GET / HTTP/1.1\\n\\n");
             });
           `,
@@ -246,4 +247,39 @@ Deno.test("[node/net] net.Server can listen on the same port immediately after i
     });
   });
   await serverClosed.promise;
+});
+
+Deno.test("dns.resolve with ttl", async () => {
+  const d1 = Promise.withResolvers();
+  dns.resolve4("www.example.com", { ttl: true }, (err, addresses) => {
+    if (err) {
+      d1.reject(err);
+    } else {
+      d1.resolve(addresses);
+    }
+  });
+  // deno-lint-ignore no-explicit-any
+  const ret1 = await d1.promise as any[];
+  assert(ret1.length > 0);
+  assert(typeof ret1[0].ttl === "number");
+
+  const d2 = Promise.withResolvers();
+  dns.resolve4("www.example.com", (err, addresses) => {
+    if (err) {
+      d2.reject(err);
+    } else {
+      d2.resolve(addresses);
+    }
+  });
+  const ret2 = await d2.promise as string[];
+  assert(ret2.length > 0);
+  assert(typeof ret2[0] === "string");
+});
+
+Deno.test("[node/dns] dns.lookup (all=true) util promisify", async () => {
+  const lookup = util.promisify(dns.lookup);
+  const result = await lookup("localhost", { all: true });
+  assert(Array.isArray(result));
+  assert(typeof result[0].address === "string");
+  assert(typeof result[0].family === "number");
 });

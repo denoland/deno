@@ -1,0 +1,41 @@
+{
+  "tempDir": true,
+  "tests": {
+    "success": {
+      "steps": [{
+        "if": "unix",
+        "args": "compile --allow-read=data-file.txt --include data-file.txt --output main main.js",
+        "output": "[WILDCARD]"
+      }, {
+        "if": "unix",
+        "commandName": "./main",
+        "args": [],
+        "output": "output.out",
+        "exitCode": 0
+      }, {
+        "if": "windows",
+        "args": "compile --allow-read=data-file.txt --include data-file.txt --output main.exe main.js",
+        "output": "[WILDCARD]"
+      }, {
+        "if": "windows",
+        "commandName": "./main.exe",
+        "args": [],
+        "output": "output.out",
+        "exitCode": 0
+      }]
+    },
+    "non_existent": {
+      "steps": [{
+        "if": "unix",
+        "args": "compile --include does_not_exist.txt --output main main.js",
+        "output": "non_existent.out",
+        "exitCode": 1
+      }, {
+        "if": "windows",
+        "args": "compile --include does_not_exist.txt --output main.exe main.js",
+        "output": "non_existent.out",
+        "exitCode": 1
+      }]
+    }
+  }
+}

@@ -1,9 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assert, assertEquals } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
-import { pipeline } from "node:stream/promises";
-import { getDefaultHighWaterMark, Stream } from "node:stream";
+import { finished, pipeline } from "node:stream/promises";
+import {
+  getDefaultHighWaterMark,
+  promises,
+  Stream,
+  Writable,
+} from "node:stream";
+import { TextEncoderStream } from "node:stream/web";
 import { createReadStream, createWriteStream } from "node:fs";
 import { EventEmitter } from "node:events";
 
@@ -27,11 +33,68 @@ Deno.test("stream/promises pipeline", async () => {
 });
 
 Deno.test("stream getDefaultHighWaterMark", () => {
-  assertEquals(getDefaultHighWaterMark(false), 16 * 1024);
+  assertEquals(
+    getDefaultHighWaterMark(false),
+    Deno.build.os === "windows" ? 16 * 1024 : 64 * 1024,
+  );
   assertEquals(getDefaultHighWaterMark(true), 16);
 });
 
 Deno.test("stream is an instance of EventEmitter", () => {
   const stream = new Stream();
   assert(stream instanceof EventEmitter);
+});
+
+Deno.test("finished on web streams", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue("asd");
+      controller.close();
+    },
+  });
+  const promise = finished(stream as unknown as NodeJS.ReadableStream);
+  for await (const chunk of stream) {
+    assertEquals(chunk, "asd");
+  }
+  await promise;
+});
+
+// https://github.com/denoland/deno/issues/28905
+Deno.test("Writable toWeb", async () => {
+  const nodeWritable = new Writable({
+    write(_chunk, _encoding, callback) {
+      // Simulate the issue by delaying the callback slightly
+      setTimeout(() => {
+        callback();
+      }, 10);
+    },
+  });
+
+  const webWritable = Writable.toWeb(nodeWritable);
+
+  const source = ["line1", "line2", "line3"];
+  const readable = ReadableStream.from(source);
+
+  await readable
+    // @ts-ignore wrong types
+    .pipeThrough(new TextEncoderStream())
+    // @ts-ignore wrong types
+    .pipeTo(webWritable);
+
+  await finished(nodeWritable);
+});
+
+// https://github.com/denoland/deno/issues/30423
+Deno.test("exported `promises` from node:stream works", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue("asd");
+      controller.close();
+    },
+  });
+  const promise = promises.finished(stream as unknown as NodeJS.ReadableStream);
+  for await (const chunk of stream) {
+    assertEquals(chunk, "asd");
+  }
+  await promise;
 });

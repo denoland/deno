@@ -137,6 +137,5 @@
   "bugs": {
     "url": "https://github.com/npm/fs-minipass/issues"
   },
-  "license": "ISC",
-  "readmeFilename": "README.md"
+  "license": "ISC"
 }

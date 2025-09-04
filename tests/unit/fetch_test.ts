@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -440,6 +440,58 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithAuthorizationHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: { authorization: "Bearer foo" },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("authorization"), null);
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithCookieHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: { Cookie: "sessionToken=verySecret" },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("cookie"), null);
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function fetchWithProxyAuthorizationHeaderRedirection() {
+    const response = await fetch("http://localhost:4546/echo_server", {
+      headers: {
+        "proxy-authorization": "Basic ZXNwZW46a29rb3M=",
+        "accept": "application/json",
+      },
+    });
+    assertEquals(response.status, 200);
+    assertEquals(response.statusText, "OK");
+    assertEquals(response.url, "http://localhost:4545/echo_server");
+    assertEquals(response.headers.get("proxy-authorization"), null);
+    assertEquals(response.headers.get("accept"), "application/json");
+    assertEquals(await response.text(), "");
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchInitStringBody() {
     const data = "Hello World";
@@ -501,7 +553,7 @@ Deno.test(
     const data = "Hello World";
     const response = await fetch("http://localhost:4545/echo_server", {
       method: "POST",
-      body: new TextEncoder().encode(data).buffer,
+      body: new TextEncoder().encode(data).buffer as ArrayBuffer,
     });
     const text = await response.text();
     assertEquals(text, data);
@@ -1177,6 +1229,21 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true }, ignore: Deno.build.os !== "linux" },
+  async function createHttpClientLocalAddress() {
+    const client = Deno.createHttpClient({
+      localAddress: "127.0.0.2",
+    });
+    const response = await fetch("http://localhost:4545/local_addr", {
+      client,
+    });
+    const addr = await response.text();
+    assertEquals(addr, "127.0.0.2");
+    client.close();
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function fetchCustomClientUserAgent(): Promise<
     void
@@ -1639,6 +1706,15 @@ Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
   }, Deno.errors.NotCapable);
 });
+
+Deno.test(
+  { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
+  async function fetchSpecialFilePerm() {
+    await assertRejects(async () => {
+      await fetch("file:///proc/self/environ");
+    }, Deno.errors.NotCapable);
+  },
+);
 
 Deno.test(
   { permissions: { read: false } },
@@ -2117,5 +2193,138 @@ Deno.test(
     );
 
     await server;
+  },
+);
+
+Deno.test("fetch async iterable", async () => {
+  const iterable = (async function* () {
+    yield new Uint8Array([1, 2, 3, 4, 5]);
+    yield new Uint8Array([6, 7, 8, 9, 10]);
+  })();
+  const res = new Response(iterable);
+  const actual = await res.bytes();
+  const expected = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assertEquals(actual, expected);
+});
+
+Deno.test("fetch iterable", async () => {
+  const iterable = (function* () {
+    yield new Uint8Array([1, 2, 3, 4, 5]);
+    yield new Uint8Array([6, 7, 8, 9, 10]);
+  })();
+  const res = new Response(iterable);
+  const actual = await res.bytes();
+  const expected = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assertEquals(actual, expected);
+});
+
+Deno.test("fetch string object", async () => {
+  const res = new Response(Object("hello"));
+  assertEquals(await res.text(), "hello");
+});
+
+Deno.test(
+  {
+    permissions: { net: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function fetchUnixSocket() {
+    const tempDir = await Deno.makeTempDir();
+    const socketPath = `${tempDir}/unix.sock`;
+
+    await using _server = Deno.serve({
+      path: socketPath,
+      transport: "unix",
+      onListen: () => {},
+    }, (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/ping") {
+        return new Response(url.href, {
+          headers: { "content-type": "text/plain" },
+        });
+      } else {
+        return new Response("Not found", { status: 404 });
+      }
+    });
+
+    // Canonicalize the path, because permission checks are done so that
+    // the symlink doesn't change in between the calls.
+    const resolvedPath = await Deno.realPath(socketPath);
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "unix",
+        path: resolvedPath,
+      },
+    });
+
+    const resp1 = await fetch("http://localhost/ping", { client });
+    assertEquals(resp1.status, 200);
+    assertEquals(resp1.headers.get("content-type"), "text/plain");
+    assertEquals(await resp1.text(), "http+unix://localhost/ping");
+
+    const resp2 = await fetch("http://localhost/not-found", { client });
+    assertEquals(resp2.status, 404);
+    assertEquals(await resp2.text(), "Not found");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function createHttpClientThrowsWhenProxyTransportMismatch() {
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "socks5", // Mismatch with "http://" URL
+            url: "http://localhost:8080",
+          },
+        });
+      },
+      TypeError,
+    );
+
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "http", // Mismatch with "https://" URL
+            url: "https://localhost:8080",
+          },
+        });
+      },
+      TypeError,
+    );
+
+    assertThrows(
+      () => {
+        Deno.createHttpClient({
+          proxy: {
+            transport: "https", // Mismatch with "socks5://" URL
+            url: "socks5://localhost:1080",
+          },
+        });
+      },
+      TypeError,
+    );
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+    ignore: Deno.build.os === "windows",
+  },
+  function createHttpClientWithVsockProxy() {
+    // Test that creating an HttpClient with vsock proxy succeeds
+    using client = Deno.createHttpClient({
+      proxy: {
+        transport: "vsock",
+        cid: 2,
+        port: 80,
+      },
+    });
+    assert(client instanceof Deno.HttpClient);
   },
 );

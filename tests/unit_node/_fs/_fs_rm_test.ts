@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assertEquals, assertRejects, assertThrows, fail } from "@std/assert";
 import { rm, rmSync } from "node:fs";
 import { existsSync } from "node:fs";

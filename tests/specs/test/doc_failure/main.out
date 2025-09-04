@@ -4,11 +4,11 @@ Check [WILDCARD]/main.ts$13-18.ts
 Check [WILDCARD]/main.ts$24-29.ts
 running 0 tests from ./main.ts
 running 1 test from ./main.ts$2-9.ts
-[WILDCARD]/main.ts$2-9.ts ... FAILED ([WILDCARD]ms)
+[WILDCARD]/main.ts$2-9.ts ... FAILED ([WILDLINE])
 running 1 test from ./main.ts$13-18.ts
-[WILDCARD]/main.ts$13-18.ts ... FAILED ([WILDCARD]ms)
+[WILDCARD]/main.ts$13-18.ts ... FAILED ([WILDLINE])
 running 1 test from ./main.ts$24-29.ts
-[WILDCARD]/main.ts$24-29.ts ... FAILED ([WILDCARD]ms)
+[WILDCARD]/main.ts$24-29.ts ... FAILED ([WILDLINE])
 
  ERRORS 
 
@@ -55,6 +55,6 @@ error: AssertionError: Values are not equal.
 [WILDCARD]/main.ts$2-9.ts => ./main.ts$2-9.ts:3:6
 [WILDCARD]/main.ts$24-29.ts => ./main.ts$24-29.ts:3:6
 
-FAILED | 0 passed | 3 failed ([WILDCARD]ms)
+FAILED | 0 passed | 3 failed ([WILDLINE])
 
 error: Test failed

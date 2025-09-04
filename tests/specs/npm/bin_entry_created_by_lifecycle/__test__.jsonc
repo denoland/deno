@@ -1,0 +1,29 @@
+{
+  "tempDir": true,
+  "tests": {
+    "all_at_once": {
+      "steps": [
+        {
+          "args": "install --allow-scripts",
+          "output": "all_at_once_install.out"
+        },
+        { "args": "task run-testbin", "output": "run_testbin.out" }
+      ]
+    },
+    "separate_steps": {
+      "steps": [
+        { "if": "unix", "args": "install", "output": "install_warn.out" },
+        {
+          "if": "windows",
+          "args": "install",
+          "output": "install_warn_windows.out"
+        },
+        {
+          "args": "install --allow-scripts",
+          "output": "Initialize @denotest/bin-created-by-lifecycle@1.0.0: running 'install' script\n[WILDCARD]"
+        },
+        { "args": "task run-testbin", "output": "run_testbin.out" }
+      ]
+    }
+  }
+}

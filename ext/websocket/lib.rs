@@ -1,14 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::stream::WebSocketStream;
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::borrow::Cow;
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::future::Future;
+use std::num::NonZeroUsize;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use bytes::Bytes;
-use deno_core::anyhow::bail;
-use deno_core::error::invalid_hostname;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::unsync::spawn;
-use deno_core::url;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -20,41 +19,20 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_core::futures::TryFutureExt;
+use deno_core::op2;
+use deno_core::unsync::spawn;
+use deno_core::url;
+use deno_error::JsErrorBox;
 use deno_net::raw::NetworkStream;
+use deno_permissions::PermissionCheckError;
+use deno_tls::RootCertStoreProvider;
+use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
+use deno_tls::TlsKeys;
 use deno_tls::create_client_config;
 use deno_tls::rustls::ClientConfig;
 use deno_tls::rustls::ClientConnection;
-use deno_tls::RootCertStoreProvider;
-use deno_tls::SocketUse;
-use deno_tls::TlsKeys;
-use http::header::CONNECTION;
-use http::header::UPGRADE;
-use http::HeaderName;
-use http::HeaderValue;
-use http::Method;
-use http::Request;
-use http::StatusCode;
-use http::Uri;
-use once_cell::sync::Lazy;
-use rustls_tokio_stream::rustls::pki_types::ServerName;
-use rustls_tokio_stream::rustls::RootCertStore;
-use rustls_tokio_stream::TlsStream;
-use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::Cell;
-use std::cell::RefCell;
-use std::fmt;
-use std::future::Future;
-use std::num::NonZeroUsize;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncWrite;
-use tokio::io::ReadHalf;
-use tokio::io::WriteHalf;
-use tokio::net::TcpStream;
-
 use fastwebsockets::CloseCode;
 use fastwebsockets::FragmentCollectorRead;
 use fastwebsockets::Frame;
@@ -62,6 +40,26 @@ use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
 use fastwebsockets::WebSocketWrite;
+use http::HeaderName;
+use http::HeaderValue;
+use http::Method;
+use http::Request;
+use http::StatusCode;
+use http::Uri;
+use http::header::CONNECTION;
+use http::header::UPGRADE;
+use once_cell::sync::Lazy;
+use rustls_tokio_stream::TlsStream;
+use rustls_tokio_stream::rustls::RootCertStore;
+use rustls_tokio_stream::rustls::pki_types::ServerName;
+use serde::Serialize;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
+use tokio::io::ReadHalf;
+use tokio::io::WriteHalf;
+use tokio::net::TcpStream;
+
+use crate::stream::WebSocketStream;
 
 mod stream;
 
@@ -75,11 +73,39 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   false
 });
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum WebsocketError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Url(url::ParseError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(generic)]
+  #[error(transparent)]
+  Uri(#[from] http::uri::InvalidUri),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[class(type)]
+  #[error(transparent)]
+  WebSocket(#[from] fastwebsockets::WebSocketError),
+  #[class("DOMExceptionNetworkError")]
+  #[error("failed to connect to WebSocket: {0}")]
+  ConnectionFailed(#[from] HandshakeError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Canceled(#[from] deno_core::Canceled),
+}
+
 #[derive(Clone)]
 pub struct WsRootStoreProvider(Option<Arc<dyn RootCertStoreProvider>>);
 
 impl WsRootStoreProvider {
-  pub fn get_or_try_init(&self) -> Result<Option<RootCertStore>, AnyError> {
+  pub fn get_or_try_init(&self) -> Result<Option<RootCertStore>, JsErrorBox> {
     Ok(match &self.0 {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -95,7 +121,7 @@ pub trait WebSocketPermissions {
     &mut self,
     _url: &url::Url,
     _api_name: &str,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), PermissionCheckError>;
 }
 
 impl WebSocketPermissions for deno_permissions::PermissionsContainer {
@@ -104,7 +130,7 @@ impl WebSocketPermissions for deno_permissions::PermissionsContainer {
     &mut self,
     url: &url::Url,
     api_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
   }
 }
@@ -118,7 +144,7 @@ pub struct UnsafelyIgnoreCertificateErrors(Option<Vec<String>>);
 pub struct WsCancelResource(Rc<CancelHandle>);
 
 impl Resource for WsCancelResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "webSocketCancel".into()
   }
 
@@ -130,20 +156,21 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-#[op2]
+#[op2(stack_trace)]
 #[smi]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
   #[string] api_name: String,
   #[string] url: String,
   cancel_handle: bool,
-) -> Result<Option<ResourceId>, AnyError>
+) -> Result<Option<ResourceId>, WebsocketError>
 where
   WP: WebSocketPermissions + 'static,
 {
-  state
-    .borrow_mut::<WP>()
-    .check_net_url(&url::Url::parse(&url)?, &api_name)?;
+  state.borrow_mut::<WP>().check_net_url(
+    &url::Url::parse(&url).map_err(WebsocketError::Url)?,
+    &api_name,
+  )?;
 
   if cancel_handle {
     let rid = state
@@ -163,16 +190,59 @@ pub struct CreateResponse {
   extensions: String,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum HandshakeError {
+  #[class(type)]
+  #[error("Missing path in url")]
+  MissingPath,
+  #[class(generic)]
+  #[error("Invalid status code {0}")]
+  InvalidStatusCode(StatusCode),
+  #[class(generic)]
+  #[error(transparent)]
+  Http(#[from] http::Error),
+  #[class(type)]
+  #[error(transparent)]
+  WebSocket(#[from] fastwebsockets::WebSocketError),
+  #[class(generic)]
+  #[error("Didn't receive h2 alpn, aborting connection")]
+  NoH2Alpn,
+  #[class(generic)]
+  #[error(transparent)]
+  Rustls(#[from] deno_tls::rustls::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(generic)]
+  #[error(transparent)]
+  H2(#[from] h2::Error),
+  #[class(type)]
+  #[error("Invalid hostname: '{0}'")]
+  InvalidHostname(String),
+  #[class(inherit)]
+  #[error(transparent)]
+  RootStoreError(JsErrorBox),
+  #[class(inherit)]
+  #[error(transparent)]
+  Tls(deno_tls::TlsError),
+  #[class(type)]
+  #[error(transparent)]
+  HeaderName(#[from] http::header::InvalidHeaderName),
+  #[class(type)]
+  #[error(transparent)]
+  HeaderValue(#[from] http::header::InvalidHeaderValue),
+}
+
 async fn handshake_websocket(
   state: &Rc<RefCell<OpState>>,
   uri: &Uri,
   protocols: &str,
   headers: Option<Vec<(ByteString, ByteString)>>,
-) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), HandshakeError> {
   let mut request = Request::builder().method(Method::GET).uri(
     uri
       .path_and_query()
-      .ok_or(type_error("Missing path in url".to_string()))?
+      .ok_or(HandshakeError::MissingPath)?
       .as_str(),
   );
 
@@ -194,7 +264,9 @@ async fn handshake_websocket(
   request =
     populate_common_request_headers(request, &user_agent, protocols, &headers)?;
 
-  let request = request.body(http_body_util::Empty::new())?;
+  let request = request
+    .body(http_body_util::Empty::new())
+    .map_err(HandshakeError::Http)?;
   let domain = &uri.host().unwrap().to_string();
   let port = &uri.port_u16().unwrap_or(match uri.scheme_str() {
     Some("wss") => 443,
@@ -231,7 +303,7 @@ async fn handshake_websocket(
 async fn handshake_http1_ws(
   request: Request<http_body_util::Empty<Bytes>>,
   addr: &String,
-) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), HandshakeError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   handshake_connection(request, tcp_socket).await
 }
@@ -241,11 +313,11 @@ async fn handshake_http1_wss(
   request: Request<http_body_util::Empty<Bytes>>,
   domain: &str,
   addr: &str,
-) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), HandshakeError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http1Only)?;
   let dnsname = ServerName::try_from(domain.to_string())
-    .map_err(|_| invalid_hostname(domain))?;
+    .map_err(|_| HandshakeError::InvalidHostname(domain.to_string()))?;
   let mut tls_connector = TlsStream::new_client_side(
     tcp_socket,
     ClientConnection::new(tls_config.into(), dnsname)?,
@@ -266,11 +338,11 @@ async fn handshake_http2_wss(
   domain: &str,
   headers: &Option<Vec<(ByteString, ByteString)>>,
   addr: &str,
-) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), HandshakeError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http2Only)?;
   let dnsname = ServerName::try_from(domain.to_string())
-    .map_err(|_| invalid_hostname(domain))?;
+    .map_err(|_| HandshakeError::InvalidHostname(domain.to_string()))?;
   // We need to better expose the underlying errors here
   let mut tls_connector = TlsStream::new_client_side(
     tcp_socket,
@@ -279,7 +351,7 @@ async fn handshake_http2_wss(
   );
   let handshake = tls_connector.handshake().await?;
   if handshake.alpn.is_none() {
-    bail!("Didn't receive h2 alpn, aborting connection");
+    return Err(HandshakeError::NoH2Alpn);
   }
   let h2 = h2::client::Builder::new();
   let (mut send, conn) = h2.handshake::<_, Bytes>(tls_connector).await?;
@@ -298,7 +370,7 @@ async fn handshake_http2_wss(
   let (resp, send) = send.send_request(request.body(())?, false)?;
   let resp = resp.await?;
   if resp.status() != StatusCode::OK {
-    bail!("Invalid status code: {}", resp.status());
+    return Err(HandshakeError::InvalidStatusCode(resp.status()));
   }
   let (http::response::Parts { headers, .. }, recv) = resp.into_parts();
   let mut stream = WebSocket::after_handshake(
@@ -317,7 +389,7 @@ async fn handshake_connection<
 >(
   request: Request<http_body_util::Empty<Bytes>>,
   socket: S,
-) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
+) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), HandshakeError> {
   let (upgraded, response) =
     fastwebsockets::handshake::client(&LocalExecutor, request, socket).await?;
 
@@ -332,7 +404,7 @@ async fn handshake_connection<
 pub fn create_ws_client_config(
   state: &Rc<RefCell<OpState>>,
   socket_use: SocketUse,
-) -> Result<ClientConfig, AnyError> {
+) -> Result<ClientConfig, HandshakeError> {
   let unsafely_ignore_certificate_errors: Option<Vec<String>> = state
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
@@ -340,16 +412,18 @@ pub fn create_ws_client_config(
   let root_cert_store = state
     .borrow()
     .borrow::<WsRootStoreProvider>()
-    .get_or_try_init()?;
+    .get_or_try_init()
+    .map_err(HandshakeError::RootStoreError)?;
 
-  create_client_config(
+  create_client_config(TlsClientConfigOptions {
     root_cert_store,
-    vec![],
+    ca_certs: vec![],
     unsafely_ignore_certificate_errors,
-    TlsKeys::Null,
+    unsafely_disable_hostname_verification: false,
+    cert_chain_and_key: TlsKeys::Null,
     socket_use,
-  )
-  .map_err(|e| e.into())
+  })
+  .map_err(HandshakeError::Tls)
 }
 
 /// Headers common to both http/1.1 and h2 requests.
@@ -358,7 +432,7 @@ fn populate_common_request_headers(
   user_agent: &str,
   protocols: &str,
   headers: &Option<Vec<(ByteString, ByteString)>>,
-) -> Result<http::request::Builder, AnyError> {
+) -> Result<http::request::Builder, HandshakeError> {
   request = request
     .header("User-Agent", user_agent)
     .header("Sec-WebSocket-Version", "13");
@@ -369,10 +443,8 @@ fn populate_common_request_headers(
 
   if let Some(headers) = headers {
     for (key, value) in headers {
-      let name = HeaderName::from_bytes(key)
-        .map_err(|err| type_error(err.to_string()))?;
-      let v = HeaderValue::from_bytes(value)
-        .map_err(|err| type_error(err.to_string()))?;
+      let name = HeaderName::from_bytes(key)?;
+      let v = HeaderValue::from_bytes(value)?;
 
       let is_disallowed_header = matches!(
         name,
@@ -393,7 +465,7 @@ fn populate_common_request_headers(
   Ok(request)
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
@@ -402,14 +474,17 @@ pub async fn op_ws_create<WP>(
   #[string] protocols: String,
   #[smi] cancel_handle: Option<ResourceId>,
   #[serde] headers: Option<Vec<(ByteString, ByteString)>>,
-) -> Result<CreateResponse, AnyError>
+) -> Result<CreateResponse, WebsocketError>
 where
   WP: WebSocketPermissions + 'static,
 {
   {
     let mut s = state.borrow_mut();
     s.borrow_mut::<WP>()
-      .check_net_url(&url::Url::parse(&url)?, &api_name)
+      .check_net_url(
+        &url::Url::parse(&url).map_err(WebsocketError::Url)?,
+        &api_name,
+      )
       .expect(
         "Permission check should have been done in op_ws_check_permission",
       );
@@ -428,20 +503,16 @@ where
   let uri: Uri = url.parse()?;
 
   let handshake = handshake_websocket(&state, &uri, &protocols, headers)
-    .map_err(|err| {
-      AnyError::from(DomExceptionNetworkError::new(&format!(
-        "failed to connect to WebSocket: {err}"
-      )))
-    });
+    .map_err(WebsocketError::ConnectionFailed);
   let (stream, response) = match cancel_resource {
-    Some(rc) => handshake.try_or_cancel(rc).await,
-    None => handshake.await,
-  }?;
+    Some(rc) => handshake.try_or_cancel(rc).await?,
+    None => handshake.await?,
+  };
 
-  if let Some(cancel_rid) = cancel_handle {
-    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
-      res.close();
-    }
+  if let Some(cancel_rid) = cancel_handle
+    && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+  {
+    res.close();
   }
 
   let mut state = state.borrow_mut();
@@ -521,20 +592,18 @@ impl ServerWebSocket {
     self: &Rc<Self>,
     lock: AsyncMutFuture<WebSocketWrite<WriteHalf<WebSocketStream>>>,
     frame: Frame<'_>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), WebsocketError> {
     let mut ws = lock.await;
     if ws.is_closed() {
       return Ok(());
     }
-    ws.write_frame(frame)
-      .await
-      .map_err(|err| type_error(err.to_string()))?;
+    ws.write_frame(frame).await?;
     Ok(())
   }
 }
 
 impl Resource for ServerWebSocket {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "serverWebSocket".into()
   }
 }
@@ -543,7 +612,7 @@ pub fn ws_create_server_stream(
   state: &mut OpState,
   transport: NetworkStream,
   read_buf: Bytes,
-) -> Result<ResourceId, AnyError> {
+) -> ResourceId {
   let mut ws = WebSocket::after_handshake(
     WebSocketStream::new(
       stream::WsStreamKind::Network(transport),
@@ -555,8 +624,7 @@ pub fn ws_create_server_stream(
   ws.set_auto_close(true);
   ws.set_auto_pong(true);
 
-  let rid = state.resource_table.add(ServerWebSocket::new(ws));
-  Ok(rid)
+  state.resource_table.add(ServerWebSocket::new(ws))
 }
 
 fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
@@ -566,13 +634,16 @@ fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
   deno_core::unsync::spawn(async move {
-    if let Err(err) = resource
+    match resource
       .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
       .await
     {
-      resource.set_error(Some(err.to_string()));
-    } else {
-      resource.buffered.set(resource.buffered.get() - len);
+      Err(err) => {
+        resource.set_error(Some(err.to_string()));
+      }
+      _ => {
+        resource.buffered.set(resource.buffered.get() - len);
+      }
     }
   });
 }
@@ -606,16 +677,19 @@ pub fn op_ws_send_text(
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
   deno_core::unsync::spawn(async move {
-    if let Err(err) = resource
+    match resource
       .write_frame(
         lock,
         Frame::new(true, OpCode::Text, None, data.into_bytes().into()),
       )
       .await
     {
-      resource.set_error(Some(err.to_string()));
-    } else {
-      resource.buffered.set(resource.buffered.get() - len);
+      Err(err) => {
+        resource.set_error(Some(err.to_string()));
+      }
+      _ => {
+        resource.buffered.set(resource.buffered.get() - len);
+      }
     }
   });
 }
@@ -626,7 +700,7 @@ pub async fn op_ws_send_binary_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[buffer] data: JsBuffer,
-) -> Result<(), AnyError> {
+) -> Result<(), WebsocketError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -644,7 +718,7 @@ pub async fn op_ws_send_text_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[string] data: String,
-) -> Result<(), AnyError> {
+) -> Result<(), WebsocketError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -678,7 +752,7 @@ pub fn op_ws_get_buffered_amount(
 pub async fn op_ws_send_ping(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
+) -> Result<(), WebsocketError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -698,7 +772,7 @@ pub async fn op_ws_close(
   #[smi] rid: ResourceId,
   #[smi] code: Option<u16>,
   #[string] reason: Option<String>,
-) -> Result<(), AnyError> {
+) -> Result<(), WebsocketError> {
   let Ok(resource) = state
     .borrow_mut()
     .resource_table
@@ -707,14 +781,18 @@ pub async fn op_ws_close(
     return Ok(());
   };
 
+  const EMPTY_PAYLOAD: &[u8] = &[];
+
   let frame = reason
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
-    .unwrap_or_else(|| Frame::close_raw(vec![].into()));
+    .unwrap_or_else(|| match code {
+      Some(code) => Frame::close(code, EMPTY_PAYLOAD),
+      _ => Frame::close_raw(EMPTY_PAYLOAD.into()),
+    });
 
   resource.closed.set(true);
   let lock = resource.reserve_lock();
-  resource.write_frame(lock, frame).await?;
-  Ok(())
+  resource.write_frame(lock, frame).await
 }
 
 #[op2]
@@ -863,36 +941,6 @@ deno_core::extension!(deno_websocket,
     state.put::<WsRootStoreProvider>(WsRootStoreProvider(options.root_cert_store_provider));
   },
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_websocket.d.ts")
-}
-
-#[derive(Debug)]
-pub struct DomExceptionNetworkError {
-  pub msg: String,
-}
-
-impl DomExceptionNetworkError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionNetworkError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-impl fmt::Display for DomExceptionNetworkError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-
-impl std::error::Error for DomExceptionNetworkError {}
-
-pub fn get_network_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionNetworkError>()
-    .map(|_| "DOMExceptionNetworkError")
-}
 
 // Needed so hyper can use non Send futures
 #[derive(Clone)]

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
@@ -8,6 +8,7 @@
 
 import { core, internals } from "ext:core/mod.js";
 import {
+  op_node_in_npm_package,
   op_node_ipc_read,
   op_node_ipc_ref,
   op_node_ipc_unref,
@@ -57,11 +58,11 @@ import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import { Socket } from "node:net";
 import {
-  kDetached,
   kExtraStdio,
+  kInputOption,
   kIpc,
   kNeedsNpmProcessState,
-} from "ext:runtime/40_process.js";
+} from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -254,10 +255,11 @@ export class ChildProcess extends EventEmitter {
       stderr = "pipe",
       ...extraStdio
     ] = normalizedStdio;
-    const [cmd, cmdArgs] = buildCommand(
+    const [cmd, cmdArgs, includeNpmProcessState] = buildCommand(
       command,
       args || [],
       shell,
+      env,
     );
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
@@ -277,17 +279,20 @@ export class ChildProcess extends EventEmitter {
     try {
       this.#process = new Deno.Command(cmd, {
         args: cmdArgs,
+        clearEnv: true,
         cwd,
         env: stringEnv,
         stdin: toDenoStdio(stdin),
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        detached,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
-        [kDetached]: detached,
-        // deno-lint-ignore no-explicit-any
-        [kNeedsNpmProcessState]: (options ?? {} as any)[kNeedsNpmProcessState],
+        [kNeedsNpmProcessState]:
+          // deno-lint-ignore no-explicit-any
+          (options ?? {} as any)[kNeedsNpmProcessState] ||
+          includeNpmProcessState,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -839,6 +844,7 @@ export function normalizeSpawnArguments(
     args,
     cwd,
     detached: !!options.detached,
+    env,
     envPairs,
     file,
     windowsHide: !!options.windowsHide,
@@ -878,10 +884,23 @@ function buildCommand(
   file: string,
   args: string[],
   shell: string | boolean,
-): [string, string[]] {
+  env: Record<string, string | number | boolean>,
+): [string, string[], boolean] {
+  let includeNpmProcessState = false;
   if (file === Deno.execPath()) {
+    let nodeOptions: string[];
     // The user is trying to spawn another Deno process as Node.js.
-    args = toDenoArgs(args);
+    [args, nodeOptions, includeNpmProcessState] = toDenoArgs(args);
+
+    // Update NODE_OPTIONS if it exists
+    if (nodeOptions.length > 0) {
+      const options = nodeOptions.join(" ");
+      if (env.NODE_OPTIONS) {
+        env.NODE_OPTIONS += " " + options;
+      } else {
+        env.NODE_OPTIONS = options;
+      }
+    }
   }
 
   if (shell) {
@@ -909,7 +928,8 @@ function buildCommand(
       args = ["-c", command];
     }
   }
-  return [file, args];
+
+  return [file, args, includeNpmProcessState];
 }
 
 function _createSpawnSyncError(
@@ -983,6 +1003,27 @@ function parseSpawnSyncOutputStreams(
   }
 }
 
+function normalizeInput(input: unknown) {
+  if (input == null) {
+    return null;
+  }
+  if (typeof input === "string") {
+    return Buffer.from(input);
+  }
+  if (input instanceof Uint8Array) {
+    return input;
+  }
+  if (input instanceof DataView) {
+    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  }
+  throw new ERR_INVALID_ARG_TYPE("input", [
+    "string",
+    "Buffer",
+    "TypedArray",
+    "DataView",
+  ], input);
+}
+
 export function spawnSync(
   command: string,
   args: string[],
@@ -990,6 +1031,7 @@ export function spawnSync(
 ): SpawnSyncResult {
   const {
     env = Deno.env.toObject(),
+    input,
     stdio = ["pipe", "pipe", "pipe"],
     shell = false,
     cwd,
@@ -1005,7 +1047,14 @@ export function spawnSync(
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
   ] = normalizeStdioOption(stdio);
-  [command, args] = buildCommand(command, args ?? [], shell);
+  let includeNpmProcessState = false;
+  [command, args, includeNpmProcessState] = buildCommand(
+    command,
+    args ?? [],
+    shell,
+    env,
+  );
+  const input_ = normalizeInput(input);
 
   const result: SpawnSyncResult = {};
   try {
@@ -1019,6 +1068,10 @@ export function spawnSync(
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,
+      [kInputOption]: input_,
+      // deno-lint-ignore no-explicit-any
+      [kNeedsNpmProcessState]: (options as any)[kNeedsNpmProcessState] ||
+        includeNpmProcessState,
     }).outputSync();
 
     const status = output.signal ? null : output.code;
@@ -1135,14 +1188,32 @@ const kDenoSubcommands = new Set([
   "vendor",
 ]);
 
-function toDenoArgs(args: string[]): string[] {
+/** Wraps the script for (Node.js) --eval / --print argument
+ * Note: Builtin modules are available as global variables */
+function wrapScriptForEval(sourceCode: string): string {
+  // Note: We need vm.runInThisContext call here to get the last evaluated
+  // value of the source with multiple statements. `deno eval -p` surrounds
+  // the source code like `console.log(${source})`, and it only allows a
+  // single expression.
+  return `
+    process.getBuiltinModule("module").builtinModules
+      .filter((m) => !/\\/|crypto|process/.test(m))
+      .forEach((m) => { globalThis[m] = process.getBuiltinModule(m); }),
+    vm.runInThisContext(${JSON.stringify(sourceCode)})
+  `;
+}
+
+/** Returns deno args and NODE_OPTIONS for simulating Node.js cli */
+function toDenoArgs(args: string[]): [string[], string[], boolean] {
   if (args.length === 0) {
-    return args;
+    return [args, args, false];
   }
 
   // Update this logic as more CLI arguments are mapped from Node to Deno.
   const denoArgs: string[] = [];
+  const nodeOptions: string[] = [];
   let useRunArgs = true;
+  let needsNpmProcessState = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -1154,8 +1225,12 @@ function toDenoArgs(args: string[]): string[] {
       // spawned as Deno, not Deno in Node compat mode. In this case, bail out
       // and return the original args.
       if (kDenoSubcommands.has(arg)) {
-        return args;
+        return [args, [], false];
       }
+
+      // if the user is launching a script in the node_modules or
+      // global cache, include the process state
+      needsNpmProcessState = op_node_in_npm_package(arg);
 
       // Copy of the rest of the arguments to the output.
       for (let j = i; j < args.length; j++) {
@@ -1193,8 +1268,16 @@ function toDenoArgs(args: string[]): string[] {
     if (flagInfo === undefined) {
       if (arg === "--no-warnings") {
         denoArgs.push("--quiet");
-      } else if (arg.startsWith("--experimental")) {
-        denoArgs.push("");
+        nodeOptions.push(arg);
+      } else if (arg === "--expose-internals") {
+        // internals are always exposed in Deno.
+      } else if (arg === "--permission") {
+        // ignore --permission flag
+      } else if (arg === "--pending-deprecation") {
+        nodeOptions.push(arg);
+      } else if (StringPrototypeStartsWith(arg, "--experimental-")) {
+        // `--experimental-*` args are ignored, because most experimental Node features
+        // are implemented in Deno, but it doens't exactly match Deno's `--unstable-*` flags.
       } else {
         // Not a known flag that expects a value. Just copy it to the output.
         denoArgs.push(arg);
@@ -1219,7 +1302,10 @@ function toDenoArgs(args: string[]): string[] {
 
     // Remap Node's eval flags to Deno.
     if (flag === "-e" || flag === "--eval") {
-      denoArgs.push("eval", flagValue);
+      denoArgs.push("eval", wrapScriptForEval(flagValue));
+      useRunArgs = false;
+    } else if (flag === "-p" || flag === "--print") {
+      denoArgs.push("eval", "-p", wrapScriptForEval(flagValue));
       useRunArgs = false;
     } else if (isLongWithValue) {
       denoArgs.push(arg);
@@ -1233,7 +1319,7 @@ function toDenoArgs(args: string[]): string[] {
     denoArgs.unshift("run", "-A");
   }
 
-  return denoArgs;
+  return [denoArgs, nodeOptions, needsNpmProcessState];
 }
 
 const kControlDisconnect = Symbol("kControlDisconnect");
@@ -1341,7 +1427,7 @@ export function setupChannel(target: any, ipc: number) {
           }
         }
 
-        process.nextTick(handleMessage, msg);
+        nextTick(handleMessage, msg);
       }
     } catch (err) {
       if (
@@ -1402,7 +1488,7 @@ export function setupChannel(target: any, ipc: number) {
     if (!target.connected) {
       const err = new ERR_IPC_CHANNEL_CLOSED();
       if (typeof callback === "function") {
-        process.nextTick(callback, err);
+        nextTick(callback, err);
       } else {
         nextTick(() => target.emit("error", err));
       }
@@ -1418,7 +1504,18 @@ export function setupChannel(target: any, ipc: number) {
       .then(() => {
         control.unrefCounted();
         if (callback) {
-          process.nextTick(callback, null);
+          nextTick(callback, null);
+        }
+      }, (err: Error) => {
+        control.unrefCounted();
+        if (err instanceof Deno.errors.Interrupted) {
+          // Channel closed on us mid-write.
+        } else {
+          if (typeof callback === "function") {
+            nextTick(callback, err);
+          } else {
+            nextTick(() => target.emit("error", err));
+          }
         }
       });
     return queueOk[0];
@@ -1435,7 +1532,7 @@ export function setupChannel(target: any, ipc: number) {
     target.connected = false;
     target[kCanDisconnect] = false;
     control[kControlDisconnect]();
-    process.nextTick(() => {
+    nextTick(() => {
       target.channel = null;
       core.close(ipc);
       target.emit("disconnect");

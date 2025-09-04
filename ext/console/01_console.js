@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -216,7 +216,7 @@ const styles = {
   regexp: "red",
   module: "underline",
   internalError: "red",
-  temporal: "magenta",
+  temporal: "cyan",
 };
 
 const defaultFG = 39;
@@ -634,7 +634,10 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     protoProps = undefined;
   }
 
-  let tag = value[SymbolToStringTag];
+  let tag;
+  if (!proxyDetails) {
+    tag = value[SymbolToStringTag];
+  }
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
   if (
@@ -2653,6 +2656,7 @@ const HSL_PATTERN = new SafeRegExp(
 );
 
 function parseCssColor(colorString) {
+  colorString = StringPrototypeToLowerCase(colorString);
   if (colorKeywords.has(colorString)) {
     colorString = colorKeywords.get(colorString);
   }
@@ -3400,14 +3404,14 @@ class Console {
     if (label.length > 0) {
       this.log(...new SafeArrayIterator(label));
     }
-    this.indentLevel += 2;
+    this.indentLevel++;
   };
 
   groupCollapsed = this.group;
 
   groupEnd = () => {
     if (this.indentLevel > 0) {
-      this.indentLevel -= 2;
+      this.indentLevel--;
     }
   };
 
@@ -3545,6 +3549,7 @@ export {
   formatBigInt,
   formatNumber,
   formatValue,
+  getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   getStdoutNoColor,

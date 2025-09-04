@@ -1,14 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import {
-  normalizeEncoding,
-  slowCases,
-} from "ext:deno_node/internal/normalize_encoding.mjs";
-export { normalizeEncoding, slowCases };
+import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.ts";
+export { normalizeEncoding };
 import {
   ObjectCreate,
   StringPrototypeToUpperCase,
@@ -17,42 +11,44 @@ import { ERR_UNKNOWN_SIGNAL } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { primordials } from "ext:core/mod.js";
 const {
+  ArrayPrototypePush,
+  ObjectDefineProperties,
+  ObjectDefineProperty,
+  ObjectFreeze,
+  ObjectGetPrototypeOf,
+  ObjectGetOwnPropertyDescriptors,
+  ObjectSetPrototypeOf,
+  Promise,
+  ReflectApply,
   SafeWeakRef,
+  SymbolFor,
+  WeakRefPrototypeDeref,
 } = primordials;
 
-export const customInspectSymbol = Symbol.for("nodejs.util.inspect.custom");
-export const kEnumerableProperty = Object.create(null);
+export const customInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
+export const kEnumerableProperty = ObjectCreate(null);
 kEnumerableProperty.enumerable = true;
 
-export const kEmptyObject = Object.freeze(Object.create(null));
+export const kEmptyObject = ObjectFreeze(ObjectCreate(null));
 
 export function once(callback) {
   let called = false;
   return function (...args) {
     if (called) return;
     called = true;
-    Reflect.apply(callback, this, args);
+    ReflectApply(callback, this, args);
   };
-}
-
-export function createDeferredPromise() {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-
-  return { promise, resolve, reject };
 }
 
 // In addition to being accessible through util.promisify.custom,
 // this symbol is registered globally and can be accessed in any environment as
 // Symbol.for('nodejs.util.promisify.custom').
-const kCustomPromisifiedSymbol = Symbol.for("nodejs.util.promisify.custom");
+export const kCustomPromisifiedSymbol = SymbolFor(
+  "nodejs.util.promisify.custom",
+);
 // This is an internal Node symbol used by functions returning multiple
 // arguments, e.g. ['bytesRead', 'buffer'] for fs.read().
-const kCustomPromisifyArgsSymbol = Symbol.for(
+const kCustomPromisifyArgsSymbol = SymbolFor(
   "nodejs.util.promisify.customArgs",
 );
 
@@ -67,7 +63,8 @@ export function promisify(
 
     validateFunction(fn, "util.promisify.custom");
 
-    return Object.defineProperty(fn, kCustomPromisifiedSymbol, {
+    return ObjectDefineProperty(fn, kCustomPromisifiedSymbol, {
+      __proto__: null,
       value: fn,
       enumerable: false,
       writable: false,
@@ -80,7 +77,7 @@ export function promisify(
   const argumentNames = original[kCustomPromisifyArgsSymbol];
   function fn(...args) {
     return new Promise((resolve, reject) => {
-      args.push((err, ...values) => {
+      ArrayPrototypePush(args, (err, ...values) => {
         if (err) {
           return reject(err);
         }
@@ -94,21 +91,22 @@ export function promisify(
           resolve(values[0]);
         }
       });
-      Reflect.apply(original, this, args);
+      ReflectApply(original, this, args);
     });
   }
 
-  Object.setPrototypeOf(fn, Object.getPrototypeOf(original));
+  ObjectSetPrototypeOf(fn, ObjectGetPrototypeOf(original));
 
-  Object.defineProperty(fn, kCustomPromisifiedSymbol, {
+  ObjectDefineProperty(fn, kCustomPromisifiedSymbol, {
+    __proto__: null,
     value: fn,
     enumerable: false,
     writable: false,
     configurable: true,
   });
-  return Object.defineProperties(
+  return ObjectDefineProperties(
     fn,
-    Object.getOwnPropertyDescriptors(original),
+    ObjectGetOwnPropertyDescriptors(original),
   );
 }
 
@@ -139,6 +137,8 @@ export function convertToValidSignal(signal) {
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
+export function deprecateInstantiation() {}
+
 export class WeakReference {
   #weak = null;
   #strong = null;
@@ -150,7 +150,7 @@ export class WeakReference {
   incRef() {
     this.#refCount++;
     if (this.#refCount === 1) {
-      const derefed = this.#weak.deref();
+      const derefed = WeakRefPrototypeDeref(this.#weak);
       if (derefed !== undefined) {
         this.#strong = derefed;
       }
@@ -167,7 +167,7 @@ export class WeakReference {
   }
 
   get() {
-    return this.#weak.deref();
+    return WeakRefPrototypeDeref(this.#weak);
   }
 }
 
@@ -175,13 +175,12 @@ promisify.custom = kCustomPromisifiedSymbol;
 
 export default {
   convertToValidSignal,
-  createDeferredPromise,
   customInspectSymbol,
   customPromisifyArgs,
+  deprecateInstantiation,
   kEmptyObject,
   kEnumerableProperty,
   normalizeEncoding,
   once,
   promisify,
-  slowCases,
 };

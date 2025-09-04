@@ -1,0 +1,27 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run -A setup.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "compile --allow-read=data --include data --output main main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "[WILDCARD]",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --allow-read=data --include data --output main.exe main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "[WILDCARD]",
+    "exitCode": 0
+  }]
+}

@@ -1,58 +1,66 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
-use crate::args::CliOptions;
-use crate::cdp;
-use crate::colors;
-use crate::lsp::ReplLanguageServer;
-use crate::npm::CliNpmResolver;
-use crate::resolver::CliGraphResolver;
-use crate::tools::test::report_tests;
-use crate::tools::test::reporters::PrettyTestReporter;
-use crate::tools::test::reporters::TestReporter;
-use crate::tools::test::run_tests_for_worker;
-use crate::tools::test::send_test_event;
-use crate::tools::test::worker_has_tests;
-use crate::tools::test::TestEvent;
-use crate::tools::test::TestEventReceiver;
-use crate::tools::test::TestFailureFormatOptions;
-
-use deno_ast::diagnostics::Diagnostic;
-use deno_ast::swc::ast as swc_ast;
-use deno_ast::swc::common::comments::CommentKind;
-use deno_ast::swc::visit::noop_visit_type;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
 use deno_ast::ImportsNotUsedAsValues;
+use deno_ast::JsxAutomaticOptions;
+use deno_ast::JsxClassicOptions;
+use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParseDiagnosticsError;
 use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
-use deno_core::error::generic_error;
+use deno_ast::diagnostics::Diagnostic;
+use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::comments::CommentKind;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
+use deno_ast::swc::ecma_visit::noop_visit_type;
+use deno_core::InspectorPostMessageError;
+use deno_core::LocalInspectorSession;
+use deno_core::PollEventLoopOptions;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::futures::channel::mpsc::UnboundedReceiver;
+use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
-use deno_core::LocalInspectorSession;
-use deno_core::PollEventLoopOptions;
-use deno_graph::source::ResolutionMode;
-use deno_graph::source::Resolver;
+use deno_error::JsErrorBox;
 use deno_graph::Position;
 use deno_graph::PositionRange;
-use deno_graph::SpecifierWithRange;
+use deno_graph::analysis::SpecifierWithRange;
+use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
 use tokio::sync::Mutex;
+
+use crate::args::CliOptions;
+use crate::cdp;
+use crate::cdp::RemoteObjectId;
+use crate::colors;
+use crate::lsp::ReplLanguageServer;
+use crate::npm::CliNpmInstaller;
+use crate::resolver::CliResolver;
+use crate::tools::test::TestEventReceiver;
+use crate::tools::test::TestEventTracker;
+use crate::tools::test::TestFailureFormatOptions;
+use crate::tools::test::report_tests;
+use crate::tools::test::reporters::PrettyTestReporter;
+use crate::tools::test::reporters::TestReporter;
+use crate::tools::test::run_tests_for_worker;
+use crate::tools::test::worker_has_tests;
 
 fn comment_source_to_position_range(
   comment_start: SourcePos,
@@ -77,67 +85,56 @@ fn comment_source_to_position_range(
   }
 }
 
-/// We store functions used in the repl on this object because
-/// the user might modify the `Deno` global or delete it outright.
-pub static REPL_INTERNALS_NAME: Lazy<String> = Lazy::new(|| {
-  let now = std::time::SystemTime::now();
-  let seconds = now
-    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-    .unwrap()
-    .as_secs();
-  // use a changing variable name to make it hard to depend on this
-  format!("__DENO_REPL_INTERNALS_{seconds}__")
-});
-
 fn get_prelude() -> String {
-  format!(
-    r#"
-Object.defineProperty(globalThis, "{0}", {{
-  enumerable: false,
-  writable: false,
-  value: {{
+  r#"(() => {
+  const repl_internal = {
+    String,
     lastEvalResult: undefined,
     lastThrownError: undefined,
     inspectArgs: Deno[Deno.internal].inspectArgs,
     noColor: Deno.noColor,
-    get closed() {{
-      return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
-    }}
-  }},
-}});
-Object.defineProperty(globalThis, "_", {{
-  configurable: true,
-  get: () => {0}.lastEvalResult,
-  set: (value) => {{
-   Object.defineProperty(globalThis, "_", {{
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   }});
-   console.log("Last evaluation result is no longer saved to _.");
-  }},
-}});
+    get closed() {
+      try {
+        return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+      } catch {
+        return false;
+      }
+    }
+  };
 
-Object.defineProperty(globalThis, "_error", {{
-  configurable: true,
-  get: () => {0}.lastThrownError,
-  set: (value) => {{
-   Object.defineProperty(globalThis, "_error", {{
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   }});
+  Object.defineProperty(globalThis, "_", {
+    configurable: true,
+    get: () => repl_internal.lastEvalResult,
+    set: (value) => {
+     Object.defineProperty(globalThis, "_", {
+       value: value,
+       writable: true,
+       enumerable: true,
+       configurable: true,
+     });
+     console.log("Last evaluation result is no longer saved to _.");
+    },
+  });
 
-   console.log("Last thrown error is no longer saved to _error.");
-  }},
-}});
+  Object.defineProperty(globalThis, "_error", {
+    configurable: true,
+    get: () => repl_internal.lastThrownError,
+    set: (value) => {
+     Object.defineProperty(globalThis, "_error", {
+       value: value,
+       writable: true,
+       enumerable: true,
+       configurable: true,
+     });
 
-globalThis.clear = console.clear.bind(console);
-"#,
-    *REPL_INTERNALS_NAME
-  )
+     console.log("Last thrown error is no longer saved to _error.");
+    },
+  });
+
+  globalThis.clear = console.clear.bind(console);
+
+  return repl_internal;
+})()"#.to_string()
 }
 
 pub enum EvaluationOutput {
@@ -171,15 +168,10 @@ pub struct TsEvaluateResponse {
   pub value: cdp::EvaluateResponse,
 }
 
-struct ReplJsxState {
-  factory: String,
-  frag_factory: String,
-  import_source: Option<String>,
-}
-
 pub struct ReplSession {
-  npm_resolver: Arc<dyn CliNpmResolver>,
-  resolver: Arc<CliGraphResolver>,
+  internal_object_id: Option<RemoteObjectId>,
+  npm_installer: Option<Arc<CliNpmInstaller>>,
+  resolver: Arc<CliResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
@@ -190,15 +182,17 @@ pub struct ReplSession {
   test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
   /// This is only optional because it's temporarily taken when evaluating.
   test_event_receiver: Option<TestEventReceiver>,
-  jsx: ReplJsxState,
-  experimental_decorators: bool,
+  jsx: deno_ast::JsxRuntime,
+  decorators: deno_ast::DecoratorsTranspileOption,
 }
 
 impl ReplSession {
+  #[allow(clippy::too_many_arguments)]
   pub async fn initialize(
     cli_options: &CliOptions,
-    npm_resolver: Arc<dyn CliNpmResolver>,
-    resolver: Arc<CliGraphResolver>,
+    npm_installer: Option<Arc<CliNpmInstaller>>,
+    resolver: Arc<CliResolver>,
+    compiler_options_resolver: &CompilerOptionsResolver,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
@@ -230,13 +224,15 @@ impl ReplSession {
         let execution_context_created = serde_json::from_value::<
           cdp::ExecutionContextCreated,
         >(notification.params)?;
-        assert!(execution_context_created
-          .context
-          .aux_data
-          .get("isDefault")
-          .unwrap()
-          .as_bool()
-          .unwrap());
+        assert!(
+          execution_context_created
+            .context
+            .aux_data
+            .get("isDefault")
+            .unwrap()
+            .as_bool()
+            .unwrap()
+        );
         context_id = execution_context_created.context.id;
         break;
       }
@@ -244,25 +240,23 @@ impl ReplSession {
     assert_ne!(context_id, 0);
 
     let referrer =
-      deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
+      deno_core::resolve_path("./$deno$repl.mts", cli_options.initial_cwd())
         .unwrap();
 
     let cwd_url =
       Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
-        generic_error(format!(
+        anyhow!(
           "Unable to construct URL from the path of cwd: {}",
           cli_options.initial_cwd().to_string_lossy(),
-        ))
+        )
       })?;
-    let ts_config_for_emit = cli_options
-      .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
-    let (transpile_options, _) =
-      crate::args::ts_config_to_transpile_and_emit_options(
-        ts_config_for_emit.ts_config,
-      )?;
-    let experimental_decorators = transpile_options.use_ts_decorators;
+    let transpile_options = &compiler_options_resolver
+      .for_specifier(&cwd_url)
+      .transpile_options()?
+      .transpile;
     let mut repl_session = ReplSession {
-      npm_resolver,
+      internal_object_id: None,
+      npm_installer,
       resolver,
       worker,
       session,
@@ -282,16 +276,13 @@ impl ReplSession {
       }),
       main_module,
       test_event_receiver: Some(test_event_receiver),
-      jsx: ReplJsxState {
-        factory: "React.createElement".to_string(),
-        frag_factory: "React.Fragment".to_string(),
-        import_source: None,
-      },
-      experimental_decorators,
+      jsx: transpile_options.jsx.clone().unwrap_or_default(),
+      decorators: transpile_options.decorators.clone(),
     };
 
     // inject prelude
-    repl_session.evaluate_expression(&get_prelude()).await?;
+    let evaluated = repl_session.evaluate_expression(&get_prelude()).await?;
+    repl_session.internal_object_id = evaluated.result.object_id;
 
     Ok(repl_session)
   }
@@ -304,13 +295,16 @@ impl ReplSession {
   }
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
-    let expression = format!(r#"{}.closed"#, *REPL_INTERNALS_NAME);
-    let closed = self
-      .evaluate_expression(&expression)
+    let result = self
+      .call_function_on_repl_internal_obj(
+        r#"function () { return this.closed; }"#.to_string(),
+        &[],
+      )
       .await?
-      .result
+      .result;
+    let closed = result
       .value
-      .unwrap()
+      .ok_or_else(|| anyhow!(result.description.unwrap()))?
       .as_bool()
       .unwrap();
 
@@ -321,7 +315,7 @@ impl ReplSession {
     &mut self,
     method: &str,
     params: Option<T>,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<Value, InspectorPostMessageError> {
     self
       .worker
       .js_runtime
@@ -338,7 +332,7 @@ impl ReplSession {
       .await
   }
 
-  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+  pub async fn run_event_loop(&mut self) -> Result<(), CoreError> {
     self.worker.run_event_loop(true).await
   }
 
@@ -399,21 +393,27 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match err.downcast_ref::<deno_ast::ParseDiagnostic>() {
+          match any_and_jserrorbox_downcast_ref::<deno_ast::ParseDiagnostic>(
+            &err,
+          ) {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
-            None => match err.downcast_ref::<ParseDiagnosticsError>() {
-              Some(diagnostics) => Ok(EvaluationOutput::Error(
-                diagnostics
-                  .0
-                  .iter()
-                  .map(format_diagnostic)
-                  .collect::<Vec<_>>()
-                  .join("\n\n"),
-              )),
-              None => Err(err),
-            },
+            None => {
+              match any_and_jserrorbox_downcast_ref::<ParseDiagnosticsError>(
+                &err,
+              ) {
+                Some(diagnostics) => Ok(EvaluationOutput::Error(
+                  diagnostics
+                    .0
+                    .iter()
+                    .map(format_diagnostic)
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+                )),
+                None => Err(err),
+              }
+            }
           }
         }
       }
@@ -461,26 +461,25 @@ impl ReplSession {
         self.test_event_receiver.take().unwrap(),
         (self.test_reporter_factory)(),
       ));
+      let event_tracker =
+        TestEventTracker::new(self.worker.js_runtime.op_state());
       run_tests_for_worker(
         &mut self.worker,
         &self.main_module,
         &Default::default(),
         &Default::default(),
+        &event_tracker,
       )
       .await
       .unwrap();
-      send_test_event(
-        &self.worker.js_runtime.op_state(),
-        TestEvent::ForceEndReport,
-      )
-      .unwrap();
+      event_tracker.force_end_report().unwrap();
       self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
     }
 
     result
   }
 
-  async fn set_last_thrown_error(
+  pub async fn set_last_thrown_error(
     &mut self,
     error: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
@@ -488,18 +487,17 @@ impl ReplSession {
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration: format!(
-            r#"function (object) {{ {}.lastThrownError = object; }}"#,
-            *REPL_INTERNALS_NAME
-          ),
-          object_id: None,
+          function_declaration:
+            r#"function (object) { this.lastThrownError = object; }"#
+              .to_string(),
+          object_id: self.internal_object_id.clone(),
           arguments: Some(vec![error.into()]),
           silent: None,
           return_by_value: None,
           generate_preview: None,
           user_gesture: None,
           await_promise: None,
-          execution_context_id: Some(self.context_id),
+          execution_context_id: None,
           object_group: None,
           throw_on_side_effect: None,
         }),
@@ -508,7 +506,7 @@ impl ReplSession {
     Ok(())
   }
 
-  async fn set_last_eval_result(
+  pub async fn set_last_eval_result(
     &mut self,
     evaluate_result: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
@@ -516,18 +514,15 @@ impl ReplSession {
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration: format!(
-            r#"function (object) {{ {}.lastEvalResult = object; }}"#,
-            *REPL_INTERNALS_NAME
-          ),
-          object_id: None,
+          function_declaration: r#"function (object) { this.lastEvalResult = object; }"#.to_string(),
+          object_id: self.internal_object_id.clone(),
           arguments: Some(vec![evaluate_result.into()]),
           silent: None,
           return_by_value: None,
           generate_preview: None,
           user_gesture: None,
           await_promise: None,
-          execution_context_id: Some(self.context_id),
+          execution_context_id: None,
           object_group: None,
           throw_on_side_effect: None,
         }),
@@ -571,6 +566,41 @@ impl ReplSession {
     Ok(response)
   }
 
+  pub async fn call_function_on_repl_internal_obj(
+    &mut self,
+    function_declaration: String,
+    args: &[cdp::RemoteObject],
+  ) -> Result<cdp::CallFunctionOnResponse, AnyError> {
+    let arguments: Option<Vec<cdp::CallArgument>> = if args.is_empty() {
+      None
+    } else {
+      Some(args.iter().map(|a| a.into()).collect())
+    };
+
+    let inspect_response = self
+      .post_message_with_event_loop(
+        "Runtime.callFunctionOn",
+        Some(cdp::CallFunctionOnArgs {
+          function_declaration,
+          object_id: self.internal_object_id.clone(),
+          arguments,
+          silent: None,
+          return_by_value: None,
+          generate_preview: None,
+          user_gesture: None,
+          await_promise: None,
+          execution_context_id: None,
+          object_group: None,
+          throw_on_side_effect: None,
+        }),
+      )
+      .await?;
+
+    let response: cdp::CallFunctionOnResponse =
+      serde_json::from_value(inspect_response)?;
+    Ok(response)
+  }
+
   pub async fn get_eval_value(
     &mut self,
     evaluate_result: &cdp::RemoteObject,
@@ -579,24 +609,26 @@ impl ReplSession {
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
     let response = self
-      .call_function_on_args(
-        format!(
-          r#"function (object) {{
-          try {{
-            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
-          }} catch (err) {{
-            return {0}.inspectArgs(["%o", err]);
-          }}
-        }}"#,
-          *REPL_INTERNALS_NAME
-        ),
-        &[evaluate_result.clone()],
+      .call_function_on_repl_internal_obj(
+        r#"function (object) {
+          try {
+            return this.inspectArgs(["%o", object], { colors: !this.noColor });
+          } catch (err) {
+            return this.inspectArgs(["%o", err]);
+          }
+        }"#
+          .to_string(),
+        std::slice::from_ref(evaluate_result),
       )
       .await?;
-    let value = response.result.value.unwrap();
-    let s = value.as_str().unwrap();
+    let s = response
+      .result
+      .value
+      .map(|v| v.as_str().unwrap().to_string())
+      .or(response.result.description)
+      .ok_or_else(|| anyhow!("failed to evaluate expression"))?;
 
-    Ok(s.to_string())
+    Ok(s)
   }
 
   async fn evaluate_ts_expression(
@@ -607,13 +639,14 @@ impl ReplSession {
       match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
         Ok(parsed) => parsed,
         Err(err) => {
-          if let Ok(parsed) = parse_source_as(
+          match parse_source_as(
             expression.to_string(),
             deno_ast::MediaType::TypeScript,
           ) {
-            parsed
-          } else {
-            return Err(err);
+            Ok(parsed) => parsed,
+            _ => {
+              return Err(err);
+            }
           }
         }
       };
@@ -627,20 +660,14 @@ impl ReplSession {
     let transpiled_src = parsed_source
       .transpile(
         &deno_ast::TranspileOptions {
-          use_ts_decorators: self.experimental_decorators,
-          use_decorators_proposal: !self.experimental_decorators,
-          emit_metadata: false,
+          decorators: self.decorators.clone(),
           imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
-          transform_jsx: true,
-          precompile_jsx: false,
-          precompile_jsx_skip_elements: None,
-          precompile_jsx_dynamic_props: None,
-          jsx_automatic: self.jsx.import_source.is_some(),
-          jsx_development: false,
-          jsx_factory: self.jsx.factory.clone(),
-          jsx_fragment_factory: self.jsx.frag_factory.clone(),
-          jsx_import_source: self.jsx.import_source.clone(),
+          jsx: Some(self.jsx.clone()),
           var_decl_imports: true,
+          verbatim_module_syntax: false,
+        },
+        &deno_ast::TranspileModuleOptions {
+          module_kind: Some(ModuleKind::Esm),
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,
@@ -651,7 +678,6 @@ impl ReplSession {
         },
       )?
       .into_source()
-      .into_string()?
       .text;
 
     let value = self
@@ -674,15 +700,49 @@ impl ReplSession {
     }
 
     if let Some(jsx) = analyzed_pragmas.jsx {
-      self.jsx.factory = jsx.text;
-      self.jsx.import_source = None;
+      match &mut self.jsx {
+        deno_ast::JsxRuntime::Classic(jsx_classic_options) => {
+          jsx_classic_options.factory = jsx.text;
+        }
+        deno_ast::JsxRuntime::Automatic(_)
+        | deno_ast::JsxRuntime::Precompile(_) => {
+          self.jsx = deno_ast::JsxRuntime::Classic(JsxClassicOptions {
+            factory: jsx.text,
+            ..Default::default()
+          });
+        }
+      }
     }
     if let Some(jsx_frag) = analyzed_pragmas.jsx_fragment {
-      self.jsx.frag_factory = jsx_frag.text;
-      self.jsx.import_source = None;
+      match &mut self.jsx {
+        deno_ast::JsxRuntime::Classic(jsx_classic_options) => {
+          jsx_classic_options.fragment_factory = jsx_frag.text;
+        }
+        deno_ast::JsxRuntime::Automatic(_)
+        | deno_ast::JsxRuntime::Precompile(_) => {
+          self.jsx = deno_ast::JsxRuntime::Classic(JsxClassicOptions {
+            fragment_factory: jsx_frag.text,
+            ..Default::default()
+          });
+        }
+      }
     }
     if let Some(jsx_import_source) = analyzed_pragmas.jsx_import_source {
-      self.jsx.import_source = Some(jsx_import_source.text);
+      match &mut self.jsx {
+        deno_ast::JsxRuntime::Classic(_) => {
+          self.jsx = deno_ast::JsxRuntime::Automatic(JsxAutomaticOptions {
+            import_source: Some(jsx_import_source.text),
+            development: false,
+          });
+        }
+        deno_ast::JsxRuntime::Automatic(automatic)
+        | deno_ast::JsxRuntime::Precompile(deno_ast::JsxPrecompileOptions {
+          automatic,
+          ..
+        }) => {
+          automatic.import_source = Some(jsx_import_source.text);
+        }
+      }
     }
   }
 
@@ -690,25 +750,26 @@ impl ReplSession {
     &mut self,
     program: &swc_ast::Program,
   ) -> Result<(), AnyError> {
-    let Some(npm_resolver) = self.npm_resolver.as_managed() else {
-      return Ok(()); // don't auto-install for byonm
+    let Some(npm_installer) = &self.npm_installer else {
+      return Ok(());
     };
 
     let mut collector = ImportCollector::new();
     program.visit_with(&mut collector);
 
-    let referrer_range = deno_graph::Range {
-      specifier: self.referrer.clone(),
-      start: deno_graph::Position::zeroed(),
-      end: deno_graph::Position::zeroed(),
-    };
     let resolved_imports = collector
       .imports
       .iter()
       .flat_map(|i| {
         self
           .resolver
-          .resolve(i, &referrer_range, ResolutionMode::Execution)
+          .resolve(
+            i,
+            &self.referrer,
+            deno_graph::Position::zeroed(),
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
+          )
           .ok()
           .or_else(|| ModuleSpecifier::parse(i).ok())
       })
@@ -722,11 +783,13 @@ impl ReplSession {
     let has_node_specifier =
       resolved_imports.iter().any(|url| url.scheme() == "node");
     if !npm_imports.is_empty() || has_node_specifier {
-      npm_resolver.add_package_reqs(&npm_imports).await?;
+      npm_installer
+        .add_and_cache_package_reqs(&npm_imports)
+        .await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {
-        npm_resolver.inject_synthetic_types_node_package().await?;
+        npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
     Ok(())
@@ -735,7 +798,7 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<cdp::EvaluateResponse, AnyError> {
+  ) -> Result<cdp::EvaluateResponse, InspectorPostMessageError> {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",
@@ -758,7 +821,9 @@ impl ReplSession {
         }),
       )
       .await
-      .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))
+      .and_then(|res| {
+        serde_json::from_value(res).map_err(|e| JsErrorBox::from_err(e).into())
+      })
   }
 }
 
@@ -886,46 +951,46 @@ fn analyze_jsx_pragmas(
       continue; // invalid
     }
 
-    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            true,
-          ),
-        });
-      }
+    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text)
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          true,
+        ),
+      });
     }
 
-    if let Some(captures) = JSX_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            false,
-          ),
-        });
-      }
+    if let Some(captures) = JSX_RE.captures(&c.text)
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          false,
+        ),
+      });
     }
 
-    if let Some(captures) = JSX_FRAG_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            false,
-          ),
-        });
-      }
+    if let Some(captures) = JSX_FRAG_RE.captures(&c.text)
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          false,
+        ),
+      });
     }
   }
 

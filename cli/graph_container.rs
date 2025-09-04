@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -13,6 +13,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::module_loader::PrepareModuleLoadOptions;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 
@@ -41,11 +42,22 @@ pub struct MainModuleGraphContainer {
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even
   // while another request is updating the data.
-  update_queue: Arc<crate::util::sync::TaskQueue>,
+  update_queue: Arc<deno_core::unsync::sync::TaskQueue>,
   inner: Arc<RwLock<Arc<ModuleGraph>>>,
   cli_options: Arc<CliOptions>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   root_permissions: PermissionsContainer,
+}
+
+#[derive(Default, Debug)]
+pub struct CheckSpecifiersOptions<'a> {
+  pub ext_overwrite: Option<&'a String>,
+  pub allow_unknown_media_types: bool,
+}
+
+pub struct CollectSpecifiersOptions {
+  /// Whether to include paths that are specified even if they're ignored.
+  pub include_ignored_specified: bool,
 }
 
 impl MainModuleGraphContainer {
@@ -68,7 +80,7 @@ impl MainModuleGraphContainer {
   pub async fn check_specifiers(
     &self,
     specifiers: &[ModuleSpecifier],
-    ext_overwrite: Option<&String>,
+    options: CheckSpecifiersOptions<'_>,
   ) -> Result<(), AnyError> {
     let mut graph_permit = self.acquire_update_permit().await;
     let graph = graph_permit.graph_mut();
@@ -77,10 +89,14 @@ impl MainModuleGraphContainer {
       .prepare_module_load(
         graph,
         specifiers,
-        false,
-        self.cli_options.ts_type_lib_window(),
-        self.root_permissions.clone(),
-        ext_overwrite,
+        PrepareModuleLoadOptions {
+          is_dynamic: false,
+          lib: self.cli_options.ts_type_lib_window(),
+          permissions: self.root_permissions.clone(),
+          ext_overwrite: options.ext_overwrite,
+          allow_unknown_media_types: options.allow_unknown_media_types,
+          skip_graph_roots_validation: false,
+        },
       )
       .await?;
     graph_permit.commit();
@@ -92,19 +108,21 @@ impl MainModuleGraphContainer {
   pub async fn load_and_type_check_files(
     &self,
     files: &[String],
+    options: CollectSpecifiersOptions,
   ) -> Result<(), AnyError> {
-    let specifiers = self.collect_specifiers(files)?;
+    let specifiers = self.collect_specifiers(files, options)?;
 
     if specifiers.is_empty() {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
     }
 
-    self.check_specifiers(&specifiers, None).await
+    self.check_specifiers(&specifiers, Default::default()).await
   }
 
   pub fn collect_specifiers(
     &self,
     files: &[String],
+    options: CollectSpecifiersOptions,
   ) -> Result<Vec<ModuleSpecifier>, AnyError> {
     let excludes = self.cli_options.workspace().resolve_config_excludes()?;
     let include_patterns =
@@ -118,8 +136,14 @@ impl MainModuleGraphContainer {
       exclude: excludes,
     };
     collect_specifiers(
-      file_patterns,
-      self.cli_options.vendor_dir_path().map(ToOwned::to_owned),
+      crate::util::fs::CollectSpecifiersOptions {
+        file_patterns,
+        vendor_folder: self
+          .cli_options
+          .vendor_dir_path()
+          .map(ToOwned::to_owned),
+        include_ignored_specified: options.include_ignored_specified,
+      },
       |e| is_script_ext(e.path),
     )
   }
@@ -144,12 +168,12 @@ impl ModuleGraphContainer for MainModuleGraphContainer {
 /// everything looks fine, calling `.commit()` will store the
 /// new graph in the ModuleGraphContainer.
 pub struct MainModuleGraphUpdatePermit<'a> {
-  permit: crate::util::sync::TaskQueuePermit<'a>,
+  permit: deno_core::unsync::sync::TaskQueuePermit<'a>,
   inner: Arc<RwLock<Arc<ModuleGraph>>>,
   graph: ModuleGraph,
 }
 
-impl<'a> ModuleGraphUpdatePermit for MainModuleGraphUpdatePermit<'a> {
+impl ModuleGraphUpdatePermit for MainModuleGraphUpdatePermit<'_> {
   fn graph_mut(&mut self) -> &mut ModuleGraph {
     &mut self.graph
   }

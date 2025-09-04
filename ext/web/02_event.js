@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those
@@ -308,22 +308,6 @@ class Event {
     return Event.BUBBLING_PHASE;
   }
 
-  static get NONE() {
-    return 0;
-  }
-
-  static get CAPTURING_PHASE() {
-    return 1;
-  }
-
-  static get AT_TARGET() {
-    return 2;
-  }
-
-  static get BUBBLING_PHASE() {
-    return 3;
-  }
-
   get eventPhase() {
     return this[_attributes].eventPhase;
   }
@@ -385,6 +369,38 @@ class Event {
     return this[_attributes].timeStamp;
   }
 }
+
+ObjectDefineProperty(Event, "NONE", {
+  __proto__: null,
+  value: 0,
+  writable: false,
+  enumerable: true,
+  configurable: false,
+});
+
+ObjectDefineProperty(Event, "CAPTURING_PHASE", {
+  __proto__: null,
+  value: 1,
+  writable: false,
+  enumerable: true,
+  configurable: false,
+});
+
+ObjectDefineProperty(Event, "AT_TARGET", {
+  __proto__: null,
+  value: 2,
+  writable: false,
+  enumerable: true,
+  configurable: false,
+});
+
+ObjectDefineProperty(Event, "BUBBLING_PHASE", {
+  __proto__: null,
+  value: 3,
+  writable: false,
+  enumerable: true,
+  configurable: false,
+});
 
 const EventPrototype = Event.prototype;
 
@@ -712,6 +728,13 @@ function innerInvokeEventListeners(
   for (let i = 0; i < handlersLength; i++) {
     const listener = handlers[i];
 
+    if (
+      getStopImmediatePropagation(eventImpl) &&
+      !listener.options[kResistStopImmediatePropagation]
+    ) {
+      continue;
+    }
+
     let capture, once, passive;
     if (typeof listener.options === "boolean") {
       capture = listener.options;
@@ -762,10 +785,6 @@ function innerInvokeEventListeners(
     }
 
     setInPassiveListener(eventImpl, false);
-
-    if (getStopImmediatePropagation(eventImpl)) {
-      return found;
-    }
   }
 
   return found;
@@ -845,7 +864,10 @@ function retarget(a, b) {
 
 // Accessors for non-public data
 
-const eventTargetData = Symbol();
+export const eventTargetData = Symbol();
+export const kResistStopImmediatePropagation = Symbol(
+  "kResistStopImmediatePropagation",
+);
 
 function setEventTargetData(target) {
   target[eventTargetData] = getDefaultTargetData();
@@ -894,6 +916,10 @@ function addEventListenerOptionsConverter(V, prefix) {
     capture: !!V.capture,
     once: !!V.once,
     passive: !!V.passive,
+    // This field exists for simulating Node.js behavior, implemented in https://github.com/nodejs/node/commit/bcd35c334ec75402ee081f1c4da128c339f70c24
+    // Some internal event listeners in Node.js can ignore `e.stopImmediatePropagation()` calls
+    // from the earlier event listeners.
+    [kResistStopImmediatePropagation]: !!V[kResistStopImmediatePropagation],
   };
 
   const signal = V.signal;
@@ -1031,11 +1057,11 @@ class EventTarget {
     }
 
     if (getDispatched(event)) {
-      throw new DOMException("Invalid event state.", "InvalidStateError");
+      throw new DOMException("Invalid event state", "InvalidStateError");
     }
 
     if (event.eventPhase !== Event.NONE) {
-      throw new DOMException("Invalid event state.", "InvalidStateError");
+      throw new DOMException("Invalid event state", "InvalidStateError");
     }
 
     return dispatch(self, event);
@@ -1520,6 +1546,7 @@ export {
   ErrorEvent,
   Event,
   EventTarget,
+  EventTargetPrototype,
   listenerCount,
   MessageEvent,
   ProgressEvent,

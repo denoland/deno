@@ -1,13 +1,13 @@
 # Deno
 
 [![](https://img.shields.io/crates/v/deno.svg)](https://crates.io/crates/deno)
-[![Twitter badge][]][Twitter link] [![Discord badge][]][Discord link]
-[![YouTube badge][]][YouTube link]
+[![Twitter badge][]][Twitter link] [![Bluesky badge][]][Bluesky link]
+[![Discord badge][]][Discord link] [![YouTube badge][]][YouTube link]
 
 <img align="right" src="https://deno.land/logo.svg" height="150px" alt="the deno mascot dinosaur standing in the rain">
 
-[Deno](https://www.deno.com)
-([/ˈdiːnoʊ/](http://ipa-reader.xyz/?text=%CB%88di%CB%90no%CA%8A), pronounced
+[Deno](https://deno.com)
+([/ˈdiːnoʊ/](https://ipa-reader.com/?text=%CB%88di%CB%90no%CA%8A), pronounced
 `dee-no`) is a JavaScript, TypeScript, and WebAssembly runtime with secure
 defaults and a great developer experience. It's built on [V8](https://v8.dev/),
 [Rust](https://www.rust-lang.org/), and [Tokio](https://tokio.rs/).
@@ -46,10 +46,16 @@ brew install deno
 choco install deno
 ```
 
+[WinGet](https://winstall.app/apps/DenoLand.Deno) (Windows):
+
+```powershell
+winget install --id=DenoLand.Deno
+```
+
 ### Build and install from source
 
-Complete instructions for building Deno from source can be found in the manual
-[here](https://docs.deno.com/runtime/manual/references/contributing/building_from_source).
+Complete instructions for building Deno from source can be found
+[here](https://github.com/denoland/deno/blob/main/.github/CONTRIBUTING.md#building-from-source).
 
 ## Your first Deno program
 
@@ -81,19 +87,22 @@ Learn more about writing and running Deno programs
   the Deno runtime, [Deno Deploy](https://deno.com/deploy), and beyond.
 - **[Deno Standard Library](https://jsr.io/@std)**: officially supported common
   utilities for Deno programs.
-- **[deno.land/x](https://deno.land/x)**: registry for third-party Deno modules.
+- **[JSR](https://jsr.io/)**: The open-source package registry for modern
+  JavaScript and TypeScript
 - **[Developer Blog](https://deno.com/blog)**: Product updates, tutorials, and
   more from the Deno team.
 
 ## Contributing
 
 We appreciate your help! To contribute, please read our
-[contributing instructions](https://docs.deno.com/runtime/manual/references/contributing/).
+[contributing instructions](.github/CONTRIBUTING.md).
 
 [Build status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
 [Build status]: https://github.com/denoland/deno/actions
 [Twitter badge]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow
 [Twitter link]: https://twitter.com/intent/follow?screen_name=deno_land
+[Bluesky badge]: https://img.shields.io/badge/Follow-whitesmoke?logo=bluesky
+[Bluesky link]: https://bsky.app/profile/deno.land
 [YouTube badge]: https://img.shields.io/youtube/channel/subscribers/UCqC2G2M-rg4fzg1esKFLFIw?style=social
 [YouTube link]: https://www.youtube.com/@deno_land
 [Discord badge]: https://img.shields.io/discord/684898665143206084?logo=discord&style=social

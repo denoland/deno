@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "discover": {
+      "args": "check main.ts member/mod.ts",
+      "output": "check_discover.out",
+      "exitCode": 1
+    },
+    "config_flag": {
+      "args": "check --config deno.json main.ts member/mod.ts",
+      "output": "check_config_flag.out",
+      "exitCode": 1
+    }
+  }
+}

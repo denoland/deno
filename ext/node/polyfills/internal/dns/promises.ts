@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -53,9 +53,8 @@ import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
 } from "ext:deno_node/internal/errors.ts";
-import {
-  ChannelWrapQuery,
-  getaddrinfo,
+import cares, {
+  type ChannelWrapQuery,
   GetAddrInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
@@ -132,7 +131,13 @@ function createLookupPromise(
     req.resolve = resolve;
     req.reject = reject;
 
-    const err = getaddrinfo(req, toASCII(hostname), family, hints, verbatim);
+    const err = cares.getaddrinfo(
+      req,
+      toASCII(hostname),
+      family,
+      hints,
+      verbatim ? cares.DNS_ORDER_VERBATIM : cares.DNS_ORDER_IPV4_FIRST,
+    );
 
     if (err) {
       reject(dnsException(err, "getaddrinfo", hostname));

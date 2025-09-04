@@ -1,0 +1,24 @@
+{
+  "tests": {
+    "cjs": {
+      "args": "run commonjs.ts",
+      "output": "commonjs.out",
+      "exitCode": 1
+    },
+    "esm": {
+      "args": "run esm.ts",
+      "output": "esm.out",
+      "exitCode": 1
+    },
+    "js": {
+      "args": "run js.ts",
+      "output": "js.out",
+      "exitCode": 1
+    },
+    "npm_specifier": {
+      "args": "run npm_specifier.mjs",
+      "output": "npm_specifier.out",
+      "exitCode": 1
+    }
+  }
+}

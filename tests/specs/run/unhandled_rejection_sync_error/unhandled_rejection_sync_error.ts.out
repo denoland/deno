@@ -1,0 +1,6 @@
+[WILDCARD]
+unhandled rejection at: Promise {
+  <rejected> Error: boom!
+    at file:///[WILDCARD]unhandled_rejection_sync_error.ts:6:7
+} reason: Error: boom!
+    at file:///[WILDCARD]unhandled_rejection_sync_error.ts:6:7

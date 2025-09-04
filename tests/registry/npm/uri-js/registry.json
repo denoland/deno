@@ -77,6 +77,5 @@
   "bugs": {
     "url": "https://github.com/garycourt/uri-js/issues"
   },
-  "license": "BSD-2-Clause",
-  "readmeFilename": "README.md"
+  "license": "BSD-2-Clause"
 }

@@ -1,0 +1,22 @@
+Check [WILDCARD]before_after_each_error.ts
+running 1 test from ./before_after_each_error.ts
+first test ... FAILED ([WILDCARD])
+------- post-test output -------
+[ "beforeEach", "test executed", "afterEach" ]
+----- post-test output end -----
+
+ ERRORS 
+
+first test => ./before_after_each_error.ts:11:6
+error: Error: test threw
+  throw new Error("test threw");
+        ^
+    at [WILDCARD]before_after_each_error.ts:13:9
+
+ FAILURES 
+
+first test => ./before_after_each_error.ts:11:6
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

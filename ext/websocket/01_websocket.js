@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -23,11 +23,13 @@ import {
 } from "ext:core/ops";
 const {
   ArrayBufferIsView,
+  ArrayIsArray,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ArrayPrototypeSome,
+  Error,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -63,18 +65,41 @@ import {
 } from "ext:deno_web/02_event.js";
 import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
+import {
+  fillHeaders,
+  headerListFromHeaders,
+  headersFromHeaderList,
+} from "ext:deno_fetch/20_headers.js";
 
-webidl.converters["sequence<DOMString> or DOMString"] = (
+webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
+  "WebSocketInit",
+  [
+    {
+      key: "headers",
+      converter: webidl.converters["HeadersInit"],
+    },
+    {
+      key: "protocols",
+      converter: webidl.converters["sequence<DOMString>"],
+    },
+  ],
+);
+
+webidl.converters["WebSocketInit or sequence<DOMString> or DOMString"] = (
   V,
   prefix,
   context,
   opts,
 ) => {
-  // Union for (sequence<DOMString> or DOMString)
+  // Union for (WebSocketInit or sequence<DOMString> or DOMString)
+  if (V === null || V === undefined) {
+    return webidl.converters["WebSocketInit"](V, prefix, context, opts);
+  }
   if (webidl.type(V) === "Object" && V !== null) {
     if (V[SymbolIterator] !== undefined) {
       return webidl.converters["sequence<DOMString>"](V, prefix, context, opts);
     }
+    return webidl.converters["WebSocketInit"](V, prefix, context, opts);
   }
   return webidl.converters.DOMString(V, prefix, context, opts);
 };
@@ -115,6 +140,7 @@ const _binaryType = Symbol("[[binaryType]]");
 const _eventLoop = Symbol("[[eventLoop]]");
 const _sendQueue = Symbol("[[sendQueue]]");
 const _queueSend = Symbol("[[queueSend]]");
+const _cancelHandle = Symbol("[[cancelHandle]]");
 
 const _server = Symbol("[[server]]");
 const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
@@ -122,7 +148,7 @@ const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
 
 class WebSocket extends EventTarget {
-  constructor(url, protocols = []) {
+  constructor(url, initOrProtocols) {
     super();
     this[webidl.brand] = webidl.brand;
     this[_rid] = undefined;
@@ -135,15 +161,17 @@ class WebSocket extends EventTarget {
     this[_idleTimeoutDuration] = 0;
     this[_idleTimeoutTimeout] = undefined;
     this[_sendQueue] = [];
+    this[_cancelHandle] = undefined;
 
     const prefix = "Failed to construct 'WebSocket'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.USVString(url, prefix, "Argument 1");
-    protocols = webidl.converters["sequence<DOMString> or DOMString"](
-      protocols,
-      prefix,
-      "Argument 2",
-    );
+    initOrProtocols = webidl.converters
+      ["WebSocketInit or sequence<DOMString> or DOMString"](
+        initOrProtocols,
+        prefix,
+        "Argument 2",
+      );
 
     let wsURL;
 
@@ -176,14 +204,20 @@ class WebSocket extends EventTarget {
     this[_url] = wsURL.href;
     this[_role] = CLIENT;
 
-    op_ws_check_permission_and_cancel_handle(
-      "WebSocket.abort()",
-      this[_url],
-      false,
-    );
+    let protocols;
+    let headers = null;
 
-    if (typeof protocols === "string") {
-      protocols = [protocols];
+    if (typeof initOrProtocols === "string") {
+      protocols = [initOrProtocols];
+    } else if (ArrayIsArray(initOrProtocols)) {
+      protocols = initOrProtocols;
+    } else {
+      protocols = initOrProtocols.protocols || [];
+
+      if (initOrProtocols.headers !== undefined) {
+        headers = headersFromHeaderList([], "request");
+        fillHeaders(headers, initOrProtocols.headers);
+      }
     }
 
     if (
@@ -213,11 +247,21 @@ class WebSocket extends EventTarget {
       );
     }
 
+    const cancelRid = op_ws_check_permission_and_cancel_handle(
+      "WebSocket.abort()",
+      this[_url],
+      true,
+    );
+
+    this[_cancelHandle] = cancelRid;
+
     PromisePrototypeThen(
       op_ws_create(
         "new WebSocket()",
         wsURL.href,
         ArrayPrototypeJoin(protocols, ", "),
+        cancelRid,
+        headers ? headerListFromHeaders(headers) : null,
       ),
       (create) => {
         this[_rid] = create.rid;
@@ -254,6 +298,12 @@ class WebSocket extends EventTarget {
           { error: err, message: ErrorPrototypeToString(err) },
         );
         this.dispatchEvent(errorEv);
+
+        if (this[_cancelHandle]) {
+          core.tryClose(this[_cancelHandle]);
+
+          this[_cancelHandle] = undefined;
+        }
 
         const closeEv = new CloseEvent("close");
         this.dispatchEvent(closeEv);
@@ -329,8 +379,12 @@ class WebSocket extends EventTarget {
     webidl.requiredArguments(arguments.length, 1, prefix);
     data = webidl.converters.WebSocketSend(data, prefix, "Argument 1");
 
-    if (this[_readyState] !== OPEN) {
+    if (this[_readyState] === CONNECTING) {
       throw new DOMException("'readyState' not OPEN", "InvalidStateError");
+    }
+
+    if (this[_readyState] !== OPEN) {
+      return;
     }
 
     if (this[_sendQueue].length === 0) {
@@ -390,6 +444,13 @@ class WebSocket extends EventTarget {
         "The close reason may not be longer than 123 bytes",
         "SyntaxError",
       );
+    }
+
+    if (this[_cancelHandle]) {
+      // Cancel ongoing handshake.
+      core.tryClose(this[_cancelHandle]);
+
+      this[_cancelHandle] = undefined;
     }
 
     if (this[_readyState] === CONNECTING) {
@@ -488,8 +549,11 @@ class WebSocket extends EventTarget {
           /* error */
           this[_readyState] = CLOSED;
 
+          const message = op_ws_get_error(rid);
+          const error = new Error(message);
           const errorEv = new ErrorEvent("error", {
-            message: op_ws_get_error(rid),
+            error,
+            message,
           });
           this.dispatchEvent(errorEv);
 

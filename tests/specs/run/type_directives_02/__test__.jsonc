@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --reload --check=all -L debug type_directives_02.ts",
+  "output": "type_directives_02.ts.out"
+}

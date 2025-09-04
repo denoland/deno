@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "main": {
+      "args": "run --check --allow-read=. main.cts",
+      "output": "main.out"
+    },
+    "mts": {
+      "args": "run --allow-read=. mod.mts",
+      "output": "mod.mts.out"
+    },
+    "mts_check": {
+      "args": "check mod.mts",
+      "output": "mod.mts.check.out",
+      "exitCode": 1
+    }
+  }
+}

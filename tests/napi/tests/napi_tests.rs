@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
 
 use std::process::Command;
+
 use test_util::deno_cmd;
 use test_util::deno_config_path;
 use test_util::env_vars_for_npm_tests;

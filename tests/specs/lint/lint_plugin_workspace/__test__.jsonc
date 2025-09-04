@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "lint member/main.ts",
+  "output": "lint.out",
+  "exitCode": 1
+}

@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet 058_tasks_microtasks_close.ts",
+  "output": "058_tasks_microtasks_close.ts.out"
+}

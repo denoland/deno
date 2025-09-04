@@ -1,8 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::io::Write;
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use std::io::Write;
 
 /// A function that converts a float to a string the represents a human
 /// readable version of that number.

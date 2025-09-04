@@ -1,5 +1,10 @@
 Check [WILDCARD]/no_run.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const _value: string = 1;
       ~~~~~~
     at [WILDCARD]/no_run.ts:1:7
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

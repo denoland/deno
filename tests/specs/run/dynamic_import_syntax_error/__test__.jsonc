@@ -1,0 +1,5 @@
+{
+  "args": "run -A dynamic_import_syntax_error.js",
+  "output": "dynamic_import_syntax_error.js.out",
+  "exitCode": 1
+}

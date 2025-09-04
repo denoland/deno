@@ -106,7 +106,6 @@
     "type": "git",
     "url": "git+https://github.com/postcss/postcss.git"
   },
-  "readmeFilename": "README.md",
   "bugs": {
     "url": "https://github.com/postcss/postcss/issues"
   },

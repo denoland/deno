@@ -1,0 +1,5 @@
+{
+  "args": "run error_020_stack_constructor.ts",
+  "output": "error_020_stack_constructor.ts.out",
+  "exitCode": 1
+}

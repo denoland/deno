@@ -1,0 +1,5 @@
+{
+  "args": "run error_cause_recursive.ts",
+  "output": "error_cause_recursive.ts.out",
+  "exitCode": 1
+}

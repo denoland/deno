@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/bin-created-by-lifecycle",
+  "version": "1.0.0",
+  "scripts": {
+    "install": "node install.mjs"
+  },
+  "bin": {
+    "testbin": "testbin.js"
+  }
+}

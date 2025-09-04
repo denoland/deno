@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
   assert,
@@ -125,6 +125,25 @@ Deno.test({
     const worker = new workerThreads.Worker(
       `
       import { parentPort } from "node:worker_threads";
+      parentPort.postMessage("It works!");
+      `,
+      {
+        eval: true,
+      },
+    );
+    assertEquals((await once(worker, "message"))[0], "It works!");
+    worker.terminate();
+  },
+});
+
+Deno.test({
+  name: "[node/worker_threads] Worker eval",
+  async fn() {
+    // Check that newlines are encoded properly
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads"
+      console.log("hey, foo") // comment
       parentPort.postMessage("It works!");
       `,
       {
@@ -821,4 +840,54 @@ Deno.test({
     const result = await done.promise;
     assertEquals(result, true);
   },
+});
+
+Deno.test("[node/worker_threads] Worker runs async ops correctly", async () => {
+  const recvMessage = Promise.withResolvers<void>();
+  const timer = setTimeout(() => recvMessage.reject(), 1000);
+  const worker = new workerThreads.Worker(
+    `
+    import { parentPort } from "node:worker_threads";
+    setTimeout(() => {
+      parentPort.postMessage("Hello from worker");
+    }, 10);
+    `,
+    { eval: true },
+  );
+
+  worker.on("message", (msg) => {
+    assertEquals(msg, "Hello from worker");
+    worker.terminate();
+    recvMessage.resolve();
+    clearTimeout(timer);
+  });
+
+  await recvMessage.promise;
+});
+
+Deno.test("[node/worker_threads] Worker works with CJS require", async () => {
+  const recvMessage = Promise.withResolvers<void>();
+  const worker = new workerThreads.Worker(
+    `
+    const assert = require("assert");
+    require("worker_threads").parentPort.on("message", ({ port }) => {
+      assert(port instanceof MessagePort);
+
+      port.postMessage("Hello from worker");
+    });
+    `,
+    { eval: true },
+  );
+
+  const channel = new workerThreads.MessageChannel();
+  worker.postMessage({ port: channel.port2 }, [channel.port2]);
+  channel.port1.on("message", (msg) => {
+    assertEquals(msg, "Hello from worker");
+    channel.port1.close();
+    channel.port2.close();
+    worker.terminate();
+    recvMessage.resolve();
+  });
+
+  await recvMessage.promise;
 });

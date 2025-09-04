@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // NOTE: these are just sometests to test the TypeScript types. Real coverage is
 // provided by WPT.
 import { assert, assertEquals } from "@std/assert";

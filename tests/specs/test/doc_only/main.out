@@ -1,6 +1,6 @@
 Check [WILDCARD]/doc_only/mod.ts$2-7.ts
 running 1 test from ./doc_only/mod.ts$2-7.ts
-[WILDCARD]/doc_only/mod.ts$2-7.ts ... ok ([WILDCARD]ms)
+[WILDCARD]/doc_only/mod.ts$2-7.ts ... ok ([WILDLINE])
 
-ok | 1 passed | 0 failed ([WILDCARD]ms)
+ok | 1 passed | 0 failed ([WILDLINE])
 

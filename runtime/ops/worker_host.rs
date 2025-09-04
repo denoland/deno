@@ -1,32 +1,34 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::ops::TestingFeaturesEnabled;
-use crate::web_worker::run_web_worker;
-use crate::web_worker::SendableWebWorkerHandle;
-use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerHandle;
-use crate::web_worker::WebWorkerType;
-use crate::web_worker::WorkerControlEvent;
-use crate::web_worker::WorkerId;
-use crate::web_worker::WorkerMetadata;
-use crate::worker::FormatJsErrorFn;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
-use deno_core::op2;
-use deno_core::serde::Deserialize;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_permissions::ChildPermissionsArg;
-use deno_permissions::PermissionsContainer;
-use deno_web::deserialize_js_transferables;
-use deno_web::JsMessageData;
-use log::debug;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_core::op2;
+use deno_core::serde::Deserialize;
+use deno_permissions::ChildPermissionsArg;
+use deno_permissions::PermissionsContainer;
+use deno_web::JsMessageData;
+use deno_web::MessagePortError;
+use deno_web::deserialize_js_transferables;
+use log::debug;
+
+use crate::ops::TestingFeaturesEnabled;
+use crate::tokio_util::create_and_run_current_thread;
+use crate::web_worker::SendableWebWorkerHandle;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WorkerControlEvent;
+use crate::web_worker::WorkerId;
+use crate::web_worker::WorkerMetadata;
+use crate::web_worker::WorkerThreadType;
+use crate::web_worker::run_web_worker;
+use crate::worker::FormatJsErrorFn;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
@@ -36,7 +38,7 @@ pub struct CreateWebWorkerArgs {
   pub parent_permissions: PermissionsContainer,
   pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
-  pub worker_type: WebWorkerType,
+  pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
 }
@@ -115,18 +117,37 @@ pub struct CreateWorkerArgs {
   permissions: Option<ChildPermissionsArg>,
   source_code: String,
   specifier: String,
-  worker_type: WebWorkerType,
+  worker_type: WorkerThreadType,
   close_on_idle: bool,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CreateWorkerError {
+  #[class("DOMExceptionNotSupportedError")]
+  #[error("Classic workers are not supported.")]
+  ClassicWorkers,
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(deno_permissions::ChildPermissionError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ModuleResolution(#[from] deno_core::ModuleResolutionError),
+  #[class(inherit)]
+  #[error(transparent)]
+  MessagePort(#[from] MessagePortError),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+}
+
 /// Create worker as the host
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 fn op_create_worker(
   state: &mut OpState,
   #[serde] args: CreateWorkerArgs,
   #[serde] maybe_worker_metadata: Option<JsMessageData>,
-) -> Result<WorkerId, AnyError> {
+) -> Result<WorkerId, CreateWorkerError> {
   let specifier = args.specifier.clone();
   let maybe_source_code = if args.has_source_code {
     Some(args.source_code.clone())
@@ -135,13 +156,10 @@ fn op_create_worker(
   };
   let args_name = args.name;
   let worker_type = args.worker_type;
-  if let WebWorkerType::Classic = worker_type {
-    if let TestingFeaturesEnabled(false) = state.borrow() {
-      return Err(custom_error(
-        "DOMExceptionNotSupportedError",
-        "Classic workers are not supported.",
-      ));
-    }
+  if let WorkerThreadType::Classic = worker_type
+    && let TestingFeaturesEnabled(false) = state.borrow()
+  {
+    return Err(CreateWorkerError::ClassicWorkers);
   }
 
   if args.permissions.is_some() {
@@ -154,7 +172,9 @@ fn op_create_worker(
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    parent_permissions.create_child_permissions(child_permissions_arg)?
+    parent_permissions
+      .create_child_permissions(child_permissions_arg)
+      .map_err(CreateWorkerError::Permission)?
   } else {
     parent_permissions.clone()
   };
@@ -166,9 +186,8 @@ fn op_create_worker(
   let module_specifier = deno_core::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_default();
 
-  let (handle_sender, handle_receiver) = std::sync::mpsc::sync_channel::<
-    Result<SendableWebWorkerHandle, AnyError>,
-  >(1);
+  let (handle_sender, handle_receiver) =
+    std::sync::mpsc::sync_channel::<SendableWebWorkerHandle>(1);
 
   // Setup new thread
   let thread_builder = std::thread::Builder::new().name(format!("{worker_id}"));
@@ -188,37 +207,41 @@ fn op_create_worker(
     // - JS worker is useless - meaning it throws an exception and can't do anything else,
     //  all action done upon it should be noops
     // - newly spawned thread exits
+    let fut = async move {
+      let (worker, external_handle) =
+        (create_web_worker_cb.0)(CreateWebWorkerArgs {
+          name: worker_name,
+          worker_id,
+          parent_permissions,
+          permissions: worker_permissions,
+          main_module: module_specifier.clone(),
+          worker_type,
+          close_on_idle: args.close_on_idle,
+          maybe_worker_metadata,
+        });
 
-    let (worker, external_handle) =
-      (create_web_worker_cb.0)(CreateWebWorkerArgs {
-        name: worker_name,
-        worker_id,
-        parent_permissions,
-        permissions: worker_permissions,
-        main_module: module_specifier.clone(),
-        worker_type,
-        close_on_idle: args.close_on_idle,
-        maybe_worker_metadata,
-      });
+      // Send thread safe handle from newly created worker to host thread
+      handle_sender.send(external_handle).unwrap();
+      drop(handle_sender);
 
-    // Send thread safe handle from newly created worker to host thread
-    handle_sender.send(Ok(external_handle)).unwrap();
-    drop(handle_sender);
+      // At this point the only method of communication with host
+      // is using `worker.internal_channels`.
+      //
+      // Host can already push messages and interact with worker.
+      run_web_worker(
+        worker,
+        module_specifier,
+        maybe_source_code,
+        format_js_error_fn.0,
+      )
+      .await
+    };
 
-    // At this point the only method of communication with host
-    // is using `worker.internal_channels`.
-    //
-    // Host can already push messages and interact with worker.
-    run_web_worker(
-      worker,
-      module_specifier,
-      maybe_source_code,
-      format_js_error_fn.0,
-    )
+    create_and_run_current_thread(fut)
   })?;
 
   // Receive WebWorkerHandle from newly created worker
-  let worker_handle = handle_receiver.recv().unwrap()?;
+  let worker_handle = handle_receiver.recv().unwrap();
 
   let worker_thread = WorkerThread {
     worker_handle: worker_handle.into(),
@@ -238,10 +261,13 @@ fn op_create_worker(
 
 #[op2]
 fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
-  if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
-    worker_thread.terminate();
-  } else {
-    debug!("tried to terminate non-existent worker {}", id);
+  match state.borrow_mut::<WorkersTable>().remove(&id) {
+    Some(worker_thread) => {
+      worker_thread.terminate();
+    }
+    _ => {
+      debug!("tried to terminate non-existent worker {}", id);
+    }
   }
 }
 
@@ -291,7 +317,7 @@ fn close_channel(
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
   #[serde] id: WorkerId,
-) -> Result<WorkerControlEvent, AnyError> {
+) -> WorkerControlEvent {
   let (worker_handle, cancel_handle) = {
     let state = state.borrow();
     let workers_table = state.borrow::<WorkersTable>();
@@ -300,7 +326,7 @@ async fn op_host_recv_ctrl(
       (handle.worker_handle.clone(), handle.cancel_handle.clone())
     } else {
       // If handle was not found it means worker has already shutdown
-      return Ok(WorkerControlEvent::Close);
+      return WorkerControlEvent::Close;
     }
   };
 
@@ -309,22 +335,21 @@ async fn op_host_recv_ctrl(
     .or_cancel(cancel_handle)
     .await;
   match maybe_event {
-    Ok(Ok(Some(event))) => {
+    Ok(Some(event)) => {
       // Terminal error means that worker should be removed from worker table.
       if let WorkerControlEvent::TerminalError(_) = &event {
         close_channel(state, id, WorkerChannel::Ctrl);
       }
-      Ok(event)
+      event
     }
-    Ok(Ok(None)) => {
+    Ok(None) => {
       // If there was no event from worker it means it has already been closed.
       close_channel(state, id, WorkerChannel::Ctrl);
-      Ok(WorkerControlEvent::Close)
+      WorkerControlEvent::Close
     }
-    Ok(Err(err)) => Err(err),
     Err(_) => {
       // The worker was terminated.
-      Ok(WorkerControlEvent::Close)
+      WorkerControlEvent::Close
     }
   }
 }
@@ -334,7 +359,7 @@ async fn op_host_recv_ctrl(
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
   #[serde] id: WorkerId,
-) -> Result<Option<JsMessageData>, AnyError> {
+) -> Result<Option<JsMessageData>, MessagePortError> {
   let (worker_handle, cancel_handle) = {
     let s = state.borrow();
     let workers_table = s.borrow::<WorkersTable>();
@@ -373,7 +398,7 @@ fn op_host_post_message(
   state: &mut OpState,
   #[serde] id: WorkerId,
   #[serde] data: JsMessageData,
-) -> Result<(), AnyError> {
+) -> Result<(), MessagePortError> {
   if let Some(worker_thread) = state.borrow::<WorkersTable>().get(&id) {
     debug!("post message to worker {}", id);
     let worker_handle = worker_thread.worker_handle.clone();

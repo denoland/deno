@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/e",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/a": "workspace:*",
+    "@denotest/b": "workspace:~",
+    "@denotest/c": "workspace:^",
+    "@denotest/d": "workspace:1.2.3"
+  }
+}

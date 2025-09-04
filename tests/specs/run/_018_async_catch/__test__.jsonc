@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload 018_async_catch.ts",
+  "output": "018_async_catch.ts.out"
+}

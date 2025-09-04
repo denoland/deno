@@ -1,38 +1,7 @@
 {
   "$id": "https://deno.land/x/deno/cli/schemas/module-graph.json",
-  "$schema": "http://json-schema.org/draft-07/schema",
-  "description": "A JSON representation of a Deno module dependency graph.",
-  "required": [
-    "root",
-    "modules",
-    "size"
-  ],
-  "title": "Deno Dependency Graph Schema",
-  "type": "object",
-  "properties": {
-    "root": {
-      "default": "",
-      "description": "The root specifier for the graph.",
-      "examples": [
-        "https://deno.land/x/mod.ts"
-      ],
-      "type": "string"
-    },
-    "modules": {
-      "default": [],
-      "description": "The modules that are part of the graph.",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/module"
-      }
-    },
-    "size": {
-      "type": "integer",
-      "description": "The total size of all the unique dependencies in the graph in bytes.",
-      "default": 0
-    }
-  },
-  "definitions": {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
     "module": {
       "type": "object",
       "required": [
@@ -48,11 +17,11 @@
           "type": "array",
           "description": "An array of dependencies of the module.",
           "items": {
-            "$ref": "#/definitions/dependency"
+            "$ref": "#/$defs/dependency"
           }
         },
         "typeDependency": {
-          "$ref": "#/definitions/dependency",
+          "$ref": "#/$defs/dependency",
           "description": "The type dependency for the module. This is set when the file contains a reference to its types or the module was supplied with a types header."
         },
         "size": {
@@ -112,6 +81,37 @@
           "description": "The fully qualified module specifier (URL) for the type only dependency."
         }
       }
+    }
+  },
+  "title": "Deno Dependency Graph Schema",
+  "description": "A JSON representation of a Deno module dependency graph.",
+  "type": "object",
+  "required": [
+    "root",
+    "modules",
+    "size"
+  ],
+  "properties": {
+    "root": {
+      "default": "",
+      "description": "The root specifier for the graph.",
+      "examples": [
+        "https://deno.land/x/mod.ts"
+      ],
+      "type": "string"
+    },
+    "modules": {
+      "default": [],
+      "description": "The modules that are part of the graph.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/module"
+      }
+    },
+    "size": {
+      "type": "integer",
+      "description": "The total size of all the unique dependencies in the graph in bytes.",
+      "default": 0
     }
   }
 }

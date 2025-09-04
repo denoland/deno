@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet -A event_listener_error_immediate_exit_worker.ts",
+  "output": "event_listener_error_immediate_exit_worker.ts.out",
+  "exitCode": 1
+}

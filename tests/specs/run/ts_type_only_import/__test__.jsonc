@@ -1,0 +1,4 @@
+{
+  "args": "run --reload --check ts_type_only_import.ts",
+  "output": "ts_type_only_import.ts.out"
+}

@@ -88,6 +88,5 @@
   "homepage": "https://github.com/npm/ssri#readme",
   "bugs": {
     "url": "https://github.com/npm/ssri/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

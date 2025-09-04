@@ -1,0 +1,11 @@
+main1 hello
+main2 bye
+main3 aws
+worker1 hello
+worker2 bye
+error: Uncaught (in worker "") (in promise) NotCapable: Requires env access to "AWS_HELLO", run again with the --allow-env flag
+console.log("worker3", Deno.env.get("AWS_HELLO"));
+                                ^
+[WILDCARD]
+error: Uncaught (in promise) Error: Unhandled error in child worker.
+[WILDCARD]

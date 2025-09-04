@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --check shebang.ts",
+  "output": "shebang.ts.out"
+}

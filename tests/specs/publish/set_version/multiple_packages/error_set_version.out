@@ -1,0 +1,1 @@
+error: Cannot use --set-version when publishing a workspace. Change your cwd to an individual package instead.

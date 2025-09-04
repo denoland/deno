@@ -1,6 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { Buffer } from "node:buffer";
+// Copyright 2018-2025 the Deno authors. MIT license.
+import { Buffer, constants } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert";
+import { strictEqual } from "node:assert";
+
+const { MAX_STRING_LENGTH } = constants;
 
 Deno.test({
   name: "[node/buffer] alloc fails if size is not a number",
@@ -649,5 +652,39 @@ Deno.test({
     // @ts-expect-error Buffer.prototype.utf8Write is an undocumented API
     assertEquals(buf.utf8Write("abc", 0), 3);
     assertEquals([...buf], [0x61, 0x62, 0x63, 0, 0, 0, 0, 0]);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] Buffer.from pool",
+  fn() {
+    const a = Buffer.from("hello world");
+    const b = Buffer.from("hello world");
+    strictEqual(a.buffer, b.buffer);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] toString('utf8') keeps BOM",
+  fn() {
+    assertEquals(
+      Buffer.from([239, 187, 191, 97, 98]).toString("utf8"),
+      "\uFEFFab",
+    );
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] throws ERR_STRING_TOO_LONG with the correct message",
+  fn() {
+    assertThrows(
+      () => {
+        Buffer.allocUnsafe(2 ** 31).toString();
+      },
+      Error,
+      `Cannot create a string longer than 0x${
+        MAX_STRING_LENGTH.toString(16)
+      } characters`,
+    );
   },
 });

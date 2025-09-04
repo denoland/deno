@@ -1,5 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows, fail } from "./test_util.ts";
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+// deno-lint-ignore-file no-console
+
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+  delay,
+  fail,
+} from "./test_util.ts";
 
 const servePort = 4248;
 const serveUrl = `ws://localhost:${servePort}/`;
@@ -262,7 +271,7 @@ Deno.test({
       socket.onopen = () => socket.send("Hello");
       socket.onmessage = () => {
         socket.send("Bye");
-        socket.close();
+        socket.close(1000);
       };
       socket.onclose = () => ac.abort();
       socket.onerror = () => fail();
@@ -288,7 +297,8 @@ Deno.test({
       seenBye = true;
     }
   };
-  ws.onclose = () => {
+  ws.onclose = (e) => {
+    assertEquals(e.code, 1000);
     deferred.resolve();
   };
   await Promise.all([deferred.promise, server.finished]);
@@ -453,7 +463,8 @@ Deno.test("invalid server", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const ws = new WebSocket("ws://localhost:2121");
   let err = false;
-  ws.onerror = () => {
+  ws.onerror = (e) => {
+    assert("error" in e);
     err = true;
   };
   ws.onclose = () => {
@@ -804,4 +815,123 @@ Deno.test("Close connection", async () => {
 
   await server.finished;
   conn.close();
+});
+
+Deno.test("send to a closed socket", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ws = new WebSocket("ws://localhost:4242");
+  const blob = new Blob(["foo"]);
+  ws.onerror = () => fail();
+  ws.onopen = () => {
+    ws.close();
+    ws.send(blob);
+  };
+  ws.onclose = () => {
+    resolve();
+  };
+  await promise;
+});
+
+// https://github.com/denoland/deno/issues/25126
+Deno.test("websocket close ongoing handshake", async () => {
+  // First try to close without any delay
+  {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    let gotError1 = false;
+    const ws = new WebSocket("ws://localhost:4264");
+    ws.onopen = () => fail();
+    ws.onerror = (e) => {
+      assertEquals((e as ErrorEvent).error.code, "EINTR");
+      gotError1 = true;
+    };
+    ws.onclose = () => resolve();
+    ws.close();
+    await promise;
+    assert(gotError1);
+  }
+
+  await delay(50); // Wait a bit before trying again.
+
+  {
+    const { promise: promise2, resolve: resolve2 } = Promise.withResolvers<
+      void
+    >();
+    const ws2 = new WebSocket("ws://localhost:4264");
+    ws2.onopen = () => fail();
+    let gotError2 = false;
+    ws2.onerror = (e) => {
+      assertEquals((e as ErrorEvent).error.code, "EINTR");
+      gotError2 = true;
+    };
+    ws2.onclose = () => resolve2();
+    await delay(50); // wait a bit this time before calling close
+    ws2.close();
+    await promise2;
+    assert(gotError2);
+  }
+});
+
+function createOnErrorCb(ac: AbortController): (err: unknown) => Response {
+  return (err) => {
+    console.error(err);
+    ac.abort();
+    return new Response("Internal server error", { status: 500 });
+  };
+}
+
+function onListen(
+  resolve: (value: void | PromiseLike<void>) => void,
+): ({ hostname, port }: { hostname: string; port: number }) => void {
+  return () => {
+    resolve();
+  };
+}
+
+Deno.test("WebSocket headers", async () => {
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+  const doneDeferred = Promise.withResolvers<void>();
+  await using server = Deno.serve({
+    handler: (request) => {
+      assertEquals(request.headers.get("Authorization"), "Bearer foo");
+      const {
+        response,
+        socket,
+      } = Deno.upgradeWebSocket(request);
+      socket.onerror = (e) => {
+        console.error(e);
+        fail();
+      };
+      socket.onmessage = (m) => {
+        socket.send(m.data);
+        socket.close(1001);
+      };
+      socket.onclose = () => doneDeferred.resolve();
+      return response;
+    },
+    port: servePort,
+    signal: ac.signal,
+    onListen: onListen(listeningDeferred.resolve),
+    onError: createOnErrorCb(ac),
+  });
+
+  await listeningDeferred.promise;
+  const def = Promise.withResolvers<void>();
+  const ws = new WebSocket(`ws://localhost:${servePort}`, {
+    headers: {
+      "Authorization": "Bearer foo",
+    },
+  });
+  ws.onmessage = (m) => assertEquals(m.data, "foo");
+  ws.onerror = (e) => {
+    console.error(e);
+    fail();
+  };
+  ws.onclose = () => def.resolve();
+  ws.onopen = () => ws.send("foo");
+
+  await def.promise;
+  await doneDeferred.promise;
+  ac.abort();
+  await server.finished;
 });

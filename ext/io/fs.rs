@@ -1,7 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::fmt::Formatter;
 use std::io;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -11,15 +14,37 @@ use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
+use deno_error::JsErrorBox;
+use deno_permissions::PermissionCheckError;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use tokio::task::JoinError;
 
-#[derive(Debug)]
+#[derive(Debug, deno_error::JsError)]
 pub enum FsError {
+  #[class(inherit)]
   Io(io::Error),
+  #[class("Busy")]
   FileBusy,
+  #[class(not_supported)]
   NotSupported,
-  NotCapable(&'static str),
+  #[class(inherit)]
+  PermissionCheck(PermissionCheckError),
 }
+
+impl std::fmt::Display for FsError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      FsError::Io(err) => std::fmt::Display::fmt(err, f),
+      FsError::FileBusy => f.write_str("file busy"),
+      FsError::NotSupported => f.write_str("not supported"),
+      FsError::PermissionCheck(err) => std::fmt::Display::fmt(err, f),
+    }
+  }
+}
+
+impl std::error::Error for FsError {}
 
 impl FsError {
   pub fn kind(&self) -> io::ErrorKind {
@@ -27,7 +52,7 @@ impl FsError {
       Self::Io(err) => err.kind(),
       Self::FileBusy => io::ErrorKind::Other,
       Self::NotSupported => io::ErrorKind::Other,
-      Self::NotCapable(_) => io::ErrorKind::Other,
+      Self::PermissionCheck(e) => e.kind(),
     }
   }
 
@@ -36,9 +61,7 @@ impl FsError {
       FsError::Io(err) => err,
       FsError::FileBusy => io::Error::new(self.kind(), "file busy"),
       FsError::NotSupported => io::Error::new(self.kind(), "not supported"),
-      FsError::NotCapable(err) => {
-        io::Error::new(self.kind(), format!("requires {err} access"))
-      }
+      FsError::PermissionCheck(err) => err.into_io_error(),
     }
   }
 }
@@ -55,17 +78,9 @@ impl From<io::ErrorKind> for FsError {
   }
 }
 
-impl From<FsError> for deno_core::error::AnyError {
-  fn from(err: FsError) -> Self {
-    match err {
-      FsError::Io(err) => err.into(),
-      FsError::FileBusy => deno_core::error::resource_unavailable(),
-      FsError::NotSupported => deno_core::error::not_supported(),
-      FsError::NotCapable(err) => deno_core::error::custom_error(
-        "NotCapable",
-        format!("permission denied: {err}"),
-      ),
-    }
+impl From<PermissionCheckError> for FsError {
+  fn from(err: PermissionCheckError) -> Self {
+    Self::PermissionCheck(err)
   }
 }
 
@@ -92,6 +107,7 @@ pub struct FsStat {
   pub mtime: Option<u64>,
   pub atime: Option<u64>,
   pub birthtime: Option<u64>,
+  pub ctime: Option<u64>,
 
   pub dev: u64,
   pub ino: u64,
@@ -151,6 +167,16 @@ impl FsStat {
       }
     }
 
+    #[inline(always)]
+    fn get_ctime(ctime_or_0: i64) -> Option<u64> {
+      if ctime_or_0 > 0 {
+        // ctime return seconds since epoch, but we need milliseconds
+        return Some(ctime_or_0 as u64 * 1000);
+      }
+
+      None
+    }
+
     Self {
       is_file: metadata.is_file(),
       is_directory: metadata.is_dir(),
@@ -160,6 +186,7 @@ impl FsStat {
       mtime: to_msec(metadata.modified()),
       atime: to_msec(metadata.accessed()),
       birthtime: to_msec(metadata.created()),
+      ctime: get_ctime(unix_or_zero!(ctime)),
 
       dev: unix_or_zero!(dev),
       ino: unix_or_zero!(ino),
@@ -201,11 +228,22 @@ pub trait File {
   fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()>;
   async fn write_all(self: Rc<Self>, buf: BufView) -> FsResult<()>;
 
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>>;
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>>;
+  fn read_all_sync(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>>;
+  async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>>;
 
   fn chmod_sync(self: Rc<Self>, pathmode: u32) -> FsResult<()>;
   async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()>;
+
+  fn chown_sync(
+    self: Rc<Self>,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+  async fn chown_async(
+    self: Rc<Self>,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
 
   fn seek_sync(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64>;
   async fn seek_async(self: Rc<Self>, pos: io::SeekFrom) -> FsResult<u64>;
@@ -244,7 +282,7 @@ pub trait File {
   ) -> FsResult<()>;
 
   // lower level functionality
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio>;
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio>;
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd>;
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn File>>;
 }
@@ -263,18 +301,21 @@ impl FileResource {
     state: &OpState,
     rid: ResourceId,
     f: F,
-  ) -> Result<R, deno_core::error::AnyError>
+  ) -> Result<R, JsErrorBox>
   where
-    F: FnOnce(Rc<FileResource>) -> Result<R, deno_core::error::AnyError>,
+    F: FnOnce(Rc<FileResource>) -> Result<R, JsErrorBox>,
   {
-    let resource = state.resource_table.get::<FileResource>(rid)?;
+    let resource = state
+      .resource_table
+      .get::<FileResource>(rid)
+      .map_err(JsErrorBox::from_err)?;
     f(resource)
   }
 
   pub fn get_file(
     state: &OpState,
     rid: ResourceId,
-  ) -> Result<Rc<dyn File>, deno_core::error::AnyError> {
+  ) -> Result<Rc<dyn File>, ResourceError> {
     let resource = state.resource_table.get::<FileResource>(rid)?;
     Ok(resource.file())
   }
@@ -283,9 +324,9 @@ impl FileResource {
     state: &OpState,
     rid: ResourceId,
     f: F,
-  ) -> Result<R, deno_core::error::AnyError>
+  ) -> Result<R, JsErrorBox>
   where
-    F: FnOnce(Rc<dyn File>) -> Result<R, deno_core::error::AnyError>,
+    F: FnOnce(Rc<dyn File>) -> Result<R, JsErrorBox>,
   {
     Self::with_resource(state, rid, |r| f(r.file.clone()))
   }
@@ -296,7 +337,7 @@ impl FileResource {
 }
 
 impl deno_core::Resource for FileResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     Cow::Borrowed(&self.name)
   }
 
@@ -307,7 +348,7 @@ impl deno_core::Resource for FileResource {
         .clone()
         .read(limit)
         .await
-        .map_err(|err| err.into())
+        .map_err(JsErrorBox::from_err)
     })
   }
 
@@ -321,7 +362,7 @@ impl deno_core::Resource for FileResource {
         .clone()
         .read_byob(buf)
         .await
-        .map_err(|err| err.into())
+        .map_err(JsErrorBox::from_err)
     })
   }
 
@@ -330,7 +371,12 @@ impl deno_core::Resource for FileResource {
     buf: BufView,
   ) -> deno_core::AsyncResult<deno_core::WriteOutcome> {
     Box::pin(async move {
-      self.file.clone().write(buf).await.map_err(|err| err.into())
+      self
+        .file
+        .clone()
+        .write(buf)
+        .await
+        .map_err(JsErrorBox::from_err)
     })
   }
 
@@ -341,22 +387,27 @@ impl deno_core::Resource for FileResource {
         .clone()
         .write_all(buf)
         .await
-        .map_err(|err| err.into())
+        .map_err(JsErrorBox::from_err)
     })
   }
 
   fn read_byob_sync(
     self: Rc<Self>,
     data: &mut [u8],
-  ) -> Result<usize, deno_core::anyhow::Error> {
-    self.file.clone().read_sync(data).map_err(|err| err.into())
+  ) -> Result<usize, JsErrorBox> {
+    self
+      .file
+      .clone()
+      .read_sync(data)
+      .map_err(JsErrorBox::from_err)
   }
 
-  fn write_sync(
-    self: Rc<Self>,
-    data: &[u8],
-  ) -> Result<usize, deno_core::anyhow::Error> {
-    self.file.clone().write_sync(data).map_err(|err| err.into())
+  fn write_sync(self: Rc<Self>, data: &[u8]) -> Result<usize, JsErrorBox> {
+    self
+      .file
+      .clone()
+      .write_sync(data)
+      .map_err(JsErrorBox::from_err)
   }
 
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -9,4 +9,7 @@ declare module "ext:deno_console/01_console.js" {
     keys: (keyof TObject)[];
     evaluate: boolean;
   }): Record<string, unknown>;
+
+  class Console {
+  }
 }

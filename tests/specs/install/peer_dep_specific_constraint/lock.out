@@ -1,0 +1,28 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/add@1": "1.0.0",
+    "npm:@denotest/peer-dep-specific-constraint@*": "1.0.0_@denotest+add@1.0.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "sha512-P7KqAn8qFLI/13TfERSPS0NYt7CmA0diT6bhscyT6FzZjFaAVCja3K/dk96eZDsCyI1gtwtHg5Ahh8XDIvAgrw==",
+      "tarball": "http://localhost:4260/@denotest/add/1.0.0.tgz"
+    },
+    "@denotest/peer-dep-specific-constraint@1.0.0_@denotest+add@1.0.0": {
+      "integrity": "sha512-KUF2AM/s0tMLzhL3zZylfMxA1OO6LPh5Mk53WJBMEBhji6qPaV1/qyaHdMtSjniYOQ343b5ohgvTw6e9VoyUEQ==",
+      "dependencies": [
+        "@denotest/add"
+      ],
+      "tarball": "http://localhost:4260/@denotest/peer-dep-specific-constraint/1.0.0.tgz"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@denotest/add@1",
+        "npm:@denotest/peer-dep-specific-constraint@*"
+      ]
+    }
+  }
+}

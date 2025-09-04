@@ -1,0 +1,5 @@
+{
+  "args": "run --reload error_004_missing_module.ts",
+  "output": "error_004_missing_module.ts.out",
+  "exitCode": 1
+}

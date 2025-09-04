@@ -1,0 +1,21 @@
+Download http://localhost:4545/wasm/math.wasm
+Defined in http://localhost:4545/wasm/math.wasm:2:1
+
+function add(arg0: number, arg1: number): number
+
+Defined in http://localhost:4545/wasm/math.wasm:3:1
+
+function subtract(arg0: number, arg1: number): number
+
+Defined in http://localhost:4545/wasm/math.wasm:4:22
+
+const __data_end: number
+
+Defined in http://localhost:4545/wasm/math.wasm:5:22
+
+const __heap_base: number
+
+Defined in http://localhost:4545/wasm/math.wasm:1:22
+
+const memory: WebAssembly.Memory
+

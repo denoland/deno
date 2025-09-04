@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -453,7 +453,7 @@ class DynamicLibrary {
   symbols = { __proto__: null };
 
   constructor(path, symbols) {
-    ({ 0: this.#rid, 1: this.symbols } = op_ffi_load({ path, symbols }));
+    ({ 0: this.#rid, 1: this.symbols } = op_ffi_load(path, symbols));
     for (const symbol in symbols) {
       if (!ObjectHasOwn(symbols, symbol)) {
         continue;

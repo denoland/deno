@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "types": [
+      "./globals.d.ts",
+      "./other-globals.d.ts"
+    ]
+  }
+}

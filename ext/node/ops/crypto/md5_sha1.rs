@@ -1,5 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 use core::fmt;
+
+use digest::HashMarker;
+use digest::Output;
+use digest::Reset;
 use digest::core_api::AlgorithmName;
 use digest::core_api::BlockSizeUser;
 use digest::core_api::Buffer;
@@ -8,9 +12,6 @@ use digest::core_api::CoreWrapper;
 use digest::core_api::FixedOutputCore;
 use digest::core_api::OutputSizeUser;
 use digest::core_api::UpdateCore;
-use digest::HashMarker;
-use digest::Output;
-use digest::Reset;
 
 pub type Md5Sha1 = CoreWrapper<Md5Sha1Core>;
 

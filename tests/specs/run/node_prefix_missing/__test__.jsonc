@@ -5,11 +5,23 @@
       "output": "main.ts.out",
       "exitCode": 1
     },
+    "basic_no_config": {
+      "args": "run --quiet --no-config main.ts",
+      "output": "main_no_config.out",
+      "exitCode": 1
+    },
     "unstable_bare_node_builtins_enabled": {
       "args": "run --unstable-bare-node-builtins main.ts",
       "output": "feature_enabled.out"
     },
-    "unstable_bare_node_builtins_enbaled_by_env": {
+    "unstable_bare_node_builtins_enabled2": {
+      "args": "run main.ts",
+      "envs": {
+        "DENO_COMPAT": "1"
+      },
+      "output": "feature_enabled.out"
+    },
+    "unstable_bare_node_builtins_enabled_by_env": {
       "args": "run main.ts",
       "envs": {
         "DENO_UNSTABLE_BARE_NODE_BUILTINS": "1"

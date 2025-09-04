@@ -1,10 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_bench_util::bench_js_sync;
 use deno_bench_util::bench_or_profile;
-use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
-
+use deno_bench_util::bencher::benchmark_group;
 use deno_core::Extension;
 
 fn setup() -> Vec<Extension> {
@@ -20,10 +19,10 @@ fn setup() -> Vec<Extension> {
   );
 
   vec![
-    deno_webidl::deno_webidl::init_ops_and_esm(),
-    deno_console::deno_console::init_ops_and_esm(),
-    deno_url::deno_url::init_ops_and_esm(),
-    bench_setup::init_ops_and_esm(),
+    deno_webidl::deno_webidl::init(),
+    deno_console::deno_console::init(),
+    deno_url::deno_url::init(),
+    bench_setup::init(),
   ]
 }
 

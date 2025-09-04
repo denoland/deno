@@ -1,19 +1,20 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 20;
+const cacheVersion = 71;
 
-const ubuntuX86Runner = "ubuntu-22.04";
-const ubuntuX86XlRunner = "ubuntu-22.04-xl";
+const ubuntuX86Runner = "ubuntu-24.04";
+const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
 const ubuntuARMRunner = "ubicloud-standard-16-arm";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
+const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 const Runners = {
   linuxX86: {
@@ -42,6 +43,13 @@ const Runners = {
     arch: "aarch64",
     runner: macosArmRunner,
   },
+  macosArmSelfHosted: {
+    os: "macos",
+    arch: "aarch64",
+    // Actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds.
+    runner:
+      `\${{ github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
+  },
   windowsX86: {
     os: "windows",
     arch: "x86_64",
@@ -57,21 +65,30 @@ const Runners = {
 
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
+const prCacheKey = `${prCacheKeyPrefix}\${{ github.sha }}`;
+const prCachePath = [
+  // this must match for save and restore (https://github.com/actions/cache/issues/1444)
+  "./target",
+  "!./target/*/gn_out",
+  "!./target/*/gn_root",
+  "!./target/*/*.zip",
+  "!./target/*/*.tar.gz",
+].join("\n");
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
-const llvmVersion = 18;
+const llvmVersion = 20;
 const installPkgsCommand =
-  `sudo apt-get install --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
+  `sudo apt-get install -y --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Setting up sysroot
 export DEBIAN_FRONTEND=noninteractive
 # Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
-sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
+sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
 # Remove older clang before we install
 sudo apt-get -qq remove \
-  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' > /dev/null 2> /dev/null
+  'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
@@ -85,8 +102,10 @@ ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && s
 # Fix alternatives
 (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
+clang-${llvmVersion} -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+
 echo "Decompressing sysroot..."
-wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240528/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
+wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
 cd /
 xzcat /tmp/sysroot.tar.xz | sudo tar -x
 sudo mount --rbind /dev /sysroot/dev
@@ -113,9 +132,7 @@ cat /sysroot/.env
 #      to build because the object formats are not compatible.
 echo "
 CARGO_PROFILE_BENCH_INCREMENTAL=false
-CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
-CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
@@ -124,6 +141,7 @@ RUSTFLAGS<<__1
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  -C link-arg=/tmp/memfd_create_shim.o
   --cfg tokio_unstable
   $RUSTFLAGS
 __1
@@ -135,11 +153,12 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  -C link-arg=/tmp/memfd_create_shim.o
   --cfg tokio_unstable
   $RUSTFLAGS
 __1
 CC=/usr/bin/clang-${llvmVersion}
-CFLAGS=-flto=thin $CFLAGS
+CFLAGS=$CFLAGS
 " > $GITHUB_ENV`,
 };
 
@@ -193,8 +212,8 @@ const installNodeStep = {
 };
 const installDenoStep = {
   name: "Install Deno",
-  uses: "denoland/setup-deno@v1",
-  with: { "deno-version": "v1.x" },
+  uses: "denoland/setup-deno@v2",
+  with: { "deno-version": "v2.x" },
 };
 
 const authenticateWithGoogleCloud = {
@@ -299,6 +318,7 @@ const ci = {
   name: "ci",
   permissions: {
     contents: "write",
+    "id-token": "write", // Required for GitHub OIDC with Azure for code signing
   },
   on: {
     push: {
@@ -349,7 +369,13 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
-      "timeout-minutes": 180,
+      // This is required to successfully authenticate with Azure using OIDC for
+      // code signing.
+      environment: {
+        name:
+          "${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && 'build' || '' }}",
+      },
+      "timeout-minutes": 240,
       defaults: {
         run: {
           // GH actions does not fail fast by default on
@@ -373,7 +399,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            ...Runners.macosArm,
+            ...Runners.macosArmSelfHosted,
             job: "test",
             profile: "release",
             skip_pr: true,
@@ -419,6 +445,7 @@ const ci = {
             job: "test",
             profile: "release",
             use_sysroot: true,
+            skip_pr: true,
           }, {
             ...Runners.macosX86,
             job: "lint",
@@ -452,7 +479,7 @@ const ci = {
         },
         {
           ...submoduleStep("./tests/node_compat/runner/suite"),
-          if: "matrix.job == 'lint' && matrix.os == 'linux'",
+          if: "matrix.job == 'test'",
         },
         {
           ...submoduleStep("./cli/bench/testdata/lsp_benchdata"),
@@ -472,6 +499,27 @@ const ci = {
             'tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \\',
             "    -czvf target/release/deno_src.tar.gz -C .. deno",
           ].join("\n"),
+        },
+        {
+          name: "Cache Cargo home",
+          uses: "cirruslabs/cache@v4",
+          with: {
+            // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
+            path: [
+              "~/.cargo/.crates.toml",
+              "~/.cargo/.crates2.json",
+              "~/.cargo/bin",
+              "~/.cargo/registry/index",
+              "~/.cargo/registry/cache",
+              "~/.cargo/git/db",
+            ].join("\n"),
+            key:
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
+            // We will try to restore from the closest cargo-home we can find
+            "restore-keys":
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
+          },
         },
         installRustStep,
         {
@@ -559,6 +607,9 @@ const ci = {
         },
         {
           name: "Install macOS aarch64 lld",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run: [
             "./tools/install_prebuilt.js ld64.lld",
           ].join("\n"),
@@ -566,6 +617,9 @@ const ci = {
         },
         {
           name: "Install rust-codesign",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run: [
             "./tools/install_prebuilt.js rcodesign",
             "echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH",
@@ -592,26 +646,12 @@ const ci = {
         {
           name: "Install benchmark tools",
           if: "matrix.job == 'bench'",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run: [
             installBenchTools,
           ].join("\n"),
-        },
-        {
-          name: "Cache Cargo home",
-          uses: "actions/cache@v4",
-          with: {
-            // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
-            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
-            path: [
-              "~/.cargo/registry/index",
-              "~/.cargo/registry/cache",
-            ].join("\n"),
-            key:
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-            // We will try to restore from the closest cargo-home we can find
-            "restore-keys":
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}`,
-          },
         },
         {
           // Restore cache from the latest 'main' branch build.
@@ -620,13 +660,7 @@ const ci = {
           if:
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
-            path: [
-              "./target",
-              "!./target/*/gn_out",
-              "!./target/*/gn_root",
-              "!./target/*/*.zip",
-              "!./target/*/*.tar.gz",
-            ].join("\n"),
+            path: prCachePath,
             key: "never_saved",
             "restore-keys": prCacheKeyPrefix,
           },
@@ -640,25 +674,27 @@ const ci = {
           },
         },
         {
+          name: "Set up playwright cache",
+          uses: "actions/cache@v4",
+          with: {
+            path: "./.ms-playwright",
+            key: "playwright-${{ runner.os }}-${{ runner.arch }}",
+          },
+        },
+        {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
             "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
         {
-          name: "Lint PR title",
-          if:
-            "matrix.job == 'lint' && github.event_name == 'pull_request' && matrix.os == 'linux'",
-          env: {
-            PR_TITLE: "${{ github.event.pull_request.title }}",
-          },
-          run: 'deno run ./tools/verify_pr_title.js "$PR_TITLE"',
-        },
-        {
           name: "lint.js",
           if: "matrix.job == 'lint'",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
           run:
-            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
+            "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
         },
         {
           name: "jsdoc_checker.js",
@@ -667,20 +703,16 @@ const ci = {
             "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
         },
         {
-          name: "node_compat/setup.ts --check",
-          if: "matrix.job == 'lint' && matrix.os == 'linux'",
-          run:
-            "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
+          name: "Check tracing build",
+          if:
+            "matrix.job == 'test' && matrix.profile == 'debug' && matrix.os == 'linux' && matrix.arch == 'x86_64'",
+          run: "cargo check -p deno --features=lsp-tracing",
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: [
-            // output fs space before and after building
-            "df -h",
-            "cargo build --locked --all-targets",
-            "df -h",
-          ].join("\n"),
+          run: "cargo build --locked --all-targets --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         // Uncomment for remote debugging
@@ -703,7 +735,7 @@ const ci = {
           run: [
             // output fs space before and after building
             "df -h",
-            "cargo build --release --locked --all-targets",
+            "cargo build --release --locked --all-targets --features=panic-trace",
             "df -h",
           ].join("\n"),
         },
@@ -726,6 +758,22 @@ const ci = {
             'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
         },
         {
+          name: "Generate symcache",
+          if: [
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "github.repository == 'denoland/deno')",
+          ].join("\n"),
+          run: [
+            "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
+            "du -h deno.symcache",
+            "du -h target/release/deno",
+          ].join("\n"),
+          env: {
+            NO_COLOR: 1,
+          },
+        },
+        {
           name: "Upload PR artifact (linux)",
           if: [
             "matrix.job == 'test' &&",
@@ -745,15 +793,17 @@ const ci = {
           name: "Pre-release (linux)",
           if: [
             "matrix.os == 'linux' &&",
-            "matrix.job == 'test' &&",
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno'",
           ].join("\n"),
           run: [
             "cd target/release",
+            "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-unknown-linux-gnu.symcache",
+            "strip ./deno",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
-            "strip denort",
+            "strip ./denort",
             "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
             "./deno types > lib.deno.d.ts",
@@ -772,6 +822,8 @@ const ci = {
             "APPLE_CODESIGN_PASSWORD": "${{ secrets.APPLE_CODESIGN_PASSWORD }}",
           },
           run: [
+            "target/release/deno -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-apple-darwin.symcache",
+            "strip -x -S target/release/deno",
             'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
             "rcodesign sign target/release/deno " +
             "--code-signature-flags=runtime " +
@@ -781,11 +833,74 @@ const ci = {
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
-            "strip denort",
+            "strip -x -S ./denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
           ]
             .join("\n"),
+        },
+        {
+          // Note: Azure OIDC credentials are only valid for 5 minutes, so
+          // authentication must be done right before signing.
+          name: "Authenticate with Azure (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          uses: "azure/login@v1",
+          with: {
+            "client-id": "${{ secrets.AZURE_CLIENT_ID }}",
+            "tenant-id": "${{ secrets.AZURE_TENANT_ID }}",
+            "subscription-id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+            "enable-AzPSSession": true,
+          },
+        },
+        {
+          name: "Code sign deno.exe (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          uses: "azure/trusted-signing-action@v0",
+          with: {
+            "endpoint": "https://eus.codesigning.azure.net/",
+            "trusted-signing-account-name": "deno-cli-code-signing",
+            "certificate-profile-name": "deno-cli-code-signing-cert",
+            "files-folder": "target/release",
+            "files-folder-filter": "deno.exe",
+            "file-digest": "SHA256",
+            "timestamp-rfc3161": "http://timestamp.acs.microsoft.com",
+            "timestamp-digest": "SHA256",
+            "exclude-environment-credential": true,
+            "exclude-workload-identity-credential": true,
+            "exclude-managed-identity-credential": true,
+            "exclude-shared-token-cache-credential": true,
+            "exclude-visual-studio-credential": true,
+            "exclude-visual-studio-code-credential": true,
+            "exclude-azure-cli-credential": false,
+          },
+        },
+        {
+          name: "Verify signature (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+          ].join("\n"),
+          shell: "pwsh",
+          run: [
+            '$SignTool = Get-ChildItem -Path "C:\\Program Files*\\Windows Kits\\*\\bin\\*\\x64\\signtool.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1',
+            "$SignToolPath = $SignTool.FullName",
+            "& $SignToolPath verify /pa /v target\\release\\deno.exe",
+          ].join("\n"),
         },
         {
           name: "Pre-release (windows)",
@@ -801,6 +916,7 @@ const ci = {
             "Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
             "Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
+            "target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache",
           ].join("\n"),
         },
         {
@@ -814,8 +930,10 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
             "echo ${{ github.sha }} > canary-latest.txt",
             'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+            "rm canary-latest.txt gha-creds-*.json",
           ].join("\n"),
         },
         {
@@ -838,7 +956,7 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked",
+          run: "cargo test --locked --features=panic-trace",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -851,8 +969,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib",
-            "cargo test --locked --tests",
+            "cargo test --locked --lib --features=panic-trace",
+            "cargo test --locked --tests --features=panic-trace",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -865,7 +983,21 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
-          run: "cargo test --release --locked",
+          run: "cargo test --release --locked --features=panic-trace",
+        },
+        {
+          name: "Ensure no git changes",
+          if: "matrix.job == 'test' && github.event_name == 'pull_request'",
+          run: [
+            'if [[ -n "$(git status --porcelain)" ]]; then',
+            'echo "❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files."',
+            'echo ""',
+            'echo "📋 Status:"',
+            "git status",
+            'echo ""',
+            "exit 1",
+            "fi",
+          ].join("\n"),
         },
         {
           name: "Configure hosts file for WPT",
@@ -880,10 +1012,10 @@ const ci = {
             DENO_BIN: "./target/debug/deno",
           },
           run: [
-            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
-            "        ./tests/wpt/wpt.ts setup",
-            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
-            '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
+            "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
+            "    ./tests/wpt/wpt.ts setup",
+            "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
+            '    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
         {
@@ -893,13 +1025,10 @@ const ci = {
             DENO_BIN: "./target/release/deno",
           },
           run: [
-            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
-            "         ./tests/wpt/wpt.ts setup",
-            "deno run -A --lock=tools/deno.lock.json --config tests/config/deno.json\\",
-            "         ./tests/wpt/wpt.ts run --quiet --release         \\",
-            '                            --binary="$DENO_BIN"          \\',
-            "                            --json=wpt.json               \\",
-            "                            --wptreport=wptreport.json",
+            "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json \\",
+            "    ./tests/wpt/wpt.ts setup",
+            "deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \\",
+            '    ./tests/wpt/wpt.ts run --quiet --release --binary="$DENO_BIN" --json=wpt.json --wptreport=wptreport.json',
           ].join("\n"),
         },
         {
@@ -998,6 +1127,7 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           ].join("\n"),
         },
         {
@@ -1015,6 +1145,7 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           ].join("\n"),
         },
         {
@@ -1078,15 +1209,45 @@ const ci = {
           if:
             "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
           with: {
-            path: [
-              "./target",
-              "!./target/*/gn_out",
-              "!./target/*/*.zip",
-              "!./target/*/*.sha256sum",
-              "!./target/*/*.tar.gz",
-            ].join("\n"),
-            key: prCacheKeyPrefix + "${{ github.sha }}",
+            path: prCachePath,
+            key: prCacheKey,
           },
+        },
+      ]),
+    },
+    libs: {
+      name: "build libs",
+      needs: ["pre_build"],
+      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
+      "runs-on": ubuntuX86Runner,
+      "timeout-minutes": 30,
+      steps: skipJobsIfPrAndMarkedSkip([
+        ...cloneRepoStep,
+        installRustStep,
+        {
+          name: "Install wasm target",
+          run: "rustup target add wasm32-unknown-unknown",
+        },
+        // we want these crates to be Wasm compatible
+        {
+          name: "Cargo check (deno_resolver)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_resolver && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph && cargo check --target wasm32-unknown-unknown -p deno_resolver --features graph --features deno_ast",
+        },
+        {
+          name: "Cargo check (deno_npm_installer)",
+          run:
+            "cargo check --target wasm32-unknown-unknown -p deno_npm_installer",
+        },
+        {
+          name: "Cargo check (deno_config)",
+          run: [
+            "cargo check --no-default-features -p deno_config",
+            "cargo check --no-default-features --features workspace -p deno_config",
+            "cargo check --no-default-features --features package_json -p deno_config",
+            "cargo check --no-default-features --features workspace --features sync -p deno_config",
+            "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+          ].join("\n"),
         },
       ]),
     },

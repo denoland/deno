@@ -64,7 +64,6 @@
     "type": "git",
     "url": "git+ssh://git@github.com/mozilla/source-map.git"
   },
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/mozilla/source-map",
   "bugs": {
     "url": "https://github.com/mozilla/source-map/issues"

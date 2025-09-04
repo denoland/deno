@@ -1,10 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::op2;
-use deno_core::OpState;
-use deno_core::ResourceId;
+use std::cell::RefCell;
 use std::ffi::c_void;
 #[cfg(any(
   target_os = "linux",
@@ -14,46 +10,263 @@ use std::ffi::c_void;
 ))]
 use std::ptr::NonNull;
 
-use crate::surface::WebGpuSurface;
+use deno_core::FromV8;
+use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_core::cppgc::SameObject;
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::v8::Local;
+use deno_core::v8::Value;
+use deno_error::JsErrorBox;
 
-#[op2(fast)]
-#[smi]
-pub fn op_webgpu_surface_create(
-  state: &mut OpState,
-  #[string] system: &str,
-  p1: *const c_void,
-  p2: *const c_void,
-) -> Result<ResourceId, AnyError> {
-  let instance = state.try_borrow::<super::Instance>().ok_or_else(|| {
-    type_error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")
-  })?;
-  // Security note:
-  //
-  // The `p1` and `p2` parameters are pointers to platform-specific window
-  // handles.
-  //
-  // The code below works under the assumption that:
-  //
-  // - handles can only be created by the FFI interface which
-  // enforces --allow-ffi.
-  //
-  // - `*const c_void` deserizalizes null and v8::External.
-  //
-  // - Only FFI can export v8::External to user code.
-  if p1.is_null() {
-    return Err(type_error("Invalid parameters"));
+use crate::surface::GPUCanvasContext;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ByowError {
+  #[cfg(not(any(
+    target_os = "macos",
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd",
+  )))]
+  #[class(type)]
+  #[error("Unsupported platform")]
+  Unsupported,
+  #[class(type)]
+  #[error(
+    "Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?"
+  )]
+  WebGPUNotInitiated,
+  #[class(type)]
+  #[error("Invalid parameters")]
+  InvalidParameters,
+  #[class(generic)]
+  #[error(transparent)]
+  CreateSurface(wgpu_core::instance::CreateSurfaceError),
+  #[cfg(target_os = "windows")]
+  #[class(type)]
+  #[error("Invalid system on Windows")]
+  InvalidSystem,
+  #[cfg(target_os = "macos")]
+  #[class(type)]
+  #[error("Invalid system on macOS")]
+  InvalidSystem,
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
+  #[class(type)]
+  #[error("Invalid system on Linux/BSD")]
+  InvalidSystem,
+  #[cfg(any(
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
+  #[class(type)]
+  #[error("window is null")]
+  NullWindow,
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
+  #[class(type)]
+  #[error("display is null")]
+  NullDisplay,
+  #[cfg(target_os = "macos")]
+  #[class(type)]
+  #[error("ns_view is null")]
+  NSViewDisplay,
+}
+
+// TODO(@littledivy): This will extend `OffscreenCanvas` when we add it.
+pub struct UnsafeWindowSurface {
+  pub id: wgpu_core::id::SurfaceId,
+  pub width: RefCell<u32>,
+  pub height: RefCell<u32>,
+
+  pub context: SameObject<GPUCanvasContext>,
+}
+
+impl GarbageCollected for UnsafeWindowSurface {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"UnsafeWindowSurface"
+  }
+}
+
+#[op2]
+impl UnsafeWindowSurface {
+  #[constructor]
+  #[cppgc]
+  fn new(
+    state: &mut OpState,
+    #[from_v8] options: UnsafeWindowSurfaceOptions,
+  ) -> Result<UnsafeWindowSurface, ByowError> {
+    let instance = state
+      .try_borrow::<super::Instance>()
+      .ok_or(ByowError::WebGPUNotInitiated)?;
+
+    // Security note:
+    //
+    // The `window_handle` and `display_handle` options are pointers to
+    // platform-specific window handles.
+    //
+    // The code below works under the assumption that:
+    //
+    // - handles can only be created by the FFI interface which
+    // enforces --allow-ffi.
+    //
+    // - `*const c_void` deserizalizes null and v8::External.
+    //
+    // - Only FFI can export v8::External to user code.
+    if options.window_handle.is_null() {
+      return Err(ByowError::InvalidParameters);
+    }
+
+    let (win_handle, display_handle) = raw_window(
+      options.system,
+      options.window_handle,
+      options.display_handle,
+    )?;
+
+    // SAFETY: see above comment
+    let id = unsafe {
+      instance
+        .instance_create_surface(display_handle, win_handle, None)
+        .map_err(ByowError::CreateSurface)?
+    };
+
+    Ok(UnsafeWindowSurface {
+      id,
+      width: RefCell::new(options.width),
+      height: RefCell::new(options.height),
+      context: SameObject::new(),
+    })
   }
 
-  let (win_handle, display_handle) = raw_window(system, p1, p2)?;
-  // SAFETY: see above comment
-  let surface = unsafe {
-    instance.instance_create_surface(display_handle, win_handle, None)?
-  };
+  #[global]
+  fn get_context(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::HandleScope,
+  ) -> v8::Global<v8::Object> {
+    self.context.get(scope, |_| GPUCanvasContext {
+      surface_id: self.id,
+      width: self.width.clone(),
+      height: self.height.clone(),
+      config: RefCell::new(None),
+      texture: RefCell::new(v8::TracedReference::empty()),
+      canvas: this,
+    })
+  }
 
-  let rid = state
-    .resource_table
-    .add(WebGpuSurface(instance.clone(), surface));
-  Ok(rid)
+  #[nofast]
+  fn present(&self, scope: &mut v8::HandleScope) -> Result<(), JsErrorBox> {
+    let Some(context) = self.context.try_unwrap(scope) else {
+      return Err(JsErrorBox::type_error("getContext was never called"));
+    };
+
+    context.present(scope).map_err(JsErrorBox::from_err)
+  }
+
+  #[fast]
+  fn resize(&self, width: u32, height: u32, scope: &mut v8::HandleScope) {
+    self.width.replace(width);
+    self.height.replace(height);
+
+    let Some(context) = self.context.try_unwrap(scope) else {
+      return;
+    };
+
+    context.resize_configure(width, height);
+  }
+}
+
+struct UnsafeWindowSurfaceOptions {
+  system: UnsafeWindowSurfaceSystem,
+  window_handle: *const c_void,
+  display_handle: *const c_void,
+  width: u32,
+  height: u32,
+}
+
+#[derive(Eq, PartialEq)]
+enum UnsafeWindowSurfaceSystem {
+  Cocoa,
+  Win32,
+  X11,
+  Wayland,
+}
+
+impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
+  type Error = JsErrorBox;
+
+  fn from_v8(
+    scope: &mut v8::HandleScope<'a>,
+    value: Local<'a, Value>,
+  ) -> Result<Self, Self::Error> {
+    let obj = value
+      .try_cast::<v8::Object>()
+      .map_err(|_| JsErrorBox::type_error("is not an object"))?;
+
+    let key = v8::String::new(scope, "system").unwrap();
+    let val = obj
+      .get(scope, key.into())
+      .ok_or_else(|| JsErrorBox::type_error("missing field 'system'"))?;
+    let s = String::from_v8(scope, val).unwrap();
+    let system = match s.as_str() {
+      "cocoa" => UnsafeWindowSurfaceSystem::Cocoa,
+      "win32" => UnsafeWindowSurfaceSystem::Win32,
+      "x11" => UnsafeWindowSurfaceSystem::X11,
+      "wayland" => UnsafeWindowSurfaceSystem::Wayland,
+      _ => {
+        return Err(JsErrorBox::type_error(format!(
+          "Invalid system kind '{s}'"
+        )));
+      }
+    };
+
+    let key = v8::String::new(scope, "windowHandle").unwrap();
+    let val = obj
+      .get(scope, key.into())
+      .ok_or_else(|| JsErrorBox::type_error("missing field 'windowHandle'"))?;
+    let Some(window_handle) = deno_core::_ops::to_external_option(&val) else {
+      return Err(JsErrorBox::type_error("expected external"));
+    };
+
+    let key = v8::String::new(scope, "displayHandle").unwrap();
+    let val = obj
+      .get(scope, key.into())
+      .ok_or_else(|| JsErrorBox::type_error("missing field 'displayHandle'"))?;
+    let Some(display_handle) = deno_core::_ops::to_external_option(&val) else {
+      return Err(JsErrorBox::type_error("expected external"));
+    };
+
+    let key = v8::String::new(scope, "width").unwrap();
+    let val = obj
+      .get(scope, key.into())
+      .ok_or_else(|| JsErrorBox::type_error("missing field 'width'"))?;
+    let width = deno_core::convert::Number::<u32>::from_v8(scope, val)?.0;
+
+    let key = v8::String::new(scope, "height").unwrap();
+    let val = obj
+      .get(scope, key.into())
+      .ok_or_else(|| JsErrorBox::type_error("missing field 'height'"))?;
+    let height = deno_core::convert::Number::<u32>::from_v8(scope, val)?.0;
+
+    Ok(Self {
+      system,
+      window_handle,
+      display_handle,
+      width,
+      height,
+    })
+  }
 }
 
 type RawHandles = (
@@ -63,18 +276,17 @@ type RawHandles = (
 
 #[cfg(target_os = "macos")]
 fn raw_window(
-  system: &str,
+  system: UnsafeWindowSurfaceSystem,
   _ns_window: *const c_void,
   ns_view: *const c_void,
-) -> Result<RawHandles, AnyError> {
-  if system != "cocoa" {
-    return Err(type_error("Invalid system on macOS"));
+) -> Result<RawHandles, ByowError> {
+  if system != UnsafeWindowSurfaceSystem::Cocoa {
+    return Err(ByowError::InvalidSystem);
   }
 
   let win_handle = raw_window_handle::RawWindowHandle::AppKit(
     raw_window_handle::AppKitWindowHandle::new(
-      NonNull::new(ns_view as *mut c_void)
-        .ok_or(type_error("ns_view is null"))?,
+      NonNull::new(ns_view as *mut c_void).ok_or(ByowError::NSViewDisplay)?,
     ),
   );
 
@@ -86,19 +298,19 @@ fn raw_window(
 
 #[cfg(target_os = "windows")]
 fn raw_window(
-  system: &str,
+  system: UnsafeWindowSurfaceSystem,
   window: *const c_void,
   hinstance: *const c_void,
-) -> Result<RawHandles, AnyError> {
+) -> Result<RawHandles, ByowError> {
   use raw_window_handle::WindowsDisplayHandle;
-  if system != "win32" {
-    return Err(type_error("Invalid system on Windows"));
+  if system != UnsafeWindowSurfaceSystem::Win32 {
+    return Err(ByowError::InvalidSystem);
   }
 
   let win_handle = {
     let mut handle = raw_window_handle::Win32WindowHandle::new(
       std::num::NonZeroIsize::new(window as isize)
-        .ok_or(type_error("window is null"))?,
+        .ok_or(ByowError::NullWindow)?,
     );
     handle.hinstance = std::num::NonZeroIsize::new(hinstance as isize);
 
@@ -112,12 +324,12 @@ fn raw_window(
 
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 fn raw_window(
-  system: &str,
+  system: UnsafeWindowSurfaceSystem,
   window: *const c_void,
   display: *const c_void,
-) -> Result<RawHandles, AnyError> {
+) -> Result<RawHandles, ByowError> {
   let (win_handle, display_handle);
-  if system == "x11" {
+  if system == UnsafeWindowSurfaceSystem::X11 {
     win_handle = raw_window_handle::RawWindowHandle::Xlib(
       raw_window_handle::XlibWindowHandle::new(window as *mut c_void as _),
     );
@@ -128,22 +340,20 @@ fn raw_window(
         0,
       ),
     );
-  } else if system == "wayland" {
+  } else if system == UnsafeWindowSurfaceSystem::Wayland {
     win_handle = raw_window_handle::RawWindowHandle::Wayland(
       raw_window_handle::WaylandWindowHandle::new(
-        NonNull::new(window as *mut c_void)
-          .ok_or(type_error("window is null"))?,
+        NonNull::new(window as *mut c_void).ok_or(ByowError::NullWindow)?,
       ),
     );
 
     display_handle = raw_window_handle::RawDisplayHandle::Wayland(
       raw_window_handle::WaylandDisplayHandle::new(
-        NonNull::new(display as *mut c_void)
-          .ok_or(type_error("display is null"))?,
+        NonNull::new(display as *mut c_void).ok_or(ByowError::NullDisplay)?,
       ),
     );
   } else {
-    return Err(type_error("Invalid system on Linux/BSD"));
+    return Err(ByowError::InvalidSystem);
   }
 
   Ok((win_handle, display_handle))
@@ -157,9 +367,9 @@ fn raw_window(
   target_os = "openbsd",
 )))]
 fn raw_window(
-  _system: &str,
+  _system: UnsafeWindowSurfaceSystem,
   _window: *const c_void,
   _display: *const c_void,
-) -> Result<RawHandles, AnyError> {
-  Err(type_error("Unsupported platform"))
+) -> Result<RawHandles, ByowError> {
+  Err(ByowError::Unsupported)
 }

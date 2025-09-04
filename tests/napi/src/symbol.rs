@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use napi_sys::ValueType::napi_string;
+use napi_sys::*;
 
 use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
-use napi_sys::ValueType::napi_string;
-use napi_sys::*;
 
 extern "C" fn symbol_new(
   env: napi_env,

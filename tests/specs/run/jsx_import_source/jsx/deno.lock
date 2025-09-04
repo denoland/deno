@@ -1,0 +1,6 @@
+{
+  "version": "2",
+  "remote": {
+    "http://localhost:4545/jsx/jsx-dev-runtime/index.ts": "183c5bf1cfb82b15fc1e8cca15593d4816035759532d851abd4476df378c8412"
+  }
+}

@@ -1,42 +1,78 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
 #![allow(clippy::undocumented_unsafe_blocks)]
 #![deny(clippy::missing_safety_doc)]
 
+//! Symbols to be exported are now defined in this JSON file.
+//! The `#[napi_sym]` macro checks for missing entries and panics.
+//!
+//! `./tools/napi/generate_symbols_list.js` is used to generate the LINK `cli/exports.def` on Windows,
+//! which is also checked into git.
+//!
+//! To add a new napi function:
+//! 1. Place `#[napi_sym]` on top of your implementation.
+//! 2. Add the function's identifier to this JSON list.
+//! 3. Finally, run `tools/napi/generate_symbols_list.js` to update `ext/napi/generated_symbol_exports_list_*.def`.
+
+pub mod js_native_api;
+pub mod node_api;
+pub mod util;
+pub mod uv;
+
 use core::ptr::NonNull;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::op2;
-use deno_core::parking_lot::RwLock;
-use deno_core::url::Url;
-use deno_core::ExternalOpsTracker;
-use deno_core::OpState;
-use deno_core::V8CrossThreadTaskSpawner;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::thread_local;
-
-#[cfg(unix)]
-use libloading::os::unix::*;
-
-#[cfg(windows)]
-use libloading::os::windows::*;
-
-// Expose common stuff for ease of use.
-// `use deno_napi::*`
-pub use deno_core::v8;
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
+use std::path::Path;
+use std::path::PathBuf;
 pub use std::ptr;
+use std::rc::Rc;
+use std::thread_local;
+
+use deno_core::ExternalOpsTracker;
+use deno_core::OpState;
+use deno_core::V8CrossThreadTaskSpawner;
+use deno_core::op2;
+use deno_core::parking_lot::RwLock;
+use deno_core::url::Url;
+// Expose common stuff for ease of use.
+// `use deno_napi::*`
+pub use deno_core::v8;
+use deno_permissions::PermissionCheckError;
+pub use denort_helper::DenoRtNativeAddonLoader;
+pub use denort_helper::DenoRtNativeAddonLoaderRc;
+#[cfg(unix)]
+use libloading::os::unix::*;
+#[cfg(windows)]
+use libloading::os::windows::*;
 pub use value::napi_value;
 
 pub mod function;
 mod value;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum NApiError {
+  #[class(type)]
+  #[error("Invalid path")]
+  InvalidPath,
+  #[class(type)]
+  #[error(transparent)]
+  DenoRtLoad(#[from] denort_helper::LoadError),
+  #[class(type)]
+  #[error(transparent)]
+  LibLoading(#[from] libloading::Error),
+  #[class(type)]
+  #[error("Unable to find register Node-API module at {}", .0.display())]
+  ModuleNotFound(PathBuf),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
+}
 
 pub type napi_status = i32;
 pub type napi_env = *mut c_void;
@@ -287,7 +323,7 @@ impl Drop for NapiState {
         .env_cleanup_hooks
         .borrow()
         .iter()
-        .any(|pair| pair.0 == hook.0 && pair.1 == hook.1)
+        .any(|pair| std::ptr::fn_addr_eq(pair.0, hook.0) && pair.1 == hook.1)
       {
         continue;
       }
@@ -297,10 +333,9 @@ impl Drop for NapiState {
       }
 
       {
-        self
-          .env_cleanup_hooks
-          .borrow_mut()
-          .retain(|pair| !(pair.0 == hook.0 && pair.1 == hook.1));
+        self.env_cleanup_hooks.borrow_mut().retain(|pair| {
+          !(std::ptr::fn_addr_eq(pair.0, hook.0) && pair.1 == hook.1)
+        });
       }
     }
   }
@@ -416,7 +451,7 @@ impl Env {
   }
 
   #[inline]
-  pub fn scope(&self) -> v8::CallbackScope {
+  pub fn scope(&self) -> v8::CallbackScope<'_> {
     // SAFETY: `v8::Local` is always non-null pointer; the `HandleScope` is
     // already on the stack, but we don't have access to it.
     let context = unsafe {
@@ -444,7 +479,10 @@ impl Env {
     data: *mut c_void,
   ) {
     let mut hooks = self.cleanup_hooks.borrow_mut();
-    if hooks.iter().any(|pair| pair.0 == hook && pair.1 == data) {
+    if hooks
+      .iter()
+      .any(|pair| std::ptr::fn_addr_eq(pair.0, hook) && pair.1 == data)
+    {
       panic!("Cannot register cleanup hook with same data twice");
     }
     hooks.push((hook, data));
@@ -458,7 +496,7 @@ impl Env {
     let mut hooks = self.cleanup_hooks.borrow_mut();
     match hooks
       .iter()
-      .rposition(|&pair| pair.0 == hook && pair.1 == data)
+      .rposition(|&pair| std::ptr::fn_addr_eq(pair.0, hook) && pair.1 == data)
     {
       Some(index) => {
         hooks.remove(index);
@@ -473,29 +511,42 @@ deno_core::extension!(deno_napi,
   ops = [
     op_napi_open<P>
   ],
-  state = |state| {
+  options = {
+    deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
+  },
+  state = |state, options| {
     state.put(NapiState {
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
     });
+    if let Some(loader) = options.deno_rt_native_addon_loader {
+      state.put(loader);
+    }
   },
 );
 
 pub trait NapiPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
-  fn check(&mut self, path: &str) -> std::result::Result<PathBuf, AnyError>;
+  fn check<'a>(
+    &mut self,
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
 }
 
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl NapiPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check(&mut self, path: &str) -> Result<PathBuf, AnyError> {
+  fn check<'a>(
+    &mut self,
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_ffi(self, path)
   }
 }
 
 unsafe impl Sync for NapiModuleHandle {}
 unsafe impl Send for NapiModuleHandle {}
+
 #[derive(Clone, Copy)]
 struct NapiModuleHandle(*const NapiModule);
 
@@ -503,30 +554,37 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
   RwLock<HashMap<PathBuf, NapiModuleHandle>>,
 > = std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
-#[op2(reentrant)]
+#[op2(reentrant, stack_trace)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   isolate: *mut v8::Isolate,
   op_state: Rc<RefCell<OpState>>,
-  #[string] path: String,
+  #[string] path: &str,
   global: v8::Local<'scope, v8::Object>,
   buffer_constructor: v8::Local<'scope, v8::Function>,
   report_error: v8::Local<'scope, v8::Function>,
-) -> std::result::Result<v8::Local<'scope, v8::Value>, AnyError>
+) -> Result<v8::Local<'scope, v8::Value>, NApiError>
 where
   NP: NapiPermissions + 'static,
 {
   // We must limit the OpState borrow because this function can trigger a
   // re-borrow through the NAPI module.
-  let (async_work_sender, cleanup_hooks, external_ops_tracker, path) = {
+  let (
+    async_work_sender,
+    cleanup_hooks,
+    external_ops_tracker,
+    deno_rt_native_addon_loader,
+    path,
+  ) = {
     let mut op_state = op_state.borrow_mut();
     let permissions = op_state.borrow_mut::<NP>();
-    let path = permissions.check(&path)?;
+    let path = permissions.check(Cow::Borrowed(Path::new(path)))?;
     let napi_state = op_state.borrow::<NapiState>();
     (
       op_state.borrow::<V8CrossThreadTaskSpawner>().clone(),
       napi_state.env_cleanup_hooks.clone(),
       op_state.external_ops_tracker.clone(),
+      op_state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
       path,
     )
   };
@@ -540,7 +598,7 @@ where
   let type_tag = v8::Global::new(scope, type_tag);
 
   let url_filename =
-    Url::from_file_path(&path).map_err(|_| type_error("Invalid path"))?;
+    Url::from_file_path(&path).map_err(|_| NApiError::InvalidPath)?;
   let env_shared =
     EnvShared::new(napi_wrap, type_tag, format!("{url_filename}\0"));
 
@@ -563,19 +621,18 @@ where
   #[cfg(not(unix))]
   let flags = 0x00000008;
 
-  // SAFETY: opening a DLL calls dlopen
-  #[cfg(unix)]
-  let library = match unsafe { Library::open(Some(&path), flags) } {
-    Ok(lib) => lib,
-    Err(e) => return Err(type_error(e.to_string())),
+  let real_path = match deno_rt_native_addon_loader {
+    Some(loader) => loader.load_and_resolve_path(&path)?,
+    None => Cow::Borrowed(path.as_ref()),
   };
 
   // SAFETY: opening a DLL calls dlopen
+  #[cfg(unix)]
+  let library = unsafe { Library::open(Some(real_path.as_ref()), flags) }?;
+
+  // SAFETY: opening a DLL calls dlopen
   #[cfg(not(unix))]
-  let library = match unsafe { Library::load_with_flags(&path, flags) } {
-    Ok(lib) => lib,
-    Err(e) => return Err(type_error(e.to_string())),
-  };
+  let library = unsafe { Library::load_with_flags(real_path.as_ref(), flags) }?;
 
   let maybe_module = MODULE_TO_REGISTER.with(|cell| {
     let mut slot = cell.borrow_mut();
@@ -586,16 +643,17 @@ where
   let exports = v8::Object::new(scope);
 
   let maybe_exports = if let Some(module_to_register) = maybe_module {
-    NAPI_LOADED_MODULES
-      .write()
-      .insert(path, NapiModuleHandle(module_to_register));
+    NAPI_LOADED_MODULES.write().insert(
+      real_path.to_path_buf(),
+      NapiModuleHandle(module_to_register),
+    );
     // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
     let nm = unsafe { &*module_to_register };
     assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
   } else if let Some(module_to_register) =
-    { NAPI_LOADED_MODULES.read().get(&path).copied() }
+    { NAPI_LOADED_MODULES.read().get(real_path.as_ref()).copied() }
   {
     // SAFETY: this originated from `napi_register_module`, so the
     // pointer should still be valid.
@@ -603,17 +661,19 @@ where
     assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
-  } else if let Ok(init) = unsafe {
-    library.get::<napi_register_module_v1>(b"napi_register_module_v1")
-  } {
-    // Initializer callback.
-    // SAFETY: we are going blind, calling the register function on the other side.
-    unsafe { init(env_ptr, exports.into()) }
   } else {
-    return Err(type_error(format!(
-      "Unable to find register Node-API module at {}",
-      path.display()
-    )));
+    match unsafe {
+      library.get::<napi_register_module_v1>(b"napi_register_module_v1")
+    } {
+      Ok(init) => {
+        // Initializer callback.
+        // SAFETY: we are going blind, calling the register function on the other side.
+        unsafe { init(env_ptr, exports.into()) }
+      }
+      _ => {
+        return Err(NApiError::ModuleNotFound(path.into_owned()));
+      }
+    }
   };
 
   let exports = maybe_exports.unwrap_or(exports.into());
@@ -623,4 +683,35 @@ where
   std::mem::forget(library);
 
   Ok(exports)
+}
+
+#[allow(clippy::print_stdout)]
+pub fn print_linker_flags(name: &str) {
+  let symbols_path =
+    include_str!(concat!(env!("OUT_DIR"), "/napi_symbol_path.txt"));
+
+  #[cfg(target_os = "windows")]
+  println!("cargo:rustc-link-arg-bin={name}=/DEF:{}", symbols_path);
+
+  #[cfg(target_os = "macos")]
+  println!(
+    "cargo:rustc-link-arg-bin={name}=-Wl,-exported_symbols_list,{}",
+    symbols_path,
+  );
+
+  #[cfg(any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
+  println!(
+    "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
+    symbols_path,
+  );
+
+  #[cfg(target_os = "android")]
+  println!(
+    "cargo:rustc-link-arg-bin={name}=-Wl,--export-dynamic-symbol-list={}",
+    symbols_path,
+  );
 }

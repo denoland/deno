@@ -1,0 +1,6 @@
+{
+  "name": "foo",
+  "scripts": {
+    "dev": "echo 'foo'"
+  }
+}

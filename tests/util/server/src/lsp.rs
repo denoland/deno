@@ -1,13 +1,25 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::deno_exe_path;
-use crate::jsr_registry_url;
-use crate::npm_registry_url;
-use crate::PathRef;
-
-use super::TempDir;
+use std::collections::HashMap;
+use std::ffi::OsStr;
+use std::ffi::OsString;
+use std::io;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Write;
+use std::path::Path;
+use std::process::Child;
+use std::process::ChildStdin;
+use std::process::ChildStdout;
+use std::process::Command;
+use std::process::Stdio;
+use std::sync::Arc;
+use std::sync::mpsc;
+use std::time::Duration;
+use std::time::Instant;
 
 use anyhow::Result;
+use indexmap::IndexMap;
 use lsp_types as lsp;
 use lsp_types::ClientCapabilities;
 use lsp_types::ClientInfo;
@@ -21,37 +33,25 @@ use lsp_types::FoldingRangeClientCapabilities;
 use lsp_types::InitializeParams;
 use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
+use lsp_types::Uri;
 use lsp_types::WorkspaceClientCapabilities;
 use once_cell::sync::Lazy;
 use parking_lot::Condvar;
 use parking_lot::Mutex;
 use regex::Regex;
-use serde::de;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::de;
+use serde_json::Value;
 use serde_json::json;
 use serde_json::to_value;
-use serde_json::Value;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::ffi::OsString;
-use std::io;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::io::Write;
-use std::path::Path;
-use std::process::Child;
-use std::process::ChildStdin;
-use std::process::ChildStdout;
-use std::process::Command;
-use std::process::Stdio;
-use std::str::FromStr;
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::time::Duration;
-use std::time::Instant;
 use url::Url;
+
+use super::TempDir;
+use crate::PathRef;
+use crate::deno_exe_path;
+use crate::jsr_registry_url;
+use crate::npm_registry_url;
 
 static CONTENT_TYPE_REG: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
@@ -90,12 +90,6 @@ impl<'a> From<&'a [u8]> for LspMessage {
       Self::Notification(method, obj.get("params").cloned())
     }
   }
-}
-
-#[derive(Debug, Deserialize)]
-struct DiagnosticBatchNotificationParams {
-  batch_index: usize,
-  messages_len: usize,
 }
 
 fn read_message<R>(reader: &mut R) -> Result<Option<Vec<u8>>>
@@ -157,6 +151,7 @@ impl LspStdoutReader {
     self.pending_messages.0.lock().len()
   }
 
+  #[allow(clippy::print_stderr)]
   pub fn output_pending_messages(&self) {
     let messages = self.pending_messages.0.lock();
     eprintln!("{:?}", messages);
@@ -215,10 +210,10 @@ impl InitializeParamsBuilder {
   pub fn new(config: Value) -> Self {
     let mut config_as_options = json!({});
     if let Some(object) = config.as_object() {
-      if let Some(deno) = object.get("deno") {
-        if let Some(deno) = deno.as_object() {
-          config_as_options = json!(deno.clone());
-        }
+      if let Some(deno) = object.get("deno")
+        && let Some(deno) = deno.as_object()
+      {
+        config_as_options = json!(deno.clone());
       }
       let config_as_options = config_as_options.as_object_mut().unwrap();
       if let Some(typescript) = object.get("typescript") {
@@ -262,6 +257,7 @@ impl InitializeParamsBuilder {
               }),
               ..Default::default()
             }),
+            diagnostic: Some(Default::default()),
             folding_range: Some(FoldingRangeClientCapabilities {
               line_folding_only: Some(true),
               ..Default::default()
@@ -276,6 +272,9 @@ impl InitializeParamsBuilder {
           }),
           workspace: Some(WorkspaceClientCapabilities {
             configuration: Some(true),
+            diagnostic: Some(lsp::DiagnosticWorkspaceClientCapabilities {
+              refresh_support: Some(true),
+            }),
             workspace_folders: Some(true),
             ..Default::default()
           }),
@@ -290,13 +289,12 @@ impl InitializeParamsBuilder {
   }
 
   #[allow(deprecated)]
-  pub fn set_maybe_root_uri(&mut self, value: Option<Url>) -> &mut Self {
-    self.params.root_uri =
-      value.map(|v| lsp::Uri::from_str(v.as_str()).unwrap());
+  pub fn set_maybe_root_uri(&mut self, value: Option<Uri>) -> &mut Self {
+    self.params.root_uri = value;
     self
   }
 
-  pub fn set_root_uri(&mut self, value: Url) -> &mut Self {
+  pub fn set_root_uri(&mut self, value: Uri) -> &mut Self {
     self.set_maybe_root_uri(Some(value))
   }
 
@@ -305,34 +303,6 @@ impl InitializeParamsBuilder {
     folders: Vec<lsp_types::WorkspaceFolder>,
   ) -> &mut Self {
     self.params.workspace_folders = Some(folders);
-    self
-  }
-
-  pub fn enable_inlay_hints(&mut self) -> &mut Self {
-    let options = self.initialization_options_mut();
-    options.insert(
-      "inlayHints".to_string(),
-      json!({
-        "parameterNames": {
-          "enabled": "all"
-        },
-        "parameterTypes": {
-          "enabled": true
-        },
-        "variableTypes": {
-          "enabled": true
-        },
-        "propertyDeclarationTypes": {
-          "enabled": true
-        },
-        "functionLikeReturnTypes": {
-          "enabled": true
-        },
-        "enumMemberValues": {
-          "enabled": true
-        }
-      }),
-    );
     self
   }
 
@@ -464,12 +434,11 @@ impl InitializeParamsBuilder {
 }
 
 pub struct LspClientBuilder {
-  print_stderr: bool,
-  capture_stderr: bool,
+  stderr_inherit: bool,
+  stderr_null: bool,
   log_debug: bool,
   deno_exe: PathRef,
   root_dir: PathRef,
-  use_diagnostic_sync: bool,
   deno_dir: TempDir,
   envs: HashMap<OsString, OsString>,
   collect_perf: bool,
@@ -483,12 +452,11 @@ impl LspClientBuilder {
 
   pub fn new_with_dir(deno_dir: TempDir) -> Self {
     Self {
-      print_stderr: false,
-      capture_stderr: false,
+      stderr_inherit: false,
+      stderr_null: false,
       log_debug: false,
       deno_exe: deno_exe_path(),
       root_dir: deno_dir.path().clone(),
-      use_diagnostic_sync: true,
       deno_dir,
       envs: Default::default(),
       collect_perf: false,
@@ -503,13 +471,13 @@ impl LspClientBuilder {
   // not deprecated, this is just here so you don't accidentally
   // commit code with this enabled
   #[deprecated]
-  pub fn print_stderr(mut self) -> Self {
-    self.print_stderr = true;
+  pub fn stderr_inherit(mut self) -> Self {
+    self.stderr_inherit = true;
     self
   }
 
-  pub fn capture_stderr(mut self) -> Self {
-    self.capture_stderr = true;
+  pub fn stderr_null(mut self) -> Self {
+    self.stderr_null = true;
     self
   }
 
@@ -520,17 +488,11 @@ impl LspClientBuilder {
 
   /// Whether to collect performance records (marks / measures, as emitted
   /// by the lsp in the `performance` module).
-  /// Implies `capture_stderr`.
+  /// Disables `stderr_inherit` and `stderr_null`.
   pub fn collect_perf(mut self) -> Self {
-    self.capture_stderr = true;
+    self.stderr_inherit = false;
+    self.stderr_null = false;
     self.collect_perf = true;
-    self
-  }
-
-  /// Whether to use the synchronization messages to better sync diagnostics
-  /// between the test client and server.
-  pub fn use_diagnostic_sync(mut self, value: bool) -> Self {
-    self.use_diagnostic_sync = value;
     self
   }
 
@@ -566,10 +528,7 @@ impl LspClientBuilder {
       .env("NPM_CONFIG_REGISTRY", npm_registry_url())
       .env("JSR_URL", jsr_registry_url())
       // turn on diagnostic synchronization communication
-      .env(
-        "DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG",
-        if self.use_diagnostic_sync { "1" } else { "" },
-      )
+      .env("DENO_INTERNAL_DIAGNOSTIC_BATCH_NOTIFICATIONS", "1")
       .env("DENO_NO_UPDATE_CHECK", "1")
       .args(args)
       .stdin(Stdio::piped())
@@ -577,10 +536,10 @@ impl LspClientBuilder {
     for (key, value) in &self.envs {
       command.env(key, value);
     }
-    if self.capture_stderr {
-      command.stderr(Stdio::piped());
-    } else if !self.print_stderr {
+    if self.stderr_null {
       command.stderr(Stdio::null());
+    } else if !self.stderr_inherit {
+      command.stderr(Stdio::piped());
     }
     let mut child = command.spawn()?;
     let stdout = child.stdout.take().unwrap();
@@ -590,48 +549,52 @@ impl LspClientBuilder {
     let stdin = child.stdin.take().unwrap();
     let writer = io::BufWriter::new(stdin);
 
-    let (stderr_lines_rx, perf_rx) = if self.capture_stderr {
-      let stderr = child.stderr.take().unwrap();
-      let print_stderr = self.print_stderr;
-      let (tx, rx) = mpsc::channel::<String>();
-      let (perf_tx, perf_rx) =
-        self.collect_perf.then(mpsc::channel::<PerfRecord>).unzip();
-      std::thread::spawn(move || {
-        let stderr = BufReader::new(stderr);
-        for line in stderr.lines() {
-          match line {
-            Ok(line) => {
-              if print_stderr {
-                eprintln!("{}", line);
-              }
-              if let Some(tx) = perf_tx.as_ref() {
-                // look for perf records
-                if line.starts_with('{') && line.ends_with("},") {
-                  match serde_json::from_str::<PerfRecord>(
-                    line.trim_end_matches(','),
-                  ) {
-                    Ok(record) => {
-                      tx.send(record).unwrap();
-                      continue;
-                    }
-                    Err(err) => {
-                      eprintln!("failed to parse perf record: {:#}", err);
+    let (stderr_lines_rx, perf_rx) =
+      if !self.stderr_null && !self.stderr_inherit {
+        let stderr = child.stderr.take().unwrap();
+        let (tx, rx) = mpsc::channel::<String>();
+        let (perf_tx, perf_rx) =
+          self.collect_perf.then(mpsc::channel::<PerfRecord>).unzip();
+        std::thread::spawn(move || {
+          let stderr = BufReader::new(stderr);
+          for line in stderr.lines() {
+            match line {
+              Ok(line) => {
+                #[allow(clippy::print_stderr)]
+                {
+                  eprintln!("{}", line);
+                }
+                if let Some(tx) = perf_tx.as_ref() {
+                  // look for perf records
+                  if line.starts_with('{') && line.ends_with("},") {
+                    match serde_json::from_str::<PerfRecord>(
+                      line.trim_end_matches(','),
+                    ) {
+                      Ok(record) => {
+                        tx.send(record).unwrap();
+                        continue;
+                      }
+                      Err(err) => {
+                        #[allow(clippy::print_stderr)]
+                        {
+                          eprintln!("failed to parse perf record: {:#}", err);
+                        }
+                      }
                     }
                   }
                 }
+                tx.send(line).unwrap();
               }
-              tx.send(line).unwrap();
-            }
-            Err(err) => {
-              panic!("failed to read line from stderr: {:#}", err);
+              Err(err) => {
+                panic!("failed to read line from stderr: {:#}", err);
+              }
             }
           }
-        }
-      });
-      (Some(rx), perf_rx)
-    } else {
-      (None, None)
-    };
+        });
+        (Some(rx), perf_rx)
+      } else {
+        (None, None)
+      };
 
     Ok(LspClient {
       child,
@@ -644,7 +607,10 @@ impl LspClientBuilder {
       stderr_lines_rx,
       config: json!("{}"),
       supports_workspace_configuration: false,
+      supports_pull_diagnostics: false,
       perf: perf_rx.map(Perf::new),
+      open_docs: Default::default(),
+      notebook_cells: Default::default(),
     })
   }
 }
@@ -743,7 +709,10 @@ pub struct LspClient {
   stderr_lines_rx: Option<mpsc::Receiver<String>>,
   config: serde_json::Value,
   supports_workspace_configuration: bool,
+  supports_pull_diagnostics: bool,
   perf: Option<Perf>,
+  open_docs: IndexMap<Uri, i32>,
+  notebook_cells: HashMap<Uri, Vec<Uri>>,
 }
 
 impl Drop for LspClient {
@@ -753,7 +722,7 @@ impl Drop for LspClient {
         self.child.kill().unwrap();
         let _ = self.child.wait();
       }
-      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {status}"),
+      Ok(Some(_)) => {}
       Err(e) => panic!("pebble error: {e}"),
     }
   }
@@ -798,7 +767,7 @@ impl LspClient {
     let lines_rx = self
       .stderr_lines_rx
       .as_ref()
-      .expect("must setup with client_builder.capture_stderr()");
+      .expect("must not setup with client_builder.stderr_null() or client_builder.stderr_inherit()");
     let mut found_lines = Vec::new();
     while Instant::now() < timeout_time {
       if let Ok(line) = lines_rx.try_recv() {
@@ -810,11 +779,14 @@ impl LspClient {
       std::thread::sleep(Duration::from_millis(20));
     }
 
-    eprintln!("==== STDERR OUTPUT ====");
-    for line in found_lines {
-      eprintln!("{}", line)
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!("==== STDERR OUTPUT ====");
+      for line in found_lines {
+        eprintln!("{}", line)
+      }
+      eprintln!("== END STDERR OUTPUT ==");
     }
-    eprintln!("== END STDERR OUTPUT ==");
 
     panic!("Timed out waiting on condition.")
   }
@@ -873,27 +845,26 @@ impl LspClient {
     mut config: Value,
   ) {
     let mut builder = InitializeParamsBuilder::new(config.clone());
-    builder.set_root_uri(self.root_dir.url_dir());
+    builder.set_root_uri(self.root_dir.uri_dir());
     do_build(&mut builder);
     let params: InitializeParams = builder.build();
     // `config` must be updated to account for the builder changes.
     // TODO(nayeemrmn): Remove config-related methods from builder.
-    if let Some(options) = &params.initialization_options {
-      if let Some(options) = options.as_object() {
-        if let Some(config) = config.as_object_mut() {
-          let mut deno = options.clone();
-          let typescript = options.get("typescript");
-          let javascript = options.get("javascript");
-          deno.remove("typescript");
-          deno.remove("javascript");
-          config.insert("deno".to_string(), json!(deno));
-          if let Some(typescript) = typescript {
-            config.insert("typescript".to_string(), typescript.clone());
-          }
-          if let Some(javascript) = javascript {
-            config.insert("javascript".to_string(), javascript.clone());
-          }
-        }
+    if let Some(options) = &params.initialization_options
+      && let Some(options) = options.as_object()
+      && let Some(config) = config.as_object_mut()
+    {
+      let mut deno = options.clone();
+      let typescript = options.get("typescript");
+      let javascript = options.get("javascript");
+      deno.remove("typescript");
+      deno.remove("javascript");
+      config.insert("deno".to_string(), json!(deno));
+      if let Some(typescript) = typescript {
+        config.insert("typescript".to_string(), typescript.clone());
+      }
+      if let Some(javascript) = javascript {
+        config.insert("javascript".to_string(), javascript.clone());
       }
     }
     self.supports_workspace_configuration = match &params.capabilities.workspace
@@ -901,6 +872,13 @@ impl LspClient {
       Some(workspace) => workspace.configuration == Some(true),
       _ => false,
     };
+    self.supports_pull_diagnostics = params
+      .capabilities
+      .text_document
+      .as_ref()
+      .and_then(|t| t.diagnostic.as_ref())
+      .is_some();
+
     self.write_request("initialize", params);
     self.write_notification("initialized", json!({}));
     self.config = config;
@@ -920,8 +898,58 @@ impl LspClient {
     self.read_diagnostics()
   }
 
+  pub fn did_close_file(&mut self, file: &SourceFile) {
+    self.did_close(json!({
+        "textDocument": file.identifier(),
+    }))
+  }
+
+  pub fn did_close(&mut self, params: Value) {
+    self.did_close_raw(params);
+  }
+
+  pub fn did_close_raw(&mut self, params: Value) {
+    self.write_notification("textDocument/didClose", params);
+  }
+
   pub fn did_open_raw(&mut self, params: Value) {
     self.write_notification("textDocument/didOpen", params);
+  }
+
+  pub fn notebook_did_open(
+    &mut self,
+    uri: Uri,
+    version: i32,
+    cells: Vec<Value>,
+  ) -> CollectedDiagnostics {
+    let cells = cells
+      .into_iter()
+      .map(|c| serde_json::from_value::<lsp::TextDocumentItem>(c).unwrap())
+      .collect::<Vec<_>>();
+    let params = lsp::DidOpenNotebookDocumentParams {
+      notebook_document: lsp::NotebookDocument {
+        uri,
+        notebook_type: "jupyter-notebook".to_string(),
+        version,
+        metadata: None,
+        cells: cells
+          .iter()
+          .map(|c| lsp::NotebookCell {
+            kind: if c.language_id == "markdown" {
+              lsp::NotebookCellKind::Markup
+            } else {
+              lsp::NotebookCellKind::Code
+            },
+            document: c.uri.clone(),
+            metadata: None,
+            execution_summary: None,
+          })
+          .collect(),
+      },
+      cell_text_documents: cells,
+    };
+    self.write_notification("notebookDocument/didOpen", json!(params));
+    self.read_diagnostics()
   }
 
   pub fn change_configuration(&mut self, config: Value) {
@@ -955,6 +983,12 @@ impl LspClient {
     self.write_response(id, result);
   }
 
+  pub fn handle_refresh_diagnostics_request(&mut self) {
+    let (id, method, _) = self.read_request::<Value>();
+    assert_eq!(method, "workspace/diagnostic/refresh");
+    self.write_response(id, None::<()>);
+  }
+
   pub fn did_save(&mut self, params: Value) {
     self.write_notification("textDocument/didSave", params);
   }
@@ -963,48 +997,94 @@ impl LspClient {
     self.write_notification("workspace/didChangeWatchedFiles", params);
   }
 
-  fn get_latest_diagnostic_batch_index(&mut self) -> usize {
-    let result = self
-      .write_request("deno/internalLatestDiagnosticBatchIndex", json!(null));
-    result.as_u64().unwrap() as usize
+  pub fn diagnostic(
+    &mut self,
+    uri: impl Serialize,
+  ) -> lsp::DocumentDiagnosticReport {
+    self.write_request_with_res_as(
+      "textDocument/diagnostic",
+      json!({ "textDocument": { "uri": uri } }),
+    )
+  }
+
+  pub fn cache(
+    &mut self,
+    specifiers: impl IntoIterator<Item = impl Serialize>,
+    referrer: impl Serialize,
+  ) {
+    self.write_request(
+      "workspace/executeCommand",
+      json!({
+        "command": "deno.cache",
+        "arguments": [specifiers.into_iter().collect::<Vec<_>>(), referrer],
+      }),
+    );
+  }
+
+  pub fn cache_specifier(&mut self, specifier: impl Serialize) {
+    self.write_request(
+      "workspace/executeCommand",
+      json!({
+        "command": "deno.cache",
+        "arguments": [[], specifier],
+      }),
+    );
   }
 
   /// Reads the latest diagnostics.
   pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
-    // wait for three (deno, lint, and typescript diagnostics) batch
-    // notification messages for that index
-    let mut read = 0;
-    let mut total_messages_len = 0;
-    while read < 3 {
-      let (method, response) =
-        self.read_notification::<DiagnosticBatchNotificationParams>();
-      assert_eq!(method, "deno/internalTestDiagnosticBatch");
-      let response = response.unwrap();
-      if response.batch_index == self.get_latest_diagnostic_batch_index() {
-        read += 1;
-        total_messages_len += response.messages_len;
+    if self.supports_pull_diagnostics {
+      return CollectedDiagnostics(
+        self
+          .open_docs
+          .clone()
+          .into_iter()
+          .map(|(uri, version)| {
+            let report = self.diagnostic(&uri);
+            let diagnostics = match report {
+              lsp::DocumentDiagnosticReport::Full(report) => {
+                report.full_document_diagnostic_report.items
+              }
+              lsp::DocumentDiagnosticReport::Unchanged(_) => vec![],
+            };
+            lsp::PublishDiagnosticsParams {
+              uri,
+              diagnostics,
+              version: Some(version),
+            }
+          })
+          .collect(),
+      );
+    }
+    self.read_notification_with_method::<()>(
+      "deno/internalTestDiagnosticBatchStart",
+    );
+    // Most tests have just one open document.
+    let mut diagnostics = Vec::with_capacity(1);
+    loop {
+      let (method, params) = self.read_notification::<Value>();
+      if method == "deno/internalTestDiagnosticBatchEnd" {
+        break;
+      }
+      if method == "textDocument/publishDiagnostics" {
+        diagnostics.push(
+          serde_json::from_value::<lsp::PublishDiagnosticsParams>(
+            params.unwrap(),
+          )
+          .unwrap(),
+        );
       }
     }
-
-    // now read the latest diagnostic messages
-    let mut all_diagnostics = Vec::with_capacity(total_messages_len);
-    let mut seen_files = HashSet::new();
-    for _ in 0..total_messages_len {
-      let (method, response) =
-        self.read_latest_notification::<lsp::PublishDiagnosticsParams>();
-      assert_eq!(method, "textDocument/publishDiagnostics");
-      let response = response.unwrap();
-      if seen_files.insert(response.uri.to_string()) {
-        all_diagnostics.push(response);
-      }
-    }
-
-    CollectedDiagnostics(all_diagnostics)
+    CollectedDiagnostics(diagnostics)
   }
 
   pub fn shutdown(&mut self) {
     self.write_request("shutdown", json!(null));
     self.write_notification("exit", json!(null));
+  }
+
+  pub fn wait_exit(&mut self) -> std::io::Result<std::process::ExitStatus> {
+    self.child.wait()
   }
 
   // it's flaky to assert for a notification because a notification
@@ -1095,11 +1175,8 @@ impl LspClient {
 
   fn write(&mut self, value: Value) {
     let value_str = value.to_string();
-    let msg = format!(
-      "Content-Length: {}\r\n\r\n{}",
-      value_str.as_bytes().len(),
-      value_str
-    );
+    let msg =
+      format!("Content-Length: {}\r\n\r\n{}", value_str.len(), value_str);
     self.writer.write_all(msg.as_bytes()).unwrap();
     self.writer.flush().unwrap();
   }
@@ -1210,9 +1287,114 @@ impl LspClient {
     S: AsRef<str>,
     V: Serialize,
   {
+    let method = method.as_ref();
+    let params = json!(params);
+    if method == "textDocument/didOpen" {
+      let params = serde_json::from_value::<lsp::DidOpenTextDocumentParams>(
+        params.clone(),
+      )
+      .unwrap();
+      self
+        .open_docs
+        .insert(params.text_document.uri, params.text_document.version);
+    }
+    if method == "textDocument/didChange" {
+      let params = serde_json::from_value::<lsp::DidChangeTextDocumentParams>(
+        params.clone(),
+      )
+      .unwrap();
+      *self.open_docs.get_mut(&params.text_document.uri).unwrap() =
+        params.text_document.version;
+    }
+    if method == "textDocument/didClose" {
+      let params = serde_json::from_value::<lsp::DidCloseTextDocumentParams>(
+        params.clone(),
+      )
+      .unwrap();
+      self.open_docs.shift_remove(&params.text_document.uri);
+    }
+    if method == "notebookDocument/didOpen" {
+      let params =
+        serde_json::from_value::<lsp::DidOpenNotebookDocumentParams>(
+          params.clone(),
+        )
+        .unwrap();
+      let cells = params
+        .cell_text_documents
+        .into_iter()
+        .map(|c| (c.uri, c.version))
+        .collect::<Vec<_>>();
+      let cell_uris = cells.iter().map(|(u, _)| u.clone()).collect::<Vec<_>>();
+      self
+        .notebook_cells
+        .insert(params.notebook_document.uri, cell_uris);
+      self.open_docs.extend(cells);
+    }
+    if method == "notebookDocument/didChange" {
+      let params =
+        serde_json::from_value::<lsp::DidChangeNotebookDocumentParams>(
+          params.clone(),
+        )
+        .unwrap();
+      let (structure, content) = params
+        .change
+        .cells
+        .map(|c| (c.structure, c.text_content))
+        .unwrap_or_default();
+      if let Some(structure) = structure {
+        self
+          .notebook_cells
+          .get_mut(&params.notebook_document.uri)
+          .unwrap()
+          .splice(
+            structure.array.start as usize
+              ..(structure.array.start + structure.array.delete_count) as usize,
+            structure
+              .array
+              .cells
+              .into_iter()
+              .flatten()
+              .map(|c| c.document),
+          );
+        let opened_cells = structure
+          .did_open
+          .into_iter()
+          .flatten()
+          .map(|c| (c.uri, c.version))
+          .collect::<Vec<_>>();
+        self.open_docs.extend(opened_cells);
+        let closed_cell_uris = structure
+          .did_close
+          .into_iter()
+          .flatten()
+          .map(|c| c.uri)
+          .collect::<Vec<_>>();
+        for closed_cell_uri in closed_cell_uris {
+          self.open_docs.shift_remove(&closed_cell_uri);
+        }
+      }
+      for changed in content.into_iter().flatten() {
+        *self.open_docs.get_mut(&changed.document.uri).unwrap() =
+          changed.document.version;
+      }
+    }
+    if method == "notebookDocument/didClose" {
+      let params =
+        serde_json::from_value::<lsp::DidCloseNotebookDocumentParams>(
+          params.clone(),
+        )
+        .unwrap();
+      let cell_uris = self
+        .notebook_cells
+        .remove(&params.notebook_document.uri)
+        .unwrap();
+      for cell_uri in cell_uris {
+        self.open_docs.shift_remove(&cell_uri);
+      }
+    }
     let value = json!({
       "jsonrpc": "2.0",
-      "method": method.as_ref(),
+      "method": method,
       "params": params,
     });
     self.write(value);
@@ -1232,11 +1414,11 @@ impl CollectedDiagnostics {
       .collect()
   }
 
-  pub fn for_file(&self, specifier: &Url) -> Vec<lsp::Diagnostic> {
+  pub fn for_file(&self, uri: &Uri) -> Vec<lsp::Diagnostic> {
     self
       .all_messages()
       .iter()
-      .filter(|p| p.uri.as_str() == specifier.as_str())
+      .filter(|p| p.uri.as_str() == uri.as_str())
       .flat_map(|p| p.diagnostics.iter())
       .cloned()
       .collect()
@@ -1309,7 +1491,18 @@ impl SourceFile {
       "md" => "markdown",
       "html" => "html",
       "css" => "css",
+      "scss" => "scss",
+      "sass" => "sass",
+      "less" => "less",
       "yaml" => "yaml",
+      "sql" => "sql",
+      "svelte" => "svelte",
+      "vue" => "vue",
+      "astro" => "astro",
+      "vto" => "vento",
+      "vento" => "vento",
+      "njk" => "nunjucks",
+      "nunjucks" => "nunjucks",
       other => panic!("unsupported file extension: {other}"),
     };
     Self {

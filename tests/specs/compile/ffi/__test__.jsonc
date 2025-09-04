@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run -A setup.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "compile --no-check --allow-ffi --include=. --output out main.ts",
+    "output": "compile.out"
+  }, {
+    "commandName": "./out",
+    "args": [],
+    "output": "5\n"
+  }]
+}

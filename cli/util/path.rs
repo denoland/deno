@@ -1,8 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
-use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -27,7 +26,16 @@ pub fn is_importable_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
-      "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts" | "json"
+      "ts"
+        | "tsx"
+        | "js"
+        | "jsx"
+        | "mjs"
+        | "mts"
+        | "cjs"
+        | "cts"
+        | "json"
+        | "wasm"
     )
   } else {
     false
@@ -36,51 +44,10 @@ pub fn is_importable_ext(path: &Path) -> bool {
 
 /// Get the extension of a file in lowercase.
 pub fn get_extension(file_path: &Path) -> Option<String> {
-  return file_path
+  file_path
     .extension()
     .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
-}
-
-pub fn specifier_has_extension(
-  specifier: &ModuleSpecifier,
-  searching_ext: &str,
-) -> bool {
-  let Some((_, ext)) = specifier.path().rsplit_once('.') else {
-    return false;
-  };
-  let searching_ext = searching_ext.strip_prefix('.').unwrap_or(searching_ext);
-  debug_assert!(!searching_ext.contains('.')); // exts like .d.ts are not implemented here
-  if ext.len() != searching_ext.len() {
-    return false;
-  }
-  ext.eq_ignore_ascii_case(searching_ext)
-}
-
-pub fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
-  let rand = gen_rand_path_component();
-  let new_file_name = format!(
-    ".{}_{}",
-    file_path
-      .file_name()
-      .map(|f| f.to_string_lossy())
-      .unwrap_or(Cow::Borrowed("")),
-    rand
-  );
-  file_path.with_file_name(new_file_name)
-}
-
-pub fn get_atomic_file_path(file_path: &Path) -> PathBuf {
-  let rand = gen_rand_path_component();
-  let extension = format!("{rand}.tmp");
-  file_path.with_extension(extension)
-}
-
-fn gen_rand_path_component() -> String {
-  (0..4).fold(String::new(), |mut output, _| {
-    output.push_str(&format!("{:02x}", rand::random::<u8>()));
-    output
-  })
+    .map(|e| e.to_lowercase())
 }
 
 /// TypeScript figures out the type of file based on the extension, but we take
@@ -99,7 +66,7 @@ pub fn mapped_specifier_for_tsc(
       && specifier
         .path()
         .split('/')
-        .last()
+        .next_back()
         .map(|last| last.contains(".d."))
         .unwrap_or(false)
     {
@@ -158,11 +125,6 @@ pub fn relative_specifier(
     format!("./{text}")
   };
   Some(to_percent_decoded_str(&text))
-}
-
-#[cfg_attr(windows, allow(dead_code))]
-pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
-  pathdiff::diff_paths(to, from)
 }
 
 /// Slightly different behaviour than the default matching
@@ -237,6 +199,7 @@ mod test {
     assert!(is_script_ext(Path::new("foo.cjs")));
     assert!(is_script_ext(Path::new("foo.cts")));
     assert!(!is_script_ext(Path::new("foo.json")));
+    assert!(!is_script_ext(Path::new("foo.wasm")));
     assert!(!is_script_ext(Path::new("foo.mjsx")));
   }
 
@@ -258,6 +221,7 @@ mod test {
     assert!(is_importable_ext(Path::new("foo.cjs")));
     assert!(is_importable_ext(Path::new("foo.cts")));
     assert!(is_importable_ext(Path::new("foo.json")));
+    assert!(is_importable_ext(Path::new("foo.wasm")));
     assert!(!is_importable_ext(Path::new("foo.mjsx")));
   }
 
@@ -348,18 +312,6 @@ mod test {
         "from: \"{from_str}\" to: \"{to_str}\""
       );
     }
-  }
-
-  #[test]
-  fn test_specifier_has_extension() {
-    fn get(specifier: &str, ext: &str) -> bool {
-      specifier_has_extension(&ModuleSpecifier::parse(specifier).unwrap(), ext)
-    }
-
-    assert!(get("file:///a/b/c.ts", "ts"));
-    assert!(get("file:///a/b/c.ts", ".ts"));
-    assert!(!get("file:///a/b/c.ts", ".cts"));
-    assert!(get("file:///a/b/c.CtS", ".cts"));
   }
 
   #[test]

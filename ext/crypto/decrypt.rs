@@ -1,28 +1,25 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
 use aes::cipher::KeyIvInit;
-use aes_gcm::aead::generic_array::typenum::U12;
-use aes_gcm::aead::generic_array::typenum::U16;
-use aes_gcm::aead::generic_array::ArrayLength;
-use aes_gcm::aes::Aes128;
-use aes_gcm::aes::Aes192;
-use aes_gcm::aes::Aes256;
+use aes::cipher::block_padding::Pkcs7;
 use aes_gcm::AeadInPlace;
 use aes_gcm::KeyInit;
 use aes_gcm::Nonce;
-use ctr::cipher::StreamCipher;
-use ctr::Ctr128BE;
+use aes_gcm::aead::generic_array::ArrayLength;
+use aes_gcm::aead::generic_array::typenum::U12;
+use aes_gcm::aead::generic_array::typenum::U16;
+use aes_gcm::aes::Aes128;
+use aes_gcm::aes::Aes192;
+use aes_gcm::aes::Aes256;
 use ctr::Ctr32BE;
 use ctr::Ctr64BE;
-use deno_core::error::custom_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
+use ctr::Ctr128BE;
+use ctr::cipher::StreamCipher;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
+use deno_core::unsync::spawn_blocking;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use serde::Deserialize;
 use sha1::Sha1;
@@ -73,12 +70,50 @@ pub enum DecryptAlgorithm {
   },
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum DecryptError {
+  #[class(inherit)]
+  #[error(transparent)]
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
+  #[class(generic)]
+  #[error(transparent)]
+  Pkcs1(#[from] rsa::pkcs1::Error),
+  #[class("DOMExceptionOperationError")]
+  #[error("Decryption failed")]
+  Failed,
+  #[class(type)]
+  #[error("invalid length")]
+  InvalidLength,
+  #[class(type)]
+  #[error("invalid counter length. Currently supported 32/64/128 bits")]
+  InvalidCounterLength,
+  #[class(type)]
+  #[error("tag length not equal to 128")]
+  InvalidTagLength,
+  #[class("DOMExceptionOperationError")]
+  #[error("invalid key or iv")]
+  InvalidKeyOrIv,
+  #[class("DOMExceptionOperationError")]
+  #[error("tried to decrypt too much data")]
+  TooMuchData,
+  #[class(type)]
+  #[error("iv length not equal to 12 or 16")]
+  InvalidIvLength,
+  #[class("DOMExceptionOperationError")]
+  #[error("{0}")]
+  Rsa(rsa::Error),
+}
+
 #[op2(async)]
 #[serde]
 pub async fn op_crypto_decrypt(
   #[serde] opts: DecryptOptions,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, AnyError> {
+) -> Result<ToJsBuffer, DecryptError> {
   let key = opts.key;
   let fun = move || match opts.algorithm {
     DecryptAlgorithm::RsaOaep { hash, label } => {
@@ -108,7 +143,7 @@ fn decrypt_rsa_oaep(
   hash: ShaHash,
   label: Vec<u8>,
   data: &[u8],
-) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+) -> Result<Vec<u8>, DecryptError> {
   let key = key.as_rsa_private_key()?;
 
   let private_key = rsa::RsaPrivateKey::from_pkcs1_der(key)?;
@@ -139,7 +174,7 @@ fn decrypt_rsa_oaep(
 
   private_key
     .decrypt(padding, data)
-    .map_err(|e| custom_error("DOMExceptionOperationError", e.to_string()))
+    .map_err(DecryptError::Rsa)
 }
 
 fn decrypt_aes_cbc(
@@ -147,7 +182,7 @@ fn decrypt_aes_cbc(
   length: usize,
   iv: Vec<u8>,
   data: &[u8],
-) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+) -> Result<Vec<u8>, DecryptError> {
   let key = key.as_secret_key()?;
 
   // 2.
@@ -155,53 +190,32 @@ fn decrypt_aes_cbc(
     128 => {
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
-      let cipher = Aes128CbcDec::new_from_slices(key, &iv).map_err(|_| {
-        custom_error(
-          "DOMExceptionOperationError",
-          "Invalid key or iv".to_string(),
-        )
-      })?;
+      let cipher = Aes128CbcDec::new_from_slices(key, &iv)
+        .map_err(|_| DecryptError::InvalidKeyOrIv)?;
 
-      cipher.decrypt_padded_vec_mut::<Pkcs7>(data).map_err(|_| {
-        custom_error(
-          "DOMExceptionOperationError",
-          "Decryption failed".to_string(),
-        )
-      })?
+      cipher
+        .decrypt_padded_vec_mut::<Pkcs7>(data)
+        .map_err(|_| DecryptError::Failed)?
     }
     192 => {
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes192CbcDec = cbc::Decryptor<aes::Aes192>;
-      let cipher = Aes192CbcDec::new_from_slices(key, &iv).map_err(|_| {
-        custom_error(
-          "DOMExceptionOperationError",
-          "Invalid key or iv".to_string(),
-        )
-      })?;
+      let cipher = Aes192CbcDec::new_from_slices(key, &iv)
+        .map_err(|_| DecryptError::InvalidKeyOrIv)?;
 
-      cipher.decrypt_padded_vec_mut::<Pkcs7>(data).map_err(|_| {
-        custom_error(
-          "DOMExceptionOperationError",
-          "Decryption failed".to_string(),
-        )
-      })?
+      cipher
+        .decrypt_padded_vec_mut::<Pkcs7>(data)
+        .map_err(|_| DecryptError::Failed)?
     }
     256 => {
       // Section 10.3 Step 2 of RFC 2315 https://www.rfc-editor.org/rfc/rfc2315
       type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
-      let cipher = Aes256CbcDec::new_from_slices(key, &iv).map_err(|_| {
-        custom_error(
-          "DOMExceptionOperationError",
-          "Invalid key or iv".to_string(),
-        )
-      })?;
+      let cipher = Aes256CbcDec::new_from_slices(key, &iv)
+        .map_err(|_| DecryptError::InvalidKeyOrIv)?;
 
-      cipher.decrypt_padded_vec_mut::<Pkcs7>(data).map_err(|_| {
-        custom_error(
-          "DOMExceptionOperationError",
-          "Decryption failed".to_string(),
-        )
-      })?
+      cipher
+        .decrypt_padded_vec_mut::<Pkcs7>(data)
+        .map_err(|_| DecryptError::Failed)?
     }
     _ => unreachable!(),
   };
@@ -214,7 +228,7 @@ fn decrypt_aes_ctr_gen<B>(
   key: &[u8],
   counter: &[u8],
   data: &[u8],
-) -> Result<Vec<u8>, AnyError>
+) -> Result<Vec<u8>, DecryptError>
 where
   B: KeyIvInit + StreamCipher,
 {
@@ -223,7 +237,7 @@ where
   let mut plaintext = data.to_vec();
   cipher
     .try_apply_keystream(&mut plaintext)
-    .map_err(|_| operation_error("tried to decrypt too much data"))?;
+    .map_err(|_| DecryptError::TooMuchData)?;
 
   Ok(plaintext)
 }
@@ -235,12 +249,12 @@ fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
   length: usize,
   additional_data: Vec<u8>,
   plaintext: &mut [u8],
-) -> Result<(), AnyError> {
+) -> Result<(), DecryptError> {
   let nonce = Nonce::from_slice(nonce);
   match length {
     128 => {
       let cipher = aes_gcm::AesGcm::<Aes128, N>::new_from_slice(key)
-        .map_err(|_| operation_error("Decryption failed"))?;
+        .map_err(|_| DecryptError::Failed)?;
       cipher
         .decrypt_in_place_detached(
           nonce,
@@ -248,11 +262,11 @@ fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
           plaintext,
           tag,
         )
-        .map_err(|_| operation_error("Decryption failed"))?
+        .map_err(|_| DecryptError::Failed)?
     }
     192 => {
       let cipher = aes_gcm::AesGcm::<Aes192, N>::new_from_slice(key)
-        .map_err(|_| operation_error("Decryption failed"))?;
+        .map_err(|_| DecryptError::Failed)?;
       cipher
         .decrypt_in_place_detached(
           nonce,
@@ -260,11 +274,11 @@ fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
           plaintext,
           tag,
         )
-        .map_err(|_| operation_error("Decryption failed"))?
+        .map_err(|_| DecryptError::Failed)?
     }
     256 => {
       let cipher = aes_gcm::AesGcm::<Aes256, N>::new_from_slice(key)
-        .map_err(|_| operation_error("Decryption failed"))?;
+        .map_err(|_| DecryptError::Failed)?;
       cipher
         .decrypt_in_place_detached(
           nonce,
@@ -272,9 +286,9 @@ fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
           plaintext,
           tag,
         )
-        .map_err(|_| operation_error("Decryption failed"))?
+        .map_err(|_| DecryptError::Failed)?
     }
-    _ => return Err(type_error("invalid length")),
+    _ => return Err(DecryptError::InvalidLength),
   };
 
   Ok(())
@@ -286,7 +300,7 @@ fn decrypt_aes_ctr(
   counter: &[u8],
   ctr_length: usize,
   data: &[u8],
-) -> Result<Vec<u8>, deno_core::anyhow::Error> {
+) -> Result<Vec<u8>, DecryptError> {
   let key = key.as_secret_key()?;
 
   match ctr_length {
@@ -294,23 +308,21 @@ fn decrypt_aes_ctr(
       128 => decrypt_aes_ctr_gen::<Ctr32BE<aes::Aes128>>(key, counter, data),
       192 => decrypt_aes_ctr_gen::<Ctr32BE<aes::Aes192>>(key, counter, data),
       256 => decrypt_aes_ctr_gen::<Ctr32BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(DecryptError::InvalidLength),
     },
     64 => match key_length {
       128 => decrypt_aes_ctr_gen::<Ctr64BE<aes::Aes128>>(key, counter, data),
       192 => decrypt_aes_ctr_gen::<Ctr64BE<aes::Aes192>>(key, counter, data),
       256 => decrypt_aes_ctr_gen::<Ctr64BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(DecryptError::InvalidLength),
     },
     128 => match key_length {
       128 => decrypt_aes_ctr_gen::<Ctr128BE<aes::Aes128>>(key, counter, data),
       192 => decrypt_aes_ctr_gen::<Ctr128BE<aes::Aes192>>(key, counter, data),
       256 => decrypt_aes_ctr_gen::<Ctr128BE<aes::Aes256>>(key, counter, data),
-      _ => Err(type_error("invalid length")),
+      _ => Err(DecryptError::InvalidLength),
     },
-    _ => Err(type_error(
-      "invalid counter length. Currently supported 32/64/128 bits",
-    )),
+    _ => Err(DecryptError::InvalidCounterLength),
   }
 }
 
@@ -321,7 +333,7 @@ fn decrypt_aes_gcm(
   iv: Vec<u8>,
   additional_data: Option<Vec<u8>>,
   data: &[u8],
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, DecryptError> {
   let key = key.as_secret_key()?;
   let additional_data = additional_data.unwrap_or_default();
 
@@ -330,7 +342,7 @@ fn decrypt_aes_gcm(
   // Note that encryption won't fail, it instead truncates the tag
   // to the specified tag length as specified in the spec.
   if tag_length != 128 {
-    return Err(type_error("tag length not equal to 128"));
+    return Err(DecryptError::InvalidTagLength);
   }
 
   let sep = data.len() - (tag_length / 8);
@@ -357,7 +369,7 @@ fn decrypt_aes_gcm(
       additional_data,
       &mut plaintext,
     )?,
-    _ => return Err(type_error("iv length not equal to 12 or 16")),
+    _ => return Err(DecryptError::InvalidIvLength),
   }
 
   Ok(plaintext)

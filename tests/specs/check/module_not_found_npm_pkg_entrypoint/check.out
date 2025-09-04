@@ -1,0 +1,10 @@
+Check file:///[WILDLINE]/main.ts
+TS2307 [ERROR]: Cannot find module 'package'.
+    at file:///[WILDLINE]/main.ts:1:22
+
+TS2307 [ERROR]: Cannot find module 'package/missing-js'.
+    at file:///[WILDLINE]/main.ts:2:23
+
+Found 2 errors.
+
+error: Type checking failed.

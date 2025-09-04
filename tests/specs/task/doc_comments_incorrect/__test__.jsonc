@@ -1,5 +1,0 @@
-{
-  "args": "task doesntexist",
-  "output": "task.out",
-  "exitCode": 1
-}

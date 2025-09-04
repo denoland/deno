@@ -1,35 +1,44 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-use deno_core::error::AnyError;
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub use impl_::*;
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum PriorityError {
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[cfg(windows)]
+  #[class(type)]
+  #[error("Invalid priority")]
+  InvalidPriority,
+}
+
 #[cfg(unix)]
 mod impl_ {
-  use super::*;
+  use errno::Errno;
   use errno::errno;
   use errno::set_errno;
-  use errno::Errno;
-  use libc::id_t;
   use libc::PRIO_PROCESS;
-
-  const PRIORITY_HIGH: i32 = -14;
+  use libc::id_t;
 
   // Ref: https://github.com/libuv/libuv/blob/55376b044b74db40772e8a6e24d67a8673998e02/src/unix/core.c#L1533-L1547
-  pub fn get_priority(pid: u32) -> Result<i32, AnyError> {
+  pub fn get_priority(pid: u32) -> Result<i32, super::PriorityError> {
     set_errno(Errno(0));
     match (
       // SAFETY: libc::getpriority is unsafe
       unsafe { libc::getpriority(PRIO_PROCESS, pid as id_t) },
       errno(),
     ) {
-      (-1, Errno(0)) => Ok(PRIORITY_HIGH),
+      (-1, Errno(0)) => Ok(-1),
       (-1, _) => Err(std::io::Error::last_os_error().into()),
       (priority, _) => Ok(priority),
     }
   }
 
-  pub fn set_priority(pid: u32, priority: i32) -> Result<(), AnyError> {
+  pub fn set_priority(
+    pid: u32,
+    priority: i32,
+  ) -> Result<(), super::PriorityError> {
     // SAFETY: libc::setpriority is unsafe
     match unsafe { libc::setpriority(PRIO_PROCESS, pid as id_t, priority) } {
       -1 => Err(std::io::Error::last_os_error().into()),
@@ -40,8 +49,6 @@ mod impl_ {
 
 #[cfg(windows)]
 mod impl_ {
-  use super::*;
-  use deno_core::error::type_error;
   use winapi::shared::minwindef::DWORD;
   use winapi::shared::minwindef::FALSE;
   use winapi::shared::ntdef::NULL;
@@ -57,6 +64,7 @@ mod impl_ {
   use winapi::um::winbase::NORMAL_PRIORITY_CLASS;
   use winapi::um::winbase::REALTIME_PRIORITY_CLASS;
   use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
+  use winapi::um::winnt::PROCESS_SET_INFORMATION;
 
   // Taken from: https://github.com/libuv/libuv/blob/a877ca2435134ef86315326ef4ef0c16bdbabf17/include/uv.h#L1318-L1323
   const PRIORITY_LOW: i32 = 19;
@@ -67,7 +75,7 @@ mod impl_ {
   const PRIORITY_HIGHEST: i32 = -20;
 
   // Ported from: https://github.com/libuv/libuv/blob/a877ca2435134ef86315326ef4ef0c16bdbabf17/src/win/util.c#L1649-L1685
-  pub fn get_priority(pid: u32) -> Result<i32, AnyError> {
+  pub fn get_priority(pid: u32) -> Result<i32, super::PriorityError> {
     // SAFETY: Windows API calls
     unsafe {
       let handle = if pid == 0 {
@@ -95,13 +103,16 @@ mod impl_ {
   }
 
   // Ported from: https://github.com/libuv/libuv/blob/a877ca2435134ef86315326ef4ef0c16bdbabf17/src/win/util.c#L1688-L1719
-  pub fn set_priority(pid: u32, priority: i32) -> Result<(), AnyError> {
+  pub fn set_priority(
+    pid: u32,
+    priority: i32,
+  ) -> Result<(), super::PriorityError> {
     // SAFETY: Windows API calls
     unsafe {
       let handle = if pid == 0 {
         GetCurrentProcess()
       } else {
-        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid as DWORD)
+        OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid as DWORD)
       };
       if handle == NULL {
         Err(std::io::Error::last_os_error().into())
@@ -109,7 +120,7 @@ mod impl_ {
         #[allow(clippy::manual_range_contains)]
         let priority_class =
           if priority < PRIORITY_HIGHEST || priority > PRIORITY_LOW {
-            return Err(type_error("Invalid priority"));
+            return Err(super::PriorityError::InvalidPriority);
           } else if priority < PRIORITY_HIGH {
             REALTIME_PRIORITY_CLASS
           } else if priority < PRIORITY_ABOVE_NORMAL {

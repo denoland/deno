@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --check --config checkjs.tsconfig.json check_js_points_to_ts/test.js",
+  "output": "check_js_points_to_ts/test.js.out",
+  "exitCode": 1
+}

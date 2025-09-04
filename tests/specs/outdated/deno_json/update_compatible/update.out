@@ -1,0 +1,7 @@
+[UNORDERED_START]
+Download http://127.0.0.1:4250/@denotest/add/0.2.1/mod.ts
+Download http://localhost:4260/@denotest/has-patch-versions/0.1.1.tgz
+[UNORDERED_END]
+Updated 2 dependencies:
+ - jsr:@denotest/add                ^0.2.0 -> ^0.2.1
+ - npm:@denotest/has-patch-versions ^0.1.0 -> ^0.1.1

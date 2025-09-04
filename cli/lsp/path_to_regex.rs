@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // The logic of this module is heavily influenced by path-to-regexp at:
 // https://github.com/pillarjs/path-to-regexp/ which is licensed as follows:
@@ -26,15 +26,16 @@
 // THE SOFTWARE.
 //
 
+use std::collections::HashMap;
+use std::fmt;
+use std::fmt::Write as _;
+use std::iter::Peekable;
+
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use fancy_regex::Regex as FancyRegex;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::collections::HashMap;
-use std::fmt;
-use std::fmt::Write as _;
-use std::iter::Peekable;
 
 static ESCAPE_STRING_RE: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"([.+*?=^!:${}()\[\]|/\\])");
@@ -369,11 +370,11 @@ fn try_consume(
   token_type: &TokenType,
   it: &mut Peekable<impl Iterator<Item = LexToken>>,
 ) -> Option<String> {
-  if let Some(token) = it.peek() {
-    if &token.token_type == token_type {
-      let token = it.next().unwrap();
-      return Some(token.value);
-    }
+  if let Some(token) = it.peek()
+    && &token.token_type == token_type
+  {
+    let token = it.next().unwrap();
+    return Some(token.value);
   }
   None
 }
@@ -741,34 +742,33 @@ impl Compiler {
                 let prefix = k.prefix.clone().unwrap_or_default();
                 let suffix = k.suffix.clone().unwrap_or_default();
                 for segment in v {
-                  if !segment.is_empty() && self.validate {
-                    if let Some(re) = &self.matches[i] {
-                      if !re.is_match(segment) {
-                        return Err(anyhow!(
-                          "Expected all \"{:?}\" to match \"{}\", but got {}",
-                          k.name,
-                          k.pattern,
-                          segment
-                        ));
-                      }
-                    }
+                  if !segment.is_empty()
+                    && self.validate
+                    && let Some(re) = &self.matches[i]
+                    && !re.is_match(segment)
+                  {
+                    return Err(anyhow!(
+                      "Expected all \"{:?}\" to match \"{}\", but got {}",
+                      k.name,
+                      k.pattern,
+                      segment
+                    ));
                   }
                   write!(path, "{prefix}{segment}{suffix}").unwrap();
                 }
               }
             }
             Some(StringOrVec::String(s)) => {
-              if self.validate {
-                if let Some(re) = &self.matches[i] {
-                  if !re.is_match(s) {
-                    return Err(anyhow!(
-                      "Expected \"{:?}\" to match \"{}\", but got \"{}\"",
-                      k.name,
-                      k.pattern,
-                      s
-                    ));
-                  }
-                }
+              if self.validate
+                && let Some(re) = &self.matches[i]
+                && !re.is_match(s)
+              {
+                return Err(anyhow!(
+                  "Expected \"{:?}\" to match \"{}\", but got \"{}\"",
+                  k.name,
+                  k.pattern,
+                  s
+                ));
               }
               let prefix = k.prefix.clone().unwrap_or_default();
               let suffix = k.suffix.clone().unwrap_or_default();
@@ -874,13 +874,27 @@ mod tests {
       );
       let actual = result.unwrap();
       if let Some((text, start, end)) = *expected {
-        assert!(actual.is_some(), "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected Some got None");
+        assert!(
+          actual.is_some(),
+          "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected Some got None"
+        );
         let actual = actual.unwrap();
-        assert_eq!(actual.as_str(), text, "Match failure for path \"{}\" and fixture \"{}\".  Expected \"{}\" got \"{}\".", path, fixture, text, actual.as_str());
+        assert_eq!(
+          actual.as_str(),
+          text,
+          "Match failure for path \"{}\" and fixture \"{}\".  Expected \"{}\" got \"{}\".",
+          path,
+          fixture,
+          text,
+          actual.as_str()
+        );
         assert_eq!(actual.start(), start);
         assert_eq!(actual.end(), end);
       } else {
-        assert!(actual.is_none(), "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected None got {actual:?}");
+        assert!(
+          actual.is_none(),
+          "Match failure for path \"{path}\" and fixture \"{fixture}\". Expected None got {actual:?}"
+        );
       }
     }
   }

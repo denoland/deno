@@ -11,6 +11,20 @@
 		"indentWidth": 8,
 		"singleQuote": true,
 		"proseWrap": "always",
-		"semiColons": false
+		"semiColons": false,
+		"quoteProps": "asNeeded",
+		"newLineKind": "lf",
+		"useBraces": "maintain",
+		"bracePosition": "nextLine",
+		"singleBodyPosition": "nextLine",
+		"nextControlFlowPosition": "nextLine",
+		"trailingCommas": "never",
+		"operatorPosition": "nextLine",
+		"jsx.bracketPosition": "sameLine",
+		"jsx.forceNewLinesSurroundingContent": true,
+		"jsx.multiLineParens": "never",
+		"typeLiteral.separatorKind": "comma",
+		"spaceAround": true,
+		"spaceSurroundingProperties": false
 	}
 }

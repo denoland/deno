@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
@@ -27,7 +27,10 @@ Deno.test("correct DataCloneError message", () => {
   assertThrows(
     () => {
       const sab = new SharedArrayBuffer(1024);
-      structuredClone(sab, { transfer: [sab] });
+      structuredClone(sab, {
+        // @ts-expect-error cannot assign SharedArrayBuffer because it's not tranferable
+        transfer: [sab],
+      });
     },
     DOMException,
     "Value not transferable",

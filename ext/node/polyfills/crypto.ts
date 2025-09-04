@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -91,6 +91,10 @@ import {
   publicDecrypt,
   publicEncrypt,
 } from "ext:deno_node/internal/crypto/cipher.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} from "ext:deno_node/internal/errors.ts";
 import type {
   Cipher,
   CipherCCM,
@@ -139,8 +143,8 @@ import type {
 import {
   createHash,
   getHashes,
-  Hash,
-  Hmac,
+  Hash as Hash_,
+  Hmac as Hmac_,
 } from "ext:deno_node/internal/crypto/hash.ts";
 import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 import type {
@@ -160,13 +164,62 @@ import type {
   TransformOptions,
   WritableOptions,
 } from "ext:deno_node/_stream.d.ts";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
+import { deprecate } from "node:util";
 
 const subtle = webcrypto.subtle;
 const fipsForced = getOptionValue("--force-fips");
 
+const Hash = deprecate(
+  Hash_,
+  "crypto.Hash constructor is deprecated.",
+  "DEP0179",
+);
+const Hmac = deprecate(
+  Hmac_,
+  "crypto.Hmac constructor is deprecated.",
+  "DEP0181",
+);
+
 function getRandomValues(typedArray) {
   return webcrypto.getRandomValues(typedArray);
+}
+
+function hash(
+  algorithm: string,
+  data: BinaryLike,
+  outputEncoding: BinaryToTextEncoding = "hex",
+) {
+  validateString(algorithm, "algorithm");
+  if (typeof data !== "string" && !isArrayBufferView(data)) {
+    throw new ERR_INVALID_ARG_TYPE("input", [
+      "Buffer",
+      "TypedArray",
+      "DataView",
+      "string",
+    ], data);
+  }
+  let normalized = outputEncoding;
+  // Fast case: if it's 'hex', we don't need to validate it further.
+  if (outputEncoding !== "hex") {
+    validateString(outputEncoding, "outputEncoding");
+    normalized = normalizeEncoding(outputEncoding);
+    // If the encoding is invalid, normalizeEncoding() returns undefined.
+    if (normalized === undefined) {
+      // normalizeEncoding() doesn't handle 'buffer'.
+      if (outputEncoding.toLowerCase() === "buffer") {
+        normalized = "buffer";
+      } else {
+        throw new ERR_INVALID_ARG_VALUE("outputEncoding", outputEncoding);
+      }
+    }
+  }
+  const hash = createHash(algorithm);
+  hash.update(data);
+  return hash.digest(outputEncoding);
 }
 
 function createCipheriv(
@@ -350,6 +403,7 @@ export default {
   getDiffieHellman,
   getFips,
   getHashes,
+  hash,
   Hash,
   hkdf,
   hkdfSync,
@@ -489,6 +543,7 @@ export {
   getHashes,
   getRandomValues,
   Hash,
+  hash,
   hkdf,
   hkdfSync,
   Hmac,

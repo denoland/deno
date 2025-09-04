@@ -1,12 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_path_util::normalize_path;
 use deno_permissions::AllowRunDescriptor;
 use deno_permissions::AllowRunDescriptorParseResult;
 use deno_permissions::DenyRunDescriptor;
@@ -14,92 +11,105 @@ use deno_permissions::EnvDescriptor;
 use deno_permissions::FfiDescriptor;
 use deno_permissions::ImportDescriptor;
 use deno_permissions::NetDescriptor;
+use deno_permissions::PathDescriptor;
 use deno_permissions::PathQueryDescriptor;
+use deno_permissions::PathResolveError;
 use deno_permissions::ReadDescriptor;
+use deno_permissions::RunDescriptorParseError;
 use deno_permissions::RunQueryDescriptor;
+use deno_permissions::SpecialFilePathQueryDescriptor;
 use deno_permissions::SysDescriptor;
+use deno_permissions::SysDescriptorParseError;
 use deno_permissions::WriteDescriptor;
 
+#[sys_traits::auto_impl]
+pub trait RuntimePermissionDescriptorParserSys:
+  deno_permissions::which::WhichSys + sys_traits::FsCanonicalize + Send + Sync
+{
+}
+
 #[derive(Debug)]
-pub struct RuntimePermissionDescriptorParser {
-  fs: deno_fs::FileSystemRc,
+pub struct RuntimePermissionDescriptorParser<
+  TSys: RuntimePermissionDescriptorParserSys,
+> {
+  sys: TSys,
 }
 
-impl RuntimePermissionDescriptorParser {
-  pub fn new(fs: deno_fs::FileSystemRc) -> Self {
-    Self { fs }
+impl<TSys: RuntimePermissionDescriptorParserSys>
+  RuntimePermissionDescriptorParser<TSys>
+{
+  pub fn new(sys: TSys) -> Self {
+    Self { sys }
   }
 
-  fn resolve_from_cwd(&self, path: &str) -> Result<PathBuf, AnyError> {
-    if path.is_empty() {
-      bail!("Empty path is not allowed");
-    }
-    let path = Path::new(path);
-    if path.is_absolute() {
-      Ok(normalize_path(path))
-    } else {
-      let cwd = self.resolve_cwd()?;
-      Ok(normalize_path(cwd.join(path)))
-    }
-  }
-
-  fn resolve_cwd(&self) -> Result<PathBuf, AnyError> {
+  fn resolve_cwd(&self) -> Result<PathBuf, PathResolveError> {
     self
-      .fs
-      .cwd()
-      .map_err(|e| e.into_io_error())
-      .context("failed resolving cwd")
+      .sys
+      .env_current_dir()
+      .map_err(PathResolveError::CwdResolve)
+  }
+
+  fn parse_path_descriptor(
+    &self,
+    path: Cow<'_, Path>,
+  ) -> Result<PathDescriptor, PathResolveError> {
+    PathDescriptor::new(&self.sys, path)
   }
 }
 
-impl deno_permissions::PermissionDescriptorParser
-  for RuntimePermissionDescriptorParser
+impl<TSys: RuntimePermissionDescriptorParserSys + std::fmt::Debug>
+  deno_permissions::PermissionDescriptorParser
+  for RuntimePermissionDescriptorParser<TSys>
 {
   fn parse_read_descriptor(
     &self,
     text: &str,
-  ) -> Result<ReadDescriptor, AnyError> {
-    Ok(ReadDescriptor(self.resolve_from_cwd(text)?))
+  ) -> Result<ReadDescriptor, PathResolveError> {
+    Ok(ReadDescriptor(
+      self.parse_path_descriptor(Cow::Borrowed(Path::new(text)))?,
+    ))
   }
 
   fn parse_write_descriptor(
     &self,
     text: &str,
-  ) -> Result<WriteDescriptor, AnyError> {
-    Ok(WriteDescriptor(self.resolve_from_cwd(text)?))
+  ) -> Result<WriteDescriptor, PathResolveError> {
+    Ok(WriteDescriptor(
+      self.parse_path_descriptor(Cow::Borrowed(Path::new(text)))?,
+    ))
   }
 
   fn parse_net_descriptor(
     &self,
     text: &str,
-  ) -> Result<NetDescriptor, AnyError> {
-    NetDescriptor::parse(text)
+  ) -> Result<NetDescriptor, deno_permissions::NetDescriptorParseError> {
+    NetDescriptor::parse_for_list(text)
   }
 
   fn parse_import_descriptor(
     &self,
     text: &str,
-  ) -> Result<ImportDescriptor, AnyError> {
-    ImportDescriptor::parse(text)
+  ) -> Result<ImportDescriptor, deno_permissions::NetDescriptorParseError> {
+    ImportDescriptor::parse_for_list(text)
   }
 
   fn parse_env_descriptor(
     &self,
     text: &str,
-  ) -> Result<EnvDescriptor, AnyError> {
+  ) -> Result<EnvDescriptor, deno_permissions::EnvDescriptorParseError> {
     if text.is_empty() {
-      Err(AnyError::msg("Empty env not allowed"))
+      Err(deno_permissions::EnvDescriptorParseError)
     } else {
-      Ok(EnvDescriptor::new(text))
+      Ok(EnvDescriptor::new(Cow::Borrowed(text)))
     }
   }
 
   fn parse_sys_descriptor(
     &self,
     text: &str,
-  ) -> Result<deno_permissions::SysDescriptor, AnyError> {
+  ) -> Result<SysDescriptor, SysDescriptorParseError> {
     if text.is_empty() {
-      Err(AnyError::msg("Empty sys not allowed"))
+      Err(SysDescriptorParseError::Empty)
     } else {
       Ok(SysDescriptor::parse(text.to_string())?)
     }
@@ -108,65 +118,86 @@ impl deno_permissions::PermissionDescriptorParser
   fn parse_allow_run_descriptor(
     &self,
     text: &str,
-  ) -> Result<AllowRunDescriptorParseResult, AnyError> {
-    Ok(AllowRunDescriptor::parse(text, &self.resolve_cwd()?)?)
+  ) -> Result<AllowRunDescriptorParseResult, RunDescriptorParseError> {
+    Ok(AllowRunDescriptor::parse(
+      text,
+      &self.resolve_cwd()?,
+      &self.sys,
+    )?)
   }
 
   fn parse_deny_run_descriptor(
     &self,
     text: &str,
-  ) -> Result<DenyRunDescriptor, AnyError> {
+  ) -> Result<DenyRunDescriptor, PathResolveError> {
     Ok(DenyRunDescriptor::parse(text, &self.resolve_cwd()?))
   }
 
   fn parse_ffi_descriptor(
     &self,
     text: &str,
-  ) -> Result<deno_permissions::FfiDescriptor, AnyError> {
-    Ok(FfiDescriptor(self.resolve_from_cwd(text)?))
+  ) -> Result<FfiDescriptor, PathResolveError> {
+    Ok(FfiDescriptor(
+      self.parse_path_descriptor(Cow::Borrowed(Path::new(text)))?,
+    ))
   }
 
   // queries
 
-  fn parse_path_query(
+  fn parse_path_query<'a>(
     &self,
-    path: &str,
-  ) -> Result<PathQueryDescriptor, AnyError> {
-    Ok(PathQueryDescriptor {
-      resolved: self.resolve_from_cwd(path)?,
-      requested: path.to_string(),
-    })
+    path: Cow<'a, Path>,
+  ) -> Result<PathQueryDescriptor<'a>, PathResolveError> {
+    PathQueryDescriptor::new(&self.sys, path)
   }
 
-  fn parse_run_query(
+  fn parse_special_file_descriptor<'a>(
     &self,
-    requested: &str,
-  ) -> Result<RunQueryDescriptor, AnyError> {
+    path: PathQueryDescriptor<'a>,
+  ) -> Result<SpecialFilePathQueryDescriptor<'a>, PathResolveError> {
+    SpecialFilePathQueryDescriptor::parse(&self.sys, path)
+  }
+
+  fn parse_net_query(
+    &self,
+    text: &str,
+  ) -> Result<NetDescriptor, deno_permissions::NetDescriptorParseError> {
+    NetDescriptor::parse_for_query(text)
+  }
+
+  fn parse_run_query<'a>(
+    &self,
+    requested: &'a str,
+  ) -> Result<RunQueryDescriptor<'a>, RunDescriptorParseError> {
     if requested.is_empty() {
-      bail!("Empty run query is not allowed");
+      return Err(RunDescriptorParseError::EmptyRunQuery);
     }
-    RunQueryDescriptor::parse(requested)
+    RunQueryDescriptor::parse(requested, &self.sys)
+      .map_err(RunDescriptorParseError::PathResolve)
   }
 }
 
 #[cfg(test)]
 mod test {
-  use std::sync::Arc;
-
-  use deno_fs::RealFs;
   use deno_permissions::PermissionDescriptorParser;
 
   use super::*;
 
   #[test]
   fn test_handle_empty_value() {
-    let parser = RuntimePermissionDescriptorParser::new(Arc::new(RealFs));
+    let parser =
+      RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys);
     assert!(parser.parse_read_descriptor("").is_err());
     assert!(parser.parse_write_descriptor("").is_err());
     assert!(parser.parse_env_descriptor("").is_err());
     assert!(parser.parse_net_descriptor("").is_err());
     assert!(parser.parse_ffi_descriptor("").is_err());
-    assert!(parser.parse_path_query("").is_err());
+    assert!(
+      parser
+        .parse_path_query(Cow::Borrowed(Path::new("")))
+        .is_err()
+    );
+    assert!(parser.parse_net_query("").is_err());
     assert!(parser.parse_run_query("").is_err());
   }
 }

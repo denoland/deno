@@ -1,13 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::serde_json::json;
+use serde_json::json;
 use test_util as util;
 use test_util::itest;
-use util::assert_contains;
-use util::assert_not_contains;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::assert_contains;
+use util::assert_not_contains;
 
 #[test]
 fn fmt_test() {
@@ -61,6 +61,12 @@ fn fmt_test() {
   let badly_formatted_yaml = t.path().join("badly_formatted.yaml");
   badly_formatted_original_yaml.copy(&badly_formatted_yaml);
 
+  let fixed_sql = testdata_fmt_dir.join("badly_formatted_fixed.sql");
+  let badly_formatted_original_sql =
+    testdata_fmt_dir.join("badly_formatted.sql");
+  let badly_formatted_sql = t.path().join("badly_formatted.sql");
+  badly_formatted_original_sql.copy(&badly_formatted_sql);
+
   // First, check formatting by ignoring the badly formatted file.
   let output = context
     .new_command()
@@ -71,11 +77,12 @@ fn fmt_test() {
       "--unstable-html".to_string(),
       "--unstable-component".to_string(),
       "--unstable-yaml".to_string(),
+      "--unstable-sql".to_string(),
       format!(
-        "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json},{badly_formatted_css},{badly_formatted_html},{badly_formatted_component},{badly_formatted_yaml},{badly_formatted_ipynb}",
+        "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json},{badly_formatted_css},{badly_formatted_html},{badly_formatted_component},{badly_formatted_yaml},{badly_formatted_ipynb},{badly_formatted_sql}",
       ),
       format!(
-        "--check {badly_formatted_js} {badly_formatted_md} {badly_formatted_json} {badly_formatted_css} {badly_formatted_html} {badly_formatted_component} {badly_formatted_yaml} {badly_formatted_ipynb}",
+        "--check {badly_formatted_js} {badly_formatted_md} {badly_formatted_json} {badly_formatted_css} {badly_formatted_html} {badly_formatted_component} {badly_formatted_yaml} {badly_formatted_ipynb} {badly_formatted_sql}",
       ),
     ])
     .run();
@@ -95,6 +102,7 @@ fn fmt_test() {
       "--unstable-html".to_string(),
       "--unstable-component".to_string(),
       "--unstable-yaml".to_string(),
+      "--unstable-sql".to_string(),
       badly_formatted_js.to_string(),
       badly_formatted_md.to_string(),
       badly_formatted_json.to_string(),
@@ -103,6 +111,7 @@ fn fmt_test() {
       badly_formatted_component.to_string(),
       badly_formatted_yaml.to_string(),
       badly_formatted_ipynb.to_string(),
+      badly_formatted_sql.to_string(),
     ])
     .run();
 
@@ -119,6 +128,7 @@ fn fmt_test() {
       "--unstable-html".to_string(),
       "--unstable-component".to_string(),
       "--unstable-yaml".to_string(),
+      "--unstable-sql".to_string(),
       badly_formatted_js.to_string(),
       badly_formatted_md.to_string(),
       badly_formatted_json.to_string(),
@@ -127,6 +137,7 @@ fn fmt_test() {
       badly_formatted_component.to_string(),
       badly_formatted_yaml.to_string(),
       badly_formatted_ipynb.to_string(),
+      badly_formatted_sql.to_string(),
     ])
     .run();
 
@@ -141,6 +152,7 @@ fn fmt_test() {
   let expected_component = fixed_component.read_to_string();
   let expected_yaml = fixed_yaml.read_to_string();
   let expected_ipynb = fixed_ipynb.read_to_string();
+  let expected_sql = fixed_sql.read_to_string();
   let actual_js = badly_formatted_js.read_to_string();
   let actual_md = badly_formatted_md.read_to_string();
   let actual_json = badly_formatted_json.read_to_string();
@@ -149,6 +161,7 @@ fn fmt_test() {
   let actual_component = badly_formatted_component.read_to_string();
   let actual_yaml = badly_formatted_yaml.read_to_string();
   let actual_ipynb = badly_formatted_ipynb.read_to_string();
+  let actual_sql = badly_formatted_sql.read_to_string();
   assert_eq!(expected_js, actual_js);
   assert_eq!(expected_md, actual_md);
   assert_eq!(expected_json, actual_json);
@@ -157,6 +170,7 @@ fn fmt_test() {
   assert_eq!(expected_component, actual_component);
   assert_eq!(expected_yaml, actual_yaml);
   assert_eq!(expected_ipynb, actual_ipynb);
+  assert_eq!(expected_sql, actual_sql);
 }
 
 #[test]
@@ -171,19 +185,6 @@ fn fmt_stdin_syntax_error() {
   assert!(output.stdout().is_empty());
   assert!(!output.stderr().is_empty());
   output.assert_exit_code(1);
-}
-
-#[test]
-fn fmt_ignore_unexplicit_files() {
-  let context = TestContext::default();
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
-    .args("fmt --check --ignore=./")
-    .run();
-
-  output.assert_exit_code(1);
-  assert_eq!(output.combined_output(), "error: No target files found.\n");
 }
 
 #[test]
@@ -238,18 +239,6 @@ itest!(fmt_check_ignore {
   exit_code: 0,
 });
 
-itest!(fmt_check_parse_error {
-  args: "fmt --check fmt/parse_error/parse_error.ts",
-  output: "fmt/fmt_check_parse_error.out",
-  exit_code: 1,
-});
-
-itest!(fmt_check_invalid_data {
-  args: "fmt --check fmt/invalid_data.json",
-  output: "fmt/invalid_data.out",
-  exit_code: 1,
-});
-
 itest!(fmt_stdin {
   args: "fmt -",
   input: Some("const a = 1\n"),
@@ -258,8 +247,12 @@ itest!(fmt_stdin {
 
 itest!(fmt_stdin_markdown {
   args: "fmt --ext=md -",
-  input: Some("# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"),
-  output_str: Some("# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"),
+  input: Some(
+    "# Hello      Markdown\n```ts\nconsole.log( \"text\")\n```\n\n```cts\nconsole.log( 5 )\n```"
+  ),
+  output_str: Some(
+    "# Hello Markdown\n\n```ts\nconsole.log(\"text\");\n```\n\n```cts\nconsole.log(5);\n```\n"
+  ),
 });
 
 itest!(fmt_stdin_json {

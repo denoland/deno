@@ -1,0 +1,5 @@
+{
+  "args": "run --config checkjs.tsconfig.json --check --vendor reference_types_error.js",
+  "output": "reference_types_error.js.out",
+  "exitCode": 1
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -777,4 +777,39 @@ Deno.test({
   fn: () => {
     AbortSignal.timeout(2000);
   },
+});
+
+Deno.test(async function setTimeoutWithStringCallback() {
+  const global = globalThis as unknown as {
+    timeoutStringTest: number;
+    timeoutStringPromise: ReturnType<typeof Promise.withResolvers<void>>;
+  };
+  global.timeoutStringTest = 0;
+  global.timeoutStringPromise = Promise.withResolvers<void>();
+  setTimeout(
+    "globalThis.timeoutStringTest = 42; globalThis.timeoutStringPromise.resolve();",
+    10,
+  );
+  await global.timeoutStringPromise.promise;
+  assertEquals(global.timeoutStringTest, 42);
+  Reflect.deleteProperty(global, "timeoutStringTest");
+  Reflect.deleteProperty(global, "timeoutStringPromise");
+});
+
+Deno.test(async function setIntervalWithStringCallback() {
+  const global = globalThis as unknown as {
+    intervalStringTest: number;
+    intervalStringPromise: ReturnType<typeof Promise.withResolvers<void>>;
+  };
+  global.intervalStringTest = 0;
+  global.intervalStringPromise = Promise.withResolvers<void>();
+  const id = setInterval(
+    "globalThis.intervalStringTest += 10; if (globalThis.intervalStringTest >= 20) globalThis.intervalStringPromise.resolve();",
+    10,
+  );
+  global.intervalStringPromise.promise.then(() => clearInterval(id));
+  await global.intervalStringPromise.promise;
+  assert(global.intervalStringTest >= 20);
+  Reflect.deleteProperty(global, "intervalStringTest");
+  Reflect.deleteProperty(global, "intervalStringPromise");
 });

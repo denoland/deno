@@ -1,0 +1,4 @@
+{
+  "args": "run --reload --allow-read single_compile_with_reload.ts",
+  "output": "single_compile_with_reload.ts.out"
+}

@@ -1,6 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-// deno-lint-ignore-file no-console
+// Copyright 2018-2025 the Deno authors. MIT license.
+// deno-lint-ignore-file no-console no-process-global
 
 let [total, count] = typeof Deno !== "undefined"
   ? Deno.args

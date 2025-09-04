@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #[cfg(not(feature = "include_js_files_for_snapshotting"))]
 pub static SOURCE_CODE_FOR_99_MAIN_JS: &str = include_str!("js/99_main.js");

@@ -1,12 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::v8;
-use deno_core::ModuleSpecifier;
-use serde::Serialize;
 use std::cell::RefCell;
 use std::thread;
 
+use deno_core::ModuleSpecifier;
+use deno_core::v8;
+use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
+use serde::Serialize;
 
 /// The execution mode for this worker. Some modes may have implicit behaviour.
 #[derive(Copy, Clone)]
@@ -27,12 +28,16 @@ pub enum WorkerExecutionMode {
   /// `deno bench`
   Bench,
   /// `deno serve`
-  Serve {
-    is_main: bool,
-    worker_count: Option<usize>,
+  ServeMain {
+    worker_count: usize,
+  },
+  ServeWorker {
+    worker_index: usize,
   },
   /// `deno jupyter`
   Jupyter,
+  /// `deno deploy`
+  Deploy,
 }
 
 impl WorkerExecutionMode {
@@ -45,17 +50,10 @@ impl WorkerExecutionMode {
       WorkerExecutionMode::Eval => 4,
       WorkerExecutionMode::Test => 5,
       WorkerExecutionMode::Bench => 6,
-      WorkerExecutionMode::Serve { .. } => 7,
+      WorkerExecutionMode::ServeMain { .. }
+      | WorkerExecutionMode::ServeWorker { .. } => 7,
       WorkerExecutionMode::Jupyter => 8,
-    }
-  }
-  pub fn serve_info(&self) -> (Option<bool>, Option<usize>) {
-    match *self {
-      WorkerExecutionMode::Serve {
-        is_main,
-        worker_count,
-      } => (Some(is_main), worker_count),
-      _ => (None, None),
+      WorkerExecutionMode::Deploy => 9,
     }
   }
 }
@@ -101,23 +99,25 @@ pub struct BootstrapOptions {
   pub enable_testing_features: bool,
   pub locale: String,
   pub location: Option<ModuleSpecifier>,
-  /// Sets `Deno.noColor` in JS runtime.
-  pub no_color: bool,
-  pub is_stdout_tty: bool,
-  pub is_stderr_tty: bool,
   pub color_level: deno_terminal::colors::ColorLevel,
   // --unstable-* flags
   pub unstable_features: Vec<i32>,
   pub user_agent: String,
   pub inspect: bool,
+  /// If this is a `deno compile`-ed executable.
+  pub is_standalone: bool,
   pub has_node_modules_dir: bool,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
   pub node_ipc_fd: Option<i64>,
   pub mode: WorkerExecutionMode,
+  pub no_legacy_abort: bool,
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub auto_serve: bool,
+  pub otel_config: OtelConfig,
+  pub close_on_idle: bool,
 }
 
 impl Default for BootstrapOptions {
@@ -126,6 +126,8 @@ impl Default for BootstrapOptions {
       .map(|p| p.get())
       .unwrap_or(1);
 
+    // this version is not correct as its the version of deno_runtime
+    // and the implementor should supply a user agent that makes sense
     let runtime_version = env!("CARGO_PKG_VERSION");
     let user_agent = format!("Deno/{runtime_version}");
 
@@ -133,25 +135,27 @@ impl Default for BootstrapOptions {
       deno_version: runtime_version.to_string(),
       user_agent,
       cpu_count,
-      no_color: !colors::use_color(),
-      is_stdout_tty: deno_terminal::is_stdout_tty(),
-      is_stderr_tty: deno_terminal::is_stderr_tty(),
       color_level: colors::get_color_level(),
-      enable_op_summary_metrics: Default::default(),
-      enable_testing_features: Default::default(),
+      enable_op_summary_metrics: false,
+      enable_testing_features: false,
       log_level: Default::default(),
       locale: "en".to_string(),
       location: Default::default(),
       unstable_features: Default::default(),
-      inspect: Default::default(),
+      inspect: false,
       args: Default::default(),
-      has_node_modules_dir: Default::default(),
+      is_standalone: false,
+      auto_serve: false,
+      has_node_modules_dir: false,
       argv0: None,
       node_debug: None,
       node_ipc_fd: None,
       mode: WorkerExecutionMode::None,
+      no_legacy_abort: false,
       serve_port: Default::default(),
       serve_host: Default::default(),
+      otel_config: Default::default(),
+      close_on_idle: false,
     }
   }
 }
@@ -190,9 +194,17 @@ struct BootstrapV8<'a>(
   // serve host
   Option<&'a str>,
   // serve is main
-  Option<bool>,
+  bool,
   // serve worker count
   Option<usize>,
+  // OTEL config
+  Box<[u8]>,
+  // close on idle
+  bool,
+  // is_standalone
+  bool,
+  // auto serve
+  bool,
 );
 
 impl BootstrapOptions {
@@ -204,7 +216,6 @@ impl BootstrapOptions {
     let scope = RefCell::new(scope);
     let ser = deno_core::serde_v8::Serializer::new(&scope);
 
-    let (serve_is_main, serve_worker_count) = self.mode.serve_info();
     let bootstrap = BootstrapV8(
       &self.deno_version,
       self.location.as_ref().map(|l| l.as_str()),
@@ -217,8 +228,16 @@ impl BootstrapOptions {
       self.mode.discriminant() as _,
       self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),
-      serve_is_main,
-      serve_worker_count,
+      matches!(self.mode, WorkerExecutionMode::ServeMain { .. }),
+      match self.mode {
+        WorkerExecutionMode::ServeMain { worker_count } => Some(worker_count),
+        WorkerExecutionMode::ServeWorker { worker_index } => Some(worker_index),
+        _ => None,
+      },
+      self.otel_config.as_v8(),
+      self.close_on_idle,
+      self.is_standalone,
+      self.auto_serve,
     );
 
     bootstrap.serialize(ser).unwrap()

@@ -1,0 +1,7 @@
+// Testing four space indents too
+// deno-fmt-ignore
+{
+    "imports": {
+        "@denotest/add2": "npm:@denotest/add" // some comment
+    }
+}

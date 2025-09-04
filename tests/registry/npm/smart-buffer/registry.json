@@ -95,7 +95,6 @@
     "type": "git",
     "url": "git+https://github.com/JoshGlazebrook/smart-buffer.git"
   },
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/JoshGlazebrook/smart-buffer/",
   "bugs": {
     "url": "https://github.com/JoshGlazebrook/smart-buffer/issues"

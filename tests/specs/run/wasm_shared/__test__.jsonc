@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet wasm_shared.ts",
+  "output": "wasm_shared.out"
+}

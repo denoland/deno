@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
@@ -32,7 +32,7 @@ Deno.test(async function wasmInstantiateWorksWithBuffer() {
 });
 
 // V8's default implementation of `WebAssembly.instantiateStreaming()` if you
-// don't set the WASM streaming callback, is to take a byte source. Here we
+// don't set the Wasm streaming callback, is to take a byte source. Here we
 // check that our implementation of the callback disallows it.
 Deno.test(
   async function wasmInstantiateStreamingFailsWithBuffer() {
@@ -95,7 +95,7 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function wasmStreamingNonTrivial() {
-    // deno-dom's WASM file is a real-world non-trivial case that gave us
+    // deno-dom's Wasm file is a real-world non-trivial case that gave us
     // trouble when implementing this.
     await WebAssembly.instantiateStreaming(fetch(
       "http://localhost:4545/assets/deno_dom_0.1.3-alpha2.wasm",

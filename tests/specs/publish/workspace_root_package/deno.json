@@ -1,0 +1,9 @@
+{
+  "name": "@scope/package-a",
+  "version": "0.1.0",
+  "license": "MIT",
+  "workspace": [
+    "./package-b"
+  ],
+  "exports": "./mod.ts"
+}

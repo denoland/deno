@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet error_name_non_string.js",
+  "output": "error_name_non_string.js.out",
+  "exitCode": 1
+}

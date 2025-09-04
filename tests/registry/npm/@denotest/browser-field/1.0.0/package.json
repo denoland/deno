@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/browser-field",
+  "version": "1.0.0",
+  "main": "main.js",
+  "browser": "browser.js",
+  "module": "module.js",
+  "type": "module"
+}

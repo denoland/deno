@@ -1,0 +1,5 @@
+{
+  "args": "run --no-prompt node_env_var_allowlist.ts",
+  "output": "node_env_var_allowlist.ts.out",
+  "exitCode": 1
+}

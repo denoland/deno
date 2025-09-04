@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -19,6 +19,10 @@ import {
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
+
+const { ObjectDefineProperty } = primordials;
 
 export function writeSync(fd, buffer, offset, length, position) {
   fd = getValidatedFd(fd);
@@ -132,3 +136,9 @@ export function write(fd, buffer, offset, length, position, callback) {
     (err) => callback(err),
   );
 }
+
+ObjectDefineProperty(write, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesWritten", "buffer"],
+  enumerable: false,
+});

@@ -1,7 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
+use deno_error::JsErrorBox;
 
 /// Defines the accepted types that can be used as
 /// parameters and return values in FFI.
@@ -29,7 +28,7 @@ pub enum NativeType {
 }
 
 impl TryFrom<NativeType> for libffi::middle::Type {
-  type Error = AnyError;
+  type Error = JsErrorBox;
 
   fn try_from(native_type: NativeType) -> Result<Self, Self::Error> {
     Ok(match native_type {
@@ -50,13 +49,15 @@ impl TryFrom<NativeType> for libffi::middle::Type {
         libffi::middle::Type::pointer()
       }
       NativeType::Struct(fields) => {
-        libffi::middle::Type::structure(match fields.len() > 0 {
+        libffi::middle::Type::structure(match !fields.is_empty() {
           true => fields
             .iter()
             .map(|field| field.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?,
           false => {
-            return Err(type_error("Struct must have at least one field"))
+            return Err(JsErrorBox::type_error(
+              "Struct must have at least one field",
+            ));
           }
         })
       }
@@ -66,6 +67,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
 
 #[derive(Clone)]
 pub struct Symbol {
+  pub name: String,
   pub cif: libffi::middle::Cif,
   pub ptr: libffi::middle::CodePtr,
   pub parameter_types: Vec<NativeType>,

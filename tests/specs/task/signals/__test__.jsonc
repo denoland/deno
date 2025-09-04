@@ -1,0 +1,8 @@
+{
+  // signals don't really exist on windows
+  "if": "unix",
+  // this runs a deno task
+  "args": "run -A --check sender.ts",
+  // just ensure this doesn't hang and completes successfully
+  "output": "[WILDCARD]"
+}

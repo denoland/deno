@@ -20,5 +20,8 @@
       "hint": [WILDCARD]
     }
   ],
-  "errors": []
+  "errors": [],
+  "checked_files": [
+    "[WILDCARD]main.ts"
+  ]
 }

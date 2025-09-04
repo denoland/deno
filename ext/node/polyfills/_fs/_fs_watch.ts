@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -298,7 +298,7 @@ class StatWatcher extends EventEmitter {
         while (true) {
           await delay(interval, { signal: this.#abortController.signal });
           const curr = await statAsync(filename);
-          if (curr?.mtime !== prev?.mtime) {
+          if (curr?.mtime.getTime() !== prev?.mtime.getTime()) {
             this.emit("change", curr, prev);
             prev = curr;
           }

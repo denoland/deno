@@ -1,0 +1,5 @@
+{
+  "args": "check --allow-import main.ts",
+  "output": "check.out",
+  "exitCode": 1
+}

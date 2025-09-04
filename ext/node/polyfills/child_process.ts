@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
@@ -6,7 +6,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { internals } from "ext:core/mod.js";
+import { internals, primordials } from "ext:core/mod.js";
 import {
   op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
@@ -37,23 +37,25 @@ import {
   ERR_OUT_OF_RANGE,
   genericNodeError,
 } from "ext:deno_node/internal/errors.ts";
-import {
-  ArrayIsArray,
-  ArrayPrototypeJoin,
-  ArrayPrototypePush,
-  ArrayPrototypeSlice,
-  ObjectAssign,
-  StringPrototypeSlice,
-} from "ext:deno_node/internal/primordials.mjs";
 import { getSystemErrorName, promisify } from "node:util";
-import { createDeferredPromise } from "ext:deno_node/internal/util.mjs";
 import process from "node:process";
 import { Buffer } from "node:buffer";
 import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
-import { kNeedsNpmProcessState } from "ext:runtime/40_process.js";
+import { kNeedsNpmProcessState } from "ext:deno_process/40_process.js";
+
+const {
+  ArrayIsArray,
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ObjectAssign,
+  PromiseWithResolvers,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
+} = primordials;
 
 const MAX_BUFFER = 1024 * 1024;
 
@@ -134,8 +136,10 @@ export function fork(
         execArgv.splice(index, rm);
       } else if (flag.startsWith("--no-warnings")) {
         execArgv[index] = "--quiet";
-      } else if (flag.startsWith("--experimental")) {
-        execArgv[index] = "";
+      } else if (StringPrototypeStartsWith(arg, "--experimental-")) {
+        // `--experimental-*` args are ignored, because most experimental Node features
+        // are implemented in Deno, but it doens't exactly match Deno's `--unstable-*` flags.
+        index++;
       } else {
         index++;
       }
@@ -347,11 +351,7 @@ type ExecExceptionForPromisify = ExecException & ExecOutputForPromisify;
 
 const customPromiseExecFunction = (orig: typeof exec) => {
   return (...args: [command: string, options: ExecOptions]) => {
-    const { promise, resolve, reject } = createDeferredPromise() as unknown as {
-      promise: PromiseWithChild<ExecOutputForPromisify>;
-      resolve?: (value: ExecOutputForPromisify) => void;
-      reject?: (reason?: ExecExceptionForPromisify) => void;
-    };
+    const { promise, resolve, reject } = PromiseWithResolvers();
 
     promise.child = orig(...args, (err, stdout, stderr) => {
       if (err !== null) {
@@ -683,11 +683,7 @@ const customPromiseExecFileFunction = (
       options?: ExecFileOptions,
     ]
   ) => {
-    const { promise, resolve, reject } = createDeferredPromise() as unknown as {
-      promise: PromiseWithChild<ExecOutputForPromisify>;
-      resolve?: (value: ExecOutputForPromisify) => void;
-      reject?: (reason?: ExecFileExceptionForPromisify) => void;
-    };
+    const { promise, resolve, reject } = PromiseWithResolvers();
 
     promise.child = orig(...args, (err, stdout, stderr) => {
       if (err !== null) {

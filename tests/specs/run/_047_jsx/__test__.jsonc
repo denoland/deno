@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload 047_jsx_test.jsx",
+  "output": "047_jsx_test.jsx.out"
+}

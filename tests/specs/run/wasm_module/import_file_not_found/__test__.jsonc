@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "run": {
+      "args": "--allow-import main.js",
+      "output": "main.out",
+      "exitCode": 1
+    },
+    "check": {
+      "args": "check --all --allow-import main.js",
+      "output": "check.out",
+      "exitCode": 1
+    }
+  }
+}

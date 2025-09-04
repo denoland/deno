@@ -1,11 +1,77 @@
 {
   "$id": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A JSON representation of a Deno configuration file.",
-  "required": [],
   "title": "Deno configuration file Schema",
+  "description": "A JSON representation of a Deno configuration file.",
   "type": "object",
+  "required": [],
+  "$defs": {
+    "permissionConfigValue": {
+      "oneOf": [{
+        "type": "boolean",
+        "description": "Allow or deny the permission."
+      }, {
+        "type": "array",
+        "description": "Subset of items to allow or deny depending on the context.",
+        "items": { "type": "string" }
+      }]
+    },
+    "allowDenyPermissionConfig": {
+      "type": "object",
+      "description": "Object form to allow and/or deny permissions.",
+      "additionalProperties": false,
+      "properties": {
+        "allow": { "$ref": "#/$defs/permissionConfigValue" },
+        "deny": { "$ref": "#/$defs/permissionConfigValue" }
+      }
+    },
+    "allowDenyPermissionConfigValue": {
+      "oneOf": [{
+        "$ref": "#/$defs/permissionConfigValue"
+      }, {
+        "$ref": "#/$defs/allowDenyPermissionConfig"
+      }]
+    },
+    "permissionSet": {
+      "type": "object",
+      "description": "Collection of permissions.",
+      "additionalProperties": false,
+      "properties": {
+        "all": {
+          "type": "boolean",
+          "description": "Allow all permissions for the program to run unrestricted."
+        },
+        "read": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "write": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "import": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "env": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "net": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "run": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "ffi": { "$ref": "#/$defs/allowDenyPermissionConfigValue" },
+        "sys": { "$ref": "#/$defs/allowDenyPermissionConfigValue" }
+      }
+    },
+    "permissionNameOrSet": {
+      "description": "A permission set name to use or inline permission set.",
+      "anyOf": [{
+        "type": "string",
+        "description": "Permission name."
+      }, {
+        "$ref": "#/$defs/permissionSet"
+      }]
+    }
+  },
   "properties": {
+    "compile": {
+      "type": "object",
+      "description": "Configuration for `deno compile`.",
+      "additionalProperties": false,
+      "properties": {
+        "permissions": {
+          "$ref": "#/$defs/permissionNameOrSet"
+        }
+      }
+    },
     "compilerOptions": {
       "type": "object",
       "description": "Instructs the TypeScript compiler how to compile .ts files.",
@@ -41,6 +107,12 @@
           "default": false,
           "deprecated": true,
           "markdownDescription": "Emit design-type metadata for decorated declarations in source files.\n\nSee more: https://www.typescriptlang.org/tsconfig/#emitDecoratorMetadata"
+        },
+        "erasableSyntaxOnly": {
+          "description": "Do not allow runtime constructs that are not part of ECMAScript.",
+          "type": ["boolean", "null"],
+          "default": false,
+          "markdownDescription": "Do not allow runtime constructs that are not part of ECMAScript.\n\nSee more: https://www.typescriptlang.org/tsconfig#erasableSyntaxOnly"
         },
         "exactOptionalPropertyTypes": {
           "description": "Interpret optional property types as written, rather than adding 'undefined'.",
@@ -111,7 +183,35 @@
           "uniqueItems": true,
           "default": ["deno.window"],
           "items": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "deno.ns",
+              "deno.window",
+              "deno.worker",
+              "deno.unstable",
+              "dom",
+              "dom.iterable",
+              "dom.asynciterable",
+              "webworker",
+              "webworker.importscripts",
+              "webworker.iterable",
+              "webworker.asynciterable",
+              "scripthost",
+              "decorators",
+              "decorators.legacy",
+              "es5",
+              "es2015",
+              "es2016",
+              "es2017",
+              "es2018",
+              "es2019",
+              "es2020",
+              "es2021",
+              "es2022",
+              "es2023",
+              "es2024",
+              "esnext"
+            ]
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
         },
@@ -174,6 +274,20 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
+        },
+        "rootDirs": {
+          "description": "Declare many “virtual” directories acting as a single root.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Declare many “virtual” directories acting as a single root.\n\nSee more: https://www.typescriptlang.org/tsconfig#rootDirs"
+        },
+        "skipLibCheck": {
+          "description": "Skip type checking all .d.ts files.",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Skip type checking all .d.ts files.\n\nSee more: https://www.typescriptlang.org/tsconfig#skipLibCheck"
         },
         "strict": {
           "description": "Enable all strict type checking options.",
@@ -284,6 +398,13 @@
             "type": "string"
           }
         },
+        "plugins": {
+          "type": "array",
+          "description": "UNSTABLE: List of plugins to load. These can be paths, npm or jsr specifiers",
+          "items": {
+            "type": "string"
+          }
+        },
         "rules": {
           "type": "object",
           "properties": {
@@ -291,7 +412,7 @@
               "type": "array",
               "description": "List of tag names that will be run. Empty list disables all tags and will only use rules from `include`.",
               "items": {
-                "type": "string"
+                "$ref": "lint-tags.v1.json"
               },
               "minItems": 0,
               "uniqueItems": true
@@ -300,7 +421,7 @@
               "type": "array",
               "description": "List of rule names that will be excluded from configured tag sets. If the same rule is in `include` it will be run.",
               "items": {
-                "type": "string"
+                "$ref": "lint-rules.v1.json"
               },
               "minItems": 0,
               "uniqueItems": true
@@ -309,7 +430,7 @@
               "type": "array",
               "description": "List of rule names that will be run. Even if the same rule is in `exclude` it will be run.",
               "items": {
-                "type": "string"
+                "$ref": "lint-rules.v1.json"
               },
               "minItems": 0,
               "uniqueItems": true
@@ -371,6 +492,94 @@
           "type": "boolean",
           "default": true
         },
+        "quoteProps": {
+          "description": "Change when properties in objects are quoted in JavaScript and TypeScript.",
+          "default": "preserve",
+          "enum": ["asNeeded", "consistent", "preserve"]
+        },
+        "newLineKind": {
+          "description": "The newline character to use.",
+          "default": "lf",
+          "enum": ["auto", "crlf", "lf", "system"]
+        },
+        "useBraces": {
+          "description": "Whether to use braces for if statements, for statements, and while statements in JavaScript and TypeScript.",
+          "default": "whenNotSingleLine",
+          "enum": ["maintain", "whenNotSingleLine", "always", "preferNone"]
+        },
+        "bracePosition": {
+          "description": "The position of opening braces for blocks in JavaScript and TypeScript.",
+          "default": "sameLine",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine",
+            "sameLineUnlessHanging"
+          ]
+        },
+        "singleBodyPosition": {
+          "description": "The position of the body in single body blocks in JavaScript and TypeScript.",
+          "default": "sameLineUnlessHanging",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine",
+            "sameLineUnlessHanging"
+          ]
+        },
+        "nextControlFlowPosition": {
+          "description": "Where to place the next control flow within a control flow statement in JavaScript and TypeScript.",
+          "default": "sameLine",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine"
+          ]
+        },
+        "trailingCommas": {
+          "description": "Whether to add trailing commas in JavaScript and TypeScript.",
+          "default": "onlyMultiLine",
+          "enum": ["never", "always", "onlyMultiLine"]
+        },
+        "operatorPosition": {
+          "description": "Where to place the operator for expressions that span multiple lines in JavaScript and TypeScript.",
+          "default": "sameLine",
+          "enum": [
+            "maintain",
+            "sameLine",
+            "nextLine"
+          ]
+        },
+        "jsx.bracketPosition": {
+          "description": "If the end angle bracket of a jsx open element or self closing element should be on the same or next line when the attributes span multiple lines.",
+          "default": "nextLine",
+          "enum": ["maintain", "sameLine", "nextLine"]
+        },
+        "jsx.forceNewLineSurroundingContent": {
+          "description": "Forces newlines surrounding the content of JSX elements.",
+          "default": false,
+          "type": "boolean"
+        },
+        "jsx.multiLineParens": {
+          "description": "Surrounds the top-most JSX element or fragment in parentheses when it spans multiple lines.",
+          "default": "prefer",
+          "enum": ["never", "prefer", "always"]
+        },
+        "typeLiteral.separatorKind": {
+          "description": "The kind of separator to use in type literals.",
+          "default": "semiColon",
+          "enum": ["comma", "semiColon"]
+        },
+        "spaceAround": {
+          "description": "Whether to place spaces around enclosed expressions in JavaScript and TypeScript.",
+          "default": false,
+          "type": "boolean"
+        },
+        "spaceSurroundingProperties": {
+          "description": "Whether to add a space surrounding the properties of single line object-like nodes in JavaScript and TypeScript.",
+          "default": true,
+          "type": "boolean"
+        },
         "options": {
           "type": "object",
           "properties": {
@@ -431,8 +640,33 @@
       "type": "object",
       "patternProperties": {
         "^[A-Za-z][A-Za-z0-9_\\-:]*$": {
-          "type": "string",
-          "description": "Command to execute for this task name."
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Command to execute for this task name."
+            },
+            {
+              "type": "object",
+              "description": "A definition of a task to execute",
+              "properties": {
+                "description": {
+                  "type": "string",
+                  "description": "Description of a task that will be shown when running `deno task` without a task name"
+                },
+                "command": {
+                  "type": "string",
+                  "description": "The task to execute"
+                },
+                "dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tasks that should be executed before this task"
+                }
+              }
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -454,6 +688,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "permissions": {
+          "$ref": "#/$defs/permissionNameOrSet"
         }
       }
     },
@@ -494,6 +731,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "permissions": {
+          "$ref": "#/$defs/permissionNameOrSet"
         }
       }
     },
@@ -531,9 +771,13 @@
           "detect-cjs",
           "ffi",
           "fs",
+          "fmt-component",
+          "fmt-sql",
           "http",
           "kv",
           "net",
+          "node-globals",
+          "raw-imports",
           "sloppy-imports",
           "temporal",
           "unsafe-proto",
@@ -544,8 +788,7 @@
     },
     "name": {
       "type": "string",
-      "description": "The name of this JSR package. Must be scoped",
-      "pattern": "^@[a-z0-9-]+/[a-z0-9-]+$"
+      "description": "The name of this JSR or workspace package."
     },
     "version": {
       "type": "string",
@@ -578,6 +821,14 @@
       ]
     },
     "patch": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "deprecated": true,
+      "description": "This unstable property was renamed to \"links\" in Deno 2.3.6."
+    },
+    "links": {
       "type": "array",
       "items": {
         "type": "string"

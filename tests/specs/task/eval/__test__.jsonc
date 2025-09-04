@@ -1,0 +1,35 @@
+{
+  "tests": {
+    "no_arg": {
+      "args": "task --eval",
+      "output": "no_arg.out",
+      "exitCode": 1
+    },
+    "echo_pwd": {
+      "args": ["task", "--eval", "echo $(pwd)"],
+      "output": "echo_pwd.out"
+    },
+    "piped": {
+      "args": [
+        "task",
+        "--eval",
+        "echo 12345 | (deno eval 'const b = new Uint8Array(1);Deno.stdin.readSync(b);console.log(b)' && deno eval 'const b = new Uint8Array(1);Deno.stdin.readSync(b);console.log(b)')"
+      ],
+      "output": "piped.out"
+    },
+    "node_modules_bin": {
+      "tempDir": true,
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]Initialize @denotest/bin[WILDCARD]"
+      }, {
+        "args": [
+          "task",
+          "--eval",
+          "cli-esm hi hello"
+        ],
+        "output": "bin.out"
+      }]
+    }
+  }
+}

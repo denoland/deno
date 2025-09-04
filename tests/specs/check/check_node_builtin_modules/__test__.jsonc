@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "js": {
+      "args": "check --quiet mod.js",
+      "output": "mod.js.out",
+      "exitCode": 1
+    },
+    "ts": {
+      "args": "check --quiet mod.ts",
+      "output": "mod.ts.out",
+      "exitCode": 1
+    }
+  }
+}

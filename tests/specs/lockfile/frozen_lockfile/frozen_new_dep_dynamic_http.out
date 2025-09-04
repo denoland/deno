@@ -1,11 +1,11 @@
 Download http://localhost:4545/welcome.ts
 error: Uncaught (in promise) TypeError: The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.
 changes:
-10 | -  }
-10 | +  },
-11 | +  "remote": {
-12 | +    "http://localhost:4545/welcome.ts": "[WILDCARD]"
-13 | +  }
+11 | -  }
+11 | +  },
+12 | +  "remote": {
+13 | +    "http://localhost:4545/welcome.ts": "7353d5fcbc36c45d26bcbca478cf973092523b07c45999f41319820092b4de31"
+14 | +  }
 const _ = await import(scheme + "localhost:4545/welcome.ts");
           ^
     at [WILDCARD]

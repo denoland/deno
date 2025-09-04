@@ -1,0 +1,1 @@
+You can initialize project manually by running deno run npm:create-vite my-project and applying desired permissions.

@@ -1,8 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use chrono::DateTime;
-use chrono::Utc;
-use deno_core::parking_lot::Mutex;
 use std::fs;
 use std::io::prelude::*;
 use std::path::Path;
@@ -11,6 +8,10 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::SystemTime;
+
+use chrono::DateTime;
+use chrono::Utc;
+use deno_core::parking_lot::Mutex;
 
 static LSP_DEBUG_FLAG: AtomicBool = AtomicBool::new(false);
 static LSP_LOG_LEVEL: AtomicUsize = AtomicUsize::new(log::Level::Info as usize);
@@ -71,9 +72,11 @@ pub fn init_log_file(enabled: bool) {
     LOG_FILE.buffer.lock().clear();
     return;
   };
-  thread::spawn(move || loop {
-    LOG_FILE.commit(&path);
-    thread::sleep(std::time::Duration::from_secs(1));
+  thread::spawn(move || {
+    loop {
+      LOG_FILE.commit(&path);
+      thread::sleep(std::time::Duration::from_secs(1));
+    }
   });
 }
 
@@ -161,6 +164,32 @@ macro_rules! lsp_debug {
   )
 }
 
+macro_rules! lsp_tracing_info_span {
+  ($($arg:tt)*) => {{
+    #[cfg(feature = "lsp-tracing")]
+    {
+      ::tracing::info_span!($($arg)*)
+    }
+    #[cfg(not(feature = "lsp-tracing"))]
+    {
+      $crate::lsp::trace::Span {}
+    }
+  }};
+}
+
+macro_rules! lsp_tracing_info {
+    ($($arg:tt)*) => {
+      #[cfg(feature = "lsp-tracing")]
+      {
+        ::tracing::info!($($arg)*);
+      }
+      #[cfg(not(feature = "lsp-tracing"))]
+      {}
+    };
+}
+
 pub(super) use lsp_debug;
 pub(super) use lsp_log;
+pub(super) use lsp_tracing_info;
+pub(super) use lsp_tracing_info_span;
 pub(super) use lsp_warn;

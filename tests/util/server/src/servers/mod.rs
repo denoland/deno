@@ -1,9 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
-use base64::prelude::BASE64_STANDARD;
+use std::collections::HashMap;
+use std::convert::Infallible;
+use std::env;
+use std::net::SocketAddr;
+use std::result::Result;
+use std::time::Duration;
+
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use bytes::Bytes;
 use denokv_proto::datapath::AtomicWrite;
 use denokv_proto::datapath::AtomicWriteOutput;
@@ -21,38 +28,33 @@ use http::Method;
 use http::Request;
 use http::Response;
 use http::StatusCode;
-use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::BodyExt;
 use http_body_util::Empty;
 use http_body_util::Full;
+use http_body_util::combinators::UnsyncBoxBody;
+use hyper_utils::run_server_with_remote_addr;
 use pretty_assertions::assert_eq;
 use prost::Message;
-use std::collections::HashMap;
-use std::convert::Infallible;
-use std::env;
-use std::net::SocketAddr;
-use std::result::Result;
-use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 mod grpc;
 mod hyper_utils;
 mod jsr_registry;
+mod nodejs_org_mirror;
 mod npm_registry;
 mod ws;
 
-use hyper_utils::run_server;
-use hyper_utils::run_server_with_acceptor;
 use hyper_utils::ServerKind;
 use hyper_utils::ServerOptions;
+use hyper_utils::run_server;
+use hyper_utils::run_server_with_acceptor;
 
-use crate::TEST_SERVERS_COUNT;
-
-use super::https::get_tls_listener_stream;
 use super::https::SupportedHttpVersions;
+use super::https::get_tls_listener_stream;
 use super::std_path;
 use super::testdata_path;
+use crate::TEST_SERVERS_COUNT;
 
 pub(crate) const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -83,14 +85,17 @@ const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WSS2_PORT: u16 = 4249;
 const WS_CLOSE_PORT: u16 = 4244;
+const WS_HANG_PORT: u16 = 4264;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
-const JSR_REGISTRY_SERVER_PORT: u16 = 4250;
-const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
+pub(crate) const JSR_REGISTRY_SERVER_PORT: u16 = 4250;
+pub(crate) const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
+pub(crate) const NODEJS_ORG_MIRROR_SERVER_PORT: u16 = 4252;
 pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4260;
 pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
 pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
+pub(crate) const PRIVATE_NPM_REGISTRY_3_PORT: u16 = 4263;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -117,6 +122,7 @@ pub async fn run_all_servers() {
   let ws_ping_server_fut = ws::run_ws_ping_server(WS_PING_PORT);
   let wss_server_fut = ws::run_wss_server(WSS_PORT);
   let ws_close_server_fut = ws::run_ws_close_server(WS_CLOSE_PORT);
+  let ws_hang_server_fut = ws::run_ws_hang_handshake(WS_HANG_PORT);
   let wss2_server_fut = ws::run_wss2_server(WSS2_PORT);
 
   let tls_server_fut = run_tls_server(TLS_PORT);
@@ -143,6 +149,12 @@ pub async fn run_all_servers() {
     npm_registry::private_npm_registry1(PRIVATE_NPM_REGISTRY_1_PORT);
   let private_npm_registry_2_server_futs =
     npm_registry::private_npm_registry2(PRIVATE_NPM_REGISTRY_2_PORT);
+  let private_npm_registry_3_server_futs =
+    npm_registry::private_npm_registry3(PRIVATE_NPM_REGISTRY_3_PORT);
+
+  // for serving node header files to node-gyp in tests
+  let node_js_mirror_server_fut =
+    nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
 
   let mut futures = vec![
     redirect_server_fut.boxed_local(),
@@ -153,6 +165,7 @@ pub async fn run_all_servers() {
     tls_server_fut.boxed_local(),
     tls_client_auth_server_fut.boxed_local(),
     ws_close_server_fut.boxed_local(),
+    ws_hang_server_fut.boxed_local(),
     another_redirect_server_fut.boxed_local(),
     auth_redirect_server_fut.boxed_local(),
     basic_auth_redirect_server_fut.boxed_local(),
@@ -169,10 +182,12 @@ pub async fn run_all_servers() {
     h2_grpc_server_fut.boxed_local(),
     registry_server_fut.boxed_local(),
     provenance_mock_server_fut.boxed_local(),
+    node_js_mirror_server_fut.boxed_local(),
   ];
   futures.extend(npm_registry_server_futs);
   futures.extend(private_npm_registry_1_server_futs);
   futures.extend(private_npm_registry_2_server_futs);
+  futures.extend(private_npm_registry_3_server_futs);
 
   assert_eq!(futures.len(), TEST_SERVERS_COUNT);
 
@@ -194,7 +209,6 @@ fn json_body(value: serde_json::Value) -> UnsyncBoxBody<Bytes, Infallible> {
 
 /// Benchmark server that just serves "hello world" responses.
 async fn hyper_hello(port: u16) {
-  println!("hyper hello");
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
   let handler = move |_: Request<hyper::body::Incoming>| async move {
     Ok::<_, anyhow::Error>(Response::new(UnsyncBoxBody::new(
@@ -212,13 +226,12 @@ async fn hyper_hello(port: u16) {
   .await;
 }
 
-fn redirect_resp(url: String) -> Response<UnsyncBoxBody<Bytes, Infallible>> {
+fn redirect_resp(url: &str) -> Response<UnsyncBoxBody<Bytes, Infallible>> {
   let mut redirect_resp = Response::new(UnsyncBoxBody::new(Empty::new()));
   *redirect_resp.status_mut() = StatusCode::MOVED_PERMANENTLY;
-  redirect_resp.headers_mut().insert(
-    http::header::LOCATION,
-    HeaderValue::from_str(&url[..]).unwrap(),
-  );
+  redirect_resp
+    .headers_mut()
+    .insert(http::header::LOCATION, HeaderValue::from_str(url).unwrap());
 
   redirect_resp
 }
@@ -230,7 +243,7 @@ async fn redirect(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{PORT}{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn double_redirects(
@@ -240,7 +253,7 @@ async fn double_redirects(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{REDIRECT_PORT}{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn inf_redirects(
@@ -250,7 +263,7 @@ async fn inf_redirects(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{INF_REDIRECTS_PORT}{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn another_redirect(
@@ -260,7 +273,7 @@ async fn another_redirect(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{PORT}/subdir{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn auth_redirect(
@@ -270,13 +283,12 @@ async fn auth_redirect(
     .headers()
     .get("authorization")
     .map(|v| v.to_str().unwrap())
+    && auth.to_lowercase() == format!("bearer {TEST_AUTH_TOKEN}")
   {
-    if auth.to_lowercase() == format!("bearer {TEST_AUTH_TOKEN}") {
-      let p = req.uri().path();
-      assert_eq!(&p[0..1], "/");
-      let url = format!("http://localhost:{PORT}{p}");
-      return Ok(redirect_resp(url));
-    }
+    let p = req.uri().path();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://localhost:{PORT}{p}");
+    return Ok(redirect_resp(&url));
   }
 
   let mut resp = Response::new(UnsyncBoxBody::new(Empty::new()));
@@ -298,7 +310,7 @@ async fn basic_auth_redirect(
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{PORT}{p}");
-      return Ok(redirect_resp(url));
+      return Ok(redirect_resp(&url));
     }
   }
 
@@ -338,7 +350,10 @@ async fn get_tcp_listener_stream(
     .collect::<Vec<_>>();
 
   // Eye catcher for HttpServerCount
-  println!("ready: {name} on {:?}", addresses);
+  #[allow(clippy::print_stdout)]
+  {
+    println!("ready: {name} on {:?}", addresses);
+  }
 
   futures::stream::select_all(listeners)
 }
@@ -354,7 +369,10 @@ async fn run_tls_client_auth_server(port: u16) {
   while let Some(Ok(mut tls_stream)) = tls.next().await {
     tokio::spawn(async move {
       let Ok(handshake) = tls_stream.handshake().await else {
-        eprintln!("Failed to handshake");
+        #[allow(clippy::print_stderr)]
+        {
+          eprintln!("Failed to handshake");
+        }
         return;
       };
       // We only need to check for the presence of client certificates
@@ -401,24 +419,22 @@ async fn absolute_redirect(
       .collect();
 
     if let Some(url) = query_params.get("redirect_to") {
-      println!("URL: {url:?}");
-      let redirect = redirect_resp(url.to_owned());
+      let redirect = redirect_resp(url);
       return Ok(redirect);
     }
   }
 
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
-    println!("URL: {url:?}");
-    let redirect = redirect_resp(url.to_string());
+    let redirect = redirect_resp(url);
     return Ok(redirect);
   }
 
-  if path.starts_with("/a/b/c") {
-    if let Some(x_loc) = req.headers().get("x-location") {
-      let loc = x_loc.to_str().unwrap();
-      return Ok(redirect_resp(loc.to_string()));
-    }
+  if path.starts_with("/a/b/c")
+    && let Some(x_loc) = req.headers().get("x-location")
+  {
+    let loc = x_loc.to_str().unwrap();
+    return Ok(redirect_resp(loc));
   }
 
   let file_path = testdata_path().join(&req.uri().path()[1..]);
@@ -435,8 +451,9 @@ async fn absolute_redirect(
 
 async fn main_server(
   req: Request<hyper::body::Incoming>,
+  remote_addr: SocketAddr,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
-  return match (req.method(), req.uri().path()) {
+  match (req.method(), req.uri().path()) {
     (_, "/echo_server") => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(UnsyncBoxBody::new(Full::new(
@@ -448,6 +465,11 @@ async fn main_server(
           StatusCode::from_bytes(status.as_bytes()).unwrap();
       }
       response.headers_mut().extend(parts.headers);
+      Ok(response)
+    }
+    (_, "/local_addr") => {
+      let addr = remote_addr.ip().to_string();
+      let response = Response::new(string_body(&addr));
       Ok(response)
     }
     (&Method::POST, "/echo_multipart_file") => {
@@ -561,11 +583,6 @@ async fn main_server(
         "content-type",
         HeaderValue::from_static("multipart/form-datatststs;boundary=boundary"),
       );
-      Ok(res)
-    }
-    (_, "/bad_redirect") => {
-      let mut res = Response::new(empty_body());
-      *res.status_mut() = StatusCode::FOUND;
       Ok(res)
     }
     (_, "/server_error") => {
@@ -732,7 +749,9 @@ async fn main_server(
       Ok(res)
     }
     (_, "/referenceTypes.js") => {
-      let mut res = Response::new(string_body("/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n"));
+      let mut res = Response::new(string_body(
+        "/// <reference types=\"./xTypeScriptTypes.d.ts\" />\r\nexport const foo = \"foo\";\r\n",
+      ));
       res.headers_mut().insert(
         "Content-type",
         HeaderValue::from_static("application/javascript"),
@@ -793,17 +812,17 @@ async fn main_server(
     (_, "/jsx/jsx-runtime") | (_, "/jsx/jsx-dev-runtime") => {
       let mut res = Response::new(string_body(
         r#"export function jsx(
-          _type,
-          _props,
-          _key,
-          _source,
-          _self,
-        ) {}
-        export const jsxs = jsx;
-        export const jsxDEV = jsx;
-        export const Fragment = Symbol("Fragment");
-        console.log("imported", import.meta.url);
-        "#,
+  _type,
+  _props,
+  _key,
+  _source,
+  _self,
+) {}
+export const jsxs = jsx;
+export const jsxDEV = jsx;
+export const Fragment = Symbol("Fragment");
+console.log("imported", import.meta.url);
+"#,
       ));
       res.headers_mut().insert(
         "Content-type",
@@ -1089,30 +1108,30 @@ async fn main_server(
     }
     (&Method::GET, "/upgrade/sleep/release-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           .body(string_body("99999.99.99"))
           .unwrap(),
-      );
+      )
     }
     (&Method::GET, "/upgrade/sleep/canary-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
           .unwrap(),
-      );
+      )
     }
     (&Method::GET, "/release-latest.txt") => {
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           // use a deno version that will never happen
           .body(string_body("99999.99.99"))
           .unwrap(),
-      );
+      )
     }
     (
       &Method::GET,
@@ -1124,14 +1143,12 @@ async fn main_server(
       | "/canary-x86_64-unknown-linux-musl-latest.txt"
       | "/canary-aarch64-unknown-linux-musl-latest.txt"
       | "/canary-x86_64-pc-windows-msvc-latest.txt",
-    ) => {
-      return Ok(
-        Response::builder()
-          .status(StatusCode::OK)
-          .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
-          .unwrap(),
-      );
-    }
+    ) => Ok(
+      Response::builder()
+        .status(StatusCode::OK)
+        .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+        .unwrap(),
+    ),
     _ => {
       let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
@@ -1162,7 +1179,7 @@ async fn main_server(
         .body(empty_body())
         .map_err(|e| e.into())
     }
-  };
+  }
 }
 
 async fn wrap_redirect_server(port: u16) {
@@ -1258,7 +1275,7 @@ async fn wrap_abs_redirect_server(port: u16) {
 
 async fn wrap_main_server(port: u16) {
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  run_server(
+  run_server_with_remote_addr(
     ServerOptions {
       addr: main_server_addr,
       kind: ServerKind::Auto,
@@ -1274,7 +1291,7 @@ async fn wrap_main_https_server(port: u16) {
   let tls_acceptor = tls.boxed_local();
   run_server_with_acceptor(
     tls_acceptor,
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
     "HTTPS server error",
     ServerKind::Auto,
   )
@@ -1291,7 +1308,7 @@ async fn wrap_https_h1_only_tls_server(port: u16) {
 
   run_server_with_acceptor(
     tls.boxed_local(),
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
     "HTTP1 only TLS server error",
     ServerKind::OnlyHttp1,
   )
@@ -1308,7 +1325,7 @@ async fn wrap_https_h2_only_tls_server(port: u16) {
 
   run_server_with_acceptor(
     tls.boxed_local(),
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
     "HTTP2 only TLS server error",
     ServerKind::OnlyHttp2,
   )
@@ -1323,7 +1340,7 @@ async fn wrap_http_h1_only_server(port: u16) {
       error_msg: "HTTP1 only server error:",
       kind: ServerKind::OnlyHttp1,
     },
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
   )
   .await;
 }
@@ -1336,7 +1353,7 @@ async fn wrap_http_h2_only_server(port: u16) {
       error_msg: "HTTP1 only server error:",
       kind: ServerKind::OnlyHttp2,
     },
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
   )
   .await;
 }
@@ -1353,6 +1370,7 @@ async fn wrap_client_auth_https_server(port: u16) {
       // here. Rusttls ensures that they are valid and signed by the CA.
       match handshake.has_peer_certificates {
         true => { yield Ok(tls); },
+        #[allow(clippy::print_stderr)]
         false => { eprintln!("https_client_auth: no valid client certificate"); },
       };
     }
@@ -1360,7 +1378,7 @@ async fn wrap_client_auth_https_server(port: u16) {
 
   run_server_with_acceptor(
     tls.boxed_local(),
-    main_server,
+    move |req| main_server(req, SocketAddr::from(([127, 0, 0, 1], port))),
     "Auth TLS server error",
     ServerKind::Auto,
   )
@@ -1405,7 +1423,7 @@ pub fn custom_headers(
   if p.contains("/encoding/") {
     let charset = p
       .split_terminator('/')
-      .last()
+      .next_back()
       .unwrap()
       .trim_end_matches(".ts");
 

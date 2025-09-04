@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "fmt --check",
+  "output": "expected.out",
+  "exitCode": 1
+}

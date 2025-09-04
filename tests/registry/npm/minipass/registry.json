@@ -272,6 +272,5 @@
   "bugs": {
     "url": "https://github.com/isaacs/minipass/issues"
   },
-  "license": "ISC",
-  "readmeFilename": "README.md"
+  "license": "ISC"
 }

@@ -69,6 +69,5 @@
   "bugs": {
     "url": "https://github.com/epoberezkin/json-schema-traverse/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

@@ -1,33 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::compressible::is_content_compressible;
-use crate::extract_network_stream;
-use crate::network_buffered_stream::NetworkStreamPrefixCheck;
-use crate::request_body::HttpRequestBody;
-use crate::request_properties::HttpConnectionProperties;
-use crate::request_properties::HttpListenProperties;
-use crate::request_properties::HttpPropertyExtractor;
-use crate::response_body::Compression;
-use crate::response_body::ResponseBytesInner;
-use crate::service::handle_request;
-use crate::service::http_general_trace;
-use crate::service::http_trace;
-use crate::service::HttpRecord;
-use crate::service::HttpRecordResponse;
-use crate::service::HttpRequestBodyAutocloser;
-use crate::service::HttpServerState;
-use crate::service::SignallingRc;
-use crate::websocket_upgrade::WebSocketUpgrade;
-use crate::LocalExecutor;
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::ffi::c_void;
+use std::future::Future;
+use std::future::poll_fn;
+use std::io;
+use std::pin::Pin;
+use std::ptr::null;
+use std::rc::Rc;
+
 use cache_control::CacheControl;
-use deno_core::error::AnyError;
-use deno_core::external;
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::serde_v8::from_v8;
-use deno_core::unsync::spawn;
-use deno_core::unsync::JoinHandle;
-use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -41,11 +23,19 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::external;
+use deno_core::futures::TryFutureExt;
+use deno_core::op2;
+use deno_core::serde_v8::from_v8;
+use deno_core::unsync::JoinHandle;
+use deno_core::unsync::spawn;
+use deno_core::v8;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
+use fly_accept_encoding::Encoding;
+use hyper::StatusCode;
 use hyper::body::Incoming;
-use hyper::header::HeaderMap;
 use hyper::header::ACCEPT_ENCODING;
 use hyper::header::CACHE_CONTROL;
 use hyper::header::CONTENT_ENCODING;
@@ -53,30 +43,41 @@ use hyper::header::CONTENT_LENGTH;
 use hyper::header::CONTENT_RANGE;
 use hyper::header::CONTENT_TYPE;
 use hyper::header::COOKIE;
+use hyper::header::HeaderMap;
 use hyper::http::HeaderName;
 use hyper::http::HeaderValue;
 use hyper::server::conn::http1;
 use hyper::server::conn::http2;
-use hyper::service::service_fn;
 use hyper::service::HttpService;
-use hyper::StatusCode;
+use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::ffi::c_void;
-use std::future::Future;
-use std::io;
-use std::pin::Pin;
-use std::ptr::null;
-use std::rc::Rc;
-
-use super::fly_accept_encoding;
-use fly_accept_encoding::Encoding;
-
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+
+use super::fly_accept_encoding;
+use crate::LocalExecutor;
+use crate::Options;
+use crate::compressible::is_content_compressible;
+use crate::extract_network_stream;
+use crate::network_buffered_stream::NetworkStreamPrefixCheck;
+use crate::request_body::HttpRequestBody;
+use crate::request_properties::HttpConnectionProperties;
+use crate::request_properties::HttpListenProperties;
+use crate::request_properties::HttpPropertyExtractor;
+use crate::response_body::Compression;
+use crate::response_body::ResponseBytesInner;
+use crate::service::HttpRecord;
+use crate::service::HttpRecordResponse;
+use crate::service::HttpRequestBodyAutocloser;
+use crate::service::HttpServerState;
+use crate::service::SignallingRc;
+use crate::service::handle_request;
+use crate::service::http_general_trace;
+use crate::service::http_trace;
+use crate::websocket_upgrade::WebSocketUpgrade;
 
 type Request = hyper::Request<Incoming>;
 
@@ -115,9 +116,8 @@ trait HttpServeStream:
   tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
 {
 }
-impl<
-    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
-  > HttpServeStream for S
+impl<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static>
+  HttpServeStream for S
 {
 }
 
@@ -146,12 +146,52 @@ macro_rules! clone_external {
   }};
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum HttpNextError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  WebSocketUpgrade(crate::websocket_upgrade::WebSocketUpgradeError),
+  #[class("Http")]
+  #[error("{0}")]
+  Hyper(#[from] hyper::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  JoinError(
+    #[from]
+    #[inherit]
+    tokio::task::JoinError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  Canceled(
+    #[from]
+    #[inherit]
+    deno_core::Canceled,
+  ),
+  #[class(generic)]
+  #[error(transparent)]
+  UpgradeUnavailable(#[from] crate::service::UpgradeUnavailableError),
+  #[class(inherit)]
+  #[error("{0}")]
+  Other(
+    #[from]
+    #[inherit]
+    deno_error::JsErrorBox,
+  ),
+}
+
 #[op2(fast)]
 #[smi]
 pub fn op_http_upgrade_raw(
   state: &mut OpState,
   external: *const c_void,
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, HttpNextError> {
   // SAFETY: external is deleted before calling this op.
   let http = unsafe { take_external!(external, "op_http_upgrade_raw") };
 
@@ -177,7 +217,7 @@ pub fn op_http_upgrade_raw(
           upgraded.write_all(&bytes).await?;
           break upgraded;
         }
-        Err(err) => return Err(err),
+        Err(err) => return Err(HttpNextError::WebSocketUpgrade(err)),
       }
     };
 
@@ -193,7 +233,7 @@ pub fn op_http_upgrade_raw(
         }
         read_tx.write_all(&buf[..read]).await?;
       }
-      Ok::<_, AnyError>(())
+      Ok::<_, HttpNextError>(())
     });
     spawn(async move {
       let mut buf = [0; 1024];
@@ -204,7 +244,7 @@ pub fn op_http_upgrade_raw(
         }
         upgraded_tx.write_all(&buf[..read]).await?;
       }
-      Ok::<_, AnyError>(())
+      Ok::<_, HttpNextError>(())
     });
 
     Ok(())
@@ -223,15 +263,19 @@ pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
   external: *const c_void,
   #[serde] headers: Vec<(ByteString, ByteString)>,
-) -> Result<ResourceId, AnyError> {
+) -> Result<ResourceId, HttpNextError> {
   let http =
     // SAFETY: external is deleted before calling this op.
     unsafe { take_external!(external, "op_http_upgrade_websocket_next") };
   // Stage 1: set the response to 101 Switching Protocols and send it
   let upgrade = http.upgrade()?;
   {
+    {
+      http.otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
+    }
     let mut response_parts = http.response_parts();
     response_parts.status = StatusCode::SWITCHING_PROTOCOLS;
+
     for (name, value) in headers {
       response_parts.headers.append(
         HeaderName::from_bytes(&name).unwrap(),
@@ -246,7 +290,11 @@ pub async fn op_http_upgrade_websocket_next(
 
   // Stage 3: take the extracted raw network stream and upgrade it to a websocket, then return it
   let (stream, bytes) = extract_network_stream(upgraded);
-  ws_create_server_stream(&mut state.borrow_mut(), stream, bytes)
+  Ok(ws_create_server_stream(
+    &mut state.borrow_mut(),
+    stream,
+    bytes,
+  ))
 }
 
 #[op2(fast)]
@@ -261,7 +309,10 @@ fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
   // will quietly ignore invalid values.
   if let Ok(code) = StatusCode::from_u16(status) {
-    http.response_parts().status = code;
+    {
+      http.response_parts().status = code;
+    }
+    http.otel_info_set_status(status);
   }
   http.complete();
 }
@@ -293,16 +344,37 @@ where
   .unwrap()
   .into();
 
-  let authority: v8::Local<v8::Value> = match request_properties.authority {
-    Some(authority) => v8::String::new_from_utf8(
+  let scheme: v8::Local<v8::Value> = match request_parts.uri.scheme_str() {
+    Some(scheme) => v8::String::new_from_utf8(
       scope,
-      authority.as_bytes(),
+      scheme.as_bytes(),
       v8::NewStringType::Normal,
     )
     .unwrap()
     .into(),
     None => v8::undefined(scope).into(),
   };
+
+  let authority: v8::Local<v8::Value> =
+    if let Some(authority) = request_parts.uri.authority() {
+      v8::String::new_from_utf8(
+        scope,
+        authority.as_str().as_ref(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into()
+    } else if let Some(authority) = request_properties.authority {
+      v8::String::new_from_utf8(
+        scope,
+        authority.as_bytes(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into()
+    } else {
+      v8::undefined(scope).into()
+    };
 
   // Only extract the path part - we handle authority elsewhere
   let path = match request_parts.uri.path_and_query() {
@@ -325,20 +397,29 @@ where
   .unwrap()
   .into();
 
-  let peer_address: v8::Local<v8::Value> = v8::String::new_from_utf8(
+  let (peer_ip, peer_port) = match &*http.client_addr() {
+    Some(client_addr) => {
+      let addr: std::net::SocketAddr =
+        client_addr.to_str().unwrap().parse().unwrap();
+      (Rc::from(format!("{}", addr.ip())), Some(addr.port() as u32))
+    }
+    _ => (request_info.peer_address.clone(), request_info.peer_port),
+  };
+
+  let peer_ip: v8::Local<v8::Value> = v8::String::new_from_utf8(
     scope,
-    request_info.peer_address.as_bytes(),
+    peer_ip.as_bytes(),
     v8::NewStringType::Normal,
   )
   .unwrap()
   .into();
 
-  let port: v8::Local<v8::Value> = match request_info.peer_port {
-    Some(port) => v8::Integer::new(scope, port.into()).into(),
+  let peer_port: v8::Local<v8::Value> = match peer_port {
+    Some(port) => v8::Number::new(scope, port.into()).into(),
     None => v8::undefined(scope).into(),
   };
 
-  let vec = [method, authority, path, peer_address, port];
+  let vec = [method, authority, path, peer_ip, peer_port, scheme];
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
@@ -435,13 +516,16 @@ pub fn op_http_read_request_body(
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_read_request_body") };
-  let rid = if let Some(incoming) = http.take_request_body() {
-    let body_resource = Rc::new(HttpRequestBody::new(incoming));
-    state.borrow_mut().resource_table.add_rc(body_resource)
-  } else {
-    // This should not be possible, but rather than panicking we'll return an invalid
-    // resource value to JavaScript.
-    ResourceId::MAX
+  let rid = match http.take_request_body() {
+    Some(incoming) => {
+      let body_resource = Rc::new(HttpRequestBody::new(incoming));
+      state.borrow_mut().resource_table.add_rc(body_resource)
+    }
+    _ => {
+      // This should not be possible, but rather than panicking we'll return an invalid
+      // resource value to JavaScript.
+      ResourceId::MAX
+    }
   };
   http.put_resource(HttpRequestBodyAutocloser::new(rid, state.clone()));
   rid
@@ -450,8 +534,8 @@ pub fn op_http_read_request_body(
 #[op2(fast)]
 pub fn op_http_set_response_header(
   external: *const c_void,
-  #[string(onebyte)] name: Cow<[u8]>,
-  #[string(onebyte)] value: Cow<[u8]>,
+  #[string(onebyte)] name: Cow<'_, [u8]>,
+  #[string(onebyte)] value: Cow<'_, [u8]>,
 ) {
   let http =
     // SAFETY: op is called with external.
@@ -541,6 +625,7 @@ fn is_request_compressible(
   match accept_encoding.to_str() {
     // Firefox and Chrome send this -- no need to parse
     Ok("gzip, deflate, br") => return Compression::Brotli,
+    Ok("gzip, deflate, br, zstd") => return Compression::Brotli,
     Ok("gzip") => return Compression::GZip,
     Ok("br") => return Compression::Brotli,
     _ => (),
@@ -578,14 +663,12 @@ fn is_response_compressible(headers: &HeaderMap) -> bool {
   if headers.contains_key(CONTENT_RANGE) {
     return false;
   }
-  if let Some(cache_control) = headers.get(CACHE_CONTROL) {
-    if let Ok(s) = std::str::from_utf8(cache_control.as_bytes()) {
-      if let Some(cache_control) = CacheControl::from_value(s) {
-        if cache_control.no_transform {
-          return false;
-        }
-      }
-    }
+  if let Some(cache_control) = headers.get(CACHE_CONTROL)
+    && let Ok(s) = std::str::from_utf8(cache_control.as_bytes())
+    && let Some(cache_control) = CacheControl::from_value(s)
+    && cache_control.no_transform
+  {
+    return false;
   }
   true
 }
@@ -615,13 +698,13 @@ fn modify_compressibility_from_response(
 /// If the user provided a ETag header for uncompressed data, we need to ensure it is a
 /// weak Etag header ("W/").
 fn weaken_etag(hmap: &mut HeaderMap) {
-  if let Some(etag) = hmap.get_mut(hyper::header::ETAG) {
-    if !etag.as_bytes().starts_with(b"W/") {
-      let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
-      v.extend(b"W/");
-      v.extend(etag.as_bytes());
-      *etag = v.try_into().unwrap();
-    }
+  if let Some(etag) = hmap.get_mut(hyper::header::ETAG)
+    && !etag.as_bytes().starts_with(b"W/")
+  {
+    let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
+    v.extend(b"W/");
+    v.extend(etag.as_bytes());
+    *etag = v.try_into().unwrap();
   }
 }
 
@@ -630,13 +713,13 @@ fn weaken_etag(hmap: &mut HeaderMap) {
 // to make sure cache services do not serve uncompressed data to clients that
 // support compression.
 fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
-  if let Some(v) = hmap.get_mut(hyper::header::VARY) {
-    if let Ok(s) = v.to_str() {
-      if !s.to_lowercase().contains("accept-encoding") {
-        *v = format!("Accept-Encoding, {s}").try_into().unwrap()
-      }
-      return;
+  if let Some(v) = hmap.get_mut(hyper::header::VARY)
+    && let Ok(s) = v.to_str()
+  {
+    if !s.to_lowercase().contains("accept-encoding") {
+      *v = format!("Accept-Encoding, {s}").try_into().unwrap()
     }
+    return;
   }
   hmap.insert(
     hyper::header::VARY,
@@ -668,13 +751,37 @@ fn set_response(
     // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
     // will quietly ignore invalid values.
     if let Ok(code) = StatusCode::from_u16(status) {
-      http.response_parts().status = code;
+      {
+        http.response_parts().status = code;
+      }
+      http.otel_info_set_status(status);
     }
   } else if force_instantiate_body {
     response_fn(Compression::None).abort();
   }
 
   http.complete();
+}
+
+#[op2(fast)]
+pub fn op_http_get_request_cancelled(external: *const c_void) -> bool {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_get_request_cancelled") };
+  http.cancelled()
+}
+
+#[op2(async)]
+pub async fn op_http_request_on_cancel(external: *const c_void) -> bool {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_request_on_cancel") };
+  let (tx, rx) = tokio::sync::oneshot::channel();
+
+  http.on_cancel(tx);
+  drop(http);
+
+  rx.await.is_ok()
 }
 
 /// Returned promise resolves when body streaming finishes.
@@ -686,7 +793,7 @@ pub async fn op_http_set_response_body_resource(
   #[smi] stream_rid: ResourceId,
   auto_close: bool,
   status: u16,
-) -> Result<bool, AnyError> {
+) -> Result<bool, HttpNextError> {
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_set_response_body_resource") };
@@ -770,10 +877,16 @@ fn serve_http11_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
+  http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
 ) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
-  let conn = http1::Builder::new()
-    .keep_alive(true)
-    .writev(*USE_WRITEV)
+  let mut builder = http1::Builder::new();
+  builder.keep_alive(true).writev(*USE_WRITEV);
+
+  if let Some(http1_builder_hook) = http1_builder_hook {
+    builder = http1_builder_hook(builder);
+  }
+
+  let conn = builder
     .serve_connection(TokioIo::new(io), svc)
     .with_upgrades();
 
@@ -792,9 +905,17 @@ fn serve_http2_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
+  http2_builder_hook: Option<
+    fn(http2::Builder<LocalExecutor>) -> http2::Builder<LocalExecutor>,
+  >,
 ) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
-  let conn =
-    http2::Builder::new(LocalExecutor).serve_connection(TokioIo::new(io), svc);
+  let mut builder = http2::Builder::new(LocalExecutor);
+
+  if let Some(http2_builder_hook) = http2_builder_hook {
+    builder = http2_builder_hook(builder);
+  }
+
+  let conn = builder.serve_connection(TokioIo::new(io), svc);
   async {
     match conn.or_abort(cancel).await {
       Err(mut conn) => {
@@ -810,51 +931,70 @@ async fn serve_http2_autodetect(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = HttpRecordResponse> + 'static,
   cancel: Rc<CancelHandle>,
-) -> Result<(), AnyError> {
+  options: Options,
+) -> Result<(), HttpNextError> {
   let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
   let (matches, io) = prefix.match_prefix().await?;
   if matches {
-    serve_http2_unconditional(io, svc, cancel)
+    serve_http2_unconditional(io, svc, cancel, options.http2_builder_hook)
       .await
-      .map_err(|e| e.into())
+      .map_err(HttpNextError::Hyper)
   } else {
-    serve_http11_unconditional(io, svc, cancel)
+    serve_http11_unconditional(io, svc, cancel, options.http1_builder_hook)
       .await
-      .map_err(|e| e.into())
+      .map_err(HttpNextError::Hyper)
   }
 }
 
 fn serve_https(
-  mut io: TlsStream,
+  mut io: TlsStream<TcpStream>,
   request_info: HttpConnectionProperties,
   lifetime: HttpLifetime,
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
-) -> JoinHandle<Result<(), AnyError>> {
+  options: Options,
+) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
     server_state,
     connection_cancel_handle,
     listen_cancel_handle,
   } = lifetime;
 
+  let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
+    handle_request(
+      req,
+      request_info.clone(),
+      server_state.clone(),
+      tx.clone(),
+      legacy_abort,
+    )
   });
   spawn(
-    async {
+    async move {
       let handshake = io.handshake().await?;
       // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
       // based on the prefix bytes
       let handshake = handshake.alpn;
       if Some(TLS_ALPN_HTTP_2) == handshake.as_deref() {
-        serve_http2_unconditional(io, svc, listen_cancel_handle)
-          .await
-          .map_err(|e| e.into())
+        serve_http2_unconditional(
+          io,
+          svc,
+          listen_cancel_handle,
+          options.http2_builder_hook,
+        )
+        .await
+        .map_err(HttpNextError::Hyper)
       } else if Some(TLS_ALPN_HTTP_11) == handshake.as_deref() {
-        serve_http11_unconditional(io, svc, listen_cancel_handle)
-          .await
-          .map_err(|e| e.into())
+        serve_http11_unconditional(
+          io,
+          svc,
+          listen_cancel_handle,
+          options.http1_builder_hook,
+        )
+        .await
+        .map_err(HttpNextError::Hyper)
       } else {
-        serve_http2_autodetect(io, svc, listen_cancel_handle).await
+        serve_http2_autodetect(io, svc, listen_cancel_handle, options).await
       }
     }
     .try_or_cancel(connection_cancel_handle),
@@ -866,18 +1006,26 @@ fn serve_http(
   request_info: HttpConnectionProperties,
   lifetime: HttpLifetime,
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
-) -> JoinHandle<Result<(), AnyError>> {
+  options: Options,
+) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
     server_state,
     connection_cancel_handle,
     listen_cancel_handle,
   } = lifetime;
 
+  let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
+    handle_request(
+      req,
+      request_info.clone(),
+      server_state.clone(),
+      tx.clone(),
+      legacy_abort,
+    )
   });
   spawn(
-    serve_http2_autodetect(io, svc, listen_cancel_handle)
+    serve_http2_autodetect(io, svc, listen_cancel_handle, options)
       .try_or_cancel(connection_cancel_handle),
   )
 }
@@ -887,7 +1035,8 @@ fn serve_http_on<HTTP>(
   listen_properties: &HttpListenProperties,
   lifetime: HttpLifetime,
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
-) -> JoinHandle<Result<(), AnyError>>
+  options: Options,
+) -> JoinHandle<Result<(), HttpNextError>>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -898,14 +1047,25 @@ where
 
   match network_stream {
     NetworkStream::Tcp(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx)
+      serve_http(conn, connection_properties, lifetime, tx, options)
     }
     NetworkStream::Tls(conn) => {
-      serve_https(conn, connection_properties, lifetime, tx)
+      serve_https(conn, connection_properties, lifetime, tx, options)
     }
     #[cfg(unix)]
     NetworkStream::Unix(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx)
+      serve_http(conn, connection_properties, lifetime, tx, options)
+    }
+    #[cfg(any(
+      target_os = "android",
+      target_os = "linux",
+      target_os = "macos"
+    ))]
+    NetworkStream::Vsock(conn) => {
+      serve_http(conn, connection_properties, lifetime, tx, options)
+    }
+    NetworkStream::Tunnel(conn) => {
+      serve_http(conn, connection_properties, lifetime, tx, options)
     }
   }
 }
@@ -918,7 +1078,7 @@ struct HttpLifetime {
 }
 
 struct HttpJoinHandle {
-  join_handle: AsyncRefCell<Option<JoinHandle<Result<(), AnyError>>>>,
+  join_handle: AsyncRefCell<Option<JoinHandle<Result<(), HttpNextError>>>>,
   connection_cancel_handle: Rc<CancelHandle>,
   listen_cancel_handle: Rc<CancelHandle>,
   rx: AsyncRefCell<tokio::sync::mpsc::Receiver<Rc<HttpRecord>>>,
@@ -954,7 +1114,7 @@ impl HttpJoinHandle {
 }
 
 impl Resource for HttpJoinHandle {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "http".into()
   }
 
@@ -978,7 +1138,7 @@ impl Drop for HttpJoinHandle {
 pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), AnyError>
+) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -993,6 +1153,11 @@ where
 
   let lifetime = resource.lifetime();
 
+  let options = {
+    let state = state.borrow();
+    *state.borrow::<Options>()
+  };
+
   let listen_properties_clone: HttpListenProperties = listen_properties.clone();
   let handle = spawn(async move {
     loop {
@@ -1004,10 +1169,11 @@ where
         &listen_properties_clone,
         lifetime.clone(),
         tx.clone(),
+        options,
       );
     }
     #[allow(unreachable_code)]
-    Ok::<_, AnyError>(())
+    Ok::<_, HttpNextError>(())
   });
 
   // Set the handle after we start the future
@@ -1019,6 +1185,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+    options.no_legacy_abort,
   ))
 }
 
@@ -1027,7 +1194,7 @@ where
 pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), AnyError>
+) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -1039,13 +1206,18 @@ where
   let (tx, rx) = tokio::sync::mpsc::channel(10);
   let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new(rx));
 
-  let handle: JoinHandle<Result<(), deno_core::anyhow::Error>> =
-    serve_http_on::<HTTP>(
-      connection,
-      &listen_properties,
-      resource.lifetime(),
-      tx,
-    );
+  let options = {
+    let state = state.borrow();
+    *state.borrow::<Options>()
+  };
+
+  let handle = serve_http_on::<HTTP>(
+    connection,
+    &listen_properties,
+    resource.lifetime(),
+    tx,
+    options,
+  );
 
   // Set the handle after we start the future
   *RcRef::map(&resource, |this| &this.join_handle)
@@ -1056,6 +1228,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+    options.no_legacy_abort,
   ))
 }
 
@@ -1091,7 +1264,7 @@ pub fn op_http_try_wait(
 pub async fn op_http_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<*const c_void, AnyError> {
+) -> Result<*const c_void, HttpNextError> {
   // We will get the join handle initially, as we might be consuming requests still
   let join_handle = state
     .borrow_mut()
@@ -1123,17 +1296,68 @@ pub async fn op_http_wait(
 
   // Filter out shutdown (ENOTCONN) errors
   if let Err(err) = res {
-    if let Some(err) = err.source() {
-      if let Some(err) = err.downcast_ref::<io::Error>() {
-        if err.kind() == io::ErrorKind::NotConnected {
-          return Ok(null());
-        }
-      }
+    if is_normal_close(&err) {
+      return Ok(null());
     }
+
     return Err(err);
   }
 
   Ok(null())
+}
+
+fn is_normal_close(err: &(dyn std::error::Error + 'static)) -> bool {
+  if let Some(err) = err.downcast_ref::<HttpNextError>() {
+    if let HttpNextError::Io(err) = &err {
+      return is_normal_close(err);
+    }
+
+    if let HttpNextError::Other(err) = &err {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) = err.downcast_ref::<deno_error::JsErrorBox>() {
+    if let Some(err) = err.get_inner_ref() {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) = err.downcast_ref::<std::io::Error>() {
+    if err.kind() == io::ErrorKind::NotConnected {
+      return true;
+    }
+
+    if let Some(err) = err.get_ref() {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) = err.downcast_ref::<deno_net::tunnel::Error>() {
+    if let deno_net::tunnel::Error::QuinnConnection(err) = err {
+      return is_normal_close(err);
+    }
+
+    return false;
+  }
+
+  if let Some(err) =
+    err.downcast_ref::<deno_net::tunnel::quinn::ConnectionError>()
+  {
+    if matches!(err, deno_net::tunnel::quinn::ConnectionError::LocallyClosed) {
+      return true;
+    }
+
+    return false;
+  }
+
+  false
 }
 
 /// Cancels the HTTP handle.
@@ -1142,7 +1366,7 @@ pub fn op_http_cancel(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   graceful: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), deno_core::error::ResourceError> {
   let join_handle = state.resource_table.get::<HttpJoinHandle>(rid)?;
 
   if graceful {
@@ -1162,7 +1386,7 @@ pub async fn op_http_close(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   graceful: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), HttpNextError> {
   let join_handle = state
     .borrow_mut()
     .resource_table
@@ -1212,23 +1436,26 @@ impl UpgradeStream {
     }
   }
 
-  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(
+    self: Rc<Self>,
+    buf: &mut [u8],
+  ) -> Result<usize, std::io::Error> {
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
     async {
       let read = RcRef::map(self, |this| &this.read);
       let mut read = read.borrow_mut().await;
-      Ok(Pin::new(&mut *read).read(buf).await?)
+      Pin::new(&mut *read).read(buf).await
     }
     .try_or_cancel(cancel_handle)
     .await
   }
 
-  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, std::io::Error> {
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
     async {
       let write = RcRef::map(self, |this| &this.write);
       let mut write = write.borrow_mut().await;
-      Ok(Pin::new(&mut *write).write(buf).await?)
+      Pin::new(&mut *write).write(buf).await
     }
     .try_or_cancel(cancel_handle)
     .await
@@ -1238,7 +1465,7 @@ impl UpgradeStream {
     self: Rc<Self>,
     buf1: &[u8],
     buf2: &[u8],
-  ) -> Result<usize, AnyError> {
+  ) -> Result<usize, std::io::Error> {
     let mut wr = RcRef::map(self, |r| &r.write).borrow_mut().await;
 
     let total = buf1.len() + buf2.len();
@@ -1264,7 +1491,7 @@ impl UpgradeStream {
 }
 
 impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpRawUpgradeStream".into()
   }
 
@@ -1291,9 +1518,18 @@ pub async fn op_raw_write_vectored(
   #[smi] rid: ResourceId,
   #[buffer] buf1: JsBuffer,
   #[buffer] buf2: JsBuffer,
-) -> Result<usize, AnyError> {
+) -> Result<usize, HttpNextError> {
   let resource: Rc<UpgradeStream> =
     state.borrow().resource_table.get::<UpgradeStream>(rid)?;
   let nwritten = resource.write_vectored(&buf1, &buf2).await?;
   Ok(nwritten)
+}
+
+#[op2(fast)]
+pub fn op_http_metric_handle_otel_error(external: *const c_void) {
+  let http =
+    // SAFETY: external is deleted before calling this op.
+    unsafe { take_external!(external, "op_http_metric_handle_otel_error") };
+
+  http.otel_info_set_error("user");
 }

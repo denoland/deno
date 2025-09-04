@@ -67,6 +67,5 @@
   "bugs": {
     "url": "https://github.com/stefanpenner/get-caller-file/issues"
   },
-  "license": "ISC",
-  "readmeFilename": "README.md"
+  "license": "ISC"
 }

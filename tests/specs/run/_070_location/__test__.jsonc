@@ -1,0 +1,4 @@
+{
+  "args": "run --location https://foo/bar?baz#bat 070_location.ts",
+  "output": "070_location.ts.out"
+}

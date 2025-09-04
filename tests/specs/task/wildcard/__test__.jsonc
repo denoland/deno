@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "wildcard": {
+      "args": "task foo-*",
+      "output": "wildcard.out"
+    },
+    "wildcard_deps": {
+      "args": "task dep-*",
+      "output": "wildcard_deps.out"
+    }
+  }
+}

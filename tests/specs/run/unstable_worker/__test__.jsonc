@@ -1,0 +1,4 @@
+{
+  "args": "run --reload --quiet --allow-read unstable_worker.ts",
+  "output": "unstable_worker.ts.out"
+}

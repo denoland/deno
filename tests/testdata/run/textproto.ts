@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -14,7 +14,7 @@
  * @module
  */
 
-import type { BufReader, ReadLineResult } from "@std/io/buf-reader";
+import type { BufReader, ReadLineResult } from "../../unit/test_util.ts";
 import { concat } from "@std/bytes/concat";
 
 // Constants created for DRY

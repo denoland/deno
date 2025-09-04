@@ -145,6 +145,5 @@
     "type": "git",
     "url": "git://github.com/isaacs/node-lru-cache.git"
   },
-  "description": "A cache object that deletes the least-recently-used items.",
-  "readmeFilename": "README.md"
+  "description": "A cache object that deletes the least-recently-used items."
 }

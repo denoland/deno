@@ -1,0 +1,43 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_process"
+version = "0.29.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Subprocess APIs for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true
+deno_error.workspace = true
+deno_fs.workspace = true
+deno_io.workspace = true
+deno_os.workspace = true
+deno_path_util.workspace = true
+deno_permissions.workspace = true
+deno_signals.workspace = true
+deno_subprocess_windows.workspace = true
+libc.workspace = true
+log.workspace = true
+memchr.workspace = true
+pin-project-lite.workspace = true
+rand.workspace = true
+serde.workspace = true
+simd-json.workspace = true
+sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["signal", "process"] }
+
+[target.'cfg(windows)'.dependencies]
+winapi = { workspace = true, features = [] }
+windows-sys.workspace = true

@@ -1,0 +1,8 @@
+{
+  "exports": {
+    "./add": "./add.ts",
+    "./subtract": "./subtract.ts",
+    "./data-json": "./data.json",
+    "./multiply": "./multiply.ts"
+  }
+}

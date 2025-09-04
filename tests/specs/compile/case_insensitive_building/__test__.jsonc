@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "mac",
+    "args": "compile --output main --include file.txt --include FILE.txt main.js",
+    "output": "compile.out"
+  }, {
+    "if": "mac",
+    "commandName": "./main",
+    "args": [],
+    "output": "main.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --output main.exe --include file.txt --include FILE.txt main.js",
+    "output": "compile.out"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "main.out",
+    "exitCode": 0
+  }]
+}

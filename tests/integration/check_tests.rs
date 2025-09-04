@@ -1,24 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_lockfile::NewLockfileOptions;
+use deno_lockfile::NpmPackageInfoProvider;
 use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
-use test_util::itest;
 use util::TestContext;
 use util::TestContextBuilder;
-
-itest!(check_all {
-  args: "check --allow-import --quiet --all check/all/check_all.ts",
-  output: "check/all/check_all.out",
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(check_all_local {
-  args: "check --allow-import --quiet check/all/check_all.ts",
-  output_str: Some(""),
-  http_server: true,
-});
 
 #[test]
 fn cache_switching_config_then_no_config() {
@@ -139,7 +126,7 @@ fn ts_no_recheck_on_redirect() {
 
   // run again
   let output = check_command.run();
-  output.assert_matches_text("Hello\n");
+  output.assert_matches_text("Hello, World!\n");
 }
 
 #[test]
@@ -160,7 +147,7 @@ fn check_error_in_dep_then_fix() {
   let check_command = test_context.new_command().args_vec(["check", "main.ts"]);
 
   let output = check_command.run();
-  output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
+  output.assert_matches_text("Check [WILDCARD]main.ts\nTS234[WILDCARD]");
   output.assert_exit_code(1);
 
   temp_dir.write("greet.ts", correct_code);
@@ -169,7 +156,7 @@ fn check_error_in_dep_then_fix() {
 
   temp_dir.write("greet.ts", incorrect_code);
   let output = check_command.run();
-  output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
+  output.assert_matches_text("Check [WILDCARD]main.ts\nTS234[WILDCARD]");
   output.assert_exit_code(1);
 }
 
@@ -182,7 +169,7 @@ fn json_module_check_then_error() {
 
   temp_dir.write(
     "main.ts",
-    "import test from './test.json' assert { type: 'json' }; console.log(test.foo);\n",
+    "import test from './test.json' with { type: 'json' }; console.log(test.foo);\n",
   );
   temp_dir.write("test.json", correct_code);
 
@@ -193,12 +180,27 @@ fn json_module_check_then_error() {
   temp_dir.write("test.json", incorrect_code);
   check_command
     .run()
-    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2551[WILDCARD]")
+    .assert_matches_text("Check [WILDCARD]main.ts\nTS2551[WILDCARD]")
     .assert_exit_code(1);
 }
 
-#[test]
-fn npm_module_check_then_error() {
+struct TestNpmPackageInfoProvider;
+
+#[async_trait::async_trait(?Send)]
+impl NpmPackageInfoProvider for TestNpmPackageInfoProvider {
+  async fn get_npm_package_info(
+    &self,
+    values: &[deno_semver::package::PackageNv],
+  ) -> Result<
+    Vec<deno_lockfile::Lockfile5NpmInfo>,
+    Box<dyn std::error::Error + Send + Sync>,
+  > {
+    Ok(values.iter().map(|_| Default::default()).collect())
+  }
+}
+
+#[tokio::test]
+async fn npm_module_check_then_error() {
   let test_context = TestContextBuilder::new()
     .use_temp_cwd()
     .add_npm_env_vars()
@@ -219,11 +221,15 @@ fn npm_module_check_then_error() {
     .run()
     .skip_output_check();
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = deno_lockfile::Lockfile::new(NewLockfileOptions {
-    file_path: lockfile_path.to_path_buf(),
-    content: &lockfile_path.read_to_string(),
-    overwrite: false,
-  })
+  let mut lockfile = deno_lockfile::Lockfile::new(
+    NewLockfileOptions {
+      file_path: lockfile_path.to_path_buf(),
+      content: &lockfile_path.read_to_string(),
+      overwrite: false,
+    },
+    &TestNpmPackageInfoProvider,
+  )
+  .await
   .unwrap();
 
   // make the specifier resolve to version 1
@@ -232,7 +238,7 @@ fn npm_module_check_then_error() {
       "npm:@denotest/breaking-change-between-versions",
     )
     .unwrap(),
-    "1.0.0".to_string(),
+    "1.0.0".into(),
   );
   lockfile_path.write(lockfile.as_json_string());
   temp_dir.write(
@@ -250,12 +256,12 @@ fn npm_module_check_then_error() {
       "npm:@denotest/breaking-change-between-versions",
     )
     .unwrap(),
-    "2.0.0".to_string(),
+    "2.0.0".into(),
   );
   lockfile_path.write(lockfile.as_json_string());
 
   check_command
     .run()
-    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
+    .assert_matches_text("Check [WILDCARD]main.ts\nTS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
     .assert_exit_code(1);
 }

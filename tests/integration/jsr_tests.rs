@@ -1,18 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_cache_dir::HttpCache;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
 use deno_lockfile::NewLockfileOptions;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
+use serde_json::Value;
+use serde_json::json;
 use test_util as util;
 use url::Url;
+use util::TestContextBuilder;
 use util::assert_contains;
 use util::assert_not_contains;
-use util::TestContextBuilder;
 
 #[test]
 fn fast_check_cache() {
@@ -65,13 +64,12 @@ fn fast_check_cache() {
 
   // ensure cache works
   let output = check_debug_cmd.run();
-  assert_contains!(output.combined_output(), "Already type checked.");
-  let building_fast_check_msg = "Building fast check graph";
-  assert_not_contains!(output.combined_output(), building_fast_check_msg);
+  assert_contains!(output.combined_output(), "Already type checked");
 
   // now validated
   type_check_cache_path.remove_file();
   let output = check_debug_cmd.run();
+  let building_fast_check_msg = "Building fast check graph";
   assert_contains!(output.combined_output(), building_fast_check_msg);
   assert_contains!(
     output.combined_output(),
@@ -99,10 +97,12 @@ fn fast_check_cache() {
     .run()
     .assert_matches_text(
       "Check file:///[WILDCARD]main.ts
-error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 export function asdf(a: number) { let err: number = ''; return Math.random(); }
                                       ~~~
     at http://127.0.0.1:4250/@denotest/add/1.0.0/other.ts:2:39
+
+error: Type checking failed.
 ",
     )
     .assert_exit_code(1);
@@ -126,8 +126,23 @@ export function asdf(a: number) { let err: number = ''; return Math.random(); }
   );
 }
 
-#[test]
-fn specifiers_in_lockfile() {
+struct TestNpmPackageInfoProvider;
+
+#[async_trait::async_trait(?Send)]
+impl deno_lockfile::NpmPackageInfoProvider for TestNpmPackageInfoProvider {
+  async fn get_npm_package_info(
+    &self,
+    values: &[deno_semver::package::PackageNv],
+  ) -> Result<
+    Vec<deno_lockfile::Lockfile5NpmInfo>,
+    Box<dyn std::error::Error + Send + Sync>,
+  > {
+    Ok(values.iter().map(|_| Default::default()).collect())
+  }
+}
+
+#[tokio::test]
+async fn specifiers_in_lockfile() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
 
@@ -146,11 +161,15 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::new(NewLockfileOptions {
-    file_path: lockfile_path.to_path_buf(),
-    content: &lockfile_path.read_to_string(),
-    overwrite: false,
-  })
+  let mut lockfile = Lockfile::new(
+    NewLockfileOptions {
+      file_path: lockfile_path.to_path_buf(),
+      content: &lockfile_path.read_to_string(),
+      overwrite: false,
+    },
+    &TestNpmPackageInfoProvider,
+  )
+  .await
   .unwrap();
   *lockfile
     .content
@@ -159,7 +178,7 @@ console.log(version);"#,
     .get_mut(
       &JsrDepPackageReq::from_str("jsr:@denotest/no-module-graph@0.1").unwrap(),
     )
-    .unwrap() = "0.1.0".to_string();
+    .unwrap() = "0.1.0".into();
   lockfile_path.write(lockfile.as_json_string());
 
   test_context
@@ -169,47 +188,47 @@ console.log(version);"#,
     .assert_matches_text("0.1.0\n");
 }
 
+fn remove_version_from_meta_json(registry_json: &mut Value, version: &str) {
+  registry_json
+    .as_object_mut()
+    .unwrap()
+    .get_mut("versions")
+    .unwrap()
+    .as_object_mut()
+    .unwrap()
+    .remove(version);
+}
+
+fn remove_version_for_package(
+  deno_dir: &util::TempDir,
+  package: &str,
+  version: &str,
+) {
+  let specifier =
+    Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
+      .unwrap();
+  let cache = deno_cache_dir::GlobalHttpCache::new(
+    sys_traits::impls::RealSys,
+    deno_dir.path().join("remote").to_path_buf(),
+  );
+  let entry = cache
+    .get(&cache.cache_item_key(&specifier).unwrap(), None)
+    .unwrap()
+    .unwrap();
+  let mut registry_json: serde_json::Value =
+    serde_json::from_slice(&entry.content).unwrap();
+  remove_version_from_meta_json(&mut registry_json, version);
+  cache
+    .set(
+      &specifier,
+      entry.metadata.headers.clone(),
+      registry_json.to_string().as_bytes(),
+    )
+    .unwrap();
+}
+
 #[test]
 fn reload_info_not_found_cache_but_exists_remote() {
-  fn remove_version(registry_json: &mut Value, version: &str) {
-    registry_json
-      .as_object_mut()
-      .unwrap()
-      .get_mut("versions")
-      .unwrap()
-      .as_object_mut()
-      .unwrap()
-      .remove(version);
-  }
-
-  fn remove_version_for_package(
-    deno_dir: &util::TempDir,
-    package: &str,
-    version: &str,
-  ) {
-    let specifier =
-      Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
-        .unwrap();
-    let cache = deno_cache_dir::GlobalHttpCache::new(
-      deno_dir.path().join("remote").to_path_buf(),
-      deno_cache_dir::TestRealDenoCacheEnv,
-    );
-    let entry = cache
-      .get(&cache.cache_item_key(&specifier).unwrap(), None)
-      .unwrap()
-      .unwrap();
-    let mut registry_json: serde_json::Value =
-      serde_json::from_slice(&entry.content).unwrap();
-    remove_version(&mut registry_json, version);
-    cache
-      .set(
-        &specifier,
-        entry.metadata.headers.clone(),
-        registry_json.to_string().as_bytes(),
-      )
-      .unwrap();
-  }
-
   // This tests that when a local machine doesn't have a version
   // specified in a dependency that exists in the npm registry
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
@@ -255,7 +274,49 @@ fn reload_info_not_found_cache_but_exists_remote() {
 }
 
 #[test]
-fn lockfile_bad_package_integrity() {
+fn install_cache_busts_if_version_not_found() {
+  // Tests that if you try to deno install a package, if we can't find the version in the cached
+  // meta.json, we bust the cache to .
+  let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{ "imports": { "@denotest/has-pre-release": "jsr:@denotest/has-pre-release@2.0.0-beta.1" } }"#,
+  );
+
+  // cache successfully to the deno_dir
+  let output = test_context.new_command().args("install").run();
+  output.assert_matches_text(concat!(
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/meta.json\n",
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/2.0.0-beta.1_meta.json\n",
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/2.0.0-beta.1/mod.ts\n",
+  ));
+
+  // modify the package information in the cache to remove the latest version
+  remove_version_for_package(
+    deno_dir,
+    "@denotest/has-pre-release",
+    "2.0.0-beta.2",
+  );
+
+  temp_dir.write(
+    "deno.json",
+    r#"{ "imports": { "@denotest/has-pre-release": "jsr:@denotest/has-pre-release@2.0.0-beta.2" } }"#,
+  );
+
+  // should error when `--cache-only` is used now because the version is not in the cache
+  let output = test_context.new_command().args("install").run();
+  output.assert_matches_text(concat!(
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/meta.json\n",
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/2.0.0-beta.2_meta.json\n",
+    "Download http://127.0.0.1:4250/@denotest/has-pre-release/2.0.0-beta.2/mod.ts\n",
+  ));
+  output.assert_exit_code(0);
+}
+
+#[tokio::test]
+async fn lockfile_bad_package_integrity() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
 
@@ -274,11 +335,15 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::new(NewLockfileOptions {
-    file_path: lockfile_path.to_path_buf(),
-    content: &lockfile_path.read_to_string(),
-    overwrite: false,
-  })
+  let mut lockfile = Lockfile::new(
+    NewLockfileOptions {
+      file_path: lockfile_path.to_path_buf(),
+      content: &lockfile_path.read_to_string(),
+      overwrite: false,
+    },
+    &TestNpmPackageInfoProvider,
+  )
+  .await
   .unwrap();
   let pkg_nv = "@denotest/no-module-graph@0.1.1";
   let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_nv);

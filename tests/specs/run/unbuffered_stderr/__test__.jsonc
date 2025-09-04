@@ -1,0 +1,4 @@
+{
+  "args": "run --reload unbuffered_stderr.ts",
+  "output": "unbuffered_stderr.ts.out"
+}

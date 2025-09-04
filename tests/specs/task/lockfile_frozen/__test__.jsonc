@@ -1,0 +1,15 @@
+{
+  "tests": {
+    "no_frozen": {
+      "args": "task echo",
+      "output": "fail.out",
+      "exitCode": 1
+    },
+    "frozen": {
+      "tempDir": true,
+      "args": "task --frozen=false echo",
+      "output": "success.out",
+      "exitCode": 0
+    }
+  }
+}

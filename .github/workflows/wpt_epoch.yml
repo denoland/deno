@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         deno-version: [v1.x, canary]
-        os: [ubuntu-22.04-xl]
+        os: [ubuntu-24.04-xl]
 
     steps:
       - name: Clone repository
@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Deno
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
           deno-version: ${{ matrix.deno-version }}
 

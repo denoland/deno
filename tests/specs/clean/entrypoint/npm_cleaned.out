@@ -1,0 +1,24 @@
+./denodir
+- dep_analysis_cache[WILDCARD]
+- npm
+-- localhost_4260
+--- @denotest
+---- add
+----- 1.0.0
+----- registry.json
+--- chalk
+---- registry.json
+- remote
+
+./node_modules
+- .bin
+- .deno
+-- [WILDCARD]
+-- @denotest+add@1.0.0
+--- .initialized
+--- node_modules
+---- @denotest
+----- add
+-- node_modules
+- @denotest
+-- add (symlink)

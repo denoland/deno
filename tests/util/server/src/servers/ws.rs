@@ -1,4 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::future::Future;
+use std::future::poll_fn;
+use std::pin::Pin;
+use std::result::Result;
 
 use anyhow::anyhow;
 use bytes::Bytes;
@@ -7,29 +12,25 @@ use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
-use futures::future::join3;
-use futures::future::poll_fn;
-use futures::Future;
 use futures::StreamExt;
-use h2::server::Handshake;
-use h2::server::SendResponse;
+use futures::future::join3;
 use h2::Reason;
 use h2::RecvStream;
-use hyper::upgrade::Upgraded;
+use h2::server::Handshake;
+use h2::server::SendResponse;
 use hyper::Method;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
+use hyper::upgrade::Upgraded;
 use hyper_util::rt::TokioIo;
 use pretty_assertions::assert_eq;
-use std::pin::Pin;
-use std::result::Result;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
+use super::SupportedHttpVersions;
 use super::get_tcp_listener_stream;
 use super::get_tls_listener_stream;
-use super::SupportedHttpVersions;
 
 pub async fn run_ws_server(port: u16) {
   let mut tcp = get_tcp_listener_stream("ws", port).await;
@@ -61,6 +62,24 @@ pub async fn run_ws_close_server(port: u16) {
   }
 }
 
+pub async fn run_ws_hang_handshake(port: u16) {
+  let mut tcp = get_tcp_listener_stream("ws (hang handshake)", port).await;
+  while let Some(Ok(mut stream)) = tcp.next().await {
+    loop {
+      let mut buf = [0; 1024];
+      let n = stream.read(&mut buf).await;
+
+      if n.is_err() {
+        break;
+      }
+
+      if n.unwrap() == 0 {
+        break;
+      }
+    }
+  }
+}
+
 pub async fn run_wss2_server(port: u16) {
   let mut tls = get_tls_listener_stream(
     "wss2 (tls)",
@@ -76,6 +95,7 @@ pub async fn run_wss2_server(port: u16) {
       let server: Handshake<_, Bytes> = h2.handshake(tls);
       let mut server = match server.await {
         Ok(server) => server,
+        #[allow(clippy::print_stdout)]
         Err(e) => {
           println!("Failed to handshake h2: {e:?}");
           return;
@@ -87,6 +107,7 @@ pub async fn run_wss2_server(port: u16) {
         };
         let (recv, send) = match conn {
           Ok(conn) => conn,
+          #[allow(clippy::print_stdout)]
           Err(e) => {
             println!("Failed to accept a connection: {e:?}");
             break;
@@ -137,6 +158,7 @@ where
           .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))
           .unwrap();
 
+        #[allow(clippy::print_stderr)]
         if let Err(e) = handler(ws).await {
           eprintln!("Error in websocket connection: {}", e);
         }
@@ -152,6 +174,7 @@ where
       .serve_connection(io, service)
       .with_upgrades();
 
+    #[allow(clippy::print_stderr)]
     if let Err(e) = conn.await {
       eprintln!("websocket server error: {e:?}");
     }
@@ -162,16 +185,19 @@ async fn handle_wss_stream(
   recv: Request<RecvStream>,
   mut send: SendResponse<Bytes>,
 ) -> Result<(), h2::Error> {
+  #[allow(clippy::print_stderr)]
   if recv.method() != Method::CONNECT {
     eprintln!("wss2: refusing non-CONNECT stream");
     send.send_reset(Reason::REFUSED_STREAM);
     return Ok(());
   }
+  #[allow(clippy::print_stderr)]
   let Some(protocol) = recv.extensions().get::<h2::ext::Protocol>() else {
     eprintln!("wss2: refusing no-:protocol stream");
     send.send_reset(Reason::REFUSED_STREAM);
     return Ok(());
   };
+  #[allow(clippy::print_stderr)]
   if protocol.as_str() != "websocket" && protocol.as_str() != "WebSocket" {
     eprintln!("wss2: refusing non-websocket stream");
     send.send_reset(Reason::REFUSED_STREAM);

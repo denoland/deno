@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
 
@@ -58,4 +58,6 @@ export const {
   O_NONBLOCK,
   O_CREAT,
   O_EXCL,
+  O_DIRECT,
+  O_NOATIME,
 } = fs;

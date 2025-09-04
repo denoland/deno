@@ -77,6 +77,5 @@
   "homepage": "https://github.com/iarna/unique-filename",
   "bugs": {
     "url": "https://github.com/iarna/unique-filename/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "tests": {
+    "deno_install_arg": {
+      "steps": [{
+        "args": "install",
+        "output": "install.out"
+      }, {
+        "args": "run -A main.js",
+        "output": "main.out"
+      }]
+    }
+  }
+}

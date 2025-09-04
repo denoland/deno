@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file
 
@@ -19,6 +19,7 @@ function initialize(args) {
     maybeWorkerMetadata,
     nodeDebug,
     warmup = false,
+    moduleSpecifier = null,
   } = args;
   if (!warmup) {
     if (initialized) {
@@ -41,6 +42,7 @@ function initialize(args) {
       runningOnMainThread,
       workerId,
       maybeWorkerMetadata,
+      moduleSpecifier,
     );
     internals.__setupChildProcessIpcChannel();
     // `Deno[Deno.internal].requireImpl` will be unreachable after this line.
@@ -81,7 +83,6 @@ nodeGlobals.process = nativeModuleExports["process"];
 nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
 nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
 nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
-nodeGlobals.performance = nativeModuleExports["perf_hooks"].performance;
 
 nativeModuleExports["internal/console/constructor"].bindStreamsLazy(
   nativeModuleExports["console"],

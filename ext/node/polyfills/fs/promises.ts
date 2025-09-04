@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { promises as fsPromises } from "node:fs";
 
 export const access = fsPromises.access;
@@ -16,14 +16,15 @@ export const readlink = fsPromises.readlink;
 export const symlink = fsPromises.symlink;
 export const lstat = fsPromises.lstat;
 export const stat = fsPromises.stat;
+export const fstat = fsPromises.fstat;
 export const link = fsPromises.link;
 export const unlink = fsPromises.unlink;
 export const chmod = fsPromises.chmod;
-// export const lchmod = fs.lchmod;
-// export const lchown = fs.lchown;
+export const lchmod = fsPromises.lchmod;
+export const lchown = fsPromises.lchown;
 export const chown = fsPromises.chown;
 export const utimes = fsPromises.utimes;
-// export const lutimes = fs.lutimes;
+export const lutimes = fsPromises.lutimes;
 export const realpath = fsPromises.realpath;
 export const mkdtemp = fsPromises.mkdtemp;
 export const writeFile = fsPromises.writeFile;
@@ -31,5 +32,6 @@ export const appendFile = fsPromises.appendFile;
 export const readFile = fsPromises.readFile;
 export const watch = fsPromises.watch;
 export const cp = fsPromises.cp;
+export const glob = fsPromises.glob;
 
 export default fsPromises;

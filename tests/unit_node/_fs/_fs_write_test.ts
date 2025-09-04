@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -117,7 +117,7 @@ Deno.test({
       for (const innerOffset of offsets) {
         for (const offset of offsets) {
           resetBuffer();
-          const buffer = new constr(
+          const buffer = new (constr as Uint8ArrayConstructor)(
             arrayBuffer,
             innerOffset,
             offset + bytes.length,

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,6 +24,8 @@
 // deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase
 
+import { op_get_env_no_permission_check } from "ext:core/ops";
+
 import {
   clearLine,
   clearScreenDown,
@@ -35,7 +37,6 @@ import promises from "ext:deno_node/readline/promises.ts";
 import { validateAbortSignal } from "ext:deno_node/internal/validators.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { AbortError } from "ext:deno_node/internal/errors.ts";
-import process from "node:process";
 
 import {
   Interface as _Interface,
@@ -102,7 +103,7 @@ function Interface(input, output, completer, terminal) {
     completer,
     terminal,
   );
-  if (process.env.TERM === "dumb") {
+  if (op_get_env_no_permission_check("TERM") === "dumb") {
     this._ttyWrite = _ttyWriteDumb.bind(this);
   }
 }

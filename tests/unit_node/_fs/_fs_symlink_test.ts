@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assert, assertThrows, fail } from "@std/assert";
 import { symlink, symlinkSync } from "node:fs";
 
@@ -11,7 +11,7 @@ Deno.test({
         symlink("some/path", "some/other/path", "dir");
       },
       Error,
-      "No callback function supplied",
+      "The \"cb\" argument must be of type function. Received type string ('dir')",
     );
   },
 });

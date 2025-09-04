@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { scrypt, scryptSync } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { assertEquals } from "@std/assert";
@@ -187,4 +187,14 @@ Deno.test("scryptSync with options works correctly", () => {
       71,
     ]),
   );
+});
+
+Deno.test("log_n > 64 doesn't panic", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  scrypt("password", "salt", 128, () => {
+    resolve();
+  });
+
+  await promise;
 });

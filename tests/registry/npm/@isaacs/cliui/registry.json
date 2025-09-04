@@ -112,6 +112,5 @@
   "bugs": {
     "url": "https://github.com/yargs/cliui/issues"
   },
-  "license": "ISC",
-  "readmeFilename": "README.md"
+  "license": "ISC"
 }

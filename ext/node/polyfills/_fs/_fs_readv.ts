@@ -1,7 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
   ERR_INVALID_ARG_TYPE,
@@ -15,6 +12,15 @@ import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import { validateInteger } from "ext:deno_node/internal/validators.mjs";
 import * as io from "ext:deno_io/12_io.js";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
+import process from "node:process";
+import { primordials } from "ext:core/mod.js";
+import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
+
+const {
+  ObjectDefineProperty,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetByteLength,
+} = primordials;
 
 type Callback = (
   err: ErrnoException | null,
@@ -69,7 +75,7 @@ export function readv(
         break;
       }
       readInBuf += nread;
-      if (readInBuf === buf.byteLength) {
+      if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
         readTotal += readInBuf;
         readInBuf = 0;
         bufIdx += 1;
@@ -81,13 +87,16 @@ export function readv(
     return readTotal;
   };
 
-  innerReadv(fd, buffers, pos).then(
-    (numRead) => {
-      cb(null, numRead, buffers);
-    },
-    (err) => cb(err, -1, buffers),
-  );
+  PromisePrototypeThen(innerReadv(fd, buffers, pos), (numRead) => {
+    cb(null, numRead, buffers);
+  }, (err) => cb(err, -1, buffers));
 }
+
+ObjectDefineProperty(readv, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesRead", "buffers"],
+  enumerable: false,
+});
 
 export function readvSync(
   fd: number,
@@ -117,7 +126,7 @@ export function readvSync(
       break;
     }
     readInBuf += nread;
-    if (readInBuf === buf.byteLength) {
+    if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
       readTotal += readInBuf;
       readInBuf = 0;
       bufIdx += 1;

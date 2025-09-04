@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -20,6 +20,7 @@ import {
   op_node_create_secret_key,
   op_node_derive_public_key_from_private_key,
   op_node_export_private_key_der,
+  op_node_export_private_key_jwk,
   op_node_export_private_key_pem,
   op_node_export_public_key_der,
   op_node_export_public_key_jwk,
@@ -94,6 +95,13 @@ export const getArrayBufferOrView = hideStackFrames(
         encoding = "utf8";
       }
       return Buffer.from(buffer, encoding);
+    }
+    if (buffer instanceof DataView) {
+      return new Uint8Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength,
+      );
     }
     if (!isArrayBufferView(buffer)) {
       throw new ERR_INVALID_ARG_TYPE(
@@ -780,7 +788,7 @@ class AsymmetricKeyObject extends KeyObject {
   }
 
   get asymmetricKeyDetails() {
-    return op_node_get_asymmetric_key_details(this[kHandle]);
+    return { ...op_node_get_asymmetric_key_details(this[kHandle]) };
   }
 }
 
@@ -791,7 +799,7 @@ export class PrivateKeyObject extends AsymmetricKeyObject {
 
   export(options: JwkKeyExportOptions | KeyExportOptions<KeyFormat>) {
     if (options && options.format === "jwk") {
-      notImplemented("jwk private key export not implemented");
+      return op_node_export_private_key_jwk(this[kHandle]);
     }
     const {
       format,

@@ -1,0 +1,4 @@
+{
+  "args": "run import.mts",
+  "output": "mts_dmts_mjs.out"
+}

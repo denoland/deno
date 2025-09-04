@@ -1,0 +1,3 @@
+{
+  "workspaces": ["./multi-a", "./multi-b"]
+}

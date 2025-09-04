@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_ffi"
-version = "0.159.0"
+version = "0.201.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,16 +14,21 @@ description = "Dynamic library ffi for deno"
 path = "lib.rs"
 
 [dependencies]
+cranelift.workspace = true
+cranelift-native.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 deno_permissions.workspace = true
+denort_helper.workspace = true
 dlopen2.workspace = true
-dynasmrt = "1.2.3"
-libffi = "=3.2.0"
-libffi-sys = "=2.3.0"
+libffi.workspace = true
+libffi-sys.workspace = true
 log.workspace = true
+memmap2.workspace = true
+num-bigint.workspace = true
 serde.workspace = true
-serde-value = "0.7"
-serde_json = "1.0"
+serde-value.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 

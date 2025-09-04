@@ -1,9 +1,31 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
+use deno_core::serde::Deserialize;
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
+use deno_core::url::ParseError;
+use deno_core::url::Position;
+use deno_core::url::Url;
+use deno_graph::Dependency;
+use deno_resolver::file_fetcher::FetchOptions;
+use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
+use deno_resolver::loader::MemoryFilesRc;
+use log::error;
+use once_cell::sync::Lazy;
+use tower_lsp::lsp_types as lsp;
 
 use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
-use super::path_to_regex::parse;
-use super::path_to_regex::string_to_regex;
 use super::path_to_regex::Compiler;
 use super::path_to_regex::Key;
 use super::path_to_regex::MatchResult;
@@ -11,33 +33,16 @@ use super::path_to_regex::Matcher;
 use super::path_to_regex::StringOrNumber;
 use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
-
-use crate::args::CacheSetting;
+use super::path_to_regex::parse;
+use super::path_to_regex::string_to_regex;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
-use crate::file_fetcher::FetchOptions;
-use crate::file_fetcher::FetchPermissionsOptionRef;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::CreateCliFileFetcherOptions;
+use crate::file_fetcher::TextDecodedFile;
+use crate::file_fetcher::create_cli_file_fetcher;
 use crate::http_util::HttpClientProvider;
-
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
-use deno_core::serde::Deserialize;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::url::ParseError;
-use deno_core::url::Position;
-use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
-use deno_graph::Dependency;
-use log::error;
-use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
-use tower_lsp::lsp_types as lsp;
+use crate::sys::CliSys;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
@@ -318,7 +323,11 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
         .map(|var| var.key.to_owned())
         .any(|x| x == *key_name)
       {
-        return Err(anyhow!("Invalid registry configuration. Registry with schema \"{}\" is missing variable declaration for key \"{}\".", registry.schema, key_name));
+        return Err(anyhow!(
+          "Invalid registry configuration. Registry with schema \"{}\" is missing variable declaration for key \"{}\".",
+          registry.schema,
+          key_name
+        ));
       }
     }
 
@@ -330,13 +339,27 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
       let limited_keys = key_names.get(0..key_index).unwrap();
       for v in replacement_variables {
         if variable.key == v && config.version == 1 {
-          return Err(anyhow!("Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because that would be a self reference.", variable.url, variable.key, registry.schema, v));
+          return Err(anyhow!(
+            "Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because that would be a self reference.",
+            variable.url,
+            variable.key,
+            registry.schema,
+            v
+          ));
         }
 
         let key_index = limited_keys.iter().position(|key| key == &v);
 
         if key_index.is_none() && variable.key != v {
-          return Err(anyhow!("Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because the schema defines \"{}\" to the right of \"{}\".", variable.url, variable.key, registry.schema, v, v, variable.key));
+          return Err(anyhow!(
+            "Invalid registry configuration. Url \"{}\" (for variable \"{}\" in registry with schema \"{}\") uses variable \"{}\", which is not allowed because the schema defines \"{}\" to the right of \"{}\".",
+            variable.url,
+            variable.key,
+            registry.schema,
+            v,
+            v,
+            variable.key
+          ));
         }
       }
     }
@@ -418,7 +441,7 @@ enum VariableItems {
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
   pub location: PathBuf,
-  pub file_fetcher: Arc<FileFetcher>,
+  pub file_fetcher: Arc<CliFileFetcher>,
   http_cache: Arc<GlobalHttpCache>,
 }
 
@@ -428,19 +451,21 @@ impl ModuleRegistry {
     http_client_provider: Arc<HttpClientProvider>,
   ) -> Self {
     // the http cache should always be the global one for registry completions
-    let http_cache = Arc::new(GlobalHttpCache::new(
-      location.clone(),
-      crate::cache::RealDenoCacheEnv,
-    ));
-    let mut file_fetcher = FileFetcher::new(
-      http_cache.clone(),
-      CacheSetting::RespectHeaders,
-      true,
-      http_client_provider,
+    let http_cache =
+      Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
+    let file_fetcher = create_cli_file_fetcher(
       Default::default(),
-      None,
+      http_cache.clone().into(),
+      http_client_provider,
+      MemoryFilesRc::default(),
+      CliSys::default(),
+      CreateCliFileFetcherOptions {
+        allow_remote: true,
+        cache_setting: CacheSetting::RespectHeaders,
+        download_log_level: super::logging::lsp_log_level(),
+        progress_bar: None,
+      },
     );
-    file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
     Self {
       origins: HashMap::new(),
@@ -473,21 +498,18 @@ impl ModuleRegistry {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
-    // spawn due to the lsp's `Send` requirement
-    let fetch_result = deno_core::unsync::spawn({
-      let file_fetcher = self.file_fetcher.clone();
-      let specifier = specifier.clone();
-      async move {
-        file_fetcher
-        .fetch_with_options(FetchOptions {
-          specifier: &specifier,
-          permissions: FetchPermissionsOptionRef::AllowAll,
+    let fetch_result = self.file_fetcher
+      .fetch_with_options(
+        specifier,
+        FetchPermissionsOptionRef::AllowAll,
+        FetchOptions {
+          local: Default::default(),
+          maybe_auth: None,
           maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
           maybe_cache_setting: None,
-        })
-        .await
-      }
-    }).await?;
+        }
+      )
+      .await;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
     // needing to connect to the remote URL. We will cache it for 1 week.
@@ -499,7 +521,7 @@ impl ModuleRegistry {
       );
       self.http_cache.set(specifier, headers_map, &[])?;
     }
-    let file = fetch_result?.into_text_decoded()?;
+    let file = TextDecodedFile::decode(fetch_result?)?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
     Ok(config.registries)
@@ -580,19 +602,13 @@ impl ModuleRegistry {
         )
         .ok()?;
         let file_fetcher = self.file_fetcher.clone();
-        // spawn due to the lsp's `Send` requirement
-        let file = deno_core::unsync::spawn({
-          async move {
-            file_fetcher
-              .fetch_bypass_permissions(&endpoint)
-              .await
-              .ok()?
-              .into_text_decoded()
-              .ok()
-          }
-        })
-        .await
-        .ok()??;
+        let file = {
+          let file = file_fetcher
+            .fetch_bypass_permissions(&endpoint)
+            .await
+            .ok()?;
+          TextDecodedFile::decode(file).ok()?
+        };
         let documentation: lsp::Documentation =
           serde_json::from_str(&file.source).ok()?;
         return match documentation {
@@ -610,6 +626,7 @@ impl ModuleRegistry {
 
   /// For a string specifier from the client, provide a set of completions, if
   /// any, for the specifier.
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_completions(
     &self,
     text: &str,
@@ -644,10 +661,10 @@ impl ModuleRegistry {
           .iter()
           .last()
           .map(|t| {
-            if let Token::Key(key) = t {
-              if let StringOrNumber::String(s) = &key.name {
-                return s.clone();
-              }
+            if let Token::Key(key) = t
+              && let StringOrNumber::String(s) = &key.name
+            {
+              return s.clone();
             }
             "".to_string()
           })
@@ -696,8 +713,8 @@ impl ModuleRegistry {
             }
             Some(CompletionType::Key { key, prefix, index }) => {
               let maybe_url = registry.get_url_for_key(&key);
-              if let Some(url) = maybe_url {
-                if let Some(items) = self
+              if let Some(url) = maybe_url
+                && let Some(items) = self
                   .get_variable_items(
                     &key,
                     url,
@@ -706,113 +723,111 @@ impl ModuleRegistry {
                     &match_result,
                   )
                   .await
-                {
-                  let compiler = Compiler::new(&tokens[..=index], None);
-                  let base = Url::parse(&origin).ok()?;
-                  let (items, preselect, incomplete) = match items {
-                    VariableItems::List(list) => {
-                      (list.items, list.preselect, list.is_incomplete)
-                    }
-                    VariableItems::Simple(items) => (items, None, false),
+              {
+                let compiler = Compiler::new(&tokens[..=index], None);
+                let base = Url::parse(&origin).ok()?;
+                let (items, preselect, incomplete) = match items {
+                  VariableItems::List(list) => {
+                    (list.items, list.preselect, list.is_incomplete)
+                  }
+                  VariableItems::Simple(items) => (items, None, false),
+                };
+                if incomplete {
+                  is_incomplete = true;
+                }
+                for (idx, item) in items.into_iter().enumerate() {
+                  let mut label = if let Some(p) = &prefix {
+                    format!("{p}{item}")
+                  } else {
+                    item.clone()
                   };
-                  if incomplete {
-                    is_incomplete = true;
+                  if label.ends_with('/') {
+                    label.pop();
                   }
-                  for (idx, item) in items.into_iter().enumerate() {
-                    let mut label = if let Some(p) = &prefix {
-                      format!("{p}{item}")
+                  let kind =
+                    if key.name == last_key_name && !item.ends_with('/') {
+                      Some(lsp::CompletionItemKind::FILE)
                     } else {
-                      item.clone()
+                      Some(lsp::CompletionItemKind::FOLDER)
                     };
-                    if label.ends_with('/') {
-                      label.pop();
-                    }
-                    let kind =
-                      if key.name == last_key_name && !item.ends_with('/') {
-                        Some(lsp::CompletionItemKind::FILE)
-                      } else {
-                        Some(lsp::CompletionItemKind::FOLDER)
-                      };
-                    let mut params = match_result.params.clone();
-                    params.insert(
-                      key.name.clone(),
-                      StringOrVec::from_str(&item, &key),
-                    );
-                    let mut path =
-                      compiler.to_path(&params).unwrap_or_default();
-                    if path.ends_with('/') {
-                      path.pop();
-                    }
-                    let item_specifier = base.join(&path).ok()?;
-                    let full_text = if let Some(suffix) =
-                      item_specifier.as_str().strip_prefix(resolved_str)
-                    {
-                      format!("{text}{suffix}")
-                    } else {
-                      item_specifier.to_string()
-                    };
-                    let text_edit =
-                      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                        range: *range,
-                        new_text: full_text.to_string(),
-                      }));
-                    let command = if key.name == last_key_name
-                      && !item.ends_with('/')
-                      && !specifier_exists(&item_specifier)
-                    {
-                      Some(lsp::Command {
-                        title: "".to_string(),
-                        command: "deno.cache".to_string(),
-                        arguments: Some(vec![
-                          json!([item_specifier]),
-                          json!(&resolved),
-                        ]),
-                      })
-                    } else {
-                      None
-                    };
-                    let detail = Some(format!("({})", key.name));
-                    let filter_text = Some(full_text.to_string());
-                    let sort_text = Some(format!("{:0>10}", idx + 1));
-                    let preselect =
-                      get_preselect(item.clone(), preselect.clone());
-                    let data = get_data_with_match(
-                      registry,
-                      &resolved,
-                      &tokens,
-                      &match_result,
-                      &key,
-                      &item,
-                    );
-                    let commit_characters = if is_incomplete {
-                      Some(
-                        REGISTRY_IMPORT_COMMIT_CHARS
-                          .iter()
-                          .map(|&c| c.into())
-                          .collect(),
-                      )
-                    } else {
-                      Some(
-                        IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
-                      )
-                    };
-                    completions.insert(
-                      item,
-                      lsp::CompletionItem {
-                        label,
-                        kind,
-                        detail,
-                        sort_text,
-                        filter_text,
-                        text_edit,
-                        command,
-                        preselect,
-                        data,
-                        commit_characters,
-                        ..Default::default()
-                      },
-                    );
+                  let mut params = match_result.params.clone();
+                  params.insert(
+                    key.name.clone(),
+                    StringOrVec::from_str(&item, &key),
+                  );
+                  let mut path = compiler.to_path(&params).unwrap_or_default();
+                  if path.ends_with('/') {
+                    path.pop();
                   }
+                  let item_specifier = base.join(&path).ok()?;
+                  let full_text = if let Some(suffix) =
+                    item_specifier.as_str().strip_prefix(resolved_str)
+                  {
+                    format!("{text}{suffix}")
+                  } else {
+                    item_specifier.to_string()
+                  };
+                  let text_edit =
+                    Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                      range: *range,
+                      new_text: full_text.to_string(),
+                    }));
+                  let command = if key.name == last_key_name
+                    && !item.ends_with('/')
+                    && !specifier_exists(&item_specifier)
+                  {
+                    Some(lsp::Command {
+                      title: "".to_string(),
+                      command: "deno.cache".to_string(),
+                      arguments: Some(vec![
+                        json!([item_specifier]),
+                        json!(&resolved),
+                      ]),
+                    })
+                  } else {
+                    None
+                  };
+                  let detail = Some(format!("({})", key.name));
+                  let filter_text = Some(full_text.to_string());
+                  let sort_text = Some(format!("{:0>10}", idx + 1));
+                  let preselect =
+                    get_preselect(item.clone(), preselect.clone());
+                  let data = get_data_with_match(
+                    registry,
+                    &resolved,
+                    &tokens,
+                    &match_result,
+                    &key,
+                    &item,
+                  );
+                  let commit_characters = if is_incomplete {
+                    Some(
+                      REGISTRY_IMPORT_COMMIT_CHARS
+                        .iter()
+                        .map(|&c| c.into())
+                        .collect(),
+                    )
+                  } else {
+                    Some(
+                      IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+                    )
+                  };
+                  completions.insert(
+                    item,
+                    lsp::CompletionItem {
+                      label,
+                      kind,
+                      detail,
+                      sort_text,
+                      filter_text,
+                      text_edit,
+                      command,
+                      preselect,
+                      data,
+                      commit_characters,
+                      ..Default::default()
+                    },
+                  );
                 }
               }
             }
@@ -838,7 +853,7 @@ impl ModuleRegistry {
                 {
                   format!("{text}{suffix}")
                 } else {
-                  url.to_string()
+                  url.into()
                 };
                 let text_edit =
                   Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
@@ -872,86 +887,83 @@ impl ModuleRegistry {
             Token::Key(k) => {
               if let Some(prefix) = &k.prefix {
                 let maybe_url = registry.get_url_for_key(k);
-                if let Some(url) = maybe_url {
-                  if let Some(items) = self.get_items(url).await {
-                    let base = Url::parse(&origin).ok()?;
-                    let (items, preselect, incomplete) = match items {
-                      VariableItems::List(list) => {
-                        (list.items, list.preselect, list.is_incomplete)
-                      }
-                      VariableItems::Simple(items) => (items, None, false),
+                if let Some(url) = maybe_url
+                  && let Some(items) = self.get_items(url).await
+                {
+                  let base = Url::parse(&origin).ok()?;
+                  let (items, preselect, incomplete) = match items {
+                    VariableItems::List(list) => {
+                      (list.items, list.preselect, list.is_incomplete)
+                    }
+                    VariableItems::Simple(items) => (items, None, false),
+                  };
+                  if incomplete {
+                    is_incomplete = true;
+                  }
+                  for (idx, item) in items.into_iter().enumerate() {
+                    let path = format!("{prefix}{item}");
+                    let kind = Some(lsp::CompletionItemKind::FOLDER);
+                    let item_specifier = base.join(&path).ok()?;
+                    let full_text = if let Some(suffix) =
+                      item_specifier.as_str().strip_prefix(resolved_str)
+                    {
+                      format!("{text}{suffix}")
+                    } else {
+                      item_specifier.to_string()
                     };
-                    if incomplete {
-                      is_incomplete = true;
-                    }
-                    for (idx, item) in items.into_iter().enumerate() {
-                      let path = format!("{prefix}{item}");
-                      let kind = Some(lsp::CompletionItemKind::FOLDER);
-                      let item_specifier = base.join(&path).ok()?;
-                      let full_text = if let Some(suffix) =
-                        item_specifier.as_str().strip_prefix(resolved_str)
-                      {
-                        format!("{text}{suffix}")
-                      } else {
-                        item_specifier.to_string()
-                      };
-                      let text_edit =
-                        Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                          range: *range,
-                          new_text: full_text.clone(),
-                        }));
-                      let command = if k.name == last_key_name
-                        && !specifier_exists(&item_specifier)
-                      {
-                        Some(lsp::Command {
-                          title: "".to_string(),
-                          command: "deno.cache".to_string(),
-                          arguments: Some(vec![
-                            json!([item_specifier]),
-                            json!(&resolved),
-                          ]),
-                        })
-                      } else {
-                        None
-                      };
-                      let detail = Some(format!("({})", k.name));
-                      let filter_text = Some(full_text.to_string());
-                      let sort_text = Some(format!("{:0>10}", idx + 1));
-                      let preselect =
-                        get_preselect(item.clone(), preselect.clone());
-                      let data = get_data(registry, &resolved, k, &path);
-                      let commit_characters = if is_incomplete {
-                        Some(
-                          REGISTRY_IMPORT_COMMIT_CHARS
-                            .iter()
-                            .map(|&c| c.into())
-                            .collect(),
-                        )
-                      } else {
-                        Some(
-                          IMPORT_COMMIT_CHARS
-                            .iter()
-                            .map(|&c| c.into())
-                            .collect(),
-                        )
-                      };
-                      completions.insert(
-                        item.clone(),
-                        lsp::CompletionItem {
-                          label: item,
-                          kind,
-                          detail,
-                          sort_text,
-                          filter_text,
-                          text_edit,
-                          command,
-                          preselect,
-                          data,
-                          commit_characters,
-                          ..Default::default()
-                        },
-                      );
-                    }
+                    let text_edit =
+                      Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                        range: *range,
+                        new_text: full_text.clone(),
+                      }));
+                    let command = if k.name == last_key_name
+                      && !specifier_exists(&item_specifier)
+                    {
+                      Some(lsp::Command {
+                        title: "".to_string(),
+                        command: "deno.cache".to_string(),
+                        arguments: Some(vec![
+                          json!([item_specifier]),
+                          json!(&resolved),
+                        ]),
+                      })
+                    } else {
+                      None
+                    };
+                    let detail = Some(format!("({})", k.name));
+                    let filter_text = Some(full_text.to_string());
+                    let sort_text = Some(format!("{:0>10}", idx + 1));
+                    let preselect =
+                      get_preselect(item.clone(), preselect.clone());
+                    let data = get_data(registry, &resolved, k, &path);
+                    let commit_characters = if is_incomplete {
+                      Some(
+                        REGISTRY_IMPORT_COMMIT_CHARS
+                          .iter()
+                          .map(|&c| c.into())
+                          .collect(),
+                      )
+                    } else {
+                      Some(
+                        IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+                      )
+                    };
+                    completions.insert(
+                      item.clone(),
+                      lsp::CompletionItem {
+                        label: item,
+                        kind,
+                        detail,
+                        sort_text,
+                        filter_text,
+                        text_edit,
+                        command,
+                        preselect,
+                        data,
+                        commit_characters,
+                        ..Default::default()
+                      },
+                    );
                   }
                 }
               }
@@ -980,17 +992,13 @@ impl ModuleRegistry {
   ) -> Option<lsp::Documentation> {
     let specifier = Url::parse(url).ok()?;
     let file_fetcher = self.file_fetcher.clone();
-    // spawn due to the lsp's `Send` requirement
-    let file = deno_core::unsync::spawn(async move {
-      file_fetcher
+    let file = {
+      let file = file_fetcher
         .fetch_bypass_permissions(&specifier)
         .await
-        .ok()?
-        .into_text_decoded()
-        .ok()
-    })
-    .await
-    .ok()??;
+        .ok()?;
+      TextDecodedFile::decode(file).ok()?
+    };
     serde_json::from_str(&file.source).ok()
   }
 
@@ -1043,27 +1051,20 @@ impl ModuleRegistry {
 
   async fn get_items(&self, url: &str) -> Option<VariableItems> {
     let specifier = ModuleSpecifier::parse(url).ok()?;
-    // spawn due to the lsp's `Send` requirement
-    let file = deno_core::unsync::spawn({
-      let file_fetcher = self.file_fetcher.clone();
-      let specifier = specifier.clone();
-      async move {
-        file_fetcher
-          .fetch_bypass_permissions(&specifier)
-          .await
-          .map_err(|err| {
-            error!(
-              "Internal error fetching endpoint \"{}\". {}",
-              specifier, err
-            );
-          })
-          .ok()?
-          .into_text_decoded()
-          .ok()
-      }
-    })
-    .await
-    .ok()??;
+    let file = {
+      let file = self
+        .file_fetcher
+        .fetch_bypass_permissions(&specifier)
+        .await
+        .map_err(|err| {
+          error!(
+            "Internal error fetching endpoint \"{}\". {}",
+            specifier, err
+          );
+        })
+        .ok()?;
+      TextDecodedFile::decode(file).ok()?
+    };
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
@@ -1089,27 +1090,20 @@ impl ModuleRegistry {
           error!("Internal error mapping endpoint \"{}\". {}", url, err);
         })
         .ok()?;
-    // spawn due to the lsp's `Send` requirement
-    let file = deno_core::unsync::spawn({
-      let file_fetcher = self.file_fetcher.clone();
-      let specifier = specifier.clone();
-      async move {
-        file_fetcher
-          .fetch_bypass_permissions(&specifier)
-          .await
-          .map_err(|err| {
-            error!(
-              "Internal error fetching endpoint \"{}\". {}",
-              specifier, err
-            );
-          })
-          .ok()?
-          .into_text_decoded()
-          .ok()
-      }
-    })
-    .await
-    .ok()??;
+    let file = {
+      let file = self
+        .file_fetcher
+        .fetch_bypass_permissions(&specifier)
+        .await
+        .map_err(|err| {
+          error!(
+            "Internal error fetching endpoint \"{}\". {}",
+            specifier, err
+          );
+        })
+        .ok()?;
+      TextDecodedFile::decode(file).ok()?
+    };
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
@@ -1128,16 +1122,19 @@ impl ModuleRegistry {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use test_util::TempDir;
+
+  use super::*;
 
   #[test]
   fn test_validate_registry_configuration() {
-    assert!(validate_config(&RegistryConfigurationJson {
-      version: 3,
-      registries: vec![],
-    })
-    .is_err());
+    assert!(
+      validate_config(&RegistryConfigurationJson {
+        version: 3,
+        registries: vec![],
+      })
+      .is_err()
+    );
 
     let cfg = RegistryConfigurationJson {
       version: 1,
@@ -1624,10 +1621,10 @@ mod tests {
     assert!(completions.is_some());
     let completions = completions.unwrap().items;
     for completion in completions {
-      if let Some(filter_text) = completion.filter_text {
-        if !"http://localhost:4545/cde@".contains(&filter_text) {
-          continue;
-        }
+      if let Some(filter_text) = completion.filter_text
+        && !"http://localhost:4545/cde@".contains(&filter_text)
+      {
+        continue;
       }
       assert!(completion.text_edit.is_some());
       if let lsp::CompletionTextEdit::Edit(edit) = completion.text_edit.unwrap()

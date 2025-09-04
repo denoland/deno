@@ -1,0 +1,5 @@
+{
+  "args": "run long_data_url_formatting.ts",
+  "output": "long_data_url_formatting.ts.out",
+  "exitCode": 1
+}

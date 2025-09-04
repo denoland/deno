@@ -161,6 +161,5 @@
   "bugs": {
     "url": "https://github.com/chalk/strip-ansi/issues"
   },
-  "license": "MIT",
-  "readmeFilename": ""
+  "license": "MIT"
 }

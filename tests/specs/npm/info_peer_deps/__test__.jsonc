@@ -1,5 +1,5 @@
 {
-  "args": "info --quiet peer_deps_with_copied_folders/main.ts",
-  "output": "peer_deps_with_copied_folders/main_info.out",
+  "args": "info --quiet main.ts",
+  "output": "main_info.out",
   "exitCode": 0
 }

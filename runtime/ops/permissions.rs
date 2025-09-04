@@ -1,11 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -47,12 +45,31 @@ impl From<PermissionState> for PermissionStatus {
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum PermissionError {
+  #[class(reference)]
+  #[error("No such permission name: {0}")]
+  InvalidPermissionName(String),
+  #[class(inherit)]
+  #[error("{0}")]
+  PathResolve(#[from] ::deno_permissions::PathResolveError),
+  #[class(uri)]
+  #[error("{0}")]
+  NetDescriptorParse(#[from] ::deno_permissions::NetDescriptorParseError),
+  #[class(inherit)]
+  #[error("{0}")]
+  SysDescriptorParse(#[from] ::deno_permissions::SysDescriptorParseError),
+  #[class(inherit)]
+  #[error("{0}")]
+  RunDescriptorParse(#[from] ::deno_permissions::RunDescriptorParseError),
+}
+
 #[op2]
 #[serde]
 pub fn op_query_permission(
   state: &mut OpState,
   #[serde] args: PermissionArgs,
-) -> Result<PermissionStatus, AnyError> {
+) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
     "read" => permissions.query_read(args.path.as_deref())?,
@@ -62,12 +79,8 @@ pub fn op_query_permission(
     "sys" => permissions.query_sys(args.kind.as_deref())?,
     "run" => permissions.query_run(args.command.as_deref())?,
     "ffi" => permissions.query_ffi(args.path.as_deref())?,
-    n => {
-      return Err(custom_error(
-        "ReferenceError",
-        format!("No such permission name: {n}"),
-      ))
-    }
+    "import" => permissions.query_import(args.host.as_deref())?,
+    _ => return Err(PermissionError::InvalidPermissionName(args.name)),
   };
   Ok(PermissionStatus::from(perm))
 }
@@ -77,7 +90,7 @@ pub fn op_query_permission(
 pub fn op_revoke_permission(
   state: &mut OpState,
   #[serde] args: PermissionArgs,
-) -> Result<PermissionStatus, AnyError> {
+) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
     "read" => permissions.revoke_read(args.path.as_deref())?,
@@ -87,22 +100,18 @@ pub fn op_revoke_permission(
     "sys" => permissions.revoke_sys(args.kind.as_deref())?,
     "run" => permissions.revoke_run(args.command.as_deref())?,
     "ffi" => permissions.revoke_ffi(args.path.as_deref())?,
-    n => {
-      return Err(custom_error(
-        "ReferenceError",
-        format!("No such permission name: {n}"),
-      ))
-    }
+    "import" => permissions.revoke_import(args.host.as_deref())?,
+    _ => return Err(PermissionError::InvalidPermissionName(args.name)),
   };
   Ok(PermissionStatus::from(perm))
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_request_permission(
   state: &mut OpState,
   #[serde] args: PermissionArgs,
-) -> Result<PermissionStatus, AnyError> {
+) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
     "read" => permissions.request_read(args.path.as_deref())?,
@@ -112,12 +121,8 @@ pub fn op_request_permission(
     "sys" => permissions.request_sys(args.kind.as_deref())?,
     "run" => permissions.request_run(args.command.as_deref())?,
     "ffi" => permissions.request_ffi(args.path.as_deref())?,
-    n => {
-      return Err(custom_error(
-        "ReferenceError",
-        format!("No such permission name: {n}"),
-      ))
-    }
+    "import" => permissions.request_import(args.host.as_deref())?,
+    _ => return Err(PermissionError::InvalidPermissionName(args.name)),
   };
   Ok(PermissionStatus::from(perm))
 }

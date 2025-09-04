@@ -1,0 +1,37 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "$PWD/deno_dir"
+  },
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A --no-lock ./rm-version.ts $PWD/deno_dir/npm/localhost_4260/@denotest/add/registry.json 1.0.0",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A --no-lock ./mv.ts ./deno.lock.old ./deno.lock",
+      "output": ""
+    },
+    // trigger a lockfile update
+    {
+      "args": "install npm:chalk",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "remove npm:chalk",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": [
+        "eval",
+        "--no-lock",
+        "console.log(Deno.readTextFileSync('./deno.lock').trim())"
+      ],
+      "output": "deno.lock.out"
+    }
+  ]
+}

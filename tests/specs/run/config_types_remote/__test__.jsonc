@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --reload --quiet --check --config config_types/remote.tsconfig.json config_types/main.ts",
+  "output": "config_types/main.out"
+}

@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_cron"
-version = "0.52.0"
+version = "0.94.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,10 +14,11 @@ description = "Implementation of the Deno cron API"
 path = "lib.rs"
 
 [dependencies]
-anyhow.workspace = true
 async-trait.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
+deno_error.workspace = true
+deno_features.workspace = true
 saffron.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

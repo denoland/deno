@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 import { Buffer } from "node:buffer";
@@ -182,6 +182,7 @@ function getContextOptions(options) {
 
 let defaultContextNameIndex = 1;
 export function createContext(
+  // deno-lint-ignore prefer-primordials
   contextObject = {},
   options = { __proto__: null },
 ) {

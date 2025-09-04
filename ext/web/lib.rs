@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod blob;
 mod compression;
@@ -6,26 +6,29 @@ mod message_port;
 mod stream_resource;
 mod timers;
 
-use deno_core::error::range_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::op2;
-use deno_core::url::Url;
-use deno_core::v8;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::sync::Arc;
+
+pub use blob::BlobError;
+pub use compression::CompressionError;
 use deno_core::ByteString;
 use deno_core::ToJsBuffer;
 use deno_core::U16String;
-
+use deno_core::op2;
+use deno_core::url::Url;
+use deno_core::v8;
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
 use encoding_rs::DecoderResult;
 use encoding_rs::Encoding;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::fmt;
-use std::path::PathBuf;
-use std::sync::Arc;
+pub use message_port::MessagePortError;
+pub use stream_resource::StreamResourceError;
 
+pub use crate::blob::Blob;
+pub use crate::blob::BlobPart;
+pub use crate::blob::BlobStore;
+pub use crate::blob::InMemoryBlobPart;
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
 use crate::blob::op_blob_from_object_url;
@@ -33,11 +36,9 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
-pub use crate::blob::Blob;
-pub use crate::blob::BlobPart;
-pub use crate::blob::BlobStore;
-pub use crate::blob::InMemoryBlobPart;
-
+pub use crate::message_port::JsMessageData;
+pub use crate::message_port::MessagePort;
+pub use crate::message_port::Transferable;
 pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::deserialize_js_transferables;
 use crate::message_port::op_message_port_create_entangled;
@@ -45,14 +46,11 @@ use crate::message_port::op_message_port_post_message;
 use crate::message_port::op_message_port_recv_message;
 use crate::message_port::op_message_port_recv_message_sync;
 pub use crate::message_port::serialize_transferables;
-pub use crate::message_port::JsMessageData;
-pub use crate::message_port::MessagePort;
-pub use crate::message_port::Transferable;
-
+pub use crate::timers::StartTime;
+pub use crate::timers::TimersPermission;
 use crate::timers::op_defer;
 use crate::timers::op_now;
-use crate::timers::StartTime;
-pub use crate::timers::TimersPermission;
+use crate::timers::op_time_origin;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl, deno_console, deno_url ],
@@ -83,6 +81,7 @@ deno_core::extension!(deno_web,
     compression::op_compression_write,
     compression::op_compression_finish,
     op_now<P>,
+    op_time_origin<P>,
     op_defer,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
@@ -113,6 +112,7 @@ deno_core::extension!(deno_web,
     "15_performance.js",
     "16_image_data.js",
   ],
+  lazy_loaded_esm = [ "webtransport.js" ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
@@ -122,13 +122,38 @@ deno_core::extension!(deno_web,
     if let Some(location) = options.maybe_location {
       state.put(Location(location));
     }
-    state.put(StartTime::now());
+    state.put(StartTime::default());
   }
 );
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum WebError {
+  #[class("DOMExceptionInvalidCharacterError")]
+  #[error("Failed to decode base64")]
+  Base64Decode,
+  #[class(range)]
+  #[error("The encoding label provided ('{0}') is invalid.")]
+  InvalidEncodingLabel(String),
+  #[class(type)]
+  #[error("buffer exceeds maximum length")]
+  BufferTooLong,
+  #[class(range)]
+  #[error("Value too large to decode")]
+  ValueTooLarge,
+  #[class(range)]
+  #[error("Provided buffer too small")]
+  BufferTooSmall,
+  #[class(type)]
+  #[error("The encoded data is not valid")]
+  DataInvalid,
+  #[class(generic)]
+  #[error(transparent)]
+  DataError(#[from] v8::DataError),
+}
+
 #[op2]
 #[serde]
-fn op_base64_decode(#[string] input: String) -> Result<ToJsBuffer, AnyError> {
+fn op_base64_decode(#[string] input: String) -> Result<ToJsBuffer, WebError> {
   let mut s = input.into_bytes();
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
@@ -137,7 +162,7 @@ fn op_base64_decode(#[string] input: String) -> Result<ToJsBuffer, AnyError> {
 
 #[op2]
 #[serde]
-fn op_base64_atob(#[serde] mut s: ByteString) -> Result<ByteString, AnyError> {
+fn op_base64_atob(#[serde] mut s: ByteString) -> Result<ByteString, WebError> {
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
   Ok(s)
@@ -147,11 +172,9 @@ fn op_base64_atob(#[serde] mut s: ByteString) -> Result<ByteString, AnyError> {
 #[inline]
 fn forgiving_base64_decode_inplace(
   input: &mut [u8],
-) -> Result<usize, AnyError> {
-  let error =
-    || DomExceptionInvalidCharacterError::new("Failed to decode base64");
-  let decoded =
-    base64_simd::forgiving_decode_inplace(input).map_err(|_| error())?;
+) -> Result<usize, WebError> {
+  let decoded = base64_simd::forgiving_decode_inplace(input)
+    .map_err(|_| WebError::Base64Decode)?;
   Ok(decoded.len())
 }
 
@@ -169,7 +192,7 @@ fn op_base64_btoa(#[serde] s: ByteString) -> String {
 
 /// See <https://infra.spec.whatwg.org/#forgiving-base64>
 #[inline]
-fn forgiving_base64_encode(s: &[u8]) -> String {
+pub fn forgiving_base64_encode(s: &[u8]) -> String {
   base64_simd::STANDARD.encode_to_string(s)
 }
 
@@ -177,13 +200,9 @@ fn forgiving_base64_encode(s: &[u8]) -> String {
 #[string]
 fn op_encoding_normalize_label(
   #[string] label: String,
-) -> Result<String, AnyError> {
+) -> Result<String, WebError> {
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
-    .ok_or_else(|| {
-      range_error(format!(
-        "The encoding label provided ('{label}') is invalid."
-      ))
-    })?;
+    .ok_or(WebError::InvalidEncodingLabel(label))?;
   Ok(encoding.name().to_lowercase())
 }
 
@@ -192,7 +211,7 @@ fn op_encoding_decode_utf8<'a>(
   scope: &mut v8::HandleScope<'a>,
   #[anybuffer] zero_copy: &[u8],
   ignore_bom: bool,
-) -> Result<v8::Local<'a, v8::String>, AnyError> {
+) -> Result<v8::Local<'a, v8::String>, WebError> {
   let buf = &zero_copy;
 
   let buf = if !ignore_bom
@@ -216,7 +235,7 @@ fn op_encoding_decode_utf8<'a>(
   // - https://github.com/v8/v8/blob/d68fb4733e39525f9ff0a9222107c02c28096e2a/include/v8.h#L3277-L3278
   match v8::String::new_from_utf8(scope, buf, v8::NewStringType::Normal) {
     Some(text) => Ok(text),
-    None => Err(type_error("buffer exceeds maximum length")),
+    None => Err(WebError::BufferTooLong),
   }
 }
 
@@ -227,12 +246,9 @@ fn op_encoding_decode_single(
   #[string] label: String,
   fatal: bool,
   ignore_bom: bool,
-) -> Result<U16String, AnyError> {
-  let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
-    range_error(format!(
-      "The encoding label provided ('{label}') is invalid."
-    ))
-  })?;
+) -> Result<U16String, WebError> {
+  let encoding = Encoding::for_label(label.as_bytes())
+    .ok_or(WebError::InvalidEncodingLabel(label))?;
 
   let mut decoder = if ignore_bom {
     encoding.new_decoder_without_bom_handling()
@@ -242,7 +258,7 @@ fn op_encoding_decode_single(
 
   let max_buffer_length = decoder
     .max_utf16_buffer_length(data.len())
-    .ok_or_else(|| range_error("Value too large to decode."))?;
+    .ok_or(WebError::ValueTooLarge)?;
 
   let mut output = vec![0; max_buffer_length];
 
@@ -254,12 +270,8 @@ fn op_encoding_decode_single(
         output.truncate(written);
         Ok(output.into())
       }
-      DecoderResult::OutputFull => {
-        Err(range_error("Provided buffer too small."))
-      }
-      DecoderResult::Malformed(_, _) => {
-        Err(type_error("The encoded data is not valid."))
-      }
+      DecoderResult::OutputFull => Err(WebError::BufferTooSmall),
+      DecoderResult::Malformed(_, _) => Err(WebError::DataInvalid),
     }
   } else {
     let (result, _, written, _) =
@@ -269,7 +281,7 @@ fn op_encoding_decode_single(
         output.truncate(written);
         Ok(output.into())
       }
-      CoderResult::OutputFull => Err(range_error("Provided buffer too small.")),
+      CoderResult::OutputFull => Err(WebError::BufferTooSmall),
     }
   }
 }
@@ -280,12 +292,9 @@ fn op_encoding_new_decoder(
   #[string] label: &str,
   fatal: bool,
   ignore_bom: bool,
-) -> Result<TextDecoderResource, AnyError> {
-  let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
-    range_error(format!(
-      "The encoding label provided ('{label}') is invalid."
-    ))
-  })?;
+) -> Result<TextDecoderResource, WebError> {
+  let encoding = Encoding::for_label(label.as_bytes())
+    .ok_or_else(|| WebError::InvalidEncodingLabel(label.to_string()))?;
 
   let decoder = if ignore_bom {
     encoding.new_decoder_without_bom_handling()
@@ -305,13 +314,13 @@ fn op_encoding_decode(
   #[anybuffer] data: &[u8],
   #[cppgc] resource: &TextDecoderResource,
   stream: bool,
-) -> Result<U16String, AnyError> {
+) -> Result<U16String, WebError> {
   let mut decoder = resource.decoder.borrow_mut();
   let fatal = resource.fatal;
 
   let max_buffer_length = decoder
     .max_utf16_buffer_length(data.len())
-    .ok_or_else(|| range_error("Value too large to decode."))?;
+    .ok_or(WebError::ValueTooLarge)?;
 
   let mut output = vec![0; max_buffer_length];
 
@@ -323,12 +332,8 @@ fn op_encoding_decode(
         output.truncate(written);
         Ok(output.into())
       }
-      DecoderResult::OutputFull => {
-        Err(range_error("Provided buffer too small."))
-      }
-      DecoderResult::Malformed(_, _) => {
-        Err(type_error("The encoded data is not valid."))
-      }
+      DecoderResult::OutputFull => Err(WebError::BufferTooSmall),
+      DecoderResult::Malformed(_, _) => Err(WebError::DataInvalid),
     }
   } else {
     let (result, _, written, _) =
@@ -338,7 +343,7 @@ fn op_encoding_decode(
         output.truncate(written);
         Ok(output.into())
       }
-      CoderResult::OutputFull => Err(range_error("Provided buffer too small.")),
+      CoderResult::OutputFull => Err(WebError::BufferTooSmall),
     }
   }
 }
@@ -348,15 +353,20 @@ struct TextDecoderResource {
   fatal: bool,
 }
 
-impl deno_core::GarbageCollected for TextDecoderResource {}
+impl deno_core::GarbageCollected for TextDecoderResource {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"TextDecoderResource"
+  }
+}
 
 #[op2(fast(op_encoding_encode_into_fast))]
+#[allow(deprecated)]
 fn op_encoding_encode_into(
   scope: &mut v8::HandleScope,
   input: v8::Local<v8::Value>,
   #[buffer] buffer: &mut [u8],
   #[buffer] out_buf: &mut [u32],
-) -> Result<(), AnyError> {
+) -> Result<(), WebError> {
   let s = v8::Local::<v8::String>::try_from(input)?;
 
   let mut nchars = 0;
@@ -410,57 +420,4 @@ fn op_encoding_encode_into_fast(
   out_buf[1] = boundary as u32;
 }
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_web.d.ts")
-}
-
-#[derive(Debug)]
-pub struct DomExceptionQuotaExceededError {
-  pub msg: String,
-}
-
-impl DomExceptionQuotaExceededError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionQuotaExceededError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-#[derive(Debug)]
-pub struct DomExceptionInvalidCharacterError {
-  pub msg: String,
-}
-
-impl DomExceptionInvalidCharacterError {
-  pub fn new(msg: &str) -> Self {
-    DomExceptionInvalidCharacterError {
-      msg: msg.to_string(),
-    }
-  }
-}
-
-impl fmt::Display for DomExceptionQuotaExceededError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-impl fmt::Display for DomExceptionInvalidCharacterError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.pad(&self.msg)
-  }
-}
-
-impl std::error::Error for DomExceptionQuotaExceededError {}
-
-impl std::error::Error for DomExceptionInvalidCharacterError {}
-
-pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
-  e.downcast_ref::<DomExceptionQuotaExceededError>()
-    .map(|_| "DOMExceptionQuotaExceededError")
-    .or_else(|| {
-      e.downcast_ref::<DomExceptionInvalidCharacterError>()
-        .map(|_| "DOMExceptionInvalidCharacterError")
-    })
-}
 pub struct Location(pub Url);

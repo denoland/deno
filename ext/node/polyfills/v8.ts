@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
@@ -7,7 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { primordials } from "ext:core/mod.js";
-const { ObjectPrototypeToString } = primordials;
+const { ObjectPrototypeToString, SymbolSpecies } = primordials;
 import {
   op_v8_cached_data_version_tag,
   op_v8_get_heap_statistics,
@@ -227,6 +227,7 @@ function arrayBufferViewTypeToIndex(abView: ArrayBufferView) {
   // Index 10 is FastBuffer.
   if (type === "[object BigInt64Array]") return 11;
   if (type === "[object BigUint64Array]") return 12;
+  if (type === "[object Float16Array]") return 13;
   return -1;
 }
 export class DefaultSerializer extends Serializer {
@@ -273,9 +274,10 @@ function arrayBufferViewIndexToType(index: number): any {
   if (index === 7) return Float32Array;
   if (index === 8) return Float64Array;
   if (index === 9) return DataView;
-  if (index === 10) return Buffer;
+  if (index === 10) return Buffer[SymbolSpecies];
   if (index === 11) return BigInt64Array;
   if (index === 12) return BigUint64Array;
+  if (index === 13) return Float16Array;
   return undefined;
 }
 

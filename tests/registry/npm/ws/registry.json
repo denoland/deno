@@ -1,0 +1,96 @@
+{
+  "name": "ws",
+  "description": "Simple to use, blazing fast and thoroughly tested websocket client and server for Node.js",
+  "dist-tags": {
+    "latest": "8.18.0"
+  },
+  "versions": {
+    "8.18.0": {
+      "name": "ws",
+      "version": "8.18.0",
+      "description": "Simple to use, blazing fast and thoroughly tested websocket client and server for Node.js",
+      "bugs": {
+        "url": "https://github.com/websockets/ws/issues"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/websockets/ws.git"
+      },
+      "author": {
+        "name": "Einar Otto Stangvik",
+        "email": "einaros@gmail.com",
+        "url": "http://2x.io"
+      },
+      "license": "MIT",
+      "main": "index.js",
+      "exports": {
+        ".": {
+          "browser": "./browser.js",
+          "import": "./wrapper.mjs",
+          "require": "./index.js"
+        },
+        "./package.json": "./package.json"
+      },
+      "browser": "browser.js",
+      "engines": {
+        "node": ">=10.0.0"
+      },
+      "scripts": {
+        "test": "nyc --reporter=lcov --reporter=text mocha --throw-deprecation test/*.test.js",
+        "integration": "mocha --throw-deprecation test/*.integration.js",
+        "lint": "eslint . && prettier --check --ignore-path .gitignore \"**/*.{json,md,yaml,yml}\""
+      },
+      "peerDependencies": {
+        "bufferutil": "^4.0.1",
+        "utf-8-validate": ">=5.0.2"
+      },
+      "peerDependenciesMeta": {
+        "bufferutil": {
+          "optional": true
+        },
+        "utf-8-validate": {
+          "optional": true
+        }
+      },
+      "devDependencies": {
+        "benchmark": "^2.1.4",
+        "bufferutil": "^4.0.1",
+        "eslint": "^9.0.0",
+        "eslint-config-prettier": "^9.0.0",
+        "eslint-plugin-prettier": "^5.0.0",
+        "globals": "^15.0.0",
+        "mocha": "^8.4.0",
+        "nyc": "^15.0.0",
+        "prettier": "^3.0.0",
+        "utf-8-validate": "^6.0.0"
+      },
+      "_id": "ws@8.18.0",
+      "gitHead": "976c53c4065c49ede73bfba824caf5a6e0f290cb",
+      "_nodeVersion": "22.4.0",
+      "_npmVersion": "10.8.1",
+      "dist": {
+        "integrity": "sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw==",
+        "shasum": "0d7505a6eafe2b0e712d232b42279f53bc289bbc",
+        "tarball": "http://localhost:4260/ws/ws-8.18.0.tgz",
+        "fileCount": 19,
+        "unpackedSize": 146647
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "author": {
+    "name": "Einar Otto Stangvik",
+    "email": "einaros@gmail.com",
+    "url": "http://2x.io"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/websockets/ws.git"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/websockets/ws",
+  "bugs": {
+    "url": "https://github.com/websockets/ws/issues"
+  }
+}

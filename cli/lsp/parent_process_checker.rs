@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::time::Duration;
 
@@ -7,11 +7,13 @@ use std::time::Duration;
 /// it will terminate the current process.
 pub fn start(parent_process_id: u32) {
   // use a separate thread in case the runtime gets hung up
-  std::thread::spawn(move || loop {
-    std::thread::sleep(Duration::from_secs(10));
+  std::thread::spawn(move || {
+    loop {
+      std::thread::sleep(Duration::from_secs(10));
 
-    if !is_process_active(parent_process_id) {
-      std::process::exit(1);
+      if !is_process_active(parent_process_id) {
+        deno_runtime::exit(1);
+      }
     }
   });
 }
@@ -52,9 +54,11 @@ fn is_process_active(process_id: u32) -> bool {
 
 #[cfg(test)]
 mod test {
-  use super::is_process_active;
   use std::process::Command;
+
   use test_util::deno_exe_path;
+
+  use super::is_process_active;
 
   #[test]
   fn process_active() {

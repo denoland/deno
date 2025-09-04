@@ -1,0 +1,9 @@
+{
+  "name": "bin_package",
+  "devDependencies": {
+    "@denotest/bin": "1.0.0"
+  },
+  "scripts": {
+    "sayhi": "cli-esm hi hello"
+  }
+}

@@ -1,36 +1,48 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::callback::PtrSymbol;
-use crate::dlfcn::DynamicLibraryResource;
-use crate::ir::*;
-use crate::symbol::NativeType;
-use crate::symbol::Symbol;
-use crate::FfiPermissions;
-use crate::ForeignFunction;
-use deno_core::op2;
-use deno_core::serde_json::Value;
-use deno_core::serde_v8::ExternalPointer;
-use deno_core::unsync::spawn_blocking;
-use deno_core::v8;
-use deno_core::OpState;
-use deno_core::ResourceId;
-use libffi::middle::Arg;
-use serde::Serialize;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::future::Future;
 use std::rc::Rc;
 
-#[derive(Debug, thiserror::Error)]
+use deno_core::OpState;
+use deno_core::ResourceId;
+use deno_core::op2;
+use deno_core::serde_json::Value;
+use deno_core::serde_v8::BigInt as V8BigInt;
+use deno_core::serde_v8::ExternalPointer;
+use deno_core::unsync::spawn_blocking;
+use deno_core::v8;
+use libffi::middle::Arg;
+use num_bigint::BigInt;
+use serde::Serialize;
+
+use crate::FfiPermissions;
+use crate::ForeignFunction;
+use crate::callback::PtrSymbol;
+use crate::dlfcn::DynamicLibraryResource;
+use crate::ir::*;
+use crate::symbol::NativeType;
+use crate::symbol::Symbol;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CallError {
+  #[class(type)]
   #[error(transparent)]
   IR(#[from] IRError),
+  #[class(generic)]
   #[error("Nonblocking FFI call failed: {0}")]
   NonblockingCallFailure(#[source] tokio::task::JoinError),
+  #[class(type)]
   #[error("Invalid FFI symbol name: '{0}'")]
   InvalidSymbol(String),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Callback(#[from] super::CallbackError),
 }
@@ -42,12 +54,15 @@ unsafe fn ffi_call_rtype_struct(
   call_args: Vec<Arg>,
   out_buffer: *mut u8,
 ) {
-  libffi::raw::ffi_call(
-    cif.as_raw_ptr(),
-    Some(*fn_ptr.as_safe_fun()),
-    out_buffer as *mut c_void,
-    call_args.as_ptr() as *mut *mut c_void,
-  );
+  #[allow(clippy::undocumented_unsafe_blocks)]
+  unsafe {
+    libffi::raw::ffi_call(
+      cif.as_raw_ptr(),
+      Some(*fn_ptr.as_safe_fun()),
+      out_buffer as *mut c_void,
+      call_args.as_ptr() as *mut *mut c_void,
+    );
+  }
 }
 
 // A one-off synchronous FFI call.
@@ -113,7 +128,7 @@ where
         ffi_args.push(ffi_parse_f64_arg(value)?);
       }
       NativeType::Buffer => {
-        ffi_args.push(ffi_parse_buffer_arg(scope, value)?);
+        ffi_args.push(ffi_parse_buffer_arg(value)?);
       }
       NativeType::Struct(_) => {
         ffi_args.push(ffi_parse_struct_arg(scope, value)?);
@@ -202,6 +217,7 @@ where
 #[serde(untagged)]
 pub enum FfiValue {
   Value(Value),
+  BigInt(V8BigInt),
   External(ExternalPointer),
 }
 
@@ -251,18 +267,18 @@ fn ffi_call(
       NativeType::I32 => {
         FfiValue::Value(Value::from(cif.call::<i32>(fun_ptr, &call_args)))
       }
-      NativeType::U64 => {
-        FfiValue::Value(Value::from(cif.call::<u64>(fun_ptr, &call_args)))
-      }
-      NativeType::I64 => {
-        FfiValue::Value(Value::from(cif.call::<i64>(fun_ptr, &call_args)))
-      }
-      NativeType::USize => {
-        FfiValue::Value(Value::from(cif.call::<usize>(fun_ptr, &call_args)))
-      }
-      NativeType::ISize => {
-        FfiValue::Value(Value::from(cif.call::<isize>(fun_ptr, &call_args)))
-      }
+      NativeType::U64 => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<u64>(fun_ptr, &call_args),
+      ))),
+      NativeType::I64 => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<i64>(fun_ptr, &call_args),
+      ))),
+      NativeType::USize => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<usize>(fun_ptr, &call_args),
+      ))),
+      NativeType::ISize => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+        cif.call::<isize>(fun_ptr, &call_args),
+      ))),
       NativeType::F32 => {
         FfiValue::Value(Value::from(cif.call::<f32>(fun_ptr, &call_args)))
       }
@@ -282,7 +298,7 @@ fn ffi_call(
   }
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr_nonblocking<FP>(
   scope: &mut v8::HandleScope,
@@ -291,16 +307,17 @@ pub fn op_ffi_call_ptr_nonblocking<FP>(
   #[serde] def: ForeignFunction,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError>
+) -> Result<
+  impl Future<Output = Result<FfiValue, CallError>> + use<FP>,
+  CallError,
+>
 where
   FP: FfiPermissions + 'static,
 {
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions
-      .check_partial_no_path()
-      .map_err(CallError::Permission)?;
+    permissions.check_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
@@ -338,13 +355,11 @@ pub fn op_ffi_call_nonblocking(
   #[string] symbol: String,
   parameters: v8::Local<v8::Array>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
-) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError> {
+) -> Result<impl Future<Output = Result<FfiValue, CallError>> + use<>, CallError>
+{
   let symbol = {
     let state = state.borrow();
-    let resource = state
-      .resource_table
-      .get::<DynamicLibraryResource>(rid)
-      .map_err(CallError::Permission)?;
+    let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
     let symbols = &resource.symbols;
     *symbols
       .get(&symbol)
@@ -382,7 +397,7 @@ pub fn op_ffi_call_nonblocking(
   })
 }
 
-#[op2(reentrant)]
+#[op2(reentrant, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
   scope: &mut v8::HandleScope,
@@ -398,9 +413,7 @@ where
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions
-      .check_partial_no_path()
-      .map_err(CallError::Permission)?;
+    permissions.check_partial_no_path()?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;

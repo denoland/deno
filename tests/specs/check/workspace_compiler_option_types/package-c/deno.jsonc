@@ -1,0 +1,13 @@
+{
+  // the config for this package should be grouped together with
+  // package-a because it's the same
+  "compilerOptions": {
+    "types": [
+      // these are swapped with what's in package-a and Deno should
+      // still handle type checking them together because the config
+      // is the same
+      "../package-a/other-globals.d.ts",
+      "../package-a/globals.d.ts"
+    ]
+  }
+}

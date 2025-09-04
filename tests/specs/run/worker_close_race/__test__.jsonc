@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-read worker_close_race.js",
+  "output": "worker_close_race.js.out"
+}

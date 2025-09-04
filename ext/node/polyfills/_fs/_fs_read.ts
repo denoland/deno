@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -18,6 +18,10 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
+
+const { ObjectDefineProperty } = primordials;
 
 type readSyncOptions = {
   offset: number;
@@ -144,6 +148,12 @@ export function read(
     }
   })();
 }
+
+ObjectDefineProperty(read, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesRead", "buffer"],
+  enumerable: false,
+});
 
 export function readSync(
   fd: number,

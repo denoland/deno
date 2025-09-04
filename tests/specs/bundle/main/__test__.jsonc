@@ -1,0 +1,125 @@
+{
+  "tempDir": true,
+  "tests": {
+    "npm_specifier": {
+      "steps": [
+        {
+          "args": "i -e main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A main.ts",
+          "output": "Hello, world!\n"
+        },
+        {
+          "args": "bundle --output=out.js main.ts",
+          "output": "npm_specifier.out"
+        },
+        {
+          "args": "clean",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "Hello, world!\n"
+        }
+      ]
+    },
+    "npm_specifier_with_import_map": {
+      "steps": [
+        {
+          "args": "i npm:chalk",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A main2.ts",
+          "output": "Hello, world!\n"
+        },
+        {
+          "args": "bundle --output=out.js main2.ts",
+          "output": "npm_specifier_with_import_map.out"
+        },
+        {
+          "args": "clean",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "Hello, world!\n"
+        }
+      ]
+    },
+    "jsr_specifier": {
+      "steps": [
+        {
+          "args": "i -e main_jsr.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "bundle --output=out.js main_jsr.ts",
+          "output": "jsr_specifier.out"
+        },
+        {
+          "args": "clean",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "2\n"
+        }
+      ]
+    },
+    "requires_node_builtin": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js uses_node_builtin.cjs",
+          "output": "requires_node_builtin.out"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "{ a: 1, b: 'hello' }\n"
+        }
+      ]
+    },
+    "requires_node_builtin_minified": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js --minify uses_node_builtin.cjs",
+          "output": "requires_node_builtin.out"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "{ a: 1, b: 'hello' }\n"
+        }
+      ]
+    },
+    "json_import": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js imports_json.ts",
+          "output": "json_import.out"
+        },
+        {
+          "args": ["eval", "console.log(Deno.readTextFileSync('./out.js'))"],
+          "output": "imports_json.out"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "{ hi: \"bye\", thing: { other: \"thing\" } }\n"
+        }
+      ]
+    },
+    "sloppy_imports": {
+      "steps": [
+        {
+          "args": "bundle --sloppy-imports --output=out.js sloppy.ts",
+          "output": "sloppy_imports.out"
+        },
+        {
+          "args": "run --no-lock --cached-only --no-config -A out.js",
+          "output": "{ hi: \"bye\", thing: { other: \"thing\" } }\n"
+        }
+      ]
+    }
+  }
+}

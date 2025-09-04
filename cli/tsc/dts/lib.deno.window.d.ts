@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -7,14 +7,41 @@
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
 
-/** @category Platform */
+/**
+ * Defines the mapping between event names and their corresponding event types
+ * for the `Window` interface in Deno.
+ *
+ * This interface provides type safety for event handlers by associating event names
+ * with their proper event types.
+ *
+ * @category Platform
+ */
 interface WindowEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
   "rejectionhandled": PromiseRejectionEvent;
 }
 
-/** @category Platform */
+/**
+ * Represents the global window object in the Deno runtime environment.
+ *
+ * While Deno doesn't have a browser window, this interface mimics browser window
+ * functionality for compatibility with web APIs. It provides access to global
+ * properties and methods such as timers, storage, and event handling.
+ *
+ * @example
+ * ```ts
+ * // Accessing global objects
+ * const localStorage = window.localStorage;
+ *
+ * // Event handling
+ * window.addEventListener("unhandledrejection", (event) => {
+ *   console.log("Unhandled promise rejection:", event.reason);d
+ * });
+ * ```
+ *
+ * @category Platform
+ */
 interface Window extends EventTarget {
   readonly window: Window & typeof globalThis;
   readonly self: Window & typeof globalThis;
@@ -71,40 +98,264 @@ interface Window extends EventTarget {
   ): void;
 }
 
-/** @category Platform */
+/**
+ * Constructor for `Window` objects.
+ *
+ * Note: This constructor cannot be used to create new `Window` instances in Deno.
+ * The global `window` object is pre-defined in the runtime environment.
+ *
+ * @category Platform
+ */
 declare var Window: {
   readonly prototype: Window;
   new (): never;
 };
 
-/** @category Platform */
+/**
+ * The window variable was removed in Deno 2. This declaration should be
+ * removed at some point, but we're leaving it in out of caution.
+ * @ignore
+ * @category Platform
+ */
 declare var window: Window & typeof globalThis;
-/** @category Platform */
+
+/**
+ * Reference to the global object itself.
+ * Equivalent to the global `window` object in browser environments.
+ *
+ * @category Platform
+ */
 declare var self: Window & typeof globalThis;
-/** @category Platform */
+
+/**
+ * Indicates whether the current window (context) is closed.
+ * In Deno, this property is primarily for API compatibility with browsers.
+ *
+ * @category Platform
+ */
 declare var closed: boolean;
-/** @category Platform */
+
+/**
+ * Exits the current Deno process.
+ *
+ * This function terminates the process by signaling the runtime to exit.
+ * Similar to exit(0) in posix. Its behavior is similar to the `window.close()`
+ * method in the browser, but specific to the Deno runtime.
+ *
+ * Note: Use this function cautiously, as it will stop the execution of the
+ * entire Deno program immediately.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/close
+ *
+ * @example
+ * ```ts
+ * console.log("About to close the Deno process.");
+ * close(); // The process will terminate here.
+ * console.log("This will not be logged."); // This line will never execute.
+ * ```
+ *
+ * @category Platform
+ */
 declare function close(): void;
-/** @category Events */
+
+/**
+ * Error event handler for the window.
+ * Triggered when an uncaught error occurs in the global scope.
+ *
+ * @example
+ * ```ts
+ * onerror = (event) => {
+ *   console.log(`Error occurred: ${event.message}`);
+ *   return true; // Prevents the default error handling
+ * };
+ * ```
+ *
+ * @category Events
+ */
 declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
-/** @category Events */
+
+/**
+ * Load event handler for the window.
+ * In Deno, this is primarily for API compatibility with browsers.
+ *
+ * @category Events
+ */
 declare var onload: ((this: Window, ev: Event) => any) | null;
-/** @category Events */
+
+/**
+ * Before unload event handler for the window.
+ * In Deno, this is primarily for API compatibility with browsers.
+ *
+ * @category Events
+ */
 declare var onbeforeunload: ((this: Window, ev: Event) => any) | null;
-/** @category Events */
+
+/**
+ * Unload event handler for the window.
+ * In Deno, this is primarily for API compatibility with browsers.
+ *
+ * @category Events
+ */
 declare var onunload: ((this: Window, ev: Event) => any) | null;
-/** @category Events */
+
+/**
+ * Event handler for unhandled promise rejections.
+ * Triggered when a `Promise` is rejected and no rejection handler is attached to it.
+ *
+ * @example
+ * ```ts
+ * onunhandledrejection = (event) => {
+ *   console.log("Unhandled rejection:", event.reason);
+ *   event.preventDefault(); // Prevents the default handling
+ * };
+ *
+ * // This will trigger the event handler
+ * Promise.reject(new Error("Example error"));
+ * ```
+ *
+ * @category Events
+ */
 declare var onunhandledrejection:
   | ((this: Window, ev: PromiseRejectionEvent) => any)
   | null;
-/** @category Storage */
+
+/**
+ * Deno's `localStorage` API provides a way to store key-value pairs in a
+ * web-like environment, similar to the Web Storage API found in browsers.
+ * It allows developers to persist data across sessions in a Deno application.
+ * This API is particularly useful for applications that require a simple
+ * and effective way to store data locally.
+ *
+ * - Key-Value Storage: Stores data as key-value pairs.
+ * - Persistent: Data is retained even after the application is closed.
+ * - Synchronous API: Operations are performed synchronously.
+ *
+ * `localStorage` is similar to {@linkcode sessionStorage}, and shares the same
+ * API methods, visible in the {@linkcode Storage} type.
+ *
+ * When using the `--location` flag, the origin for the location is used to
+ * uniquely store the data. That means a location of http://example.com/a.ts
+ * and http://example.com/b.ts and http://example.com:80/ would all share the
+ * same storage, but https://example.com/ would be different.
+ *
+ * For more information, see the reference guide for
+ * [Web Storage](https://docs.deno.com/runtime/reference/web_platform_apis/#web-storage)
+ * and using
+ * [the `--location` flag](https://docs.deno.com/runtime/reference/web_platform_apis/#location-flag).
+ *
+ * @example
+ * ```ts
+ * // Set a value in localStorage
+ * localStorage.setItem("key", "value");
+ *
+ * // Get a value from localStorage
+ * const value = localStorage.getItem("key");
+ * console.log(value); // Output: "value"
+ *
+ * // Remove a value from localStorage
+ * localStorage.removeItem("key");
+ *
+ * // Clear all values from localStorage
+ * localStorage.clear();
+ * ```
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage
+ * @category Storage */
 declare var localStorage: Storage;
-/** @category Storage */
+
+/**
+ * Deno's `sessionStorage` API operates similarly to the {@linkcode localStorage} API,
+ * but it is intended for storing data temporarily for the duration of a session.
+ * Data stored in sessionStorage is cleared when the application session or
+ * process ends. This makes it suitable for temporary data that you do not need
+ * to persist across user sessions.
+ *
+ * - Key-Value Storage: Stores data as key-value pairs.
+ * - Session-Based: Data is only available for the duration of the page session.
+ * - Synchronous API: Operations are performed synchronously.
+ *
+ * `sessionStorage` is similar to {@linkcode localStorage}, and shares the same API
+ * methods, visible in the {@linkcode Storage} type.
+ *
+ * For more information, see the reference guide for
+ * [Web Storage](https://docs.deno.com/runtime/reference/web_platform_apis/#web-storage)
+ *
+ * @example
+ * ```ts
+ * // Set a value in sessionStorage
+ * sessionStorage.setItem("key", "value");
+ *
+ * // Get a value from sessionStorage
+ * const value = sessionStorage.getItem("key");
+ * console.log(value); // Output: "value"
+ *
+ * // Remove a value from sessionStorage
+ * sessionStorage.removeItem("key");
+ *
+ * // Clear all the values from sessionStorage
+ * sessionStorage.clear();
+ * ```
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage
+ * @category Storage
+ */
 declare var sessionStorage: Storage;
 /** @category Cache */
+/**
+ * Provides access to the Cache API. Returns a CacheStorage object, which enables storing, retrieving, and managing request/response pairs in a cache.
+ *
+ * @example
+ * ```ts
+ * // Open (or create) a cache
+ * const cache = await caches.open('v1');
+ *
+ * // Store a response
+ * await cache.put('/api/data', new Response('Hello World'));
+ *
+ * // Retrieve from cache with fallback
+ * const response = await caches.match('/api/data') || await fetch('/api/data');
+ *
+ * // Delete specific cache
+ * await caches.delete('v1');
+ *
+ * // List all cache names
+ * const cacheNames = await caches.keys();
+ *
+ * // Cache-first strategy
+ * async function fetchWithCache(request) {
+ *   const cached = await caches.match(request);
+ *   if (cached) return cached;
+ *
+ *   const response = await fetch(request);
+ *   const cache = await caches.open('v1');
+ *   await cache.put(request, response.clone());
+ *   return response;
+ * }
+ * ```
+ *
+ * @see  https://developer.mozilla.org/en-US/docs/Web/API/Window/caches
+ */
 declare var caches: CacheStorage;
 
-/** @category Platform */
+/**
+ * Provides information about the Deno runtime environment and the system
+ * on which it's running. Similar to the browser `Navigator` object but
+ * adapted for the Deno context.
+ *
+ * @example
+ * ```ts
+ * // Check available CPU cores
+ * console.log(`Available CPU cores: ${navigator.hardwareConcurrency}`);
+ *
+ * // Check user agent
+ * console.log(`User agent: ${navigator.userAgent}`);
+ *
+ * // Check language settings
+ * console.log(`Language: ${navigator.language}`);
+ * ```
+ *
+ * @category Platform
+ */
 interface Navigator {
   readonly gpu: GPU;
   readonly hardwareConcurrency: number;
@@ -113,13 +364,32 @@ interface Navigator {
   readonly languages: string[];
 }
 
-/** @category Platform */
+/**
+ * Constructor for `Navigator` objects.
+ *
+ * Note: This constructor cannot be used to create new `Navigator` instances in Deno.
+ * The global `navigator` object is pre-defined in the runtime environment.
+ *
+ * @category Platform
+ */
 declare var Navigator: {
   readonly prototype: Navigator;
   new (): never;
 };
 
-/** @category Platform */
+/**
+ * Provides access to the Deno runtime's `Navigator` interface, which contains
+ * information about the environment in which the script is running.
+ *
+ * @example
+ * ```ts
+ * // Log information about the runtime environment
+ * console.log(`Hardware concurrency: ${navigator.hardwareConcurrency}`);
+ * console.log(`User agent: ${navigator.userAgent}`);
+ * ```
+ *
+ * @category Platform
+ */
 declare var navigator: Navigator;
 
 /**
@@ -127,6 +397,12 @@ declare var navigator: Navigator;
  *
  * If the stdin is not interactive, it does nothing.
  *
+ * @example
+ * ```ts
+ * // Displays the message "Acknowledge me! [Enter]" and waits for the enter key to be pressed before continuing.
+ * alert("Acknowledge me!");
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/alert
  * @category Platform
  *
  * @param message
@@ -140,6 +416,15 @@ declare function alert(message?: string): void;
  *
  * If the stdin is not interactive, it returns false.
  *
+ * @example
+ * ```ts
+ * const shouldProceed = confirm("Do you want to proceed?");
+ *
+ * // If the user presses 'y' or 'Y', the result will be true
+ * // If the user presses 'n' or 'N', the result will be false
+ * console.log("Should proceed?", shouldProceed);
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/confirm
  * @category Platform
  *
  * @param message
@@ -156,6 +441,15 @@ declare function confirm(message?: string): boolean;
  * string.
  *
  * If the stdin is not interactive, it returns null.
+ *
+ * @example
+ * ```ts
+ * const pet = prompt("Cats or dogs?", "It's fine to love both!");
+ *
+ * // Displays the user's input or the default value of "It's fine to love both!"
+ * console.log("Best pet:", pet);
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/prompt
  *
  * @category Platform
  *

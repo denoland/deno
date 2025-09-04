@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
@@ -21,26 +21,33 @@ import {
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
-  unrefPollForMessages,
+  unrefParentPort,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
+import { untransferableSymbol } from "ext:deno_node/internal_binding/util.ts";
 import process from "node:process";
+import { createRequire } from "node:module";
 
-const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
 const {
+  encodeURIComponent,
   Error,
+  FunctionPrototypeCall,
+  JSONParse,
+  JSONStringify,
   ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
+  SafeMap,
   SafeSet,
+  SafeWeakMap,
+  StringPrototypeStartsWith,
+  StringPrototypeTrim,
   Symbol,
   SymbolFor,
   SymbolIterator,
-  StringPrototypeTrim,
-  SafeWeakMap,
-  SafeMap,
   TypeError,
 } = primordials;
 
@@ -123,13 +130,17 @@ class NodeWorker extends EventEmitter {
       );
     }
     if (options?.eval) {
-      specifier = `data:text/javascript,${specifier}`;
+      const code = typeof specifier === "string"
+        ? encodeURIComponent(specifier)
+        // deno-lint-ignore prefer-primordials
+        : specifier.toString();
+      specifier = `data:text/javascript,${code}`;
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
       // deno-lint-ignore prefer-primordials
       specifier = specifier.toString();
-      specifier = op_worker_threads_filename(specifier);
+      specifier = op_worker_threads_filename(specifier) ?? specifier;
     }
 
     // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
@@ -162,7 +173,7 @@ class NodeWorker extends EventEmitter {
         sourceCode: "",
         permissions: null,
         name: this.#name,
-        workerType: "module",
+        workerType: "node",
         closeOnIdle: true,
       },
       serializedWorkerMetadata,
@@ -171,6 +182,7 @@ class NodeWorker extends EventEmitter {
     this.threadId = id;
     this.#pollControl();
     this.#pollMessages();
+    process.nextTick(() => process.emit("worker", this));
   }
 
   [privateWorkerRef](ref) {
@@ -355,6 +367,7 @@ internals.__initWorkerThreads = (
   runningOnMainThread: boolean,
   workerId,
   maybeWorkerMetadata,
+  moduleSpecifier,
 ) => {
   isMainThread = runningOnMainThread;
 
@@ -369,6 +382,17 @@ internals.__initWorkerThreads = (
   defaultExport.resourceLimits = resourceLimits;
 
   if (!isMainThread) {
+    // TODO(bartlomieju): this is a really hacky way to provide
+    // require in worker_threads - this should be rewritten to use proper
+    // CJS/ESM loading
+    if (moduleSpecifier) {
+      globalThis.require = createRequire(
+        StringPrototypeStartsWith(moduleSpecifier, "data:")
+          ? `${Deno.cwd()}/[worker eval]`
+          : moduleSpecifier,
+      );
+    }
+
     const listeners = new SafeWeakMap<
       // deno-lint-ignore no-explicit-any
       (...args: any[]) => void,
@@ -446,10 +470,10 @@ internals.__initWorkerThreads = (
       parentPort.emit("close");
     });
     parentPort.unref = () => {
-      parentPort[unrefPollForMessages] = true;
+      parentPort[unrefParentPort] = true;
     };
     parentPort.ref = () => {
-      parentPort[unrefPollForMessages] = false;
+      parentPort[unrefParentPort] = false;
     };
 
     if (isWorkerThread) {
@@ -572,6 +596,22 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   };
   port.ref = () => {
     port[refMessagePort](true);
+  };
+  const webPostMessage = port.postMessage;
+  port.postMessage = (message, transferList) => {
+    for (let i = 0; i < transferList?.length; i++) {
+      const item = transferList[i];
+      if (item[untransferableSymbol] === true) {
+        throw new DOMException("Value not transferable", "DataCloneError");
+      }
+    }
+
+    return FunctionPrototypeCall(
+      webPostMessage,
+      port,
+      message,
+      transferList,
+    );
   };
   port.once = (name: string | symbol, listener) => {
     const fn = (event) => {

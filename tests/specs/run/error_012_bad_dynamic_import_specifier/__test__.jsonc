@@ -1,0 +1,5 @@
+{
+  "args": "run --reload --check error_012_bad_dynamic_import_specifier.ts",
+  "output": "error_012_bad_dynamic_import_specifier.ts.out",
+  "exitCode": 1
+}

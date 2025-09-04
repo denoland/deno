@@ -1,4 +1,4 @@
-error: TS2551 [ERROR]: Property 'Test2' does not exist on type 'typeof import("@denotest/types-ambient")'. Did you mean 'Test'?
+TS2551 [ERROR]: Property 'Test2' does not exist on type 'typeof import("@denotest/types-ambient")'. Did you mean 'Test'?
 console.log(mod.Test2); // should error
                 ~~~~~
     at file:///[WILDCARD]/main_import_map.ts:4:17
@@ -7,3 +7,5 @@ console.log(mod.Test2); // should error
       class Test {
             ~~~~
         at file:///[WILDCARD]/@denotest/types-ambient/1.0.0/index.d.ts:7:9
+
+error: Type checking failed.

@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet -A spawn_stdout_inherit.ts",
+  "output": "spawn_stdout_inherit.ts.out"
+}

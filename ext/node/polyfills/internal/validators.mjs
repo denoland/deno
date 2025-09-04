@@ -1,19 +1,29 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
-
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 
 import { primordials } from "ext:core/mod.js";
 const {
+  ArrayIsArray,
   ArrayPrototypeIncludes,
   ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  NumberIsInteger,
+  NumberIsNaN,
+  NumberMIN_SAFE_INTEGER,
+  NumberMAX_SAFE_INTEGER,
+  NumberParseInt,
+  NumberIsFinite,
+  SafeRegExp,
+  String,
+  StringPrototypeTrim,
+  ReflectHas,
+  RegExpPrototypeTest,
 } = primordials;
 
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/normalize_encoding.mjs";
+import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 
 /**
  * @param {number} value
@@ -31,7 +41,7 @@ function isUint32(value) {
   return value === (value >>> 0);
 }
 
-const octalReg = /^[0-7]+$/;
+const octalReg = new SafeRegExp(/^[0-7]+$/);
 const modeDesc = "must be a 32-bit unsigned integer or an octal string";
 
 /**
@@ -49,10 +59,10 @@ const modeDesc = "must be a 32-bit unsigned integer or an octal string";
 function parseFileMode(value, name, def) {
   value ??= def;
   if (typeof value === "string") {
-    if (!octalReg.test(value)) {
+    if (!RegExpPrototypeTest(octalReg, value)) {
       throw new codes.ERR_INVALID_ARG_VALUE(name, value, modeDesc);
     }
-    value = Number.parseInt(value, 8);
+    value = NumberParseInt(value, 8);
   }
 
   validateInt32(value, name, 0, 2 ** 32 - 1);
@@ -73,13 +83,13 @@ const validateInteger = hideStackFrames(
   (
     value,
     name,
-    min = Number.MIN_SAFE_INTEGER,
-    max = Number.MAX_SAFE_INTEGER,
+    min = NumberMIN_SAFE_INTEGER,
+    max = NumberMAX_SAFE_INTEGER,
   ) => {
     if (typeof value !== "number") {
       throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
     }
-    if (!Number.isInteger(value)) {
+    if (!NumberIsInteger(value)) {
       throw new codes.ERR_OUT_OF_RANGE(name, "an integer", value);
     }
     if (value < min || value > max) {
@@ -104,7 +114,7 @@ const validateObject = hideStackFrames((value, name, options) => {
   const nullable = useDefaultOptions ? false : options.nullable;
   if (
     (!nullable && value === null) ||
-    (!allowArray && Array.isArray(value)) ||
+    (!allowArray && ArrayIsArray(value)) ||
     (typeof value !== "object" && (
       !allowFunction || typeof value !== "function"
     ))
@@ -121,7 +131,7 @@ const validateInt32 = hideStackFrames(
         throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
       }
 
-      if (!Number.isInteger(value)) {
+      if (!NumberIsInteger(value)) {
         throw new codes.ERR_OUT_OF_RANGE(name, "an integer", value);
       }
 
@@ -140,7 +150,7 @@ const validateUint32 = hideStackFrames(
       if (typeof value !== "number") {
         throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
       }
-      if (!Number.isInteger(value)) {
+      if (!NumberIsInteger(value)) {
         throw new codes.ERR_OUT_OF_RANGE(name, "an integer", value);
       }
       const min = positive ? 1 : 0;
@@ -178,7 +188,7 @@ function validateNumber(value, name, min = undefined, max) {
 
   if (
     (min != null && value < min) || (max != null && value > max) ||
-    ((min != null || max != null) && Number.isNaN(value))
+    ((min != null || max != null) && NumberIsNaN(value))
   ) {
     throw new codes.ERR_OUT_OF_RANGE(
       name,
@@ -200,27 +210,22 @@ function validateBoolean(value, name) {
   }
 }
 
-/**
- * @param {unknown} value
- * @param {string} name
- * @param {unknown[]} oneOf
- */
-const validateOneOf = hideStackFrames(
-  (value, name, oneOf) => {
-    if (!Array.prototype.includes.call(oneOf, value)) {
-      const allowed = Array.prototype.join.call(
-        Array.prototype.map.call(
-          oneOf,
-          (v) => (typeof v === "string" ? `'${v}'` : String(v)),
-        ),
-        ", ",
-      );
-      const reason = "must be one of: " + allowed;
+/** @typedef {<T>(value: unknown, name: string, oneOf: readonly T[]) => asserts value is T} ValidateOneOf */
+/** @type {ValidateOneOf} */
+const validateOneOf = hideStackFrames((value, name, oneOf) => {
+  if (!ArrayPrototypeIncludes(oneOf, value)) {
+    const allowed = ArrayPrototypeJoin(
+      ArrayPrototypeMap(
+        oneOf,
+        (v) => (typeof v === "string" ? `'${v}'` : String(v)),
+      ),
+      ", ",
+    );
+    const reason = "must be one of: " + allowed;
 
-      throw new codes.ERR_INVALID_ARG_VALUE(name, value, reason);
-    }
-  },
-);
+    throw new codes.ERR_INVALID_ARG_VALUE(name, value, reason);
+  }
+});
 
 export function validateEncoding(data, encoding) {
   const normalizedEncoding = normalizeEncoding(encoding);
@@ -245,7 +250,7 @@ function validatePort(port, name = "Port", allowZero = true) {
   if (
     (typeof port !== "number" && typeof port !== "string") ||
     (typeof port === "string" &&
-      String.prototype.trim.call(port).length === 0) ||
+      StringPrototypeTrim(port).length === 0) ||
     +port !== (+port >>> 0) ||
     port > 0xFFFF ||
     (port === 0 && !allowZero)
@@ -266,7 +271,7 @@ const validateAbortSignal = hideStackFrames(
       signal !== undefined &&
       (signal === null ||
         typeof signal !== "object" ||
-        !("aborted" in signal))
+        !ReflectHas(signal, "aborted"))
     ) {
       throw new codes.ERR_INVALID_ARG_TYPE(name, "AbortSignal", signal);
     }
@@ -291,7 +296,7 @@ const validateFunction = hideStackFrames(
  */
 const validateArray = hideStackFrames(
   (value, name, minLength = 0) => {
-    if (!Array.isArray(value)) {
+    if (!ArrayIsArray(value)) {
       throw new codes.ERR_INVALID_ARG_TYPE(name, "Array", value);
     }
     if (value.length < minLength) {
@@ -353,6 +358,42 @@ function validateUnion(value, name, union) {
   }
 }
 
+const validateFiniteNumber = hideStackFrames((number, name) => {
+  // Common case
+  if (number === undefined) {
+    return false;
+  }
+
+  if (NumberIsFinite(number)) {
+    return true; // Is a valid number
+  }
+
+  if (NumberIsNaN(number)) {
+    return false;
+  }
+
+  validateNumber(number, name);
+
+  // Infinite numbers
+  throw new codes.ERR_OUT_OF_RANGE(name, "a finite number", number);
+});
+
+const checkRangesOrGetDefault = hideStackFrames(
+  (number, name, lower, upper, def) => {
+    if (!validateFiniteNumber(number, name)) {
+      return def;
+    }
+    if (number < lower || number > upper) {
+      throw new codes.ERR_OUT_OF_RANGE(
+        name,
+        `>= ${lower} and <= ${upper}`,
+        number,
+      );
+    }
+    return number;
+  },
+);
+
 export default {
   isInt32,
   isUint32,
@@ -373,8 +414,11 @@ export default {
   validateStringArray,
   validateUint32,
   validateUnion,
+  validateFiniteNumber,
+  checkRangesOrGetDefault,
 };
 export {
+  checkRangesOrGetDefault,
   isInt32,
   isUint32,
   parseFileMode,
@@ -383,6 +427,7 @@ export {
   validateBoolean,
   validateBooleanArray,
   validateBuffer,
+  validateFiniteNumber,
   validateFunction,
   validateInt32,
   validateInteger,

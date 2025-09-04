@@ -1,0 +1,22 @@
+{
+  "tests": {
+    "lint": {
+      "args": "lint",
+      "output": "lint.out",
+      "exitCode": 1
+    },
+    "fix": {
+      "tempDir": true,
+      "steps": [{
+        "args": "lint --fix",
+        "output": "fix.out"
+      }, {
+        "args": [
+          "eval",
+          "console.log(Deno.readTextFileSync('main.ts').trim())"
+        ],
+        "output": "fixed.out"
+      }]
+    }
+  }
+}

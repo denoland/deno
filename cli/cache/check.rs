@@ -1,12 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use deno_ast::ModuleSpecifier;
+use deno_core::error::AnyError;
+use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
-use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
-use deno_runtime::deno_webstorage::rusqlite::params;
 
 pub static TYPE_CHECK_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   table_initializer: concat!(
@@ -91,7 +92,7 @@ impl TypeCheckCache {
       .0
       .query_row(
         "SELECT text FROM tsbuildinfo WHERE specifier=?1 LIMIT 1",
-        params![specifier.to_string()],
+        params![specifier.as_str()],
         |row| Ok(row.get::<_, String>(0)?),
       )
       .ok()?
@@ -115,7 +116,7 @@ impl TypeCheckCache {
   ) -> Result<(), AnyError> {
     self.0.execute(
       "INSERT OR REPLACE INTO tsbuildinfo (specifier, text) VALUES (?1, ?2)",
-      params![specifier.to_string(), text],
+      params![specifier.as_str(), text],
     )?;
     Ok(())
   }

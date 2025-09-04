@@ -115,6 +115,5 @@
   "bugs": {
     "url": "https://github.com/chalk/ansi-styles/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }

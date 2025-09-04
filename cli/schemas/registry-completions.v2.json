@@ -1,33 +1,7 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://deno.land/x/deno/cli/schemas/registry-completions.v2.json",
-  "title": "Deno Registry Completion Schema",
-  "description": "A definition of meta data that allows a Deno language server form auto completion suggestions for modules within a module registry.",
-  "required": [
-    "version",
-    "registries"
-  ],
-  "type": "object",
-  "properties": {
-    "version": {
-      "description": "The version of the schema document.",
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 2,
-      "examples": [
-        2
-      ]
-    },
-    "registries": {
-      "default": [],
-      "description": "The registries that exist for this origin.",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/registry"
-      }
-    }
-  },
-  "definitions": {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
     "registry": {
       "type": "object",
       "required": [
@@ -48,7 +22,7 @@
           "description": "The variables that are contained in the schema string.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/variable"
+            "$ref": "#/$defs/variable"
           }
         }
       }
@@ -87,6 +61,32 @@
             "/api/packages/${package}/${{version}}/${path}"
           ]
         }
+      }
+    }
+  },
+  "title": "Deno Registry Completion Schema",
+  "description": "A definition of meta data that allows a Deno language server form auto completion suggestions for modules within a module registry.",
+  "type": "object",
+  "required": [
+    "version",
+    "registries"
+  ],
+  "properties": {
+    "version": {
+      "description": "The version of the schema document.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2,
+      "examples": [
+        2
+      ]
+    },
+    "registries": {
+      "default": [],
+      "description": "The registries that exist for this origin.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/registry"
       }
     }
   }

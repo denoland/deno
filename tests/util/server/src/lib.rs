@@ -1,7 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-#![allow(clippy::print_stdout)]
-#![allow(clippy::print_stderr)]
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::env;
@@ -45,6 +42,8 @@ pub use builders::TestContext;
 pub use builders::TestContextBuilder;
 pub use fs::PathRef;
 pub use fs::TempDir;
+pub use fs::url_to_notebook_cell_uri;
+pub use fs::url_to_uri;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -55,6 +54,7 @@ static GUARD: Lazy<Mutex<HttpServerCount>> = Lazy::new(Default::default);
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
     ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NODEJS_ORG_MIRROR".to_string(), nodejs_org_mirror_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
 }
@@ -133,6 +133,7 @@ pub fn env_vars_for_jsr_npm_tests() -> Vec<(String, String)> {
     ),
     ("DISABLE_JSR_PROVENANCE".to_string(), "true".to_string()),
     ("NO_COLOR".to_string(), "1".to_string()),
+    ("NODEJS_ORG_MIRROR".to_string(), nodejs_org_mirror_url()),
   ]
 }
 
@@ -178,27 +179,41 @@ pub fn deno_config_path() -> PathRef {
 
 /// Test server registry url.
 pub fn npm_registry_url() -> String {
-  "http://localhost:4260/".to_string()
+  format!("http://localhost:{}/", servers::PUBLIC_NPM_REGISTRY_PORT)
 }
 
 pub fn npm_registry_unset_url() -> String {
   "http://NPM_CONFIG_REGISTRY.is.unset".to_string()
 }
 
+pub fn nodejs_org_mirror_url() -> String {
+  format!(
+    "http://127.0.0.1:{}/",
+    servers::NODEJS_ORG_MIRROR_SERVER_PORT
+  )
+}
+
+pub fn nodejs_org_mirror_unset_url() -> String {
+  "http://NODEJS_ORG_MIRROR.is.unset".to_string()
+}
+
 pub fn jsr_registry_url() -> String {
-  "http://127.0.0.1:4250/".to_string()
+  format!("http://127.0.0.1:{}/", servers::JSR_REGISTRY_SERVER_PORT)
 }
 
 pub fn rekor_url() -> String {
-  "http://127.0.0.1:4251".to_string()
+  format!("http://127.0.0.1:{}", servers::PROVENANCE_MOCK_SERVER_PORT)
 }
 
 pub fn fulcio_url() -> String {
-  "http://127.0.0.1:4251".to_string()
+  format!("http://127.0.0.1:{}", servers::PROVENANCE_MOCK_SERVER_PORT)
 }
 
 pub fn gha_token_url() -> String {
-  "http://127.0.0.1:4251/gha_oidc?test=true".to_string()
+  format!(
+    "http://127.0.0.1:{}/gha_oidc?test=true",
+    servers::PROVENANCE_MOCK_SERVER_PORT
+  )
 }
 
 pub fn jsr_registry_unset_url() -> String {
@@ -302,12 +317,15 @@ async fn get_tcp_listener_stream(
     .collect::<Vec<_>>();
 
   // Eye catcher for HttpServerCount
-  println!("ready: {name} on {:?}", addresses);
+  #[allow(clippy::print_stdout)]
+  {
+    println!("ready: {name} on {:?}", addresses);
+  }
 
   futures::stream::select_all(listeners)
 }
 
-pub const TEST_SERVERS_COUNT: usize = 30;
+pub const TEST_SERVERS_COUNT: usize = 34;
 
 #[derive(Default)]
 struct HttpServerCount {
@@ -345,7 +363,10 @@ struct HttpServerStarter {
 
 impl Default for HttpServerStarter {
   fn default() -> Self {
-    println!("test_server starting...");
+    #[allow(clippy::print_stdout)]
+    {
+      println!("test_server starting...");
+    }
     let mut test_server = Command::new(test_server_path())
       .current_dir(testdata_path())
       .stdout(Stdio::piped())
@@ -407,13 +428,14 @@ impl Drop for HttpServerGuard {
 /// killed.
 pub fn http_server() -> HttpServerGuard {
   ensure_test_server_built();
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
   let mut g = lock_http_server();
   g.inc();
   HttpServerGuard {}
 }
 
 /// Helper function to strip ansi codes.
-pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
+pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<'_, str> {
   console_static_text::ansi::strip_ansi_codes(s)
 }
 
@@ -479,6 +501,7 @@ pub fn run_collect(
   } = prog.wait_with_output().expect("failed to wait on child");
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
+  #[allow(clippy::print_stderr)]
   if expect_success != status.success() {
     eprintln!("stdout: <<<{stdout}>>>");
     eprintln!("stderr: <<<{stderr}>>>");
@@ -539,6 +562,7 @@ pub fn run_and_collect_output_with_args(
   } = deno.wait_with_output().expect("failed to wait on child");
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
+  #[allow(clippy::print_stderr)]
   if expect_success != status.success() {
     eprintln!("stdout: <<<{stdout}>>>");
     eprintln!("stderr: <<<{stderr}>>>");
@@ -560,9 +584,11 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> TestCommandBuilder {
   TestCommandBuilder::new(deno_dir.clone())
     .env("DENO_DIR", deno_dir.path())
     .env("NPM_CONFIG_REGISTRY", npm_registry_unset_url())
+    .env("NODEJS_ORG_MIRROR", nodejs_org_mirror_unset_url())
     .env("JSR_URL", jsr_registry_unset_url())
 }
 
+#[allow(clippy::print_stdout)]
 pub fn run_powershell_script_file(
   script_file_path: &str,
   args: Vec<&str>,
@@ -613,7 +639,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub cwd: Option<&'a str>,
 }
 
-impl<'a> CheckOutputIntegrationTest<'a> {
+impl CheckOutputIntegrationTest<'_> {
   pub fn output(&self) -> TestCommandOutput {
     let mut context_builder = TestContextBuilder::default();
     if self.temp_cwd {
@@ -654,6 +680,7 @@ impl<'a> CheckOutputIntegrationTest<'a> {
 }
 
 pub fn wildcard_match(pattern: &str, text: &str) -> bool {
+  #[allow(clippy::print_stderr)]
   match wildcard_match_detailed(pattern, text) {
     WildcardMatchResult::Success => true,
     WildcardMatchResult::Fail(debug_output) => {
@@ -792,15 +819,17 @@ pub fn wildcard_match_detailed(
             }
             let actual_next_text =
               &current_text[max_current_text_found_index..];
-            let max_next_text_len = 40;
-            let next_text_len =
-              std::cmp::min(max_next_text_len, actual_next_text.len());
+            let next_text_len = actual_next_text
+              .chars()
+              .take(40)
+              .map(|c| c.len_utf8())
+              .sum::<usize>();
             output_lines.push(format!(
               "==== NEXT ACTUAL TEXT ====\n{}{}",
               colors::red(annotate_whitespace(
                 &actual_next_text[..next_text_len]
               )),
-              if actual_next_text.len() > max_next_text_len {
+              if actual_next_text.len() > next_text_len {
                 "[TRUNCATED]"
               } else {
                 ""
@@ -895,6 +924,11 @@ pub fn wildcard_match_detailed(
 
   if was_last_wildcard || was_last_wildline || current_text.is_empty() {
     WildcardMatchResult::Success
+  } else if current_text == "\n" {
+    WildcardMatchResult::Fail(
+      "<matched everything>\n!!!! PROBLEM: Missing final newline at end of expected output !!!!"
+        .to_string(),
+    )
   } else {
     output_lines.push("==== HAD TEXT AT END OF FILE ====".to_string());
     output_lines.push(colors::red(annotate_whitespace(current_text)));
@@ -913,10 +947,10 @@ enum WildcardPatternPart<'a> {
 
 fn parse_wildcard_pattern_text(
   text: &str,
-) -> Result<Vec<WildcardPatternPart>, monch::ParseErrorFailureError> {
+) -> Result<Vec<WildcardPatternPart<'_>>, monch::ParseErrorFailureError> {
   use monch::*;
 
-  fn parse_unordered_lines(input: &str) -> ParseResult<Vec<&str>> {
+  fn parse_unordered_lines(input: &str) -> ParseResult<'_, Vec<&str>> {
     const END_TEXT: &str = "\n[UNORDERED_END]\n";
     let (input, _) = tag("[UNORDERED_START]\n")(input)?;
     match input.find(END_TEXT) {
@@ -944,7 +978,7 @@ fn parse_wildcard_pattern_text(
 
   impl<'a> Parser<'a> {
     fn parse(mut self) -> ParseResult<'a, Vec<WildcardPatternPart<'a>>> {
-      fn parse_num(input: &str) -> ParseResult<usize> {
+      fn parse_num(input: &str) -> ParseResult<'_, usize> {
         let num_char_count =
           input.chars().take_while(|c| c.is_ascii_digit()).count();
         if num_char_count == 0 {
@@ -955,12 +989,12 @@ fn parse_wildcard_pattern_text(
         Ok((input, value))
       }
 
-      fn parse_wild_char(input: &str) -> ParseResult<()> {
+      fn parse_wild_char(input: &str) -> ParseResult<'_, ()> {
         let (input, _) = tag("[WILDCHAR]")(input)?;
         ParseResult::Ok((input, ()))
       }
 
-      fn parse_wild_chars(input: &str) -> ParseResult<usize> {
+      fn parse_wild_chars(input: &str) -> ParseResult<'_, usize> {
         let (input, _) = tag("[WILDCHARS(")(input)?;
         let (input, times) = parse_num(input)?;
         let (input, _) = tag(")]")(input)?;
@@ -1081,27 +1115,26 @@ pub fn parse_wrk_output(output: &str) -> WrkOutput {
   let mut latency = None;
 
   for line in output.lines() {
-    if requests.is_none() {
-      if let Some(cap) = REQUESTS_RX.captures(line) {
-        requests =
-          Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
-      }
+    if requests.is_none()
+      && let Some(cap) = REQUESTS_RX.captures(line)
+    {
+      requests = Some(str::parse::<u64>(cap.get(1).unwrap().as_str()).unwrap());
     }
-    if latency.is_none() {
-      if let Some(cap) = LATENCY_RX.captures(line) {
-        let time = cap.get(1).unwrap();
-        let unit = cap.get(2).unwrap();
+    if latency.is_none()
+      && let Some(cap) = LATENCY_RX.captures(line)
+    {
+      let time = cap.get(1).unwrap();
+      let unit = cap.get(2).unwrap();
 
-        latency = Some(
-          str::parse::<f64>(time.as_str()).unwrap()
-            * match unit.as_str() {
-              "ms" => 1.0,
-              "us" => 0.001,
-              "s" => 1000.0,
-              _ => unreachable!(),
-            },
-        );
-      }
+      latency = Some(
+        str::parse::<f64>(time.as_str()).unwrap()
+          * match unit.as_str() {
+            "ms" => 1.0,
+            "us" => 0.001,
+            "s" => 1000.0,
+            _ => unreachable!(),
+          },
+      );
     }
   }
 
@@ -1265,8 +1298,9 @@ pub(crate) mod colors {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use pretty_assertions::assert_eq;
+
+  use super::*;
 
   #[test]
   fn parse_wrk_output_1() {

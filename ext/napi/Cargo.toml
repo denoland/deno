@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_napi"
-version = "0.103.0"
+version = "0.145.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,5 +15,17 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_error.workspace = true
 deno_permissions.workspace = true
-libloading = { version = "0.7" }
+denort_helper.workspace = true
+libc.workspace = true
+libloading.workspace = true
+log.workspace = true
+napi_sym.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[dev-dependencies]
+libuv-sys-lite.workspace = true

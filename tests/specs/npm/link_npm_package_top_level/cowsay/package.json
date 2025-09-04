@@ -1,0 +1,5 @@
+{
+  "name": "cowsay",
+  "version": "1.2.0",
+  "exports": "./main.mjs"
+}

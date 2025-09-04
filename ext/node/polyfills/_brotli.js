@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -10,9 +10,12 @@ const {
   ArrayPrototypeMap,
   TypedArrayPrototypeSlice,
   TypedArrayPrototypeSubarray,
-  TypedArrayPrototypeGetByteLength,
-  DataViewPrototypeGetBuffer,
   TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
 } = primordials;
 const { isTypedArray, isDataView, close } = core;
 import {
@@ -40,9 +43,17 @@ const toU8 = (input) => {
   }
 
   if (isTypedArray(input)) {
-    return new Uint8Array(TypedArrayPrototypeGetBuffer(input));
+    return new Uint8Array(
+      TypedArrayPrototypeGetBuffer(input),
+      TypedArrayPrototypeGetByteOffset(input),
+      TypedArrayPrototypeGetByteLength(input),
+    );
   } else if (isDataView(input)) {
-    return new Uint8Array(DataViewPrototypeGetBuffer(input));
+    return new Uint8Array(
+      DataViewPrototypeGetBuffer(input),
+      DataViewPrototypeGetByteOffset(input),
+      DataViewPrototypeGetByteLength(input),
+    );
   }
 
   return input;
@@ -170,7 +181,6 @@ export function brotliCompress(
     callback = options;
     options = {};
   }
-
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
   PromisePrototypeCatch(
     PromisePrototypeThen(
@@ -193,8 +203,13 @@ export function brotliCompressSync(
   return Buffer.from(TypedArrayPrototypeSubarray(output, 0, len));
 }
 
-export function brotliDecompress(input) {
+export function brotliDecompress(input, options, callback) {
   const buf = toU8(input);
+
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
   return PromisePrototypeCatch(
     PromisePrototypeThen(
       op_brotli_decompress_async(buf),

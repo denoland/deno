@@ -1,0 +1,7 @@
+error: Uncaught (in promise) ReferenceError: __dirname is not defined
+__dirname;
+^
+    at [WILDCARD]dirname.js:1:1
+
+    info: __dirname global is not available in ES modules.
+    hint: Use import.meta.dirname instead.

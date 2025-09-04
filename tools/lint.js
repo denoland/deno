@@ -1,9 +1,19 @@
 #!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
-import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
+import {
+  buildMode,
+  dirname,
+  getPrebuilt,
+  getSources,
+  join,
+  parseJSONC,
+  ROOT_PATH,
+  walk,
+} from "./util.js";
+import { assertEquals } from "@std/assert";
 import { checkCopyright } from "./copyright_checker.js";
 import * as ciFile from "../.github/workflows/ci.generate.ts";
 
@@ -18,13 +28,15 @@ if (!js && !rs) {
 
 if (rs) {
   promises.push(clippy());
+  promises.push(ensureNoNewITests());
+  promises.push(ensureNoNonPermissionCapitalLetterShortFlags());
 }
 
 if (js) {
   promises.push(dlint());
   promises.push(dlintPreferPrimordials());
   promises.push(ensureCiYmlUpToDate());
-  promises.push(ensureNoNewITests());
+  promises.push(ensureNoUnusedOutFiles());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -51,17 +63,21 @@ async function dlint() {
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
+    ":!:cli/tools/doc/prism.css",
+    ":!:cli/tools/doc/prism.js",
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
+    ":!:ext/node/polyfills/deps/**",
     ":!:runtime/examples/",
     ":!:target/",
+    ":!:tests/ffi/tests/test.js",
     ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/**",
     ":!:tests/unit_node/testdata/**",
-    ":!:tests/wpt/suite/**",
     ":!:tests/wpt/runner/**",
+    ":!:tests/wpt/suite/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -108,6 +124,7 @@ async function dlintPreferPrimordials() {
     "ext/**/*.ts",
     ":!:ext/**/*.d.ts",
     "ext/node/polyfills/*.mjs",
+    ":!:ext/node/polyfills/deps/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -169,6 +186,8 @@ async function clippy() {
       "clippy::print_stderr",
       "--deny",
       "clippy::print_stdout",
+      "--deny",
+      "clippy::large_futures",
     ],
     stdout: "inherit",
     stderr: "inherit",
@@ -198,12 +217,12 @@ async function ensureNoNewITests() {
     "bench_tests.rs": 0,
     "cache_tests.rs": 0,
     "cert_tests.rs": 0,
-    "check_tests.rs": 2,
+    "check_tests.rs": 0,
     "compile_tests.rs": 0,
     "coverage_tests.rs": 0,
     "eval_tests.rs": 0,
     "flags_tests.rs": 0,
-    "fmt_tests.rs": 16,
+    "fmt_tests.rs": 14,
     "init_tests.rs": 0,
     "inspector_tests.rs": 0,
     "install_tests.rs": 0,
@@ -218,7 +237,7 @@ async function ensureNoNewITests() {
     "pm_tests.rs": 0,
     "publish_tests.rs": 0,
     "repl_tests.rs": 0,
-    "run_tests.rs": 331,
+    "run_tests.rs": 17,
     "shared_library_tests.rs": 0,
     "task_tests.rs": 2,
     "test_tests.rs": 0,
@@ -246,5 +265,92 @@ async function ensureNoNewITests() {
           `Please update the count in tools/lint.js for this file to ${actualCount}.`,
       );
     }
+  }
+}
+
+/**
+ * When short permission flags were being proposed, a concern that was raised was that
+ * it would degrade the permission system by making the flags obscure. To address this
+ * concern, we decided to make uppercase short flags ONLY relate to permissions. That
+ * way if someone specifies something like `-E`, the user can scrutinize the command
+ * a bit more than if it were `-e`. This custom lint rule attempts to try to maintain
+ * this convention.
+ */
+async function ensureNoNonPermissionCapitalLetterShortFlags() {
+  const text = await Deno.readTextFile(join(ROOT_PATH, "cli/args/flags.rs"));
+  const shortFlags = text.matchAll(/\.short\('([A-Z])'\)/g);
+  const values = Array.from(shortFlags.map((flag) => flag[1])).sort();
+  // DO NOT update this list with a non-permission short flag without
+  // discussion--there needs to be precedence to add to this list.
+  const expected = [
+    // --allow-all
+    "A",
+    // --dev flag for `deno install` (precedence: `npm install -D <package>`)
+    "D",
+    // --allow-env
+    "E",
+    // --allow-import
+    "I",
+    // log level (precedence: legacy)
+    "L",
+    // --allow-net
+    "N",
+    // --permission-set
+    "P",
+    // --allow-read
+    "R",
+    // --allow-sys
+    "S",
+    // version flag (precedence: legacy)
+    "V",
+    // --allow-write
+    "W",
+  ];
+  assertEquals(values, expected);
+}
+
+async function ensureNoUnusedOutFiles() {
+  const specsDir = join(ROOT_PATH, "tests", "specs");
+  const outFilePaths = new Set(
+    (await Array.fromAsync(
+      walk(specsDir, { exts: [".out"] }),
+    )).map((entry) => entry.path),
+  );
+  const testFiles = (await Array.fromAsync(
+    walk(specsDir, { exts: [".jsonc"] }),
+  )).filter((entry) => {
+    return entry.path.endsWith("__test__.jsonc");
+  });
+
+  function checkObject(baseDirPath, obj) {
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === "object") {
+        checkObject(baseDirPath, value);
+      } else if (key === "output" && typeof value === "string") {
+        const outFilePath = join(baseDirPath, value);
+        outFilePaths.delete(outFilePath);
+      }
+    }
+  }
+
+  for (const testFile of testFiles) {
+    try {
+      const text = await Deno.readTextFile(testFile.path);
+      const data = parseJSONC(text);
+      checkObject(dirname(testFile.path), data);
+    } catch (err) {
+      throw new Error("Failed reading: " + testFile.path, {
+        cause: err,
+      });
+    }
+  }
+
+  const notFoundPaths = Array.from(outFilePaths);
+  if (notFoundPaths.length > 0) {
+    notFoundPaths.sort(); // be deterministic
+    for (const file of notFoundPaths) {
+      console.error(`Unreferenced .out file: ${file}`);
+    }
+    throw new Error(`${notFoundPaths.length} unreferenced .out files`);
   }
 }

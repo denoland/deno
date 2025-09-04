@@ -1,0 +1,79 @@
+{
+  "tempDir": true,
+  "ignore": true,
+  "tests": {
+    "auto": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=auto npm:@denotest/extra-info",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "clean",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "install --node-modules-dir=auto --allow-scripts",
+          "output": "[WILDCARD]running 'postinstall' script\n"
+        }
+      ]
+    },
+    "manual": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=manual npm:@denotest/extra-info",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "clean",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "install --node-modules-dir=manual --allow-scripts",
+          "output": "[WILDCARD]running 'postinstall' script\n"
+        }
+      ]
+    },
+    "none": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=none npm:@denotest/extra-info",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "clean",
+          "output": "[WILDCARD]"
+        },
+        {
+          // postinstall scripts aren't a thing, so just add another package to trigger
+          // setting up node_modules
+          "args": "install --node-modules-dir=none npm:chalk",
+          "output": "[WILDCARD]"
+        }
+      ]
+    },
+    "fallback": {
+      "steps": [
+        {
+          "args": "install --node-modules-dir=auto npm:@denotest/extra-info",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "clean",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "Deno.removeSync(Deno.cwd() + '/node_modules/.deno/@denotest+extra-info@1.0.0/node_modules/@denotest/extra-info/package.json')"
+          ],
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "install --node-modules-dir=auto --allow-scripts",
+          "output": "[WILDCARD]running 'postinstall' script\n"
+        }
+      ]
+    }
+  }
+}

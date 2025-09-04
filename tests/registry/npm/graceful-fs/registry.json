@@ -52,7 +52,6 @@
     "type": "git",
     "url": "git+https://github.com/isaacs/node-graceful-fs.git"
   },
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/isaacs/node-graceful-fs#readme",
   "bugs": {
     "url": "https://github.com/isaacs/node-graceful-fs/issues"

@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "mixed_case_package_name": {
+      "args": "run --node-modules-dir=auto -A local.ts",
+      "output": "local.out",
+      "exitCode": 0
+    },
+    "mixed_case_package_name_global_dir": {
+      "args": "run global.ts",
+      "output": "global.out",
+      "exitCode": 0
+    }
+  }
+}

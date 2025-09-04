@@ -139,6 +139,5 @@
     "type": "git",
     "url": "git://github.com/isaacs/node-glob.git"
   },
-  "description": "the most correct and second fastest glob implementation in JavaScript",
-  "readmeFilename": "README.md"
+  "description": "the most correct and second fastest glob implementation in JavaScript"
 }

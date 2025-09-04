@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -184,18 +184,8 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { read: true } }, function execPath() {
+Deno.test({ permissions: { read: false } }, function execPath() {
   assertNotEquals(Deno.execPath(), "");
-});
-
-Deno.test({ permissions: { read: false } }, function execPathPerm() {
-  assertThrows(
-    () => {
-      Deno.execPath();
-    },
-    Deno.errors.NotCapable,
-    "Requires read access to <exec_path>, run again with the --allow-read flag",
-  );
 });
 
 Deno.test(

@@ -3,9 +3,9 @@ Check [WILDCARD]/main.ts$11-19.ts
 Check [WILDCARD]/main.ts$25-30.ts
 running 0 tests from ./main.ts
 running 1 test from ./main.ts$11-19.ts
-[WILDCARD]/main.ts$11-19.ts ... ok ([WILDCARD]ms)
+[WILDCARD]/main.ts$11-19.ts ... ok ([WILDLINE])
 running 1 test from ./main.ts$25-30.ts
-[WILDCARD]/main.ts$25-30.ts ... ok ([WILDCARD]ms)
+[WILDCARD]/main.ts$25-30.ts ... ok ([WILDLINE])
 
-ok | 2 passed | 0 failed ([WILDCARD]ms)
+ok | 2 passed | 0 failed ([WILDLINE])
 

@@ -1,15 +1,22 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
+import { randomBytes } from "node:crypto";
 import {
+  BrotliCompress,
   brotliCompress,
   brotliCompressSync,
+  BrotliDecompress,
+  brotliDecompress,
   brotliDecompressSync,
   constants,
+  crc32,
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  deflateSync,
+  gzip,
   gzipSync,
   unzipSync,
 } from "node:zlib";
@@ -33,7 +40,11 @@ Deno.test("brotli compression async", async () => {
     })
   );
   assertEquals(compressed instanceof Buffer, true);
-  const decompressed = brotliDecompressSync(compressed);
+  const decompressed: Buffer = await new Promise((resolve) =>
+    brotliDecompress(compressed, (_, res) => {
+      return resolve(res);
+    })
+  );
   assertEquals(decompressed.toString(), "hello world");
 });
 
@@ -69,7 +80,7 @@ Deno.test("brotli compression", {
 
   await Promise.all([
     promise.promise,
-    new Promise((r) => stream.on("close", r)),
+    new Promise<void>((r) => stream.on("close", r)),
   ]);
 
   const content = Deno.readTextFileSync("lorem_ipsum.txt");
@@ -112,19 +123,19 @@ Deno.test(
 Deno.test(
   "zlib flush i32",
   function () {
-    const handle = createDeflate({
-      // @ts-expect-error: passing non-int flush value
-      flush: "",
-    });
-
-    handle.end();
-    handle.destroy();
+    assertThrows(() =>
+      createDeflate({
+        // @ts-expect-error: passing non-int flush value
+        flush: "",
+      }), TypeError);
   },
 );
 
 Deno.test("should work with dataview", () => {
   const buf = Buffer.from("hello world");
-  const compressed = brotliCompressSync(new DataView(buf.buffer));
+  const compressed = brotliCompressSync(
+    new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+  );
   const decompressed = brotliDecompressSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
@@ -146,7 +157,7 @@ Deno.test("Brotli quality 10 doesn't panic", () => {
     },
   });
   assertEquals(
-    new Uint8Array(e.buffer),
+    new Uint8Array(e.buffer, e.byteOffset, e.byteLength),
     new Uint8Array([11, 1, 128, 97, 98, 99, 3]),
   );
 });
@@ -155,7 +166,9 @@ Deno.test(
   "zlib compression with dataview",
   () => {
     const buf = Buffer.from("hello world");
-    const compressed = gzipSync(new DataView(buf.buffer));
+    const compressed = gzipSync(
+      new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+    );
     const decompressed = unzipSync(compressed);
     assertEquals(decompressed.toString(), "hello world");
   },
@@ -209,4 +222,67 @@ Deno.test("createBrotliCompress params", async () => {
       .pipe(createBrotliDecompress()),
   );
   assertEquals(output.length, input.length);
+});
+
+Deno.test("gzip() and gzipSync() accept ArrayBuffer", async () => {
+  const deffered = Promise.withResolvers<void>();
+  const buf = new ArrayBuffer(0);
+  let output: Buffer;
+  gzip(buf, (_err, data) => {
+    output = data;
+    deffered.resolve();
+  });
+  await deffered.promise;
+  assert(output! instanceof Buffer);
+  const outputSync = gzipSync(buf);
+  assert(outputSync instanceof Buffer);
+});
+
+Deno.test("crc32()", () => {
+  assertEquals(crc32("hello world"), 222957957);
+  // @ts-expect-error: passing an object
+  assertThrows(() => crc32({}), TypeError);
+});
+
+Deno.test("crc32 doesn't overflow", () => {
+  let checksum = 0;
+  checksum = crc32(Buffer.from("H4sIAAAAAAAACg==", "base64"), checksum);
+  checksum = crc32("aaa", checksum);
+  assertEquals(checksum, 1466848669);
+});
+
+Deno.test("BrotliCompress", async () => {
+  const deffered = Promise.withResolvers<void>();
+  // @ts-ignore: BrotliCompress is not typed
+  const brotliCompress = new BrotliCompress();
+  // @ts-ignore: BrotliDecompress is not typed
+  const brotliDecompress = new BrotliDecompress();
+
+  brotliCompress.pipe(brotliDecompress);
+
+  let data = "";
+  brotliDecompress.on("data", (v: Buffer) => {
+    data += v.toString();
+  });
+
+  brotliDecompress.on("end", () => {
+    deffered.resolve();
+  });
+
+  brotliCompress.write("hello");
+  brotliCompress.end();
+
+  await deffered.promise;
+  assertEquals(data, "hello");
+});
+
+Deno.test("ERR_BUFFER_TOO_LARGE works correctly", () => {
+  assertThrows(
+    () => {
+      deflateSync(randomBytes(1024), {
+        maxOutputLength: 1,
+      });
+    },
+    "Cannot create a Buffer larger than 1 bytes",
+  );
 });

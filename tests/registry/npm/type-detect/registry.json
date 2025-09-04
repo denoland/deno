@@ -120,6 +120,5 @@
   "bugs": {
     "url": "https://github.com/chaijs/type-detect/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

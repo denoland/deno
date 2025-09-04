@@ -1,5 +1,6 @@
 Add npm:cowsay@1.5.0
-error: Failed to install from package.json
+error: Failed to install '@denotest/cjs-default-export'
+    at file:///[WILDLINE]/package.json
 
 Caused by:
     0: Invalid version requirement

@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet set_timeout_error.ts",
+  "output": "set_timeout_error.ts.out",
+  "exitCode": 1
+}

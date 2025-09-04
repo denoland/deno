@@ -1,10 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::op2;
+use std::path::Path;
+
 use deno_core::OpState;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
+use deno_core::op2;
+use deno_core::v8;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NpmPackageFolderResolver;
+
+use crate::ExtNodeSys;
+use crate::NodeResolverRc;
 
 #[repr(u32)]
 enum HandleType {
@@ -19,18 +26,18 @@ enum HandleType {
 }
 
 #[op2(fast)]
-pub fn op_node_guess_handle_type(
-  state: &mut OpState,
-  rid: u32,
-) -> Result<u32, AnyError> {
-  let handle = state.resource_table.get_handle(rid)?;
+pub fn op_node_guess_handle_type(state: &mut OpState, rid: u32) -> u32 {
+  let handle = match state.resource_table.get_handle(rid) {
+    Ok(handle) => handle,
+    _ => return HandleType::Unknown as u32,
+  };
 
   let handle_type = match handle {
     ResourceHandle::Fd(handle) => guess_handle_type(handle),
     _ => HandleType::Unknown,
   };
 
-  Ok(handle_type as u32)
+  handle_type as u32
 }
 
 #[cfg(windows)]
@@ -80,4 +87,92 @@ fn guess_handle_type(handle: ResourceHandleFd) -> HandleType {
     libc::S_IFSOCK => HandleType::Tcp,
     _ => HandleType::Unknown,
   }
+}
+
+#[op2(fast)]
+pub fn op_node_view_has_buffer(buffer: v8::Local<v8::ArrayBufferView>) -> bool {
+  buffer.has_buffer()
+}
+
+/// Checks if the current call site is from a dependency package.
+#[op2(fast)]
+pub fn op_node_call_is_from_dependency<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
+  state: &mut OpState,
+  scope: &mut v8::HandleScope,
+) -> bool {
+  // non internal call site should appear in < 20 frames
+  let Some(stack_trace) = v8::StackTrace::current_stack_trace(scope, 20) else {
+    return false;
+  };
+  let mut only_internal = true;
+  for i in 0..stack_trace.get_frame_count() {
+    let Some(frame) = stack_trace.get_frame(scope, i) else {
+      continue;
+    };
+    if !frame.is_user_javascript() {
+      continue;
+    }
+    let Some(script) = frame.get_script_name(scope) else {
+      continue;
+    };
+    let name = script.to_rust_string_lossy(scope);
+
+    if name.starts_with("node:") || name.starts_with("ext:") {
+      continue;
+    } else {
+      only_internal = false;
+    }
+
+    if name.starts_with("https:")
+      || name.contains("/node_modules/")
+      || name.contains(r"\node_modules\")
+    {
+      return true;
+    }
+
+    let Ok(specifier) = url::Url::parse(&name) else {
+      continue;
+    };
+    if only_internal {
+      return true;
+    }
+    return state.borrow::<NodeResolverRc<
+        TInNpmPackageChecker,
+        TNpmPackageFolderResolver,
+        TSys,
+      >>().in_npm_package(&specifier);
+  }
+  only_internal
+}
+
+#[op2(fast)]
+pub fn op_node_in_npm_package<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
+  state: &mut OpState,
+  #[string] path: &str,
+) -> bool {
+  let specifier = if deno_path_util::specifier_has_uri_scheme(path) {
+    match url::Url::parse(path) {
+      Ok(url) => url,
+      Err(_) => return false,
+    }
+  } else {
+    match deno_path_util::url_from_file_path(Path::new(path)) {
+      Ok(url) => url,
+      Err(_) => return false,
+    }
+  };
+
+  state.borrow::<NodeResolverRc<
+    TInNpmPackageChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>().in_npm_package(&specifier)
 }

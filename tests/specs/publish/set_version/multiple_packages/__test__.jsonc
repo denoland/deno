@@ -1,0 +1,5 @@
+{
+  "args": "publish --set-version 1.1.0 --token 'sadfasdf'",
+  "output": "error_set_version.out",
+  "exitCode": 1
+}

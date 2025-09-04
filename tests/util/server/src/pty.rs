@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -61,7 +61,10 @@ impl Pty {
     if is_windows && *IS_CI {
       // the pty tests don't really start up on the windows CI for some reason
       // so ignore them for now
-      eprintln!("Ignoring windows CI.");
+      #[allow(clippy::print_stderr)]
+      {
+        eprintln!("Ignoring windows CI.");
+      }
       false
     } else {
       true
@@ -188,7 +191,7 @@ impl Pty {
     });
   }
 
-  pub fn all_output(&self) -> Cow<str> {
+  pub fn all_output(&self) -> Cow<'_, str> {
     String::from_utf8_lossy(&self.read_bytes)
   }
 
@@ -250,11 +253,14 @@ impl Pty {
     }
 
     let text = self.next_text();
-    eprintln!(
-      "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
-      String::from_utf8_lossy(&self.read_bytes)
-    );
-    eprintln!("Next text: {:?}", text);
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!(
+        "------ Start Full Text ------\n{:?}\n------- End Full Text -------",
+        String::from_utf8_lossy(&self.read_bytes)
+      );
+      eprintln!("Next text: {:?}", text);
+    }
 
     false
   }
@@ -289,18 +295,20 @@ impl SystemPty for std::fs::File {}
 
 #[cfg(unix)]
 fn setup_pty(fd: i32) {
-  use nix::fcntl::fcntl;
   use nix::fcntl::FcntlArg;
   use nix::fcntl::OFlag;
+  use nix::fcntl::fcntl;
   use nix::sys::termios;
+  use nix::sys::termios::SetArg;
   use nix::sys::termios::tcgetattr;
   use nix::sys::termios::tcsetattr;
-  use nix::sys::termios::SetArg;
 
-  let mut term = tcgetattr(fd).unwrap();
+  // SAFETY: Nix crate requires value to implement the AsFd trait
+  let as_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) };
+  let mut term = tcgetattr(as_fd).unwrap();
   // disable cooked mode
   term.local_flags.remove(termios::LocalFlags::ICANON);
-  tcsetattr(fd, SetArg::TCSANOW, &term).unwrap();
+  tcsetattr(as_fd, SetArg::TCSANOW, &term).unwrap();
 
   // turn on non-blocking mode so we get timeouts
   let flags = fcntl(fd, FcntlArg::F_GETFL).unwrap();
@@ -315,8 +323,9 @@ fn create_pty(
   cwd: &Path,
   env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn SystemPty> {
-  use crate::pty::unix::UnixPty;
   use std::os::unix::process::CommandExt;
+
+  use crate::pty::unix::UnixPty;
 
   // Manually open pty main/secondary sides in the test process. Since we're not actually
   // changing uid/gid here, this is the easiest way to do it.
@@ -344,6 +353,7 @@ fn create_pty(
 
   // SAFETY: Posix APIs
   unsafe {
+    #[allow(clippy::zombie_processes)]
     let cmd = std::process::Command::new(program)
       .current_dir(cwd)
       .args(args)
@@ -386,8 +396,8 @@ mod unix {
 
   impl Drop for UnixPty {
     fn drop(&mut self) {
-      use nix::sys::signal::kill;
       use nix::sys::signal::Signal;
+      use nix::sys::signal::kill;
       kill(self.pid, Signal::SIGTERM).unwrap()
     }
   }
@@ -448,9 +458,9 @@ mod windows {
   use winapi::um::processthreadsapi::DeleteProcThreadAttributeList;
   use winapi::um::processthreadsapi::GetCurrentProcess;
   use winapi::um::processthreadsapi::InitializeProcThreadAttributeList;
-  use winapi::um::processthreadsapi::UpdateProcThreadAttribute;
   use winapi::um::processthreadsapi::LPPROC_THREAD_ATTRIBUTE_LIST;
   use winapi::um::processthreadsapi::PROCESS_INFORMATION;
+  use winapi::um::processthreadsapi::UpdateProcThreadAttribute;
   use winapi::um::synchapi::WaitForSingleObject;
   use winapi::um::winbase::CREATE_UNICODE_ENVIRONMENT;
   use winapi::um::winbase::EXTENDED_STARTUPINFO_PRESENT;

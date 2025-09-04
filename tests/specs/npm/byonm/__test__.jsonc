@@ -14,7 +14,7 @@
         "output": "[WILDCARD]"
       }, {
         "args": "run -A invalid_sub_path.ts",
-        "output": "invalid_sub_path.out",
+        "output": "future_invalid_sub_path.out",
         "exitCode": 1
       }]
     },

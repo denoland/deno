@@ -1,26 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
-use deno_core::unsync::TaskQueue;
-use deno_core::AsyncMutFuture;
-use deno_core::AsyncRefCell;
-use deno_core::AsyncResult;
-use deno_core::BufMutView;
-use deno_core::BufView;
-use deno_core::CancelHandle;
-use deno_core::CancelTryFuture;
-use deno_core::OpState;
-use deno_core::RcRef;
-use deno_core::Resource;
-use deno_core::ResourceHandle;
-use deno_core::ResourceHandleFd;
-use fs::FileResource;
-use fs::FsError;
-use fs::FsResult;
-use fs::FsStat;
-use fs3::FileExt;
-use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fs::File as StdFile;
@@ -30,30 +9,58 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Seek;
 use std::io::Write;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+#[cfg(unix)]
+use std::os::unix::io::FromRawFd;
+#[cfg(windows)]
+use std::os::windows::io::FromRawHandle;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
+#[cfg(windows)]
+use std::sync::Arc;
+
+use deno_core::AsyncMutFuture;
+use deno_core::AsyncRefCell;
+use deno_core::AsyncResult;
+use deno_core::BufMutView;
+use deno_core::BufView;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
+use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
+use deno_core::ResourceHandle;
+use deno_core::ResourceHandleFd;
+use deno_core::futures::TryFutureExt;
+use deno_core::op2;
+use deno_core::unsync::TaskQueue;
+use deno_core::unsync::spawn_blocking;
+use deno_error::JsErrorBox;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
+use fs::FileResource;
+use fs::FsError;
+use fs::FsResult;
+use fs::FsStat;
+use fs3::FileExt;
+use once_cell::sync::Lazy;
+#[cfg(windows)]
+use parking_lot::Condvar;
+#[cfg(windows)]
+use parking_lot::Mutex;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
-
-#[cfg(unix)]
-use std::os::unix::io::FromRawFd;
-
-#[cfg(windows)]
-use std::os::windows::io::FromRawHandle;
 #[cfg(windows)]
 use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
-
-use deno_core::futures::TryFutureExt;
-#[cfg(windows)]
-use parking_lot::Condvar;
-#[cfg(windows)]
-use parking_lot::Mutex;
-#[cfg(windows)]
-use std::sync::Arc;
 
 pub mod fs;
 mod pipe;
@@ -62,19 +69,18 @@ mod winpipe;
 
 mod bi_pipe;
 
-pub use pipe::pipe;
-pub use pipe::AsyncPipeRead;
-pub use pipe::AsyncPipeWrite;
-pub use pipe::PipeRead;
-pub use pipe::PipeWrite;
-pub use pipe::RawPipeHandle;
-
-pub use bi_pipe::bi_pipe_pair_raw;
 pub use bi_pipe::BiPipe;
 pub use bi_pipe::BiPipeRead;
 pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
+pub use bi_pipe::bi_pipe_pair_raw;
+pub use pipe::AsyncPipeRead;
+pub use pipe::AsyncPipeWrite;
+pub use pipe::PipeRead;
+pub use pipe::PipeWrite;
+pub use pipe::RawPipeHandle;
+pub use pipe::pipe;
 
 /// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
 pub trait AsRawIoHandle {
@@ -219,6 +225,10 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
+  ops = [
+    op_read_with_cancel_handle,
+    op_read_create_cancel_handle,
+  ],
   esm = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
@@ -410,14 +420,14 @@ where
 pub type ChildStdinResource = WriteOnlyResource<process::ChildStdin>;
 
 impl Resource for ChildStdinResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStdin".into()
   }
 
   deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(|e| e.into()))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 }
 
@@ -426,7 +436,7 @@ pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
 impl Resource for ChildStdoutResource {
   deno_core::impl_readable_byob!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStdout".into()
   }
 
@@ -440,7 +450,7 @@ pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
 impl Resource for ChildStderrResource {
   deno_core::impl_readable_byob!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "childStderr".into()
   }
 
@@ -556,7 +566,7 @@ impl StdFileResourceInner {
   fn with_blocking_task<F, R: 'static + Send>(
     &self,
     action: F,
-  ) -> impl Future<Output = R>
+  ) -> impl Future<Output = R> + use<F, R>
   where
     F: FnOnce() -> R + Send + 'static,
   {
@@ -789,26 +799,26 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
+  fn read_all_sync(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
     match self.kind {
       StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
         let mut buf = Vec::new();
         self.with_sync(|file| Ok(file.read_to_end(&mut buf)?))?;
-        Ok(buf)
+        Ok(Cow::Owned(buf))
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
         Err(FsError::NotSupported)
       }
     }
   }
-  async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
+  async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
     match self.kind {
       StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
         self
           .with_inner_blocking_task(|file| {
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)?;
-            Ok(buf)
+            Ok(Cow::Owned(buf))
           })
           .await
       }
@@ -836,6 +846,47 @@ impl crate::fs::File for StdFileResourceInner {
       self
         .with_inner_blocking_task(move |file| {
           Ok(file.set_permissions(std::fs::Permissions::from_mode(_mode))?)
+        })
+        .await
+    }
+    #[cfg(not(unix))]
+    Err(FsError::NotSupported)
+  }
+
+  fn chown_sync(
+    self: Rc<Self>,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    #[cfg(unix)]
+    {
+      let owner = _uid.map(nix::unistd::Uid::from_raw);
+      let group = _gid.map(nix::unistd::Gid::from_raw);
+      let res = nix::unistd::fchown(self.handle, owner, group);
+      if let Err(err) = res {
+        Err(io::Error::from_raw_os_error(err as i32).into())
+      } else {
+        Ok(())
+      }
+    }
+    #[cfg(not(unix))]
+    Err(FsError::NotSupported)
+  }
+
+  async fn chown_async(
+    self: Rc<Self>,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    #[cfg(unix)]
+    {
+      self
+        .with_inner_blocking_task(move |file| {
+          use std::os::fd::AsFd;
+          let owner = _uid.map(nix::unistd::Uid::from_raw);
+          let group = _gid.map(nix::unistd::Gid::from_raw);
+          nix::unistd::fchown(file.as_fd().as_raw_fd(), owner, group)
+            .map_err(|err| io::Error::from_raw_os_error(err as i32).into())
         })
         .await
     }
@@ -886,7 +937,7 @@ impl crate::fs::File for StdFileResourceInner {
       if exclusive {
         file.lock_exclusive()?;
       } else {
-        file.lock_shared()?;
+        fs3::FileExt::lock_shared(file)?;
       }
       Ok(())
     })
@@ -897,7 +948,7 @@ impl crate::fs::File for StdFileResourceInner {
         if exclusive {
           file.lock_exclusive()?;
         } else {
-          file.lock_shared()?;
+          fs3::FileExt::lock_shared(file)?;
         }
         Ok(())
       })
@@ -905,11 +956,11 @@ impl crate::fs::File for StdFileResourceInner {
   }
 
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
-    self.with_sync(|file| Ok(file.unlock()?))
+    self.with_sync(|file| Ok(fs3::FileExt::unlock(file)?))
   }
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
     self
-      .with_inner_blocking_task(|file| Ok(file.unlock()?))
+      .with_inner_blocking_task(|file| Ok(fs3::FileExt::unlock(file)?))
       .await
   }
 
@@ -989,13 +1040,13 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
     match self.kind {
       StdFileResourceKind::File => self.with_sync(|file| {
         let file = file.try_clone()?;
         Ok(file.into())
       }),
-      _ => Ok(std::process::Stdio::inherit()),
+      _ => Ok(StdStdio::inherit()),
     }
   }
 
@@ -1004,15 +1055,70 @@ impl crate::fs::File for StdFileResourceInner {
   }
 }
 
+pub struct ReadCancelResource(Rc<CancelHandle>);
+
+impl Resource for ReadCancelResource {
+  fn name(&self) -> Cow<'_, str> {
+    "readCancel".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.0.cancel();
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_read_create_cancel_handle(state: &mut OpState) -> u32 {
+  state
+    .resource_table
+    .add(ReadCancelResource(CancelHandle::new_rc()))
+}
+
+#[op2(async)]
+pub async fn op_read_with_cancel_handle(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: u32,
+  #[smi] cancel_handle: u32,
+  #[buffer] buf: JsBuffer,
+) -> Result<u32, JsErrorBox> {
+  let (fut, cancel_rc) = {
+    let state = state.borrow();
+    let cancel_handle = state
+      .resource_table
+      .get::<ReadCancelResource>(cancel_handle)
+      .unwrap()
+      .0
+      .clone();
+
+    (
+      FileResource::with_file(&state, rid, |file| {
+        let view = BufMutView::from(buf);
+        Ok(file.read_byob(view))
+      }),
+      cancel_handle,
+    )
+  };
+
+  fut?
+    .or_cancel(cancel_rc)
+    .await
+    .map_err(|_| JsErrorBox::generic("cancelled"))?
+    .map(|(n, _)| n as u32)
+    .map_err(JsErrorBox::from_err)
+}
+
 // override op_print to use the stdout and stderr in the resource table
 #[op2(fast)]
 pub fn op_print(
   state: &mut OpState,
   #[string] msg: &str,
   is_err: bool,
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), JsErrorBox> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
-    Ok(file.write_all_sync(msg.as_bytes())?)
+    file
+      .write_all_sync(msg.as_bytes())
+      .map_err(JsErrorBox::from_err)
   })
 }

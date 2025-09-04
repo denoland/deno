@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-read --unstable-worker-options unstable_worker_options.js",
+  "output": "unstable_worker_options.enabled.out"
+}

@@ -125,6 +125,5 @@
     "type": "git",
     "url": "git+https://github.com/isaacs/path-scurry.git"
   },
-  "description": "walk paths fast and efficiently",
-  "readmeFilename": "README.md"
+  "description": "walk paths fast and efficiently"
 }

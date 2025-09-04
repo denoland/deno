@@ -67,6 +67,5 @@
   "bugs": {
     "url": "https://github.com/isaacs/minizlib/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

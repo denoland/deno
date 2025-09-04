@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::rc::Rc;
 
@@ -182,10 +182,25 @@ fn from_raw(
   stream: RawBiPipeHandle,
 ) -> Result<(BiPipeRead, BiPipeWrite), std::io::Error> {
   use std::os::fd::FromRawFd;
-  // Safety: The fd is part of a pair of connected sockets
-  let unix_stream = tokio::net::UnixStream::from_std(unsafe {
-    std::os::unix::net::UnixStream::from_raw_fd(stream)
-  })?;
+
+  use nix::sys::socket::AddressFamily;
+  use nix::sys::socket::SockaddrLike;
+  use nix::sys::socket::SockaddrStorage;
+  use nix::sys::socket::getsockname;
+
+  if getsockname::<SockaddrStorage>(stream)
+    .ok()
+    .and_then(|a| a.family())
+    != Some(AddressFamily::Unix)
+  {
+    return Err(std::io::Error::other("fd is not from BiPipe"));
+  }
+
+  // SAFETY: We validated above that this is from a unix stream.
+  let unix_stream =
+    unsafe { std::os::unix::net::UnixStream::from_raw_fd(stream) };
+  unix_stream.set_nonblocking(true)?;
+  let unix_stream = tokio::net::UnixStream::from_std(unix_stream)?;
   let (read, write) = unix_stream.into_split();
   Ok((BiPipeRead { inner: read }, BiPipeWrite { inner: write }))
 }
@@ -272,15 +287,15 @@ impl_async_write!(for BiPipe -> self.write_end);
 
 /// Creates both sides of a bidirectional pipe, returning the raw
 /// handles to the underlying OS resources.
-pub fn bi_pipe_pair_raw(
-) -> Result<(RawBiPipeHandle, RawBiPipeHandle), std::io::Error> {
+pub fn bi_pipe_pair_raw()
+-> Result<(RawBiPipeHandle, RawBiPipeHandle), std::io::Error> {
   #[cfg(unix)]
   {
     // SockFlag is broken on macOS
     // https://github.com/nix-rust/nix/issues/861
     let mut fds = [-1, -1];
     #[cfg(not(target_os = "macos"))]
-    let flags = libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK;
+    let flags = libc::SOCK_CLOEXEC;
 
     #[cfg(target_os = "macos")]
     let flags = 0;
@@ -301,13 +316,13 @@ pub fn bi_pipe_pair_raw(
     if cfg!(target_os = "macos") {
       let fcntl = |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
         // SAFETY: libc call, fd is valid
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
 
         if flags == -1 {
           return Err(fail(fds));
         }
         // SAFETY: libc call, fd is valid
-        let ret = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | flag) };
+        let ret = unsafe { libc::fcntl(fd, libc::F_SETFD, flags | flag) };
         if ret == -1 {
           return Err(fail(fds));
         }
@@ -323,13 +338,9 @@ pub fn bi_pipe_pair_raw(
         std::io::Error::last_os_error()
       }
 
-      // SOCK_NONBLOCK is not supported on macOS.
-      (fcntl)(fds[0], libc::O_NONBLOCK)?;
-      (fcntl)(fds[1], libc::O_NONBLOCK)?;
-
       // SOCK_CLOEXEC is not supported on macOS.
-      (fcntl)(fds[0], libc::FD_CLOEXEC)?;
-      (fcntl)(fds[1], libc::FD_CLOEXEC)?;
+      fcntl(fds[0], libc::FD_CLOEXEC)?;
+      fcntl(fds[1], libc::FD_CLOEXEC)?;
     }
 
     let fd1 = fds[0];
@@ -341,6 +352,11 @@ pub fn bi_pipe_pair_raw(
     // TODO(nathanwhit): more granular unsafe blocks
     // SAFETY: win32 calls
     unsafe {
+      use std::io;
+      use std::os::windows::ffi::OsStrExt;
+      use std::path::Path;
+      use std::ptr;
+
       use windows_sys::Win32::Foundation::CloseHandle;
       use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
       use windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED;
@@ -357,11 +373,6 @@ pub fn bi_pipe_pair_raw(
       use windows_sys::Win32::System::Pipes::CreateNamedPipeW;
       use windows_sys::Win32::System::Pipes::PIPE_READMODE_BYTE;
       use windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE;
-
-      use std::io;
-      use std::os::windows::ffi::OsStrExt;
-      use std::path::Path;
-      use std::ptr;
 
       let (path, hd1) = loop {
         let name = format!("\\\\.\\pipe\\{}", uuid::Uuid::new_v4());
@@ -410,7 +421,7 @@ pub fn bi_pipe_pair_raw(
         &s,
         OPEN_EXISTING,
         FILE_FLAG_OVERLAPPED,
-        0,
+        std::ptr::null_mut(),
       );
       if hd2 == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());

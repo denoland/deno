@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet queue_microtask_error.ts",
+  "output": "queue_microtask_error.ts.out",
+  "exitCode": 1
+}

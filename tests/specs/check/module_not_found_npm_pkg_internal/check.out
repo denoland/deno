@@ -1,0 +1,7 @@
+Check file:///[WILDLINE]/main.ts
+TS6053 [ERROR]: File 'file:///[WILDLINE]/non-existent.d.ts' not found.
+/// <reference path="./non-existent.d.ts" />
+                     ~~~~~~~~~~~~~~~~~~~
+    at file:///[WILDLINE]/index.d.ts:1:22
+
+error: Type checking failed.

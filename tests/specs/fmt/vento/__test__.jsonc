@@ -1,5 +1,14 @@
 {
   "tempDir": true,
-  "args": "fmt --unstable-component",
-  "output": "[WILDLINE]badly_formatted.vto\nChecked 1 file\n"
+  "steps": [
+    {
+      "args": "fmt --unstable-component",
+      "output": "[WILDLINE]badly_formatted.vto\nChecked 1 file\n"
+    },
+    {
+      "args": "fmt --unstable-component --ext=vto -",
+      "input": "<h1>  {{ \"Hello, world!\" |> upper }}\n  </h1>\n",
+      "output": "<h1>\n  {{ \"Hello, world!\" |> upper }}\n</h1>\n"
+    }
+  ]
 }

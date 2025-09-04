@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import {
@@ -66,6 +66,7 @@ ObjectDefineProperties(Navigator.prototype, {
     get() {
       webidl.assertBranded(this, NavigatorPrototype);
       const webgpu = loadWebGPU();
+      webgpu.initGPU();
       return webgpu.gpu;
     },
   },

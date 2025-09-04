@@ -1,20 +1,22 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../url/internal.d.ts" />
-/// <reference path="../url/lib.deno_url.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_url.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  BadResourcePrototype,
   isAnyArrayBuffer,
   isArrayBuffer,
+  isStringObject,
 } = core;
 const {
   ArrayBufferIsView,
@@ -25,6 +27,7 @@ const {
   JSONParse,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
@@ -159,7 +162,18 @@ class InnerBody {
       )
     ) {
       readableStreamThrowIfErrored(this.stream);
-      return readableStreamCollectIntoUint8Array(this.stream);
+      return PromisePrototypeCatch(
+        readableStreamCollectIntoUint8Array(this.stream),
+        (e) => {
+          if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, e)) {
+            // TODO(kt3k): We probably like to pass e as `cause` if BadResource supports it.
+            throw new e.constructor(
+              "Cannot read body as underlying resource unavailable",
+            );
+          }
+          throw e;
+        },
+      );
     } else {
       this.streamOrStatic.consumed = true;
       return this.streamOrStatic.body;
@@ -285,8 +299,13 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
        */
       get() {
         webidl.assertBranded(this, prototype);
-        if (this[bodySymbol] !== null) {
-          return this[bodySymbol].consumed();
+        try {
+          if (this[bodySymbol] !== null) {
+            return this[bodySymbol].consumed();
+          }
+        } catch (_) {
+          // Request is closed.
+          return true;
         }
         return false;
       },
@@ -466,6 +485,8 @@ function extractBody(object) {
     if (object.locked || isReadableStreamDisturbed(object)) {
       throw new TypeError("ReadableStream is locked or disturbed");
     }
+  } else if (object[webidl.AsyncIterable] === webidl.AsyncIterable) {
+    stream = ReadableStream.from(object.open());
   }
   if (typeof source === "string") {
     // WARNING: this deviates from spec (expects length to be set)
@@ -482,6 +503,9 @@ function extractBody(object) {
   body.length = length;
   return { body, contentType };
 }
+
+webidl.converters["async iterable<Uint8Array>"] = webidl
+  .createAsyncIterableConverter(webidl.converters.Uint8Array);
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
@@ -501,6 +525,14 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     if (ArrayBufferIsView(V)) {
       return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
+    if (webidl.isAsyncIterable(V) && !isStringObject(V)) {
+      return webidl.converters["async iterable<Uint8Array>"](
+        V,
+        prefix,
+        context,
+        opts,
+      );
+    }
   }
   // BodyInit conversion is passed to extractBody(), which calls core.encode().
   // core.encode() will UTF-8 encode strings with replacement, being equivalent to the USV normalization.
@@ -511,4 +543,4 @@ webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
   webidl.converters["BodyInit_DOMString"],
 );
 
-export { extractBody, InnerBody, mixinBody };
+export { extractBody, InnerBody, mixinBody, packageData };

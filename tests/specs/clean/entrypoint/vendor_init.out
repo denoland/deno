@@ -1,0 +1,82 @@
+./denodir
+[WILDCARD]- gen
+-- file
+[WILDCARD]--- vendor1.ts.js
+[WILDLINE]--- vendor2.ts.js
+-- http
+--- 127.0.0.1_PORT4250
+---- 1815d4c0b4f0117f3324c77cd7450c2a10ec60a1cce0c69b4b2c107569340388.js
+---- 5357bcc117136a3ad75cabf9ce53eeee946ebd0348e2f31ba41acbdfdc25b112.js
+---- 5552028e702144b8ef1fc0b0c45082c0feb18f16783148d34065125a2a0781c1.js
+---- 8a0715852e7a15af94225fad9f5d82c2c1e8671a11c5eda17958d5f0b150fffd.js
+---- 91a2012425b2db2e55f27a6c5ba916f923f86f7288685c03865fce38186aea4a.js
+- node_analysis_cache_v2[WILDCARD]
+- npm
+-- localhost_4260
+--- @denotest
+---- add
+----- 1.0.0
+------ index.d.ts
+------ index.js
+------ package.json
+----- registry.json
+--- chalk
+---- 5.0.1
+----- license
+----- package.json
+----- readme.md
+----- source
+------ index.d.ts
+------ index.js
+------ utilities.js
+------ vendor
+------- ansi-styles
+-------- index.d.ts
+-------- index.js
+------- supports-color
+-------- browser.d.ts
+-------- browser.js
+-------- index.d.ts
+-------- index.js
+---- registry.json
+- v8_code_cache_v2[WILDCARD]
+
+./node_modules
+- .bin
+- .deno
+-- .deno.lock
+-- .setup-cache.bin
+-- @denotest+add@1.0.0
+--- .initialized
+--- node_modules
+---- @denotest
+----- add
+-- chalk@5.0.1
+--- .initialized
+--- node_modules
+---- chalk
+----- license
+----- package.json
+----- readme.md
+----- source
+-- node_modules
+- @denotest
+-- add (symlink)
+- chalk (symlink)
+
+./vendor
+- http_127.0.0.1_4250
+-- @std
+--- assert
+---- 1.0.0
+----- assert_equals.ts
+----- assert.ts
+----- fail.ts
+----- mod.ts
+---- 1.0.0_meta.json
+---- meta.json
+--- http
+---- 1.0.0
+----- mod.ts
+---- 1.0.0_meta.json
+---- meta.json

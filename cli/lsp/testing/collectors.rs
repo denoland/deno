@@ -1,19 +1,19 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::lsp::analysis::source_range_to_lsp_range;
-
-use super::definitions::TestModule;
-
-use deno_ast::swc::ast;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
-use deno_ast::SourceRangedForSpanned;
-use deno_ast::SourceTextInfo;
-use deno_core::ModuleSpecifier;
-use lsp::Range;
 use std::collections::HashMap;
 use std::collections::HashSet;
+
+use deno_ast::SourceRangedForSpanned;
+use deno_ast::SourceTextInfo;
+use deno_ast::swc::ast;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
+use deno_core::ModuleSpecifier;
+use lsp::Range;
 use tower_lsp::lsp_types as lsp;
+
+use super::definitions::TestModule;
+use crate::lsp::analysis::source_range_to_lsp_range;
 
 /// Parse an arrow expression for any test steps and return them.
 fn visit_arrow(
@@ -349,26 +349,20 @@ impl Visit for TestStepCollector<'_> {
         }
         // Identify calls to `test.step()`
         ast::Expr::Member(member_expr) => {
-          if let Some(test_context) = &self.maybe_test_context {
-            if let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop {
-              if ns_prop_ident.sym.eq("step") {
-                if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
-                  if ident.sym == *test_context {
-                    visit_call_expr(
-                      node,
-                      None,
-                      source_range_to_lsp_range(
-                        &ns_prop_ident.range(),
-                        self.text_info,
-                      ),
-                      Some(self.parent_id),
-                      self.text_info,
-                      self.test_module,
-                    );
-                  }
-                }
-              }
-            }
+          if let Some(test_context) = &self.maybe_test_context
+            && let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop
+            && ns_prop_ident.sym.eq("step")
+            && let ast::Expr::Ident(ident) = member_expr.obj.as_ref()
+            && ident.sym == *test_context
+          {
+            visit_call_expr(
+              node,
+              None,
+              source_range_to_lsp_range(&ns_prop_ident.range(), self.text_info),
+              Some(self.parent_id),
+              self.text_info,
+              self.test_module,
+            );
           }
         }
         _ => (),
@@ -401,13 +395,11 @@ impl Visit for TestStepCollector<'_> {
                   }
                 }
                 ast::ObjectPatProp::KeyValue(prop) => {
-                  if let ast::PropName::Ident(key_ident) = &prop.key {
-                    if key_ident.sym.eq("step") {
-                      if let ast::Pat::Ident(value_ident) = &prop.value.as_ref()
-                      {
-                        self.vars.insert(value_ident.id.sym.to_string());
-                      }
-                    }
+                  if let ast::PropName::Ident(key_ident) = &prop.key
+                    && key_ident.sym.eq("step")
+                    && let ast::Pat::Ident(value_ident) = &prop.value.as_ref()
+                  {
+                    self.vars.insert(value_ident.id.sym.to_string());
                   }
                 }
                 _ => (),
@@ -429,10 +421,10 @@ impl Visit for TestStepCollector<'_> {
               continue;
             };
 
-            if prop_ident.sym.eq("step") {
-              if let ast::Pat::Ident(binding_ident) = &decl.name {
-                self.vars.insert(binding_ident.id.sym.to_string());
-              }
+            if prop_ident.sym.eq("step")
+              && let ast::Pat::Ident(binding_ident) = &decl.name
+            {
+              self.vars.insert(binding_ident.id.sym.to_string());
             }
           }
           _ => (),
@@ -580,10 +572,10 @@ impl Visit for TestCollector {
                   continue;
                 };
 
-                if key_ident.sym == "test" {
-                  if let ast::Pat::Ident(value_ident) = &prop.value.as_ref() {
-                    self.vars.insert(value_ident.id.sym.to_string());
-                  }
+                if key_ident.sym == "test"
+                  && let ast::Pat::Ident(value_ident) = &prop.value.as_ref()
+                {
+                  self.vars.insert(value_ident.id.sym.to_string());
                 }
               }
               _ => (),
@@ -626,11 +618,11 @@ impl Visit for TestCollector {
 
 #[cfg(test)]
 pub mod tests {
-  use crate::lsp::testing::definitions::TestDefinition;
-
-  use super::*;
   use deno_core::resolve_url;
   use lsp::Position;
+
+  use super::*;
+  use crate::lsp::testing::definitions::TestDefinition;
 
   pub fn new_range(l1: u32, c1: u32, l2: u32, c2: u32) -> Range {
     Range::new(Position::new(l1, c1), Position::new(l2, c2))
@@ -650,7 +642,7 @@ pub mod tests {
     .unwrap();
     let text_info = parsed_module.text_info_lazy().clone();
     let mut collector = TestCollector::new(specifier, text_info);
-    parsed_module.module().visit_with(&mut collector);
+    parsed_module.program().visit_with(&mut collector);
     collector.take()
   }
 

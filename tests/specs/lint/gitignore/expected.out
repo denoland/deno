@@ -1,0 +1,12 @@
+error[no-empty]: Empty block statement
+ --> [WILDCARD]file2.ts:3:14
+  | 
+3 | } catch (_e) {}
+  |              ^^
+  = hint: Add code or comment to the empty block
+
+  docs: https://docs.deno.com/lint/rules/no-empty
+
+
+Found 1 problem
+Checked 1 file

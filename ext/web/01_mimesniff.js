@@ -1,10 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
 import { primordials } from "ext:core/mod.js";
 const {
@@ -395,6 +395,10 @@ const ImageTypePatternTable = [
 
 /**
  * Ref: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm
+ * NOTE: Some browsers have implementation-defined image formats.
+ * For example, The AVIF image format is supported by all browsers today.
+ * However, the standardization seems to have hard going.
+ * See: https://github.com/whatwg/mimesniff/issues/143
  * @param {Uint8Array} input
  * @returns {string | undefined}
  */
@@ -417,22 +421,19 @@ function imageTypePatternMatchingAlgorithm(input) {
 
 /**
  * Ref: https://mimesniff.spec.whatwg.org/#rules-for-sniffing-images-specifically
- * @param {string} mimeTypeString
- * @returns {string}
+ * @param {string | null} mimeTypeString
+ * @param {Uint8Array} byteSequence
+ * @returns {string | null}
  */
-function sniffImage(mimeTypeString) {
-  const mimeType = parseMimeType(mimeTypeString);
-  if (mimeType === null) {
+function sniffImage(mimeTypeString, byteSequence) {
+  // NOTE: Do we need to implement the "supplied MIME type" detection exactly?
+  // https://mimesniff.spec.whatwg.org/#supplied-mime-type-detection-algorithm
+
+  if (mimeTypeString !== null && isXML(mimeTypeString)) {
     return mimeTypeString;
   }
 
-  if (isXML(mimeType)) {
-    return mimeTypeString;
-  }
-
-  const imageTypeMatched = imageTypePatternMatchingAlgorithm(
-    new TextEncoder().encode(mimeTypeString),
-  );
+  const imageTypeMatched = imageTypePatternMatchingAlgorithm(byteSequence);
   if (imageTypeMatched !== undefined) {
     return imageTypeMatched;
   }

@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "lint a.ts",
+      "output": "lint.out",
+      "exitCode": 1
+    },
+    {
+      "args": "lint -c deno_exclude.json a.ts",
+      "output": "lint_exclude.out"
+    },
+    {
+      "args": "lint --fix a.ts",
+      "output": "lint_fixed.out"
+    }
+  ]
+}

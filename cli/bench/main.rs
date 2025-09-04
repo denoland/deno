@@ -1,11 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
 
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::Value;
 use std::collections::HashMap;
 use std::convert::From;
 use std::env;
@@ -15,9 +12,12 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
+
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
 use test_util::PathRef;
 
-mod http;
 mod lsp;
 
 fn read_json(filename: &Path) -> Result<Value> {
@@ -278,10 +278,10 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
     let file_mtime = meta.modified()?;
 
     // If multiple copies of a file are found, use the most recent one.
-    if let Some(stored_mtime) = mtimes.get(&filename) {
-      if *stored_mtime > file_mtime {
-        continue;
-      }
+    if let Some(stored_mtime) = mtimes.get(&filename)
+      && *stored_mtime > file_mtime
+    {
+      continue;
     }
 
     mtimes.insert(filename.clone(), file_mtime);
@@ -345,9 +345,11 @@ struct BenchResult {
   binary_size: HashMap<String, i64>,
   bundle_size: HashMap<String, i64>,
   cargo_deps: usize,
+  // TODO(bartlomieju): remove
   max_latency: HashMap<String, f64>,
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
+  // TODO(bartlomieju): remove
   req_per_sec: HashMap<String, i64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
@@ -362,7 +364,6 @@ async fn main() -> Result<()> {
     "binary_size",
     "cargo_deps",
     "lsp",
-    "http",
     "strace",
     "mem_usage",
   ];
@@ -425,21 +426,6 @@ async fn main() -> Result<()> {
   if benchmarks.contains(&"lsp") {
     let lsp_exec_times = lsp::benchmarks(&deno_exe);
     new_data.lsp_exec_time = lsp_exec_times;
-  }
-
-  if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
-    let stats = http::benchmark(target_dir.as_path())?;
-    let req_per_sec = stats
-      .iter()
-      .map(|(name, result)| (name.clone(), result.requests as i64))
-      .collect();
-    new_data.req_per_sec = req_per_sec;
-    let max_latency = stats
-      .iter()
-      .map(|(name, result)| (name.clone(), result.latency))
-      .collect();
-
-    new_data.max_latency = max_latency;
   }
 
   if cfg!(target_os = "linux") && benchmarks.contains(&"strace") {

@@ -1,10 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_bench_util::bench_js_sync;
 use deno_bench_util::bench_or_profile;
-use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
-
+use deno_bench_util::bencher::benchmark_group;
 use deno_core::Extension;
 
 fn setup() -> Vec<Extension> {
@@ -14,10 +13,7 @@ fn setup() -> Vec<Extension> {
     esm = ["ext:deno_webidl_bench/setup.js" = "benches/dict.js"]
   );
 
-  vec![
-    deno_webidl::deno_webidl::init_ops_and_esm(),
-    deno_webidl_bench::init_ops_and_esm(),
-  ]
+  vec![deno_webidl::deno_webidl::init(), deno_webidl_bench::init()]
 }
 
 fn converter_undefined(b: &mut Bencher) {

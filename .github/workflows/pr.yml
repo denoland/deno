@@ -1,0 +1,23 @@
+name: 'pr'
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+
+jobs:
+  main:
+    name: lint title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: canary
+      - name: Lint
+        env:
+          PR_TITLE: '${{ github.event.pull_request.title }}'
+          PR_SHA: '${{ github.event.pull_request.head.sha }}'
+        run: deno run https://raw.githubusercontent.com/denoland/deno/$PR_SHA/tools/verify_pr_title.js "$PR_TITLE"

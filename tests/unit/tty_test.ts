@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
@@ -15,15 +15,8 @@ Deno.test(function consoleSize() {
   assert(typeof result.rows !== "undefined");
 });
 
-Deno.test(function isattyError() {
-  let caught = false;
-  try {
-    // Absurdly large rid.
-    // @ts-ignore `Deno.isatty()` was soft-removed in Deno 2.
-    Deno.isatty(0x7fffffff);
-  } catch (e) {
-    caught = true;
-    assert(e instanceof Deno.errors.BadResource);
-  }
-  assert(caught);
+Deno.test(function isattyDoesntRaiseOnBadRid() {
+  // Absurdly large rid.
+  // @ts-ignore `Deno.isatty()` was soft-removed in Deno 2.
+  assert(!Deno.isatty(0x7fffffff));
 });

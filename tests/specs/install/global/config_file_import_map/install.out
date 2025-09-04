@@ -1,0 +1,3 @@
+Warning "importMap" field in the specified config file we be ignored. Use the --import-map flag instead.
+✅ Successfully installed my-cli
+[WILDCARD]

@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --no-prompt no_prompt.ts",
+  "output": ""
+}

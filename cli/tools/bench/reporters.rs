@@ -1,11 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_lib::version::DENO_VERSION_INFO;
 use serde::Serialize;
 
-use crate::tools::test::TestFailureFormatOptions;
-use crate::version;
-
 use super::*;
+use crate::tools::test::TestFailureFormatOptions;
 
 pub trait BenchReporter {
   fn report_group_summary(&mut self);
@@ -32,11 +31,7 @@ impl Default for JsonReporterOutput {
   fn default() -> Self {
     Self {
       version: JSON_SCHEMA_VERSION,
-      runtime: format!(
-        "{} {}",
-        version::DENO_VERSION_INFO.user_agent,
-        env!("TARGET")
-      ),
+      runtime: format!("{} {}", DENO_VERSION_INFO.user_agent, env!("TARGET")),
       cpu: mitata::cpu::name(),
       benches: vec![],
     }
@@ -164,7 +159,7 @@ impl BenchReporter for ConsoleReporter {
         "{}\n",
         colors::gray(format!(
           "Runtime | Deno {} ({})",
-          crate::version::DENO_VERSION_INFO.deno,
+          DENO_VERSION_INFO.deno,
           env!("TARGET")
         ))
       );
@@ -238,7 +233,13 @@ impl BenchReporter for ConsoleReporter {
         );
 
         if !stats.high_precision && stats.used_explicit_timers {
-          println!("{}", colors::yellow(format!("Warning: start() and end() calls in \"{}\" are ignored because it averages less\nthan 10µs per iteration. Remove them for better results.", &desc.name)));
+          println!(
+            "{}",
+            colors::yellow(format!(
+              "Warning: start() and end() calls in \"{}\" are ignored because it averages less\nthan 10µs per iteration. Remove them for better results.",
+              &desc.name
+            ))
+          );
         }
 
         self.group_measurements.push((desc, stats.clone()));
@@ -311,8 +312,12 @@ impl BenchReporter for ConsoleReporter {
       colors::red_bold("error"),
       format_test_error(&error, &TestFailureFormatOptions::default())
     );
-    println!("This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.");
-    println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
+    println!(
+      "This error was not caught from a benchmark and caused the bench runner to fail on the referenced module."
+    );
+    println!(
+      "It most likely originated from a dangling promise, event/timeout handler or top-level code."
+    );
     println!();
   }
 }

@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --config deno.json onload/main.ts",
+  "output": "onload/main.out"
+}

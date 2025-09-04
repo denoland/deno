@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_net_listen_udp,
   op_net_listen_unixpacket,
+  op_runtime_cpu_usage,
   op_runtime_memory_usage,
 } from "ext:core/ops";
 
@@ -21,14 +22,25 @@ import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
 import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
-import * as os from "ext:runtime/30_os.js";
+import * as os from "ext:deno_os/30_os.js";
 import * as fsEvents from "ext:runtime/40_fs_events.js";
-import * as process from "ext:runtime/40_process.js";
-import * as signals from "ext:runtime/40_signals.js";
+import * as process from "ext:deno_process/40_process.js";
+import * as signals from "ext:deno_os/40_signals.js";
 import * as tty from "ext:runtime/40_tty.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
+import * as telemetry from "ext:deno_telemetry/telemetry.ts";
+import { unstableIds } from "ext:deno_features/flags.js";
+import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+
+const { ObjectDefineProperties, Float64Array } = primordials;
+
+const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
+const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
+
+// the out buffer for `cpuUsage` and `memoryUsage`
+const usageBuffer = new Float64Array(4);
 
 const denoNs = {
   Process: process.Process,
@@ -53,7 +65,29 @@ const denoNs = {
   makeTempDir: fs.makeTempDir,
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
-  memoryUsage: () => op_runtime_memory_usage(),
+  cpuUsage: () => {
+    op_runtime_cpu_usage(usageBuffer);
+    const { 0: system, 1: user } = usageBuffer;
+    return {
+      system,
+      user,
+    };
+  },
+  memoryUsage: () => {
+    op_runtime_memory_usage(usageBuffer);
+    const {
+      0: rss,
+      1: heapTotal,
+      2: heapUsed,
+      3: external,
+    } = usageBuffer;
+    return {
+      rss,
+      heapTotal,
+      heapUsed,
+      external,
+    };
+  },
   mkdirSync: fs.mkdirSync,
   mkdir: fs.mkdir,
   chdir: fs.chdir,
@@ -132,22 +166,7 @@ const denoNs = {
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
-};
-
-// NOTE(bartlomieju): keep IDs in sync with `cli/main.rs`
-const unstableIds = {
-  broadcastChannel: 1,
-  cron: 2,
-  ffi: 3,
-  fs: 4,
-  http: 5,
-  kv: 6,
-  net: 7,
-  process: 8,
-  temporal: 9,
-  unsafeProto: 10,
-  webgpu: 11,
-  workerOptions: 12,
+  telemetry: telemetry.telemetry,
 };
 
 const denoNsUnstableById = { __proto__: null };
@@ -173,11 +192,41 @@ denoNsUnstableById[unstableIds.net] = {
   ),
 };
 
+ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
+  connectQuic: core.propWritableLazyLoaded((q) => q.connectQuic, loadQuic),
+  QuicEndpoint: core.propWritableLazyLoaded((q) => q.QuicEndpoint, loadQuic),
+  QuicBidirectionalStream: core.propWritableLazyLoaded(
+    (q) => q.QuicBidirectionalStream,
+    loadQuic,
+  ),
+  QuicConn: core.propWritableLazyLoaded((q) => q.QuicConn, loadQuic),
+  QuicListener: core.propWritableLazyLoaded((q) => q.QuicListener, loadQuic),
+  QuicReceiveStream: core.propWritableLazyLoaded(
+    (q) => q.QuicReceiveStream,
+    loadQuic,
+  ),
+  QuicSendStream: core.propWritableLazyLoaded(
+    (q) => q.QuicSendStream,
+    loadQuic,
+  ),
+  QuicIncoming: core.propWritableLazyLoaded((q) => q.QuicIncoming, loadQuic),
+  upgradeWebTransport: core.propWritableLazyLoaded(
+    (wt) => wt.upgradeWebTransport,
+    loadWebTransport,
+  ),
+});
+
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.webgpu] = {
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
 };
+ObjectDefineProperties(denoNsUnstableById[unstableIds.webgpu], {
+  webgpu: core.propWritableLazyLoaded(
+    (webgpu) => webgpu.denoNsWebGPU,
+    loadWebGPU,
+  ),
+});
 
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 

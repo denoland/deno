@@ -1,12 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::serde_json::json;
-use deno_core::url::Url;
+use serde_json::json;
 use test_util as util;
-use util::assert_contains;
-use util::assert_not_contains;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::assert_contains;
+use util::assert_not_contains;
 
 #[test]
 fn recursive_permissions_pledge() {
@@ -23,27 +22,13 @@ fn recursive_permissions_pledge() {
 }
 
 #[test]
-fn file_protocol() {
-  let file_url =
-    Url::from_file_path(util::testdata_path().join("bench/file_protocol.ts"))
-      .unwrap()
-      .to_string();
-  let context = TestContext::default();
-  context
-    .new_command()
-    .args(format!("bench bench/file_protocol.ts {file_url}"))
-    .run()
-    .assert_matches_file("bench/file_protocol.out");
-}
-
-#[test]
 fn conditionally_loads_type_graph() {
   let context = TestContext::default();
   let output = context
     .new_command()
     .args("bench --reload -L debug run/type_directives_js_main.js")
     .run();
-  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch_no_follow_with_options - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch_no_follow - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
   let output = context
     .new_command()
     .args("bench --reload -L debug --no-check run/type_directives_js_main.js")

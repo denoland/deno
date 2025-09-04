@@ -1,14 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::os::raw::c_char;
+use std::os::raw::c_void;
+use std::ptr;
+
+use napi_sys::Status::napi_ok;
+use napi_sys::ValueType::napi_function;
+use napi_sys::*;
 
 use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
-use napi_sys::Status::napi_ok;
-use napi_sys::ValueType::napi_function;
-use napi_sys::*;
-use std::os::raw::c_char;
-use std::os::raw::c_void;
-use std::ptr;
 
 pub struct Baton {
   called: bool,
@@ -17,11 +19,13 @@ pub struct Baton {
 }
 
 unsafe extern "C" fn execute(_env: napi_env, data: *mut c_void) {
-  let baton: &mut Baton = &mut *(data as *mut Baton);
-  assert!(!baton.called);
-  assert!(!baton.func.is_null());
+  unsafe {
+    let baton: &mut Baton = &mut *(data as *mut Baton);
+    assert!(!baton.called);
+    assert!(!baton.func.is_null());
 
-  baton.called = true;
+    baton.called = true;
+  }
 }
 
 unsafe extern "C" fn complete(
@@ -29,28 +33,30 @@ unsafe extern "C" fn complete(
   status: napi_status,
   data: *mut c_void,
 ) {
-  assert!(status == napi_ok);
-  let baton: Box<Baton> = Box::from_raw(data as *mut Baton);
-  assert!(baton.called);
-  assert!(!baton.func.is_null());
+  unsafe {
+    assert!(status == napi_ok);
+    let baton: Box<Baton> = Box::from_raw(data as *mut Baton);
+    assert!(baton.called);
+    assert!(!baton.func.is_null());
 
-  let mut global: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_get_global(env, &mut global));
+    let mut global: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_global(env, &mut global));
 
-  let mut callback: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_get_reference_value(env, baton.func, &mut callback));
+    let mut callback: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_reference_value(env, baton.func, &mut callback));
 
-  let mut _result: napi_value = ptr::null_mut();
-  assert_napi_ok!(napi_call_function(
-    env,
-    global,
-    callback,
-    0,
-    ptr::null(),
-    &mut _result
-  ));
-  assert_napi_ok!(napi_delete_reference(env, baton.func));
-  assert_napi_ok!(napi_delete_async_work(env, baton.task));
+    let mut _result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_call_function(
+      env,
+      global,
+      callback,
+      0,
+      ptr::null(),
+      &mut _result
+    ));
+    assert_napi_ok!(napi_delete_reference(env, baton.func));
+    assert_napi_ok!(napi_delete_async_work(env, baton.task));
+  }
 }
 
 extern "C" fn test_async_work(
@@ -95,7 +101,7 @@ extern "C" fn test_async_work(
   ));
   let mut baton = unsafe { Box::from_raw(baton_ptr as *mut Baton) };
   baton.task = async_work;
-  Box::into_raw(baton);
+  let _ = Box::into_raw(baton);
   assert_napi_ok!(napi_queue_async_work(env, async_work));
 
   ptr::null_mut()

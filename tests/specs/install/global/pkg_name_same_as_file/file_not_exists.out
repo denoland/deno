@@ -1,0 +1,1 @@
+error: cli.ts is missing a prefix. Did you mean `deno install -g npm:cli.ts`?

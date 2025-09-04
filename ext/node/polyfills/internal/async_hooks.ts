@@ -1,8 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
-
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 
 // deno-lint-ignore camelcase
 import * as async_wrap from "ext:deno_node/internal_binding/async_wrap.ts";
@@ -11,6 +8,17 @@ export {
   asyncIdSymbol,
   ownerSymbol,
 } from "ext:deno_node/internal_binding/symbols.ts";
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypePop,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  FunctionPrototypeApply,
+  Symbol,
+} = primordials;
 
 interface ActiveHooks {
   array: AsyncHook[];
@@ -61,6 +69,64 @@ const {
   constants,
 } = async_wrap;
 export { newAsyncId };
+
+// Track execution context
+const executionAsyncIdStack: number[] = [0];
+
+export function executionAsyncId(): number {
+  return executionAsyncIdStack[executionAsyncIdStack.length - 1] || 0;
+}
+
+// Emit functions that work with the internal hook system
+export function emitBefore(asyncId: number): void {
+  ArrayPrototypePush(executionAsyncIdStack, asyncId);
+
+  // Call hooks if they exist
+  const hooks = active_hooks.array;
+  try {
+    for (let i = 0; i < hooks.length; i++) {
+      const hook = hooks[i];
+      if (hook[before_symbol]) {
+        hook[before_symbol](asyncId);
+      }
+    }
+  } catch (e) {
+    // Clean up stack corruption on hook errors (Node.js pattern)
+    if (executionAsyncIdStack.length > 1) {
+      ArrayPrototypePop(executionAsyncIdStack);
+    }
+    throw e;
+  }
+}
+
+export function emitAfter(asyncId: number): void {
+  // Call hooks if they exist
+  const hooks = active_hooks.array;
+  try {
+    for (let i = 0; i < hooks.length; i++) {
+      const hook = hooks[i];
+      if (hook[after_symbol]) {
+        hook[after_symbol](asyncId);
+      }
+    }
+  } finally {
+    // Always pop stack even if hooks throw (Node.js pattern)
+    if (executionAsyncIdStack.length > 1) {
+      ArrayPrototypePop(executionAsyncIdStack);
+    }
+  }
+}
+
+export function emitDestroy(asyncId: number): void {
+  // Call hooks if they exist
+  const hooks = active_hooks.array;
+  for (let i = 0; i < hooks.length; i++) {
+    const hook = hooks[i];
+    if (hook[destroy_symbol]) {
+      hook[destroy_symbol](asyncId);
+    }
+  }
+}
 const {
   kInit,
   kBefore,
@@ -158,6 +224,7 @@ function emitInitNative(
     restoreActiveHooks();
   }
 }
+export { emitInitNative as emitInit };
 
 function getHookArrays(): [AsyncHook[], number[] | Uint32Array] {
   if (active_hooks.call_depth === 0) {
@@ -174,7 +241,7 @@ function getHookArrays(): [AsyncHook[], number[] | Uint32Array] {
 }
 
 function storeActiveHooks() {
-  active_hooks.tmp_array = active_hooks.array.slice();
+  active_hooks.tmp_array = ArrayPrototypeSlice(active_hooks.array);
   // Don't want to make the assumption that kInit to kDestroy are indexes 0 to
   // 4. So do this the long way.
   active_hooks.tmp_fields = [];
@@ -245,7 +312,7 @@ export function defaultTriggerAsyncIdScope(
   ...args: unknown[]
 ) {
   if (triggerAsyncId === undefined) {
-    return block.apply(null, args);
+    return FunctionPrototypeApply(block, null, args);
   }
   // CHECK(NumberIsSafeInteger(triggerAsyncId))
   // CHECK(triggerAsyncId > 0)
@@ -253,7 +320,7 @@ export function defaultTriggerAsyncIdScope(
   async_id_fields[kDefaultTriggerAsyncId] = triggerAsyncId;
 
   try {
-    return block.apply(null, args);
+    return FunctionPrototypeApply(block, null, args);
   } finally {
     async_id_fields[kDefaultTriggerAsyncId] = oldDefaultTriggerAsyncId;
   }
@@ -266,44 +333,6 @@ function hasHooks(key: number) {
 export function enabledHooksExist() {
   return hasHooks(kCheck);
 }
-
-export function initHooksExist() {
-  return hasHooks(kInit);
-}
-
-export function afterHooksExist() {
-  return hasHooks(kAfter);
-}
-
-export function destroyHooksExist() {
-  return hasHooks(kDestroy);
-}
-
-export function promiseResolveHooksExist() {
-  return hasHooks(kPromiseResolve);
-}
-
-function emitInitScript(
-  asyncId: number,
-  // deno-lint-ignore no-explicit-any
-  type: any,
-  triggerAsyncId: number,
-  // deno-lint-ignore no-explicit-any
-  resource: any,
-) {
-  // Short circuit all checks for the common case. Which is that no hooks have
-  // been set. Do this to remove performance impact for embedders (and core).
-  if (!hasHooks(kInit)) {
-    return;
-  }
-
-  if (triggerAsyncId === null) {
-    triggerAsyncId = getDefaultTriggerAsyncId();
-  }
-
-  emitInitNative(asyncId, type, triggerAsyncId, resource);
-}
-export { emitInitScript as emitInit };
 
 export function hasAsyncIdStack() {
   return hasHooks(kStackLength);
@@ -365,7 +394,7 @@ export class AsyncHook {
     const { 0: hooks_array, 1: hook_fields } = getHookArrays();
 
     // Each hook is only allowed to be added once.
-    if (hooks_array.includes(this)) {
+    if (ArrayPrototypeIncludes(hooks_array, this)) {
       return this;
     }
 
@@ -381,7 +410,7 @@ export class AsyncHook {
     hook_fields[kTotals] += hook_fields[kDestroy] += +!!this[destroy_symbol];
     hook_fields[kTotals] += hook_fields[kPromiseResolve] +=
       +!!this[promise_resolve_symbol];
-    hooks_array.push(this);
+    ArrayPrototypePush(hooks_array, this);
 
     if (prev_kTotals === 0 && hook_fields[kTotals] > 0) {
       enableHooks();
@@ -397,7 +426,7 @@ export class AsyncHook {
     // deno-lint-ignore camelcase
     const { 0: hooks_array, 1: hook_fields } = getHookArrays();
 
-    const index = hooks_array.indexOf(this);
+    const index = ArrayPrototypeIndexOf(hooks_array, this);
     if (index === -1) {
       return this;
     }
@@ -411,7 +440,7 @@ export class AsyncHook {
     hook_fields[kTotals] += hook_fields[kDestroy] -= +!!this[destroy_symbol];
     hook_fields[kTotals] += hook_fields[kPromiseResolve] -=
       +!!this[promise_resolve_symbol];
-    hooks_array.splice(index, 1);
+    ArrayPrototypeSplice(hooks_array, index, 1);
 
     if (prev_kTotals > 0 && hook_fields[kTotals] === 0) {
       disableHooks();

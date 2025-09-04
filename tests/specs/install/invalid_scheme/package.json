@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@denotest/add": "*",
+    "deno": "git:denoland/deno"
+  }
+}

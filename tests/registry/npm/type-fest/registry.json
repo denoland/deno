@@ -79,6 +79,5 @@
   "bugs": {
     "url": "https://github.com/sindresorhus/type-fest/issues"
   },
-  "license": "(MIT OR CC0-1.0)",
-  "readmeFilename": "readme.md"
+  "license": "(MIT OR CC0-1.0)"
 }

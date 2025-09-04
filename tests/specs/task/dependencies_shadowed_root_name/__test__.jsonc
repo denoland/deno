@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "root_dependending_root": {
+      "args": "task root-depending-root",
+      "cwd": "member",
+      "output": "root_dependending_root.out"
+    },
+    "member_depending_root_and_member": {
+      "args": "task member-dependending-root-and-member",
+      "cwd": "member",
+      "output": "member_depending_root_and_member.out"
+    }
+  }
+}

@@ -1,9 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
 
 fn main() {
+  rustls::crypto::aws_lc_rs::default_provider()
+    .install_default()
+    .unwrap();
   setup_panic_hook();
   test_server::servers::run_all_servers();
 }

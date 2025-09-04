@@ -1,28 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! This module provides feature to upgrade deno executable
 
-use crate::args::Flags;
-use crate::args::UpgradeFlags;
-use crate::args::UPGRADE_USAGE;
-use crate::colors;
-use crate::factory::CliFactory;
-use crate::http_util::HttpClient;
-use crate::http_util::HttpClientProvider;
-use crate::shared::ReleaseChannel;
-use crate::util::archive;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
-use crate::version;
-
-use async_trait::async_trait;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::unsync::spawn;
-use deno_core::url::Url;
-use deno_semver::Version;
-use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
 use std::fs;
@@ -33,6 +12,29 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
+
+use async_trait::async_trait;
+use deno_core::anyhow::Context;
+use deno_core::anyhow::bail;
+use deno_core::error::AnyError;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
+use deno_lib::shared::ReleaseChannel;
+use deno_lib::version;
+use deno_semver::SmallStackString;
+use deno_semver::Version;
+use once_cell::sync::Lazy;
+
+use crate::args::Flags;
+use crate::args::UPGRADE_USAGE;
+use crate::args::UpgradeFlags;
+use crate::colors;
+use crate::factory::CliFactory;
+use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
+use crate::util::archive;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";
@@ -101,7 +103,7 @@ trait VersionProvider: Clone {
   /// Returns either a semver or git hash. It's up to implementor to
   /// decide which one is appropriate, but in general only "stable"
   /// and "lts" versions use semver.
-  fn current_version(&self) -> Cow<str>;
+  fn current_version(&self) -> Cow<'_, str>;
 
   fn get_current_exe_release_channel(&self) -> ReleaseChannel;
 }
@@ -138,7 +140,7 @@ impl VersionProvider for RealVersionProvider {
     .await
   }
 
-  fn current_version(&self) -> Cow<str> {
+  fn current_version(&self) -> Cow<'_, str> {
     Cow::Borrowed(version::DENO_VERSION_INFO.version_or_git_hash())
   }
 
@@ -156,10 +158,8 @@ struct UpdateChecker<
   maybe_file: Option<CheckVersionFile>,
 }
 
-impl<
-    TEnvironment: UpdateCheckerEnvironment,
-    TVersionProvider: VersionProvider,
-  > UpdateChecker<TEnvironment, TVersionProvider>
+impl<TEnvironment: UpdateCheckerEnvironment, TVersionProvider: VersionProvider>
+  UpdateChecker<TEnvironment, TVersionProvider>
 {
   pub fn new(env: TEnvironment, version_provider: TVersionProvider) -> Self {
     let maybe_file = CheckVersionFile::parse(env.read_check_file());
@@ -198,12 +198,11 @@ impl<
       return None;
     }
 
-    if let Ok(current) = Version::parse_standard(&current_version) {
-      if let Ok(latest) = Version::parse_standard(&file.latest_version) {
-        if current >= latest {
-          return None;
-        }
-      }
+    if let Ok(current) = Version::parse_standard(&current_version)
+      && let Ok(latest) = Version::parse_standard(&file.latest_version)
+      && current >= latest
+    {
+      return None;
     }
 
     let last_prompt_age = self
@@ -255,7 +254,7 @@ async fn print_release_notes(
   let is_deno_2_rc = new_semver.major == 2
     && new_semver.minor == 0
     && new_semver.patch == 0
-    && new_semver.pre.first() == Some(&"rc".to_string());
+    && new_semver.pre.first().map(|s| s.as_str()) == Some("rc");
 
   if is_deno_2_rc || is_switching_from_deno1_to_deno2 {
     log::info!(
@@ -430,14 +429,12 @@ async fn check_for_upgrades_for_lsp_with_provider(
 
   match release_channel {
     ReleaseChannel::Stable | ReleaseChannel::Rc | ReleaseChannel::Lts => {
-      if let Ok(current) = Version::parse_standard(&current_version) {
-        if let Ok(latest) =
+      if let Ok(current) = Version::parse_standard(&current_version)
+        && let Ok(latest) =
           Version::parse_standard(&latest_version.version_or_hash)
-        {
-          if current >= latest {
-            return Ok(None); // nothing to upgrade
-          }
-        }
+        && current >= latest
+      {
+        return Ok(None); // nothing to upgrade
       }
       Ok(Some(LspVersionUpgradeInfo {
         latest_version: latest_version.version_or_hash,
@@ -540,7 +537,7 @@ pub async fn upgrade(
   let Some(archive_data) = download_package(&client, download_url).await?
   else {
     log::error!("Download could not be found, aborting");
-    std::process::exit(1)
+    deno_runtime::exit(1)
   };
 
   log::info!(
@@ -579,6 +576,10 @@ pub async fn upgrade(
 
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
+
+  #[cfg(windows)]
+  kill_running_deno_lsp_processes();
+
   let output_result = if *output_exe_path == current_exe_path {
     replace_exe(&new_exe_path, output_exe_path)
   } else {
@@ -670,7 +671,7 @@ impl RequestedVersion {
         );
       };
 
-      if semver.pre.contains(&"rc".to_string()) {
+      if semver.pre.contains(&SmallStackString::from_static("rc")) {
         (ReleaseChannel::Rc, passed_version)
       } else {
         (ReleaseChannel::Stable, passed_version)
@@ -748,46 +749,22 @@ async fn find_latest_version_to_upgrade(
     }
   };
 
-  let (maybe_newer_latest_version, current_version) = match release_channel {
-    ReleaseChannel::Canary => {
-      let current_version = version::DENO_VERSION_INFO.git_hash;
-      let current_is_most_recent =
-        current_version == latest_version_found.version_or_hash;
-
-      if !force && current_is_most_recent {
-        (None, current_version)
-      } else {
-        (Some(latest_version_found), current_version)
-      }
-    }
+  let current_version = match release_channel {
+    ReleaseChannel::Canary => version::DENO_VERSION_INFO.git_hash,
     ReleaseChannel::Stable | ReleaseChannel::Lts | ReleaseChannel::Rc => {
-      let current_version = version::DENO_VERSION_INFO.deno;
-
-      // If the current binary is not the same channel, we can skip
-      // computation if we're on a newer release - we're not.
-      if version::DENO_VERSION_INFO.release_channel != release_channel {
-        (Some(latest_version_found), current_version)
-      } else {
-        let current = Version::parse_standard(current_version)?;
-        let latest =
-          Version::parse_standard(&latest_version_found.version_or_hash)?;
-        let current_is_most_recent = current >= latest;
-
-        if !force && current_is_most_recent {
-          (None, current_version)
-        } else {
-          (Some(latest_version_found), current_version)
-        }
-      }
+      version::DENO_VERSION_INFO.deno
     }
   };
+  let should_upgrade = force
+    || current_version != latest_version_found.version_or_hash
+    || version::DENO_VERSION_INFO.release_channel != release_channel;
 
   log::info!("");
-  if let Some(newer_latest_version) = maybe_newer_latest_version.as_ref() {
+  if should_upgrade {
     log::info!(
       "Found latest {} version {}",
-      newer_latest_version.release_channel.name(),
-      color_print::cformat!("<g>{}</>", newer_latest_version.display())
+      latest_version_found.release_channel.name(),
+      color_print::cformat!("<g>{}</>", latest_version_found.display())
     );
   } else {
     log::info!(
@@ -797,7 +774,7 @@ async fn find_latest_version_to_upgrade(
   }
   log::info!("");
 
-  Ok(maybe_newer_latest_version)
+  Ok(should_upgrade.then_some(latest_version_found))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -809,7 +786,7 @@ struct AvailableVersion {
 impl AvailableVersion {
   /// Format display version, appending `v` before version number
   /// for non-canary releases.
-  fn display(&self) -> Cow<str> {
+  fn display(&self) -> Cow<'_, str> {
     match self.release_channel {
       ReleaseChannel::Canary => Cow::Borrowed(&self.version_or_hash),
       _ => Cow::Owned(format!("v{}", self.version_or_hash)),
@@ -912,11 +889,11 @@ async fn download_package(
   // provide an empty string here in order to prefer the downloading
   // text above which will stay alive after the progress bars are complete
   let progress = progress_bar.update("");
-  let maybe_bytes = client
-    .download_with_progress_and_retries(download_url.clone(), None, &progress)
+  let response = client
+    .download_with_progress_and_retries(download_url.clone(), &Default::default(), &progress)
     .await
     .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
-  Ok(maybe_bytes)
+  Ok(response.into_maybe_bytes()?)
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
@@ -966,6 +943,34 @@ fn check_windows_access_denied_error(
   })
 }
 
+#[cfg(windows)]
+fn kill_running_deno_lsp_processes() {
+  // limit this to `deno lsp` invocations to avoid killing important programs someone might be running
+  let is_debug = log::log_enabled!(log::Level::Debug);
+  let get_pipe = || {
+    if is_debug {
+      std::process::Stdio::inherit()
+    } else {
+      std::process::Stdio::null()
+    }
+  };
+  let _ = Command::new("powershell.exe")
+    .args([
+      "-Command",
+      r#"Get-WmiObject Win32_Process | Where-Object {
+    $_.Name -eq 'deno.exe' -and
+    $_.CommandLine -match '^(?:\"[^\"]+\"|\S+)\s+lsp\b'
+} | ForEach-Object {
+  if ($_.Terminate()) {
+    Write-Host 'Terminated:' $_.ProcessId
+  }
+}"#,
+    ])
+    .stdout(get_pipe())
+    .stderr(get_pipe())
+    .output();
+}
+
 fn set_exe_permissions(
   current_exe_path: &Path,
   output_exe_path: &Path,
@@ -986,11 +991,14 @@ fn set_exe_permissions(
   if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
     && !nix::unistd::Uid::effective().is_root()
   {
-    bail!(concat!(
-      "You don't have write permission to {} because it's owned by root.\n",
-      "Consider updating deno through your package manager if its installed from it.\n",
-      "Otherwise run `deno upgrade` as root.",
-    ), output_exe_path.display());
+    bail!(
+      concat!(
+        "You don't have write permission to {} because it's owned by root.\n",
+        "Consider updating deno through your package manager if its installed from it.\n",
+        "Otherwise run `deno upgrade` as root.",
+      ),
+      output_exe_path.display()
+    );
   }
   Ok(permissions)
 }
@@ -1351,7 +1359,7 @@ mod test {
       }
     }
 
-    fn current_version(&self) -> Cow<str> {
+    fn current_version(&self) -> Cow<'_, str> {
       Cow::Owned(self.current_version.borrow().clone())
     }
 

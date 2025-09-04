@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet report_error_end_of_program.ts",
+  "output": "report_error_end_of_program.ts.out",
+  "exitCode": 1
+}

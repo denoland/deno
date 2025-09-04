@@ -1,12 +1,36 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
+
+use deno_core::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
+use deno_core::error::JsError;
+use deno_core::futures::StreamExt;
+use deno_core::futures::future;
+use deno_core::futures::stream;
+use deno_core::parking_lot::RwLock;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::tokio_util::create_and_run_current_thread;
+use indexmap::IndexMap;
+use tokio_util::sync::CancellationToken;
+use tower_lsp::lsp_types as lsp;
 
 use super::definitions::TestDefinition;
 use super::definitions::TestModule;
 use super::lsp_custom;
 use super::server::TestServerTests;
-
-use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
+use crate::args::flags_from_vec;
+use crate::args::parallelism_count;
 use crate::factory::CliFactory;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
@@ -16,33 +40,10 @@ use crate::lsp::urls::uri_parse_unencoded;
 use crate::lsp::urls::uri_to_url;
 use crate::lsp::urls::url_to_uri;
 use crate::tools::test;
-use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
-
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
-use deno_core::error::JsError;
-use deno_core::futures::future;
-use deno_core::futures::stream;
-use deno_core::futures::StreamExt;
-use deno_core::parking_lot::RwLock;
-use deno_core::unsync::spawn;
-use deno_core::unsync::spawn_blocking;
-use deno_core::ModuleSpecifier;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::tokio_util::create_and_run_current_thread;
-use indexmap::IndexMap;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::num::NonZeroUsize;
-use std::sync::Arc;
-use std::time::Duration;
-use std::time::Instant;
-use tokio_util::sync::CancellationToken;
-use tower_lsp::lsp_types as lsp;
+use crate::tools::test::create_test_event_channel;
 
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests
@@ -61,16 +62,16 @@ fn as_queue_and_filters(
       let url = uri_to_url(&item.text_document.uri);
       if let Some((test_definitions, _)) = tests.get(&url) {
         queue.insert(url.clone());
-        if let Some(id) = &item.id {
-          if let Some(test) = test_definitions.get(id) {
-            let filter = filters.entry(url).or_default();
-            if let Some(include) = filter.include.as_mut() {
-              include.insert(test.id.clone(), test.clone());
-            } else {
-              let mut include = HashMap::new();
-              include.insert(test.id.clone(), test.clone());
-              filter.include = Some(include);
-            }
+        if let Some(id) = &item.id
+          && let Some(test) = test_definitions.get(id)
+        {
+          let filter = filters.entry(url).or_default();
+          if let Some(include) = filter.include.as_mut() {
+            include.insert(test.id.clone(), test.clone());
+          } else {
+            let mut include = HashMap::new();
+            include.insert(test.id.clone(), test.clone());
+            filter.include = Some(include);
           }
         }
       }
@@ -84,11 +85,11 @@ fn as_queue_and_filters(
     if let Some((test_definitions, _)) = tests.get(&url) {
       if let Some(id) = &item.id {
         // there is no way to exclude a test step
-        if item.step_id.is_none() {
-          if let Some(test) = test_definitions.get(id) {
-            let filter = filters.entry(url.clone()).or_default();
-            filter.exclude.insert(test.id.clone(), test.clone());
-          }
+        if item.step_id.is_none()
+          && let Some(test) = test_definitions.get(id)
+        {
+          let filter = filters.entry(url.clone()).or_default();
+          filter.exclude.insert(test.id.clone(), test.clone());
         }
       } else {
         // the entire test module is excluded
@@ -102,24 +103,32 @@ fn as_queue_and_filters(
   (queue, filters)
 }
 
-fn as_test_messages<S: AsRef<str>>(
-  message: S,
-  is_markdown: bool,
-) -> Vec<lsp_custom::TestMessage> {
+fn failure_to_test_message(failure: &TestFailure) -> lsp_custom::TestMessage {
   let message = lsp::MarkupContent {
-    kind: if is_markdown {
-      lsp::MarkupKind::Markdown
-    } else {
-      lsp::MarkupKind::PlainText
-    },
-    value: message.as_ref().to_string(),
+    kind: lsp::MarkupKind::PlainText,
+    value: failure
+      .format(&TestFailureFormatOptions::default())
+      .to_string(),
   };
-  vec![lsp_custom::TestMessage {
+  let location = failure.error_location().and_then(|v| {
+    let pos = lsp::Position {
+      line: v.line_number,
+      character: v.column_number,
+    };
+    // Does not have to match the test URI
+    // since one can write `Deno.test(importedFunction)`
+    let uri = uri_parse_unencoded(&v.file_name).ok()?;
+    Some(lsp::Location {
+      uri,
+      range: lsp::Range::new(pos, pos),
+    })
+  });
+  lsp_custom::TestMessage {
     message,
     expected_output: None,
     actual_output: None,
-    location: None,
-  }]
+    location,
+  }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -225,26 +234,19 @@ impl TestRun {
     )?);
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
-    // Various test files should not share the same permissions in terms of
-    // `PermissionsContainer` - otherwise granting/revoking permissions in one
-    // file would have impact on other files, which is undesirable.
-    let permission_desc_parser = factory.permission_desc_parser()?.clone();
-    let permissions = Permissions::from_options(
-      permission_desc_parser.as_ref(),
-      &cli_options.permissions_options(),
-    )?;
+    let permission_desc_parser = factory.permission_desc_parser()?;
     let main_graph_container = factory.main_module_graph_container().await?;
     main_graph_container
-      .check_specifiers(&self.queue.iter().cloned().collect::<Vec<_>>(), None)
+      .check_specifiers(
+        &self.queue.iter().cloned().collect::<Vec<_>>(),
+        Default::default(),
+      )
       .await?;
 
     let (concurrent_jobs, fail_fast) =
       if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {
         (
-          test_flags
-            .concurrent_jobs
-            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
-            .into(),
+          parallelism_count(test_flags.parallel).into(),
           test_flags.fail_fast,
         )
       } else {
@@ -272,11 +274,11 @@ impl TestRun {
 
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
+      let specifier_dir =
+        cli_options.workspace().resolve_member_dir(&specifier);
       let worker_factory = worker_factory.clone();
-      let permissions_container = PermissionsContainer::new(
-        permission_desc_parser.clone(),
-        permissions.clone(),
-      );
+      let cli_options = cli_options.clone();
+      let permission_desc_parser = permission_desc_parser.clone();
       let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
@@ -295,6 +297,18 @@ impl TestRun {
       let token = self.token.clone();
 
       spawn_blocking(move || {
+        // Various test files should not share the same permissions in terms of
+        // `PermissionsContainer` - otherwise granting/revoking permissions in one
+        // file would have impact on other files, which is undesirable.
+        let permissions =
+          cli_options.permissions_options_for_dir(&specifier_dir)?;
+        let permissions_container = PermissionsContainer::new(
+          permission_desc_parser.clone(),
+          Permissions::from_options(
+            permission_desc_parser.as_ref(),
+            &permissions,
+          )?,
+        );
         if fail_fast_tracker.should_stop() {
           return Ok(());
         }
@@ -307,6 +321,8 @@ impl TestRun {
             worker_factory,
             permissions_container,
             specifier,
+            // Executing tests in the LSP currently doesn't support preload option
+            vec![],
             worker_sender,
             fail_fast_tracker,
             test::TestSpecifierOptions {
@@ -453,7 +469,7 @@ impl TestRun {
     Ok(())
   }
 
-  fn get_args(&self) -> Vec<Cow<str>> {
+  fn get_args(&self) -> Vec<Cow<'_, str>> {
     let mut args = vec![Cow::Borrowed("deno"), Cow::Borrowed("test")];
     args.extend(
       self
@@ -470,19 +486,18 @@ impl TestRun {
         args.push(Cow::Owned(flag));
       }
     }
-    if let Some(config) = &self.workspace_settings.config {
-      if !args.contains(&Cow::Borrowed("--config"))
-        && !args.contains(&Cow::Borrowed("-c"))
-      {
-        args.push(Cow::Borrowed("--config"));
-        args.push(Cow::Borrowed(config.as_str()));
-      }
+    if let Some(config) = &self.workspace_settings.config
+      && !args.contains(&Cow::Borrowed("--config"))
+      && !args.contains(&Cow::Borrowed("-c"))
+    {
+      args.push(Cow::Borrowed("--config"));
+      args.push(Cow::Borrowed(config.as_str()));
     }
-    if let Some(import_map) = &self.workspace_settings.import_map {
-      if !args.contains(&Cow::Borrowed("--import-map")) {
-        args.push(Cow::Borrowed("--import-map"));
-        args.push(Cow::Borrowed(import_map.as_str()));
-      }
+    if let Some(import_map) = &self.workspace_settings.import_map
+      && !args.contains(&Cow::Borrowed("--import-map"))
+    {
+      args.push(Cow::Borrowed("--import-map"));
+      args.push(Cow::Borrowed(import_map.as_str()));
     }
     if self.kind == lsp_custom::TestRunKind::Debug
       && !args.contains(&Cow::Borrowed("--inspect"))
@@ -669,10 +684,7 @@ impl LspTestReporter {
         let desc = self.tests.get(&desc.id).unwrap();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(
-            failure.format(&TestFailureFormatOptions::default()),
-            false,
-          ),
+          messages: vec![failure_to_test_message(failure)],
           duration: Some(elapsed as u32),
         })
       }
@@ -692,9 +704,20 @@ impl LspTestReporter {
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
       origin,
-      test::fmt::format_test_error(js_error, &TestFailureFormatOptions::default())
+      test::fmt::format_test_error(
+        js_error,
+        &TestFailureFormatOptions::default()
+      )
     );
-    let messages = as_test_messages(err_string, false);
+    let messages = vec![lsp_custom::TestMessage {
+      message: lsp::MarkupContent {
+        kind: lsp::MarkupKind::PlainText,
+        value: err_string,
+      },
+      expected_output: None,
+      actual_output: None,
+      location: None,
+    }];
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
       self.progress(lsp_custom::TestRunProgressMessage::Failed {
         test: desc.as_test_identifier(&self.tests),
@@ -769,10 +792,7 @@ impl LspTestReporter {
       test::TestStepResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(
-            failure.format(&TestFailureFormatOptions::default()),
-            false,
-          ),
+          messages: vec![failure_to_test_message(failure)],
           duration: Some(elapsed as u32),
         })
       }
@@ -794,9 +814,10 @@ impl LspTestReporter {
 
 #[cfg(test)]
 mod tests {
+  use deno_core::serde_json::json;
+
   use super::*;
   use crate::lsp::testing::collectors::tests::new_range;
-  use deno_core::serde_json::json;
 
   #[test]
   fn test_as_queue_and_filters() {

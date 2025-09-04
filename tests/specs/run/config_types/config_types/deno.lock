@@ -1,0 +1,6 @@
+{
+  "version": "2",
+  "remote": {
+    "http://localhost:4545/run/config_types/types.d.ts": "741c39165e37de0c12acc5c081841f4362487e3f17dc4cad7017b70af72c4605"
+  }
+}

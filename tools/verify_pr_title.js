@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -11,11 +11,12 @@ if (prTitle == null) {
 console.log("PR title:", prTitle);
 
 if (
-  prTitle.startsWith("chore:") && prTitle.includes("deno_core") &&
+  prTitle.startsWith("chore:") &&
+  (prTitle.includes("deno_core") || prTitle.includes("v8")) &&
   (prTitle.includes("upgrade") || prTitle.includes("update"))
 ) {
   console.error([
-    "Please categorize this deno_core upgrade as a 'feat:', 'fix:' or a ",
+    "Please categorize this deno_core/v8 upgrade as a 'feat:', 'fix:' or a ",
     "'refactor:'. If your upgrade does not fall into either of these ",
     "categories, wait until the next deno_core release.\n\n",
     "For feats and fixes, please title your PR outlining the fixed issue ",
@@ -63,8 +64,7 @@ if (validPrefixes.some((prefix) => prTitle.startsWith(prefix))) {
     console.error(`  - ${prefix}`);
   }
   console.error(
-    "\nPlease fix the PR title according to https://www.conventionalcommits.org " +
-      "then push an empty commit to reset the CI.",
+    "\nPlease fix the PR title according to https://www.conventionalcommits.org",
   );
   Deno.exit(1);
 }

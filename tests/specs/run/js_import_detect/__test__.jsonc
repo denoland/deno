@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --reload js_import_detect.ts",
+  "output": "js_import_detect.ts.out",
+  "exitCode": 0
+}

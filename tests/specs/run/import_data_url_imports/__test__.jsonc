@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-import --quiet --reload import_data_url_imports.ts",
+  "output": "import_data_url_imports.ts.out"
+}

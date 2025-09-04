@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
 use std::time::Instant;
+
 use test_util as util;
 use test_util::itest;
 use util::deno_config_path;
@@ -21,7 +22,6 @@ util::unit_test_factory!(
     _fs_close_test = _fs / _fs_close_test,
     _fs_copy_test = _fs / _fs_copy_test,
     _fs_dir_test = _fs / _fs_dir_test,
-    _fs_dirent_test = _fs / _fs_dirent_test,
     _fs_open_test = _fs / _fs_open_test,
     _fs_read_test = _fs / _fs_read_test,
     _fs_exists_test = _fs / _fs_exists_test,
@@ -72,7 +72,9 @@ util::unit_test_factory!(
     dgram_test,
     domain_test,
     fs_test,
+    fetch_test,
     http_test,
+    http_no_cert_flag_test,
     http2_test,
     inspector_test,
     _randomBytes_test = internal / _randomBytes_test,
@@ -88,6 +90,7 @@ util::unit_test_factory!(
     querystring_test,
     readline_test,
     repl_test,
+    sqlite_test,
     stream_test,
     string_decoder_test,
     timers_test,
@@ -212,3 +215,7 @@ itest!(unhandled_rejection_web_process {
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// The itest macro is deprecated. Please move your new test to ~/tests/specs.
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

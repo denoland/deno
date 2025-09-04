@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assertEquals, assertThrows, fail } from "@std/assert";
 import { appendFile, appendFileSync } from "node:fs";
 import { fromFileUrl } from "@std/path";
@@ -29,7 +29,7 @@ Deno.test({
         appendFile("some/path", "some data", "made-up-encoding", () => {});
       },
       Error,
-      "The argument 'made-up-encoding' is invalid encoding. Received 'encoding'",
+      "The argument 'encoding' is invalid encoding. Received 'made-up-encoding'",
     );
     assertThrows(
       () => {
@@ -42,13 +42,13 @@ Deno.test({
         );
       },
       Error,
-      "The argument 'made-up-encoding' is invalid encoding. Received 'encoding'",
+      "The argument 'encoding' is invalid encoding. Received 'made-up-encoding'",
     );
     assertThrows(
       // @ts-expect-error Type '"made-up-encoding"' is not assignable to type
       () => appendFileSync("some/path", "some data", "made-up-encoding"),
       Error,
-      "The argument 'made-up-encoding' is invalid encoding. Received 'encoding'",
+      "The argument 'encoding' is invalid encoding. Received 'made-up-encoding'",
     );
     assertThrows(
       () =>
@@ -57,7 +57,7 @@ Deno.test({
           encoding: "made-up-encoding",
         }),
       Error,
-      "The argument 'made-up-encoding' is invalid encoding. Received 'encoding'",
+      "The argument 'encoding' is invalid encoding. Received 'made-up-encoding'",
     );
   },
 });

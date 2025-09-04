@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -14,7 +14,7 @@ import {
   validateBoolean,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
-import { isWritable } from "ext:deno_node/internal/streams/utils.mjs";
+import { isWritable } from "ext:deno_node/internal/streams/utils.js";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 const {

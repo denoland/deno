@@ -2,7 +2,7 @@
   "tests": {
     "root": {
       // todo(dsherret): should be possible to not provide args here
-      "args": "check package-a/mod.ts package-b/mod.ts",
+      "args": "check package-a/mod.ts package-b/mod.ts package-c/mod.ts package-d/mod.ts",
       "output": "root.out",
       "exitCode": 1
     },

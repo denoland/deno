@@ -1,0 +1,4 @@
+true
+DisposableStack {}
+AsyncDisposableStack {}
+[Function: [Symbol.dispose]]

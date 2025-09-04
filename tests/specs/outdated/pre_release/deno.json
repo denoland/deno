@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "@denotest/npm-has-pre-release": "npm:@denotest/has-pre-release@^2.0.0-beta.1",
+    "@denotest/jsr-has-pre-release": "jsr:@denotest/has-pre-release@^2.0.0-beta.1",
+    "@denotest/has-only-pre-release": "jsr:@denotest/has-only-pre-release@^2.0.0-beta.1"
+  }
+}

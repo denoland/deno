@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
   assert,
@@ -14,27 +14,31 @@ Deno.test(
     const enc = new TextEncoder();
     const cwd = await Deno.makeTempDir({ prefix: "deno_command_test" });
 
+    const exitCodeFileLock = "deno_was_here.lock";
     const exitCodeFile = "deno_was_here";
     const programFile = "poll_exit.ts";
     const program = `
+const file = await Deno.open("${exitCodeFileLock}", { write: true, create: true });
 async function tryExit() {
+  await file.lock(true);
   try {
     const code = parseInt(await Deno.readTextFile("${exitCodeFile}"));
     Deno.exit(code);
   } catch {
     // Retry if we got here before deno wrote the file.
     setTimeout(tryExit, 0.01);
+  } finally {
+    await file.unlock();
   }
 }
 
 tryExit();
 `;
-
     Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
 
     const command = new Deno.Command(Deno.execPath(), {
       cwd,
-      args: ["run", "--allow-read", programFile],
+      args: ["run", "-RW", programFile],
       stdout: "inherit",
       stderr: "inherit",
     });
@@ -43,12 +47,18 @@ tryExit();
     // Write the expected exit code *after* starting deno.
     // This is how we verify that `Child` is actually asynchronous.
     const code = 84;
-    Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
 
+    await using file = await Deno.open(`${cwd}/${exitCodeFileLock}`, {
+      write: true,
+      create: true,
+    });
+    await file.lock(true);
+    Deno.writeFileSync(`${cwd}/${exitCodeFile}`, enc.encode(`${code}`));
+    await file.unlock();
     const status = await child.status;
     await Deno.remove(cwd, { recursive: true });
-    assertEquals(status.success, false);
     assertEquals(status.code, code);
+    assertEquals(status.success, false);
     assertEquals(status.signal, null);
   },
 );
@@ -695,6 +705,7 @@ Deno.test(
 Deno.test(
   { permissions: { run: true, read: true, env: true } },
   async function commandClearEnv() {
+    Deno.env.set("DENO_COMMAND_CLEAR_ENV_TESTING", "TESTING");
     const { stdout } = await new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
@@ -713,13 +724,15 @@ Deno.test(
     // vars for processes, so we check if PATH isn't present as that is a common
     // env var across OS's and isn't set for processes.
     assertEquals(obj.FOO, "23147");
-    assert(!("PATH" in obj));
+    assert(!("DENO_COMMAND_CLEAR_ENV_TESTING" in obj));
+    Deno.env.delete("DENO_COMMAND_CLEAR_ENV_TESTING");
   },
 );
 
 Deno.test(
   { permissions: { run: true, read: true, env: true } },
   function commandSyncClearEnv() {
+    Deno.env.set("DENO_COMMAND_SYNC_CLEAR_ENV_TESTING", "TESTING");
     const { stdout } = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
@@ -738,7 +751,8 @@ Deno.test(
     // vars for processes, so we check if PATH isn't present as that is a common
     // env var across OS's and isn't set for processes.
     assertEquals(obj.FOO, "23147");
-    assert(!("PATH" in obj));
+    assert(!("DENO_COMMAND_SYNC_CLEAR_ENV_TESTING" in obj));
+    Deno.env.delete("DENO_COMMAND_SYNC_CLEAR_ENV_TESTING");
   },
 );
 
@@ -1063,4 +1077,94 @@ Deno.test(async function outputWhenManuallyConsumingStreams() {
   assertEquals(status.signal, null);
   assertEquals(status.stdout, new Uint8Array());
   assertEquals(status.stderr, new Uint8Array());
+});
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "windows",
+    permissions: { run: ["cmd"], read: true, env: true },
+  },
+  async function envCaseInsensitiveWindows() {
+    const command = new Deno.Command("cmd", {
+      args: ["/d", "/s", "/c", "echo", "1"],
+      env: {
+        // notice Path is not PATH
+        Path: Deno.env.get("PATH")!,
+      },
+      clearEnv: true,
+    });
+    const child = await command.output();
+    assertEquals(child.success, true);
+  },
+);
+
+Deno.test(
+  { ignore: Deno.build.os === "windows" },
+  async function abortChildProcessRightWhenItExitsShouldNotThrow() {
+    const controller = new AbortController();
+    const cb = () => controller.abort();
+    Deno.addSignalListener("SIGCHLD", cb);
+    const output = await new Deno.Command("true", { signal: controller.signal })
+      .output();
+    assertEquals(output.success, true);
+    assertEquals(output.code, 0);
+    assertEquals(output.signal, null);
+    assertEquals(output.stdout, new Uint8Array());
+    assertEquals(output.stderr, new Uint8Array());
+
+    Deno.removeSignalListener("SIGCHLD", cb);
+  },
+);
+
+Deno.test({ permissions: { run: true } }, async function collectArrayBuffer() {
+  const process = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log('hello')"],
+    stdout: "piped",
+  }).spawn();
+
+  const output = await process.stdout.arrayBuffer();
+  assert(output instanceof ArrayBuffer);
+  assertEquals(
+    new Uint8Array(output),
+    new Uint8Array([104, 101, 108, 108, 111, 10]),
+  );
+
+  await process.status;
+});
+
+Deno.test({ permissions: { run: true } }, async function collectBytes() {
+  const process = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log('hello')"],
+    stdout: "piped",
+  }).spawn();
+
+  const output = await process.stdout.bytes();
+  assert(output instanceof Uint8Array);
+  assertEquals(output, new Uint8Array([104, 101, 108, 108, 111, 10]));
+
+  await process.status;
+});
+
+Deno.test({ permissions: { run: true } }, async function collectJSON() {
+  const process = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log(JSON.stringify({foo: 'bar'}))"],
+    stdout: "piped",
+  }).spawn();
+
+  const output = await process.stdout.json();
+  assertEquals(output, { foo: "bar" });
+
+  await process.status;
+});
+
+Deno.test({ permissions: { run: true } }, async function collectText() {
+  const process = new Deno.Command(Deno.execPath(), {
+    args: ["eval", "console.log('hello')"],
+    stdout: "piped",
+  }).spawn();
+
+  const output = await process.stdout.text();
+  assertEquals(output, "hello\n");
+
+  await process.status;
 });

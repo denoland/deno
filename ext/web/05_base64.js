@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -50,7 +50,7 @@ function btoa(data) {
   } catch (e) {
     if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
       throw new DOMException(
-        "The string to be encoded contains characters outside of the Latin1 range.",
+        "Cannot encode string: string contains characters outside of the Latin1 range",
         "InvalidCharacterError",
       );
     }

@@ -1,0 +1,5 @@
+{
+  "args": "run 082_prepare_stack_trace_throw.js",
+  "output": "082_prepare_stack_trace_throw.js.out",
+  "exitCode": 1
+}

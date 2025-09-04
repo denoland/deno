@@ -1,4 +1,4 @@
-Warning "compilerOptions" field can only be specified in the workspace root deno.json file.
+Warning "lock" field can only be specified in the workspace root deno.json file.
     at file:///[WILDLINE]/sub/deno.json
 Warning "lint.report" field can only be specified in the workspace root deno.json file.
     at file:///[WILDLINE]/sub/deno.json

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -6,7 +6,7 @@
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
@@ -718,6 +718,10 @@ function revokeObjectURL(url) {
 URL.createObjectURL = createObjectURL;
 URL.revokeObjectURL = revokeObjectURL;
 
+function isBlob(obj) {
+  return ObjectPrototypeIsPrototypeOf(BlobPrototype, obj);
+}
+
 export {
   Blob,
   blobFromObjectUrl,
@@ -725,4 +729,5 @@ export {
   File,
   FilePrototype,
   getParts,
+  isBlob,
 };

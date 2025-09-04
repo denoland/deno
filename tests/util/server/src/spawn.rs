@@ -1,6 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use anyhow::Error;
+// Copyright 2018-2025 the Deno authors. MIT license.
 use std::convert::Infallible;
+
+use anyhow::Error;
 
 /// For unix targets, we just replace our current process with the desired cargo process.
 #[cfg(unix)]
@@ -30,6 +31,7 @@ pub fn exec_replace_inner(
 ) -> Result<Infallible, Error> {
   use std::os::windows::io::AsRawHandle;
   use std::process::Command;
+
   use win32job::ExtendedLimitInfo;
   use win32job::Job;
 

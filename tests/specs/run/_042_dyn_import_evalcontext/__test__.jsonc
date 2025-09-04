@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --allow-read --reload 042_dyn_import_evalcontext.ts",
+  "output": "042_dyn_import_evalcontext.ts.out"
+}

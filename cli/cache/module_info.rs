@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -6,15 +6,16 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_graph::ModuleInfo;
-use deno_graph::ParserModuleAnalyzer;
+use deno_error::JsErrorBox;
+use deno_graph::analysis::ModuleInfo;
+use deno_graph::ast::ParserModuleAnalyzer;
+use deno_resolver::cache::ParsedSourceCache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
-use super::ParsedSourceCache;
 
 const SELECT_MODULE_INFO: &str = "
 SELECT
@@ -44,18 +45,32 @@ pub static MODULE_INFO_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
 /// A cache of `deno_graph::ModuleInfo` objects. Using this leads to a considerable
 /// performance improvement because when it exists we can skip parsing a module for
 /// deno_graph.
+#[derive(Debug)]
 pub struct ModuleInfoCache {
   conn: CacheDB,
+  parsed_source_cache: Arc<ParsedSourceCache>,
 }
 
 impl ModuleInfoCache {
   #[cfg(test)]
-  pub fn new_in_memory(version: &'static str) -> Self {
-    Self::new(CacheDB::in_memory(&MODULE_INFO_CACHE_DB, version))
+  pub fn new_in_memory(
+    version: &'static str,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+  ) -> Self {
+    Self::new(
+      CacheDB::in_memory(&MODULE_INFO_CACHE_DB, version),
+      parsed_source_cache,
+    )
   }
 
-  pub fn new(conn: CacheDB) -> Self {
-    Self { conn }
+  pub fn new(
+    conn: CacheDB,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+  ) -> Self {
+    Self {
+      conn,
+      parsed_source_cache,
+    }
   }
 
   /// Useful for testing: re-create this cache DB with a different current version.
@@ -63,6 +78,7 @@ impl ModuleInfoCache {
   pub(crate) fn recreate_with_version(self, version: &'static str) -> Self {
     Self {
       conn: self.conn.recreate_with_version(version),
+      parsed_source_cache: self.parsed_source_cache,
     }
   }
 
@@ -113,13 +129,32 @@ impl ModuleInfoCache {
     Ok(())
   }
 
-  pub fn as_module_analyzer<'a>(
-    &'a self,
-    parsed_source_cache: &'a Arc<ParsedSourceCache>,
-  ) -> ModuleInfoCacheModuleAnalyzer<'a> {
+  pub fn as_module_analyzer(&self) -> ModuleInfoCacheModuleAnalyzer<'_> {
     ModuleInfoCacheModuleAnalyzer {
       module_info_cache: self,
-      parsed_source_cache,
+      parsed_source_cache: &self.parsed_source_cache,
+    }
+  }
+}
+
+impl deno_graph::source::ModuleInfoCacher for ModuleInfoCache {
+  fn cache_module_info(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    source: &Arc<[u8]>,
+    module_info: &deno_graph::analysis::ModuleInfo,
+  ) {
+    log::debug!("Caching module info for {}", specifier);
+    let source_hash = CacheDBHash::from_hashable(source);
+    let result =
+      self.set_module_info(specifier, media_type, source_hash, module_info);
+    if let Err(err) = result {
+      log::debug!(
+        "Error saving module cache info for {}. {:#}",
+        specifier,
+        err
+      );
     }
   }
 }
@@ -129,30 +164,101 @@ pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   parsed_source_cache: &'a Arc<ParsedSourceCache>,
 }
 
-#[async_trait::async_trait(?Send)]
-impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
-  async fn analyze(
+impl ModuleInfoCacheModuleAnalyzer<'_> {
+  fn load_cached_module_info(
     &self,
     specifier: &ModuleSpecifier,
-    source: Arc<str>,
     media_type: MediaType,
-  ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
-    // attempt to load from the cache
-    let source_hash = CacheDBHash::from_source(&source);
+    source_hash: CacheDBHash,
+  ) -> Option<ModuleInfo> {
     match self.module_info_cache.get_module_info(
       specifier,
       media_type,
       source_hash,
     ) {
-      Ok(Some(info)) => return Ok(info),
-      Ok(None) => {}
+      Ok(Some(info)) => Some(info),
+      Ok(None) => None,
       Err(err) => {
         log::debug!(
           "Error loading module cache info for {}. {:#}",
           specifier,
           err
         );
+        None
       }
+    }
+  }
+
+  fn save_module_info_to_cache(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    source_hash: CacheDBHash,
+    module_info: &ModuleInfo,
+  ) {
+    if let Err(err) = self.module_info_cache.set_module_info(
+      specifier,
+      media_type,
+      source_hash,
+      module_info,
+    ) {
+      log::debug!(
+        "Error saving module cache info for {}. {:#}",
+        specifier,
+        err
+      );
+    }
+  }
+
+  #[allow(clippy::result_large_err)]
+  pub fn analyze_sync(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    source: &Arc<str>,
+  ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
+    // attempt to load from the cache
+    let source_hash = CacheDBHash::from_hashable(source);
+    if let Some(info) =
+      self.load_cached_module_info(specifier, media_type, source_hash)
+    {
+      return Ok(info);
+    }
+
+    // otherwise, get the module info from the parsed source cache
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = ParserModuleAnalyzer::new(&parser);
+    let module_info =
+      analyzer.analyze_sync(specifier, source.clone(), media_type)?;
+
+    // then attempt to cache it
+    self.save_module_info_to_cache(
+      specifier,
+      media_type,
+      source_hash,
+      &module_info,
+    );
+
+    Ok(module_info)
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+impl deno_graph::analysis::ModuleAnalyzer
+  for ModuleInfoCacheModuleAnalyzer<'_>
+{
+  async fn analyze(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: Arc<str>,
+    media_type: MediaType,
+  ) -> Result<ModuleInfo, JsErrorBox> {
+    // attempt to load from the cache
+    let source_hash = CacheDBHash::from_hashable(&source);
+    if let Some(info) =
+      self.load_cached_module_info(specifier, media_type, source_hash)
+    {
+      return Ok(info);
     }
 
     // otherwise, get the module info from the parsed source cache
@@ -162,30 +268,28 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
       move || {
         let parser = cache.as_capturing_parser();
         let analyzer = ParserModuleAnalyzer::new(&parser);
-        analyzer.analyze_sync(&specifier, source, media_type)
+        analyzer
+          .analyze_sync(&specifier, source, media_type)
+          .map_err(JsErrorBox::from_err)
       }
     })
     .await
     .unwrap()?;
 
     // then attempt to cache it
-    if let Err(err) = self.module_info_cache.set_module_info(
+    self.save_module_info_to_cache(
       specifier,
       media_type,
       source_hash,
       &module_info,
-    ) {
-      log::debug!(
-        "Error saving module cache info for {}. {:#}",
-        specifier,
-        err
-      );
-    }
+    );
 
     Ok(module_info)
   }
 }
 
+// note: there is no deserialize for this because this is only ever
+// saved in the db and then used for comparisons
 fn serialize_media_type(media_type: MediaType) -> i64 {
   use MediaType::*;
   match media_type {
@@ -202,22 +306,25 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
     Tsx => 11,
     Json => 12,
     Wasm => 13,
-    TsBuildInfo => 14,
-    SourceMap => 15,
-    Unknown => 16,
+    Css => 14,
+    Html => 15,
+    SourceMap => 16,
+    Sql => 17,
+    Unknown => 18,
   }
 }
 
 #[cfg(test)]
 mod test {
   use deno_graph::PositionRange;
-  use deno_graph::SpecifierWithRange;
+  use deno_graph::analysis::JsDocImportInfo;
+  use deno_graph::analysis::SpecifierWithRange;
 
   use super::*;
 
   #[test]
   pub fn module_info_cache_general_use() {
-    let cache = ModuleInfoCache::new_in_memory("1.0.0");
+    let cache = ModuleInfoCache::new_in_memory("1.0.0", Default::default());
     let specifier1 =
       ModuleSpecifier::parse("https://localhost/mod.ts").unwrap();
     let specifier2 =
@@ -234,18 +341,21 @@ mod test {
     );
 
     let mut module_info = ModuleInfo::default();
-    module_info.jsdoc_imports.push(SpecifierWithRange {
-      range: PositionRange {
-        start: deno_graph::Position {
-          line: 0,
-          character: 3,
+    module_info.jsdoc_imports.push(JsDocImportInfo {
+      specifier: SpecifierWithRange {
+        range: PositionRange {
+          start: deno_graph::Position {
+            line: 0,
+            character: 3,
+          },
+          end: deno_graph::Position {
+            line: 1,
+            character: 2,
+          },
         },
-        end: deno_graph::Position {
-          line: 1,
-          character: 2,
-        },
+        text: "test".to_string(),
       },
-      text: "test".to_string(),
+      resolution_mode: None,
     });
     cache
       .set_module_info(

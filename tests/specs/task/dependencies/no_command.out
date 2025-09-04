@@ -1,0 +1,5 @@
+Task b echo 'b'
+b
+Task c echo 'c'
+c
+Task a (no command)

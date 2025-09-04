@@ -1,0 +1,8 @@
+Download http://localhost:4260/cowsay
+error: Error in cowsay@1.2.0 parsing version requirement for dependency "react": "file:../react"
+
+Caused by:
+    0: Invalid version requirement
+    1: Unexpected character.
+         file:../react
+         ~

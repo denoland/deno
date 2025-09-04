@@ -1,10 +1,11 @@
 #!/usr/bin/env -S deno run --allow-write=. --allow-read=.
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Run this to trim the registry.json files
 
 for (const dirPath of getPackageDirs()) {
-  if (dirPath.includes("@denotest")) {
+  if (dirPath.includes("@denotest") || dirPath.includes("@types/denotest__")
+    || dirPath.includes("denotest-packagejson-missing-info")) {
     continue;
   }
   const versions = Array.from(Deno.readDirSync(dirPath)
@@ -15,6 +16,11 @@ for (const dirPath of getPackageDirs()) {
   const data = JSON.parse(Deno.readTextFileSync(registryPath));
   // this is to save data
   delete data.readme;
+  delete data.time;
+  delete data.contributors;
+  delete data.maintainers;
+  delete data.users;
+  delete data.readmeFilename;
   for (const version in data.versions) {
     if (!versions.includes(version)) {
       delete data.versions[version];

@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet inline_js_source_map_2_with_inline_contents.js",
+  "output": "inline_js_source_map_2_with_inline_contents.js.out",
+  "exitCode": 1
+}

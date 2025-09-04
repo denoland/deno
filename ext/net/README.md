@@ -13,7 +13,7 @@ import * as tls from "ext:deno_net/02_tls.js";
 ```
 
 Then from rust, provide:
-`deno_net::deno_net::init_ops_and_esm::<Permissions>(root_cert_store_provider, unsafely_ignore_certificate_errors)`
+`deno_net::deno_net::init::<Permissions>(root_cert_store_provider, unsafely_ignore_certificate_errors)`
 
 Where:
 
@@ -49,27 +49,12 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - op_net_connect_tls
 - op_net_listen_tls
 - op_net_accept_tls
-- op_net_recv_udp
-- op_net_send_udp
 - op_net_join_multi_v4_udp
 - op_net_join_multi_v6_udp
 - op_net_leave_multi_v4_udp
 - op_net_leave_multi_v6_udp
 - op_net_set_multi_loopback_udp
 - op_net_set_multi_ttl_udp
-- op_net_accept_tcp
-- op_net_connect_tcp
-- op_net_listen_tcp
-- op_net_listen_udp
-- op_net_connect_tls
-- op_net_listen_tls
-- op_net_accept_tls
-- op_net_accept_unix
-- op_net_connect_unix
-- op_net_listen_unix
-- op_net_listen_unixpacket
-- op_net_recv_unixpacket
-- op_net_send_unixpacket
 
 ### TLS
 
@@ -82,13 +67,10 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - op_tls_cert_resolver_poll
 - op_tls_cert_resolver_resolve
 - op_tls_cert_resolver_resolve_error
-- op_tls_start
-- op_tls_handshake
 
 ### Other
 
 - op_node_unstable_net_listen_udp
-- op_dns_resolve
 - op_dns_resolve
 - op_set_nodelay
 - op_set_keepalive

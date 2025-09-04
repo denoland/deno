@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This file is forked/ported from <https://github.com/evcxr/evcxr>
 // Copyright 2020 The Evcxr Authors. MIT license.
@@ -11,21 +11,17 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::cdp;
-use crate::tools::repl;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use jupyter_runtime::ExecutionCount;
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
-
-use jupyter_runtime::messaging;
+use deno_lib::version::DENO_VERSION_INFO;
+use jupyter_protocol::messaging;
 use jupyter_runtime::ConnectionInfo;
+use jupyter_runtime::ExecutionCount;
 use jupyter_runtime::JupyterMessage;
 use jupyter_runtime::JupyterMessageContent;
 use jupyter_runtime::KernelControlConnection;
@@ -34,9 +30,12 @@ use jupyter_runtime::KernelShellConnection;
 use jupyter_runtime::ReplyError;
 use jupyter_runtime::ReplyStatus;
 use jupyter_runtime::StreamContent;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::JupyterReplProxy;
+use crate::cdp;
 
 pub struct JupyterServer {
   execution_count: ExecutionCount,
@@ -66,19 +65,28 @@ impl JupyterServer {
     let session_id = Uuid::new_v4().to_string();
 
     let mut heartbeat =
-      connection_info.create_kernel_heartbeat_connection().await?;
-    let shell_connection = connection_info
-      .create_kernel_shell_connection(&session_id)
-      .await?;
-    let control_connection = connection_info
-      .create_kernel_control_connection(&session_id)
-      .await?;
-    let mut stdin_connection = connection_info
-      .create_kernel_stdin_connection(&session_id)
-      .await?;
-    let iopub_connection = connection_info
-      .create_kernel_iopub_connection(&session_id)
-      .await?;
+      jupyter_runtime::create_kernel_heartbeat_connection(&connection_info)
+        .await?;
+    let shell_connection = jupyter_runtime::create_kernel_shell_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let control_connection = jupyter_runtime::create_kernel_control_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let mut stdin_connection = jupyter_runtime::create_kernel_stdin_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
+    let iopub_connection = jupyter_runtime::create_kernel_iopub_connection(
+      &connection_info,
+      &session_id,
+    )
+    .await?;
 
     let iopub_connection = Arc::new(Mutex::new(iopub_connection));
     let last_execution_request = Arc::new(Mutex::new(None));
@@ -322,14 +330,15 @@ impl JupyterServer {
             )
             .await
             .into_iter()
-            .filter(|n| {
-              !n.starts_with("Symbol(")
-                && n.starts_with(prop_name)
-                && n != &*repl::REPL_INTERNALS_NAME
-            })
+            .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
             .collect();
 
-            (candidates, cursor_pos - prop_name.len())
+            if prop_name.len() > cursor_pos {
+              // TODO(bartlomieju): most likely not correct, but better than panicking because of sub with overflow
+              (candidates, cursor_pos)
+            } else {
+              (candidates, cursor_pos - prop_name.len())
+            }
           } else {
             // combine results of declarations and globalThis properties
             let mut candidates = get_expression_property_names(
@@ -342,14 +351,19 @@ impl JupyterServer {
               get_global_lexical_scope_names(&mut self.repl_session_proxy)
                 .await,
             )
-            .filter(|n| n.starts_with(expr) && n != &*repl::REPL_INTERNALS_NAME)
+            .filter(|n| n.starts_with(expr))
             .collect::<Vec<_>>();
 
             // sort and remove duplicates
             candidates.sort();
             candidates.dedup(); // make sure to sort first
 
-            (candidates, cursor_pos - expr.len())
+            if expr.len() > cursor_pos {
+              // TODO(bartlomieju): most likely not correct, but better than panicking because of sub with overflow
+              (candidates, cursor_pos)
+            } else {
+              (candidates, cursor_pos - expr.len())
+            }
           };
 
           connection
@@ -670,10 +684,10 @@ fn kernel_info() -> messaging::KernelInfoReply {
     status: ReplyStatus::Ok,
     protocol_version: "5.3".to_string(),
     implementation: "Deno kernel".to_string(),
-    implementation_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
+    implementation_version: DENO_VERSION_INFO.deno.to_string(),
     language_info: messaging::LanguageInfo {
       name: "typescript".to_string(),
-      version: crate::version::DENO_VERSION_INFO.typescript.to_string(),
+      version: DENO_VERSION_INFO.typescript.to_string(),
       mimetype: "text/x.typescript".to_string(),
       file_extension: ".ts".to_string(),
       pygments_lexer: "typescript".to_string(),
@@ -728,9 +742,8 @@ fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
 
   let word = &line[start..end];
   let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-  let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
 
-  word
+  (word.strip_suffix(is_word_boundary).unwrap_or(word)) as _
 }
 
 // TODO(bartlomieju): dedup with repl::editor

@@ -1,11 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::ptr;
+
+use napi_sys::ValueType::napi_object;
+use napi_sys::*;
 
 use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
-use napi_sys::ValueType::napi_object;
-use napi_sys::*;
-use std::ptr;
 
 unsafe extern "C" fn finalize_cb(
   _env: napi_env,
@@ -50,8 +52,10 @@ unsafe extern "C" fn finalize_cb_drop(
   data: *mut ::std::os::raw::c_void,
   hint: *mut ::std::os::raw::c_void,
 ) {
-  let _ = Box::from_raw(data as *mut Thing);
-  assert!(hint.is_null());
+  unsafe {
+    let _ = Box::from_raw(data as *mut Thing);
+    assert!(hint.is_null());
+  }
 }
 
 extern "C" fn test_external_finalizer(
@@ -78,8 +82,10 @@ unsafe extern "C" fn finalize_cb_vec(
   data: *mut ::std::os::raw::c_void,
   hint: *mut ::std::os::raw::c_void,
 ) {
-  let _ = Vec::from_raw_parts(data as *mut u8, 3, 3);
-  assert!(hint.is_null());
+  unsafe {
+    let _ = Vec::from_raw_parts(data as *mut u8, 3, 3);
+    assert!(hint.is_null());
+  }
 }
 
 extern "C" fn test_external_buffer(
@@ -97,6 +103,24 @@ extern "C" fn test_external_buffer(
     &mut result
   ));
   std::mem::forget(buf);
+
+  result
+}
+
+extern "C" fn test_static_external_buffer(
+  env: napi_env,
+  _: napi_callback_info,
+) -> napi_value {
+  let mut result = ptr::null_mut();
+  static BUF: &[u8] = &[1, 2, 3];
+  assert_napi_ok!(napi_create_external_buffer(
+    env,
+    BUF.len(),
+    BUF.as_ptr() as _,
+    None,
+    ptr::null_mut(),
+    &mut result
+  ));
 
   result
 }
@@ -129,6 +153,11 @@ pub fn init(env: napi_env, exports: napi_value) {
       env,
       "test_external_arraybuffer",
       test_external_arraybuffer
+    ),
+    napi_new_property!(
+      env,
+      "test_static_external_buffer",
+      test_static_external_buffer
     ),
   ];
 

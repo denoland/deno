@@ -1,0 +1,6 @@
+{
+  "if": "windows",
+  "args": "run --check -A main.ts",
+  "tempDir": true,
+  "output": "[WILDCARD]" // just ensure no failure
+}

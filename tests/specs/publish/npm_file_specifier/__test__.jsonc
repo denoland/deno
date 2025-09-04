@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "cwd": "package-a",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "install",
+    "cwd": "package-b",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "publish --token test",
+    "cwd": "package-a",
+    "exitCode": 1,
+    "output": "publish.out"
+  }]
+}

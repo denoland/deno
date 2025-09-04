@@ -1,10 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -48,6 +48,7 @@ import {
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
   op_crypto_wrap_key,
+  op_crypto_x25519_public_key,
 } from "ext:core/ops";
 const {
   ArrayBufferIsView,
@@ -573,7 +574,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "encrypt")) {
       throw new DOMException(
-        "Key does not support the 'encrypt' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -616,7 +617,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "decrypt")) {
       throw new DOMException(
-        "Key does not support the 'decrypt' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -733,7 +734,7 @@ class SubtleCrypto {
             normalizedAlgorithm.tagLength / 8
         ) {
           throw new DOMException(
-            "Tag length overflows ciphertext",
+            "The provided data is too small",
             "OperationError",
           );
         }
@@ -822,7 +823,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(key[_usages], "sign")) {
       throw new DOMException(
-        "Key does not support the 'sign' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -881,18 +882,6 @@ class SubtleCrypto {
         const namedCurve = key[_algorithm].namedCurve;
         if (!ArrayPrototypeIncludes(supportedNamedCurves, namedCurve)) {
           throw new DOMException("Curve not supported", "NotSupportedError");
-        }
-
-        if (
-          (key[_algorithm].namedCurve === "P-256" &&
-            hashAlgorithm !== "SHA-256") ||
-          (key[_algorithm].namedCurve === "P-384" &&
-            hashAlgorithm !== "SHA-384")
-        ) {
-          throw new DOMException(
-            "Not implemented",
-            "NotSupportedError",
-          );
         }
 
         const signature = await op_crypto_sign_key({
@@ -1255,7 +1244,7 @@ class SubtleCrypto {
 
     if (!ArrayPrototypeIncludes(key[_usages], "verify")) {
       throw new DOMException(
-        "Key does not support the 'verify' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -1313,17 +1302,6 @@ class SubtleCrypto {
         }
         // 2.
         const hash = normalizedAlgorithm.hash.name;
-
-        if (
-          (key[_algorithm].namedCurve === "P-256" && hash !== "SHA-256") ||
-          (key[_algorithm].namedCurve === "P-384" && hash !== "SHA-384")
-        ) {
-          throw new DOMException(
-            "Not implemented",
-            "NotSupportedError",
-          );
-        }
-
         // 3-8.
         return await op_crypto_verify_key({
           key: keyData,
@@ -1393,7 +1371,7 @@ class SubtleCrypto {
     // 9.
     if (!ArrayPrototypeIncludes(wrappingKey[_usages], "wrapKey")) {
       throw new DOMException(
-        "Key does not support the 'wrapKey' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -1549,7 +1527,7 @@ class SubtleCrypto {
     // 12.
     if (!ArrayPrototypeIncludes(unwrappingKey[_usages], "unwrapKey")) {
       throw new DOMException(
-        "Key does not support the 'unwrapKey' operation",
+        "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
@@ -2987,8 +2965,8 @@ function importKeyAES(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -3162,8 +3140,8 @@ function importKeyHMAC(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -3428,8 +3406,8 @@ function importKeyEC(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -3842,8 +3820,8 @@ function importKeyRSA(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -4532,17 +4510,18 @@ function exportKeyX25519(format, key, innerKey) {
       return TypedArrayPrototypeGetBuffer(pkcs8Der);
     }
     case "jwk": {
-      if (key[_type] === "private") {
-        throw new DOMException("Not implemented", "NotSupportedError");
-      }
-      const x = op_crypto_base64url_encode(innerKey);
       const jwk = {
         kty: "OKP",
         crv: "X25519",
-        x,
         "key_ops": key.usages,
         ext: key[_extractable],
       };
+      if (key[_type] === "private") {
+        jwk.x = op_crypto_x25519_public_key(innerKey);
+        jwk.d = op_crypto_base64url_encode(innerKey);
+      } else {
+        jwk.x = op_crypto_base64url_encode(innerKey);
+      }
       return jwk;
     }
     default:

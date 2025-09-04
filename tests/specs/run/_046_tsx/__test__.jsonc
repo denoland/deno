@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload 046_jsx_test.tsx",
+  "output": "046_jsx_test.tsx.out"
+}

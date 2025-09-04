@@ -1,12 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="./lib.deno_fetch.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
@@ -14,11 +14,11 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
-  ObjectFreeze,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeExec,
   StringPrototypeStartsWith,
+  StringPrototypeToUpperCase,
   Symbol,
   SymbolFor,
   TypeError,
@@ -26,10 +26,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import {
-  byteUpperCase,
-  HTTP_TOKEN_CODE_POINT_RE,
-} from "ext:deno_web/00_infra.js";
+import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import { URL } from "ext:deno_url/00_url.js";
 import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
@@ -214,6 +211,7 @@ function cloneInnerRequest(request, skipBody = false) {
 
 // method => normalized method
 const KNOWN_METHODS = {
+  __proto__: null,
   "DELETE": "DELETE",
   "delete": "DELETE",
   "GET": "GET",
@@ -223,7 +221,6 @@ const KNOWN_METHODS = {
   "OPTIONS": "OPTIONS",
   "options": "OPTIONS",
   "PATCH": "PATCH",
-  "patch": "PATCH",
   "POST": "POST",
   "post": "POST",
   "PUT": "PUT",
@@ -238,13 +235,21 @@ function validateAndNormalizeMethod(m) {
   if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
     throw new TypeError("Method is not valid");
   }
-  const upperCase = byteUpperCase(m);
-  if (
-    upperCase === "CONNECT" || upperCase === "TRACE" || upperCase === "TRACK"
-  ) {
-    throw new TypeError("Method is forbidden");
+  const upperCase = StringPrototypeToUpperCase(m);
+  switch (upperCase) {
+    case "DELETE":
+    case "GET":
+    case "HEAD":
+    case "OPTIONS":
+    case "POST":
+    case "PUT":
+      return upperCase;
+    case "CONNECT":
+    case "TRACE":
+    case "TRACK":
+      throw new TypeError("Method is forbidden");
   }
-  return upperCase;
+  return m;
 }
 
 class Request {
@@ -269,19 +274,29 @@ class Request {
   /** @type {AbortSignal} */
   get [_signal]() {
     const signal = this[_signalCache];
-    // This signal not been created yet, and the request is still in progress
-    if (signal === undefined) {
-      const signal = newSignal();
-      this[_signalCache] = signal;
-      return signal;
-    }
     // This signal has not been created yet, but the request has already completed
     if (signal === false) {
       const signal = newSignal();
       this[_signalCache] = signal;
-      signal[signalAbort](signalAbortError);
+      signal[signalAbort](
+        new DOMException(MESSAGE_REQUEST_CANCELLED, "AbortError"),
+      );
       return signal;
     }
+
+    // This signal not been created yet, and the request is still in progress
+    if (signal === undefined) {
+      const signal = newSignal();
+      this[_signalCache] = signal;
+      this[_request].onCancel?.(() => {
+        signal[signalAbort](
+          new DOMException(MESSAGE_REQUEST_CANCELLED, "AbortError"),
+        );
+      });
+
+      return signal;
+    }
+
     return signal;
   }
   get [_mimeType]() {
@@ -596,15 +611,13 @@ function fromInnerRequest(inner, guard) {
   return request;
 }
 
-const signalAbortError = new DOMException(
-  "The request has been cancelled.",
-  "AbortError",
-);
-ObjectFreeze(signalAbortError);
+const MESSAGE_REQUEST_CANCELLED = "The request has been cancelled.";
 
 function abortRequest(request) {
   if (request[_signalCache] !== undefined) {
-    request[_signal][signalAbort](signalAbortError);
+    request[_signal][signalAbort](
+      new DOMException(MESSAGE_REQUEST_CANCELLED, "AbortError"),
+    );
   } else {
     request[_signalCache] = false;
   }

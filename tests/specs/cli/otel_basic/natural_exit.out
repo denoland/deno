@@ -1,0 +1,20 @@
+{
+  "spans": [],
+  "logs": [
+    {
+      "timeUnixNano": "[WILDLINE]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 9,
+      "severityText": "INFO",
+      "body": {
+        "stringValue": "log 1\n"
+      },
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": ""
+    }
+  ],
+  "metrics": []
+}

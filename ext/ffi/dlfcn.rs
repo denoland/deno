@@ -1,38 +1,62 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::c_void;
+use std::path::Path;
+use std::rc::Rc;
+
+use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_core::op2;
+use deno_core::v8;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
+use denort_helper::DenoRtNativeAddonLoaderRc;
+use dlopen2::raw::Library;
+use serde::Deserialize;
+use serde_value::ValueDeserializer;
+
+use crate::FfiPermissions;
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
-use crate::FfiPermissions;
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
-use deno_core::Resource;
-use dlopen2::raw::Library;
-use serde::Deserialize;
-use serde_value::ValueDeserializer;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::ffi::c_void;
-use std::rc::Rc;
 
-#[derive(Debug, thiserror::Error)]
+deno_error::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
+  match err {
+    dlopen2::Error::NullCharacter(_) => "InvalidData".into(),
+    dlopen2::Error::OpeningLibraryError(e) => e.get_class(),
+    dlopen2::Error::SymbolGettingError(e) => e.get_class(),
+    dlopen2::Error::AddrNotMatchingDll(e) => e.get_class(),
+    dlopen2::Error::NullSymbol => "NotFound".into(),
+  }
+});
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DlfcnError {
+  #[class(generic)]
   #[error("Failed to register symbol {symbol}: {error}")]
   RegisterSymbol {
     symbol: String,
     #[source]
     error: dlopen2::Error,
   },
+  #[class(generic)]
   #[error(transparent)]
   Dlopen(#[from] dlopen2::Error),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  DenoRtLoad(#[from] denort_helper::LoadError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
 }
 
 pub struct DynamicLibraryResource {
@@ -41,7 +65,7 @@ pub struct DynamicLibraryResource {
 }
 
 impl Resource for DynamicLibraryResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "dynamicLibrary".into()
   }
 
@@ -106,42 +130,45 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
     let value = serde_value::Value::deserialize(deserializer)?;
 
     // Probe a ForeignStatic and if that doesn't match, assume ForeignFunction to improve error messages
-    if let Ok(res) = ForeignStatic::deserialize(
-      ValueDeserializer::<D::Error>::new(value.clone()),
-    ) {
-      Ok(ForeignSymbol::ForeignStatic(res))
-    } else {
-      ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
-        .map(ForeignSymbol::ForeignFunction)
+    match ForeignStatic::deserialize(ValueDeserializer::<D::Error>::new(
+      value.clone(),
+    )) {
+      Ok(res) => Ok(ForeignSymbol::ForeignStatic(res)),
+      _ => {
+        ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
+          .map(ForeignSymbol::ForeignFunction)
+      }
     }
   }
 }
 
-#[derive(Deserialize, Debug)]
-pub struct FfiLoadArgs {
-  path: String,
-  symbols: HashMap<String, ForeignSymbol>,
-}
-
-#[op2]
+#[op2(stack_trace)]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut OpState,
-  #[serde] args: FfiLoadArgs,
+  state: Rc<RefCell<OpState>>,
+  #[string] path: &str,
+  #[serde] symbols: HashMap<String, ForeignSymbol>,
 ) -> Result<v8::Local<'scope, v8::Value>, DlfcnError>
 where
   FP: FfiPermissions + 'static,
 {
-  let permissions = state.borrow_mut::<FP>();
-  let path = permissions
-    .check_partial_with_path(&args.path)
-    .map_err(DlfcnError::Permission)?;
+  let (path, denort_helper) = {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<FP>();
+    (
+      permissions.check_partial_with_path(Cow::Borrowed(Path::new(path)))?,
+      state.try_borrow::<DenoRtNativeAddonLoaderRc>().cloned(),
+    )
+  };
 
-  let lib = Library::open(&path).map_err(|e| {
-    dlopen2::Error::OpeningLibraryError(std::io::Error::new(
-      std::io::ErrorKind::Other,
-      format_error(e, &path),
-    ))
+  let real_path = match denort_helper {
+    Some(loader) => loader.load_and_resolve_path(&path)?,
+    None => Cow::Borrowed(path.as_ref()),
+  };
+  let lib = Library::open(real_path.as_ref()).map_err(|e| {
+    dlopen2::Error::OpeningLibraryError(std::io::Error::other(format_error(
+      e, &real_path,
+    )))
   })?;
   let mut resource = DynamicLibraryResource {
     lib,
@@ -149,7 +176,7 @@ where
   };
   let obj = v8::Object::new(scope);
 
-  for (symbol_key, foreign_symbol) in args.symbols {
+  for (symbol_key, foreign_symbol) in symbols {
     match foreign_symbol {
       ForeignSymbol::ForeignStatic(_) => {
         // No-op: Statics will be handled separately and are not part of the Rust-side resource.
@@ -186,17 +213,13 @@ where
             .clone()
             .into_iter()
             .map(libffi::middle::Type::try_from)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(DlfcnError::Other)?,
-          foreign_fn
-            .result
-            .clone()
-            .try_into()
-            .map_err(DlfcnError::Other)?,
+            .collect::<Result<Vec<_>, _>>()?,
+          foreign_fn.result.clone().try_into()?,
         );
 
         let func_key = v8::String::new(scope, &symbol_key).unwrap();
         let sym = Box::new(Symbol {
+          name: symbol_key.clone(),
           cif,
           ptr,
           parameter_types: foreign_fn.parameters,
@@ -217,6 +240,7 @@ where
     }
   }
 
+  let mut state = state.borrow_mut();
   let out = v8::Array::new(scope, 2);
   let rid = state.resource_table.add(resource);
   let rid_v8 = v8::Integer::new_from_unsigned(scope, rid);
@@ -234,7 +258,11 @@ struct FunctionData {
   turbocall: Option<Turbocall>,
 }
 
-impl GarbageCollected for FunctionData {}
+impl GarbageCollected for FunctionData {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"FunctionData"
+  }
+}
 
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
@@ -243,9 +271,16 @@ fn make_sync_fn<'s>(
   symbol: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
   let turbocall = if turbocall::is_compatible(&symbol) {
-    let trampoline = turbocall::compile_trampoline(&symbol);
-    let turbocall = turbocall::make_template(&symbol, trampoline);
-    Some(turbocall)
+    match turbocall::compile_trampoline(&symbol) {
+      Ok(trampoline) => {
+        let turbocall = turbocall::make_template(&symbol, trampoline);
+        Some(turbocall)
+      }
+      Err(e) => {
+        log::warn!("Failed to compile FFI turbocall: {e}");
+        None
+      }
+    }
   } else {
     None
   };
@@ -299,9 +334,7 @@ fn sync_fn_impl<'s>(
             unsafe { result.to_v8(scope, data.symbol.result_type.clone()) };
       rv.set(result);
     }
-    Err(err) => {
-      deno_core::_ops::throw_type_error(scope, err.to_string());
-    }
+    Err(err) => deno_core::error::throw_js_error_class(scope, &err),
   };
 }
 
@@ -321,12 +354,13 @@ pub(crate) fn format_error(
     // https://github.com/denoland/deno/issues/11632
     dlopen2::Error::OpeningLibraryError(e) => {
       use std::os::windows::ffi::OsStrExt;
+
       use winapi::shared::minwindef::DWORD;
       use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
       use winapi::um::errhandlingapi::GetLastError;
-      use winapi::um::winbase::FormatMessageW;
       use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
       use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
+      use winapi::um::winbase::FormatMessageW;
       use winapi::um::winnt::LANG_SYSTEM_DEFAULT;
       use winapi::um::winnt::MAKELANGID;
       use winapi::um::winnt::SUBLANG_SYS_DEFAULT;
@@ -389,10 +423,11 @@ pub(crate) fn format_error(
 
 #[cfg(test)]
 mod tests {
+  use serde_json::json;
+
   use super::ForeignFunction;
   use super::ForeignSymbol;
   use crate::symbol::NativeType;
-  use serde_json::json;
 
   #[cfg(target_os = "windows")]
   #[test]

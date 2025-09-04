@@ -1,0 +1,4 @@
+{
+  "args": "run -A --cert=../../../testdata/tls/RootCA.pem main.ts",
+  "output": "main.out"
+}

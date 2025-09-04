@@ -1,0 +1,6 @@
+{
+  "compilerOptions": {
+    "rootDirs": ["subdir", "subdir_types"]
+  },
+  "unstable": ["sloppy-imports"]
+}

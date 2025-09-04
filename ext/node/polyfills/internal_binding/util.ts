@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -28,7 +28,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_node_guess_handle_type } from "ext:core/ops";
+import {
+  op_node_guess_handle_type,
+  op_node_view_has_buffer,
+} from "ext:core/ops";
 
 const handleTypes = ["TCP", "TTY", "UDP", "FILE", "PIPE", "UNKNOWN"];
 export function guessHandleType(fd: number): string {
@@ -95,7 +98,7 @@ export function getOwnNonIndexProperties(
     ...Object.getOwnPropertySymbols(obj),
   ];
 
-  if (Array.isArray(obj)) {
+  if (Array.isArray(obj) || ArrayBuffer.isView(obj)) {
     allProperties = allProperties.filter((k) => !isArrayIndex(k));
   }
 
@@ -128,3 +131,13 @@ export function getOwnNonIndexProperties(
   }
   return result;
 }
+
+export function arrayBufferViewHasBuffer(
+  view: ArrayBufferView,
+): boolean {
+  return op_node_view_has_buffer(view);
+}
+
+export const untransferableSymbol = Symbol.for(
+  "nodejs.worker_threads.untransferable",
+);

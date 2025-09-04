@@ -1,0 +1,32 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/bin@1": "1.0.0",
+    "npm:@denotest/breaking-change-between-versions@2.0.0": "2.0.0",
+    "npm:@denotest/has-patch-versions@0.2": "0.2.0"
+  },
+  "npm": {
+    "@denotest/bin@1.0.0": {
+      "integrity": "sha512-ZtrWnYYPIzw4a9H1uNeZRZRWuLCpHZZU/SllIyFLqcTLH/3zdRI8UH4Z1Kf+8N++bWGO3fg8Ev4vvS1LoLlidg==",
+      "bin": true,
+      "tarball": "http://localhost:4260/@denotest/bin/1.0.0.tgz"
+    },
+    "@denotest/breaking-change-between-versions@2.0.0": {
+      "integrity": "sha512-3eQpPhhJYbSHaAmpgyVT8IM3+MkxcAQl90Uw8zmuTiFs64Wt3HGzSz74cwPlvfqqesRktm8fBZMmrtxVo3ENzw==",
+      "tarball": "http://localhost:4260/@denotest/breaking-change-between-versions/2.0.0.tgz"
+    },
+    "@denotest/has-patch-versions@0.2.0": {
+      "integrity": "sha512-7XIVGrBMyqnts5/wcc7dn7rVl4IWrCiGUT2GLDSLWnogOMIZBapJJLW9n8Leq1bDTJ3U6aDTEFKz9fVSOwZfLQ==",
+      "tarball": "http://localhost:4260/@denotest/has-patch-versions/0.2.0.tgz"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@denotest/bin@1",
+        "npm:@denotest/breaking-change-between-versions@2.0.0",
+        "npm:@denotest/has-patch-versions@0.2"
+      ]
+    }
+  }
+}

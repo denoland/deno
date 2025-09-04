@@ -1,4 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::ops::Deref;
 
 use num_bigint::BigInt;
 use num_bigint_dig::RandPrime;
@@ -6,7 +8,6 @@ use num_integer::Integer;
 use num_traits::One;
 use num_traits::Zero;
 use rand::Rng;
-use std::ops::Deref;
 
 #[derive(Clone)]
 pub struct Prime(pub num_bigint_dig::BigUint);
@@ -283,8 +284,9 @@ static SMALL_PRIMES: [u32; 2047] = [
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use num_bigint::BigInt;
+
+  use super::*;
 
   #[test]
   fn test_prime() {

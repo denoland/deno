@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "env_load_file": {
+      "args": "run --allow-env --allow-read env_file.ts",
+      "output": "env_file.out"
+    }
+  }
+}

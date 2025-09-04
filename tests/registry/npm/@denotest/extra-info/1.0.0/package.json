@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/extra-info",
+  "version": "1.0.0",
+  "bin": {
+    "denotest-extra-info": "./bin/main.js"
+  },
+  "scripts": {
+    "postinstall": "echo 'postinstall'"
+  }
+}

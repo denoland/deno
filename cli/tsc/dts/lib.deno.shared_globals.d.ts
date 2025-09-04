@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Documentation partially adapted from [MDN](https://developer.mozilla.org/),
 // by Mozilla Contributors, which is licensed under CC-BY-SA 2.5.
@@ -15,14 +15,14 @@
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.ns" />
 
-/** @category WASM */
+/** @category Wasm */
 declare namespace WebAssembly {
   /**
    * The `WebAssembly.CompileError` object indicates an error during WebAssembly decoding or validation.
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/CompileError)
    *
-   * @category WASM
+   * @category Wasm
    */
   export class CompileError extends Error {
     /** Creates a new `WebAssembly.CompileError` object. */
@@ -36,7 +36,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Global)
    *
-   * @category WASM
+   * @category Wasm
    */
   export class Global {
     /** Creates a new `Global` object. */
@@ -59,7 +59,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Instance)
    *
-   * @category WASM
+   * @category Wasm
    */
   export class Instance {
     /** Creates a new Instance object. */
@@ -79,7 +79,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/LinkError)
    *
-   * @category WASM
+   * @category Wasm
    */
   export class LinkError extends Error {
     /** Creates a new WebAssembly.LinkError object. */
@@ -95,7 +95,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Memory)
    *
-   * @category WASM
+   * @category Wasm
    */
   export class Memory {
     /** Creates a new `Memory` object. */
@@ -117,7 +117,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Module)
    *
-   * @category WASM
+   * @category Wasm
    */
   export class Module {
     /** Creates a new `Module` object. */
@@ -145,7 +145,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/RuntimeError)
    *
-   * @category WASM
+   * @category Wasm
    */
   export class RuntimeError extends Error {
     /** Creates a new `WebAssembly.RuntimeError` object. */
@@ -160,7 +160,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/Table)
    *
-   * @category WASM
+   * @category Wasm
    */
   export class Table {
     /** Creates a new `Table` object. */
@@ -182,7 +182,7 @@ declare namespace WebAssembly {
   /** The `GlobalDescriptor` describes the options you can pass to
    * `new WebAssembly.Global()`.
    *
-   * @category WASM
+   * @category Wasm
    */
   export interface GlobalDescriptor {
     mutable?: boolean;
@@ -192,7 +192,7 @@ declare namespace WebAssembly {
   /** The `MemoryDescriptor` describes the options you can pass to
    * `new WebAssembly.Memory()`.
    *
-   * @category WASM
+   * @category Wasm
    */
   export interface MemoryDescriptor {
     initial: number;
@@ -203,7 +203,7 @@ declare namespace WebAssembly {
   /** A `ModuleExportDescriptor` is the description of a declared export in a
    * `WebAssembly.Module`.
    *
-   * @category WASM
+   * @category Wasm
    */
   export interface ModuleExportDescriptor {
     kind: ImportExportKind;
@@ -213,7 +213,7 @@ declare namespace WebAssembly {
   /** A `ModuleImportDescriptor` is the description of a declared import in a
    * `WebAssembly.Module`.
    *
-   * @category WASM
+   * @category Wasm
    */
   export interface ModuleImportDescriptor {
     kind: ImportExportKind;
@@ -224,7 +224,7 @@ declare namespace WebAssembly {
   /** The `TableDescriptor` describes the options you can pass to
    * `new WebAssembly.Table()`.
    *
-   * @category WASM
+   * @category Wasm
    */
   export interface TableDescriptor {
     element: TableKind;
@@ -234,7 +234,7 @@ declare namespace WebAssembly {
 
   /** The value returned from `WebAssembly.instantiate`.
    *
-   * @category WASM
+   * @category Wasm
    */
   export interface WebAssemblyInstantiatedSource {
     /* A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
@@ -247,21 +247,21 @@ declare namespace WebAssembly {
     module: Module;
   }
 
-  /** @category WASM */
+  /** @category Wasm */
   export type ImportExportKind = "function" | "global" | "memory" | "table";
-  /** @category WASM */
+  /** @category Wasm */
   export type TableKind = "anyfunc";
-  /** @category WASM */
+  /** @category Wasm */
   export type ValueType = "f32" | "f64" | "i32" | "i64";
-  /** @category WASM */
+  /** @category Wasm */
   export type ExportValue = Function | Global | Memory | Table;
-  /** @category WASM */
+  /** @category Wasm */
   export type Exports = Record<string, ExportValue>;
-  /** @category WASM */
+  /** @category Wasm */
   export type ImportValue = ExportValue | number;
-  /** @category WASM */
+  /** @category Wasm */
   export type ModuleImports = Record<string, ImportValue>;
-  /** @category WASM */
+  /** @category Wasm */
   export type Imports = Record<string, ModuleImports>;
 
   /**
@@ -272,7 +272,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/compile)
    *
-   * @category WASM
+   * @category Wasm
    */
   export function compile(bytes: BufferSource): Promise<Module>;
 
@@ -284,7 +284,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/compileStreaming)
    *
-   * @category WASM
+   * @category Wasm
    */
   export function compileStreaming(
     source: Response | Promise<Response>,
@@ -301,7 +301,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiate)
    *
-   * @category WASM
+   * @category Wasm
    */
   export function instantiate(
     bytes: BufferSource,
@@ -318,7 +318,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiate)
    *
-   * @category WASM
+   * @category Wasm
    */
   export function instantiate(
     moduleObject: Module,
@@ -332,7 +332,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/instantiateStreaming)
    *
-   * @category WASM
+   * @category Wasm
    */
   export function instantiateStreaming(
     response: Response | PromiseLike<Response>,
@@ -346,7 +346,7 @@ declare namespace WebAssembly {
    *
    * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly/validate)
    *
-   * @category WASM
+   * @category Wasm
    */
   export function validate(bytes: BufferSource): boolean;
 }
@@ -361,11 +361,8 @@ declare namespace WebAssembly {
  * @category Platform
  */
 declare function setTimeout(
-  /** callback function to execute when timer expires */
-  cb: (...args: any[]) => void,
-  /** delay in ms */
+  cb: string | ((...args: any[]) => void),
   delay?: number,
-  /** arguments passed to callback function */
   ...args: any[]
 ): number;
 
@@ -379,11 +376,8 @@ declare function setTimeout(
  * @category Platform
  */
 declare function setInterval(
-  /** callback function to execute when timer expires */
-  cb: (...args: any[]) => void,
-  /** delay in ms */
+  cb: string | ((...args: any[]) => void),
   delay?: number,
-  /** arguments passed to callback function */
   ...args: any[]
 ): number;
 
@@ -458,7 +452,23 @@ interface DOMStringList {
 /** @category Platform */
 type BufferSource = ArrayBufferView | ArrayBuffer;
 
-/** @category I/O */
+/**
+ * A global console object that provides methods for logging, debugging, and error reporting.
+ * The console object provides access to the browser's or runtime's debugging console functionality.
+ * It allows developers to output text and data for debugging purposes.
+ *
+ * @example
+ * ```typescript
+ * console.log("Hello, world!");
+ * console.error("An error occurred");
+ * console.warn("Warning message");
+ * console.debug("Debug information");
+ * ```
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/console
+ *
+ * @category I/O
+ */
 declare var console: Console;
 
 /** @category Events */
@@ -523,39 +533,192 @@ interface WorkerOptions {
   name?: string;
 }
 
-/** @category Workers */
+/**
+ * The Worker interface represents a background task that can be created via the
+ * `new Worker()` constructor. Workers run in a separate thread, allowing for parallel execution
+ * without blocking the main thread.
+ *
+ * Workers can be used to:
+ * - Perform CPU-intensive calculations
+ * - Process large datasets
+ * - Handle tasks in parallel with the main execution thread
+ * - Run code in isolation with its own event loop
+ *
+ * @example
+ * ```ts
+ * // Creating a basic worker (main.ts)
+ * const worker = new Worker(new URL("./worker.ts", import.meta.url).href, {
+ *   type: "module"
+ * });
+ *
+ * // Send data to the worker
+ * worker.postMessage({ command: "start", data: [1, 2, 3, 4] });
+ *
+ * // Receive messages from the worker
+ * worker.onmessage = (e) => {
+ *   console.log("Result from worker:", e.data);
+ *   worker.terminate(); // Stop the worker when done
+ * };
+ *
+ * // Handle worker errors
+ * worker.onerror = (e) => {
+ *   console.error("Worker error:", e.message);
+ * };
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Worker file (worker.ts)
+ * // Worker context: self refers to the worker's global scope
+ * self.onmessage = (e) => {
+ *   if (e.data.command === "start") {
+ *     // Perform calculation with the data
+ *     const result = e.data.data.reduce((sum, num) => sum + num, 0);
+ *     // Send result back to main thread
+ *     self.postMessage(result);
+ *   }
+ * };
+ * ```
+ *
+ * @category Workers
+ */
 interface Worker extends EventTarget {
+  /** Event handler for error events. Fired when an error occurs in the worker's execution context. */
   onerror: (this: Worker, e: ErrorEvent) => any | null;
+
+  /** Event handler for message events. Fired when the worker sends data back to the main thread. */
   onmessage: (this: Worker, e: MessageEvent) => any | null;
+
+  /** Event handler for message error events. Fired when a message cannot be deserialized. */
   onmessageerror: (this: Worker, e: MessageEvent) => any | null;
+
+  /**
+   * Sends a message to the worker, transferring ownership of the specified transferable objects.
+   *
+   * @example
+   * ```ts
+   * // Create a buffer to transfer (not copy) to the worker
+   * const buffer = new ArrayBuffer(1024);
+   * worker.postMessage({ data: buffer }, [buffer]);
+   * // After transfer, buffer is no longer usable in the main thread
+   * ```
+   */
   postMessage(message: any, transfer: Transferable[]): void;
+
+  /**
+   * Sends a message to the worker.
+   *
+   * @example
+   * ```ts
+   * // Send a simple message with data
+   * worker.postMessage({
+   *   command: "process",
+   *   data: [1, 2, 3, 4],
+   *   settings: { optimize: true }
+   * });
+   * ```
+   */
   postMessage(message: any, options?: StructuredSerializeOptions): void;
+
+  /** Adds an event listener to the worker. */
   addEventListener<K extends keyof WorkerEventMap>(
     type: K,
     listener: (this: Worker, ev: WorkerEventMap[K]) => any,
     options?: boolean | AddEventListenerOptions,
   ): void;
+
+  /** Adds an event listener for events whose type attribute value is type. */
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | AddEventListenerOptions,
   ): void;
+
+  /** Removes an event listener from the worker. */
   removeEventListener<K extends keyof WorkerEventMap>(
     type: K,
     listener: (this: Worker, ev: WorkerEventMap[K]) => any,
     options?: boolean | EventListenerOptions,
   ): void;
+
+  /** Removes an event listener from the worker. */
   removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
   ): void;
+
+  /**
+   * Immediately terminates the worker.
+   * This does not offer the worker an opportunity to finish its operations;
+   * it is stopped at once.
+   *
+   * @example
+   * ```ts
+   * // Create a worker
+   * const worker = new Worker(new URL("./worker.ts", import.meta.url).href, {
+   *   type: "module"
+   * });
+   *
+   * // Some time later, when you're done with the worker
+   * worker.terminate();
+   * // The worker is now terminated and its resources are freed
+   * ```
+   */
   terminate(): void;
 }
 
-/** @category Workers */
+/**
+ * The Worker constructor creates a new Worker object that executes code in a separate thread.
+ *
+ * Workers can import ES modules when created with the `type: "module"` option.
+ *
+ * @category Workers
+ */
 declare var Worker: {
   readonly prototype: Worker;
+
+  /**
+   * Creates a new Worker object.
+   *
+   * @param specifier - URL or file path for the worker's script.
+   *                    When using a relative path, use `new URL("./worker.ts", import.meta.url)`
+   *                    to ensure the path is correctly resolved relative to the current module.
+   * @param options - Worker options including type and name
+   *
+   * @example Module worker with URL resolution
+   * ```ts
+   * // Create a worker that can use ES modules
+   * const worker = new Worker(
+   *   new URL("./workers/heavy_computation.ts", import.meta.url).href,
+   *   { type: "module", name: "computation-worker" }
+   * );
+   * ```
+   *
+   * @example Worker communication pattern
+   * ```ts
+   * // Main thread
+   * const worker = new Worker(new URL("./worker.ts", import.meta.url).href, { type: "module" });
+   *
+   * // Set up communication
+   * worker.postMessage({ action: "start", data: [1, 2, 3, 4, 5] });
+   *
+   * worker.onmessage = (e) => {
+   *   console.log("Worker result:", e.data);
+   *   if (e.data.status === "complete") {
+   *     worker.terminate();
+   *   }
+   * };
+   *
+   * // Worker file (worker.ts)
+   * // self.onmessage = (e) => {
+   * //   if (e.data.action === "start") {
+   * //     const result = e.data.data.reduce((a, b) => a + b, 0);
+   * //     self.postMessage({ status: "complete", result });
+   * //   }
+   * // };
+   * ```
+   */
   new (specifier: string | URL, options?: WorkerOptions): Worker;
 };
 
@@ -738,6 +901,7 @@ declare var CustomEvent: {
 interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
   captureStackTrace(error: Object, constructor?: Function): void;
+  stackTraceLimit: number;
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this
   // internally in a way that makes it unavailable for users.
 }
@@ -750,6 +914,6 @@ interface ErrorConstructor {
  * @category Fetch
  */
 declare function fetch(
-  input: Request | URL | string,
-  init?: RequestInit & { client: Deno.HttpClient },
+  input: RequestInfo | URL,
+  init?: RequestInit & { client?: Deno.HttpClient },
 ): Promise<Response>;

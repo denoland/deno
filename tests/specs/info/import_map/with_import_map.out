@@ -1,16 +1,7 @@
-Download https://esm.sh/preact@10.15.1/debug
-Download https://esm.sh/stable/preact@10.15.1/denonext/preact.mjs
-Download https://esm.sh/stable/preact@10.15.1/denonext/devtools.js
-Download https://esm.sh/stable/preact@10.15.1/denonext/debug.js
-local: [WILDCARD]
-type: JavaScript
-dependencies: 3 unique
-size: [WILDCARD]
+Download http://localhost:4545/welcome.ts
+local: [WILDLINE]
+type: TypeScript
+dependencies: 0 unique
+size: [WILDLINE]
 
-https://esm.sh/preact@10.15.1/debug [WILDCARD]
-├── https://esm.sh/stable/preact@10.15.1/denonext/preact.mjs [WILDCARD]
-├─┬ https://esm.sh/stable/preact@10.15.1/denonext/devtools.js [WILDCARD]
-│ └── https://esm.sh/stable/preact@10.15.1/denonext/preact.mjs [WILDCARD]
-└─┬ https://esm.sh/stable/preact@10.15.1/denonext/debug.js [WILDCARD]
-  ├── https://esm.sh/stable/preact@10.15.1/denonext/preact.mjs [WILDCARD]
-  └── https://esm.sh/stable/preact@10.15.1/denonext/devtools.js [WILDCARD]
+http://localhost:4545/welcome.ts ([WILDLINE])

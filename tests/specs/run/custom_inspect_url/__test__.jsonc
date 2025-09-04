@@ -1,0 +1,4 @@
+{
+  "args": "run custom_inspect_url.js",
+  "output": "custom_inspect_url.js.out"
+}

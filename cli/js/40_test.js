@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
@@ -7,6 +7,7 @@ import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 const {
   op_register_test_step,
   op_register_test,
+  op_register_test_hook,
   op_test_event_step_result_failed,
   op_test_event_step_result_ignored,
   op_test_event_step_result_ok,
@@ -26,7 +27,7 @@ const {
   TypeError,
 } = primordials;
 
-import { setExitHandler } from "ext:runtime/30_os.js";
+import { setExitHandler } from "ext:deno_os/30_os.js";
 
 // Capture `Deno` global so that users deleting or mangling it, won't
 // have impact on our sanitizers.
@@ -75,17 +76,6 @@ const DenoNs = globalThis.Deno;
  *   completed: boolean,
  *   failed: boolean,
  * }} TestStepState
- *
- * @typedef {{
- *   id: number,
- *   name: string,
- *   fn: BenchFunction
- *   origin: string,
- *   ignore: boolean,
- *   only: boolean.
- *   sanitizeExit: boolean,
- *   permissions: PermissionOptions,
- * }} BenchDescription
  */
 
 /** @type {Map<number, TestState | TestStepState>} */
@@ -353,6 +343,35 @@ test.only = function (
   maybeFn,
 ) {
   return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
+};
+
+function registerHook(hookType, fn) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test_hook !== "function") {
+    return;
+  }
+
+  if (typeof fn !== "function") {
+    throw new TypeError(`Expected a function for ${hookType} hook`);
+  }
+
+  op_register_test_hook(hookType, fn);
+}
+
+test.beforeAll = function (fn) {
+  registerHook("beforeAll", fn);
+};
+
+test.beforeEach = function (fn) {
+  registerHook("beforeEach", fn);
+};
+
+test.afterEach = function (fn) {
+  registerHook("afterEach", fn);
+};
+
+test.afterAll = function (fn) {
+  registerHook("afterAll", fn);
 };
 
 function getFullName(desc) {

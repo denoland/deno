@@ -1,28 +1,35 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::npm;
+use std::convert::Infallible;
+use std::future::Future;
+use std::net::Ipv6Addr;
+use std::net::SocketAddr;
+use std::net::SocketAddrV6;
+use std::path::PathBuf;
 
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
+use bytes::Bytes;
+use futures::FutureExt;
+use futures::future::LocalBoxFuture;
+use http::HeaderMap;
+use http::HeaderValue;
+use http_body_util::combinators::UnsyncBoxBody;
+use hyper::Request;
+use hyper::Response;
+use hyper::StatusCode;
+use hyper::body::Incoming;
+use sha2::Digest;
+
+use super::ServerKind;
+use super::ServerOptions;
 use super::custom_headers;
 use super::empty_body;
 use super::hyper_utils::HandlerOutput;
 use super::run_server;
 use super::string_body;
-use super::ServerKind;
-use super::ServerOptions;
-use bytes::Bytes;
-use futures::future::LocalBoxFuture;
-use futures::Future;
-use futures::FutureExt;
-use http_body_util::combinators::UnsyncBoxBody;
-use hyper::body::Incoming;
-use hyper::Request;
-use hyper::Response;
-use hyper::StatusCode;
-use std::convert::Infallible;
-use std::net::Ipv6Addr;
-use std::net::SocketAddr;
-use std::net::SocketAddrV6;
-use std::path::PathBuf;
+use crate::npm;
+use crate::root_path;
 
 pub fn public_npm_registry(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   run_npm_server(port, "npm registry server error", {
@@ -56,11 +63,19 @@ pub fn private_npm_registry2(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   )
 }
 
+pub fn private_npm_registry3(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
+  run_npm_server(
+    port,
+    "npm private registry server error",
+    private_npm_registry3_handler,
+  )
+}
+
 fn run_npm_server<F, S>(
   port: u16,
   error_msg: &'static str,
   handler: F,
-) -> Vec<LocalBoxFuture<()>>
+) -> Vec<LocalBoxFuture<'static, ()>>
 where
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,
@@ -86,6 +101,7 @@ async fn run_npm_server_for_addr<F, S>(
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,
 {
+  ensure_esbuild_prebuilt().await.unwrap();
   run_server(
     ServerOptions {
       addr,
@@ -141,6 +157,13 @@ async fn private_npm_registry2_handler(
   handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_2).await
 }
 
+async fn private_npm_registry3_handler(
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  // No auth for this registry
+  handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_3).await
+}
+
 async fn handle_req_for_registry(
   req: Request<Incoming>,
   test_npm_registry: &npm::TestNpmRegistry,
@@ -159,8 +182,13 @@ async fn handle_req_for_registry(
   }
 
   // otherwise try to serve from the registry
-  if let Some(resp) =
-    try_serve_npm_registry(uri_path, file_path.clone(), test_npm_registry).await
+  if let Some(resp) = try_serve_npm_registry(
+    uri_path,
+    file_path.clone(),
+    req.headers(),
+    test_npm_registry,
+  )
+  .await
   {
     return resp;
   }
@@ -174,6 +202,7 @@ async fn handle_req_for_registry(
 fn handle_custom_npm_registry_path(
   scope_name: &str,
   path: &str,
+  headers: &HeaderMap<HeaderValue>,
   test_npm_registry: &npm::TestNpmRegistry,
 ) -> Result<Option<Response<UnsyncBoxBody<Bytes, Infallible>>>, anyhow::Error> {
   let mut parts = path
@@ -191,13 +220,31 @@ fn handle_custom_npm_registry_path(
       let file_resp = custom_headers("file.tgz", file_bytes);
       return Ok(Some(file_resp));
     }
-  } else if remainder.is_empty() {
-    if let Some(registry_file) =
+  } else if remainder.is_empty()
+    && let Some(registry_file) =
       test_npm_registry.registry_file(&package_name)?
+  {
+    let actual_etag = format!(
+      "\"{}\"",
+      BASE64_STANDARD.encode(sha2::Sha256::digest(&registry_file))
+    );
+    if headers.get("If-None-Match").and_then(|v| v.to_str().ok())
+      == Some(actual_etag.as_str())
     {
-      let file_resp = custom_headers("registry.json", registry_file);
-      return Ok(Some(file_resp));
+      let mut response = Response::new(UnsyncBoxBody::new(
+        http_body_util::Full::new(Bytes::from(vec![])),
+      ));
+      *response.status_mut() = StatusCode::NOT_MODIFIED;
+      return Ok(Some(response));
     }
+
+    let mut file_resp = custom_headers("registry.json", registry_file);
+    file_resp.headers_mut().append(
+      http::header::ETAG,
+      http::header::HeaderValue::from_str(&actual_etag).unwrap(),
+    );
+
+    return Ok(Some(file_resp));
   }
 
   Ok(None)
@@ -212,6 +259,7 @@ fn should_download_npm_packages() -> bool {
 async fn try_serve_npm_registry(
   uri_path: &str,
   mut testdata_file_path: PathBuf,
+  headers: &HeaderMap<HeaderValue>,
   test_npm_registry: &npm::TestNpmRegistry,
 ) -> Option<Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error>> {
   if let Some((scope_name, package_name_with_path)) = test_npm_registry
@@ -222,6 +270,7 @@ async fn try_serve_npm_registry(
     match handle_custom_npm_registry_path(
       scope_name,
       package_name_with_path,
+      headers,
       test_npm_registry,
     ) {
       Ok(Some(response)) => return Some(Ok(response)),
@@ -285,9 +334,12 @@ fn replace_default_npm_registry_url_with_test_npm_registry_url(
   npm_registry: &npm::TestNpmRegistry,
   package_name: &str,
 ) -> String {
+  let package_name = percent_encoding::percent_decode_str(package_name)
+    .decode_utf8()
+    .unwrap();
   text.replace(
     &format!("https://registry.npmjs.org/{}/-/", package_name),
-    &npm_registry.package_url(package_name),
+    &npm_registry.package_url(&package_name),
   )
 }
 
@@ -325,5 +377,47 @@ async fn download_npm_registry_file(
   };
   std::fs::create_dir_all(testdata_file_path.parent().unwrap())?;
   std::fs::write(testdata_file_path, bytes)?;
+  Ok(())
+}
+
+const PREBUILT_URL: &str = "https://raw.githubusercontent.com/denoland/deno_third_party/de0d517e6f703fb4735b7aa5806f69fbdbb1d907/prebuilt/";
+
+async fn ensure_esbuild_prebuilt() -> Result<(), anyhow::Error> {
+  let bin_name = match (std::env::consts::ARCH, std::env::consts::OS) {
+    ("x86_64", "linux" | "macos" | "apple") => "esbuild-x64",
+    ("aarch64", "linux" | "macos" | "apple") => "esbuild-aarch64",
+    ("x86_64", "windows") => "esbuild-x64.exe",
+    ("aarch64", "windows") => "esbuild-arm64.exe",
+    _ => return Err(anyhow::anyhow!("unsupported platform")),
+  };
+
+  let folder = match std::env::consts::OS {
+    "linux" => "linux64",
+    "windows" => "win",
+    "macos" | "apple" => "mac",
+    _ => return Err(anyhow::anyhow!("unsupported platform")),
+  };
+  let esbuild_prebuilt = root_path()
+    .join("third_party/prebuilt")
+    .join(folder)
+    .join(bin_name);
+  if esbuild_prebuilt.exists() {
+    return Ok(());
+  }
+  let url = format!("{PREBUILT_URL}{folder}/{bin_name}");
+  let response = reqwest::get(url).await?;
+  let bytes = response.bytes().await?;
+
+  tokio::fs::create_dir_all(esbuild_prebuilt.parent()).await?;
+  tokio::fs::write(&esbuild_prebuilt, bytes).await?;
+
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = tokio::fs::metadata(&esbuild_prebuilt).await?.permissions();
+    perms.set_mode(0o755); // rwxr-xr-x
+    tokio::fs::set_permissions(&esbuild_prebuilt, perms).await?;
+  }
+
   Ok(())
 }

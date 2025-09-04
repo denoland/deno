@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "lint --fix",
+  "output": "fix.out",
+  "exitCode": 1
+}

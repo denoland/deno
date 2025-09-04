@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload unbuffered_stdout.ts",
+  "output": "unbuffered_stdout.ts.out"
+}

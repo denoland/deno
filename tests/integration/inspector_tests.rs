@@ -1,31 +1,29 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use bytes::Bytes;
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::url;
-
-use fastwebsockets::FragmentCollector;
-use fastwebsockets::Frame;
-use fastwebsockets::WebSocket;
-use hyper::body::Incoming;
-use hyper::upgrade::Upgraded;
-use hyper::Request;
-use hyper::Response;
-use hyper_util::rt::TokioIo;
 use std::io::BufRead;
 use std::process::ChildStderr;
 use std::time::Duration;
+
+use anyhow::Error as AnyError;
+use anyhow::anyhow;
+use bytes::Bytes;
+use fastwebsockets::FragmentCollector;
+use fastwebsockets::Frame;
+use fastwebsockets::WebSocket;
+use hyper::Request;
+use hyper::Response;
+use hyper::body::Incoming;
+use hyper::upgrade::Upgraded;
+use hyper_util::rt::TokioIo;
+use serde_json::json;
 use test_util as util;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use url::Url;
-use util::assert_contains;
-use util::assert_starts_with;
 use util::DenoChild;
 use util::TestContextBuilder;
+use util::assert_contains;
+use util::assert_starts_with;
 
 struct SpawnExecutor;
 
@@ -35,7 +33,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::unsync::spawn(fut);
+    deno_unsync::spawn(fut);
   }
 }
 
@@ -316,7 +314,7 @@ async fn inspector_connect() {
   child.wait().unwrap();
 }
 
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_break_on_first_line() {
   let script = util::testdata_path().join("inspector/inspector2.js");
   let child = util::deno_cmd()
@@ -479,7 +477,7 @@ async fn inspector_port_collision() {
   child2.wait().unwrap();
 }
 
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_does_not_hang() {
   let script = util::testdata_path().join("inspector/inspector3.js");
   let child = util::deno_cmd()
@@ -742,7 +740,7 @@ async fn inspector_json() {
     }
     let resp = client.execute(req).await.unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
-    let endpoint_list: Vec<deno_core::serde_json::Value> =
+    let endpoint_list: Vec<serde_json::Value> =
       serde_json::from_str(&resp.text().await.unwrap()).unwrap();
     let matching_endpoint = endpoint_list.iter().find(|e| {
       e["webSocketDebuggerUrl"]
@@ -775,7 +773,7 @@ async fn inspector_json_list() {
   url.set_path("/json/list");
   let resp = reqwest::get(url).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
-  let endpoint_list: Vec<deno_core::serde_json::Value> =
+  let endpoint_list: Vec<serde_json::Value> =
     serde_json::from_str(&resp.text().await.unwrap()).unwrap();
   let matching_endpoint = endpoint_list
     .iter()
@@ -809,7 +807,7 @@ async fn inspector_connect_non_ws() {
   child.wait().unwrap();
 }
 
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_break_on_first_line_in_test() {
   let script = util::testdata_path().join("inspector/inspector_test.js");
   let child = util::deno_cmd()
@@ -1202,7 +1200,7 @@ async fn inspector_profile() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_break_on_first_line_npm_esm() {
   let context = TestContextBuilder::for_npm().build();
   let child = context
@@ -1269,7 +1267,7 @@ async fn inspector_break_on_first_line_npm_esm() {
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
 #[ignore]
-#[tokio::test]
+#[flaky_test::flaky_test(tokio)]
 async fn inspector_break_on_first_line_npm_cjs() {
   let context = TestContextBuilder::for_npm().build();
   let child = context

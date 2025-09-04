@@ -140,6 +140,5 @@
   "homepage": "https://github.com/npm/proc-log#readme",
   "bugs": {
     "url": "https://github.com/npm/proc-log/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

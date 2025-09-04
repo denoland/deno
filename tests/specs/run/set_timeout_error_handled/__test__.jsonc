@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet set_timeout_error_handled.ts",
+  "output": "set_timeout_error_handled.ts.out"
+}

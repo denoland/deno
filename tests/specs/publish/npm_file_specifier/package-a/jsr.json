@@ -1,0 +1,6 @@
+{
+  "name": "@example/pkg",
+  "version": "1.0.0",
+  "exports": "./index.mts",
+  "license": "MIT"
+}

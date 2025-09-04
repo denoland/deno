@@ -1,14 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::create_host_defined_options;
+use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+
+use deno_core::JsBuffer;
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
-use deno_core::JsBuffer;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::time::Duration;
+
+use crate::create_host_defined_options;
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
@@ -21,6 +24,10 @@ pub struct ContextifyScript {
 impl v8::cppgc::GarbageCollected for ContextifyScript {
   fn trace(&self, visitor: &v8::cppgc::Visitor) {
     visitor.trace(&self.script);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ContextifyScript"
   }
 }
 
@@ -183,10 +190,10 @@ impl ContextifyScript {
 
     let mut run = || {
       let r = script.run(scope);
-      if r.is_some() {
-        if let Some(mtask_queue) = microtask_queue {
-          mtask_queue.perform_checkpoint(scope);
-        }
+      if r.is_some()
+        && let Some(mtask_queue) = microtask_queue
+      {
+        mtask_queue.perform_checkpoint(scope);
       }
       r
     };
@@ -258,6 +265,10 @@ impl deno_core::GarbageCollected for ContextifyContext {
   fn trace(&self, visitor: &v8::cppgc::Visitor) {
     visitor.trace(&self.context);
     visitor.trace(&self.sandbox);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ContextifyContext"
   }
 }
 
@@ -332,7 +343,7 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
-    context.set_slot(AllowCodeGenWasm(allow_code_gen_wasm));
+    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
 
     let wrapper = {
       let context = v8::TracedReference::new(scope, context);
@@ -490,6 +501,7 @@ pub fn create_v8_context<'a>(
 #[derive(Debug, Clone)]
 struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
+#[allow(clippy::unnecessary_unwrap)]
 pub fn init_global_template<'a>(
   scope: &mut v8::HandleScope<'a, ()>,
   mode: ContextInitMode,
@@ -519,23 +531,23 @@ pub fn init_global_template<'a>(
 //
 // See NOTE in ext/node/global.rs#L12
 thread_local! {
-  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback<'static> = property_query.map_fn_to();
-  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback<'static> = property_getter.map_fn_to();
-  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback<'static> = property_setter.map_fn_to();
-  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback<'static> = property_deleter.map_fn_to();
-  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback<'static> = property_enumerator.map_fn_to();
-  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback<'static> = property_definer.map_fn_to();
-  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyDescriptorCallback<'static> = property_descriptor.map_fn_to();
+  pub static QUERY_MAP_FN: v8::NamedPropertyQueryCallback = property_query.map_fn_to();
+  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback = property_getter.map_fn_to();
+  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback = property_setter.map_fn_to();
+  pub static DELETER_MAP_FN: v8::NamedPropertyDeleterCallback = property_deleter.map_fn_to();
+  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback = property_enumerator.map_fn_to();
+  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback = property_definer.map_fn_to();
+  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyDescriptorCallback = property_descriptor.map_fn_to();
 }
 
 thread_local! {
-  pub static INDEXED_GETTER_MAP_FN: v8::IndexedPropertyGetterCallback<'static> = indexed_property_getter.map_fn_to();
-  pub static INDEXED_SETTER_MAP_FN: v8::IndexedPropertySetterCallback<'static> = indexed_property_setter.map_fn_to();
-  pub static INDEXED_DELETER_MAP_FN: v8::IndexedPropertyDeleterCallback<'static> = indexed_property_deleter.map_fn_to();
-  pub static INDEXED_DEFINER_MAP_FN: v8::IndexedPropertyDefinerCallback<'static> = indexed_property_definer.map_fn_to();
-  pub static INDEXED_DESCRIPTOR_MAP_FN: v8::IndexedPropertyDescriptorCallback<'static> = indexed_property_descriptor.map_fn_to();
-  pub static INDEXED_ENUMERATOR_MAP_FN: v8::IndexedPropertyEnumeratorCallback<'static> = indexed_property_enumerator.map_fn_to();
-  pub static INDEXED_QUERY_MAP_FN: v8::IndexedPropertyQueryCallback<'static> = indexed_property_query.map_fn_to();
+  pub static INDEXED_GETTER_MAP_FN: v8::IndexedPropertyGetterCallback = indexed_property_getter.map_fn_to();
+  pub static INDEXED_SETTER_MAP_FN: v8::IndexedPropertySetterCallback = indexed_property_setter.map_fn_to();
+  pub static INDEXED_DELETER_MAP_FN: v8::IndexedPropertyDeleterCallback = indexed_property_deleter.map_fn_to();
+  pub static INDEXED_DEFINER_MAP_FN: v8::IndexedPropertyDefinerCallback = indexed_property_definer.map_fn_to();
+  pub static INDEXED_DESCRIPTOR_MAP_FN: v8::IndexedPropertyDescriptorCallback = indexed_property_descriptor.map_fn_to();
+  pub static INDEXED_ENUMERATOR_MAP_FN: v8::IndexedPropertyEnumeratorCallback = indexed_property_enumerator.map_fn_to();
+  pub static INDEXED_QUERY_MAP_FN: v8::IndexedPropertyQueryCallback = indexed_property_query.map_fn_to();
 }
 
 pub fn init_global_template_inner<'a>(
@@ -739,26 +751,25 @@ fn property_setter<'s>(
     return v8::Intercepted::No;
   }
 
-  if is_declared_on_sandbox {
-    if let Some(desc) = sandbox.get_own_property_descriptor(scope, key) {
-      if !desc.is_undefined() {
-        let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
-        // We have to specify the return value for any contextual or get/set
-        // property
-        let get_key =
-          v8::String::new_external_onebyte_static(scope, b"get").unwrap();
-        let set_key =
-          v8::String::new_external_onebyte_static(scope, b"set").unwrap();
-        if desc_obj
-          .has_own_property(scope, get_key.into())
-          .unwrap_or(false)
-          || desc_obj
-            .has_own_property(scope, set_key.into())
-            .unwrap_or(false)
-        {
-          return v8::Intercepted::Yes;
-        }
-      }
+  if is_declared_on_sandbox
+    && let Some(desc) = sandbox.get_own_property_descriptor(scope, key)
+    && !desc.is_undefined()
+  {
+    let desc_obj: v8::Local<v8::Object> = desc.try_into().unwrap();
+    // We have to specify the return value for any contextual or get/set
+    // property
+    let get_key =
+      v8::String::new_external_onebyte_static(scope, b"get").unwrap();
+    let set_key =
+      v8::String::new_external_onebyte_static(scope, b"set").unwrap();
+    if desc_obj
+      .has_own_property(scope, get_key.into())
+      .unwrap_or(false)
+      || desc_obj
+        .has_own_property(scope, set_key.into())
+        .unwrap_or(false)
+    {
+      return v8::Intercepted::Yes;
     }
   }
 
@@ -781,11 +792,11 @@ fn property_descriptor<'s>(
   };
   let scope = &mut v8::ContextScope::new(scope, context);
 
-  if sandbox.has_own_property(scope, key).unwrap_or(false) {
-    if let Some(desc) = sandbox.get_own_property_descriptor(scope, key) {
-      rv.set(desc);
-      return v8::Intercepted::Yes;
-    }
+  if sandbox.has_own_property(scope, key).unwrap_or(false)
+    && let Some(desc) = sandbox.get_own_property_descriptor(scope, key)
+  {
+    rv.set(desc);
+    return v8::Intercepted::Yes;
   }
 
   v8::Intercepted::No

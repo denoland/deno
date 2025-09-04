@@ -1,0 +1,4 @@
+Task dev (multi-a) echo 'multi-a'
+multi-a
+Task dev (multi-b) echo 'multi-b'
+multi-b

@@ -1,0 +1,4 @@
+{
+  "args": "doc http://localhost:4545/wasm/math.wasm",
+  "output": "doc.out"
+}

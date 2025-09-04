@@ -1,0 +1,3 @@
+Warning discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.
+✅ Successfully installed my-cli
+[WILDCARD]
