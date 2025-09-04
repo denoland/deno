@@ -631,33 +631,32 @@ impl DenoPluginHandler {
   }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum PluginImportKind {
-  EntryPoint,
-  ImportStatement,
-  RequireCall,
-  DynamicImport,
-  RequireResolve,
-  ImportRule,
-  ComposesFrom,
-  UrlToken,
-}
-
-impl From<protocol::ImportKind> for PluginImportKind {
-  fn from(kind: protocol::ImportKind) -> Self {
-    match kind {
-      protocol::ImportKind::EntryPoint => PluginImportKind::EntryPoint,
-      protocol::ImportKind::ImportStatement => {
-        PluginImportKind::ImportStatement
-      }
-      protocol::ImportKind::RequireCall => PluginImportKind::RequireCall,
-      protocol::ImportKind::DynamicImport => PluginImportKind::DynamicImport,
-      protocol::ImportKind::RequireResolve => PluginImportKind::RequireResolve,
-      protocol::ImportKind::ImportRule => PluginImportKind::ImportRule,
-      protocol::ImportKind::ComposesFrom => PluginImportKind::ComposesFrom,
-      protocol::ImportKind::UrlToken => PluginImportKind::UrlToken,
+fn import_kind_from_proto(
+  kind: protocol::ImportKind,
+) -> deno_bundle_runtime::ImportKind {
+  match kind {
+    protocol::ImportKind::EntryPoint => {
+      deno_bundle_runtime::ImportKind::EntryPoint
     }
+    protocol::ImportKind::ImportStatement => {
+      deno_bundle_runtime::ImportKind::ImportStatement
+    }
+    protocol::ImportKind::RequireCall => {
+      deno_bundle_runtime::ImportKind::RequireCall
+    }
+    protocol::ImportKind::DynamicImport => {
+      deno_bundle_runtime::ImportKind::DynamicImport
+    }
+    protocol::ImportKind::RequireResolve => {
+      deno_bundle_runtime::ImportKind::RequireResolve
+    }
+    protocol::ImportKind::ImportRule => {
+      deno_bundle_runtime::ImportKind::ImportRule
+    }
+    protocol::ImportKind::ComposesFrom => {
+      deno_bundle_runtime::ImportKind::ComposesFrom
+    }
+    protocol::ImportKind::UrlToken => deno_bundle_runtime::ImportKind::UrlToken,
   }
 }
 
@@ -666,7 +665,7 @@ impl From<protocol::ImportKind> for PluginImportKind {
 struct PluginOnResolveArgs {
   path: String,
   importer: Option<String>,
-  kind: PluginImportKind,
+  kind: deno_bundle_runtime::ImportKind,
   namespace: Option<String>,
   resolve_dir: Option<String>,
   with: IndexMap<String, String>,
@@ -681,9 +680,25 @@ struct PluginOnLoadArgs {
   with: IndexMap<String, String>,
 }
 
-#[async_trait::async_trait(?Send)]
-impl esbuild_client::PluginHandler for DenoPluginHandler {
-  async fn on_resolve(
+impl DenoPluginHandler {
+  fn is_pre_resolve_external(&self, path: &str) -> bool {
+    self
+      .externals_matcher
+      .as_ref()
+      .map(|matcher| matcher.is_pre_resolve_match(path))
+      .unwrap_or(false)
+  }
+
+  fn is_post_resolve_external(&self, path: &str) -> bool {
+    path.starts_with("node:")
+      || self
+        .externals_matcher
+        .as_ref()
+        .map(|matcher| matcher.is_post_resolve_match(path))
+        .unwrap_or(false)
+  }
+
+  async fn on_resolve_inner(
     &self,
     args: esbuild_client::OnResolveArgs,
   ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
@@ -703,7 +718,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         args: vec![serde_json::to_value(PluginOnResolveArgs {
           path: args.path.clone(),
           importer: args.importer.clone(),
-          kind: args.kind.into(),
+          kind: import_kind_from_proto(args.kind),
           namespace: args.namespace.clone(),
           resolve_dir: args.resolve_dir.clone(),
           with: args.with.clone(),
@@ -716,9 +731,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         return Ok(Some(plugin_resolve_result_to_proto(result)));
       }
     }
-    if let Some(matcher) = &self.externals_matcher
-      && matcher.is_pre_resolve_match(&args.path)
-    {
+    if self.is_pre_resolve_external(&args.path) {
       return Ok(Some(esbuild_client::OnResolveResult {
         external: Some(true),
         path: Some(args.path),
@@ -755,12 +768,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       // TODO(nathanwhit): remap the resolved path to be relative
       // to the output file. It will be tricky to figure out which
       // output file this import will end up in. We may have to use the metafile and rewrite at the end
-      let is_external = r.starts_with("node:")
-        || self
-          .externals_matcher
-          .as_ref()
-          .map(|matcher| matcher.is_post_resolve_match(&r))
-          .unwrap_or(false);
+      let is_external = self.is_post_resolve_external(&r);
 
       esbuild_client::OnResolveResult {
         namespace: if r.starts_with("jsr:")
@@ -779,6 +787,16 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         ..Default::default()
       }
     }))
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+impl esbuild_client::PluginHandler for DenoPluginHandler {
+  async fn on_resolve(
+    &self,
+    args: esbuild_client::OnResolveArgs,
+  ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
+    self.on_resolve_inner(args).await
   }
 
   async fn on_load(

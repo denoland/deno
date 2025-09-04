@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -24,6 +25,7 @@ deno_core::extension!(
   ],
   objects = [
     PluginExecResultSenderWrapper,
+    PluginResolver,
   ],
   esm = [
     "bundle.ts"
@@ -41,16 +43,84 @@ deno_core::extension!(
 );
 
 #[async_trait]
+impl BundleResolver for () {
+  async fn resolve(
+    &self,
+    _path: &str,
+    _options: ResolveOptions,
+  ) -> Result<ResolveResult, AnyError> {
+    Err(deno_core::anyhow::anyhow!(
+      "default BundleResolver does not do anything"
+    ))
+  }
+}
+
+#[async_trait]
 impl BundleProvider for () {
   async fn bundle(
     &self,
     _options: BundleOptions,
     _plugins: Option<Plugins>,
-  ) -> Result<BuildResponse, AnyError> {
+  ) -> Result<BundleFuture, AnyError> {
     Err(deno_core::anyhow::anyhow!(
       "default BundleProvider does not do anything"
     ))
   }
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ImportKind {
+  EntryPoint,
+  ImportStatement,
+  RequireCall,
+  DynamicImport,
+  RequireResolve,
+  ImportRule,
+  ComposesFrom,
+  UrlToken,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveOptions {
+  pub plugin_name: Option<String>,
+  pub importer: Option<String>,
+  pub namespace: Option<String>,
+  pub resolve_dir: Option<String>,
+  pub kind: Option<ImportKind>,
+  pub plugin_data: Option<u32>,
+  pub with: Option<indexmap::IndexMap<String, String>>,
+}
+
+#[derive(Default, Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveResult {
+  pub errors: Vec<Message>,
+  pub warnings: Vec<Message>,
+  pub path: String,
+  pub external: bool,
+  pub side_effects: bool,
+  pub namespace: String,
+  pub suffix: String,
+  pub plugin_data: u32,
+}
+
+#[async_trait]
+pub trait BundleResolver: Send + Sync {
+  async fn resolve(
+    &self,
+    path: &str,
+    options: ResolveOptions,
+  ) -> Result<ResolveResult, AnyError>;
+}
+
+pub type BuildResponseFuture =
+  Pin<Box<dyn Future<Output = Result<BuildResponse, AnyError>> + Send>>;
+
+pub struct BundleFuture {
+  pub response: BuildResponseFuture,
+  pub resolver: Arc<dyn BundleResolver>,
 }
 
 #[async_trait]
@@ -59,7 +129,7 @@ pub trait BundleProvider: Send + Sync {
     &self,
     options: BundleOptions,
     plugins: Option<Plugins>,
-  ) -> Result<BuildResponse, AnyError>;
+  ) -> Result<BundleFuture, AnyError>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, serde::Deserialize)]
@@ -156,7 +226,7 @@ impl std::fmt::Display for PackageHandling {
     }
   }
 }
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
   pub text: String,
@@ -164,7 +234,7 @@ pub struct Message {
   pub notes: Vec<Note>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PartialMessage {
   pub id: Option<String>,
@@ -248,22 +318,40 @@ pub async fn op_bundle(
     (provider, spawner)
   };
 
-  let (plugins, plugin_executor_fut) = if let Some(plugin_executor) =
+  let (plugin_executor_fut, result_future) = if let Some(plugin_executor) =
     plugin_executor
     && let Some(plugin_info) = plugins
   {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<PluginRequest>(1024);
+    let plugins = Plugins {
+      sender: tx.clone(),
+      info: plugin_info,
+    };
+    let result_future = provider
+      .bundle(options, Some(plugins))
+      .await
+      .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+    let resolver = result_future.resolver.clone();
+
     let fut = async move {
       loop {
         log::trace!("op_bundle: rx.recv");
         let Some(request) = rx.recv().await else {
           break;
         };
+        if let PluginRequest::Done = request {
+          break;
+        }
         log::trace!("op_bundle: rx.recv: {:?}", request);
         let plugin_executor = plugin_executor.clone();
+        let resolver = resolver.clone();
         spawner.spawn(move |scope| {
+          let resolver = PluginResolver {
+            resolver: resolver.clone(),
+          };
           let tc = &mut v8::TryCatch::new(scope);
-          let args = request.to_args(tc).unwrap();
+          let resolver = deno_core::cppgc::make_cppgc_object(tc, resolver);
+          let args = request.to_args(tc, resolver.into()).unwrap();
           let executor = v8::Local::new(tc, plugin_executor);
           let undef = v8::undefined(tc).into();
           log::trace!("op_bundle: executor.call");
@@ -273,19 +361,24 @@ pub async fn op_bundle(
     }
     .boxed_local();
     (
-      Some(Plugins {
-        sender: tx,
-        info: plugin_info,
-      }),
       fut,
+      async move {
+        let res = result_future.response.await;
+        tx.send(PluginRequest::Done).await.unwrap();
+        res
+      }
+      .boxed(),
     )
   } else {
-    (None, async move {}.boxed_local())
+    let result_future = provider
+      .bundle(options, None)
+      .await
+      .map_err(|e| JsErrorBox::generic(e.to_string()))?;
+    (async move {}.boxed_local(), result_future.response)
   };
 
   log::trace!("op_bundle: provider.bundle");
-  let (bundle_result, _) =
-    tokio::join!(provider.bundle(options, plugins), plugin_executor_fut);
+  let (bundle_result, _) = tokio::join!(result_future, plugin_executor_fut);
   log::trace!("op_bundle: bundle_result: {:?}", bundle_result);
 
   bundle_result.map_err(|e| JsErrorBox::generic(e.to_string()))
@@ -293,6 +386,7 @@ pub async fn op_bundle(
 
 // Plugin plumbing types and ops
 use std::convert::Infallible;
+
 use tokio::sync::oneshot;
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -334,6 +428,7 @@ pub enum PluginRequest {
     args: Vec<serde_json::Value>,
     result: oneshot::Sender<PluginResult<()>>,
   },
+  Done,
 }
 
 fn deserialize_bytes<'de, D>(
@@ -452,10 +547,38 @@ impl deno_core::GarbageCollected for PluginExecResultSenderWrapper {
   }
 }
 
+pub struct PluginResolver {
+  resolver: Arc<dyn BundleResolver>,
+}
+
+impl deno_core::GarbageCollected for PluginResolver {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"PluginResolver"
+  }
+}
+
+#[op2]
+impl PluginResolver {
+  #[async_method]
+  #[serde]
+  async fn resolve(
+    &self,
+    #[string] path: String,
+    #[serde] options: ResolveOptions,
+  ) -> Result<ResolveResult, JsErrorBox> {
+    self
+      .resolver
+      .resolve(&path, options)
+      .await
+      .map_err(|e| JsErrorBox::generic(e.to_string()))
+  }
+}
+
 impl PluginRequest {
   fn to_args<'s>(
     self,
     scope: &mut v8::HandleScope<'s>,
+    resolver: v8::Local<'s, v8::Value>,
   ) -> Result<Vec<v8::Local<'s, v8::Value>>, PluginExecError> {
     let mut v8_args = Vec::new();
     match self {
@@ -472,6 +595,7 @@ impl PluginRequest {
           PluginExecResultSender::OnStart(result),
         );
         v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
+        v8_args.push(resolver);
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnResolve {
@@ -486,6 +610,7 @@ impl PluginRequest {
           PluginExecResultSender::OnResolve(result),
         );
         v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
+        v8_args.push(resolver);
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnLoad {
@@ -500,6 +625,7 @@ impl PluginRequest {
           PluginExecResultSender::OnLoad(result),
         );
         v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
+        v8_args.push(resolver);
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnEnd {
@@ -515,6 +641,7 @@ impl PluginRequest {
           PluginExecResultSender::OnEnd(result),
         );
         v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
+        v8_args.push(resolver);
         v8_args.push(serde_v8::to_v8(scope, args)?);
       }
       PluginRequest::OnDispose {
@@ -530,7 +657,11 @@ impl PluginRequest {
           PluginExecResultSender::OnDispose(result),
         );
         v8_args.push(deno_core::cppgc::make_cppgc_object(scope, sender).into());
+        v8_args.push(resolver);
         v8_args.push(serde_v8::to_v8(scope, args)?);
+      }
+      PluginRequest::Done => {
+        unreachable!()
       }
     }
     Ok(v8_args)

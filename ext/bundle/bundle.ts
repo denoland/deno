@@ -41,7 +41,7 @@ type PluginInfo = {
 
 async function collectPluginInfo(
   options: Deno.bundle.Options,
-): Promise<PluginInfo[]> {
+): Promise<[PluginInfo[], Deno.bundle.PluginBuild | undefined]> {
   const plugins: PluginInfo[] = [];
   if (options.plugins) {
     let info: Omit<PluginInfo, "id" | "name"> = {
@@ -92,8 +92,9 @@ async function collectPluginInfo(
         onDispose: null,
       };
     }
+    return [plugins, pluginBuild];
   }
-  return plugins;
+  return [[], undefined];
 }
 
 interface RustPluginInfo {
@@ -220,7 +221,10 @@ function combineResult(
   }
 }
 
-function makePluginExecutor(plugins: PluginInfo[]) {
+function makePluginExecutor(
+  plugins: PluginInfo[],
+  pluginBuild: Deno.bundle.PluginBuild,
+) {
   if (!plugins.length) {
     return (..._args: unknown[]) => Promise.resolve();
   }
@@ -230,8 +234,15 @@ function makePluginExecutor(plugins: PluginInfo[]) {
     type: HookType,
     ids: number[],
     sender: { sendResult: (res: unknown) => void },
+    resolve: {
+      resolve: (
+        path: string,
+        options?: Deno.bundle.ResolveOptions,
+      ) => Promise<Deno.bundle.ResolveResult>;
+    },
     args: unknown[],
   ): Promise<void> => {
+    pluginBuild.resolve = resolve.resolve.bind(resolve);
     let result: HookTypes[H] = defaultResult(hook) as HookTypes[H];
     const hookName = getHookName(hook);
     for (const id of ids) {
@@ -260,14 +271,14 @@ function makePluginExecutor(plugins: PluginInfo[]) {
 export async function bundle(
   options: Deno.bundle.Options,
 ): Promise<Deno.bundle.Result> {
-  const plugins = await collectPluginInfo(options);
+  const [plugins, pluginBuild] = await collectPluginInfo(options);
   const forRust = toRustPluginInfo(plugins);
   const result = {
     success: false,
     ...await op_bundle(
       options,
       forRust.length > 0 ? forRust : null,
-      forRust.length > 0 ? makePluginExecutor(plugins) : null,
+      forRust.length > 0 ? makePluginExecutor(plugins, pluginBuild!) : null,
     ),
   };
   result.success = result.errors.length === 0;
