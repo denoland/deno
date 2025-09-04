@@ -173,10 +173,7 @@ async fn bench_specifier(
     Ok(()) => Ok(()),
     Err(CreateCustomWorkerError::Core(error)) => match error.into_kind() {
       CoreErrorKind::Js(error) => {
-        sender.send(BenchEvent::UncaughtError(
-          specifier.to_string(),
-          Box::new(error),
-        ))?;
+        sender.send(BenchEvent::UncaughtError(specifier.to_string(), error))?;
         Ok(())
       }
       error => Err(error.into_box().into()),

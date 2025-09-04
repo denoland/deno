@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use std::env;
 use std::future::Future;
 use std::io::IsTerminal;
+use std::io::Write as _;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -241,7 +242,28 @@ async fn run_subcommand(
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
-      if run_flags.is_stdin() {
+      if run_flags.print_task_list {
+        let task_flags = TaskFlags {
+          cwd: None,
+          task: None,
+          is_run: true,
+          recursive: false,
+          filter: None,
+          eval: false,
+        };
+        let mut flags = flags.deref().clone();
+        flags.subcommand = DenoSubcommand::Task(task_flags.clone());
+        writeln!(
+          &mut std::io::stdout(),
+          "Please specify a {} or a {}.\n",
+          colors::bold("[SCRIPT_ARG]"),
+          colors::bold("task name")
+        )?;
+        std::io::stdout().flush()?;
+        tools::task::execute_script(Arc::new(flags), task_flags)
+          .await
+          .map(|_| 1)
+      } else if run_flags.is_stdin() {
         // these futures are boxed to prevent stack overflows on Windows
         tools::run::run_from_stdin(flags.clone(), unconfigured_runtime, roots)
           .boxed_local()
@@ -295,9 +317,7 @@ async fn run_subcommand(
               .await;
             }
             let script_err_msg = script_err.to_string();
-            if script_err_msg.starts_with(MODULE_NOT_FOUND)
-              || script_err_msg.starts_with(UNSUPPORTED_SCHEME)
-            {
+            if should_fallback_on_run_error(script_err_msg.as_str()) {
               if run_flags.bare {
                 let mut cmd = args::clap_root();
                 cmd.build();
@@ -435,6 +455,29 @@ async fn run_subcommand(
   };
 
   handle.await?
+}
+
+/// Determines whether a error encountered during `deno run`
+/// should trigger fallback behavior, such as attempting to run a Deno task
+/// with the same name.
+///
+/// Checks if the error message indicates a "module not found",
+/// "unsupported scheme", or certain OS-level import failures (such as
+/// "Is a directory" or "Access is denied"); if so, Deno will attempt to
+/// interpret the original argument as a script name or task instead of a
+/// file path.
+///
+/// See: https://github.com/denoland/deno/issues/28878
+fn should_fallback_on_run_error(script_err: &str) -> bool {
+  if script_err.starts_with(MODULE_NOT_FOUND)
+    || script_err.starts_with(UNSUPPORTED_SCHEME)
+  {
+    return true;
+  }
+  let re = lazy_regex::regex!(
+    r"Import 'file:///.+?' failed\.\n\s+0: .+ \(os error \d+\)"
+  );
+  re.is_match(script_err)
 }
 
 #[allow(clippy::print_stderr)]
