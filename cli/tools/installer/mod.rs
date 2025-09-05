@@ -579,7 +579,7 @@ pub fn print_install_report(
         "package{}",
         if total_installed > 1 { "s" } else { "" },
       )),
-      deno_terminal::colors::gray(format!("in",)),
+      deno_terminal::colors::gray("in"),
       display::human_elapsed_with_ms_limit(elapsed.as_millis(), 3_000)
     );
 
