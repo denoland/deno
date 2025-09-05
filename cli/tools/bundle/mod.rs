@@ -1252,7 +1252,7 @@ impl DenoPluginHandler {
     source: &Arc<str>,
     is_known_script: Option<bool>,
   ) -> Result<Arc<str>, BundleLoadError> {
-    let parsed_source = self.parsed_source_cache.get_matching_parsed_source(
+    let parsed_source = self.parsed_source_cache.remove_or_parse_module(
       specifier,
       media_type,
       source.clone(),
