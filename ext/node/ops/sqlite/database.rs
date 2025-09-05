@@ -235,7 +235,9 @@ pub struct DatabaseSync {
   location: String,
 }
 
-impl GarbageCollected for DatabaseSync {
+unsafe impl GarbageCollected for DatabaseSync {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DatabaseSync"
   }

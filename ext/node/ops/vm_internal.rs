@@ -80,7 +80,7 @@ pub struct ContextifyContext {
   sandbox: v8::TracedReference<v8::Object>,
 }
 
-impl deno_core::GarbageCollected for ContextifyContext {
+unsafe impl deno_core::GarbageCollected for ContextifyContext {
   fn trace(&self, visitor: &v8::cppgc::Visitor) {
     visitor.trace(&self.context);
     visitor.trace(&self.sandbox);

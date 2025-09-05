@@ -31,7 +31,9 @@ impl WebIdlInterfaceConverter for GPUComputePipeline {
   const NAME: &'static str = "GPUComputePipeline";
 }
 
-impl GarbageCollected for GPUComputePipeline {
+unsafe impl GarbageCollected for GPUComputePipeline {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUComputePipeline"
   }
