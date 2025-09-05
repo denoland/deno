@@ -421,3 +421,23 @@ fn opt_out_top_level_exclude_via_fmt_unexclude() {
   assert_contains!(output, "excluded.ts");
   assert_not_contains!(output, "actually_excluded.ts");
 }
+
+#[test]
+fn test_tty_non_workspace_directory() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("main.ts").write("const a = 1;\n");
+  context.new_command().arg("fmt").with_pty(|mut pty| {
+    pty.expect("Are you sure you want to format the entire");
+    pty.write_raw("y");
+    pty.write_raw("\n");
+    pty.expect("Checked 1 file");
+  });
+
+  context.new_command().arg("fmt").with_pty(|mut pty| {
+    pty.expect("Are you sure you want to format the entire");
+    pty.write_raw("n");
+    pty.write_raw("\n");
+    pty.expect("Did not format non-workspace directory");
+  });
+}

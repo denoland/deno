@@ -1,0 +1,21 @@
+{
+  "tests": {
+    "force": {
+      "args": "fmt --force",
+      "output": "[WILDCARD]"
+    },
+    "non_force": {
+      "args": "fmt",
+      "output": "error.out",
+      "exitCode": 1
+    },
+    "check": {
+      "args": "fmt --check",
+      "output": "[WILDCARD]"
+    },
+    "arg": {
+      "args": "fmt main.ts",
+      "output": "[WILDCARD]"
+    }
+  }
+}

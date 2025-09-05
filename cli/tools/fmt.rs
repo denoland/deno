@@ -166,28 +166,7 @@ fn resolve_paths_with_options_batches(
   cli_options: &CliOptions,
   fmt_flags: &FmtFlags,
 ) -> Result<Vec<PathsWithOptions>, AnyError> {
-  if !fmt_flags.force
-    && !fmt_flags.check
-    && fmt_flags.files.include.is_empty()
-    && (cli_options.workspace().deno_jsons().next().is_none()
-      && cli_options.workspace().package_jsons().next().is_none())
-  {
-    let confirm_result =
-      util::console::confirm(util::console::ConfirmOptions {
-        default: true,
-        message: format!(
-          "{} It looks like you're not in a workspace. Are you sure you want to format the entire '{}' directory?",
-          colors::yellow("Warning"),
-          cli_options.initial_cwd().display()
-        ),
-      })
-      .unwrap_or(false);
-    if !confirm_result {
-      bail!(
-        "Did not format directory due to no configuration file found. Run again with --force"
-      )
-    }
-  }
+  maybe_show_format_confirmation(cli_options, fmt_flags)?;
 
   let members_fmt_options =
     cli_options.resolve_fmt_options_for_members(fmt_flags)?;
@@ -208,6 +187,36 @@ fn resolve_paths_with_options_batches(
     return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
+}
+
+fn maybe_show_format_confirmation(
+  cli_options: &CliOptions,
+  fmt_flags: &FmtFlags,
+) -> Result<(), AnyError> {
+  if fmt_flags.force
+    || fmt_flags.check
+    || fmt_flags.files.include.is_empty()
+    || cli_options.workspace().deno_jsons().next().is_some()
+    || cli_options.workspace().package_jsons().next().is_some()
+  {
+    return Ok(());
+  }
+
+  let confirm_result =
+    util::console::confirm(util::console::ConfirmOptions {
+      default: true,
+      message: format!(
+        "{} It looks like you're not in a workspace. Are you sure you want to format the entire '{}' directory?",
+        colors::yellow("Warning"),
+        cli_options.initial_cwd().display()
+      ),
+    })
+    .unwrap_or(false);
+  if confirm_result {
+    Ok(())
+  } else {
+    bail!("Did not format non-workspace directory. Run again with --force")
+  }
 }
 
 async fn format_files(

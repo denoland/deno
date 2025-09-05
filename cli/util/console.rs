@@ -134,11 +134,11 @@ pub fn confirm(options: ConfirmOptions) -> Option<bool> {
       }) => match (code, modifiers) {
         (KeyCode::Char('c'), KeyModifiers::CONTROL)
         | (KeyCode::Char('q'), KeyModifiers::NONE) => break,
-        (KeyCode::Char('Y') | KeyCode::Char('y'), KeyModifiers::NONE) => {
+        (KeyCode::Char('y'), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
           selected = true;
           *selection.lock() = "Y".to_string();
         }
-        (KeyCode::Char('N') | KeyCode::Char('n'), KeyModifiers::NONE) => {
+        (KeyCode::Char('n'), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
           selected = false;
           *selection.lock() = "N".to_string();
         }
