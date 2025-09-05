@@ -133,7 +133,7 @@ pub async fn bundle_init(
     && resolved_entrypoints[0].as_str().ends_with(".html")
   {
     let path = resolved_entrypoints[0].to_file_path().unwrap();
-    let entrypoint = html::doit(&path)?;
+    let entrypoint = html::load_html_entrypoint(&path)?;
     let mut to_cache = vec![];
     for script in &entrypoint.scripts {
       if let Some(path) = &script.resolved_path {

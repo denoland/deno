@@ -1,26 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 
-use deno_ast::swc::atoms::atom;
-use deno_ast::swc::common::Span;
-use deno_ast::swc::common::{self as swc_common};
+use capacity_builder::StringBuilder;
 use deno_core::anyhow;
-use swc_common::BytePos;
-use swc_common::SourceFile;
-use swc_html::ast::Attribute;
-use swc_html::ast::Child;
-use swc_html::ast::Comment;
-use swc_html::ast::Document;
-use swc_html::ast::DocumentType;
-use swc_html::ast::Element;
-use swc_html::ast::Namespace;
-use swc_html::ast::Text;
-use swc_html::codegen::Emit;
-use swc_html::codegen::writer::basic::BasicHtmlWriter;
+use deno_core::error::AnyError;
+use lol_html::element;
+use lol_html::html_content::ContentType as LolContentType;
 
 use crate::tools::bundle::OutputFile;
 
@@ -29,130 +18,117 @@ pub struct Script {
   pub src: Option<String>,
   pub is_async: bool,
   pub is_module: bool,
-  pub is_ignored: bool,
   pub resolved_path: Option<PathBuf>,
 }
 
-fn make_attr(name: &str, value: Option<&str>) -> Attribute {
-  Attribute {
-    name: name.into(),
-    value: value.map(|v| v.into()),
-    span: Span::default(),
-    namespace: None,
-    prefix: None,
-    raw_name: None,
-    raw_value: None,
+struct Attr<'a> {
+  name: Cow<'static, str>,
+  value: Option<Cow<'a, str>>,
+}
+
+impl<'a> Attr<'a> {
+  fn new(
+    name: impl Into<Cow<'static, str>>,
+    value: Option<Cow<'a, str>>,
+  ) -> Self {
+    Self {
+      name: name.into(),
+      value,
+    }
   }
+  fn write_out<'s>(&'s self, out: &mut StringBuilder<'s>)
+  where
+    'a: 's,
+  {
+    out.append(&self.name);
+    if let Some(value) = &self.value {
+      out.append("=\"");
+      out.append(value);
+      out.append('"');
+    }
+  }
+}
+
+fn write_attr_list<'a, 's>(attrs: &'s [Attr<'a>], out: &mut StringBuilder<'s>)
+where
+  'a: 's,
+{
+  if attrs.is_empty() {
+    return;
+  }
+
+  out.append(' ');
+  for i in 0..attrs.len() - 1 {
+    attrs[i].write_out(out);
+    out.append(' ');
+  }
+
+  attrs[attrs.len() - 1].write_out(out);
 }
 
 impl Script {
-  pub fn to_element(&self) -> Element {
-    let mut attributes = Vec::new();
+  pub fn to_element_string(&self) -> String {
+    let mut attrs = Vec::new();
     if let Some(src) = &self.src {
-      attributes.push(make_attr("src", Some(src)));
+      attrs.push(Attr::new("src", Some(Cow::Borrowed(src))));
     }
-
     if self.is_async {
-      attributes.push(make_attr("async", None));
+      attrs.push(Attr::new("async", None));
     }
-
     if self.is_module {
-      attributes.push(make_attr("type", Some("module")));
+      attrs.push(Attr::new("type", Some("module".into())));
     }
-    attributes.push(make_attr("crossorigin", None));
+    attrs.push(Attr::new("crossorigin", None));
+    StringBuilder::build(|out| {
+      out.append("<script");
 
-    Element {
-      attributes,
-      children: vec![],
-      content: None,
-      span: Span::default(),
-      tag_name: atom!("script"),
-      namespace: Namespace::HTML,
-      is_self_closing: false,
-    }
+      write_attr_list(&attrs, out);
+
+      out.append("></script>");
+    })
+    .unwrap()
   }
 }
 
-pub trait VisitHtml: Sized {
-  fn visit_element(&mut self, e: &mut Element) {
-    walk::element(e, self);
-  }
-  fn visit_text(&mut self, _t: &mut Text) {}
-  fn visit_comment(&mut self, _c: &mut Comment) {}
-  fn visit_document_type(&mut self, _d: &mut DocumentType) {}
-  fn visit_document(&mut self, d: &mut Document) {
-    for child in &mut d.children {
-      match child {
-        Child::Element(e) => self.visit_element(e),
-        Child::Text(t) => self.visit_text(t),
-        Child::Comment(c) => self.visit_comment(c),
-        Child::DocumentType(d) => self.visit_document_type(d),
-      }
-    }
-  }
+struct NoOutput;
+
+impl lol_html::OutputSink for NoOutput {
+  fn handle_chunk(&mut self, _: &[u8]) {}
 }
 
-pub mod walk {
-  use swc_html::ast::Element;
-
-  use super::VisitHtml;
-
-  pub fn element(elem: &mut Element, visitor: &mut impl VisitHtml) {
-    for e in &mut elem.children {
-      match e {
-        swc_html::ast::Child::DocumentType(document_type) => {
-          visitor.visit_document_type(document_type)
+fn collect_scripts(doc: &str) -> Result<Vec<Script>, AnyError> {
+  let mut scripts = Vec::new();
+  let mut rewriter = lol_html::HtmlRewriter::new(
+    lol_html::Settings {
+      element_content_handlers: vec![element!("script[src]", |el| {
+        let is_ignored =
+          el.has_attribute("deno-ignore") || el.has_attribute("vite-ignore");
+        if is_ignored {
+          return Ok(());
         }
-        swc_html::ast::Child::Element(element) => {
-          visitor.visit_element(element)
-        }
-        swc_html::ast::Child::Text(text) => visitor.visit_text(text),
-        swc_html::ast::Child::Comment(comment) => {
-          visitor.visit_comment(comment)
-        }
-      }
-    }
-  }
-}
+        let typ = el.get_attribute("type");
+        let (Some("module") | None) = typ.as_deref() else {
+          return Ok(());
+        };
+        let src = el.get_attribute("src").unwrap();
+        let is_async = el.has_attribute("async");
+        let is_module = matches!(typ.as_deref(), Some("module"));
 
-struct Visitor {
-  scripts: Vec<Script>,
-}
-
-fn get_attr<'a>(e: &'a Element, name: &str) -> Option<&'a str> {
-  e.attributes
-    .iter()
-    .find(|a| a.name == name)
-    .and_then(|a| a.value.as_ref().map(|v| v.as_str()))
-}
-
-impl VisitHtml for Visitor {
-  fn visit_element(&mut self, e: &mut Element) {
-    if e.tag_name == "script" {
-      let src = get_attr(e, "src");
-      let typ = get_attr(e, "type");
-      if let Some(src) = src {
-        if let Some("module") | None = typ {
-          self.scripts.push(Script {
-            src: Some(src.to_string()),
-            is_async: get_attr(e, "async").is_some(),
-            is_module: typ.is_some(),
-            is_ignored: get_attr(e, "deno-ignore").is_some()
-              || get_attr(e, "vite-ignore").is_some(),
-            resolved_path: None,
-          });
-        }
-      }
-    }
-    walk::element(e, self);
-  }
-}
-
-fn collect_scripts(doc: &mut Document) -> Vec<Script> {
-  let mut visitor = Visitor { scripts: vec![] };
-  visitor.visit_document(doc);
-  visitor.scripts.retain(|s| !s.is_ignored);
-  visitor.scripts
+        scripts.push(Script {
+          src: Some(src),
+          is_async,
+          is_module,
+          resolved_path: None,
+        });
+        Ok(())
+      })],
+      ..lol_html::Settings::new()
+    },
+    NoOutput,
+  );
+  rewriter.write(doc.as_bytes())?;
+  rewriter.end()?;
+  Ok(scripts)
 }
 
 #[derive(Debug, Clone)]
@@ -160,30 +136,14 @@ pub struct HtmlEntrypoint {
   pub path: PathBuf,
   pub scripts: Vec<Script>,
   pub temp_module: String,
-  pub doc: Document,
+  pub contents: String,
 }
 
-pub fn doit(path: &Path) -> anyhow::Result<HtmlEntrypoint> {
-  let file: Rc<deno_ast::swc::common::FileName> =
-    Rc::new(PathBuf::from(path).into());
-  let file = SourceFile::new(
-    file.clone(),
-    false,
-    file.clone(),
-    bytes_str::BytesStr::from_utf8_vec(std::fs::read(path)?)?,
-    BytePos(1),
-  );
-  let mut errors = Vec::new();
-  let mut doc = swc_html::parser::parse_file_as_document(
-    &file,
-    swc_html::parser::parser::ParserConfig {
-      ..Default::default()
-    },
-    &mut errors,
-  )
-  .unwrap();
-
-  let mut scripts = collect_scripts(&mut doc);
+fn parse_html_entrypoint(
+  path: &Path,
+  contents: String,
+) -> anyhow::Result<HtmlEntrypoint> {
+  let mut scripts = collect_scripts(&contents)?;
 
   let mut temp_module = String::new();
   for script in &mut scripts {
@@ -201,84 +161,18 @@ pub fn doit(path: &Path) -> anyhow::Result<HtmlEntrypoint> {
     path: path.to_path_buf(),
     scripts,
     temp_module,
-    doc,
+    contents,
   })
 }
 
-pub struct Remover {
-  to_inject: Script,
-  css_to_inject_path: Option<String>,
-
-  injected: bool,
-}
-
-impl VisitHtml for Remover {
-  fn visit_element(&mut self, e: &mut Element) {
-    if e.tag_name == "head" && !self.injected {
-      self.injected = true;
-      e.children.push(Child::Element(self.to_inject.to_element()));
-      if let Some(css_to_inject_path) = &self.css_to_inject_path {
-        e.children.push(Child::Element(Element {
-          attributes: vec![
-            make_attr("rel", Some("stylesheet")),
-            make_attr("crossorigin", None),
-            make_attr("href", Some(css_to_inject_path)),
-          ],
-          children: vec![],
-          content: None,
-          span: Span::default(),
-          tag_name: atom!("link"),
-          namespace: Namespace::HTML,
-          is_self_closing: true,
-        }));
-      }
-    }
-    let mut remove = Vec::new();
-    for (i, e) in &mut e.children.iter_mut().enumerate() {
-      if let Child::Element(element) = e {
-        if element.tag_name == "script" {
-          if let Some(src) = get_attr(element, "src")
-            && Some(src) != self.to_inject.src.as_deref()
-          {
-            remove.push(i);
-          }
-        } else {
-          self.visit_element(element);
-        }
-      }
-    }
-
-    let mut new_children = Vec::new();
-    for (i, e) in &mut e.children.iter_mut().enumerate() {
-      if !remove.contains(&i) {
-        new_children.push(e.clone());
-      }
-    }
-    e.children = new_children;
-  }
+pub fn load_html_entrypoint(path: &Path) -> anyhow::Result<HtmlEntrypoint> {
+  let contents = std::fs::read_to_string(path)?;
+  parse_html_entrypoint(path, contents)
 }
 
 impl HtmlEntrypoint {
-  pub fn to_html(&self) -> String {
-    let mut out = String::new();
-    let mut s = BasicHtmlWriter::new(
-      &mut out,
-      None,
-      swc_html::codegen::writer::basic::BasicHtmlWriterConfig {
-        ..Default::default()
-      },
-    );
-    let mut codegen = swc_html::codegen::CodeGenerator::new(
-      &mut s,
-      swc_html::codegen::CodegenConfig {
-        ..Default::default()
-      },
-    );
-    codegen.emit(&self.doc).unwrap();
-    out
-  }
   pub fn patch_html_with_response<'a>(
-    mut self,
+    self,
     response: &'a esbuild_client::protocol::BuildResponse,
     outdir: &Path,
   ) -> anyhow::Result<Vec<OutputFile<'a>>> {
@@ -307,28 +201,18 @@ impl HtmlEntrypoint {
       src: Some(format!("./{}", out_name)),
       is_async: any_async,
       is_module: any_module,
-      is_ignored: false,
       resolved_path: None,
     };
 
-    let mut replacer = Remover {
+    let css_to_inject_path = entrypoint_css_maybe
+      .map(|f| format!("./index-{}.css", reencode_hash(&f.hash)));
+
+    let patched_contents = inject_scripts_and_css(
+      &self.contents,
       to_inject,
-      css_to_inject_path: entrypoint_css_maybe
-        .map(|f| format!("./index-{}.css", reencode_hash(&f.hash))),
-      injected: false,
-    };
-    replacer.visit_document(&mut self.doc);
-    if !replacer.injected {
-      self.doc.children.push(Child::Element(Element {
-        span: Span::default(),
-        tag_name: atom!("head"),
-        namespace: Namespace::HTML,
-        attributes: vec![],
-        children: vec![Child::Element(replacer.to_inject.to_element())],
-        content: None,
-        is_self_closing: false,
-      }));
-    }
+      &self.scripts,
+      css_to_inject_path,
+    )?;
 
     let mut output_files = Vec::new();
     output_files.push(OutputFile {
@@ -349,11 +233,85 @@ impl HtmlEntrypoint {
 
     output_files.push(OutputFile {
       path: outdir.join("index.html"),
-      contents: self.to_html().into_bytes().into(),
+      contents: patched_contents.into_bytes().into(),
     });
 
     Ok(output_files)
   }
+}
+
+fn make_link_str(attrs: &[Attr]) -> String {
+  StringBuilder::build(|out| {
+    out.append("<link");
+    write_attr_list(attrs, out);
+    out.append(">");
+  })
+  .unwrap()
+}
+
+fn stylesheet_str(path: &str) -> String {
+  let attrs = &[
+    Attr::new("rel", Some("stylesheet".into())),
+    Attr::new("crossorigin", None),
+    Attr::new("href", Some(Cow::Borrowed(path))),
+  ];
+  make_link_str(attrs)
+}
+
+fn inject_scripts_and_css(
+  input: &str,
+  to_inject: Script,
+  to_remove: &[Script],
+  css_to_inject_path: Option<String>,
+) -> anyhow::Result<String> {
+  let did_inject = Cell::new(false);
+  let rewritten = lol_html::rewrite_str(
+    input,
+    lol_html::Settings {
+      element_content_handlers: vec![
+        element!("head", |el| {
+          let already_done = did_inject.replace(true);
+          if already_done {
+            return Ok(());
+          }
+          el.append(&to_inject.to_element_string(), LolContentType::Html);
+
+          if let Some(css_to_inject_path) = &css_to_inject_path {
+            let link = stylesheet_str(css_to_inject_path);
+            el.append(&link, LolContentType::Html);
+          }
+
+          Ok(())
+        }),
+        element!("script[src]", |el| {
+          let src = el.get_attribute("src").unwrap();
+          if to_remove
+            .iter()
+            .any(|script| script.src.as_deref() == Some(src.as_str()))
+          {
+            el.remove();
+          }
+          Ok(())
+        }),
+      ],
+      document_content_handlers: vec![lol_html::end!(|end| {
+        if !did_inject.replace(true) {
+          let script = to_inject.to_element_string();
+          let link = css_to_inject_path
+            .as_ref()
+            .map(|p| stylesheet_str(p))
+            .unwrap_or_default();
+          end.append(
+            &format!("<head>{script}{link}</head>"),
+            LolContentType::Html,
+          );
+        }
+        Ok(())
+      })],
+      ..lol_html::Settings::new()
+    },
+  )?;
+  Ok(rewritten)
 }
 
 fn reencode_hash(hash: &str) -> String {

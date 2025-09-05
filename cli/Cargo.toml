@@ -140,6 +140,7 @@ lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
+lol_html = "2.6.0"
 lsp-types.workspace = true
 malva.workspace = true
 markup_fmt.workspace = true
@@ -169,7 +170,6 @@ sha2.workspace = true
 spki = { workspace = true, features = ["pem"] }
 sqlformat.workspace = true
 strsim.workspace = true
-swc_html = "26.0.0"
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
 tar.workspace = true
 tempfile.workspace = true
