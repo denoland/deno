@@ -566,7 +566,7 @@ where
 {
   // https://github.com/nodejs/node/blob/2ea31e53c61463727c002c2d862615081940f355/deps/uv/src/unix/os390-syscalls.c#L409
   for _ in 0..libc::TMP_MAX {
-    let path = mkdtemp_path_append_suffix(path);
+    let path = temp_path_append_suffix(path);
     let checked_path = state.borrow_mut::<P>().check_open(
       Cow::Borrowed(Path::new(&path)),
       OpenAccessKind::WriteNoFollow,
@@ -600,7 +600,7 @@ where
 {
   // https://github.com/nodejs/node/blob/2ea31e53c61463727c002c2d862615081940f355/deps/uv/src/unix/os390-syscalls.c#L409
   for _ in 0..libc::TMP_MAX {
-    let path = mkdtemp_path_append_suffix(&path);
+    let path = temp_path_append_suffix(&path);
     let (fs, checked_path) = {
       let mut state = state.borrow_mut();
       let checked_path = state.borrow_mut::<P>().check_open(
@@ -629,12 +629,12 @@ where
   )))
 }
 
-fn mkdtemp_path_append_suffix(prefix: &str) -> String {
+fn temp_path_append_suffix(prefix: &str) -> String {
   use rand::Rng;
   use rand::distributions::Alphanumeric;
+  use rand::rngs::OsRng;
 
-  let mut rng = rand::thread_rng();
   let suffix: String =
-    (0..6).map(|_| rng.sample(Alphanumeric) as char).collect();
+    (0..6).map(|_| OsRng.sample(Alphanumeric) as char).collect();
   format!("{}{}", prefix, suffix)
 }
