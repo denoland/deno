@@ -4,6 +4,7 @@ mod esbuild;
 mod externals;
 mod provider;
 mod transform;
+mod html;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -127,13 +128,33 @@ pub async fn bundle_init(
 
   let resolved_entrypoints =
     resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
-  let _ = plugin_handler
-    .prepare_module_load(&resolved_entrypoints)
-    .await;
 
-  let roots =
-    resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
-  let _ = plugin_handler.prepare_module_load(&roots).await;
+  let input = if resolved_entrypoints.len() == 1
+    && resolved_entrypoints[0].as_str().ends_with(".html")
+  {
+    let path = resolved_entrypoints[0].to_file_path().unwrap();
+    let entrypoint = html::doit(&path)?;
+    let mut to_cache = vec![];
+    for script in &entrypoint.scripts {
+      if let Some(path) = &script.resolved_path {
+        to_cache.push(Url::from_file_path(path).unwrap());
+      }
+    }
+    let _ = plugin_handler.prepare_module_load(&to_cache).await;
+    // let entrypoint = entrypoint.temp_module;
+    BundlerInput::HtmlEntrypoint(entrypoint)
+  } else {
+    let _ = plugin_handler
+      .prepare_module_load(&resolved_entrypoints)
+      .await;
+
+    let roots =
+      resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
+    let _ = plugin_handler.prepare_module_load(&roots).await;
+    BundlerInput::Entrypoints(
+      roots.into_iter().map(|e| ("".into(), e.into())).collect(),
+    )
+  };
 
   let esbuild = EsbuildService::new(
     esbuild_path,
@@ -162,7 +183,7 @@ pub async fn bundle_init(
     on_end_rx,
     init_cwd.clone(),
     esbuild_flags,
-    entries,
+    input.clone(),
   );
 
   Ok(bundler)
@@ -236,15 +257,24 @@ async fn bundle_watch(
   minified: bool,
   platform: BundlePlatform,
 ) -> Result<(), AnyError> {
-  let initial_roots = bundler
-    .roots
-    .iter()
-    .filter_map(|(_, root)| {
-      let url = Url::parse(root).ok()?;
-      deno_path_util::url_to_file_path(&url).ok()
-    })
-    .collect::<Vec<_>>();
+  let (initial_roots, always_watch) = match &bundler.input {
+    BundlerInput::Entrypoints(entries) => (
+      entries
+        .iter()
+        .filter_map(|(_, root)| {
+          let url = Url::parse(root).ok()?;
+          deno_path_util::url_to_file_path(&url).ok()
+        })
+        .collect::<Vec<_>>(),
+      vec![],
+    ),
+    BundlerInput::HtmlEntrypoint(entrypoint) => {
+      (vec![entrypoint.path.clone()], vec![entrypoint.path.clone()])
+    }
+  };
+  let always_watch = Rc::new(always_watch);
   let current_roots = Rc::new(RefCell::new(initial_roots.clone()));
+  let input = bundler.input.clone();
   let bundler = Rc::new(tokio::sync::Mutex::new(bundler));
   let mut print_config =
     crate::util::file_watcher::PrintConfig::new_with_banner(
@@ -259,6 +289,8 @@ async fn bundle_watch(
       watcher_communicator.show_path_changed(changed_paths.clone());
       let bundler = Rc::clone(&bundler);
       let current_roots = current_roots.clone();
+      let input = input.clone();
+      let always_watch = always_watch.clone();
       Ok(async move {
         let mut bundler = bundler.lock().await;
         let start = std::time::Instant::now();
@@ -284,7 +316,8 @@ async fn bundle_watch(
           )?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
-          let new_watched = get_input_paths_for_watch(&response);
+          let mut new_watched = get_input_paths_for_watch(&response);
+          new_watched.extend(always_watch.iter().cloned());
           *current_roots.borrow_mut() = new_watched.clone();
           let _ = watcher_communicator.watch_paths(new_watched);
         } else {
@@ -329,6 +362,12 @@ pub enum BundlingMode {
   Watch,
 }
 
+#[derive(Debug, Clone)]
+pub enum BundlerInput {
+  Entrypoints(Vec<(String, String)>),
+  HtmlEntrypoint(html::HtmlEntrypoint),
+}
+
 pub struct EsbuildBundler {
   client: esbuild_client::ProtocolClient,
   plugin_handler: Arc<DenoPluginHandler>,
@@ -336,7 +375,7 @@ pub struct EsbuildBundler {
   mode: BundlingMode,
   cwd: PathBuf,
   flags: EsbuildFlags,
-  roots: Vec<(String, String)>,
+  input: BundlerInput,
 }
 
 impl EsbuildBundler {
@@ -347,7 +386,7 @@ impl EsbuildBundler {
     on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
     cwd: PathBuf,
     flags: EsbuildFlags,
-    roots: Vec<(String, String)>,
+    input: BundlerInput,
   ) -> EsbuildBundler {
     EsbuildBundler {
       client,
@@ -356,7 +395,7 @@ impl EsbuildBundler {
       mode,
       cwd,
       flags,
-      roots,
+      input,
     }
   }
 
@@ -366,8 +405,23 @@ impl EsbuildBundler {
   // doesn't actually do anything, it's just registering the args/flags
   // we're going to use for all of the rebuilds.
   fn make_build_request(&self) -> protocol::BuildRequest {
+    let (stdin, resolve_dir, entries) = match &self.input {
+      BundlerInput::Entrypoints(entries) => (None, None, entries.clone()),
+      BundlerInput::HtmlEntrypoint(entrypoint) => (
+        Some(entrypoint.temp_module.as_bytes().to_vec()),
+        Some(
+          entrypoint
+            .path
+            .parent()
+            .unwrap()
+            .to_string_lossy()
+            .to_string(),
+        ),
+        vec![],
+      ),
+    };
     protocol::BuildRequest {
-      entries: self.roots.clone(),
+      entries,
       key: 0,
       flags: self.flags.to_flags(),
       write: false,
@@ -396,7 +450,7 @@ impl EsbuildBundler {
   }
 
   async fn build(&self) -> Result<BuildResponse, AnyError> {
-    let response = self
+    let response: BuildResponse = self
       .client
       .send_build_request(self.make_build_request())
       .await
@@ -1473,7 +1527,10 @@ async fn ensure_esbuild_downloaded(
   Ok(esbuild_path)
 }
 
-fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
+fn configure_esbuild_flags(
+  bundle_flags: &BundleFlags,
+  is_html: bool,
+) -> EsbuildFlags {
   let mut builder = EsbuildFlagsBuilder::default();
 
   builder
@@ -1507,6 +1564,11 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   }
   builder.metafile(true);
 
+  if is_html {
+    builder.platform(esbuild_client::Platform::Browser);
+    builder.splitting(true);
+    builder.metafile(true);
+  }
   match bundle_flags.platform {
     deno_bundle_runtime::BundlePlatform::Browser => {
       builder.platform(esbuild_client::Platform::Browser);
