@@ -201,6 +201,7 @@ impl DOMPointReadOnly {
   }
 
   #[rename("toJSON")]
+  #[required(0)]
   fn to_json<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
@@ -476,6 +477,7 @@ impl DOMRectReadOnly {
   }
 
   #[rename("toJSON")]
+  #[required(0)]
   fn to_json<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
@@ -745,6 +747,7 @@ impl DOMQuad {
     self.p4.clone()
   }
 
+  #[required(0)]
   fn get_bounds<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
@@ -753,7 +756,7 @@ impl DOMQuad {
     fn get_ptr(
       scope: &mut v8::HandleScope,
       value: &v8::Global<v8::Object>,
-    ) -> cppgc::Ptr<DOMPointReadOnly> {
+    ) -> cppgc::UnsafePtr<DOMPointReadOnly> {
       let value = v8::Local::new(scope, value);
       cppgc::try_unwrap_cppgc_proto_object::<DOMPointReadOnly>(
         scope,
@@ -785,6 +788,7 @@ impl DOMQuad {
   }
 
   #[rename("toJSON")]
+  #[required(0)]
   fn to_json<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
@@ -2032,6 +2036,7 @@ impl DOMMatrixReadOnly {
     cppgc::wrap_object2(scope, obj, (out, DOMMatrix {}))
   }
 
+  #[required(0)]
   fn inverse<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
@@ -2072,6 +2077,7 @@ impl DOMMatrixReadOnly {
   }
 
   #[rename("toJSON")]
+  #[required(0)]
   fn to_json<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
@@ -2883,6 +2889,7 @@ impl DOMMatrix {
     Ok(this)
   }
 
+  #[required(0)]
   #[global]
   fn invert_self(
     &self,
