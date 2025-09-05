@@ -2678,7 +2678,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       .arg(
         Arg::new("force")
           .long("force")
-          .help("Force formatting when not in a workspace and providing no input files to format")
+          .help("Force formatting when not in a workspace and not providing input files to format")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING)
