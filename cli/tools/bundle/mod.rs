@@ -2,9 +2,9 @@
 
 mod esbuild;
 mod externals;
+mod html;
 mod provider;
 mod transform;
-mod html;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -171,8 +171,10 @@ pub async fn bundle_init(
     log::warn!("esbuild exited: {:?}", res);
   });
 
-  let esbuild_flags = configure_esbuild_flags(bundle_flags);
-  let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
+  let esbuild_flags = configure_esbuild_flags(
+    bundle_flags,
+    matches!(input, BundlerInput::HtmlEntrypoint(_)),
+  );
   let bundler = EsbuildBundler::new(
     client,
     plugin_handler.clone(),
@@ -210,6 +212,7 @@ pub async fn bundle(
       bundler,
       bundle_flags.minify,
       bundle_flags.platform,
+      bundle_flags.output_dir.as_ref().map(|p| Path::new(p)),
     )
     .await;
   }
@@ -227,6 +230,8 @@ pub async fn bundle(
       &init_cwd,
       should_replace_require_shim(bundle_flags.platform),
       bundle_flags.minify,
+      bundler.input.clone(),
+      bundle_flags.output_dir.as_ref().map(|p| Path::new(p)),
     )?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
@@ -256,6 +261,7 @@ async fn bundle_watch(
   bundler: EsbuildBundler,
   minified: bool,
   platform: BundlePlatform,
+  output_dir: Option<&Path>,
 ) -> Result<(), AnyError> {
   let (initial_roots, always_watch) = match &bundler.input {
     BundlerInput::Entrypoints(entries) => (
@@ -313,6 +319,8 @@ async fn bundle_watch(
             &bundler.cwd,
             should_replace_require_shim(platform),
             minified,
+            input,
+            output_dir,
           )?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
@@ -425,8 +433,8 @@ impl EsbuildBundler {
       key: 0,
       flags: self.flags.to_flags(),
       write: false,
-      stdin_contents: None.into(),
-      stdin_resolve_dir: None.into(),
+      stdin_contents: stdin.into(),
+      stdin_resolve_dir: resolve_dir.into(),
       abs_working_dir: self.cwd.to_string_lossy().into_owned(),
       context: matches!(self.mode, BundlingMode::Watch),
       mangle_cache: None,
@@ -1649,18 +1657,18 @@ pub struct ProcessedContents {
 }
 
 pub fn maybe_process_contents(
-  file: &esbuild_client::protocol::BuildOutputFile,
+  file: &OutputFile<'_>,
   should_replace_require_shim: bool,
   minified: bool,
 ) -> Result<ProcessedContents, AnyError> {
-  let path = Path::new(&file.path);
-  let is_js = is_js(path) || file.path.ends_with("<stdout>");
+  let path = &file.path;
+  let is_js = is_js(path) || path.ends_with("<stdout>");
   if is_js {
-    let string = String::from_utf8(file.contents.clone())?;
+    let string = str::from_utf8(&file.contents)?;
     let string = if should_replace_require_shim {
-      replace_require_shim(&string, minified)
+      replace_require_shim(string, minified)
     } else {
-      string
+      string.to_string()
     };
     Ok(ProcessedContents {
       contents: Some(string.into_bytes()),
@@ -1673,18 +1681,59 @@ pub fn maybe_process_contents(
     })
   }
 }
+
+pub struct OutputFile<'a> {
+  pub path: PathBuf,
+  pub contents: Cow<'a, [u8]>,
+}
+
+impl<'a> From<&'a esbuild_client::protocol::BuildOutputFile>
+  for OutputFile<'a>
+{
+  fn from(file: &'a esbuild_client::protocol::BuildOutputFile) -> Self {
+    OutputFile {
+      path: PathBuf::from(&file.path),
+      contents: Cow::Borrowed(&file.contents),
+    }
+  }
+}
+
+impl<'a> From<esbuild_client::protocol::BuildOutputFile> for OutputFile<'a> {
+  fn from(file: esbuild_client::protocol::BuildOutputFile) -> Self {
+    OutputFile {
+      path: PathBuf::from(&file.path),
+      contents: Cow::Owned(file.contents),
+    }
+  }
+}
+
 pub fn process_result(
   response: &BuildResponse,
   cwd: &Path,
   should_replace_require_shim: bool,
   minified: bool,
+  input: BundlerInput,
+  outdir: Option<&Path>,
 ) -> Result<Vec<OutputFileInfo>, AnyError> {
+  let output_files = match input {
+    BundlerInput::HtmlEntrypoint(entrypoint) => {
+      entrypoint.patch_html_with_response(response, outdir.unwrap())?
+    }
+    _ => response
+      .output_files
+      .as_ref()
+      .map(|files| {
+        files
+          .iter()
+          .map(|f| OutputFile {
+            path: PathBuf::from(&f.path),
+            contents: Cow::Borrowed(&f.contents),
+          })
+          .collect::<Vec<_>>()
+      })
+      .unwrap_or_default(),
+  };
   let mut exists_cache = std::collections::HashSet::new();
-  let output_files = response
-    .output_files
-    .as_ref()
-    .map(Cow::Borrowed)
-    .unwrap_or_default();
   let mut output_infos = Vec::new();
   for file in output_files.iter() {
     let processed_contents =
@@ -1693,13 +1742,13 @@ pub fn process_result(
     let relative_path =
       pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
     let is_js = processed_contents.is_js;
-    let bytes = processed_contents
+    let bytes: Cow<'_, [u8]> = processed_contents
       .contents
-      .map(Cow::Owned)
-      .unwrap_or_else(|| Cow::Borrowed(&file.contents));
+      .map(|vec| Cow::Owned(vec))
+      .unwrap_or_else(|| Cow::Borrowed(file.contents.as_ref()));
 
     if file.path.ends_with("<stdout>") {
-      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_slice())?;
+      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_ref())?;
       continue;
     }
 

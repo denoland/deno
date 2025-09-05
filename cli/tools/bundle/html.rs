@@ -1,5 +1,6 @@
 use deno_ast::swc::common::{self as swc_common, Span};
 use std::{
+  borrow::Cow,
   path::{Path, PathBuf},
   rc::Rc,
 };
@@ -7,11 +8,11 @@ use std::{
 use deno_ast::swc::atoms::atom;
 use deno_core::anyhow;
 use swc_common::{BytePos, SourceFile};
-use swc_html_ast::{
+use swc_html::ast::{
   Attribute, Child, Comment, Document, DocumentType, Element, Namespace, Text,
 };
-use swc_html_codegen::writer::basic::BasicHtmlWriter;
-use swc_html_codegen::Emit;
+use swc_html::codegen::Emit;
+use swc_html::codegen::writer::basic::BasicHtmlWriter;
 
 use crate::tools::bundle::OutputFile;
 
@@ -84,19 +85,23 @@ pub trait VisitHtml: Sized {
 }
 
 pub mod walk {
-  use swc_html_ast::Element;
+  use swc_html::ast::Element;
 
   use super::VisitHtml;
 
   pub fn element(elem: &mut Element, visitor: &mut impl VisitHtml) {
     for e in &mut elem.children {
       match e {
-        swc_html_ast::Child::DocumentType(document_type) => {
+        swc_html::ast::Child::DocumentType(document_type) => {
           visitor.visit_document_type(document_type)
         }
-        swc_html_ast::Child::Element(element) => visitor.visit_element(element),
-        swc_html_ast::Child::Text(text) => visitor.visit_text(text),
-        swc_html_ast::Child::Comment(comment) => visitor.visit_comment(comment),
+        swc_html::ast::Child::Element(element) => {
+          visitor.visit_element(element)
+        }
+        swc_html::ast::Child::Text(text) => visitor.visit_text(text),
+        swc_html::ast::Child::Comment(comment) => {
+          visitor.visit_comment(comment)
+        }
       }
     }
   }
@@ -155,13 +160,13 @@ pub fn doit(path: &Path) -> anyhow::Result<HtmlEntrypoint> {
     file.clone(),
     false,
     file.clone(),
-    std::fs::read_to_string(path)?,
+    bytes_str::BytesStr::from_utf8_vec(std::fs::read(path)?.into())?,
     BytePos(1),
   );
   let mut errors = Vec::new();
-  let mut doc = swc_html_parser::parse_file_as_document(
+  let mut doc = swc_html::parser::parse_file_as_document(
     &file,
-    swc_html_parser::parser::ParserConfig {
+    swc_html::parser::parser::ParserConfig {
       ..Default::default()
     },
     &mut errors,
@@ -225,7 +230,9 @@ impl VisitHtml for Remover {
       match e {
         Child::Element(element) => {
           if element.tag_name == "script" {
-            if get_attr(element, "src").is_some() {
+            if let Some(src) = get_attr(element, "src")
+              && Some(src) != self.to_inject.src.as_deref()
+            {
               remove.push(i);
             }
           } else {
@@ -235,6 +242,14 @@ impl VisitHtml for Remover {
         _ => {}
       }
     }
+
+    let mut new_children = Vec::new();
+    for (i, e) in &mut e.children.iter_mut().enumerate() {
+      if !remove.contains(&i) {
+        new_children.push(e.clone());
+      }
+    }
+    e.children = new_children;
   }
 }
 
@@ -244,24 +259,24 @@ impl HtmlEntrypoint {
     let mut s = BasicHtmlWriter::new(
       &mut out,
       None,
-      swc_html_codegen::writer::basic::BasicHtmlWriterConfig {
+      swc_html::codegen::writer::basic::BasicHtmlWriterConfig {
         ..Default::default()
       },
     );
-    let mut codegen = swc_html_codegen::CodeGenerator::new(
+    let mut codegen = swc_html::codegen::CodeGenerator::new(
       &mut s,
-      swc_html_codegen::CodegenConfig {
+      swc_html::codegen::CodegenConfig {
         ..Default::default()
       },
     );
     codegen.emit(&self.doc).unwrap();
     out
   }
-  pub fn patch_html_with_response(
+  pub fn patch_html_with_response<'a>(
     mut self,
-    response: &esbuild_client::protocol::BuildResponse,
+    response: &'a esbuild_client::protocol::BuildResponse,
     outdir: &Path,
-  ) -> anyhow::Result<Vec<OutputFile>> {
+  ) -> anyhow::Result<Vec<OutputFile<'a>>> {
     let any_async = self.scripts.iter().any(|s| s.is_async);
     let any_module = self.scripts.iter().any(|s| s.is_module);
 
@@ -298,11 +313,22 @@ impl HtmlEntrypoint {
       injected: false,
     };
     replacer.visit_document(&mut self.doc);
+    if !replacer.injected {
+      self.doc.children.push(Child::Element(Element {
+        span: Span::default(),
+        tag_name: atom!("head"),
+        namespace: Namespace::HTML,
+        attributes: vec![],
+        children: vec![Child::Element(replacer.to_inject.to_element())],
+        content: None,
+        is_self_closing: false,
+      }));
+    }
 
     let mut output_files = Vec::new();
     output_files.push(OutputFile {
       path: out_path,
-      contents: entrypoint_js.contents.clone(),
+      contents: Cow::Borrowed(&entrypoint_js.contents),
     });
 
     if let Some(css_to_inject_path) = entrypoint_css_maybe {
@@ -312,13 +338,13 @@ impl HtmlEntrypoint {
       ));
       output_files.push(OutputFile {
         path: css_path,
-        contents: css_to_inject_path.contents.clone(),
+        contents: Cow::Borrowed(&css_to_inject_path.contents),
       });
     }
 
     output_files.push(OutputFile {
       path: outdir.join("index.html"),
-      contents: self.to_html().into_bytes(),
+      contents: self.to_html().into_bytes().into(),
     });
 
     Ok(output_files)

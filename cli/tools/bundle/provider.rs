@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use deno_bundle_runtime as rt_bundle;
@@ -96,8 +97,9 @@ fn process_output_files(
 ) -> Result<(), AnyError> {
   if let Some(files) = &mut response.output_files {
     for file in files {
+      let output_file = crate::tools::bundle::OutputFile::from(&*file);
       let processed_contents = crate::tools::bundle::maybe_process_contents(
-        file,
+        &output_file,
         crate::tools::bundle::should_replace_require_shim(
           bundle_flags.platform,
         ),
@@ -151,6 +153,8 @@ impl BundleProvider for CliBundleProvider {
             &bundler.cwd,
             true,
             bundle_flags.minify,
+            bundler.input,
+            bundle_flags.output_dir.as_ref().map(|p| Path::new(p)),
           )?;
           result.output_files = None;
         } else {
