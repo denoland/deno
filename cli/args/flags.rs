@@ -2679,7 +2679,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         Arg::new("force")
           .long("force")
           .help("")
-          .help("Force formatting when no config file is discovered")
+          .help("Force formatting when not in a workspace and providing no input files to format")
           .value_parser(FalseyValueParser::new())
           .action(ArgAction::SetTrue)
           .help_heading(FMT_HEADING)
@@ -7455,6 +7455,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          force: false,
           files: FileFlags {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
@@ -7481,6 +7482,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
+          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7506,6 +7508,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7531,6 +7534,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7554,6 +7558,7 @@ mod tests {
       "deno",
       "fmt",
       "--watch",
+      "--force",
       "--no-clear-screen",
       "--unstable-css",
       "--unstable-html",
@@ -7566,6 +7571,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          force: true,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7602,6 +7608,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
+          force: false,
           files: FileFlags {
             include: vec!["foo.ts".to_string()],
             ignore: vec!["bar.js".to_string()],
@@ -7627,6 +7634,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7660,6 +7668,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          force: false,
           files: FileFlags {
             include: vec!["foo.ts".to_string()],
             ignore: vec![],
@@ -7698,6 +7707,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7730,6 +7740,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7757,6 +7768,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
+          force: false,
           files: FileFlags {
             include: vec!["./**".to_string()],
             ignore: vec![],

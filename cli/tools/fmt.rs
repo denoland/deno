@@ -167,6 +167,7 @@ fn resolve_paths_with_options_batches(
   fmt_flags: &FmtFlags,
 ) -> Result<Vec<PathsWithOptions>, AnyError> {
   if !fmt_flags.force
+    && !fmt_flags.check
     && fmt_flags.files.include.is_empty()
     && (cli_options.workspace().deno_jsons().next().is_none()
       && cli_options.workspace().package_jsons().next().is_none())
@@ -175,7 +176,7 @@ fn resolve_paths_with_options_batches(
       util::console::confirm(util::console::ConfirmOptions {
         default: true,
         message: format!(
-          "{} Are you sure you want to format the entire '{}' directory?",
+          "{} It looks like you're not in a workspace. Are you sure you want to format the entire '{}' directory?",
           colors::yellow("Warning"),
           cli_options.initial_cwd().display()
         ),

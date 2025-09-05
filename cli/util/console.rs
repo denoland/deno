@@ -112,6 +112,9 @@ pub fn confirm(options: ConfirmOptions) -> Option<bool> {
   let _hide_cursor_guard = HideCursorGuard::hide().ok()?;
   let selection = Arc::new(Mutex::new(String::new()));
   let default = options.default;
+  // uses a renderer and the draw thread in order to allow
+  // displaying other stuff on the draw thread while the prompt
+  // is showing
   let renderer = PromptRenderer {
     options,
     selection: selection.clone(),
@@ -129,7 +132,8 @@ pub fn confirm(options: ConfirmOptions) -> Option<bool> {
         modifiers,
         ..
       }) => match (code, modifiers) {
-        (KeyCode::Char('c'), KeyModifiers::CONTROL) => break,
+        (KeyCode::Char('c'), KeyModifiers::CONTROL)
+        | (KeyCode::Char('q'), KeyModifiers::NONE) => break,
         (KeyCode::Char('Y') | KeyCode::Char('y'), KeyModifiers::NONE) => {
           selected = true;
           *selection.lock() = "Y".to_string();
@@ -142,7 +146,8 @@ pub fn confirm(options: ConfirmOptions) -> Option<bool> {
           selected = default;
           *selection.lock() = "".to_string();
         }
-        (KeyCode::Enter, _) => {
+        // l is common for enter in vim keybindings
+        (KeyCode::Enter, _) | (KeyCode::Char('l'), KeyModifiers::NONE) => {
           return Some(selected);
         }
         _ => {}

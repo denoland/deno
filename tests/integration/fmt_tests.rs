@@ -214,7 +214,7 @@ fn fmt_auto_ignore_git_and_node_modules() {
     .new_command()
     .current_dir(t)
     .env("NO_COLOR", "1")
-    .args("fmt")
+    .args("fmt --force")
     .run();
 
   output.assert_exit_code(1);
