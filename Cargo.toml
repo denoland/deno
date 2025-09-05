@@ -9,6 +9,7 @@ members = [
   "cli/rt",
   "cli/snapshot",
   "ext/broadcast_channel",
+  "ext/bundle",
   "ext/cache",
   "ext/canvas",
   "ext/console",
@@ -87,6 +88,7 @@ denokv_sqlite = { default-features = false, version = "0.12.0" }
 
 # exts
 deno_broadcast_channel = { version = "0.208.0", path = "./ext/broadcast_channel" }
+deno_bundle_runtime = { version = "0.1.0", path = "./ext/bundle" }
 deno_cache = { version = "0.146.0", path = "./ext/cache" }
 deno_canvas = { version = "0.83.0", path = "./ext/canvas" }
 deno_console = { version = "0.214.0", path = "./ext/console" }
