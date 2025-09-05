@@ -1,13 +1,13 @@
 {
   "tests": {
-    "force": {
-      "args": "fmt --force",
-      "output": "[WILDCARD]"
-    },
-    "non_force": {
+    "bare": {
       "args": "fmt",
       "output": "error.out",
       "exitCode": 1
+    },
+    "specify_dir": {
+      "args": "fmt .",
+      "output": "[WILDCARD]"
     },
     "check": {
       "args": "fmt --check",

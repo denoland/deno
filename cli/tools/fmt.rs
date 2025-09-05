@@ -193,9 +193,8 @@ fn maybe_show_format_confirmation(
   cli_options: &CliOptions,
   fmt_flags: &FmtFlags,
 ) -> Result<(), AnyError> {
-  if fmt_flags.force
-    || fmt_flags.check
-    || fmt_flags.files.include.is_empty()
+  if fmt_flags.check
+    || !fmt_flags.files.include.is_empty()
     || cli_options.workspace().deno_jsons().next().is_some()
     || cli_options.workspace().package_jsons().next().is_some()
   {
@@ -215,7 +214,9 @@ fn maybe_show_format_confirmation(
   if confirm_result {
     Ok(())
   } else {
-    bail!("Did not format non-workspace directory. Run again with --force")
+    bail!(
+      "Did not format non-workspace directory. Run again specifying the current directory (ex. `deno fmt .`)"
+    )
   }
 }
 

@@ -2,11 +2,11 @@
   "tempDir": true,
   "tests": {
     "nothing": {
-      "args": "fmt --force",
+      "args": "fmt .",
       "output": "Checked 1 file\n"
     },
     "flag": {
-      "args": "fmt --force --unstable-component",
+      "args": "fmt --unstable-component .",
       "output": "[WILDLINE]badly_formatted.svelte\nChecked 1 file\n"
     },
     "config_file": {
@@ -17,7 +17,7 @@
         ],
         "output": "[WILDCARD]"
       }, {
-        "args": "fmt --force",
+        "args": "fmt .",
         "output": "[WILDLINE]badly_formatted.svelte\nChecked 2 files\n"
       }]
     }

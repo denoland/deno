@@ -220,7 +220,6 @@ pub struct EvalFlags {
 pub struct FmtFlags {
   pub check: bool,
   pub files: FileFlags,
-  pub force: bool,
   pub permit_no_files: bool,
   pub use_tabs: Option<bool>,
   pub line_width: Option<NonZeroU32>,
@@ -2675,15 +2674,6 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
       .arg(no_clear_screen_arg())
-      .arg(
-        Arg::new("force")
-          .long("force")
-          .help("Force formatting when not in a workspace and not providing input files to format")
-          .value_parser(FalseyValueParser::new())
-          .action(ArgAction::SetTrue)
-          .help_heading(FMT_HEADING)
-          .hide(true),
-      )
       .arg(
         Arg::new("use-tabs")
           .long("use-tabs")
@@ -5382,12 +5372,10 @@ fn fmt_parse(
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
   let unstable_component = matches.get_flag("unstable-component");
   let unstable_sql = matches.get_flag("unstable-sql");
-  let force = matches.get_flag("force");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
     files: FileFlags { include, ignore },
-    force,
     permit_no_files: permit_no_files_parse(matches),
     use_tabs,
     line_width,
@@ -7454,7 +7442,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          force: false,
           files: FileFlags {
             include: vec!["script_1.ts".to_string(), "script_2.ts".to_string()],
             ignore: vec![],
@@ -7481,7 +7468,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
-          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7507,7 +7493,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7533,7 +7518,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7557,7 +7541,6 @@ mod tests {
       "deno",
       "fmt",
       "--watch",
-      "--force",
       "--no-clear-screen",
       "--unstable-css",
       "--unstable-html",
@@ -7570,7 +7553,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          force: true,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7607,7 +7589,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
-          force: false,
           files: FileFlags {
             include: vec!["foo.ts".to_string()],
             ignore: vec!["bar.js".to_string()],
@@ -7633,7 +7614,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7667,7 +7647,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          force: false,
           files: FileFlags {
             include: vec!["foo.ts".to_string()],
             ignore: vec![],
@@ -7706,7 +7685,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7739,7 +7717,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          force: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -7767,7 +7744,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          force: false,
           files: FileFlags {
             include: vec!["./**".to_string()],
             ignore: vec![],
