@@ -459,6 +459,55 @@ fn permissions_trace() {
     });
 }
 
+#[test]
+fn permissions_audit() {
+  let ctx = TestContext::default();
+  let dir = ctx.temp_dir();
+  let path = dir.path().join(std::path::Path::new("audit.jsonl"));
+
+  ctx
+    .new_command()
+    .env("DENO_AUDIT_PERMISSIONS", &path)
+    .args_vec(["run", "-A", "run/permissions_audit.ts"])
+    .run()
+    .skip_output_check();
+
+  let file = std::fs::read_to_string(path).unwrap();
+  test_util::assertions::assert_wildcard_match(
+    &file,
+    r#"{"v":1,"datetime":"[WILDCARD]","permission":"sys","value":"hostname"}
+{"v":1,"datetime":"[WILDCARD]","permission":"read","value":"[WILDCARD]"}
+{"v":1,"datetime":"[WILDCARD]","permission":"write","value":"[WILDCARD]"}
+{"v":1,"datetime":"[WILDCARD]","permission":"env","value":"FOO"}
+"#,
+  );
+}
+
+#[test]
+fn permissions_audit_with_traces() {
+  let ctx = TestContext::default();
+  let dir = ctx.temp_dir();
+  let path = dir.path().join(std::path::Path::new("audit.jsonl"));
+
+  ctx
+    .new_command()
+    .env("DENO_AUDIT_PERMISSIONS", &path)
+    .env("DENO_TRACE_PERMISSIONS", "1")
+    .args_vec(["run", "-A", "run/permissions_audit.ts"])
+    .run()
+    .skip_output_check();
+
+  let file = std::fs::read_to_string(path).unwrap();
+  test_util::assertions::assert_wildcard_match(
+    &file,
+    r#"{"v":1,"datetime":"[WILDCARD]","permission":"sys","value":"hostname","stack":["Object.hostname (ext:deno_os/30_os.js:43:10)","file://[WILDCARD]/run/permissions_audit.ts:1:6"]}
+{"v":1,"datetime":"[WILDCARD]","permission":"read","value":"[WILDCARD]","stack":["op_fs_make_temp_dir_async (ext:core/00_infra.js:289:44)","Object.makeTempDir (ext:deno_fs/30_fs.js:168:10)","file://[WILDCARD]/run/permissions_audit.ts:2:12"]}
+{"v":1,"datetime":"[WILDCARD]","permission":"write","value":"[WILDCARD]","stack":["op_fs_make_temp_dir_async (ext:core/00_infra.js:289:44)","Object.makeTempDir (ext:deno_fs/30_fs.js:168:10)","file://[WILDCARD]/run/permissions_audit.ts:2:12"]}
+{"v":1,"datetime":"[WILDCARD]","permission":"env","value":"FOO","stack":["Object.getEnv [as get] (ext:deno_os/30_os.js:124:10)","file://[WILDCARD]/run/permissions_audit.ts:3:10","eventLoopTick (ext:core/01_core.js:179:7)"]}
+"#,
+  );
+}
+
 itest!(lock_write_fetch {
   args: "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
   output: "run/lock_write_fetch/main.out",

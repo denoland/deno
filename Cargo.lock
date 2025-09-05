@@ -2659,6 +2659,7 @@ name = "deno_permissions"
 version = "0.73.0"
 dependencies = [
  "capacity_builder",
+ "chrono",
  "deno_error",
  "deno_path_util",
  "deno_terminal 0.2.2",

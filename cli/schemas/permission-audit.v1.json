@@ -1,0 +1,45 @@
+{
+  "$id": "https://deno.land/x/deno/cli/schemas/permission-audit.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Schema for DENO_AUDIT_PERMISSIONS",
+  "description": "The schema of a single line of the DENO_AUDIT_PERMISSIONS file output.",
+  "type": "object",
+  "$defs": {
+    "v": {
+      "type": "number",
+      "description": "The version of the schema this value is for.",
+      "examples": [
+        "1"
+      ]
+    },
+    "datetime": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The datetime the permission was accessed."
+    },
+    "permission": {
+      "type": "string",
+      "description": "The permission that was accessed.",
+      "examples": [
+        "run",
+        "sys",
+        "read"
+      ]
+    },
+    "value": {
+      "type": "string",
+      "description": "The value of the permission that was accessed.",
+      "examples": [
+        "deno.com",
+        "/some/path"
+      ]
+    },
+    "stack": {
+      "type": "array",
+      "description": "The stacktrace of where this access was requested. Requires DENO_TRACE_PERMISSIONS to be set.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
