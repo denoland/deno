@@ -131,15 +131,17 @@ impl VisitHtml for Visitor {
     if e.tag_name == "script" {
       let src = get_attr(e, "src");
       let typ = get_attr(e, "type");
-      if let (Some(src), Some(typ @ "module")) = (src, typ) {
-        self.scripts.push(Script {
-          src: Some(src.to_string()),
-          is_async: get_attr(e, "async").is_some(),
-          is_module: typ == "module",
-          is_ignored: get_attr(e, "deno-ignore").is_some()
-            || get_attr(e, "vite-ignore").is_some(),
-          resolved_path: None,
-        });
+      if let Some(src) = src {
+        if let Some("module") | None = typ {
+          self.scripts.push(Script {
+            src: Some(src.to_string()),
+            is_async: get_attr(e, "async").is_some(),
+            is_module: typ.is_some(),
+            is_ignored: get_attr(e, "deno-ignore").is_some()
+              || get_attr(e, "vite-ignore").is_some(),
+            resolved_path: None,
+          });
+        }
       }
     }
     walk::element(e, self);
@@ -212,26 +214,25 @@ pub struct Remover {
 
 impl VisitHtml for Remover {
   fn visit_element(&mut self, e: &mut Element) {
-    if e.tag_name == "head"
-      && !self.injected {
-        self.injected = true;
-        e.children.push(Child::Element(self.to_inject.to_element()));
-        if let Some(css_to_inject_path) = &self.css_to_inject_path {
-          e.children.push(Child::Element(Element {
-            attributes: vec![
-              make_attr("rel", Some("stylesheet")),
-              make_attr("crossorigin", None),
-              make_attr("href", Some(css_to_inject_path)),
-            ],
-            children: vec![],
-            content: None,
-            span: Span::default(),
-            tag_name: atom!("link"),
-            namespace: Namespace::HTML,
-            is_self_closing: true,
-          }));
-        }
+    if e.tag_name == "head" && !self.injected {
+      self.injected = true;
+      e.children.push(Child::Element(self.to_inject.to_element()));
+      if let Some(css_to_inject_path) = &self.css_to_inject_path {
+        e.children.push(Child::Element(Element {
+          attributes: vec![
+            make_attr("rel", Some("stylesheet")),
+            make_attr("crossorigin", None),
+            make_attr("href", Some(css_to_inject_path)),
+          ],
+          children: vec![],
+          content: None,
+          span: Span::default(),
+          tag_name: atom!("link"),
+          namespace: Namespace::HTML,
+          is_self_closing: true,
+        }));
       }
+    }
     let mut remove = Vec::new();
     for (i, e) in &mut e.children.iter_mut().enumerate() {
       if let Child::Element(element) = e {
