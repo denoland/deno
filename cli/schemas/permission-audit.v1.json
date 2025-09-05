@@ -7,7 +7,7 @@
   "$defs": {
     "v": {
       "type": "number",
-      "description": "The version of the schema.",
+      "description": "The version of the schema this value is for.",
       "examples": [
         "1"
       ]
