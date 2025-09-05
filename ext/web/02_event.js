@@ -175,7 +175,7 @@ defineEnumerableProps(Event.prototype, EVENT_PROPS);
  * @returns {object}
  */
 function createEventTargetBranded(prototype) {
-  let t = op_event_create_empty_event_target();
+  const t = op_event_create_empty_event_target();
   t[webidl.brand] = webidl.brand;
   ObjectSetPrototypeOf(t, prototype);
   return t;

@@ -364,7 +364,7 @@ webidl.configureInterface(PerformanceMeasure);
 const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
 
 class Performance {
-  constructor(key = null) {
+  constructor() {
     webidl.illegalConstructor();
   }
 
