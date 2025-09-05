@@ -3890,9 +3890,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "esbuild_client"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50bc40f53feb0403ed37d48b7a22ebbae05a003c71a3c2a44468f4fe071b4524"
+checksum = "456b3d661f00dac26314d27da56eb41e0e43f270251fe8c53686bb1e32205863"
 dependencies = [
  "anyhow",
  "async-trait",
