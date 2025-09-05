@@ -231,7 +231,6 @@ impl<'a, TSys: FsMetadata + FsWrite> LifecycleScripts<'a, TSys> {
         .iter()
         .map(|(package, _)| package.id.nv.name.to_string())
         .collect();
-      eprintln!("sync resolution3 {:#?}", ignored_scripts);
       // Sort alphabetically
       ignored_scripts.sort();
       let mut toml_content = String::new();

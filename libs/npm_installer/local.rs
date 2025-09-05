@@ -877,7 +877,6 @@ impl<
         },
       ),
     );
-    eprintln!("sync resolution");
     lifecycle_scripts.save_to_disk(&deno_local_registry_dir)?;
     lifecycle_scripts.warn_not_run_scripts()?;
 
