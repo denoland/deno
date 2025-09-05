@@ -1,16 +1,22 @@
-use deno_ast::swc::common::{self as swc_common, Span};
-use std::{
-  borrow::Cow,
-  path::{Path, PathBuf},
-  rc::Rc,
-};
+use std::borrow::Cow;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 use deno_ast::swc::atoms::atom;
+use deno_ast::swc::common::Span;
+use deno_ast::swc::common::{self as swc_common};
 use deno_core::anyhow;
-use swc_common::{BytePos, SourceFile};
-use swc_html::ast::{
-  Attribute, Child, Comment, Document, DocumentType, Element, Namespace, Text,
-};
+use swc_common::BytePos;
+use swc_common::SourceFile;
+use swc_html::ast::Attribute;
+use swc_html::ast::Child;
+use swc_html::ast::Comment;
+use swc_html::ast::Document;
+use swc_html::ast::DocumentType;
+use swc_html::ast::Element;
+use swc_html::ast::Namespace;
+use swc_html::ast::Text;
 use swc_html::codegen::Emit;
 use swc_html::codegen::writer::basic::BasicHtmlWriter;
 

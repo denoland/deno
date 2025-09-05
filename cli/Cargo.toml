@@ -103,6 +103,7 @@ base64.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
 bytes.workspace = true
+bytes-str = "0.2.5"
 capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
@@ -168,6 +169,7 @@ sha2.workspace = true
 spki = { workspace = true, features = ["pem"] }
 sqlformat.workspace = true
 strsim.workspace = true
+swc_html = "26.0.0"
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
 tar.workspace = true
 tempfile.workspace = true
@@ -188,8 +190,6 @@ walkdir.workspace = true
 weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
-swc_html = "26.0.0"
-bytes-str = "0.2.5"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
