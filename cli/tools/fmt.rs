@@ -183,7 +183,7 @@ fn resolve_paths_with_options_batches(
       .unwrap_or(false);
     if !confirm_result {
       bail!(
-        "Did not format directory due to no Deno configuration file found. Run again with --force"
+        "Did not format directory due to no configuration file found. Run again with --force"
       )
     }
   }
