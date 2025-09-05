@@ -154,7 +154,7 @@ impl BundleProvider for CliBundleProvider {
             true,
             bundle_flags.minify,
             bundler.input,
-            bundle_flags.output_dir.as_ref().map(|p| Path::new(p)),
+            bundle_flags.output_dir.as_ref().map(Path::new),
           )?;
           result.output_files = None;
         } else {

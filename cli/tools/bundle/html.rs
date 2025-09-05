@@ -168,7 +168,7 @@ pub fn doit(path: &Path) -> anyhow::Result<HtmlEntrypoint> {
     file.clone(),
     false,
     file.clone(),
-    bytes_str::BytesStr::from_utf8_vec(std::fs::read(path)?.into())?,
+    bytes_str::BytesStr::from_utf8_vec(std::fs::read(path)?)?,
     BytePos(1),
   );
   let mut errors = Vec::new();
@@ -212,8 +212,8 @@ pub struct Remover {
 
 impl VisitHtml for Remover {
   fn visit_element(&mut self, e: &mut Element) {
-    if e.tag_name == "head" {
-      if !self.injected {
+    if e.tag_name == "head"
+      && !self.injected {
         self.injected = true;
         e.children.push(Child::Element(self.to_inject.to_element()));
         if let Some(css_to_inject_path) = &self.css_to_inject_path {
@@ -232,22 +232,18 @@ impl VisitHtml for Remover {
           }));
         }
       }
-    }
     let mut remove = Vec::new();
     for (i, e) in &mut e.children.iter_mut().enumerate() {
-      match e {
-        Child::Element(element) => {
-          if element.tag_name == "script" {
-            if let Some(src) = get_attr(element, "src")
-              && Some(src) != self.to_inject.src.as_deref()
-            {
-              remove.push(i);
-            }
-          } else {
-            self.visit_element(element);
+      if let Child::Element(element) = e {
+        if element.tag_name == "script" {
+          if let Some(src) = get_attr(element, "src")
+            && Some(src) != self.to_inject.src.as_deref()
+          {
+            remove.push(i);
           }
+        } else {
+          self.visit_element(element);
         }
-        _ => {}
       }
     }
 
@@ -340,7 +336,7 @@ impl HtmlEntrypoint {
     });
 
     if let Some(css_to_inject_path) = entrypoint_css_maybe {
-      let css_path = outdir.join(&format!(
+      let css_path = outdir.join(format!(
         "index-{}.css",
         reencode_hash(&css_to_inject_path.hash)
       ));

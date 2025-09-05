@@ -212,7 +212,7 @@ pub async fn bundle(
       bundler,
       bundle_flags.minify,
       bundle_flags.platform,
-      bundle_flags.output_dir.as_ref().map(|p| Path::new(p)),
+      bundle_flags.output_dir.as_ref().map(Path::new),
     )
     .await;
   }
@@ -231,7 +231,7 @@ pub async fn bundle(
       should_replace_require_shim(bundle_flags.platform),
       bundle_flags.minify,
       bundler.input.clone(),
-      bundle_flags.output_dir.as_ref().map(|p| Path::new(p)),
+      bundle_flags.output_dir.as_ref().map(Path::new),
     )?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
@@ -1744,7 +1744,7 @@ pub fn process_result(
     let is_js = processed_contents.is_js;
     let bytes: Cow<'_, [u8]> = processed_contents
       .contents
-      .map(|vec| Cow::Owned(vec))
+      .map(Cow::Owned)
       .unwrap_or_else(|| Cow::Borrowed(file.contents.as_ref()));
 
     if file.path.ends_with("<stdout>") {
