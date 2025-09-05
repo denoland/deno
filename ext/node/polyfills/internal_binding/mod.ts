@@ -19,6 +19,7 @@ import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
 import * as util from "ext:deno_node/internal_binding/util.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import * as httpParser from "ext:deno_node/internal_binding/http_parser.ts";
+import * as jsStream from "ext:deno_node/internal_binding/js_stream.ts";
 
 const modules = {
   "async_wrap": asyncWrap,
@@ -37,7 +38,7 @@ const modules = {
   "http_parser": httpParser,
   icu: {},
   inspector: {},
-  "js_stream": {},
+  "js_stream": jsStream,
   messaging: {},
   "module_wrap": {},
   "native_module": {},
