@@ -93,7 +93,6 @@ pub mod compressible;
 mod fly_accept_encoding;
 mod http_next;
 mod network_buffered_stream;
-mod raw_upgrade;
 mod reader_stream;
 mod request_body;
 mod request_properties;
@@ -102,7 +101,6 @@ mod service;
 
 use fly_accept_encoding::Encoding;
 pub use http_next::HttpNextError;
-pub use raw_upgrade::RawUpgradeError;
 pub use request_properties::DefaultHttpPropertyExtractor;
 pub use request_properties::HttpConnectionProperties;
 pub use request_properties::HttpListenProperties;
