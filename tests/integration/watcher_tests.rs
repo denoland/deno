@@ -412,6 +412,7 @@ async fn fmt_watch_without_args_test() {
     .current_dir(t.path())
     .arg("fmt")
     .arg("--watch")
+    .arg(".")
     .piped_output()
     .spawn()
     .unwrap();
