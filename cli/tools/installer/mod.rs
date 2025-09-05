@@ -572,80 +572,68 @@ pub fn print_install_report(
     let total_installed =
       rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len();
     log::info!(
-      "{} {} {} {}",
+      "{} {} {} {} {}",
       deno_terminal::colors::gray("Installed"),
-      deno_terminal::colors::bold(format!("{}", total_installed)),
+      total_installed,
       deno_terminal::colors::gray(format!(
         "package{}",
         if total_installed > 1 { "s" } else { "" },
       )),
-      deno_terminal::colors::gray(format!(
-        "in {}",
-        display::human_elapsed_with_ms_limit(elapsed.as_millis(), 3_000)
-      ))
+      deno_terminal::colors::gray(format!("in",)),
+      display::human_elapsed_with_ms_limit(elapsed.as_millis(), 3_000)
     );
 
     let total_reused = rep.stats.reused_npm.get() + rep.stats.reused_jsr.len();
     log::info!(
       "{} {} {}",
       deno_terminal::colors::gray("Reused"),
-      deno_terminal::colors::bold(format!("{}", total_reused)),
+      total_reused,
       deno_terminal::colors::gray(format!(
         "package{} from cache",
         if total_reused == 1 { "" } else { "s" },
       )),
     );
-    log::info!(
-      "{}",
-      deno_terminal::colors::yellow_bold("+".repeat(total_reused))
-    );
+    if total_reused > 0 {
+      log::info!(
+        "{}",
+        deno_terminal::colors::yellow_bold("+".repeat(total_reused))
+      );
+    }
 
     let jsr_downloaded = rep.stats.downloaded_jsr.len();
     log::info!(
       "{} {} {}",
       deno_terminal::colors::gray("Downloaded"),
-      deno_terminal::colors::bold(format!("{}", jsr_downloaded)),
+      jsr_downloaded,
       deno_terminal::colors::gray(format!(
         "package{} from JSR",
         if jsr_downloaded == 1 { "" } else { "s" },
       )),
     );
-    log::info!(
-      "{}",
-      deno_terminal::colors::green("+".repeat(jsr_downloaded))
-    );
+    if jsr_downloaded > 0 {
+      log::info!(
+        "{}",
+        deno_terminal::colors::green("+".repeat(jsr_downloaded))
+      );
+    }
 
     let npm_download = rep.stats.downloaded_npm.get();
     log::info!(
       "{} {} {}",
       deno_terminal::colors::gray("Downloaded"),
-      deno_terminal::colors::bold(format!("{}", npm_download)),
+      npm_download,
       deno_terminal::colors::gray(format!(
         "package{} from npm",
         if npm_download == 1 { "" } else { "s" },
       )),
     );
-    log::info!("{}", deno_terminal::colors::green("+".repeat(npm_download)));
-
-    // log::info!(
-    //   "Resolved: {}, reused: {}, downloaded: {}, added: {}",
-    //   deno_terminal::colors::green(
-    //     rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len()
-    //   ),
-    //   deno_terminal::colors::green(
-    //     rep.stats.reused_npm.get() + rep.stats.reused_jsr.len()
-    //   ),
-    //   deno_terminal::colors::green(
-    //     rep.stats.downloaded_npm.get() + rep.stats.downloaded_jsr.len()
-    //   ),
-    //   deno_terminal::colors::green(
-    //     rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-    //   ),
-    // );
-    // log::info!("");
+    if npm_download > 0 {
+      log::info!("{}", deno_terminal::colors::green("+".repeat(npm_download)));
+    }
   }
 
   if !installed_normal_deps.is_empty() || !rep.stats.downloaded_jsr.is_empty() {
+    log::info!("");
     log::info!("{}", deno_terminal::colors::cyan("Dependencies:"));
     let mut jsr_packages = rep
       .stats
