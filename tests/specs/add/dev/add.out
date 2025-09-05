@@ -2,9 +2,11 @@ Add npm:@denotest/esm-basic@1.0.0
 Download http://localhost:4260/@denotest%2fesm-basic
 Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 Initialize @denotest/esm-basic@1.0.0
-Packages: 1
-+
-Resolved: 0, reused: 0, downloaded: 2, added: 1
+Installed 1 package in [WILDLINE]ms
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 2 packages from npm
+++
 
 Dependencies:
 + npm:@denotest/esm-basic 1.0.0
