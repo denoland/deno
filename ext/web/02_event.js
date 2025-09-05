@@ -14,6 +14,7 @@ const {
   ObjectDefineProperty,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   SafeMap,
   Symbol,
   SymbolFor,
@@ -25,6 +26,7 @@ import {
   Event,
   EventTarget,
   MessageEvent,
+  op_event_create_empty_event_target,
   op_event_dispatch,
   op_event_get_target_listener_count,
   op_event_get_target_listeners,
@@ -166,6 +168,18 @@ const EVENT_PROPS = [
 defineEnumerableProps(Event.prototype, EVENT_PROPS);
 
 // Accessors for non-public data
+
+/**
+ * NOTE: It is necessary to call setEventTargetData at runtime, not at the snapshot timing.
+ * @param {object} prototype
+ * @returns {object}
+ */
+function createEventTargetBranded(prototype) {
+  let t = op_event_create_empty_event_target();
+  t[webidl.brand] = webidl.brand;
+  ObjectSetPrototypeOf(t, prototype);
+  return t;
+}
 
 /**
  * @param {object} target
@@ -512,6 +526,7 @@ function reportError(error) {
 
 export {
   CloseEvent,
+  createEventTargetBranded,
   CustomEvent,
   defineEventHandler,
   dispatch,

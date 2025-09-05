@@ -34,6 +34,7 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
+  createEventTargetBranded,
   defineEventHandler,
   EventTarget,
   MessageEvent,
@@ -111,7 +112,7 @@ export const unrefParentPort = Symbol("unrefParentPort");
  * @returns {MessagePort}
  */
 function createMessagePort(id) {
-  const port = webidl.createBranded(MessagePort);
+  const port = createEventTargetBranded(MessagePortPrototype);
   port[core.hostObjectBrand] = core.hostObjectBrand;
   setEventTargetData(port);
   port[_id] = id;

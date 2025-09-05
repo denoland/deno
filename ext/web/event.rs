@@ -1908,12 +1908,27 @@ impl EventTarget {
   }
 }
 
+#[op2]
+pub fn op_event_create_empty_event_target<'a>(
+  scope: &mut v8::HandleScope<'a>,
+) -> v8::Local<'a, v8::Object> {
+  cppgc::make_cppgc_empty_object::<EventTarget>(scope)
+}
+
+#[inline]
+pub fn set_event_target_data<'a>(
+  scope: &mut v8::HandleScope<'a>,
+  obj: v8::Local<'a, v8::Object>,
+) {
+  cppgc::wrap_object1(scope, obj, EventTarget::new());
+}
+
 #[op2(fast)]
 pub fn op_event_wrap_event_target<'a>(
   scope: &mut v8::HandleScope<'a>,
   obj: v8::Local<'a, v8::Object>,
 ) {
-  cppgc::wrap_object1(scope, obj, EventTarget::new());
+  set_event_target_data(scope, obj);
 }
 
 #[op2]
