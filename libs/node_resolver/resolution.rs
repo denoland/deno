@@ -668,12 +668,12 @@ impl<
       .into_iter()
       .map(|file_name| dir_import_path.join(file_name));
     let file_paths = [
-      with_known_extension(&dir_import_path, "js"),
-      with_known_extension(&dir_import_path, "mjs"),
-      with_known_extension(&dir_import_path, "cjs"),
+      with_known_extension(dir_import_path, "js"),
+      with_known_extension(dir_import_path, "mjs"),
+      with_known_extension(dir_import_path, "cjs"),
     ];
     dir_index_paths
-      .chain(file_paths.into_iter())
+      .chain(file_paths)
       .chain(
         std::iter::once_with(|| {
           // check if this directory has a package.json
