@@ -56,8 +56,8 @@ use crate::ops::IpAddr;
 use crate::ops::NetError;
 use crate::ops::TlsHandshakeInfo;
 use crate::raw::NetworkListenerResource;
-use crate::resolve_addr::resolve_addr;
-use crate::resolve_addr::resolve_addr_sync;
+use crate::resolve_addr::resolve_addr_sync_with_permissions;
+use crate::resolve_addr::resolve_addr_with_permissions;
 use crate::tcp::TcpListener;
 
 pub(crate) const TLS_BUFFER_SIZE: Option<NonZeroUsize> =
@@ -467,10 +467,10 @@ where
     ServerName::try_from(addr.hostname.clone())
   }
   .map_err(|_| NetError::InvalidHostname(addr.hostname.clone()))?;
-  let connect_addr = resolve_addr(&addr.hostname, addr.port)
-    .await?
-    .next()
-    .ok_or_else(|| NetError::NoResolvedAddress)?;
+  let connect_addr =
+    resolve_addr_with_permissions::<NP>(&state, "Deno.connectTls()", addr)
+      .await?;
+
   let tcp_stream = TcpStream::connect(connect_addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -539,9 +539,11 @@ where
       .map_err(NetError::Permission)?;
   }
 
-  let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
-    .next()
-    .ok_or(NetError::NoResolvedAddress)?;
+  let bind_addr = resolve_addr_sync_with_permissions::<NP, NetError>(
+    state,
+    "Deno.listenTls()",
+    &addr,
+  )?;
 
   let tcp_listener = if args.load_balanced {
     TcpListener::bind_load_balanced(bind_addr, args.tcp_backlog)

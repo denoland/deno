@@ -1,12 +1,18 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 
+use deno_core::OpState;
+use deno_permissions::PermissionCheckError;
 use tokio::net::lookup_host;
 
+use crate::NetPermissions;
+use crate::ops::NetError;
+
 /// Resolve network address *asynchronously*.
-pub async fn resolve_addr(
+async fn resolve_addr(
   hostname: &str,
   port: u16,
 ) -> Result<impl Iterator<Item = SocketAddr> + '_, std::io::Error> {
@@ -16,7 +22,7 @@ pub async fn resolve_addr(
 }
 
 /// Resolve network address *synchronously*.
-pub fn resolve_addr_sync(
+pub fn resolve_addr_sync_i_promise_i_dont_need_permissions(
   hostname: &str,
   port: u16,
 ) -> Result<impl Iterator<Item = SocketAddr> + use<>, std::io::Error> {
@@ -37,6 +43,69 @@ fn make_addr_port_pair(hostname: &str, port: u16) -> (&str, u16) {
   (addr, port)
 }
 
+pub async fn resolve_addr_with_permissions<NP>(
+  state: &RefCell<OpState>,
+  api_name: &str,
+  addr: crate::ops::IpAddr,
+) -> Result<SocketAddr, NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  let mut addrs = resolve_addr(&addr.hostname, addr.port).await?;
+  let addr = addrs.next().ok_or_else(|| NetError::NoResolvedAddress)?;
+  {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<NP>();
+    permissions.check_net_resolved_addr_is_not_denied(&addr, api_name)?;
+    for addr in addrs {
+      permissions.check_net_resolved_addr_is_not_denied(&addr, api_name)?;
+    }
+  }
+  Ok(addr)
+}
+
+pub fn resolve_addr_sync_with_permissions<NP, ErrorType>(
+  state: &mut OpState,
+  api_name: &str,
+  addr: &crate::ops::IpAddr,
+) -> Result<SocketAddr, ErrorType>
+where
+  NP: NetPermissions + 'static,
+  ErrorType: DnsError,
+{
+  let mut addrs = resolve_addr_sync_i_promise_i_dont_need_permissions(
+    &addr.hostname,
+    addr.port,
+  )?;
+  let addr = addrs
+    .next()
+    .ok_or_else(|| ErrorType::no_resolved_address())?;
+  {
+    let permissions = state.borrow_mut::<NP>();
+    permissions.check_net_resolved_addr_is_not_denied(&addr, api_name)?;
+    for addr in addrs {
+      permissions.check_net_resolved_addr_is_not_denied(&addr, api_name)?;
+    }
+  }
+  Ok(addr)
+}
+
+pub trait DnsError: From<PermissionCheckError> + From<std::io::Error> {
+  fn no_resolved_address() -> Self;
+}
+
+impl DnsError for NetError {
+  fn no_resolved_address() -> Self {
+    NetError::NoResolvedAddress
+  }
+}
+
+impl DnsError for crate::quic::QuicError {
+  fn no_resolved_address() -> Self {
+    crate::quic::QuicError::UnableToResolve
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use std::net::Ipv4Addr;
@@ -44,6 +113,7 @@ mod tests {
   use std::net::SocketAddrV4;
   use std::net::SocketAddrV6;
 
+  use super::resolve_addr_sync_i_promise_i_dont_need_permissions as resolve_addr_sync;
   use super::*;
 
   #[tokio::test]

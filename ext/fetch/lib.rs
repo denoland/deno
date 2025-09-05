@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
+use std::error::Error;
 use std::future;
 use std::future::Future;
 use std::net::IpAddr;
@@ -89,6 +90,8 @@ use tower::ServiceExt;
 use tower::retry;
 use tower_http::decompression::Decompression;
 
+use crate::dns::DnsResolveError;
+
 #[derive(Clone)]
 pub struct Options {
   pub user_agent: String,
@@ -122,8 +125,8 @@ impl Options {
   }
 }
 
-impl Default for Options {
-  fn default() -> Self {
+impl Options {
+  pub fn default(permissions: Arc<dyn FetchPermissions>) -> Self {
     Self {
       user_agent: "".to_string(),
       root_cert_store_provider: None,
@@ -133,7 +136,7 @@ impl Default for Options {
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
-      resolver: dns::Resolver::default(),
+      resolver: dns::Resolver::default(permissions),
     }
   }
 }
@@ -221,7 +224,7 @@ pub enum FetchError {
   Method(#[from] http::method::InvalidMethod),
   #[class(inherit)]
   #[error(transparent)]
-  ClientSend(#[from] ClientSendError),
+  ClientSend(ClientSendError),
   #[class(inherit)]
   #[error(transparent)]
   RequestBuilderHook(JsErrorBox),
@@ -231,9 +234,27 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   Dns(hickory_resolver::ResolveError),
-  #[class(generic)]
-  #[error(transparent)]
-  PermissionCheck(PermissionCheckError),
+}
+
+impl From<ClientSendError> for FetchError {
+  fn from(value: ClientSendError) -> Self {
+    // The way that hyper_util errors are set up, when dns resolution fails
+    // with a permission error the error source ends up being a `ConnectError`, which is
+    // defined in hyper_util and not publically accessible. Then our actual DnsResolveError is the source of the
+    // `ConnectError`. Since we can't downcast to `ConnectError`, just
+    // try checking the source of the source.
+    if let Some(source) = value.source.source()
+      && let Some(source) = source.source()
+      && let Some(DnsResolveError::Permission(
+        PermissionCheckError::PermissionDenied(denied),
+      )) = source.downcast_ref::<DnsResolveError>()
+    {
+      return FetchError::Permission(PermissionCheckError::PermissionDenied(
+        denied.clone(),
+      ));
+    }
+    FetchError::ClientSend(value)
+  }
 }
 
 impl From<deno_fs::FsError> for FetchError {
@@ -242,9 +263,7 @@ impl From<deno_fs::FsError> for FetchError {
       deno_fs::FsError::Io(_)
       | deno_fs::FsError::FileBusy
       | deno_fs::FsError::NotSupported => FetchError::NetworkError,
-      deno_fs::FsError::PermissionCheck(err) => {
-        FetchError::PermissionCheck(err)
-      }
+      deno_fs::FsError::PermissionCheck(err) => FetchError::Permission(err),
     }
   }
 }
@@ -398,9 +417,11 @@ impl Drop for ResourceToBodyAdapter {
   }
 }
 
-pub trait FetchPermissions {
+pub trait FetchPermissions:
+  dyn_clone::DynClone + Send + Sync + 'static
+{
   fn check_net_url(
-    &mut self,
+    &self,
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
@@ -417,12 +438,26 @@ pub trait FetchPermissions {
     port: u32,
     api_name: &str,
   ) -> Result<(), PermissionCheckError>;
+
+  fn check_net(
+    &self,
+    addr: &(&str, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
+
+  fn check_net_resolved_addr_is_not_denied(
+    &self,
+    addr: &std::net::SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
 }
+
+dyn_clone::clone_trait_object!(FetchPermissions);
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_net_url(
-    &mut self,
+    &self,
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
@@ -454,6 +489,22 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     deno_permissions::PermissionsContainer::check_net_vsock(
       self, cid, port, api_name,
     )
+  }
+
+  fn check_net(
+    &self,
+    addr: &(&str, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net(self, addr, api_name)
+  }
+
+  fn check_net_resolved_addr_is_not_denied(
+    &self,
+    addr: &std::net::SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net_resolved_addr_is_not_denied(self, addr, api_name)
   }
 }
 
@@ -961,7 +1012,10 @@ where
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
-      dns_resolver: dns::Resolver::default(),
+      dns_resolver: {
+        let permissions = Arc::new(dyn_clone::clone(state.borrow::<FP>()));
+        dns::Resolver::default(permissions)
+      },
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -1006,13 +1060,13 @@ pub struct CreateHttpClientOptions {
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
 }
 
-impl Default for CreateHttpClientOptions {
-  fn default() -> Self {
+impl CreateHttpClientOptions {
+  pub fn default(permissions: Arc<dyn FetchPermissions>) -> Self {
     CreateHttpClientOptions {
       root_cert_store: None,
       ca_certs: vec![],
       proxy: None,
-      dns_resolver: dns::Resolver::default(),
+      dns_resolver: dns::Resolver::default(permissions),
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,

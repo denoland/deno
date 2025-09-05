@@ -8,6 +8,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::net::Ipv6Addr;
+use std::net::SocketAddr;
 use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
@@ -43,7 +44,7 @@ pub use prompter::set_prompter;
 
 use self::which::WhichSys;
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[derive(Debug, thiserror::Error, deno_error::JsError, Clone)]
 #[error("Requires {access}, {}", format_permission_error(.name))]
 #[class("NotCapable")]
 pub struct PermissionDeniedError {
@@ -740,6 +741,50 @@ impl<
       }
     }
     result
+  }
+
+  fn check_desc_only_denied(
+    &mut self,
+    desc: Option<&TAllowDesc::QueryDesc<'_>>,
+    assert_non_partial: bool,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    let (result, prompted, is_allow_all) = self
+      .query_desc_denied(desc, AllowPartial::from(!assert_non_partial))
+      .check(
+        TAllowDesc::QueryDesc::flag_name(),
+        api_name,
+        || desc.map(|d| format_display_name(d.display_name()).into_owned()),
+        self.prompt,
+      );
+    if prompted {
+      if result.is_ok() {
+        if is_allow_all {
+          self.insert_granted(None);
+        } else {
+          self.insert_granted(desc);
+        }
+      } else {
+        self.insert_prompt_denied(desc.map(|d| d.as_deny()));
+      }
+    }
+    result
+  }
+
+  fn query_desc_denied(
+    &self,
+    desc: Option<&TAllowDesc::QueryDesc<'_>>,
+    allow_partial: AllowPartial,
+  ) -> PermissionState {
+    if self.is_flag_denied(desc)
+      || self.is_prompt_denied(desc)
+      || (matches!(allow_partial, AllowPartial::TreatAsDenied)
+        && self.is_partial_flag_denied(desc))
+    {
+      PermissionState::Denied
+    } else {
+      PermissionState::Granted
+    }
   }
 
   fn query_desc(
@@ -2571,6 +2616,15 @@ impl UnaryPermission<NetDescriptor, NetDescriptor> {
     self.check_desc(Some(host), false, api_name)
   }
 
+  pub fn check_only_denied(
+    &mut self,
+    host: &NetDescriptor,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    skip_check_if_is_permission_fully_granted!(self);
+    self.check_desc_only_denied(Some(host), false, api_name)
+  }
+
   pub fn check_all(&mut self) -> Result<(), PermissionDeniedError> {
     skip_check_if_is_permission_fully_granted!(self);
     self.check_desc(None, false, None)
@@ -3129,6 +3183,8 @@ impl PermissionCheckError {
   }
 }
 
+pub struct CheckedHostName {}
+
 /// Wrapper struct for `Permissions` that can be shared across threads.
 ///
 /// We need a way to have internal mutability for permissions as they might get
@@ -3658,7 +3714,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_net_url(
-    &mut self,
+    &self,
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
@@ -3673,7 +3729,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_net<T: AsRef<str>>(
-    &mut self,
+    &self,
     host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
@@ -3683,6 +3739,20 @@ impl PermissionsContainer {
     let hostname = Host::parse_for_query(host.0.as_ref())?;
     let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
     inner.check(&descriptor, Some(api_name))?;
+    Ok(())
+  }
+
+  pub fn check_net_resolved_addr_is_not_denied(
+    &self,
+    addr: &SocketAddr,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    let inner = &mut inner.net;
+    skip_check_if_is_permission_fully_granted!(inner);
+    let descriptor =
+      NetDescriptor(Host::Ip(addr.ip()), Some(addr.port().into()));
+    inner.check_only_denied(&descriptor, Some(api_name))?;
     Ok(())
   }
 
@@ -4952,7 +5022,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     let url_tests = vec![
       // Any protocol + port for localhost should be ok, since we don't specify
@@ -5849,7 +5919,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
     let cases = [
       ("allowed.domain.", true),
       ("1.1.1.1", true),
@@ -5875,7 +5945,7 @@ mod tests {
       },
     )
     .unwrap();
-    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
     let cases = [
       ("10.0.0.1", true),
       ("192.168.1.1", false),
