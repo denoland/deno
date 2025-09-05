@@ -3896,7 +3896,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--deny-import  |  --deny-import="example.com:443,github.com:443"</>
       <g>DENO_TRACE_PERMISSIONS</>                Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
-      <g>DENO_PERMISSIONS_AUDIT</>               Environmental variable to generate a JSONL file with all permissions accesses.
+      <g>DENO_AUDIT_PERMISSIONS</>               Environmental variable to generate a JSONL file with all permissions accesses.
                                              <p(245)>DENO_TRACE_PERMISSIONS=./audit.jsonl deno run main.ts</>
 "#))
     .arg(

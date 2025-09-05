@@ -707,7 +707,7 @@ async fn resolve_flags_and_init(
     );
   }
 
-  if let Ok(audit_path) = std::env::var("DENO_PERMISSIONS_AUDIT") {
+  if let Ok(audit_path) = std::env::var("DENO_AUDIT_PERMISSIONS") {
     let audit_file = deno_runtime::deno_permissions::AUDIT_FILE.set(
       deno_core::parking_lot::Mutex::new(std::fs::File::create(audit_path)?),
     );
