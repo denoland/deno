@@ -48,6 +48,7 @@ use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::sys::CliSys;
+use crate::util;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::get_extension;
@@ -165,6 +166,27 @@ fn resolve_paths_with_options_batches(
   cli_options: &CliOptions,
   fmt_flags: &FmtFlags,
 ) -> Result<Vec<PathsWithOptions>, AnyError> {
+  if !fmt_flags.force
+    && fmt_flags.files.include.is_empty()
+    && cli_options.workspace().deno_jsons().next().is_none()
+  {
+    let confirm_result =
+      util::console::confirm(util::console::ConfirmOptions {
+        default: true,
+        message: format!(
+          "{} Are you sure you want to format the entire '{}' directory?",
+          colors::yellow("Warning"),
+          cli_options.initial_cwd().display()
+        ),
+      })
+      .unwrap_or(false);
+    if !confirm_result {
+      bail!(
+        "Did not format directory due to no Deno configuration file found. Run again with --force"
+      )
+    }
+  }
+
   let members_fmt_options =
     cli_options.resolve_fmt_options_for_members(fmt_flags)?;
   let mut paths_with_options_batches =
