@@ -168,7 +168,8 @@ fn resolve_paths_with_options_batches(
 ) -> Result<Vec<PathsWithOptions>, AnyError> {
   if !fmt_flags.force
     && fmt_flags.files.include.is_empty()
-    && cli_options.workspace().deno_jsons().next().is_none()
+    && (cli_options.workspace().deno_jsons().next().is_none()
+      && cli_options.workspace().package_jsons().next().is_none())
   {
     let confirm_result =
       util::console::confirm(util::console::ConfirmOptions {
