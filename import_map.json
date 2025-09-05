@@ -200,6 +200,7 @@
     "@std/internal/format": "./tests/util/std/internal/format.ts",
     "@std/internal/styles": "./tests/util/std/internal/styles.ts",
     "@std/internal/types": "./tests/util/std/internal/types.ts",
+    "@std/internal/os": "./tests/util/std/internal/os.ts",
     "@std/io": "./tests/util/std/io/mod.ts",
     "@std/io/buf-reader": "./tests/util/std/io/buf_reader.ts",
     "@std/io/buf-writer": "./tests/util/std/io/buf_writer.ts",
