@@ -252,6 +252,7 @@ impl<T: GarbageCollected + 'static> SameObject<T> {
       .clone()
   }
 
+  #[allow(unused)]
   pub fn set(
     &self,
     scope: &mut v8::HandleScope,
