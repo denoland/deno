@@ -908,6 +908,7 @@
 "parallel/test-readline-interface-escapecodetimeout.js" = {}
 "parallel/test-readline-interface-no-trailing-newline.js" = {}
 "parallel/test-readline-interface-recursive-writes.js" = {}
+"parallel/test-readline-line-separators.js" = {}
 "parallel/test-readline-position.js" = {}
 "parallel/test-readline-reopen.js" = {}
 "parallel/test-readline-set-raw-mode.js" = {}

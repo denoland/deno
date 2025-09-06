@@ -89,11 +89,22 @@ import {
   kWordRight,
   kWriteToOutput,
 } from "ext:deno_node/internal/readline/symbols.mjs";
+import { primordials } from "ext:core/mod.js";
+
+const { RegExpPrototypeTest, SafeRegExp } = primordials;
 
 const kHistorySize = 30;
 const kMincrlfDelay = 100;
-// \r\n, \n, or \r followed by something other than \n
-const lineEnding = /\r?\n|\r(?!\n)/;
+
+/**
+ * The end of a line is signaled by either one of the following:
+ *  - \r\n
+ *  - \n
+ *  - \r followed by something other than \n
+ *  - \u2028 (Unicode 'LINE SEPARATOR')
+ *  - \u2029 (Unicode 'PARAGRAPH SEPARATOR')
+ */
+const lineEnding = new SafeRegExp(/\r?\n|\r(?!\n)|\u2028|\u2029/g);
 
 const kLineObjectStream = Symbol("line object stream");
 export const kQuestionCancel = Symbol("kQuestionCancel");
@@ -583,7 +594,7 @@ export class Interface extends InterfaceConstructor {
     }
 
     // Run test() on the new string chunk, not on the entire line buffer.
-    const newPartContainsEnding = lineEnding.test(string);
+    const newPartContainsEnding = RegExpPrototypeTest(lineEnding, string);
 
     if (this[kLine_buffer]) {
       string = this[kLine_buffer] + string;
