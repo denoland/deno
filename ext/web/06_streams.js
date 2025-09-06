@@ -93,9 +93,9 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { structuredClone } from "./02_structured_clone.js";
 import {
   AbortSignalPrototype,
-  add,
+  addSignalAlgorithm,
   newSignal,
-  remove,
+  removeSignalAlgorithm,
   signalAbort,
 } from "./03_abort_signal.js";
 
@@ -2747,7 +2747,7 @@ function readableStreamPipeTo(
       abortAlgorithm();
       return promise.promise;
     }
-    signal[add](abortAlgorithm);
+    addSignalAlgorithm(signal, abortAlgorithm);
   }
 
   function pipeLoop() {
@@ -2949,7 +2949,7 @@ function readableStreamPipeTo(
     readableStreamDefaultReaderRelease(reader);
 
     if (signal !== undefined) {
-      signal[remove](abortAlgorithm);
+      removeSignalAlgorithm(signal, abortAlgorithm);
     }
     if (isError) {
       promise.reject(error);
@@ -4303,7 +4303,7 @@ function writableStreamAbort(stream, reason) {
   if (state === "closed" || state === "errored") {
     return PromiseResolve(undefined);
   }
-  stream[_controller][_signal][signalAbort](reason);
+  signalAbort(stream[_controller][_signal], reason);
   if (state === "closed" || state === "errored") {
     return PromiseResolve(undefined);
   }

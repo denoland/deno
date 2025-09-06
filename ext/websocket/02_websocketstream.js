@@ -36,7 +36,10 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { add, remove } from "ext:deno_web/03_abort_signal.js";
+import {
+  addSignalAlgorithm,
+  removeSignalAlgorithm,
+} from "ext:deno_web/03_abort_signal.js";
 import {
   fillHeaders,
   headerListFromHeaders,
@@ -165,7 +168,9 @@ class WebSocketStream {
       const abort = () => {
         core.close(cancelRid);
       };
-      options.signal?.[add](abort);
+      if (options.signal != null) {
+        addSignalAlgorithm(options.signal, abort);
+      }
       PromisePrototypeThen(
         op_ws_create(
           "new WebSocketStream()",
@@ -175,7 +180,9 @@ class WebSocketStream {
           headerListFromHeaders(headers),
         ),
         (create) => {
-          options.signal?.[remove](abort);
+          if (options.signal != null) {
+            removeSignalAlgorithm(options.signal, abort);
+          }
           if (this[_earlyClose]) {
             PromisePrototypeThen(
               op_ws_close(create.rid),
