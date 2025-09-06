@@ -91,7 +91,14 @@ import {
 } from "ext:deno_node/internal/readline/symbols.mjs";
 import { primordials } from "ext:core/mod.js";
 
-const { RegExpPrototypeTest, SafeRegExp } = primordials;
+const {
+  ArrayPrototypePush,
+  DateNow,
+  RegExpPrototypeExec,
+  SafeRegExp,
+  StringPrototypeEndsWith,
+  StringPrototypeSlice,
+} = primordials;
 
 const kHistorySize = 30;
 const kMincrlfDelay = 100;
@@ -594,24 +601,36 @@ export class Interface extends InterfaceConstructor {
     }
 
     // Run test() on the new string chunk, not on the entire line buffer.
-    const newPartContainsEnding = RegExpPrototypeTest(lineEnding, string);
+    let newPartContainsEnding = RegExpPrototypeExec(lineEnding, string);
+    if (newPartContainsEnding !== null) {
+      if (this[kLine_buffer]) {
+        string = this[kLine_buffer] + string;
+        this[kLine_buffer] = null;
+        lineEnding.lastIndex = 0; // Start the search from the beginning of the string.
+        newPartContainsEnding = RegExpPrototypeExec(lineEnding, string);
+      }
+      this[kSawReturnAt] = StringPrototypeEndsWith(string, "\r")
+        ? DateNow()
+        : 0;
 
-    if (this[kLine_buffer]) {
-      string = this[kLine_buffer] + string;
-      this[kLine_buffer] = null;
-    }
-    if (newPartContainsEnding) {
-      this[kSawReturnAt] = string.endsWith("\r") ? Date.now() : 0;
-
-      // Got one or more newlines; process into "line" events
-      const lines = string.split(lineEnding);
+      const indexes = [0, newPartContainsEnding.index, lineEnding.lastIndex];
+      let nextMatch;
+      while ((nextMatch = RegExpPrototypeExec(lineEnding, string)) !== null) {
+        ArrayPrototypePush(indexes, nextMatch.index, lineEnding.lastIndex);
+      }
+      const lastIndex = indexes.length - 1;
       // Either '' or (conceivably) the unfinished portion of the next line
-      string = lines.pop();
-      this[kLine_buffer] = string;
-      for (let n = 0; n < lines.length; n++) this[kOnLine](lines[n]);
+      this[kLine_buffer] = StringPrototypeSlice(string, indexes[lastIndex]);
+      for (let i = 1; i < lastIndex; i += 2) {
+        this[kOnLine](StringPrototypeSlice(string, indexes[i - 1], indexes[i]));
+      }
     } else if (string) {
       // No newlines this time, save what we have for next time
-      this[kLine_buffer] = string;
+      if (this[kLine_buffer]) {
+        this[kLine_buffer] += string;
+      } else {
+        this[kLine_buffer] = string;
+      }
     }
   }
 
@@ -1186,13 +1205,23 @@ export class Interface extends InterfaceConstructor {
         // falls through
         default:
           if (typeof s === "string" && s) {
-            const lines = s.split(/\r\n|\n|\r/);
-            for (let i = 0, len = lines.length; i < len; i++) {
-              if (i > 0) {
-                this[kLine]();
-              }
-              this[kInsertString](lines[i]);
+            // Erase state of previous searches.
+            lineEnding.lastIndex = 0;
+            let nextMatch;
+            // Keep track of the end of the last match.
+            let lastIndex = 0;
+            while ((nextMatch = RegExpPrototypeExec(lineEnding, s)) !== null) {
+              this[kInsertString](
+                StringPrototypeSlice(s, lastIndex, nextMatch.index),
+              );
+              ({ lastIndex } = lineEnding);
+              this[kLine]();
+              // Restore lastIndex as the call to kLine could have mutated it.
+              lineEnding.lastIndex = lastIndex;
             }
+            // This ensures that the last line is written if it doesn't end in a newline.
+            // Note that the last line may be the first line, in which case this still works.
+            this[kInsertString](StringPrototypeSlice(s, lastIndex));
           }
       }
     }
