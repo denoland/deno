@@ -1,9 +1,11 @@
 Download http://localhost:4260/fsevents
 Download http://localhost:4260/fsevents/fsevents-2.3.3.tgz
 Initialize fsevents@2.3.3
-Packages: 1
-+
-Resolved: 0, reused: 0, downloaded: 2, added: 1
+Installed 1 package in [WILDCARD]ms
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 2 packages from npm
+++
 
 Dependencies:
 + npm:fsevents 2.3.3

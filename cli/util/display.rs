@@ -49,7 +49,11 @@ pub fn human_download_size(byte_count: u64, total_bytes: u64) -> String {
 /// A function that converts a millisecond elapsed time to a string that
 /// represents a human readable version of that time.
 pub fn human_elapsed(elapsed: u128) -> String {
-  if elapsed < 1_000 {
+  human_elapsed_with_ms_limit(elapsed, 1_000)
+}
+
+pub fn human_elapsed_with_ms_limit(elapsed: u128, ms_limit: u128) -> String {
+  if elapsed < ms_limit {
     return format!("{elapsed}ms");
   }
   if elapsed < 1_000 * 60 {
