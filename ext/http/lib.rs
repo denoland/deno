@@ -98,7 +98,6 @@ mod request_body;
 mod request_properties;
 mod response_body;
 mod service;
-mod websocket_upgrade;
 
 use fly_accept_encoding::Encoding;
 pub use http_next::HttpNextError;
@@ -108,7 +107,6 @@ pub use request_properties::HttpListenProperties;
 pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
-pub use websocket_upgrade::WebSocketUpgradeError;
 
 struct OtelCollectors {
   duration: Histogram<f64>,
@@ -1520,11 +1518,16 @@ async fn op_http_shutdown(
 #[op2]
 #[string]
 fn op_http_websocket_accept_header(#[string] key: String) -> String {
-  let digest = aws_lc_rs::digest::digest(
+  sec_websocket_accept(key.as_bytes())
+}
+
+pub fn sec_websocket_accept(key: &[u8]) -> String {
+  let mut ctx = aws_lc_rs::digest::Context::new(
     &aws_lc_rs::digest::SHA1_FOR_LEGACY_USE_ONLY,
-    format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes(),
   );
-  BASE64_STANDARD.encode(digest)
+  ctx.update(key);
+  ctx.update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+  BASE64_STANDARD.encode(ctx.finish())
 }
 
 #[op2(async)]
