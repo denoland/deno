@@ -57,6 +57,7 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageSubpathResolveError;
 pub use provider::CliBundleProvider;
 use sys_traits::EnvCurrentDir;
+use tokio::sync::oneshot;
 
 use crate::args::BundleFlags;
 use crate::args::Flags;
@@ -83,6 +84,7 @@ static DISABLE_HACK: LazyLock<bool> =
 pub async fn bundle_init(
   mut flags: Arc<Flags>,
   bundle_flags: &BundleFlags,
+  plugins: Option<deno_bundle_runtime::Plugins>,
 ) -> Result<EsbuildBundler, AnyError> {
   {
     let flags_mut = Arc::make_mut(&mut flags);
@@ -123,6 +125,7 @@ pub async fn bundle_init(
     cjs_tracker: factory.cjs_tracker()?.clone(),
     emitter: factory.emitter()?.clone(),
     deferred_resolve_errors: Default::default(),
+    js_plugins: plugins,
   });
 
   let resolved_entrypoints =
@@ -176,7 +179,7 @@ pub async fn bundle(
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
   }
-  let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
+  let bundler = bundle_init(flags.clone(), &bundle_flags, None).await?;
   let init_cwd = bundler.cwd.clone();
   let start = std::time::Instant::now();
   let response = bundler.build().await?;
@@ -389,8 +392,17 @@ impl EsbuildBundler {
       node_paths: vec![],
       plugins: Some(vec![protocol::BuildPlugin {
         name: "deno".into(),
-        on_start: false,
-        on_end: matches!(self.mode, BundlingMode::Watch),
+        on_start: self
+          .plugin_handler
+          .js_plugins
+          .as_ref()
+          .is_some_and(|plugins| plugins.info.iter().any(|p| p.on_start)),
+        on_end: matches!(self.mode, BundlingMode::Watch)
+          || self
+            .plugin_handler
+            .js_plugins
+            .as_ref()
+            .is_some_and(|plugins| plugins.info.iter().any(|p| p.on_end)),
         on_resolve: (vec![protocol::OnResolveSetupOptions {
           id: 0,
           filter: ".*".into(),
@@ -406,13 +418,38 @@ impl EsbuildBundler {
   }
 
   async fn build(&self) -> Result<BuildResponse, AnyError> {
-    let response = self
+    let mut response = self
       .client
       .send_build_request(self.make_build_request())
       .await
       .unwrap()
       .map_err(|e| message_to_error(&e, &self.cwd))?;
 
+    if self.mode == BundlingMode::OneShot
+      && let Some(js_plugins) = &self.plugin_handler.js_plugins
+      && js_plugins.info.iter().any(|p| p.on_end)
+    {
+      let (tx, rx) = oneshot::channel();
+      let request = deno_bundle_runtime::PluginRequest::OnEnd {
+        plugin_ids: js_plugins
+          .info
+          .iter()
+          .filter_map(|p| p.on_end.then(|| p.id))
+          .collect(),
+        args: vec![],
+        result: tx,
+      };
+      js_plugins.sender.send(request).await?;
+      let result = rx.await?;
+      if let Some(errors) = result.result.errors {
+        response.errors.extend(messages_to_proto_messages(errors));
+      }
+      if let Some(warnings) = result.result.warnings {
+        response
+          .warnings
+          .extend(messages_to_proto_messages(warnings));
+      }
+    }
     Ok(response)
   }
 
@@ -608,6 +645,8 @@ pub struct DenoPluginHandler {
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+
+  js_plugins: Option<deno_bundle_runtime::Plugins>,
 }
 
 impl DenoPluginHandler {
@@ -616,33 +655,32 @@ impl DenoPluginHandler {
   }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum PluginImportKind {
-  EntryPoint,
-  ImportStatement,
-  RequireCall,
-  DynamicImport,
-  RequireResolve,
-  ImportRule,
-  ComposesFrom,
-  UrlToken,
-}
-
-impl From<protocol::ImportKind> for PluginImportKind {
-  fn from(kind: protocol::ImportKind) -> Self {
-    match kind {
-      protocol::ImportKind::EntryPoint => PluginImportKind::EntryPoint,
-      protocol::ImportKind::ImportStatement => {
-        PluginImportKind::ImportStatement
-      }
-      protocol::ImportKind::RequireCall => PluginImportKind::RequireCall,
-      protocol::ImportKind::DynamicImport => PluginImportKind::DynamicImport,
-      protocol::ImportKind::RequireResolve => PluginImportKind::RequireResolve,
-      protocol::ImportKind::ImportRule => PluginImportKind::ImportRule,
-      protocol::ImportKind::ComposesFrom => PluginImportKind::ComposesFrom,
-      protocol::ImportKind::UrlToken => PluginImportKind::UrlToken,
+fn import_kind_from_proto(
+  kind: protocol::ImportKind,
+) -> deno_bundle_runtime::ImportKind {
+  match kind {
+    protocol::ImportKind::EntryPoint => {
+      deno_bundle_runtime::ImportKind::EntryPoint
     }
+    protocol::ImportKind::ImportStatement => {
+      deno_bundle_runtime::ImportKind::ImportStatement
+    }
+    protocol::ImportKind::RequireCall => {
+      deno_bundle_runtime::ImportKind::RequireCall
+    }
+    protocol::ImportKind::DynamicImport => {
+      deno_bundle_runtime::ImportKind::DynamicImport
+    }
+    protocol::ImportKind::RequireResolve => {
+      deno_bundle_runtime::ImportKind::RequireResolve
+    }
+    protocol::ImportKind::ImportRule => {
+      deno_bundle_runtime::ImportKind::ImportRule
+    }
+    protocol::ImportKind::ComposesFrom => {
+      deno_bundle_runtime::ImportKind::ComposesFrom
+    }
+    protocol::ImportKind::UrlToken => deno_bundle_runtime::ImportKind::UrlToken,
   }
 }
 
@@ -651,7 +689,7 @@ impl From<protocol::ImportKind> for PluginImportKind {
 struct PluginOnResolveArgs {
   path: String,
   importer: Option<String>,
-  kind: PluginImportKind,
+  kind: deno_bundle_runtime::ImportKind,
   namespace: Option<String>,
   resolve_dir: Option<String>,
   with: IndexMap<String, String>,
@@ -666,16 +704,58 @@ struct PluginOnLoadArgs {
   with: IndexMap<String, String>,
 }
 
-#[async_trait::async_trait(?Send)]
-impl esbuild_client::PluginHandler for DenoPluginHandler {
-  async fn on_resolve(
+impl DenoPluginHandler {
+  fn is_pre_resolve_external(&self, path: &str) -> bool {
+    self
+      .externals_matcher
+      .as_ref()
+      .map(|matcher| matcher.is_pre_resolve_match(path))
+      .unwrap_or(false)
+  }
+
+  fn is_post_resolve_external(&self, path: &str) -> bool {
+    path.starts_with("node:")
+      || self
+        .externals_matcher
+        .as_ref()
+        .map(|matcher| matcher.is_post_resolve_match(path))
+        .unwrap_or(false)
+  }
+
+  async fn on_resolve_inner(
     &self,
     args: esbuild_client::OnResolveArgs,
   ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
-    if let Some(matcher) = &self.externals_matcher
-      && matcher.is_pre_resolve_match(&args.path)
-    {
+    if let Some(js_plugins) = &self.js_plugins {
+      let (tx, rx) = oneshot::channel();
+      let request = deno_bundle_runtime::PluginRequest::OnResolve {
+        plugin_ids: js_plugins
+          .info
+          .iter()
+          .filter_map(|p| {
+            p.on_resolve
+              .as_ref()
+              .and_then(|o| o.filter.is_match(args.path.as_str()).then(|| p.id))
+          })
+          .collect(),
+        args: vec![serde_json::to_value(PluginOnResolveArgs {
+          path: args.path.clone(),
+          importer: args.importer.clone(),
+          kind: import_kind_from_proto(args.kind),
+          namespace: args.namespace.clone(),
+          resolve_dir: args.resolve_dir.clone(),
+          with: args.with.clone(),
+        })?],
+        result: tx,
+      };
+      js_plugins.sender.send(request).await?;
+      let result = rx.await?;
+      if let Some(result) = result.result {
+        return Ok(Some(plugin_resolve_result_to_proto(result)));
+      }
+    }
+    if self.is_pre_resolve_external(&args.path) {
       return Ok(Some(esbuild_client::OnResolveResult {
         external: Some(true),
         path: Some(args.path),
@@ -712,12 +792,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       // TODO(nathanwhit): remap the resolved path to be relative
       // to the output file. It will be tricky to figure out which
       // output file this import will end up in. We may have to use the metafile and rewrite at the end
-      let is_external = r.starts_with("node:")
-        || self
-          .externals_matcher
-          .as_ref()
-          .map(|matcher| matcher.is_post_resolve_match(&r))
-          .unwrap_or(false);
+      let is_external = self.is_post_resolve_external(&r);
 
       esbuild_client::OnResolveResult {
         namespace: if r.starts_with("jsr:")
@@ -737,12 +812,50 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       }
     }))
   }
+}
+
+#[async_trait::async_trait(?Send)]
+impl esbuild_client::PluginHandler for DenoPluginHandler {
+  async fn on_resolve(
+    &self,
+    args: esbuild_client::OnResolveArgs,
+  ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
+    self.on_resolve_inner(args).await
+  }
 
   async fn on_load(
     &self,
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_load"));
+    if let Some(js_plugins) = &self.js_plugins {
+      let (tx, rx) = oneshot::channel();
+      let request = deno_bundle_runtime::PluginRequest::OnLoad {
+        plugin_ids: js_plugins
+          .info
+          .iter()
+          .filter_map(|p| {
+            p.on_load
+              .as_ref()
+              .and_then(|o| o.filter.is_match(args.path.as_str()).then(|| p.id))
+          })
+          .collect(),
+        args: vec![serde_json::to_value(PluginOnLoadArgs {
+          path: args.path.clone(),
+          namespace: args.namespace.clone(),
+          suffix: args.suffix.clone(),
+          with: args.with.clone(),
+        })?],
+        result: tx,
+      };
+      js_plugins.sender.send(request).await?;
+      let result = rx.await?;
+      if let Some(result) = result.result {
+        return Ok(Some(plugin_load_result_to_proto(result)));
+      } else {
+        // fallthrough to internal handler
+      }
+    }
     let result = self
       .bundle_load(&args.path, &requested_type_from_map(&args.with))
       .await;
@@ -787,7 +900,26 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     &self,
     _args: esbuild_client::OnStartArgs,
   ) -> Result<Option<esbuild_client::OnStartResult>, AnyError> {
-    Ok(None)
+    if let Some(js_plugins) = &self.js_plugins {
+      let (tx, rx) = oneshot::channel();
+      let request = deno_bundle_runtime::PluginRequest::OnStart {
+        plugin_ids: js_plugins
+          .info
+          .iter()
+          .filter_map(|p| p.on_start.then(|| p.id))
+          .collect(),
+        args: vec![],
+        result: tx,
+      };
+      js_plugins.sender.send(request).await?;
+      let result = rx.await?;
+      Ok(Some(esbuild_client::OnStartResult {
+        errors: result.result.errors.map(|e| messages_to_proto(e)),
+        warnings: result.result.warnings.map(|w| messages_to_proto(w)),
+      }))
+    } else {
+      Ok(None)
+    }
   }
 
   async fn on_end(
@@ -795,7 +927,133 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     _args: esbuild_client::OnEndArgs,
   ) -> Result<Option<esbuild_client::OnEndResult>, AnyError> {
     self.on_end_tx.send(_args).await?;
+    if let Some(js_plugins) = &self.js_plugins {
+      let (tx, rx) = oneshot::channel();
+      let request = deno_bundle_runtime::PluginRequest::OnEnd {
+        plugin_ids: js_plugins
+          .info
+          .iter()
+          .filter_map(|p| p.on_end.then(|| p.id))
+          .collect(),
+        args: vec![],
+        result: tx,
+      };
+      js_plugins.sender.send(request).await?;
+      let result = rx.await?;
+      return Ok(Some(esbuild_client::OnEndResult {
+        errors: result.result.errors.map(|e| messages_to_proto_messages(e)),
+        warnings: result
+          .result
+          .warnings
+          .map(|w| messages_to_proto_messages(w)),
+      }));
+    }
     Ok(None)
+  }
+}
+
+fn convert_location(
+  location: deno_bundle_runtime::Location,
+) -> esbuild_client::protocol::Location {
+  esbuild_client::protocol::Location {
+    file: location.file,
+    column: location.column,
+    line: location.line,
+    length: location.length.unwrap_or_default(),
+    namespace: location.namespace.unwrap_or_default(),
+    suggestion: location.suggestion.unwrap_or_default(),
+    // TODO(nathanwhit): add line_text
+    line_text: String::new(),
+  }
+}
+
+fn convert_note(
+  note: deno_bundle_runtime::Note,
+) -> esbuild_client::protocol::Note {
+  esbuild_client::protocol::Note {
+    text: note.text,
+    location: note.location.map(convert_location),
+  }
+}
+
+fn messages_to_proto(
+  messages: Vec<deno_bundle_runtime::Message>,
+) -> Vec<esbuild_client::protocol::PartialMessage> {
+  messages
+    .into_iter()
+    .map(|message| esbuild_client::protocol::PartialMessage {
+      id: "dummy".into(),
+      plugin_name: "deno".into(),
+      text: message.text,
+      location: message.location.map(convert_location),
+      notes: message.notes.into_iter().map(convert_note).collect(),
+      ..Default::default()
+    })
+    .collect()
+}
+
+fn messages_to_proto_messages(
+  messages: Vec<deno_bundle_runtime::Message>,
+) -> Vec<esbuild_client::protocol::Message> {
+  messages
+    .into_iter()
+    .map(|message| esbuild_client::protocol::Message {
+      id: "dummy".into(),
+      plugin_name: "deno".into(),
+      text: message.text,
+      location: message.location.map(convert_location),
+      notes: message.notes.into_iter().map(convert_note).collect(),
+      detail: None,
+    })
+    .collect()
+}
+
+fn plugin_resolve_result_to_proto(
+  result: deno_bundle_runtime::PluginOnResolveResult,
+) -> esbuild_client::OnResolveResult {
+  esbuild_client::OnResolveResult {
+    path: result.path,
+    external: result.external,
+    namespace: result.namespace,
+    suffix: result.suffix,
+    plugin_data: result.plugin_data,
+    watch_files: None,
+    watch_dirs: None,
+    errors: result.errors.map(|errors| messages_to_proto(errors)),
+    warnings: result.warnings.map(|warnings| messages_to_proto(warnings)),
+    side_effects: result.side_effects,
+    plugin_name: Some("deno".to_string()),
+  }
+}
+
+fn plugin_load_result_to_proto(
+  result: deno_bundle_runtime::PluginOnLoadResult,
+) -> esbuild_client::OnLoadResult {
+  esbuild_client::OnLoadResult {
+    contents: result.contents,
+    loader: match result.loader.as_deref() {
+      Some("js") => Some(esbuild_client::BuiltinLoader::Js),
+      Some("ts") => Some(esbuild_client::BuiltinLoader::Ts),
+      Some("jsx") => Some(esbuild_client::BuiltinLoader::Jsx),
+      Some("json") => Some(esbuild_client::BuiltinLoader::Json),
+      Some("css") => Some(esbuild_client::BuiltinLoader::Css),
+      Some("text") => Some(esbuild_client::BuiltinLoader::Text),
+      Some("base64") => Some(esbuild_client::BuiltinLoader::Base64),
+      Some("dataurl") => Some(esbuild_client::BuiltinLoader::DataUrl),
+      Some("file") => Some(esbuild_client::BuiltinLoader::File),
+      Some("copy") => Some(esbuild_client::BuiltinLoader::Copy),
+      Some("empty") => Some(esbuild_client::BuiltinLoader::Empty),
+
+      _ => None,
+    },
+    plugin_name: result.plugin_name,
+    errors: result.errors.map(|errors| messages_to_proto(errors)),
+    warnings: result.warnings.map(|warnings| messages_to_proto(warnings)),
+    resolve_dir: result.resolve_dir,
+    plugin_data: result.plugin_data,
+    watch_files: None,
+    watch_dirs: None,
+    ..Default::default()
   }
 }
 
