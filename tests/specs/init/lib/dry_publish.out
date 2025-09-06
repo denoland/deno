@@ -4,4 +4,4 @@ Check file:///[WILDLINE]/mod.ts
 error: Failed preparing 'project'.
 
 Caused by:
-    Invalid package name, use '@<scope_name>/<package_name> format
+    Invalid package name, use '@<scope_name>/<package_name>' format
