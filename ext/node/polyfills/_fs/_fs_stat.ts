@@ -1,16 +1,24 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
 import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
+import { Buffer } from "node:buffer";
 
-const { ObjectCreate, ObjectAssign } = primordials;
+const {
+  BigInt,
+  Date,
+  DatePrototypeGetTime,
+  ErrorPrototype,
+  Number,
+  ObjectAssign,
+  ObjectCreate,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+} = primordials;
 
 export type statOptions = {
   bigint: boolean;
@@ -287,9 +295,9 @@ export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
     mtime,
     atime,
     birthtime,
-    mtimeMs: BigInt(mtime.getTime()),
-    atimeMs: BigInt(atime.getTime()),
-    birthtimeMs: BigInt(birthtime.getTime()),
+    mtimeMs: DatePrototypeGetTime(mtime),
+    atimeMs: DatePrototypeGetTime(atime),
+    birthtimeMs: DatePrototypeGetTime(birthtime),
     isFile: () => origin.isFile,
     isDirectory: () => origin.isDirectory,
     isSymbolicLink: () => origin.isSymlink,
@@ -298,7 +306,7 @@ export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
     isCharacterDevice: () => isWindows ? false : origin.isCharDevice,
     isSocket: () => isWindows ? false : origin.isSocket,
     ctime,
-    ctimeMs: BigInt(ctime.getTime()),
+    ctimeMs: DatePrototypeGetTime(ctime),
   });
 
   return stats;
@@ -332,12 +340,12 @@ export function convertFileInfoToBigIntStats(
     mtime,
     atime,
     birthtime,
-    mtimeMs: BigInt(mtime.getTime()),
-    atimeMs: BigInt(atime.getTime()),
-    birthtimeMs: BigInt(birthtime.getTime()),
-    mtimeNs: BigInt(mtime.getTime()) * 1000000n,
-    atimeNs: BigInt(atime.getTime()) * 1000000n,
-    birthtimeNs: BigInt(birthtime.getTime()) * 1000000n,
+    mtimeMs: BigInt(DatePrototypeGetTime(mtime)),
+    atimeMs: BigInt(DatePrototypeGetTime(atime)),
+    birthtimeMs: BigInt(DatePrototypeGetTime(birthtime)),
+    mtimeNs: BigInt(DatePrototypeGetTime(mtime)) * 1000000n,
+    atimeNs: BigInt(DatePrototypeGetTime(atime)) * 1000000n,
+    birthtimeNs: BigInt(DatePrototypeGetTime(birthtime)) * 1000000n,
     isFile: () => origin.isFile,
     isDirectory: () => origin.isDirectory,
     isSymbolicLink: () => origin.isSymlink,
@@ -346,8 +354,8 @@ export function convertFileInfoToBigIntStats(
     isCharacterDevice: () => isWindows ? false : origin.isCharDevice,
     isSocket: () => isWindows ? false : origin.isSocket,
     ctime,
-    ctimeMs: BigInt(ctime.getTime()),
-    ctimeNs: BigInt(ctime.getTime()) * 1000000n,
+    ctimeMs: BigInt(DatePrototypeGetTime(ctime)),
+    ctimeNs: BigInt(DatePrototypeGetTime(ctime)) * 1000000n,
   });
   return stats;
 }
@@ -366,20 +374,25 @@ export type statCallbackBigInt = (
 export type statCallback = (err: Error | null, stat?: Stats) => void;
 
 const defaultOptions = { __proto__: null, bigint: false };
+const defaultSyncOptions = {
+  __proto__: null,
+  bigint: false,
+  throwIfNoEntry: true,
+};
 
-export function stat(path: string | URL, callback: statCallback): void;
+export function stat(path: string | Buffer | URL, callback: statCallback): void;
 export function stat(
-  path: string | URL,
+  path: string | Buffer | URL,
   options: { bigint: false },
   callback: statCallback,
 ): void;
 export function stat(
-  path: string | URL,
+  path: string | Buffer | URL,
   options: { bigint: true },
   callback: statCallbackBigInt,
 ): void;
 export function stat(
-  path: string | URL,
+  path: string | Buffer | URL,
   options: statCallback | statCallbackBigInt | statOptions = defaultOptions,
   callback?: statCallback | statCallbackBigInt,
 ) {
@@ -390,7 +403,8 @@ export function stat(
   callback = makeCallback(callback);
   path = getValidatedPathToString(path);
 
-  Deno.stat(path).then(
+  PromisePrototypeThen(
+    Deno.stat(path),
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
     (err) =>
       callback(
@@ -400,31 +414,37 @@ export function stat(
 }
 
 export const statPromise = promisify(stat) as (
-  & ((path: string | URL) => Promise<Stats>)
-  & ((path: string | URL, options: { bigint: false }) => Promise<Stats>)
-  & ((path: string | URL, options: { bigint: true }) => Promise<BigIntStats>)
+  & ((path: string | Buffer | URL) => Promise<Stats>)
+  & ((
+    path: string | Buffer | URL,
+    options: { bigint: false },
+  ) => Promise<Stats>)
+  & ((
+    path: string | Buffer | URL,
+    options: { bigint: true },
+  ) => Promise<BigIntStats>)
 );
 
-export function statSync(path: string | URL): Stats;
+export function statSync(path: string | Buffer | URL): Stats;
 export function statSync(
-  path: string | URL,
+  path: string | Buffer | URL,
   options: { bigint: false; throwIfNoEntry: true },
 ): Stats;
 export function statSync(
-  path: string | URL,
+  path: string | Buffer | URL,
   options: { bigint: false; throwIfNoEntry: false },
 ): Stats | undefined;
 export function statSync(
-  path: string | URL,
+  path: string | Buffer | URL,
   options: { bigint: true; throwIfNoEntry: true },
 ): BigIntStats;
 export function statSync(
-  path: string | URL,
+  path: string | Buffer | URL,
   options: { bigint: true; throwIfNoEntry: false },
 ): BigIntStats | undefined;
 export function statSync(
-  path: string | URL,
-  options: statOptions = { ...defaultOptions, throwIfNoEntry: true },
+  path: string | Buffer | URL,
+  options: statOptions = defaultSyncOptions,
 ): Stats | BigIntStats | undefined {
   path = getValidatedPathToString(path);
 
@@ -434,12 +454,12 @@ export function statSync(
   } catch (err) {
     if (
       options?.throwIfNoEntry === false &&
-      err instanceof Deno.errors.NotFound
+      ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
     ) {
       return;
     }
-    if (err instanceof Error) {
-      throw denoErrorToNodeError(err, {
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
+      throw denoErrorToNodeError(err as Error, {
         syscall: "stat",
         path,
       });
