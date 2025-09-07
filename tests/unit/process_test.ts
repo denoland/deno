@@ -614,6 +614,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { run: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
   },
   async function runWatchAndSigint(): Promise<void> {
     const tempDir = await Deno.makeTempDir();
@@ -642,6 +643,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { run: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
   },
   async function runWatchWaitForSigint(): Promise<void> {
     const tempDir = await Deno.makeTempDir();
