@@ -3054,7 +3054,9 @@ declare namespace Deno {
     ctime: Date | null;
     /** ID of the device containing the file. */
     dev: number;
-    /** Inode number on Linux/Mac OS, Index number on Windows. */
+    /** Corresponds to the inode number on Unix systems. On Windows, this is
+     * the file index number that is unique within a volume. This may not be
+     * available on all platforms. */
     ino: number | null;
     /** The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory.
