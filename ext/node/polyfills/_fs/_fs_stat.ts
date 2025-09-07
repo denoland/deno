@@ -6,8 +6,9 @@
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
-import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
 import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
 
 const { ObjectCreate, ObjectAssign } = primordials;
 
@@ -267,33 +268,37 @@ export class BigIntStats {}
 
 export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
   const stats = ObjectCreate(Stats.prototype);
+  const atime = origin.atime ?? new Date(0);
+  const birthtime = origin.birthtime ?? new Date(0);
+  const ctime = origin.ctime ?? new Date(0);
+  const mtime = origin.mtime ?? new Date(0);
   ObjectAssign(stats, {
     dev: origin.dev,
-    ino: origin.ino,
-    mode: origin.mode,
-    nlink: origin.nlink,
-    uid: origin.uid,
-    gid: origin.gid,
-    rdev: origin.rdev,
+    ino: origin.ino || 0,
+    mode: origin.mode || 0,
+    nlink: origin.nlink || 0,
+    uid: isWindows ? 0 : origin.uid,
+    gid: isWindows ? 0 : origin.gid,
+    rdev: isWindows ? 0 : origin.rdev,
     size: origin.size,
-    blksize: origin.blksize,
-    blocks: origin.blocks,
-    mtime: origin.mtime,
-    atime: origin.atime,
-    birthtime: origin.birthtime,
-    mtimeMs: origin.mtime?.getTime() || null,
-    atimeMs: origin.atime?.getTime() || null,
-    birthtimeMs: origin.birthtime?.getTime() || null,
+    // https://github.com/nodejs/node/blob/591ba692bfe30408e6a67397e7d18bfa1b9c3561/deps/uv/src/win/fs.c#L1929-L1930
+    blksize: isWindows ? 4096 : origin.blksize,
+    blocks: origin.blocks || 0,
+    mtime,
+    atime,
+    birthtime,
+    mtimeMs: BigInt(mtime.getTime()),
+    atimeMs: BigInt(atime.getTime()),
+    birthtimeMs: BigInt(birthtime.getTime()),
     isFile: () => origin.isFile,
     isDirectory: () => origin.isDirectory,
     isSymbolicLink: () => origin.isSymlink,
-    // not sure about those
-    isBlockDevice: () => false,
-    isFIFO: () => false,
-    isCharacterDevice: () => false,
-    isSocket: () => false,
-    ctime: origin.ctime,
-    ctimeMs: origin.ctime?.getTime() || null,
+    isBlockDevice: () => isWindows ? false : origin.isBlockDevice,
+    isFIFO: () => isWindows ? false : origin.isFifo,
+    isCharacterDevice: () => isWindows ? false : origin.isCharDevice,
+    isSocket: () => isWindows ? false : origin.isSocket,
+    ctime,
+    ctimeMs: BigInt(ctime.getTime()),
   });
 
   return stats;
@@ -308,39 +313,41 @@ export function convertFileInfoToBigIntStats(
   origin: Deno.FileInfo,
 ): BigIntStats {
   const stats = ObjectCreate(BigIntStats.prototype);
+  const atime = origin.atime ?? new Date(0);
+  const birthtime = origin.birthtime ?? new Date(0);
+  const ctime = origin.ctime ?? new Date(0);
+  const mtime = origin.mtime ?? new Date(0);
   ObjectAssign(stats, {
     dev: toBigInt(origin.dev),
-    ino: toBigInt(origin.ino),
-    mode: toBigInt(origin.mode),
-    nlink: toBigInt(origin.nlink),
-    uid: toBigInt(origin.uid),
-    gid: toBigInt(origin.gid),
-    rdev: toBigInt(origin.rdev),
+    ino: toBigInt(origin.ino) || 0n,
+    mode: toBigInt(origin.mode) || 0n,
+    nlink: toBigInt(origin.nlink) || 0n,
+    uid: isWindows ? 0n : toBigInt(origin.uid),
+    gid: isWindows ? 0n : toBigInt(origin.gid),
+    rdev: isWindows ? 0n : toBigInt(origin.rdev),
     size: toBigInt(origin.size) || 0n,
-    blksize: toBigInt(origin.blksize),
-    blocks: toBigInt(origin.blocks),
-    mtime: origin.mtime,
-    atime: origin.atime,
-    birthtime: origin.birthtime,
-    mtimeMs: origin.mtime ? BigInt(origin.mtime.getTime()) : null,
-    atimeMs: origin.atime ? BigInt(origin.atime.getTime()) : null,
-    birthtimeMs: origin.birthtime ? BigInt(origin.birthtime.getTime()) : null,
-    mtimeNs: origin.mtime ? BigInt(origin.mtime.getTime()) * 1000000n : null,
-    atimeNs: origin.atime ? BigInt(origin.atime.getTime()) * 1000000n : null,
-    birthtimeNs: origin.birthtime
-      ? BigInt(origin.birthtime.getTime()) * 1000000n
-      : null,
+    // https://github.com/nodejs/node/blob/591ba692bfe30408e6a67397e7d18bfa1b9c3561/deps/uv/src/win/fs.c#L1929-L1930
+    blksize: isWindows ? 4096n : toBigInt(origin.blksize),
+    blocks: toBigInt(origin.blocks) || 0n,
+    mtime,
+    atime,
+    birthtime,
+    mtimeMs: BigInt(mtime.getTime()),
+    atimeMs: BigInt(atime.getTime()),
+    birthtimeMs: BigInt(birthtime.getTime()),
+    mtimeNs: BigInt(mtime.getTime()) * 1000000n,
+    atimeNs: BigInt(atime.getTime()) * 1000000n,
+    birthtimeNs: BigInt(birthtime.getTime()) * 1000000n,
     isFile: () => origin.isFile,
     isDirectory: () => origin.isDirectory,
     isSymbolicLink: () => origin.isSymlink,
-    // not sure about those
-    isBlockDevice: () => false,
-    isFIFO: () => false,
-    isCharacterDevice: () => false,
-    isSocket: () => false,
-    ctime: origin.ctime,
-    ctimeMs: origin.ctime ? BigInt(origin.ctime.getTime()) : null,
-    ctimeNs: origin.ctime ? BigInt(origin.ctime.getTime()) * 1000000n : null,
+    isBlockDevice: () => isWindows ? false : origin.isBlockDevice,
+    isFIFO: () => isWindows ? false : origin.isFifo,
+    isCharacterDevice: () => isWindows ? false : origin.isCharDevice,
+    isSocket: () => isWindows ? false : origin.isSocket,
+    ctime,
+    ctimeMs: BigInt(ctime.getTime()),
+    ctimeNs: BigInt(ctime.getTime()) * 1000000n,
   });
   return stats;
 }
@@ -351,11 +358,14 @@ export function CFISBIS(fileInfo: Deno.FileInfo, bigInt: boolean) {
   return convertFileInfoToStats(fileInfo);
 }
 
-export type statCallbackBigInt = (err: Error | null, stat: BigIntStats) => void;
+export type statCallbackBigInt = (
+  err: Error | null,
+  stat?: BigIntStats,
+) => void;
 
-export type statCallback = (err: Error | null, stat: Stats) => void;
+export type statCallback = (err: Error | null, stat?: Stats) => void;
 
-const defaultOptions = { bigint: false };
+const defaultOptions = { __proto__: null, bigint: false };
 
 export function stat(path: string | URL, callback: statCallback): void;
 export function stat(
@@ -378,13 +388,13 @@ export function stat(
     options = defaultOptions;
   }
   callback = makeCallback(callback);
-  path = getValidatedPath(path).toString();
+  path = getValidatedPathToString(path);
 
   Deno.stat(path).then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
     (err) =>
       callback(
-        denoErrorToNodeError(err, { syscall: "stat", path: getPathname(path) }),
+        denoErrorToNodeError(err, { syscall: "stat", path }),
       ),
   );
 }
@@ -398,17 +408,25 @@ export const statPromise = promisify(stat) as (
 export function statSync(path: string | URL): Stats;
 export function statSync(
   path: string | URL,
-  options: { bigint: false; throwIfNoEntry?: boolean },
+  options: { bigint: false; throwIfNoEntry: true },
 ): Stats;
 export function statSync(
   path: string | URL,
-  options: { bigint: true; throwIfNoEntry?: boolean },
+  options: { bigint: false; throwIfNoEntry: false },
+): Stats | undefined;
+export function statSync(
+  path: string | URL,
+  options: { bigint: true; throwIfNoEntry: true },
 ): BigIntStats;
+export function statSync(
+  path: string | URL,
+  options: { bigint: true; throwIfNoEntry: false },
+): BigIntStats | undefined;
 export function statSync(
   path: string | URL,
   options: statOptions = { ...defaultOptions, throwIfNoEntry: true },
 ): Stats | BigIntStats | undefined {
-  path = getValidatedPath(path).toString();
+  path = getValidatedPathToString(path);
 
   try {
     const origin = Deno.statSync(path);
@@ -423,14 +441,10 @@ export function statSync(
     if (err instanceof Error) {
       throw denoErrorToNodeError(err, {
         syscall: "stat",
-        path: getPathname(path),
+        path,
       });
     } else {
       throw err;
     }
   }
-}
-
-function getPathname(path: string | URL) {
-  return typeof path === "string" ? path : path.pathname;
 }
