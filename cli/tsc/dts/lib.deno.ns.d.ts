@@ -3054,17 +3054,13 @@ declare namespace Deno {
     ctime: Date | null;
     /** ID of the device containing the file. */
     dev: number;
-    /** Inode number.
-     *
-     * _Linux/Mac OS only._ */
+    /** Inode number on Linux/Mac OS, Index number on Windows. */
     ino: number | null;
     /** The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory.
      */
     mode: number | null;
-    /** Number of hard links pointing to this file.
-     *
-     * _Linux/Mac OS only._ */
+    /** Number of hard links pointing to this file. */
     nlink: number | null;
     /** User ID of the owner of this file.
      *
@@ -3082,9 +3078,7 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     blksize: number | null;
-    /** Number of blocks allocated to the file, in 512-byte units.
-     *
-     * _Linux/Mac OS only._ */
+    /** Number of blocks allocated to the file, in 512-byte units. */
     blocks: number | null;
     /**  True if this is info for a block device.
      *
