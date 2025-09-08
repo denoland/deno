@@ -13,13 +13,13 @@ use std::ptr::NonNull;
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::Local;
 use deno_core::v8::Value;
 use deno_error::JsErrorBox;
 
+use crate::SameObject;
 use crate::surface::GPUCanvasContext;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -93,7 +93,10 @@ pub struct UnsafeWindowSurface {
   pub context: SameObject<GPUCanvasContext>,
 }
 
-impl GarbageCollected for UnsafeWindowSurface {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for UnsafeWindowSurface {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"UnsafeWindowSurface"
   }

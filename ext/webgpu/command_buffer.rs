@@ -29,7 +29,9 @@ impl deno_core::webidl::WebIdlInterfaceConverter for GPUCommandBuffer {
   const NAME: &'static str = "GPUCommandBuffer";
 }
 
-impl GarbageCollected for GPUCommandBuffer {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUCommandBuffer {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUCommandBuffer"
   }

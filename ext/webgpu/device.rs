@@ -6,7 +6,6 @@ use std::num::NonZeroU64;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::WebIdlInterfaceConverter;
@@ -26,6 +25,7 @@ use super::sampler::GPUSampler;
 use super::shader::GPUShaderModule;
 use super::texture::GPUTexture;
 use crate::Instance;
+use crate::SameObject;
 use crate::adapter::GPUAdapterInfo;
 use crate::adapter::GPUSupportedFeatures;
 use crate::adapter::GPUSupportedLimits;
@@ -65,7 +65,10 @@ impl WebIdlInterfaceConverter for GPUDevice {
   const NAME: &'static str = "GPUDevice";
 }
 
-impl GarbageCollected for GPUDevice {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUDevice {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUDevice"
   }
@@ -885,7 +888,10 @@ impl GPUDevice {
 
 pub struct GPUDeviceLostInfo;
 
-impl GarbageCollected for GPUDeviceLostInfo {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUDeviceLostInfo {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUDeviceLostInfo"
   }
