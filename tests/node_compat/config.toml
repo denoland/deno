@@ -441,6 +441,8 @@
 "parallel/test-fs-long-path.js" = {}
 "parallel/test-fs-make-callback.js" = {}
 "parallel/test-fs-makeStatsCallback.js" = {}
+"parallel/test-fs-mkdtemp-prefix-check.js" = {}
+"parallel/test-fs-mkdtemp.js" = {}
 "parallel/test-fs-open-flags.js" = {}
 "parallel/test-fs-open-no-close.js" = {}
 "parallel/test-fs-open-numeric-flags.js" = {}
@@ -906,6 +908,7 @@
 "parallel/test-readline-interface-escapecodetimeout.js" = {}
 "parallel/test-readline-interface-no-trailing-newline.js" = {}
 "parallel/test-readline-interface-recursive-writes.js" = {}
+"parallel/test-readline-line-separators.js" = {}
 "parallel/test-readline-position.js" = {}
 "parallel/test-readline-reopen.js" = {}
 "parallel/test-readline-set-raw-mode.js" = {}

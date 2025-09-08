@@ -184,6 +184,16 @@ pub async fn bundle(
   let duration = end.duration_since(start);
 
   if bundle_flags.watch {
+    if !response.errors.is_empty() || !response.warnings.is_empty() {
+      handle_esbuild_errors_and_warnings(
+        &response,
+        &init_cwd,
+        &bundler.plugin_handler.take_deferred_resolve_errors(),
+      );
+      if !response.errors.is_empty() {
+        deno_core::anyhow::bail!("bundling failed");
+      }
+    }
     return bundle_watch(
       flags,
       bundler,
@@ -400,7 +410,8 @@ impl EsbuildBundler {
       .client
       .send_build_request(self.make_build_request())
       .await
-      .unwrap();
+      .unwrap()
+      .map_err(|e| message_to_error(&e, &self.cwd))?;
 
     Ok(response)
   }
@@ -411,12 +422,25 @@ impl EsbuildBundler {
         panic!("rebuild not supported for one-shot mode")
       }
       BundlingMode::Watch => {
-        let _response = self.client.send_rebuild_request(0).await.unwrap();
+        log::trace!("sending rebuild request");
+        let _response = self
+          .client
+          .send_rebuild_request(0)
+          .await
+          .unwrap()
+          .map_err(|e| message_to_error(&e, &self.cwd))?;
         let response = self.on_end_rx.recv().await.unwrap();
         Ok(response.into())
       }
     }
   }
+}
+
+fn message_to_error(
+  message: &esbuild_client::protocol::Message,
+  current_dir: &Path,
+) -> AnyError {
+  deno_core::anyhow::anyhow!("{}", format_message(message, current_dir))
 }
 
 // TODO(nathanwhit): MASSIVE HACK
@@ -1228,7 +1252,7 @@ impl DenoPluginHandler {
     source: &Arc<str>,
     is_known_script: Option<bool>,
   ) -> Result<Arc<str>, BundleLoadError> {
-    let parsed_source = self.parsed_source_cache.get_matching_parsed_source(
+    let parsed_source = self.parsed_source_cache.remove_or_parse_module(
       specifier,
       media_type,
       source.clone(),
