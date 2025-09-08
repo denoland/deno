@@ -1007,9 +1007,10 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
       }
 
       /* The on-disk allocation size in 512-byte units. */
-      fsstat.blocks = file_info.StandardInformation.AllocationSize as u64 >> 9;
-      fsstat.ino = file_info.InternalInformation.IndexNumber as u64;
-      fsstat.nlink = file_info.StandardInformation.NumberOfLinks as u64;
+      fsstat.blocks =
+        Some(file_info.StandardInformation.AllocationSize as u64 >> 9);
+      fsstat.ino = Some(file_info.InternalInformation.IndexNumber as u64);
+      fsstat.nlink = Some(file_info.StandardInformation.NumberOfLinks as u64);
     }
 
     Ok(())
