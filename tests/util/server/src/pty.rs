@@ -331,7 +331,7 @@ fn set_winsize(
     ws_ypixel: 0,
   };
   // SAFETY: set windows size
-  if unsafe { libc::ioctl(fd, libc::TIOCSWINSZ.into(), &ws) == -1 } {
+  if unsafe { libc::ioctl(fd, libc::TIOCSWINSZ, &ws) == -1 } {
     return Err(std::io::Error::last_os_error());
   }
   Ok(())
