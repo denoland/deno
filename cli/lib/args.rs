@@ -245,5 +245,8 @@ impl UnstableConfig {
     self.bare_node_builtins = true;
     self.sloppy_imports = true;
     self.detect_cjs = true;
+    if !self.features.iter().any(|f| f == "node-globals") {
+      self.features.push("node-globals".to_string());
+    }
   }
 }
