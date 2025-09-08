@@ -495,6 +495,7 @@ mod windows {
   use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
   use winapi::um::winnt::HANDLE;
 
+  use super::PTY_ROWS_COLS;
   use super::SystemPty;
 
   macro_rules! assert_win_success {
@@ -536,8 +537,8 @@ mod windows {
       // Generous use of winapi to create a PTY (thus large unsafe block).
       unsafe {
         let mut size: COORD = std::mem::zeroed();
-        size.Y = PTY_ROWS_COLS.0;
-        size.X = PTY_ROWS_COLS.1;
+        size.Y = PTY_ROWS_COLS.0 as i16;
+        size.X = PTY_ROWS_COLS.1 as i16;
         let mut console_handle = std::ptr::null_mut();
         let (stdin_read_handle, stdin_write_handle) = create_pipe();
         let (stdout_read_handle, stdout_write_handle) = create_pipe();
