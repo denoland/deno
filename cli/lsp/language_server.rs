@@ -1207,6 +1207,13 @@ impl Inner {
       &self.config,
       &self.resolver,
     ));
+    // TODO(nayeemrmn): This represents a circular dependency between
+    // `LspCompilerOptionsResolver` and `LspResolver` because the former uses
+    // the node resolver to resolve `extends` in tsconfig. Break out the node
+    // resolver from `LspResolver`.
+    self
+      .resolver
+      .set_compiler_options_resolver(&self.compiler_options_resolver.inner);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1915,9 +1922,11 @@ impl Inner {
       .dependency_at_position(&params.text_document_position_params.position)
     {
       let dep_module = dep.get_code().and_then(|s| {
-        self
-          .document_modules
-          .inspect_module_for_specifier(s, module.scope.as_deref())
+        self.document_modules.module_for_specifier(
+          s,
+          module.scope.as_deref(),
+          Some(&module.compiler_options_key),
+        )
       });
       let dep_types_dependency = dep_module.as_ref().map(|m| {
         m.types_dependency
@@ -3958,17 +3967,23 @@ impl Inner {
           );
         })
         .unwrap_or_default();
-      items_with_scopes.extend(items.into_iter().map(|i| (i, scope)));
+      items_with_scopes.extend(
+        items
+          .into_iter()
+          .map(|i| (i, (scope, compiler_options_key))),
+      );
     }
     let symbol_information = items_with_scopes
       .into_iter()
-      .flat_map(|(item, scope)| {
+      .flat_map(|(item, (scope, compiler_options_key))| {
         if token.is_cancelled() {
           return Some(Err(LspError::request_cancelled()));
         }
-        Some(Ok(
-          item.to_symbol_information(scope.map(|s| s.as_ref()), self)?,
-        ))
+        Some(Ok(item.to_symbol_information(
+          scope.map(|s| s.as_ref()),
+          compiler_options_key,
+          self,
+        )?))
       })
       .collect::<Result<Vec<_>, _>>()?;
     let symbol_information = if symbol_information.is_empty() {

@@ -15,6 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 capacity_builder.workspace = true
+chrono = { workspace = true, features = ["now"] }
 deno_error.workspace = true
 deno_path_util.workspace = true
 deno_terminal.workspace = true

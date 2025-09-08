@@ -224,4 +224,12 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
+  UnstableFeatureDescription {
+    name: "bundle",
+    help_text: "Enable unstable bundle runtime API",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Runtime,
+    config_option: ConfigFileOption::SameAsFlagName,
+    env_var: None,
+  },
 ];
