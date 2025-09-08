@@ -18,6 +18,7 @@ pub struct BlockListResource {
   blocklist: RefCell<BlockList>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl deno_core::GarbageCollected for BlockListResource {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

@@ -62,6 +62,7 @@ pub enum KeyObjectHandle {
   Secret(Box<[u8]>),
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for KeyObjectHandle {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -1921,6 +1922,7 @@ struct KeyObjectHandlePair {
   public_key: RefCell<Option<KeyObjectHandle>>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for KeyObjectHandlePair {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

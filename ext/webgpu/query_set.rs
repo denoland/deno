@@ -27,6 +27,7 @@ impl WebIdlInterfaceConverter for GPUQuerySet {
   const NAME: &'static str = "GPUQuerySet";
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUQuerySet {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

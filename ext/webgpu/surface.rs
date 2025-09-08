@@ -40,6 +40,7 @@ pub struct Configuration {
     wgpu_types::SurfaceConfiguration<Vec<wgpu_types::TextureFormat>>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for Configuration {
   fn trace(&self, visitor: &mut Visitor) {
     visitor.trace(&self.device);
@@ -61,6 +62,7 @@ pub struct GPUCanvasContext {
   pub canvas: v8::Global<v8::Object>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUCanvasContext {
   fn trace(&self, visitor: &mut Visitor) {
     if let Some(config) = &*self.config.borrow() {

@@ -25,6 +25,7 @@ impl WebIdlInterfaceConverter for GPUPipelineLayout {
   const NAME: &'static str = "GPUPipelineLayout";
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUPipelineLayout {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

@@ -21,6 +21,7 @@ pub struct ContextifyScript {
   script: v8::TracedReference<v8::UnboundScript>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl v8::cppgc::GarbageCollected for ContextifyScript {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.script);
@@ -261,6 +262,7 @@ pub struct ContextifyContext {
   sandbox: v8::TracedReference<v8::Object>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl deno_core::GarbageCollected for ContextifyContext {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.context);

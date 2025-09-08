@@ -452,6 +452,7 @@ pub struct NetPermToken {
   pub resolved_ips: Vec<String>,
 }
 
+// SAFETY: we're sure `NetPermToken` can be GCed
 unsafe impl deno_core::GarbageCollected for NetPermToken {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

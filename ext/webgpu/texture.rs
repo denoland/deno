@@ -66,6 +66,7 @@ impl WebIdlInterfaceConverter for GPUTexture {
   const NAME: &'static str = "GPUTexture";
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUTexture {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -261,6 +262,7 @@ impl WebIdlInterfaceConverter for GPUTextureView {
   const NAME: &'static str = "GPUTextureView";
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUTextureView {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

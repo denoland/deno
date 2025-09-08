@@ -235,6 +235,7 @@ pub struct DatabaseSync {
   location: String,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for DatabaseSync {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

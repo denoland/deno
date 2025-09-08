@@ -93,6 +93,7 @@ pub struct UnsafeWindowSurface {
   pub context: SameObject<GPUCanvasContext>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for UnsafeWindowSurface {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

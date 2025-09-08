@@ -73,6 +73,7 @@ impl WebIdlInterfaceConverter for GPUBuffer {
   const NAME: &'static str = "GPUBuffer";
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUBuffer {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

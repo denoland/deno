@@ -35,6 +35,7 @@ impl Drop for GPUCommandEncoder {
   }
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUCommandEncoder {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

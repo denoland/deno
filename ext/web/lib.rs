@@ -353,6 +353,7 @@ struct TextDecoderResource {
   fatal: bool,
 }
 
+// SAFETY: we're sure `TextDecoderResource` can be GCed
 unsafe impl deno_core::GarbageCollected for TextDecoderResource {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

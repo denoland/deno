@@ -1403,6 +1403,7 @@ fn owned_string<'s>(
 
 struct OtelTracer(InstrumentationScope);
 
+// SAFETY: we're sure this can be GCed
 unsafe impl deno_core::GarbageCollected for OtelTracer {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -1618,6 +1619,7 @@ enum OtelSpanState {
   Done(SpanContext),
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl deno_core::GarbageCollected for OtelSpan {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -1897,6 +1899,7 @@ fn op_otel_span_add_link<'s>(
 
 struct OtelMeter(opentelemetry::metrics::Meter);
 
+// SAFETY: we're sure this can be GCed
 unsafe impl deno_core::GarbageCollected for OtelMeter {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -2100,6 +2103,7 @@ enum Instrument {
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for Instrument {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

@@ -65,6 +65,7 @@ impl WebIdlInterfaceConverter for GPUDevice {
   const NAME: &'static str = "GPUDevice";
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUDevice {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -887,6 +888,7 @@ impl GPUDevice {
 
 pub struct GPUDeviceLostInfo;
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUDeviceLostInfo {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

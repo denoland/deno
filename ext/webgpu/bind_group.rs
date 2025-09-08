@@ -36,6 +36,7 @@ impl WebIdlInterfaceConverter for GPUBindGroup {
   const NAME: &'static str = "GPUBindGroup";
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUBindGroup {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

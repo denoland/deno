@@ -29,6 +29,7 @@ pub struct GPURenderBundleEncoder {
   pub label: String,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPURenderBundleEncoder {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -412,6 +413,7 @@ impl WebIdlInterfaceConverter for GPURenderBundle {
   const NAME: &'static str = "GPURenderBundle";
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPURenderBundle {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

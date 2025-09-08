@@ -171,6 +171,7 @@ impl<'a> Iterator for ColumnIterator<'a> {
   }
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for StatementSync {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

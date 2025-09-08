@@ -68,6 +68,7 @@ pub enum TlsKeys {
 
 pub struct TlsKeysHolder(RefCell<TlsKeys>);
 
+// SAFETY: we're sure `TlsKeysHolder` can be GCed
 unsafe impl deno_core::GarbageCollected for TlsKeysHolder {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -247,6 +248,7 @@ pub struct TlsKeyLookup {
     RefCell<HashMap<String, broadcast::Sender<Result<TlsKey, ErrorType>>>>,
 }
 
+// SAFETY: we're sure `TlsKeyLookup` can be GCed
 unsafe impl deno_core::GarbageCollected for TlsKeyLookup {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

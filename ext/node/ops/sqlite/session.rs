@@ -90,6 +90,7 @@ pub struct Session {
   pub(crate) db: Weak<RefCell<Option<rusqlite::Connection>>>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for Session {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

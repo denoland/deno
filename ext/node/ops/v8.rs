@@ -47,6 +47,7 @@ pub struct SerializerDelegate {
   obj: v8::Global<v8::Object>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl v8::cppgc::GarbageCollected for Serializer<'_> {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -229,6 +230,7 @@ pub struct Deserializer<'a> {
   inner: v8::ValueDeserializer<'a>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl deno_core::GarbageCollected for Deserializer<'_> {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -241,6 +243,7 @@ pub struct DeserializerDelegate {
   obj: v8::TracedReference<v8::Object>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for DeserializerDelegate {
   fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
     visitor.trace(&self.obj);

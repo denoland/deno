@@ -302,6 +302,7 @@ pub struct Zlib {
   inner: RefCell<Option<ZlibInner>>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl deno_core::GarbageCollected for Zlib {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -563,6 +564,7 @@ pub struct BrotliEncoder {
   ctx: Rc<RefCell<Option<BrotliEncoderCtx>>>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl deno_core::GarbageCollected for BrotliEncoder {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -730,6 +732,7 @@ pub struct BrotliDecoder {
   ctx: Rc<RefCell<Option<BrotliDecoderCtx>>>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl deno_core::GarbageCollected for BrotliDecoder {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

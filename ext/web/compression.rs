@@ -31,6 +31,7 @@ pub enum CompressionError {
 #[derive(Debug)]
 struct CompressionResource(RefCell<Option<Inner>>);
 
+// SAFETY: we're sure `CompressionResource` can be GCed
 unsafe impl deno_core::GarbageCollected for CompressionResource {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

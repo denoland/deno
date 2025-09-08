@@ -80,6 +80,7 @@ pub(crate) struct Certificate {
   inner: Yoke<CertificateView<'static>, Box<CertificateSources>>,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl deno_core::GarbageCollected for Certificate {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 

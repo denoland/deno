@@ -61,6 +61,7 @@ impl Drop for GPUAdapter {
   }
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUAdapter {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -257,6 +258,7 @@ pub enum CreateDeviceError {
 
 pub struct GPUSupportedLimits(pub wgpu_types::Limits);
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUSupportedLimits {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -426,6 +428,7 @@ impl GPUSupportedLimits {
 
 pub struct GPUSupportedFeatures(v8::Global<v8::Value>);
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUSupportedFeatures {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -471,6 +474,7 @@ pub struct GPUAdapterInfo {
   pub subgroup_max_size: u32,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPUAdapterInfo {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
