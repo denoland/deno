@@ -1,6 +1,9 @@
 Check [WILDCARD]
 Temporal.Now [WILDCARD]
 Temporal.Instant 1969-07-20T20:17:00Z
+RangeError: Temporal error: Expected positive integer.
+    at ZonedDateTime.from (<anonymous>)
+    at [WILDCARD]main.ts:9:28
 Temporal.PlainDate 2006-08-24
 Temporal.PlainTime 19:39:09.068346205
 Temporal.PlainDateTime 1995-12-07T15:00:00

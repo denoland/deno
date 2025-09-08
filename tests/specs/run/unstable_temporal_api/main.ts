@@ -19,8 +19,8 @@ try {
       nanosecond: 500,
     }),
   );
-} catch {
-  // pass
+} catch (e) {
+  console.log(e);
 }
 console.log(
   "Temporal.PlainDate",
