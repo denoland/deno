@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
 use deno_path_util::url_from_file_path;
@@ -330,7 +331,7 @@ pub struct LibMainWorkerOptions {
   pub has_node_modules_dir: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
@@ -376,6 +377,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   storage_key_resolver: StorageKeyResolver,
   sys: TSys,
   options: LibMainWorkerOptions,
+  bundle_provider: Option<Arc<dyn BundleProvider>>,
 }
 
 impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
@@ -504,7 +506,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         worker_type: args.worker_type,
         stdio: stdio.clone(),
         cache_storage_dir,
-        strace_ops: shared.options.strace_ops.clone(),
+        trace_ops: shared.options.trace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
         enable_raw_imports: shared.options.enable_raw_imports,
@@ -540,6 +542,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     sys: TSys,
     options: LibMainWorkerOptions,
     roots: LibWorkerFactoryRoots,
+    bundle_provider: Option<Arc<dyn BundleProvider>>,
   ) -> Self {
     Self {
       shared: Arc::new(LibWorkerFactorySharedState {
@@ -560,6 +563,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         storage_key_resolver,
         sys,
         options,
+        bundle_provider,
       }),
     }
   }
@@ -646,6 +650,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       feature_checker,
       permissions,
       v8_code_cache: shared.code_cache.clone(),
+      bundle_provider: shared.bundle_provider.clone(),
     };
 
     let options = WorkerOptions {
@@ -690,7 +695,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
-      strace_ops: shared.options.strace_ops.clone(),
+      trace_ops: shared.options.trace_ops.clone(),
       cache_storage_dir,
       origin_storage_dir,
       stdio,
@@ -816,32 +821,29 @@ impl LibMainWorker {
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_load_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_load_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, Box<JsError>> {
     self.worker.dispatch_beforeunload_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_process_beforeexit_event(
+    &mut self,
+  ) -> Result<bool, Box<JsError>> {
     self.worker.dispatch_process_beforeexit_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_unload_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_unload_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_process_exit_event()
   }
 

@@ -2,11 +2,12 @@
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::webidl::WebIdlInterfaceConverter;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 pub struct GPUPipelineLayout {
   pub instance: Instance,
@@ -32,6 +33,12 @@ impl GarbageCollected for GPUPipelineLayout {
 
 #[op2]
 impl GPUPipelineLayout {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUPipelineLayout, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -51,5 +58,5 @@ pub(crate) struct GPUPipelineLayoutDescriptor {
   pub label: String,
 
   pub bind_group_layouts:
-    Vec<Ptr<super::bind_group_layout::GPUBindGroupLayout>>,
+    Vec<Ref<super::bind_group_layout::GPUBindGroupLayout>>,
 }

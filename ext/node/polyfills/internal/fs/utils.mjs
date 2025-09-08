@@ -814,17 +814,20 @@ export const getValidatedPath = hideStackFrames(
 );
 
 /**
- * @param {string | Buffer | URL} fileURLOrPath
+ * @param {string | Buffer | Uint8Array | URL} fileURLOrPath
  * @param {string} [propName]
  * @returns string
  */
 export const getValidatedPathToString = (fileURLOrPath, propName) => {
   const path = getValidatedPath(fileURLOrPath, propName);
-  if (!Buffer.isBuffer(path)) {
-    return path;
+  if (isUint8Array(path)) {
+    return new TextDecoder().decode(path);
   }
-  // deno-lint-ignore prefer-primordials
-  return path.toString();
+  if (Buffer.isBuffer(path)) {
+    // deno-lint-ignore prefer-primordials
+    return path.toString();
+  }
+  return path;
 };
 
 export const getValidatedFd = hideStackFrames((fd, propName = "fd") => {

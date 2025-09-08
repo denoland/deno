@@ -15,4 +15,5 @@ pub mod sync;
 pub mod text_encoding;
 pub mod unix;
 pub mod v8;
+pub mod watch_env_tracker;
 pub mod windows;

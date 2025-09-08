@@ -10,3 +10,13 @@ Initialize @denotest/esm-basic@1.0.0
 Initialize @denotest/say-hello@1.0.0
 Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
 [UNORDERED_END]
+Installed 2 packages in [WILDLINE]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 4 packages from npm
+++++
+
+Dependencies:
++ npm:@denotest/esm-basic 1.0.0
++ npm:@denotest/say-hello 1.0.0
+

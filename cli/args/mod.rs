@@ -22,6 +22,8 @@ use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
+use deno_config::deno_json::PermissionConfigValue;
+use deno_config::deno_json::PermissionsObjectWithBase;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
 pub use deno_config::glob::FilePatterns;
@@ -46,13 +48,14 @@ use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
+use deno_runtime::deno_permissions::AllowRunDescriptor;
+use deno_runtime::deno_permissions::PathDescriptor;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::StackString;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
-use dotenvy::from_filename;
 pub use flags::*;
 use once_cell::sync::Lazy;
 use thiserror::Error;
@@ -1019,54 +1022,84 @@ impl CliOptions {
     self.flags.no_remote
   }
 
-  pub fn permissions_options(&self) -> PermissionsOptions {
-    // bury this in here to ensure people use cli_options.permissions_options()
-    fn flags_to_options(flags: &PermissionFlags) -> PermissionsOptions {
-      fn handle_allow<T: Default>(
-        allow_all: bool,
-        value: Option<T>,
-      ) -> Option<T> {
-        if allow_all {
-          assert!(value.is_none());
-          Some(T::default())
-        } else {
-          value
+  pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
+    self.permissions_options_for_dir(&self.start_dir)
+  }
+
+  pub fn permissions_options_for_dir(
+    &self,
+    dir: &WorkspaceDirectory,
+  ) -> Result<PermissionsOptions, AnyError> {
+    let config_permissions = self.resolve_config_permissions_for_dir(dir)?;
+    let mut permissions_options = flags_to_permissions_options(
+      &self.flags.permissions,
+      config_permissions,
+    )?;
+    self.augment_import_permissions(&mut permissions_options);
+    Ok(permissions_options)
+  }
+
+  fn resolve_config_permissions_for_dir<'a>(
+    &self,
+    dir: &'a WorkspaceDirectory,
+  ) -> Result<Option<&'a PermissionsObjectWithBase>, AnyError> {
+    let config_permissions = if let Some(name) = &self.flags.permission_set {
+      if name.is_empty() {
+        let maybe_subcommand_permissions = match &self.flags.subcommand {
+          DenoSubcommand::Bench(_) => dir.to_bench_permissions_config()?,
+          DenoSubcommand::Compile(_) => dir.to_compile_permissions_config()?,
+          DenoSubcommand::Test(_) => dir.to_test_permissions_config()?,
+          _ => None,
+        };
+        match maybe_subcommand_permissions {
+          Some(permissions) => Some(permissions),
+          // do not error when the default set doesn't exist in order
+          // to allow providing `-P` unconditionally
+          None => dir.to_permissions_config()?.sets.get("default"),
+        }
+      } else {
+        Some(dir.to_permissions_config()?.get(name)?)
+      }
+    } else {
+      if !self.flags.has_permission() {
+        let set_config_permission_name = match &self.flags.subcommand {
+          DenoSubcommand::Bench(_) => dir
+            .to_bench_permissions_config()?
+            .is_some()
+            .then_some("Bench"),
+          DenoSubcommand::Compile(_) => dir
+            .to_compile_permissions_config()?
+            .is_some()
+            .then_some("Compile"),
+          DenoSubcommand::Test(_) => dir
+            .to_test_permissions_config()?
+            .is_some()
+            .then_some("Test"),
+          _ => None,
+        };
+        if let Some(name) = set_config_permission_name {
+          // prevent people from wasting time wondering why benches/tests are failing
+          bail!(
+            "{} permissions were found in the config file. Did you mean to run with `-P` or a permission flag?{}",
+            name,
+            dir
+              .maybe_deno_json()
+              .map(|d| format!("\n    at {}", d.specifier))
+              .unwrap_or_default()
+          );
         }
       }
 
-      PermissionsOptions {
-        allow_all: flags.allow_all,
-        allow_env: handle_allow(flags.allow_all, flags.allow_env.clone()),
-        deny_env: flags.deny_env.clone(),
-        allow_net: handle_allow(flags.allow_all, flags.allow_net.clone()),
-        deny_net: flags.deny_net.clone(),
-        allow_ffi: handle_allow(flags.allow_all, flags.allow_ffi.clone()),
-        deny_ffi: flags.deny_ffi.clone(),
-        allow_read: handle_allow(flags.allow_all, flags.allow_read.clone()),
-        deny_read: flags.deny_read.clone(),
-        allow_run: handle_allow(flags.allow_all, flags.allow_run.clone()),
-        deny_run: flags.deny_run.clone(),
-        allow_sys: handle_allow(flags.allow_all, flags.allow_sys.clone()),
-        deny_sys: flags.deny_sys.clone(),
-        allow_write: handle_allow(flags.allow_all, flags.allow_write.clone()),
-        deny_write: flags.deny_write.clone(),
-        allow_import: handle_allow(flags.allow_all, flags.allow_import.clone()),
-        deny_import: flags.deny_import.clone(),
-        prompt: !resolve_no_prompt(flags),
-      }
-    }
-
-    let mut permissions_options = flags_to_options(&self.flags.permissions);
-    self.augment_import_permissions(&mut permissions_options);
-    permissions_options
+      None
+    };
+    Ok(config_permissions)
   }
 
   fn augment_import_permissions(&self, options: &mut PermissionsOptions) {
     // do not add if the user specified --allow-all or --allow-import
-    if !options.allow_all && options.allow_import.is_none() {
+    if options.allow_import.is_none() {
       options.allow_import = Some(self.implicit_allow_import());
     }
-    options.deny_import = options.deny_import.clone();
   }
 
   fn implicit_allow_import(&self) -> Vec<String> {
@@ -1152,8 +1185,8 @@ impl CliOptions {
     &self.flags.subcommand
   }
 
-  pub fn strace_ops(&self) -> &Option<Vec<String>> {
-    &self.flags.strace_ops
+  pub fn trace_ops(&self) -> &Option<Vec<String>> {
+    &self.flags.trace_ops
   }
 
   pub fn take_binary_npm_command_name(&self) -> Option<String> {
@@ -1280,6 +1313,15 @@ impl CliOptions {
       full_paths.extend(paths.iter().map(|path| self.initial_cwd.join(path)));
     }
 
+    if let Some(env_file_names) = &self.flags.env_file {
+      // Only watch the exact environment files specified
+      full_paths.extend(
+        env_file_names
+          .iter()
+          .map(|name| self.initial_cwd.join(name)),
+      );
+    }
+
     if let Ok(Some(import_map_path)) = self
       .resolve_specified_import_map_specifier()
       .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
@@ -1298,6 +1340,7 @@ impl CliOptions {
         full_paths.push(pkg_json.path.clone());
       }
     }
+
     full_paths
   }
 
@@ -1422,53 +1465,6 @@ pub fn config_to_deno_graph_workspace_member(
   })
 }
 
-pub fn load_env_variables_from_env_file(
-  filename: Option<&Vec<String>>,
-  flags_log_level: Option<log::Level>,
-) {
-  let Some(env_file_names) = filename else {
-    return;
-  };
-
-  for env_file_name in env_file_names.iter().rev() {
-    match from_filename(env_file_name) {
-      Ok(_) => (),
-      Err(error) => {
-        #[allow(clippy::print_stderr)]
-        if flags_log_level
-          .map(|l| l >= log::Level::Info)
-          .unwrap_or(true)
-        {
-          match error {
-            dotenvy::Error::LineParse(line, index) => eprintln!(
-              "{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",
-              colors::yellow("Warning"),
-              env_file_name,
-              index,
-              line
-            ),
-            dotenvy::Error::Io(_) => eprintln!(
-              "{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",
-              colors::yellow("Warning"),
-              env_file_name
-            ),
-            dotenvy::Error::EnvVar(_) => eprintln!(
-              "{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",
-              colors::yellow("Warning"),
-              env_file_name
-            ),
-            _ => eprintln!(
-              "{} Unknown failure occurred with the specified environment file: {}",
-              colors::yellow("Warning"),
-              env_file_name
-            ),
-          }
-        }
-      }
-    }
-  }
-}
-
 pub fn get_default_v8_flags() -> Vec<String> {
   vec![
     "--stack-size=1024".to_string(),
@@ -1508,8 +1504,213 @@ fn allow_import_host_from_url(url: &Url) -> Option<String> {
   }
 }
 
+// DO NOT make this public. People should use `cli_options.permissions_options/permissions_options_for_dir`
+fn flags_to_permissions_options(
+  flags: &PermissionFlags,
+  mut config: Option<&PermissionsObjectWithBase>,
+) -> Result<PermissionsOptions, AnyError> {
+  fn handle_allow(
+    allow_all_flag: bool,
+    allow_all_config: Option<bool>,
+    value: Option<&Vec<String>>,
+    config: Option<&PermissionConfigValue>,
+    parse_config_value: &impl Fn(&str) -> String,
+  ) -> Option<Vec<String>> {
+    if allow_all_flag {
+      Some(vec![])
+    } else if let Some(value) = value {
+      Some(value.clone())
+    } else if let Some(config) = config {
+      match config {
+        PermissionConfigValue::All => Some(vec![]),
+        PermissionConfigValue::Some(items) => {
+          if items.is_empty() {
+            None
+          } else {
+            Some(
+              items
+                .iter()
+                .map(|value| parse_config_value(value))
+                .collect(),
+            )
+          }
+        }
+        PermissionConfigValue::None => None,
+      }
+    } else if allow_all_config == Some(true) {
+      Some(vec![])
+    } else {
+      None
+    }
+  }
+
+  fn handle_deny(
+    value: Option<&Vec<String>>,
+    config: Option<&PermissionConfigValue>,
+    parse_config_value: &impl Fn(&str) -> String,
+  ) -> Option<Vec<String>> {
+    if let Some(value) = value {
+      Some(value.clone())
+    } else if let Some(config) = config {
+      match config {
+        PermissionConfigValue::All => Some(vec![]),
+        PermissionConfigValue::Some(items) => Some(
+          items
+            .iter()
+            .map(|value| parse_config_value(value))
+            .collect(),
+        ),
+        PermissionConfigValue::None => None,
+      }
+    } else {
+      None
+    }
+  }
+
+  if flags.allow_all {
+    config = None;
+  }
+
+  let config_dir = match &config {
+    Some(config) => {
+      let mut path = deno_path_util::url_to_file_path(&config.base)?;
+      path.pop();
+      Some(path)
+    }
+    None => None,
+  };
+
+  let make_fs_config_value_absolute = |value: &str| match &config_dir {
+    Some(dir_path) => {
+      PathDescriptor::new_known_cwd(Cow::Borrowed(Path::new(value)), dir_path)
+        .into_path_buf()
+        .into_os_string()
+        .into_string()
+        .unwrap()
+    }
+    None => value.to_string(),
+  };
+  let make_run_config_value_absolute = |value: &str| match &config_dir {
+    Some(dir_path) => {
+      if AllowRunDescriptor::is_path(value) {
+        PathDescriptor::new_known_cwd(Cow::Borrowed(Path::new(value)), dir_path)
+          .into_path_buf()
+          .into_os_string()
+          .into_string()
+          .unwrap()
+      } else {
+        value.to_string()
+      }
+    }
+    None => value.to_string(),
+  };
+  let no_op = |value: &str| value.to_string();
+
+  Ok(PermissionsOptions {
+    allow_env: handle_allow(
+      flags.allow_all,
+      config.and_then(|c| c.permissions.all),
+      flags.allow_env.as_ref(),
+      config.and_then(|c| c.permissions.env.allow.as_ref()),
+      &no_op,
+    ),
+    deny_env: handle_deny(
+      flags.deny_env.as_ref(),
+      config.and_then(|c| c.permissions.env.deny.as_ref()),
+      &no_op,
+    ),
+    allow_net: handle_allow(
+      flags.allow_all,
+      config.and_then(|c| c.permissions.all),
+      flags.allow_net.as_ref(),
+      config.and_then(|c| c.permissions.net.allow.as_ref()),
+      &no_op,
+    ),
+    deny_net: handle_deny(
+      flags.deny_net.as_ref(),
+      config.and_then(|c| c.permissions.net.deny.as_ref()),
+      &no_op,
+    ),
+    allow_ffi: handle_allow(
+      flags.allow_all,
+      config.and_then(|c| c.permissions.all),
+      flags.allow_ffi.as_ref(),
+      config.and_then(|c| c.permissions.ffi.allow.as_ref()),
+      &make_fs_config_value_absolute,
+    ),
+    deny_ffi: handle_deny(
+      flags.deny_ffi.as_ref(),
+      config.and_then(|c| c.permissions.ffi.deny.as_ref()),
+      &make_fs_config_value_absolute,
+    ),
+    allow_read: handle_allow(
+      flags.allow_all,
+      config.and_then(|c| c.permissions.all),
+      flags.allow_read.as_ref(),
+      config.and_then(|c| c.permissions.read.allow.as_ref()),
+      &make_fs_config_value_absolute,
+    ),
+    deny_read: handle_deny(
+      flags.deny_read.as_ref(),
+      config.and_then(|c| c.permissions.read.deny.as_ref()),
+      &make_fs_config_value_absolute,
+    ),
+    allow_run: handle_allow(
+      flags.allow_all,
+      config.and_then(|c| c.permissions.all),
+      flags.allow_run.as_ref(),
+      config.and_then(|c| c.permissions.run.allow.as_ref()),
+      &make_run_config_value_absolute,
+    ),
+    deny_run: handle_deny(
+      flags.deny_run.as_ref(),
+      config.and_then(|c| c.permissions.run.deny.as_ref()),
+      &make_run_config_value_absolute,
+    ),
+    allow_sys: handle_allow(
+      flags.allow_all,
+      config.and_then(|c| c.permissions.all),
+      flags.allow_sys.as_ref(),
+      config.and_then(|c| c.permissions.sys.allow.as_ref()),
+      &no_op,
+    ),
+    deny_sys: handle_deny(
+      flags.deny_sys.as_ref(),
+      config.and_then(|c| c.permissions.sys.deny.as_ref()),
+      &no_op,
+    ),
+    allow_write: handle_allow(
+      flags.allow_all,
+      config.and_then(|c| c.permissions.all),
+      flags.allow_write.as_ref(),
+      config.and_then(|c| c.permissions.write.allow.as_ref()),
+      &make_fs_config_value_absolute,
+    ),
+    deny_write: handle_deny(
+      flags.deny_write.as_ref(),
+      config.and_then(|c| c.permissions.write.deny.as_ref()),
+      &make_fs_config_value_absolute,
+    ),
+    allow_import: handle_allow(
+      flags.allow_all,
+      config.and_then(|c| c.permissions.all),
+      flags.allow_import.as_ref(),
+      config.and_then(|c| c.permissions.import.allow.as_ref()),
+      &no_op,
+    ),
+    deny_import: handle_deny(
+      flags.deny_import.as_ref(),
+      config.and_then(|c| c.permissions.import.deny.as_ref()),
+      &no_op,
+    ),
+    prompt: !resolve_no_prompt(flags),
+  })
+}
+
 #[cfg(test)]
 mod test {
+  use deno_config::deno_json::AllowDenyPermissionConfig;
+  use deno_config::deno_json::PermissionsObject;
   use pretty_assertions::assert_eq;
 
   use super::*;
@@ -1583,5 +1784,222 @@ mod test {
       Some("example.com:80".to_string())
     );
     assert_eq!(parse("file:///example.com"), None);
+  }
+
+  #[test]
+  fn test_flags_to_permission_options() {
+    let base_dir = std::env::current_dir().unwrap().join("sub");
+    {
+      let flags = PermissionFlags::default();
+      let config = PermissionsObjectWithBase {
+        base: deno_path_util::url_from_file_path(&base_dir.join("deno.json"))
+          .unwrap(),
+        permissions: PermissionsObject {
+          all: None,
+          read: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              ".".to_string(),
+              "./read-allow".to_string(),
+            ])),
+            deny: Some(PermissionConfigValue::Some(vec![
+              "./read-deny".to_string(),
+            ])),
+          },
+          write: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "./write-allow".to_string(),
+            ])),
+            deny: Some(PermissionConfigValue::Some(vec![
+              "./write-deny".to_string(),
+            ])),
+          },
+          import: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "jsr.io".to_string(),
+            ])),
+            deny: Some(PermissionConfigValue::Some(vec![
+              "example.com".to_string(),
+            ])),
+          },
+          env: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "env-allow".to_string(),
+            ])),
+            deny: Some(PermissionConfigValue::Some(vec![
+              "env-deny".to_string(),
+            ])),
+          },
+          net: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "net-allow".to_string(),
+            ])),
+            deny: Some(PermissionConfigValue::Some(vec![
+              "net-deny".to_string(),
+            ])),
+          },
+          run: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "run-allow".to_string(),
+              "./relative-run-allow".to_string(),
+            ])),
+            deny: Some(PermissionConfigValue::Some(vec![
+              "run-deny".to_string(),
+              "./relative-run-deny".to_string(),
+            ])),
+          },
+          ffi: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "./ffi-allow".to_string(),
+            ])),
+            deny: Some(PermissionConfigValue::Some(vec![
+              "./ffi-deny".to_string(),
+            ])),
+          },
+          sys: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "sys-allow".to_string(),
+            ])),
+            deny: Some(PermissionConfigValue::Some(vec![
+              "sys-deny".to_string(),
+            ])),
+          },
+        },
+      };
+      let permissions_options =
+        flags_to_permissions_options(&flags, Some(&config)).unwrap();
+      assert_eq!(
+        permissions_options,
+        PermissionsOptions {
+          allow_env: Some(vec!["env-allow".to_string()]),
+          deny_env: Some(vec!["env-deny".to_string()]),
+          allow_net: Some(vec!["net-allow".to_string()]),
+          deny_net: Some(vec!["net-deny".to_string()]),
+          allow_ffi: Some(vec![
+            base_dir
+              .join("ffi-allow")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          deny_ffi: Some(vec![
+            base_dir
+              .join("ffi-deny")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          allow_read: Some(vec![
+            base_dir.clone().into_os_string().into_string().unwrap(),
+            base_dir
+              .join("read-allow")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          deny_read: Some(vec![
+            base_dir
+              .join("read-deny")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          allow_run: Some(vec![
+            "run-allow".to_string(),
+            base_dir
+              .join("relative-run-allow")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          deny_run: Some(vec![
+            "run-deny".to_string(),
+            base_dir
+              .join("relative-run-deny")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          allow_sys: Some(vec!["sys-allow".to_string()]),
+          deny_sys: Some(vec!["sys-deny".to_string()]),
+          allow_write: Some(vec![
+            base_dir
+              .join("write-allow")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          deny_write: Some(vec![
+            base_dir
+              .join("write-deny")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          allow_import: Some(vec!["jsr.io".to_string()]),
+          deny_import: Some(vec!["example.com".to_string()]),
+          prompt: true
+        }
+      );
+    }
+    {
+      let flags = PermissionFlags {
+        allow_read: Some(vec!["./folder".to_string()]),
+        ..Default::default()
+      };
+      let config = PermissionsObjectWithBase {
+        base: deno_path_util::url_from_file_path(&base_dir.join("deno.json"))
+          .unwrap(),
+        permissions: PermissionsObject {
+          // will use all permissions except for the explicitly specified permissions
+          // and the explicit flag will replace
+          all: Some(true),
+          write: AllowDenyPermissionConfig {
+            allow: Some(PermissionConfigValue::Some(vec![
+              "./write-allow".to_string(),
+            ])),
+            deny: Some(PermissionConfigValue::Some(vec![
+              "./write-deny".to_string(),
+            ])),
+          },
+          ..Default::default()
+        },
+      };
+      let permissions_options =
+        flags_to_permissions_options(&flags, Some(&config)).unwrap();
+      assert_eq!(
+        permissions_options,
+        PermissionsOptions {
+          allow_env: Some(vec![]),
+          deny_env: None,
+          allow_net: Some(vec![]),
+          deny_net: None,
+          allow_ffi: Some(vec![]),
+          deny_ffi: None,
+          allow_read: Some(vec!["./folder".to_string()]),
+          deny_read: None,
+          allow_run: Some(vec![]),
+          deny_run: None,
+          allow_sys: Some(vec![]),
+          deny_sys: None,
+          allow_write: Some(vec![
+            base_dir
+              .join("write-allow")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          deny_write: Some(vec![
+            base_dir
+              .join("write-deny")
+              .into_os_string()
+              .into_string()
+              .unwrap()
+          ]),
+          allow_import: Some(vec![]),
+          deny_import: None,
+          prompt: true
+        }
+      );
+    }
   }
 }

@@ -9,3 +9,12 @@ Initialize @denotest/node-lifecycle-scripts@1.0.0: running 'preinstall' script
 Initialize @denotest/node-lifecycle-scripts@1.0.0: running 'install' script
 Initialize @denotest/node-lifecycle-scripts@1.0.0: running 'postinstall' script
 [UNORDERED_END]
+Installed 2 packages in [WILDCARD]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 4 packages from npm
+++++
+
+Dependencies:
++ npm:@denotest/node-lifecycle-scripts 1.0.0
+

@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -14,7 +15,7 @@ use url::Url;
 #[derive(Debug)]
 pub enum NpmPackageFsResolver<TSys: FsCanonicalize + FsMetadata> {
   Local(super::local::LocalNpmPackageResolver<TSys>),
-  Global(super::global::GlobalNpmPackageResolver),
+  Global(super::global::GlobalNpmPackageResolver<TSys>),
 }
 
 impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFsResolver<TSys> {
@@ -72,4 +73,13 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
       }
     }
   }
+}
+
+pub fn join_package_name_to_path(path: &Path, package_name: &str) -> PathBuf {
+  let mut path = Cow::Borrowed(path);
+  // ensure backslashes are used on windows
+  for part in package_name.split('/') {
+    path = Cow::Owned(path.join(part));
+  }
+  path.into_owned()
 }

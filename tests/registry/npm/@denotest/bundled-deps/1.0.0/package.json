@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/bundled-deps",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/non-existent": "1"
+  },
+  "bundleDependencies": [
+    "@denotest/non-existent"
+  ]
+}

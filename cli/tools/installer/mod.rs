@@ -20,9 +20,12 @@ use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_lib::args::CaData;
+use deno_npm_installer::lifecycle_scripts::LifecycleScriptsWarning;
 use deno_path_util::resolve_url_or_path;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_semver::npm::NpmPackageReqReference;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -46,7 +49,10 @@ use crate::file_fetcher::create_cli_file_fetcher;
 use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::ModuleGraphContainer;
 use crate::jsr::JsrFetchResolver;
+use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
+use crate::sys::CliSys;
+use crate::util::display;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod bin_name_resolver;
@@ -117,13 +123,27 @@ impl std::fmt::Debug for InstallStats {
 #[derive(Debug)]
 pub struct InstallReporter {
   stats: Arc<InstallStats>,
+
+  scripts_warnings: Arc<Mutex<Vec<LifecycleScriptsWarning>>>,
+
+  deprecation_messages: Arc<Mutex<Vec<String>>>,
 }
 
 impl InstallReporter {
   pub fn new() -> Self {
     Self {
       stats: Arc::new(InstallStats::default()),
+      scripts_warnings: Arc::new(Mutex::new(Vec::new())),
+      deprecation_messages: Arc::new(Mutex::new(Vec::new())),
     }
+  }
+
+  pub fn take_scripts_warnings(&self) -> Vec<LifecycleScriptsWarning> {
+    std::mem::take(&mut *self.scripts_warnings.lock())
+  }
+
+  pub fn take_deprecation_message(&self) -> Vec<String> {
+    std::mem::take(&mut *self.deprecation_messages.lock())
   }
 }
 
@@ -139,6 +159,17 @@ impl deno_npm_installer::InstallProgressReporter for InstallReporter {
 
   fn blocking(&self, _message: &str) {
     // log::info!("blocking: {}", message);
+  }
+
+  fn scripts_not_run_warning(
+    &self,
+    warning: deno_npm_installer::lifecycle_scripts::LifecycleScriptsWarning,
+  ) {
+    self.scripts_warnings.lock().push(warning);
+  }
+
+  fn deprecated_message(&self, message: String) {
+    self.deprecation_messages.lock().push(message);
   }
 }
 
@@ -396,6 +427,7 @@ pub(crate) async fn install_from_entrypoints(
   flags: Arc<Flags>,
   entrypoints: &[String],
 ) -> Result<(), AnyError> {
+  let started = std::time::Instant::now();
   let factory = CliFactory::from_flags(flags.clone());
   let emitter = factory.emitter()?;
   let main_graph_container = factory.main_module_graph_container().await?;
@@ -416,7 +448,16 @@ pub(crate) async fn install_from_entrypoints(
     .await?;
   emitter
     .cache_module_emits(&main_graph_container.graph())
-    .await
+    .await?;
+
+  print_install_report(
+    &factory.sys(),
+    started.elapsed(),
+    &factory.install_reporter()?.unwrap().clone(),
+    factory.workspace_resolver().await?,
+    factory.npm_resolver().await?,
+  );
+  Ok(())
 }
 
 async fn install_local(
@@ -431,37 +472,23 @@ async fn install_local(
       install_from_entrypoints(flags, &entrypoints).await
     }
     InstallFlagsLocal::TopLevel => {
+      let start = std::time::Instant::now();
       let factory = CliFactory::from_flags(flags);
-      install_top_level(&factory).await
+      install_top_level(&factory, start).await
     }
   }
 }
 
-async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
-  // surface any errors in the package.json
-  factory
-    .npm_installer()
-    .await?
-    .ensure_no_pkg_json_dep_errors()?;
-  let npm_installer = factory.npm_installer().await?;
-  npm_installer.ensure_no_pkg_json_dep_errors()?;
-
-  // set up the custom progress bar
-  let install_reporter = factory.install_reporter()?.unwrap().clone();
-
-  // the actual work
-  crate::tools::pm::cache_top_level_deps(factory, None).await?;
-
+pub fn print_install_report(
+  sys: &dyn sys_traits::boxed::FsOpenBoxed,
+  elapsed: std::time::Duration,
+  install_reporter: &InstallReporter,
+  workspace: &WorkspaceResolver<CliSys>,
+  npm_resolver: &CliNpmResolver,
+) {
   // compute the summary info
-  let snapshot = factory
-    .npm_resolver()
-    .await?
-    .as_managed()
-    .unwrap()
-    .resolution()
-    .snapshot();
+  let snapshot = npm_resolver.as_managed().unwrap().resolution().snapshot();
 
-  let workspace = factory.workspace_resolver().await?;
   let top_level_packages = snapshot.top_level_packages();
 
   // all this nonsense is to categorize into normal and dev deps
@@ -542,36 +569,71 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   if !rep.stats.intialized_npm.is_empty()
     || !rep.stats.downloaded_jsr.is_empty()
   {
+    let total_installed =
+      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len();
     log::info!(
-      "Packages: {}",
-      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-    );
-    log::info!(
-      "{}",
-      deno_terminal::colors::green("+".repeat(
-        rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-      ))
+      "{} {} {} {} {}",
+      deno_terminal::colors::gray("Installed"),
+      total_installed,
+      deno_terminal::colors::gray(format!(
+        "package{}",
+        if total_installed > 1 { "s" } else { "" },
+      )),
+      deno_terminal::colors::gray("in"),
+      display::human_elapsed_with_ms_limit(elapsed.as_millis(), 3_000)
     );
 
+    let total_reused = rep.stats.reused_npm.get() + rep.stats.reused_jsr.len();
     log::info!(
-      "Resolved: {}, reused: {}, downloaded: {}, added: {}",
-      deno_terminal::colors::green(
-        rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.reused_npm.get() + rep.stats.reused_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.downloaded_npm.get() + rep.stats.downloaded_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-      ),
+      "{} {} {}",
+      deno_terminal::colors::gray("Reused"),
+      total_reused,
+      deno_terminal::colors::gray(format!(
+        "package{} from cache",
+        if total_reused == 1 { "" } else { "s" },
+      )),
     );
-    log::info!("");
+    if total_reused > 0 {
+      log::info!(
+        "{}",
+        deno_terminal::colors::yellow_bold("+".repeat(total_reused))
+      );
+    }
+
+    let jsr_downloaded = rep.stats.downloaded_jsr.len();
+    log::info!(
+      "{} {} {}",
+      deno_terminal::colors::gray("Downloaded"),
+      jsr_downloaded,
+      deno_terminal::colors::gray(format!(
+        "package{} from JSR",
+        if jsr_downloaded == 1 { "" } else { "s" },
+      )),
+    );
+    if jsr_downloaded > 0 {
+      log::info!(
+        "{}",
+        deno_terminal::colors::green("+".repeat(jsr_downloaded))
+      );
+    }
+
+    let npm_download = rep.stats.downloaded_npm.get();
+    log::info!(
+      "{} {} {}",
+      deno_terminal::colors::gray("Downloaded"),
+      npm_download,
+      deno_terminal::colors::gray(format!(
+        "package{} from npm",
+        if npm_download == 1 { "" } else { "s" },
+      )),
+    );
+    if npm_download > 0 {
+      log::info!("{}", deno_terminal::colors::green("+".repeat(npm_download)));
+    }
   }
 
   if !installed_normal_deps.is_empty() || !rep.stats.downloaded_jsr.is_empty() {
+    log::info!("");
     log::info!("{}", deno_terminal::colors::cyan("Dependencies:"));
     let mut jsr_packages = rep
       .stats
@@ -614,9 +676,46 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
     }
   }
 
+  let warnings = install_reporter.take_scripts_warnings();
+  for warning in warnings {
+    log::warn!("{}", warning.into_message(sys));
+  }
+
+  let deprecation_messages = install_reporter.take_deprecation_message();
+  for message in deprecation_messages {
+    log::warn!("{}", message);
+  }
+}
+
+async fn install_top_level(
+  factory: &CliFactory,
+  started: std::time::Instant,
+) -> Result<(), AnyError> {
+  // surface any errors in the package.json
+  factory
+    .npm_installer()
+    .await?
+    .ensure_no_pkg_json_dep_errors()?;
+  let npm_installer = factory.npm_installer().await?;
+  npm_installer.ensure_no_pkg_json_dep_errors()?;
+
+  // the actual work
+  crate::tools::pm::cache_top_level_deps(factory, None).await?;
+
   if let Some(lockfile) = factory.maybe_lockfile().await? {
     lockfile.write_if_changed()?;
   }
+
+  let install_reporter = factory.install_reporter()?.unwrap().clone();
+  let workspace = factory.workspace_resolver().await?;
+  let npm_resolver = factory.npm_resolver().await?;
+  print_install_report(
+    &factory.sys(),
+    started.elapsed(),
+    &install_reporter,
+    workspace,
+    npm_resolver,
+  );
 
   Ok(())
 }
