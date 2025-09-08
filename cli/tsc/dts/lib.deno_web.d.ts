@@ -427,7 +427,7 @@ interface TextDecoder extends TextDecoderCommon {
   /** Turns binary data, often in the form of a Uint8Array, into a string given
    * the encoding.
    */
-  decode(input?: BufferSource, options?: TextDecodeOptions): string;
+  decode(input?: AllowSharedBufferSource, options?: TextDecodeOptions): string;
 }
 
 /** @category Encoding */
@@ -492,7 +492,7 @@ interface TextEncoderCommon {
 /** @category Encoding */
 interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
   readonly readable: ReadableStream<string>;
-  readonly writable: WritableStream<BufferSource>;
+  readonly writable: WritableStream<AllowSharedBufferSource>;
 }
 
 /** @category Encoding */
@@ -503,7 +503,7 @@ declare var TextDecoderStream: {
 
 /** @category Encoding */
 interface TextEncoderStream extends GenericTransformStream, TextEncoderCommon {
-  readonly readable: ReadableStream<Uint8Array>;
+  readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
   readonly writable: WritableStream<string>;
 }
 
@@ -681,9 +681,9 @@ interface Blob {
   readonly size: number;
   readonly type: string;
   arrayBuffer(): Promise<ArrayBuffer>;
-  bytes(): Promise<Uint8Array>;
+  bytes(): Promise<Uint8Array<ArrayBuffer>>;
   slice(start?: number, end?: number, contentType?: string): Blob;
-  stream(): ReadableStream<Uint8Array>;
+  stream(): ReadableStream<Uint8Array<ArrayBuffer>>;
   text(): Promise<string>;
 }
 
@@ -788,7 +788,9 @@ interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
 /** @category Streams */
 declare var ReadableStreamBYOBReader: {
   readonly prototype: ReadableStreamBYOBReader;
-  new (stream: ReadableStream<Uint8Array>): ReadableStreamBYOBReader;
+  new (
+    stream: ReadableStream<Uint8Array<ArrayBuffer>>,
+  ): ReadableStreamBYOBReader;
 };
 
 /** @category Streams */
@@ -973,7 +975,7 @@ declare var ReadableStream: {
   new (
     underlyingSource: UnderlyingByteSource,
     strategy?: { highWaterMark?: number },
-  ): ReadableStream<Uint8Array>;
+  ): ReadableStream<Uint8Array<ArrayBuffer>>;
   new <R = any>(
     underlyingSource: UnderlyingDefaultSource<R>,
     strategy?: QueuingStrategy<R>,
@@ -1353,7 +1355,7 @@ declare function structuredClone<T = any>(
  * @category Streams
  */
 interface CompressionStream extends GenericTransformStream {
-  readonly readable: ReadableStream<Uint8Array>;
+  readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
   readonly writable: WritableStream<BufferSource>;
 }
 
@@ -1400,7 +1402,7 @@ declare var CompressionStream: {
  * @category Streams
  */
 interface DecompressionStream extends GenericTransformStream {
-  readonly readable: ReadableStream<Uint8Array>;
+  readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
   readonly writable: WritableStream<BufferSource>;
 }
 
@@ -1463,7 +1465,7 @@ interface ImageDataSettings {
 /** @category Platform */
 interface ImageData {
   readonly colorSpace: PredefinedColorSpace;
-  readonly data: Uint8ClampedArray;
+  readonly data: Uint8ClampedArray<ArrayBuffer>;
   readonly height: number;
   readonly width: number;
 }
@@ -1473,7 +1475,7 @@ declare var ImageData: {
   readonly prototype: ImageData;
   new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
   new (
-    data: Uint8ClampedArray,
+    data: Uint8ClampedArray<ArrayBuffer>,
     sw: number,
     sh?: number,
     settings?: ImageDataSettings,

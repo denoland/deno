@@ -717,9 +717,9 @@ Deno.test(async function testAesCbcEncryptDecrypt() {
 Deno.test(async function testAesCtrEncryptDecrypt() {
   async function aesCtrRoundTrip(
     key: CryptoKey,
-    counter: Uint8Array,
+    counter: Uint8Array<ArrayBuffer>,
     length: number,
-    plainText: Uint8Array,
+    plainText: Uint8Array<ArrayBuffer>,
   ) {
     const cipherText = await crypto.subtle.encrypt(
       {
