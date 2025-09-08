@@ -267,7 +267,8 @@ Agent.prototype.addRequest = function addRequest(
     setRequestSocket(this, req, socket);
     this.sockets[name].push(socket);
   } else if (
-    sockLen < this.maxSockets &&
+    // TODO(littledivy): enable maxSockets again when we use removeSocket properly
+    this.maxSockets != 0 &&
     this.totalSocketCount < this.maxTotalSockets
   ) {
     debug("call onSocket", sockLen, freeLen);
