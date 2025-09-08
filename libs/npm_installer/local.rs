@@ -1087,7 +1087,7 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
 
       let packages_comma_separated = packages
         .iter()
-        .map(|(p, _)| format!("npm:{}", p.id.nv))
+        .map(|(p, _)| format!("npm:{}", p.id.nv.name))
         .collect::<Vec<_>>()
         .join(",");
 
