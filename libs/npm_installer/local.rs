@@ -1100,7 +1100,7 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
           packages_comma_separated
         ))
       );
-      log::warn!("{}", colors::yellow("╰─"));
+      _ = write!(&mut output, "{}", colors::yellow("╰─"));
 
       if let Some(install_reporter) = &self.install_reporter {
         let paths = packages
@@ -1118,7 +1118,7 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
           ),
         );
       } else {
-        log::warn!("{}", output);
+        log::info!("{}", output);
         for (package, _) in packages {
           let _ignore_err = create_initialized_file(
             self.sys,

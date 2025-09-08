@@ -249,8 +249,7 @@ impl<TSys: NpmCacheSys> LifecycleScriptsStrategy
       colors::yellow("│"),
       colors::bold("\"nodeModulesDir\": \"auto\"")
     );
-    _ = writeln!(&mut output, "{}", colors::yellow("╰─"));
-    _ = writeln!(&mut output);
+    _ = write!(&mut output, "{}", colors::yellow("╰─"));
 
     if let Some(install_reporter) = &self.install_reporter {
       let paths = packages
