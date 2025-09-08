@@ -235,7 +235,10 @@ pub struct DatabaseSync {
   location: String,
 }
 
-impl GarbageCollected for DatabaseSync {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for DatabaseSync {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DatabaseSync"
   }
@@ -425,14 +428,6 @@ impl DatabaseSync {
       location,
       options,
     })
-  }
-
-  // Returns "node:sqlite" for Node.js compatibility
-  #[getter]
-  #[symbol("sqlite-type")]
-  #[string]
-  fn sqlite_type(&self) -> &'static str {
-    "node:sqlite"
   }
 
   // Opens the database specified by `location` of this instance.
