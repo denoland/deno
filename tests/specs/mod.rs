@@ -25,8 +25,9 @@ use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
 
-static NO_CAPTURE: Lazy<bool> =
-  Lazy::new(|| std::env::args().any(|arg| arg == "--nocapture"));
+static NO_CAPTURE: Lazy<bool> = Lazy::new(|| {
+  std::env::args().any(|arg| arg == "--no-capture" || arg == "--nocapture")
+});
 
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
