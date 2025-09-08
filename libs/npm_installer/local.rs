@@ -238,6 +238,7 @@ impl<
       LocalLifecycleScripts {
         sys: &self.sys,
         deno_local_registry_dir: &deno_local_registry_dir,
+        install_reporter: self.install_reporter.clone(),
       },
     )));
     let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
@@ -831,7 +832,10 @@ impl<
       let packages_with_deprecation_warnings =
         packages_with_deprecation_warnings.lock();
       if !packages_with_deprecation_warnings.is_empty() {
-        log::warn!(
+        use std::fmt::Write;
+        let mut output = String::new();
+        let _ = writeln!(
+          &mut output,
           "{} The following packages are deprecated:",
           colors::yellow("Warning")
         );
@@ -840,16 +844,23 @@ impl<
           packages_with_deprecation_warnings.iter().enumerate()
         {
           if idx != len - 1 {
-            log::warn!(
+            let _ = writeln!(
+              &mut output,
               "┠─ {}",
               colors::gray(format!("npm:{:?} ({})", package_nv, msg))
             );
           } else {
-            log::warn!(
+            let _ = write!(
+              &mut output,
               "┖─ {}",
               colors::gray(format!("npm:{:?} ({})", package_nv, msg))
             );
           }
+        }
+        if let Some(install_reporter) = &self.install_reporter {
+          install_reporter.deprecated_message(output);
+        } else {
+          log::warn!("{}", output);
         }
       }
     }
@@ -862,6 +873,7 @@ impl<
         LocalLifecycleScripts {
           sys: &self.sys,
           deno_local_registry_dir: &deno_local_registry_dir,
+          install_reporter: self.install_reporter.clone(),
         },
       ),
     );
@@ -1027,6 +1039,7 @@ fn ran_scripts_file(
 struct LocalLifecycleScripts<'a, TSys: FsOpen + FsMetadata> {
   sys: &'a TSys,
   deno_local_registry_dir: &'a Path,
+  install_reporter: Option<Arc<dyn crate::InstallReporter>>,
 }
 
 impl<TSys: FsOpen + FsMetadata> LocalLifecycleScripts<'_, TSys> {
@@ -1044,44 +1057,74 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
     &self,
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
   ) -> Result<(), std::io::Error> {
+    use std::fmt::Write;
+    let mut output = String::new();
+
     if !packages.is_empty() {
-      log::warn!(
-        "{} The following packages contained npm lifecycle scripts ({}) that were not executed:",
-        colors::yellow("Warning"),
-        colors::gray("preinstall/install/postinstall")
+      _ = writeln!(
+        &mut output,
+        "{} {}",
+        colors::yellow("╭"),
+        colors::yellow_bold("Warning")
+      );
+      _ = writeln!(&mut output, "{}", colors::yellow("│"));
+      _ = writeln!(
+        &mut output,
+        "{}  Ignored build scripts for packages:",
+        colors::yellow("│"),
       );
 
       for (package, _) in packages {
-        log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
+        _ = writeln!(
+          &mut output,
+          "{}  {}",
+          colors::yellow("│"),
+          colors::italic(format!("npm:{}", package.id.nv))
+        );
       }
 
-      log::warn!("┃");
-      log::warn!(
-        "┠─ {}",
-        colors::italic("This may cause the packages to not work correctly.")
-      );
-      log::warn!(
-        "┖─ {}",
-        colors::italic(
-          "To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"
-        )
-      );
+      _ = writeln!(&mut output, "{}", colors::yellow("│"));
+
       let packages_comma_separated = packages
         .iter()
-        .map(|(p, _)| format!("npm:{}", p.id.nv))
+        .map(|(p, _)| format!("npm:{}", p.id.nv.name))
         .collect::<Vec<_>>()
         .join(",");
-      log::warn!(
-        "   {}",
+
+      _ = writeln!(
+        &mut output,
+        "{}  Run \"{}\" to run build scripts.",
+        colors::yellow("│"),
         colors::bold(format!(
           "deno install --allow-scripts={}",
           packages_comma_separated
         ))
       );
+      _ = write!(&mut output, "{}", colors::yellow("╰─"));
 
-      for (package, _) in packages {
-        let _ignore_err =
-          create_initialized_file(self.sys, &self.warned_scripts_file(package));
+      if let Some(install_reporter) = &self.install_reporter {
+        let paths = packages
+          .iter()
+          .map(|(package, _)| self.warned_scripts_file(package))
+          .collect::<Vec<_>>();
+        install_reporter.scripts_not_run_warning(
+          crate::lifecycle_scripts::LifecycleScriptsWarning::new(
+            output,
+            Box::new(move |sys| {
+              for path in paths {
+                let _ignore_err = create_initialized_file(sys, &path);
+              }
+            }),
+          ),
+        );
+      } else {
+        log::info!("{}", output);
+        for (package, _) in packages {
+          let _ignore_err = create_initialized_file(
+            self.sys,
+            &self.warned_scripts_file(package),
+          );
+        }
       }
     }
     Ok(())
@@ -1377,12 +1420,12 @@ fn write_initialized_file(
   }
 }
 
-fn create_initialized_file(
-  sys: &impl FsOpen,
+fn create_initialized_file<F: sys_traits::boxed::FsOpenBoxed + ?Sized>(
+  sys: &F,
   path: &Path,
 ) -> Result<(), JsErrorBox> {
   sys
-    .fs_open(path, &sys_traits::OpenOptions::new_write())
+    .fs_open_boxed(path, &sys_traits::OpenOptions::new_write())
     .map(|_| ())
     .map_err(|err| {
       JsErrorBox::generic(format!(

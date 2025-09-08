@@ -38,6 +38,8 @@ type KeyUsage =
 type KeyFormat = "jwk" | "pkcs8" | "raw" | "spki";
 /** @category Crypto */
 type NamedCurve = string;
+/** @category Crypto */
+type BigInteger = Uint8Array<ArrayBuffer>;
 
 /** @category Crypto */
 interface RsaOtherPrimesInfo {
@@ -121,7 +123,7 @@ interface RsaHashedKeyGenParams extends RsaKeyGenParams {
 /** @category Crypto */
 interface RsaKeyGenParams extends Algorithm {
   modulusLength: number;
-  publicExponent: Uint8Array;
+  publicExponent: BigInteger;
 }
 
 /** @category Crypto */
@@ -131,7 +133,7 @@ interface RsaPssParams extends Algorithm {
 
 /** @category Crypto */
 interface RsaOaepParams extends Algorithm {
-  label?: Uint8Array;
+  label?: BufferSource;
 }
 
 /** @category Crypto */
@@ -159,7 +161,7 @@ interface RsaHashedKeyAlgorithm extends RsaKeyAlgorithm {
 /** @category Crypto */
 interface RsaKeyAlgorithm extends KeyAlgorithm {
   modulusLength: number;
-  publicExponent: Uint8Array;
+  publicExponent: BigInteger;
 }
 
 /** @category Crypto */
@@ -651,15 +653,15 @@ interface Crypto {
    */
   getRandomValues<
     T extends
-      | Int8Array
-      | Int16Array
-      | Int32Array
-      | Uint8Array
-      | Uint16Array
-      | Uint32Array
-      | Uint8ClampedArray
-      | BigInt64Array
-      | BigUint64Array,
+      | Int8Array<ArrayBuffer>
+      | Int16Array<ArrayBuffer>
+      | Int32Array<ArrayBuffer>
+      | Uint8Array<ArrayBuffer>
+      | Uint16Array<ArrayBuffer>
+      | Uint32Array<ArrayBuffer>
+      | Uint8ClampedArray<ArrayBuffer>
+      | BigInt64Array<ArrayBuffer>
+      | BigUint64Array<ArrayBuffer>,
   >(
     array: T,
   ): T;

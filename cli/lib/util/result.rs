@@ -26,14 +26,16 @@ impl<T> InfallibleResultExt<T> for Result<T, Infallible> {
 pub fn js_error_downcast_ref(
   err: &AnyError,
 ) -> Option<&deno_runtime::deno_core::error::JsError> {
-  any_and_jserrorbox_downcast_ref(err).or_else(|| {
-    err
-      .downcast_ref::<CoreError>()
-      .and_then(|e| match e.as_kind() {
-        CoreErrorKind::Js(e) => Some(e),
-        _ => None,
-      })
-  })
+  any_and_jserrorbox_downcast_ref(err)
+    .or_else(|| {
+      err
+        .downcast_ref::<CoreError>()
+        .and_then(|e| match e.as_kind() {
+          CoreErrorKind::Js(e) => Some(e),
+          _ => None,
+        })
+    })
+    .map(|v| &**v)
 }
 
 pub fn any_and_jserrorbox_downcast_ref<

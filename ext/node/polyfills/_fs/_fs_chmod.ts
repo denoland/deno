@@ -2,7 +2,6 @@
 
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
-import * as pathModule from "node:path";
 import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
 import type { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
@@ -20,7 +19,7 @@ export function chmod(
   mode = parseFileMode(mode, "mode");
 
   PromisePrototypeThen(
-    Deno.chmod(pathModule.toNamespacedPath(path), mode),
+    Deno.chmod(path, mode),
     () => callback(null),
     (err: Error) =>
       callback(denoErrorToNodeError(err, { syscall: "chmod", path })),
@@ -37,7 +36,7 @@ export function chmodSync(path: string | Buffer | URL, mode: string | number) {
   mode = parseFileMode(mode, "mode");
 
   try {
-    Deno.chmodSync(pathModule.toNamespacedPath(path), mode);
+    Deno.chmodSync(path, mode);
   } catch (error) {
     throw denoErrorToNodeError(error as Error, { syscall: "chmod", path });
   }

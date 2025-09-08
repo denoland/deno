@@ -22,6 +22,8 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::tools::pm::deps::DepId;
 use crate::tools::pm::deps::DepKind;
+use crate::util::console::HideCursorGuard;
+use crate::util::console::RawMode;
 
 #[derive(Debug)]
 pub struct PackageInfo {
@@ -249,31 +251,6 @@ fn highlight_new_version(current: &Version, new: &Version) -> String {
   }
 }
 
-struct RawMode {
-  needs_disable: bool,
-}
-
-impl RawMode {
-  fn enable() -> io::Result<Self> {
-    terminal::enable_raw_mode()?;
-    Ok(Self {
-      needs_disable: true,
-    })
-  }
-  fn disable(mut self) -> io::Result<()> {
-    self.needs_disable = false;
-    terminal::disable_raw_mode()
-  }
-}
-
-impl Drop for RawMode {
-  fn drop(&mut self) {
-    if self.needs_disable {
-      let _ = terminal::disable_raw_mode();
-    }
-  }
-}
-
 pub fn select_interactive(
   packages: Vec<PackageInfo>,
 ) -> anyhow::Result<Option<HashSet<DepId>>> {
@@ -305,7 +282,7 @@ pub fn select_interactive(
   }
 
   let mut state = State::new(packages)?;
-  stderr.execute(cursor::Hide)?;
+  let hide_cursor_guard = HideCursorGuard::hide()?;
 
   let instructions_width = format!("? {}", State::instructions_line()).width();
 
@@ -407,8 +384,7 @@ pub fn select_interactive(
 
   static_text.eprint_clear();
 
-  crossterm::execute!(&mut stderr, cursor::Show)?;
-
+  hide_cursor_guard.show()?;
   raw_mode.disable()?;
 
   if do_it {

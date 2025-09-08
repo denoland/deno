@@ -162,6 +162,7 @@ function listenTls({
   transport = "tcp",
   alpnProtocols = undefined,
   reusePort = false,
+  tcpBacklog = 511,
 }) {
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
@@ -176,7 +177,7 @@ function listenTls({
   const keyPair = loadTlsKeyPair("Deno.listenTls", arguments[0]);
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port },
-    { alpnProtocols, reusePort },
+    { alpnProtocols, reusePort, tcpBacklog },
     keyPair,
   );
   return new TlsListener(rid, localAddr);

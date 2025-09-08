@@ -291,10 +291,9 @@ impl WorkspaceLinter {
     let exclude = lint_options.rules.exclude.clone();
 
     let plugin_specifiers = lint_options.plugins.clone();
-    let lint_rules = self.lint_rule_provider.resolve_lint_rules(
-      lint_options.rules,
-      member_dir.maybe_deno_json().map(|c| c.as_ref()),
-    );
+    let lint_rules = self
+      .lint_rule_provider
+      .resolve_lint_rules(lint_options.rules, Some(&member_dir));
 
     let mut maybe_incremental_cache = None;
 
@@ -589,10 +588,8 @@ fn lint_stdin(
   let deno_lint_config =
     resolve_lint_config(compiler_options_resolver, start_dir.dir_url())?;
   let lint_options = LintOptions::resolve(lint_config, &lint_flags)?;
-  let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
-    lint_options.rules,
-    start_dir.maybe_deno_json().map(|c| c.as_ref()),
-  )?;
+  let configured_rules = lint_rule_provider
+    .resolve_lint_rules_err_empty(lint_options.rules, Some(start_dir))?;
   let mut file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
   if let Some(ext) = cli_options.ext_flag() {
     file_path.set_extension(ext);
@@ -662,11 +659,15 @@ fn resolve_lint_config(
     .for_specifier(specifier)
     .transpile_options()?
     .transpile;
+  let jsx_classic_options =
+    transpile_options.jsx.as_ref().and_then(|jsx| match jsx {
+      deno_ast::JsxRuntime::Classic(classic) => Some(classic),
+      _ => None,
+    });
   Ok(deno_lint::linter::LintConfig {
-    default_jsx_factory: (!transpile_options.jsx_automatic)
-      .then(|| transpile_options.jsx_factory.clone()),
-    default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
-      .then(|| transpile_options.jsx_fragment_factory.clone()),
+    default_jsx_factory: jsx_classic_options.map(|o| o.factory.clone()),
+    default_jsx_fragment_factory: jsx_classic_options
+      .map(|o| o.fragment_factory.clone()),
   })
 }
 
