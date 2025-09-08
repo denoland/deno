@@ -124,7 +124,6 @@ pub fn confirm(options: ConfirmOptions) -> Option<bool> {
   let mut selected = default;
   loop {
     let event = crossterm::event::read().ok()?;
-    eprintln!("EVENT: {:?}", event);
     #[allow(clippy::single_match)]
     match event {
       crossterm::event::Event::Key(KeyEvent {
