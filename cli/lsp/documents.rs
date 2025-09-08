@@ -872,7 +872,8 @@ impl DocumentModule {
     cache: &LspCache,
   ) -> Self {
     let text = document.text();
-    let headers = matches!(specifier.scheme(), "http" | "https")
+    let scheme = specifier.scheme();
+    let headers = matches!(scheme, "http" | "https")
       .then(|| {
         let http_cache = cache.for_specifier(scope.as_deref());
         let cache_key = http_cache.cache_item_key(&specifier).ok()?;
@@ -887,7 +888,10 @@ impl DocumentModule {
       open_document.map(|d| d.language_id),
     );
     let (parsed_source, maybe_module, resolution_mode) =
-      if media_type_is_diagnosable(media_type) {
+      if media_type_is_diagnosable(media_type)
+        && scheme == "file"
+        && !resolver.in_node_modules(&specifier)
+      {
         parse_and_analyze_module(
           specifier.as_ref().clone(),
           text.to_arc(),
