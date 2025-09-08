@@ -9,9 +9,10 @@ Downloaded [WILDLINE] packages from npm
 
 Dependencies:
 [WILDCARD]
-Warning The following packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed:
-┠─ npm:@denotest/bin-created-by-lifecycle@1.0.0
-┃
-┠─ This may cause the packages to not work correctly.
-┖─ To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:
-   deno install --allow-scripts=npm:@denotest/bin-created-by-lifecycle@1.0.0
+╭ Warning
+│
+│  Ignored build scripts for packages:
+│  npm:@denotest/bin-created-by-lifecycle@1.0.0
+│
+│  Run "deno install --allow-scripts=npm:@denotest/bin-created-by-lifecycle" to run build scripts.
+╰─
