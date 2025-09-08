@@ -22,6 +22,7 @@ export const constants = {
 
 const sqliteTypeSymbol = SymbolFor("sqlite-type");
 ObjectDefineProperty(DatabaseSync.prototype, sqliteTypeSymbol, {
+  __proto__: null,
   value: "node:sqlite",
   enumerable: false,
   configurable: true,
