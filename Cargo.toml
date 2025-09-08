@@ -314,7 +314,7 @@ dprint-plugin-markdown = "=0.19.0"
 dprint-plugin-typescript = "=0.95.11"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
-imara-diff = "=0.2.0"
+imara-diff = { version = "=0.2.0", features = ["unified_diff"] }
 libsui = "0.10.0"
 malva = "=0.12.1"
 markup_fmt = "=0.22.0"
