@@ -429,13 +429,13 @@ fn test_tty_non_workspace_directory() {
   temp_dir.join("main.ts").write("const a = 1;\n");
   context.new_command().arg("fmt").with_pty(|mut pty| {
     pty.expect("Are you sure you want to format the entire");
-    pty.write_raw("y\n");
+    pty.write_raw("y\r\n");
     pty.expect("Checked 1 file");
   });
 
   context.new_command().arg("fmt").with_pty(|mut pty| {
-    pty.expect("Are you sure you want to format the entire");
-    pty.write_raw("n\n");
+    pty.expect("Are you sure you want to format");
+    pty.write_raw("n\r\n");
     pty.expect("Did not format non-workspace directory");
   });
 }
