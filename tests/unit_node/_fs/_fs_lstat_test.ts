@@ -43,7 +43,7 @@ const dateFields = [
   "birthtime",
 ];
 
-export function assertStats(actual: Stats, expected: Deno.FileInfo) {
+function assertStats(actual: Stats, expected: Deno.FileInfo) {
   [...numberFields, ...dateFields].forEach(function (k) {
     assert(k in actual, `${k} should be in Stats`);
     assertNotStrictEquals(
@@ -157,7 +157,7 @@ function toBigInt(num?: number | null) {
   return BigInt(num);
 }
 
-export function assertStatsBigInt(
+function assertStatsBigInt(
   actual: BigIntStats,
   expected: Deno.FileInfo,
 ) {
