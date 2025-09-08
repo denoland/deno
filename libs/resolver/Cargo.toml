@@ -48,9 +48,9 @@ deno_permissions = { workspace = true, optional = true }
 deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_unsync.workspace = true
-imara-diff.workspace = true
 futures.workspace = true
 http = { workspace = true, optional = true }
+imara-diff.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser.workspace = true

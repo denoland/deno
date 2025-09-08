@@ -4,9 +4,10 @@
 //! crate as this is not specific to resolution, but for
 //! the time being it's fine for this to live here.
 use deno_terminal::colors;
-use imara_diff::{
-  BasicLineDiffPrinter, Diff, InternedInput, UnifiedDiffConfig,
-};
+use imara_diff::BasicLineDiffPrinter;
+use imara_diff::Diff;
+use imara_diff::InternedInput;
+use imara_diff::UnifiedDiffConfig;
 
 /// Print diff of the same file_path, before and after formatting.
 ///
