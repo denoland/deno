@@ -11,7 +11,6 @@ use std::sync::Arc;
 use bytes::Bytes;
 use hickory_proto::serialize::txt::Parser;
 use hickory_server::authority::AuthorityObject;
-use http_body_util::BodyExt;
 use pretty_assertions::assert_eq;
 use rustls::ClientConnection;
 use rustls_tokio_stream::TlsStream;
@@ -499,10 +498,14 @@ fn permissions_audit_with_traces() {
     .skip_output_check();
 
   let file = std::fs::read_to_string(path).unwrap();
-  for line in file.lines() {
-    let entry = serde_json::from_str::<serde_json::Value>(line).unwrap();
-    assert!(entry.as_object().unwrap().get("stack").is_some());
-  }
+  test_util::assertions::assert_wildcard_match(
+    &file,
+    r#"{"v":1,"datetime":"[WILDCARD]","permission":"sys","value":"hostname","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"read","value":"[WILDCARD]","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"write","value":"[WILDCARD]","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"env","value":"FOO","stack":[WILDCARD]}
+"#,
+  );
 }
 
 itest!(lock_write_fetch {
