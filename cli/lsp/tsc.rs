@@ -2107,12 +2107,11 @@ impl DocumentSpan {
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(
-        &target_specifier,
-        module.scope.as_deref(),
-      )?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
         (
@@ -2151,12 +2150,11 @@ impl DocumentSpan {
     language_server: &language_server::Inner,
   ) -> Option<ModuleSpecifier> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(
-        &target_specifier,
-        module.scope.as_deref(),
-      )?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
     let range = self.text_span.to_range(target_module.line_index.clone());
     let mut target = uri_to_url(&target_module.uri);
     target.set_fragment(Some(&format!(
@@ -2209,12 +2207,15 @@ impl NavigateToItem {
   pub fn to_symbol_information(
     &self,
     scope: Option<&Url>,
+    compiler_options_key: &CompilerOptionsKey,
     language_server: &language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(&target_specifier, scope)?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      scope,
+      Some(compiler_options_key),
+    )?;
     let range = self.text_span.to_range(target_module.line_index.clone());
     let location = lsp::Location {
       uri: target_module.uri.as_ref().clone(),
@@ -2258,11 +2259,11 @@ impl InlayHintDisplayPart {
   ) -> lsp::InlayHintLabelPart {
     let location = self.file.as_ref().and_then(|f| {
       let target_specifier = resolve_url(f).ok()?;
-      let target_module = language_server
-        .document_modules
-        .inspect_module_for_specifier(
+      let target_module =
+        language_server.document_modules.module_for_specifier(
           &target_specifier,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )?;
       let range = self
         .span
@@ -2584,11 +2585,11 @@ impl RenameLocation {
         includes_non_files = true;
         continue;
       }
-      let Some(target_module) = language_server
-        .document_modules
-        .inspect_module_for_specifier(
+      let Some(target_module) =
+        language_server.document_modules.module_for_specifier(
           &target_specifier,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )
       else {
         continue;
@@ -2805,14 +2806,11 @@ impl FileTextChanges {
     let target_module = if is_new_file {
       None
     } else {
-      Some(
-        language_server
-          .document_modules
-          .inspect_module_for_specifier(
-            &target_specifier,
-            module.scope.as_deref(),
-          )?,
-      )
+      Some(language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+        Some(&module.compiler_options_key),
+      )?)
     };
     let target_uri = target_module
       .as_ref()
@@ -2850,14 +2848,11 @@ impl FileTextChanges {
     let target_module = if is_new_file {
       None
     } else {
-      Some(
-        language_server
-          .document_modules
-          .inspect_module_for_specifier(
-            &target_specifier,
-            module.scope.as_deref(),
-          )?,
-      )
+      Some(language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+        Some(&module.compiler_options_key),
+      )?)
     };
     let target_uri = target_module
       .as_ref()
@@ -3309,12 +3304,11 @@ impl ReferenceEntry {
     let target_module = if target_specifier == *module.specifier {
       module.clone()
     } else {
-      language_server
-        .document_modules
-        .inspect_module_for_specifier(
-          &target_specifier,
-          module.scope.as_deref(),
-        )?
+      language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+        Some(&module.compiler_options_key),
+      )?
     };
     Some(lsp::Location {
       uri: target_module.uri.as_ref().clone(),
@@ -3367,12 +3361,11 @@ impl CallHierarchyItem {
     maybe_root_path: Option<&Path>,
   ) -> Option<(lsp::CallHierarchyItem, Arc<DocumentModule>)> {
     let target_specifier = resolve_url(&self.file).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(
-        &target_specifier,
-        module.scope.as_deref(),
-      )?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
 
     let use_file_name = self.is_source_file_item();
     let maybe_file_path = url_to_file_path(&target_module.specifier).ok();
@@ -6070,6 +6063,7 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
       Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let linter_resolver = Arc::new(LspLinterResolver::new(
       &config,
       &compiler_options_resolver,

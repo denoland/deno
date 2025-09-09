@@ -36,11 +36,13 @@ setTimeout(() => {
   Deno.exit(1);
 }, 5000);
 
-for await (const conn of listener) {
-  handleConnection(conn);
+for await (const incoming of listener) {
+  handleConnection(incoming);
 }
 
-async function handleConnection(conn: Deno.QuicConn) {
+async function handleConnection(incoming: Deno.QuicIncoming) {
+  const conn = await incoming.accept();
+
   {
     const { value: bi } = await conn.incomingBidirectionalStreams
       .getReader()

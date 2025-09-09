@@ -564,14 +564,12 @@ impl<
         if resolution_mode == ResolutionMode::Import
           && !self.resolution_config.bundle_mode
         {
-          let suggested_file_name = ["index.mjs", "index.js", "index.cjs"]
-            .into_iter()
-            .find(|e| self.sys.is_file(&path.join(e)));
+          let suggestion = self.directory_import_suggestion(&path);
           Err(
             UnsupportedDirImportError {
               dir_url: UrlOrPath::Path(path.into_owned()),
               maybe_referrer: maybe_referrer.map(|r| r.display()),
-              suggested_file_name,
+              suggestion,
             }
             .into(),
           )
@@ -660,6 +658,51 @@ impl<
     } else {
       None
     }
+  }
+
+  fn directory_import_suggestion(
+    &self,
+    dir_import_path: &Path,
+  ) -> Option<String> {
+    let dir_index_paths = ["index.mjs", "index.js", "index.cjs"]
+      .into_iter()
+      .map(|file_name| dir_import_path.join(file_name));
+    let file_paths = [
+      with_known_extension(dir_import_path, "js"),
+      with_known_extension(dir_import_path, "mjs"),
+      with_known_extension(dir_import_path, "cjs"),
+    ];
+    dir_index_paths
+      .chain(file_paths)
+      .chain(
+        std::iter::once_with(|| {
+          // check if this directory has a package.json
+          let package_json_path = dir_import_path.join("package.json");
+          let pkg_json = self
+            .pkg_json_resolver
+            .load_package_json(&package_json_path)
+            .ok()??;
+          let main = pkg_json.main.as_ref()?;
+          Some(dir_import_path.join(main))
+        })
+        .flatten(),
+      )
+      .map(|p| deno_path_util::normalize_path(Cow::Owned(p)))
+      .find(|p| self.sys.is_file(p))
+      .and_then(|suggested_file_path| {
+        let pkg_json = self
+          .pkg_json_resolver
+          .get_closest_package_jsons(&suggested_file_path)
+          .filter_map(|pkg_json| pkg_json.ok())
+          .find(|p| p.name.is_some())?;
+        let pkg_name = pkg_json.name.as_ref()?;
+        let sub_path = suggested_file_path
+          .strip_prefix(pkg_json.dir_path())
+          .ok()?
+          .to_string_lossy()
+          .replace("\\", "/");
+        Some(format!("{}/{}", pkg_name, sub_path))
+      })
   }
 
   pub fn resolve_package_subpath_from_deno_module(

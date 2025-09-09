@@ -205,6 +205,8 @@ pub struct WorkspaceFactoryOptions {
   /// This value is found at `deno_lib::args::NPM_PROCESS_STATE`
   /// but in most scenarios this can probably just be `None`.
   pub npm_process_state: Option<NpmProcessStateOptions>,
+  /// Override the path to the root node_modules directory.
+  pub root_node_modules_dir_override: Option<PathBuf>,
   pub vendor: Option<bool>,
 }
 
@@ -396,6 +398,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
     self
       .node_modules_dir_path
       .get_or_try_init(|| {
+        if let Some(path) = &self.options.root_node_modules_dir_override {
+          return Ok(Some(path.clone()));
+        }
         if let Some(process_state) = &self.options.npm_process_state {
           return Ok(
             process_state
@@ -1081,7 +1086,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             {
               SloppyImportsOptions::Enabled
             } else {
-              SloppyImportsOptions::Disabled
+              SloppyImportsOptions::Unspecified
             },
             fs_cache_options: FsCacheOptions::Enabled,
           };
@@ -1090,6 +1095,9 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             self.workspace_factory.sys.clone(),
             options,
           )?;
+          resolver.set_compiler_options_resolver(
+            self.compiler_options_resolver()?.clone(),
+          );
           if !resolver.diagnostics().is_empty() {
             // todo(dsherret): do not log this in this crate... that should be
             // a CLI responsibility

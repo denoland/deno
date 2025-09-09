@@ -23,7 +23,8 @@ extension!(runtime,
     deno_napi,
     deno_http,
     deno_io,
-    deno_fs
+    deno_fs,
+    deno_bundle_runtime
   ],
   esm_entry_point = "ext:runtime/90_deno_ns.js",
   esm = [

@@ -1058,49 +1058,49 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
   ) -> Result<(), std::io::Error> {
     use std::fmt::Write;
+    let mut output = String::new();
+
     if !packages.is_empty() {
-      let mut output = String::new();
-      let _ = writeln!(
+      _ = writeln!(
         &mut output,
-        "{} The following packages contained npm lifecycle scripts ({}) that were not executed:",
-        colors::yellow("Warning"),
-        colors::gray("preinstall/install/postinstall"),
+        "{} {}",
+        colors::yellow("╭"),
+        colors::yellow_bold("Warning")
+      );
+      _ = writeln!(&mut output, "{}", colors::yellow("│"));
+      _ = writeln!(
+        &mut output,
+        "{}  Ignored build scripts for packages:",
+        colors::yellow("│"),
       );
 
       for (package, _) in packages {
-        let _ = writeln!(
+        _ = writeln!(
           &mut output,
-          "┠─ {}",
-          colors::gray(format!("npm:{}", package.id.nv))
+          "{}  {}",
+          colors::yellow("│"),
+          colors::italic(format!("npm:{}", package.id.nv))
         );
       }
 
-      let _ = writeln!(&mut output, "┃");
-      let _ = writeln!(
-        &mut output,
-        "┠─ {}",
-        colors::italic("This may cause the packages to not work correctly.")
-      );
-      let _ = writeln!(
-        &mut output,
-        "┖─ {}",
-        colors::italic(
-          "To run lifecycle scripts, use the `--allow-scripts` flag with `deno install`:"
-        )
-      );
+      _ = writeln!(&mut output, "{}", colors::yellow("│"));
+
       let packages_comma_separated = packages
         .iter()
-        .map(|(p, _)| format!("npm:{}", p.id.nv))
+        .map(|(p, _)| format!("npm:{}", p.id.nv.name))
         .collect::<Vec<_>>()
         .join(",");
-      let _ = write!(
+
+      _ = writeln!(
         &mut output,
-        "   {}",
+        "{}  Run \"{}\" to run build scripts.",
+        colors::yellow("│"),
         colors::bold(format!(
           "deno install --allow-scripts={}",
           packages_comma_separated
         ))
       );
+      _ = write!(&mut output, "{}", colors::yellow("╰─"));
 
       if let Some(install_reporter) = &self.install_reporter {
         let paths = packages
@@ -1118,7 +1118,7 @@ impl<TSys: FsOpen + FsMetadata> LifecycleScriptsStrategy
           ),
         );
       } else {
-        log::warn!("{}", output);
+        log::info!("{}", output);
         for (package, _) in packages {
           let _ignore_err = create_initialized_file(
             self.sys,

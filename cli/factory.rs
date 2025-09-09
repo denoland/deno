@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_bundle_runtime::BundlePlatform;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::WorkspaceDirectory;
@@ -59,7 +60,6 @@ use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
-use crate::args::BundlePlatform;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::ConfigFlag;
@@ -921,7 +921,7 @@ impl CliFactory {
         let desc_parser = self.permission_desc_parser()?.clone();
         let permissions = Permissions::from_options(
           desc_parser.as_ref(),
-          &self.cli_options()?.permissions_options(),
+          &self.cli_options()?.permissions_options()?,
         )?;
 
         Ok(PermissionsContainer::new(desc_parser, permissions))
@@ -1036,6 +1036,9 @@ impl CliFactory {
       self.sys(),
       self.create_lib_main_worker_options()?,
       roots,
+      Some(Arc::new(crate::tools::bundle::CliBundleProvider::new(
+        self.flags.clone(),
+      ))),
     );
 
     Ok(CliMainWorkerFactory::new(
@@ -1261,6 +1264,8 @@ fn new_workspace_factory_options(
     is_package_manager_subcommand: matches!(
       flags.subcommand,
       DenoSubcommand::Install(_)
+        | DenoSubcommand::Uninstall(_)
+        | DenoSubcommand::Cache(_)
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Remove(_)
         | DenoSubcommand::Init(_)
@@ -1287,6 +1292,10 @@ fn new_workspace_factory_options(
         is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),
       },
     ),
+    root_node_modules_dir_override: flags
+      .internal
+      .root_node_modules_dir_override
+      .clone(),
     vendor: flags.vendor,
   }
 }
