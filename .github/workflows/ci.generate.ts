@@ -761,7 +761,7 @@ const ci = {
           name: "Generate symcache",
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
-            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "matrix.os != 'windows' && matrix.profile == 'release' && (matrix.use_sysroot ||",
             "github.repository == 'denoland/deno')",
           ].join("\n"),
           run: [
@@ -916,7 +916,9 @@ const ci = {
             "Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
             "Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
-            "target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache",
+            // TODO(bartlomieju): fix the regression from V8 upgrade
+            // https://github.com/denoland/deno/pull/30629
+            // "target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache",
           ].join("\n"),
         },
         {
