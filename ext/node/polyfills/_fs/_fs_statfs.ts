@@ -1,12 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { BigInt } from "ext:deno_node/internal/primordials.mjs";
-import { op_node_statfs } from "ext:core/ops";
+import { op_node_statfs, op_node_statfs_sync } from "ext:core/ops";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import type { Buffer } from "node:buffer";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
 import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { primordials } from "ext:core/mod.js";
+
+const { PromisePrototypeThen } = primordials;
 
 type StatFsCallback<T> = (err: Error | null, stats?: StatFs<T>) => void;
 
@@ -41,6 +44,47 @@ class StatFs<T> {
   }
 }
 
+type OpResult = {
+  type: number;
+  bsize: number;
+  blocks: number;
+  bfree: number;
+  bavail: number;
+  files: number;
+  ffree: number;
+};
+
+function opResultToStatFs(result: OpResult, bigint: true): StatFs<bigint>;
+function opResultToStatFs(
+  result: OpResult,
+  bigint: false,
+): StatFs<number>;
+function opResultToStatFs(
+  result: OpResult,
+  bigint: boolean,
+): StatFs<bigint> | StatFs<number> {
+  if (!bigint) {
+    return new StatFs(
+      result.type,
+      result.bsize,
+      result.blocks,
+      result.bfree,
+      result.bavail,
+      result.files,
+      result.ffree,
+    );
+  }
+  return new StatFs(
+    BigInt(result.type),
+    BigInt(result.bsize),
+    BigInt(result.blocks),
+    BigInt(result.bfree),
+    BigInt(result.bavail),
+    BigInt(result.files),
+    BigInt(result.ffree),
+  );
+}
+
 export function statfs(
   path: string | Buffer | URL,
   callback: StatFsCallback<number>,
@@ -67,13 +111,22 @@ export function statfs(
   // @ts-expect-error callback type is known to be valid
   callback = makeCallback(callback);
   path = getValidatedPathToString(path);
-  try {
-    // TODO(Tango992): Implement async op
-    const res = statfsSync(path, options);
-    callback(null, res);
-  } catch (err) {
-    callback(err as Error);
-  }
+  const bigint = typeof options?.bigint === "boolean" ? options.bigint : false;
+
+  PromisePrototypeThen(
+    op_node_statfs(path, bigint),
+    (statFs) => {
+      callback(
+        null,
+        opResultToStatFs(statFs, bigint),
+      );
+    },
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, {
+        syscall: "statfs",
+        path,
+      })),
+  );
 }
 
 export function statfsSync(
@@ -92,19 +145,11 @@ export function statfsSync(
   const bigint = typeof options?.bigint === "boolean" ? options.bigint : false;
 
   try {
-    const statFs = op_node_statfs(
+    const statFs = op_node_statfs_sync(
       path,
       bigint,
     );
-    return new StatFs(
-      bigint ? BigInt(statFs.type) : statFs.type,
-      bigint ? BigInt(statFs.bsize) : statFs.bsize,
-      bigint ? BigInt(statFs.blocks) : statFs.blocks,
-      bigint ? BigInt(statFs.bfree) : statFs.bfree,
-      bigint ? BigInt(statFs.bavail) : statFs.bavail,
-      bigint ? BigInt(statFs.files) : statFs.files,
-      bigint ? BigInt(statFs.ffree) : statFs.ffree,
-    );
+    return opResultToStatFs(statFs, bigint);
   } catch (err) {
     throw denoErrorToNodeError(err as Error, {
       syscall: "statfs",
