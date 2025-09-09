@@ -22,6 +22,8 @@ use clap::builder::FalseyValueParser;
 use clap::builder::styling::AnsiColor;
 use clap::error::ErrorKind;
 use clap::value_parser;
+use clap_complete::CompletionCandidate;
+use clap_complete::engine::SubcommandCandidates;
 use color_print::cstr;
 use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
@@ -3467,6 +3469,7 @@ Evaluate a task from string:
   )
   .defer(|cmd| {
     cmd
+      .add(SubcommandCandidates::new(complete_available_tasks))
       .allow_external_subcommands(true)
       .subcommand_value_name("TASK")
       .arg(config_arg())
@@ -3502,6 +3505,33 @@ Evaluate a task from string:
       .arg(node_modules_dir_arg())
       .arg(connected_arg())
   })
+}
+
+fn complete_available_tasks_inner() -> Result<Vec<CompletionCandidate>, AnyError>
+{
+  let flags = Flags::default();
+  // kind of gross to be doing the factory stuff here, maybe move parts of this elsewhere
+
+  let completions = crate::tools::task::get_available_tasks_for_completion(
+    std::sync::Arc::new(flags),
+  )?;
+
+  Ok(
+    completions
+      .into_iter()
+      .map(|c| CompletionCandidate::new(c.name))
+      .collect(),
+  )
+}
+
+fn complete_available_tasks() -> Vec<CompletionCandidate> {
+  match complete_available_tasks_inner() {
+    Ok(candidates) => candidates,
+    Err(e) => {
+      log::debug!("Error during available tasks completion: {e}");
+      vec![]
+    }
+  }
 }
 
 fn test_subcommand() -> Command {
@@ -5907,6 +5937,19 @@ fn task_parse(
   }
 
   flags.subcommand = DenoSubcommand::Task(task_flags);
+  Ok(())
+}
+
+pub fn handle_shell_completion() -> Result<(), AnyError> {
+  let args = std::env::args_os().collect::<Vec<_>>();
+  let app = clap_root();
+
+  let ran_completion = clap_complete::CompleteEnv::with_factory(|| app.clone())
+    .try_complete(args, Some(&std::env::current_dir()?))?;
+
+  // we should only run this function when we're doing completions
+  assert!(ran_completion);
+
   Ok(())
 }
 
