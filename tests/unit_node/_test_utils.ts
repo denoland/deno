@@ -166,22 +166,22 @@ export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   );
   assertEquals(
     actual.isBlockDevice(),
-    Deno.build.os === 'windows' ? false : expected.isBlockDevice,
+    Deno.build.os === "windows" ? false : expected.isBlockDevice,
     "Stats.isBlockDevice",
   );
   assertEquals(
     actual.isFIFO(),
-    Deno.build.os === 'windows' ? false : expected.isFifo,
+    Deno.build.os === "windows" ? false : expected.isFifo,
     "Stats.isFIFO",
   );
   assertEquals(
     actual.isCharacterDevice(),
-    Deno.build.os === 'windows' ? false : expected.isCharDevice,
+    Deno.build.os === "windows" ? false : expected.isCharDevice,
     "Stats.isCharacterDevice",
   );
   assertEquals(
     actual.isSocket(),
-    Deno.build.os === 'windows' ? false : expected.isSocket,
+    Deno.build.os === "windows" ? false : expected.isSocket,
     "Stats.isSocket",
   );
 }
@@ -331,22 +331,22 @@ export function assertStatsBigInt(
   }
   assertEquals(
     actual.isBlockDevice(),
-    Deno.build.os === 'windows' ? false : expected.isBlockDevice,
+    Deno.build.os === "windows" ? false : expected.isBlockDevice,
     "BigIntStats.isBlockDevice",
   );
   assertEquals(
     actual.isFIFO(),
-    Deno.build.os === 'windows' ? false : expected.isFifo,
+    Deno.build.os === "windows" ? false : expected.isFifo,
     "BigIntStats.isFIFO",
   );
   assertEquals(
     actual.isCharacterDevice(),
-    Deno.build.os === 'windows' ? false : expected.isCharDevice,
+    Deno.build.os === "windows" ? false : expected.isCharDevice,
     "BigIntStats.isCharacterDevice",
   );
   assertEquals(
     actual.isSocket(),
-    Deno.build.os === 'windows' ? false : expected.isSocket,
+    Deno.build.os === "windows" ? false : expected.isSocket,
     "BigIntStats.isSocket",
   );
 }
