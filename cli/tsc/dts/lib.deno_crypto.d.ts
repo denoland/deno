@@ -651,20 +651,7 @@ interface Crypto {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValues
    */
-  getRandomValues<
-    T extends
-      | Int8Array<ArrayBuffer>
-      | Int16Array<ArrayBuffer>
-      | Int32Array<ArrayBuffer>
-      | Uint8Array<ArrayBuffer>
-      | Uint16Array<ArrayBuffer>
-      | Uint32Array<ArrayBuffer>
-      | Uint8ClampedArray<ArrayBuffer>
-      | BigInt64Array<ArrayBuffer>
-      | BigUint64Array<ArrayBuffer>,
-  >(
-    array: T,
-  ): T;
+  getRandomValues<T extends ArrayBufferView>(array: T): T;
 
   /**
    * Generates a random RFC 4122 version 4 UUID using a cryptographically
