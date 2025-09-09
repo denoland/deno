@@ -922,10 +922,31 @@ const ci = {
           ].join("\n"),
         },
         {
-          name: "Upload canary to dl.deno.land",
+          name: "Upload canary to dl.deno.land (windows)",
           if: [
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
+            "matrix.os == 'windows' &&",
+            "github.repository == 'denoland/deno' &&",
+            "github.ref == 'refs/heads/main'",
+          ].join("\n"),
+          run: [
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+            // TODO(bartlomieju): fix the regression from V8 upgrade
+            // https://github.com/denoland/deno/pull/30629
+            // 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+            "echo ${{ github.sha }} > canary-latest.txt",
+            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
+            "rm canary-latest.txt gha-creds-*.json",
+          ].join("\n"),
+        },
+        {
+          name: "Upload canary to dl.deno.land (unix)",
+          if: [
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' &&",
+            "matrix.os != 'windows' &&",
             "github.repository == 'denoland/deno' &&",
             "github.ref == 'refs/heads/main'",
           ].join("\n"),
@@ -1147,7 +1168,9 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+            // TODO(bartlomieju): fix the regression from V8 upgrade
+            // https://github.com/denoland/deno/pull/30629
+            // 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           ].join("\n"),
         },
         {
