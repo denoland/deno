@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "tests": {
+    "basic": {
+      "envs": { "COMPLETE": "fish" },
+      "args": ["--", "/thing/deno", "task", ""],
+      "output": "basic.out"
+    },
+    "config_flag": {
+      "envs": { "COMPLETE": "fish" },
+      "args": [
+        "--",
+        "/thing/deno",
+        "task",
+        "--config",
+        "./subdir/deno.json",
+        ""
+      ],
+      "output": "config_flag.out"
+    },
+    "workspace": {
+      "envs": { "COMPLETE": "fish" },
+      "cwd": "./workspace/member",
+      "args": ["--", "/thing/deno", "task", ""],
+      "output": "workspace.out"
+    }
+  }
+}
