@@ -23,6 +23,12 @@
       "cwd": "./workspace/member",
       "args": ["--", "/thing/deno", "task", ""],
       "output": "workspace.out"
+    },
+    "workspace_package_json": {
+      "envs": { "COMPLETE": "fish" },
+      "cwd": "./workspace/member2",
+      "args": ["--", "/thing/deno", "task", ""],
+      "output": "workspace_package_json.out"
     }
   }
 }
