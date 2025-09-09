@@ -303,15 +303,11 @@ where
 {
   let path = {
     let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
+    state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
       OpenAccessKind::ReadNoFollow,
       Some("node:fs.statfs"),
-    )?;
-    state
-      .borrow_mut::<P>()
-      .check_sys("statfs", "node:fs.statfs")?;
-    path
+    )?
   };
 
   match spawn_blocking(move || statfs(path, bigint)).await {
