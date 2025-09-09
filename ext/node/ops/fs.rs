@@ -275,25 +275,18 @@ pub struct StatFs {
 #[op2(stack_trace)]
 #[serde]
 pub fn op_node_statfs_sync<P>(
-  state: Rc<RefCell<OpState>>,
+  state: &mut OpState,
   #[string] path: &str,
   bigint: bool,
 ) -> Result<StatFs, FsError>
 where
   P: NodePermissions + 'static,
 {
-  let path = {
-    let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Borrowed(Path::new(path)),
-      OpenAccessKind::ReadNoFollow,
-      Some("node:fs.statfsSync"),
-    )?;
-    state
-      .borrow_mut::<P>()
-      .check_sys("statfs", "node:fs.statfs")?;
-    path
-  };
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::ReadNoFollow,
+    Some("node:fs.statfsSync"),
+  )?;
 
   statfs(path, bigint)
 }
