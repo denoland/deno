@@ -11,6 +11,15 @@ import { primordials } from "ext:core/mod.js";
 
 const { PromisePrototypeThen } = primordials;
 
+type StatFsPromise = (
+  path: string | Buffer | URL,
+  options?: { bigint?: false },
+) => Promise<StatFs<number>>;
+type StatFsBigIntPromise = (
+  path: string | Buffer | URL,
+  options: { bigint: true },
+) => Promise<StatFs<bigint>>;
+
 type StatFsCallback<T> = (err: Error | null, stats?: StatFs<T>) => void;
 
 type StatFsOptions = {
@@ -158,4 +167,6 @@ export function statfsSync(
   }
 }
 
-export const statfsPromise = promisify(statfs);
+export const statfsPromise = promisify(statfs) as (
+  StatFsPromise & StatFsBigIntPromise
+);
