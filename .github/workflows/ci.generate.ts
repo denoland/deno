@@ -760,8 +760,8 @@ const ci = {
         {
           name: "Generate symcache",
           if: [
-            "(matrix.job == 'test' || matrix.job == 'bench' && matrix.os != 'windows') &&",
-            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
+            "matrix.os != 'windows' && matrix.profile == 'release' && (matrix.use_sysroot ||",
             "github.repository == 'denoland/deno')",
           ].join("\n"),
           run: [
