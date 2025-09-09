@@ -127,9 +127,9 @@ pub async fn bundle_init(
 
   let resolved_entrypoints =
     resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
-  let _ = plugin_handler
+  plugin_handler
     .prepare_module_load(&resolved_entrypoints)
-    .await;
+    .await?;
 
   let roots =
     resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
