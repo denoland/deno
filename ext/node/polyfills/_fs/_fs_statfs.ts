@@ -90,12 +90,12 @@ export function statfsSync(
 ): StatFs<number> | StatFs<bigint> {
   path = getValidatedPathToString(path);
   const bigint = typeof options?.bigint === "boolean" ? options.bigint : false;
-  const statFs = op_node_statfs(
-    path,
-    bigint,
-  );
 
   try {
+    const statFs = op_node_statfs(
+      path,
+      bigint,
+    );
     return new StatFs(
       bigint ? BigInt(statFs.type) : statFs.type,
       bigint ? BigInt(statFs.bsize) : statFs.bsize,
