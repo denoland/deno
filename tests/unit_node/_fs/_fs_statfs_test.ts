@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import { assert, assertEquals, fail } from "@std/assert";
 import * as path from "@std/path";
+import { Buffer } from "node:buffer";
 
 function assertStatFs(
   statFs: fs.StatsFsBase<unknown>,
@@ -39,6 +40,18 @@ Deno.test({
 });
 
 Deno.test({
+  name: "fs.statfs() with Buffer",
+  async fn() {
+    await new Promise<fs.StatsFsBase<unknown>>((resolve, reject) => {
+      fs.statfs(Buffer.from(filePath), (err, statFs) => {
+        if (err) reject(err);
+        resolve(statFs);
+      });
+    }).then((statFs) => assertStatFs(statFs));
+  },
+});
+
+Deno.test({
   name: "fs.statfs() bigint",
   async fn() {
     await new Promise<fs.StatsFsBase<unknown>>((resolve, reject) => {
@@ -54,6 +67,14 @@ Deno.test({
   name: "fs.statfsSync()",
   fn() {
     const statFs = fs.statfsSync(filePath);
+    assertStatFs(statFs);
+  },
+});
+
+Deno.test({
+  name: "fs.statfsSync() with Buffer",
+  fn() {
+    const statFs = fs.statfsSync(Buffer.from(filePath));
     assertStatFs(statFs);
   },
 });
