@@ -443,7 +443,7 @@ jobs:
         run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'
       - name: Generate symcache
         if: |-
-          !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
+          !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench' && matrix.os != 'windows') &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
           github.repository == 'denoland/deno'))
         run: |-
