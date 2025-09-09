@@ -459,6 +459,55 @@ fn permissions_trace() {
     });
 }
 
+#[test]
+fn permissions_audit() {
+  let ctx = TestContext::default();
+  let dir = ctx.temp_dir();
+  let path = dir.path().join(std::path::Path::new("audit.jsonl"));
+
+  ctx
+    .new_command()
+    .env("DENO_AUDIT_PERMISSIONS", &path)
+    .args_vec(["run", "-A", "run/permissions_audit.ts"])
+    .run()
+    .skip_output_check();
+
+  let file = std::fs::read_to_string(path).unwrap();
+  test_util::assertions::assert_wildcard_match(
+    &file,
+    r#"{"v":1,"datetime":"[WILDCARD]","permission":"sys","value":"hostname"}
+{"v":1,"datetime":"[WILDCARD]","permission":"read","value":"[WILDCARD]"}
+{"v":1,"datetime":"[WILDCARD]","permission":"write","value":"[WILDCARD]"}
+{"v":1,"datetime":"[WILDCARD]","permission":"env","value":"FOO"}
+"#,
+  );
+}
+
+#[test]
+fn permissions_audit_with_traces() {
+  let ctx = TestContext::default();
+  let dir = ctx.temp_dir();
+  let path = dir.path().join(std::path::Path::new("audit.jsonl"));
+
+  ctx
+    .new_command()
+    .env("DENO_AUDIT_PERMISSIONS", &path)
+    .env("DENO_TRACE_PERMISSIONS", "1")
+    .args_vec(["run", "-A", "run/permissions_audit.ts"])
+    .run()
+    .skip_output_check();
+
+  let file = std::fs::read_to_string(path).unwrap();
+  test_util::assertions::assert_wildcard_match(
+    &file,
+    r#"{"v":1,"datetime":"[WILDCARD]","permission":"sys","value":"hostname","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"read","value":"[WILDCARD]","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"write","value":"[WILDCARD]","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"env","value":"FOO","stack":[WILDCARD]}
+"#,
+  );
+}
+
 itest!(lock_write_fetch {
   args: "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
   output: "run/lock_write_fetch/main.out",
@@ -2273,7 +2322,7 @@ async fn test_resolve_dns() {
     let records = Parser::new(
       &zone_file,
       None,
-      Some(Name::from_str("example.com").unwrap()),
+      Some(Name::from_str("example.com.").unwrap()),
     )
     .parse();
     if records.is_err() {

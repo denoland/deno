@@ -29,7 +29,10 @@ pub struct GPURenderBundleEncoder {
   pub label: String,
 }
 
-impl GarbageCollected for GPURenderBundleEncoder {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPURenderBundleEncoder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPURenderBundleEncoder"
   }
@@ -410,7 +413,10 @@ impl WebIdlInterfaceConverter for GPURenderBundle {
   const NAME: &'static str = "GPURenderBundle";
 }
 
-impl GarbageCollected for GPURenderBundle {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPURenderBundle {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPURenderBundle"
   }

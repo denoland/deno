@@ -29,7 +29,9 @@ pub struct GPURenderPassEncoder {
   pub label: String,
 }
 
-impl GarbageCollected for GPURenderPassEncoder {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPURenderPassEncoder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPURenderPassEncoder"
   }

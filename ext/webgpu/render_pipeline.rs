@@ -34,7 +34,10 @@ impl WebIdlInterfaceConverter for GPURenderPipeline {
   const NAME: &'static str = "GPURenderPipeline";
 }
 
-impl GarbageCollected for GPURenderPipeline {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPURenderPipeline {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPURenderPipeline"
   }

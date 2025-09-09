@@ -3835,7 +3835,7 @@ declare namespace Deno {
      * Reads the stream to completion. It returns a promise that resolves with
      * a `Uint8Array`.
      */
-    bytes(): Promise<Uint8Array>;
+    bytes(): Promise<Uint8Array<ArrayBuffer>>;
     /**
      * Reads the stream to completion. It returns a promise that resolves with
      * the result of parsing the body text as JSON.

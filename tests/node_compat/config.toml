@@ -301,7 +301,7 @@
 "parallel/test-dgram-send-cb-quelches-error.js" = {}
 "parallel/test-dgram-send-default-host.js" = {}
 "parallel/test-dgram-send-empty-array.js" = { flaky = true }
-"parallel/test-dgram-send-empty-buffer.js" = { flaky = true }
+"parallel/test-dgram-send-empty-buffer.js" = { darwin = false, flaky = true }
 "parallel/test-dgram-send-empty-packet.js" = { flaky = true }
 "parallel/test-dgram-send-error.js" = {}
 "parallel/test-dgram-send-invalid-msg-type.js" = {}
