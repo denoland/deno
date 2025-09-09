@@ -1796,8 +1796,12 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_web",
+ "indexmap 2.9.0",
+ "log",
  "regex",
  "serde",
+ "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]
