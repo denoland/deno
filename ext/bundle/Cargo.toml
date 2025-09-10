@@ -3,6 +3,7 @@
 [package]
 name = "deno_bundle_runtime"
 version = "0.2.0"
+description = "Bundle runtime API for Deno"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
