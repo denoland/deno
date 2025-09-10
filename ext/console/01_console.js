@@ -383,6 +383,10 @@ const nodeCustomInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 // Internal only, shouldn't be used by users.
 const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
 
+// for prototype checks (Temporal, Intl.Locale)
+// todo(#29165): use temporal when available?
+const globalThis_ = globalThis;
+
 function getUserOptions(ctx, isCrossContext) {
   const ret = {
     stylize: ctx.stylize,
@@ -811,7 +815,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
       } else if (
         proxyDetails === null &&
-        ObjectPrototypeIsPrototypeOf(globalThis.Intl.Locale.prototype, value)
+        ObjectPrototypeIsPrototypeOf(globalThis_.Intl.Locale.prototype, value)
       ) {
         braces[0] = `${getPrefix(constructor, tag, "Intl.Locale")}{`;
         ArrayPrototypeUnshift(
@@ -829,38 +833,38 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         );
       } else if (
         proxyDetails === null &&
-        typeof globalThis.Temporal !== "undefined" &&
+        typeof globalThis_.Temporal !== "undefined" &&
         (
           ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.Instant.prototype,
+            globalThis_.Temporal.Instant.prototype,
             value,
           ) ||
           ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.ZonedDateTime.prototype,
+            globalThis_.Temporal.ZonedDateTime.prototype,
             value,
           ) ||
           ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.PlainDate.prototype,
+            globalThis_.Temporal.PlainDate.prototype,
             value,
           ) ||
           ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.PlainTime.prototype,
+            globalThis_.Temporal.PlainTime.prototype,
             value,
           ) ||
           ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.PlainDateTime.prototype,
+            globalThis_.Temporal.PlainDateTime.prototype,
             value,
           ) ||
           ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.PlainYearMonth.prototype,
+            globalThis_.Temporal.PlainYearMonth.prototype,
             value,
           ) ||
           ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.PlainMonthDay.prototype,
+            globalThis_.Temporal.PlainMonthDay.prototype,
             value,
           ) ||
           ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.Duration.prototype,
+            globalThis_.Temporal.Duration.prototype,
             value,
           )
         )
