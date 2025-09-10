@@ -44,7 +44,7 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
   // SAFETY: calling user provided function pointer.
   let value = unsafe { (info.cb)(info.env as napi_env, info_ptr as *mut _) };
   if let Some(exc) = unsafe { &mut *info.env }.last_exception.take() {
-    let scope = unsafe { &mut v8::CallbackScope::new(callback_info) };
+    v8::make_callback_scope!(unsafe scope, callback_info);
     let exc = v8::Local::new(scope, exc);
     scope.throw_exception(exc);
   }

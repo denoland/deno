@@ -261,7 +261,7 @@ async fn bench_specifier_inner(
       .js_runtime
       .with_event_loop_promise(call, PollEventLoopOptions::default())
       .await?;
-    let scope = &mut worker.js_runtime.handle_scope();
+    deno_core::jsruntime_make_handle_scope!(scope, &mut worker.js_runtime);
     let result = v8::Local::new(scope, result);
     let result = serde_v8::from_v8::<BenchResult>(scope, result)
       .map_err(JsErrorBox::from_err)

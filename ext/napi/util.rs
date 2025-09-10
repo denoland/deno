@@ -160,7 +160,7 @@ pub(crate) unsafe fn v8_name_from_property_descriptor<'s>(
 
 pub(crate) fn napi_clear_last_error(env: *mut Env) -> napi_status {
   let env = unsafe { &mut *env };
-  env.last_error.error_code = napi_ok;
+  env.last_error.error_code.set(napi_ok);
   env.last_error.engine_error_code = 0;
   env.last_error.engine_reserved = std::ptr::null_mut();
   env.last_error.error_message = std::ptr::null_mut();
@@ -168,11 +168,11 @@ pub(crate) fn napi_clear_last_error(env: *mut Env) -> napi_status {
 }
 
 pub(crate) fn napi_set_last_error(
-  env: *mut Env,
+  env: *const Env,
   error_code: napi_status,
 ) -> napi_status {
-  let env = unsafe { &mut *env };
-  env.last_error.error_code = error_code;
+  let env = unsafe { &*env };
+  env.last_error.error_code.set(error_code);
   error_code
 }
 

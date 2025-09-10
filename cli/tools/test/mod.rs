@@ -1082,7 +1082,7 @@ async fn run_tests_for_worker_inner(
       };
 
       // Check the result before we check for leaks
-      let scope = &mut worker.js_runtime.handle_scope();
+      deno_core::jsruntime_make_handle_scope!(scope, &mut worker.js_runtime);
       let result = v8::Local::new(scope, result);
       serde_v8::from_v8::<TestResult>(scope, result)?
     } else {

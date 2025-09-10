@@ -2549,25 +2549,27 @@ struct GcMetricData(RefCell<GcMetricDataInner>);
 
 impl GcMetricData {
   extern "C" fn prologue_callback(
-    isolate: *mut v8::Isolate,
+    isolate: v8::UnsafeRawIsolatePtr,
     _gc_type: v8::GCType,
     _flags: v8::GCCallbackFlags,
     _data: *mut c_void,
   ) {
     // SAFETY: Isolate is valid during callback
-    let isolate = unsafe { &mut *isolate };
+    let isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
     let this = isolate.get_slot::<Self>().unwrap();
     this.0.borrow_mut().start = Instant::now();
   }
 
   extern "C" fn epilogue_callback(
-    isolate: *mut v8::Isolate,
+    isolate: v8::UnsafeRawIsolatePtr,
     gc_type: v8::GCType,
     _flags: v8::GCCallbackFlags,
     _data: *mut c_void,
   ) {
     // SAFETY: Isolate is valid during callback
-    let isolate = unsafe { &mut *isolate };
+    let isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
     let this = isolate.get_slot::<Self>().unwrap();
     let this = this.0.borrow_mut();
 

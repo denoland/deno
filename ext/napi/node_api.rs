@@ -329,8 +329,6 @@ fn napi_create_external_buffer<'s>(
 ) -> napi_status {
   check_arg!(env, result);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
-
   let store = make_external_backing_store(
     env,
     data,
@@ -340,6 +338,7 @@ fn napi_create_external_buffer<'s>(
     finalize_hint,
   );
 
+  v8::make_callback_scope!(unsafe scope, env.context());
   let ab = v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
 
   let buffer_constructor = v8::Local::new(scope, &env.buffer_constructor);
@@ -496,34 +495,36 @@ pub(crate) fn napi_create_async_work(
   check_arg!(env, execute);
   check_arg!(env, result);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
+  let work = {
+    v8::make_callback_scope!(unsafe scope, env.context());
 
-  let resource = if let Some(v) = *async_resource {
-    let Some(resource) = v.to_object(scope) else {
-      return napi_set_last_error(env, napi_object_expected);
+    let resource = if let Some(v) = *async_resource {
+      let Some(resource) = v.to_object(scope) else {
+        return napi_set_last_error(env, napi_object_expected);
+      };
+      resource
+    } else {
+      v8::Object::new(scope)
     };
-    resource
-  } else {
-    v8::Object::new(scope)
+
+    let Some(resource_name) =
+      async_resource_name.and_then(|v| v.to_string(scope))
+    else {
+      return napi_set_last_error(env, napi_string_expected);
+    };
+
+    let resource_name = resource_name.to_rust_string_lossy(scope);
+
+    Box::new(AsyncWork {
+      state: AtomicU8::new(AsyncWork::IDLE),
+      env: env_ptr,
+      _async_resource: v8::Global::new(scope, resource),
+      _async_resource_name: resource_name,
+      execute: execute.unwrap(),
+      complete,
+      data,
+    })
   };
-
-  let Some(resource_name) =
-    async_resource_name.and_then(|v| v.to_string(scope))
-  else {
-    return napi_set_last_error(env, napi_string_expected);
-  };
-
-  let resource_name = resource_name.to_rust_string_lossy(scope);
-
-  let work = Box::new(AsyncWork {
-    state: AtomicU8::new(AsyncWork::IDLE),
-    env: env_ptr,
-    _async_resource: v8::Global::new(scope, resource),
-    _async_resource_name: resource_name,
-    execute: execute.unwrap(),
-    complete,
-    data,
-  });
 
   unsafe {
     *result = Box::into_raw(work) as _;
@@ -870,33 +871,36 @@ fn napi_create_threadsafe_function(
   }
   check_arg!(env, result);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
-  let func = if let Some(value) = *func {
-    let Ok(func) = v8::Local::<v8::Function>::try_from(value) else {
-      return napi_set_last_error(env, napi_function_expected);
+  let (func, resource, resource_name) = {
+    v8::make_callback_scope!(unsafe scope, env.context());
+    let func = if let Some(value) = *func {
+      let Ok(func) = v8::Local::<v8::Function>::try_from(value) else {
+        return napi_set_last_error(env, napi_function_expected);
+      };
+      Some(v8::Global::new(scope, func))
+    } else {
+      check_arg!(env, call_js_cb);
+      None
     };
-    Some(v8::Global::new(scope, func))
-  } else {
-    check_arg!(env, call_js_cb);
-    None
-  };
 
-  let resource = if let Some(v) = *async_resource {
-    let Some(resource) = v.to_object(scope) else {
-      return napi_set_last_error(env, napi_object_expected);
+    let resource = if let Some(v) = *async_resource {
+      let Some(resource) = v.to_object(scope) else {
+        return napi_set_last_error(env, napi_object_expected);
+      };
+      resource
+    } else {
+      v8::Object::new(scope)
     };
-    resource
-  } else {
-    v8::Object::new(scope)
-  };
-  let resource = v8::Global::new(scope, resource);
+    let resource = v8::Global::new(scope, resource);
 
-  let Some(resource_name) =
-    async_resource_name.and_then(|v| v.to_string(scope))
-  else {
-    return napi_set_last_error(env, napi_string_expected);
+    let Some(resource_name) =
+      async_resource_name.and_then(|v| v.to_string(scope))
+    else {
+      return napi_set_last_error(env, napi_string_expected);
+    };
+    let resource_name = resource_name.to_rust_string_lossy(scope);
+    (func, resource, resource_name)
   };
-  let resource_name = resource_name.to_rust_string_lossy(scope);
 
   let tsfn = Box::new(TsFn {
     env,

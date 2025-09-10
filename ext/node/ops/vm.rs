@@ -95,7 +95,7 @@ impl ContextifyScript {
       v8::script_compiler::CompileOptions::NoCompileOptions
     };
 
-    let scope = &mut v8::TryCatch::new(scope);
+    v8::make_try_catch!(scope, scope);
 
     let Some(unbound_script) = v8::script_compiler::compile_unbound_script(
       scope,
@@ -171,18 +171,20 @@ impl ContextifyScript {
     )
   }
 
-  pub fn eval_machine<'s>(
+  pub fn eval_machine<'s, 'i>(
     &self,
-    scope: &mut v8::PinScope<'s, '_>,
-    context: v8::Local<v8::Context>,
+    scope: &mut v8::PinScope<'s, 'i>,
+    context: v8::Local<'s, v8::Context>,
     timeout: i64,
     _display_errors: bool,
     _break_on_sigint: bool,
     microtask_queue: Option<&v8::MicrotaskQueue>,
   ) -> Option<v8::Local<'s, v8::Value>> {
     let context_scope = &mut v8::ContextScope::new(scope, context);
-    let scope = &mut v8::EscapablePinScope::<'_, '_>::new(context_scope);
-    let scope = &mut v8::TryCatch::new(scope);
+    let scope_storage =
+      std::pin::pin!(v8::EscapableHandleScope::new(context_scope));
+    let scope = &mut scope_storage.init();
+    v8::make_try_catch!(scope, scope);
 
     let unbound_script = self.script.get(scope).unwrap();
     let script = unbound_script.bind_to_current_context(scope);
@@ -466,7 +468,7 @@ pub fn create_v8_context<'a>(
   mode: ContextInitMode,
   microtask_queue: *mut v8::MicrotaskQueue,
 ) -> v8::Local<'a, v8::Context> {
-  let scope = std::pin::pin!(v8::EscapablePinScope::new(scope));
+  let scope = std::pin::pin!(v8::EscapableHandleScope::new(scope));
   let scope = &mut scope.init();
 
   let context = if mode == ContextInitMode::UseSnapshot {
@@ -553,10 +555,10 @@ thread_local! {
   pub static INDEXED_QUERY_MAP_FN: v8::IndexedPropertyQueryCallback = indexed_property_query.map_fn_to();
 }
 
-pub fn init_global_template_inner<'a>(
-  scope: &mut v8::PinScope<'a, '_, ()>,
+pub fn init_global_template_inner<'a, 'b, 'i>(
+  scope: &'b mut v8::PinScope<'a, 'i, ()>,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
-  let scope = std::pin::pin!(v8::EscapablePinScope::new(scope));
+  let scope = std::pin::pin!(v8::EscapableHandleScope::new(scope));
   let scope = &mut scope.init();
 
   let global_object_template = v8::ObjectTemplate::new(scope);
@@ -603,7 +605,7 @@ pub fn init_global_template_inner<'a>(
   global_object_template
     .set_indexed_property_handler(indexed_property_handler_config);
 
-  global_object_template
+  scope.escape(global_object_template)
 }
 
 fn property_query<'s>(
@@ -669,7 +671,7 @@ fn property_getter<'s>(
     return v8::Intercepted::No;
   };
 
-  let tc_scope = &mut v8::TryCatch::new(scope);
+  v8::make_try_catch!(tc_scope, scope);
   let maybe_rv = sandbox.get_real_named_property(tc_scope, key).or_else(|| {
     ctx
       .global_proxy(tc_scope)
@@ -1241,8 +1243,7 @@ pub fn op_vm_compile_function<'s>(
     v8::script_compiler::CompileOptions::NoCompileOptions
   };
 
-  let scope = &mut v8::TryCatch::new(scope);
-
+  v8::make_try_catch!(scope, scope);
   let Some(function) = v8::script_compiler::compile_function(
     scope,
     &mut source,

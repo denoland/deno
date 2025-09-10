@@ -168,11 +168,11 @@ fn napi_get_last_error_info(
   let env = check_env!(env);
   check_arg!(env, result);
 
-  if env.last_error.error_code == napi_ok {
+  if env.last_error.error_code.get() == napi_ok {
     napi_clear_last_error(env);
   } else {
     env.last_error.error_message =
-      ERROR_MESSAGES[env.last_error.error_code as usize].as_ptr();
+      ERROR_MESSAGES[env.last_error.error_code.get() as usize].as_ptr();
   }
 
   unsafe {
@@ -1421,7 +1421,6 @@ fn napi_get_boolean(
   let env = check_env!(env);
   check_arg!(env, result);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
   unsafe {
     *result = v8::Boolean::new(env.isolate(), value).into();
   }
@@ -1439,8 +1438,11 @@ fn napi_create_symbol(
   check_arg!(env, result);
 
   let description = if let Some(d) = *description {
-    v8::make_callback_scope!(unsafe scope, env.context());
-    let Some(d) = d.to_string(scope) else {
+    let d = {
+      v8::make_callback_scope!(unsafe scope, env.context());
+      d.to_string(scope)
+    };
+    let Some(d) = d else {
       return napi_set_last_error(env, napi_string_expected);
     };
     Some(d)
@@ -1762,10 +1764,12 @@ fn napi_throw(env: *mut Env, error: napi_value) -> napi_status {
     return napi_pending_exception;
   }
 
-  let error = error.unwrap();
-  v8::make_callback_scope!(unsafe scope, env.context());
-  scope.throw_exception(error);
-  let error = v8::Global::new(scope, error);
+  let error = {
+    let error = error.unwrap();
+    v8::make_callback_scope!(unsafe scope, env.context());
+    scope.throw_exception(error);
+    v8::Global::new(scope, error)
+  };
   env.last_exception = Some(error);
 
   napi_clear_last_error(env)
@@ -1787,26 +1791,37 @@ macro_rules! napi_throw_error_impl {
       Err(status) => return status,
     };
 
-    v8::make_callback_scope!(unsafe scope, env.context());
-    let error = v8::Exception::$error(scope, str_);
+    let error = {
+      let mut scope_storage = unsafe { v8::CallbackScope::new(env.context()) };
+      let mut scope_pin =
+        unsafe { std::pin::Pin::new_unchecked(&mut scope_storage) };
+      let scope = &mut scope_pin.as_mut().init();
 
-    if !code.is_null() {
-      let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
-      let code = match unsafe { check_new_from_utf8(env_ptr, code) } {
-        Ok(s) => s,
-        Err(status) => return napi_set_last_error(env, status),
-      };
-      let code_key = v8::String::new(scope, "code").unwrap();
-      if !error_obj
-        .set(scope, code_key.into(), code.into())
-        .unwrap_or(false)
-      {
-        return napi_set_last_error(env, napi_generic_failure);
+      let error = v8::Exception::$error(scope, str_);
+
+      if !code.is_null() {
+        let error_obj: v8::Local<v8::Object> = error.try_into().unwrap();
+        let code = match unsafe { check_new_from_utf8(env_ptr, code) } {
+          Ok(s) => s,
+          Err(status) => {
+            drop(scope_pin);
+            drop(scope_storage);
+            return napi_set_last_error(env, status);
+          }
+        };
+        let code_key = v8::String::new(scope, "code").unwrap();
+        if !error_obj
+          .set(scope, code_key.into(), code.into())
+          .unwrap_or(false)
+        {
+          drop(scope_pin);
+          drop(scope_storage);
+          return napi_set_last_error(env, napi_generic_failure);
+        }
       }
-    }
 
-    env.scope().throw_exception(error);
-    let error = v8::Global::new(scope, error);
+      v8::Global::new(scope, error)
+    };
     env.last_exception = Some(error);
 
     napi_clear_last_error(env)
@@ -1954,7 +1969,6 @@ fn napi_get_value_int64(
   check_arg!(env, value);
   check_arg!(env, result);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
   let Some(number) =
     value.and_then(|v| v8::Local::<v8::Number>::try_from(v).ok())
   else {
@@ -1986,7 +2000,6 @@ fn napi_get_value_bigint_int64(
   check_arg!(env, result);
   check_arg!(env, lossless);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
   let Some(bigint) =
     value.and_then(|v| v8::Local::<v8::BigInt>::try_from(v).ok())
   else {
@@ -2015,7 +2028,6 @@ fn napi_get_value_bigint_uint64(
   check_arg!(env, result);
   check_arg!(env, lossless);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
   let Some(bigint) =
     value.and_then(|v| v8::Local::<v8::BigInt>::try_from(v).ok())
   else {
@@ -2044,7 +2056,6 @@ fn napi_get_value_bigint_words(
   check_arg!(env, value);
   check_arg!(env, word_count);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
   let Some(bigint) =
     value.and_then(|v| v8::Local::<v8::BigInt>::try_from(v).ok())
   else {
@@ -2084,7 +2095,6 @@ fn napi_get_value_bool(
   check_arg!(env, value);
   check_arg!(env, result);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
   let Some(boolean) =
     value.and_then(|v| v8::Local::<v8::Boolean>::try_from(v).ok())
   else {
@@ -2118,7 +2128,6 @@ fn napi_get_value_string_latin1(
   };
 
   if buf.is_null() {
-    check_arg!(env, result);
     unsafe {
       *result = value.length();
     }
@@ -2845,12 +2854,18 @@ fn napi_instanceof(
   check_arg!(env, object);
   check_arg!(env, result);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
+  let mut scope_storage = unsafe { v8::CallbackScope::new(env.context()) };
+  let mut scope_pin =
+    unsafe { std::pin::Pin::new_unchecked(&mut scope_storage) };
+  let scope = &mut scope_pin.as_mut().init();
+
   let Some(ctor) = constructor.and_then(|v| v.to_object(scope)) else {
     return napi_object_expected;
   };
 
   if !ctor.is_function() {
+    drop(scope_pin);
+    drop(scope_storage);
     unsafe {
       napi_throw_type_error(
         env,
@@ -2895,8 +2910,9 @@ fn napi_get_and_clear_last_exception(
   let env = check_env!(env_ptr);
   check_arg!(env, result);
 
+  let last_exception = env.last_exception.take();
   v8::make_callback_scope!(unsafe scope, env.context());
-  let ex: v8::Local<v8::Value> = match env.last_exception.take() {
+  let ex: v8::Local<v8::Value> = match last_exception {
     Some(last_exception) => v8::Local::new(scope, last_exception),
     _ => v8::undefined(scope).into(),
   };
@@ -3342,23 +3358,19 @@ fn napi_resolve_deferred(
   check_arg!(env, deferred);
 
   // Make sure microtasks don't run and call back into JS
-  env
-    .scope()
-    .set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
+  v8::make_callback_scope!(unsafe scope, env.context());
+  scope.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
 
   let deferred_ptr =
     unsafe { NonNull::new_unchecked(deferred as *mut v8::PromiseResolver) };
-  let global = unsafe { v8::Global::from_raw(env.isolate(), deferred_ptr) };
+  let global = unsafe { v8::Global::from_raw(scope, deferred_ptr) };
 
-  v8::make_callback_scope!(unsafe scope, env.context());
   let resolver = v8::Local::new(scope, global);
 
   let success = resolver.resolve(scope, result.unwrap()).unwrap_or(false);
 
   // Restore policy
-  env
-    .scope()
-    .set_microtasks_policy(v8::MicrotasksPolicy::Auto);
+  scope.set_microtasks_policy(v8::MicrotasksPolicy::Auto);
 
   if success {
     napi_ok

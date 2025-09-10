@@ -219,9 +219,9 @@ impl GPUAdapter {
         };
 
         // SAFETY: eh, it's safe
-        let isolate: &mut v8::Isolate = unsafe { &mut *isolate_ptr };
-        let scope =
-          &mut v8::PinScope::<'_, '_>::with_context(isolate, &context);
+        let mut isolate =
+          unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate_ptr) };
+        v8::make_handle_scope_with_context!(scope, &mut isolate, &context);
         let error = deno_core::error::to_v8_error(scope, &error);
 
         let error_event_class =

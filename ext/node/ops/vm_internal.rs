@@ -55,7 +55,7 @@ impl ContextifyScript {
     scope: &mut v8::PinScope<'s, '_>,
     _context: v8::Local<v8::Context>,
   ) -> Option<v8::Local<'s, v8::Value>> {
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    v8::make_try_catch!(tc_scope, scope);
 
     let unbound_script = v8::Local::new(tc_scope, self.script.clone());
     let script = unbound_script.bind_to_current_context(tc_scope);
@@ -357,7 +357,7 @@ fn property_getter<'s>(
 
   let sandbox = ctx.sandbox(scope);
 
-  let tc_scope = &mut v8::TryCatch::new(scope);
+  v8::make_try_catch!(tc_scope, scope);
   let maybe_rv = sandbox.get_real_named_property(tc_scope, key).or_else(|| {
     ctx
       .global_proxy(tc_scope)

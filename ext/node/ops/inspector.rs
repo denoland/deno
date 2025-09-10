@@ -110,7 +110,7 @@ pub enum InspectorConnectError {
 #[op2(stack_trace)]
 #[cppgc]
 pub fn op_inspector_connect<'s, P>(
-  isolate: *mut v8::Isolate,
+  isolate: v8::UnsafeRawIsolatePtr,
   scope: &mut v8::PinScope<'s, '_>,
   state: &mut OpState,
   connect_to_main_thread: bool,
@@ -150,10 +150,11 @@ where
       // SAFETY: This function is called directly by the inspector, so
       //   1) The isolate is still valid
       //   2) We are on the same thread as the Isolate
-      let scope = unsafe { &mut v8::CallbackScope::new(&mut *isolate) };
+      let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(isolate) };
+      v8::make_callback_scope!(unsafe scope, &mut isolate);
       let context = v8::Local::new(scope, context.clone());
       let scope = &mut v8::ContextScope::new(scope, context);
-      let scope = &mut v8::TryCatch::new(scope);
+      v8::make_try_catch!(scope, scope);
       let recv = v8::undefined(scope);
       if let Some(message) = v8::String::new(scope, &message.content) {
         let callback = v8::Local::new(scope, callback.clone());

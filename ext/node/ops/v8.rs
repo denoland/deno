@@ -85,7 +85,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
     }
     None
   }
-  fn has_custom_host_object(&self, _isolate: &mut v8::Isolate) -> bool {
+  fn has_custom_host_object(&self, _isolate: &v8::Isolate) -> bool {
     false
   }
   fn throw_data_clone_error<'s>(
@@ -265,7 +265,8 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
       .v8_string(scope)
       .unwrap()
       .into();
-    let scope = &mut v8::AllowJavascriptExecutionScope::new(scope);
+    let scope = std::pin::pin!(v8::AllowJavascriptExecutionScope::new(scope));
+    let scope = &mut scope.init();
     if let Some(v) = obj.get(scope, key)
       && let Ok(v) = v.try_cast::<v8::Function>()
     {

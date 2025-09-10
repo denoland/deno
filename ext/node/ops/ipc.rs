@@ -28,12 +28,12 @@ mod impl_ {
   use serde::Serialize;
 
   /// Wrapper around v8 value that implements Serialize.
-  struct SerializeWrapper<'a, 'b>(
-    RefCell<&'b mut v8::PinScope<'a, '_>>,
+  struct SerializeWrapper<'a, 'b, 'c>(
+    RefCell<&'b mut v8::PinScope<'a, 'c>>,
     v8::Local<'a, v8::Value>,
   );
 
-  impl Serialize for SerializeWrapper<'_, '_> {
+  impl Serialize for SerializeWrapper<'_, '_, '_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
       S: Serializer,
@@ -287,7 +287,7 @@ mod impl_ {
 
     fn serialize_js_to_json(runtime: &mut JsRuntime, js: String) -> String {
       let val = runtime.execute_script("", js).unwrap();
-      let scope = &mut runtime.handle_scope();
+      deno_core::jsruntime_make_handle_scope!(scope, runtime);
       let val = v8::Local::new(scope, val);
       let mut buf = Vec::new();
       let mut ser = deno_core::serde_json::Serializer::new(&mut buf);

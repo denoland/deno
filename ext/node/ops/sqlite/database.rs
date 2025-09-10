@@ -578,8 +578,8 @@ impl DatabaseSync {
   ) -> Result<bool, SqliteError> {
     let options = ApplyChangesetOptions::from_value(scope, options)?;
 
-    struct HandlerCtx<'a, 'b> {
-      scope: &'a mut v8::PinScope<'b, '_>,
+    struct HandlerCtx<'a, 'b, 'c> {
+      scope: &'a mut v8::PinScope<'b, 'c>,
       confict: Option<v8::Local<'b, v8::Function>>,
       filter: Option<v8::Local<'b, v8::Function>>,
     }
@@ -598,7 +598,7 @@ impl DatabaseSync {
           let recv = v8::undefined(ctx.scope).into();
           let args = [v8::Integer::new(ctx.scope, e_conflict).into()];
 
-          let tc_scope = &mut v8::TryCatch::new(ctx.scope);
+          v8::make_try_catch!(tc_scope, ctx.scope);
 
           let ret = conflict
             .call(tc_scope, recv, &args)

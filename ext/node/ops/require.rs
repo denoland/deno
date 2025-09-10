@@ -709,7 +709,7 @@ pub fn op_require_can_parse_as_esm(
   scope: &mut v8::PinScope<'_, '_>,
   #[string] source: &str,
 ) -> bool {
-  let scope = &mut v8::TryCatch::new(scope);
+  v8::make_try_catch!(scope, scope);
   let Some(source) = v8::String::new(scope, source) else {
     return false;
   };

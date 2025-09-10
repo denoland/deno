@@ -142,7 +142,7 @@ impl GPUCanvasContext {
 
   fn get_current_texture<'s>(
     &self,
-    scope: &mut v8::PinScope<'_, '_>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> Result<v8::Local<'s, v8::Object>, SurfaceError> {
     let config = self.config.borrow();
     let Some(config) = config.as_ref() else {
@@ -195,7 +195,7 @@ impl GPUCanvasContext {
 impl GPUCanvasContext {
   pub fn present(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<(), SurfaceError> {
     let config = self.config.borrow();
     let Some(config) = config.as_ref() else {

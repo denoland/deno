@@ -2,6 +2,7 @@
 
 use std::ffi::c_void;
 
+use deno_core::v8;
 use deno_core::v8::fast_api;
 
 use crate::NativeType;
@@ -396,13 +397,8 @@ extern "C" fn turbocall_ab_contents(
 unsafe extern "C" fn turbocall_raise(
   options: *const deno_core::v8::fast_api::FastApiCallbackOptions,
 ) {
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    let mut scope = deno_core::v8::CallbackScope::new(&*options);
-    let exception = deno_core::error::to_v8_error(
-      &mut scope,
-      &crate::IRError::InvalidBufferType,
-    );
-    scope.throw_exception(exception);
-  }
+  v8::make_callback_scope!(unsafe scope, unsafe { options.as_ref().unwrap() });
+  let exception =
+    deno_core::error::to_v8_error(scope, &crate::IRError::InvalidBufferType);
+  scope.throw_exception(exception);
 }

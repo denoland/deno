@@ -171,7 +171,7 @@ async fn create_plugin_runner_inner(
 
   log::debug!("Lint plugins loaded, capturing default exports");
   let (install_plugins_fn, run_plugins_for_file_fn) = {
-    let scope = &mut runtime.handle_scope();
+    deno_core::jsruntime_make_handle_scope!(scope, runtime);
     let module_exports: v8::Local<v8::Object> =
       v8::Local::new(scope, obj).try_into().unwrap();
 
@@ -326,7 +326,7 @@ impl PluginHost {
       );
     }
 
-    let scope = &mut self.worker.js_runtime.handle_scope();
+    deno_core::jsruntime_make_handle_scope!(scope, &mut self.worker.js_runtime);
     let file_name_v8: v8::Local<v8::Value> =
       v8::String::new(scope, &file_path.display().to_string())
         .unwrap()
@@ -343,18 +343,20 @@ impl PluginHost {
       v8::Local::new(scope, &*self.run_plugins_for_file_fn);
     let undefined = v8::undefined(scope);
 
-    let mut tc_scope = v8::TryCatch::new(scope);
-    let _run_plugins_result = run_plugins_for_file.call(
-      &mut tc_scope,
-      undefined.into(),
-      &[file_name_v8, ast_bin_v8],
-    );
+    let _run_plugins_result = {
+      v8::make_try_catch!(tc_scope, scope);
+      let _run_plugins_result = run_plugins_for_file.call(
+        tc_scope,
+        undefined.into(),
+        &[file_name_v8, ast_bin_v8],
+      );
 
-    if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(&mut tc_scope, exception);
-      return Err(error.into());
-    }
-    drop(tc_scope);
+      if let Some(exception) = tc_scope.exception() {
+        let error = JsError::from_v8_exception(tc_scope, exception);
+        return Err(error.into());
+      }
+      _run_plugins_result
+    };
     Ok(())
   }
 
@@ -386,7 +388,10 @@ impl PluginHost {
     for (fut, mod_id) in load_futures {
       fut.await?;
       let module = self.worker.js_runtime.get_module_namespace(mod_id).unwrap();
-      let scope = &mut self.worker.js_runtime.handle_scope();
+      deno_core::jsruntime_make_handle_scope!(
+        scope,
+        &mut self.worker.js_runtime
+      );
       let module_local = v8::Local::new(scope, module);
       let default_export_str = DEFAULT.v8_string(scope).unwrap();
       let default_export =
@@ -395,7 +400,7 @@ impl PluginHost {
       plugin_handles.push(default_export_global);
     }
 
-    let scope = &mut self.worker.js_runtime.handle_scope();
+    deno_core::jsruntime_make_handle_scope!(scope, &mut self.worker.js_runtime);
     let install_plugins_local =
       v8::Local::new(scope, &*self.install_plugins_fn.clone());
     let exclude_v8: v8::Local<v8::Value> =
@@ -424,14 +429,16 @@ impl PluginHost {
 
     log::debug!("Installing lint plugins...");
 
-    let mut tc_scope = v8::TryCatch::new(scope);
-    let plugins_info_result =
-      install_plugins_local.call(&mut tc_scope, undefined.into(), args);
-    if let Some(exception) = tc_scope.exception() {
-      let error = JsError::from_v8_exception(&mut tc_scope, exception);
-      return Err(error.into());
-    }
-    drop(tc_scope);
+    let plugins_info_result = {
+      v8::make_try_catch!(tc_scope, scope);
+      let plugins_info_result =
+        install_plugins_local.call(tc_scope, undefined.into(), args);
+      if let Some(exception) = tc_scope.exception() {
+        let error = JsError::from_v8_exception(tc_scope, exception);
+        return Err(error.into());
+      }
+      plugins_info_result
+    };
     let plugins_info = plugins_info_result.unwrap();
     let infos: Vec<PluginInfo> =
       deno_core::serde_v8::from_v8(scope, plugins_info)?;

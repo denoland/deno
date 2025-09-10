@@ -21,7 +21,6 @@ use deno_core::ResourceId;
 use deno_core::V8CrossThreadTaskSpawner;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::v8::TryCatch;
 use libffi::middle::Cif;
 use serde::Deserialize;
 
