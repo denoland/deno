@@ -38,7 +38,6 @@ for (const workspace of denoConfig.workspace) {
 rootImportMap.imports = sortObjectByKey(rootImportMap.imports);
 coreImportMap.imports = sortObjectByKey(coreImportMap.imports);
 
-
 console.log("Writing to ./import_map.json");
 await Deno.writeTextFile(
   "./import_map.json",
@@ -51,5 +50,7 @@ await Deno.writeTextFile(
 );
 
 function sortObjectByKey<T>(obj: Record<string, T>): Record<string, T> {
-  return Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(
+    Object.entries(obj).sort(([a], [b]) => a.localeCompare(b)),
+  );
 }
