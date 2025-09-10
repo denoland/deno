@@ -36,5 +36,7 @@ for (const workspace of denoConfig.workspace) {
   }
 }
 
-await Deno.writeTextFile("./import_map.json", JSON.stringify(importMap, null, 2));
-
+await Deno.writeTextFile(
+  "./import_map.json",
+  JSON.stringify(importMap, null, 2) + "\n",
+);
