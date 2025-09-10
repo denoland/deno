@@ -287,6 +287,9 @@ where
     OpenAccessKind::ReadNoFollow,
     Some("node:fs.statfsSync"),
   )?;
+  state
+    .borrow_mut::<P>()
+    .check_sys("statfs", "node:fs.statfsSync")?;
 
   statfs(path, bigint)
 }
@@ -303,11 +306,15 @@ where
 {
   let path = {
     let mut state = state.borrow_mut();
-    state.borrow_mut::<P>().check_open(
+    let path = state.borrow_mut::<P>().check_open(
       Cow::Owned(PathBuf::from(path)),
       OpenAccessKind::ReadNoFollow,
       Some("node:fs.statfs"),
-    )?
+    )?;
+    state
+      .borrow_mut::<P>()
+      .check_sys("statfs", "node:fs.statfs")?;
+    path
   };
 
   match spawn_blocking(move || statfs(path, bigint)).await {
