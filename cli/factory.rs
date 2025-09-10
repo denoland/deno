@@ -99,7 +99,7 @@ use crate::resolver::CliResolver;
 use crate::resolver::on_resolve_diagnostic;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
-use crate::tools::coverage::CoverageCollector;
+use crate::tools::coverage::CoverageCollectorState;
 use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
@@ -1116,9 +1116,7 @@ impl CliFactory {
     let create_coverage_collector =
       if let Some(coverage_dir) = cli_options.coverage_dir() {
         let fn_: crate::worker::CreateCoverageCollectorCb =
-          Box::new(move |session| {
-            CoverageCollector::new(coverage_dir.clone(), session)
-          });
+          Box::new(move || CoverageCollectorState::new(coverage_dir.clone()));
         Some(fn_)
       } else {
         None

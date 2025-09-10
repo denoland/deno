@@ -30,6 +30,7 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::coverage::CoverageCollectorState;
 use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -38,9 +39,8 @@ use crate::util::progress_bar::ProgressBar;
 pub type CreateHmrRunnerCb =
   Box<dyn Fn(deno_core::LocalInspectorSession) -> HmrRunner + Send + Sync>;
 
-pub type CreateCoverageCollectorCb = Box<
-  dyn Fn(deno_core::LocalInspectorSession) -> CoverageCollector + Send + Sync,
->;
+pub type CreateCoverageCollectorCb =
+  Box<dyn Fn() -> CoverageCollectorState + Send + Sync>;
 
 pub struct CliMainWorkerOptions {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
@@ -73,8 +73,7 @@ impl CliMainWorker {
   }
 
   pub async fn run(&mut self) -> Result<i32, CoreError> {
-    let mut maybe_coverage_collector =
-      self.maybe_setup_coverage_collector().await?;
+    let mut maybe_coverage_collector = self.maybe_setup_coverage_collector()?;
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
 
     // WARNING: Remember to update cli/lib/worker.rs to align with
@@ -130,14 +129,7 @@ impl CliMainWorker {
     self.worker.dispatch_process_exit_event()?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-      self
-        .worker
-        .js_runtime()
-        .with_event_loop_future(
-          coverage_collector.stop_collecting().boxed_local(),
-          PollEventLoopOptions::default(),
-        )
-        .await?;
+      coverage_collector.stop_collecting()?;
     }
     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
       self
@@ -255,7 +247,7 @@ impl CliMainWorker {
     Ok(Some(hmr_runner))
   }
 
-  pub async fn maybe_setup_coverage_collector(
+  pub fn maybe_setup_coverage_collector(
     &mut self,
   ) -> Result<Option<CoverageCollector>, CoreError> {
     let Some(create_coverage_collector) =
@@ -264,16 +256,15 @@ impl CliMainWorker {
       return Ok(None);
     };
 
-    let session = self.worker.create_inspector_session();
-    let mut coverage_collector = create_coverage_collector(session);
-    self
-      .worker
-      .js_runtime()
-      .with_event_loop_future(
-        coverage_collector.start_collecting().boxed_local(),
-        PollEventLoopOptions::default(),
-      )
-      .await?;
+    let coverage_collector_state = create_coverage_collector();
+    let state = coverage_collector_state.clone();
+
+    let callback =
+      Box::new(move |message| coverage_collector_state.callback(message));
+    let session = self.worker.create_sync_inspector_session(callback);
+    let mut coverage_collector = CoverageCollector::new(state, session);
+    coverage_collector.start_collecting();
+
     Ok(Some(coverage_collector))
   }
 

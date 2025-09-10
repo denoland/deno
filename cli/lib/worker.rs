@@ -24,6 +24,7 @@ use deno_runtime::deno_core::CompiledWasmModuleStore;
 use deno_runtime::deno_core::Extension;
 use deno_runtime::deno_core::JsRuntime;
 use deno_runtime::deno_core::LocalInspectorSession;
+use deno_runtime::deno_core::LocalSyncInspectorSession;
 use deno_runtime::deno_core::ModuleLoader;
 use deno_runtime::deno_core::SharedArrayBufferStore;
 use deno_runtime::deno_core::error::CoreError;
@@ -818,6 +819,14 @@ impl LibMainWorker {
   #[inline]
   pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
     self.worker.create_inspector_session()
+  }
+
+  #[inline]
+  pub fn create_sync_inspector_session(
+    &mut self,
+    cb: deno_core::InspectorSessionSend,
+  ) -> LocalSyncInspectorSession {
+    self.worker.create_sync_inspector_session(cb)
   }
 
   #[inline]

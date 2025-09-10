@@ -20,6 +20,7 @@ use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
+use deno_core::LocalSyncInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
@@ -919,6 +920,25 @@ impl MainWorker {
         kind: InspectorSessionKind::Blocking,
       },
     )
+  }
+
+  /// Create new inspector session. This function panics if Worker
+  /// was not configured to create inspector.
+  pub fn create_sync_inspector_session(
+    &mut self,
+    cb: deno_core::InspectorSessionSend,
+  ) -> LocalSyncInspectorSession {
+    self.js_runtime.maybe_init_inspector();
+    self
+      .js_runtime
+      .inspector()
+      .borrow()
+      .create_local_sync_session(
+        cb,
+        InspectorSessionOptions {
+          kind: InspectorSessionKind::Blocking,
+        },
+      )
   }
 
   pub async fn run_event_loop(

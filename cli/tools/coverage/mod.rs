@@ -15,13 +15,12 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
-use deno_core::InspectorPostMessageError;
-use deno_core::InspectorPostMessageErrorKind;
-use deno_core::LocalInspectorSession;
+use deno_core::LocalSyncInspectorSession;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
@@ -55,36 +54,34 @@ pub mod reporter;
 mod util;
 use merge::ProcessCoverage;
 
-pub struct CoverageCollector {
-  pub dir: PathBuf,
-  session: LocalInspectorSession,
+#[derive(Debug)]
+pub struct CoverageCollectorInner {
+  dir: PathBuf,
 }
 
-impl CoverageCollector {
-  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
-    Self { dir, session }
+#[derive(Clone, Debug)]
+pub struct CoverageCollectorState(Arc<Mutex<CoverageCollectorInner>>);
+
+impl CoverageCollectorState {
+  pub fn new(dir: PathBuf) -> Self {
+    Self(Arc::new(Mutex::new(CoverageCollectorInner { dir })))
   }
 
-  pub async fn start_collecting(
-    &mut self,
-  ) -> Result<(), InspectorPostMessageError> {
-    self.enable_debugger().await?;
-    self.enable_profiler().await?;
-    self
-      .start_precise_coverage(cdp::StartPreciseCoverageArgs {
-        call_count: true,
-        detailed: true,
-        allow_triggered_updates: false,
-      })
-      .await?;
+  pub fn callback(&self, msg: deno_core::InspectorMsg) {
+    let deno_core::InspectorMsgKind::Message(_msg_id) = msg.kind else {
+      let message: serde_json::Value =
+        serde_json::from_str(&msg.content).unwrap();
+      log::error!("CoverageCollector received a notification {:?}", message);
+      return;
+    };
 
-    Ok(())
+    // Check if we know this `msg_id`
+    let message: cdp::TakePreciseCoverageResponse =
+      serde_json::from_str(&msg.content).unwrap();
+    self.write_coverages(message.result);
   }
 
-  pub async fn stop_collecting(&mut self) -> Result<(), CoreError> {
-    fs::create_dir_all(&self.dir)?;
-
-    let script_coverages = self.take_precise_coverage().await?.result;
+  fn write_coverages(&self, script_coverages: Vec<cdp::ScriptCoverage>) {
     for script_coverage in script_coverages {
       // Filter out internal and http/https JS files, eval'd scripts,
       // and scripts with invalid urls from being included in coverage reports
@@ -100,92 +97,102 @@ impl CoverageCollector {
       }
 
       let filename = format!("{}.json", Uuid::new_v4());
-      let filepath = self.dir.join(filename);
+      let filepath = self.0.lock().dir.join(filename);
 
-      let mut out = BufWriter::new(File::create(&filepath)?);
+      // TODO(bartlomieju): remove unwrap
+      let mut out = BufWriter::new(File::create(&filepath).unwrap());
+      // TODO(bartlomieju): remove unwrap
       let coverage = serde_json::to_string(&script_coverage)
-        .map_err(JsErrorBox::from_err)?;
+        .map_err(JsErrorBox::from_err)
+        .unwrap();
       let formatted_coverage =
         format_json(&filepath, &coverage, &Default::default())
           .ok()
           .flatten()
           .unwrap_or(coverage);
 
-      out.write_all(formatted_coverage.as_bytes())?;
-      out.flush()?;
+      // TODO(bartlomieju): add logging
+      let _ = out.write_all(formatted_coverage.as_bytes());
+      let _ = out.flush();
     }
+  }
+}
 
-    self.disable_debugger().await?;
-    self.disable_profiler().await?;
+pub struct CoverageCollector {
+  pub state: CoverageCollectorState,
+  session: LocalSyncInspectorSession,
+}
+
+impl CoverageCollector {
+  pub fn new(
+    state: CoverageCollectorState,
+    session: LocalSyncInspectorSession,
+  ) -> Self {
+    Self { state, session }
+  }
+
+  pub fn start_collecting(&mut self) {
+    // TODO(barltomieju): is it actually necessary to call this one?
+    self.enable_debugger();
+
+    self.enable_profiler();
+    self.start_precise_coverage(cdp::StartPreciseCoverageArgs {
+      call_count: true,
+      detailed: true,
+      allow_triggered_updates: false,
+    });
+  }
+
+  pub fn stop_collecting(&mut self) -> Result<(), CoreError> {
+    fs::create_dir_all(&self.state.0.lock().dir)?;
+    self.take_precise_coverage();
+
+    // TODO(barltomieju): is it actually necessary to call these?
+    // self.disable_debugger();
+    // self.disable_profiler();
 
     Ok(())
   }
 
-  async fn enable_debugger(&mut self) -> Result<(), InspectorPostMessageError> {
-    self
-      .session
-      .post_message::<()>("Debugger.enable", None)
-      .await?;
-    Ok(())
+  // TODO(barltomieju): is it actually necessary to call this?
+  fn enable_debugger(&mut self) {
+    self.session.post_message::<()>("Debugger.enable", None);
   }
 
-  async fn enable_profiler(&mut self) -> Result<(), InspectorPostMessageError> {
-    self
-      .session
-      .post_message::<()>("Profiler.enable", None)
-      .await?;
-    Ok(())
+  fn enable_profiler(&mut self) {
+    self.session.post_message::<()>("Profiler.enable", None);
   }
 
-  async fn disable_debugger(
-    &mut self,
-  ) -> Result<(), InspectorPostMessageError> {
-    self
-      .session
-      .post_message::<()>("Debugger.disable", None)
-      .await?;
-    Ok(())
-  }
+  // TODO(barltomieju): is it actually necessary to call this?
+  // fn disable_debugger(&mut self) {
+  //   self.session.post_message::<()>("Debugger.disable", None);
+  // }
 
-  async fn disable_profiler(
-    &mut self,
-  ) -> Result<(), InspectorPostMessageError> {
-    self
-      .session
-      .post_message::<()>("Profiler.disable", None)
-      .await?;
-    Ok(())
-  }
+  // TODO(barltomieju): is it actually necessary to call this?
+  // fn disable_profiler(&mut self) {
+  //   self.session.post_message::<()>("Profiler.disable", None);
+  // }
 
-  async fn start_precise_coverage(
+  fn start_precise_coverage(
     &mut self,
     parameters: cdp::StartPreciseCoverageArgs,
-  ) -> Result<cdp::StartPreciseCoverageResponse, InspectorPostMessageError> {
-    let return_value = self
+  ) {
+    self
       .session
-      .post_message("Profiler.startPreciseCoverage", Some(parameters))
-      .await?;
-
-    let return_object = serde_json::from_value(return_value).map_err(|e| {
-      InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
-    })?;
-
-    Ok(return_object)
+      .post_message("Profiler.startPreciseCoverage", Some(parameters));
   }
 
-  async fn take_precise_coverage(
-    &mut self,
-  ) -> Result<cdp::TakePreciseCoverageResponse, InspectorPostMessageError> {
-    let return_value = self
+  fn take_precise_coverage(&mut self) {
+    let _msg_id = self
       .session
-      .post_message::<()>("Profiler.takePreciseCoverage", None)
-      .await?;
+      .post_message::<()>("Profiler.takePreciseCoverage", None);
 
-    let return_object = serde_json::from_value(return_value).map_err(|e| {
-      InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
-    })?;
+    // let return_object = serde_json::from_value(return_value).map_err(|e| {
+    //   InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
+    // })?;
 
-    Ok(return_object)
+    // Ok(return_object)
+    todo!()
   }
 }
 
