@@ -832,6 +832,15 @@ Deno.test("send to a closed socket", async () => {
   await promise;
 });
 
+Deno.test(async function websocketDoesntLeak() {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ws = new WebSocket(new URL("ws://localhost:4242/"));
+  assertEquals(ws.url, "ws://localhost:4242/");
+  ws.onopen = () => resolve();
+  await promise;
+  ws.close();
+});
+
 // https://github.com/denoland/deno/issues/25126
 Deno.test("websocket close ongoing handshake", async () => {
   // First try to close without any delay
