@@ -23,6 +23,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
+use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
@@ -43,6 +44,7 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
+use import_map::ImportMapErrorKind;
 use indexmap::IndexMap;
 use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
@@ -271,7 +273,7 @@ pub fn module_error_for_tsc_diagnostic<'a>(
 
 pub struct ModuleNotFoundNodeResolutionErrorRef<'a> {
   pub specifier: &'a str,
-  pub maybe_range: Option<&'a deno_graph::Range>,
+  pub range: &'a deno_graph::Range,
 }
 
 pub fn resolution_error_for_tsc_diagnostic(
@@ -294,30 +296,49 @@ pub fn resolution_error_for_tsc_diagnostic(
     }
   }
 
-  match error {
+  let specifier = match error {
+    ResolutionError::InvalidDowngrade { .. }
+    | ResolutionError::InvalidJsrHttpsTypesImport { .. }
+    | ResolutionError::InvalidLocalImport { .. } => None,
+    ResolutionError::InvalidSpecifier { error, .. } => match error {
+      SpecifierError::InvalidUrl(..) => None,
+      SpecifierError::ImportPrefixMissing { specifier, .. } => Some(specifier),
+    },
     ResolutionError::ResolverError {
-      error,
-      specifier,
-      range,
+      error, specifier, ..
     } => match error.as_ref() {
+      ResolveError::Specifier(error) => match error {
+        SpecifierError::InvalidUrl(..) => None,
+        SpecifierError::ImportPrefixMissing { specifier, .. } => {
+          Some(specifier)
+        }
+      },
+      ResolveError::ImportMap(error) => match error.as_kind() {
+        ImportMapErrorKind::JsonParse(_)
+        | ImportMapErrorKind::ImportMapNotObject
+        | ImportMapErrorKind::ImportsFieldNotObject
+        | ImportMapErrorKind::ScopesFieldNotObject
+        | ImportMapErrorKind::ScopePrefixNotObject(_)
+        | ImportMapErrorKind::BlockedByNullEntry(_)
+        | ImportMapErrorKind::SpecifierResolutionFailure { .. }
+        | ImportMapErrorKind::SpecifierBacktracksAbovePrefix { .. } => None,
+        ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) => {
+          Some(specifier)
+        }
+      },
       ResolveError::Other(error) => {
         let is_module_not_found_error = downcast_ref_deno_resolve_error(error)
           .and_then(|err| err.maybe_node_code())
           .map(is_module_not_found_code)
           .unwrap_or(false);
-        if is_module_not_found_error {
-          Some(ModuleNotFoundNodeResolutionErrorRef {
-            specifier,
-            maybe_range: Some(range),
-          })
-        } else {
-          None
-        }
+        is_module_not_found_error.then_some(specifier)
       }
-      ResolveError::Specifier(_) | ResolveError::ImportMap(_) => None,
     },
-    _ => None,
-  }
+  };
+  specifier.map(|specifier| ModuleNotFoundNodeResolutionErrorRef {
+    specifier,
+    range: error.range(),
+  })
 }
 
 pub fn graph_exit_integrity_errors(graph: &ModuleGraph) {

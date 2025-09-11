@@ -808,7 +808,7 @@ impl<'a> GraphWalker<'a> {
               .missing_diagnostics
               .push(tsc::Diagnostic::from_missing_error(
                 err.specifier,
-                err.maybe_range,
+                Some(err.range),
                 None,
               ));
           }
