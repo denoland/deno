@@ -454,6 +454,7 @@ Deno.test("request and response exports", () => {
 });
 
 Deno.test("internal/http2/util exports", () => {
+  // @ts-ignore
   const util = require("internal/http2/util");
   assert(typeof util.kAuthority === "symbol");
   assert(typeof util.kSensitiveHeaders === "symbol");

@@ -803,6 +803,7 @@ impl<'a> GraphWalker<'a> {
             dep_to_check_error
             && let Some(err) =
               resolution_error_for_tsc_diagnostic(resolution_error)
+            && !self.node_resolver.is_builtin_node_module(err.specifier)
           {
             self
               .missing_diagnostics
