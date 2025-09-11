@@ -1,0 +1,8 @@
+[WILDCARD]
+Bundled 3 modules in [WILDLINE]
+[UNORDERED_START]
+  dist[WILDCHAR]imports-css-[WILDLINE].js [WILDLINE]
+  dist[WILDCHAR]imports-css-[WILDLINE].css [WILDLINE]
+  dist[WILDCHAR]imports-css.html [WILDLINE]
+[UNORDERED_END]
+

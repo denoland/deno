@@ -322,7 +322,7 @@ impl<'a> TsResponseImportMapper<'a> {
       self.resolver.get_scoped_resolver(self.scope.as_deref());
 
     if let Some(dep_name) =
-      scoped_resolver.resource_url_to_configured_dep_key(specifier)
+      scoped_resolver.resource_url_to_configured_dep_key(specifier, referrer)
     {
       return Some(dep_name);
     }
