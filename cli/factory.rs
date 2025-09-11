@@ -102,7 +102,7 @@ use crate::sys::CliSys;
 use crate::tools::coverage::CoverageCollectorState;
 use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
-use crate::tools::run::hmr::HmrRunner;
+use crate::tools::run::hmr::HmrRunnerState;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::type_checker::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -1106,8 +1106,8 @@ impl CliFactory {
     let create_hmr_runner = if cli_options.has_hmr() {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
-      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
-        HmrRunner::new(emitter.clone(), session, watcher_communicator.clone())
+      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move || {
+        HmrRunnerState::new(emitter.clone(), watcher_communicator.clone())
       });
       Some(fn_)
     } else {

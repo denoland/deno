@@ -667,7 +667,7 @@ async fn configure_main_worker(
       None,
     )
     .await?;
-  let coverage_collector = worker.maybe_setup_coverage_collector()?;
+  let coverage_collector = worker.maybe_setup_coverage_collector();
   if options.trace_leaks {
     worker
       .execute_script_static(
