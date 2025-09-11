@@ -184,6 +184,7 @@ fn multifile_coverage() {
     .run();
 
   output.assert_exit_code(0);
+  eprintln!("output {:#?}", output.print_output());
   output.skip_output_check();
 
   let output = context

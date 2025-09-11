@@ -805,6 +805,7 @@ async fn test_specifier_inner(
   if let Some(coverage_collector) = &mut coverage_collector {
     coverage_collector.stop_collecting()?;
   }
+  worker.run_up_to_duration(Duration::from_millis(0)).await?;
   Ok(())
 }
 

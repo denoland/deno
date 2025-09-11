@@ -57,6 +57,7 @@ use merge::ProcessCoverage;
 #[derive(Debug)]
 pub struct CoverageCollectorInner {
   dir: PathBuf,
+  coverage_msg_id: Option<i32>,
 }
 
 #[derive(Clone, Debug)]
@@ -64,21 +65,35 @@ pub struct CoverageCollectorState(Arc<Mutex<CoverageCollectorInner>>);
 
 impl CoverageCollectorState {
   pub fn new(dir: PathBuf) -> Self {
-    Self(Arc::new(Mutex::new(CoverageCollectorInner { dir })))
+    Self(Arc::new(Mutex::new(CoverageCollectorInner {
+      dir,
+      coverage_msg_id: None,
+    })))
   }
 
   pub fn callback(&self, msg: deno_core::InspectorMsg) {
-    let deno_core::InspectorMsgKind::Message(_msg_id) = msg.kind else {
-      let message: serde_json::Value =
+    let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
+      let _message: serde_json::Value =
         serde_json::from_str(&msg.content).unwrap();
-      log::error!("CoverageCollector received a notification {:?}", message);
+      // log::error!("CoverageCollector received a notification {:?}", message);
       return;
     };
 
-    // Check if we know this `msg_id`
-    let message: cdp::TakePreciseCoverageResponse =
-      serde_json::from_str(&msg.content).unwrap();
-    self.write_coverages(message.result);
+    eprintln!(
+      "callback {} {:#?} {}",
+      msg_id,
+      self.0.lock().coverage_msg_id.as_ref(),
+      msg.content
+    );
+    if let Some(coverage_msg_id) = self.0.lock().coverage_msg_id.as_ref()
+      && *coverage_msg_id == msg_id
+    {
+      let message: serde_json::Value =
+        serde_json::from_str(&msg.content).unwrap();
+      let coverages: cdp::TakePreciseCoverageResponse =
+        serde_json::from_value(message["result"].clone()).unwrap();
+      self.write_coverages(coverages.result);
+    }
   }
 
   fn write_coverages(&self, script_coverages: Vec<cdp::ScriptCoverage>) {
@@ -148,8 +163,8 @@ impl CoverageCollector {
     self.take_precise_coverage();
 
     // TODO(barltomieju): is it actually necessary to call these?
-    // self.disable_debugger();
-    // self.disable_profiler();
+    self.disable_debugger();
+    self.disable_profiler();
 
     Ok(())
   }
@@ -164,14 +179,14 @@ impl CoverageCollector {
   }
 
   // TODO(barltomieju): is it actually necessary to call this?
-  // fn disable_debugger(&mut self) {
-  //   self.session.post_message::<()>("Debugger.disable", None);
-  // }
+  fn disable_debugger(&mut self) {
+    self.session.post_message::<()>("Debugger.disable", None);
+  }
 
   // TODO(barltomieju): is it actually necessary to call this?
-  // fn disable_profiler(&mut self) {
-  //   self.session.post_message::<()>("Profiler.disable", None);
-  // }
+  fn disable_profiler(&mut self) {
+    self.session.post_message::<()>("Profiler.disable", None);
+  }
 
   fn start_precise_coverage(
     &mut self,
@@ -183,16 +198,17 @@ impl CoverageCollector {
   }
 
   fn take_precise_coverage(&mut self) {
-    let _msg_id = self
+    let msg_id = self
       .session
       .post_message::<()>("Profiler.takePreciseCoverage", None);
-
+    eprintln!("take precise coverage {}", msg_id);
+    self.state.0.lock().coverage_msg_id.replace(msg_id);
     // let return_object = serde_json::from_value(return_value).map_err(|e| {
     //   InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
     // })?;
 
     // Ok(return_object)
-    todo!()
+    // todo!()
   }
 }
 

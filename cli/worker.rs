@@ -7,7 +7,6 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::PollEventLoopOptions;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
