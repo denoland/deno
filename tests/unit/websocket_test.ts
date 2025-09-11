@@ -1014,7 +1014,7 @@ Deno.test("WebSocket with custom http client with vsock proxy", {
     onListen: onListen(listeningDeferred.resolve),
     onError: createOnErrorCb(ac),
     transport: "vsock",
-    cid: 1,
+    cid: 2,
     port: 4242,
   });
 
@@ -1023,7 +1023,7 @@ Deno.test("WebSocket with custom http client with vsock proxy", {
   using client = Deno.createHttpClient({
     proxy: {
       transport: "vsock",
-      cid: 1,
+      cid: 2,
       port: 4242,
     },
   });
