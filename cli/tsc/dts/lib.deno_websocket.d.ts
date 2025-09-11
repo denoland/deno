@@ -321,6 +321,8 @@ interface WebSocketOptions {
    *
    * const ws = new WebSocket("ws://localhost:8000/socket", { client });
    * ```
+   * 
+   * @experimental
    */
   client?: Deno.HttpClient;
 }
