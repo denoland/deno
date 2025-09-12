@@ -2,8 +2,8 @@
 
 import { fstat, fstatSync } from "node:fs";
 import { fail } from "@std/assert";
-import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";
 import type { BigIntStats, Stats } from "node:fs";
+import { assertStats, assertStatsBigInt } from "../_test_utils.ts";
 
 Deno.test({
   name: "ASYNC: get a file Stats",

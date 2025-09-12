@@ -285,13 +285,13 @@ Deno.test(
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const s = Deno.statSync(filename);
     assert(s.dev !== 0);
-    assert(s.ino === null);
-    assert(s.nlink === null);
+    assert(s.ino !== null);
+    assert(s.nlink !== null);
     assert(s.uid === null);
     assert(s.gid === null);
     assert(s.rdev === null);
     assert(s.blksize === null);
-    assert(s.blocks === null);
+    assert(s.blocks !== null);
     assert(s.isBlockDevice === null);
     assert(s.isCharDevice === null);
     assert(s.isFifo === null);
