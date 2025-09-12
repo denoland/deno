@@ -108,14 +108,16 @@ fn deno_version_works_with_deno_json() {
   let cwd = context.temp_dir().path();
 
   // Create a deno.json with complex structure
-  cwd.join("deno.json").write(r#"{
+  cwd.join("deno.json").write(
+    r#"{
   "name": "@example/my-package",
   "version": "0.1.0",
   "exports": "./mod.ts",
   "tasks": {
     "dev": "deno run --watch main.ts"
   }
-}"#);
+}"#,
+  );
 
   let output = context
     .new_command()
@@ -141,14 +143,16 @@ fn deno_version_works_with_package_json() {
   let cwd = context.temp_dir().path();
 
   // Create a package.json
-  cwd.join("package.json").write(r#"{
+  cwd.join("package.json").write(
+    r#"{
   "name": "my-package",
   "version": "1.5.2",
   "description": "A test package",
   "scripts": {
     "test": "deno test"
   }
-}"#);
+}"#,
+  );
 
   let output = context
     .new_command()
@@ -173,7 +177,9 @@ fn deno_version_works_with_both_files() {
 
   // Create both deno.json and package.json
   cwd.join("deno.json").write(r#"{"version": "1.0.0"}"#);
-  cwd.join("package.json").write(r#"{"name": "test", "version": "1.0.0"}"#);
+  cwd
+    .join("package.json")
+    .write(r#"{"name": "test", "version": "1.0.0"}"#);
 
   let output = context
     .new_command()
@@ -236,11 +242,7 @@ fn deno_version_without_increment_shows_current() {
 
   cwd.join("deno.json").write(r#"{"version": "2.3.4"}"#);
 
-  let output = context
-    .new_command()
-    .args("version")
-    .split_output()
-    .run();
+  let output = context.new_command().args("version").split_output().run();
 
   output.assert_exit_code(0);
   assert_contains!(output.stderr(), "2.3.4");
