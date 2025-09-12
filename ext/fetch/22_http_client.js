@@ -75,9 +75,8 @@ function createHttpClient(options) {
           options.proxy.transport = "http";
           break;
         }
-        case "unix": {
-          break;
-        }
+        case "tcp":
+        case "unix":
         case "vsock": {
           break;
         }

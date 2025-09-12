@@ -404,6 +404,12 @@ impl Drop for ResourceToBodyAdapter {
 }
 
 pub trait FetchPermissions {
+  fn check_net(
+    &mut self,
+    host: &str,
+    port: u16,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
   fn check_net_url(
     &mut self,
     url: &Url,
@@ -425,6 +431,20 @@ pub trait FetchPermissions {
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net(
+    &mut self,
+    host: &str,
+    port: u16,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net(
+      self,
+      &(host, Some(port)),
+      api_name,
+    )
+  }
+
   #[inline(always)]
   fn check_net_url(
     &mut self,
@@ -929,6 +949,9 @@ where
         let url = Url::parse(url)?;
         permissions.check_net_url(&url, "Deno.createHttpClient()")?;
       }
+      Proxy::Tcp { hostname, port } => {
+        permissions.check_net(hostname, *port, "Deno.createHttpClient()")?;
+      }
       Proxy::Unix {
         path: original_path,
       } => {
@@ -1119,6 +1142,13 @@ pub fn create_http_client(
           intercept.set_auth(&basic_auth.username, &basic_auth.password);
         }
         intercept
+      }
+      Proxy::Tcp {
+        hostname: host,
+        port,
+      } => {
+        let target = proxy::Target::new_tcp(host, port);
+        proxy::Intercept::all(target)
       }
       #[cfg(not(windows))]
       Proxy::Unix { path } => {

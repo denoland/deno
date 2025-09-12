@@ -232,6 +232,10 @@ pub enum Proxy {
     url: String,
     basic_auth: Option<BasicAuth>,
   },
+  Tcp {
+    hostname: String,
+    port: u16,
+  },
   Unix {
     path: String,
   },
