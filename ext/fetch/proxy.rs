@@ -925,13 +925,13 @@ where
         }
       }
       #[cfg(not(windows))]
-      Proxied::Unix(_) => Connected::new(),
+      Proxied::Unix(_) => Connected::new().proxy(true),
       #[cfg(any(
         target_os = "android",
         target_os = "linux",
         target_os = "macos"
       ))]
-      Proxied::Vsock(_) => Connected::new(),
+      Proxied::Vsock(_) => Connected::new().proxy(true),
     }
   }
 }
