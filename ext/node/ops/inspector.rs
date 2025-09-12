@@ -134,7 +134,8 @@ where
     .borrow::<Rc<RefCell<JsRuntimeInspector>>>()
     .borrow_mut();
 
-  let (_, tx) = inspector.create_raw_session(
+  // TODO(bartlomieju): rewrite to use a different API
+  let tx = inspector.create_raw_session(
     InspectorSessionOptions {
       kind: InspectorSessionKind::NonBlocking {
         wait_for_disconnect: false,
