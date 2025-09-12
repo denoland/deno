@@ -198,6 +198,19 @@ Object.defineProperties(
       }
       this.destroyed = true;
 
+      // Set error state flags for finished() compatibility
+      if (error) {
+        // deno-lint-ignore no-explicit-any
+        (this as any).errored = error;
+        // Set errorEmitted flag for stream state
+        if (this._writableState) {
+          this._writableState.errorEmitted = true;
+        }
+        if (this._readableState) {
+          this._readableState.errorEmitted = true;
+        }
+      }
+
       if (this.socket) {
         this.socket.destroy(error);
       } else {
