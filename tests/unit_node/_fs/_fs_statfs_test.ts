@@ -1,8 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import * as fs from "node:fs";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, fail } from "@std/assert";
 import * as path from "@std/path";
+import { Buffer } from "node:buffer";
 
 function assertStatFs(
   statFs: fs.StatsFsBase<unknown>,
@@ -39,6 +40,18 @@ Deno.test({
 });
 
 Deno.test({
+  name: "fs.statfs() with Buffer",
+  async fn() {
+    await new Promise<fs.StatsFsBase<unknown>>((resolve, reject) => {
+      fs.statfs(Buffer.from(filePath), (err, statFs) => {
+        if (err) reject(err);
+        resolve(statFs);
+      });
+    }).then((statFs) => assertStatFs(statFs));
+  },
+});
+
+Deno.test({
   name: "fs.statfs() bigint",
   async fn() {
     await new Promise<fs.StatsFsBase<unknown>>((resolve, reject) => {
@@ -59,6 +72,14 @@ Deno.test({
 });
 
 Deno.test({
+  name: "fs.statfsSync() with Buffer",
+  fn() {
+    const statFs = fs.statfsSync(Buffer.from(filePath));
+    assertStatFs(statFs);
+  },
+});
+
+Deno.test({
   name: "fs.statfsSync() bigint",
   fn() {
     const statFs = fs.statfsSync(filePath, { bigint: true });
@@ -70,8 +91,34 @@ Deno.test({
   name: "fs.statfs() non-existent path",
   async fn() {
     const nonExistentPath = path.join(filePath, "../non-existent");
-    await assertRejects(async () => {
+    try {
       await fs.promises.statfs(nonExistentPath);
-    }, "NotFound");
+      fail("statfs() should have failed");
+    } catch (err) {
+      // deno-lint-ignore no-explicit-any
+      assert((err as any).code === "ENOENT");
+      // deno-lint-ignore no-explicit-any
+      assert((err as any).syscall === "statfs");
+      // deno-lint-ignore no-explicit-any
+      assert((err as any).path === nonExistentPath);
+    }
+  },
+});
+
+Deno.test({
+  name: "fs.statfsSync() non-existent path",
+  fn() {
+    const nonExistentPath = path.join(filePath, "../non-existent");
+    try {
+      fs.statfsSync(nonExistentPath);
+      fail("statfsSync() should have failed");
+    } catch (err) {
+      // deno-lint-ignore no-explicit-any
+      assert((err as any).code === "ENOENT");
+      // deno-lint-ignore no-explicit-any
+      assert((err as any).syscall === "statfs");
+      // deno-lint-ignore no-explicit-any
+      assert((err as any).path === nonExistentPath);
+    }
   },
 });

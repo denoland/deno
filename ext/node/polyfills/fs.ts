@@ -95,7 +95,7 @@ import {
   statfs,
   statfsPromise,
   statfsSync,
-} from "ext:deno_node/_fs/_fs_statfs.js";
+} from "ext:deno_node/_fs/_fs_statfs.ts";
 import {
   symlink,
   symlinkPromise,
