@@ -531,7 +531,19 @@ export function prepareKey(key) {
   } else if (isKeyObject(key) && key.type === "private") {
     const data = key.export({ type: "pkcs8", format: "pem" });
     return { data: getArrayBufferOrView(data, "key") };
-  } else if (typeof key == "object") {
+  } else if (
+    typeof key === "object" && key !== null && typeof key.type === "string" &&
+    typeof key.export === "function"
+  ) {
+    // Fallback for KeyObject-like objects that might not pass isKeyObject check
+    if (key.type === "public") {
+      const data = key.export({ type: "spki", format: "pem" });
+      return { data: getArrayBufferOrView(data, "key") };
+    } else if (key.type === "private") {
+      const data = key.export({ type: "pkcs8", format: "pem" });
+      return { data: getArrayBufferOrView(data, "key") };
+    }
+  } else if (typeof key == "object" && key !== null && key.key !== undefined) {
     const { key: data, encoding } = key;
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");
