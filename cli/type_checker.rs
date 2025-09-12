@@ -36,7 +36,6 @@ use crate::cache::TypeCheckCache;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::module_error_for_tsc_diagnostic;
-use crate::graph_util::resolution_error_for_tsc_diagnostic;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
@@ -803,16 +802,10 @@ impl<'a> GraphWalker<'a> {
           };
           if let deno_graph::Resolution::Err(resolution_error) =
             dep_to_check_error
-            && let Some(err) =
-              resolution_error_for_tsc_diagnostic(resolution_error)
+            && let Some(diagnostic) =
+              tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
           {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
-                err.specifier,
-                Some(err.range),
-                None,
-              ));
+            self.missing_diagnostics.push(diagnostic);
           }
         }
       }

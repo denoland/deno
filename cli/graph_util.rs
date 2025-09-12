@@ -272,14 +272,15 @@ pub fn module_error_for_tsc_diagnostic<'a>(
 }
 
 #[derive(Debug)]
-pub struct ModuleNotFoundNodeResolutionErrorRef<'a> {
+pub struct ResolutionErrorRef<'a> {
   pub specifier: &'a str,
   pub range: &'a deno_graph::Range,
+  pub is_module_not_found: bool,
 }
 
 pub fn resolution_error_for_tsc_diagnostic(
   error: &ResolutionError,
-) -> Option<ModuleNotFoundNodeResolutionErrorRef<'_>> {
+) -> Option<ResolutionErrorRef<'_>> {
   fn is_module_not_found_code(code: NodeJsErrorCode) -> bool {
     match code {
       NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
@@ -297,21 +298,33 @@ pub fn resolution_error_for_tsc_diagnostic(
     }
   }
 
-  let specifier = match error {
+  match error {
     ResolutionError::InvalidDowngrade { .. }
     | ResolutionError::InvalidJsrHttpsTypesImport { .. }
     | ResolutionError::InvalidLocalImport { .. } => None,
-    ResolutionError::InvalidSpecifier { error, .. } => match error {
+    ResolutionError::InvalidSpecifier { error, range } => match error {
       SpecifierError::InvalidUrl(..) => None,
-      SpecifierError::ImportPrefixMissing { specifier, .. } => Some(specifier),
+      SpecifierError::ImportPrefixMissing { specifier, .. } => {
+        Some(ResolutionErrorRef {
+          specifier,
+          range,
+          is_module_not_found: false,
+        })
+      }
     },
     ResolutionError::ResolverError {
-      error, specifier, ..
+      error,
+      specifier,
+      range,
     } => match error.as_ref() {
       ResolveError::Specifier(error) => match error {
         SpecifierError::InvalidUrl(..) => None,
         SpecifierError::ImportPrefixMissing { specifier, .. } => {
-          Some(specifier)
+          Some(ResolutionErrorRef {
+            specifier,
+            range,
+            is_module_not_found: false,
+          })
         }
       },
       ResolveError::ImportMap(error) => match error.as_kind() {
@@ -324,7 +337,11 @@ pub fn resolution_error_for_tsc_diagnostic(
         | ImportMapErrorKind::SpecifierResolutionFailure { .. }
         | ImportMapErrorKind::SpecifierBacktracksAbovePrefix { .. } => None,
         ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) => {
-          Some(specifier)
+          Some(ResolutionErrorRef {
+            specifier,
+            range,
+            is_module_not_found: false,
+          })
         }
       },
       ResolveError::Other(error) => {
@@ -332,14 +349,14 @@ pub fn resolution_error_for_tsc_diagnostic(
           .and_then(|err| err.maybe_node_code())
           .map(is_module_not_found_code)
           .unwrap_or(false);
-        is_module_not_found_error.then_some(specifier)
+        is_module_not_found_error.then(|| ResolutionErrorRef {
+          specifier,
+          range,
+          is_module_not_found: true,
+        })
       }
     },
-  };
-  specifier.map(|specifier| ModuleNotFoundNodeResolutionErrorRef {
-    specifier,
-    range: error.range(),
-  })
+  }
 }
 
 pub fn graph_exit_integrity_errors(graph: &ModuleGraph) {
