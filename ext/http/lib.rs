@@ -98,7 +98,6 @@ mod request_body;
 mod request_properties;
 mod response_body;
 mod service;
-mod websocket_upgrade;
 
 use fly_accept_encoding::Encoding;
 pub use http_next::HttpNextError;
@@ -108,7 +107,6 @@ pub use request_properties::HttpListenProperties;
 pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
-pub use websocket_upgrade::WebSocketUpgradeError;
 
 struct OtelCollectors {
   duration: Histogram<f64>,

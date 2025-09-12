@@ -32,6 +32,7 @@ bytes.workspace = true
 cache_control.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+deno_fetch.workspace = true
 deno_net.workspace = true
 deno_telemetry.workspace = true
 deno_websocket.workspace = true

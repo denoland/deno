@@ -31,15 +31,17 @@ use deno_core::futures::channel::mpsc;
 use deno_core::futures::stream::Peekable;
 use deno_core::op2;
 use deno_core::serde::Serialize;
-use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchReturn;
 use deno_fetch::ResBody;
-use deno_net::io::TcpStreamResource;
-use deno_net::ops_tls::TlsStreamResource;
+use deno_net::raw::NetworkStream;
+use deno_net::raw::NetworkStreamAddress;
+use deno_net::raw::NetworkStreamReadHalf;
+use deno_net::raw::NetworkStreamWriteHalf;
+use deno_net::raw::take_network_stream_resource;
 use deno_permissions::PermissionCheckError;
 use http::Method;
 use http::header::AUTHORIZATION;
@@ -63,8 +65,6 @@ pub struct NodeHttpResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
-  pub remote_addr_ip: Option<String>,
-  pub remote_addr_port: Option<u16>,
   pub error: Option<String>,
 }
 
@@ -164,85 +164,18 @@ pub async fn op_node_http_request_with_conn<P>(
   #[serde] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
-  encrypted: bool,
 ) -> Result<FetchReturn, ConnError>
 where
   P: crate::NodePermissions + 'static,
 {
-  let (_handle, mut sender) = {
-    let mut state = state.borrow_mut();
-    if encrypted {
-      let resource_rc = state
-        .resource_table
-        .take::<TlsStreamResource>(conn_rid)
-        .map_err(ConnError::Resource)?;
-      let resource =
-        Rc::try_unwrap(resource_rc).map_err(|_e| ConnError::TlsStreamBusy)?;
-      let tcp_stream = resource.into_tls_stream();
-      let io = TokioIo::new(tcp_stream);
-      drop(state);
-      let (sender, conn) = hyper::client::conn::http1::handshake(io).await?;
-      (
-        tokio::task::spawn(async move { conn.with_upgrades().await }),
-        sender,
-      )
-    } else {
-      match state
-        .resource_table
-        .take::<TcpStreamResource>(conn_rid)
-        .map_err(ConnError::Resource)
-      {
-        Ok(resource_rc) => {
-          let resource = Rc::try_unwrap(resource_rc)
-            .map_err(|_| ConnError::TcpStreamBusy)?;
-          let (read_half, write_half) = resource.into_inner();
-          let tcp_stream = read_half.reunite(write_half)?;
-          let io = TokioIo::new(tcp_stream);
-          drop(state);
-          let (sender, conn) =
-            hyper::client::conn::http1::handshake(io).await?;
-
-          // Spawn a task to poll the connection, driving the HTTP state
-          (
-            tokio::task::spawn(async move {
-              conn.with_upgrades().await?;
-              Ok::<_, _>(())
-            }),
-            sender,
-          )
-        }
-        _ => {
-          #[cfg(unix)]
-          {
-            let resource_rc = state
-              .resource_table
-              .take::<deno_net::io::UnixStreamResource>(conn_rid)
-              .map_err(ConnError::Resource)?;
-            let resource = Rc::try_unwrap(resource_rc)
-              .map_err(|_| ConnError::TcpStreamBusy)?;
-            let (read_half, write_half) = resource.into_inner();
-            let tcp_stream = read_half.reunite(write_half)?;
-            let io = TokioIo::new(tcp_stream);
-            drop(state);
-            let (sender, conn) =
-              hyper::client::conn::http1::handshake(io).await?;
-
-            // Spawn a task to poll the connection, driving the HTTP state
-            (
-              tokio::task::spawn(async move {
-                conn.with_upgrades().await?;
-                Ok::<_, _>(())
-              }),
-              sender,
-            )
-          }
-
-          #[cfg(not(unix))]
-          return Err(ConnError::Resource(ResourceError::BadResourceId));
-        }
-      }
-    }
-  };
+  let stream = take_network_stream_resource(
+    &mut state.borrow_mut().resource_table,
+    conn_rid,
+  )
+  .map_err(|_| ConnError::Resource(ResourceError::BadResourceId))?;
+  let io = TokioIo::new(stream);
+  let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+  tokio::task::spawn(conn.with_upgrades());
 
   // Create the request.
   let method = Method::from_bytes(&method)?;
@@ -419,15 +352,6 @@ pub async fn op_node_http_await_response(
   }
 
   let content_length = hyper::body::Body::size_hint(res.body()).exact();
-  let remote_addr = res
-    .extensions()
-    .get::<hyper_util::client::legacy::connect::HttpInfo>()
-    .map(|info| info.remote_addr());
-  let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
-    (Some(addr.ip().to_string()), Some(addr.port()))
-  } else {
-    (None, None)
-  };
 
   let (parts, body) = res.into_parts();
   let body = body.map_err(|e| JsErrorBox::new("Http", e.to_string()));
@@ -447,18 +371,16 @@ pub async fn op_node_http_await_response(
     url: resource.url,
     response_rid,
     content_length,
-    remote_addr_ip,
-    remote_addr_port,
     error: None,
   })
 }
 
 #[op2(async)]
-#[smi]
+#[serde]
 pub async fn op_node_http_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<ResourceId, ConnError> {
+) -> Result<(ResourceId, Option<(String, u16, String, u16)>), ConnError> {
   let raw_response = state
     .borrow_mut()
     .resource_table
@@ -467,61 +389,45 @@ pub async fn op_node_http_fetch_response_upgrade(
   let raw_response = Rc::try_unwrap(raw_response)
     .expect("Someone is holding onto NodeHttpFetchResponseResource");
 
-  let (read, write) = tokio::io::duplex(1024);
-  let (read_rx, write_tx) = tokio::io::split(read);
-  let (mut write_rx, mut read_tx) = tokio::io::split(write);
-  let upgraded = raw_response.upgrade().await?;
-  {
-    // Stage 3: Pump the data
-    let (mut upgraded_rx, mut upgraded_tx) =
-      tokio::io::split(TokioIo::new(upgraded));
+  let mut res = raw_response.take();
 
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = upgraded_rx.read(&mut buf).await?;
-        if read == 0 {
-          read_tx.shutdown().await?;
-          break;
-        }
-        read_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, ConnError>(())
-    });
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = write_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        upgraded_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, ConnError>(())
-    });
-  }
+  let upgraded = hyper::upgrade::on(&mut res).await?;
+  let parts = upgraded.downcast::<TokioIo<NetworkStream>>().unwrap();
+  let stream = parts.io.into_inner();
 
-  Ok(
+  let info = match (stream.local_address(), stream.peer_address()) {
+    (
+      Ok(NetworkStreamAddress::Ip(local)),
+      Ok(NetworkStreamAddress::Ip(peer)),
+    ) => Some((
+      local.ip().to_string(),
+      local.port(),
+      peer.ip().to_string(),
+      peer.port(),
+    )),
+    _ => None,
+  };
+
+  Ok((
     state
       .borrow_mut()
       .resource_table
-      .add(UpgradeStream::new(read_rx, write_tx)),
-  )
+      .add(UpgradeStream::new(stream, parts.read_buf)),
+    info,
+  ))
 }
 
 struct UpgradeStream {
-  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
-  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
+  read: AsyncRefCell<(NetworkStreamReadHalf, Bytes)>,
+  write: AsyncRefCell<NetworkStreamWriteHalf>,
   cancel_handle: CancelHandle,
 }
 
 impl UpgradeStream {
-  pub fn new(
-    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
-    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
-  ) -> Self {
+  pub fn new(stream: NetworkStream, bytes: Bytes) -> Self {
+    let (read, write) = stream.into_split();
     Self {
-      read: AsyncRefCell::new(read),
+      read: AsyncRefCell::new((read, bytes)),
       write: AsyncRefCell::new(write),
       cancel_handle: CancelHandle::new(),
     }
@@ -535,7 +441,13 @@ impl UpgradeStream {
     async {
       let read = RcRef::map(self, |this| &this.read);
       let mut read = read.borrow_mut().await;
-      Pin::new(&mut *read).read(buf).await
+      if !read.1.is_empty() {
+        let n = read.1.len().min(buf.len());
+        buf[0..n].copy_from_slice(&read.1.split_to(n));
+        Ok(n)
+      } else {
+        Pin::new(&mut read.0).read(buf).await
+      }
     }
     .try_or_cancel(cancel_handle)
     .await
@@ -599,12 +511,10 @@ impl NodeHttpResponseResource {
     }
   }
 
-  pub async fn upgrade(self) -> Result<hyper::upgrade::Upgraded, hyper::Error> {
+  pub fn take(self) -> http::Response<ResBody> {
     let reader = self.response_reader.into_inner();
     match reader {
-      NodeHttpFetchResponseReader::Start(resp) => {
-        hyper::upgrade::on(resp).await
-      }
+      NodeHttpFetchResponseReader::Start(resp) => resp,
       _ => unreachable!(),
     }
   }

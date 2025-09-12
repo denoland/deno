@@ -9,7 +9,10 @@ use std::pin::Pin;
 use std::ptr::null;
 use std::rc::Rc;
 
+use bytes::Bytes;
+use bytes::BytesMut;
 use cache_control::CacheControl;
+use deno_core::AsyncMut;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -32,6 +35,8 @@ use deno_core::unsync::spawn;
 use deno_core::v8;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
+use deno_net::raw::NetworkStreamReadHalf;
+use deno_net::raw::NetworkStreamWriteHalf;
 use deno_websocket::ws_create_server_stream;
 use fly_accept_encoding::Encoding;
 use hyper::StatusCode;
@@ -50,6 +55,7 @@ use hyper::server::conn::http1;
 use hyper::server::conn::http2;
 use hyper::service::HttpService;
 use hyper::service::service_fn;
+use hyper::upgrade::OnUpgrade;
 use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
@@ -77,7 +83,6 @@ use crate::service::SignallingRc;
 use crate::service::handle_request;
 use crate::service::http_general_trace;
 use crate::service::http_trace;
-use crate::websocket_upgrade::WebSocketUpgrade;
 
 type Request = hyper::Request<Incoming>;
 
@@ -154,9 +159,6 @@ pub enum HttpNextError {
   #[class(inherit)]
   #[error("{0}")]
   Io(#[from] io::Error),
-  #[class(inherit)]
-  #[error(transparent)]
-  WebSocketUpgrade(crate::websocket_upgrade::WebSocketUpgradeError),
   #[class("Http")]
   #[error("{0}")]
   Hyper(#[from] hyper::Error),
@@ -184,6 +186,12 @@ pub enum HttpNextError {
     #[inherit]
     deno_error::JsErrorBox,
   ),
+  #[class("Http")]
+  #[error("invalid HTTP status line")]
+  InvalidHttpStatusLine,
+  #[class("Http")]
+  #[error("raw upgrade failed")]
+  RawUpgradeFailed,
 }
 
 #[op2(fast)]
@@ -195,66 +203,19 @@ pub fn op_http_upgrade_raw(
   // SAFETY: external is deleted before calling this op.
   let http = unsafe { take_external!(external, "op_http_upgrade_raw") };
 
-  // Stage 1: extract the upgrade future
   let upgrade = http.upgrade()?;
-  let (read, write) = tokio::io::duplex(1024);
-  let (read_rx, write_tx) = tokio::io::split(read);
-  let (mut write_rx, mut read_tx) = tokio::io::split(write);
-  spawn(async move {
-    let mut upgrade_stream = WebSocketUpgrade::<()>::default();
 
-    // Stage 2: Extract the Upgraded connection
-    let mut buf = [0; 1024];
-    let upgraded = loop {
-      let read = Pin::new(&mut write_rx).read(&mut buf).await?;
-      match upgrade_stream.write(&buf[..read]) {
-        Ok(None) => continue,
-        Ok(Some((response, bytes))) => {
-          let (response_parts, _) = response.into_parts();
-          *http.response_parts() = response_parts;
-          http.complete();
-          let mut upgraded = TokioIo::new(upgrade.await?);
-          upgraded.write_all(&bytes).await?;
-          break upgraded;
-        }
-        Err(err) => return Err(HttpNextError::WebSocketUpgrade(err)),
-      }
-    };
+  let read = Rc::new(AsyncRefCell::new(None));
+  let read_cell = AsyncRefCell::borrow_sync(read.clone()).unwrap();
 
-    // Stage 3: Pump the data
-    let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
+  let write = UpgradeStreamWriteState::Parsing(
+    BytesMut::with_capacity(b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n".len()),
+    http,
+    upgrade,
+    read_cell,
+  );
 
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = upgraded_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        read_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, HttpNextError>(())
-    });
-    spawn(async move {
-      let mut buf = [0; 1024];
-      loop {
-        let read = write_rx.read(&mut buf).await?;
-        if read == 0 {
-          break;
-        }
-        upgraded_tx.write_all(&buf[..read]).await?;
-      }
-      Ok::<_, HttpNextError>(())
-    });
-
-    Ok(())
-  });
-
-  Ok(
-    state
-      .resource_table
-      .add(UpgradeStream::new(read_rx, write_tx)),
-  )
+  Ok(state.resource_table.add(UpgradeStream::new(read, write)))
 }
 
 #[op2(async)]
@@ -262,34 +223,17 @@ pub fn op_http_upgrade_raw(
 pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
   external: *const c_void,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
 ) -> Result<ResourceId, HttpNextError> {
-  let http =
-    // SAFETY: external is deleted before calling this op.
-    unsafe { take_external!(external, "op_http_upgrade_websocket_next") };
-  // Stage 1: set the response to 101 Switching Protocols and send it
-  let upgrade = http.upgrade()?;
-  {
-    {
-      http.otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
-    }
-    let mut response_parts = http.response_parts();
-    response_parts.status = StatusCode::SWITCHING_PROTOCOLS;
+  let upgrade = {
+    // SAFETY: op is called with external.
+    let http =
+      unsafe { clone_external!(external, "op_http_upgrade_websocket_next") };
+    http.upgrade()?
+  };
 
-    for (name, value) in headers {
-      response_parts.headers.append(
-        HeaderName::from_bytes(&name).unwrap(),
-        HeaderValue::from_bytes(&value).unwrap(),
-      );
-    }
-  }
-  http.complete();
-
-  // Stage 2: wait for the request to finish upgrading
   let upgraded = upgrade.await?;
-
-  // Stage 3: take the extracted raw network stream and upgrade it to a websocket, then return it
   let (stream, bytes) = extract_network_stream(upgraded);
+
   Ok(ws_create_server_stream(
     &mut state.borrow_mut(),
     stream,
@@ -309,9 +253,7 @@ fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
   // will quietly ignore invalid values.
   if let Ok(code) = StatusCode::from_u16(status) {
-    {
-      http.response_parts().status = code;
-    }
+    http.response_parts().status = code;
     http.otel_info_set_status(status);
   }
   http.complete();
@@ -751,9 +693,7 @@ fn set_response(
     // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
     // will quietly ignore invalid values.
     if let Ok(code) = StatusCode::from_u16(status) {
-      {
-        http.response_parts().status = code;
-      }
+      http.response_parts().status = code;
       http.otel_info_set_status(status);
     }
   } else if force_instantiate_body {
@@ -1418,19 +1358,30 @@ pub async fn op_http_close(
   Ok(())
 }
 
+enum UpgradeStreamWriteState {
+  Parsing(
+    BytesMut,
+    Rc<HttpRecord>,
+    OnUpgrade,
+    AsyncMut<Option<(NetworkStreamReadHalf, Bytes)>>,
+  ),
+  Network(NetworkStreamWriteHalf),
+  Failed,
+}
+
 struct UpgradeStream {
-  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
-  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
+  read: Rc<AsyncRefCell<Option<(NetworkStreamReadHalf, Bytes)>>>,
+  write: AsyncRefCell<UpgradeStreamWriteState>,
   cancel_handle: CancelHandle,
 }
 
 impl UpgradeStream {
   pub fn new(
-    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
-    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
+    read: Rc<AsyncRefCell<Option<(NetworkStreamReadHalf, Bytes)>>>,
+    write: UpgradeStreamWriteState,
   ) -> Self {
     Self {
-      read: AsyncRefCell::new(read),
+      read,
       write: AsyncRefCell::new(write),
       cancel_handle: CancelHandle::new(),
     }
@@ -1444,7 +1395,16 @@ impl UpgradeStream {
     async {
       let read = RcRef::map(self, |this| &this.read);
       let mut read = read.borrow_mut().await;
-      Pin::new(&mut *read).read(buf).await
+      let Some(read) = &mut *read else {
+        return Err(std::io::Error::other(HttpNextError::RawUpgradeFailed));
+      };
+      if !read.1.is_empty() {
+        let n = read.1.len().min(buf.len());
+        buf[0..n].copy_from_slice(&read.1.split_to(n));
+        Ok(n)
+      } else {
+        Pin::new(&mut read.0).read(buf).await
+      }
     }
     .try_or_cancel(cancel_handle)
     .await
@@ -1453,9 +1413,71 @@ impl UpgradeStream {
   async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, std::io::Error> {
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
     async {
-      let write = RcRef::map(self, |this| &this.write);
-      let mut write = write.borrow_mut().await;
-      Pin::new(&mut *write).write(buf).await
+      let wr = RcRef::map(self, |this| &this.write);
+      let mut wr = wr.borrow_mut().await;
+      match std::mem::replace(&mut *wr, UpgradeStreamWriteState::Failed) {
+        UpgradeStreamWriteState::Failed => {
+          Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
+        }
+        UpgradeStreamWriteState::Parsing(
+          mut bytes,
+          http,
+          on_upgrade,
+          mut read_cell,
+        ) => {
+          let prev_len = bytes.len();
+          bytes.extend_from_slice(buf);
+
+          let mut headers = [httparse::EMPTY_HEADER; 16];
+          let mut response = httparse::Response::new(&mut headers);
+          match response.parse(&bytes) {
+            Ok(httparse::Status::Partial) => {
+              *wr = UpgradeStreamWriteState::Parsing(
+                bytes, http, on_upgrade, read_cell,
+              );
+              Ok(buf.len())
+            }
+            Ok(httparse::Status::Complete(n)) => {
+              if response.code != Some(StatusCode::SWITCHING_PROTOCOLS.as_u16())
+              {
+                return Err(std::io::Error::other(
+                  HttpNextError::InvalidHttpStatusLine,
+                ));
+              }
+
+              http
+                .otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
+              http.response_parts().status = StatusCode::SWITCHING_PROTOCOLS;
+
+              for header in response.headers {
+                http.response_parts().headers.append(
+                  HeaderName::from_bytes(header.name.as_bytes())
+                    .map_err(std::io::Error::other)?,
+                  HeaderValue::from_bytes(header.value)
+                    .map_err(std::io::Error::other)?,
+                );
+              }
+
+              http.complete();
+
+              let upgraded = on_upgrade.await.map_err(std::io::Error::other)?;
+              let (stream, bytes) = extract_network_stream(upgraded);
+              let (read, write) = stream.into_split();
+
+              let _ = read_cell.insert((read, bytes));
+              *wr = UpgradeStreamWriteState::Network(write);
+
+              Ok(n - prev_len)
+            }
+            Err(e) => Err(std::io::Error::other(e)),
+          }
+        }
+        UpgradeStreamWriteState::Network(mut stream) => {
+          let r = Pin::new(&mut stream).write(buf).await;
+          *wr = UpgradeStreamWriteState::Network(stream);
+          r
+        }
+      }
     }
     .try_or_cancel(cancel_handle)
     .await
@@ -1466,27 +1488,20 @@ impl UpgradeStream {
     buf1: &[u8],
     buf2: &[u8],
   ) -> Result<usize, std::io::Error> {
-    let mut wr = RcRef::map(self, |r| &r.write).borrow_mut().await;
+    let mut wr = RcRef::map(&self, |r| &r.write).borrow_mut().await;
 
-    let total = buf1.len() + buf2.len();
-    let mut bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
-    let mut nwritten = wr.write_vectored(&bufs).await?;
-    if nwritten == total {
-      return Ok(nwritten);
+    match &mut *wr {
+      UpgradeStreamWriteState::Failed => {
+        Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
+      }
+      UpgradeStreamWriteState::Parsing(..) => {
+        self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
+      }
+      UpgradeStreamWriteState::Network(stream) => {
+        let bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
+        stream.write_vectored(&bufs).await
+      }
     }
-
-    // Slightly more optimized than (unstable) write_all_vectored for 2 iovecs.
-    while nwritten <= buf1.len() {
-      bufs[0] = std::io::IoSlice::new(&buf1[nwritten..]);
-      nwritten += wr.write_vectored(&bufs).await?;
-    }
-
-    // First buffer out of the way.
-    if nwritten < total && nwritten > buf1.len() {
-      wr.write_all(&buf2[nwritten - buf1.len()..]).await?;
-    }
-
-    Ok(total)
   }
 }
 

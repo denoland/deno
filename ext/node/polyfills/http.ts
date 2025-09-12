@@ -551,7 +551,6 @@ class ClientRequest extends OutgoingMessage {
           headers,
           this._bodyWriteRid,
           baseConnRid,
-          this._encrypted,
         );
         this._flushBuffer();
 
@@ -650,25 +649,25 @@ class ClientRequest extends OutgoingMessage {
           if (this.method === "CONNECT") {
             throw new Error("not implemented CONNECT");
           }
-          const upgradeRid = await op_node_http_fetch_response_upgrade(
-            res.responseRid,
-          );
+          const { 0: upgradeRid, 1: info } =
+            await op_node_http_fetch_response_upgrade(
+              res.responseRid,
+            );
           const conn = new UpgradedConn(
             upgradeRid,
             {
               transport: "tcp",
-              hostname: res.remoteAddrIp,
-              port: res.remoteAddrIp,
+              hostname: info[0],
+              port: info[1],
             },
-            // TODO(bartlomieju): figure out actual values
             {
               transport: "tcp",
-              hostname: "127.0.0.1",
-              port: 80,
+              hostname: info[2],
+              port: info[3],
             },
           );
           const socket = new Socket({
-            handle: new TCP(constants.SERVER, conn),
+            handle: new TCP(constants.SOCKET, conn),
           });
 
           this.upgradeOrConnect = true;
