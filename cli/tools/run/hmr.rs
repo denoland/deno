@@ -355,15 +355,17 @@ impl HmrRunner {
   }
 
   fn set_script_source(&mut self, script_id: &str, source: &str) -> i32 {
+    let msg_id = NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     self.session.post_message(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      msg_id,
       "Debugger.setScriptSource",
       Some(json!({
         "scriptId": script_id,
         "scriptSource": source,
         "allowTopFrameEditing": true,
       })),
-    )
+    );
+    msg_id
   }
 
   fn dispatch_hmr_event(&mut self, script_id: &str) {

@@ -222,10 +222,32 @@ impl ReplSessionState {
 
   fn callback(&self, msg: deno_core::InspectorMsg) {
     match msg.kind {
-      // TODO: duplicated in `cli/tools/run/hmr.rs`
+      // TODO: duplicated in `cli/tools/run/hmr.rs` for the most part
       deno_core::InspectorMsgKind::Message(msg_id) => {
         let message: serde_json::Value =
-          serde_json::from_str(&msg.content).unwrap();
+          match serde_json::from_str(&msg.content) {
+            Ok(v) => v,
+            Err(error) => match error.classify() {
+              serde_json::error::Category::Syntax => serde_json::json!({
+                "id": msg_id,
+                "result": {
+                  "result": {
+                    "type": "error",
+                    "description": "Unterminated string literal",
+                    "value": "Unterminated string literal",
+                  },
+                  "exceptionDetails": {
+                    "exceptionId": 0,
+                    "text": "Unterminated string literal",
+                    "lineNumber": 0,
+                    "columnNumber": 0
+                  },
+                },
+              }),
+              _ => panic!("Could not parse inspector message"),
+            },
+          };
+
         let mut state = self.0.lock();
         let Some(message_state) = state.messages.remove(&msg_id) else {
           state
@@ -406,7 +428,8 @@ impl ReplSession {
     method: &str,
     params: Option<T>,
   ) -> Result<Value, InspectorPostMessageError> {
-    let msg_id = self.session.post_message(next_msg_id(), method, params);
+    let msg_id = next_msg_id();
+    self.session.post_message(msg_id, method, params);
     let fut = self.state.wait_for_response(msg_id).boxed_local();
 
     self

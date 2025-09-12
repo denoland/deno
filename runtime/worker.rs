@@ -19,6 +19,7 @@ use deno_core::Extension;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
+use deno_core::JsRuntimeInspector;
 use deno_core::LocalSyncInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -919,17 +920,13 @@ impl MainWorker {
     self.js_runtime.maybe_init_inspector();
     let insp = self.js_runtime.inspector();
 
-    self
-      .js_runtime
-      .inspector()
-      .borrow()
-      .create_local_sync_session(
-        insp,
-        cb,
-        InspectorSessionOptions {
-          kind: InspectorSessionKind::Blocking,
-        },
-      )
+    JsRuntimeInspector::create_local_sync_session(
+      insp,
+      cb,
+      InspectorSessionOptions {
+        kind: InspectorSessionKind::Blocking,
+      },
+    )
   }
 
   pub async fn run_event_loop(
