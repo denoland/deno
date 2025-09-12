@@ -218,11 +218,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::init::<Permissions>(Default::default()),
     deno_cache::deno_cache::init(None),
-    deno_websocket::deno_websocket::init::<Permissions>(
-      "".to_owned(),
-      None,
-      None,
-    ),
+    deno_websocket::deno_websocket::init::<Permissions>(),
     deno_webstorage::deno_webstorage::init(None),
     deno_crypto::deno_crypto::init(None),
     deno_broadcast_channel::deno_broadcast_channel::init(
