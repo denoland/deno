@@ -340,8 +340,8 @@ impl Target {
     Some(target)
   }
 
-  pub(crate) fn new_tcp(host: String, port: u16) -> Self {
-    Target::Tcp { hostname: host, port }
+  pub(crate) fn new_tcp(hostname: String, port: u16) -> Self {
+    Target::Tcp { hostname, port }
   }
 
   #[cfg(not(windows))]
@@ -656,7 +656,10 @@ where
             }
           })
         }
-        Target::Tcp { hostname: host, port } => {
+        Target::Tcp {
+          hostname: host,
+          port,
+        } => {
           let mut connector =
             HttpsConnector::from((self.http.clone(), self.tls_proxy.clone()));
           let Ok(uri) = format!("http://{}:{}", host, port).parse() else {
