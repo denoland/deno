@@ -51,6 +51,44 @@ pub(crate) struct ProxyConnector<C> {
   pub(crate) user_agent: Option<HeaderValue>,
 }
 
+impl<C> ProxyConnector<C> {
+  pub(crate) fn h1_only(self) -> Option<ProxyConnector<C>>
+  where
+    C: Service<Uri>,
+  {
+    if !self.tls.alpn_protocols.is_empty() {
+      self.tls.alpn_protocols.iter().find(|p| *p == b"http/1.1")?;
+    }
+    let mut tls = (*self.tls).clone();
+    tls.alpn_protocols = vec![b"http/1.1".to_vec()];
+    Some(ProxyConnector {
+      http: self.http,
+      proxies: self.proxies,
+      tls: Arc::new(tls),
+      tls_proxy: self.tls_proxy,
+      user_agent: self.user_agent,
+    })
+  }
+
+  pub(crate) fn h2_only(self) -> Option<ProxyConnector<C>>
+  where
+    C: Service<Uri>,
+  {
+    if !self.tls.alpn_protocols.is_empty() {
+      self.tls.alpn_protocols.iter().find(|p| *p == b"h2")?;
+    }
+    let mut tls = (*self.tls).clone();
+    tls.alpn_protocols = vec![b"h2".to_vec()];
+    Some(ProxyConnector {
+      http: self.http,
+      proxies: self.proxies,
+      tls: Arc::new(tls),
+      tls_proxy: self.tls_proxy,
+      user_agent: self.user_agent,
+    })
+  }
+}
+
 #[derive(Debug)]
 pub(crate) struct Proxies {
   no: Option<NoProxy>,
