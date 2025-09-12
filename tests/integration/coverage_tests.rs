@@ -173,6 +173,7 @@ fn multifile_coverage() {
   let tempdir = context.temp_dir();
   let tempdir = tempdir.path().join("cov");
 
+  eprintln!("before test");
   let output = context
     .new_command()
     .args_vec(vec![
@@ -182,7 +183,7 @@ fn multifile_coverage() {
       format!("coverage/multifile/"),
     ])
     .run();
-
+  eprintln!("after test");
   output.assert_exit_code(0);
   eprintln!("output {:#?}", output.print_output());
   output.skip_output_check();
@@ -198,6 +199,7 @@ fn multifile_coverage() {
     .run();
 
   // Verify there's no "Check" being printed
+  eprintln!("output2 {:#?}", output.print_output());
   assert!(output.stderr().is_empty());
 
   output.assert_stdout_matches_file(

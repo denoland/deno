@@ -7,6 +7,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI32;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
@@ -54,6 +55,8 @@ pub mod reporter;
 mod util;
 use merge::ProcessCoverage;
 
+static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
+
 #[derive(Debug)]
 pub struct CoverageCollectorInner {
   dir: PathBuf,
@@ -79,27 +82,33 @@ impl CoverageCollectorState {
       return;
     };
 
-    eprintln!(
-      "callback {} {:#?} {}",
-      msg_id,
-      self.0.lock().coverage_msg_id.as_ref(),
-      msg.content
-    );
-    if let Some(coverage_msg_id) = self.0.lock().coverage_msg_id.as_ref()
-      && *coverage_msg_id == msg_id
+    // eprintln!(
+    //   "callback {} {:#?}",
+    //   // "callback {} {:#?} {}",
+    //   msg_id,
+    //   self.0.lock().coverage_msg_id.as_ref(),
+    //   // msg.content
+    // );
+    let maybe_coverage_msg_id = self.0.lock().coverage_msg_id.as_ref().cloned();
+
+    if let Some(coverage_msg_id) = maybe_coverage_msg_id
+      && coverage_msg_id == msg_id
     {
       let message: serde_json::Value =
         serde_json::from_str(&msg.content).unwrap();
       let coverages: cdp::TakePreciseCoverageResponse =
         serde_json::from_value(message["result"].clone()).unwrap();
       self.write_coverages(coverages.result);
+      // eprintln!("written coverages");
     }
   }
 
   fn write_coverages(&self, script_coverages: Vec<cdp::ScriptCoverage>) {
+    // eprintln!("got coverages {}", script_coverages.len());
     for script_coverage in script_coverages {
       // Filter out internal and http/https JS files, eval'd scripts,
       // and scripts with invalid urls from being included in coverage reports
+      // eprintln!("script coverage url {}", script_coverage.url);
       if script_coverage.url.is_empty()
         || script_coverage.url.starts_with("ext:")
         || script_coverage.url.starts_with("[ext:")
@@ -171,38 +180,60 @@ impl CoverageCollector {
 
   // TODO(barltomieju): is it actually necessary to call this?
   fn enable_debugger(&mut self) {
-    self.session.post_message::<()>("Debugger.enable", None);
+    self.session.post_message::<()>(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      "Debugger.enable",
+      None,
+    );
   }
 
   fn enable_profiler(&mut self) {
-    self.session.post_message::<()>("Profiler.enable", None);
+    self.session.post_message::<()>(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      "Profiler.enable",
+      None,
+    );
   }
 
   // TODO(barltomieju): is it actually necessary to call this?
   fn disable_debugger(&mut self) {
-    self.session.post_message::<()>("Debugger.disable", None);
+    self.session.post_message::<()>(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      "Debugger.disable",
+      None,
+    );
   }
 
   // TODO(barltomieju): is it actually necessary to call this?
   fn disable_profiler(&mut self) {
-    self.session.post_message::<()>("Profiler.disable", None);
+    self.session.post_message::<()>(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      "Profiler.disable",
+      None,
+    );
   }
 
   fn start_precise_coverage(
     &mut self,
     parameters: cdp::StartPreciseCoverageArgs,
   ) {
-    self
-      .session
-      .post_message("Profiler.startPreciseCoverage", Some(parameters));
+    self.session.post_message(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      "Profiler.startPreciseCoverage",
+      Some(parameters),
+    );
   }
 
   fn take_precise_coverage(&mut self) {
-    let msg_id = self
-      .session
-      .post_message::<()>("Profiler.takePreciseCoverage", None);
-    eprintln!("take precise coverage {}", msg_id);
+    let msg_id = NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     self.state.0.lock().coverage_msg_id.replace(msg_id);
+
+    self.session.post_message::<()>(
+      msg_id,
+      "Profiler.takePreciseCoverage",
+      None,
+    );
+    // eprintln!("take precise coverage {}", msg_id);
     // let return_object = serde_json::from_value(return_value).map_err(|e| {
     //   InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
     // })?;

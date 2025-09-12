@@ -8,7 +8,6 @@ use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
-use deno_core::futures::channel::mpsc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -81,7 +80,7 @@ pub fn op_inspector_emit_protocol_event(
 }
 
 struct JSInspectorSession {
-  tx: RefCell<Option<mpsc::UnboundedSender<String>>>,
+  tx: RefCell<Option<std::sync::mpsc::Sender<String>>>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -135,7 +134,7 @@ where
     .borrow::<Rc<RefCell<JsRuntimeInspector>>>()
     .borrow_mut();
 
-  let tx = inspector.create_raw_session(
+  let (_, tx) = inspector.create_raw_session(
     InspectorSessionOptions {
       kind: InspectorSessionKind::NonBlocking {
         wait_for_disconnect: false,
@@ -173,7 +172,7 @@ pub fn op_inspector_dispatch(
   #[string] message: String,
 ) {
   if let Some(tx) = &*session.tx.borrow() {
-    let _ = tx.unbounded_send(message);
+    let _ = tx.send(message);
   }
 }
 

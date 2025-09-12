@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI32;
 
 use deno_core::InspectorPostMessageError;
 use deno_core::InspectorPostMessageErrorKind;
@@ -24,6 +25,8 @@ use crate::cdp;
 use crate::module_loader::CliEmitter;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
+
+static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
 
 fn explain(response: &cdp::SetScriptSourceResponse) -> String {
   match response.status {
@@ -296,17 +299,33 @@ impl HmrRunner {
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   fn enable_debugger(&mut self) {
     // TODO(barltomieju): is it actually necessary to call this?
-    self.session.post_message::<()>("Debugger.enable", None);
+    self.session.post_message::<()>(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      "Debugger.enable",
+      None,
+    );
 
-    self.session.post_message::<()>("Runtime.enable", None);
+    self.session.post_message::<()>(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      "Runtime.enable",
+      None,
+    );
   }
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   fn disable_debugger(&mut self) {
     // TODO(barltomieju): is it actually necessary to call this?
-    self.session.post_message::<()>("Debugger.disable", None);
+    self.session.post_message::<()>(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      "Debugger.disable",
+      None,
+    );
     // TODO(barltomieju): is it actually necessary to call this?
-    self.session.post_message::<()>("Runtime.disable", None);
+    self.session.post_message::<()>(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      "Runtime.disable",
+      None,
+    );
   }
 
   async fn wait_for_response<T: serde::de::DeserializeOwned>(
@@ -337,6 +356,7 @@ impl HmrRunner {
 
   fn set_script_source(&mut self, script_id: &str, source: &str) -> i32 {
     self.session.post_message(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
       "Debugger.setScriptSource",
       Some(json!({
         "scriptId": script_id,
@@ -353,6 +373,7 @@ impl HmrRunner {
     );
 
     self.session.post_message(
+      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
       "Runtime.evaluate",
       Some(json!({
         "expression": expr,

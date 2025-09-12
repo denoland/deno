@@ -929,11 +929,14 @@ impl MainWorker {
     cb: deno_core::InspectorSessionSend,
   ) -> LocalSyncInspectorSession {
     self.js_runtime.maybe_init_inspector();
+    let insp = self.js_runtime.inspector();
+
     self
       .js_runtime
       .inspector()
       .borrow()
       .create_local_sync_session(
+        insp,
         cb,
         InspectorSessionOptions {
           kind: InspectorSessionKind::Blocking,
