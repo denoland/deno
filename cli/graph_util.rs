@@ -271,6 +271,7 @@ pub fn module_error_for_tsc_diagnostic<'a>(
   }
 }
 
+#[derive(Debug)]
 pub struct ModuleNotFoundNodeResolutionErrorRef<'a> {
   pub specifier: &'a str,
   pub range: &'a deno_graph::Range,
