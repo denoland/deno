@@ -57,7 +57,10 @@ import {
   redirectStatus,
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
+import {
+  addSignalAlgorithm,
+  removeSignalAlgorithm,
+} from "ext:deno_web/03_abort_signal.js";
 import {
   builtinTracer,
   ContextManager,
@@ -107,7 +110,7 @@ function createResponseBodyStream(responseBodyRid, terminator) {
   }
 
   // TODO(lucacasonato): clean up registration
-  terminator[abortSignal.add](onAbort);
+  addSignalAlgorithm(terminator, onAbort);
 
   return readable;
 }
@@ -125,7 +128,7 @@ async function mainFetch(req, recursive, terminator) {
     }
 
     const body = new InnerBody(req.blobUrlEntry.stream());
-    terminator[abortSignal.add](() => body.error(terminator.reason));
+    addSignalAlgorithm(terminator, () => body.error(terminator.reason));
     processUrlList(req.urlList, req.urlListProcessed);
 
     return {
@@ -186,7 +189,7 @@ async function mainFetch(req, recursive, terminator) {
       core.tryClose(cancelHandleRid);
     }
   }
-  terminator[abortSignal.add](onAbort);
+  addSignalAlgorithm(terminator, onAbort);
   let resp;
   try {
     resp = await opFetchSend(requestRid);
@@ -403,13 +406,13 @@ function fetch(input, init = { __proto__: null }) {
       // 9.
       let locallyAborted = false;
       // 10.
-      function onabort() {
+      function onAbort() {
         locallyAborted = true;
         reject(
           abortFetch(request, responseObject, requestObject.signal.reason),
         );
       }
-      requestObject.signal[abortSignal.add](onabort);
+      addSignalAlgorithm(requestObject, onAbort);
 
       if (!requestObject.headers.has("Accept")) {
         ArrayPrototypePush(request.headerList, ["Accept", "*/*"]);
@@ -435,7 +438,7 @@ function fetch(input, init = { __proto__: null }) {
                   requestObject.signal.reason,
                 ),
               );
-              requestObject.signal[abortSignal.remove](onabort);
+              removeSignalAlgorithm(requestObject, onAbort);
               return;
             }
             // 12.3.
@@ -444,7 +447,7 @@ function fetch(input, init = { __proto__: null }) {
                 "Fetch failed: " + (response.error ?? "unknown error"),
               );
               reject(err);
-              requestObject.signal[abortSignal.remove](onabort);
+              removeSignalAlgorithm(requestObject, onAbort);
               return;
             }
             responseObject = fromInnerResponse(response, "immutable");
@@ -454,12 +457,12 @@ function fetch(input, init = { __proto__: null }) {
             }
 
             resolve(responseObject);
-            requestObject.signal[abortSignal.remove](onabort);
+            removeSignalAlgorithm(requestObject, onAbort);
           },
         ),
         (err) => {
           reject(err);
-          requestObject.signal[abortSignal.remove](onabort);
+          removeSignalAlgorithm(requestObject, onAbort);
         },
       );
     });
