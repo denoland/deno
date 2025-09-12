@@ -64,12 +64,23 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
     );
   }
 
+  const accept = op_http_websocket_accept_header(websocketKey);
+
+  const r = newInnerResponse(101);
+  r.headerList = [
+    ["upgrade", "websocket"],
+    ["connection", "Upgrade"],
+    ["sec-websocket-accept", accept],
+  ];
+
   const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
   const protocols = StringPrototypeSplit(protocolsStr, ", ");
-  let selectedProtocol;
   if (protocols && options.protocol) {
     if (ArrayPrototypeIncludes(protocols, options.protocol)) {
-      selectedProtocol = options.protocol;
+      ArrayPrototypePush(r.headerList, [
+        "sec-websocket-protocol",
+        options.protocol,
+      ]);
     } else {
       throw new TypeError(
         `Protocol '${options.protocol}' not in the request's protocol list (non negotiable)`,
@@ -85,28 +96,31 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
   socket[_idleTimeoutTimeout] = null;
 
   if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade(
-      "upgradeWebSocket",
-      socket,
-      websocketKey,
-      selectedProtocol,
-    );
-  }
+    const wsPromise = inner._wantsUpgrade("upgradeWebSocket");
 
-  const accept = op_http_websocket_accept_header(websocketKey);
+    // Start the upgrade in the background.
+    (async () => {
+      try {
+        const wsRid = await wsPromise;
 
-  const r = newInnerResponse(101);
-  r.headerList = [
-    ["upgrade", "websocket"],
-    ["connection", "Upgrade"],
-    ["sec-websocket-accept", accept],
-  ];
+        socket[_rid] = wsRid;
+        socket[_readyState] = WebSocket.OPEN;
+        const event = new Event("open");
+        socket.dispatchEvent(event);
 
-  if (selectedProtocol) {
-    ArrayPrototypePush(r.headerList, [
-      "sec-websocket-protocol",
-      selectedProtocol,
-    ]);
+        socket[_eventLoop]();
+        if (socket[_idleTimeoutDuration]) {
+          socket.addEventListener(
+            "close",
+            () => clearTimeout(socket[_idleTimeoutTimeout]),
+          );
+        }
+        socket[_serverHandleIdleTimeout]();
+      } catch (error) {
+        const event = new ErrorEvent("error", { error });
+        socket.dispatchEvent(event);
+      }
+    })();
   }
 
   const response = fromInnerResponse(r, "immutable");

@@ -1518,16 +1518,11 @@ async fn op_http_shutdown(
 #[op2]
 #[string]
 fn op_http_websocket_accept_header(#[string] key: String) -> String {
-  sec_websocket_accept(key.as_bytes())
-}
-
-pub fn sec_websocket_accept(key: &[u8]) -> String {
-  let mut ctx = aws_lc_rs::digest::Context::new(
+  let digest = aws_lc_rs::digest::digest(
     &aws_lc_rs::digest::SHA1_FOR_LEGACY_USE_ONLY,
+    format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes(),
   );
-  ctx.update(key);
-  ctx.update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-  BASE64_STANDARD.encode(ctx.finish())
+  BASE64_STANDARD.encode(digest)
 }
 
 #[op2(async)]

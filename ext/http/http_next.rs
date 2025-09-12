@@ -75,7 +75,6 @@ use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::Compression;
 use crate::response_body::ResponseBytesInner;
-use crate::sec_websocket_accept;
 use crate::service::HttpRecord;
 use crate::service::HttpRecordResponse;
 use crate::service::HttpRequestBodyAutocloser;
@@ -224,42 +223,13 @@ pub fn op_http_upgrade_raw(
 pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
   external: *const c_void,
-  #[serde] websocket_key: ByteString,
-  #[serde] selected_protocol: Option<ByteString>,
 ) -> Result<ResourceId, HttpNextError> {
-  let http =
-    // SAFETY: external is deleted before calling this op.
-    unsafe { take_external!(external, "op_http_upgrade_websocket_next") };
-
-  let upgrade = http.upgrade()?;
-
-  {
-    http.otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
-
-    let mut response_parts = http.response_parts();
-    response_parts.status = StatusCode::SWITCHING_PROTOCOLS;
-
-    response_parts.headers.append(
-      HeaderName::from_static("upgrade"),
-      HeaderValue::from_static("websocket"),
-    );
-    response_parts.headers.append(
-      HeaderName::from_static("connection"),
-      HeaderValue::from_static("Upgrade"),
-    );
-    response_parts.headers.append(
-      HeaderName::from_static("sec-websocket-accept"),
-      HeaderValue::from_str(&sec_websocket_accept(&websocket_key)).unwrap(),
-    );
-
-    if let Some(selected_protocol) = selected_protocol {
-      response_parts.headers.append(
-        HeaderName::from_static("sec-websocket-protocol"),
-        HeaderValue::from_bytes(&selected_protocol).unwrap(),
-      );
-    }
-  }
-  http.complete();
+  let upgrade = {
+    // SAFETY: op is called with external.
+    let http =
+      unsafe { clone_external!(external, "op_http_upgrade_websocket_next") };
+    http.upgrade()?
+  };
 
   let upgraded = upgrade.await?;
   let (stream, bytes) = extract_network_stream(upgraded);
