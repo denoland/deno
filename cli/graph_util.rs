@@ -76,6 +76,7 @@ use crate::util::progress_bar::ProgressBar;
 pub struct GraphValidOptions<'a> {
   pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
+  pub will_type_check: bool,
   /// Whether to exit the process for integrity check errors such as
   /// lockfile checksum mismatches and JSR integrity failures.
   /// Otherwise, surfaces integrity errors as errors.
@@ -108,6 +109,7 @@ pub fn graph_valid(
     GraphWalkErrorsOptions {
       check_js: options.check_js,
       kind: options.kind,
+      will_type_check: options.will_type_check,
       allow_unknown_media_types: options.allow_unknown_media_types,
       allow_unknown_jsr_exports: options.allow_unknown_jsr_exports,
     },
@@ -131,6 +133,7 @@ pub fn graph_valid(
 pub struct GraphWalkErrorsOptions<'a> {
   pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
+  pub will_type_check: bool,
   pub allow_unknown_media_types: bool,
   pub allow_unknown_jsr_exports: bool,
 }
@@ -147,6 +150,7 @@ pub fn graph_walk_errors<'a>(
     sys: &CliSys,
     graph_kind: GraphKind,
     allow_unknown_media_types: bool,
+    will_type_check: bool,
     error: &ModuleGraphError,
   ) -> bool {
     if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
@@ -159,8 +163,7 @@ pub fn graph_walk_errors<'a>(
     }
 
     // surface these as typescript diagnostics instead
-    graph_kind.include_types()
-      && has_module_graph_error_for_tsc_diagnostic(sys, error)
+    will_type_check && has_module_graph_error_for_tsc_diagnostic(sys, error)
   }
 
   graph
@@ -179,6 +182,7 @@ pub fn graph_walk_errors<'a>(
         sys,
         graph.graph_kind(),
         options.allow_unknown_media_types,
+        options.will_type_check,
         &error,
       ) {
         log::debug!("Ignoring: {}", error);
@@ -990,16 +994,18 @@ impl ModuleGraphBuilder {
     allow_unknown_media_types: bool,
     allow_unknown_jsr_exports: bool,
   ) -> Result<(), JsErrorBox> {
+    let will_type_check = self.cli_options.type_check_mode().is_true();
     graph_valid(
       graph,
       &self.sys,
       roots,
       GraphValidOptions {
-        kind: if self.cli_options.type_check_mode().is_true() {
+        kind: if will_type_check {
           GraphKind::All
         } else {
           GraphKind::CodeOnly
         },
+        will_type_check,
         check_js: CheckJsOption::Custom(
           self.compiler_options_resolver.as_ref(),
         ),
