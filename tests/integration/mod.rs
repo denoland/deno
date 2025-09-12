@@ -60,5 +60,7 @@ mod task;
 mod test;
 #[path = "upgrade_tests.rs"]
 mod upgrade;
+#[path = "version_tests.rs"]
+mod version;
 #[path = "watcher_tests.rs"]
 mod watcher;
