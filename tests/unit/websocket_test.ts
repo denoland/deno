@@ -989,7 +989,7 @@ Deno.test("WebSocket with custom http client with unix proxy", {
 });
 
 Deno.test("WebSocket with custom http client with vsock proxy", {
-  ignore: Deno.build.os !== "linux" && Deno.build.os !== "darwin",
+  ignore: Deno.build.os !== "linux",
 }, async () => {
   const socketPath = Deno.makeTempFileSync();
   Deno.removeSync(socketPath);
