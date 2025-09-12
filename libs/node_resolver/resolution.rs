@@ -16,8 +16,10 @@ use serde_json::Map;
 use serde_json::Value;
 use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
+use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
+use sys_traits::FsReadDir;
 use url::Url;
 
 use crate::InNpmPackageChecker;
@@ -257,7 +259,10 @@ struct ResolutionConfig {
 }
 
 #[sys_traits::auto_impl]
-pub trait NodeResolverSys: FsCanonicalize + FsMetadata + FsRead {}
+pub trait NodeResolverSys:
+  FsCanonicalize + FsMetadata + FsRead + FsReadDir
+{
+}
 
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
@@ -765,7 +770,35 @@ impl<
       Some(Value::Object(o)) => {
         o.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>()
       }
-      _ => Vec::new(),
+      _ => {
+        let bin_directory =
+          package_json.directories.as_ref().and_then(|d| d.get("bin"));
+        match bin_directory {
+          Some(Value::String(bin_dir)) => {
+            let bin_dir = package_folder.join(bin_dir);
+            let Ok(entries) = self.sys.fs_read_dir(&bin_dir) else {
+              return Ok(Vec::new());
+            };
+            let mut bins = Vec::new();
+            for entry in entries {
+              let Ok(entry) = entry else {
+                continue;
+              };
+              let Ok(file_type) = entry.file_type() else {
+                continue;
+              };
+              if file_type.is_file() {
+                let name = entry.file_name();
+                if let Some(name) = name.to_str() {
+                  bins.push(name.to_string());
+                }
+              }
+            }
+            bins
+          }
+          _ => Vec::new(),
+        }
+      }
     })
   }
 
