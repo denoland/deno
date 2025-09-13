@@ -436,6 +436,7 @@
 "parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
 "parallel/test-fs-fsync.js" = {}
+"parallel/test-fs-glob.mjs" = {}
 "parallel/test-fs-internal-assertencoding.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
