@@ -10,6 +10,7 @@ use std::rc::Rc;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
+use deno_package_json::PackageJsonBins;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
@@ -25,6 +26,7 @@ use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::CliManagedNpmResolver;
 use crate::npm::CliNpmResolver;
 
@@ -470,7 +472,8 @@ pub fn resolve_custom_commands(
   let mut commands = match npm_resolver {
     CliNpmResolver::Byonm(npm_resolver) => {
       let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
-      resolve_npm_commands_from_bin_dir(node_modules_dir)
+      let bin_dir = node_modules_dir.join(".bin");
+      resolve_npm_commands_from_bin_dir(&bin_dir)
     }
     CliNpmResolver::Managed(npm_resolver) => {
       resolve_managed_npm_commands(npm_resolver, node_resolver)?
@@ -481,10 +484,9 @@ pub fn resolve_custom_commands(
 }
 
 pub fn resolve_npm_commands_from_bin_dir(
-  node_modules_dir: &Path,
+  bin_dir: &Path,
 ) -> HashMap<String, Rc<dyn ShellCommand>> {
   let mut result = HashMap::<String, Rc<dyn ShellCommand>>::new();
-  let bin_dir = node_modules_dir.join(".bin");
   log::debug!("Resolving commands in '{}'.", bin_dir.display());
   match std::fs::read_dir(&bin_dir) {
     Ok(entries) => {
@@ -573,20 +575,31 @@ fn resolve_execution_path_from_npx_shim(
 fn resolve_managed_npm_commands(
   npm_resolver: &CliManagedNpmResolver,
   node_resolver: &CliNodeResolver,
+  package_json_resolver: CliPackageJsonResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
   for id in npm_resolver.resolution().top_level_packages() {
     let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
-    let bin_commands =
-      node_resolver.resolve_binary_commands(&package_folder)?;
-    for bin_command in bin_commands {
-      result.insert(
-        bin_command.to_string(),
-        Rc::new(NpmPackageBinCommand {
-          name: bin_command,
-          npm_package: id.nv.clone(),
-        }) as Rc<dyn ShellCommand>,
-      );
+    let Some(package_json) = package_json_resolver
+      .load_package_json(package_folder.join("package.json"))?
+    else {
+      continue;
+    };
+    match package_json.resolve_bins()? {
+      PackageJsonBins::Directory(bin_path) => {
+        result.extend(resolve_npm_commands_from_bin_dir(&bin_path));
+      }
+      PackageJsonBins::Bins(bin_commands) => {
+        for bin_command in bin_commands {
+          result.insert(
+            bin_command.to_string(),
+            Rc::new(NpmPackageBinCommand {
+              name: bin_command,
+              npm_package: id.nv.clone(),
+            }) as Rc<dyn ShellCommand>,
+          );
+        }
+      }
     }
   }
   if !result.contains_key("npx") {

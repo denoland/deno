@@ -35,6 +35,19 @@ pub trait PackageJsonCache {
   fn set(&self, path: PathBuf, package_json: PackageJsonRc);
 }
 
+#[derive(Debug, Clone)]
+pub enum PackageJsonBins {
+  Directory(PathBuf),
+  Bins(Vec<String>),
+}
+
+#[derive(Debug, Clone, JsError, PartialEq, Eq, Boxed)]
+#[class(generic)]
+#[error("'{}' did not have a name", pkg_json_path.display())]
+pub struct MissingPkgJsonNameError {
+  pkg_json_path: PathBuf,
+}
+
 #[derive(Debug, Clone, JsError, PartialEq, Eq, Boxed)]
 pub struct PackageJsonDepValueParseError(
   pub Box<PackageJsonDepValueParseErrorKind>,
@@ -498,6 +511,36 @@ impl PackageJson {
         dev_dependencies: get_map(self.dev_dependencies.as_ref()),
       })
     })
+  }
+
+  pub fn resolve_bins(
+    &self,
+  ) -> Result<PackageJsonBins, MissingPkgJsonNameError> {
+    match &self.bin {
+      Some(Value::String(_)) => {
+        let Some(name) = &self.name else {
+          return Err(MissingPkgJsonNameError {
+            pkg_json_path: self.path.clone(),
+          });
+        };
+        let name = name.split("/").last().unwrap();
+        Ok(PackageJsonBins::Bins(vec![name.to_string()]))
+      }
+      Some(Value::Object(o)) => Ok(PackageJsonBins::Bins(
+        o.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>(),
+      )),
+      _ => {
+        let bin_directory =
+          self.directories.as_ref().and_then(|d| d.get("bin"));
+        match bin_directory {
+          Some(Value::String(bin_dir)) => {
+            let bin_dir = self.dir_path().join(bin_dir);
+            Ok(PackageJsonBins::Directory(bin_dir))
+          }
+          _ => Ok(PackageJsonBins::Bins(Vec::new())),
+        }
+      }
+    }
   }
 }
 

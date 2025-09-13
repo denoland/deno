@@ -19,7 +19,6 @@ use sys_traits::FsCanonicalize;
 use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
-use sys_traits::FsReadDir;
 use url::Url;
 
 use crate::InNpmPackageChecker;
@@ -259,10 +258,7 @@ struct ResolutionConfig {
 }
 
 #[sys_traits::auto_impl]
-pub trait NodeResolverSys:
-  FsCanonicalize + FsMetadata + FsRead + FsReadDir
-{
-}
+pub trait NodeResolverSys: FsCanonicalize + FsMetadata + FsRead {}
 
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
@@ -744,62 +740,6 @@ impl<
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(url_or_path)
-  }
-
-  pub fn resolve_binary_commands(
-    &self,
-    package_folder: &Path,
-  ) -> Result<Vec<String>, ResolveBinaryCommandsError> {
-    let pkg_json_path = package_folder.join("package.json");
-    let Some(package_json) =
-      self.pkg_json_resolver.load_package_json(&pkg_json_path)?
-    else {
-      return Ok(Vec::new());
-    };
-
-    Ok(match &package_json.bin {
-      Some(Value::String(_)) => {
-        let Some(name) = &package_json.name else {
-          return Err(ResolveBinaryCommandsError::MissingPkgJsonName {
-            pkg_json_path,
-          });
-        };
-        let name = name.split("/").last().unwrap();
-        vec![name.to_string()]
-      }
-      Some(Value::Object(o)) => {
-        o.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>()
-      }
-      _ => {
-        let bin_directory =
-          package_json.directories.as_ref().and_then(|d| d.get("bin"));
-        match bin_directory {
-          Some(Value::String(bin_dir)) => {
-            let bin_dir = package_folder.join(bin_dir);
-            let Ok(entries) = self.sys.fs_read_dir(&bin_dir) else {
-              return Ok(Vec::new());
-            };
-            let mut bins = Vec::new();
-            for entry in entries {
-              let Ok(entry) = entry else {
-                continue;
-              };
-              let Ok(file_type) = entry.file_type() else {
-                continue;
-              };
-              if file_type.is_file() {
-                let name = entry.file_name();
-                if let Some(name) = name.to_str() {
-                  bins.push(name.to_string());
-                }
-              }
-            }
-            bins
-          }
-          _ => Vec::new(),
-        }
-      }
-    })
   }
 
   pub fn resolve_binary_export(
