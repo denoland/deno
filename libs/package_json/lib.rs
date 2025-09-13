@@ -35,6 +35,19 @@ pub trait PackageJsonCache {
   fn set(&self, path: PathBuf, package_json: PackageJsonRc);
 }
 
+#[derive(Debug, Clone)]
+pub enum PackageJsonBins {
+  Directory(PathBuf),
+  Bins(Vec<String>),
+}
+
+#[derive(Debug, Clone, JsError, PartialEq, Eq, Boxed)]
+#[class(generic)]
+#[error("'{}' did not have a name", pkg_json_path.display())]
+pub struct MissingPkgJsonNameError {
+  pkg_json_path: PathBuf,
+}
+
 #[derive(Debug, Clone, JsError, PartialEq, Eq, Boxed)]
 pub struct PackageJsonDepValueParseError(
   pub Box<PackageJsonDepValueParseErrorKind>,
@@ -227,6 +240,7 @@ pub struct PackageJson {
   pub peer_dependencies: Option<IndexMap<String, String>>,
   pub peer_dependencies_meta: Option<Value>,
   pub optional_dependencies: Option<IndexMap<String, String>>,
+  pub directories: Option<Map<String, Value>>,
   pub scripts: Option<IndexMap<String, String>>,
   pub workspaces: Option<Vec<String>>,
   pub os: Option<Vec<String>>,
@@ -285,6 +299,7 @@ impl PackageJson {
         peer_dependencies: None,
         peer_dependencies_meta: None,
         optional_dependencies: None,
+        directories: None,
         scripts: None,
         workspaces: None,
         os: None,
@@ -372,10 +387,10 @@ impl PackageJson {
       .map(|exports| {
         if is_conditional_exports_main_sugar(&exports)? {
           let mut map = Map::new();
-          map.insert(".".to_string(), exports.to_owned());
+          map.insert(".".to_string(), exports);
           Ok::<_, PackageJsonLoadError>(Some(map))
         } else {
-          Ok(exports.as_object().map(|o| o.to_owned()))
+          Ok(map_object(exports))
         }
       })
       .transpose()?
@@ -406,6 +421,8 @@ impl PackageJson {
       .remove("optionalDependencies")
       .and_then(parse_string_map);
 
+    let directories: Option<Map<String, Value>> =
+      package_json.remove("directories").and_then(map_object);
     let scripts: Option<IndexMap<String, String>> =
       package_json.remove("scripts").and_then(parse_string_map);
 
@@ -429,9 +446,8 @@ impl PackageJson {
       .remove("typings")
       .or_else(|| package_json.remove("types"))
       .and_then(map_string);
-    let types_versions = package_json
-      .remove("typesVersions")
-      .and_then(|exports| exports.as_object().map(|o| o.to_owned()));
+    let types_versions =
+      package_json.remove("typesVersions").and_then(map_object);
     let workspaces = package_json
       .remove("workspaces")
       .and_then(parse_string_array);
@@ -457,6 +473,7 @@ impl PackageJson {
       peer_dependencies,
       peer_dependencies_meta,
       optional_dependencies,
+      directories,
       scripts,
       workspaces,
       os,
@@ -494,6 +511,36 @@ impl PackageJson {
         dev_dependencies: get_map(self.dev_dependencies.as_ref()),
       })
     })
+  }
+
+  pub fn resolve_bins(
+    &self,
+  ) -> Result<PackageJsonBins, MissingPkgJsonNameError> {
+    match &self.bin {
+      Some(Value::String(_)) => {
+        let Some(name) = &self.name else {
+          return Err(MissingPkgJsonNameError {
+            pkg_json_path: self.path.clone(),
+          });
+        };
+        let name = name.split("/").last().unwrap();
+        Ok(PackageJsonBins::Bins(vec![name.to_string()]))
+      }
+      Some(Value::Object(o)) => Ok(PackageJsonBins::Bins(
+        o.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>(),
+      )),
+      _ => {
+        let bin_directory =
+          self.directories.as_ref().and_then(|d| d.get("bin"));
+        match bin_directory {
+          Some(Value::String(bin_dir)) => {
+            let bin_dir = self.dir_path().join(bin_dir);
+            Ok(PackageJsonBins::Directory(bin_dir))
+          }
+          _ => Ok(PackageJsonBins::Bins(Vec::new())),
+        }
+      }
+    }
   }
 }
 
