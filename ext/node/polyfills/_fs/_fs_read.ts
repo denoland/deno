@@ -4,7 +4,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} from "ext:deno_node/internal/errors.ts";
 import * as io from "ext:deno_io/12_io.js";
 import { ReadOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import {
@@ -110,6 +113,14 @@ export function read(
     position = opt.position ?? null;
   }
 
+  if (buffer.byteLength === 0) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "buffer",
+      buffer,
+      "is empty and cannot be written",
+    );
+  }
+
   if (position == null) {
     position = -1;
   }
@@ -194,6 +205,14 @@ export function readSync(
     offset = opt.offset ?? 0;
     length = opt.length ?? buffer.byteLength - offset;
     position = opt.position ?? null;
+  }
+
+  if (buffer.byteLength === 0) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "buffer",
+      buffer,
+      "is empty and cannot be written",
+    );
   }
 
   if (position == null) {
