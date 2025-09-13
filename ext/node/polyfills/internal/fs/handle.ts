@@ -20,6 +20,7 @@ import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
 } from "node:fs/promises";
+import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 const {
   Error,
   ObjectAssign,
@@ -198,6 +199,10 @@ export class FileHandle extends EventEmitter {
 
   createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
     return new WriteStream(undefined, { ...options, fd: this.fd });
+  }
+
+  [SymbolAsyncDispose]() {
+    return this.close();
   }
 }
 

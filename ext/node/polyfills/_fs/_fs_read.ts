@@ -4,7 +4,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_ARG_VALUE,
+} from "ext:deno_node/internal/errors.ts";
 import * as io from "ext:deno_io/12_io.js";
 import { ReadOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import {
@@ -20,6 +23,7 @@ import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
+import * as process from "node:process";
 
 const { ObjectDefineProperty } = primordials;
 
@@ -110,6 +114,20 @@ export function read(
     position = opt.position ?? null;
   }
 
+  if (length === 0) {
+    return process.nextTick(function tick() {
+      cb(null, 0, buffer);
+    });
+  }
+
+  if (buffer.byteLength === 0) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "buffer",
+      buffer,
+      "is empty and cannot be written",
+    );
+  }
+
   if (position == null) {
     position = -1;
   }
@@ -194,6 +212,18 @@ export function readSync(
     offset = opt.offset ?? 0;
     length = opt.length ?? buffer.byteLength - offset;
     position = opt.position ?? null;
+  }
+
+  if (length === 0) {
+    return 0;
+  }
+
+  if (buffer.byteLength === 0) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "buffer",
+      buffer,
+      "is empty and cannot be written",
+    );
   }
 
   if (position == null) {
