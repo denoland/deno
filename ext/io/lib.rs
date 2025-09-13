@@ -828,29 +828,53 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn chmod_sync(self: Rc<Self>, _mode: u32) -> FsResult<()> {
+  fn chmod_sync(self: Rc<Self>, mode: u32) -> FsResult<()> {
     #[cfg(unix)]
     {
       use std::os::unix::prelude::PermissionsExt;
       self.with_sync(|file| {
-        Ok(file.set_permissions(std::fs::Permissions::from_mode(_mode))?)
+        Ok(file.set_permissions(std::fs::Permissions::from_mode(mode))?)
       })
     }
     #[cfg(not(unix))]
-    Err(FsError::NotSupported)
+    {
+      self.with_sync(|file| {
+        let mut permissions = file.metadata()?.permissions();
+        if mode & libc::S_IWRITE as u32 > 0 {
+          permissions.set_readonly(false);
+        } else {
+          permissions.set_readonly(true);
+        }
+        file.set_permissions(permissions)?;
+        Ok(())
+      })
+    }
   }
-  async fn chmod_async(self: Rc<Self>, _mode: u32) -> FsResult<()> {
+  async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()> {
     #[cfg(unix)]
     {
       use std::os::unix::prelude::PermissionsExt;
       self
         .with_inner_blocking_task(move |file| {
-          Ok(file.set_permissions(std::fs::Permissions::from_mode(_mode))?)
+          Ok(file.set_permissions(std::fs::Permissions::from_mode(mode))?)
         })
         .await
     }
     #[cfg(not(unix))]
-    Err(FsError::NotSupported)
+    {
+      self
+        .with_inner_blocking_task(move |file| {
+          let mut permissions = file.metadata()?.permissions();
+          if mode & libc::S_IWRITE as u32 > 0 {
+            permissions.set_readonly(false);
+          } else {
+            permissions.set_readonly(true);
+          }
+          file.set_permissions(permissions)?;
+          Ok(())
+        })
+        .await
+    }
   }
 
   fn chown_sync(
