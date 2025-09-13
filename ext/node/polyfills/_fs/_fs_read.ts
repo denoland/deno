@@ -23,6 +23,7 @@ import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
 import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
+import * as process from "node:process";
 
 const { ObjectDefineProperty } = primordials;
 
@@ -111,6 +112,12 @@ export function read(
     offset = opt.offset ?? 0;
     length = opt.length ?? buffer.byteLength - offset;
     position = opt.position ?? null;
+  }
+
+  if (length === 0) {
+    return process.nextTick(function tick() {
+      cb(null, 0, buffer);
+    });
   }
 
   if (buffer.byteLength === 0) {
@@ -205,6 +212,10 @@ export function readSync(
     offset = opt.offset ?? 0;
     length = opt.length ?? buffer.byteLength - offset;
     position = opt.position ?? null;
+  }
+
+  if (length === 0) {
+    return 0;
   }
 
   if (buffer.byteLength === 0) {
