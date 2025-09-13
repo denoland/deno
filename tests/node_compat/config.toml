@@ -426,6 +426,8 @@
 "parallel/test-file-write-stream5.js" = {}
 "parallel/test-finalization-registry-shutdown.js" = {}
 "parallel/test-fs-buffertype-writesync.js" = {}
+"parallel/test-fs-chmod-mask.js" = {}
+"parallel/test-fs-chmod.js" = {}
 "parallel/test-fs-chown-type-check.js" = {}
 "parallel/test-fs-close.js" = {}
 # TODO(bartlomieju): appears that part of the test that's broke was removed in Node 24.0
