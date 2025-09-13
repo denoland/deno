@@ -892,13 +892,13 @@ impl NodeJsErrorCoded for ModuleNotFoundError {
   self.code(),
   dir_url,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
-  suggested_file_name.map(|file_name| format!("\nDid you mean to import {file_name} within the directory?")).unwrap_or_default(),
+  suggestion.as_ref().map(|suggestion| format!("\nDid you mean to import '{suggestion}'?")).unwrap_or_default(),
 )]
 #[property("code" = self.code())]
 pub struct UnsupportedDirImportError {
   pub dir_url: UrlOrPath,
   pub maybe_referrer: Option<UrlOrPath>,
-  pub suggested_file_name: Option<&'static str>,
+  pub suggestion: Option<String>,
 }
 
 impl NodeJsErrorCoded for UnsupportedDirImportError {

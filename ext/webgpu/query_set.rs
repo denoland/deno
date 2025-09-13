@@ -7,6 +7,7 @@ use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_error::JsErrorBox;
 
 use crate::Instance;
+use crate::error::GPUGenericError;
 
 pub struct GPUQuerySet {
   pub instance: Instance,
@@ -26,7 +27,10 @@ impl WebIdlInterfaceConverter for GPUQuerySet {
   const NAME: &'static str = "GPUQuerySet";
 }
 
-impl GarbageCollected for GPUQuerySet {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUQuerySet {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUQuerySet"
   }
@@ -34,6 +38,12 @@ impl GarbageCollected for GPUQuerySet {
 
 #[op2]
 impl GPUQuerySet {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUQuerySet, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {

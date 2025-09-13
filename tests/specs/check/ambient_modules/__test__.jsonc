@@ -14,9 +14,5 @@
     "args": "run bar.ts",
     "output": "run.out",
     "exitCode": 1
-  }, {
-    "args": "check bare_specifier.ts",
-    "output": "bare_specifier.out",
-    "exitCode": 1
   }]
 }

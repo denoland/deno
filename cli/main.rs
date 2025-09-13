@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use std::env;
 use std::future::Future;
 use std::io::IsTerminal;
+use std::io::Write as _;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -58,7 +59,6 @@ use factory::CliFactory;
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
-use self::args::load_env_variables_from_env_file;
 use self::util::draw_thread::DrawThread;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -67,6 +67,8 @@ use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
+use crate::util::watch_env_tracker::WatchEnvTracker;
+use crate::util::watch_env_tracker::load_env_variables_from_env_files;
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -241,7 +243,28 @@ async fn run_subcommand(
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
-      if run_flags.is_stdin() {
+      if run_flags.print_task_list {
+        let task_flags = TaskFlags {
+          cwd: None,
+          task: None,
+          is_run: true,
+          recursive: false,
+          filter: None,
+          eval: false,
+        };
+        let mut flags = flags.deref().clone();
+        flags.subcommand = DenoSubcommand::Task(task_flags.clone());
+        writeln!(
+          &mut std::io::stdout(),
+          "Please specify a {} or a {}.\n",
+          colors::bold("[SCRIPT_ARG]"),
+          colors::bold("task name")
+        )?;
+        std::io::stdout().flush()?;
+        tools::task::execute_script(Arc::new(flags), task_flags)
+          .await
+          .map(|_| 1)
+      } else if run_flags.is_stdin() {
         // these futures are boxed to prevent stack overflows on Windows
         tools::run::run_from_stdin(flags.clone(), unconfigured_runtime, roots)
           .boxed_local()
@@ -295,9 +318,7 @@ async fn run_subcommand(
               .await;
             }
             let script_err_msg = script_err.to_string();
-            if script_err_msg.starts_with(MODULE_NOT_FOUND)
-              || script_err_msg.starts_with(UNSUPPORTED_SCHEME)
-            {
+            if should_fallback_on_run_error(script_err_msg.as_str()) {
               if run_flags.bare {
                 let mut cmd = args::clap_root();
                 cmd.build();
@@ -435,6 +456,29 @@ async fn run_subcommand(
   };
 
   handle.await?
+}
+
+/// Determines whether a error encountered during `deno run`
+/// should trigger fallback behavior, such as attempting to run a Deno task
+/// with the same name.
+///
+/// Checks if the error message indicates a "module not found",
+/// "unsupported scheme", or certain OS-level import failures (such as
+/// "Is a directory" or "Access is denied"); if so, Deno will attempt to
+/// interpret the original argument as a script name or task instead of a
+/// file path.
+///
+/// See: https://github.com/denoland/deno/issues/28878
+fn should_fallback_on_run_error(script_err: &str) -> bool {
+  if script_err.starts_with(MODULE_NOT_FOUND)
+    || script_err.starts_with(UNSUPPORTED_SCHEME)
+  {
+    return true;
+  }
+  let re = lazy_regex::regex!(
+    r"Import 'file:///.+?' failed\.\n\s+0: .+ \(os error \d+\)"
+  );
+  re.is_match(script_err)
 }
 
 #[allow(clippy::print_stderr)]
@@ -603,8 +647,15 @@ async fn resolve_flags_and_init(
     }
     Err(err) => exit_for_error(AnyError::from(err)),
   };
-
-  load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
+  // preserve already loaded env variables
+  if flags.subcommand.watch_flags().is_some() {
+    WatchEnvTracker::snapshot();
+  }
+  let env_file_paths: Option<Vec<std::path::PathBuf>> = flags
+    .env_file
+    .as_ref()
+    .map(|files| files.iter().map(PathBuf::from).collect());
+  load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
   flags.unstable_config.fill_with_env();
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
@@ -641,14 +692,28 @@ async fn resolve_flags_and_init(
     otel_config.clone(),
   )?;
 
+  if flags.permission_set.is_some() {
+    log::warn!(
+      "{} Permissions in the config file is an experimental feature and may change in the future.",
+      colors::yellow("Warning")
+    );
+  }
+
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
     log::warn!(
-      "⚠️  {}",
-      colors::yellow(
-        "The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
-      )
+      "{} The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
+      colors::yellow("Warning")
     );
+  }
+
+  if let Ok(audit_path) = std::env::var("DENO_AUDIT_PERMISSIONS") {
+    let audit_file = deno_runtime::deno_permissions::AUDIT_FILE.set(
+      deno_core::parking_lot::Mutex::new(std::fs::File::create(audit_path)?),
+    );
+    if audit_file.is_err() {
+      log::warn!("⚠️  {}", colors::yellow("Audit file is already set"));
+    }
   }
 
   Ok(flags)

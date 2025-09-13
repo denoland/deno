@@ -29,7 +29,7 @@ pub struct LspCompilerOptionsData {
 
 #[derive(Debug)]
 pub struct LspCompilerOptionsResolver {
-  inner: CompilerOptionsResolver,
+  pub inner: Arc<CompilerOptionsResolver>,
   data: BTreeMap<CompilerOptionsKey, LspCompilerOptionsData>,
 }
 
@@ -97,7 +97,10 @@ impl LspCompilerOptionsResolver {
         )
       })
       .collect();
-    Self { inner, data }
+    Self {
+      inner: Arc::new(inner),
+      data,
+    }
   }
 
   pub fn for_specifier(&self, specifier: &Url) -> &LspCompilerOptionsData {

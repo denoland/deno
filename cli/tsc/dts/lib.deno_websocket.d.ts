@@ -307,6 +307,24 @@ interface WebSocketOptions {
    * This feature is non-standard.
    */
   headers?: HeadersInit;
+  /**
+   * An `HttpClient` instance to use when creating the WebSocket connection.
+   * This is useful when you need to connect through a proxy or customize TLS settings.
+   *
+   * ```ts
+   * const client = Deno.createHttpClient({
+   *   proxy: {
+   *     transport: "unix",
+   *     path: "/path/to/socket",
+   *   },
+   * });
+   *
+   * const ws = new WebSocket("ws://localhost:8000/socket", { client });
+   * ```
+   *
+   * @experimental
+   */
+  client?: Deno.HttpClient;
 }
 
 /**

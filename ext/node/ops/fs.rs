@@ -554,3 +554,87 @@ where
   fs.lchmod_async(path.into_owned(), mode).await?;
   Ok(())
 }
+
+#[op2(stack_trace)]
+#[string]
+pub fn op_node_mkdtemp_sync<P>(
+  state: &mut OpState,
+  #[string] path: &str,
+) -> Result<String, FsError>
+where
+  P: NodePermissions + 'static,
+{
+  // https://github.com/nodejs/node/blob/2ea31e53c61463727c002c2d862615081940f355/deps/uv/src/unix/os390-syscalls.c#L409
+  for _ in 0..libc::TMP_MAX {
+    let path = temp_path_append_suffix(path);
+    let checked_path = state.borrow_mut::<P>().check_open(
+      Cow::Borrowed(Path::new(&path)),
+      OpenAccessKind::WriteNoFollow,
+      Some("node:fs.mkdtempSync()"),
+    )?;
+    let fs = state.borrow::<FileSystemRc>();
+
+    match fs.mkdir_sync(&checked_path, false, Some(0o700)) {
+      Ok(()) => return Ok(path),
+      Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+        continue;
+      }
+      Err(err) => return Err(FsError::Fs(err)),
+    }
+  }
+
+  Err(FsError::Io(std::io::Error::new(
+    std::io::ErrorKind::AlreadyExists,
+    "too many temp dirs exist",
+  )))
+}
+
+#[op2(async, stack_trace)]
+#[string]
+pub async fn op_node_mkdtemp<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+) -> Result<String, FsError>
+where
+  P: NodePermissions + 'static,
+{
+  // https://github.com/nodejs/node/blob/2ea31e53c61463727c002c2d862615081940f355/deps/uv/src/unix/os390-syscalls.c#L409
+  for _ in 0..libc::TMP_MAX {
+    let path = temp_path_append_suffix(&path);
+    let (fs, checked_path) = {
+      let mut state = state.borrow_mut();
+      let checked_path = state.borrow_mut::<P>().check_open(
+        Cow::Owned(PathBuf::from(path.clone())),
+        OpenAccessKind::WriteNoFollow,
+        Some("node:fs.mkdtemp()"),
+      )?;
+      (state.borrow::<FileSystemRc>().clone(), checked_path)
+    };
+
+    match fs
+      .mkdir_async(checked_path.into_owned(), false, Some(0o700))
+      .await
+    {
+      Ok(()) => return Ok(path),
+      Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+        continue;
+      }
+      Err(err) => return Err(FsError::Fs(err)),
+    }
+  }
+
+  Err(FsError::Io(std::io::Error::new(
+    std::io::ErrorKind::AlreadyExists,
+    "too many temp dirs exist",
+  )))
+}
+
+fn temp_path_append_suffix(prefix: &str) -> String {
+  use rand::Rng;
+  use rand::distributions::Alphanumeric;
+  use rand::rngs::OsRng;
+
+  let suffix: String =
+    (0..6).map(|_| OsRng.sample(Alphanumeric) as char).collect();
+  format!("{}{}", prefix, suffix)
+}

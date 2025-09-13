@@ -15,7 +15,10 @@ pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
 }
 
-impl GarbageCollected for Hasher {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Hasher {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Hasher"
   }

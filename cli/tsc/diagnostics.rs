@@ -10,7 +10,11 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::sourcemap::SourceMap;
 use deno_graph::ModuleGraph;
+use deno_graph::ResolutionError;
+use deno_resolver::graph::enhanced_resolution_error_message;
 use deno_terminal::colors;
+
+use crate::graph_util::resolution_error_for_tsc_diagnostic;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
@@ -184,6 +188,34 @@ impl Diagnostic {
       other: Default::default(),
       missing_specifier: Some(specifier.to_string()),
     }
+  }
+
+  pub fn maybe_from_resolution_error(error: &ResolutionError) -> Option<Self> {
+    let error_ref = resolution_error_for_tsc_diagnostic(error)?;
+    if error_ref.is_module_not_found {
+      return Some(Self::from_missing_error(
+        error_ref.specifier,
+        Some(error_ref.range),
+        None,
+      ));
+    }
+    Some(Self {
+      category: DiagnosticCategory::Error,
+      code: 2307,
+      start: Some(Position::from_deno_graph(error_ref.range.range.start)),
+      end: Some(Position::from_deno_graph(error_ref.range.range.end)),
+      original_source_start: None, // will be applied later
+      message_text: Some(enhanced_resolution_error_message(error)),
+      message_chain: None,
+      source: None,
+      source_line: None,
+      file_name: Some(error_ref.range.specifier.to_string()),
+      related_information: None,
+      reports_deprecated: None,
+      reports_unnecessary: None,
+      other: Default::default(),
+      missing_specifier: Some(error_ref.specifier.to_string()),
+    })
   }
 
   /// If this diagnostic should be included when it comes from a remote module.

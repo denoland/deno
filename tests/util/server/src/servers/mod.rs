@@ -52,7 +52,6 @@ use hyper_utils::run_server_with_acceptor;
 
 use super::https::SupportedHttpVersions;
 use super::https::get_tls_listener_stream;
-use super::std_path;
 use super::testdata_path;
 use crate::TEST_SERVERS_COUNT;
 
@@ -1158,13 +1157,7 @@ console.log("imported", import.meta.url);
         return Ok(file_resp);
       }
 
-      if let Some(suffix) = uri_path.strip_prefix("/deno_std/") {
-        let file_path = std_path().join(suffix);
-        if let Ok(file) = tokio::fs::read(&file_path).await {
-          let file_resp = custom_headers(uri_path, file);
-          return Ok(file_resp);
-        }
-      } else if let Some(suffix) = uri_path.strip_prefix("/sleep/") {
+      if let Some(suffix) = uri_path.strip_prefix("/sleep/") {
         let duration = suffix.parse::<u64>().unwrap();
         tokio::time::sleep(Duration::from_millis(duration)).await;
         return Response::builder()

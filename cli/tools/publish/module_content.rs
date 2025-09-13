@@ -22,6 +22,7 @@ use sys_traits::FsRead;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use super::unfurl::PositionOrSourceRangeRef;
 use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
 use crate::sys::CliSys;
@@ -249,7 +250,9 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
             import_source,
             resolution_kind,
             text_info,
-            &deno_graph::PositionRange::zeroed(),
+            PositionOrSourceRangeRef::PositionRange(
+              &deno_graph::PositionRange::zeroed(),
+            ),
             diagnostic_reporter,
           );
         maybe_import_source.unwrap_or_else(|| import_source.to_string())
@@ -476,7 +479,6 @@ mod test {
       )
       .unwrap(),
     );
-    let specifier_unfurler = SpecifierUnfurler::new(None, resolver, false);
     let package_json_resolver =
       Arc::new(PackageJsonResolver::new(sys.clone(), None));
     let node_resolver = Arc::new(NodeResolver::new(
@@ -500,6 +502,8 @@ mod test {
       &ConfigDiscoveryOption::DiscoverCwd,
       &CompilerOptionsOverrides::default(),
     ));
+    resolver.set_compiler_options_resolver(compiler_options_resolver.clone());
+    let specifier_unfurler = SpecifierUnfurler::new(None, resolver, false);
     ModuleContentProvider::new(
       Arc::new(ParsedSourceCache::default()),
       specifier_unfurler,

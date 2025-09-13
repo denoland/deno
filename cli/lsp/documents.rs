@@ -991,10 +991,6 @@ impl WeakDocumentModuleMap {
     }
   }
 
-  fn get_for_specifier(&self, specifier: &Url) -> Option<Arc<DocumentModule>> {
-    self.by_specifier.read().get(specifier)
-  }
-
   fn contains_specifier(&self, specifier: &Url) -> bool {
     self.by_specifier.read().contains_key(specifier)
   }
@@ -1364,24 +1360,6 @@ impl DocumentModules {
       (result.entry(scope).or_default() as &mut Vec<_>).push(module);
     }
     result
-  }
-
-  /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_module_for_specifier(
-    &self,
-    specifier: &Url,
-    scope: Option<&Url>,
-  ) -> Option<Arc<DocumentModule>> {
-    let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = match JsrPackageReqReference::from_specifier(specifier) {
-      Ok(jsr_req_ref) => {
-        Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-      }
-      _ => Cow::Borrowed(specifier),
-    };
-    let specifier = scoped_resolver.resolve_redirects(&specifier)?;
-    let modules = self.modules_for_scope(scope)?;
-    modules.get_for_specifier(&specifier)
   }
 
   /// This will not create any module entries, only retrieve existing entries.
@@ -2113,6 +2091,7 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
       Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
@@ -2261,6 +2240,7 @@ console.log(b, "hello deno");
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
       let compiler_options_resolver =
         Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
         &compiler_options_resolver,
@@ -2306,6 +2286,7 @@ console.log(b, "hello deno");
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
       let compiler_options_resolver =
         Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
         &compiler_options_resolver,

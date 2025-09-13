@@ -9,7 +9,6 @@ use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileError;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::Workspace;
@@ -43,6 +42,7 @@ use import_map::ImportMapWithDiagnostics;
 use import_map::specifier::SpecifierError;
 use indexmap::IndexMap;
 use node_resolver::NodeResolutionKind;
+use parking_lot::RwLock;
 use serde::Deserialize;
 use serde::Serialize;
 use sys_traits::FsMetadata;
@@ -52,6 +52,9 @@ use thiserror::Error;
 use url::Url;
 
 use crate::collections::FolderScopedMap;
+use crate::deno_json::CompilerOptionsModuleResolution;
+use crate::deno_json::CompilerOptionsResolver;
+use crate::deno_json::CompilerOptionsResolverRc;
 
 #[allow(clippy::disallowed_types)]
 type UrlRc = deno_maybe_sync::MaybeArc<Url>;
@@ -101,7 +104,7 @@ pub enum PackageJsonDepResolution {
 pub enum SloppyImportsOptions {
   Enabled,
   #[default]
-  Disabled,
+  Unspecified,
 }
 
 /// Toggle FS metadata caching when probing files for sloppy imports and
@@ -376,17 +379,23 @@ impl SloppyImportsResolutionReason {
 
 #[derive(Debug)]
 struct SloppyImportsResolver<TSys: FsMetadata> {
+  compiler_options_resolver: CompilerOptionsResolverCellRc,
   fs: CachedMetadataFs<TSys>,
-  enabled: bool,
+  enabled_by_options: bool,
 }
 
 impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
-  fn new(fs: CachedMetadataFs<TSys>, options: SloppyImportsOptions) -> Self {
+  fn new(
+    fs: CachedMetadataFs<TSys>,
+    compiler_options_resolver: CompilerOptionsResolverCellRc,
+    options: SloppyImportsOptions,
+  ) -> Self {
     Self {
       fs,
-      enabled: match options {
+      compiler_options_resolver,
+      enabled_by_options: match options {
         SloppyImportsOptions::Enabled => true,
-        SloppyImportsOptions::Disabled => false,
+        SloppyImportsOptions::Unspecified => false,
       },
     }
   }
@@ -394,9 +403,17 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
   fn resolve(
     &self,
     specifier: &Url,
+    referrer: &Url,
     resolution_kind: ResolutionKind,
   ) -> Option<(Url, SloppyImportsResolutionReason)> {
-    if !self.enabled {
+    if !self.enabled_by_options
+      && self
+        .compiler_options_resolver
+        .read()
+        .for_specifier(referrer)
+        .module_resolution()
+        != CompilerOptionsModuleResolution::Bundler
+    {
       return None;
     }
 
@@ -640,9 +657,13 @@ pub fn sloppy_imports_resolve<TSys: FsMetadata>(
 ) -> Option<(Url, SloppyImportsResolutionReason)> {
   SloppyImportsResolver::new(
     CachedMetadataFs::new(sys, FsCacheOptions::Enabled),
+    Default::default(),
     SloppyImportsOptions::Enabled,
   )
-  .resolve(specifier, resolution_kind)
+  // The referrer is used to determine the applicable compiler options, which
+  // can force-override `SloppyImportOptions::Disabled` depending on
+  // `moduleResolution`. But `SloppyImportOptions::Enabled` is set.
+  .resolve(specifier, &Url::parse("unknown:").unwrap(), resolution_kind)
 }
 
 #[allow(clippy::disallowed_types)]
@@ -680,178 +701,48 @@ impl fmt::Display for CompilerOptionsRootDirsDiagnostic {
   }
 }
 
-#[derive(Debug)]
-struct CompilerOptionsRootDirsResolver<TSys: FsMetadata> {
-  root_dirs_from_root: Vec<Url>,
-  root_dirs_by_member: BTreeMap<Url, Option<Vec<Url>>>,
-  diagnostics: Vec<CompilerOptionsRootDirsDiagnostic>,
-  sloppy_imports_resolver: SloppyImportsResolverRc<TSys>,
-}
-
-impl<TSys: FsMetadata> CompilerOptionsRootDirsResolver<TSys> {
-  fn from_workspace(
-    workspace: &Workspace,
-    sloppy_imports_resolver: SloppyImportsResolverRc<TSys>,
-  ) -> Self {
-    let mut diagnostics: Vec<CompilerOptionsRootDirsDiagnostic> = Vec::new();
-    fn get_root_dirs(
-      config_file: &ConfigFile,
-      dir_url: &Url,
-      diagnostics: &mut Vec<CompilerOptionsRootDirsDiagnostic>,
-    ) -> Option<Vec<Url>> {
-      let dir_path = url_to_file_path(dir_url)
-        .inspect_err(|err| {
-          diagnostics.push(CompilerOptionsRootDirsDiagnostic::UnexpectedError(
-            config_file.specifier.clone(),
-            err.to_string(),
-          ));
-        })
-        .ok()?;
-      let root_dirs = config_file
-        .json
-        .compiler_options
-        .as_ref()?
-        .as_object()?
-        .get("rootDirs")?
-        .as_array();
-      if root_dirs.is_none() {
-        diagnostics.push(CompilerOptionsRootDirsDiagnostic::InvalidType(
-          config_file.specifier.clone(),
-        ));
-      }
-      let root_dirs = root_dirs?
-        .iter()
-        .enumerate()
-        .filter_map(|(i, s)| {
-          let s = s.as_str();
-          if s.is_none() {
-            diagnostics.push(
-              CompilerOptionsRootDirsDiagnostic::InvalidEntryType(
-                config_file.specifier.clone(),
-                i,
-              ),
-            );
-          }
-          url_from_directory_path(&dir_path.join(s?))
-            .inspect_err(|err| {
-              diagnostics.push(
-                CompilerOptionsRootDirsDiagnostic::UnexpectedEntryError(
-                  config_file.specifier.clone(),
-                  i,
-                  err.to_string(),
-                ),
-              );
-            })
-            .ok()
-        })
-        .collect();
-      Some(root_dirs)
+fn resolve_types_with_root_dirs(
+  specifier: &Url,
+  referrer: &Url,
+  compiler_options_resolver: &CompilerOptionsResolver,
+  sloppy_imports_resolver: &SloppyImportsResolver<impl FsMetadata>,
+) -> Option<(Url, Option<SloppyImportsResolutionReason>)> {
+  if specifier.scheme() != "file" || referrer.scheme() != "file" {
+    return None;
+  }
+  let root_dirs = compiler_options_resolver
+    .for_specifier(referrer)
+    .root_dirs();
+  let (matched_root_dir, suffix) = root_dirs
+    .iter()
+    .filter_map(|r| {
+      let suffix = specifier.as_str().strip_prefix(r.as_str())?;
+      Some((r, suffix))
+    })
+    .max_by_key(|(r, _)| r.as_str().len())?;
+  for root_dir in root_dirs {
+    if root_dir == matched_root_dir {
+      continue;
     }
-    let root_deno_json = workspace.root_deno_json();
-    let root_dirs_from_root = root_deno_json
-      .and_then(|c| {
-        let root_dir_url = c
-          .specifier
-          .join(".")
-          .inspect_err(|err| {
-            diagnostics.push(
-              CompilerOptionsRootDirsDiagnostic::UnexpectedError(
-                c.specifier.clone(),
-                err.to_string(),
-              ),
-            );
-          })
-          .ok()?;
-        get_root_dirs(c, &root_dir_url, &mut diagnostics)
-      })
-      .unwrap_or_default();
-    let root_dirs_by_member = workspace
-      .resolver_deno_jsons()
-      .filter_map(|c| {
-        if let Some(root_deno_json) = root_deno_json
-          && c.specifier == root_deno_json.specifier
-        {
-          return None;
-        }
-        let dir_url = c
-          .specifier
-          .join(".")
-          .inspect_err(|err| {
-            diagnostics.push(
-              CompilerOptionsRootDirsDiagnostic::UnexpectedError(
-                c.specifier.clone(),
-                err.to_string(),
-              ),
-            );
-          })
-          .ok()?;
-        let root_dirs = get_root_dirs(c, &dir_url, &mut diagnostics);
-        Some((dir_url, root_dirs))
-      })
-      .collect();
-    Self {
-      root_dirs_from_root,
-      root_dirs_by_member,
-      diagnostics,
-      sloppy_imports_resolver,
+    let Ok(candidate_specifier) = root_dir.join(suffix) else {
+      continue;
+    };
+    let Ok(candidate_path) = url_to_file_path(&candidate_specifier) else {
+      continue;
+    };
+    if sloppy_imports_resolver.fs.is_file(&candidate_path) {
+      return Some((candidate_specifier, None));
+    } else if let Some((candidate_specifier, sloppy_reason)) =
+      sloppy_imports_resolver.resolve(
+        &candidate_specifier,
+        referrer,
+        ResolutionKind::Types,
+      )
+    {
+      return Some((candidate_specifier, Some(sloppy_reason)));
     }
   }
-
-  fn new_raw(
-    root_dirs_from_root: Vec<Url>,
-    root_dirs_by_member: BTreeMap<Url, Option<Vec<Url>>>,
-    sloppy_imports_resolver: SloppyImportsResolverRc<TSys>,
-  ) -> Self {
-    Self {
-      root_dirs_from_root,
-      root_dirs_by_member,
-      diagnostics: Default::default(),
-      sloppy_imports_resolver,
-    }
-  }
-
-  fn resolve_types(
-    &self,
-    specifier: &Url,
-    referrer: &Url,
-  ) -> Option<(Url, Option<SloppyImportsResolutionReason>)> {
-    if specifier.scheme() != "file" || referrer.scheme() != "file" {
-      return None;
-    }
-    let root_dirs = self
-      .root_dirs_by_member
-      .iter()
-      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
-      .and_then(|(_, r)| r.as_ref())
-      .unwrap_or(&self.root_dirs_from_root);
-    let (matched_root_dir, suffix) = root_dirs
-      .iter()
-      .filter_map(|r| {
-        let suffix = specifier.as_str().strip_prefix(r.as_str())?;
-        Some((r, suffix))
-      })
-      .max_by_key(|(r, _)| r.as_str().len())?;
-    for root_dir in root_dirs {
-      if root_dir == matched_root_dir {
-        continue;
-      }
-      let Ok(candidate_specifier) = root_dir.join(suffix) else {
-        continue;
-      };
-      let Ok(candidate_path) = url_to_file_path(&candidate_specifier) else {
-        continue;
-      };
-      if self.sloppy_imports_resolver.fs.is_file(&candidate_path) {
-        return Some((candidate_specifier, None));
-      } else if let Some((candidate_specifier, sloppy_reason)) = self
-        .sloppy_imports_resolver
-        .resolve(&candidate_specifier, ResolutionKind::Types)
-      {
-        return Some((candidate_specifier, Some(sloppy_reason)));
-      }
-    }
-    None
-  }
+  None
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -892,6 +783,10 @@ impl fmt::Display for WorkspaceResolverDiagnostic<'_> {
   }
 }
 
+#[allow(clippy::disallowed_types)]
+type CompilerOptionsResolverCellRc =
+  deno_maybe_sync::MaybeArc<RwLock<CompilerOptionsResolverRc>>;
+
 #[derive(Debug)]
 pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   workspace_root: UrlRc,
@@ -901,8 +796,8 @@ pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   pkg_json_dep_resolution: PackageJsonDepResolution,
   sloppy_imports_options: SloppyImportsOptions,
   fs_cache_options: FsCacheOptions,
+  compiler_options_resolver: CompilerOptionsResolverCellRc,
   sloppy_imports_resolver: SloppyImportsResolverRc<TSys>,
-  compiler_options_root_dirs_resolver: CompilerOptionsRootDirsResolver<TSys>,
 }
 
 impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
@@ -1020,15 +915,12 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       .collect::<BTreeMap<_, _>>();
 
     let fs = CachedMetadataFs::new(sys, options.fs_cache_options);
+    let compiler_options_resolver = CompilerOptionsResolverCellRc::default();
     let sloppy_imports_resolver = new_rc(SloppyImportsResolver::new(
       fs,
+      compiler_options_resolver.clone(),
       options.sloppy_imports_options,
     ));
-    let compiler_options_root_dirs_resolver =
-      CompilerOptionsRootDirsResolver::from_workspace(
-        workspace,
-        sloppy_imports_resolver.clone(),
-      );
 
     Ok(Self {
       workspace_root: workspace.root_dir_url().clone(),
@@ -1038,8 +930,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       sloppy_imports_options: options.sloppy_imports_options,
       fs_cache_options: options.fs_cache_options,
+      compiler_options_resolver,
       sloppy_imports_resolver,
-      compiler_options_root_dirs_resolver,
     })
   }
 
@@ -1055,8 +947,6 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     pkg_json_dep_resolution: PackageJsonDepResolution,
     sloppy_imports_options: SloppyImportsOptions,
     fs_cache_options: FsCacheOptions,
-    root_dirs_from_root: Vec<Url>,
-    root_dirs_by_member: BTreeMap<Url, Option<Vec<Url>>>,
     sys: TSys,
   ) -> Self {
     let maybe_import_map =
@@ -1080,14 +970,12 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       })
       .collect::<BTreeMap<_, _>>();
     let fs = CachedMetadataFs::new(sys, fs_cache_options);
-    let sloppy_imports_resolver =
-      new_rc(SloppyImportsResolver::new(fs, sloppy_imports_options));
-    let compiler_options_root_dirs_resolver =
-      CompilerOptionsRootDirsResolver::new_raw(
-        root_dirs_from_root,
-        root_dirs_by_member,
-        sloppy_imports_resolver.clone(),
-      );
+    let compiler_options_resolver = CompilerOptionsResolverCellRc::default();
+    let sloppy_imports_resolver = new_rc(SloppyImportsResolver::new(
+      fs,
+      compiler_options_resolver.clone(),
+      sloppy_imports_options,
+    ));
     Self {
       workspace_root,
       jsr_pkgs,
@@ -1096,8 +984,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_dep_resolution,
       sloppy_imports_options,
       fs_cache_options,
+      compiler_options_resolver,
       sloppy_imports_resolver,
-      compiler_options_root_dirs_resolver,
     }
   }
 
@@ -1142,27 +1030,6 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_resolution: self.pkg_json_dep_resolution(),
       sloppy_imports_options: self.sloppy_imports_options,
       fs_cache_options: self.fs_cache_options,
-      root_dirs_from_root: self
-        .compiler_options_root_dirs_resolver
-        .root_dirs_from_root
-        .iter()
-        .map(|s| root_dir_url.make_relative_if_descendant(s))
-        .collect(),
-      root_dirs_by_member: self
-        .compiler_options_root_dirs_resolver
-        .root_dirs_by_member
-        .iter()
-        .map(|(s, r)| {
-          (
-            root_dir_url.make_relative_if_descendant(s),
-            r.as_ref().map(|r| {
-              r.iter()
-                .map(|s| root_dir_url.make_relative_if_descendant(s))
-                .collect()
-            }),
-          )
-        })
-        .collect(),
     }
   }
 
@@ -1216,22 +1083,6 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         exports: pkg.exports.into_owned(),
       })
       .collect();
-    let root_dirs_from_root = serializable_workspace_resolver
-      .root_dirs_from_root
-      .iter()
-      .map(|s| root_dir_url.join(s).unwrap())
-      .collect();
-    let root_dirs_by_member = serializable_workspace_resolver
-      .root_dirs_by_member
-      .iter()
-      .map(|(s, r)| {
-        (
-          root_dir_url.join(s).unwrap(),
-          r.as_ref()
-            .map(|r| r.iter().map(|s| root_dir_url.join(s).unwrap()).collect()),
-        )
-      })
-      .collect();
     Ok(Self::new_raw(
       UrlRc::new(root_dir_url),
       import_map,
@@ -1240,10 +1091,15 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       serializable_workspace_resolver.pkg_json_resolution,
       serializable_workspace_resolver.sloppy_imports_options,
       serializable_workspace_resolver.fs_cache_options,
-      root_dirs_from_root,
-      root_dirs_by_member,
       sys,
     ))
+  }
+
+  pub fn set_compiler_options_resolver(
+    &self,
+    value: CompilerOptionsResolverRc,
+  ) {
+    *self.compiler_options_resolver.write() = value;
   }
 
   pub fn maybe_import_map(&self) -> Option<&ImportMap> {
@@ -1260,18 +1116,11 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
 
   pub fn diagnostics(&self) -> Vec<WorkspaceResolverDiagnostic<'_>> {
     self
-      .compiler_options_root_dirs_resolver
-      .diagnostics
+      .maybe_import_map
+      .as_ref()
       .iter()
-      .map(WorkspaceResolverDiagnostic::CompilerOptionsRootDirs)
-      .chain(
-        self
-          .maybe_import_map
-          .as_ref()
-          .iter()
-          .flat_map(|c| &c.diagnostics)
-          .map(WorkspaceResolverDiagnostic::ImportMap),
-      )
+      .flat_map(|c| &c.diagnostics)
+      .map(WorkspaceResolverDiagnostic::ImportMap)
       .collect()
   }
 
@@ -1299,14 +1148,18 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         let mut sloppy_reason = None;
         if let Some((probed_specifier, probed_sloppy_reason)) = self
           .sloppy_imports_resolver
-          .resolve(&specifier, resolution_kind)
+          .resolve(&specifier, referrer, resolution_kind)
         {
           specifier = probed_specifier;
           sloppy_reason = Some(probed_sloppy_reason);
         } else if resolution_kind.is_types()
-          && let Some((probed_specifier, probed_sloppy_reason)) = self
-            .compiler_options_root_dirs_resolver
-            .resolve_types(&specifier, referrer)
+          && let Some((probed_specifier, probed_sloppy_reason)) =
+            resolve_types_with_root_dirs(
+              &specifier,
+              referrer,
+              &self.compiler_options_resolver.read(),
+              &self.sloppy_imports_resolver,
+            )
         {
           used_compiler_options_root_dirs = true;
           specifier = probed_specifier;
@@ -1588,21 +1441,12 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
   pub fn sloppy_imports_enabled(&self) -> bool {
     match self.sloppy_imports_options {
       SloppyImportsOptions::Enabled => true,
-      SloppyImportsOptions::Disabled => false,
+      SloppyImportsOptions::Unspecified => false,
     }
   }
 
   pub fn has_compiler_options_root_dirs(&self) -> bool {
-    !self
-      .compiler_options_root_dirs_resolver
-      .root_dirs_from_root
-      .is_empty()
-      || self
-        .compiler_options_root_dirs_resolver
-        .root_dirs_by_member
-        .values()
-        .flatten()
-        .any(|r| !r.is_empty())
+    self.compiler_options_resolver.read().has_root_dirs()
   }
 }
 
@@ -1634,8 +1478,6 @@ pub struct SerializableWorkspaceResolver<'a> {
   pub pkg_json_resolution: PackageJsonDepResolution,
   pub sloppy_imports_options: SloppyImportsOptions,
   pub fs_cache_options: FsCacheOptions,
-  pub root_dirs_from_root: Vec<Cow<'a, str>>,
-  pub root_dirs_by_member: BTreeMap<Cow<'a, str>, Option<Vec<Cow<'a, str>>>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1804,12 +1646,25 @@ mod test {
   use deno_path_util::url_from_directory_path;
   use deno_path_util::url_from_file_path;
   use deno_semver::VersionReq;
+  use node_resolver::DenoIsBuiltInNodeModuleChecker;
+  use node_resolver::NodeResolver;
+  use node_resolver::NodeResolverOptions;
+  use node_resolver::NpmPackageFolderResolver;
+  use node_resolver::PackageJsonResolver;
+  use node_resolver::cache::NodeResolutionSys;
+  use node_resolver::errors::PackageFolderResolveError;
+  use node_resolver::errors::PackageFolderResolveErrorKind;
+  use node_resolver::errors::PackageNotFoundError;
   use serde_json::json;
   use sys_traits::FsCanonicalize;
   use sys_traits::impls::InMemorySys;
   use url::Url;
 
   use super::*;
+  use crate::factory::ConfigDiscoveryOption;
+  use crate::npm::CreateInNpmPkgCheckerOptions;
+  use crate::npm::DenoInNpmPackageChecker;
+  use crate::npm::NpmResolverSys;
 
   pub struct UnreachableSys;
 
@@ -1848,6 +1703,42 @@ mod test {
     } else {
       PathBuf::from("/home/user")
     }
+  }
+
+  #[derive(Debug)]
+  struct TestNpmPackageFolderResolver;
+
+  impl NpmPackageFolderResolver for TestNpmPackageFolderResolver {
+    fn resolve_package_folder_from_package(
+      &self,
+      specifier: &str,
+      referrer: &node_resolver::UrlOrPathRef,
+    ) -> Result<PathBuf, PackageFolderResolveError> {
+      Err(PackageFolderResolveError(Box::new(
+        PackageFolderResolveErrorKind::PackageNotFound(PackageNotFoundError {
+          package_name: specifier.to_string(),
+          referrer: referrer.display(),
+          referrer_extra: None,
+        }),
+      )))
+    }
+  }
+
+  #[allow(clippy::disallowed_types)]
+  fn setup_node_resolver<TSys: NpmResolverSys>(
+    sys: &TSys,
+  ) -> crate::deno_json::TsConfigNodeResolver<TSys, TestNpmPackageFolderResolver>
+  {
+    let package_json_resolver =
+      new_rc(PackageJsonResolver::new(sys.clone(), None));
+    NodeResolver::new(
+      DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm),
+      DenoIsBuiltInNodeModuleChecker,
+      TestNpmPackageFolderResolver,
+      package_json_resolver,
+      NodeResolutionSys::new(sys.clone(), None),
+      NodeResolverOptions::default(),
+    )
   }
 
   #[test]
@@ -2196,7 +2087,7 @@ mod test {
       super::CreateResolverOptions {
         pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
         specified_import_map: None,
-        sloppy_imports_options: SloppyImportsOptions::Disabled,
+        sloppy_imports_options: SloppyImportsOptions::Unspecified,
         fs_cache_options: FsCacheOptions::Enabled,
       },
     )
@@ -2233,8 +2124,12 @@ mod test {
     )
     .unwrap();
     let fs = CachedMetadataFs::new(sys.clone(), FsCacheOptions::Enabled);
-    let sloppy_imports_resolver =
-      SloppyImportsResolver::new(fs, SloppyImportsOptions::Enabled);
+    let sloppy_imports_resolver = SloppyImportsResolver::new(
+      fs,
+      Default::default(),
+      SloppyImportsOptions::Enabled,
+    );
+    let referrer = root_url.join("main.ts").unwrap();
 
     // scenarios like resolving ./example.js to ./example.ts
     for (file_from, file_to) in [
@@ -2246,12 +2141,19 @@ mod test {
       sys.fs_insert(url_to_file_path(&specifier).unwrap(), "");
       let sloppy_specifier = root_url.join(file_from).unwrap();
       assert_eq!(
-        sloppy_imports_resolver.resolve(&specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &specifier,
+          &referrer,
+          ResolutionKind::Execution
+        ),
         None,
       );
       assert_eq!(
-        sloppy_imports_resolver
-          .resolve(&sloppy_specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &sloppy_specifier,
+          &referrer,
+          ResolutionKind::Execution
+        ),
         Some((specifier, SloppyImportsResolutionReason::JsToTs)),
       );
     }
@@ -2271,12 +2173,19 @@ mod test {
       let sloppy_specifier =
         root_url.join(file.split_once('.').unwrap().0).unwrap();
       assert_eq!(
-        sloppy_imports_resolver.resolve(&specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &specifier,
+          &referrer,
+          ResolutionKind::Execution
+        ),
         None,
       );
       assert_eq!(
-        sloppy_imports_resolver
-          .resolve(&sloppy_specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &sloppy_specifier,
+          &referrer,
+          ResolutionKind::Execution
+        ),
         Some((specifier, SloppyImportsResolutionReason::NoExtension)),
       );
     }
@@ -2288,8 +2197,11 @@ mod test {
       let js_specifier = root_url.join("ts_and_js.js").unwrap();
       sys.fs_insert(url_to_file_path(&js_specifier).unwrap(), "");
       assert_eq!(
-        sloppy_imports_resolver
-          .resolve(&js_specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &js_specifier,
+          &referrer,
+          ResolutionKind::Execution
+        ),
         None,
       );
     }
@@ -2299,11 +2211,19 @@ mod test {
       let specifier = root_url.join("js_only.js").unwrap();
       sys.fs_insert(url_to_file_path(&specifier).unwrap(), "");
       assert_eq!(
-        sloppy_imports_resolver.resolve(&specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &specifier,
+          &referrer,
+          ResolutionKind::Execution
+        ),
         None,
       );
       assert_eq!(
-        sloppy_imports_resolver.resolve(&specifier, ResolutionKind::Types),
+        sloppy_imports_resolver.resolve(
+          &specifier,
+          &referrer,
+          ResolutionKind::Types
+        ),
         None,
       );
     }
@@ -2314,8 +2234,11 @@ mod test {
       sys.fs_insert(url_to_file_path(&specifier).unwrap(), "");
       let sloppy_specifier = root_url.join("routes").unwrap();
       assert_eq!(
-        sloppy_imports_resolver
-          .resolve(&sloppy_specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &sloppy_specifier,
+          &referrer,
+          ResolutionKind::Execution
+        ),
         Some((specifier, SloppyImportsResolutionReason::Directory)),
       );
     }
@@ -2328,8 +2251,11 @@ mod test {
       sys.fs_insert(url_to_file_path(&bar_specifier).unwrap(), "");
       let sloppy_specifier = root_url.join("api").unwrap();
       assert_eq!(
-        sloppy_imports_resolver
-          .resolve(&sloppy_specifier, ResolutionKind::Execution),
+        sloppy_imports_resolver.resolve(
+          &sloppy_specifier,
+          &referrer,
+          ResolutionKind::Execution
+        ),
         Some((specifier, SloppyImportsResolutionReason::NoExtension)),
       );
     }
@@ -2402,11 +2328,19 @@ mod test {
       super::CreateResolverOptions {
         pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
         specified_import_map: None,
-        sloppy_imports_options: SloppyImportsOptions::Disabled,
+        sloppy_imports_options: SloppyImportsOptions::Unspecified,
         fs_cache_options: FsCacheOptions::Enabled,
       },
     )
     .unwrap();
+    let compiler_options_resolver = new_rc(CompilerOptionsResolver::new(
+      &sys,
+      &workspace_dir.workspace,
+      &setup_node_resolver(&sys),
+      &ConfigDiscoveryOption::DiscoverCwd,
+      &Default::default(),
+    ));
+    resolver.set_compiler_options_resolver(compiler_options_resolver);
     let root_dir_url = workspace_dir.workspace.root_dir_url();
 
     let referrer = root_dir_url.join("member/foo/mod.ts").unwrap();
@@ -2523,6 +2457,14 @@ mod test {
       },
     )
     .unwrap();
+    let compiler_options_resolver = new_rc(CompilerOptionsResolver::new(
+      &sys,
+      &workspace_dir.workspace,
+      &setup_node_resolver(&sys),
+      &ConfigDiscoveryOption::DiscoverCwd,
+      &Default::default(),
+    ));
+    resolver.set_compiler_options_resolver(compiler_options_resolver);
     let root_dir_url = workspace_dir.workspace.root_dir_url();
 
     let referrer = root_dir_url.join("subdir/mod.ts").unwrap();
@@ -2570,7 +2512,7 @@ mod test {
             },
           }),
         }),
-        sloppy_imports_options: SloppyImportsOptions::Disabled,
+        sloppy_imports_options: SloppyImportsOptions::Unspecified,
         fs_cache_options: FsCacheOptions::Enabled,
       },
     )
@@ -2615,7 +2557,7 @@ mod test {
             },
           }),
         }),
-        sloppy_imports_options: SloppyImportsOptions::Disabled,
+        sloppy_imports_options: SloppyImportsOptions::Unspecified,
         fs_cache_options: FsCacheOptions::Enabled,
       },
     )
@@ -2949,7 +2891,7 @@ mod test {
       super::CreateResolverOptions {
         pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
         specified_import_map: None,
-        sloppy_imports_options: SloppyImportsOptions::Disabled,
+        sloppy_imports_options: SloppyImportsOptions::Unspecified,
         fs_cache_options: FsCacheOptions::Enabled,
       },
     )

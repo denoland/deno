@@ -49,8 +49,9 @@ static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
 static MAYBE_AFTER_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
 
-static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<GetFormattedStackFn>>> =
-  Lazy::new(|| Mutex::new(None));
+pub(crate) static MAYBE_CURRENT_STACKTRACE: Lazy<
+  Mutex<Option<GetFormattedStackFn>>,
+> = Lazy::new(|| Mutex::new(None));
 
 pub fn set_current_stacktrace(get_stack: GetFormattedStackFn) {
   *MAYBE_CURRENT_STACKTRACE.lock() = Some(get_stack);
@@ -89,7 +90,7 @@ pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
 
-pub type GetFormattedStackFn = Box<dyn FnOnce() -> Vec<String> + Send + Sync>;
+pub type GetFormattedStackFn = Box<dyn Fn() -> Vec<String> + Send + Sync>;
 
 pub trait PermissionPrompter: Send + Sync {
   fn prompt(

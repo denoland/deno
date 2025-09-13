@@ -53,14 +53,13 @@ use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmInstaller;
 use crate::resolver::CliResolver;
-use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventReceiver;
+use crate::tools::test::TestEventTracker;
 use crate::tools::test::TestFailureFormatOptions;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::reporters::TestReporter;
 use crate::tools::test::run_tests_for_worker;
-use crate::tools::test::send_test_event;
 use crate::tools::test::worker_has_tests;
 
 fn comment_source_to_position_range(
@@ -462,19 +461,18 @@ impl ReplSession {
         self.test_event_receiver.take().unwrap(),
         (self.test_reporter_factory)(),
       ));
+      let event_tracker =
+        TestEventTracker::new(self.worker.js_runtime.op_state());
       run_tests_for_worker(
         &mut self.worker,
         &self.main_module,
         &Default::default(),
         &Default::default(),
+        &event_tracker,
       )
       .await
       .unwrap();
-      send_test_event(
-        &self.worker.js_runtime.op_state(),
-        TestEvent::ForceEndReport,
-      )
-      .unwrap();
+      event_tracker.force_end_report().unwrap();
       self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
     }
 

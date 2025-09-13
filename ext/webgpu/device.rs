@@ -6,7 +6,6 @@ use std::num::NonZeroU64;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::WebIdlInterfaceConverter;
@@ -26,10 +25,12 @@ use super::sampler::GPUSampler;
 use super::shader::GPUShaderModule;
 use super::texture::GPUTexture;
 use crate::Instance;
+use crate::SameObject;
 use crate::adapter::GPUAdapterInfo;
 use crate::adapter::GPUSupportedFeatures;
 use crate::adapter::GPUSupportedLimits;
 use crate::command_encoder::GPUCommandEncoder;
+use crate::error::GPUGenericError;
 use crate::query_set::GPUQuerySet;
 use crate::render_bundle::GPURenderBundleEncoder;
 use crate::render_pipeline::GPURenderPipeline;
@@ -64,7 +65,10 @@ impl WebIdlInterfaceConverter for GPUDevice {
   const NAME: &'static str = "GPUDevice";
 }
 
-impl GarbageCollected for GPUDevice {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUDevice {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUDevice"
   }
@@ -73,6 +77,12 @@ impl GarbageCollected for GPUDevice {
 // EventTarget is extended in JS
 #[op2]
 impl GPUDevice {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUDevice, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -878,7 +888,10 @@ impl GPUDevice {
 
 pub struct GPUDeviceLostInfo;
 
-impl GarbageCollected for GPUDeviceLostInfo {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUDeviceLostInfo {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUDeviceLostInfo"
   }
@@ -886,6 +899,12 @@ impl GarbageCollected for GPUDeviceLostInfo {
 
 #[op2]
 impl GPUDeviceLostInfo {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUDeviceLostInfo, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn reason(&self) -> &'static str {

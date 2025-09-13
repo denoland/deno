@@ -21,6 +21,7 @@ const [libPrefix, libSuffix] = {
 const libPath = `${targetDir}/${libPrefix}test_ffi.${libSuffix}`;
 
 const resourcesPre = Deno[Deno.internal].core.resources();
+const { getTurbocallTarget } = Deno[Deno.internal];
 
 // dlopen shouldn't panic
 assertThrows(() => {
@@ -316,7 +317,7 @@ function returnBuffer() { return return_buffer(); };
 returnBuffer();
 %OptimizeFunctionOnNextCall(returnBuffer);
 const ptr0 = returnBuffer();
-assertIsOptimized(returnBuffer);
+assertFastCall("return_buffer");
 
 dylib.symbols.print_pointer(ptr0, 8);
 const ptrView = new Deno.UnsafePointerView(ptr0);
@@ -357,7 +358,7 @@ isNullBuffer(emptyBuffer);
 %NeverOptimizeFunction(isNullBufferDeopt);
 %OptimizeFunctionOnNextCall(isNullBuffer);
 isNullBuffer(emptyBuffer);
-assertIsOptimized(isNullBuffer);
+assertFastCall("is_null_buf");
 
 // ==== ZERO LENGTH BUFFER TESTS ====
 assertEquals(isNullBuffer(emptyBuffer), true, "isNullBuffer(emptyBuffer) !== true");
@@ -408,10 +409,10 @@ const { add_u32, add_usize_fast } = symbols;
 function addU32Fast(a, b) {
   return add_u32(a, b);
 };
-testOptimized(addU32Fast, () => addU32Fast(123, 456));
+testOptimized(addU32Fast, () => addU32Fast(123, 456), "add_u32");
 
 function addU64Fast(a, b) { return add_usize_fast(a, b); };
-testOptimized(addU64Fast, () => addU64Fast(2n, 3n));
+testOptimized(addU64Fast, () => addU64Fast(2n, 3n), "add_usize_fast");
 
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
@@ -432,12 +433,12 @@ console.log(dylib.symbols.and(true, false));
 function addF32Fast(a, b) {
   return dylib.symbols.add_f32(a, b);
 };
-testOptimized(addF32Fast, () => addF32Fast(123.123, 456.789));
+testOptimized(addF32Fast, () => addF32Fast(123.123, 456.789), "add_f32");
 
 function addF64Fast(a, b) {
   return dylib.symbols.add_f64(a, b);
 };
-testOptimized(addF64Fast, () => addF64Fast(123.123, 456.789));
+testOptimized(addF64Fast, () => addF64Fast(123.123, 456.789), "add_f64");
 
 // Test adders as nonblocking calls
 console.log(await dylib.symbols.add_i32_nonblocking(123, 456));
@@ -566,34 +567,39 @@ dylib.symbols.call_stored_function_2(20);
 function logManyParametersFast(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s) {
   return symbols.log_many_parameters(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s);
 };
+
 testOptimized(
   logManyParametersFast,
   () => logManyParametersFast(
     255, 65535, 4294967295, 4294967296n, 123.456, 789.876, -1n, -2, -3, -4, -1000n, 1000n,
     12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910
-  )
+  ),
+  // apple silicon can't handle more than 8 args in fast calls: https://issues.chromium.org/issues/42203110
+  process.platform === 'darwin' && process.arch === 'arm64' ? null : "log_many_parameters",
 );
 
 // Some ABIs rely on the convention to zero/sign-extend arguments by the caller to optimize the callee function.
 // If the trampoline did not zero/sign-extend arguments, this would return 256 instead of the expected 0 (in optimized builds)
 function castU8U32Fast(x) { return symbols.cast_u8_u32(x); };
-testOptimized(castU8U32Fast, () => castU8U32Fast(256));
+testOptimized(castU8U32Fast, () => castU8U32Fast(256), "cast_u8_u32");
 
 // Some ABIs rely on the convention to expect garbage in the bits beyond the size of the return value to optimize the callee function.
 // If the trampoline did not zero/sign-extend the return value, this would return 256 instead of the expected 0 (in optimized builds)
 function castU32U8Fast(x) { return symbols.cast_u32_u8(x); };
-testOptimized(castU32U8Fast, () => castU32U8Fast(256));
+testOptimized(castU32U8Fast, () => castU32U8Fast(256), "cast_u32_u8");
 
 // Generally the trampoline tail-calls into the FFI function, but in certain cases (e.g. when returning 8 or 16 bit integers)
 // the tail call is not possible and a new stack frame must be created. We need enough parameters to have some on the stack
 function addManyU16Fast(a, b, c, d, e, f, g, h, i, j, k, l, m) {
   return symbols.add_many_u16(a, b, c, d, e, f, g, h, i, j, k, l, m);
 };
-// N.B. V8 does not currently follow Aarch64 Apple's calling convention.
-// The current implementation of the JIT trampoline follows the V8 incorrect calling convention. This test covers the use-case
-// and is expected to fail once Deno uses a V8 version with the bug fixed.
-// The V8 bug is being tracked in https://bugs.chromium.org/p/v8/issues/detail?id=13171
-testOptimized(addManyU16Fast, () => addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
+
+testOptimized(
+  addManyU16Fast,
+  () => addManyU16Fast(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+  // apple silicon can't handle more than 8 args in fast calls: https://issues.chromium.org/issues/42203110
+  process.platform === 'darwin' && process.arch === 'arm64' ? null : "add_many_u16",
+);
 
 
 const nestedCallback = new Deno.UnsafeCallback(
@@ -745,7 +751,7 @@ for (const charBuffer of [
 const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
 function hash() { return dylib.symbols.hash(bytes, bytes.byteLength); };
 
-testOptimized(hash, () => hash());
+testOptimized(hash, () => hash(), "hash");
 
 (function cleanup() {
   dylib.close();
@@ -773,21 +779,21 @@ After: ${postStr}`,
   console.log("Correct number of resources");
 })();
 
-function assertIsOptimized(fn) {
-  const status = %GetOptimizationStatus(fn);
-  assert(status & (1 << 4), `expected ${fn.name} to be optimized, but wasn't`);
+function assertFastCall(name) {
+  assertEquals(getTurbocallTarget(), name);
 }
 
-function testOptimized(fn, callback) {
+function testOptimized(fn, callback, symbol) {
   %PrepareFunctionForOptimization(fn);
   const r1 = callback();
   if (r1 !== undefined) {
     console.log(r1);
   }
   %OptimizeFunctionOnNextCall(fn);
+  getTurbocallTarget();
   const r2 = callback();
   if (r2 !== undefined) {
     console.log(r2);
   }
-  assertIsOptimized(fn);
+  assertFastCall(symbol);
 }

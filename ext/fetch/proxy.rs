@@ -51,6 +51,44 @@ pub(crate) struct ProxyConnector<C> {
   pub(crate) user_agent: Option<HeaderValue>,
 }
 
+impl<C> ProxyConnector<C> {
+  pub(crate) fn h1_only(self) -> Option<ProxyConnector<C>>
+  where
+    C: Service<Uri>,
+  {
+    if !self.tls.alpn_protocols.is_empty() {
+      self.tls.alpn_protocols.iter().find(|p| *p == b"http/1.1")?;
+    }
+    let mut tls = (*self.tls).clone();
+    tls.alpn_protocols = vec![b"http/1.1".to_vec()];
+    Some(ProxyConnector {
+      http: self.http,
+      proxies: self.proxies,
+      tls: Arc::new(tls),
+      tls_proxy: self.tls_proxy,
+      user_agent: self.user_agent,
+    })
+  }
+
+  pub(crate) fn h2_only(self) -> Option<ProxyConnector<C>>
+  where
+    C: Service<Uri>,
+  {
+    if !self.tls.alpn_protocols.is_empty() {
+      self.tls.alpn_protocols.iter().find(|p| *p == b"h2")?;
+    }
+    let mut tls = (*self.tls).clone();
+    tls.alpn_protocols = vec![b"h2".to_vec()];
+    Some(ProxyConnector {
+      http: self.http,
+      proxies: self.proxies,
+      tls: Arc::new(tls),
+      tls_proxy: self.tls_proxy,
+      user_agent: self.user_agent,
+    })
+  }
+}
+
 #[derive(Debug)]
 pub(crate) struct Proxies {
   no: Option<NoProxy>,
@@ -211,6 +249,26 @@ impl std::fmt::Debug for Intercept {
 
 impl Target {
   pub(crate) fn parse(val: &str) -> Option<Self> {
+    // unix:<path> is valid RFC3986 but not as an http::Uri
+    #[cfg(not(windows))]
+    if let Some(encoded_path) = val.strip_prefix("unix:") {
+      use std::os::unix::ffi::OsStringExt;
+      let decoded = std::ffi::OsString::from_vec(
+        percent_decode_str(encoded_path).collect::<Vec<u8>>(),
+      );
+      return Some(Target::Unix {
+        path: decoded.into(),
+      });
+    }
+    // vsock:<cid>:<port> is valid RFC3986 but not as an http::Uri
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    if let Some(cid_port) = val.strip_prefix("vsock:") {
+      let (left, right) = cid_port.split_once(":")?;
+      let cid = left.parse::<u32>().ok()?;
+      let port = right.parse::<u32>().ok()?;
+      return Some(Target::Vsock { cid, port });
+    }
+
     let uri = val.parse::<Uri>().ok()?;
 
     let mut builder = Uri::builder();
@@ -867,13 +925,13 @@ where
         }
       }
       #[cfg(not(windows))]
-      Proxied::Unix(_) => Connected::new(),
+      Proxied::Unix(_) => Connected::new().proxy(true),
       #[cfg(any(
         target_os = "android",
         target_os = "linux",
         target_os = "macos"
       ))]
-      Proxied::Vsock(_) => Connected::new(),
+      Proxied::Vsock(_) => Connected::new().proxy(true),
     }
   }
 }
@@ -936,6 +994,25 @@ fn test_proxy_parse_from_env() {
     Target::Socks { dst, auth } => {
       assert_eq!(dst, "socks5h://localhost:6666");
       assert!(auth.is_none());
+    }
+    _ => panic!("bad target"),
+  }
+
+  // unix
+  #[cfg(not(windows))]
+  match parse("unix:foo%20bar/baz") {
+    Target::Unix { path } => {
+      assert_eq!(path.to_str(), Some("foo bar/baz"));
+    }
+    _ => panic!("bad target"),
+  }
+
+  // vsock
+  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  match parse("vsock:1234:5678") {
+    Target::Vsock { cid, port } => {
+      assert_eq!(cid, 1234);
+      assert_eq!(port, 5678);
     }
     _ => panic!("bad target"),
   }

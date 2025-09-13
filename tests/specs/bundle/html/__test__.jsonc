@@ -1,0 +1,65 @@
+{
+  "tempDir": true,
+  "tests": {
+    "basic": {
+      "steps": [
+        {
+          "args": "bundle --outdir ./dist index.html",
+          "output": "basic-bundle.out"
+        },
+        {
+          "args": "run -A basic-bundle.asserts.ts",
+          "output": ""
+        }
+      ]
+    },
+    "multiple_scripts": {
+      "steps": [
+        {
+          "args": "bundle --outdir ./dist multiple-scripts.html",
+          "output": "multiple-scripts-bundle.out"
+        },
+        {
+          "args": "run -A multiple-scripts-bundle.asserts.ts",
+          "output": ""
+        }
+      ]
+    },
+    "multiple_html": {
+      "steps": [
+        {
+          "args": "bundle --outdir ./dist index.html multiple-html.html",
+          "output": "multiple-html-bundle.out"
+        },
+        {
+          "args": "run -A multiple-html-bundle.asserts.ts",
+          "output": ""
+        }
+      ]
+    },
+    "imports_css": {
+      "steps": [
+        {
+          "args": "bundle --outdir ./dist imports-css.html",
+          "output": "imports-css-bundle.out"
+        },
+        {
+          "args": "run -A imports-css-bundle.asserts.ts",
+          "output": ""
+        }
+      ]
+    },
+    "same_name_sub_folder": {
+      "steps": [
+        {
+          "args": "bundle --outdir ./dist index.html sub/index.html",
+          "output": "same-name-sub-folder-bundle.out"
+        },
+        {
+          "args": "run -A same-name-sub-folder-bundle.asserts.ts",
+          "output": ""
+        }
+      ]
+    }
+  }
+}

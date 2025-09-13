@@ -2260,7 +2260,7 @@ Deno.test(
     const resp1 = await fetch("http://localhost/ping", { client });
     assertEquals(resp1.status, 200);
     assertEquals(resp1.headers.get("content-type"), "text/plain");
-    assertEquals(await resp1.text(), "http+unix://localhost/ping");
+    assertEquals(await resp1.text(), "http://localhost/ping");
 
     const resp2 = await fetch("http://localhost/not-found", { client });
     assertEquals(resp2.status, 404);

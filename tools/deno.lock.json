@@ -32,6 +32,7 @@
     "jsr:@std/semver@1.0.3": "1.0.3",
     "jsr:@std/streams@0.221": "0.221.0",
     "jsr:@std/streams@0.221.0": "0.221.0",
+    "jsr:@std/yaml@0.221": "0.221.0",
     "jsr:@ts-morph/common@0.24": "0.24.0",
     "jsr:@ts-morph/ts-morph@23.0.0": "23.0.0",
     "npm:@types/decompress@4.2.7": "4.2.7",
@@ -156,6 +157,9 @@
       "dependencies": [
         "jsr:@std/io@0.221"
       ]
+    },
+    "@std/yaml@0.221.0": {
+      "integrity": "bac8913ee4f6fc600d4b92cc020f755070e22687ad242341f31d123ff690ae98"
     },
     "@ts-morph/common@0.24.0": {
       "integrity": "12b625b8e562446ba658cdbe9ad77774b4bd96b992ae8bd34c60dbf24d06c1f3",

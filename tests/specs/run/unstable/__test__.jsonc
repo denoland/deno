@@ -5,6 +5,11 @@
       "exitCode": 1,
       "output": "broadcast_channel.out"
     },
+    "bundle": {
+      "args": "run bundle.ts",
+      "exitCode": 1,
+      "output": "bundle.out"
+    },
     "cron": {
       "args": "run cron.ts",
       "exitCode": 1,

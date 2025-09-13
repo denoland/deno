@@ -538,11 +538,7 @@ impl WebWorker {
         },
       ),
       deno_cache::deno_cache::init(create_cache),
-      deno_websocket::deno_websocket::init::<PermissionsContainer>(
-        options.bootstrap.user_agent.clone(),
-        services.root_cert_store_provider.clone(),
-        options.unsafely_ignore_certificate_errors.clone(),
-      ),
+      deno_websocket::deno_websocket::init::<PermissionsContainer>(),
       deno_webstorage::deno_webstorage::init(None).disable(),
       deno_crypto::deno_crypto::init(options.seed),
       deno_broadcast_channel::deno_broadcast_channel::init(
@@ -600,6 +596,7 @@ impl WebWorker {
       ops::permissions::deno_permissions::init(),
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
+      deno_bundle_runtime::deno_bundle_runtime::init(None),
       ops::bootstrap::deno_bootstrap::init(
         options.startup_snapshot.and_then(|_| Default::default()),
         false,

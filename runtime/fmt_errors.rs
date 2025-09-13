@@ -358,6 +358,13 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
           "Run again with `--unstable-kv` flag to enable this API.",
         ),
       ];
+    } else if msg.contains("bundle is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.bundle() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-bundle` flag to enable this API.",
+        ),
+      ];
     } else if msg.contains("cron is not a function") {
       return vec![
         FixSuggestion::info("Deno.cron() is an unstable API."),

@@ -1935,8 +1935,8 @@ fn lsp_inlay_hints() {
             "location": {
               "uri": "deno:/asset/lib.es5.d.ts",
               "range": {
-                "start": { "line": 1462, "character": 11 },
-                "end": { "line": 1462, "character": 21 },
+                "start": { "line": 1469, "character": 11 },
+                "end": { "line": 1469, "character": 21 },
               },
             },
           },
@@ -3242,6 +3242,45 @@ fn lsp_goto_type_definition() {
         }
       }
     ])
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_goto_type_definition_builtin() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "new Response();\n",
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/typeDefinition",
+    json!({
+      "textDocument": { "uri": "file:///a/file.ts" },
+      "position": { "line": 0, "character": 4 },
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|v| v
+        .as_object()
+        .unwrap()
+        .get("targetUri")
+        .unwrap()
+        .as_str()
+        .unwrap())
+      .collect::<Vec<_>>(),
+    vec!["deno:/asset/lib.deno.fetch.d.ts"],
   );
   client.shutdown();
 }
@@ -5607,7 +5646,17 @@ fn lsp_code_actions_deno_cache_jsr() {
 fn lsp_jsr_lockfile() {
   let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.write("./deno.json", json!({}).to_string());
+  temp_dir.write(
+    "./deno.json",
+    json!({
+      "lint": {
+        "rules": {
+          "tags": []
+        }
+      }
+    })
+    .to_string(),
+  );
   let lockfile = temp_dir.path().join("deno.lock");
   let integrity = context.get_jsr_package_integrity("@denotest/add/0.2.0");
   lockfile.write_json(&json!({
@@ -6219,7 +6268,7 @@ fn lsp_code_actions_deno_cache_npm() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "import chalk from \"npm:chalk\";\n\nconsole.log(chalk.green);\n"
+      "text": "import chalk from \"npm:chalk@5\";\n\nconsole.log(chalk.green);\n"
     }
   }));
   assert_eq!(
@@ -6229,13 +6278,13 @@ fn lsp_code_actions_deno_cache_npm() {
       "diagnostics": [{
         "range": {
           "start": { "line": 0, "character": 18 },
-          "end": { "line": 0, "character": 29 }
+          "end": { "line": 0, "character": 31 }
         },
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "npm package \"chalk\" is not installed or doesn't exist.",
-        "data": { "specifier": "npm:chalk" }
+        "message": "npm package \"chalk@5\" is not installed or doesn't exist.",
+        "data": { "specifier": "npm:chalk@5" }
       }],
       "version": 1
     }))
@@ -6250,19 +6299,19 @@ fn lsp_code_actions_deno_cache_npm() {
       },
       "range": {
         "start": { "line": 0, "character": 18 },
-        "end": { "line": 0, "character": 29 }
+        "end": { "line": 0, "character": 31 }
       },
       "context": {
         "diagnostics": [{
           "range": {
             "start": { "line": 0, "character": 18 },
-            "end": { "line": 0, "character": 29 }
+            "end": { "line": 0, "character": 31 }
           },
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "npm package \"chalk\" is not installed or doesn't exist.",
-          "data": { "specifier": "npm:chalk" }
+          "message": "npm package \"chalk@5\" is not installed or doesn't exist.",
+          "data": { "specifier": "npm:chalk@5" }
         }],
         "only": ["quickfix"]
       }
@@ -6271,23 +6320,23 @@ fn lsp_code_actions_deno_cache_npm() {
   assert_eq!(
     res,
     json!([{
-      "title": "Install \"npm:chalk\" and its dependencies.",
+      "title": "Install \"npm:chalk@5\" and its dependencies.",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
           "start": { "line": 0, "character": 18 },
-          "end": { "line": 0, "character": 29 }
+          "end": { "line": 0, "character": 31 }
         },
         "severity": 1,
         "code": "not-installed-npm",
         "source": "deno",
-        "message": "npm package \"chalk\" is not installed or doesn't exist.",
-        "data": { "specifier": "npm:chalk" }
+        "message": "npm package \"chalk@5\" is not installed or doesn't exist.",
+        "data": { "specifier": "npm:chalk@5" }
       }],
       "command": {
         "title": "",
         "command": "deno.cache",
-        "arguments": [["npm:chalk"], "file:///a/file.ts"]
+        "arguments": [["npm:chalk@5"], "file:///a/file.ts"]
       }
     }])
   );
@@ -6307,7 +6356,7 @@ fn lsp_code_actions_deno_cache_all() {
       "version": 1,
       "text": r#"
         import * as a from "https://deno.land/x/a/mod.ts";
-        import chalk from "npm:chalk";
+        import chalk from "npm:chalk@5";
         console.log(a);
         console.log(chalk);
       "#,
@@ -6336,13 +6385,13 @@ fn lsp_code_actions_deno_cache_all() {
         {
           "range": {
             "start": { "line": 2, "character": 26 },
-            "end": { "line": 2, "character": 37 },
+            "end": { "line": 2, "character": 39 },
           },
           "severity": 1,
           "code": "not-installed-npm",
           "source": "deno",
-          "message": "npm package \"chalk\" is not installed or doesn't exist.",
-          "data": { "specifier": "npm:chalk" },
+          "message": "npm package \"chalk@5\" is not installed or doesn't exist.",
+          "data": { "specifier": "npm:chalk@5" },
         },
       ],
       "version": 1,
@@ -6429,13 +6478,13 @@ fn lsp_code_actions_deno_cache_all() {
           {
             "range": {
               "start": { "line": 2, "character": 26 },
-              "end": { "line": 2, "character": 37 },
+              "end": { "line": 2, "character": 39 },
             },
             "severity": 1,
             "code": "not-installed-npm",
             "source": "deno",
-            "message": "npm package \"chalk\" is not installed or doesn't exist.",
-            "data": { "specifier": "npm:chalk" },
+            "message": "npm package \"chalk@5\" is not installed or doesn't exist.",
+            "data": { "specifier": "npm:chalk@5" },
           },
         ],
         "command": {
@@ -6463,7 +6512,7 @@ fn lsp_npm_managed_no_export_diagnostic() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "import \"npm:chalk/non-existent\";\n",
+      "text": "import \"npm:chalk@5/non-existent\";\n",
     },
   }));
   client.cache_specifier("file:///a/file.ts");
@@ -6474,12 +6523,12 @@ fn lsp_npm_managed_no_export_diagnostic() {
       {
         "range": {
           "start": { "line": 0, "character": 7 },
-          "end": { "line": 0, "character": 31 },
+          "end": { "line": 0, "character": 33 },
         },
         "severity": 1,
         "code": "no-export-npm",
         "source": "deno",
-        "message": "NPM package \"chalk\" does not define an export \"non-existent\".",
+        "message": "NPM package \"chalk@5\" does not define an export \"non-existent\".",
       },
     ]),
   );
@@ -6501,7 +6550,7 @@ fn lsp_npm_managed_type_only_export_no_diagnostic() {
       "uri": "file:///a/file.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "import \"npm:@minecraft/common\";\n",
+      "text": "import \"npm:@minecraft/common@1\";\n",
     },
   }));
   client.cache_specifier("file:///a/file.ts");
@@ -8894,7 +8943,7 @@ fn lsp_npm_types_nested_js_dts() {
   let file = source_file(
     temp_dir.path().join("file.ts"),
     r#"
-      import { someString } from "npm:@denotest/types-nested-js-dts";
+      import { someString } from "npm:@denotest/types-nested-js-dts@1";
       const someNumber: number = someString;
       console.log(someNumber);
     "#,
@@ -10304,6 +10353,68 @@ fn lsp_auto_import_npm_export_node_modules_dir_no_package_json() {
     "import { useEffect } from 'preact/hooks'; console.log(useEffect);",
   );
   let file = temp_dir.source_file("file.ts", "useEffect;\n");
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file).all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.first().unwrap();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 },
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\"",
+  );
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/30666.
+#[test]
+#[timeout(300_000)]
+fn lsp_auto_import_npm_export_import_map_workspace_member() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["member"],
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "member/deno.json",
+    json!({
+      "imports": {
+        "preact": "npm:preact",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("member/other.ts", "import \"preact/hooks\";\n");
+  let file = temp_dir.source_file("member/mod.ts", "useEffect;\n");
   context.run_deno("install");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -14956,6 +15067,11 @@ fn lsp_vendor_dir() {
     json!({
       "vendor": true,
       "lock": false,
+      "lint": {
+        "rules": {
+          "tags": ["recommended"]
+        }
+      }
     })
     .to_string(),
   );
@@ -14977,7 +15093,7 @@ fn lsp_vendor_dir() {
       .map(|d| d.message.as_str())
       .collect::<Vec<_>>(),
     vec![
-      "Uncached or missing remote URL: http://localhost:4545/subdir/mod1.ts"
+      "Uncached or missing remote URL: http://localhost:4545/subdir/mod1.ts",
     ]
   );
   assert!(!temp_dir.path().join("vendor").exists());
@@ -17022,6 +17138,61 @@ fn lsp_tsconfig_node_modules_dts_diagnostics() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_tsconfig_root_dirs() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "extends": "./subdir/tsconfig.json",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "subdir/tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "rootDirs": ["..", "types"],
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("subdir/types/foo.d.ts", "export type Foo = string;\n");
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"
+      import type { Foo } from "./foo.d.ts";
+      const foo: Foo = 1;
+      console.log(foo);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 2, "character": 12 },
+          "end": { "line": 2, "character": 15 },
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'number' is not assignable to type 'string'.",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17267,6 +17438,13 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
 fn lsp_byonm() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
+  temp_dir.path().join("deno.json").write_json(&json!({
+    "lint": {
+      "rules": {
+        "tags": ["recommended"]
+      }
+    }
+  }));
   temp_dir.path().join("package.json").write_json(&json!({
     "dependencies": {
       "@denotest/esm-basic": "*",
@@ -17280,7 +17458,7 @@ fn lsp_byonm() {
       "languageId": "typescript",
       "version": 1,
       "text": r#"
-        import "npm:chalk";
+        import "npm:chalk@5";
         import "@denotest/esm-basic";
       "#,
     },
@@ -17296,13 +17474,13 @@ fn lsp_byonm() {
           },
           "end": {
             "line": 1,
-            "character": 26,
+            "character": 28,
           },
         },
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": "Could not find a matching package for 'npm:chalk' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
+        "message": "Could not find a matching package for 'npm:chalk@5' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
       },
       {
         "range": {
@@ -17341,13 +17519,13 @@ fn lsp_byonm() {
           },
           "end": {
             "line": 1,
-            "character": 26,
+            "character": 28,
           },
         },
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": "Could not find a matching package for 'npm:chalk' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
+        "message": "Could not find a matching package for 'npm:chalk@5' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.",
       },
     ])
   );
@@ -17920,7 +18098,16 @@ fn lsp_cjs_import_dual() {
     .add_npm_env_vars()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.write("deno.json", r#"{}"#);
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}"#,
+  );
   temp_dir.write(
     "package.json",
     r#"{
@@ -18929,6 +19116,51 @@ fn lsp_will_rename_files_js_to_ts() {
                 "end": { "line": 0, "character": 18 },
               },
               "newText": "./other.ts",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/30627.
+#[test]
+#[timeout(300_000)]
+fn lsp_will_rename_files_move_to_different_dir() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let file = temp_dir.source_file("main.ts", "import \"./other.ts\";\n");
+  temp_dir.write("other.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "workspace/willRenameFiles",
+    json!({
+      "files": [
+        {
+          "oldUri": file.uri(),
+          "newUri": temp_dir.path().join("subdir/main.ts").uri_file(),
+        },
+      ],
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": { "uri": file.uri(), "version": 1 },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 8 },
+                "end": { "line": 0, "character": 18 },
+              },
+              "newText": "../other.ts",
             },
           ],
         },

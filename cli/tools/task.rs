@@ -63,7 +63,7 @@ pub async fn execute_script(
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() && !task_flags.eval {
     bail!(
-      "deno task couldn't find deno.json(c). See https://docs.deno.com/go/config"
+      "deno task couldn't find deno.json(c) or package.json. See https://docs.deno.com/go/config"
     )
   }
   let force_use_pkg_json =

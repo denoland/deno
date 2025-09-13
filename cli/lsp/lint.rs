@@ -143,8 +143,7 @@ impl LspLinterResolver {
         let inner = CliLinter::new(CliLinterOptions {
           configured_rules: lint_rule_provider.resolve_lint_rules(
             lint_options.rules,
-            config_data
-              .and_then(|d| d.member_dir.maybe_deno_json().map(|c| c.as_ref())),
+            config_data.map(|d| d.member_dir.as_ref()),
           ),
           fix: false,
           deno_lint_config,

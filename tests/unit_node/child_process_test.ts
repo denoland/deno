@@ -1172,3 +1172,19 @@ Deno.test({
     );
   },
 });
+
+Deno.test(async function experimentalFlag() {
+  const code = ``;
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, code);
+  const timeout = withTimeout<void>();
+  const child = CP.fork(file, [], {
+    execArgv: ["--experimental-vm-modules"],
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  child.on("close", () => {
+    timeout.resolve();
+  });
+
+  await timeout.promise;
+});

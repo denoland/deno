@@ -55,7 +55,7 @@ impl Resolver {
   /// Create a [`AsyncResolver`] from system conf.
   pub fn hickory() -> Result<Self, hickory_resolver::ResolveError> {
     Ok(Self::Hickory(
-      hickory_resolver::Resolver::tokio_from_system_conf()?,
+      hickory_resolver::Resolver::builder_tokio()?.build(),
     ))
   }
 

@@ -36,6 +36,7 @@ pub use r#static::StaticError;
 use r#static::op_ffi_get_static;
 use symbol::NativeType;
 use symbol::Symbol;
+use turbocall::op_ffi_get_turbocall_target;
 
 #[cfg(not(target_pointer_width = "64"))]
 compile_error!("platform not supported");
@@ -107,6 +108,7 @@ deno_core::extension!(deno_ffi,
     op_ffi_unsafe_callback_create<P>,
     op_ffi_unsafe_callback_close,
     op_ffi_unsafe_callback_ref,
+    op_ffi_get_turbocall_target,
   ],
   esm = [ "00_ffi.js" ],
   options = {

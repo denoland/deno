@@ -54,7 +54,8 @@ Temporal.ZonedDateTime.prototype
   "toPlainDate",       "toPlainDateTime",  "toPlainTime",
   "toString",          "until",            "valueOf",
   "weekOfYear",        "with",             "withCalendar",
-  "withPlainTime",     "withTimeZone",     "year"
+  "withPlainTime",     "withTimeZone",     "year",
+  "yearOfWeek"
 ]
 Temporal.PlainDate.prototype
 [
@@ -73,7 +74,7 @@ Temporal.PlainDate.prototype
   "toZonedDateTime",  "until",
   "valueOf",          "weekOfYear",
   "with",             "withCalendar",
-  "year"
+  "year",             "yearOfWeek"
 ]
 Temporal.PlainTime.prototype
 [
@@ -101,7 +102,7 @@ Temporal.PlainDateTime.prototype
   "toPlainDate",     "toPlainTime",  "toString",
   "toZonedDateTime", "until",        "valueOf",
   "weekOfYear",      "with",         "withCalendar",
-  "withPlainTime",   "year"
+  "withPlainTime",   "year",         "yearOfWeek"
 ]
 Temporal.PlainYearMonth.prototype
 [

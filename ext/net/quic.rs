@@ -216,7 +216,10 @@ struct EndpointResource {
   session_store: Arc<dyn ClientSessionStore>,
 }
 
-impl GarbageCollected for EndpointResource {
+// SAFETY: we're sure `EndpointResource` can be GCed
+unsafe impl GarbageCollected for EndpointResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"EndpointResource"
   }
@@ -301,7 +304,10 @@ impl Drop for ListenerResource {
   }
 }
 
-impl GarbageCollected for ListenerResource {
+// SAFETY: we're sure `ListenerResource` can be GCed
+unsafe impl GarbageCollected for ListenerResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ListenerResource"
   }
@@ -356,7 +362,10 @@ struct ConnectionResource(
   RefCell<Option<quinn::ZeroRttAccepted>>,
 );
 
-impl GarbageCollected for ConnectionResource {
+// SAFETY: we're sure `ConnectionResource` can be GCed
+unsafe impl GarbageCollected for ConnectionResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ConnectionResource"
   }
@@ -367,7 +376,10 @@ struct IncomingResource(
   Arc<QuicServerConfig>,
 );
 
-impl GarbageCollected for IncomingResource {
+// SAFETY: we're sure `Incoming` can be GCed
+unsafe impl GarbageCollected for IncomingResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"IncomingResource"
   }
@@ -500,7 +512,10 @@ pub(crate) fn op_quic_incoming_ignore(
 
 struct ConnectingResource(RefCell<Option<quinn::Connecting>>);
 
-impl GarbageCollected for ConnectingResource {
+// SAFETY: we're sure `ConnectingResource` can be GCed
+unsafe impl GarbageCollected for ConnectingResource {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ConnectingResource"
   }

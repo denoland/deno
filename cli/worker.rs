@@ -277,12 +277,11 @@ impl CliMainWorker {
     Ok(Some(coverage_collector))
   }
 
-  #[allow(clippy::result_large_err)]
   pub fn execute_script_static(
     &mut self,
     name: &'static str,
     source_code: &'static str,
-  ) -> Result<v8::Global<v8::Value>, JsError> {
+  ) -> Result<v8::Global<v8::Value>, Box<JsError>> {
     self.worker.js_runtime().execute_script(name, source_code)
   }
 }
@@ -548,6 +547,7 @@ mod tests {
         compiled_wasm_module_store: Default::default(),
         v8_code_cache: Default::default(),
         fs,
+        bundle_provider: None,
       },
       options,
     )

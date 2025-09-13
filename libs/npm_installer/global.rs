@@ -211,42 +211,45 @@ impl<TSys: NpmCacheSys> LifecycleScriptsStrategy
     use std::fmt::Write;
     use std::writeln;
     let mut output = String::new();
-    let _ = writeln!(
+
+    _ = writeln!(
       &mut output,
-      "{} The following packages contained npm lifecycle scripts ({}) that were not executed:",
-      colors::yellow("Warning"),
-      colors::gray("preinstall/install/postinstall")
+      "{} {}",
+      colors::yellow("╭"),
+      colors::yellow_bold("Warning")
+    );
+    _ = writeln!(&mut output, "{}", colors::yellow("│"));
+    _ = writeln!(
+      &mut output,
+      "{}  Ignored build scripts for packages:",
+      colors::yellow("│"),
     );
     for (package, _) in packages {
-      let _ = writeln!(
+      _ = writeln!(
         &mut output,
-        "┠─ {}",
-        colors::gray(format!("npm:{}", package.id.nv))
+        "{}  {}",
+        colors::yellow("│"),
+        colors::italic(format!("npm:{}", package.id.nv))
       );
     }
-    let _ = writeln!(&mut output, "┃");
-    let _ = writeln!(
+    _ = writeln!(&mut output, "{}", colors::yellow("│"));
+    _ = writeln!(
       &mut output,
-      "┠─ {}",
-      colors::italic("This may cause the packages to not work correctly.")
+      "{}  Lifecycle scripts are only supported when using a `node_modules` directory.",
+      colors::yellow("│")
     );
-    let _ = writeln!(
+    _ = writeln!(
       &mut output,
-      "┠─ {}",
-      colors::italic(
-        "Lifecycle scripts are only supported when using a `node_modules` directory."
-      )
+      "{}  Enable it in your deno config file:",
+      colors::yellow("│")
     );
-    let _ = writeln!(
+    _ = writeln!(
       &mut output,
-      "┠─ {}",
-      colors::italic("Enable it in your deno config file:")
-    );
-    let _ = write!(
-      &mut output,
-      "┖─ {}",
+      "{}  {}",
+      colors::yellow("│"),
       colors::bold("\"nodeModulesDir\": \"auto\"")
     );
+    _ = write!(&mut output, "{}", colors::yellow("╰─"));
 
     if let Some(install_reporter) = &self.install_reporter {
       let paths = packages

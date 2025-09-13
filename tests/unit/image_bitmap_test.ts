@@ -4,7 +4,7 @@ import { assertEquals, assertRejects } from "./test_util.ts";
 
 const prefix = "tests/testdata/image";
 
-function generateNumberedData(n: number): Uint8ClampedArray {
+function generateNumberedData(n: number): Uint8ClampedArray<ArrayBuffer> {
   return new Uint8ClampedArray(
     Array.from({ length: n }, (_, i) => [i + 1, 0, 0, 1]).flat(),
   );

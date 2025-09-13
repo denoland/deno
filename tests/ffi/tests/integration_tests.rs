@@ -44,6 +44,7 @@ fn basic() {
     .arg(r#"--v8-flags=--allow-natives-syntax"#)
     .arg("tests/test.js")
     .env("NO_COLOR", "1")
+    .env("DENO_UNSTABLE_FFI_TRACE_TURBO", "1")
     .output()
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();

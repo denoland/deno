@@ -249,16 +249,19 @@ where
   Ok(out.into())
 }
 
-struct FunctionData {
+pub struct FunctionData {
   // Held in a box to keep memory while function is alive.
   #[allow(unused)]
-  symbol: Box<Symbol>,
+  pub symbol: Box<Symbol>,
   // Held in a box to keep inner data alive while function is alive.
   #[allow(unused)]
   turbocall: Option<Turbocall>,
 }
 
-impl GarbageCollected for FunctionData {
+// SAFETY: we're sure `FunctionData` can be GCed
+unsafe impl GarbageCollected for FunctionData {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"FunctionData"
   }
