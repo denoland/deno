@@ -49,6 +49,10 @@ const {
   },
 } = os;
 
+// Deno.statSync and Deno.lstatSync are preferred over node:fs versions because
+// they are more performant, as the node:fs versions use the Deno implementation
+// under the hood, and adds overhead by converting the result to a node fs.Stats object.
+
 function safeStatSyncFn<T extends typeof Deno.statSync>(
   statFn: T,
   path: string | URL,
@@ -291,7 +295,11 @@ function copyFile(
   return setDestMode(dest, srcStat.mode);
 }
 
-function handleTimestamps(srcMode: number, src: string, dest: string): void {
+function handleTimestamps(
+  srcMode: number | null,
+  src: string,
+  dest: string,
+): void {
   // Make sure the file is writable before setting the timestamp
   // otherwise open fails with EPERM when invoked with 'r+'
   // (through utimes call)
@@ -299,16 +307,16 @@ function handleTimestamps(srcMode: number, src: string, dest: string): void {
   return setDestTimestamps(src, dest);
 }
 
-function fileIsNotWritable(srcMode: number): boolean {
-  return (srcMode & 0o200) === 0;
+function fileIsNotWritable(srcMode: number | null): boolean {
+  return (srcMode! & 0o200) === 0;
 }
 
-function makeFileWritable(dest: string, srcMode: number): void {
-  return setDestMode(dest, srcMode | 0o200);
+function makeFileWritable(dest: string, srcMode: number | null): void {
+  return setDestMode(dest, srcMode! | 0o200);
 }
 
-function setDestMode(dest: string, srcMode: number): void {
-  return chmodSync(dest, srcMode);
+function setDestMode(dest: string, srcMode: number | null): void {
+  return chmodSync(dest, srcMode!);
 }
 
 function setDestTimestamps(src: string, dest: string): void {
@@ -316,6 +324,7 @@ function setDestTimestamps(src: string, dest: string): void {
   // because it is modified by the read(2) system call
   // (See https://nodejs.org/api/fs.html#fs_stat_time_values)
   const updatedSrcStat = Deno.statSync(src);
+  if (!updatedSrcStat.atime || !updatedSrcStat.mtime) return;
   return utimesSync(dest, updatedSrcStat.atime, updatedSrcStat.mtime);
 }
 
@@ -331,7 +340,7 @@ function onDir(
 }
 
 function mkDirAndCopy(
-  srcMode: number,
+  srcMode: number | null,
   src: string,
   dest: string,
   opts: CopySyncOptions,

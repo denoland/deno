@@ -34,6 +34,10 @@ const {
   StringPrototypeSplit,
 } = primordials;
 
+// Deno.stat and Deno.lstat are preferred over node:fs versions because
+// they are more performant, as the node:fs versions use the Deno implementation
+// under the hood, and adds overhead by converting the result to a node fs.Stats object.
+
 async function safeStatFn<T extends typeof Deno.stat>(
   statFn: T,
   path: string | URL,
@@ -131,8 +135,8 @@ export function areIdentical(
   srcStat: Deno.FileInfo,
   destStat: Deno.FileInfo,
 ): boolean {
-  return destStat.ino && destStat.dev && destStat.ino === srcStat.ino &&
-    destStat.dev === srcStat.dev;
+  return !!(destStat.ino && destStat.dev && destStat.ino === srcStat.ino &&
+    destStat.dev === srcStat.dev);
 }
 
 function getStats(
@@ -307,7 +311,7 @@ async function _copyFile(
 }
 
 async function handleTimestampsAndMode(
-  srcMode: number,
+  srcMode: number | null,
   src: string,
   dest: string,
 ): Promise<void> {
@@ -320,16 +324,16 @@ async function handleTimestampsAndMode(
   return setDestTimestampsAndMode(srcMode, src, dest);
 }
 
-function fileIsNotWritable(srcMode: number): boolean {
-  return (srcMode & 0o200) === 0;
+function fileIsNotWritable(srcMode: number | null): boolean {
+  return (srcMode! & 0o200) === 0;
 }
 
-function makeFileWritable(dest: string, srcMode: number): Promise<void> {
-  return setDestMode(dest, srcMode | 0o200);
+function makeFileWritable(dest: string, srcMode: number | null): Promise<void> {
+  return setDestMode(dest, srcMode! | 0o200);
 }
 
 async function setDestTimestampsAndMode(
-  srcMode: number,
+  srcMode: number | null,
   src: string,
   dest: string,
 ): Promise<void> {
@@ -337,7 +341,8 @@ async function setDestTimestampsAndMode(
   return setDestMode(dest, srcMode);
 }
 
-function setDestMode(dest: string, srcMode: number): Promise<void> {
+function setDestMode(dest: string, srcMode: number | null): Promise<void> {
+  if (!srcMode) return Promise.resolve();
   return chmodPromise(dest, srcMode);
 }
 
@@ -346,6 +351,7 @@ async function setDestTimestamps(src: string, dest: string): Promise<void> {
   // because it is modified by the read(2) system call
   // (See https://nodejs.org/api/fs.html#fs_stat_time_values)
   const updatedSrcStat = await Deno.stat(src);
+  if (!updatedSrcStat.atime || !updatedSrcStat.mtime) return;
   return utimesPromise(dest, updatedSrcStat.atime, updatedSrcStat.mtime);
 }
 
@@ -361,7 +367,7 @@ function onDir(
 }
 
 async function mkDirAndCopy(
-  srcMode: number,
+  srcMode: number | null,
   src: string,
   dest: string,
   opts: CopyOptions,
@@ -387,7 +393,7 @@ async function copyDir(
 }
 
 async function onLink(
-  destStat: Deno.FileInfo | null,
+  destStat: Deno.FileInfo | undefined,
   src: string,
   dest: string,
   opts: CopyOptions,
@@ -416,7 +422,6 @@ async function onLink(
     resolvedDest = resolve(dirname(dest), resolvedDest);
   }
 
-  //NB(Tango992): We use `Deno.stat` because it's cheaper to call
   const srcStat = await Deno.stat(src);
   const srcIsDir = srcStat.isDirectory;
   if (srcIsDir && isSrcSubdir(resolvedSrc, resolvedDest)) {
