@@ -915,7 +915,7 @@ impl MainWorker {
   /// was not configured to create inspector.
   pub fn create_sync_inspector_session(
     &mut self,
-    cb: deno_core::InspectorSessionCallback,
+    cb: deno_core::InspectorSessionSend,
   ) -> LocalSyncInspectorSession {
     self.js_runtime.maybe_init_inspector();
     let insp = self.js_runtime.inspector();

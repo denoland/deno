@@ -417,7 +417,7 @@ async fn server(
 /// task yielding.
 async fn pump_websocket_messages(
   mut websocket: WebSocket<TokioIo<hyper::upgrade::Upgraded>>,
-  mut inbound_tx: UnboundedSender<String>,
+  inbound_tx: UnboundedSender<String>,
   mut outbound_rx: UnboundedReceiver<InspectorMsg>,
 ) {
   'pump: loop {
@@ -430,8 +430,7 @@ async fn pump_websocket_messages(
             match msg.opcode {
                 OpCode::Text => {
                     if let Ok(s) = String::from_utf8(msg.payload.to_vec()) {
-                      let _ = inbound_tx.send(s);
-                      eprintln!("sent a message from WS to inspector");
+                      let _ = inbound_tx.unbounded_send(s);
                     }
                 }
                 OpCode::Close => {
