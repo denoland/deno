@@ -2,6 +2,7 @@
 import { assert, assertThrows, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { close, closeSync } from "node:fs";
+import { open } from "node:fs/promises";
 
 Deno.test({
   name: "ASYNC: File is closed",
@@ -100,4 +101,18 @@ Deno.test({
       await Deno.remove(tempFile);
     },
   });
+});
+
+Deno.test({
+  name: "[std/node/fs] close with default callback if none is provided",
+}, async () => {
+  const tempFile = await Deno.makeTempFile();
+  try {
+    const file = await open(tempFile);
+    close(file.fd);
+  } catch (err) {
+    fail(`No error expected, got: ${err}`);
+  } finally {
+    await Deno.remove(tempFile);
+  }
 });
