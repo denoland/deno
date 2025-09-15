@@ -50,14 +50,11 @@ impl<TSys: FsCanonicalize + FsMetadata> GlobalNpmPackageResolver<TSys> {
   }
 
   pub fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
-    let folder_copy_index = self
-      .resolution
-      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
     let registry_url = self.npm_rc.get_registry_url(&id.nv.name);
     Some(self.cache.package_folder_for_id(
       &id.nv.name,
       &id.nv.version.to_string(),
-      folder_copy_index,
+      0,
       registry_url,
     ))
   }
