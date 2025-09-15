@@ -236,6 +236,6 @@ fn init_npm() {
       pty.expect("Do you want to continue?");
       pty.write_raw("y\n");
       pty.expect("Initialized!");
+      assert_eq!(cwd.join("3").read_to_string(), "test");
     });
-  assert_eq!(cwd.join("3").read_to_string(), "test");
 }
