@@ -59,6 +59,7 @@ pub struct NpmResolutionInstaller<
   maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   link_packages: Arc<WorkspaceNpmLinkPackages>,
   update_queue: TaskQueue,
+  reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
 }
 
 impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
@@ -71,6 +72,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     resolution: Arc<NpmResolutionCell>,
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
     link_packages: Arc<WorkspaceNpmLinkPackages>,
+    reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
   ) -> Self {
     Self {
       registry_info_provider,
@@ -78,6 +80,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       maybe_lockfile,
       link_packages,
       update_queue: Default::default(),
+      reporter,
     }
   }
 
@@ -146,6 +149,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
           types_node_version_req: Some(get_types_node_version()),
           link_packages: &self.link_packages.0,
         },
+        self.reporter.as_deref(),
       )
       .await;
     let result = match &result.dep_graph_result {
@@ -165,6 +169,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
               types_node_version_req: Some(get_types_node_version()),
               link_packages: &self.link_packages.0,
             },
+            self.reporter.as_deref(),
           )
           .await
       }

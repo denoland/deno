@@ -43,7 +43,10 @@ pub struct AsyncWrap {
   async_id: i64,
 }
 
-impl GarbageCollected for AsyncWrap {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for AsyncWrap {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"AsyncWrap"
   }
@@ -88,7 +91,10 @@ pub struct HandleWrap {
   state: Rc<Cell<State>>,
 }
 
-impl GarbageCollected for HandleWrap {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for HandleWrap {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"HandleWrap"
   }

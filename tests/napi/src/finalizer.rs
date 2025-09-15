@@ -107,6 +107,24 @@ extern "C" fn test_external_buffer(
   result
 }
 
+extern "C" fn test_static_external_buffer(
+  env: napi_env,
+  _: napi_callback_info,
+) -> napi_value {
+  let mut result = ptr::null_mut();
+  static BUF: &[u8] = &[1, 2, 3];
+  assert_napi_ok!(napi_create_external_buffer(
+    env,
+    BUF.len(),
+    BUF.as_ptr() as _,
+    None,
+    ptr::null_mut(),
+    &mut result
+  ));
+
+  result
+}
+
 extern "C" fn test_external_arraybuffer(
   env: napi_env,
   _: napi_callback_info,
@@ -135,6 +153,11 @@ pub fn init(env: napi_env, exports: napi_value) {
       env,
       "test_external_arraybuffer",
       test_external_arraybuffer
+    ),
+    napi_new_property!(
+      env,
+      "test_static_external_buffer",
+      test_static_external_buffer
     ),
   ];
 

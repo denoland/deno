@@ -8,13 +8,12 @@ use std::rc::Rc;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 use serde::Deserialize;
 use serde::Serialize;
-
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 #[derive(Deserialize, Default, Debug, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -84,7 +83,7 @@ pub struct FsDirEntry {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type FileSystemRc = crate::sync::MaybeArc<dyn FileSystem>;
+pub type FileSystemRc = deno_maybe_sync::MaybeArc<dyn FileSystem>;
 
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
@@ -331,12 +330,8 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
       .unwrap_or(false)
   }
 
-  fn exists_sync(&self, path: &CheckedPath) -> bool {
-    self.stat_sync(path).is_ok()
-  }
-  async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
-    Ok(self.stat_async(path).await.is_ok())
-  }
+  fn exists_sync(&self, path: &CheckedPath) -> bool;
+  async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool>;
 
   fn read_text_file_lossy_sync(
     &self,

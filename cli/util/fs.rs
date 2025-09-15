@@ -11,9 +11,11 @@ use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
 use deno_core::ModuleSpecifier;
+use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 
+use super::progress_bar::UpdateGuard;
 use crate::sys::CliSys;
 
 /// Creates a std::fs::File handling if the parent does not exist.
@@ -132,7 +134,7 @@ pub fn collect_specifiers(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(vendor_folder)
-    .collect_file_patterns(&CliSys::default(), file_patterns);
+    .collect_file_patterns(&CliSys::default(), &file_patterns);
   let mut collected_files_as_urls = collected_files
     .iter()
     .map(|f| specifier_from_file_path(f).unwrap())
@@ -173,6 +175,76 @@ pub fn specifier_from_file_path(
 ) -> Result<ModuleSpecifier, AnyError> {
   ModuleSpecifier::from_file_path(path)
     .map_err(|_| anyhow!("Invalid file path '{}'", path.display()))
+}
+
+#[derive(Default)]
+pub struct FsCleaner {
+  pub files_removed: u64,
+  pub dirs_removed: u64,
+  pub bytes_removed: u64,
+  pub progress_guard: Option<UpdateGuard>,
+}
+
+impl FsCleaner {
+  pub fn new(progress_guard: Option<UpdateGuard>) -> Self {
+    Self {
+      files_removed: 0,
+      dirs_removed: 0,
+      bytes_removed: 0,
+      progress_guard,
+    }
+  }
+
+  pub fn rm_rf(&mut self, path: &Path) -> Result<(), AnyError> {
+    for entry in walkdir::WalkDir::new(path).contents_first(true) {
+      let entry = entry?;
+
+      if entry.file_type().is_dir() {
+        self.dirs_removed += 1;
+        self.update_progress();
+        std::fs::remove_dir_all(entry.path())?;
+      } else {
+        self.remove_file(entry.path(), entry.metadata().ok())?;
+      }
+    }
+
+    Ok(())
+  }
+
+  pub fn remove_file(
+    &mut self,
+    path: &Path,
+    meta: Option<std::fs::Metadata>,
+  ) -> Result<(), AnyError> {
+    if let Some(meta) = meta {
+      self.bytes_removed += meta.len();
+    }
+    self.files_removed += 1;
+    self.update_progress();
+    match std::fs::remove_file(path)
+      .with_context(|| format!("Failed to remove file: {}", path.display()))
+    {
+      Err(e) => {
+        if cfg!(windows)
+          && let Ok(meta) = path.symlink_metadata()
+          && meta.is_symlink()
+        {
+          std::fs::remove_dir(path).with_context(|| {
+            format!("Failed to remove symlink: {}", path.display())
+          })?;
+          return Ok(());
+        }
+        Err(e)
+      }
+      _ => Ok(()),
+    }
+  }
+
+  fn update_progress(&self) {
+    if let Some(pg) = &self.progress_guard {
+      pg.set_position(self.files_removed + self.dirs_removed);
+    }
+  }
 }
 
 #[cfg(test)]

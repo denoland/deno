@@ -13,6 +13,7 @@ use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::WorkspaceNpmLinkPackages;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
 mod bin_entries;
@@ -42,6 +43,7 @@ pub use self::extra_info::CachedNpmPackageExtraInfoProvider;
 pub use self::extra_info::ExpectedExtraInfo;
 pub use self::extra_info::NpmPackageExtraInfoProvider;
 use self::extra_info::NpmPackageExtraInfoProviderSys;
+pub use self::factory::InstallReporter;
 pub use self::factory::NpmInstallerFactory;
 pub use self::factory::NpmInstallerFactoryOptions;
 pub use self::factory::NpmInstallerFactorySys;
@@ -82,7 +84,23 @@ pub struct LifecycleScriptsConfig {
   pub explicit_install: bool,
 }
 
-pub trait Reporter: std::fmt::Debug + Send + Sync + Clone + 'static {
+pub trait InstallProgressReporter:
+  std::fmt::Debug + Send + Sync + 'static
+{
+  fn blocking(&self, message: &str);
+  fn initializing(&self, nv: &PackageNv);
+  fn initialized(&self, nv: &PackageNv);
+
+  fn scripts_not_run_warning(
+    &self,
+    warning: crate::lifecycle_scripts::LifecycleScriptsWarning,
+  );
+
+  fn deprecated_message(&self, message: String);
+}
+pub trait Reporter:
+  std::fmt::Debug + Send + Sync + 'static + dyn_clone::DynClone
+{
   type Guard;
   type ClearGuard;
 
@@ -167,6 +185,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
     workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
+    install_reporter: Option<Arc<dyn InstallReporter>>,
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
       match maybe_node_modules_path {
@@ -179,13 +198,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
             workspace_link_packages,
           )),
           npm_install_deps_provider.clone(),
-          reporter.clone(),
+          dyn_clone::clone(reporter),
           npm_resolution.clone(),
           sys,
           tarball_cache,
           node_modules_folder,
           lifecycle_scripts,
           system_info,
+          install_reporter,
         )),
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
@@ -194,6 +214,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           npm_resolution.clone(),
           lifecycle_scripts,
           system_info,
+          install_reporter,
         )),
       };
     Self {
@@ -241,6 +262,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
+    self.npm_resolution_initializer.ensure_initialized().await?;
     self
       .add_package_reqs_raw(packages, Some(caching))
       .await

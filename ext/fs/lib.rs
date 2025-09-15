@@ -3,12 +3,14 @@
 mod interface;
 mod ops;
 mod std_fs;
-pub mod sync;
 
 use std::borrow::Cow;
 use std::path::Path;
 
 pub use deno_io::fs::FsError;
+pub use deno_maybe_sync as sync;
+pub use deno_maybe_sync::MaybeSend;
+pub use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
@@ -24,8 +26,6 @@ pub use crate::ops::OperationError;
 use crate::ops::*;
 pub use crate::std_fs::RealFs;
 pub use crate::std_fs::open_options_for_checked_path;
-pub use crate::sync::MaybeSend;
-pub use crate::sync::MaybeSync;
 
 pub trait FsPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -52,10 +52,6 @@ pub trait FsPermissions {
   ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn check_write_all(&self, api_name: &str)
   -> Result<(), PermissionCheckError>;
-
-  fn allows_all(&self) -> bool {
-    false
-  }
 }
 
 impl FsPermissions for deno_permissions::PermissionsContainer {
@@ -108,10 +104,6 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_all(self, api_name)
-  }
-
-  fn allows_all(&self) -> bool {
-    self.allows_all()
   }
 }
 

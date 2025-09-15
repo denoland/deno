@@ -6,6 +6,138 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.5.0 / 2025.09.10
+
+- feat(BREAKING/fmt): prompt or require `deno fmt .` when providing no files and
+  no config files discovered (#30623)
+- feat(bundle): runtime API for deno bundle (#29949)
+- feat(bundle): support html entrypoint (#29856)
+- feat(cli): reload environment variables with `--watch` and `--env-file`
+  (#30197)
+- feat(ext/fetch): Parse unix socket and vsock proxies from env var (#30377)
+- feat(ext/node): add sqlite-type symbol for DatabaseSync (#30511)
+- feat(ext/process): add collector utilities to `ChildProcess.stdout` &
+  `ChildProcess.stderr` (#30552)
+- feat(fmt): apply object spacing to import/export lines (#30371)
+- feat(install): refresh install report (#30615)
+- feat(install): update warning for npm package build scripts (#30527)
+- feat(lint): no-import-prefix workspace rule (#30598)
+- feat(lint): no-unversioned-import rule (#30609)
+- feat(node): implement async hooks for nextTick TickObject tracking (#30578)
+- feat(npm): support `bundleDependencies` in npm dependencies (#30521)
+- feat(test): Add setup and teardown APIs to `Deno.test` API (#30504)
+- feat(unstable): WebSocket headers field (#30321)
+- feat(unstable): use Node.js `setTimeout` and `setInterval` (#29993)
+- feat: TypeScript 5.9.2 (#30601)
+- feat: V8 14.0.0 (#30629)
+- feat: `deno run` with no arguments prints list of available tasks (#30592)
+- feat: add `tcpBacklog` arg to `Deno.listen{Tls}` and `Deno.serve` (#30541)
+- feat: allow disable hostname verification in TLS (#30409)
+- feat: permission audit log (#30575)
+- feat: permissions in the config file (#30330)
+- fix(bundle): avoid cloning parsed source, restore owned transpile assertion
+  (#30624)
+- fix(bundle): do not error on fallible dynamic imports/requires (#30522)
+- fix(bundle): don't error when using npm package without bin as entrypoint
+  (#30523)
+- fix(bundle): properly display error on invalid config in watch mode (#30621)
+- fix(cache): cache and uninstall are package manager subcommands (#30613)
+- fix(check): don't ignore ambient declarations for existent files (#30591)
+- fix(check): support "compilerOptions.rootDirs" in tsconfig (#30495)
+- fix(check): support "moduleResolution": "bundler" in compiler options (#30603)
+- fix(cli): support data urls in preload by not splitting on comma. (#30544)
+- fix(cli/run): resolve conflict when dir has same name as a task (#29538)
+- fix(dts): align crypto.getRandomValues in lib.deno_crypto.d.ts with
+  lib.dom.d.ts and lib.webworker.d.ts (#30647)
+- fix(dts): specify the underlying buffer type in more places (#30640)
+- fix(ext/fetch): only uppercase known methods (#30290)
+- fix(ext/node): Readable adapter cancel semantics (#30526)
+- fix(ext/node): `crypto.hkdfSync` returns wrong result for non-Uint8Array
+  TypedArray inputs (#30463)
+- fix(ext/node): `fs.exists` and `fs.existsSync` compatibility (#30507)
+- fix(ext/node): `fs.mkdtemp` and `fs.mkdtempSync` compatibility (#30602)
+- fix(ext/node): `fs.path`' `makelong` and `resolve` compatibility (#30503)
+- fix(ext/node): fix hang induced by maxSockets bounds (#30622)
+- fix(ext/node): fs.symlink and fs.symlinkSync compatibility (#30555)
+- fix(ext/node): handle `null` keypair in tls connect (#30516)
+- fix(ext/node): http.server.listen to handle signal option (#30515)
+- fix(ext/node): ignore Node.js' `--experimental-*` flags when spawning child
+  process (#26351)
+- fix(ext/node): implement http.res.setHeaders (#30586)
+- fix(ext/node): path.normalize compatibility (#30537)
+- fix(ext/node): path.relative compatibility (#30566)
+- fix(ext/node): readline line separators (#30630)
+- fix(ext/node): set socket.authorized to true for https request (#30641)
+- fix(ext/node): support JS underlying stream in TLS (#30465)
+- fix(ext/webgpu): add illegal constructor errors (#30500)
+- fix(init): eliminate flickering progress bar (#30496)
+- fix(init): use temp `node_modules` folders for `deno init --npm ...` (#30492)
+- fix(install): don't try to re-symlink binaries in node_modules if the symlink
+  is correct (#30546)
+- fix(install): force refresh if cannot find version (#30483)
+- fix(install): print install report on `add`, `cache`, and all `install`
+  variants, move scripts and deprecation warnings after the report (#30549)
+- fix(install/cache): better discovery for config file based on entrypoint
+  (#30608)
+- fix(lsp): auto-import dep entries from workspace member import maps (#30667)
+- fix(lsp): goto-type-definition for builtin on startup (#30499)
+- fix(lsp): import rewrites in moved file (#30628)
+- fix(napi): buffer finalizer is nullable (#30514)
+- fix(node): improve directory import error suggestion (#30619)
+- fix(node): regression where Node fs APIs required elevated permissions on
+  Windows (#30535)
+- fix(node_resolver): incorrect resolution of `require("..")` (#30524)
+- fix(npm): do not error on failure to write warned script file (#30479)
+- fix(publish): unfurl import.meta.resolve calls (#30663)
+- fix(tests): Switch from --nocapture to --no-capture (#30638)
+- fix(types): specify `ArrayBuffer` as a backing buffer type for `Response.body`
+  and `Response.bytes` (#30435)
+- fix(types): specify `ArrayBuffer` as a backing buffer type for
+  `TextEncoder.encode()` (#30434)
+- fix(unstable): make QuicListener yield QuicIncoming (#30150)
+- fix(unstable): support unstable-raw-imports when prewarmed (#30530)
+- fix: add another space after warning symbol (#30482)
+- fix: do not have duplicate progress bars for post install scripts (#30489)
+- fix: pass npm process state when spawning script in npm package via Node APIs
+  (#30490)
+- fix: upgrade to swc_ecma_parser 23 (#30564)
+
+### 2.4.5 / 2025.08.21
+
+- feat(lsp): pull-based diagnostics (#30325)
+- feat(unstable/install): `DENO_INSTALL_ARCH` env var (#30473)
+- feat(unstable/install): more informative deno install output (#30387)
+- fix(bundle): allow json imports without attribute in deno bundle, support
+  require of json (#30413)
+- fix(cache): cache excluded modules explicitly provided on the command line
+  (#30442)
+- fix(ext/node): TLS emit close event on parent socket (#30451)
+- fix(ext/node): `os.setPriority` and `os.getPriority` compatibility (#30383)
+- fix(ext/node): bad compression caused by invalid brotli params (#30437)
+- fix(ext/node): export `promises` from stream (#30427)
+- fix(ext/node): mTLS support for `node:tls` (#30426)
+- fix(ext/node): tls upgrades for used sockets (#30418)
+- fix(ext/node): validate callback on `fs.mkdtemp` and `fs.stat` (#30454)
+- fix(fmt): do not remove parens for jsdoc with `@satisfies` (#30453)
+- fix(lsp): fix import specifiers in file rename changes (#30458)
+- fix(lsp): silence tsc debug failures for inlay hints (#30456)
+- fix(node/fs): cp should not create subfolder when both source and target are
+  directories (#30408)
+- fix(outdated): use version tagged as latest if it satisfies the version req
+  (#30412)
+- fix(publish): handle precompile in jsx publishing (#30466)
+- fix(resolver): update "with --unstable-sloppy-imports" message to use
+  "--sloppy-imports" (#30421)
+- fix(std/fs): implement `chmod` on windows (#30436)
+- fix(test): set cwd when running node compatibility tests (#30422)
+- fix(unstable): fix json repl bugs (#30415)
+- fix(unstable): parsing regex in selector with character class (#30462)
+- fix: add missing cargo feature to 'deno_npm_cache' crate (#30397)
+- fix: enable keyring features and dont clear token when config is missing
+  (#30468)
+- fix: support cjs, cts, mjs, and mts for the `--ext` flag (#30398)
+- perf(ext/net): change the default TCP backlog to 512 (#30471)
+
 ### 2.4.4 / 2025.08.13
 
 - feat(unstable): add json repl (#30307)

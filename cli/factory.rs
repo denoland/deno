@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_bundle_runtime::BundlePlatform;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::WorkspaceDirectory;
@@ -38,7 +39,6 @@ use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
-use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::import_map::WorkspaceExternalImportMapLoader;
 use deno_resolver::loader::MemoryFiles;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -60,7 +60,6 @@ use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
-use crate::args::BundlePlatform;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::ConfigFlag;
@@ -303,7 +302,7 @@ struct CliFactoryServices {
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
-  maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
+  graph_reporter: Deferred<Option<Arc<dyn deno_graph::source::Reporter>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   memory_files: Arc<MemoryFiles>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
@@ -319,6 +318,8 @@ struct CliFactoryServices {
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
+  install_reporter:
+    Deferred<Option<Arc<crate::tools::installer::InstallReporter>>>,
 }
 
 #[derive(Debug, Default)]
@@ -561,13 +562,19 @@ impl CliFactory {
           self.text_only_progress_bar().clone(),
         )),
         match resolver_factory.npm_resolver()?.as_managed() {
-          Some(managed_npm_resolver) => Arc::new(
-            DenoTaskLifeCycleScriptsExecutor::new(managed_npm_resolver.clone()),
-          )
-            as Arc<dyn LifecycleScriptsExecutor>,
+          Some(managed_npm_resolver) => {
+            Arc::new(DenoTaskLifeCycleScriptsExecutor::new(
+              managed_npm_resolver.clone(),
+              self.text_only_progress_bar().clone(),
+            )) as Arc<dyn LifecycleScriptsExecutor>
+          }
           None => Arc::new(NullLifecycleScriptsExecutor),
         },
         self.text_only_progress_bar().clone(),
+        self
+          .install_reporter()?
+          .cloned()
+          .map(|r| r as Arc<dyn deno_npm_installer::InstallReporter>),
         NpmInstallerFactoryOptions {
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
@@ -580,6 +587,24 @@ impl CliFactory {
         },
       ))
     })
+  }
+
+  pub fn install_reporter(
+    &self,
+  ) -> Result<Option<&Arc<crate::tools::installer::InstallReporter>>, AnyError>
+  {
+    self
+      .services
+      .install_reporter
+      .get_or_try_init(|| match self.cli_options()?.sub_command() {
+        DenoSubcommand::Install(InstallFlags::Local(_))
+        | DenoSubcommand::Add(_)
+        | DenoSubcommand::Cache(_) => Ok(Some(Arc::new(
+          crate::tools::installer::InstallReporter::new(),
+        ))),
+        _ => Ok(None),
+      })
+      .map(|opt| opt.as_ref())
   }
 
   pub async fn npm_installer(&self) -> Result<&Arc<CliNpmInstaller>, AnyError> {
@@ -622,15 +647,25 @@ impl CliFactory {
     self.resolver_factory()?.deno_resolver().await
   }
 
-  pub fn maybe_file_watcher_reporter(&self) -> &Option<FileWatcherReporter> {
-    let maybe_file_watcher_reporter = self
-      .watcher_communicator
-      .as_ref()
-      .map(|i| FileWatcherReporter::new(i.clone()));
-    self
-      .services
-      .maybe_file_watcher_reporter
-      .get_or_init(|| maybe_file_watcher_reporter)
+  pub fn graph_reporter(
+    &self,
+  ) -> Result<&Option<Arc<dyn deno_graph::source::Reporter>>, AnyError> {
+    match self.cli_options()?.sub_command() {
+      DenoSubcommand::Install(_) => {
+        self.services.graph_reporter.get_or_try_init(|| {
+          self.install_reporter().map(|opt| {
+            opt.map(|r| r.clone() as Arc<dyn deno_graph::source::Reporter>)
+          })
+        })
+      }
+      _ => Ok(self.services.graph_reporter.get_or_init(|| {
+        self
+          .watcher_communicator
+          .as_ref()
+          .map(|i| FileWatcherReporter::new(i.clone()))
+          .map(|i| Arc::new(i) as Arc<dyn deno_graph::source::Reporter>)
+      })),
+    }
   }
 
   pub fn module_info_cache(&self) -> Result<&Arc<ModuleInfoCache>, AnyError> {
@@ -706,7 +741,6 @@ impl CliFactory {
             self.node_resolver().await?.clone(),
             self.npm_resolver().await?.clone(),
             self.sys(),
-            self.workspace_directory_provider()?.clone(),
             self.compiler_options_resolver()?.clone(),
             if cli_options.code_cache_enabled() {
               Some(self.code_cache()?.clone())
@@ -737,7 +771,7 @@ impl CliFactory {
             self.global_http_cache()?.clone(),
             self.in_npm_pkg_checker()?.clone(),
             self.maybe_lockfile().await?.cloned(),
-            self.maybe_file_watcher_reporter().clone(),
+            self.graph_reporter()?.clone(),
             self.module_info_cache()?.clone(),
             self.npm_graph_resolver().await?.clone(),
             self.npm_installer_if_managed().await?.cloned(),
@@ -748,6 +782,9 @@ impl CliFactory {
             self.root_permissions_container()?.clone(),
             self.sys(),
             self.compiler_options_resolver()?.clone(),
+            self.install_reporter()?.cloned().map(|r| {
+              r as Arc<dyn deno_resolver::file_fetcher::GraphLoaderReporter>
+            }),
           )))
         }
         .boxed_local(),
@@ -884,17 +921,11 @@ impl CliFactory {
         let desc_parser = self.permission_desc_parser()?.clone();
         let permissions = Permissions::from_options(
           desc_parser.as_ref(),
-          &self.cli_options()?.permissions_options(),
+          &self.cli_options()?.permissions_options()?,
         )?;
 
         Ok(PermissionsContainer::new(desc_parser, permissions))
       })
-  }
-
-  fn workspace_directory_provider(
-    &self,
-  ) -> Result<&Arc<WorkspaceDirectoryProvider>, AnyError> {
-    Ok(self.workspace_factory()?.workspace_directory_provider()?)
   }
 
   fn workspace_external_import_map_loader(
@@ -1005,6 +1036,9 @@ impl CliFactory {
       self.sys(),
       self.create_lib_main_worker_options()?,
       roots,
+      Some(Arc::new(crate::tools::bundle::CliBundleProvider::new(
+        self.flags.clone(),
+      ))),
     );
 
     Ok(CliMainWorkerFactory::new(
@@ -1013,6 +1047,7 @@ impl CliFactory {
       self.maybe_lockfile().await?.cloned(),
       self.npm_installer_if_managed().await?.cloned(),
       npm_resolver.clone(),
+      self.text_only_progress_bar().clone(),
       self.sys(),
       self.create_cli_main_worker_options()?,
       self.root_permissions_container()?.clone(),
@@ -1038,7 +1073,7 @@ impl CliFactory {
         .is_some(),
       inspect_brk: cli_options.inspect_brk().is_some(),
       inspect_wait: cli_options.inspect_wait().is_some(),
-      strace_ops: cli_options.strace_ops().clone(),
+      trace_ops: cli_options.trace_ops().clone(),
       is_standalone: false,
       auto_serve: std::env::var("DENO_AUTO_SERVE").is_ok(),
       is_inspecting: cli_options.is_inspecting(),
@@ -1229,6 +1264,8 @@ fn new_workspace_factory_options(
     is_package_manager_subcommand: matches!(
       flags.subcommand,
       DenoSubcommand::Install(_)
+        | DenoSubcommand::Uninstall(_)
+        | DenoSubcommand::Cache(_)
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Remove(_)
         | DenoSubcommand::Init(_)
@@ -1255,6 +1292,10 @@ fn new_workspace_factory_options(
         is_byonm: matches!(s.kind, NpmProcessStateKind::Byonm),
       },
     ),
+    root_node_modules_dir_override: flags
+      .internal
+      .root_node_modules_dir_override
+      .clone(),
     vendor: flags.vendor,
   }
 }

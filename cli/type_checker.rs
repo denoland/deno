@@ -18,7 +18,6 @@ use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsParseError;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
-use deno_resolver::factory::WorkspaceDirectoryProvider;
 use deno_resolver::graph::maybe_additional_sloppy_imports_message;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_terminal::colors;
@@ -37,7 +36,6 @@ use crate::cache::TypeCheckCache;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::module_error_for_tsc_diagnostic;
-use crate::graph_util::resolution_error_for_tsc_diagnostic;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
@@ -106,7 +104,6 @@ pub struct TypeChecker {
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
-  workspace_directory_provider: Arc<WorkspaceDirectoryProvider>,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
 }
@@ -121,7 +118,6 @@ impl TypeChecker {
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
-    workspace_directory_provider: Arc<WorkspaceDirectoryProvider>,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
   ) -> Self {
@@ -133,7 +129,6 @@ impl TypeChecker {
       node_resolver,
       npm_resolver,
       sys,
-      workspace_directory_provider,
       compiler_options_resolver,
       code_cache,
     }
@@ -280,7 +275,7 @@ impl TypeChecker {
         .clone();
       let group_key = (compiler_options, imports.clone());
       let group = groups_by_key.entry(group_key).or_insert_with(|| {
-        let dir = self.workspace_directory_provider.for_specifier(root);
+        let dir = self.cli_options.workspace().resolve_member_dir(root);
         CheckGroup {
           roots: Default::default(),
           compiler_options,
@@ -288,8 +283,9 @@ impl TypeChecker {
           // this is slightly hacky. It's used as the referrer for resolving
           // npm imports in the key
           referrer: self
-            .workspace_directory_provider
-            .for_specifier(root)
+            .cli_options
+            .workspace()
+            .resolve_member_dir(root)
             .maybe_deno_json()
             .map(|d| d.specifier.clone())
             .unwrap_or_else(|| dir.dir_url().as_ref().clone()),
@@ -795,7 +791,9 @@ impl<'a> GraphWalker<'a> {
               }
             }
           }
-
+          if dep.is_dynamic {
+            continue;
+          }
           // only surface the code error if there's no type
           let dep_to_check_error = if dep.maybe_type.is_none() {
             &dep.maybe_code
@@ -804,16 +802,10 @@ impl<'a> GraphWalker<'a> {
           };
           if let deno_graph::Resolution::Err(resolution_error) =
             dep_to_check_error
-            && let Some(err) =
-              resolution_error_for_tsc_diagnostic(resolution_error)
+            && let Some(diagnostic) =
+              tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
           {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
-                err.specifier,
-                err.maybe_range,
-                None,
-              ));
+            self.missing_diagnostics.push(diagnostic);
           }
         }
       }

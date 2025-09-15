@@ -1,136 +1,150 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { mkdir, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
-import {
-  ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_OPT_VALUE_ENCODING,
-} from "ext:deno_node/internal/errors.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+import { normalizeEncoding, promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
+import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+import { Buffer } from "node:buffer";
+import {
+  getValidatedPathToString,
+  warnOnNonPortableTemplate,
+} from "ext:deno_node/internal/fs/utils.mjs";
+import {
+  denoErrorToNodeError,
+  ERR_INVALID_ARG_TYPE,
+} from "ext:deno_node/internal/errors.ts";
+import { op_node_mkdtemp, op_node_mkdtemp_sync } from "ext:core/ops";
+import type { Encoding } from "node:crypto";
 
-const {
-  ObjectPrototypeIsPrototypeOf,
-  Array,
-  SafeArrayIterator,
-  MathRandom,
-  MathFloor,
-  ArrayPrototypeJoin,
-  ArrayPrototypeMap,
-  ObjectPrototype,
-} = primordials;
+const { PromisePrototypeThen } = primordials;
 
-export type mkdtempCallback = (
+export type MkdtempCallback = (
   err: Error | null,
   directory?: string,
 ) => void;
+export type MkdtempBufferCallback = (
+  err: Error | null,
+  directory?: Buffer<ArrayBufferLike>,
+) => void;
+type MkdTempPromise = (
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: string } | string,
+) => Promise<string>;
+type MkdTempPromiseBuffer = (
+  prefix: string | Buffer | Uint8Array | URL,
+  options: { encoding: "buffer" } | "buffer",
+) => Promise<Buffer<ArrayBufferLike>>;
 
 // https://nodejs.org/dist/latest-v15.x/docs/api/fs.html#fs_fs_mkdtemp_prefix_options_callback
-export function mkdtemp(prefix: string, callback: mkdtempCallback): void;
 export function mkdtemp(
-  prefix: string,
-  options: { encoding: string } | string,
-  callback: mkdtempCallback,
+  prefix: string | Buffer | Uint8Array | URL,
+  callback: MkdtempCallback,
 ): void;
 export function mkdtemp(
-  prefix: string,
-  optionsOrCallback: { encoding: string } | string | mkdtempCallback,
-  maybeCallback?: mkdtempCallback,
+  prefix: string | Buffer | Uint8Array | URL,
+  options: { encoding: "buffer" } | "buffer",
+  callback: MkdtempBufferCallback,
+): void;
+export function mkdtemp(
+  prefix: string | Buffer | Uint8Array | URL,
+  options: { encoding: string } | string,
+  callback: MkdtempCallback,
+): void;
+export function mkdtemp(
+  prefix: string | Buffer | Uint8Array | URL,
+  options: { encoding: string } | string | MkdtempCallback | undefined,
+  callback?: MkdtempCallback | MkdtempBufferCallback,
 ) {
-  const callback: mkdtempCallback | undefined =
-    typeof optionsOrCallback == "function" ? optionsOrCallback : maybeCallback;
-  if (!callback) {
-    throw new ERR_INVALID_ARG_TYPE("callback", "function", callback);
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
   }
+  callback = makeCallback(callback);
+  const encoding = parseEncoding(options);
+  prefix = getValidatedPathToString(prefix, "prefix");
 
-  const encoding: string | undefined = parseEncoding(optionsOrCallback);
-  const path = tempDirPath(prefix);
+  warnOnNonPortableTemplate(prefix);
 
-  mkdir(
-    path,
-    { recursive: false, mode: 0o700 },
-    (err: Error | null | undefined) => {
-      if (err) callback(err);
-      else callback(null, decode(path, encoding));
-    },
+  PromisePrototypeThen(
+    op_node_mkdtemp(prefix),
+    (path: string) => callback(null, decode(path, encoding)),
+    (err: Error) =>
+      callback(denoErrorToNodeError(err, {
+        syscall: "mkdtemp",
+        path: `${prefix}XXXXXX`,
+      })),
   );
 }
 
-export const mkdtempPromise = promisify(mkdtemp) as (
-  prefix: string,
-  options?: { encoding: string } | string,
-) => Promise<string>;
+export const mkdtempPromise = promisify(mkdtemp) as
+  | MkdTempPromise
+  | MkdTempPromiseBuffer;
 
 // https://nodejs.org/dist/latest-v15.x/docs/api/fs.html#fs_fs_mkdtempsync_prefix_options
 export function mkdtempSync(
-  prefix: string,
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: "buffer" } | "buffer",
+): Buffer<ArrayBufferLike>;
+export function mkdtempSync(
+  prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
-): string {
-  const encoding: string | undefined = parseEncoding(options);
-  const path = tempDirPath(prefix);
+): string;
+export function mkdtempSync(
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: string } | string,
+): string | Buffer<ArrayBufferLike> {
+  const encoding = parseEncoding(options);
+  prefix = getValidatedPathToString(prefix, "prefix");
 
-  mkdirSync(path, { recursive: false, mode: 0o700 });
-  return decode(path, encoding);
+  warnOnNonPortableTemplate(prefix);
+
+  try {
+    const path = op_node_mkdtemp_sync(prefix) as string;
+    return decode(path, encoding);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "mkdtemp",
+      path: `${prefix}XXXXXX`,
+    });
+  }
+}
+
+function decode(str: string, encoding: Encoding): string;
+function decode(str: string, encoding: "buffer"): Buffer<ArrayBufferLike>;
+function decode(
+  str: string,
+  encoding: Encoding | "buffer",
+): string | Buffer<ArrayBufferLike> {
+  if (encoding === "utf8") return str;
+  const buffer = Buffer.from(str);
+  if (encoding === "buffer") return buffer;
+  // deno-lint-ignore prefer-primordials
+  return buffer.toString(encoding);
 }
 
 function parseEncoding(
-  optionsOrCallback?: { encoding: string } | string | mkdtempCallback,
-): string | undefined {
+  options: string | { encoding?: string } | undefined,
+): Encoding | "buffer" {
   let encoding: string | undefined;
-  if (typeof optionsOrCallback === "function") {
-    encoding = undefined;
-  } else if (isOptionsObject(optionsOrCallback)) {
-    encoding = optionsOrCallback.encoding;
+
+  if (typeof options === "undefined" || options === null) {
+    encoding = "utf8";
+  } else if (typeof options === "string") {
+    encoding = options;
+  } else if (typeof options === "object") {
+    encoding = options.encoding ?? "utf8";
   } else {
-    encoding = optionsOrCallback;
+    throw new ERR_INVALID_ARG_TYPE("options", ["string", "Object"], options);
   }
 
-  if (encoding) {
-    try {
-      new TextDecoder(encoding);
-    } catch {
-      throw new ERR_INVALID_OPT_VALUE_ENCODING(encoding);
-    }
+  if (encoding === "buffer") {
+    return encoding;
   }
 
-  return encoding;
-}
-
-function decode(str: string, encoding?: string): string {
-  if (!encoding) return str;
-  else {
-    const decoder = new TextDecoder(encoding);
-    const encoder = new TextEncoder();
-    return decoder.decode(encoder.encode(str));
+  const parsedEncoding = normalizeEncoding(encoding);
+  if (!parsedEncoding) {
+    throw new ERR_INVALID_ARG_TYPE("encoding", encoding, "is invalid encoding");
   }
-}
 
-const CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-function randomName(): string {
-  return ArrayPrototypeJoin(
-    ArrayPrototypeMap(
-      [...new SafeArrayIterator(Array(6))],
-      () => CHARS[MathFloor(MathRandom() * CHARS.length)],
-    ),
-    "",
-  );
-}
-
-function tempDirPath(prefix: string): string {
-  let path: string;
-  do {
-    path = prefix + randomName();
-  } while (existsSync(path));
-
-  return path;
-}
-
-function isOptionsObject(value: unknown): value is { encoding: string } {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    ObjectPrototypeIsPrototypeOf(ObjectPrototype, value)
-  );
+  return parsedEncoding;
 }

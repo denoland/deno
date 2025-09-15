@@ -1005,6 +1005,12 @@ fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
           | ((libc::S_IREAD | libc::S_IWRITE) >> 6))
           as u32;
       }
+
+      /* The on-disk allocation size in 512-byte units. */
+      fsstat.blocks =
+        Some(file_info.StandardInformation.AllocationSize as u64 >> 9);
+      fsstat.ino = Some(file_info.InternalInformation.IndexNumber as u64);
+      fsstat.nlink = Some(file_info.StandardInformation.NumberOfLinks as u64);
     }
 
     Ok(())
@@ -1021,20 +1027,7 @@ fn exists(path: &Path) -> bool {
 
   #[cfg(windows)]
   {
-    use std::os::windows::ffi::OsStrExt;
-
-    use winapi::um::fileapi::GetFileAttributesW;
-    use winapi::um::fileapi::INVALID_FILE_ATTRIBUTES;
-
-    let path = path
-      .as_os_str()
-      .encode_wide()
-      .chain(std::iter::once(0))
-      .collect::<Vec<_>>();
-    // Safety: `path` is a null-terminated string
-    let attrs = unsafe { GetFileAttributesW(path.as_ptr()) };
-
-    attrs != INVALID_FILE_ATTRIBUTES
+    fs::exists(path).unwrap_or(false)
   }
 }
 

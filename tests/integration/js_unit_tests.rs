@@ -6,6 +6,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use test_util as util;
+use test_util::TestContextBuilder;
 
 util::unit_test_factory!(
   js_unit_test,
@@ -17,6 +18,7 @@ util::unit_test_factory!(
     body_test,
     broadcast_channel_test,
     build_test,
+    bundle_test,
     cache_api_test,
     chmod_test,
     chown_test,
@@ -117,8 +119,18 @@ util::unit_test_factory!(
 
 fn js_unit_test(test: String) {
   let _g = util::http_server();
+  let context = TestContextBuilder::new()
+    .add_npm_env_vars()
+    .use_http_server()
+    .build();
 
-  let mut deno = util::deno_cmd()
+  let mut deno = if test == "bundle_test" {
+    context.new_command()
+  } else {
+    util::deno_cmd()
+  };
+
+  deno = deno
     .current_dir(util::root_path())
     .arg("test")
     .arg("--config")
@@ -131,6 +143,10 @@ fn js_unit_test(test: String) {
     .arg("--unstable-vsock")
     .arg("--location=http://127.0.0.1:4545/")
     .arg("--no-prompt");
+
+  if test == "bundle_test" {
+    deno = deno.arg("--unstable-bundle");
+  }
 
   if test == "broadcast_channel_test" {
     deno = deno.arg("--unstable-broadcast-channel");

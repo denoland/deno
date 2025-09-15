@@ -405,7 +405,7 @@ pub struct WebWorkerOptions {
   pub worker_type: WorkerThreadType,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
   pub enable_raw_imports: bool,
@@ -538,11 +538,7 @@ impl WebWorker {
         },
       ),
       deno_cache::deno_cache::init(create_cache),
-      deno_websocket::deno_websocket::init::<PermissionsContainer>(
-        options.bootstrap.user_agent.clone(),
-        services.root_cert_store_provider.clone(),
-        options.unsafely_ignore_certificate_errors.clone(),
-      ),
+      deno_websocket::deno_websocket::init::<PermissionsContainer>(),
       deno_webstorage::deno_webstorage::init(None).disable(),
       deno_crypto::deno_crypto::init(options.seed),
       deno_broadcast_channel::deno_broadcast_channel::init(
@@ -600,6 +596,7 @@ impl WebWorker {
       ops::permissions::deno_permissions::init(),
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
+      deno_bundle_runtime::deno_bundle_runtime::init(None),
       ops::bootstrap::deno_bootstrap::init(
         options.startup_snapshot.and_then(|_| Default::default()),
         false,
@@ -630,7 +627,7 @@ impl WebWorker {
     // Get our op metrics
     let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
       options.bootstrap.enable_op_summary_metrics,
-      options.strace_ops,
+      options.trace_ops,
     );
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
@@ -649,7 +646,9 @@ impl WebWorker {
       inspector: true,
       op_metrics_factory_fn,
       validate_import_attributes_cb: Some(
-        create_validate_import_attributes_callback(options.enable_raw_imports),
+        create_validate_import_attributes_callback(Arc::new(AtomicBool::new(
+          options.enable_raw_imports,
+        ))),
       ),
       import_assertions_support: deno_core::ImportAssertionsSupport::Error,
       maybe_op_stack_trace_callback: options

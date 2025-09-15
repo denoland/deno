@@ -10,7 +10,6 @@ import {
   validateRmOptions,
   validateRmOptionsSync,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { toNamespacedPath } from "node:path";
 import {
   denoErrorToNodeError,
   ERR_FS_RMDIR_ENOTDIR,
@@ -37,7 +36,7 @@ export function rmdir(
   optionsOrCallback: rmdirOptions | rmdirCallback,
   maybeCallback?: rmdirCallback,
 ) {
-  path = toNamespacedPath(getValidatedPath(path) as string);
+  path = getValidatedPath(path) as string;
 
   const callback = typeof optionsOrCallback === "function"
     ? optionsOrCallback
@@ -101,7 +100,7 @@ export function rmdirSync(path: string | Buffer | URL, options?: rmdirOptions) {
   }
 
   try {
-    Deno.removeSync(toNamespacedPath(path as string), {
+    Deno.removeSync(path as string, {
       recursive: options?.recursive,
     });
   } catch (err: unknown) {

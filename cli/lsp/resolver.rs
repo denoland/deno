@@ -28,6 +28,7 @@ use deno_path_util::url_to_file_path;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmResolvers;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::deno_json::JsxImportSourceConfig;
 use deno_resolver::graph::FoundPackageJsonDepFlag;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
@@ -48,7 +49,6 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use import_map::ImportMap;
 use indexmap::IndexMap;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
@@ -162,7 +162,7 @@ impl LspScopedResolver {
     let configured_dep_resolutions = (|| {
       let npm_pkg_req_resolver = npm_pkg_req_resolver.as_ref()?;
       Some(Arc::new(ConfiguredDepResolutions::new(
-        workspace_resolver.maybe_import_map(),
+        workspace_resolver.clone(),
         config_data.and_then(|d| d.maybe_pkg_json().map(|p| p.as_ref())),
         npm_pkg_req_resolver,
         &pkg_json_resolver,
@@ -347,11 +347,12 @@ impl LspScopedResolver {
 
   pub fn resource_url_to_configured_dep_key(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
+    referrer: &Url,
   ) -> Option<String> {
     self
       .configured_dep_resolutions
-      .dep_key_from_resolution(specifier)
+      .dep_key_from_resolution(specifier, referrer)
   }
 
   pub fn npm_reqs(&self) -> BTreeSet<PackageReq> {
@@ -495,6 +496,19 @@ impl LspResolver {
     Self { unscoped, by_scope }
   }
 
+  pub fn set_compiler_options_resolver(
+    &self,
+    value: &Arc<CompilerOptionsResolver>,
+  ) {
+    for resolver in
+      std::iter::once(&self.unscoped).chain(self.by_scope.values())
+    {
+      resolver
+        .workspace_resolver
+        .set_compiler_options_resolver(value.clone());
+    }
+  }
+
   pub fn snapshot(&self) -> Arc<Self> {
     Arc::new(Self {
       unscoped: self.unscoped.snapshot(),
@@ -600,14 +614,21 @@ pub struct ScopeDepInfo {
   pub has_node_specifier: bool,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum ConfiguredDepKind {
+  ImportMap { key: String, value: Url },
+  PackageJson,
+}
+
 #[derive(Debug, Default)]
 struct ConfiguredDepResolutions {
-  deps_by_resolution: IndexMap<ModuleSpecifier, String>,
+  workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
+  deps_by_resolution: IndexMap<ModuleSpecifier, (String, ConfiguredDepKind)>,
 }
 
 impl ConfiguredDepResolutions {
   fn new(
-    import_map: Option<&ImportMap>,
+    workspace_resolver: Arc<WorkspaceResolver<CliSys>>,
     package_json: Option<&PackageJson>,
     npm_pkg_req_resolver: &CliNpmReqResolver,
     pkg_json_resolver: &CliPackageJsonResolver,
@@ -618,6 +639,7 @@ impl ConfiguredDepResolutions {
        dep_req_str: &str,
        dep_package_json: &PackageJson,
        referrer,
+       dep_kind: &ConfiguredDepKind,
        result: &mut Self| {
         let export_keys = dep_package_json
           .exports
@@ -655,13 +677,14 @@ impl ConfiguredDepResolutions {
             let Some(file_url) = url_or_path.into_url().ok() else {
               continue;
             };
-            result
-              .deps_by_resolution
-              .insert(file_url, format!("{key_prefix}/{export_name}"));
+            result.deps_by_resolution.insert(
+              file_url,
+              (format!("{key_prefix}/{export_name}"), dep_kind.clone()),
+            );
           }
         }
       };
-    if let Some(import_map) = import_map {
+    if let Some(import_map) = workspace_resolver.maybe_import_map() {
       let referrer = import_map.base_url();
       for entry in import_map.imports().entries().chain(
         import_map
@@ -674,12 +697,10 @@ impl ConfiguredDepResolutions {
         let Ok(req_ref) = NpmPackageReqReference::from_specifier(value) else {
           continue;
         };
-        if !import_map
-          .resolve(entry.key, referrer)
-          .is_ok_and(|s| &s == value)
-        {
-          continue;
-        }
+        let dep_kind = ConfiguredDepKind::ImportMap {
+          key: entry.key.to_string(),
+          value: value.clone(),
+        };
         let mut dep_package_json = None;
         for kind in [NodeResolutionKind::Types, NodeResolutionKind::Execution] {
           let Some(file_url) = npm_pkg_req_resolver
@@ -702,9 +723,16 @@ impl ConfiguredDepResolutions {
             })();
           }
           if !entry.key.ends_with('/') {
-            result
-              .deps_by_resolution
-              .insert(file_url, entry.key.to_string());
+            result.deps_by_resolution.insert(
+              file_url,
+              (
+                entry.key.to_string(),
+                ConfiguredDepKind::ImportMap {
+                  key: entry.key.to_string(),
+                  value: value.clone(),
+                },
+              ),
+            );
           }
         }
         if let Some(key_prefix) = entry.key.strip_suffix('/')
@@ -716,6 +744,7 @@ impl ConfiguredDepResolutions {
             &req_ref.req().to_string(),
             dep_package_json,
             referrer,
+            &dep_kind,
             &mut result,
           );
         }
@@ -752,7 +781,9 @@ impl ConfiguredDepResolutions {
               pkg_json_resolver.get_closest_package_json(&path).ok()?
             })();
           }
-          result.deps_by_resolution.insert(file_url, name.clone());
+          result
+            .deps_by_resolution
+            .insert(file_url, (name.clone(), ConfiguredDepKind::PackageJson));
         }
         if let Some(dep_package_json) = &dep_package_json {
           insert_export_resolutions(
@@ -760,16 +791,35 @@ impl ConfiguredDepResolutions {
             name,
             dep_package_json,
             &referrer,
+            &ConfiguredDepKind::PackageJson,
             &mut result,
           );
         }
       }
     }
+    result.workspace_resolver = Some(workspace_resolver);
     result
   }
 
-  fn dep_key_from_resolution(&self, resolution: &Url) -> Option<String> {
-    self.deps_by_resolution.get(resolution).cloned()
+  fn dep_key_from_resolution(
+    &self,
+    resolution: &Url,
+    referrer: &Url,
+  ) -> Option<String> {
+    self
+      .deps_by_resolution
+      .get(resolution)
+      .and_then(|(dep_key, kind)| match kind {
+        // Ensure the mapping this entry came from is valid for this referrer.
+        ConfiguredDepKind::ImportMap { key, value } => self
+          .workspace_resolver
+          .as_ref()?
+          .maybe_import_map()?
+          .resolve(key, referrer)
+          .is_ok_and(|s| &s == value)
+          .then(|| dep_key.clone()),
+        ConfiguredDepKind::PackageJson => Some(dep_key.clone()),
+      })
   }
 }
 
@@ -900,12 +950,14 @@ impl<'a> ResolverFactory<'a> {
         npm_client.clone(),
         sys.clone(),
         npmrc.clone(),
+        None,
       ));
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         registry_info_provider.clone(),
         self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
         link_packages.clone(),
+        None,
       ));
       let npm_installer = Arc::new(CliNpmInstaller::new(
         Arc::new(NullLifecycleScriptsExecutor),
@@ -923,6 +975,7 @@ impl<'a> ResolverFactory<'a> {
         LifecycleScriptsConfig::default(),
         NpmSystemInfo::default(),
         link_packages,
+        None,
       ));
       self.set_npm_installer(npm_installer);
       if let Err(err) = npm_resolution_initializer.ensure_initialized().await {
@@ -1016,7 +1069,7 @@ impl<'a> ResolverFactory<'a> {
               sloppy_imports_options: if unstable_sloppy_imports {
                 SloppyImportsOptions::Enabled
               } else {
-                SloppyImportsOptions::Disabled
+                SloppyImportsOptions::Unspecified
               },
               fs_cache_options: FsCacheOptions::Disabled,
             },
@@ -1037,8 +1090,6 @@ impl<'a> ResolverFactory<'a> {
               pkg_json_dep_resolution,
               Default::default(),
               Default::default(),
-              Default::default(),
-              Default::default(),
               CliSys::default(),
             )
           })
@@ -1051,8 +1102,6 @@ impl<'a> ResolverFactory<'a> {
             Vec::new(),
             Vec::new(),
             PackageJsonDepResolution::Disabled,
-            Default::default(),
-            Default::default(),
             Default::default(),
             Default::default(),
             self.sys.clone(),

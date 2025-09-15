@@ -798,7 +798,14 @@ mod hyper_client {
         };
 
         let tls_config =
-          create_client_config(None, ca_certs, None, keys, SocketUse::Http)?;
+          create_client_config(deno_tls::TlsClientConfigOptions {
+            root_cert_store: None,
+            ca_certs,
+            unsafely_ignore_certificate_errors: None,
+            unsafely_disable_hostname_verification: false,
+            cert_chain_and_key: keys,
+            socket_use: SocketUse::Http,
+          })?;
         let mut http_connector = HttpConnector::new();
         http_connector.enforce_http(false);
         let connector = HttpsConnector::from((http_connector, tls_config));
@@ -1396,7 +1403,10 @@ fn owned_string<'s>(
 
 struct OtelTracer(InstrumentationScope);
 
-impl deno_core::GarbageCollected for OtelTracer {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for OtelTracer {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelTracer"
   }
@@ -1609,7 +1619,10 @@ enum OtelSpanState {
   Done(SpanContext),
 }
 
-impl deno_core::GarbageCollected for OtelSpan {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for OtelSpan {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelSpan"
   }
@@ -1886,7 +1899,10 @@ fn op_otel_span_add_link<'s>(
 
 struct OtelMeter(opentelemetry::metrics::Meter);
 
-impl deno_core::GarbageCollected for OtelMeter {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for OtelMeter {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelMeter"
   }
@@ -2087,7 +2103,10 @@ enum Instrument {
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 
-impl GarbageCollected for Instrument {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Instrument {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Instrument"
   }

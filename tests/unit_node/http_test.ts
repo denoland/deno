@@ -227,9 +227,19 @@ Deno.test("[node/http] .writeHead()", async (t) => {
     );
   });
 
-  await t.step("send status + headers array", async () => {
+  await t.step("send status + headers nested array", async () => {
     await testWriteHead(
       (res) => res.writeHead(200, [["foo", "bar"]]),
+      (res) => {
+        assertEquals(res.status, 200);
+        assertEquals(res.headers.get("foo"), "bar");
+      },
+    );
+  });
+
+  await t.step("send status + headers array", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(200, ["foo", "bar"]),
       (res) => {
         assertEquals(res.status, 200);
         assertEquals(res.headers.get("foo"), "bar");
@@ -2140,4 +2150,29 @@ Deno.test("[node/https] null ca, key and cert req options", {
     resolve();
   }).end();
   await promise;
+});
+
+Deno.test("[node/http] server.listen respects signal option", async () => {
+  const [exitCode, _output] = await execCode(`
+    import { createServer } from 'node:http';
+
+    const abortController = new AbortController();
+
+    const server = createServer((_req, res) => {
+      res.writeHead(404).end();
+    }).on('listening', () => {
+      // Precedes setTimeout and exits with 0
+      abortController.abort();
+      setTimeout(() => process.exit(1), 1000);
+    }).on('close', () => {
+      process.exit(0);
+    });
+
+    server.listen({
+      host: 'localhost',
+      port: 0,
+      signal: abortController.signal
+    });
+  `);
+  assertEquals(exitCode, 0);
 });

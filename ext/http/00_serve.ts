@@ -779,7 +779,9 @@ function serve(arg1, arg2) {
     3: duplicateListener,
   } = op_http_serve_address_override();
   if (overrideKind) {
-    let envOptions = duplicateListener ? { __proto__: null } : options;
+    let envOptions = duplicateListener
+      ? { __proto__: null, signal: options.signal, onError: options.onError }
+      : options;
 
     switch (overrideKind) {
       case 1: {
@@ -936,6 +938,7 @@ function serveInner(options, handler) {
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
     loadBalanced: options[kLoadBalanced] ?? false,
+    backlog: options.backlog,
   };
 
   if (options.certFile || options.keyFile) {

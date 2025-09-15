@@ -19,6 +19,8 @@ const {
   Number,
   NumberIsFinite,
   NumberIsInteger,
+  ObjectDefineProperties,
+  ObjectDefineProperty,
   ObjectIs,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -508,6 +510,70 @@ function dateFromMs(ms) {
   return new Date(Number(ms) + 0.5);
 }
 
+const lazyDateFields = {
+  __proto__: null,
+  atime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.atime = dateFromMs(this.atimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "atime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  mtime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.mtime = dateFromMs(this.mtimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "mtime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  ctime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.ctime = dateFromMs(this.ctimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "ctime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  birthtime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.birthtime = dateFromMs(this.birthtimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "birthtime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+};
+
 export function BigIntStats(
   dev,
   mode,
@@ -548,11 +614,11 @@ export function BigIntStats(
   this.atime = dateFromMs(this.atimeMs);
   this.mtime = dateFromMs(this.mtimeMs);
   this.ctime = dateFromMs(this.ctimeMs);
-  this.birthtime = dateFromMs(this.birthtimeMs);
 }
 
 ObjectSetPrototypeOf(BigIntStats.prototype, StatsBase.prototype);
 ObjectSetPrototypeOf(BigIntStats, StatsBase);
+ObjectDefineProperties(BigIntStats.prototype, lazyDateFields);
 
 BigIntStats.prototype._checkModeProperty = function (property) {
   if (
@@ -601,11 +667,11 @@ export function Stats(
   this.atime = dateFromMs(atimeMs);
   this.mtime = dateFromMs(mtimeMs);
   this.ctime = dateFromMs(ctimeMs);
-  this.birthtime = dateFromMs(birthtimeMs);
 }
 
 ObjectSetPrototypeOf(Stats.prototype, StatsBase.prototype);
 ObjectSetPrototypeOf(Stats, StatsBase);
+ObjectDefineProperties(Stats.prototype, lazyDateFields);
 
 // HACK: Workaround for https://github.com/standard-things/esm/issues/821.
 // TODO(ronag): Remove this as soon as `esm` publishes a fixed version.
@@ -814,17 +880,20 @@ export const getValidatedPath = hideStackFrames(
 );
 
 /**
- * @param {string | Buffer | URL} fileURLOrPath
+ * @param {string | Buffer | Uint8Array | URL} fileURLOrPath
  * @param {string} [propName]
  * @returns string
  */
 export const getValidatedPathToString = (fileURLOrPath, propName) => {
   const path = getValidatedPath(fileURLOrPath, propName);
-  if (!Buffer.isBuffer(path)) {
-    return path;
+  if (isUint8Array(path)) {
+    return new TextDecoder().decode(path);
   }
-  // deno-lint-ignore prefer-primordials
-  return path.toString();
+  if (Buffer.isBuffer(path)) {
+    // deno-lint-ignore prefer-primordials
+    return path.toString();
+  }
+  return path;
 };
 
 export const getValidatedFd = hideStackFrames((fd, propName = "fd") => {
