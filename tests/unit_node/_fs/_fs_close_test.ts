@@ -109,7 +109,7 @@ Deno.test({
   const tempFile = await Deno.makeTempFile();
   const rid = openSync(tempFile, "r");
   close(rid);
-  await setTimeout(1);
+  await setTimeout(1000);
   assertThrows(() => {
     closeSync(rid), Deno.errors.BadResource;
   });
