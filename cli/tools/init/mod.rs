@@ -346,7 +346,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     .path()
     .canonicalize()
     .ok()
-    .map(|path| deno_path_util::strip_unc_prefix(path))
+    .map(deno_path_util::strip_unc_prefix)
     .unwrap_or_else(|| temp_node_modules_parent_tempdir.path().to_path_buf());
   let temp_node_modules_dir = temp_node_modules_parent_dir.join("node_modules");
   log::debug!(
