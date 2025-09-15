@@ -909,7 +909,9 @@ fn wait_for_start(
   })
 }
 
-async fn auth_tunnel(env_token: Option<String>) -> Result<String, deno_core::anyhow::Error> {
+async fn auth_tunnel(
+  env_token: Option<String>,
+) -> Result<String, deno_core::anyhow::Error> {
   let mut args = vec!["deploy".to_string(), "tunnel-login".to_string()];
 
   if let Some(token) = env_token {
