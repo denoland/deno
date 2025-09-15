@@ -13,9 +13,19 @@ const {
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
 
-export function close(fd: number, callback: CallbackWithError) {
+function defaultCloseCallback(err: Error | null) {
+  if (err !== null) throw err;
+}
+
+export function close(
+  fd: number,
+  callback: CallbackWithError = defaultCloseCallback,
+) {
   fd = getValidatedFd(fd);
-  callback = makeCallback(callback);
+  if (callback !== defaultCloseCallback) {
+    callback = makeCallback(callback);
+  }
+
   setTimeout(() => {
     let error = null;
     try {
