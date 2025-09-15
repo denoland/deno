@@ -30,6 +30,7 @@ const {
   ArrayPrototypeFilter,
   Boolean,
   ObjectPrototypeIsPrototypeOf,
+  PromiseResolve,
   SafePromiseAll,
   StringPrototypeSplit,
 } = primordials;
@@ -342,7 +343,7 @@ async function setDestTimestampsAndMode(
 }
 
 function setDestMode(dest: string, srcMode: number | null): Promise<void> {
-  if (!srcMode) return Promise.resolve();
+  if (!srcMode) return PromiseResolve();
   return chmodPromise(dest, srcMode);
 }
 
