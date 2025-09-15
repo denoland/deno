@@ -13,6 +13,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::serde_json::json;
+use deno_lib::args::UnstableConfig;
 use deno_npm_installer::PackagesAllowedScripts;
 use deno_runtime::WorkerExecutionMode;
 use log::info;
@@ -339,10 +340,15 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     return Ok(print_manual_usage(&script_name, &args));
   }
 
-  let temp_node_modules_parent_dir = create_temp_node_modules_parent_dir()
+  let temp_node_modules_parent_tempdir = create_temp_node_modules_parent_dir()
     .context("Failed creating temp directory for node_modules folder.")?;
-  let temp_node_modules_dir =
-    temp_node_modules_parent_dir.path().join("node_modules");
+  let temp_node_modules_parent_dir = temp_node_modules_parent_tempdir
+    .path()
+    .canonicalize()
+    .ok()
+    .map(|path| deno_path_util::strip_unc_prefix(path))
+    .unwrap_or_else(|| temp_node_modules_parent_tempdir.path().to_path_buf());
+  let temp_node_modules_dir = temp_node_modules_parent_dir.join("node_modules");
   log::debug!(
     "Creating node_modules directory at: {}",
     temp_node_modules_dir.display()
@@ -366,6 +372,12 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
       root_node_modules_dir_override: Some(temp_node_modules_dir),
       ..Default::default()
     },
+    unstable_config: UnstableConfig {
+      bare_node_builtins: true,
+      sloppy_imports: true,
+      detect_cjs: true,
+      ..Default::default()
+    },
     ..Default::default()
   };
   let result = crate::tools::run::run_script(
@@ -376,7 +388,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
     Default::default(),
   )
   .await;
-  drop(temp_node_modules_parent_dir); // explicit drop for clarity
+  drop(temp_node_modules_parent_tempdir); // explicit drop for clarity
   result
 }
 
