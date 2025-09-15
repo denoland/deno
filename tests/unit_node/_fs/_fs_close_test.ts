@@ -2,6 +2,7 @@
 import { assert, assertThrows, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { close, closeSync, openSync } from "node:fs";
+import { setTimeout } from "node:timers/promises";
 
 Deno.test({
   name: "ASYNC: File is closed",
@@ -108,5 +109,9 @@ Deno.test({
   const tempFile = await Deno.makeTempFile();
   const rid = openSync(tempFile, "r");
   close(rid);
+  await setTimeout(1);
+  assertThrows(() => {
+    closeSync(rid), Deno.errors.BadResource;
+  });
   await Deno.remove(tempFile);
 });
