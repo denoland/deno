@@ -818,7 +818,7 @@ impl LibMainWorker {
   #[inline]
   pub fn create_sync_inspector_session(
     &mut self,
-    cb: deno_core::InspectorSessionCallback,
+    cb: deno_core::InspectorSessionSend,
   ) -> LocalSyncInspectorSession {
     self.worker.create_sync_inspector_session(cb)
   }
