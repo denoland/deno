@@ -949,7 +949,6 @@ async fn initialize_tunnel(
   } else {
     auth_tunnel(env_token.clone()).await?
   };
-  dbg!(&token);
 
   let (org, app) = if let (Some(org), Some(app)) = (env_org, env_app) {
     (org, app)
