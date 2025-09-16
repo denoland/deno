@@ -85,7 +85,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
     ownKeys: () => ReflectOwnKeys(Deno.env.toObject()),
     getOwnPropertyDescriptor: (_target, name) => {
       const value = denoEnvGet(String(name));
-      if (value) {
+      if (value !== undefined) {
         return {
           enumerable: true,
           configurable: true,

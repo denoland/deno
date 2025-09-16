@@ -42,6 +42,7 @@ import {
 import assert from "node:assert";
 
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
+import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 
 interface GlobOptionsBase {
   /**
@@ -336,7 +337,7 @@ export class Glob {
   constructor(pattern, options = kEmptyObject) {
     validateObject(options, "options");
     const { exclude, cwd, withFileTypes } = options;
-    this.#root = cwd ?? ".";
+    this.#root = toPathIfFileURL(cwd) ?? ".";
     this.#withFileTypes = !!withFileTypes;
     if (exclude != null) {
       validateStringArrayOrFunction(exclude, "options.exclude");

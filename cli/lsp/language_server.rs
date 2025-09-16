@@ -377,6 +377,7 @@ impl LanguageServer {
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
     force_global_cache: bool,
+    lockfile_skip_write: bool,
   ) -> LspResult<Option<Value>> {
     async fn create_graph_for_caching(
       factory: CliFactory,
@@ -409,6 +410,7 @@ impl LanguageServer {
         &roots,
         graph_util::GraphValidOptions {
           kind: GraphKind::All,
+          will_type_check: true,
           check_js: CheckJsOption::False,
           exit_integrity_errors: false,
           allow_unknown_media_types: true,
@@ -438,6 +440,7 @@ impl LanguageServer {
       specifiers,
       referrer,
       force_global_cache,
+      lockfile_skip_write,
     );
 
     match prepare_cache_result {
@@ -457,7 +460,12 @@ impl LanguageServer {
 
         // now get the lock back to update with the new information
         *self.did_change_batch_queue.borrow_mut() = None;
-        self.inner.write().await.post_cache().await;
+        self
+          .inner
+          .write()
+          .await
+          .post_cache(!lockfile_skip_write)
+          .await;
         self.performance.measure(mark);
       }
       Err(err) => {
@@ -1253,7 +1261,9 @@ impl Inner {
             };
             specifier
           };
-          if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
+          if let Err(err) =
+            ls.cache(vec![specifier], referrer, false, true).await
+          {
             lsp_warn!("{:#}", err);
           }
         });
@@ -1450,7 +1460,7 @@ impl Inner {
     self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
       spawn(async move {
         if let Err(err) = ls
-          .cache(vec![], module.specifier.as_ref().clone(), false)
+          .cache(vec![], module.specifier.as_ref().clone(), false, true)
           .await
         {
           lsp_warn!(
@@ -4084,7 +4094,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         serde_json::from_value(json!(params.arguments))
           .map_err(|err| LspError::invalid_params(err.to_string()))?;
       self
-        .cache(specifiers, referrer, options.force_global_cache)
+        .cache(specifiers, referrer, options.force_global_cache, false)
         .await
     } else if params.command == "deno.reloadImportRegistries" {
       *self.did_change_batch_queue.borrow_mut() = None;
@@ -4693,6 +4703,7 @@ impl Inner {
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
     force_global_cache: bool,
+    lockfile_skip_write: bool,
   ) -> Result<PrepareCacheResult, AnyError> {
     let config_data = self.config.tree.data_for_specifier(&referrer);
     let scope = config_data.map(|d| d.scope.clone());
@@ -4724,6 +4735,7 @@ impl Inner {
     let mut cli_factory = CliFactory::from_flags(Arc::new(Flags {
       internal: InternalFlags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
+        lockfile_skip_write,
         ..Default::default()
       },
       ca_stores: workspace_settings.certificate_stores.clone(),
@@ -4775,9 +4787,22 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn post_cache(&mut self) {
-    self.resolver.did_cache();
-    self.refresh_dep_info();
+  async fn post_cache(&mut self, did_write_lockfile: bool) {
+    if did_write_lockfile {
+      // Most of the refresh steps will happen in `did_change_watched_files()`,
+      // since the lockfile was written.
+      self.resolver.did_cache();
+      self.refresh_dep_info();
+    } else {
+      self.refresh_config_tree().await;
+      self.update_cache();
+      self.refresh_resolver().await;
+      self.refresh_compiler_options_resolver();
+      self.refresh_linter_resolver();
+      self.refresh_documents_config();
+      self.resolver.did_cache();
+      self.refresh_dep_info();
+    }
     self.project_changed(vec![], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();

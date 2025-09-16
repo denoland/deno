@@ -433,6 +433,20 @@ Deno.test({
   },
 });
 
+// #30701
+Deno.test({
+  name: "process.env handles falsy values correctly",
+  fn() {
+    const key = "TEST_ENV_VAR_EMPTY_STRING";
+    Deno.env.set(key, "");
+
+    assertEquals(process.env[key], "");
+    assertEquals(Object.keys(process.env).includes(key), true);
+    assert(key in process.env);
+    assert(Object.hasOwn(process.env, key));
+  },
+});
+
 Deno.test({
   name: "process.env requires scoped env permission",
   permissions: { env: ["FOO"] },

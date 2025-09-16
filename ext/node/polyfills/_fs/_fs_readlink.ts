@@ -5,9 +5,11 @@
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { MaybeEmpty, notImplemented } from "ext:deno_node/_utils.ts";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { Buffer } from "node:buffer";
+import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
+import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 
 type ReadlinkCallback = (
   err: MaybeEmpty<Error>,
@@ -51,11 +53,11 @@ function getEncoding(
 }
 
 export function readlink(
-  path: string | URL,
+  path: string | Buffer | URL,
   optOrCallback: ReadlinkCallback | ReadlinkOptions,
   callback?: ReadlinkCallback,
 ) {
-  path = path instanceof URL ? pathFromURL(path) : path;
+  path = getValidatedPathToString(path);
 
   let cb: ReadlinkCallback | undefined;
   if (typeof optOrCallback === "function") {
@@ -63,6 +65,7 @@ export function readlink(
   } else {
     cb = callback;
   }
+  cb = makeCallback(cb);
 
   const encoding = getEncoding(optOrCallback);
 
@@ -80,15 +83,15 @@ export function readlink(
 }
 
 export const readlinkPromise = promisify(readlink) as (
-  path: string | URL,
+  path: string | Buffer | URL,
   opt?: ReadlinkOptions,
 ) => Promise<string | Uint8Array>;
 
 export function readlinkSync(
-  path: string | URL,
+  path: string | Buffer | URL,
   opt?: ReadlinkOptions,
 ): string | Uint8Array {
-  path = path instanceof URL ? pathFromURL(path) : path;
+  path = getValidatedPathToString(path);
 
   try {
     return maybeEncode(Deno.readLinkSync(path), getEncoding(opt));

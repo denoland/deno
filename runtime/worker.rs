@@ -546,11 +546,7 @@ impl MainWorker {
           },
         ),
         deno_cache::deno_cache::args(create_cache),
-        deno_websocket::deno_websocket::args::<PermissionsContainer>(
-          options.bootstrap.user_agent.clone(),
-          services.root_cert_store_provider.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-        ),
+        deno_websocket::deno_websocket::args::<PermissionsContainer>(),
         deno_webstorage::deno_webstorage::args(
           options.origin_storage_dir.clone(),
         ),
