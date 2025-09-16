@@ -909,7 +909,7 @@ impl MainWorker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub fn create_sync_inspector_session(
+  pub fn create_inspector_session(
     &mut self,
     cb: deno_core::InspectorSessionSend,
   ) -> LocalInspectorSession {

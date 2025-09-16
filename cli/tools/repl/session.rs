@@ -317,7 +317,7 @@ impl ReplSession {
     let state = repl_session_state.clone();
     let callback =
       Box::new(move |message| repl_session_state.callback(message));
-    let mut session = worker.create_sync_inspector_session(callback);
+    let mut session = worker.create_inspector_session(callback);
 
     session.post_message::<()>(next_msg_id(), "Runtime.enable", None);
 

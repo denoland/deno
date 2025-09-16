@@ -225,7 +225,7 @@ impl CliMainWorker {
     let state = hmr_runner_state.clone();
 
     let callback = Box::new(move |message| hmr_runner_state.callback(message));
-    let session = self.worker.create_sync_inspector_session(callback);
+    let session = self.worker.create_inspector_session(callback);
     let mut hmr_runner = HmrRunner::new(state, session);
     hmr_runner.start();
 
@@ -243,7 +243,7 @@ impl CliMainWorker {
 
     let callback =
       Box::new(move |message| coverage_collector_state.callback(message));
-    let session = self.worker.create_sync_inspector_session(callback);
+    let session = self.worker.create_inspector_session(callback);
     let mut coverage_collector = CoverageCollector::new(state, session);
     coverage_collector.start_collecting();
 

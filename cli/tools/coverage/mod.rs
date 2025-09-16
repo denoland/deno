@@ -57,6 +57,10 @@ use merge::ProcessCoverage;
 
 static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
 
+fn next_msg_id() -> i32 {
+  NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 #[derive(Debug)]
 pub struct CoverageCollectorInner {
   dir: PathBuf,
@@ -76,19 +80,8 @@ impl CoverageCollectorState {
 
   pub fn callback(&self, msg: deno_core::InspectorMsg) {
     let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
-      let _message: serde_json::Value =
-        serde_json::from_str(&msg.content).unwrap();
-      // log::error!("CoverageCollector received a notification {:?}", message);
       return;
     };
-
-    // eprintln!(
-    //   "callback {} {:#?}",
-    //   // "callback {} {:#?} {}",
-    //   msg_id,
-    //   self.0.lock().coverage_msg_id.as_ref(),
-    //   // msg.content
-    // );
     let maybe_coverage_msg_id = self.0.lock().coverage_msg_id.as_ref().cloned();
 
     if let Some(coverage_msg_id) = maybe_coverage_msg_id
@@ -99,12 +92,10 @@ impl CoverageCollectorState {
       let coverages: cdp::TakePreciseCoverageResponse =
         serde_json::from_value(message["result"].clone()).unwrap();
       self.write_coverages(coverages.result);
-      // eprintln!("written coverages");
     }
   }
 
   fn write_coverages(&self, script_coverages: Vec<cdp::ScriptCoverage>) {
-    // eprintln!("got coverages {}", script_coverages.len());
     for script_coverage in script_coverages {
       // Filter out internal and http/https JS files, eval'd scripts,
       // and scripts with invalid urls from being included in coverage reports
@@ -156,76 +147,23 @@ impl CoverageCollector {
   }
 
   pub fn start_collecting(&mut self) {
-    // TODO(barltomieju): is it actually necessary to call this one?
-    self.enable_debugger();
-
-    self.enable_profiler();
-    self.start_precise_coverage(cdp::StartPreciseCoverageArgs {
-      call_count: true,
-      detailed: true,
-      allow_triggered_updates: false,
-    });
+    self
+      .session
+      .post_message::<()>(next_msg_id(), "Profiler.enable", None);
+    self.session.post_message(
+      next_msg_id(),
+      "Profiler.startPreciseCoverage",
+      Some(cdp::StartPreciseCoverageArgs {
+        call_count: true,
+        detailed: true,
+        allow_triggered_updates: false,
+      }),
+    );
   }
 
   pub fn stop_collecting(&mut self) -> Result<(), CoreError> {
     fs::create_dir_all(&self.state.0.lock().dir)?;
-    self.take_precise_coverage();
-
-    // TODO(barltomieju): is it actually necessary to call these?
-    self.disable_debugger();
-    self.disable_profiler();
-
-    Ok(())
-  }
-
-  // TODO(barltomieju): is it actually necessary to call this?
-  fn enable_debugger(&mut self) {
-    self.session.post_message::<()>(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-      "Debugger.enable",
-      None,
-    );
-  }
-
-  fn enable_profiler(&mut self) {
-    self.session.post_message::<()>(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-      "Profiler.enable",
-      None,
-    );
-  }
-
-  // TODO(barltomieju): is it actually necessary to call this?
-  fn disable_debugger(&mut self) {
-    self.session.post_message::<()>(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-      "Debugger.disable",
-      None,
-    );
-  }
-
-  // TODO(barltomieju): is it actually necessary to call this?
-  fn disable_profiler(&mut self) {
-    self.session.post_message::<()>(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-      "Profiler.disable",
-      None,
-    );
-  }
-
-  fn start_precise_coverage(
-    &mut self,
-    parameters: cdp::StartPreciseCoverageArgs,
-  ) {
-    self.session.post_message(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-      "Profiler.startPreciseCoverage",
-      Some(parameters),
-    );
-  }
-
-  fn take_precise_coverage(&mut self) {
-    let msg_id = NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let msg_id = next_msg_id();
     self.state.0.lock().coverage_msg_id.replace(msg_id);
 
     self.session.post_message::<()>(
@@ -233,13 +171,7 @@ impl CoverageCollector {
       "Profiler.takePreciseCoverage",
       None,
     );
-    // eprintln!("take precise coverage {}", msg_id);
-    // let return_object = serde_json::from_value(return_value).map_err(|e| {
-    //   InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
-    // })?;
-
-    // Ok(return_object)
-    // todo!()
+    Ok(())
   }
 }
 
