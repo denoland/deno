@@ -39,3 +39,4 @@ rand.workspace = true
 parking_lot.workspace = true
 windows-sys.workspace = true
 deno_subprocess_windows.workspace = true
+libc.workspace = true
