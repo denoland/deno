@@ -1485,6 +1485,7 @@ impl ConfigData {
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
+        minimum_release_cutoff_date: None,
         resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
       },
     );

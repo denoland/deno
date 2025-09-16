@@ -581,6 +581,8 @@ impl CliFactory {
           ),
           caching_strategy: cli_options.default_npm_caching_strategy(),
           lifecycle_scripts_config: cli_options.lifecycle_scripts_config(),
+          minimum_release_cutoff_date: cli_options
+            .minimum_release_cutoff_date()?,
           resolve_npm_resolution_snapshot: Box::new(|| {
             deno_lib::args::resolve_npm_resolution_snapshot(&CliSys::default())
           }),

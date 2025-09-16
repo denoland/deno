@@ -954,9 +954,10 @@ impl<'a> ResolverFactory<'a> {
       ));
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         registry_info_provider.clone(),
+        None,
         self.services.npm_resolution.clone(),
-        maybe_lockfile.clone(),
         link_packages.clone(),
+        maybe_lockfile.clone(),
         None,
       ));
       let npm_installer = Arc::new(CliNpmInstaller::new(

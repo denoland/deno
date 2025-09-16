@@ -55,11 +55,12 @@ pub struct NpmResolutionInstaller<
   TSys: NpmResolutionInstallerSys,
 > {
   registry_info_provider: Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>,
+  reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
   resolution: Arc<NpmResolutionCell>,
   maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
+  minimum_release_cutoff_date: Option<deno_npm::registry::PackageDate>,
   link_packages: Arc<WorkspaceNpmLinkPackages>,
   update_queue: TaskQueue,
-  reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
 }
 
 impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
@@ -69,18 +70,20 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     registry_info_provider: Arc<
       RegistryInfoProvider<TNpmCacheHttpClient, TSys>,
     >,
-    resolution: Arc<NpmResolutionCell>,
-    maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
-    link_packages: Arc<WorkspaceNpmLinkPackages>,
     reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
+    resolution: Arc<NpmResolutionCell>,
+    link_packages: Arc<WorkspaceNpmLinkPackages>,
+    maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
+    minimum_release_cutoff_date: Option<deno_npm::registry::PackageDate>,
   ) -> Self {
     Self {
       registry_info_provider,
-      resolution,
-      maybe_lockfile,
-      link_packages,
-      update_queue: Default::default(),
       reporter,
+      resolution,
+      link_packages,
+      maybe_lockfile,
+      minimum_release_cutoff_date,
+      update_queue: Default::default(),
     }
   }
 
@@ -148,6 +151,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
           package_reqs,
           types_node_version_req: Some(get_types_node_version()),
           link_packages: &self.link_packages.0,
+          minimum_release_cutoff_date: self.minimum_release_cutoff_date,
         },
         self.reporter.as_deref(),
       )
@@ -168,6 +172,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
               package_reqs,
               types_node_version_req: Some(get_types_node_version()),
               link_packages: &self.link_packages.0,
+              minimum_release_cutoff_date: self.minimum_release_cutoff_date,
             },
             self.reporter.as_deref(),
           )
