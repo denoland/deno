@@ -8,15 +8,12 @@ https://github.com/denoland/deno_install
 
 ### 2.5.1 / 2025.09.16
 
-- Revert "fix(ext/node): `fs.stat` and `fs.statSync` compatibility (#30…
-  (#30741)
 - feat(unstable): support `Deno.HttpClient` in `WebSocket` (#30692)
 - feat(unstable): tcp proxy for `Deno.HttpClient` (#30700)
 - fix(bundle): set the type of the outputFile in the deno bundle to
   `Uint8Array<ArrayBuffer>` (#30716)
 - fix(check): filter resolution errors for bare ambient modules (#30690)
 - fix(ext/fetch): mark unix and vsock proxy conns as proxy (#30699)
-- fix(ext/node): `fs.stat` and `fs.statSync` compatibility (#30637)
 - fix(ext/node): handle falsy values enumerability in process.env (#30708)
 - fix(ext/node): implement `fchmod` on windows (#30704)
 - fix(ext/node): make `fs.glob` accepts `URL` cwd (#30705)
