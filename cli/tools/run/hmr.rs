@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicI32;
 
 use deno_core::InspectorPostMessageError;
 use deno_core::InspectorPostMessageErrorKind;
-use deno_core::LocalSyncInspectorSession;
+use deno_core::LocalInspectorSession;
 use deno_core::error::CoreError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
@@ -182,15 +182,12 @@ impl HmrRunnerState {
 /// of an ES module cannot be hot-replaced. In such situation the runner will
 /// force a full restart of a program by notifying the `FileWatcher`.
 pub struct HmrRunner {
-  session: LocalSyncInspectorSession,
+  session: LocalInspectorSession,
   state: HmrRunnerState,
 }
 
 impl HmrRunner {
-  pub fn new(
-    state: HmrRunnerState,
-    session: LocalSyncInspectorSession,
-  ) -> Self {
+  pub fn new(state: HmrRunnerState, session: LocalInspectorSession) -> Self {
     Self { session, state }
   }
 

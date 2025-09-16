@@ -20,7 +20,7 @@ use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
 use deno_core::JsRuntimeInspector;
-use deno_core::LocalSyncInspectorSession;
+use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
@@ -916,11 +916,11 @@ impl MainWorker {
   pub fn create_sync_inspector_session(
     &mut self,
     cb: deno_core::InspectorSessionSend,
-  ) -> LocalSyncInspectorSession {
+  ) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
     let insp = self.js_runtime.inspector();
 
-    JsRuntimeInspector::create_local_sync_session(
+    JsRuntimeInspector::create_local_session(
       insp,
       cb,
       InspectorSessionOptions {

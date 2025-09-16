@@ -22,7 +22,7 @@ use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
 use deno_core::InspectorMsgKind;
 use deno_core::InspectorPostMessageError;
-use deno_core::LocalSyncInspectorSession;
+use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -181,7 +181,7 @@ pub struct ReplSession {
   resolver: Arc<CliResolver>,
   // NB: `session` and `state` must come before Worker, so that relevant V8 objects
   // are dropped before the isolate is dropped with `worker`.
-  session: LocalSyncInspectorSession,
+  session: LocalInspectorSession,
   state: ReplSessionState,
   pub worker: MainWorker,
   pub context_id: u64,

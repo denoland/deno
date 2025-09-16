@@ -16,7 +16,7 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
-use deno_core::LocalSyncInspectorSession;
+use deno_core::LocalInspectorSession;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -144,13 +144,13 @@ impl CoverageCollectorState {
 
 pub struct CoverageCollector {
   pub state: CoverageCollectorState,
-  session: LocalSyncInspectorSession,
+  session: LocalInspectorSession,
 }
 
 impl CoverageCollector {
   pub fn new(
     state: CoverageCollectorState,
-    session: LocalSyncInspectorSession,
+    session: LocalInspectorSession,
   ) -> Self {
     Self { state, session }
   }

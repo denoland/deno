@@ -81,7 +81,7 @@ pub fn op_inspector_emit_protocol_event(
 }
 
 struct JSInspectorSession {
-  session: RefCell<Option<deno_core::LocalSyncInspectorSession>>,
+  session: RefCell<Option<deno_core::LocalInspectorSession>>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -153,7 +153,7 @@ where
     }
   });
 
-  let session = JsRuntimeInspector::create_local_sync_session(
+  let session = JsRuntimeInspector::create_local_session(
     inspector,
     callback,
     InspectorSessionOptions {
