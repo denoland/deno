@@ -6345,10 +6345,11 @@ declare namespace Deno {
    * {@linkcode Deno.CreateHttpClientOptions}.
    *
    * Supported proxies:
-   *  - HTTP/HTTPS proxy: this uses the HTTP CONNECT method to tunnel HTTP
-   *    requests through a different server.
+   *  - HTTP/HTTPS proxy: this uses passthrough to tunnel HTTP requests, or HTTP
+   *    CONNECT to tunnel HTTPS requests through a different server.
    *  - SOCKS5 proxy: this uses the SOCKS5 protocol to tunnel TCP connections
    *    through a different server.
+   *  - TCP socket: this sends all requests to a specified TCP socket.
    *  - Unix domain socket: this sends all requests to a local Unix domain
    *    socket rather than a TCP socket. *Not supported on Windows.*
    *  - Vsock socket: this sends all requests to a local vsock socket.
@@ -6370,6 +6371,12 @@ declare namespace Deno {
     url: string;
     /** The basic auth credentials to be used against the proxy server. */
     basicAuth?: BasicAuth;
+  } | {
+    transport: "tcp";
+    /** The hostname of the TCP server to connect to. */
+    hostname: string;
+    /** The port of the TCP server to connect to. */
+    port: number;
   } | {
     transport: "unix";
     /** The path to the unix domain socket to use. */

@@ -146,7 +146,7 @@ declare namespace Deno {
      */
     export interface OutputFile {
       path: string;
-      contents?: Uint8Array;
+      contents?: Uint8Array<ArrayBuffer>;
       hash: string;
       text(): string;
     }
