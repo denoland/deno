@@ -112,9 +112,10 @@ impl HmrRunnerState {
           serde_json::from_str(&msg.content).unwrap();
         let mut state = self.0.lock();
         let Some(message_state) = state.messages.remove(&msg_id) else {
-          state
-            .messages
-            .insert(msg_id, InspectorMessageState::Ready(message));
+          state.messages.insert(
+            msg_id,
+            InspectorMessageState::Ready(message["result"].clone()),
+          );
           return;
         };
         let InspectorMessageState::WaitingFor(sender) = message_state else {
