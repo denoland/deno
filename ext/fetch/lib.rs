@@ -63,6 +63,7 @@ use deno_tls::TlsKeysHolder;
 use deno_tls::rustls::RootCertStore;
 pub use fs_fetch_handler::FsFetchHandler;
 use http::Extensions;
+use http::HeaderMap;
 use http::Method;
 use http::Uri;
 use http::header::ACCEPT;
@@ -1347,12 +1348,34 @@ impl std::error::Error for ClientSendError {
   }
 }
 
+pub trait CommonRequest {
+  fn uri(&self) -> &Uri;
+  fn headers_mut(&mut self) -> &mut HeaderMap;
+}
+
+impl CommonRequest for http::Request<ReqBody> {
+  fn uri(&self) -> &Uri {
+    self.uri()
+  }
+
+  fn headers_mut(&mut self) -> &mut HeaderMap {
+    self.headers_mut()
+  }
+}
+
+impl CommonRequest for http::request::Builder {
+  fn uri(&self) -> &Uri {
+    http::request::Builder::uri_ref(self).expect("uri not set")
+  }
+
+  fn headers_mut(&mut self) -> &mut HeaderMap {
+    http::request::Builder::headers_mut(self).expect("headers not set")
+  }
+}
+
 impl Client {
   /// Injects common headers like User-Agent and Proxy-Authorization.
-  pub fn inject_common_headers(
-    &self,
-    mut req: http::Request<ReqBody>,
-  ) -> http::Request<ReqBody> {
+  pub fn inject_common_headers(&self, req: &mut impl CommonRequest) {
     req
       .headers_mut()
       .entry(USER_AGENT)
@@ -1361,15 +1384,13 @@ impl Client {
     if let Some(auth) = self.connector.proxies.http_forward_auth(req.uri()) {
       req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
     }
-
-    req
   }
 
   pub async fn send(
     self,
     mut req: http::Request<ReqBody>,
   ) -> Result<http::Response<ResBody>, ClientSendError> {
-    req = self.inject_common_headers(req);
+    self.inject_common_headers(&mut req);
 
     req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
 
