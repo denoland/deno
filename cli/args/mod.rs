@@ -1355,7 +1355,7 @@ impl CliOptions {
   pub fn minimum_release_cutoff_date(
     &self,
   ) -> Result<Option<deno_npm::registry::PackageDate>, AnyError> {
-    let Some(age) = self.flags.minimum_release_age else {
+    let Some(age) = self.flags.minimum_dependency_age else {
       return Ok(None);
     };
     deno_npm::registry::PackageDate::now()

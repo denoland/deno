@@ -739,7 +739,7 @@ pub struct Flags {
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
-  pub minimum_release_age: Option<u32>,
+  pub minimum_dependency_age: Option<u32>,
   pub no_remote: bool,
   pub no_lock: bool,
   pub no_npm: bool,
@@ -3851,7 +3851,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(preload_arg())
-    .arg(min_age_arg())
+    .arg(min_dep_age_arg())
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
@@ -4440,11 +4440,11 @@ fn preload_arg() -> Arg {
     .value_hint(ValueHint::FilePath)
 }
 
-fn min_age_arg() -> Arg {
-  Arg::new("minimum-release-age")
-    .long("minimum-release-age")
+fn min_dep_age_arg() -> Arg {
+  Arg::new("minimum-dependency-age")
+    .long("minimum-dependency-age")
     .value_parser(value_parser!(u32))
-    .help("The number of minutes old that a package must be for it to be installed.")
+    .help("(Unstable) The number of minutes old that an npm package must be for it to be installed.")
 }
 
 fn ca_file_arg() -> Arg {
@@ -6093,7 +6093,7 @@ fn compile_args_without_check_parse(
   ca_file_arg_parse(flags, matches);
   unsafely_ignore_certificate_errors_parse(flags, matches);
   preload_arg_parse(flags, matches);
-  min_release_age_arg_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6371,8 +6371,9 @@ fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
-fn min_release_age_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.minimum_release_age = matches.remove_one::<u32>("minimum-release-age");
+fn min_dep_age_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.minimum_dependency_age =
+    matches.remove_one::<u32>("minimum-dependency-age");
 }
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
