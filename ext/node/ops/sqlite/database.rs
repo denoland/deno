@@ -275,13 +275,20 @@ fn open_db(
   allow_extension: bool,
 ) -> Result<rusqlite::Connection, SqliteError> {
   let perms = state.borrow::<PermissionsContainer>();
+  let disable_attach = perms
+    .check_has_all_permissions(&Path::new(location))
+    .is_err();
+
   if location == ":memory:" {
     let conn = rusqlite::Connection::open_in_memory()?;
-    assert!(set_db_config(
-      &conn,
-      SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
-      false
-    ));
+    if disable_attach {
+      assert!(set_db_config(
+        &conn,
+        SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
+        false
+      ));
+      conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+    }
 
     if allow_extension {
       perms.check_ffi_all()?;
@@ -293,7 +300,6 @@ fn open_db(
       ));
     }
 
-    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     return Ok(conn);
   }
 
@@ -313,11 +319,14 @@ fn open_db(
       location,
       rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
     )?;
-    assert!(set_db_config(
-      &conn,
-      SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
-      false
-    ));
+    if disable_attach {
+      assert!(set_db_config(
+        &conn,
+        SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
+        false
+      ));
+      conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+    }
 
     if allow_extension {
       perms.check_ffi_all()?;
@@ -329,7 +338,6 @@ fn open_db(
       ));
     }
 
-    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     return Ok(conn);
   }
 
@@ -345,7 +353,9 @@ fn open_db(
     ));
   }
 
-  conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+  if disable_attach {
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+  }
 
   Ok(conn)
 }
