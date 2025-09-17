@@ -7,7 +7,6 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::Extension;
 use deno_core::OpState;
-use deno_core::PollEventLoopOptions;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
@@ -30,17 +29,17 @@ use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::coverage::CoverageCollectorState;
 use crate::tools::run::hmr::HmrRunner;
+use crate::tools::run::hmr::HmrRunnerState;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::util::progress_bar::ProgressBar;
 
-pub type CreateHmrRunnerCb =
-  Box<dyn Fn(deno_core::LocalInspectorSession) -> HmrRunner + Send + Sync>;
+pub type CreateHmrRunnerCb = Box<dyn Fn() -> HmrRunnerState + Send + Sync>;
 
-pub type CreateCoverageCollectorCb = Box<
-  dyn Fn(deno_core::LocalInspectorSession) -> CoverageCollector + Send + Sync,
->;
+pub type CreateCoverageCollectorCb =
+  Box<dyn Fn() -> CoverageCollectorState + Send + Sync>;
 
 pub struct CliMainWorkerOptions {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
@@ -73,9 +72,8 @@ impl CliMainWorker {
   }
 
   pub async fn run(&mut self) -> Result<i32, CoreError> {
-    let mut maybe_coverage_collector =
-      self.maybe_setup_coverage_collector().await?;
-    let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
+    let mut maybe_coverage_collector = self.maybe_setup_coverage_collector();
+    let mut maybe_hmr_runner = self.maybe_setup_hmr_runner();
 
     // WARNING: Remember to update cli/lib/worker.rs to align with
     // changes made here so that they affect deno_compile as well.
@@ -111,6 +109,7 @@ impl CliMainWorker {
           return Err(e);
         }
       } else {
+        // TODO(bartlomieju): this might not be needed anymore
         self
           .worker
           .run_event_loop(maybe_coverage_collector.is_none())
@@ -130,24 +129,10 @@ impl CliMainWorker {
     self.worker.dispatch_process_exit_event()?;
 
     if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-      self
-        .worker
-        .js_runtime()
-        .with_event_loop_future(
-          coverage_collector.stop_collecting().boxed_local(),
-          PollEventLoopOptions::default(),
-        )
-        .await?;
+      coverage_collector.stop_collecting()?;
     }
     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
-      self
-        .worker
-        .js_runtime()
-        .with_event_loop_future(
-          hmr_runner.stop().boxed_local(),
-          PollEventLoopOptions::default(),
-        )
-        .await?;
+      hmr_runner.stop();
     }
 
     Ok(self.worker.exit_code())
@@ -233,48 +218,36 @@ impl CliMainWorker {
     self.worker.js_runtime().op_state()
   }
 
-  pub async fn maybe_setup_hmr_runner(
-    &mut self,
-  ) -> Result<Option<HmrRunner>, CoreError> {
-    let Some(setup_hmr_runner) = self.shared.create_hmr_runner.as_ref() else {
-      return Ok(None);
-    };
+  pub fn maybe_setup_hmr_runner(&mut self) -> Option<HmrRunner> {
+    let setup_hmr_runner = self.shared.create_hmr_runner.as_ref()?;
 
-    let session = self.worker.create_inspector_session();
+    let hmr_runner_state = setup_hmr_runner();
+    let state = hmr_runner_state.clone();
 
-    let mut hmr_runner = setup_hmr_runner(session);
+    let callback = Box::new(move |message| hmr_runner_state.callback(message));
+    let session = self.worker.create_inspector_session(callback);
+    let mut hmr_runner = HmrRunner::new(state, session);
+    hmr_runner.start();
 
-    self
-      .worker
-      .js_runtime()
-      .with_event_loop_future(
-        hmr_runner.start().boxed_local(),
-        PollEventLoopOptions::default(),
-      )
-      .await?;
-    Ok(Some(hmr_runner))
+    Some(hmr_runner)
   }
 
-  pub async fn maybe_setup_coverage_collector(
+  pub fn maybe_setup_coverage_collector(
     &mut self,
-  ) -> Result<Option<CoverageCollector>, CoreError> {
-    let Some(create_coverage_collector) =
-      self.shared.create_coverage_collector.as_ref()
-    else {
-      return Ok(None);
-    };
+  ) -> Option<CoverageCollector> {
+    let create_coverage_collector =
+      self.shared.create_coverage_collector.as_ref()?;
 
-    let session = self.worker.create_inspector_session();
-    let mut coverage_collector = create_coverage_collector(session);
-    self
-      .worker
-      .js_runtime()
-      .with_event_loop_future(
-        coverage_collector.start_collecting().boxed_local(),
-        PollEventLoopOptions::default(),
-      )
-      .await?;
-    Ok(Some(coverage_collector))
+    let coverage_collector_state = create_coverage_collector();
+    let state = coverage_collector_state.clone();
+
+    let callback =
+      Box::new(move |message| coverage_collector_state.callback(message));
+    let session = self.worker.create_inspector_session(callback);
+    let mut coverage_collector = CoverageCollector::new(state, session);
+    coverage_collector.start_collecting();
+
+    Some(coverage_collector)
   }
 
   pub fn execute_script_static(
