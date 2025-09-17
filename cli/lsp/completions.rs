@@ -15,6 +15,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use indexmap::IndexSet;
+use lsp_types::CompletionItem;
 use lsp_types::CompletionList;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -159,10 +160,11 @@ pub async fn get_import_completions(
   document_modules: &DocumentModules,
   resolver: &LspResolver,
 ) -> Option<lsp::CompletionResponse> {
-  let maybe_import_map = resolver
+  let maybe_import_maps = resolver
     .get_scoped_resolver(module.scope.as_deref())
     .as_workspace_resolver()
-    .maybe_import_map();
+    .maybe_import_maps()
+    .collect::<Vec<_>>();
   let (text, _, graph_range) = module.dependency_at_position(position)?;
   let resolution_mode = graph_range
     .resolution_mode
@@ -206,11 +208,11 @@ pub async fn get_import_completions(
               Some(lsp::CompletionResponse::List(completion_list))
             }
             _ => {
-              match get_import_map_completions(
+              match get_import_maps_completions(
                 &module.specifier,
                 text,
                 &range,
-                maybe_import_map,
+                &maybe_import_maps,
               ) {
                 Some(completion_list) => {
                   // completions for import map specifiers
@@ -286,7 +288,7 @@ pub async fn get_import_completions(
                           })
                           .collect();
                         let mut is_incomplete = false;
-                        if let Some(import_map) = maybe_import_map {
+                        for import_map in maybe_import_maps {
                           items.extend(get_base_import_map_completions(
                             import_map,
                             &module.specifier,
@@ -363,49 +365,65 @@ fn get_import_map_completions(
   _specifier: &ModuleSpecifier,
   text: &str,
   range: &lsp::Range,
-  maybe_import_map: Option<&ImportMap>,
-) -> Option<CompletionList> {
-  if !text.is_empty()
-    && let Some(import_map) = maybe_import_map
-  {
-    let mut specifiers = IndexSet::new();
-    for key in import_map.imports().keys() {
-      // for some reason, the import_map stores keys that begin with `/` as
-      // `file:///` in its index, so we have to reverse that here
-      let key = if key.starts_with("file://") {
-        FILE_PROTO_RE.replace(key, "").to_string()
-      } else {
-        key.to_string()
-      };
-      if key.starts_with(text) && key != text {
-        specifiers.insert(key.trim_end_matches('/').to_string());
-      }
-    }
-    if !specifiers.is_empty() {
-      let items = specifiers
-        .into_iter()
-        .map(|specifier| lsp::CompletionItem {
-          label: specifier.clone(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(import map)".to_string()),
-          sort_text: Some("1".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range: *range,
-            new_text: specifier,
-          })),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
-          ),
-          ..Default::default()
-        })
-        .collect();
-      return Some(CompletionList {
-        items,
-        is_incomplete: false,
-      });
+  import_map: &ImportMap,
+) -> Vec<CompletionItem> {
+  if text.is_empty() {
+    return vec![];
+  }
+  let mut specifiers = IndexSet::new();
+  for key in import_map.imports().keys() {
+    // for some reason, the import_map stores keys that begin with `/` as
+    // `file:///` in its index, so we have to reverse that here
+    let key = if key.starts_with("file://") {
+      FILE_PROTO_RE.replace(key, "").to_string()
+    } else {
+      key.to_string()
+    };
+    if key.starts_with(text) && key != text {
+      specifiers.insert(key.trim_end_matches('/').to_string());
     }
   }
-  None
+  if specifiers.is_empty() {
+    return vec![];
+  }
+  specifiers
+    .into_iter()
+    .map(|specifier| lsp::CompletionItem {
+      label: specifier.clone(),
+      kind: Some(lsp::CompletionItemKind::FILE),
+      detail: Some("(import map)".to_string()),
+      sort_text: Some("1".to_string()),
+      text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+        range: *range,
+        new_text: specifier,
+      })),
+      commit_characters: Some(
+        IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+      ),
+      ..Default::default()
+    })
+    .collect()
+}
+fn get_import_maps_completions<'i>(
+  _specifier: &ModuleSpecifier,
+  text: &str,
+  range: &lsp::Range,
+  import_maps: &[&ImportMap],
+) -> Option<CompletionList> {
+  if text.is_empty() || import_maps.is_empty() {
+    return None;
+  }
+  let mut out = CompletionList {
+    is_incomplete: false,
+    items: vec![],
+  };
+
+  for import_map in import_maps {
+    out.items.extend(get_import_map_completions(
+      _specifier, text, range, import_map,
+    ))
+  }
+  Some(out)
 }
 
 /// Return local completions that are relative to the base specifier.

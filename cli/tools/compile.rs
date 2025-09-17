@@ -174,8 +174,8 @@ pub async fn compile_eszip(
   .await?;
   output_path.set_extension("eszip");
 
-  let maybe_import_map_specifier =
-    cli_options.resolve_specified_import_map_specifier()?;
+  let maybe_import_map_specifiers =
+    cli_options.resolve_specified_import_map_specifiers()?;
   let (module_roots, _include_paths) = get_module_roots_and_include_paths(
     entrypoint,
     &compile_flags,
@@ -223,7 +223,7 @@ pub async fn compile_eszip(
     module_kind_resolver: Default::default(),
   })?;
 
-  if let Some(import_map_specifier) = maybe_import_map_specifier {
+  for import_map_specifier in maybe_import_map_specifiers {
     let import_map_path = import_map_specifier.to_file_path().unwrap();
     let import_map_content = std::fs::read_to_string(&import_map_path)
       .with_context(|| {

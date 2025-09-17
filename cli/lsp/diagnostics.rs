@@ -904,7 +904,7 @@ fn diagnose_resolution(
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
   referrer_module: &DocumentModule,
-  import_map: Option<&ImportMap>,
+  import_maps: &[&ImportMap],
 ) -> (Vec<DenoDiagnostic>, Vec<DenoDiagnostic>) {
   let mut diagnostics = vec![];
   let mut deferred_diagnostics = vec![];
@@ -998,13 +998,14 @@ fn diagnose_resolution(
                       ));
                     } else if module_name == dependency_key {
                       let mut is_mapped = false;
-                      if let Some(import_map) = import_map
-                        && let Resolution::Ok(resolved) = &resolution
-                        && import_map
-                          .resolve(module_name, &resolved.specifier)
-                          .is_ok()
-                      {
-                        is_mapped = true;
+                      for import_map in import_maps {
+                        if let Resolution::Ok(resolved) = &resolution
+                          && import_map
+                            .resolve(module_name, &resolved.specifier)
+                            .is_ok()
+                        {
+                          is_mapped = true;
+                        }
                       }
                       // show diagnostics for bare node specifiers that aren't mapped by import map
                       if !is_mapped {
@@ -1076,12 +1077,14 @@ fn diagnose_dependency(
     return; // ignore, surface typescript errors instead
   }
 
-  let import_map = snapshot
+  let import_maps = snapshot
     .resolver
     .get_scoped_resolver(referrer_module.scope.as_deref())
     .as_workspace_resolver()
-    .maybe_import_map();
-  if let Some(import_map) = import_map {
+    .maybe_import_maps()
+    .collect::<Vec<_>>();
+
+  for import_map in &import_maps {
     let resolved = dependency
       .maybe_code
       .ok()
@@ -1139,7 +1142,7 @@ fn diagnose_dependency(
     dependency.is_dynamic,
     dependency.maybe_attribute_type.as_deref(),
     referrer_module,
-    import_map,
+    &import_maps,
   );
   diagnostics.extend(resolution_diagnostics.iter().flat_map(|diag| {
     import_ranges
@@ -1174,7 +1177,7 @@ fn diagnose_dependency(
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
       referrer_module,
-      import_map,
+      &import_maps,
     );
     diagnostics.extend(
       resolution_diagnostics

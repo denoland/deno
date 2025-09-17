@@ -4743,11 +4743,14 @@ impl Inner {
       unsafely_ignore_certificate_errors: workspace_settings
         .unsafely_ignore_certificate_errors
         .clone(),
-      import_map_path: config_data.and_then(|d| {
-        d.import_map_from_settings
-          .as_ref()
-          .map(|url| url.to_string())
-      }),
+      import_map_paths: config_data
+        .and_then(|d| {
+          d.import_map_from_settings
+            .as_ref()
+            .map(|url| url.to_string())
+        })
+        .into_iter()
+        .collect(),
       // bit of a hack to force the lsp to cache the @types/node package
       type_check_mode: crate::args::TypeCheckMode::Local,
       permissions: crate::args::PermissionFlags {

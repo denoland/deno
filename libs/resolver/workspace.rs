@@ -121,7 +121,7 @@ pub enum FsCacheOptions {
 #[derive(Debug, Default, Clone)]
 pub struct CreateResolverOptions {
   pub pkg_json_dep_resolution: PackageJsonDepResolution,
-  pub specified_import_map: Option<SpecifiedImportMap>,
+  pub specified_import_maps: Vec<SpecifiedImportMap>,
   pub sloppy_imports_options: SloppyImportsOptions,
   pub fs_cache_options: FsCacheOptions,
 }
@@ -791,7 +791,7 @@ type CompilerOptionsResolverCellRc =
 pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   workspace_root: UrlRc,
   jsr_pkgs: Vec<ResolverWorkspaceJsrPackage>,
-  maybe_import_map: Option<ImportMapWithDiagnostics>,
+  maybe_import_maps: Vec<ImportMapWithDiagnostics>,
   pkg_jsons: FolderScopedMap<PkgJsonResolverFolderConfig>,
   pkg_json_dep_resolution: PackageJsonDepResolution,
   sloppy_imports_options: SloppyImportsOptions,
@@ -806,99 +806,103 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     sys: TSys,
     options: CreateResolverOptions,
   ) -> Result<Self, WorkspaceResolverCreateError> {
-    fn resolve_import_map(
+    fn resolve_import_maps(
       sys: &impl FsRead,
       workspace: &Workspace,
-      specified_import_map: Option<SpecifiedImportMap>,
-    ) -> Result<Option<ImportMapWithDiagnostics>, WorkspaceResolverCreateError>
+      specified_import_map: Vec<SpecifiedImportMap>,
+    ) -> Result<Vec<ImportMapWithDiagnostics>, WorkspaceResolverCreateError>
     {
       let root_deno_json = workspace.root_deno_json();
       let deno_jsons = workspace.resolver_deno_jsons().collect::<Vec<_>>();
 
-      let (import_map_url, import_map) = match specified_import_map {
-        Some(SpecifiedImportMap {
-          base_url,
-          value: import_map,
-        }) => (base_url, import_map),
-        None => {
-          if !deno_jsons.iter().any(|p| p.is_package())
-            && !deno_jsons.iter().any(|c| {
-              c.json.import_map.is_some()
-                || c.json.scopes.is_some()
-                || c.json.imports.is_some()
-                || c
-                  .json
-                  .compiler_options
-                  .as_ref()
-                  .and_then(|v| v.as_object()?.get("rootDirs")?.as_array())
-                  .is_some_and(|a| a.len() > 1)
-            })
-          {
-            // no configs have an import map and none are a package, so exit
-            return Ok(None);
-          }
+      let mut out = vec![];
 
-          let config_specified_import_map = match root_deno_json.as_ref() {
-            Some(deno_json) => deno_json
-              .to_import_map_value(sys)
-              .map_err(|source| WorkspaceResolverCreateError::ImportMapFetch {
-                referrer: deno_json.specifier.clone(),
-                source: Box::new(source),
-              })?
-              .unwrap_or_else(|| {
-                (
-                  Cow::Borrowed(&deno_json.specifier),
-                  serde_json::Value::Object(Default::default()),
-                )
-              }),
-            None => (
-              Cow::Owned(workspace.root_dir_url().join("deno.json").unwrap()),
-              serde_json::Value::Object(Default::default()),
-            ),
-          };
-          let base_import_map_config = import_map::ext::ImportMapConfig {
-            base_url: config_specified_import_map.0.into_owned(),
-            import_map_value: config_specified_import_map.1,
-          };
-          let child_import_map_configs = deno_jsons
-            .iter()
-            .filter(|f| {
-              Some(&f.specifier)
-                != root_deno_json.as_ref().map(|c| &c.specifier)
-            })
-            .map(|config| import_map::ext::ImportMapConfig {
-              base_url: config.specifier.clone(),
-              import_map_value: {
-                // don't include scopes here
-                let mut value = serde_json::Map::with_capacity(1);
-                if let Some(imports) = &config.json.imports {
-                  value.insert("imports".to_string(), imports.clone());
-                }
-                value.into()
-              },
-            })
-            .collect::<Vec<_>>();
-          let (import_map_url, import_map) =
-            ::import_map::ext::create_synthetic_import_map(
-              base_import_map_config,
-              child_import_map_configs,
-            );
-          let import_map = import_map::ext::expand_import_map_value(import_map);
-          log::debug!(
-            "Workspace config generated this import map {}",
-            serde_json::to_string_pretty(&import_map).unwrap()
-          );
-          (import_map_url, import_map)
+      for SpecifiedImportMap {
+        base_url,
+        value: import_map,
+      } in specified_import_map
+      {
+        out.push(import_map::parse_from_value(base_url, import_map)?)
+      }
+
+      if !deno_jsons.iter().any(|p| p.is_package())
+        && !deno_jsons.iter().any(|c| {
+          !c.json.import_map.is_empty()
+            || c.json.scopes.is_some()
+            || c.json.imports.is_some()
+            || c
+              .json
+              .compiler_options
+              .as_ref()
+              .and_then(|v| v.as_object()?.get("rootDirs")?.as_array())
+              .is_some_and(|a| a.len() > 1)
+        })
+      {
+        // no configs have an import map and none are a package, so exit
+        return Ok(out);
+      }
+
+      let config_specified_import_maps = match root_deno_json.as_ref() {
+        Some(deno_json) => {
+          deno_json.to_import_map_values(sys).map_err(|source| {
+            WorkspaceResolverCreateError::ImportMapFetch {
+              referrer: deno_json.specifier.clone(),
+              source: Box::new(source),
+            }
+          })?
         }
+        None => vec![],
       };
-      Ok(Some(import_map::parse_from_value(
-        import_map_url,
-        import_map,
-      )?))
+      let base_import_map_config = import_map::ext::ImportMapConfig {
+        base_url: workspace.root_dir_url().join("deno.json").unwrap(),
+        import_map_value: Default::default(),
+      };
+      let child_import_map_configs = deno_jsons
+        .iter()
+        .filter(|f| {
+          Some(&f.specifier) != root_deno_json.as_ref().map(|c| &c.specifier)
+        })
+        .map(|config| import_map::ext::ImportMapConfig {
+          base_url: config.specifier.clone(),
+          import_map_value: {
+            // don't include scopes here
+            let mut value = serde_json::Map::with_capacity(1);
+            if let Some(imports) = &config.json.imports {
+              value.insert("imports".to_string(), imports.clone());
+            }
+            value.into()
+          },
+        })
+        .collect::<Vec<_>>();
+      let (scopes_import_map_url, scopes_import_map) =
+        ::import_map::ext::create_synthetic_import_map(
+          base_import_map_config,
+          child_import_map_configs,
+        );
+      let scopes_import_map =
+        import_map::ext::expand_import_map_value(scopes_import_map);
+      // TODO: Also log import map values?
+      log::debug!(
+        "Workspace config generated this import map {}",
+        serde_json::to_string_pretty(&scopes_import_map).unwrap()
+      );
+
+      for (url, value) in
+        config_specified_import_maps
+          .into_iter()
+          .chain(std::iter::once((
+            Cow::Owned(scopes_import_map_url),
+            scopes_import_map,
+          )))
+      {
+        out.push(import_map::parse_from_value(url.into_owned(), value)?);
+      }
+
+      Ok(out)
     }
 
-    let maybe_import_map =
-      resolve_import_map(&sys, workspace, options.specified_import_map)?;
+    let maybe_import_maps =
+      resolve_import_maps(&sys, workspace, options.specified_import_maps)?;
     let jsr_pkgs = workspace.resolver_jsr_pkgs().collect::<Vec<_>>();
     let pkg_jsons = workspace
       .resolver_pkg_jsons()
@@ -926,7 +930,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       workspace_root: workspace.root_dir_url().clone(),
       pkg_json_dep_resolution: options.pkg_json_dep_resolution,
       jsr_pkgs,
-      maybe_import_map,
+      maybe_import_maps,
       pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       sloppy_imports_options: options.sloppy_imports_options,
       fs_cache_options: options.fs_cache_options,
@@ -941,7 +945,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
   #[allow(clippy::too_many_arguments)]
   pub fn new_raw(
     workspace_root: UrlRc,
-    maybe_import_map: Option<ImportMap>,
+    maybe_import_maps: Vec<ImportMap>,
     jsr_pkgs: Vec<ResolverWorkspaceJsrPackage>,
     pkg_jsons: Vec<PackageJsonRc>,
     pkg_json_dep_resolution: PackageJsonDepResolution,
@@ -949,11 +953,13 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     fs_cache_options: FsCacheOptions,
     sys: TSys,
   ) -> Self {
-    let maybe_import_map =
-      maybe_import_map.map(|import_map| ImportMapWithDiagnostics {
+    let maybe_import_maps = maybe_import_maps
+      .into_iter()
+      .map(|import_map| ImportMapWithDiagnostics {
         import_map,
         diagnostics: Default::default(),
-      });
+      })
+      .collect();
     let pkg_jsons = pkg_jsons
       .into_iter()
       .map(|pkg_json| {
@@ -979,7 +985,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     Self {
       workspace_root,
       jsr_pkgs,
-      maybe_import_map,
+      maybe_import_maps,
       pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       pkg_json_dep_resolution,
       sloppy_imports_options,
@@ -1000,12 +1006,13 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
   ) -> SerializableWorkspaceResolver<'_> {
     let root_dir_url = BaseUrl(root_dir_url);
     SerializableWorkspaceResolver {
-      import_map: self.maybe_import_map().map(|i| {
-        SerializedWorkspaceResolverImportMap {
+      import_map: self
+        .maybe_import_maps()
+        .map(|i| SerializedWorkspaceResolverImportMap {
           specifier: root_dir_url.make_relative_if_descendant(i.base_url()),
           json: Cow::Owned(i.to_json()),
-        }
-      }),
+        })
+        .collect(),
       jsr_pkgs: self
         .jsr_packages()
         .iter()
@@ -1046,20 +1053,23 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     serializable_workspace_resolver: SerializableWorkspaceResolver,
     sys: TSys,
   ) -> Result<Self, ImportMapError> {
-    let import_map = match serializable_workspace_resolver.import_map {
-      Some(import_map) => Some(
-        import_map::parse_from_json_with_options(
-          root_dir_url.join(&import_map.specifier).unwrap(),
-          &import_map.json,
-          import_map::ImportMapOptions {
-            address_hook: None,
-            expand_imports: true,
-          },
-        )?
-        .import_map,
-      ),
-      None => None,
-    };
+    let import_maps = serializable_workspace_resolver
+      .import_map
+      .into_iter()
+      .map(|import_map| {
+        Ok(
+          import_map::parse_from_json_with_options(
+            root_dir_url.join(&import_map.specifier).unwrap(),
+            &import_map.json,
+            import_map::ImportMapOptions {
+              address_hook: None,
+              expand_imports: true,
+            },
+          )?
+          .import_map,
+        )
+      })
+      .collect::<Result<Vec<_>, ImportMapError>>()?;
     let pkg_jsons = serializable_workspace_resolver
       .package_jsons
       .into_iter()
@@ -1085,7 +1095,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       .collect();
     Ok(Self::new_raw(
       UrlRc::new(root_dir_url),
-      import_map,
+      import_maps,
       jsr_packages,
       pkg_jsons,
       serializable_workspace_resolver.pkg_json_resolution,
@@ -1102,8 +1112,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     *self.compiler_options_resolver.write() = value;
   }
 
-  pub fn maybe_import_map(&self) -> Option<&ImportMap> {
-    self.maybe_import_map.as_ref().map(|c| &c.import_map)
+  pub fn maybe_import_maps(&self) -> impl Iterator<Item = &ImportMap> {
+    self.maybe_import_maps.iter().map(|c| &c.import_map)
   }
 
   pub fn package_jsons(&self) -> impl Iterator<Item = &PackageJsonRc> {
@@ -1116,8 +1126,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
 
   pub fn diagnostics(&self) -> Vec<WorkspaceResolverDiagnostic<'_>> {
     self
-      .maybe_import_map
-      .as_ref()
+      .maybe_import_maps
       .iter()
       .flat_map(|c| &c.diagnostics)
       .map(WorkspaceResolverDiagnostic::ImportMap)
@@ -1132,16 +1141,34 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
   ) -> Result<MappedResolution<'a>, MappedResolutionError> {
     // 1. Attempt to resolve with the import map and normally first
     let mut used_import_map = false;
-    let resolve_result = if let Some(import_map) = &self.maybe_import_map {
+
+    let mut resolve_result = None;
+
+    for import_map in self.maybe_import_maps() {
       used_import_map = true;
-      import_map
-        .import_map
-        .resolve(specifier, referrer)
-        .map_err(MappedResolutionError::ImportMap)
-    } else {
-      import_map::specifier::resolve_import(specifier, referrer)
-        .map_err(MappedResolutionError::Specifier)
+
+      resolve_result = Some(
+        match import_map
+          .resolve(specifier, referrer)
+          .map_err(MappedResolutionError::ImportMap)
+        {
+          Ok(v) => Ok(v),
+          Err(e) if e.is_unmapped_bare_specifier() => continue,
+          Err(e) => Err(e),
+        },
+      );
+      break;
+    }
+
+    if resolve_result.is_none() {
+      resolve_result = Some(
+        import_map::specifier::resolve_import(specifier, referrer)
+          .map_err(MappedResolutionError::Specifier),
+      );
     };
+
+    let resolve_result = resolve_result.expect("result should be produced either by one of import maps or by normal resolution process");
+
     let resolve_error = match resolve_result {
       Ok(mut specifier) => {
         let mut used_compiler_options_root_dirs = false;
@@ -1471,7 +1498,7 @@ pub struct SerializedResolverWorkspaceJsrPackage<'a> {
 #[derive(Deserialize, Serialize)]
 pub struct SerializableWorkspaceResolver<'a> {
   #[serde(borrow)]
-  pub import_map: Option<SerializedWorkspaceResolverImportMap<'a>>,
+  pub import_map: Vec<SerializedWorkspaceResolverImportMap<'a>>,
   #[serde(borrow)]
   pub jsr_pkgs: Vec<SerializedResolverWorkspaceJsrPackage<'a>>,
   pub package_jsons: Vec<(String, serde_json::Value)>,

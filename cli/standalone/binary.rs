@@ -588,13 +588,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       );
     }
 
-    if let Some(import_map) = self.workspace_resolver.maybe_import_map()
-      && let Ok(file_path) = url_to_file_path(import_map.base_url())
-      && let Some(import_map_parent_dir) = file_path.parent()
-    {
-      // tell the vfs about the import map's parent directory in case it
-      // falls outside what the root of where the VFS will be based
-      vfs.add_possible_min_root_dir(import_map_parent_dir);
+    for import_map in self.workspace_resolver.maybe_import_maps() {
+      if let Ok(file_path) = url_to_file_path(import_map.base_url())
+        && let Some(import_map_parent_dir) = file_path.parent()
+      {
+        // tell the vfs about the import map's parent directory in case it
+        // falls outside what the root of where the VFS will be based
+        vfs.add_possible_min_root_dir(import_map_parent_dir);
+      }
     }
     if let Some(node_modules_dir) = self.npm_resolver.root_node_modules_path() {
       // ensure the vfs doesn't go below the node_modules directory's parent
@@ -737,17 +738,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       env_vars_from_env_file,
       entrypoint_key: root_dir_url.specifier_key(entrypoint).into_owned(),
       workspace_resolver: SerializedWorkspaceResolver {
-        import_map: self.workspace_resolver.maybe_import_map().map(|i| {
-          SerializedWorkspaceResolverImportMap {
-            specifier: if i.base_url().scheme() == "file" {
-              root_dir_url.specifier_key(i.base_url()).into_owned()
-            } else {
-              // just make a remote url local
-              "deno.json".to_string()
-            },
-            json: i.to_json(),
-          }
-        }),
+        import_maps: self
+          .workspace_resolver
+          .maybe_import_maps()
+          .map(|i| {
+            SerializedWorkspaceResolverImportMap {
+              specifier: if i.base_url().scheme() == "file" {
+                root_dir_url.specifier_key(i.base_url()).into_owned()
+              } else {
+                // just make a remote url local
+                "deno.json".to_string()
+              },
+              json: i.to_json(),
+            }
+          })
+          .collect(),
         jsr_pkgs: self
           .workspace_resolver
           .jsr_packages()

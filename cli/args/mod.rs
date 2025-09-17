@@ -576,12 +576,11 @@ impl CliOptions {
   ///
   /// This will NOT include the config file if it
   /// happens to be an import map.
-  pub fn resolve_specified_import_map_specifier(
+  pub fn resolve_specified_import_map_specifiers(
     &self,
-  ) -> Result<Option<ModuleSpecifier>, ImportMapSpecifierResolveError> {
-    resolve_import_map_specifier(
-      self.flags.import_map_path.as_deref(),
-      self.workspace().root_deno_json().map(|c| c.as_ref()),
+  ) -> Result<Vec<ModuleSpecifier>, ImportMapSpecifierResolveError> {
+    resolve_import_map_specifiers(
+      self.flags.import_map_paths.iter().map(String::as_ref),
       &self.initial_cwd,
     )
   }
@@ -1322,9 +1321,12 @@ impl CliOptions {
       );
     }
 
-    if let Ok(Some(import_map_path)) = self
-      .resolve_specified_import_map_specifier()
-      .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+    for import_map_path in self
+      .resolve_specified_import_map_specifiers()
+      .ok()
+      .into_iter()
+      .flatten()
+      .flat_map(|ms| ms.to_file_path().ok())
     {
       full_paths.push(import_map_path);
     }
@@ -1417,28 +1419,19 @@ pub struct ImportMapSpecifierResolveError {
   source: deno_path_util::ResolveUrlOrPathError,
 }
 
-fn resolve_import_map_specifier(
-  maybe_import_map_path: Option<&str>,
-  maybe_config_file: Option<&ConfigFile>,
+// TODO: Shouldn't it also include deno.json in result?
+fn resolve_import_map_specifiers<'i>(
+  maybe_import_map_paths: impl Iterator<Item = &'i str>,
   current_dir: &Path,
-) -> Result<Option<Url>, ImportMapSpecifierResolveError> {
-  if let Some(import_map_path) = maybe_import_map_path {
-    if let Some(config_file) = &maybe_config_file
-      && config_file.json.import_map.is_some()
-    {
-      log::warn!(
-        "{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.",
-        colors::yellow("Warning"),
-        config_file.specifier,
-      );
-    }
-    let specifier =
-      deno_path_util::resolve_url_or_path(import_map_path, current_dir)
-        .map_err(|source| ImportMapSpecifierResolveError { source })?;
-    Ok(Some(specifier))
-  } else {
-    Ok(None)
-  }
+) -> Result<Vec<Url>, ImportMapSpecifierResolveError> {
+  maybe_import_map_paths
+    .map(|import_map_path| {
+      let specifier =
+        deno_path_util::resolve_url_or_path(import_map_path, current_dir)
+          .map_err(|source| ImportMapSpecifierResolveError { source })?;
+      Ok(specifier)
+    })
+    .collect()
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
@@ -1717,40 +1710,27 @@ mod test {
 
   #[test]
   fn resolve_import_map_flags_take_precedence() {
-    let config_text = r#"{
-      "importMap": "import_map.json"
-    }"#;
     let cwd = &std::env::current_dir().unwrap();
-    let config_specifier = Url::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      Some("import-map.json"),
-      Some(&config_file),
-      cwd,
-    );
+    let actual = resolve_import_map_specifiers(&["import-map.json"], cwd);
     let import_map_path = cwd.join("import-map.json");
     let expected_specifier =
       deno_path_util::url_from_file_path(&import_map_path).unwrap();
     assert!(actual.is_ok());
     let actual = actual.unwrap();
-    assert_eq!(actual, Some(expected_specifier));
+    assert_eq!(actual, vec![expected_specifier]);
   }
 
   #[test]
   fn resolve_import_map_none() {
-    let config_text = r#"{}"#;
-    let config_specifier = Url::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let actual =
-      resolve_import_map_specifier(None, Some(&config_file), Path::new("/"));
+    let actual = resolve_import_map_specifiers(&[], Path::new("/"));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
-    assert_eq!(actual, None);
+    assert_eq!(actual, vec![]);
   }
 
   #[test]
   fn resolve_import_map_no_config() {
-    let actual = resolve_import_map_specifier(None, None, Path::new("/"));
+    let actual = resolve_import_map_specifiers(&[], Path::new("/"));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);
