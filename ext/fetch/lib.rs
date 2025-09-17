@@ -1365,7 +1365,7 @@ impl CommonRequest for http::Request<ReqBody> {
 
 impl CommonRequest for http::request::Builder {
   fn uri(&self) -> &Uri {
-    http::request::Builder::uri_ref(&self).expect("uri not set")
+    http::request::Builder::uri_ref(self).expect("uri not set")
   }
 
   fn headers_mut(&mut self) -> &mut HeaderMap {
