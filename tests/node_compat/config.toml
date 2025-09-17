@@ -426,6 +426,8 @@
 "parallel/test-file-write-stream5.js" = {}
 "parallel/test-finalization-registry-shutdown.js" = {}
 "parallel/test-fs-buffertype-writesync.js" = {}
+"parallel/test-fs-chmod-mask.js" = {}
+"parallel/test-fs-chmod.js" = {}
 "parallel/test-fs-chown-type-check.js" = {}
 "parallel/test-fs-close.js" = {}
 # TODO(bartlomieju): appears that part of the test that's broke was removed in Node 24.0
@@ -436,6 +438,7 @@
 "parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
 "parallel/test-fs-fsync.js" = {}
+"parallel/test-fs-glob.mjs" = {}
 "parallel/test-fs-internal-assertencoding.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
@@ -450,6 +453,7 @@
 "parallel/test-fs-promises-exists.js" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
+"parallel/test-fs-read-empty-buffer.js" = {}
 "parallel/test-fs-read-file-sync-hostname.js" = {}
 "parallel/test-fs-read-stream-autoClose.js" = {}
 "parallel/test-fs-read-stream-double-close.js" = {}
@@ -470,6 +474,7 @@
 "parallel/test-fs-readfile-unlink.js" = {}
 "parallel/test-fs-readfile-zero-byte-liar.js" = {}
 "parallel/test-fs-readfilesync-enoent.js" = {}
+"parallel/test-fs-readlink-type-check.js" = {}
 "parallel/test-fs-readv-promisify.js" = {}
 "parallel/test-fs-ready-event-stream.js" = {}
 "parallel/test-fs-rename-type-check.js" = {}
