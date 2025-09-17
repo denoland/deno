@@ -18,6 +18,7 @@ use h2::Reason;
 use h2::RecvStream;
 use h2::server::Handshake;
 use h2::server::SendResponse;
+use http_body_util::Empty;
 use hyper::Method;
 use hyper::Request;
 use hyper::Response;
@@ -149,6 +150,13 @@ where
 {
   let service = hyper::service::service_fn(
     move |mut req: http::Request<hyper::body::Incoming>| async move {
+      if req.headers().get("user-agent").is_none() {
+        return Response::builder()
+          .status(StatusCode::BAD_REQUEST)
+          .body(Empty::new())
+          .map_err(|e| anyhow!("Error creating response: {}", e));
+      }
+
       let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
         .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
 

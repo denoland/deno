@@ -62,7 +62,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.50.0", features = ["transpiling"] }
-deno_core = { version = "0.357.0" }
+deno_core = { version = "0.358.0" }
 
 deno_cache_dir = "=0.25.0"
 deno_doc = "=0.183.0"
@@ -259,7 +259,7 @@ tar = "=0.4.43"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
 thiserror = "2.0.12"
-tokio = { version = "1.45.1", features = ["full"] }
+tokio = { version = "1.47.1", features = ["full"] }
 tokio-eld = "0.2"
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-rustls = { version = "0.26.0", default-features = false, features = ["aws_lc_rs", "tls12"] }

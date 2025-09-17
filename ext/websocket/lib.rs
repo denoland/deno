@@ -302,6 +302,7 @@ async fn handshake_http1(
 
   let mut request = Request::builder().method(Method::GET).uri(req_uri);
 
+  client.inject_common_headers(&mut request);
   request =
     populate_common_request_headers(request, protocols, headers, allow_host)?;
 
@@ -342,6 +343,7 @@ async fn handshake_http2(
   let mut request = Request::builder();
   request = request.method(Method::CONNECT);
   request = request.uri(uri);
+  client.inject_common_headers(&mut request);
   request =
     populate_common_request_headers(request, protocols, headers, allow_host)?;
   request = request.extension(h2::ext::Protocol::from("websocket"));
