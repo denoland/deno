@@ -25,7 +25,6 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
-use deno_error::JsErrorBox;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
@@ -99,7 +98,6 @@ impl CoverageCollectorState {
     for script_coverage in script_coverages {
       // Filter out internal and http/https JS files, eval'd scripts,
       // and scripts with invalid urls from being included in coverage reports
-      // eprintln!("script coverage url {}", script_coverage.url);
       if script_coverage.url.is_empty()
         || script_coverage.url.starts_with("ext:")
         || script_coverage.url.starts_with("[ext:")
@@ -114,21 +112,41 @@ impl CoverageCollectorState {
       let filename = format!("{}.json", Uuid::new_v4());
       let filepath = self.0.lock().dir.join(filename);
 
-      // TODO(bartlomieju): remove unwrap
-      let mut out = BufWriter::new(File::create(&filepath).unwrap());
-      // TODO(bartlomieju): remove unwrap
-      let coverage = serde_json::to_string(&script_coverage)
-        .map_err(JsErrorBox::from_err)
-        .unwrap();
+      let file = match File::create(&filepath) {
+        Ok(f) => f,
+        Err(err) => {
+          log::error!(
+            "Failed to create coverage file at {:?}, reason: {:?}",
+            filepath,
+            err
+          );
+          continue;
+        }
+      };
+      let mut out = BufWriter::new(file);
+      let coverage = serde_json::to_string(&script_coverage).unwrap();
       let formatted_coverage =
         format_json(&filepath, &coverage, &Default::default())
           .ok()
           .flatten()
           .unwrap_or(coverage);
 
-      // TODO(bartlomieju): add logging
-      let _ = out.write_all(formatted_coverage.as_bytes());
-      let _ = out.flush();
+      if let Err(err) = out.write_all(formatted_coverage.as_bytes()) {
+        log::error!(
+          "Failed to write coverage file at {:?}, reason: {:?}",
+          filepath,
+          err
+        );
+        continue;
+      }
+      if let Err(err) = out.flush() {
+        log::error!(
+          "Failed to flush coverage file at {:?}, reason: {:?}",
+          filepath,
+          err
+        );
+        continue;
+      }
     }
   }
 }

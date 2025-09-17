@@ -20,7 +20,6 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
-use deno_core::InspectorMsgKind;
 use deno_core::InspectorPostMessageError;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
@@ -221,76 +220,68 @@ impl ReplSessionState {
   }
 
   fn callback(&self, msg: deno_core::InspectorMsg) {
-    match msg.kind {
-      // TODO: duplicated in `cli/tools/run/hmr.rs` for the most part
-      deno_core::InspectorMsgKind::Message(msg_id) => {
-        let message: serde_json::Value =
-          match serde_json::from_str(&msg.content) {
-            Ok(v) => v,
-            Err(error) => match error.classify() {
-              serde_json::error::Category::Syntax => serde_json::json!({
-                "id": msg_id,
-                "result": {
-                  "result": {
-                    "type": "error",
-                    "description": "Unterminated string literal",
-                    "value": "Unterminated string literal",
-                  },
-                  "exceptionDetails": {
-                    "exceptionId": 0,
-                    "text": "Unterminated string literal",
-                    "lineNumber": 0,
-                    "columnNumber": 0
-                  },
-                },
-              }),
-              _ => panic!("Could not parse inspector message"),
-            },
-          };
+    let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
+      if let Ok(value) = serde_json::from_str(&msg.content) {
+        let _ = self.0.lock().notification_tx.unbounded_send(value);
+      }
+      return;
+    };
 
-        let mut state = self.0.lock();
-        let Some(message_state) = state.messages.remove(&msg_id) else {
-          state
-            .messages
-            .insert(msg_id, InspectorMessageState::Ready(message));
-          return;
-        };
-        let InspectorMessageState::WaitingFor(sender) = message_state else {
-          // Maybe log? This should be unreachable
-          return;
-        };
-        let _ = sender.send(message);
-      }
-      InspectorMsgKind::Notification => {
-        if let Ok(value) = serde_json::from_str(&msg.content) {
-          let _ = self.0.lock().notification_tx.unbounded_send(value);
-        }
-      }
-    }
+    let message: serde_json::Value = match serde_json::from_str(&msg.content) {
+      Ok(v) => v,
+      Err(error) => match error.classify() {
+        serde_json::error::Category::Syntax => serde_json::json!({
+          "id": msg_id,
+          "result": {
+            "result": {
+              "type": "error",
+              "description": "Unterminated string literal",
+              "value": "Unterminated string literal",
+            },
+            "exceptionDetails": {
+              "exceptionId": 0,
+              "text": "Unterminated string literal",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+          },
+        }),
+        _ => panic!("Could not parse inspector message"),
+      },
+    };
+
+    let mut state = self.0.lock();
+    let Some(message_state) = state.messages.remove(&msg_id) else {
+      state
+        .messages
+        .insert(msg_id, InspectorMessageState::Ready(message));
+      return;
+    };
+    let InspectorMessageState::WaitingFor(sender) = message_state else {
+      return;
+    };
+    let _ = sender.send(message);
   }
 
   async fn wait_for_response(
     &self,
     msg_id: i32,
   ) -> Result<serde_json::Value, InspectorPostMessageError> {
-    let value =
-      if let Some(message_state) = self.0.lock().messages.remove(&msg_id) {
-        let InspectorMessageState::Ready(value) = message_state else {
-          unreachable!();
-        };
-        value
-      } else {
-        let (tx, rx) = oneshot::channel();
-        self
-          .0
-          .lock()
-          .messages
-          .insert(msg_id, InspectorMessageState::WaitingFor(tx));
-        rx.await.unwrap()
+    if let Some(message_state) = self.0.lock().messages.remove(&msg_id) {
+      let InspectorMessageState::Ready(mut value) = message_state else {
+        unreachable!();
       };
-    // TODO(bartlomieju): very specific, but that's probably okay for now, that
-    // each caller casts to wanted type?
-    Ok(value["result"].clone())
+      return Ok(value["result"].take());
+    }
+
+    let (tx, rx) = oneshot::channel();
+    self
+      .0
+      .lock()
+      .messages
+      .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+    let mut value = rx.await.unwrap();
+    Ok(value["result"].take())
   }
 }
 
@@ -326,7 +317,6 @@ impl ReplSession {
     // our inspector does not support a default context (0 is an invalid context id).
     let context_id: u64;
 
-    // TODO(bartlomieju): this will probably hang, might need to actually spin the event loop a bit here
     loop {
       let notification = notification_rx.next().await.unwrap();
       let notification =

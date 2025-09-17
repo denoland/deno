@@ -27,6 +27,9 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
 
 static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
+fn next_id() -> i32 {
+  NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
 
 fn explain(response: &cdp::SetScriptSourceResponse) -> String {
   match response.status {
@@ -106,29 +109,25 @@ impl HmrRunnerState {
   }
 
   pub fn callback(&self, msg: deno_core::InspectorMsg) {
-    match msg.kind {
-      deno_core::InspectorMsgKind::Message(msg_id) => {
-        let message: serde_json::Value =
-          serde_json::from_str(&msg.content).unwrap();
-        let mut state = self.0.lock();
-        let Some(message_state) = state.messages.remove(&msg_id) else {
-          state.messages.insert(
-            msg_id,
-            InspectorMessageState::Ready(message["result"].clone()),
-          );
-          return;
-        };
-        let InspectorMessageState::WaitingFor(sender) = message_state else {
-          // Maybe log? This should be unreachable
-          return;
-        };
-        let _ = sender.send(message);
-      }
-      deno_core::InspectorMsgKind::Notification => {
-        let notification = serde_json::from_str(&msg.content).unwrap();
-        self.handle_notification(notification);
-      }
-    }
+    let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
+      let notification = serde_json::from_str(&msg.content).unwrap();
+      self.handle_notification(notification);
+      return;
+    };
+
+    let message: serde_json::Value =
+      serde_json::from_str(&msg.content).unwrap();
+    let mut state = self.0.lock();
+    let Some(message_state) = state.messages.remove(&msg_id) else {
+      state
+        .messages
+        .insert(msg_id, InspectorMessageState::Ready(message));
+      return;
+    };
+    let InspectorMessageState::WaitingFor(sender) = message_state else {
+      return;
+    };
+    let _ = sender.send(message);
   }
 
   fn handle_notification(&self, notification: cdp::Notification) {
@@ -192,21 +191,23 @@ impl HmrRunner {
     Self { session, state }
   }
 
-  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   pub fn start(&mut self) {
-    self.enable_debugger();
+    self
+      .session
+      .post_message::<()>(next_id(), "Debugger.enable", None);
+    self
+      .session
+      .post_message::<()>(next_id(), "Runtime.enable", None);
   }
 
   fn watcher(&self) -> Arc<WatcherCommunicator> {
     self.state.0.lock().watcher_communicator.clone()
   }
 
-  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
   pub fn stop(&mut self) {
     self
       .watcher()
       .change_restart_mode(WatcherRestartMode::Automatic);
-    self.disable_debugger();
   }
 
   pub async fn run(&mut self) -> Result<(), CoreError> {
@@ -270,7 +271,11 @@ impl HmrRunner {
             let mut tries = 1;
             loop {
               let msg_id = self.set_script_source(&id, source_code.as_str());
-              let result = self.wait_for_response::<cdp::SetScriptSourceResponse>(msg_id).await?;
+              let value = self.wait_for_response(msg_id).await?;
+              let result: cdp::SetScriptSourceResponse = serde_json::from_value(value).map_err(|e| {
+                InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
+              })?;
+
 
               if matches!(result.status, cdp::Status::Ok) {
                 self.dispatch_hmr_event(module_url.as_str());
@@ -294,66 +299,30 @@ impl HmrRunner {
     }
   }
 
-  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  fn enable_debugger(&mut self) {
-    // TODO(barltomieju): is it actually necessary to call this?
-    self.session.post_message::<()>(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-      "Debugger.enable",
-      None,
-    );
-
-    self.session.post_message::<()>(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-      "Runtime.enable",
-      None,
-    );
-  }
-
-  // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  fn disable_debugger(&mut self) {
-    // TODO(barltomieju): is it actually necessary to call this?
-    self.session.post_message::<()>(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-      "Debugger.disable",
-      None,
-    );
-    // TODO(barltomieju): is it actually necessary to call this?
-    self.session.post_message::<()>(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-      "Runtime.disable",
-      None,
-    );
-  }
-
-  async fn wait_for_response<T: serde::de::DeserializeOwned>(
+  async fn wait_for_response(
     &self,
     msg_id: i32,
-  ) -> Result<T, InspectorPostMessageError> {
-    let value = if let Some(message_state) =
-      self.state.0.lock().messages.remove(&msg_id)
-    {
-      let InspectorMessageState::Ready(value) = message_state else {
+  ) -> Result<serde_json::Value, InspectorPostMessageError> {
+    if let Some(message_state) = self.state.0.lock().messages.remove(&msg_id) {
+      let InspectorMessageState::Ready(mut value) = message_state else {
         unreachable!();
       };
-      value
-    } else {
-      let (tx, rx) = oneshot::channel();
-      self
-        .state
-        .0
-        .lock()
-        .messages
-        .insert(msg_id, InspectorMessageState::WaitingFor(tx));
-      rx.await.unwrap()
-    };
-    serde_json::from_value::<T>(value).map_err(|e| {
-      InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
-    })
+      return Ok(value["result"].take());
+    }
+
+    let (tx, rx) = oneshot::channel();
+    self
+      .state
+      .0
+      .lock()
+      .messages
+      .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+    let mut value = rx.await.unwrap();
+    Ok(value["result"].take())
   }
 
   fn set_script_source(&mut self, script_id: &str, source: &str) -> i32 {
-    let msg_id = NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let msg_id = next_id();
     self.session.post_message(
       msg_id,
       "Debugger.setScriptSource",
@@ -373,7 +342,7 @@ impl HmrRunner {
     );
 
     self.session.post_message(
-      NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+      next_id(),
       "Runtime.evaluate",
       Some(json!({
         "expression": expr,
