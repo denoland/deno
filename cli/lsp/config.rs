@@ -1778,6 +1778,10 @@ impl ConfigTree {
       && (path.ends_with("/deno.json")
         || path.ends_with("/deno.jsonc")
         || path.ends_with("/package.json"))
+      || path.ends_with("/node_modules/.package-lock.json")
+      || path.ends_with("/node_modules/.yarn-integrity.json")
+      || path.ends_with("/node_modules/.modules.yaml")
+      || path.ends_with("/node_modules/.deno/.setup-cache.bin")
     {
       return true;
     }
