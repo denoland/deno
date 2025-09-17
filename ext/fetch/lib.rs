@@ -1349,27 +1349,21 @@ impl std::error::Error for ClientSendError {
 
 impl Client {
   /// Injects common headers like User-Agent and Proxy-Authorization.
-  pub fn inject_common_headers(
-    &self,
-    mut req: http::Request<ReqBody>,
-  ) -> http::Request<ReqBody> {
-    req
-      .headers_mut()
+  pub fn inject_common_headers(&self, headers: &mut http::HeaderMap) {
+    headers
       .entry(USER_AGENT)
       .or_insert_with(|| self.user_agent.clone());
 
     if let Some(auth) = self.connector.proxies.http_forward_auth(req.uri()) {
-      req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
+      headers.insert(PROXY_AUTHORIZATION, auth.clone());
     }
-
-    req
   }
 
   pub async fn send(
     self,
     mut req: http::Request<ReqBody>,
   ) -> Result<http::Response<ResBody>, ClientSendError> {
-    req = self.inject_common_headers(req);
+    self.inject_common_headers(req.headers_mut());
 
     req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
 
