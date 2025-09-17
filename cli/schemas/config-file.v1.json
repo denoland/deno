@@ -857,6 +857,11 @@
         }
       ]
     },
+    "permissions": {
+      "type": "object",
+      "description": "Named permission sets that can be selected with -P/--permission-set or referenced in \"test\", \"bench\", or \"compile\" permissions. A special name \"default\" is used when -P is passed without a value.",
+      "additionalProperties": { "$ref": "#/$defs/permissionSet" }
+    },
     "patch": {
       "type": "array",
       "items": {
