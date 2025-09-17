@@ -276,7 +276,7 @@ fn open_db(
 ) -> Result<rusqlite::Connection, SqliteError> {
   let perms = state.borrow::<PermissionsContainer>();
   let disable_attach = perms
-    .check_has_all_permissions(&Path::new(location))
+    .check_has_all_permissions(Path::new(location))
     .is_err();
 
   if location == ":memory:" {
