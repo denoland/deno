@@ -132,7 +132,10 @@ pub struct DOMPointReadOnly {
   inner: RefCell<Vector4<f64>>,
 }
 
-impl GarbageCollected for DOMPointReadOnly {
+// SAFETY: we're sure `DOMPointReadOnly` can be GCed
+unsafe impl GarbageCollected for DOMPointReadOnly {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DOMPointReadOnly"
   }
@@ -233,7 +236,10 @@ impl DOMPointReadOnly {
 
 pub struct DOMPoint {}
 
-impl GarbageCollected for DOMPoint {
+// SAFETY: we're sure `DOMPoint` can be GCed
+unsafe impl GarbageCollected for DOMPoint {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DOMPoint"
   }
@@ -355,7 +361,10 @@ pub struct DOMRectReadOnly {
   height: Cell<f64>,
 }
 
-impl GarbageCollected for DOMRectReadOnly {
+// SAFETY: we're sure `DOMRectReadOnly` can be GCed
+unsafe impl GarbageCollected for DOMRectReadOnly {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DOMRectReadOnly"
   }
@@ -497,7 +506,10 @@ impl DOMRectReadOnly {
 
 pub struct DOMRect {}
 
-impl GarbageCollected for DOMRect {
+// SAFETY: we're sure `DOMRect` can be GCed
+unsafe impl GarbageCollected for DOMRect {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DOMRect"
   }
@@ -612,7 +624,10 @@ pub struct DOMQuad {
   p4: v8::Global<v8::Object>,
 }
 
-impl GarbageCollected for DOMQuad {
+// SAFETY: we're sure `DOMQuad` can be GCed
+unsafe impl GarbageCollected for DOMQuad {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DOMQuad"
   }
@@ -859,7 +874,10 @@ pub struct DOMMatrixReadOnly {
   is_2d: Cell<bool>,
 }
 
-impl GarbageCollected for DOMMatrixReadOnly {
+// SAFETY: we're sure `DOMMatrixReadOnly` can be GCed
+unsafe impl GarbageCollected for DOMMatrixReadOnly {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DOMMatrixReadOnly"
   }
@@ -2113,7 +2131,10 @@ impl DOMMatrixReadOnly {
 
 pub struct DOMMatrix {}
 
-impl GarbageCollected for DOMMatrix {
+// SAFETY: we're sure `DOMMatrix` can be GCed
+unsafe impl GarbageCollected for DOMMatrix {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DOMMatrix"
   }

@@ -5,7 +5,10 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Geometry Interfaces Module API */
+/**
+ * @category Geometry Interfaces Module API
+ * @experimental
+ */
 interface DOMMatrix2DInit {
   a?: number;
   b?: number;
@@ -21,7 +24,10 @@ interface DOMMatrix2DInit {
   m42?: number;
 }
 
-/** @category Geometry Interfaces Module API */
+/**
+ * @category Geometry Interfaces Module API
+ * @experimental
+ */
 interface DOMMatrixInit extends DOMMatrix2DInit {
   is2D?: boolean;
   m13?: number;
@@ -48,6 +54,7 @@ interface DOMMatrixInit extends DOMMatrix2DInit {
  * ```
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 interface DOMMatrix extends DOMMatrixReadOnly {
   a: number;
@@ -202,6 +209,7 @@ interface DOMMatrix extends DOMMatrixReadOnly {
  * ```
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 declare var DOMMatrix: {
   prototype: DOMMatrix;
@@ -226,6 +234,7 @@ declare var DOMMatrix: {
  * ```
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 interface DOMMatrixReadOnly {
   readonly a: number;
@@ -405,19 +414,23 @@ interface DOMMatrixReadOnly {
  * ```
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 declare var DOMMatrixReadOnly: {
   prototype: DOMMatrixReadOnly;
   new (init?: number[]): DOMMatrixReadOnly;
   new (init: DOMMatrix | DOMMatrixReadOnly): DOMMatrixReadOnly;
-  /** Not available in Worker */
+  /** NOTE: Not available in Worker */
   new (init: string): DOMMatrixReadOnly;
   fromFloat32Array(array32: Float32Array): DOMMatrixReadOnly;
   fromFloat64Array(array64: Float64Array): DOMMatrixReadOnly;
   fromMatrix(other?: DOMMatrixInit): DOMMatrixReadOnly;
 };
 
-/** @category Geometry Interfaces Module API */
+/**
+ * @category Geometry Interfaces Module API
+ * @experimental
+ */
 interface DOMPointInit {
   w?: number;
   x?: number;
@@ -430,6 +443,7 @@ interface DOMPointInit {
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMPoint)
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 interface DOMPoint extends DOMPointReadOnly {
   w: number;
@@ -443,6 +457,7 @@ interface DOMPoint extends DOMPointReadOnly {
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMPoint)
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 declare var DOMPoint: {
   prototype: DOMPoint;
@@ -455,6 +470,7 @@ declare var DOMPoint: {
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMPointReadOnly)
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 interface DOMPointReadOnly {
   readonly w: number;
@@ -475,6 +491,7 @@ interface DOMPointReadOnly {
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMPointReadOnly)
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 declare var DOMPointReadOnly: {
   prototype: DOMPointReadOnly;
@@ -482,7 +499,10 @@ declare var DOMPointReadOnly: {
   fromPoint(other?: DOMPointInit): DOMPointReadOnly;
 };
 
-/** @category Geometry Interfaces Module API */
+/**
+ * @category Geometry Interfaces Module API
+ * @experimental
+ */
 interface DOMQuadInit {
   p1?: DOMPointInit;
   p2?: DOMPointInit;
@@ -495,6 +515,7 @@ interface DOMQuadInit {
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMQuad)
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 interface DOMQuad {
   readonly p1: DOMPoint;
@@ -515,6 +536,7 @@ interface DOMQuad {
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMQuad)
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 declare var DOMQuad: {
   prototype: DOMQuad;
@@ -528,7 +550,10 @@ declare var DOMQuad: {
   fromRect(other?: DOMRectInit): DOMQuad;
 };
 
-/** @category Geometry Interfaces Module API */
+/**
+ * @category Geometry Interfaces Module API
+ * @experimental
+ */
 interface DOMRectInit {
   height?: number;
   width?: number;
@@ -540,6 +565,7 @@ interface DOMRectInit {
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMRect)
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 interface DOMRect extends DOMRectReadOnly {
   height: number;
@@ -552,6 +578,7 @@ interface DOMRect extends DOMRectReadOnly {
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMRect)
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 declare var DOMRect: {
   prototype: DOMRect;
@@ -563,6 +590,7 @@ declare var DOMRect: {
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMRectReadOnly)
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 interface DOMRectReadOnly {
   readonly bottom: number;
@@ -589,6 +617,7 @@ interface DOMRectReadOnly {
  * [MDN](https://developer.mozilla.org/docs/Web/API/DOMRectReadOnly)
  *
  * @category Geometry Interfaces Module API
+ * @experimental
  */
 declare var DOMRectReadOnly: {
   prototype: DOMRectReadOnly;
