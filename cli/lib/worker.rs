@@ -816,8 +816,11 @@ impl LibMainWorker {
   }
 
   #[inline]
-  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    self.worker.create_inspector_session()
+  pub fn create_inspector_session(
+    &mut self,
+    cb: deno_core::InspectorSessionSend,
+  ) -> LocalInspectorSession {
+    self.worker.create_inspector_session(cb)
   }
 
   #[inline]

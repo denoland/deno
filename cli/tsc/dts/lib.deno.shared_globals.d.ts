@@ -451,7 +451,10 @@ interface DOMStringList {
 }
 
 /** @category Platform */
-type BufferSource = ArrayBufferView | ArrayBuffer;
+type BufferSource = ArrayBufferView<ArrayBuffer> | ArrayBuffer;
+
+/** @category Platform */
+type AllowSharedBufferSource = ArrayBufferView | ArrayBufferLike;
 
 /**
  * A global console object that provides methods for logging, debugging, and error reporting.

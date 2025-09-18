@@ -6586,7 +6586,7 @@ fn lsp_cache_on_save() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
+  let file = temp_dir.source_file(
     "file.ts",
     r#"
       import { printHello } from "http://localhost:4545/subdir/print_hello.ts";
@@ -6595,25 +6595,12 @@ fn lsp_cache_on_save() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.change_configuration(json!({
-    "deno": {
-      "enable": true,
-      "cacheOnSave": true,
-    },
-  }));
 
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": temp_dir.read_to_string("file.ts"),
-    }
-  }));
+  let diagnostics = client.did_open_file(&file);
   assert_eq!(
     diagnostics.messages_with_source("deno"),
     serde_json::from_value(json!({
-      "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap(),
+      "uri": file.uri(),
       "diagnostics": [{
         "range": {
           "start": { "line": 1, "character": 33 },
@@ -6630,10 +6617,13 @@ fn lsp_cache_on_save() {
     .unwrap()
   );
   client.did_save(json!({
-    "textDocument": { "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap() },
+    "textDocument": { "uri": file.uri() },
   }));
   client.handle_refresh_diagnostics_request();
-  assert_eq!(client.read_diagnostics().all(), vec![]);
+  assert_eq!(json!(client.read_diagnostics().all()), json!([]));
+
+  // Lockfiles should not be written from cache-on-save.
+  assert!(!temp_dir.path().join("deno.lock").exists());
 
   client.shutdown();
 }
@@ -10353,6 +10343,68 @@ fn lsp_auto_import_npm_export_node_modules_dir_no_package_json() {
     "import { useEffect } from 'preact/hooks'; console.log(useEffect);",
   );
   let file = temp_dir.source_file("file.ts", "useEffect;\n");
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file).all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.first().unwrap();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 },
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\"",
+  );
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/30666.
+#[test]
+#[timeout(300_000)]
+fn lsp_auto_import_npm_export_import_map_workspace_member() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["member"],
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "member/deno.json",
+    json!({
+      "imports": {
+        "preact": "npm:preact",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("member/other.ts", "import \"preact/hooks\";\n");
+  let file = temp_dir.source_file("member/mod.ts", "useEffect;\n");
   context.run_deno("install");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -19054,6 +19106,51 @@ fn lsp_will_rename_files_js_to_ts() {
                 "end": { "line": 0, "character": 18 },
               },
               "newText": "./other.ts",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/30627.
+#[test]
+#[timeout(300_000)]
+fn lsp_will_rename_files_move_to_different_dir() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let file = temp_dir.source_file("main.ts", "import \"./other.ts\";\n");
+  temp_dir.write("other.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "workspace/willRenameFiles",
+    json!({
+      "files": [
+        {
+          "oldUri": file.uri(),
+          "newUri": temp_dir.path().join("subdir/main.ts").uri_file(),
+        },
+      ],
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": { "uri": file.uri(), "version": 1 },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 8 },
+                "end": { "line": 0, "character": 18 },
+              },
+              "newText": "../other.ts",
             },
           ],
         },

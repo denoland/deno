@@ -538,6 +538,10 @@ class ClientRequest extends OutgoingMessage {
             caCerts: caCerts,
             alpnProtocols: ["http/1.0", "http/1.1"],
           }, keyPair);
+
+          // Simulates "secure" event on TLSSocket
+          // This makes yarn v1's https client working
+          this.socket.authorized = true;
         }
 
         this._req = await op_node_http_request_with_conn(

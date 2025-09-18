@@ -33,7 +33,14 @@ import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
 import process from "node:process";
 import { Buffer } from "node:buffer";
-import { clearImmediate, setImmediate } from "node:timers";
+import {
+  clearImmediate,
+  clearInterval as nodeClearInterval,
+  clearTimeout as nodeClearTimeout,
+  setImmediate,
+  setInterval as nodeSetInterval,
+  setTimeout as nodeSetTimeout,
+} from "node:timers";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import { loadGeometry } from "ext:deno_geometry/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
@@ -364,6 +371,11 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
 
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
 
-unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {};
+unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
+  clearInterval: core.propWritable(nodeClearInterval),
+  clearTimeout: core.propWritable(nodeClearTimeout),
+  setInterval: core.propWritable(nodeSetInterval),
+  setTimeout: core.propWritable(nodeSetTimeout),
+};
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

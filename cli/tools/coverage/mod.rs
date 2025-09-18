@@ -7,6 +7,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI32;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
@@ -15,17 +16,15 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
-use deno_core::InspectorPostMessageError;
-use deno_core::InspectorPostMessageErrorKind;
 use deno_core::LocalInspectorSession;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
-use deno_error::JsErrorBox;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
@@ -55,36 +54,47 @@ pub mod reporter;
 mod util;
 use merge::ProcessCoverage;
 
-pub struct CoverageCollector {
-  pub dir: PathBuf,
-  session: LocalInspectorSession,
+static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
+
+fn next_msg_id() -> i32 {
+  NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
-impl CoverageCollector {
-  pub fn new(dir: PathBuf, session: LocalInspectorSession) -> Self {
-    Self { dir, session }
+#[derive(Debug)]
+pub struct CoverageCollectorInner {
+  dir: PathBuf,
+  coverage_msg_id: Option<i32>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CoverageCollectorState(Arc<Mutex<CoverageCollectorInner>>);
+
+impl CoverageCollectorState {
+  pub fn new(dir: PathBuf) -> Self {
+    Self(Arc::new(Mutex::new(CoverageCollectorInner {
+      dir,
+      coverage_msg_id: None,
+    })))
   }
 
-  pub async fn start_collecting(
-    &mut self,
-  ) -> Result<(), InspectorPostMessageError> {
-    self.enable_debugger().await?;
-    self.enable_profiler().await?;
-    self
-      .start_precise_coverage(cdp::StartPreciseCoverageArgs {
-        call_count: true,
-        detailed: true,
-        allow_triggered_updates: false,
-      })
-      .await?;
+  pub fn callback(&self, msg: deno_core::InspectorMsg) {
+    let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
+      return;
+    };
+    let maybe_coverage_msg_id = self.0.lock().coverage_msg_id.as_ref().cloned();
 
-    Ok(())
+    if let Some(coverage_msg_id) = maybe_coverage_msg_id
+      && coverage_msg_id == msg_id
+    {
+      let message: serde_json::Value =
+        serde_json::from_str(&msg.content).unwrap();
+      let coverages: cdp::TakePreciseCoverageResponse =
+        serde_json::from_value(message["result"].clone()).unwrap();
+      self.write_coverages(coverages.result);
+    }
   }
 
-  pub async fn stop_collecting(&mut self) -> Result<(), CoreError> {
-    fs::create_dir_all(&self.dir)?;
-
-    let script_coverages = self.take_precise_coverage().await?.result;
+  fn write_coverages(&self, script_coverages: Vec<cdp::ScriptCoverage>) {
     for script_coverage in script_coverages {
       // Filter out internal and http/https JS files, eval'd scripts,
       // and scripts with invalid urls from being included in coverage reports
@@ -100,92 +110,86 @@ impl CoverageCollector {
       }
 
       let filename = format!("{}.json", Uuid::new_v4());
-      let filepath = self.dir.join(filename);
+      let filepath = self.0.lock().dir.join(filename);
 
-      let mut out = BufWriter::new(File::create(&filepath)?);
-      let coverage = serde_json::to_string(&script_coverage)
-        .map_err(JsErrorBox::from_err)?;
+      let file = match File::create(&filepath) {
+        Ok(f) => f,
+        Err(err) => {
+          log::error!(
+            "Failed to create coverage file at {:?}, reason: {:?}",
+            filepath,
+            err
+          );
+          continue;
+        }
+      };
+      let mut out = BufWriter::new(file);
+      let coverage = serde_json::to_string(&script_coverage).unwrap();
       let formatted_coverage =
         format_json(&filepath, &coverage, &Default::default())
           .ok()
           .flatten()
           .unwrap_or(coverage);
 
-      out.write_all(formatted_coverage.as_bytes())?;
-      out.flush()?;
+      if let Err(err) = out.write_all(formatted_coverage.as_bytes()) {
+        log::error!(
+          "Failed to write coverage file at {:?}, reason: {:?}",
+          filepath,
+          err
+        );
+        continue;
+      }
+      if let Err(err) = out.flush() {
+        log::error!(
+          "Failed to flush coverage file at {:?}, reason: {:?}",
+          filepath,
+          err
+        );
+        continue;
+      }
     }
+  }
+}
 
-    self.disable_debugger().await?;
-    self.disable_profiler().await?;
+pub struct CoverageCollector {
+  pub state: CoverageCollectorState,
+  session: LocalInspectorSession,
+}
 
-    Ok(())
+impl CoverageCollector {
+  pub fn new(
+    state: CoverageCollectorState,
+    session: LocalInspectorSession,
+  ) -> Self {
+    Self { state, session }
   }
 
-  async fn enable_debugger(&mut self) -> Result<(), InspectorPostMessageError> {
+  pub fn start_collecting(&mut self) {
     self
       .session
-      .post_message::<()>("Debugger.enable", None)
-      .await?;
+      .post_message::<()>(next_msg_id(), "Profiler.enable", None);
+    self.session.post_message(
+      next_msg_id(),
+      "Profiler.startPreciseCoverage",
+      Some(cdp::StartPreciseCoverageArgs {
+        call_count: true,
+        detailed: true,
+        allow_triggered_updates: false,
+      }),
+    );
+  }
+
+  pub fn stop_collecting(&mut self) -> Result<(), CoreError> {
+    fs::create_dir_all(&self.state.0.lock().dir)?;
+    let msg_id = next_msg_id();
+    self.state.0.lock().coverage_msg_id.replace(msg_id);
+
+    self.session.post_message::<()>(
+      msg_id,
+      "Profiler.takePreciseCoverage",
+      None,
+    );
     Ok(())
-  }
-
-  async fn enable_profiler(&mut self) -> Result<(), InspectorPostMessageError> {
-    self
-      .session
-      .post_message::<()>("Profiler.enable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn disable_debugger(
-    &mut self,
-  ) -> Result<(), InspectorPostMessageError> {
-    self
-      .session
-      .post_message::<()>("Debugger.disable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn disable_profiler(
-    &mut self,
-  ) -> Result<(), InspectorPostMessageError> {
-    self
-      .session
-      .post_message::<()>("Profiler.disable", None)
-      .await?;
-    Ok(())
-  }
-
-  async fn start_precise_coverage(
-    &mut self,
-    parameters: cdp::StartPreciseCoverageArgs,
-  ) -> Result<cdp::StartPreciseCoverageResponse, InspectorPostMessageError> {
-    let return_value = self
-      .session
-      .post_message("Profiler.startPreciseCoverage", Some(parameters))
-      .await?;
-
-    let return_object = serde_json::from_value(return_value).map_err(|e| {
-      InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
-    })?;
-
-    Ok(return_object)
-  }
-
-  async fn take_precise_coverage(
-    &mut self,
-  ) -> Result<cdp::TakePreciseCoverageResponse, InspectorPostMessageError> {
-    let return_value = self
-      .session
-      .post_message::<()>("Profiler.takePreciseCoverage", None)
-      .await?;
-
-    let return_object = serde_json::from_value(return_value).map_err(|e| {
-      InspectorPostMessageErrorKind::JsBox(JsErrorBox::from_err(e)).into_box()
-    })?;
-
-    Ok(return_object)
   }
 }
 
