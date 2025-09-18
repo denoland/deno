@@ -186,8 +186,7 @@ struct CliSpecifiedImportMapProvider {
 impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
   async fn get(
     &self,
-  ) -> Result<Vec<deno_resolver::workspace::SpecifiedImportMap>, AnyError>
-  {
+  ) -> Result<Vec<deno_resolver::workspace::SpecifiedImportMap>, AnyError> {
     async fn resolve_import_map_value_from_specifier(
       specifier: &Url,
       file_fetcher: &CliFileFetcher,

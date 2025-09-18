@@ -2799,7 +2799,10 @@ mod tests {
     }"#;
     let config_specifier = root_url().join("deno.json").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let result = expect_singleton(config_file.to_import_maps(&MockFs).unwrap(), "single importMap path");
+    let result = expect_singleton(
+      config_file.to_import_maps(&MockFs).unwrap(),
+      "single importMap path",
+    );
 
     assert_eq!(
       result.import_map.base_url(),
@@ -2888,7 +2891,10 @@ mod tests {
     let config_specifier = Url::from_file_path(&file_path).unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     assert_eq!(
-      expect_singleton(config_file.to_import_map_paths().unwrap(), "relative importMap"),
+      expect_singleton(
+        config_file.to_import_map_paths().unwrap(),
+        "relative importMap"
+      ),
       file_path
         .parent()
         .unwrap()
