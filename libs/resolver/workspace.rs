@@ -1673,6 +1673,7 @@ mod test {
   use deno_path_util::url_from_directory_path;
   use deno_path_util::url_from_file_path;
   use deno_semver::VersionReq;
+  use itertools::Itertools;
   use node_resolver::DenoIsBuiltInNodeModuleChecker;
   use node_resolver::NodeResolver;
   use node_resolver::NodeResolverOptions;
@@ -2113,7 +2114,7 @@ mod test {
       sys.clone(),
       super::CreateResolverOptions {
         pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
-        specified_import_map: None,
+        specified_import_maps: vec![],
         sloppy_imports_options: SloppyImportsOptions::Unspecified,
         fs_cache_options: FsCacheOptions::Enabled,
       },
@@ -2121,7 +2122,12 @@ mod test {
     .unwrap();
     assert_eq!(
       serde_json::from_str::<serde_json::Value>(
-        &resolver.maybe_import_map().unwrap().to_json()
+        &resolver
+          .maybe_import_maps()
+          .exactly_one()
+          .map_err(|_| "expected only one import map")
+          .unwrap()
+          .to_json()
       )
       .unwrap(),
       json!({
@@ -2354,7 +2360,7 @@ mod test {
       sys.clone(),
       super::CreateResolverOptions {
         pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
-        specified_import_map: None,
+        specified_import_maps: vec![],
         sloppy_imports_options: SloppyImportsOptions::Unspecified,
         fs_cache_options: FsCacheOptions::Enabled,
       },
@@ -2478,7 +2484,7 @@ mod test {
       sys.clone(),
       super::CreateResolverOptions {
         pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
-        specified_import_map: None,
+        specified_import_maps: vec![],
         sloppy_imports_options: SloppyImportsOptions::Enabled,
         fs_cache_options: FsCacheOptions::Enabled,
       },
@@ -2531,14 +2537,14 @@ mod test {
       sys,
       super::CreateResolverOptions {
         pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
-        specified_import_map: Some(SpecifiedImportMap {
+        specified_import_maps: vec![SpecifiedImportMap {
           base_url: url_from_directory_path(&root_dir()).unwrap(),
           value: json!({
             "imports": {
               "b": "./b/mod.ts",
             },
           }),
-        }),
+        }],
         sloppy_imports_options: SloppyImportsOptions::Unspecified,
         fs_cache_options: FsCacheOptions::Enabled,
       },
@@ -2576,14 +2582,14 @@ mod test {
       UnreachableSys,
       super::CreateResolverOptions {
         pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
-        specified_import_map: Some(SpecifiedImportMap {
+        specified_import_maps: vec![SpecifiedImportMap {
           base_url: url_from_directory_path(&root_dir()).unwrap(),
           value: json!({
             "imports": {
               "b": "./b/mod.ts",
             },
           }),
-        }),
+        }],
         sloppy_imports_options: SloppyImportsOptions::Unspecified,
         fs_cache_options: FsCacheOptions::Enabled,
       },
@@ -2917,7 +2923,7 @@ mod test {
       UnreachableSys,
       super::CreateResolverOptions {
         pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
-        specified_import_map: None,
+        specified_import_maps: vec![],
         sloppy_imports_options: SloppyImportsOptions::Unspecified,
         fs_cache_options: FsCacheOptions::Enabled,
       },

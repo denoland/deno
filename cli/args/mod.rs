@@ -1419,12 +1419,13 @@ pub struct ImportMapSpecifierResolveError {
   source: deno_path_util::ResolveUrlOrPathError,
 }
 
-// TODO: Shouldn't it also include deno.json in result?
+/// Note: It doesn't include deno.json
 fn resolve_import_map_specifiers<'i>(
-  maybe_import_map_paths: impl Iterator<Item = &'i str>,
+  maybe_import_map_paths: impl IntoIterator<Item = &'i str>,
   current_dir: &Path,
 ) -> Result<Vec<Url>, ImportMapSpecifierResolveError> {
   maybe_import_map_paths
+    .into_iter()
     .map(|import_map_path| {
       let specifier =
         deno_path_util::resolve_url_or_path(import_map_path, current_dir)
@@ -1711,7 +1712,7 @@ mod test {
   #[test]
   fn resolve_import_map_flags_take_precedence() {
     let cwd = &std::env::current_dir().unwrap();
-    let actual = resolve_import_map_specifiers(&["import-map.json"], cwd);
+    let actual = resolve_import_map_specifiers(["import-map.json"], cwd);
     let import_map_path = cwd.join("import-map.json");
     let expected_specifier =
       deno_path_util::url_from_file_path(&import_map_path).unwrap();
@@ -1722,7 +1723,7 @@ mod test {
 
   #[test]
   fn resolve_import_map_none() {
-    let actual = resolve_import_map_specifiers(&[], Path::new("/"));
+    let actual = resolve_import_map_specifiers([], Path::new("/"));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, vec![]);
@@ -1730,10 +1731,10 @@ mod test {
 
   #[test]
   fn resolve_import_map_no_config() {
-    let actual = resolve_import_map_specifiers(&[], Path::new("/"));
+    let actual = resolve_import_map_specifiers([], Path::new("/"));
     assert!(actual.is_ok());
     let actual = actual.unwrap();
-    assert_eq!(actual, None);
+    assert_eq!(actual, vec![]);
   }
 
   #[test]
