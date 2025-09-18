@@ -3,11 +3,11 @@
 //! It would be best to move these utilities out of this
 //! crate as this is not specific to resolution, but for
 //! the time being it's fine for this to live here.
+use std::fmt::Write as _;
+
 use deno_terminal::colors;
-use imara_diff::BasicLineDiffPrinter;
 use imara_diff::Diff;
 use imara_diff::InternedInput;
-use imara_diff::UnifiedDiffConfig;
 
 /// Print diff of the same file_path, before and after formatting.
 ///
@@ -25,96 +25,164 @@ pub fn diff(orig_text: &str, edit_text: &str) -> String {
     return " | Text differed by line endings.\n".to_string();
   }
 
-  build(&orig_text, &edit_text)
+  DiffBuilder::build(&orig_text, &edit_text)
 }
 
-pub fn build(orig_text: &str, edit_text: &str) -> String {
-  let input = InternedInput::new(orig_text, edit_text);
-  let mut diff = Diff::compute(imara_diff::Algorithm::Histogram, &input);
-  diff.postprocess_lines(&input);
-
-  diff
-    .unified_diff(
-      &BasicLineDiffPrinter(&input.interner),
-      UnifiedDiffConfig::default(),
-      &input,
-    )
-    .to_string()
+struct DiffBuilder<'a> {
+  input: InternedInput<&'a str>,
+  output: String,
+  line_number_width: usize,
+  orig_line: usize,
+  edit_line: usize,
+  orig: String,
+  edit: String,
+  has_changes: bool,
 }
 
-// fn handle_diff(&mut self, diff: &Diff, input: &InternedInput<&str>) {
-//   let mut old_line = 0u32;
-//   let mut new_line = 0u32;
+impl<'a> DiffBuilder<'a> {
+  pub fn build(orig_text: &'a str, edit_text: &'a str) -> String {
+    let input = InternedInput::new(orig_text, edit_text);
+    let mut diff = Diff::compute(imara_diff::Algorithm::Histogram, &input);
+    diff.postprocess_lines(&input);
 
-//   for hunk in diff.hunks() {
-//     // Process unchanged lines before this hunk
-//     if old_line < hunk.before.start || new_line < hunk.after.start {
-//       let unchanged_start = std::cmp::max(old_line, new_line);
-//       let unchanged_end = std::cmp::min(hunk.before.start, hunk.after.start);
+    let diff_builder = DiffBuilder {
+      input,
+      output: String::new(),
+      orig_line: 1,
+      edit_line: 1,
+      orig: String::new(),
+      edit: String::new(),
+      has_changes: false,
+      line_number_width: {
+        let line_count = std::cmp::max(
+          orig_text.split('\n').count(),
+          edit_text.split('\n').count(),
+        );
+        line_count.to_string().chars().count()
+      },
+    };
+    diff_builder.handle_diff(diff)
+  }
 
-//       for line_idx in unchanged_start..unchanged_end {
-//         if line_idx > unchanged_start {
-//           self.flush_changes();
-//         }
-//         if (line_idx as usize) < input.before.len() {
-//           let line_text = &input.interner[input.before[line_idx as usize]];
-//           self.orig.push_str(&fmt_rem_text(line_text));
-//         }
-//         if (line_idx as usize) < input.after.len() {
-//           let line_text = &input.interner[input.after[line_idx as usize]];
-//           self.edit.push_str(&fmt_add_text(line_text));
-//         }
-//       }
-//     }
+  fn handle_diff(mut self, diff: Diff) -> String {
+    for hunk in diff.hunks() {
+      if !hunk.before.is_empty() || !hunk.after.is_empty() {
+        self.has_changes = true;
+      }
+      // TODO: add leading lines for context
+      // Chunk::Equal(s) => {
+      //   let split = s.split('\n').enumerate();
+      //   for (i, s) in split {
+      //     if i > 0 {
+      //       self.flush_changes();
+      //     }
+      //     self.orig.push_str(&fmt_rem_text(s));
+      //     self.edit.push_str(&fmt_add_text(s));
+      //   }
+      // }
+      for (i, del) in hunk.before.enumerate() {
+        let s = self.input.interner[self.input.before[del as usize]];
+        if i > 0 {
+          self.orig.push('\n');
+        }
+        self.orig.push_str(&fmt_rem_text_highlight(s));
+      }
+      for (i, ins) in hunk.after.enumerate() {
+        let s = self.input.interner[self.input.after[ins as usize]];
+        if i > 0 {
+          self.edit.push('\n');
+        }
+        self.edit.push_str(&fmt_add_text_highlight(s));
+      }
+      // TODO: add trailing lines for context
+      // Chunk::Equal(s) => {
+      //   let split = s.split('\n').enumerate();
+      //   for (i, s) in split {
+      //     if i > 0 {
+      //       self.flush_changes();
+      //     }
+      //     self.orig.push_str(&fmt_rem_text(s));
+      //     self.edit.push_str(&fmt_add_text(s));
+      //   }
+      // }
+    }
 
-//     // Process deletions (lines only in before)
-//     if hunk.before.start < hunk.before.end {
-//       for line_idx in hunk.before.start..hunk.before.end {
-//         if line_idx > hunk.before.start {
-//           self.orig.push('\n');
-//         }
-//         let line_text = &input.interner[input.before[line_idx as usize]];
-//         self.orig.push_str(&fmt_rem_text_highlight(line_text));
-//       }
-//       self.has_changes = true;
-//     }
+    self.flush_changes();
+    self.output
+  }
 
-//     // Process insertions (lines only in after)
-//     if hunk.after.start < hunk.after.end {
-//       for line_idx in hunk.after.start..hunk.after.end {
-//         if line_idx > hunk.after.start {
-//           self.edit.push('\n');
-//         }
-//         let line_text = &input.interner[input.after[line_idx as usize]];
-//         self.edit.push_str(&fmt_add_text_highlight(line_text));
-//       }
-//       self.has_changes = true;
-//     }
+  fn flush_changes(&mut self) {
+    if self.has_changes {
+      self.write_line_diff();
 
-//     old_line = hunk.before.end;
-//     new_line = hunk.after.end;
-//   }
+      self.orig_line += self.orig.split('\n').count();
+      self.edit_line += self.edit.split('\n').count();
+      self.has_changes = false;
+    } else {
+      self.orig_line += 1;
+      self.edit_line += 1;
+    }
 
-//   // Process any remaining unchanged lines
-//   let max_lines = std::cmp::max(input.before.len(), input.after.len()) as u32;
-//   if old_line < max_lines || new_line < max_lines {
-//     for line_idx in std::cmp::max(old_line, new_line)..max_lines {
-//       if line_idx > std::cmp::max(old_line, new_line) {
-//         self.flush_changes();
-//       }
-//       if (line_idx as usize) < input.before.len() {
-//         let line_text = &input.interner[input.before[line_idx as usize]];
-//         self.orig.push_str(&fmt_rem_text(line_text));
-//       }
-//       if (line_idx as usize) < input.after.len() {
-//         let line_text = &input.interner[input.after[line_idx as usize]];
-//         self.edit.push_str(&fmt_add_text(line_text));
-//       }
-//     }
-//   }
+    self.orig.clear();
+    self.edit.clear();
+  }
 
-//   self.flush_changes();
-// }
+  fn write_line_diff(&mut self) {
+    let split = self.orig.split('\n').enumerate();
+    for (i, s) in split {
+      write!(
+        self.output,
+        "{:width$}{} ",
+        self.orig_line + i,
+        colors::gray(" |"),
+        width = self.line_number_width
+      )
+      .unwrap();
+      self.output.push_str(&fmt_rem());
+      self.output.push_str(s);
+      self.output.push('\n');
+    }
+
+    let split = self.edit.split('\n').enumerate();
+    for (i, s) in split {
+      write!(
+        self.output,
+        "{:width$}{} ",
+        self.edit_line + i,
+        colors::gray(" |"),
+        width = self.line_number_width
+      )
+      .unwrap();
+      self.output.push_str(&fmt_add());
+      self.output.push_str(s);
+      self.output.push('\n');
+    }
+  }
+}
+
+fn fmt_add() -> String {
+  colors::green_bold("+").to_string()
+}
+
+fn fmt_add_text(x: &str) -> String {
+  colors::green(x).to_string()
+}
+
+fn fmt_add_text_highlight(x: &str) -> String {
+  colors::black_on_green(x).to_string()
+}
+
+fn fmt_rem() -> String {
+  colors::red_bold("-").to_string()
+}
+
+fn fmt_rem_text(x: &str) -> String {
+  colors::red(x).to_string()
+}
+
+fn fmt_rem_text_highlight(x: &str) -> String {
+  colors::white_on_red(x).to_string()
+}
 
 pub struct DisplayTreeNode {
   pub text: String,
@@ -240,7 +308,9 @@ mod tests {
 
   fn run_test(diff_text1: &str, diff_text2: &str, expected_output: &str) {
     assert_eq!(
-      test_util::strip_ansi_codes(&diff(diff_text1, diff_text2,)),
+      test_util::strip_ansi_codes(
+        &diff_lines(diff_text1, diff_text2,).collect::<String>()
+      ),
       expected_output,
     );
   }
