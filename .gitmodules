@@ -16,5 +16,6 @@
 	url = https://github.com/denoland/deno_lsp_benchdata.git
 	shallow = true
 [submodule "import_map"]
-	path = import_map
-	url = ./import_map
+  path = import_map
+  url = https://github.com/CertainLach/import_map.git
+  shallow = true
