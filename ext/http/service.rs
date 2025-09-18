@@ -5,6 +5,7 @@ use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
+use std::convert::Infallible;
 use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
@@ -208,7 +209,7 @@ pub(crate) async fn handle_request(
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
   legacy_abort: bool,
-) -> Result<Response, hyper_v014::Error> {
+) -> Result<Response, Infallible> {
   if !validate_request(&request) {
     let mut response = Response::new(HttpRecordResponse(None));
     *response.version_mut() = request.version();
@@ -528,13 +529,16 @@ impl HttpRecord {
     }
   }
 
-  fn take_response_body(&self) -> ResponseBytesInner {
+  fn take_response_body(&self, err: Option<JsErrorBox>) -> ResponseBytesInner {
     let mut inner = self.self_mut();
     debug_assert!(
-      !matches!(inner.response_body, ResponseBytesInner::Done),
+      !matches!(inner.response_body, ResponseBytesInner::Done(_)),
       "HTTP state error: response body already complete"
     );
-    std::mem::replace(&mut inner.response_body, ResponseBytesInner::Done)
+    if err.is_some() {
+      inner.trailers = None;
+    }
+    std::mem::replace(&mut inner.response_body, ResponseBytesInner::Done(err))
   }
 
   /// Has the future for this record been dropped? ie, has the underlying TCP connection
@@ -604,11 +608,13 @@ impl HttpRecord {
 
   /// Resolves when response body has finished streaming. Returns true if the
   /// response completed.
-  pub fn response_body_finished(&self) -> impl Future<Output = bool> + '_ {
+  pub fn response_body_finished(
+    &self,
+  ) -> impl Future<Output = Result<bool, JsErrorBox>> + '_ {
     struct HttpRecordFinished<'a>(&'a HttpRecord);
 
     impl Future for HttpRecordFinished<'_> {
-      type Output = bool;
+      type Output = Result<bool, JsErrorBox>;
 
       fn poll(
         self: Pin<&mut Self>,
@@ -617,9 +623,10 @@ impl HttpRecord {
         let mut mut_self = self.0.self_mut();
         if mut_self.response_body_finished {
           // If we sent the response body and the trailers, this body completed successfully
-          return Poll::Ready(
-            mut_self.response_body.is_complete() && mut_self.trailers.is_none(),
-          );
+          return Poll::Ready(match mut_self.response_body.completion() {
+            Err(e) => Err(e),
+            Ok(complete) => Ok(complete && mut_self.trailers.is_none()),
+          });
         }
         mut_self.response_body_waker = Some(cx.waker().clone());
         Poll::Pending
@@ -655,9 +662,14 @@ impl HttpRecord {
 #[repr(transparent)]
 pub struct HttpRecordResponse(Option<ManuallyDrop<Rc<HttpRecord>>>);
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[error("An error occured while processing a response")]
+#[class(generic)]
+pub struct HttpRecordResponseError;
+
 impl Body for HttpRecordResponse {
   type Data = BufView;
-  type Error = JsErrorBox;
+  type Error = HttpRecordResponseError;
 
   fn poll_frame(
     self: Pin<&mut Self>,
@@ -671,7 +683,7 @@ impl Body for HttpRecordResponse {
     let res = loop {
       let mut inner = record.self_mut();
       let res = match &mut inner.response_body {
-        ResponseBytesInner::Done | ResponseBytesInner::Empty => {
+        ResponseBytesInner::Done(_) | ResponseBytesInner::Empty => {
           if let Some(trailers) = inner.trailers.take() {
             return Poll::Ready(Some(Ok(Frame::trailers(trailers))));
           }
@@ -679,7 +691,7 @@ impl Body for HttpRecordResponse {
         }
         ResponseBytesInner::Bytes(..) => {
           drop(inner);
-          let ResponseBytesInner::Bytes(data) = record.take_response_body()
+          let ResponseBytesInner::Bytes(data) = record.take_response_body(None)
           else {
             unreachable!();
           };
@@ -706,7 +718,7 @@ impl Body for HttpRecordResponse {
       if let Some(trailers) = record.self_mut().trailers.take() {
         return Poll::Ready(Some(Ok(Frame::trailers(trailers))));
       }
-      record.take_response_body();
+      record.take_response_body(None);
     }
 
     if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
@@ -718,7 +730,16 @@ impl Body for HttpRecordResponse {
       }
     }
 
-    Poll::Ready(res.into())
+    Poll::Ready(match res {
+      ResponseStreamResult::EndOfStream => None,
+      ResponseStreamResult::NonEmptyBuf(buf) => Some(Ok(Frame::data(buf))),
+      ResponseStreamResult::Error(err) => {
+        record.take_response_body(Some(err));
+        Some(Err(HttpRecordResponseError))
+      }
+      // This result should be handled by retrying above
+      ResponseStreamResult::NoData => unreachable!(),
+    })
   }
 
   fn is_end_stream(&self) -> bool {
@@ -728,7 +749,7 @@ impl Body for HttpRecordResponse {
     let inner = record.self_ref();
     matches!(
       inner.response_body,
-      ResponseBytesInner::Done | ResponseBytesInner::Empty
+      ResponseBytesInner::Done(_) | ResponseBytesInner::Empty
     ) && inner.trailers.is_none()
   }
 

@@ -574,16 +574,15 @@ fn is_request_compressible(
   }
 
   // Fall back to the expensive parser
-  let accepted =
-    fly_accept_encoding::encodings_iter_http_1(headers).filter(|r| {
-      matches!(
-        r,
-        Ok((
-          Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-          _
-        ))
-      )
-    });
+  let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
+    matches!(
+      r,
+      Ok((
+        Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
+        _
+      ))
+    )
+  });
   match fly_accept_encoding::preferred(accepted) {
     Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
     Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
@@ -766,7 +765,7 @@ pub async fn op_http_set_response_body_resource(
     },
   );
 
-  Ok(http.response_body_finished().await)
+  Ok(http.response_body_finished().await?)
 }
 
 #[op2(fast)]
