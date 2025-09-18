@@ -4,7 +4,6 @@ mod in_memory_broadcast_channel;
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_core::JsBuffer;
@@ -13,13 +12,10 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
 use deno_error::JsErrorBox;
-use deno_features::FeatureChecker;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 use tokio::sync::broadcast::error::SendError as BroadcastSendError;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
-
-pub const UNSTABLE_FEATURE_NAME: &str = "broadcast-channel";
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BroadcastChannelError {
@@ -94,9 +90,6 @@ pub fn op_broadcast_subscribe<BC>(
 where
   BC: BroadcastChannel + 'static,
 {
-  state
-    .borrow::<Arc<FeatureChecker>>()
-    .check_or_exit(UNSTABLE_FEATURE_NAME, "BroadcastChannel");
   let bc = state.borrow::<BC>();
   let resource = bc.subscribe()?;
   Ok(state.resource_table.add(resource))
