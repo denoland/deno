@@ -555,7 +555,7 @@ pub struct WorkspaceSettings {
 
   /// Cache local modules and their dependencies on `textDocument/didSave`
   /// notifications corresponding to them.
-  #[serde(default)]
+  #[serde(default = "default_to_true")]
   pub cache_on_save: bool,
 
   /// Override the default stores used to validate certificates. This overrides
@@ -632,7 +632,7 @@ impl Default for WorkspaceSettings {
       disable_paths: vec![],
       enable_paths: None,
       cache: None,
-      cache_on_save: false,
+      cache_on_save: true,
       certificate_stores: None,
       config: None,
       import_map: None,
@@ -1433,7 +1433,7 @@ impl ConfigData {
         is_package_manager_subcommand: false,
         frozen_lockfile: None,
         lock_arg: None,
-        lockfile_skip_write: false,
+        lockfile_skip_write: true,
         node_modules_dir: Some(resolve_node_modules_dir_mode(
           &member_dir.workspace,
           byonm,
@@ -1774,9 +1774,10 @@ impl ConfigTree {
 
   pub fn is_watched_file(&self, specifier: &Url) -> bool {
     let path = specifier.path();
-    if path.ends_with("/deno.json")
-      || path.ends_with("/deno.jsonc")
-      || path.ends_with("/package.json")
+    if !path.contains("/node_modules/")
+      && (path.ends_with("/deno.json")
+        || path.ends_with("/deno.jsonc")
+        || path.ends_with("/package.json"))
       || path.ends_with("/node_modules/.package-lock.json")
       || path.ends_with("/node_modules/.yarn-integrity.json")
       || path.ends_with("/node_modules/.modules.yaml")
@@ -2146,7 +2147,7 @@ mod tests {
         disable_paths: vec![],
         enable_paths: None,
         cache: None,
-        cache_on_save: false,
+        cache_on_save: true,
         certificate_stores: None,
         config: None,
         import_map: None,

@@ -1,7 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 import { assert, assertThrows, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { close, closeSync } from "node:fs";
+import { close, closeSync, openSync } from "node:fs";
+import { setTimeout } from "node:timers/promises";
 
 Deno.test({
   name: "ASYNC: File is closed",
@@ -100,4 +101,17 @@ Deno.test({
       await Deno.remove(tempFile);
     },
   });
+});
+
+Deno.test({
+  name: "[std/node/fs] close with default callback if none is provided",
+}, async () => {
+  const tempFile = await Deno.makeTempFile();
+  const rid = openSync(tempFile, "r");
+  close(rid);
+  await setTimeout(1000);
+  assertThrows(() => {
+    closeSync(rid), Deno.errors.BadResource;
+  });
+  await Deno.remove(tempFile);
 });
