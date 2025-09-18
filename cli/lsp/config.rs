@@ -1587,25 +1587,11 @@ impl ConfigData {
       );
     }
     let mut import_map_from_settings = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || !c.json.import_map.is_empty())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || !c.json.import_map.is_empty())
-        })
-        .unwrap_or(false);
-      if is_config_import_map {
-        None
-      } else {
-        settings.import_map.as_ref().and_then(|import_map_str| {
-          Url::parse(import_map_str)
-            .ok()
-            .or_else(|| workspace_folder?.join(import_map_str).ok())
-        })
-      }
+      settings.import_map.as_ref().and_then(|import_map_str| {
+        Url::parse(import_map_str)
+          .ok()
+          .or_else(|| workspace_folder?.join(import_map_str).ok())
+      })
     };
 
     let specified_import_maps =
