@@ -812,14 +812,18 @@ impl ConfiguredDepResolutions {
       .and_then(|(dep_key, kind)| match kind {
         // Ensure the mapping this entry came from is valid for this referrer.
         ConfiguredDepKind::ImportMap { key, value } => {
-          todo!()
-          // self
-          // .workspace_resolver
-          // .as_ref()?
-          // .maybe_import_maps()?
-          // .resolve(key, referrer)
-          // .is_ok_and(|s| &s == value)
-          // .then(|| dep_key.clone())
+          for import_map in
+            self.workspace_resolver.as_ref()?.maybe_import_maps()
+          {
+            if let Some(v) = import_map
+              .resolve(key, referrer)
+              .is_ok_and(|s| &s == value)
+              .then(|| dep_key.clone())
+            {
+              return Some(v);
+            }
+          }
+          None
         }
         ConfiguredDepKind::PackageJson => Some(dep_key.clone()),
       })
