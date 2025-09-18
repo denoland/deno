@@ -1,4 +1,12 @@
 You are connected to https://localhost:[WILDLINE]
+GET http://meow.com/ HTTP/1.1
+accept: */*
+accept-language: *
+user-agent: Deno/[WILDCARD]
+accept-encoding: gzip,br
+host: meow.com
+
+
 HTTP/1.1 200 OK
 content-type: application/json
 vary: Accept-Encoding

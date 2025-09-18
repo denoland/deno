@@ -43,10 +43,10 @@ for await (const incoming of listener) {
 async function handleConnection(incoming: Deno.QuicIncoming) {
   const conn = await incoming.accept();
 
+  const incomingBidi = conn.incomingBidirectionalStreams.getReader();
+
   {
-    const { value: bi } = await conn.incomingBidirectionalStreams
-      .getReader()
-      .read();
+    const { value: bi } = await incomingBidi.read();
 
     const reader = bi.readable.getReader({ mode: "byob" });
     const version = await readUint32LE(reader);
@@ -104,6 +104,23 @@ async function handleConnection(incoming: Deno.QuicIncoming) {
     await writer.write(
       new TextEncoder().encode(`GET / HTTP/1.1\r\nHost: localhost\r\n\r\n`),
     );
+
+    {
+      const { value: agentStream } = await incomingBidi.read();
+      const reader = agentStream.readable.getReader({ mode: "byob" });
+      const agentHeader = await readStreamHeader(reader);
+      if (agentHeader.headerType !== "Agent") {
+        conn.close({ closeCode: 1, reason: "expected Agent" });
+        return;
+      }
+      const { value } = await reader.read(new Uint8Array(1024));
+      console.log(new TextDecoder().decode(value));
+      await agentStream.writable.getWriter().write(
+        new TextEncoder().encode(
+          `HTTP/1.1 201 No Content\r\nConnection: close\r\n\r\n`,
+        ),
+      );
+    }
 
     const reader = stream.readable.getReader({ mode: "byob" });
     const { value } = await reader.read(new Uint8Array(1024));
