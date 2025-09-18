@@ -308,9 +308,7 @@ mod tests {
 
   fn run_test(diff_text1: &str, diff_text2: &str, expected_output: &str) {
     assert_eq!(
-      test_util::strip_ansi_codes(
-        &diff_lines(diff_text1, diff_text2,).collect::<String>()
-      ),
+      test_util::strip_ansi_codes(&diff_lines(diff_text1, diff_text2,)),
       expected_output,
     );
   }
