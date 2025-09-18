@@ -589,6 +589,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     }
 
     for import_map in self.workspace_resolver.maybe_import_maps() {
+      #[allow(
+        deprecated,
+        reason = "import map here is not merged, base_url is only used as original location"
+      )]
       if let Ok(file_path) = url_to_file_path(import_map.base_url())
         && let Some(import_map_parent_dir) = file_path.parent()
       {
@@ -742,6 +746,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           .workspace_resolver
           .maybe_import_maps()
           .map(|i| {
+            #[allow(deprecated, reason = "import maps here is not merged, base_url is only used as original location")]
             SerializedWorkspaceResolverImportMap {
               specifier: if i.base_url().scheme() == "file" {
                 root_dir_url.specifier_key(i.base_url()).into_owned()

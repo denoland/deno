@@ -685,6 +685,7 @@ impl ConfiguredDepResolutions {
         }
       };
     for import_map in workspace_resolver.maybe_import_maps() {
+      #[allow(deprecated, reason = "import map here is not merged, base_url is only used as original location")]
       let referrer = import_map.base_url();
       for entry in import_map.imports().entries().chain(
         import_map

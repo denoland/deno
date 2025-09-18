@@ -39,6 +39,7 @@ use import_map::ImportMapDiagnostic;
 use import_map::ImportMapError;
 use import_map::ImportMapErrorKind;
 use import_map::ImportMapWithDiagnostics;
+use import_map::ResolveOptions;
 use import_map::specifier::SpecifierError;
 use indexmap::IndexMap;
 use node_resolver::NodeResolutionKind;
@@ -55,6 +56,7 @@ use crate::collections::FolderScopedMap;
 use crate::deno_json::CompilerOptionsModuleResolution;
 use crate::deno_json::CompilerOptionsResolver;
 use crate::deno_json::CompilerOptionsResolverRc;
+use crate::workspace;
 
 #[allow(clippy::disallowed_types)]
 type UrlRc = deno_maybe_sync::MaybeArc<Url>;
@@ -792,6 +794,7 @@ pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   workspace_root: UrlRc,
   jsr_pkgs: Vec<ResolverWorkspaceJsrPackage>,
   maybe_import_maps: Vec<ImportMapWithDiagnostics>,
+  merged_import_map: ImportMapWithDiagnostics,
   pkg_jsons: FolderScopedMap<PkgJsonResolverFolderConfig>,
   pkg_json_dep_resolution: PackageJsonDepResolution,
   sloppy_imports_options: SloppyImportsOptions,
@@ -898,6 +901,20 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
 
     let maybe_import_maps =
       resolve_import_maps(&sys, workspace, options.specified_import_maps)?;
+    let mut merged_import_map = ImportMapWithDiagnostics {
+      import_map: ImportMap::new(
+        workspace.root_dir_url().join("deno.json").unwrap(),
+      ),
+      diagnostics: vec![],
+    };
+    for import_map in maybe_import_maps.iter().cloned() {
+      merged_import_map.merge(import_map);
+    }
+    log::debug!(
+      "merged import map: {}",
+      serde_json::to_string_pretty(&merged_import_map.import_map).unwrap()
+    );
+
     let jsr_pkgs = workspace.resolver_jsr_pkgs().collect::<Vec<_>>();
     let pkg_jsons = workspace
       .resolver_pkg_jsons()
@@ -926,6 +943,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_dep_resolution: options.pkg_json_dep_resolution,
       jsr_pkgs,
       maybe_import_maps,
+      merged_import_map,
       pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       sloppy_imports_options: options.sloppy_imports_options,
       fs_cache_options: options.fs_cache_options,
@@ -954,7 +972,15 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         import_map,
         diagnostics: Default::default(),
       })
-      .collect();
+      .collect::<Vec<_>>();
+    let mut merged_import_map = ImportMapWithDiagnostics {
+      import_map: ImportMap::new(workspace_root.join("deno.json").unwrap()),
+      diagnostics: vec![],
+    };
+    for import_map in maybe_import_maps.iter().cloned() {
+      merged_import_map.merge(import_map);
+    }
+
     let pkg_jsons = pkg_jsons
       .into_iter()
       .map(|pkg_json| {
@@ -981,6 +1007,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       workspace_root,
       jsr_pkgs,
       maybe_import_maps,
+      merged_import_map,
       pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       pkg_json_dep_resolution,
       sloppy_imports_options,
@@ -1121,9 +1148,9 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
 
   pub fn diagnostics(&self) -> Vec<WorkspaceResolverDiagnostic<'_>> {
     self
-      .maybe_import_maps
+      .merged_import_map
+      .diagnostics
       .iter()
-      .flat_map(|c| &c.diagnostics)
       .map(WorkspaceResolverDiagnostic::ImportMap)
       .collect()
   }
@@ -1135,52 +1162,23 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     resolution_kind: ResolutionKind,
   ) -> Result<MappedResolution<'a>, MappedResolutionError> {
     // 1. Attempt to resolve with the import map and normally first
-    let mut used_import_map = false;
-
-    let mut resolve_result = None;
-
-    for import_map in self.maybe_import_maps() {
-      used_import_map = true;
-
-      resolve_result = Some(
-        match import_map
-          .resolve(specifier, referrer)
-          .map_err(MappedResolutionError::ImportMap)
-        {
-          Ok(v) => Ok(v),
-          Err(e) if e.is_unmapped_bare_specifier() => continue,
-          Err(e) => Err(e),
-        },
-      );
-      break;
-    }
-
-    if resolve_result.is_none() {
-      resolve_result = Some(
-        match import_map::specifier::resolve_import(specifier, referrer)
-          .map_err(MappedResolutionError::Specifier)
-        {
-          Ok(v) => Ok(v),
-          Err(MappedResolutionError::Specifier(
-            SpecifierError::ImportPrefixMissing {
-              specifier,
-              referrer,
-            },
-          )) if used_import_map => {
-            // Return the "and not in import map" suffix to the error message.
-            Err(MappedResolutionError::ImportMap(ImportMapError(Box::new(
-              ImportMapErrorKind::UnmappedBareSpecifier(
-                specifier,
-                referrer.map(|v| v.to_string()),
-              ),
-            ))))
-          }
-          Err(e) => Err(e),
-        },
-      );
-    };
-
-    let resolve_result = resolve_result.expect("result should be produced either by one of import maps or by normal resolution process");
+    let (used_import_map, resolve_result) =
+      if !self.maybe_import_maps.is_empty() {
+        (
+          true,
+          self
+            .merged_import_map
+            .import_map
+            .resolve(specifier, referrer)
+            .map_err(MappedResolutionError::ImportMap),
+        )
+      } else {
+        (
+          false,
+          import_map::specifier::resolve_import(specifier, referrer)
+            .map_err(MappedResolutionError::Specifier),
+        )
+      };
 
     let resolve_error = match resolve_result {
       Ok(mut specifier) => {
