@@ -39,7 +39,6 @@ use import_map::ImportMapDiagnostic;
 use import_map::ImportMapError;
 use import_map::ImportMapErrorKind;
 use import_map::ImportMapWithDiagnostics;
-use import_map::ResolveOptions;
 use import_map::specifier::SpecifierError;
 use indexmap::IndexMap;
 use node_resolver::NodeResolutionKind;
@@ -1136,6 +1135,10 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
 
   pub fn maybe_import_maps(&self) -> impl Iterator<Item = &ImportMap> {
     self.maybe_import_maps.iter().map(|c| &c.import_map)
+  }
+
+  pub fn merged_import_map(&self) -> &ImportMap {
+    &self.merged_import_map.import_map
   }
 
   pub fn package_jsons(&self) -> impl Iterator<Item = &PackageJsonRc> {

@@ -685,7 +685,10 @@ impl ConfiguredDepResolutions {
         }
       };
     for import_map in workspace_resolver.maybe_import_maps() {
-      #[allow(deprecated, reason = "import map here is not merged, base_url is only used as original location")]
+      #[allow(
+        deprecated,
+        reason = "import map here is not merged, base_url is only used as original location"
+      )]
       let referrer = import_map.base_url();
       for entry in import_map.imports().entries().chain(
         import_map
@@ -812,20 +815,13 @@ impl ConfiguredDepResolutions {
       .get(resolution)
       .and_then(|(dep_key, kind)| match kind {
         // Ensure the mapping this entry came from is valid for this referrer.
-        ConfiguredDepKind::ImportMap { key, value } => {
-          for import_map in
-            self.workspace_resolver.as_ref()?.maybe_import_maps()
-          {
-            if let Some(v) = import_map
-              .resolve(key, referrer)
-              .is_ok_and(|s| &s == value)
-              .then(|| dep_key.clone())
-            {
-              return Some(v);
-            }
-          }
-          None
-        }
+        ConfiguredDepKind::ImportMap { key, value } => self
+          .workspace_resolver
+          .as_ref()?
+          .merged_import_map()
+          .resolve(key, referrer)
+          .is_ok_and(|s| &s == value)
+          .then(|| dep_key.clone()),
         ConfiguredDepKind::PackageJson => Some(dep_key.clone()),
       })
   }
