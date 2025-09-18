@@ -431,9 +431,10 @@ impl<'a> TsResponseImportMapper<'a> {
             self.resolve_package_path(specifier, &pkg_folder)
           })?;
         let sub_path = Some(sub_path).filter(|s| !s.is_empty());
+
+        let mut import_map_matches = Vec::new();
         for import_map in &self.maybe_import_maps {
           let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
-          let mut matches = Vec::new();
           for entry in import_map.entries_for_referrer(referrer) {
             if let Some(value) = entry.raw_value
               && let Ok(package_ref) = NpmPackageReqReference::from_str(value)
@@ -445,16 +446,17 @@ impl<'a> TsResponseImportMapper<'a> {
               {
                 // keys that don't end in a slash can't be mapped to a subpath
                 if entry.raw_key.ends_with('/') || key_sub_path.is_empty() {
-                  matches.push(format!("{}{}", entry.raw_key, key_sub_path));
+                  import_map_matches
+                    .push(format!("{}{}", entry.raw_key, key_sub_path));
                 }
               }
             }
           }
-          // select the shortest match
-          matches.sort_by_key(|a| a.len());
-          if let Some(matched) = matches.first() {
-            return Some(matched.to_string());
-          }
+        }
+        // select the shortest match, if exists
+        import_map_matches.sort_by_key(|a| a.len());
+        if let Some(matched) = import_map_matches.first() {
+          return Some(matched.to_string());
         }
 
         // if not found in the import map, return the first pkg req
