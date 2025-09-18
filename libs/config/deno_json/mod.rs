@@ -955,11 +955,12 @@ pub struct DeployConfig {
   pub app: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Default)]
 #[serde(untagged)]
 pub enum ImportMap {
   Single(String),
   Multiple(Vec<String>),
+  #[default]
   None,
 }
 impl ImportMap {
@@ -983,6 +984,7 @@ impl ImportMap {
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
+  #[serde(default)]
   pub import_map: ImportMap,
   pub imports: Option<Value>,
   pub scopes: Option<Value>,
