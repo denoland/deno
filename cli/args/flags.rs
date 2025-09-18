@@ -755,7 +755,7 @@ pub struct Flags {
   pub eszip: bool,
   pub node_conditions: Vec<String>,
   pub preload: Vec<String>,
-  pub connected: Option<String>,
+  pub connected: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -4649,7 +4649,7 @@ fn connected_arg() -> Arg {
     .hide(true)
     .num_args(0..=1)
     .require_equals(true)
-    .default_missing_value("tunnel.global.prod.deno-cluster.net:443")
+    .action(ArgAction::SetTrue)
 }
 
 fn check_arg(checks_local_by_default: bool) -> Arg {
@@ -5748,7 +5748,7 @@ fn run_parse(
   runtime_args_parse(flags, matches, true, true, true)?;
   ext_arg_parse(flags, matches);
 
-  flags.connected = matches.remove_one("connected");
+  flags.connected = matches.get_flag("connected");
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
 
@@ -5820,7 +5820,7 @@ fn serve_parse(
   }
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
-  flags.connected = matches.remove_one("connected");
+  flags.connected = matches.get_flag("connected");
 
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
@@ -5873,7 +5873,7 @@ fn task_parse(
     None
   };
 
-  flags.connected = matches.remove_one("connected");
+  flags.connected = matches.get_flag("connected");
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
