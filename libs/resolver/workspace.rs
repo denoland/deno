@@ -888,12 +888,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       );
 
       for (url, value) in
-        config_specified_import_maps
-          .into_iter()
-          .chain(std::iter::once((
-            Cow::Owned(scopes_import_map_url),
-            scopes_import_map,
-          )))
+        std::iter::once((Cow::Owned(scopes_import_map_url), scopes_import_map))
+          .chain(config_specified_import_maps.into_iter())
       {
         out.push(import_map::parse_from_value(url.into_owned(), value)?);
       }
