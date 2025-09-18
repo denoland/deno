@@ -97,6 +97,7 @@ impl StdErrLines {
       if line.starts_with("Check") || line.starts_with("Download") {
         self.check_lines.push(line);
       } else {
+        eprintln!("STDERR next {}", line);
         return Some(line);
       }
     }
@@ -107,7 +108,7 @@ impl StdErrLines {
 
     loop {
       let line = self.next().unwrap();
-
+      eprintln!("STDERR line: {}", line);
       assert_eq!(line, expected_lines[expected_index]);
       expected_index += 1;
 
@@ -119,6 +120,7 @@ impl StdErrLines {
 
   pub fn extract_ws_url(&mut self) -> url::Url {
     let stderr_first_line = self.next().unwrap();
+    eprintln!("stderr first line {}", stderr_first_line);
     assert_starts_with!(&stderr_first_line, "Debugger listening on ");
     let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
     assert_eq!(v.len(), 1);
@@ -180,6 +182,7 @@ impl InspectorTester {
         .write_frame(Frame::text(msg.to_string().into_bytes().into()))
         .await
         .map_err(|e| anyhow!(e));
+      eprintln!("send many!!!");
       self.handle_error(result);
     }
   }
@@ -218,8 +221,10 @@ impl InspectorTester {
         .await
         .expect("recv() timeout")
         .map_err(|e| anyhow!(e));
+      eprintln!("recv!!!!");
       let message =
         String::from_utf8(self.handle_error(result).payload.to_vec()).unwrap();
+      eprintln!("recv msg {}", message);
       if (self.notification_filter)(&message) {
         return message;
       }
@@ -1025,6 +1030,7 @@ async fn inspector_memory() {
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
+    .env("RUST_BACKTRACE", "1")
     .piped_output()
     .spawn()
     .unwrap();
@@ -1130,15 +1136,17 @@ async fn inspector_profile() {
     .unwrap();
 
   let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
-
+  tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+  eprintln!("beginning");
   tester.assert_stderr_for_inspect_brk();
-
+  eprintln!("got here 1");
   tester
     .send_many(&[
       json!({"id":1,"method":"Runtime.enable"}),
       json!({"id":2,"method":"Debugger.enable"}),
     ])
     .await;
+  eprintln!("got here 1.2");
   tester.assert_received_messages(
       &[
         r#"{"id":1,"result":{}}"#,
@@ -1149,7 +1157,7 @@ async fn inspector_profile() {
       ],
     )
     .await;
-
+  eprintln!("got here 2");
   tester
     .send_many(&[
       json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
@@ -1162,7 +1170,7 @@ async fn inspector_profile() {
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
-
+  eprintln!("got here 3");
   tester.send_many(
       &[
         json!({"id":5,"method":"Profiler.setSamplingInterval","params":{"interval": 100}}),
@@ -1175,7 +1183,7 @@ async fn inspector_profile() {
       &[],
     )
     .await;
-
+  eprintln!("got here 4");
   tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
   tester
@@ -1191,7 +1199,7 @@ async fn inspector_profile() {
   );
   profile["samples"].as_array().unwrap();
   profile["nodes"].as_array().unwrap();
-
+  eprintln!("got here 5");
   tester.child.kill().unwrap();
   tester.child.wait().unwrap();
 }
