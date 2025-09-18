@@ -19,6 +19,7 @@ use deno_core::Extension;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
+use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -545,11 +546,7 @@ impl MainWorker {
           },
         ),
         deno_cache::deno_cache::args(create_cache),
-        deno_websocket::deno_websocket::args::<PermissionsContainer>(
-          options.bootstrap.user_agent.clone(),
-          services.root_cert_store_provider.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-        ),
+        deno_websocket::deno_websocket::args::<PermissionsContainer>(),
         deno_webstorage::deno_webstorage::args(
           options.origin_storage_dir.clone(),
         ),
@@ -912,9 +909,16 @@ impl MainWorker {
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
+  pub fn create_inspector_session(
+    &mut self,
+    cb: deno_core::InspectorSessionSend,
+  ) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
-    self.js_runtime.inspector().borrow().create_local_session(
+    let insp = self.js_runtime.inspector();
+
+    JsRuntimeInspector::create_local_session(
+      insp,
+      cb,
       InspectorSessionOptions {
         kind: InspectorSessionKind::Blocking,
       },

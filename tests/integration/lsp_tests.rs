@@ -6586,7 +6586,7 @@ fn lsp_cache_on_save() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.write(
+  let file = temp_dir.source_file(
     "file.ts",
     r#"
       import { printHello } from "http://localhost:4545/subdir/print_hello.ts";
@@ -6595,25 +6595,12 @@ fn lsp_cache_on_save() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.change_configuration(json!({
-    "deno": {
-      "enable": true,
-      "cacheOnSave": true,
-    },
-  }));
 
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": temp_dir.read_to_string("file.ts"),
-    }
-  }));
+  let diagnostics = client.did_open_file(&file);
   assert_eq!(
     diagnostics.messages_with_source("deno"),
     serde_json::from_value(json!({
-      "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap(),
+      "uri": file.uri(),
       "diagnostics": [{
         "range": {
           "start": { "line": 1, "character": 33 },
@@ -6630,10 +6617,13 @@ fn lsp_cache_on_save() {
     .unwrap()
   );
   client.did_save(json!({
-    "textDocument": { "uri": url_to_uri(&temp_dir.url().join("file.ts").unwrap()).unwrap() },
+    "textDocument": { "uri": file.uri() },
   }));
   client.handle_refresh_diagnostics_request();
-  assert_eq!(client.read_diagnostics().all(), vec![]);
+  assert_eq!(json!(client.read_diagnostics().all()), json!([]));
+
+  // Lockfiles should not be written from cache-on-save.
+  assert!(!temp_dir.path().join("deno.lock").exists());
 
   client.shutdown();
 }

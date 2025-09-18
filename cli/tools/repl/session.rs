@@ -1,6 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI32;
 
 use deno_ast::ImportsNotUsedAsValues;
 use deno_ast::JsxAutomaticOptions;
@@ -27,6 +29,9 @@ use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
+use deno_core::futures::channel::mpsc::UnboundedSender;
+use deno_core::futures::channel::mpsc::unbounded;
+use deno_core::parking_lot::Mutex as SyncMutex;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
@@ -45,6 +50,7 @@ use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
 use tokio::sync::Mutex;
+use tokio::sync::oneshot;
 
 use crate::args::CliOptions;
 use crate::cdp;
@@ -172,8 +178,11 @@ pub struct ReplSession {
   internal_object_id: Option<RemoteObjectId>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
   resolver: Arc<CliResolver>,
-  pub worker: MainWorker,
+  // NB: `session` and `state` must come before Worker, so that relevant V8 objects
+  // are dropped before the isolate is dropped with `worker`.
   session: LocalInspectorSession,
+  state: ReplSessionState,
+  pub worker: MainWorker,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
   pub notifications: Arc<Mutex<UnboundedReceiver<Value>>>,
@@ -184,6 +193,101 @@ pub struct ReplSession {
   test_event_receiver: Option<TestEventReceiver>,
   jsx: deno_ast::JsxRuntime,
   decorators: deno_ast::DecoratorsTranspileOption,
+}
+
+// TODO: duplicated in `cli/tools/run/hmr.rs`
+#[derive(Debug)]
+enum InspectorMessageState {
+  Ready(serde_json::Value),
+  WaitingFor(oneshot::Sender<serde_json::Value>),
+}
+
+#[derive(Debug)]
+pub struct ReplSessionInner {
+  messages: HashMap<i32, InspectorMessageState>,
+  notification_tx: UnboundedSender<serde_json::Value>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ReplSessionState(Arc<SyncMutex<ReplSessionInner>>);
+
+impl ReplSessionState {
+  pub fn new(notification_tx: UnboundedSender<serde_json::Value>) -> Self {
+    Self(Arc::new(SyncMutex::new(ReplSessionInner {
+      messages: HashMap::new(),
+      notification_tx,
+    })))
+  }
+
+  fn callback(&self, msg: deno_core::InspectorMsg) {
+    let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
+      if let Ok(value) = serde_json::from_str(&msg.content) {
+        let _ = self.0.lock().notification_tx.unbounded_send(value);
+      }
+      return;
+    };
+
+    let message: serde_json::Value = match serde_json::from_str(&msg.content) {
+      Ok(v) => v,
+      Err(error) => match error.classify() {
+        serde_json::error::Category::Syntax => serde_json::json!({
+          "id": msg_id,
+          "result": {
+            "result": {
+              "type": "error",
+              "description": "Unterminated string literal",
+              "value": "Unterminated string literal",
+            },
+            "exceptionDetails": {
+              "exceptionId": 0,
+              "text": "Unterminated string literal",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+          },
+        }),
+        _ => panic!("Could not parse inspector message"),
+      },
+    };
+
+    let mut state = self.0.lock();
+    let Some(message_state) = state.messages.remove(&msg_id) else {
+      state
+        .messages
+        .insert(msg_id, InspectorMessageState::Ready(message));
+      return;
+    };
+    let InspectorMessageState::WaitingFor(sender) = message_state else {
+      return;
+    };
+    let _ = sender.send(message);
+  }
+
+  async fn wait_for_response(
+    &self,
+    msg_id: i32,
+  ) -> Result<serde_json::Value, InspectorPostMessageError> {
+    if let Some(message_state) = self.0.lock().messages.remove(&msg_id) {
+      let InspectorMessageState::Ready(mut value) = message_state else {
+        unreachable!();
+      };
+      return Ok(value["result"].take());
+    }
+
+    let (tx, rx) = oneshot::channel();
+    self
+      .0
+      .lock()
+      .messages
+      .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+    let mut value = rx.await.unwrap();
+    Ok(value["result"].take())
+  }
+}
+
+static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
+fn next_msg_id() -> i32 {
+  NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl ReplSession {
@@ -198,23 +302,20 @@ impl ReplSession {
     test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
-    let mut session = worker.create_inspector_session();
 
-    worker
-      .js_runtime
-      .with_event_loop_future(
-        session
-          .post_message::<()>("Runtime.enable", None)
-          .boxed_local(),
-        PollEventLoopOptions::default(),
-      )
-      .await?;
+    let (notification_tx, mut notification_rx) = unbounded();
+    let repl_session_state = ReplSessionState::new(notification_tx);
+    let state = repl_session_state.clone();
+    let callback =
+      Box::new(move |message| repl_session_state.callback(message));
+    let mut session = worker.create_inspector_session(callback);
+
+    session.post_message::<()>(next_msg_id(), "Runtime.enable", None);
 
     // Enabling the runtime domain will always send trigger one executionContextCreated for each
     // context the inspector knows about so we grab the execution context from that since
     // our inspector does not support a default context (0 is an invalid context id).
     let context_id: u64;
-    let mut notification_rx = session.take_notification_rx();
 
     loop {
       let notification = notification_rx.next().await.unwrap();
@@ -260,6 +361,7 @@ impl ReplSession {
       resolver,
       worker,
       session,
+      state,
       context_id,
       language_server,
       referrer,
@@ -316,11 +418,15 @@ impl ReplSession {
     method: &str,
     params: Option<T>,
   ) -> Result<Value, InspectorPostMessageError> {
+    let msg_id = next_msg_id();
+    self.session.post_message(msg_id, method, params);
+    let fut = self.state.wait_for_response(msg_id).boxed_local();
+
     self
       .worker
       .js_runtime
       .with_event_loop_future(
-        self.session.post_message(method, params).boxed_local(),
+        fut,
         PollEventLoopOptions {
           // NOTE(bartlomieju): this is an important bit; we don't want to pump V8
           // message loop here, so that GC won't run. Otherwise, the resulting

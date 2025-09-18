@@ -814,7 +814,8 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                 deno_resolver::workspace::ResolutionKind::Execution
               }
               StaticDependencyKind::ExportType
-              | StaticDependencyKind::ImportType => {
+              | StaticDependencyKind::ImportType
+              | StaticDependencyKind::MaybeTsModuleAugmentation => {
                 deno_resolver::workspace::ResolutionKind::Types
               }
             }
