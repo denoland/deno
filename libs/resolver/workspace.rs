@@ -881,16 +881,15 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         );
       let scopes_import_map =
         import_map::ext::expand_import_map_value(scopes_import_map);
-      // TODO: Also log import map values?
-      log::debug!(
-        "Workspace config generated this import map {}",
-        serde_json::to_string_pretty(&scopes_import_map).unwrap()
-      );
 
       for (url, value) in
         std::iter::once((Cow::Owned(scopes_import_map_url), scopes_import_map))
           .chain(config_specified_import_maps.into_iter())
       {
+        log::debug!(
+          "generated import map added to workspace: {}",
+          serde_json::to_string_pretty(&value).unwrap()
+        );
         out.push(import_map::parse_from_value(url.into_owned(), value)?);
       }
 
@@ -1158,8 +1157,26 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
 
     if resolve_result.is_none() {
       resolve_result = Some(
-        import_map::specifier::resolve_import(specifier, referrer)
-          .map_err(MappedResolutionError::Specifier),
+        match import_map::specifier::resolve_import(specifier, referrer)
+          .map_err(MappedResolutionError::Specifier)
+        {
+          Ok(v) => Ok(v),
+          Err(MappedResolutionError::Specifier(
+            SpecifierError::ImportPrefixMissing {
+              specifier,
+              referrer,
+            },
+          )) if used_import_map => {
+            // Return the "and not in import map" suffix to the error message.
+            Err(MappedResolutionError::ImportMap(ImportMapError(Box::new(
+              ImportMapErrorKind::UnmappedBareSpecifier(
+                specifier,
+                referrer.map(|v| v.to_string()),
+              ),
+            ))))
+          }
+          Err(e) => Err(e),
+        },
       );
     };
 
