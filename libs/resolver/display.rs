@@ -164,9 +164,9 @@ fn fmt_add() -> String {
   colors::green_bold("+").to_string()
 }
 
-fn fmt_add_text(x: &str) -> String {
-  colors::green(x).to_string()
-}
+// fn fmt_add_text(x: &str) -> String {
+//   colors::green(x).to_string()
+// }
 
 fn fmt_add_text_highlight(x: &str) -> String {
   colors::black_on_green(x).to_string()
@@ -176,9 +176,9 @@ fn fmt_rem() -> String {
   colors::red_bold("-").to_string()
 }
 
-fn fmt_rem_text(x: &str) -> String {
-  colors::red(x).to_string()
-}
+// fn fmt_rem_text(x: &str) -> String {
+//   colors::red(x).to_string()
+// }
 
 fn fmt_rem_text_highlight(x: &str) -> String {
   colors::white_on_red(x).to_string()
