@@ -96,6 +96,9 @@ impl DenoResolveError {
           MappedResolutionError::Workspace(e) => {
             ResolveError::Other(JsErrorBox::from_err(e))
           }
+          MappedResolutionError::NotFoundInCompilerOptionsPaths(e) => {
+            ResolveError::Other(JsErrorBox::from_err(e))
+          }
         }
       }
       err => ResolveError::Other(JsErrorBox::from_err(err)),
