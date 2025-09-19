@@ -4644,8 +4644,10 @@ fn no_check_arg() -> Arg {
 }
 
 fn connected_arg() -> Arg {
-  Arg::new("connected")
-    .long("connected")
+  Arg::new("tunnel")
+    .long("tunnel")
+    .alias("connected")
+    .short('t')
     .hide(true)
     .num_args(0..=1)
     .require_equals(true)
