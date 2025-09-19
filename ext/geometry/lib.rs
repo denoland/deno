@@ -2931,7 +2931,7 @@ fn set_f64(
 ) {
   let key = v8::String::new(scope, key).unwrap();
   let value = v8::Number::new(scope, value);
-  object.set(scope, key.into(), value.into()).unwrap();
+  object.create_data_property(scope, key.into(), value.into());
 }
 
 #[inline]
@@ -2943,7 +2943,7 @@ fn set_boolean(
 ) {
   let key = v8::String::new(scope, key).unwrap();
   let value = v8::Boolean::new(scope, value);
-  object.set(scope, key.into(), value.into()).unwrap();
+  object.create_data_property(scope, key.into(), value.into());
 }
 
 #[inline]
@@ -2955,7 +2955,7 @@ fn set_object(
 ) {
   let key = v8::String::new(scope, key).unwrap();
   let value = v8::Local::new(scope, value);
-  object.set(scope, key.into(), value.into()).unwrap();
+  object.create_data_property(scope, key.into(), value.into());
 }
 
 // TODO(petamoriken) Use f64::maximum instead https://github.com/rust-lang/rust/issues/91079
