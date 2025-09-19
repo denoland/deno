@@ -28,6 +28,7 @@ use deno_config::workspace::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
+use deno_core::parking_lot::RwLock;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
@@ -131,7 +132,7 @@ pub async fn prepare_inputs(
     let mut html_pages = Vec::new();
     let mut to_cache_urls = Vec::new();
     let mut entries: Vec<(String, String)> = Vec::new();
-    let mut virtual_modules = VirtualModules::new();
+    let virtual_modules = Arc::new(VirtualModules::new());
 
     for html_path in &html_paths {
       let entry = html::load_html_entrypoint(init_cwd, html_path)?;
@@ -158,7 +159,7 @@ pub async fn prepare_inputs(
       html_pages.push(entry);
     }
 
-    plugin_handler.virtual_modules = Some(Arc::new(virtual_modules));
+    plugin_handler.virtual_modules = Some(virtual_modules);
 
     // Prepare non-HTML entries too
     let _ = plugin_handler.prepare_module_load(&script_entry_urls).await;
@@ -384,7 +385,6 @@ async fn bundle_watch(
   };
   let always_watch = Rc::new(always_watch);
   let current_roots = Rc::new(RefCell::new(initial_roots.clone()));
-  let input = bundler.input.clone();
   let bundler = Rc::new(tokio::sync::Mutex::new(bundler));
   let mut print_config =
     crate::util::file_watcher::PrintConfig::new_with_banner(
@@ -399,17 +399,14 @@ async fn bundle_watch(
       watcher_communicator.show_path_changed(changed_paths.clone());
       let bundler = Rc::clone(&bundler);
       let current_roots = current_roots.clone();
-      let input = input.clone();
       let always_watch = always_watch.clone();
       Ok(async move {
         let mut bundler = bundler.lock().await;
         let start = std::time::Instant::now();
         if let Some(changed_paths) = changed_paths {
-          bundler
-            .plugin_handler
-            .reload_specifiers(&changed_paths)
-            .await?;
+          bundler.reload_specifiers(&changed_paths).await?;
         }
+        let input = bundler.input.clone();
         let response = bundler.rebuild().await?;
         handle_esbuild_errors_and_warnings(
           &response,
@@ -584,6 +581,53 @@ impl EsbuildBundler {
       }
     }
   }
+
+  async fn reload_specifiers(
+    &mut self,
+    changed_paths: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    self.reload_html_entrypoints(changed_paths)?;
+    self.plugin_handler.reload_specifiers(changed_paths).await?;
+    Ok(())
+  }
+
+  fn reload_html_entrypoints(
+    &mut self,
+    changed_paths: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    let BundlerInput::EntrypointsWithHtml { html_pages, .. } = &mut self.input
+    else {
+      return Ok(());
+    };
+
+    if changed_paths.is_empty() {
+      return Ok(());
+    }
+
+    for page in html_pages.iter_mut() {
+      if !changed_paths
+        .iter()
+        .any(|changed| changed == &page.path || changed == &page.canonical_path)
+      {
+        continue;
+      }
+
+      let updated = html::load_html_entrypoint(&self.cwd, &page.path)?;
+      let virtual_module_url =
+        deno_path_util::url_from_file_path(&updated.virtual_module_path)?
+          .to_string();
+      self.plugin_handler.update_virtual_module(
+        &virtual_module_url,
+        VirtualModule::new(
+          updated.temp_module.as_bytes().to_vec(),
+          esbuild_client::BuiltinLoader::Js,
+        ),
+      );
+      *page = updated;
+    }
+
+    Ok(())
+  }
 }
 
 fn message_to_error(
@@ -739,6 +783,7 @@ fn requested_type_from_map(
   }
 }
 
+#[derive(Clone)]
 pub struct VirtualModule {
   contents: Vec<u8>,
   loader: esbuild_client::BuiltinLoader,
@@ -751,26 +796,26 @@ impl VirtualModule {
 }
 
 pub struct VirtualModules {
-  modules: IndexMap<String, VirtualModule>,
+  modules: RwLock<IndexMap<String, VirtualModule>>,
 }
 
 impl VirtualModules {
   pub fn new() -> Self {
     Self {
-      modules: IndexMap::new(),
+      modules: RwLock::new(IndexMap::new()),
     }
   }
 
-  pub fn insert(&mut self, path: String, contents: VirtualModule) {
-    self.modules.insert(path, contents);
+  pub fn insert(&self, path: String, contents: VirtualModule) {
+    self.modules.write().insert(path, contents);
   }
 
-  pub fn get(&self, path: &str) -> Option<&VirtualModule> {
-    self.modules.get(path)
+  pub fn get(&self, path: &str) -> Option<VirtualModule> {
+    self.modules.read().get(path).cloned()
   }
 
   pub fn contains(&self, path: &str) -> bool {
-    self.modules.contains_key(path)
+    self.modules.read().contains_key(path)
   }
 }
 
@@ -798,6 +843,12 @@ pub struct DenoPluginHandler {
 impl DenoPluginHandler {
   fn take_deferred_resolve_errors(&self) -> Vec<DeferredResolveError> {
     std::mem::take(&mut *self.deferred_resolve_errors.lock())
+  }
+
+  fn update_virtual_module(&self, path: &str, module: VirtualModule) {
+    if let Some(virtual_modules) = &self.virtual_modules {
+      virtual_modules.insert(path.to_string(), module);
+    }
   }
 }
 
@@ -943,9 +994,11 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     if let Some(virtual_modules) = &self.virtual_modules
       && let Some(module) = virtual_modules.get(&args.path)
     {
+      let contents = module.contents.clone();
+      let loader = module.loader;
       return Ok(Some(esbuild_client::OnLoadResult {
-        contents: Some(module.contents.clone()),
-        loader: Some(module.loader),
+        contents: Some(contents),
+        loader: Some(loader),
         ..Default::default()
       }));
     }
