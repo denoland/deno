@@ -404,11 +404,7 @@ async fn bundle_watch(
         let mut bundler = bundler.lock().await;
         let start = std::time::Instant::now();
         if let Some(changed_paths) = changed_paths {
-          bundler.reload_html_entrypoints(&changed_paths)?;
-          bundler
-            .plugin_handler
-            .reload_specifiers(&changed_paths)
-            .await?;
+          bundler.reload_specifiers(&changed_paths).await?;
         }
         let input = bundler.input.clone();
         let response = bundler.rebuild().await?;
@@ -584,6 +580,15 @@ impl EsbuildBundler {
         Ok(response.into())
       }
     }
+  }
+
+  async fn reload_specifiers(
+    &mut self,
+    changed_paths: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    self.reload_html_entrypoints(changed_paths)?;
+    self.plugin_handler.reload_specifiers(changed_paths).await?;
+    Ok(())
   }
 
   fn reload_html_entrypoints(
