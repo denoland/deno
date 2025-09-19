@@ -114,7 +114,6 @@ export async function runSingleTest(
     const args = [
       "run",
       "-A",
-      "--unstable-broadcast-channel",
       "--unstable-webgpu",
       "--unstable-net",
       "--v8-flags=--expose-gc",

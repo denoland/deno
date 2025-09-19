@@ -116,7 +116,6 @@ fn node_unit_test(test: String) {
     .arg("--config")
     .arg(deno_config_path())
     .arg("--no-lock")
-    .arg("--unstable-broadcast-channel")
     .arg("--unstable-net")
     .arg("-A");
 
