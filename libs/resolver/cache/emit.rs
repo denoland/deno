@@ -50,6 +50,13 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
       }
     };
 
+    log::debug!("Emit cache version: {:?}", cache_version);
+    log::debug!(
+      "Emit cache xxhash64 check: {}",
+      twox_hash::XxHash64::oneshot(0, b"test")
+    );
+    log::debug!("Emit cache mode: {:?}", mode);
+
     Self {
       disk_cache,
       emit_failed_flag: Default::default(),
@@ -69,13 +76,15 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
   pub fn get_emit_code(
     &self,
     specifier: &Url,
+    transpile_and_emit_options_hash: u64,
     expected_source_hash: u64,
   ) -> Option<String> {
     if matches!(self.mode, Mode::Disable) {
       return None;
     }
 
-    let emit_filename = self.get_emit_filename(specifier)?;
+    let emit_filename =
+      self.get_emit_filename(specifier, transpile_and_emit_options_hash)?;
     let bytes = self.disk_cache.get(&emit_filename).ok()?;
     self
       .file_serializer
@@ -83,8 +92,19 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
   }
 
   /// Sets the emit code in the cache.
-  pub fn set_emit_code(&self, specifier: &Url, source_hash: u64, code: &[u8]) {
-    if let Err(err) = self.set_emit_code_result(specifier, source_hash, code) {
+  pub fn set_emit_code(
+    &self,
+    specifier: &Url,
+    transpile_and_emit_options_hash: u64,
+    source_hash: u64,
+    code: &[u8],
+  ) {
+    if let Err(err) = self.set_emit_code_result(
+      specifier,
+      transpile_and_emit_options_hash,
+      source_hash,
+      code,
+    ) {
       // might error in cases such as a readonly file system
       log::debug!("Error saving emit data ({}): {}", specifier, err);
       // assume the cache can't be written to and disable caching to it
@@ -95,6 +115,7 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
   fn set_emit_code_result(
     &self,
     specifier: &Url,
+    transpile_and_emit_options_hash: u64,
     source_hash: u64,
     code: &[u8],
   ) -> Result<(), AnyError> {
@@ -104,7 +125,7 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
     }
 
     let emit_filename = self
-      .get_emit_filename(specifier)
+      .get_emit_filename(specifier, transpile_and_emit_options_hash)
       .ok_or_else(|| anyhow!("Could not get emit filename."))?;
     let cache_data = self.file_serializer.serialize(code, source_hash);
     self.disk_cache.set(&emit_filename, &cache_data)?;
@@ -112,10 +133,18 @@ impl<TSys: EmitCacheSys> EmitCache<TSys> {
     Ok(())
   }
 
-  fn get_emit_filename(&self, specifier: &Url) -> Option<PathBuf> {
-    self
+  fn get_emit_filename(
+    &self,
+    specifier: &Url,
+    transpile_and_emit_options_hash: u64,
+  ) -> Option<PathBuf> {
+    let suffix = self
       .disk_cache
-      .get_cache_filename_with_extension(specifier, "js")
+      .get_cache_filename_with_extension(specifier, "js")?;
+    let mut path =
+      PathBuf::from(format!("{:016x}", transpile_and_emit_options_hash));
+    path.push(suffix);
+    Some(path)
   }
 }
 
@@ -141,11 +170,22 @@ impl EmitFileSerializer {
     // verify the meta data file is for this source and CLI version
     let source_hash = source_hash.parse::<u64>().ok()?;
     if source_hash != expected_source_hash {
+      log::debug!(
+        "Emit cache source hash mismatch (expected: {}, actual: {})",
+        expected_source_hash,
+        source_hash
+      );
       return None;
     }
     let emit_hash = emit_hash.parse::<u64>().ok()?;
     // prevent using an emit from a different cli version or emits that were tampered with
-    if emit_hash != self.compute_emit_hash(content) {
+    let expected_emit_hash = self.compute_emit_hash(content);
+    if emit_hash != expected_emit_hash {
+      log::debug!(
+        "Emit cache emit hash mismatch (expected: {}, actual: {})",
+        expected_emit_hash,
+        emit_hash
+      );
       return None;
     }
 

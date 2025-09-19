@@ -119,7 +119,11 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       .transpile_options()?;
     let source_hash =
       self.get_source_hash(module_kind, transpile_and_emit_options, source);
-    Ok(self.emit_cache.get_emit_code(specifier, source_hash))
+    Ok(self.emit_cache.get_emit_code(
+      specifier,
+      transpile_and_emit_options.pre_computed_hash,
+      source_hash,
+    ))
   }
 
   pub async fn maybe_emit_source(
@@ -208,6 +212,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
         let transpiled_source = emit()?;
         helper.post_emit_parsed_source(
           &specifier,
+          &transpile_and_emit_options,
           &transpiled_source,
           source_hash,
         );
@@ -263,6 +268,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
         .text;
         helper.post_emit_parsed_source(
           specifier,
+          &transpile_and_emit_options,
           &transpiled_source,
           source_hash,
         );
@@ -487,9 +493,11 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
         .0
         .get_source_hash(module_kind, transpile_and_emit_options, source);
 
-    if let Some(emit_code) =
-      self.0.emit_cache.get_emit_code(specifier, source_hash)
-    {
+    if let Some(emit_code) = self.0.emit_cache.get_emit_code(
+      specifier,
+      transpile_and_emit_options.pre_computed_hash,
+      source_hash,
+    ) {
       PreEmitResult::Cached(emit_code)
     } else {
       PreEmitResult::NotCached { source_hash }
@@ -499,11 +507,13 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
   pub fn post_emit_parsed_source(
     &self,
     specifier: &Url,
+    transpile_and_emit_options: &TranspileAndEmitOptions,
     transpiled_source: &str,
     source_hash: u64,
   ) {
     self.0.emit_cache.set_emit_code(
       specifier,
+      transpile_and_emit_options.pre_computed_hash,
       source_hash,
       transpiled_source.as_bytes(),
     );
