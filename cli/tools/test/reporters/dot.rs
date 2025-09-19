@@ -41,7 +41,7 @@ impl DotTestReporter {
       return;
     }
 
-    if self.n != 0 && self.n % self.width == 0 {
+    if self.n != 0 && self.n.is_multiple_of(self.width) {
       println!();
     }
     self.n += 1;

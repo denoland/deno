@@ -137,7 +137,7 @@ fn generate_key_ec(
 }
 
 fn generate_key_aes(length: usize) -> Result<Vec<u8>, GenerateKeyError> {
-  if length % 8 != 0 || length > 256 {
+  if !length.is_multiple_of(8) || length > 256 {
     return Err(GenerateKeyError::InvalidAESKeyLength);
   }
 

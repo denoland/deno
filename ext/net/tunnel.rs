@@ -169,6 +169,7 @@ impl Resource for TunnelStreamResource {
   }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 enum StreamHeader {
   Control {
@@ -183,6 +184,7 @@ enum StreamHeader {
   Agent {},
 }
 
+#[allow(dead_code)]
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 enum ControlMessage {
   Authenticated {

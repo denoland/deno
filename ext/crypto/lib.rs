@@ -595,7 +595,7 @@ pub async fn op_crypto_derive_bits(
         let salt = &*zero_copy;
         // The caller must validate these cases.
         assert!(args.length > 0);
-        assert!(args.length % 8 == 0);
+        assert!(args.length.is_multiple_of(8));
 
         let algorithm = match args.hash.ok_or_else(JsErrorBox::not_supported)? {
           CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
@@ -791,7 +791,7 @@ pub fn op_crypto_wrap_key(
     Algorithm::AesKw => {
       let key = args.key.as_secret_key()?;
 
-      if data.len() % 8 != 0 {
+      if !data.len().is_multiple_of(8) {
         return Err(CryptoError::DataInvalidSize);
       }
 
@@ -820,7 +820,7 @@ pub fn op_crypto_unwrap_key(
     Algorithm::AesKw => {
       let key = args.key.as_secret_key()?;
 
-      if data.len() % 8 != 0 {
+      if !data.len().is_multiple_of(8) {
         return Err(CryptoError::DataInvalidSize);
       }
 

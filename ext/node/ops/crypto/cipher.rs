@@ -292,25 +292,25 @@ impl Cipher {
     use Cipher::*;
     match self {
       Aes128Cbc(encryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes128Ecb(encryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes192Ecb(encryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes256Ecb(encryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
@@ -324,7 +324,7 @@ impl Cipher {
         cipher.encrypt(output);
       }
       Aes256Cbc(encryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
@@ -631,25 +631,25 @@ impl Decipher {
     use Decipher::*;
     match self {
       Aes128Cbc(decryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes128Ecb(decryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes192Ecb(decryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
       Aes256Ecb(decryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
@@ -663,7 +663,7 @@ impl Decipher {
         decipher.decrypt(output);
       }
       Aes256Cbc(decryptor) => {
-        assert!(input.len() % 16 == 0);
+        assert!(input.len().is_multiple_of(16));
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
