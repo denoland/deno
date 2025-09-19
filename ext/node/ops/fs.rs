@@ -86,60 +86,6 @@ where
   Ok(fs.exists_async(path.into_owned()).await?)
 }
 
-#[op2(fast, stack_trace)]
-pub fn op_node_cp_sync<P>(
-  state: &mut OpState,
-  #[string] path: &str,
-  #[string] new_path: &str,
-) -> Result<(), FsError>
-where
-  P: NodePermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Read,
-    Some("node:fs.cpSync"),
-  )?;
-  let new_path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(new_path)),
-    OpenAccessKind::WriteNoFollow,
-    Some("node:fs.cpSync"),
-  )?;
-
-  let fs = state.borrow::<FileSystemRc>();
-  fs.cp_sync(&path, &new_path)?;
-  Ok(())
-}
-
-#[op2(async, stack_trace)]
-pub async fn op_node_cp<P>(
-  state: Rc<RefCell<OpState>>,
-  #[string] path: String,
-  #[string] new_path: String,
-) -> Result<(), FsError>
-where
-  P: NodePermissions + 'static,
-{
-  let (fs, path, new_path) = {
-    let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Read,
-      Some("node:fs.cpSync"),
-    )?;
-    let new_path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(new_path)),
-      OpenAccessKind::WriteNoFollow,
-      Some("node:fs.cpSync"),
-    )?;
-    (state.borrow::<FileSystemRc>().clone(), path, new_path)
-  };
-
-  fs.cp_async(path.into_owned(), new_path.into_owned())
-    .await?;
-  Ok(())
-}
-
 fn get_open_options(mut flags: i32, mode: u32) -> OpenOptions {
   let mut options = OpenOptions {
     mode: Some(mode),
