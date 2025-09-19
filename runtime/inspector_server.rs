@@ -216,10 +216,8 @@ fn handle_ws_request(
     };
 
     log::info!("Debugger session started.");
-    let r = new_session_tx.unbounded_send(inspector_session_proxy);
-    eprintln!("sent session tx {}", r.is_err());
+    let _r = new_session_tx.unbounded_send(inspector_session_proxy);
     pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
-    eprintln!("pump websocket mssages loop finished");
   });
 
   Ok(resp)
@@ -422,13 +420,10 @@ async fn pump_websocket_messages(
   mut outbound_rx: UnboundedReceiver<InspectorMsg>,
 ) {
   'pump: loop {
-    eprintln!("pump websocket message loop");
     tokio::select! {
         Some(msg) = outbound_rx.next() => {
-            // eprintln!("sending WS frame {}", msg.content);
             let msg = Frame::text(msg.content.into_bytes().into());
-            let r = websocket.write_frame(msg).await;
-            // eprintln!("ws result {:#?}", r);
+            let _ = websocket.write_frame(msg).await;
         }
         Ok(msg) = websocket.read_frame() => {
             match msg.opcode {
@@ -449,7 +444,6 @@ async fn pump_websocket_messages(
             }
         }
         else => {
-          eprintln!("else branch take");
           break 'pump;
         }
     }
