@@ -361,6 +361,8 @@ pub struct StartPreciseCoverageArgs {
   pub allow_triggered_updates: bool,
 }
 
+// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
+#[allow(dead_code)]
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-startPreciseCoverage>
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
