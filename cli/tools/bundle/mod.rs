@@ -605,7 +605,10 @@ impl EsbuildBundler {
     }
 
     for page in html_pages.iter_mut() {
-      if !changed_paths.iter().any(|changed| changed == &page.path) {
+      if !changed_paths
+        .iter()
+        .any(|changed| changed == &page.path || changed == &page.canonical_path)
+      {
         continue;
       }
 
