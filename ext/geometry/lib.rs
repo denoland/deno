@@ -820,6 +820,7 @@ impl DOMQuad {
 #[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct DOMMatrixInit {
+  // Need to place the inherited DOMMatrixInit2D first
   #[webidl(default = None)]
   a: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
@@ -836,14 +837,19 @@ pub struct DOMMatrixInit {
   m11: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
   m12: Option<webidl::UnrestrictedDouble>,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  m13: webidl::UnrestrictedDouble,
-  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
-  m14: webidl::UnrestrictedDouble,
   #[webidl(default = None)]
   m21: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
   m22: Option<webidl::UnrestrictedDouble>,
+  #[webidl(default = None)]
+  m41: Option<webidl::UnrestrictedDouble>,
+  #[webidl(default = None)]
+  m42: Option<webidl::UnrestrictedDouble>,
+
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  m13: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  m14: webidl::UnrestrictedDouble,
   #[webidl(default = webidl::UnrestrictedDouble(0.0))]
   m23: webidl::UnrestrictedDouble,
   #[webidl(default = webidl::UnrestrictedDouble(0.0))]
@@ -856,10 +862,6 @@ pub struct DOMMatrixInit {
   m33: webidl::UnrestrictedDouble,
   #[webidl(default = webidl::UnrestrictedDouble(0.0))]
   m34: webidl::UnrestrictedDouble,
-  #[webidl(default = None)]
-  m41: Option<webidl::UnrestrictedDouble>,
-  #[webidl(default = None)]
-  m42: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = webidl::UnrestrictedDouble(0.0))]
   m43: webidl::UnrestrictedDouble,
   #[webidl(default = webidl::UnrestrictedDouble(1.0))]
