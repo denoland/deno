@@ -159,7 +159,7 @@ pub async fn prepare_inputs(
       html_pages.push(entry);
     }
 
-    plugin_handler.virtual_modules = Some(virtual_modules.clone());
+    plugin_handler.virtual_modules = Some(virtual_modules);
 
     // Prepare non-HTML entries too
     let _ = plugin_handler.prepare_module_load(&script_entry_urls).await;
