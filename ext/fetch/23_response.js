@@ -11,6 +11,7 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
+import { op_fetch_upgrade_raw } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
@@ -30,6 +31,8 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
+import { UpgradedConn } from "ext:deno_net/01_net.js";
+
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -516,6 +519,33 @@ function fromInnerResponse(inner, guard) {
   return response;
 }
 
+async function upgradeResponse(response) {
+  const inner = toInnerResponse(response);
+  if (
+    !inner.body || typeof inner.body.streamOrStatic.body !== "number" ||
+    inner.body.streamOrStatic.consumed
+  ) {
+    throw new TypeError("Response cannot be upgraded");
+  }
+  inner.body.streamOrStatic.consumed = true;
+  const { 0: upgradeRid, 1: info } = await op_fetch_upgrade_raw(
+    inner.body.streamOrStatic.body,
+  );
+  return new UpgradedConn(
+    upgradeRid,
+    {
+      transport: "tcp",
+      hostname: info[0],
+      port: info[1],
+    },
+    {
+      transport: "tcp",
+      hostname: info[2],
+      port: info[3],
+    },
+  );
+}
+
 export {
   abortedNetworkError,
   fromInnerResponse,
@@ -526,4 +556,5 @@ export {
   Response,
   ResponsePrototype,
   toInnerResponse,
+  upgradeResponse,
 };

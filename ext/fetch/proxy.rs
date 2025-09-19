@@ -22,6 +22,7 @@ use hyper_rustls::HttpsConnector;
 use hyper_rustls::MaybeHttpsStream;
 use hyper_util::client::legacy::connect::Connected;
 use hyper_util::client::legacy::connect::Connection;
+use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioIo;
 use ipnet::IpNet;
 use percent_encoding::percent_decode_str;
@@ -40,8 +41,8 @@ use tokio_vsock::VsockStream;
 use tower_service::Service;
 
 #[derive(Debug, Clone)]
-pub(crate) struct ProxyConnector<C> {
-  pub(crate) http: C,
+pub(crate) struct ProxyConnector {
+  pub(crate) http: HttpConnector<crate::dns::Resolver>,
   pub(crate) proxies: Arc<Proxies>,
   /// TLS config when destination is not a proxy
   pub(crate) tls: Arc<TlsConfig>,
@@ -51,11 +52,8 @@ pub(crate) struct ProxyConnector<C> {
   pub(crate) user_agent: Option<HeaderValue>,
 }
 
-impl<C> ProxyConnector<C> {
-  pub(crate) fn h1_only(self) -> Option<ProxyConnector<C>>
-  where
-    C: Service<Uri>,
-  {
+impl ProxyConnector {
+  pub(crate) fn h1_only(self) -> Option<ProxyConnector> {
     if !self.tls.alpn_protocols.is_empty() {
       self.tls.alpn_protocols.iter().find(|p| *p == b"http/1.1")?;
     }
@@ -70,10 +68,7 @@ impl<C> ProxyConnector<C> {
     })
   }
 
-  pub(crate) fn h2_only(self) -> Option<ProxyConnector<C>>
-  where
-    C: Service<Uri>,
-  {
+  pub(crate) fn h2_only(self) -> Option<ProxyConnector> {
     if !self.tls.alpn_protocols.is_empty() {
       self.tls.alpn_protocols.iter().find(|p| *p == b"h2")?;
     }
@@ -496,7 +491,7 @@ impl DomainMatcher {
   }
 }
 
-impl<C> ProxyConnector<C> {
+impl ProxyConnector {
   fn intercept(&self, dst: &Uri) -> Option<&Intercept> {
     self.proxies.intercept(dst)
   }
@@ -541,19 +536,19 @@ impl Proxies {
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
-// These variatns are not to be inspected.
-#[allow(clippy::large_enum_variant)]
-pub enum Proxied<T> {
+type HttpTunneled = TlsStream<TokioIo<MaybeHttpsStream<TokioIo<TcpStream>>>>;
+
+pub enum Proxied {
   /// Not proxied
-  PassThrough(T),
+  PassThrough(MaybeHttpsStream<TokioIo<TcpStream>>),
   /// Forwarded via TCP socket
-  Tcp(T),
+  Tcp(MaybeHttpsStream<TokioIo<TcpStream>>),
   /// Tunneled through HTTP CONNECT
-  HttpTunneled(Box<TokioIo<TlsStream<TokioIo<T>>>>),
+  HttpTunneled(Box<TokioIo<HttpTunneled>>),
   /// Tunneled through SOCKS
   Socks(TokioIo<TcpStream>),
   /// Tunneled through SOCKS and TLS
-  SocksTls(TokioIo<TlsStream<TokioIo<TokioIo<TcpStream>>>>),
+  SocksTls(TokioIo<TlsStream<TcpStream>>),
   /// Forwarded via Unix socket
   #[cfg(not(windows))]
   Unix(TokioIo<UnixStream>),
@@ -562,15 +557,202 @@ pub enum Proxied<T> {
   Vsock(TokioIo<VsockStream>),
 }
 
-impl<C> Service<Uri> for ProxyConnector<C>
-where
-  C: Service<Uri> + Clone,
-  C::Response:
-    hyper::rt::Read + hyper::rt::Write + Connection + Unpin + Send + 'static,
-  C::Future: Send + 'static,
-  C::Error: Into<BoxError> + 'static,
-{
-  type Response = Proxied<MaybeHttpsStream<C::Response>>;
+#[pin_project::pin_project(project = ProxiedReadHalfProject)]
+pub enum ProxiedReadHalf {
+  Tcp(#[pin] tokio::net::tcp::OwnedReadHalf),
+  Tls(#[pin] rustls_tokio_stream::TlsStreamRead<tokio::net::TcpStream>),
+  Tunneled(#[pin] tokio::io::ReadHalf<Box<HttpTunneled>>),
+  #[cfg(not(windows))]
+  Unix(#[pin] tokio::net::unix::OwnedReadHalf),
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+  Vsock(#[pin] tokio_vsock::OwnedReadHalf),
+}
+
+impl tokio::io::AsyncRead for ProxiedReadHalf {
+  fn poll_read(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: &mut tokio::io::ReadBuf<'_>,
+  ) -> Poll<std::io::Result<()>> {
+    match self.project() {
+      ProxiedReadHalfProject::Tcp(p) => p.poll_read(cx, buf),
+      ProxiedReadHalfProject::Tls(p) => p.poll_read(cx, buf),
+      ProxiedReadHalfProject::Tunneled(p) => p.poll_read(cx, buf),
+      #[cfg(not(windows))]
+      ProxiedReadHalfProject::Unix(p) => p.poll_read(cx, buf),
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
+      ProxiedReadHalfProject::Vsock(p) => p.poll_read(cx, buf),
+    }
+  }
+}
+
+#[pin_project::pin_project(project = ProxiedWriteHalfProject)]
+pub enum ProxiedWriteHalf {
+  Tcp(#[pin] tokio::net::tcp::OwnedWriteHalf),
+  Tls(#[pin] rustls_tokio_stream::TlsStreamWrite<tokio::net::TcpStream>),
+  Tunneled(#[pin] tokio::io::WriteHalf<Box<HttpTunneled>>),
+  #[cfg(not(windows))]
+  Unix(#[pin] tokio::net::unix::OwnedWriteHalf),
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+  Vsock(#[pin] tokio_vsock::OwnedWriteHalf),
+}
+
+impl tokio::io::AsyncWrite for ProxiedWriteHalf {
+  fn poll_write(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: &[u8],
+  ) -> Poll<Result<usize, std::io::Error>> {
+    match self.project() {
+      ProxiedWriteHalfProject::Tcp(p) => p.poll_write(cx, buf),
+      ProxiedWriteHalfProject::Tls(p) => p.poll_write(cx, buf),
+      ProxiedWriteHalfProject::Tunneled(p) => p.poll_write(cx, buf),
+      #[cfg(not(windows))]
+      ProxiedWriteHalfProject::Unix(p) => p.poll_write(cx, buf),
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
+      ProxiedWriteHalfProject::Vsock(p) => p.poll_write(cx, buf),
+    }
+  }
+
+  fn poll_flush(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    match self.project() {
+      ProxiedWriteHalfProject::Tcp(p) => p.poll_flush(cx),
+      ProxiedWriteHalfProject::Tls(p) => p.poll_flush(cx),
+      ProxiedWriteHalfProject::Tunneled(p) => p.poll_flush(cx),
+      #[cfg(not(windows))]
+      ProxiedWriteHalfProject::Unix(p) => p.poll_flush(cx),
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
+      ProxiedWriteHalfProject::Vsock(p) => p.poll_flush(cx),
+    }
+  }
+
+  fn poll_shutdown(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    match self.project() {
+      ProxiedWriteHalfProject::Tcp(p) => p.poll_shutdown(cx),
+      ProxiedWriteHalfProject::Tls(p) => p.poll_shutdown(cx),
+      ProxiedWriteHalfProject::Tunneled(p) => p.poll_shutdown(cx),
+      #[cfg(not(windows))]
+      ProxiedWriteHalfProject::Unix(p) => p.poll_shutdown(cx),
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
+      ProxiedWriteHalfProject::Vsock(p) => p.poll_shutdown(cx),
+    }
+  }
+
+  fn poll_write_vectored(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    bufs: &[std::io::IoSlice<'_>],
+  ) -> Poll<Result<usize, std::io::Error>> {
+    match self.project() {
+      ProxiedWriteHalfProject::Tcp(p) => p.poll_write_vectored(cx, bufs),
+      ProxiedWriteHalfProject::Tls(p) => p.poll_write_vectored(cx, bufs),
+      ProxiedWriteHalfProject::Tunneled(p) => p.poll_write_vectored(cx, bufs),
+      #[cfg(not(windows))]
+      ProxiedWriteHalfProject::Unix(p) => p.poll_write_vectored(cx, bufs),
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
+      ProxiedWriteHalfProject::Vsock(p) => p.poll_write_vectored(cx, bufs),
+    }
+  }
+
+  fn is_write_vectored(&self) -> bool {
+    match self {
+      Self::Tcp(p) => p.is_write_vectored(),
+      Self::Tls(p) => p.is_write_vectored(),
+      Self::Tunneled(p) => p.is_write_vectored(),
+      #[cfg(not(windows))]
+      Self::Unix(p) => p.is_write_vectored(),
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
+      Self::Vsock(p) => p.is_write_vectored(),
+    }
+  }
+}
+
+impl Proxied {
+  pub fn into_split(self) -> (ProxiedReadHalf, ProxiedWriteHalf) {
+    match self {
+      Self::PassThrough(p) | Self::Tcp(p) => match p {
+        MaybeHttpsStream::Http(p) => {
+          let (r, w) = p.into_inner().into_split();
+          (ProxiedReadHalf::Tcp(r), ProxiedWriteHalf::Tcp(w))
+        }
+        MaybeHttpsStream::Https(p) => {
+          let tls = p.into_inner();
+          let (io, tls) = tls.into_inner();
+          let s = rustls_tokio_stream::TlsStream::new_client_side_from(
+            io.into_inner().into_inner(),
+            tls,
+            None,
+          );
+          let (r, w) = s.into_split();
+          (ProxiedReadHalf::Tls(r), ProxiedWriteHalf::Tls(w))
+        }
+      },
+      Self::HttpTunneled(p) => {
+        let (r, w) = tokio::io::split(Box::new(p.into_inner()));
+        (ProxiedReadHalf::Tunneled(r), ProxiedWriteHalf::Tunneled(w))
+      }
+      Self::Socks(p) => {
+        let (r, w) = p.into_inner().into_split();
+        (ProxiedReadHalf::Tcp(r), ProxiedWriteHalf::Tcp(w))
+      }
+      Self::SocksTls(p) => {
+        let tls = p.into_inner();
+        let (io, tls) = tls.into_inner();
+        let s =
+          rustls_tokio_stream::TlsStream::new_client_side_from(io, tls, None);
+        let (r, w) = s.into_split();
+        (ProxiedReadHalf::Tls(r), ProxiedWriteHalf::Tls(w))
+      }
+      #[cfg(not(windows))]
+      Self::Unix(p) => {
+        let (r, w) = p.into_inner().into_split();
+        (ProxiedReadHalf::Unix(r), ProxiedWriteHalf::Unix(w))
+      }
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
+      Self::Vsock(p) => {
+        let (r, w) = p.into_inner().into_split();
+        (ProxiedReadHalf::Vsock(r), ProxiedWriteHalf::Vsock(w))
+      }
+    }
+  }
+}
+
+impl Service<Uri> for ProxyConnector {
+  type Response = Proxied;
   type Error = BoxError;
   type Future = BoxFuture<Result<Self::Response, Self::Error>>;
 
@@ -603,11 +785,10 @@ where
 
             if is_https {
               tunnel(&mut io, &orig_dst, user_agent, auth).await?;
-              let tokio_io = TokioIo::new(io);
               let io = tls
                 .connect(
                   TryFrom::try_from(orig_dst.host().unwrap().to_owned())?,
-                  tokio_io,
+                  TokioIo::new(io),
                 )
                 .await?;
               Ok(Proxied::HttpTunneled(Box::new(TokioIo::new(io))))
@@ -643,16 +824,14 @@ where
             } else {
               Socks5Stream::connect(socks_addr, (host, port)).await?
             };
-            let io = TokioIo::new(io.into_inner());
+            let io = io.into_inner();
 
             if is_https {
-              let tokio_io = TokioIo::new(io);
-              let io = tls
-                .connect(TryFrom::try_from(host.to_owned())?, tokio_io)
-                .await?;
+              let io =
+                tls.connect(TryFrom::try_from(host.to_owned())?, io).await?;
               Ok(Proxied::SocksTls(TokioIo::new(io)))
             } else {
-              Ok(Proxied::Socks(io))
+              Ok(Proxied::Socks(TokioIo::new(io)))
             }
           })
         }
@@ -785,10 +964,7 @@ where
   }
 }
 
-impl<T> hyper::rt::Read for Proxied<T>
-where
-  T: hyper::rt::Read + hyper::rt::Write + Unpin,
-{
+impl hyper::rt::Read for Proxied {
   fn poll_read(
     mut self: Pin<&mut Self>,
     cx: &mut Context<'_>,
@@ -812,10 +988,7 @@ where
   }
 }
 
-impl<T> hyper::rt::Write for Proxied<T>
-where
-  T: hyper::rt::Read + hyper::rt::Write + Unpin,
-{
+impl hyper::rt::Write for Proxied {
   fn poll_write(
     mut self: Pin<&mut Self>,
     cx: &mut Context<'_>,
@@ -925,10 +1098,7 @@ where
   }
 }
 
-impl<T> Connection for Proxied<T>
-where
-  T: Connection,
-{
+impl Connection for Proxied {
   fn connected(&self) -> Connected {
     match self {
       Proxied::PassThrough(p) => p.connected(),
