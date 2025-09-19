@@ -62,7 +62,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.50.0", features = ["transpiling"] }
-deno_core = { version = "0.358.0" }
+deno_core = { version = "0.359.0" }
 
 deno_cache_dir = "=0.25.0"
 deno_doc = "=0.183.0"
