@@ -216,7 +216,7 @@ fn handle_ws_request(
     };
 
     log::info!("Debugger session started.");
-    let _r = new_session_tx.unbounded_send(inspector_session_proxy);
+    let _ = new_session_tx.unbounded_send(inspector_session_proxy);
     pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
   });
 

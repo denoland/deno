@@ -107,6 +107,7 @@ impl StdErrLines {
 
     loop {
       let line = self.next().unwrap();
+
       assert_eq!(line, expected_lines[expected_index]);
       expected_index += 1;
 
@@ -510,6 +511,7 @@ async fn inspector_does_not_hang() {
       ],
     )
     .await;
+
   tester
     .send(json!({"id":4,"method":"Runtime.runIfWaitingForDebugger"}))
     .await;
@@ -519,6 +521,7 @@ async fn inspector_does_not_hang() {
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
+
   tester
     .send(json!({"id":5,"method":"Debugger.resume"}))
     .await;
@@ -528,6 +531,7 @@ async fn inspector_does_not_hang() {
       &[r#"{"method":"Debugger.resumed","params":{}}"#],
     )
     .await;
+
   for i in 0..128u32 {
     let request_id = i + 10;
     // Expect the number {i} on stdout.
@@ -543,6 +547,7 @@ async fn inspector_does_not_hang() {
         ],
       )
       .await;
+
     tester
       .send(json!({"id":request_id,"method":"Debugger.resume"}))
       .await;
@@ -560,6 +565,7 @@ async fn inspector_does_not_hang() {
     .write_frame(Frame::close_raw(vec![].into()))
     .await
     .unwrap();
+
   assert_eq!(&tester.stdout_lines.next().unwrap(), "done");
   // TODO(bartlomieju): this line makes no sense - if the inspector is connected then the
   // process should not exit on its own.
@@ -599,6 +605,7 @@ async fn inspector_runtime_evaluate_does_not_crash() {
     .arg("repl")
     .arg("--allow-read")
     .arg(inspect_flag_with_unique_port("--inspect"))
+    .env("RUST_BACKTRACE", "1")
     .stdin(std::process::Stdio::piped())
     .piped_output()
     .spawn()
@@ -1127,8 +1134,9 @@ async fn inspector_profile() {
     .unwrap();
 
   let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
-  tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+
   tester.assert_stderr_for_inspect_brk();
+
   tester
     .send_many(&[
       json!({"id":1,"method":"Runtime.enable"}),
@@ -1158,6 +1166,7 @@ async fn inspector_profile() {
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
+
   tester.send_many(
       &[
         json!({"id":5,"method":"Profiler.setSamplingInterval","params":{"interval": 100}}),
@@ -1170,6 +1179,7 @@ async fn inspector_profile() {
       &[],
     )
     .await;
+
   tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
   tester
@@ -1185,6 +1195,7 @@ async fn inspector_profile() {
   );
   profile["samples"].as_array().unwrap();
   profile["nodes"].as_array().unwrap();
+
   tester.child.kill().unwrap();
   tester.child.wait().unwrap();
 }
