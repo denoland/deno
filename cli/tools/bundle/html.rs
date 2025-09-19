@@ -203,9 +203,9 @@ pub fn load_html_entrypoint(
   cwd: &Path,
   path: &Path,
 ) -> anyhow::Result<HtmlEntrypoint> {
-  let contents = std::fs::read_to_string(&path)?;
+  let contents = std::fs::read_to_string(path)?;
   let canonical_path = path.canonicalize()?;
-  parse_html_entrypoint(cwd, &path, canonical_path, contents)
+  parse_html_entrypoint(cwd, path, canonical_path, contents)
 }
 
 #[derive(Debug, Clone)]
