@@ -1198,7 +1198,7 @@ impl DOMMatrixReadOnly {
     }
     let mut inner = self.inner.borrow_mut();
     let perspective =
-      Matrix4x2::new(0.0, 0.0, 1.0, -1.0 / d, 0.0, 0.0, 0.0, 1.0);
+      Matrix4x2::new(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0 / d, 1.0);
     let mut result = Matrix4x2::zeros();
     inner.mul_to(&perspective, &mut result);
     inner.set_column(2, &result.column(0));
