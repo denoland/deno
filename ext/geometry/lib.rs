@@ -618,15 +618,20 @@ pub struct DOMQuadInit {
 }
 
 pub struct DOMQuad {
-  p1: v8::Global<v8::Object>,
-  p2: v8::Global<v8::Object>,
-  p3: v8::Global<v8::Object>,
-  p4: v8::Global<v8::Object>,
+  p1: v8::TracedReference<v8::Object>,
+  p2: v8::TracedReference<v8::Object>,
+  p3: v8::TracedReference<v8::Object>,
+  p4: v8::TracedReference<v8::Object>,
 }
 
 // SAFETY: we're sure `DOMQuad` can be GCed
 unsafe impl GarbageCollected for DOMQuad {
-  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+  fn trace(&self, visitor: &mut deno_core::v8::cppgc::Visitor) {
+    visitor.trace(&self.p1);
+    visitor.trace(&self.p2);
+    visitor.trace(&self.p3);
+    visitor.trace(&self.p4);
+  }
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DOMQuad"
@@ -650,7 +655,7 @@ impl DOMQuad {
     fn from_point(
       scope: &mut v8::HandleScope,
       point: DOMPointInit,
-    ) -> v8::Global<v8::Object> {
+    ) -> v8::TracedReference<v8::Object> {
       let ro = DOMPointReadOnly {
         inner: RefCell::new(Vector4::new(
           *point.x, *point.y, *point.z, *point.w,
@@ -658,7 +663,7 @@ impl DOMQuad {
       };
       let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
       cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}));
-      v8::Global::new(scope, obj)
+      v8::TracedReference::new(scope, obj)
     }
 
     DOMQuad {
@@ -684,13 +689,13 @@ impl DOMQuad {
       y: f64,
       z: f64,
       w: f64,
-    ) -> v8::Global<v8::Object> {
+    ) -> v8::TracedReference<v8::Object> {
       let ro = DOMPointReadOnly {
         inner: RefCell::new(Vector4::new(x, y, z, w)),
       };
       let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
       cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}));
-      v8::Global::new(scope, obj)
+      v8::TracedReference::new(scope, obj)
     }
 
     let DOMRectInit {
@@ -719,7 +724,7 @@ impl DOMQuad {
     fn from_point(
       scope: &mut v8::HandleScope,
       point: DOMPointInit,
-    ) -> v8::Global<v8::Object> {
+    ) -> v8::TracedReference<v8::Object> {
       let ro = DOMPointReadOnly {
         inner: RefCell::new(Vector4::new(
           *point.x, *point.y, *point.z, *point.w,
@@ -727,7 +732,7 @@ impl DOMQuad {
       };
       let obj = cppgc::make_cppgc_empty_object::<DOMPoint>(scope);
       cppgc::wrap_object2(scope, obj, (ro, DOMPoint {}));
-      v8::Global::new(scope, obj)
+      v8::TracedReference::new(scope, obj)
     }
 
     DOMQuad {
@@ -739,27 +744,35 @@ impl DOMQuad {
   }
 
   #[getter]
-  #[global]
-  fn p1(&self) -> v8::Global<v8::Object> {
-    self.p1.clone()
+  fn p1<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Object> {
+    self.p1.get(scope).unwrap()
   }
 
   #[getter]
-  #[global]
-  fn p2(&self) -> v8::Global<v8::Object> {
-    self.p2.clone()
+  fn p2<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Object> {
+    self.p2.get(scope).unwrap()
   }
 
   #[getter]
-  #[global]
-  fn p3(&self) -> v8::Global<v8::Object> {
-    self.p3.clone()
+  fn p3<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Object> {
+    self.p3.get(scope).unwrap()
   }
 
   #[getter]
-  #[global]
-  fn p4(&self) -> v8::Global<v8::Object> {
-    self.p4.clone()
+  fn p4<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> v8::Local<'a, v8::Object> {
+    self.p4.get(scope).unwrap()
   }
 
   #[required(0)]
@@ -770,12 +783,12 @@ impl DOMQuad {
     #[inline]
     fn get_ptr(
       scope: &mut v8::HandleScope,
-      value: &v8::Global<v8::Object>,
+      value: &v8::TracedReference<v8::Object>,
     ) -> cppgc::UnsafePtr<DOMPointReadOnly> {
-      let value = v8::Local::new(scope, value);
+      let value = value.get(scope).unwrap();
       cppgc::try_unwrap_cppgc_proto_object::<DOMPointReadOnly>(
         scope,
-        value.cast(),
+        value.into(),
       )
       .unwrap()
     }
@@ -808,11 +821,23 @@ impl DOMQuad {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
+    #[inline]
+    fn set_object(
+      scope: &mut v8::HandleScope,
+      object: &mut v8::Local<v8::Object>,
+      key: &str,
+      value: &v8::TracedReference<v8::Object>,
+    ) {
+      let key = v8::String::new(scope, key).unwrap();
+      let value = value.get(scope).unwrap();
+      object.create_data_property(scope, key.into(), value.into());
+    }
+
     let mut obj = v8::Object::new(scope);
-    set_object(scope, &mut obj, "p1", self.p1.clone());
-    set_object(scope, &mut obj, "p2", self.p2.clone());
-    set_object(scope, &mut obj, "p3", self.p3.clone());
-    set_object(scope, &mut obj, "p4", self.p4.clone());
+    set_object(scope, &mut obj, "p1", &self.p1);
+    set_object(scope, &mut obj, "p2", &self.p2);
+    set_object(scope, &mut obj, "p3", &self.p3);
+    set_object(scope, &mut obj, "p4", &self.p4);
     obj
   }
 }
@@ -2886,18 +2911,6 @@ fn set_boolean(
 ) {
   let key = v8::String::new(scope, key).unwrap();
   let value = v8::Boolean::new(scope, value);
-  object.create_data_property(scope, key.into(), value.into());
-}
-
-#[inline]
-fn set_object(
-  scope: &mut v8::HandleScope,
-  object: &mut v8::Local<v8::Object>,
-  key: &str,
-  value: v8::Global<v8::Object>,
-) {
-  let key = v8::String::new(scope, key).unwrap();
-  let value = v8::Local::new(scope, value);
   object.create_data_property(scope, key.into(), value.into());
 }
 
