@@ -16,6 +16,7 @@ use serde_json::Map;
 use serde_json::Value;
 use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
+use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
@@ -739,34 +740,6 @@ impl<
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(url_or_path)
-  }
-
-  pub fn resolve_binary_commands(
-    &self,
-    package_folder: &Path,
-  ) -> Result<Vec<String>, ResolveBinaryCommandsError> {
-    let pkg_json_path = package_folder.join("package.json");
-    let Some(package_json) =
-      self.pkg_json_resolver.load_package_json(&pkg_json_path)?
-    else {
-      return Ok(Vec::new());
-    };
-
-    Ok(match &package_json.bin {
-      Some(Value::String(_)) => {
-        let Some(name) = &package_json.name else {
-          return Err(ResolveBinaryCommandsError::MissingPkgJsonName {
-            pkg_json_path,
-          });
-        };
-        let name = name.split("/").last().unwrap();
-        vec![name.to_string()]
-      }
-      Some(Value::Object(o)) => {
-        o.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>()
-      }
-      _ => Vec::new(),
-    })
   }
 
   pub fn resolve_binary_export(

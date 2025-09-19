@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
+use deno_package_json::MissingPkgJsonNameError;
 use deno_path_util::UrlToFilePathError;
 use thiserror::Error;
 use url::Url;
@@ -1047,16 +1048,6 @@ pub enum ResolvePkgJsonBinExportError {
   #[class(generic)]
   #[error("Failed resolving binary export. {message}")]
   InvalidBinProperty { message: String },
-}
-
-#[derive(Debug, Error, JsError)]
-pub enum ResolveBinaryCommandsError {
-  #[class(inherit)]
-  #[error(transparent)]
-  PkgJsonLoad(#[from] PackageJsonLoadError),
-  #[class(generic)]
-  #[error("'{}' did not have a name", pkg_json_path.display())]
-  MissingPkgJsonName { pkg_json_path: PathBuf },
 }
 
 #[derive(Error, Debug, Clone, deno_error::JsError)]
