@@ -914,9 +914,9 @@ async fn auth_tunnel(
 ) -> Result<String, deno_core::anyhow::Error> {
   let mut args = vec!["deploy".to_string(), "tunnel-login".to_string()];
 
-  if let Some(token) = env_token {
+  if let Some(token) = &env_token {
     args.push("--token".to_string());
-    args.push(token);
+    args.push(token.clone());
   }
 
   let mut child = tokio::process::Command::new(env::current_exe()?)
@@ -928,7 +928,11 @@ async fn auth_tunnel(
     deno_runtime::exit(1);
   }
 
-  Ok(tools::deploy::get_token_entry()?.get_password()?)
+  if let Some(token) = env_token {
+    Ok(token)
+  } else {
+    Ok(tools::deploy::get_token_entry()?.get_password()?)
+  }
 }
 
 #[allow(clippy::print_stderr)]
