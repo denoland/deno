@@ -878,20 +878,24 @@ pub async fn run(
     node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
   ));
   let workspace_resolver = {
-    let import_map = match metadata.workspace_resolver.import_map {
-      Some(import_map) => Some(
-        import_map::parse_from_json_with_options(
-          root_dir_url.join(&import_map.specifier).unwrap(),
-          &import_map.json,
-          import_map::ImportMapOptions {
-            address_hook: None,
-            expand_imports: true,
-          },
-        )?
-        .import_map,
-      ),
-      None => None,
-    };
+    let import_maps = metadata
+      .workspace_resolver
+      .import_maps
+      .into_iter()
+      .map(|import_map| {
+        Ok(
+          import_map::parse_from_json_with_options(
+            root_dir_url.join(&import_map.specifier).unwrap(),
+            &import_map.json,
+            import_map::ImportMapOptions {
+              address_hook: None,
+              expand_imports: true,
+            },
+          )?
+          .import_map,
+        )
+      })
+      .collect::<Result<Vec<_>, import_map::ImportMapError>>()?;
     let pkg_jsons = metadata
       .workspace_resolver
       .package_jsons
@@ -909,7 +913,7 @@ pub async fn run(
       .collect::<Result<Vec<_>, AnyError>>()?;
     WorkspaceResolver::new_raw(
       root_dir_url.clone(),
-      import_map,
+      import_maps,
       metadata
         .workspace_resolver
         .jsr_pkgs

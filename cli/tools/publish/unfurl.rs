@@ -1049,7 +1049,7 @@ mod tests {
     .unwrap();
     let workspace_resolver = WorkspaceResolver::new_raw(
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
-      Some(import_map),
+      vec![import_map],
       vec![ResolverWorkspaceJsrPackage {
         is_link: false,
         base: ModuleSpecifier::from_directory_path(cwd.join("jsr-package"))
@@ -1223,7 +1223,7 @@ export type * from "./c.d.ts";
     let sys = CliSys::default();
     let workspace_resolver = WorkspaceResolver::new_raw(
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
-      None,
+      vec![],
       vec![ResolverWorkspaceJsrPackage {
         is_link: false,
         base: ModuleSpecifier::from_directory_path(

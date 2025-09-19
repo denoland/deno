@@ -1014,7 +1014,7 @@ async fn resolve_shim_data(
     executable_args.push(format!("--inspect-brk={inspect_brk}"));
   }
 
-  if let Some(import_map_path) = &flags.import_map_path {
+  for import_map_path in &flags.import_map_paths {
     let import_map_url = resolve_url_or_path(import_map_path, cwd)?;
     executable_args.push("--import-map".to_string());
     executable_args.push(import_map_url.to_string());
@@ -1028,11 +1028,11 @@ async fn resolve_shim_data(
       .with_context(|| format!("error reading {config_path}"))?;
     // always remove the import map field because when someone specifies `--import-map` we
     // don't want that file to be attempted to be loaded and when they don't specify that
-    // (which is just something we haven't implemented yet)
+    // - loading nested import maps is not implemented yet
     if let Some(new_text) = remove_import_map_field_from_text(&config_text) {
-      if flags.import_map_path.is_none() {
+      if flags.import_map_paths.is_empty() {
         log::warn!(
-          "{} \"importMap\" field in the specified config file we be ignored. Use the --import-map flag instead.",
+          "{} \"importMap\" field in the specified config file we be ignored as unimplemented. Use the --import-map flag instead.",
           crate::colors::yellow("Warning"),
         );
       }
@@ -1738,7 +1738,7 @@ mod tests {
 
     let result = create_install_shim(
       &Flags {
-        import_map_path: Some(import_map_path.to_string()),
+        import_map_paths: vec![import_map_path.to_string()],
         ..Flags::default()
       },
       InstallFlagsGlobal {

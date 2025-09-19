@@ -246,17 +246,22 @@ fn to_import_map_value_from_imports(
 
 fn deno_json_import_map(
   deno_json: &ConfigFile,
-) -> Result<Option<(ImportMapWithDiagnostics, ImportMapKind)>, AnyError> {
-  let (value, kind) = if deno_json.json.imports.is_some()
-    || deno_json.json.scopes.is_some()
-  {
-    (
-      to_import_map_value_from_imports(deno_json),
-      ImportMapKind::Inline,
-    )
-  } else {
-    match deno_json.to_import_map_path()? {
-      Some(path) => {
+) -> Result<Vec<(ImportMapWithDiagnostics, ImportMapKind)>, AnyError> {
+  let config_map =
+    if deno_json.json.imports.is_some() || deno_json.json.scopes.is_some() {
+      Some((
+        to_import_map_value_from_imports(deno_json),
+        ImportMapKind::Inline,
+      ))
+    } else {
+      None
+    };
+
+  Ok(
+    config_map
+      .into_iter()
+      .map(Ok)
+      .chain(deno_json.to_import_map_paths()?.into_iter().map(|path| {
         let err_context = || {
           format!(
             "loading import map at '{}' (from \"importMap\" field in '{}')",
@@ -266,15 +271,17 @@ fn deno_json_import_map(
         };
         let text = std::fs::read_to_string(&path).with_context(err_context)?;
         let value = serde_json::from_str(&text).with_context(err_context)?;
-        (value, ImportMapKind::Outline(path))
-      }
-      None => return Ok(None),
-    }
-  };
-
-  import_map::parse_from_value(deno_json.specifier.clone(), value)
-    .map_err(Into::into)
-    .map(|import_map| Some((import_map, kind)))
+        Ok((value, ImportMapKind::Outline(path)))
+      }))
+      .collect::<Result<Vec<_>, AnyError>>()?
+      .into_iter()
+      .map(|(value, kind)| {
+        import_map::parse_from_value(deno_json.specifier.clone(), value)
+          .map_err(AnyError::from)
+          .map(|import_map| (import_map, kind))
+      })
+      .collect::<Result<Vec<_>, AnyError>>()?,
+  )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,45 +295,50 @@ fn add_deps_from_deno_json(
   mut filter: impl DepFilter,
   deps: &mut Vec<Dep>,
 ) {
-  let (import_map, import_map_kind) = match deno_json_import_map(deno_json) {
-    Ok(Some((import_map, import_map_kind))) => (import_map, import_map_kind),
-    Ok(None) => return,
+  let import_maps = match deno_json_import_map(deno_json) {
+    Ok(maps) => maps,
     Err(e) => {
+      // TODO: There should be an error for every import map
       log::warn!("failed to parse imports from {}: {e}", &deno_json.specifier);
       return;
     }
   };
-  for (key_path, entry) in import_map_entries(&import_map.import_map) {
-    let Some(value) = entry.value else { continue };
-    let kind = match value.scheme() {
-      "npm" => DepKind::Npm,
-      "jsr" => DepKind::Jsr,
-      _ => continue,
-    };
-    let req = match parse_req_reference(value.as_str(), kind) {
-      Ok(req) => req.req,
-      Err(err) => {
-        log::warn!("failed to parse package req \"{}\": {err}", value.as_str());
+  for (import_map, import_map_kind) in import_maps {
+    for (key_path, entry) in import_map_entries(&import_map.import_map) {
+      let Some(value) = entry.value else { continue };
+      let kind = match value.scheme() {
+        "npm" => DepKind::Npm,
+        "jsr" => DepKind::Jsr,
+        _ => continue,
+      };
+      let req = match parse_req_reference(value.as_str(), kind) {
+        Ok(req) => req.req,
+        Err(err) => {
+          log::warn!(
+            "failed to parse package req \"{}\": {err}",
+            value.as_str()
+          );
+          continue;
+        }
+      };
+      let alias: &str = key_path.last().unwrap().as_str().trim_end_matches('/');
+      let alias = (alias != req.name).then(|| alias.to_string());
+      if !filter.should_include(alias.as_deref(), &req, kind) {
         continue;
       }
-    };
-    let alias: &str = key_path.last().unwrap().as_str().trim_end_matches('/');
-    let alias = (alias != req.name).then(|| alias.to_string());
-    if !filter.should_include(alias.as_deref(), &req, kind) {
-      continue;
+      let id = DepId(deps.len());
+      deps.push(Dep {
+        location: DepLocation::DenoJson(
+          deno_json.clone(),
+          key_path,
+          import_map_kind.clone(),
+        ),
+        kind,
+        req,
+        id,
+        alias,
+      });
     }
-    let id = DepId(deps.len());
-    deps.push(Dep {
-      location: DepLocation::DenoJson(
-        deno_json.clone(),
-        key_path,
-        import_map_kind.clone(),
-      ),
-      kind,
-      req,
-      id,
-      alias,
-    });
   }
 }
 

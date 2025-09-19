@@ -36,3 +36,6 @@ rustflags = [
   "--cfg",
   "tokio_unstable",
 ]
+
+[patch.crates-io]
+import_map = { path = "./import_map/rs-lib" }

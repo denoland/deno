@@ -45,6 +45,7 @@ use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::factory::ConfigDiscoveryOption;
+use deno_resolver::factory::EmptyImportMapProvider;
 use deno_resolver::factory::ResolverFactory;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::WorkspaceFactory;
@@ -1247,8 +1248,9 @@ pub struct ConfigData {
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
+  // TODO: Should be Vec
   pub import_map_from_settings: Option<ModuleSpecifier>,
-  pub specified_import_map: Option<SpecifiedImportMap>,
+  pub specified_import_maps: Vec<SpecifiedImportMap>,
   pub unstable: BTreeSet<String>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
@@ -1460,7 +1462,7 @@ impl ConfigData {
         node_resolution_cache: None,
         package_json_cache: None,
         package_json_dep_resolution: None,
-        specified_import_map: None,
+        specified_import_map: Box::new(EmptyImportMapProvider),
         bare_node_builtins: false,
         unstable_sloppy_imports: false,
         on_mapped_resolution_diagnostic: None,
@@ -1571,12 +1573,13 @@ impl ConfigData {
       .map(|p| p.to_path_buf());
 
     // Mark the import map as a watched file
-    if let Some(import_map_specifier) = member_dir
+    for import_map_specifier in member_dir
       .workspace
-      .to_import_map_path()
+      .to_import_map_paths()
       .ok()
+      .into_iter()
       .flatten()
-      .and_then(|path| Url::from_file_path(path).ok())
+      .flat_map(|path| Url::from_file_path(path).ok())
     {
       add_watched_file(
         import_map_specifier.clone(),
@@ -1584,41 +1587,14 @@ impl ConfigData {
       );
     }
     let mut import_map_from_settings = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        })
-        .unwrap_or(false);
-      if is_config_import_map {
-        None
-      } else {
-        settings.import_map.as_ref().and_then(|import_map_str| {
-          Url::parse(import_map_str)
-            .ok()
-            .or_else(|| workspace_folder?.join(import_map_str).ok())
-        })
-      }
+      settings.import_map.as_ref().and_then(|import_map_str| {
+        Url::parse(import_map_str)
+          .ok()
+          .or_else(|| workspace_folder?.join(import_map_str).ok())
+      })
     };
 
-    let specified_import_map = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        })
-        .unwrap_or(false);
-      if is_config_import_map {
-        import_map_from_settings = None;
-      }
+    let specified_import_maps =
       if let Some(import_map_url) = &import_map_from_settings {
         add_watched_file(
           import_map_url.clone(),
@@ -1634,10 +1610,10 @@ impl ConfigData {
           serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
         });
         match value_result {
-          Ok(value) => Some(SpecifiedImportMap {
+          Ok(value) => vec![SpecifiedImportMap {
             base_url: import_map_url.clone(),
             value,
-          }),
+          }],
           Err(err) => {
             lsp_warn!(
               "  Couldn't read import map \"{}\": {}",
@@ -1645,13 +1621,12 @@ impl ConfigData {
               err
             );
             import_map_from_settings = None;
-            None
+            vec![]
           }
         }
       } else {
-        None
-      }
-    };
+        vec![]
+      };
     let unstable = member_dir
       .workspace
       .unstable_features()
@@ -1673,7 +1648,7 @@ impl ConfigData {
       lockfile,
       npmrc,
       import_map_from_settings,
-      specified_import_map,
+      specified_import_maps,
       unstable,
       watched_files,
     }

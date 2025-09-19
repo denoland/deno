@@ -179,7 +179,25 @@ pub trait SpecifiedImportMapProvider:
 {
   async fn get(
     &self,
-  ) -> Result<Option<crate::workspace::SpecifiedImportMap>, anyhow::Error>;
+  ) -> Result<Vec<crate::workspace::SpecifiedImportMap>, anyhow::Error>;
+}
+
+#[derive(Debug)]
+pub struct EmptyImportMapProvider;
+
+#[async_trait::async_trait(?Send)]
+impl SpecifiedImportMapProvider for EmptyImportMapProvider {
+  async fn get(
+    &self,
+  ) -> Result<Vec<crate::workspace::SpecifiedImportMap>, anyhow::Error> {
+    Ok(vec![])
+  }
+}
+
+impl Default for Box<dyn SpecifiedImportMapProvider> {
+  fn default() -> Self {
+    Box::new(EmptyImportMapProvider)
+  }
 }
 
 #[derive(Debug)]
@@ -474,7 +492,7 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       .lockfile
       .get_or_try_init(async move {
         let workspace_directory = self.workspace_directory()?;
-        let maybe_external_import_map =
+        let maybe_external_import_maps =
           self.workspace_external_import_map_loader()?.get_or_load()?;
 
         let maybe_lock_file = LockfileLock::discover(
@@ -495,7 +513,10 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
             no_npm: self.options.no_npm,
           },
           &workspace_directory.workspace,
-          maybe_external_import_map.as_ref().map(|v| &v.value),
+          maybe_external_import_maps
+            .into_iter()
+            .map(|v| &v.value)
+            .collect(),
           npm_package_info_provider,
         )
         .await?
@@ -659,7 +680,7 @@ pub struct ResolverFactoryOptions {
   pub npm_system_info: NpmSystemInfo,
   pub package_json_cache: Option<node_resolver::PackageJsonCacheRc>,
   pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
-  pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
+  pub specified_import_map: Box<dyn SpecifiedImportMapProvider>,
   /// Whether to resolve bare node builtins (ex. "path" as "node:path").
   pub bare_node_builtins: bool,
   pub unstable_sloppy_imports: bool,
@@ -1058,10 +1079,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         async {
           let directory = self.workspace_factory.workspace_directory()?;
           let workspace = &directory.workspace;
-          let specified_import_map = match &self.options.specified_import_map {
-            Some(import_map) => import_map.get().await?,
-            None => None,
-          };
+          let specified_import_maps =
+            self.options.specified_import_map.get().await?;
           let options = crate::workspace::CreateResolverOptions {
             pkg_json_dep_resolution: match self
               .options
@@ -1080,7 +1099,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
                 }
               }
             },
-            specified_import_map,
+            specified_import_maps,
             sloppy_imports_options: if self.options.unstable_sloppy_imports
               || workspace.has_unstable("sloppy-imports")
             {

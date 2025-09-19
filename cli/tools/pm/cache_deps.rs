@@ -38,9 +38,9 @@ pub async fn cache_top_level_deps(
   // cache as many entries in the import map as we can
   let resolver = factory.workspace_resolver().await?;
 
-  let mut maybe_graph_error = Ok(());
-  if let Some(import_map) = resolver.maybe_import_map() {
-    let jsr_resolver = if let Some(resolver) = jsr_resolver {
+  let mut maybe_graph_errors = vec![];
+  for import_map in resolver.maybe_import_maps() {
+    let jsr_resolver = if let Some(resolver) = jsr_resolver.clone() {
       resolver
     } else {
       Arc::new(crate::jsr::JsrFetchResolver::new(
@@ -199,13 +199,15 @@ pub async fn cache_top_level_deps(
         },
       )
       .await?;
-    maybe_graph_error =
-      graph_builder.graph_roots_valid(graph, &roots, true, true);
+    maybe_graph_errors
+      .push(graph_builder.graph_roots_valid(graph, &roots, true, true));
   }
 
   npm_installer.cache_packages(PackageCaching::All).await?;
 
-  maybe_graph_error?;
+  for maybe_graph_error in maybe_graph_errors {
+    maybe_graph_error?;
+  }
 
   Ok(())
 }

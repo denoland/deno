@@ -272,7 +272,7 @@ pub fn import_map_lookup(
 pub struct TsResponseImportMapper<'a> {
   document_modules: &'a DocumentModules,
   scope: Option<Arc<ModuleSpecifier>>,
-  maybe_import_map: Option<&'a ImportMap>,
+  maybe_import_maps: Vec<&'a ImportMap>,
   resolver: &'a LspResolver,
   tsc_specifier_map: &'a tsc::TscSpecifierMap,
 }
@@ -284,14 +284,15 @@ impl<'a> TsResponseImportMapper<'a> {
     resolver: &'a LspResolver,
     tsc_specifier_map: &'a tsc::TscSpecifierMap,
   ) -> Self {
-    let maybe_import_map = resolver
+    let maybe_import_maps = resolver
       .get_scoped_resolver(scope.as_deref())
       .as_workspace_resolver()
-      .maybe_import_map();
+      .maybe_import_maps()
+      .collect();
     Self {
       document_modules,
       scope,
-      maybe_import_map,
+      maybe_import_maps,
       resolver,
       tsc_specifier_map,
     }
@@ -351,20 +352,21 @@ impl<'a> TsResponseImportMapper<'a> {
         .map(SmallStackString::from_string);
       let mut req = None;
       req = req.or_else(|| {
-        let import_map = self.maybe_import_map?;
-        for entry in import_map.entries_for_referrer(referrer) {
-          let Some(value) = entry.raw_value else {
-            continue;
-          };
-          let Ok(req_ref) = JsrPackageReqReference::from_str(value) else {
-            continue;
-          };
-          let req = req_ref.req();
-          if req.name == nv.name
-            && req.version_req.tag().is_none()
-            && req.version_req.matches(&nv.version)
-          {
-            return Some(req.clone());
+        for import_map in &self.maybe_import_maps {
+          for entry in import_map.entries_for_referrer(referrer) {
+            let Some(value) = entry.raw_value else {
+              continue;
+            };
+            let Ok(req_ref) = JsrPackageReqReference::from_str(value) else {
+              continue;
+            };
+            let req = req_ref.req();
+            if req.name == nv.name
+              && req.version_req.tag().is_none()
+              && req.version_req.matches(&nv.version)
+            {
+              return Some(req.clone());
+            }
           }
         }
         None
@@ -378,7 +380,7 @@ impl<'a> TsResponseImportMapper<'a> {
         JsrPackageNvReference::new(nv_ref).to_string()
       };
       let specifier = ModuleSpecifier::parse(&spec_str).ok()?;
-      if let Some(import_map) = self.maybe_import_map {
+      for import_map in &self.maybe_import_maps {
         if let Some(result) =
           import_map_lookup(import_map, &specifier, referrer)
         {
@@ -429,9 +431,10 @@ impl<'a> TsResponseImportMapper<'a> {
             self.resolve_package_path(specifier, &pkg_folder)
           })?;
         let sub_path = Some(sub_path).filter(|s| !s.is_empty());
-        if let Some(import_map) = self.maybe_import_map {
+
+        let mut import_map_matches = Vec::new();
+        for import_map in &self.maybe_import_maps {
           let pkg_reqs = pkg_reqs.iter().collect::<HashSet<_>>();
-          let mut matches = Vec::new();
           for entry in import_map.entries_for_referrer(referrer) {
             if let Some(value) = entry.raw_value
               && let Ok(package_ref) = NpmPackageReqReference::from_str(value)
@@ -443,16 +446,17 @@ impl<'a> TsResponseImportMapper<'a> {
               {
                 // keys that don't end in a slash can't be mapped to a subpath
                 if entry.raw_key.ends_with('/') || key_sub_path.is_empty() {
-                  matches.push(format!("{}{}", entry.raw_key, key_sub_path));
+                  import_map_matches
+                    .push(format!("{}{}", entry.raw_key, key_sub_path));
                 }
               }
             }
           }
-          // select the shortest match
-          matches.sort_by_key(|a| a.len());
-          if let Some(matched) = matches.first() {
-            return Some(matched.to_string());
-          }
+        }
+        // select the shortest match, if exists
+        import_map_matches.sort_by_key(|a| a.len());
+        if let Some(matched) = import_map_matches.first() {
+          return Some(matched.to_string());
         }
 
         // if not found in the import map, return the first pkg req
@@ -477,10 +481,10 @@ impl<'a> TsResponseImportMapper<'a> {
     }
 
     // check if the import map has this specifier
-    if let Some(import_map) = self.maybe_import_map
-      && let Some(result) = import_map_lookup(import_map, specifier, referrer)
-    {
-      return Some(result);
+    for import_map in &self.maybe_import_maps {
+      if let Some(result) = import_map_lookup(import_map, specifier, referrer) {
+        return Some(result);
+      }
     }
 
     None

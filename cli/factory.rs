@@ -186,8 +186,7 @@ struct CliSpecifiedImportMapProvider {
 impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
   async fn get(
     &self,
-  ) -> Result<Option<deno_resolver::workspace::SpecifiedImportMap>, AnyError>
-  {
+  ) -> Result<Vec<deno_resolver::workspace::SpecifiedImportMap>, AnyError> {
     async fn resolve_import_map_value_from_specifier(
       specifier: &Url,
       file_fetcher: &CliFileFetcher,
@@ -204,40 +203,37 @@ impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
       }
     }
 
-    let maybe_import_map_specifier =
-      self.cli_options.resolve_specified_import_map_specifier()?;
-    match maybe_import_map_specifier {
-      Some(specifier) => {
-        let value = match self.eszip_module_loader_provider.get().await? {
-          Some(eszip) => eszip.load_import_map_value(&specifier)?,
-          None => resolve_import_map_value_from_specifier(
-            &specifier,
-            &self.file_fetcher,
-          )
-          .await
-          .with_context(|| {
-            format!("Unable to load '{}' import map", specifier)
-          })?,
-        };
-        Ok(Some(deno_resolver::workspace::SpecifiedImportMap {
-          base_url: specifier,
-          value,
-        }))
-      }
-      None => {
-        if let Some(import_map) =
-          self.workspace_external_import_map_loader.get_or_load()?
-        {
-          let path_url = deno_path_util::url_from_file_path(&import_map.path)?;
-          Ok(Some(deno_resolver::workspace::SpecifiedImportMap {
-            base_url: path_url,
-            value: import_map.value.clone(),
-          }))
-        } else {
-          Ok(None)
-        }
-      }
+    let mut out = Vec::new();
+
+    let maybe_import_map_specifiers =
+      self.cli_options.resolve_specified_import_map_specifiers()?;
+
+    for specifier in maybe_import_map_specifiers {
+      let value = match self.eszip_module_loader_provider.get().await? {
+        Some(eszip) => eszip.load_import_map_value(&specifier)?,
+        None => resolve_import_map_value_from_specifier(
+          &specifier,
+          &self.file_fetcher,
+        )
+        .await
+        .with_context(|| {
+          format!("Unable to load '{}' import map", specifier)
+        })?,
+      };
+      out.push(deno_resolver::workspace::SpecifiedImportMap {
+        base_url: specifier,
+        value,
+      })
     }
+    for import_map in self.workspace_external_import_map_loader.get_or_load()? {
+      let path_url = deno_path_util::url_from_file_path(&import_map.path)?;
+      out.push(deno_resolver::workspace::SpecifiedImportMap {
+        base_url: path_url,
+        value: import_map.value.clone(),
+      })
+    }
+
+    Ok(out)
   }
 }
 
@@ -1190,7 +1186,7 @@ impl CliFactory {
           },
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
           npm_system_info: self.flags.subcommand.npm_system_info(),
-          specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
+          specified_import_map: Box::new(CliSpecifiedImportMapProvider {
             cli_options: options.clone(),
             eszip_module_loader_provider: self
               .eszip_module_loader_provider()?
@@ -1199,7 +1195,7 @@ impl CliFactory {
             workspace_external_import_map_loader: self
               .workspace_external_import_map_loader()?
               .clone(),
-          })),
+          }),
           bare_node_builtins: options.unstable_bare_node_builtins(),
           unstable_sloppy_imports: options.unstable_sloppy_imports(),
           on_mapped_resolution_diagnostic: Some(Arc::new(

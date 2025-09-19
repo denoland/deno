@@ -11,6 +11,19 @@ pub struct ExternalImportMap {
   pub value: serde_json::Value,
 }
 
+impl ExternalImportMap {
+  fn load<TSys: sys_traits::FsRead>(
+    sys: &TSys,
+    path: PathBuf,
+  ) -> Result<Self, anyhow::Error> {
+    let contents = sys.fs_read_to_string(&path).with_context(|| {
+      format!("Unable to read import map at '{}'", path.display())
+    })?;
+    let value = serde_json::from_str(&contents)?;
+    Ok(Self { path, value })
+  }
+}
+
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceExternalImportMapLoaderRc<TSys> =
   deno_maybe_sync::MaybeArc<WorkspaceExternalImportMapLoader<TSys>>;
@@ -19,8 +32,7 @@ pub type WorkspaceExternalImportMapLoaderRc<TSys> =
 pub struct WorkspaceExternalImportMapLoader<TSys: sys_traits::FsRead> {
   sys: TSys,
   workspace: WorkspaceRc,
-  maybe_external_import_map:
-    once_cell::sync::OnceCell<Option<ExternalImportMap>>,
+  maybe_external_import_maps: once_cell::sync::OnceCell<Vec<ExternalImportMap>>,
 }
 
 impl<TSys: sys_traits::FsRead> WorkspaceExternalImportMapLoader<TSys> {
@@ -28,31 +40,22 @@ impl<TSys: sys_traits::FsRead> WorkspaceExternalImportMapLoader<TSys> {
     Self {
       sys,
       workspace,
-      maybe_external_import_map: Default::default(),
+      maybe_external_import_maps: Default::default(),
     }
   }
 
-  pub fn get_or_load(
-    &self,
-  ) -> Result<Option<&ExternalImportMap>, anyhow::Error> {
+  pub fn get_or_load(&self) -> Result<&Vec<ExternalImportMap>, anyhow::Error> {
     self
-      .maybe_external_import_map
+      .maybe_external_import_maps
       .get_or_try_init(|| {
         let Some(deno_json) = self.workspace.root_deno_json() else {
-          return Ok(None);
+          return Ok(vec![]);
         };
-        if deno_json.is_an_import_map() {
-          return Ok(None);
-        }
-        let Some(path) = deno_json.to_import_map_path()? else {
-          return Ok(None);
-        };
-        let contents =
-          self.sys.fs_read_to_string(&path).with_context(|| {
-            format!("Unable to read import map at '{}'", path.display())
-          })?;
-        let value = serde_json::from_str(&contents)?;
-        Ok(Some(ExternalImportMap { path, value }))
+        deno_json
+          .to_import_map_paths()?
+          .into_iter()
+          .map(|path| ExternalImportMap::load(&self.sys, path))
+          .collect()
       })
       .map(|v| v.as_ref())
   }
