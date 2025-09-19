@@ -656,6 +656,22 @@ async fn resolve_flags_and_init(
     .as_ref()
     .map(|files| files.iter().map(PathBuf::from).collect());
   load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
+
+  if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
+    flags.connected = true;
+  }
+
+  // Tunnel sets up env vars and OTEL, so connect before everything else.
+  if flags.connected {
+    if let Err(err) = initialize_tunnel(&flags).await {
+      exit_for_error(err.context("Failed to start with --connected"));
+    }
+    // SAFETY: We're doing this before any threads are created.
+    unsafe {
+      std::env::set_var("DENO_CONNECTED", "1");
+    }
+  }
+
   flags.unstable_config.fill_with_env();
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
@@ -667,22 +683,6 @@ async fn resolve_flags_and_init(
       .split(",")
       .map(|c| c.trim().to_string())
       .collect();
-  }
-
-  // Tunnel is initialized before OTEL since
-  // OTEL data is submitted via the tunnel.
-  if let Some(host) = flags
-    .connected
-    .clone()
-    .or_else(|| env::var("DENO_CONNECTED").ok())
-  {
-    if let Err(err) = initialize_tunnel(&host, &flags).await {
-      exit_for_error(err.context("Failed to start with --connected"));
-    }
-    // SAFETY: We're doing this before any threads are created.
-    unsafe {
-      std::env::set_var("DENO_CONNECTED", &host);
-    }
   }
 
   let otel_config = flags.otel_config();
@@ -933,12 +933,14 @@ async fn auth_tunnel(
 
 #[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
-  host: &str,
   flags: &Flags,
 ) -> Result<(), deno_core::anyhow::Error> {
   let mut factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let mut cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
+
+  let host = std::env::var("DENO_DEPLOY_TUNNEL_ENDPOINT")
+    .unwrap_or_else(|_| "tunnel.global.prod.deno-cluster.net:443".into());
 
   let env_token = env::var("DENO_DEPLOY_TOKEN").ok();
   let env_org = env::var("DENO_DEPLOY_ORG").ok();
@@ -994,14 +996,28 @@ async fn initialize_tunnel(
     "hostname".into(),
     deno_runtime::deno_os::sys_info::hostname(),
   );
-  if let Some(entrypoint) = match &flags.subcommand {
-    DenoSubcommand::Run(run_flags) => Some(run_flags.script.to_owned()),
-    DenoSubcommand::Serve(serve_flags) => Some(serve_flags.script.to_owned()),
-    DenoSubcommand::Repl(_) => Some("<repl>".into()),
-    DenoSubcommand::Eval(_) => Some("<eval>".into()),
-    _ => None,
-  } {
-    metadata.insert("entrypoint".into(), entrypoint);
+  match &flags.subcommand {
+    DenoSubcommand::Run(run_flags) => {
+      metadata.insert("subcommand".into(), "run".into());
+      metadata.insert("entrypoint".into(), run_flags.script.clone());
+    }
+    DenoSubcommand::Serve(serve_flags) => {
+      metadata.insert("subcommand".into(), "serve".into());
+      metadata.insert("entrypoint".into(), serve_flags.script.clone());
+    }
+    DenoSubcommand::Task(task_flags) => {
+      metadata.insert("subcommand".into(), "task".into());
+      if let Some(task) = &task_flags.task {
+        metadata.insert("task".into(), task.clone());
+      }
+    }
+    DenoSubcommand::Repl(_) => {
+      metadata.insert("subcommand".into(), "repl".into());
+    }
+    DenoSubcommand::Eval(_) => {
+      metadata.insert("subcommand".into(), "eval".into());
+    }
+    _ => {}
   }
 
   let on_event = |event| {

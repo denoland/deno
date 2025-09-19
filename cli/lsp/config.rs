@@ -1774,9 +1774,10 @@ impl ConfigTree {
 
   pub fn is_watched_file(&self, specifier: &Url) -> bool {
     let path = specifier.path();
-    if path.ends_with("/deno.json")
-      || path.ends_with("/deno.jsonc")
-      || path.ends_with("/package.json")
+    if !path.contains("/node_modules/")
+      && (path.ends_with("/deno.json")
+        || path.ends_with("/deno.jsonc")
+        || path.ends_with("/package.json"))
       || path.ends_with("/node_modules/.package-lock.json")
       || path.ends_with("/node_modules/.yarn-integrity.json")
       || path.ends_with("/node_modules/.modules.yaml")

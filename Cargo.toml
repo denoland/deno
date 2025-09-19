@@ -62,12 +62,12 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.50.0", features = ["transpiling"] }
-deno_core = { version = "0.358.0" }
+deno_core = { version = "0.359.0" }
 
 deno_cache_dir = "=0.25.0"
 deno_doc = "=0.183.0"
 deno_error = "=0.7.0"
-deno_graph = { version = "=0.100.0", default-features = false }
+deno_graph = { version = "=0.100.1", default-features = false }
 deno_lint = "=0.80.0"
 deno_lockfile = "=0.31.2"
 deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
@@ -539,4 +539,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_core = { path = "../deno_core/core" }
+deno_core = { git = "https://github.com/bartlomieju/deno_core.git", branch = "inspector_changes" }
