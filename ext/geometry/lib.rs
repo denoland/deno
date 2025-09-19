@@ -1243,34 +1243,28 @@ impl DOMMatrixReadOnly {
       return;
     }
     if is_2d {
-      // SAFETY: in-range access
-      let mut matrix3 = unsafe {
-        Matrix3::new(
-          *inner.get_unchecked(INDEX_A),
-          *inner.get_unchecked(INDEX_C),
-          *inner.get_unchecked(INDEX_E),
-          *inner.get_unchecked(INDEX_B),
-          *inner.get_unchecked(INDEX_D),
-          *inner.get_unchecked(INDEX_F),
-          0.0,
-          0.0,
-          1.0,
-        )
-      };
+      let mut matrix3 = Matrix3::new(
+        inner[INDEX_A],
+        inner[INDEX_C],
+        inner[INDEX_E],
+        inner[INDEX_B],
+        inner[INDEX_D],
+        inner[INDEX_F],
+        0.0,
+        0.0,
+        1.0,
+      );
       if !matrix3.try_inverse_mut() {
         inner.fill(f64::NAN);
         self.is_2d.set(false);
         return;
       }
-      // SAFETY: in-range access
-      unsafe {
-        *inner.get_unchecked_mut(INDEX_A) = *matrix3.get_unchecked(0);
-        *inner.get_unchecked_mut(INDEX_B) = *matrix3.get_unchecked(1);
-        *inner.get_unchecked_mut(INDEX_C) = *matrix3.get_unchecked(3);
-        *inner.get_unchecked_mut(INDEX_D) = *matrix3.get_unchecked(4);
-        *inner.get_unchecked_mut(INDEX_E) = *matrix3.get_unchecked(6);
-        *inner.get_unchecked_mut(INDEX_F) = *matrix3.get_unchecked(7);
-      }
+      inner[INDEX_A] = matrix3[0];
+      inner[INDEX_B] = matrix3[1];
+      inner[INDEX_C] = matrix3[3];
+      inner[INDEX_D] = matrix3[4];
+      inner[INDEX_E] = matrix3[6];
+      inner[INDEX_F] = matrix3[7];
     } else if !inner.try_inverse_mut() {
       inner.fill(f64::NAN);
     }
@@ -1278,158 +1272,133 @@ impl DOMMatrixReadOnly {
 
   #[inline]
   fn a_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_A) }
+    self.inner.borrow()[INDEX_A]
   }
 
   #[inline]
   fn b_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_B) }
+    self.inner.borrow()[INDEX_B]
   }
 
   #[inline]
   fn c_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_C) }
+    self.inner.borrow()[INDEX_C]
   }
 
   #[inline]
   fn d_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_D) }
+    self.inner.borrow()[INDEX_D]
   }
 
   #[inline]
   fn e_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_E) }
+    self.inner.borrow()[INDEX_E]
   }
 
   #[inline]
   fn f_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_F) }
+    self.inner.borrow()[INDEX_F]
   }
 
   #[inline]
   fn m11_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M11) }
+    self.inner.borrow()[INDEX_M11]
   }
 
   #[inline]
   fn m12_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M12) }
+    self.inner.borrow()[INDEX_M12]
   }
 
   #[inline]
   fn m13_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M13) }
+    self.inner.borrow()[INDEX_M13]
   }
 
   #[inline]
   fn m14_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M14) }
+    self.inner.borrow()[INDEX_M14]
   }
 
   #[inline]
   fn m21_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M21) }
+    self.inner.borrow()[INDEX_M21]
   }
 
   #[inline]
   fn m22_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M22) }
+    self.inner.borrow()[INDEX_M22]
   }
 
   #[inline]
   fn m23_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M23) }
+    self.inner.borrow()[INDEX_M23]
   }
 
   #[inline]
   fn m24_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M24) }
+    self.inner.borrow()[INDEX_M24]
   }
 
   #[inline]
   fn m31_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M31) }
+    self.inner.borrow()[INDEX_M31]
   }
 
   #[inline]
   fn m32_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M32) }
+    self.inner.borrow()[INDEX_M32]
   }
 
   #[inline]
   fn m33_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M33) }
+    self.inner.borrow()[INDEX_M33]
   }
 
   #[inline]
   fn m34_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M34) }
+    self.inner.borrow()[INDEX_M34]
   }
 
   #[inline]
   fn m41_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M41) }
+    self.inner.borrow()[INDEX_M41]
   }
 
   #[inline]
   fn m42_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M42) }
+    self.inner.borrow()[INDEX_M42]
   }
 
   #[inline]
   fn m43_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M43) }
+    self.inner.borrow()[INDEX_M43]
   }
 
   #[inline]
   fn m44_inner(&self) -> f64 {
-    // SAFETY: in-range access
-    unsafe { *self.inner.borrow().get_unchecked(INDEX_M44) }
+    self.inner.borrow()[INDEX_M44]
   }
 
   #[inline]
   fn is_identity_inner(&self) -> bool {
     let inner = self.inner.borrow();
-    // SAFETY: in-range access
-    unsafe {
-      *inner.get_unchecked(INDEX_M11) == 1.0
-        && *inner.get_unchecked(INDEX_M12) == 0.0
-        && *inner.get_unchecked(INDEX_M13) == 0.0
-        && *inner.get_unchecked(INDEX_M14) == 0.0
-        && *inner.get_unchecked(INDEX_M21) == 0.0
-        && *inner.get_unchecked(INDEX_M22) == 1.0
-        && *inner.get_unchecked(INDEX_M23) == 0.0
-        && *inner.get_unchecked(INDEX_M24) == 0.0
-        && *inner.get_unchecked(INDEX_M31) == 0.0
-        && *inner.get_unchecked(INDEX_M32) == 0.0
-        && *inner.get_unchecked(INDEX_M33) == 1.0
-        && *inner.get_unchecked(INDEX_M34) == 0.0
-        && *inner.get_unchecked(INDEX_M41) == 0.0
-        && *inner.get_unchecked(INDEX_M42) == 0.0
-        && *inner.get_unchecked(INDEX_M43) == 0.0
-        && *inner.get_unchecked(INDEX_M44) == 1.0
-    }
+    inner[INDEX_M11] == 1.0
+      && inner[INDEX_M12] == 0.0
+      && inner[INDEX_M13] == 0.0
+      && inner[INDEX_M14] == 0.0
+      && inner[INDEX_M21] == 0.0
+      && inner[INDEX_M22] == 1.0
+      && inner[INDEX_M23] == 0.0
+      && inner[INDEX_M24] == 0.0
+      && inner[INDEX_M31] == 0.0
+      && inner[INDEX_M32] == 0.0
+      && inner[INDEX_M33] == 1.0
+      && inner[INDEX_M34] == 0.0
+      && inner[INDEX_M41] == 0.0
+      && inner[INDEX_M42] == 0.0
+      && inner[INDEX_M43] == 0.0
+      && inner[INDEX_M44] == 1.0
   }
 
   #[inline]
@@ -2275,10 +2244,7 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_A) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_A] = *value;
   }
 
   #[fast]
@@ -2294,9 +2260,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_B) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_B] = *value;
   }
 
   #[fast]
@@ -2312,9 +2276,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_C) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_C] = *value;
   }
 
   #[fast]
@@ -2330,9 +2292,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_D) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_D] = *value;
   }
 
   #[fast]
@@ -2348,9 +2308,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_E) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_E] = *value;
   }
 
   #[fast]
@@ -2366,9 +2324,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_F) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_F] = *value;
   }
 
   #[fast]
@@ -2384,9 +2340,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M11) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M11] = *value;
   }
 
   #[fast]
@@ -2402,9 +2356,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M12) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M12] = *value;
   }
 
   #[fast]
@@ -2420,9 +2372,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M13) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M13] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
     }
@@ -2441,9 +2391,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M14) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M14] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
     }
@@ -2462,9 +2410,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M21) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M21] = *value;
   }
 
   #[fast]
@@ -2480,9 +2426,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M22) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M22] = *value;
   }
 
   #[fast]
@@ -2498,9 +2442,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M23) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M23] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
     }
@@ -2519,9 +2461,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M24) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M24] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
     }
@@ -2540,9 +2480,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M31) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M31] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
     }
@@ -2561,9 +2499,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M32) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M32] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
     }
@@ -2582,9 +2518,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M33) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M33] = *value;
     if *value != 1.0 {
       ro.is_2d.set(false);
     }
@@ -2603,9 +2537,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M34) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M34] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
     }
@@ -2624,9 +2556,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M41) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M41] = *value;
   }
 
   #[fast]
@@ -2642,9 +2572,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M42) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M42] = *value;
   }
 
   #[fast]
@@ -2660,9 +2588,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M43) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M43] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
     }
@@ -2681,9 +2607,7 @@ impl DOMMatrix {
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
     // SAFETY: in-range access
-    unsafe {
-      *ro.inner.borrow_mut().get_unchecked_mut(INDEX_M44) = *value;
-    }
+    ro.inner.borrow_mut()[INDEX_M44] = *value;
     if *value != 1.0 {
       ro.is_2d.set(false);
     }
