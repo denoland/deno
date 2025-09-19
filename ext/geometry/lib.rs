@@ -1443,6 +1443,7 @@ impl DOMMatrixReadOnly {
         Transform::TranslateZ(z) => {
           if let Some(z) = z.to_px() {
             self.translate_self_inner(0.0, 0.0, z.into());
+            self.is_2d.set(false);
           } else {
             return Err(GeometryError::ContainsRelativeValue);
           }
@@ -1455,6 +1456,7 @@ impl DOMMatrixReadOnly {
           if let (Some(x), Some(y), Some(z)) = (x.to_px(), y.to_px(), z.to_px())
           {
             self.translate_self_inner(x.into(), y.into(), z.into());
+            self.is_2d.set(false);
           } else {
             return Err(GeometryError::ContainsRelativeValue);
           }
@@ -1475,14 +1477,16 @@ impl DOMMatrixReadOnly {
         Transform::ScaleZ(z) => {
           let z: CSSNumber = z.into();
           self.scale_without_origin_self_inner(1.0, 1.0, z.into());
+          self.is_2d.set(false);
         }
         Transform::Scale3d(x, y, z) => {
           let x: CSSNumber = x.into();
           let y: CSSNumber = y.into();
           let z: CSSNumber = z.into();
           self.scale_without_origin_self_inner(x.into(), y.into(), z.into());
+          self.is_2d.set(false);
         }
-        Transform::Rotate(angle) | Transform::RotateZ(angle) => {
+        Transform::Rotate(angle) => {
           self.rotate_axis_angle_self_inner(
             0.0,
             0.0,
@@ -1497,6 +1501,7 @@ impl DOMMatrixReadOnly {
             0.0,
             angle.to_radians().into(),
           );
+          self.is_2d.set(false);
         }
         Transform::RotateY(angle) => {
           self.rotate_axis_angle_self_inner(
@@ -1505,6 +1510,16 @@ impl DOMMatrixReadOnly {
             0.0,
             angle.to_radians().into(),
           );
+          self.is_2d.set(false);
+        }
+        Transform::RotateZ(angle) => {
+          self.rotate_axis_angle_self_inner(
+            0.0,
+            0.0,
+            1.0,
+            angle.to_radians().into(),
+          );
+          self.is_2d.set(false);
         }
         Transform::Rotate3d(x, y, z, angle) => {
           self.rotate_axis_angle_self_inner(
@@ -1513,6 +1528,7 @@ impl DOMMatrixReadOnly {
             (*z).into(),
             angle.to_radians().into(),
           );
+          self.is_2d.set(false);
         }
         Transform::Skew(x, y) => {
           self.skew_self_inner(x.to_radians().into(), y.to_radians().into());
@@ -1526,6 +1542,7 @@ impl DOMMatrixReadOnly {
         Transform::Perspective(length) => {
           if let Some(length) = length.to_px() {
             self.perspective_self_inner(length.into());
+            self.is_2d.set(false);
           } else {
             return Err(GeometryError::ContainsRelativeValue);
           }
@@ -3022,6 +3039,11 @@ pub fn op_geometry_matrix_set_matrix_value<'a>(
     &Default::default(),
   )?;
   if transform_list.is_empty() {
+    // Make it an identity matrix
+    let mut inner = matrix.inner.borrow_mut();
+    inner.fill(0.0);
+    inner.fill_diagonal(1.0);
+    matrix.is_2d.set(true);
     return Ok(());
   }
   let Ok(transform_list) = TransformList::parse_string(&transform_list) else {
