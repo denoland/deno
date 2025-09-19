@@ -39,39 +39,57 @@ const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
 
 function upgradeWebSocket(request, options = { __proto__: null }) {
   const inner = toInnerRequest(request);
-  const upgrade = request.headers.get("upgrade");
-  const upgradeHasWebSocketOption = upgrade !== null &&
-    websocketCvf(upgrade);
-  if (!upgradeHasWebSocketOption) {
-    throw new TypeError(
-      "Invalid Header: 'upgrade' header must contain 'websocket'",
-    );
+
+  let r;
+  if (inner.version >= 2) {
+    if (request.method !== "CONNECT") {
+      throw new TypeError(
+        "Invalid Request: method must be 'CONNECT'",
+      );
+    }
+    if (inner.protocol !== "websocket") {
+      throw new TypeError(
+        "Invalid Request: :protocol must be 'websocket'",
+      );
+    }
+
+    r = newInnerResponse(200);
+  } else {
+    const upgrade = request.headers.get("upgrade");
+    const upgradeHasWebSocketOption = upgrade !== null &&
+      websocketCvf(upgrade);
+    if (!upgradeHasWebSocketOption) {
+      throw new TypeError(
+        "Invalid Header: 'upgrade' header must contain 'websocket'",
+      );
+    }
+
+    const connection = request.headers.get("connection");
+    const connectionHasUpgradeOption = connection !== null &&
+      upgradeCvf(connection);
+    if (!connectionHasUpgradeOption) {
+      throw new TypeError(
+        "Invalid Header: 'connection' header must contain 'Upgrade'",
+      );
+    }
+
+    const websocketKey = request.headers.get("sec-websocket-key");
+    if (websocketKey === null) {
+      throw new TypeError(
+        "Invalid Header: 'sec-websocket-key' header must be set",
+      );
+    }
+
+    const accept = op_http_websocket_accept_header(websocketKey);
+
+    r = newInnerResponse(101);
+
+    r.headerList = [
+      ["upgrade", "websocket"],
+      ["connection", "Upgrade"],
+      ["sec-websocket-accept", accept],
+    ];
   }
-
-  const connection = request.headers.get("connection");
-  const connectionHasUpgradeOption = connection !== null &&
-    upgradeCvf(connection);
-  if (!connectionHasUpgradeOption) {
-    throw new TypeError(
-      "Invalid Header: 'connection' header must contain 'Upgrade'",
-    );
-  }
-
-  const websocketKey = request.headers.get("sec-websocket-key");
-  if (websocketKey === null) {
-    throw new TypeError(
-      "Invalid Header: 'sec-websocket-key' header must be set",
-    );
-  }
-
-  const accept = op_http_websocket_accept_header(websocketKey);
-
-  const r = newInnerResponse(101);
-  r.headerList = [
-    ["upgrade", "websocket"],
-    ["connection", "Upgrade"],
-    ["sec-websocket-accept", accept],
-  ];
 
   const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
   const protocols = StringPrototypeSplit(protocolsStr, ", ");
