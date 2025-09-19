@@ -208,7 +208,7 @@ pub(crate) async fn handle_request(
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
   legacy_abort: bool,
-) -> Result<Response, hyper_v014::Error> {
+) -> Result<Response, hyper::Error> {
   if !validate_request(&request) {
     let mut response = Response::new(HttpRecordResponse(None));
     *response.version_mut() = request.version();
