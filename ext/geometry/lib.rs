@@ -941,7 +941,7 @@ impl DOMMatrixReadOnly {
     }
 
     // sequence
-    if !value.is_string()
+    if value.is_object()
       && let Ok(seq) = Vec::<webidl::UnrestrictedDouble>::convert(
         scope,
         value,
@@ -972,7 +972,7 @@ impl DOMMatrixReadOnly {
       return Ok(matrix);
     }
 
-    Err(GeometryError::FailedToParse)
+    Ok(DOMMatrixReadOnly::identity())
   }
 
   fn from_matrix_inner(
