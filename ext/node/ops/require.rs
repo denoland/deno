@@ -696,11 +696,7 @@ pub fn op_require_package_imports_resolve<
 
 #[op2(fast, reentrant)]
 pub fn op_require_break_on_next_statement(state: Rc<RefCell<OpState>>) {
-  let inspector_rc = {
-    let state = state.borrow();
-    state.borrow::<Rc<RefCell<JsRuntimeInspector>>>().clone()
-  };
-  let mut inspector = inspector_rc.borrow_mut();
+  let inspector = { state.borrow().borrow::<Rc<JsRuntimeInspector>>().clone() };
   inspector.wait_for_session_and_break_on_next_statement()
 }
 

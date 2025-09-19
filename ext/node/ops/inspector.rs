@@ -61,11 +61,9 @@ pub fn op_inspector_url() -> Option<String> {
 
 #[op2(fast)]
 pub fn op_inspector_wait(state: &OpState) -> bool {
-  match state.try_borrow::<Rc<RefCell<JsRuntimeInspector>>>() {
+  match state.try_borrow::<Rc<JsRuntimeInspector>>() {
     Some(inspector) => {
-      inspector
-        .borrow_mut()
-        .wait_for_session_and_break_on_next_statement();
+      inspector.wait_for_session_and_break_on_next_statement();
       true
     }
     None => false,
@@ -131,7 +129,7 @@ where
   let context = v8::Global::new(scope, context);
   let callback = v8::Global::new(scope, callback);
 
-  let inspector = state.borrow::<Rc<RefCell<JsRuntimeInspector>>>().clone();
+  let inspector = state.borrow::<Rc<JsRuntimeInspector>>().clone();
 
   // The inspector connection does not keep the event loop alive but
   // when the inspector sends a message to the frontend, the JS that
