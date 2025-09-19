@@ -146,7 +146,6 @@ const _sendQueue = Symbol("[[sendQueue]]");
 const _queueSend = Symbol("[[queueSend]]");
 const _cancelHandle = Symbol("[[cancelHandle]]");
 
-const _server = Symbol("[[server]]");
 const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
 const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
@@ -449,7 +448,7 @@ class WebSocket extends EventTarget {
       reason = webidl.converters.USVString(reason, prefix, "Argument 2");
     }
 
-    if (!this[_server]) {
+    if (this[_role] === CLIENT) {
       if (
         code !== undefined &&
         !(code === 1000 || (3000 <= code && code < 5000))
@@ -768,8 +767,8 @@ export {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
+  CLIENT,
   createWebSocketBranded,
   SERVER,
   WebSocket,

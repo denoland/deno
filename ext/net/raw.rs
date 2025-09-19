@@ -82,26 +82,57 @@ impl<T: NetworkStreamListenerTrait + 'static> NetworkListenerResource<T> {
 /// Each of the network streams has the exact same pattern for listening, accepting, etc, so
 /// we just codegen them all via macro to avoid repeating each one of these N times.
 macro_rules! network_stream {
-  ( $([$i:ident, $il:ident, $stream:path, $listener:path, $addr:path, $stream_resource:ty]),* ) => {
+  (
+    $(
+      $( #[ $meta:meta ] )?
+      [$i:ident, $il:ident, $stream:path, $listener:path, $addr:path, $stream_resource:ty, $read_half:ty, $write_half:ty, ]
+    ),*
+  ) => {
     /// A raw stream of one of the types handled by this extension.
     #[pin_project::pin_project(project = NetworkStreamProject)]
     #[allow(clippy::large_enum_variant)]
     pub enum NetworkStream {
-      $( $i (#[pin] $stream), )*
+      $(
+        $( #[ $meta ] )?
+        $i (#[pin] $stream),
+      )*
     }
 
     /// A raw stream of one of the types handled by this extension.
     #[derive(Copy, Clone, PartialEq, Eq)]
     pub enum NetworkStreamType {
-      $( $i, )*
+      $(
+        $( #[ $meta ] )?
+        $i,
+      )*
     }
 
     /// A raw stream listener of one of the types handled by this extension.
     pub enum NetworkStreamListener {
-      $( $i( $listener ), )*
+      $(
+        $( #[ $meta ] )?
+        $i( $listener ),
+      )*
+    }
+
+    #[pin_project::pin_project(project = NetworkStreamReadHalfProject)]
+    pub enum NetworkStreamReadHalf {
+      $(
+        $( #[ $meta ] )?
+        $i( #[pin] $read_half ),
+      )*
+    }
+
+    #[pin_project::pin_project(project = NetworkStreamWriteHalfProject)]
+    pub enum NetworkStreamWriteHalf {
+      $(
+        $( #[ $meta ] )?
+        $i( #[pin] $write_half ),
+      )*
     }
 
     $(
+      $( #[ $meta ] )?
       impl NetworkStreamListenerTrait for $listener {
         type Stream = $stream;
         type Addr = $addr;
@@ -115,12 +146,14 @@ macro_rules! network_stream {
         }
       }
 
+      $( #[ $meta ] )?
       impl From<$listener> for NetworkStreamListener {
         fn from(value: $listener) -> Self {
           Self::$i(value)
         }
       }
 
+      $( #[ $meta ] )?
       impl NetworkStreamTrait for $stream {
         type Resource = $stream_resource;
         const RESOURCE_NAME: &'static str = concat!(stringify!($il), "Stream");
@@ -132,6 +165,7 @@ macro_rules! network_stream {
         }
       }
 
+      $( #[ $meta ] )?
       impl From<$stream> for NetworkStream {
         fn from(value: $stream) -> Self {
           Self::$i(value)
@@ -142,19 +176,43 @@ macro_rules! network_stream {
     impl NetworkStream {
       pub fn local_address(&self) -> Result<NetworkStreamAddress, std::io::Error> {
         match self {
-          $( Self::$i(stm) => Ok(NetworkStreamAddress::from(stm.local_addr()?)), )*
+          $(
+            $( #[ $meta ] )?
+            Self::$i(stm) => Ok(NetworkStreamAddress::from(stm.local_addr()?)),
+          )*
         }
       }
 
       pub fn peer_address(&self) -> Result<NetworkStreamAddress, std::io::Error> {
         match self {
-          $( Self::$i(stm) => Ok(NetworkStreamAddress::from(stm.peer_addr()?)), )*
+          $(
+            $( #[ $meta ] )?
+            Self::$i(stm) => Ok(NetworkStreamAddress::from(stm.peer_addr()?)),
+          )*
         }
       }
 
       pub fn stream(&self) -> NetworkStreamType {
         match self {
-          $( Self::$i(_) => NetworkStreamType::$i, )*
+          $(
+            $( #[ $meta ] )?
+            Self::$i(_) => NetworkStreamType::$i,
+          )*
+        }
+      }
+
+      pub fn into_split(self) -> (NetworkStreamReadHalf, NetworkStreamWriteHalf) {
+        match self {
+          $(
+            $( #[ $meta ] )?
+            Self::$i(stm) => {
+              let (r, w) = stm.into_split();
+              (
+                NetworkStreamReadHalf::$i(r),
+                NetworkStreamWriteHalf::$i(w),
+              )
+            },
+          )*
         }
       }
     }
@@ -166,7 +224,10 @@ macro_rules! network_stream {
         buf: &mut tokio::io::ReadBuf<'_>,
       ) -> std::task::Poll<std::io::Result<()>> {
         match self.project() {
-          $( NetworkStreamProject::$i(s) => s.poll_read(cx, buf), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamProject::$i(s) => s.poll_read(cx, buf),
+          )*
         }
       }
     }
@@ -178,7 +239,10 @@ macro_rules! network_stream {
         buf: &[u8],
       ) -> std::task::Poll<Result<usize, std::io::Error>> {
         match self.project() {
-          $( NetworkStreamProject::$i(s) => s.poll_write(cx, buf), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamProject::$i(s) => s.poll_write(cx, buf),
+          )*
         }
       }
 
@@ -187,7 +251,10 @@ macro_rules! network_stream {
         cx: &mut std::task::Context<'_>,
       ) -> std::task::Poll<Result<(), std::io::Error>> {
         match self.project() {
-          $( NetworkStreamProject::$i(s) => s.poll_flush(cx), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamProject::$i(s) => s.poll_flush(cx),
+          )*
         }
       }
 
@@ -196,13 +263,19 @@ macro_rules! network_stream {
         cx: &mut std::task::Context<'_>,
       ) -> std::task::Poll<Result<(), std::io::Error>> {
         match self.project() {
-          $( NetworkStreamProject::$i(s) => s.poll_shutdown(cx), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamProject::$i(s) => s.poll_shutdown(cx),
+          )*
         }
       }
 
       fn is_write_vectored(&self) -> bool {
         match self {
-          $( NetworkStream::$i(s) => s.is_write_vectored(), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStream::$i(s) => s.is_write_vectored(),
+          )*
         }
       }
 
@@ -212,7 +285,86 @@ macro_rules! network_stream {
         bufs: &[std::io::IoSlice<'_>],
       ) -> std::task::Poll<Result<usize, std::io::Error>> {
         match self.project() {
-          $( NetworkStreamProject::$i(s) => s.poll_write_vectored(cx, bufs), )*
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamProject::$i(s) => s.poll_write_vectored(cx, bufs),
+          )*
+        }
+      }
+    }
+
+    impl tokio::io::AsyncRead for NetworkStreamReadHalf {
+      fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+      ) -> std::task::Poll<std::io::Result<()>> {
+        match self.project() {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamReadHalfProject::$i(s) => s.poll_read(cx, buf),
+          )*
+        }
+      }
+    }
+
+    impl tokio::io::AsyncWrite for NetworkStreamWriteHalf {
+      fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+      ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        match self.project() {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamWriteHalfProject::$i(s) => s.poll_write(cx, buf),
+          )*
+        }
+      }
+
+      fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+      ) -> std::task::Poll<Result<(), std::io::Error>> {
+        match self.project() {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamWriteHalfProject::$i(s) => s.poll_flush(cx),
+          )*
+        }
+      }
+
+      fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+      ) -> std::task::Poll<Result<(), std::io::Error>> {
+        match self.project() {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamWriteHalfProject::$i(s) => s.poll_shutdown(cx),
+          )*
+        }
+      }
+
+      fn is_write_vectored(&self) -> bool {
+        match self {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamWriteHalf::$i(s) => s.is_write_vectored(),
+          )*
+        }
+      }
+
+      fn poll_write_vectored(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+      ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        match self.project() {
+          $(
+            $( #[ $meta ] )?
+            NetworkStreamWriteHalfProject::$i(s) => s.poll_write_vectored(cx, bufs),
+          )*
         }
       }
     }
@@ -222,6 +374,7 @@ macro_rules! network_stream {
       pub async fn accept(&self) -> Result<(NetworkStream, NetworkStreamAddress), std::io::Error> {
         Ok(match self {
           $(
+            $( #[ $meta ] )?
             Self::$i(s) => {
               let (stm, addr) = s.accept().await?;
               (NetworkStream::$i(stm), addr.into())
@@ -232,13 +385,19 @@ macro_rules! network_stream {
 
       pub fn listen_address(&self) -> Result<NetworkStreamAddress, std::io::Error> {
         match self {
-          $( Self::$i(s) => { Ok(NetworkStreamAddress::from(s.listen_address()?)) } )*
+          $(
+            $( #[ $meta ] )?
+            Self::$i(s) => { Ok(NetworkStreamAddress::from(s.listen_address()?)) }
+          )*
         }
       }
 
       pub fn stream(&self) -> NetworkStreamType {
         match self {
-          $( Self::$i(_) => { NetworkStreamType::$i } )*
+          $(
+            $( #[ $meta ] )?
+            Self::$i(_) => { NetworkStreamType::$i }
+          )*
         }
       }
 
@@ -246,6 +405,7 @@ macro_rules! network_stream {
       /// not locked.
       pub fn take_resource(resource_table: &mut ResourceTable, listener_rid: ResourceId) -> Result<NetworkStreamListener, JsErrorBox> {
         $(
+          $( #[ $meta ] )?
           if let Some(resource) = NetworkListenerResource::<$listener>::take(resource_table, listener_rid)? {
             return Ok(resource)
           }
@@ -256,8 +416,6 @@ macro_rules! network_stream {
   };
 }
 
-#[cfg(unix)]
-#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 network_stream!(
   [
     Tcp,
@@ -265,7 +423,9 @@ network_stream!(
     tokio::net::TcpStream,
     crate::tcp::TcpListener,
     std::net::SocketAddr,
-    TcpStreamResource
+    TcpStreamResource,
+    tokio::net::tcp::OwnedReadHalf,
+    tokio::net::tcp::OwnedWriteHalf,
   ],
   [
     Tls,
@@ -273,23 +433,31 @@ network_stream!(
     crate::ops_tls::TlsStream<tokio::net::TcpStream>,
     crate::ops_tls::TlsListener,
     std::net::SocketAddr,
-    TlsStreamResource
+    TlsStreamResource,
+    crate::ops_tls::TlsStreamRead<tokio::net::TcpStream>,
+    crate::ops_tls::TlsStreamWrite<tokio::net::TcpStream>,
   ],
+  #[cfg(unix)]
   [
     Unix,
     unix,
     tokio::net::UnixStream,
     tokio::net::UnixListener,
     tokio::net::unix::SocketAddr,
-    crate::io::UnixStreamResource
+    crate::io::UnixStreamResource,
+    tokio::net::unix::OwnedReadHalf,
+    tokio::net::unix::OwnedWriteHalf,
   ],
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   [
     Vsock,
     vsock,
     tokio_vsock::VsockStream,
     tokio_vsock::VsockListener,
     tokio_vsock::VsockAddr,
-    crate::io::VsockStreamResource
+    crate::io::VsockStreamResource,
+    tokio_vsock::OwnedReadHalf,
+    tokio_vsock::OwnedWriteHalf,
   ],
   [
     Tunnel,
@@ -297,76 +465,9 @@ network_stream!(
     crate::tunnel::TunnelStream,
     crate::tunnel::TunnelConnection,
     crate::tunnel::TunnelAddr,
-    crate::tunnel::TunnelStreamResource
-  ]
-);
-
-#[cfg(unix)]
-#[cfg(not(any(
-  target_os = "android",
-  target_os = "linux",
-  target_os = "macos"
-)))]
-network_stream!(
-  [
-    Tcp,
-    tcp,
-    tokio::net::TcpStream,
-    crate::tcp::TcpListener,
-    std::net::SocketAddr,
-    TcpStreamResource
-  ],
-  [
-    Tls,
-    tls,
-    crate::ops_tls::TlsStream<tokio::net::TcpStream>,
-    crate::ops_tls::TlsListener,
-    std::net::SocketAddr,
-    TlsStreamResource
-  ],
-  [
-    Unix,
-    unix,
-    tokio::net::UnixStream,
-    tokio::net::UnixListener,
-    tokio::net::unix::SocketAddr,
-    crate::io::UnixStreamResource
-  ],
-  [
-    Tunnel,
-    tunnel,
-    crate::tunnel::TunnelStream,
-    crate::tunnel::TunnelConnection,
-    crate::tunnel::TunnelAddr,
-    crate::tunnel::TunnelStreamResource
-  ]
-);
-
-#[cfg(not(unix))]
-network_stream!(
-  [
-    Tcp,
-    tcp,
-    tokio::net::TcpStream,
-    crate::tcp::TcpListener,
-    std::net::SocketAddr,
-    TcpStreamResource
-  ],
-  [
-    Tls,
-    tls,
-    crate::ops_tls::TlsStream<tokio::net::TcpStream>,
-    crate::ops_tls::TlsListener,
-    std::net::SocketAddr,
-    TlsStreamResource
-  ],
-  [
-    Tunnel,
-    tunnel,
-    crate::tunnel::TunnelStream,
-    crate::tunnel::TunnelConnection,
-    crate::tunnel::TunnelAddr,
-    crate::tunnel::TunnelStreamResource
+    crate::tunnel::TunnelStreamResource,
+    crate::tunnel::OwnedReadHalf,
+    crate::tunnel::OwnedWriteHalf,
   ]
 );
 
