@@ -107,6 +107,9 @@ function memoizeLazy(f) {
 const numCpus = memoizeLazy(() => op_bootstrap_numcpus());
 const userAgent = memoizeLazy(() => op_bootstrap_user_agent());
 const language = memoizeLazy(() => op_bootstrap_language());
+const platform = memoizeLazy(() =>
+  getNavigatorPlatform(process.arch, process.platform)
+);
 
 ObjectDefineProperties(Navigator.prototype, {
   gpu: {
@@ -162,7 +165,7 @@ ObjectDefineProperties(Navigator.prototype, {
     enumerable: true,
     get() {
       webidl.assertBranded(this, NavigatorPrototype);
-      return [getNavigatorPlatform(process.arch, process.platform)];
+      return platform();
     },
   },
 });
