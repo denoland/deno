@@ -2364,8 +2364,7 @@ Deno.test(
     const resp1 = await fetch("https://example.com/ping", { client });
     assertEquals(resp1.status, 200);
     assertEquals(resp1.headers.get("content-type"), "text/plain");
-    // TODO(@lucacasonato): should be https://example.com/ping. bug in https://github.com/hyperium/hyper-util/blob/00035bac2da1cfa820eda4db7bf7ddcbd30be3c1/src/client/legacy/client.rs#L915-L917
-    assertEquals(await resp1.text(), "http://example.com/ping");
+    assertEquals(await resp1.text(), "https://example.com/ping");
 
     const resp2 = await fetch("http://localhost:42424/ping", { client });
     assertEquals(resp2.status, 200);
