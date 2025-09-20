@@ -2301,7 +2301,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_B] = *value;
   }
 
@@ -2317,7 +2316,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_C] = *value;
   }
 
@@ -2333,7 +2331,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_D] = *value;
   }
 
@@ -2349,7 +2346,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_E] = *value;
   }
 
@@ -2365,7 +2361,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_F] = *value;
   }
 
@@ -2381,7 +2376,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M11] = *value;
   }
 
@@ -2397,7 +2391,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M12] = *value;
   }
 
@@ -2413,7 +2406,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M13] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2432,7 +2424,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M14] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2451,7 +2442,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M21] = *value;
   }
 
@@ -2467,7 +2457,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M22] = *value;
   }
 
@@ -2483,7 +2472,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M23] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2502,7 +2490,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M24] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2521,7 +2508,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M31] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2540,7 +2526,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M32] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2559,7 +2544,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M33] = *value;
     if *value != 1.0 {
       ro.is_2d.set(false);
@@ -2578,7 +2562,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M34] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2597,7 +2580,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M41] = *value;
   }
 
@@ -2613,7 +2595,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M42] = *value;
   }
 
@@ -2629,7 +2610,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M43] = *value;
     if *value != 0.0 {
       ro.is_2d.set(false);
@@ -2648,7 +2628,6 @@ impl DOMMatrix {
     #[webidl] value: webidl::UnrestrictedDouble,
     #[proto] ro: &DOMMatrixReadOnly,
   ) {
-    // SAFETY: in-range access
     ro.inner.borrow_mut()[INDEX_M44] = *value;
     if *value != 1.0 {
       ro.is_2d.set(false);
