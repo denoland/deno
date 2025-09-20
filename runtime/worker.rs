@@ -900,10 +900,9 @@ impl MainWorker {
       self
         .js_runtime
         .inspector()
-        .borrow_mut()
         .wait_for_session_and_break_on_next_statement();
     } else if self.should_wait_for_inspector_session {
-      self.js_runtime.inspector().borrow_mut().wait_for_session();
+      self.js_runtime.inspector().wait_for_session();
     }
   }
 
