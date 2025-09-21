@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -41,6 +42,7 @@ pub struct CreateWebWorkerArgs {
   pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  pub maybe_coverage_dir: Option<PathBuf>,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -169,6 +171,8 @@ fn op_create_worker(
       "Worker.deno.permissions",
     );
   }
+  // TODO:
+  let maybe_coverage_dir = Some(PathBuf::from("./cov/"));
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
@@ -218,6 +222,7 @@ fn op_create_worker(
           worker_type,
           close_on_idle: args.close_on_idle,
           maybe_worker_metadata,
+          maybe_coverage_dir,
         });
 
       // Send thread safe handle from newly created worker to host thread

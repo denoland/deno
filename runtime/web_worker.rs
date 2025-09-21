@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::fmt;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -62,6 +63,7 @@ use node_resolver::NpmPackageFolderResolver;
 
 use crate::BootstrapOptions;
 use crate::FeatureChecker;
+use crate::coverage::CoverageCollector;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::shared::runtime;
@@ -408,6 +410,7 @@ pub struct WebWorkerOptions {
   pub trace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
   pub maybe_worker_metadata: Option<WorkerMetadata>,
+  pub maybe_coverage_dir: Option<PathBuf>,
   pub enable_raw_imports: bool,
   pub enable_stack_trace_arg_in_ops: bool,
 }
@@ -430,6 +433,9 @@ pub struct WebWorker {
   // Consumed when `bootstrap_fn` is called
   maybe_worker_metadata: Option<WorkerMetadata>,
   memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
+  // TODO(bartlomieju): this should probably be more
+  // sophistacated like - `CoverageOptions`
+  maybe_coverage_dir: Option<PathBuf>,
 }
 
 impl Drop for WebWorker {
@@ -734,6 +740,7 @@ impl WebWorker {
         close_on_idle: options.close_on_idle,
         maybe_worker_metadata: options.maybe_worker_metadata,
         memory_trim_handle: None,
+        maybe_coverage_dir: options.maybe_coverage_dir,
       },
       external_handle,
       options.bootstrap,
@@ -807,6 +814,17 @@ impl WebWorker {
       self.has_message_event_listener_fn =
         Some(v8::Global::new(scope, has_message_event_listener_fn));
     }
+  }
+
+  pub fn maybe_setup_coverage_collector(
+    &mut self,
+  ) -> Option<CoverageCollector> {
+    let coverage_dir = self.maybe_coverage_dir.as_ref()?;
+    let mut coverage_collector =
+      CoverageCollector::new(&mut self.js_runtime, coverage_dir.clone());
+    coverage_collector.start_collecting();
+
+    Some(coverage_collector)
   }
 
   #[cfg(not(target_os = "linux"))]
@@ -1050,6 +1068,7 @@ pub async fn run_web_worker(
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), CoreError> {
   worker.setup_memory_trim_handler();
+  let mut maybe_coverage_collector = worker.maybe_setup_coverage_collector();
 
   let name = worker.name.to_string();
   let internal_handle = worker.internal_handle.clone();
@@ -1074,16 +1093,23 @@ pub async fn run_web_worker(
   // If sender is closed it means that worker has already been closed from
   // within using "globalThis.close()"
   if internal_handle.is_terminated() {
+    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+      coverage_collector.stop_collecting()?;
+    }
     return Ok(());
   }
 
   let result = if result.is_ok() {
-    worker
+    let r = worker
       .run_event_loop(PollEventLoopOptions {
         wait_for_inspector: true,
         ..Default::default()
       })
-      .await
+      .await;
+    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+      coverage_collector.stop_collecting()?;
+    }
+    r
   } else {
     result
   };
