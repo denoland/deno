@@ -104,8 +104,7 @@ impl InspectorServer {
     js_runtime: &mut JsRuntime,
     wait_for_session: bool,
   ) {
-    let inspector_rc = js_runtime.inspector();
-    let mut inspector = inspector_rc.borrow_mut();
+    let inspector = js_runtime.inspector();
     let session_sender = inspector.get_session_sender();
     let deregister_rx = inspector.add_deregister_handler();
     let info = InspectorInfo::new(

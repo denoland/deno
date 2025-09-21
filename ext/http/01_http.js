@@ -50,7 +50,6 @@ import {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
   SERVER,
   WebSocket,
