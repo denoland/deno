@@ -20,46 +20,32 @@ import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as webStorage from "ext:deno_webstorage/01_webstorage.js";
 import * as prompt from "ext:runtime/41_prompt.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
-import process from "node:process";
 
 /**
  * @param {string} arch
  * @param {string} platform
  * @returns {string}
  */
-function getNavigatorPlatform(arch, platform) {
+
+function getNavigatorPlatform(
+  arch,
+  platform,
+) {
   if (platform === "darwin") {
     // On macOS, modern browsers return 'MacIntel' even if running on Apple Silicon.
     return "MacIntel";
-  } else if (platform === "win32") {
+  } else if (platform === "windows") {
     // On Windows, modern browsers return 'Win32' even if running on a 64-bit version of Windows.
     // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/platform#usage_notes
     return "Win32";
   } else if (platform === "linux") {
-    if (arch === "ia32") {
-      return "Linux i686";
-    } else if (arch === "x64") {
-      return "Linux x86_64";
-    }
     return `Linux ${arch}`;
   } else if (platform === "freebsd") {
-    if (arch === "ia32") {
-      return "FreeBSD i386";
-    } else if (arch === "x64") {
+    if (arch === "x86_64") {
       return "FreeBSD amd64";
     }
     return `FreeBSD ${arch}`;
-  } else if (platform === "openbsd") {
-    if (arch === "ia32") {
-      return "OpenBSD i386";
-    } else if (arch === "x64") {
-      return "OpenBSD amd64";
-    }
-    return `OpenBSD ${arch}`;
-  } else if (platform === "sunos") {
-    if (arch === "ia32") {
-      return "SunOS i86pc";
-    }
+  } else if (platform === "solaris") {
     return `SunOS ${arch}`;
   } else if (platform === "aix") {
     return "AIX";
@@ -107,9 +93,7 @@ function memoizeLazy(f) {
 const numCpus = memoizeLazy(() => op_bootstrap_numcpus());
 const userAgent = memoizeLazy(() => op_bootstrap_user_agent());
 const language = memoizeLazy(() => op_bootstrap_language());
-const platform = memoizeLazy(() =>
-  getNavigatorPlatform(process.arch, process.platform)
-);
+const platform = memoizeLazy(() => getNavigatorPlatform(core.build.arch, core.build.os));
 
 ObjectDefineProperties(Navigator.prototype, {
   gpu: {
