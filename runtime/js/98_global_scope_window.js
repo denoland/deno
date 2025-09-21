@@ -26,33 +26,37 @@ import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
  * @param {string} platform
  * @returns {string}
  */
+function getNavigatorPlatform(arch, platform) {
+  switch (platform) {
+    case "darwin":
+      // On macOS, modern browsers return 'MacIntel' even if running on Apple Silicon.
+      return "MacIntel";
 
-function getNavigatorPlatform(
-  arch,
-  platform,
-) {
-  if (platform === "darwin") {
-    // On macOS, modern browsers return 'MacIntel' even if running on Apple Silicon.
-    return "MacIntel";
-  } else if (platform === "windows") {
-    // On Windows, modern browsers return 'Win32' even if running on a 64-bit version of Windows.
-    // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/platform#usage_notes
-    return "Win32";
-  } else if (platform === "linux") {
-    return `Linux ${arch}`;
-  } else if (platform === "freebsd") {
-    if (arch === "x86_64") {
-      return "FreeBSD amd64";
-    }
-    return `FreeBSD ${arch}`;
-  } else if (platform === "solaris") {
-    return `SunOS ${arch}`;
-  } else if (platform === "aix") {
-    return "AIX";
+    case "windows":
+      // On Windows, modern browsers return 'Win32' even if running on a 64-bit version of Windows.
+      // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/platform#usage_notes
+      return "Win32";
+
+    case "linux":
+      return `Linux ${arch}`;
+
+    case "freebsd":
+      if (arch === "x86_64") {
+        return "FreeBSD amd64";
+      }
+      return `FreeBSD ${arch}`;
+
+    case "solaris":
+      return `SunOS ${arch}`;
+
+    case "aix":
+      return "AIX";
+
+    default:
+      return `${StringPrototypeToUpperCase(platform[0])}${
+        StringPrototypeSlice(platform, 1)
+      } ${arch}`;
   }
-  return `${StringPrototypeToUpperCase(platform[0])}${
-    StringPrototypeSlice(platform, 1)
-  } ${arch}`;
 }
 
 class Navigator {
@@ -93,7 +97,9 @@ function memoizeLazy(f) {
 const numCpus = memoizeLazy(() => op_bootstrap_numcpus());
 const userAgent = memoizeLazy(() => op_bootstrap_user_agent());
 const language = memoizeLazy(() => op_bootstrap_language());
-const platform = memoizeLazy(() => getNavigatorPlatform(core.build.arch, core.build.os));
+const platform = memoizeLazy(() =>
+  getNavigatorPlatform(core.build.arch, core.build.os)
+);
 
 ObjectDefineProperties(Navigator.prototype, {
   gpu: {
