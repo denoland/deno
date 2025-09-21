@@ -968,7 +968,7 @@ impl ImportMap {
     match self {
       Self::Single(_) => false,
       Self::Multiple(v) => v.is_empty(),
-      Self::None => false,
+      Self::None => true,
     }
   }
   pub fn as_slice(&self) -> &[String] {
