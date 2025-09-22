@@ -63,7 +63,7 @@ pub struct SerializedResolverWorkspaceJsrPackage {
 
 #[derive(Deserialize, Serialize)]
 pub struct SerializedWorkspaceResolver {
-  pub import_map: Option<SerializedWorkspaceResolverImportMap>,
+  pub import_maps: Vec<SerializedWorkspaceResolverImportMap>,
   pub jsr_pkgs: Vec<SerializedResolverWorkspaceJsrPackage>,
   pub package_jsons: BTreeMap<String, serde_json::Value>,
   pub pkg_json_resolution: PackageJsonDepResolution,

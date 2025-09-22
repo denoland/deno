@@ -955,11 +955,37 @@ pub struct DeployConfig {
   pub app: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Default)]
+#[serde(untagged)]
+pub enum ImportMap {
+  Single(String),
+  Multiple(Vec<String>),
+  #[default]
+  None,
+}
+impl ImportMap {
+  pub fn is_empty(&self) -> bool {
+    match self {
+      Self::Single(_) => false,
+      Self::Multiple(v) => v.is_empty(),
+      Self::None => true,
+    }
+  }
+  pub fn as_slice(&self) -> &[String] {
+    match self {
+      Self::Single(v) => std::slice::from_ref(v),
+      Self::Multiple(v) => v.as_slice(),
+      Self::None => &[],
+    }
+  }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
-  pub import_map: Option<String>,
+  #[serde(default)]
+  pub import_map: ImportMap,
   pub imports: Option<Value>,
   pub scopes: Option<Value>,
   pub lint: Option<Value>,
@@ -1319,29 +1345,39 @@ impl ConfigFile {
       .to_path_buf()
   }
 
-  pub fn to_import_map_specifier(
-    &self,
-  ) -> Result<Option<Url>, ConfigFileError> {
-    let Some(value) = self.json.import_map.as_ref() else {
-      return Ok(None);
-    };
-    // try to resolve as a url
-    if let Ok(specifier) = Url::parse(value) {
-      if specifier.scheme() != "file" {
-        return Err(ConfigFileError::OnlyFileSpecifiersSupported);
+  pub fn to_import_map_specifiers(&self) -> Result<Vec<Url>, ConfigFileError> {
+    fn import_single(
+      specifier: &Url,
+      path: &str,
+    ) -> Result<Url, ConfigFileError> {
+      if let Ok(specifier) = Url::parse(path) {
+        if specifier.scheme() != "file" {
+          return Err(ConfigFileError::OnlyFileSpecifiersSupported);
+        }
+        return Ok(specifier);
       }
-      return Ok(Some(specifier));
+      // now as a relative file path
+      Ok(url_parent(&specifier).join(path)?)
     }
-    // now as a relative file path
-    Ok(Some(url_parent(&self.specifier).join(value)?))
+
+    self
+      .json
+      .import_map
+      .as_slice()
+      .iter()
+      .map(|v| import_single(&self.specifier, &v))
+      .collect()
+    // try to resolve as a url
   }
 
-  pub fn to_import_map_path(&self) -> Result<Option<PathBuf>, ConfigFileError> {
-    let maybe_specifier = self.to_import_map_specifier()?;
-    match maybe_specifier {
-      Some(specifier) => Ok(Some(url_to_file_path(&specifier)?)),
-      None => Ok(None),
-    }
+  pub fn to_import_map_paths(&self) -> Result<Vec<PathBuf>, ConfigFileError> {
+    self
+      .to_import_map_specifiers()?
+      .into_iter()
+      .map(|specifier| {
+        url_to_file_path(&specifier).map_err(ConfigFileError::from)
+      })
+      .collect()
   }
 
   pub fn vendor(&self) -> Option<bool> {
@@ -1350,47 +1386,56 @@ impl ConfigFile {
 
   /// Resolves the import map potentially resolving the file specified
   /// at the "importMap" entry.
-  pub fn to_import_map(
+  pub fn to_import_maps(
     &self,
     sys: &impl FsRead,
-  ) -> Result<Option<ImportMapWithDiagnostics>, ConfigFileError> {
-    let maybe_result = self.to_import_map_value(sys)?;
-    match maybe_result {
-      Some((specifier, value)) => {
-        let import_map =
-          import_map::parse_from_value(specifier.into_owned(), value)?;
-        Ok(Some(import_map))
-      }
-      None => Ok(None),
-    }
+  ) -> Result<Vec<ImportMapWithDiagnostics>, ConfigFileError> {
+    self
+      .to_import_map_values(sys)?
+      .into_iter()
+      .map(|(specifier, value)| {
+        Ok(import_map::parse_from_value(specifier.into_owned(), value)?)
+      })
+      .collect()
   }
 
   /// Resolves the import map `serde_json::Value` potentially resolving the
   /// file specified at the "importMap" entry.
-  pub fn to_import_map_value(
+  pub fn to_import_map_values(
     &self,
     sys: &impl FsRead,
-  ) -> Result<Option<(Cow<'_, Url>, serde_json::Value)>, ConfigFileError> {
+  ) -> Result<Vec<(Cow<'_, Url>, serde_json::Value)>, ConfigFileError> {
     // has higher precedence over the path
-    if self.json.imports.is_some() || self.json.scopes.is_some() {
-      Ok(Some((
-        Cow::Borrowed(&self.specifier),
-        self.to_import_map_value_from_imports(),
-      )))
-    } else {
-      let Some(specifier) = self.to_import_map_specifier()? else {
-        return Ok(None);
+    let from_config =
+      if self.json.imports.is_some() || self.json.scopes.is_some() {
+        Some((
+          Cow::Borrowed(&self.specifier),
+          self.to_import_map_value_from_imports(),
+        ))
+      } else {
+        None
       };
-      let Ok(import_map_path) = url_to_file_path(&specifier) else {
-        return Ok(None);
-      };
+
+    let process_single = |specifier: Url| {
+      let import_map_path = url_to_file_path(&specifier)?;
       let text = sys
         .fs_read_to_string_lossy(&import_map_path)
         .map_err(ConfigFileError::Io)?;
       let value = serde_json::from_str(&text)?;
       // does not expand the imports because this one will use the import map standard
-      Ok(Some((Cow::Owned(specifier), value)))
-    }
+      Ok((Cow::Owned(specifier), value))
+    };
+
+    from_config
+      .into_iter()
+      .map(Ok)
+      .chain(
+        self
+          .to_import_map_specifiers()?
+          .into_iter()
+          .map(process_single),
+      )
+      .collect()
   }
 
   /// Creates the import map from the imports entry.
@@ -2072,6 +2117,11 @@ mod tests {
       .unwrap_or_else(|err| panic!("error parsing {name} object but got {err}"))
   }
 
+  fn expect_singleton<T>(vec: Vec<T>, msg: &str) -> T {
+    assert_eq!(vec.len(), 1, "expected exactly one element: {msg}");
+    vec.into_iter().next().unwrap()
+  }
+
   #[test]
   fn read_config_file_absolute() {
     let path = testdata_path().join("module_graph/tsconfig.json");
@@ -2726,61 +2776,6 @@ mod tests {
   }
 
   #[test]
-  fn test_to_import_map_imports_entry() {
-    let config_text = r#"{
-      "imports": { "@std/test": "jsr:@std/test@0.2.0" },
-      // will be ignored because imports and scopes takes precedence
-      "importMap": "import_map.json",
-    }"#;
-    let config_specifier = root_url().join("deno.json").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let result = config_file.to_import_map(&UnreachableSys).unwrap().unwrap();
-
-    assert_eq!(
-      result.import_map.base_url(),
-      &root_url().join("deno.json").unwrap()
-    );
-    assert_eq!(
-      json!(result.import_map.imports()),
-      // imports should be expanded
-      json!({
-        "@std/test/": "jsr:/@std/test@0.2.0/",
-        "@std/test": "jsr:@std/test@0.2.0",
-      })
-    );
-  }
-
-  #[test]
-  fn test_to_import_map_scopes_entry() {
-    let config_text = r#"{
-      "scopes": { "https://deno.land/x/test/mod.ts": { "@std/test": "jsr:@std/test@0.2.0" } },
-      // will be ignored because imports and scopes takes precedence
-      "importMap": "import_map.json",
-    }"#;
-    let config_specifier = root_url().join("deno.json").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let result = config_file.to_import_map(&UnreachableSys).unwrap().unwrap();
-
-    assert_eq!(
-      result.import_map.base_url(),
-      &root_url().join("deno.json").unwrap()
-    );
-    assert_eq!(
-      json!(result.import_map),
-      // imports should be expanded
-      json!({
-        "imports": {},
-        "scopes": {
-          "https://deno.land/x/test/mod.ts": {
-            "@std/test/": "jsr:/@std/test@0.2.0/",
-            "@std/test": "jsr:@std/test@0.2.0",
-          }
-        }
-      })
-    );
-  }
-
-  #[test]
   fn test_to_import_map_import_map_entry() {
     struct MockFs;
 
@@ -2804,7 +2799,10 @@ mod tests {
     }"#;
     let config_specifier = root_url().join("deno.json").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let result = config_file.to_import_map(&MockFs).unwrap().unwrap();
+    let result = expect_singleton(
+      config_file.to_import_maps(&MockFs).unwrap(),
+      "single importMap path",
+    );
 
     assert_eq!(
       result.import_map.base_url(),
@@ -2826,7 +2824,7 @@ mod tests {
     }"#;
     let config_specifier = root_url().join("deno.json").unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let err = config_file.to_import_map(&UnreachableSys).unwrap_err();
+    let err = config_file.to_import_maps(&UnreachableSys).unwrap_err();
     assert_eq!(
       err.to_string(),
       concat!(
@@ -2893,7 +2891,10 @@ mod tests {
     let config_specifier = Url::from_file_path(&file_path).unwrap();
     let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     assert_eq!(
-      config_file.to_import_map_path().unwrap().unwrap(),
+      expect_singleton(
+        config_file.to_import_map_paths().unwrap(),
+        "relative importMap"
+      ),
       file_path
         .parent()
         .unwrap()

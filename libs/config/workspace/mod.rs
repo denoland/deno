@@ -153,14 +153,6 @@ pub enum WorkspaceDiagnosticKind {
   #[error("\"exports\" field should be specified when specifying a \"name\".")]
   MissingExports,
   #[error(
-    "\"importMap\" field is ignored when \"imports\" or \"scopes\" are specified in the config file."
-  )]
-  ImportMapReferencingImportMap,
-  #[error(
-    "\"imports\" and \"scopes\" field is ignored when \"importMap\" is specified in the root config file."
-  )]
-  MemberImportsScopesIgnored,
-  #[error(
     "`\"nodeModulesDir\": {previous}` is deprecated in Deno 2.0. Use `\"nodeModulesDir\": \"{suggestion}\"` instead."
   )]
   DeprecatedNodeModulesDirOption {
@@ -986,26 +978,12 @@ impl Workspace {
   pub fn diagnostics(&self) -> Vec<WorkspaceDiagnostic> {
     fn check_member_diagnostics(
       member_config: &ConfigFile,
-      root_config: Option<&ConfigFile>,
       diagnostics: &mut Vec<WorkspaceDiagnostic>,
     ) {
-      if member_config.json.import_map.is_some() {
+      if !member_config.json.import_map.is_empty() {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: member_config.specifier.clone(),
           kind: WorkspaceDiagnosticKind::RootOnlyOption("importMap"),
-        });
-      } else if member_config.is_an_import_map()
-        && root_config
-          .map(|c| {
-            c.json.import_map.is_some()
-              && c.json.imports.is_none()
-              && c.json.scopes.is_none()
-          })
-          .unwrap_or(false)
-      {
-        diagnostics.push(WorkspaceDiagnostic {
-          config_url: member_config.specifier.clone(),
-          kind: WorkspaceDiagnosticKind::MemberImportsScopesIgnored,
         });
       }
       if member_config.json.lock.is_some() {
@@ -1092,12 +1070,6 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::MissingExports,
         });
       }
-      if config.is_an_import_map() && config.json.import_map.is_some() {
-        diagnostics.push(WorkspaceDiagnostic {
-          config_url: config.specifier.clone(),
-          kind: WorkspaceDiagnosticKind::ImportMapReferencingImportMap,
-        });
-      }
       if let Some(serde_json::Value::Bool(enabled)) =
         &config.json.node_modules_dir
       {
@@ -1122,11 +1094,7 @@ impl Workspace {
       if let Some(config) = &folder.deno_json {
         let is_root = url == &self.root_dir_url;
         if !is_root {
-          check_member_diagnostics(
-            config,
-            self.root_deno_json().map(|r| r.as_ref()),
-            &mut diagnostics,
-          );
+          check_member_diagnostics(config, &mut diagnostics);
         }
 
         check_all_configs(config, &mut diagnostics);
@@ -1179,10 +1147,10 @@ impl Workspace {
       .unwrap_or(Ok(Default::default()))
   }
 
-  pub fn to_import_map_path(&self) -> Result<Option<PathBuf>, ConfigFileError> {
+  pub fn to_import_map_paths(&self) -> Result<Vec<PathBuf>, ConfigFileError> {
     self
-      .with_root_config_only(|root_config| root_config.to_import_map_path())
-      .unwrap_or(Ok(None))
+      .with_root_config_only(|root_config| root_config.to_import_map_paths())
+      .unwrap_or(Ok(vec![]))
   }
 
   pub fn resolve_lockfile_path(
@@ -2699,6 +2667,11 @@ pub mod test {
     }
   }
 
+  fn expect_singleton<T>(vec: Vec<T>, msg: &str) -> T {
+    assert_eq!(vec.len(), 1, "expected exactly one element: {msg}");
+    vec.into_iter().next().unwrap()
+  }
+
   #[test]
   fn test_empty_workspaces() {
     let sys = InMemorySys::default();
@@ -2995,11 +2968,10 @@ pub mod test {
       },
     );
     assert_eq!(
-      workspace_dir
-        .workspace
-        .to_import_map_path()
-        .unwrap()
-        .unwrap(),
+      expect_singleton(
+        workspace_dir.workspace.to_import_map_paths().unwrap(),
+        "only root"
+      ),
       root_dir().join("other.json"),
     );
     assert_eq!(
@@ -3236,41 +3208,11 @@ pub mod test {
       },
     );
     assert_eq!(
-      workspace_dir
-        .workspace
-        .to_import_map_path()
-        .unwrap()
-        .unwrap(),
+      expect_singleton(
+        workspace_dir.workspace.to_import_map_paths().unwrap(),
+        "only root"
+      ),
       root_dir().join("other.json")
-    );
-    assert_eq!(
-      workspace_dir.workspace.diagnostics(),
-      vec![WorkspaceDiagnostic {
-        kind: WorkspaceDiagnosticKind::ImportMapReferencingImportMap,
-        config_url: Url::from_file_path(root_dir().join("deno.json")).unwrap(),
-      }]
-    );
-  }
-
-  #[test]
-  fn test_root_import_map_with_member_imports_and_scopes() {
-    let workspace_dir = workspace_for_root_and_member(
-      json!({
-        "importMap": "./other.json"
-      }),
-      json!({
-        "imports": {
-          "@scope/pkg": "jsr:@scope/pkg@3"
-        }
-      }),
-    );
-    assert_eq!(
-      workspace_dir.workspace.diagnostics(),
-      vec![WorkspaceDiagnostic {
-        kind: WorkspaceDiagnosticKind::MemberImportsScopesIgnored,
-        config_url: Url::from_file_path(root_dir().join("member/deno.json"))
-          .unwrap(),
-      }]
     );
   }
 

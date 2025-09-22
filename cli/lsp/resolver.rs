@@ -684,7 +684,11 @@ impl ConfiguredDepResolutions {
           }
         }
       };
-    if let Some(import_map) = workspace_resolver.maybe_import_map() {
+    for import_map in workspace_resolver.maybe_import_maps() {
+      #[allow(
+        deprecated,
+        reason = "import map here is not merged, base_url is only used as original location"
+      )]
       let referrer = import_map.base_url();
       for entry in import_map.imports().entries().chain(
         import_map
@@ -814,7 +818,7 @@ impl ConfiguredDepResolutions {
         ConfiguredDepKind::ImportMap { key, value } => self
           .workspace_resolver
           .as_ref()?
-          .maybe_import_map()?
+          .merged_import_map()
           .resolve(key, referrer)
           .is_ok_and(|s| &s == value)
           .then(|| dep_key.clone()),
@@ -1065,7 +1069,7 @@ impl<'a> ResolverFactory<'a> {
             CliSys::default(),
             CreateResolverOptions {
               pkg_json_dep_resolution,
-              specified_import_map: d.specified_import_map.clone(),
+              specified_import_maps: d.specified_import_maps.clone(),
               sloppy_imports_options: if unstable_sloppy_imports {
                 SloppyImportsOptions::Enabled
               } else {
@@ -1084,7 +1088,7 @@ impl<'a> ResolverFactory<'a> {
             // create a dummy resolver
             WorkspaceResolver::new_raw(
               d.scope.clone(),
-              None,
+              vec![],
               d.member_dir.workspace.resolver_jsr_pkgs().collect(),
               d.member_dir.workspace.package_jsons().cloned().collect(),
               pkg_json_dep_resolution,
@@ -1098,7 +1102,7 @@ impl<'a> ResolverFactory<'a> {
           WorkspaceResolver::new_raw(
             // this is fine because this is only used before initialization
             Arc::new(ModuleSpecifier::parse("file:///").unwrap()),
-            None,
+            vec![],
             Vec::new(),
             Vec::new(),
             PackageJsonDepResolution::Disabled,

@@ -275,7 +275,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     sys: TSys,
     flags: LockfileFlags,
     workspace: &Workspace,
-    maybe_external_import_map: Option<&serde_json::Value>,
+    maybe_external_import_maps: Vec<&serde_json::Value>,
     api: &dyn NpmPackageInfoProvider,
   ) -> Result<Option<Self>, AnyError> {
     fn pkg_json_deps(
@@ -343,15 +343,17 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
-        dependencies: if let Some(map) = maybe_external_import_map {
-          deno_config::import_map::import_map_deps(map)
-        } else {
-          root_folder
-            .deno_json
-            .as_deref()
-            .map(|d| d.dependencies())
-            .unwrap_or_default()
-        },
+        dependencies: maybe_external_import_maps
+          .into_iter()
+          .flat_map(deno_config::import_map::import_map_deps)
+          .chain(
+            root_folder
+              .deno_json
+              .as_deref()
+              .map(|d| d.dependencies())
+              .unwrap_or_default(),
+          )
+          .collect(),
       },
       members: workspace
         .config_folders()

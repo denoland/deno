@@ -2811,6 +2811,7 @@ dependencies = [
  "http 1.1.0",
  "import_map",
  "indexmap 2.9.0",
+ "itertools 0.14.0",
  "jsonc-parser",
  "log",
  "node_resolver",
@@ -5354,8 +5355,6 @@ dependencies = [
 [[package]]
 name = "import_map"
 version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce93e07f4819f0db4d2948fffce3ef4760a9940c4ff4f9369dfaf5e357a0d415"
 dependencies = [
  "boxed_error",
  "deno_error",

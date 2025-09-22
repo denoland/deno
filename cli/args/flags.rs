@@ -731,7 +731,7 @@ pub struct Flags {
   /// Flags that aren't exposed in the CLI, but are used internally.
   pub internal: InternalFlags,
   pub ignore: Vec<String>,
-  pub import_map_path: Option<String>,
+  pub import_map_paths: Vec<String>,
   pub env_file: Option<Vec<String>>,
   pub inspect_brk: Option<SocketAddr>,
   pub inspect_wait: Option<SocketAddr>,
@@ -4388,6 +4388,7 @@ fn import_map_arg() -> Arg {
   <p(245)>Docs: https://docs.deno.com/runtime/manual/basics/import_maps</>",
     ))
     .value_hint(ValueHint::FilePath)
+    .action(ArgAction::Append)
     .help_heading(DEPENDENCY_MANAGEMENT_HEADING)
 }
 
@@ -6325,7 +6326,10 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.import_map_path = matches.remove_one::<String>("import-map");
+  flags.import_map_paths = matches
+    .remove_many::<String>("import-map")
+    .unwrap_or_default()
+    .collect();
 }
 
 fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -8375,7 +8379,7 @@ mod tests {
           print: false,
           code: "42".to_string(),
         }),
-        import_map_path: Some("import_map.json".to_string()),
+        import_map_paths: vec!["import_map.json".to_string()],
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
@@ -8470,7 +8474,7 @@ mod tests {
           is_default_command: false,
           json: false,
         }),
-        import_map_path: Some("import_map.json".to_string()),
+        import_map_paths: vec!["import_map.json".to_string()],
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
@@ -9058,7 +9062,7 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string(),
         )),
-        import_map_path: Some("import_map.json".to_owned()),
+        import_map_paths: vec!["import_map.json".to_owned()],
         code_cache_enabled: true,
         ..Flags::default()
       }
@@ -9080,7 +9084,7 @@ mod tests {
           file: Some("script.ts".to_string()),
           json: false,
         }),
-        import_map_path: Some("import_map.json".to_owned()),
+        import_map_paths: vec!["import_map.json".to_owned()],
         ..Flags::default()
       }
     );
@@ -9100,7 +9104,7 @@ mod tests {
         subcommand: DenoSubcommand::Cache(CacheFlags {
           files: svec!["script.ts"],
         }),
-        import_map_path: Some("import_map.json".to_owned()),
+        import_map_paths: vec!["import_map.json".to_owned()],
         ..Flags::default()
       }
     );
@@ -9125,7 +9129,7 @@ mod tests {
           lint: false,
           filter: None,
         }),
-        import_map_path: Some("import_map.json".to_owned()),
+        import_map_paths: vec!["import_map.json".to_owned()],
         ..Flags::default()
       }
     );
@@ -9360,7 +9364,7 @@ mod tests {
             force: true,
           }
         ),),
-        import_map_path: Some("import_map.json".to_string()),
+        import_map_paths: vec!["import_map.json".to_string()],
         no_remote: true,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         type_check_mode: TypeCheckMode::None,
@@ -11081,7 +11085,7 @@ mod tests {
           exclude: vec!["exclude.txt".to_string()],
           eszip: false
         }),
-        import_map_path: Some("import_map.json".to_string()),
+        import_map_paths: vec!["import_map.json".to_string()],
         no_remote: true,
         code_cache_enabled: false,
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
