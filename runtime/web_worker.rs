@@ -433,8 +433,6 @@ pub struct WebWorker {
   // Consumed when `bootstrap_fn` is called
   maybe_worker_metadata: Option<WorkerMetadata>,
   memory_trim_handle: Option<tokio::task::JoinHandle<()>>,
-  // TODO(bartlomieju): this should probably be more
-  // sophistacated like - `CoverageOptions`
   maybe_coverage_dir: Option<PathBuf>,
 }
 
