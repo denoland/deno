@@ -212,7 +212,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
         let transpiled_source = emit()?;
         helper.post_emit_parsed_source(
           &specifier,
-          &transpile_and_emit_options,
+          transpile_and_emit_options,
           &transpiled_source,
           source_hash,
         );
@@ -268,7 +268,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
         .text;
         helper.post_emit_parsed_source(
           specifier,
-          &transpile_and_emit_options,
+          transpile_and_emit_options,
           &transpiled_source,
           source_hash,
         );

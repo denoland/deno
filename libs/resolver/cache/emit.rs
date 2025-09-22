@@ -252,19 +252,19 @@ mod test {
       temp_dir.path().join("file2.ts").as_path(),
     )
     .unwrap();
-    assert_eq!(cache.get_emit_code(&specifier1, 1), None);
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 1), None);
     let emit_code1 = "text1".to_string();
     let emit_code2 = "text2".to_string();
-    cache.set_emit_code(&specifier1, 10, emit_code1.as_bytes());
-    cache.set_emit_code(&specifier2, 2, emit_code2.as_bytes());
+    cache.set_emit_code(&specifier1, 1, 10, emit_code1.as_bytes());
+    cache.set_emit_code(&specifier2, 1, 2, emit_code2.as_bytes());
     // providing the incorrect source hash
-    assert_eq!(cache.get_emit_code(&specifier1, 5), None);
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 5), None);
     // providing the correct source hash
     assert_eq!(
-      cache.get_emit_code(&specifier1, 10),
+      cache.get_emit_code(&specifier1, 1, 10),
       Some(emit_code1.clone()),
     );
-    assert_eq!(cache.get_emit_code(&specifier2, 2), Some(emit_code2));
+    assert_eq!(cache.get_emit_code(&specifier2, 1, 2), Some(emit_code2));
 
     // try changing the cli version (should not load previous ones)
     let cache = EmitCache {
@@ -275,8 +275,8 @@ mod test {
       emit_failed_flag: Default::default(),
       mode: Mode::Normal,
     };
-    assert_eq!(cache.get_emit_code(&specifier1, 10), None);
-    cache.set_emit_code(&specifier1, 5, emit_code1.as_bytes());
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 10), None);
+    cache.set_emit_code(&specifier1, 1, 5, emit_code1.as_bytes());
 
     // recreating the cache should still load the data because the CLI version is the same
     let cache = EmitCache {
@@ -287,12 +287,21 @@ mod test {
       emit_failed_flag: Default::default(),
       mode: Mode::Normal,
     };
-    assert_eq!(cache.get_emit_code(&specifier1, 5), Some(emit_code1));
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 5), Some(emit_code1));
 
     // adding when already exists should not cause issue
     let emit_code3 = "asdf".to_string();
-    cache.set_emit_code(&specifier1, 20, emit_code3.as_bytes());
-    assert_eq!(cache.get_emit_code(&specifier1, 5), None);
-    assert_eq!(cache.get_emit_code(&specifier1, 20), Some(emit_code3));
+    cache.set_emit_code(&specifier1, 1, 20, emit_code3.as_bytes());
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 5), None);
+    assert_eq!(
+      cache.get_emit_code(&specifier1, 1, 20).as_deref(),
+      Some(&*emit_code3)
+    );
+
+    // different transpile options should not conflict
+    let emit_code4 = "qwerty".to_string();
+    cache.set_emit_code(&specifier1, 2, 20, emit_code4.as_bytes());
+    assert_eq!(cache.get_emit_code(&specifier1, 1, 20), Some(emit_code3));
+    assert_eq!(cache.get_emit_code(&specifier1, 2, 20), Some(emit_code4));
   }
 }
