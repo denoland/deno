@@ -2038,10 +2038,13 @@ struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
 
 impl deno_package_json::PackageJsonCache for PackageJsonMemCache {
   fn get(&self, path: &Path) -> PackageJsonCacheResult {
-    self.0.lock().get(path).cloned().map_or_else(
-      || PackageJsonCacheResult::NotCached,
-      |value| PackageJsonCacheResult::Hit(Some(value)),
-    )
+    self
+      .0
+      .lock()
+      .get(path)
+      .cloned()
+      .map(|value| PackageJsonCacheResult::Hit(Some(value)))
+      .unwrap_or_else(|| PackageJsonCacheResult::NotCached)
   }
 
   fn set(&self, path: PathBuf, data: Option<Arc<PackageJson>>) {
