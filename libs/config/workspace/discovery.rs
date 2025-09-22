@@ -278,7 +278,7 @@ fn discover_workspace_config_files_for_single_dir<
             "package.json file found at '{}'",
             pkg_json_path.display()
           );
-          Ok(Some(pkg_json))
+          Ok(pkg_json)
         }
         Err(PackageJsonLoadError::Io { source, .. })
           if is_skippable_io_error(&source) =>
