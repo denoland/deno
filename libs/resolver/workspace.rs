@@ -217,7 +217,7 @@ pub enum WorkspaceResolveError {
 #[derive(Debug, Error, JsError)]
 #[class(type)]
 #[error(
-  "Import \"{}\" via 'compilerOptions.paths[{:?}]' did not match an existing file", prior_resolution.as_ref().map(|s| s.as_str()).unwrap_or(specifier.as_str()), matched_key
+  "Import \"{}\" via 'compilerOptions.paths["{}"]' did not match an existing file", prior_resolution.as_ref().map(|s| s.as_str()).unwrap_or(specifier.as_str()), matched_key
 )]
 pub struct NotFoundInCompilerOptionsPathsError {
   specifier: String,
