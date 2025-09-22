@@ -1,5 +1,5 @@
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static", "-C", "debuginfo=0", "-C", "link-arg=/DEBUG:NONE"]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "debuginfo=0", "-C", "link-arg=/DEBUG:NONE", "-C", "symbol-mangling-version=v0"]
 
 [target.'cfg(all(windows, debug_assertions))']
 rustflags = [
@@ -9,6 +9,8 @@ rustflags = [
   # increase the stack size to prevent overflowing the
   # stack in debug when launching sub commands
   "link-arg=/STACK:4194304",
+  "-C",
+  "symbol-mangling-version=v0",
 ]
 
 [target.x86_64-apple-darwin]
