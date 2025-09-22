@@ -2136,12 +2136,7 @@ mod test {
     .unwrap();
     assert_eq!(
       serde_json::from_str::<serde_json::Value>(
-        &resolver
-          .maybe_import_maps()
-          .exactly_one()
-          .map_err(|_| "expected only one import map")
-          .unwrap()
-          .to_json()
+        &resolver.merged_import_map().to_json()
       )
       .unwrap(),
       json!({
