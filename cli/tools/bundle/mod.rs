@@ -193,8 +193,6 @@ pub async fn bundle_init(
 
   let resolver = factory.resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
-  // --------------
-  println!("bundle init");
   let root_permissions = factory.root_permissions_container()?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
@@ -1238,7 +1236,6 @@ impl DenoPluginHandler {
     let mut graph_permit =
       self.module_graph_container.acquire_update_permit().await;
     let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
-    // 1111
     self
       .module_load_preparer
       .prepare_module_load(
