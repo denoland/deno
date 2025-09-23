@@ -252,6 +252,7 @@
     "@std/internal/os": "./tests/util/std/internal/os.ts",
     "@std/internal/styles": "./tests/util/std/internal/styles.ts",
     "@std/internal/types": "./tests/util/std/internal/types.ts",
+    "@std/internal/os": "./tests/util/std/internal/os.ts",
     "@std/io": "./tests/util/std/io/mod.ts",
     "@std/io/buffer": "./tests/util/std/io/buffer.ts",
     "@std/io/copy": "./tests/util/std/io/copy.ts",
