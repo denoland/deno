@@ -784,6 +784,26 @@ Deno.test(
     permissions: { run: true, read: true },
     ignore: Deno.build.os === "windows",
   },
+  async function rejectBatAndCmdFiles() {
+    await assertRejects(async () => {
+      await new Deno.Command("test.bat", {
+        args: ["&calc.exe"],
+      }).output();
+    }, Deno.errors.PermissionDenied);
+
+    await assertRejects(async () => {
+      await new Deno.Command("test.cmd", {
+        args: ["&calc.exe"],
+      }).output();
+    }, Deno.errors.PermissionDenied);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { run: true, read: true },
+    ignore: Deno.build.os === "windows",
+  },
   function commandSyncUid() {
     const { stdout } = new Deno.Command("id", {
       args: ["-u"],
