@@ -787,7 +787,7 @@ Deno.test(
   async function rejectBatAndCmdFiles() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/test.bat";
-    await Deno.open(fileName, {
+    const file = await Deno.open(fileName, {
       create: true,
       write: true,
     });
@@ -797,6 +797,7 @@ Deno.test(
         args: ["&calc.exe"],
       }).output();
     }, Deno.errors.PermissionDenied);
+    file.close();
   },
 );
 
