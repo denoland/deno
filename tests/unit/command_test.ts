@@ -781,7 +781,7 @@ Deno.test(
 
 Deno.test(
   {
-    permissions: { run: true, read: true },
+    permissions: { run: true, read: true, write: true },
     ignore: Deno.build.os !== "windows",
   },
   async function rejectBatAndCmdFiles() {
