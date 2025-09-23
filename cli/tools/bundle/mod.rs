@@ -104,13 +104,13 @@ pub async fn prepare_inputs(
   }
 
   if html_paths.is_empty() {
-    let _ = plugin_handler
+    plugin_handler
       .prepare_module_load(&resolved_entrypoints)
-      .await;
+      .await?;
 
     let roots =
       resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
-    let _ = plugin_handler.prepare_module_load(&roots).await;
+    plugin_handler.prepare_module_load(&roots).await?;
     Ok(BundlerInput::Entrypoints(
       roots.into_iter().map(|e| ("".into(), e.into())).collect(),
     ))
@@ -193,6 +193,8 @@ pub async fn bundle_init(
 
   let resolver = factory.resolver().await?.clone();
   let module_load_preparer = factory.module_load_preparer().await?.clone();
+  // --------------
+  println!("bundle init");
   let root_permissions = factory.root_permissions_container()?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
@@ -1236,6 +1238,7 @@ impl DenoPluginHandler {
     let mut graph_permit =
       self.module_graph_container.acquire_update_permit().await;
     let graph: &mut deno_graph::ModuleGraph = graph_permit.graph_mut();
+    // 1111
     self
       .module_load_preparer
       .prepare_module_load(
