@@ -37,6 +37,7 @@ pub use prompter::DeniedPrompter;
 pub use prompter::GetFormattedStackFn;
 use prompter::MAYBE_CURRENT_STACKTRACE;
 use prompter::PERMISSION_EMOJI;
+pub use prompter::PermissionBroker;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;

@@ -1,5 +1,7 @@
 #!/usr/bin/env -S deno run --allow-net --allow-read --allow-write
 
+import console from "node:console";
+
 interface PermissionAuditMessage {
   v: number;
   datetime: string;
@@ -25,7 +27,7 @@ async function createUnixSocketServer(socketPath: string): Promise<void> {
 
 async function handleConnection(conn: Deno.Conn): Promise<void> {
   console.log("New client connected");
-  
+
   try {
     const buffer = new Uint8Array(4096);
     while (true) {
@@ -35,16 +37,24 @@ async function handleConnection(conn: Deno.Conn): Promise<void> {
       }
 
       const message = new TextDecoder().decode(buffer.subarray(0, bytesRead));
-      
+
       try {
         const auditMessage: PermissionAuditMessage = JSON.parse(message);
-        console.log("Received permission audit message:", auditMessage);
-        
-        const response = JSON.stringify({});
+        console.log("<- client req", auditMessage);
+
+        const json = { result: "allow" };
+
+        if (auditMessage.permission === "env") {
+          json["result"] = "deny";
+        }
+        const response = JSON.stringify(json);
+        console.log("-> client resp", response);
         await conn.write(new TextEncoder().encode(response + "\n"));
       } catch (parseError) {
         console.error("Failed to parse message:", parseError);
-        const errorResponse = JSON.stringify({});
+        const errorResponse = JSON.stringify({
+          result: "deny",
+        });
         await conn.write(new TextEncoder().encode(errorResponse + "\n"));
       }
     }
@@ -62,9 +72,11 @@ async function handleConnection(conn: Deno.Conn): Promise<void> {
 
 function main(): void {
   const args = Deno.args;
-  
+
   if (args.length !== 1) {
-    console.error("Usage: deno run --allow-net --allow-read --allow-write perm_broker.ts <socket_path>");
+    console.error(
+      "Usage: deno run --allow-net --allow-read --allow-write perm_broker.ts <socket_path>",
+    );
     Deno.exit(1);
   }
 

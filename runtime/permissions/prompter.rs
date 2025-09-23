@@ -1,5 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::io::Read;
+use std::io::Write;
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
+
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
@@ -522,6 +527,102 @@ impl PermissionPrompter for TtyPrompter {
     assert!(std::io::stdin().is_terminal() && std::io::stderr().is_terminal());
 
     value
+  }
+}
+
+#[derive(serde::Serialize)]
+struct PermissionAuditMessage {
+  v: u32,
+  datetime: String,
+  permission: String,
+  value: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  stack: Option<Vec<String>>,
+}
+
+pub struct PermissionBroker {
+  stream: Mutex<UnixStream>,
+}
+
+impl PermissionBroker {
+  pub fn new(socket_path: impl Into<PathBuf>) -> std::io::Result<Self> {
+    let stream = UnixStream::connect(&socket_path.into())?;
+    Ok(Self {
+      stream: Mutex::new(stream),
+    })
+  }
+
+  fn send_audit_message(
+    &self,
+    permission: &str,
+    value: &str,
+    stack: Option<Vec<String>>,
+  ) -> std::io::Result<PromptResponse> {
+    let mut stream = self.stream.lock();
+    let message = PermissionAuditMessage {
+      v: 1,
+      datetime: chrono::Utc::now().to_rfc3339(),
+      permission: permission.to_string(),
+      value: value.to_string(),
+      stack,
+    };
+
+    let json = serde_json::to_string(&message)
+      .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    eprintln!("-> broker req   {}", json);
+
+    stream.write_all(json.as_bytes())?;
+
+    // Read response
+    let mut response_buffer = [0u8; 1024];
+    let bytes_read = stream.read(&mut response_buffer)?;
+    let response = String::from_utf8_lossy(&response_buffer[..bytes_read]);
+    let json_response: serde_json::Value =
+      serde_json::from_slice(response.as_bytes()).unwrap();
+
+    eprintln!("<- broker resp  {}", response.trim_end());
+
+    let Some(value) = json_response.get("result") else {
+      return Ok(PromptResponse::Deny);
+    };
+    let Some(grant_value) = value.as_str() else {
+      return Ok(PromptResponse::Deny);
+    };
+    let prompt_response = match grant_value {
+      "allow" => PromptResponse::Allow,
+      "allowAll" => PromptResponse::AllowAll,
+      _ => PromptResponse::Deny,
+    };
+    Ok(prompt_response)
+  }
+}
+
+impl PermissionPrompter for PermissionBroker {
+  fn prompt(
+    &mut self,
+    message: &str,
+    name: &str,
+    api_name: Option<&str>,
+    _is_unary: bool,
+    get_stack: Option<GetFormattedStackFn>,
+  ) -> PromptResponse {
+    let stack = get_stack.map(|f| f());
+
+    let permission_value = if let Some(api) = api_name {
+      format!("{} ({})", message, api)
+    } else {
+      message.to_string()
+    };
+
+    match self.send_audit_message(name, &permission_value, stack) {
+      Ok(resp) => resp,
+      Err(_err) => {
+        // TODO(bartlomieju): this should actually kill the process with a specific exit code
+        // If we can't communicate with the broker, deny the permission
+        return PromptResponse::Deny;
+      }
+    }
   }
 }
 

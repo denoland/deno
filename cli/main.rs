@@ -582,6 +582,19 @@ pub fn main() {
     Box::new(util::draw_thread::DrawThread::show),
   );
 
+  if let Some(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH").ok() {
+    let broker = match deno_runtime::deno_permissions::PermissionBroker::new(
+      socket_path,
+    ) {
+      Ok(broker) => broker,
+      Err(err) => {
+        eprintln!("Unable to connect to permission broker: {:?}", err);
+        std::process::exit(1);
+      }
+    };
+    deno_runtime::deno_permissions::set_prompter(Box::new(broker));
+  }
+
   rustls::crypto::aws_lc_rs::default_provider()
     .install_default()
     .unwrap();
