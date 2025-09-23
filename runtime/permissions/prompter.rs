@@ -4,6 +4,7 @@ use std::io::Read;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU32;
 
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -544,8 +545,9 @@ impl PermissionPrompter for TtyPrompter {
 }
 
 #[derive(serde::Serialize)]
-struct PermissionAuditMessage {
+struct PermissionBrokerRequest {
   v: u32,
+  id: u32,
   datetime: String,
   permission: String,
   value: Option<String>,
@@ -553,8 +555,15 @@ struct PermissionAuditMessage {
   stack: Option<Vec<String>>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct PermissionBrokerResponse {
+  id: u32,
+  result: String,
+}
+
 pub struct PermissionBroker {
   stream: Mutex<UnixStream>,
+  next_id: AtomicU32,
 }
 
 impl PermissionBroker {
@@ -562,6 +571,7 @@ impl PermissionBroker {
     let stream = UnixStream::connect(&socket_path.into())?;
     Ok(Self {
       stream: Mutex::new(stream),
+      next_id: AtomicU32::new(1),
     })
   }
 
@@ -572,37 +582,44 @@ impl PermissionBroker {
     stack: Option<Vec<String>>,
   ) -> std::io::Result<PromptResponse> {
     let mut stream = self.stream.lock();
-    let message = PermissionAuditMessage {
+    let id = self
+      .next_id
+      .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let request = PermissionBrokerRequest {
       v: 1,
+      id,
       datetime: chrono::Utc::now().to_rfc3339(),
       permission: permission.to_string(),
       value: value.map(|s| s.to_string()),
       stack,
     };
 
-    let json = serde_json::to_string(&message)
-      .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let json = serde_json::to_string(&request).unwrap();
 
     eprintln!("-> broker req   {}", json);
 
     stream.write_all(json.as_bytes())?;
 
+    // TODO(bartlomieju): this should use line reader
     // Read response
     let mut response_buffer = [0u8; 1024];
     let bytes_read = stream.read(&mut response_buffer)?;
-    let response = String::from_utf8_lossy(&response_buffer[..bytes_read]);
-    let json_response: serde_json::Value =
-      serde_json::from_slice(response.as_bytes()).unwrap();
 
-    eprintln!("<- broker resp  {}", response.trim_end());
-
-    let Some(value) = json_response.get("result") else {
+    let Ok(response) = serde_json::from_slice::<PermissionBrokerResponse>(
+      &response_buffer[..bytes_read],
+    ) else {
+      // TODO(bartlomieju): malformed message should crash the process
       return Ok(PromptResponse::Deny);
     };
-    let Some(grant_value) = value.as_str() else {
+
+    eprintln!("<- broker resp  {:?}", response);
+
+    if response.id != id {
+      // TODO(bartlomieju): id mismatch should crash the process
       return Ok(PromptResponse::Deny);
-    };
-    let prompt_response = match grant_value {
+    }
+
+    let prompt_response = match response.result.as_str() {
       "allow" => PromptResponse::Allow,
       "allowAll" => PromptResponse::AllowAll,
       _ => PromptResponse::Deny,
