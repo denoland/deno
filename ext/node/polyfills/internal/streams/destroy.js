@@ -331,7 +331,11 @@ function destroyer(stream, err) {
     return;
   }
 
-  if (!err && !isFinished(stream)) {
+  // Only create AbortError for non-request streams when not finished
+  // Request streams should only be aborted if there's already an error
+  if (
+    !err && !isFinished(stream) && !isRequest(stream) && !isRequest(stream.req)
+  ) {
     err = new AbortError();
   }
 
@@ -340,9 +344,13 @@ function destroyer(stream, err) {
     stream.socket = null;
     stream.destroy(err);
   } else if (isRequest(stream)) {
-    stream.abort();
+    if (err) {
+      stream.abort();
+    }
   } else if (isRequest(stream.req)) {
-    stream.req.abort();
+    if (err) {
+      stream.req.abort();
+    }
   } else if (typeof stream.destroy === "function") {
     stream.destroy(err);
   } else if (typeof stream.close === "function") {
