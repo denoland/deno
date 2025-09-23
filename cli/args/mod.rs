@@ -1352,16 +1352,10 @@ impl CliOptions {
     }
   }
 
-  pub fn minimum_release_cutoff_date(
+  pub fn newest_dependency_date(
     &self,
-  ) -> Result<Option<deno_npm::registry::PackageDate>, AnyError> {
-    let Some(age) = self.flags.minimum_dependency_age else {
-      return Ok(None);
-    };
-    deno_npm::registry::PackageDate::now()
-        .subtract_minutes(age)
-        .map(Some)
-        .ok_or_else(|| deno_core::anyhow::anyhow!("Specified minimum release age was too large. Ensure the value is in minutes."))
+  ) -> Option<chrono::DateTime<chrono::Utc>> {
+    self.flags.minimum_dependency_age
   }
 
   pub fn unstable_npm_lazy_caching(&self) -> bool {

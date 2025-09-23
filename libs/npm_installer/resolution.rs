@@ -58,7 +58,7 @@ pub struct NpmResolutionInstaller<
   reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
   resolution: Arc<NpmResolutionCell>,
   maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
-  minimum_release_cutoff_date: Option<deno_npm::registry::PackageDate>,
+  newest_dependency_date: Option<chrono::DateTime<chrono::Utc>>,
   link_packages: Arc<WorkspaceNpmLinkPackages>,
   update_queue: TaskQueue,
 }
@@ -74,7 +74,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     resolution: Arc<NpmResolutionCell>,
     link_packages: Arc<WorkspaceNpmLinkPackages>,
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
-    minimum_release_cutoff_date: Option<deno_npm::registry::PackageDate>,
+    newest_dependency_date: Option<chrono::DateTime<chrono::Utc>>,
   ) -> Self {
     Self {
       registry_info_provider,
@@ -82,7 +82,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       resolution,
       link_packages,
       maybe_lockfile,
-      minimum_release_cutoff_date,
+      newest_dependency_date,
       update_queue: Default::default(),
     }
   }
@@ -151,7 +151,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
           package_reqs,
           types_node_version_req: Some(get_types_node_version()),
           link_packages: &self.link_packages.0,
-          minimum_release_cutoff_date: self.minimum_release_cutoff_date,
+          newest_dependency_date: self.newest_dependency_date,
         },
         self.reporter.as_deref(),
       )
@@ -172,7 +172,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
               package_reqs,
               types_node_version_req: Some(get_types_node_version()),
               link_packages: &self.link_packages.0,
-              minimum_release_cutoff_date: self.minimum_release_cutoff_date,
+              newest_dependency_date: self.newest_dependency_date,
             },
             self.reporter.as_deref(),
           )

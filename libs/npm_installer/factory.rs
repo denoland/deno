@@ -47,7 +47,7 @@ pub struct NpmInstallerFactoryOptions {
   pub cache_setting: NpmCacheSetting,
   pub caching_strategy: NpmCachingStrategy,
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
-  pub minimum_release_cutoff_date: Option<deno_npm::registry::PackageDate>,
+  pub newest_dependency_date: Option<chrono::DateTime<chrono::Utc>>,
   /// Resolves the npm resolution snapshot from the environment.
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
 }
@@ -257,7 +257,7 @@ impl<
             .workspace_npm_link_packages()?
             .clone(),
           self.maybe_lockfile().await?.cloned(),
-          self.options.minimum_release_cutoff_date,
+          self.options.newest_dependency_date,
         )))
       })
       .await

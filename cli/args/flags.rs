@@ -12,6 +12,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use chrono::DateTime;
 use clap::Arg;
 use clap::ArgAction;
 use clap::ArgMatches;
@@ -687,6 +688,37 @@ impl Default for TypeCheckMode {
   }
 }
 
+fn duration_or_date_parser(
+  s: &str,
+) -> Result<chrono::DateTime<chrono::Utc>, clap::Error> {
+  use crate::util::date::ParseIso8601DurationError;
+
+  let datetime_parse_err = match DateTime::parse_from_rfc3339(s) {
+    Ok(dt) => return Ok(dt.with_timezone(&chrono::Utc)),
+    Err(err) => err,
+  };
+  // accept offsets without colon (e.g., +0900) and optional seconds
+  if let Ok(dt) = DateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%z")
+    .or_else(|_| DateTime::parse_from_str(s, "%Y-%m-%dT%H:%M%z"))
+  {
+    return Ok(dt.with_timezone(&chrono::Utc));
+  }
+  // try duration
+  match crate::util::date::parse_iso8601_duration(s) {
+    Ok(duration) => return Ok(chrono::Utc::now() - duration),
+    Err(ParseIso8601DurationError::MissingP) => Err(clap::Error::raw(
+      ErrorKind::InvalidValue,
+      format!(
+        "expected RFC3339 datetime or ISO-8601 duration: {datetime_parse_err}"
+      ),
+    )),
+    Err(err) => Err(clap::Error::raw(
+      ErrorKind::InvalidValue,
+      format!("expected RFC3339 datetime or ISO-8601 duration: {err}"),
+    )),
+  }
+}
+
 fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   if !s.starts_with("npm:") {
     bail!(
@@ -739,7 +771,7 @@ pub struct Flags {
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
-  pub minimum_dependency_age: Option<u32>,
+  pub minimum_dependency_age: Option<chrono::DateTime<chrono::Utc>>,
   pub no_remote: bool,
   pub no_lock: bool,
   pub no_npm: bool,
@@ -4443,8 +4475,8 @@ fn preload_arg() -> Arg {
 fn min_dep_age_arg() -> Arg {
   Arg::new("minimum-dependency-age")
     .long("minimum-dependency-age")
-    .value_parser(value_parser!(u32))
-    .help("(Unstable) The number of minutes old that an npm package must be for it to be installed.")
+    .value_parser(duration_or_date_parser)
+    .help("(Unstable) The ISO-8601 duration or RFC3339 absolute timestamp.")
 }
 
 fn ca_file_arg() -> Arg {
@@ -6372,8 +6404,7 @@ fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn min_dep_age_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.minimum_dependency_age =
-    matches.remove_one::<u32>("minimum-dependency-age");
+  flags.minimum_dependency_age = matches.remove_one("minimum-dependency-age");
 }
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
