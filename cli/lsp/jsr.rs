@@ -88,7 +88,10 @@ impl JsrCacheResolver {
         Some(Arc::new(JsrPackageInfo {
           versions: [(
             nv.version.clone(),
-            JsrPackageInfoVersion { yanked: false },
+            JsrPackageInfoVersion {
+              yanked: false,
+              created_at: None,
+            },
           )]
           .into_iter()
           .collect(),
