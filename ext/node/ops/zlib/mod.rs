@@ -752,8 +752,11 @@ fn decoder_param(
         == std::mem::size_of::<u32>(),
     );
   };
-  // SAFETY: `i` is a valid u32 value that corresponds to a BrotliDecoderParameter.
-  unsafe { std::mem::transmute(i) }
+  match i {
+    0 => ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION,
+    1 => ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_LARGE_WINDOW,
+    _ => unreachable!()
+  }
 }
 
 #[op2]
