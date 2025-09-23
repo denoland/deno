@@ -355,6 +355,7 @@ pub struct ScriptCoverage {
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-startPreciseCoverage>
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct StartPreciseCoverageArgs {
   pub call_count: bool,
   pub detailed: bool,
@@ -373,6 +374,7 @@ pub struct StartPreciseCoverageResponse {
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-takePreciseCoverage>
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct TakePreciseCoverageResponse {
   pub result: Vec<ScriptCoverage>,
   pub timestamp: f64,
