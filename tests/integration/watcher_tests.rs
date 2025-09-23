@@ -1146,7 +1146,7 @@ async fn test_watch_doc() {
 
   assert_eq!(
     skip_restarting_line(&mut stderr_lines).await,
-    format!("Check {foo_file_url}$3-6.ts")
+    format!("Check {foo_file_url}#3-6.ts")
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
@@ -1159,7 +1159,7 @@ async fn test_watch_doc() {
   assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "          ~~~");
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    format!("    at {foo_file_url}$3-6.ts:3:11")
+    format!("    at {foo_file_url}#3-6.ts:3:11")
   );
   wait_contains("Test failed", &mut stderr_lines).await;
 
@@ -1182,7 +1182,7 @@ async fn test_watch_doc() {
   wait_contains("running 1 test from", &mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
-    &format!("{foo_file_url}$3-8.ts ... FAILED")
+    &format!("{foo_file_url}#3-8.ts ... FAILED")
   );
   wait_contains("ERRORS", &mut stdout_lines).await;
   wait_contains(
@@ -1216,7 +1216,7 @@ async fn test_watch_doc() {
   wait_contains("running 1 test from", &mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
-    &format!("{foo_file_url}$3-8.ts ... ok")
+    &format!("{foo_file_url}#3-8.ts ... ok")
   );
   wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
 
