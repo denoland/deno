@@ -7,6 +7,8 @@ on:
       - edited
       - synchronize
 
+# WARNING: This workflow runs in the context of the base repository so the
+# GITHUB_TOKEN it has access to has full write permissions to the repository.
 jobs:
   main:
     name: lint title
