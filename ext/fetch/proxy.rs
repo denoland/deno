@@ -51,6 +51,44 @@ pub(crate) struct ProxyConnector<C> {
   pub(crate) user_agent: Option<HeaderValue>,
 }
 
+impl<C> ProxyConnector<C> {
+  pub(crate) fn h1_only(self) -> Option<ProxyConnector<C>>
+  where
+    C: Service<Uri>,
+  {
+    if !self.tls.alpn_protocols.is_empty() {
+      self.tls.alpn_protocols.iter().find(|p| *p == b"http/1.1")?;
+    }
+    let mut tls = (*self.tls).clone();
+    tls.alpn_protocols = vec![b"http/1.1".to_vec()];
+    Some(ProxyConnector {
+      http: self.http,
+      proxies: self.proxies,
+      tls: Arc::new(tls),
+      tls_proxy: self.tls_proxy,
+      user_agent: self.user_agent,
+    })
+  }
+
+  pub(crate) fn h2_only(self) -> Option<ProxyConnector<C>>
+  where
+    C: Service<Uri>,
+  {
+    if !self.tls.alpn_protocols.is_empty() {
+      self.tls.alpn_protocols.iter().find(|p| *p == b"h2")?;
+    }
+    let mut tls = (*self.tls).clone();
+    tls.alpn_protocols = vec![b"h2".to_vec()];
+    Some(ProxyConnector {
+      http: self.http,
+      proxies: self.proxies,
+      tls: Arc::new(tls),
+      tls_proxy: self.tls_proxy,
+      user_agent: self.user_agent,
+    })
+  }
+}
+
 #[derive(Debug)]
 pub(crate) struct Proxies {
   no: Option<NoProxy>,
@@ -76,6 +114,10 @@ pub(crate) enum Target {
   Socks {
     dst: Uri,
     auth: Option<(String, String)>,
+  },
+  Tcp {
+    hostname: String,
+    port: u16,
   },
   #[cfg(not(windows))]
   Unix {
@@ -185,6 +227,9 @@ impl Intercept {
       Target::Socks { ref mut auth, .. } => {
         *auth = Some((user.into(), pass.into()));
       }
+      Target::Tcp { .. } => {
+        // Auth not supported for Tcp sockets
+      }
       #[cfg(not(windows))]
       Target::Unix { .. } => {
         // Auth not supported for Unix sockets
@@ -293,6 +338,10 @@ impl Target {
     };
 
     Some(target)
+  }
+
+  pub(crate) fn new_tcp(hostname: String, port: u16) -> Self {
+    Target::Tcp { hostname, port }
   }
 
   #[cfg(not(windows))]
@@ -497,8 +546,8 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 pub enum Proxied<T> {
   /// Not proxied
   PassThrough(T),
-  /// An HTTP forwarding proxy needed absolute-form
-  HttpForward(T),
+  /// Forwarded via TCP socket
+  Tcp(T),
   /// Tunneled through HTTP CONNECT
   HttpTunneled(Box<TokioIo<TlsStream<TokioIo<T>>>>),
   /// Tunneled through SOCKS
@@ -563,7 +612,7 @@ where
                 .await?;
               Ok(Proxied::HttpTunneled(Box::new(TokioIo::new(io))))
             } else {
-              Ok(Proxied::HttpForward(io))
+              Ok(Proxied::Tcp(io))
             }
           })
         }
@@ -605,6 +654,23 @@ where
             } else {
               Ok(Proxied::Socks(io))
             }
+          })
+        }
+        Target::Tcp {
+          hostname: host,
+          port,
+        } => {
+          let mut connector =
+            HttpsConnector::from((self.http.clone(), self.tls_proxy.clone()));
+          let Ok(uri) = format!("http://{}:{}", host, port).parse() else {
+            return Box::pin(async {
+              Err("failed to parse tcp proxy uri".into())
+            });
+          };
+          let connecting = connector.call(uri);
+          Box::pin(async move {
+            let io = connecting.await?;
+            Ok(Proxied::Tcp(io))
           })
         }
         #[cfg(not(windows))]
@@ -730,7 +796,7 @@ where
   ) -> Poll<Result<(), std::io::Error>> {
     match *self {
       Proxied::PassThrough(ref mut p) => Pin::new(p).poll_read(cx, buf),
-      Proxied::HttpForward(ref mut p) => Pin::new(p).poll_read(cx, buf),
+      Proxied::Tcp(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_read(cx, buf),
@@ -757,7 +823,7 @@ where
   ) -> Poll<Result<usize, std::io::Error>> {
     match *self {
       Proxied::PassThrough(ref mut p) => Pin::new(p).poll_write(cx, buf),
-      Proxied::HttpForward(ref mut p) => Pin::new(p).poll_write(cx, buf),
+      Proxied::Tcp(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write(cx, buf),
@@ -778,7 +844,7 @@ where
   ) -> Poll<Result<(), std::io::Error>> {
     match *self {
       Proxied::PassThrough(ref mut p) => Pin::new(p).poll_flush(cx),
-      Proxied::HttpForward(ref mut p) => Pin::new(p).poll_flush(cx),
+      Proxied::Tcp(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_flush(cx),
@@ -799,7 +865,7 @@ where
   ) -> Poll<Result<(), std::io::Error>> {
     match *self {
       Proxied::PassThrough(ref mut p) => Pin::new(p).poll_shutdown(cx),
-      Proxied::HttpForward(ref mut p) => Pin::new(p).poll_shutdown(cx),
+      Proxied::Tcp(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::SocksTls(ref mut p) => Pin::new(p).poll_shutdown(cx),
@@ -817,7 +883,7 @@ where
   fn is_write_vectored(&self) -> bool {
     match *self {
       Proxied::PassThrough(ref p) => p.is_write_vectored(),
-      Proxied::HttpForward(ref p) => p.is_write_vectored(),
+      Proxied::Tcp(ref p) => p.is_write_vectored(),
       Proxied::HttpTunneled(ref p) => p.is_write_vectored(),
       Proxied::Socks(ref p) => p.is_write_vectored(),
       Proxied::SocksTls(ref p) => p.is_write_vectored(),
@@ -841,9 +907,7 @@ where
       Proxied::PassThrough(ref mut p) => {
         Pin::new(p).poll_write_vectored(cx, bufs)
       }
-      Proxied::HttpForward(ref mut p) => {
-        Pin::new(p).poll_write_vectored(cx, bufs)
-      }
+      Proxied::Tcp(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
       Proxied::HttpTunneled(ref mut p) => {
         Pin::new(p).poll_write_vectored(cx, bufs)
       }
@@ -868,7 +932,7 @@ where
   fn connected(&self) -> Connected {
     match self {
       Proxied::PassThrough(p) => p.connected(),
-      Proxied::HttpForward(p) => p.connected().proxy(true),
+      Proxied::Tcp(p) => p.connected().proxy(true),
       Proxied::HttpTunneled(p) => {
         let tunneled_tls = p.inner().get_ref();
         if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
@@ -887,13 +951,13 @@ where
         }
       }
       #[cfg(not(windows))]
-      Proxied::Unix(_) => Connected::new(),
+      Proxied::Unix(_) => Connected::new().proxy(true),
       #[cfg(any(
         target_os = "android",
         target_os = "linux",
         target_os = "macos"
       ))]
-      Proxied::Vsock(_) => Connected::new(),
+      Proxied::Vsock(_) => Connected::new().proxy(true),
     }
   }
 }

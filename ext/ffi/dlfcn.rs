@@ -249,10 +249,10 @@ where
   Ok(out.into())
 }
 
-struct FunctionData {
+pub struct FunctionData {
   // Held in a box to keep memory while function is alive.
   #[allow(unused)]
-  symbol: Box<Symbol>,
+  pub symbol: Box<Symbol>,
   // Held in a box to keep inner data alive while function is alive.
   #[allow(unused)]
   turbocall: Option<Turbocall>,
