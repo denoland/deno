@@ -2,7 +2,8 @@
 
 import console from "node:console";
 
-interface PermissionAuditMessage {
+interface PermissionAuditRequest {
+  id: number;
   v: number;
   datetime: string;
   permission: string;
@@ -37,25 +38,23 @@ async function handleConnection(conn: Deno.Conn): Promise<void> {
       }
 
       const message = new TextDecoder().decode(buffer.subarray(0, bytesRead));
+      const req: PermissionAuditRequest = JSON.parse(message);
+      console.log("<- client req", req);
+      const json = { id: req.id, result: "allow" };
 
       try {
-        const auditMessage: PermissionAuditMessage = JSON.parse(message);
-        console.log("<- client req", auditMessage);
-
-        const json = { result: "allow" };
-
-        if (auditMessage.permission === "env") {
+        if (req.permission === "env") {
           json["result"] = "deny";
         }
+
         const response = JSON.stringify(json);
         console.log("-> client resp", response);
         await conn.write(new TextEncoder().encode(response + "\n"));
       } catch (parseError) {
         console.error("Failed to parse message:", parseError);
-        const errorResponse = JSON.stringify({
-          result: "deny",
-        });
-        await conn.write(new TextEncoder().encode(errorResponse + "\n"));
+        json["result"] = "deny";
+        const response = JSON.stringify(json);
+        await conn.write(new TextEncoder().encode(response + "\n"));
       }
     }
   } catch (error) {
