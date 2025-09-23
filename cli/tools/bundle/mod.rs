@@ -104,13 +104,13 @@ pub async fn prepare_inputs(
   }
 
   if html_paths.is_empty() {
-    let _ = plugin_handler
+    plugin_handler
       .prepare_module_load(&resolved_entrypoints)
-      .await;
+      .await?;
 
     let roots =
       resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
-    let _ = plugin_handler.prepare_module_load(&roots).await;
+    plugin_handler.prepare_module_load(&roots).await?;
     Ok(BundlerInput::Entrypoints(
       roots.into_iter().map(|e| ("".into(), e.into())).collect(),
     ))
