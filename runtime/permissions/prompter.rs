@@ -64,6 +64,7 @@ pub fn set_current_stacktrace(get_stack: GetFormattedStackFn) {
 
 pub fn permission_prompt(
   message: &str,
+  info: Option<&str>,
   flag: &str,
   api_name: Option<&str>,
   is_unary: bool,
@@ -74,7 +75,7 @@ pub fn permission_prompt(
   let stack = MAYBE_CURRENT_STACKTRACE.lock().take();
   let r = PERMISSION_PROMPTER
     .lock()
-    .prompt(message, flag, api_name, is_unary, stack);
+    .prompt2(message, info, flag, api_name, is_unary, stack);
   if let Some(after_callback) = MAYBE_AFTER_PROMPT_CALLBACK.lock().as_mut() {
     after_callback();
   }
@@ -106,6 +107,18 @@ pub trait PermissionPrompter: Send + Sync {
     is_unary: bool,
     get_stack: Option<GetFormattedStackFn>,
   ) -> PromptResponse;
+
+  fn prompt2(
+    &mut self,
+    message: &str,
+    info: Option<&str>,
+    name: &str,
+    api_name: Option<&str>,
+    is_unary: bool,
+    get_stack: Option<GetFormattedStackFn>,
+  ) -> PromptResponse {
+    PromptResponse::Deny
+  }
 }
 
 #[derive(Default)]
@@ -535,7 +548,7 @@ struct PermissionAuditMessage {
   v: u32,
   datetime: String,
   permission: String,
-  value: String,
+  value: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   stack: Option<Vec<String>>,
 }
@@ -555,7 +568,7 @@ impl PermissionBroker {
   fn send_audit_message(
     &self,
     permission: &str,
-    value: &str,
+    value: Option<&str>,
     stack: Option<Vec<String>>,
   ) -> std::io::Result<PromptResponse> {
     let mut stream = self.stream.lock();
@@ -563,7 +576,7 @@ impl PermissionBroker {
       v: 1,
       datetime: chrono::Utc::now().to_rfc3339(),
       permission: permission.to_string(),
-      value: value.to_string(),
+      value: value.map(|s| s.to_string()),
       stack,
     };
 
@@ -615,7 +628,29 @@ impl PermissionPrompter for PermissionBroker {
       message.to_string()
     };
 
-    match self.send_audit_message(name, &permission_value, stack) {
+    match self.send_audit_message(name, Some(permission_value.as_str()), stack)
+    {
+      Ok(resp) => resp,
+      Err(_err) => {
+        // TODO(bartlomieju): this should actually kill the process with a specific exit code
+        // If we can't communicate with the broker, deny the permission
+        return PromptResponse::Deny;
+      }
+    }
+  }
+
+  fn prompt2(
+    &mut self,
+    message: &str,
+    info: Option<&str>,
+    name: &str,
+    api_name: Option<&str>,
+    _is_unary: bool,
+    get_stack: Option<GetFormattedStackFn>,
+  ) -> PromptResponse {
+    let stack = get_stack.map(|f| f());
+
+    match self.send_audit_message(name, info, stack) {
       Ok(resp) => resp,
       Err(_err) => {
         // TODO(bartlomieju): this should actually kill the process with a specific exit code
