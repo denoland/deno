@@ -128,7 +128,7 @@ fn napi_remove_async_cleanup_hook(
 fn napi_fatal_exception(env: &mut Env, err: napi_value) -> napi_status {
   check_arg!(env, err);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
+  v8::callback_scope!(unsafe scope, env.context());
 
   let report_error = v8::Local::new(scope, &env.report_error);
 
@@ -253,7 +253,7 @@ fn napi_make_callback<'s>(
     check_arg!(env, argv);
   }
 
-  v8::make_callback_scope!(unsafe scope, env.context());
+  v8::callback_scope!(unsafe scope, env.context());
 
   let Some(recv) = recv.and_then(|v| v.to_object(scope)) else {
     return napi_object_expected;
@@ -295,7 +295,7 @@ fn napi_create_buffer<'s>(
 ) -> napi_status {
   check_arg!(env, result);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
+  v8::callback_scope!(unsafe scope, env.context());
 
   let ab = v8::ArrayBuffer::new(scope, length);
 
@@ -338,7 +338,7 @@ fn napi_create_external_buffer<'s>(
     finalize_hint,
   );
 
-  v8::make_callback_scope!(unsafe scope, env.context());
+  v8::callback_scope!(unsafe scope, env.context());
   let ab = v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
 
   let buffer_constructor = v8::Local::new(scope, &env.buffer_constructor);
@@ -364,7 +364,7 @@ fn napi_create_buffer_copy<'s>(
 ) -> napi_status {
   check_arg!(env, result);
 
-  v8::make_callback_scope!(unsafe scope, env.context());
+  v8::callback_scope!(unsafe scope, env.context());
 
   let ab = v8::ArrayBuffer::new(scope, length);
 
@@ -496,7 +496,7 @@ pub(crate) fn napi_create_async_work(
   check_arg!(env, result);
 
   let work = {
-    v8::make_callback_scope!(unsafe scope, env.context());
+    v8::callback_scope!(unsafe scope, env.context());
 
     let resource = if let Some(v) = *async_resource {
       let Some(resource) = v.to_object(scope) else {
@@ -659,7 +659,7 @@ extern "C" fn default_call_js_cb(
     && let Ok(js_callback) = v8::Local::<v8::Function>::try_from(js_callback)
   {
     let env = unsafe { &mut *(env as *mut Env) };
-    v8::make_callback_scope!(unsafe scope, env.context());
+    v8::callback_scope!(unsafe scope, env.context());
     let recv = v8::undefined(scope);
     js_callback.call(scope, recv.into(), &[]);
   }
@@ -872,7 +872,7 @@ fn napi_create_threadsafe_function(
   check_arg!(env, result);
 
   let (func, resource, resource_name) = {
-    v8::make_callback_scope!(unsafe scope, env.context());
+    v8::callback_scope!(unsafe scope, env.context());
     let func = if let Some(value) = *func {
       let Ok(func) = v8::Local::<v8::Function>::try_from(value) else {
         return napi_set_last_error(env, napi_function_expected);

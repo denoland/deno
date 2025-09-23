@@ -120,7 +120,7 @@ impl GPUAdapter {
   fn request_device(
     &self,
     state: &mut OpState,
-    isolate_ptr: v8::UnsafeRawIsolatePtr,
+    isolate: &v8::Isolate,
     scope: &mut v8::PinScope<'_, '_>,
     #[webidl] descriptor: GPUDeviceDescriptor,
   ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
@@ -205,6 +205,9 @@ impl GPUAdapter {
     let context = v8::Global::new(scope, context);
 
     let task_device = device.clone();
+
+    // SAFETY: just grabbing the raw pointer
+    let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
     deno_unsync::spawn(async move {
       loop {
         // TODO(@crowlKats): check for uncaptured_receiver.is_closed instead once tokio is upgraded
@@ -221,7 +224,7 @@ impl GPUAdapter {
         // SAFETY: eh, it's safe
         let mut isolate =
           unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate_ptr) };
-        v8::make_handle_scope_with_context!(scope, &mut isolate, &context);
+        v8::scope_with_context!(scope, &mut isolate, &context);
         let error = deno_core::error::to_v8_error(scope, &error);
 
         let error_event_class =

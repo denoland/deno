@@ -169,8 +169,8 @@ unsafe extern "C" fn deno_ffi_callback(
           NonNull<v8::Context>,
           v8::Local<v8::Context>,
         >(context);
-        v8::make_callback_scope!(unsafe cb_scope, context);
-        v8::make_handle_scope!(scope, cb_scope);
+        v8::callback_scope!(unsafe cb_scope, context);
+        v8::scope!(scope, cb_scope);
 
         do_ffi_callback(scope, cif, info, result, args);
       } else {
@@ -185,7 +185,7 @@ unsafe extern "C" fn deno_ffi_callback(
 
         async_work_sender.spawn_blocking(move |scope| {
           // We don't have a lot of choice here, so just print an unhandled exception message
-          v8::make_try_catch!(tc_scope, scope);
+          v8::tc_scope!(tc_scope, scope);
           args.run(tc_scope);
           if tc_scope.exception().is_some() {
             log::error!("Illegal unhandled exception in nonblocking callback");

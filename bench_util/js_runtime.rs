@@ -52,7 +52,7 @@ pub fn bench_js_sync_with(
   opts: BenchOptions,
 ) {
   let mut runtime = create_js_runtime(setup);
-  deno_core::jsruntime_make_handle_scope!(scope, runtime);
+  deno_core::scope!(scope, runtime);
 
   // Increase JS iterations if profiling for nicer flamegraphs
   let inner_iters = if is_profiling() {

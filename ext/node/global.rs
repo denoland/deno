@@ -463,7 +463,7 @@ pub fn descriptor<'s>(
 
   let mode = current_mode(scope);
 
-  v8::make_try_catch!(scope, scope);
+  v8::tc_scope!(scope, scope);
 
   let context = scope.get_current_context();
   let inner = {

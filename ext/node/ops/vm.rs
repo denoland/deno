@@ -95,7 +95,7 @@ impl ContextifyScript {
       v8::script_compiler::CompileOptions::NoCompileOptions
     };
 
-    v8::make_try_catch!(scope, scope);
+    v8::tc_scope!(scope, scope);
 
     let Some(unbound_script) = v8::script_compiler::compile_unbound_script(
       scope,
@@ -184,7 +184,7 @@ impl ContextifyScript {
     let scope_storage =
       std::pin::pin!(v8::EscapableHandleScope::new(context_scope));
     let scope = &mut scope_storage.init();
-    v8::make_try_catch!(scope, scope);
+    v8::tc_scope!(scope, scope);
 
     let unbound_script = self.script.get(scope).unwrap();
     let script = unbound_script.bind_to_current_context(scope);
@@ -671,7 +671,7 @@ fn property_getter<'s>(
     return v8::Intercepted::No;
   };
 
-  v8::make_try_catch!(tc_scope, scope);
+  v8::tc_scope!(tc_scope, scope);
   let maybe_rv = sandbox.get_real_named_property(tc_scope, key).or_else(|| {
     ctx
       .global_proxy(tc_scope)
@@ -1243,7 +1243,7 @@ pub fn op_vm_compile_function<'s>(
     v8::script_compiler::CompileOptions::NoCompileOptions
   };
 
-  v8::make_try_catch!(scope, scope);
+  v8::tc_scope!(scope, scope);
   let Some(function) = v8::script_compiler::compile_function(
     scope,
     &mut source,

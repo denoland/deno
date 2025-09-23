@@ -287,7 +287,7 @@ mod impl_ {
 
     fn serialize_js_to_json(runtime: &mut JsRuntime, js: String) -> String {
       let val = runtime.execute_script("", js).unwrap();
-      deno_core::jsruntime_make_handle_scope!(scope, runtime);
+      deno_core::scope!(scope, runtime);
       let val = v8::Local::new(scope, val);
       let mut buf = Vec::new();
       let mut ser = deno_core::serde_json::Serializer::new(&mut buf);

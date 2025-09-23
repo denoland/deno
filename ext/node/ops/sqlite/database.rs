@@ -598,7 +598,7 @@ impl DatabaseSync {
           let recv = v8::undefined(ctx.scope).into();
           let args = [v8::Integer::new(ctx.scope, e_conflict).into()];
 
-          v8::make_try_catch!(tc_scope, ctx.scope);
+          v8::tc_scope!(tc_scope, ctx.scope);
 
           let ret = conflict
             .call(tc_scope, recv, &args)

@@ -555,7 +555,7 @@ static NAPI_LOADED_MODULES: std::sync::LazyLock<
 #[op2(reentrant, stack_trace)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
-  isolate: v8::UnsafeRawIsolatePtr,
+  isolate: &mut v8::Isolate,
   op_state: Rc<RefCell<OpState>>,
   #[string] path: &str,
   global: v8::Local<'scope, v8::Object>,
@@ -602,7 +602,7 @@ where
 
   let ctx = scope.get_current_context();
   let mut env = Env::new(
-    isolate,
+    unsafe { isolate.as_raw_isolate_ptr() },
     v8::Global::new(scope, ctx),
     v8::Global::new(scope, global),
     v8::Global::new(scope, buffer_constructor),

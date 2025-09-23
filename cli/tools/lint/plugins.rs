@@ -171,7 +171,7 @@ async fn create_plugin_runner_inner(
 
   log::debug!("Lint plugins loaded, capturing default exports");
   let (install_plugins_fn, run_plugins_for_file_fn) = {
-    deno_core::jsruntime_make_handle_scope!(scope, runtime);
+    deno_core::scope!(scope, runtime);
     let module_exports: v8::Local<v8::Object> =
       v8::Local::new(scope, obj).try_into().unwrap();
 
@@ -326,7 +326,7 @@ impl PluginHost {
       );
     }
 
-    deno_core::jsruntime_make_handle_scope!(scope, &mut self.worker.js_runtime);
+    deno_core::scope!(scope, &mut self.worker.js_runtime);
     let file_name_v8: v8::Local<v8::Value> =
       v8::String::new(scope, &file_path.display().to_string())
         .unwrap()
@@ -344,7 +344,7 @@ impl PluginHost {
     let undefined = v8::undefined(scope);
 
     let _run_plugins_result = {
-      v8::make_try_catch!(tc_scope, scope);
+      v8::tc_scope!(tc_scope, scope);
       let _run_plugins_result = run_plugins_for_file.call(
         tc_scope,
         undefined.into(),
@@ -388,10 +388,7 @@ impl PluginHost {
     for (fut, mod_id) in load_futures {
       fut.await?;
       let module = self.worker.js_runtime.get_module_namespace(mod_id).unwrap();
-      deno_core::jsruntime_make_handle_scope!(
-        scope,
-        &mut self.worker.js_runtime
-      );
+      deno_core::scope!(scope, &mut self.worker.js_runtime);
       let module_local = v8::Local::new(scope, module);
       let default_export_str = DEFAULT.v8_string(scope).unwrap();
       let default_export =
@@ -400,7 +397,7 @@ impl PluginHost {
       plugin_handles.push(default_export_global);
     }
 
-    deno_core::jsruntime_make_handle_scope!(scope, &mut self.worker.js_runtime);
+    deno_core::scope!(scope, &mut self.worker.js_runtime);
     let install_plugins_local =
       v8::Local::new(scope, &*self.install_plugins_fn.clone());
     let exclude_v8: v8::Local<v8::Value> =
@@ -430,7 +427,7 @@ impl PluginHost {
     log::debug!("Installing lint plugins...");
 
     let plugins_info_result = {
-      v8::make_try_catch!(tc_scope, scope);
+      v8::tc_scope!(tc_scope, scope);
       let plugins_info_result =
         install_plugins_local.call(tc_scope, undefined.into(), args);
       if let Some(exception) = tc_scope.exception() {
