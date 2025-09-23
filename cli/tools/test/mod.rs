@@ -36,7 +36,6 @@ use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::error::CoreErrorKind;
 use deno_core::error::JsError;
-use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
@@ -49,6 +48,7 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
+use deno_runtime::coverage::CoverageCollector;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
@@ -107,7 +107,6 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
-use super::coverage::CoverageCollector;
 use crate::tools::coverage::cover_files;
 use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
@@ -668,7 +667,7 @@ async fn configure_main_worker(
       None,
     )
     .await?;
-  let coverage_collector = worker.maybe_setup_coverage_collector().await?;
+  let coverage_collector = worker.maybe_setup_coverage_collector();
   if options.trace_leaks {
     worker
       .execute_script_static(
@@ -804,13 +803,7 @@ async fn test_specifier_inner(
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
   if let Some(coverage_collector) = &mut coverage_collector {
-    worker
-      .js_runtime
-      .with_event_loop_future(
-        coverage_collector.stop_collecting().boxed_local(),
-        PollEventLoopOptions::default(),
-      )
-      .await?;
+    coverage_collector.stop_collecting()?;
   }
   Ok(())
 }

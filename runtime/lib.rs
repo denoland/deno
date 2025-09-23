@@ -30,6 +30,7 @@ pub use deno_websocket;
 pub use deno_webstorage;
 
 pub mod code_cache;
+pub mod coverage;
 pub mod fmt_errors;
 pub mod inspector_server;
 pub mod js;

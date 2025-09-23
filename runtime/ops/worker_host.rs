@@ -169,6 +169,7 @@ fn op_create_worker(
       "Worker.deno.permissions",
     );
   }
+
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {

@@ -99,10 +99,9 @@ use crate::resolver::CliResolver;
 use crate::resolver::on_resolve_diagnostic;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
-use crate::tools::coverage::CoverageCollector;
 use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
-use crate::tools::run::hmr::HmrRunner;
+use crate::tools::run::hmr::HmrRunnerState;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::type_checker::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -1026,6 +1025,7 @@ impl CliFactory {
       None, // DenoRtNativeAddonLoader
       self.feature_checker()?.clone(),
       fs.clone(),
+      cli_options.coverage_dir(),
       self.maybe_inspector_server()?.clone(),
       Box::new(module_loader_factory),
       node_resolver.clone(),
@@ -1106,28 +1106,19 @@ impl CliFactory {
     let create_hmr_runner = if cli_options.has_hmr() {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
-      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
-        HmrRunner::new(emitter.clone(), session, watcher_communicator.clone())
+      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move || {
+        HmrRunnerState::new(emitter.clone(), watcher_communicator.clone())
       });
       Some(fn_)
     } else {
       None
     };
-    let create_coverage_collector =
-      if let Some(coverage_dir) = cli_options.coverage_dir() {
-        let fn_: crate::worker::CreateCoverageCollectorCb =
-          Box::new(move |session| {
-            CoverageCollector::new(coverage_dir.clone(), session)
-          });
-        Some(fn_)
-      } else {
-        None
-      };
+    let maybe_coverage_dir = cli_options.coverage_dir();
 
     Ok(CliMainWorkerOptions {
       needs_test_modules: cli_options.sub_command().needs_test(),
       create_hmr_runner,
-      create_coverage_collector,
+      maybe_coverage_dir,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
     })
   }
