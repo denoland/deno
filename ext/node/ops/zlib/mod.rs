@@ -743,7 +743,7 @@ unsafe impl deno_core::GarbageCollected for BrotliDecoder {
 
 fn decoder_param(
   i: u32,
-) -> ffi::decompressor::ffi::interface::BrotliDecoderParameter {
+) -> Option<ffi::decompressor::ffi::interface::BrotliDecoderParameter> {
   const _: () = {
     assert!(
       std::mem::size_of::<
@@ -753,9 +753,9 @@ fn decoder_param(
     );
   };
   match i {
-    0 => ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION,
-    1 => ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_LARGE_WINDOW,
-    _ => unreachable!()
+    0 => Some(ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION),
+    1 => Some(ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_LARGE_WINDOW),
+    _ => None
   }
 }
 
@@ -783,11 +783,11 @@ impl BrotliDecoder {
         std::ptr::null_mut(),
       );
       for (i, &value) in params.iter().enumerate() {
-        ffi::decompressor::ffi::BrotliDecoderSetParameter(
-          state,
-          decoder_param(i as u32),
-          value,
-        );
+        if let Some(param) = decoder_param(i as u32) {
+          ffi::decompressor::ffi::BrotliDecoderSetParameter(
+            state, param, value,
+          );
+        }
       }
 
       state
