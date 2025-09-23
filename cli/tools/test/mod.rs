@@ -48,6 +48,7 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
+use deno_runtime::coverage::CoverageCollector;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
@@ -106,7 +107,6 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
-use super::coverage::CoverageCollector;
 use crate::tools::coverage::cover_files;
 use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;

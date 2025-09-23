@@ -717,3 +717,64 @@ fn test_collect_summary_with_no_matches() {
     unexpected_contents
   );
 }
+
+fn worker_coverage_fn(script: &str, expected: &str) {
+  let context = TestContext::with_http_server();
+  let tempdir = context.temp_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--allow-read".to_string(),
+      format!("--coverage={}", tempdir),
+      script.to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      "--detailed".to_string(),
+      format!("{}/", tempdir),
+    ])
+    .split_output()
+    .run();
+
+  // Verify there's no "Check" being printed
+  assert!(output.stderr().is_empty());
+
+  output.assert_stdout_matches_file(util::testdata_path().join(expected));
+
+  output.assert_exit_code(0);
+}
+
+#[test]
+fn worker_coverage1() {
+  worker_coverage_fn(
+    "coverage/worker/main1.js",
+    "coverage/worker/expected1.out",
+  );
+}
+
+#[test]
+fn worker_coverage2() {
+  worker_coverage_fn(
+    "coverage/worker/main2.js",
+    "coverage/worker/expected2.out",
+  );
+}
+
+#[test]
+fn worker_coverage3() {
+  worker_coverage_fn(
+    "coverage/worker/main3.js",
+    "coverage/worker/expected3.out",
+  );
+}
