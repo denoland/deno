@@ -269,7 +269,7 @@ pub fn op_tls_key_static(
 
 #[op2]
 pub fn op_tls_cert_resolver_create<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Array> {
   let (resolver, lookup) = new_resolver();
   let resolver = deno_core::cppgc::make_cppgc_object(

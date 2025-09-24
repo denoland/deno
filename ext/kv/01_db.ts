@@ -37,13 +37,13 @@ const {
   StringPrototypeReplace,
   Symbol,
   SymbolAsyncIterator,
+  SymbolDispose,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
 import { ReadableStream } from "ext:deno_web/06_streams.js";
 
 const encodeCursor: (

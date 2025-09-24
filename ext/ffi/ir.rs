@@ -62,7 +62,7 @@ unsafe impl Send for OutBuffer {}
 unsafe impl Sync for OutBuffer {}
 
 pub fn out_buffer_as_ptr(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   out_buffer: Option<v8::Local<v8::TypedArray>>,
 ) -> Option<OutBuffer> {
   match out_buffer {
@@ -127,7 +127,7 @@ impl NativeValue {
   #[inline]
   pub unsafe fn to_v8<'scope>(
     &self,
-    scope: &mut v8::HandleScope<'scope>,
+    scope: &mut v8::PinScope<'scope, '_>,
     native_type: NativeType,
   ) -> v8::Local<'scope, v8::Value> {
     #[allow(clippy::undocumented_unsafe_blocks)]
@@ -252,7 +252,7 @@ pub fn ffi_parse_i32_arg(
 
 #[inline]
 pub fn ffi_parse_u64_arg(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   // Order of checking:
@@ -271,7 +271,7 @@ pub fn ffi_parse_u64_arg(
 
 #[inline]
 pub fn ffi_parse_i64_arg(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   // Order of checking:
@@ -290,7 +290,7 @@ pub fn ffi_parse_i64_arg(
 
 #[inline]
 pub fn ffi_parse_usize_arg(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   // Order of checking:
@@ -309,7 +309,7 @@ pub fn ffi_parse_usize_arg(
 
 #[inline]
 pub fn ffi_parse_isize_arg(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   // Order of checking:
@@ -348,7 +348,7 @@ pub fn ffi_parse_f64_arg(
 
 #[inline]
 pub fn ffi_parse_pointer_arg(
-  _scope: &mut v8::HandleScope,
+  _scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   let pointer = if let Ok(value) = v8::Local::<v8::External>::try_from(arg) {
@@ -408,7 +408,7 @@ pub fn ffi_parse_buffer_arg(
 
 #[inline]
 pub fn ffi_parse_struct_arg(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   // Order of checking:
@@ -442,7 +442,7 @@ pub fn ffi_parse_struct_arg(
 
 #[inline]
 pub fn ffi_parse_function_arg(
-  _scope: &mut v8::HandleScope,
+  _scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
 ) -> Result<NativeValue, IRError> {
   let pointer = if let Ok(value) = v8::Local::<v8::External>::try_from(arg) {
@@ -456,7 +456,7 @@ pub fn ffi_parse_function_arg(
 }
 
 pub fn ffi_parse_args<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   args: v8::Local<v8::Array>,
   parameter_types: &[NativeType],
 ) -> Result<Vec<NativeValue>, IRError>
