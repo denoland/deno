@@ -202,6 +202,7 @@ pub async fn outdated(
   let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
     file_fetcher.clone(),
     factory.npmrc()?.clone(),
+    factory.npm_version_resolver()?.clone(),
   ));
   let jsr_fetch_resolver =
     Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
@@ -515,6 +516,7 @@ async fn dep_manager_args(
     npm_fetch_resolver,
     npm_resolver: factory.npm_resolver().await?.clone(),
     npm_installer: factory.npm_installer().await?.clone(),
+    npm_version_resolver: factory.npm_version_resolver()?.clone(),
     progress_bar: factory.text_only_progress_bar().clone(),
     permissions_container: factory.root_permissions_container()?.clone(),
     main_module_graph_container: factory

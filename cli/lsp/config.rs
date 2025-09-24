@@ -1452,8 +1452,13 @@ impl ConfigData {
       ResolverFactoryOptions {
         // these default options are fine because we don't use this for
         // anything other than resolving the lockfile at the moment
+        allow_json_imports:
+          deno_resolver::loader::AllowJsonImports::WithAttribute,
+        bare_node_builtins: false,
         compiler_options_overrides: Default::default(),
         is_cjs_resolution_mode: Default::default(),
+        on_mapped_resolution_diagnostic: None,
+        newest_dependency_date: None,
         npm_system_info: Default::default(),
         node_code_translator_mode: Default::default(),
         node_resolver_options: NodeResolverOptions::default(),
@@ -1462,11 +1467,8 @@ impl ConfigData {
         package_json_cache: None,
         package_json_dep_resolution: None,
         specified_import_map: None,
-        bare_node_builtins: false,
+        types_node_version_req: Some(crate::npm::get_types_node_version_req()),
         unstable_sloppy_imports: false,
-        on_mapped_resolution_diagnostic: None,
-        allow_json_imports:
-          deno_resolver::loader::AllowJsonImports::WithAttribute,
       },
     );
     let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
@@ -1486,7 +1488,6 @@ impl ConfigData {
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
-        newest_dependency_date: None,
         resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
       },
     );

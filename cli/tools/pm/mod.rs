@@ -17,6 +17,7 @@ use deno_semver::Version;
 use deno_semver::VersionReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deps::KeyPath;
@@ -439,8 +440,11 @@ pub async fn add(
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
-  let npm_resolver =
-    Arc::new(NpmFetchResolver::new(deps_file_fetcher, npmrc.clone()));
+  let npm_resolver = Arc::new(NpmFetchResolver::new(
+    deps_file_fetcher,
+    npmrc.clone(),
+    cli_factory.npm_version_resolver()?.clone(),
+  ));
 
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
@@ -455,12 +459,24 @@ pub async fn add(
     match req {
       Ok(add_req) => package_reqs.push(add_req),
       Err(package_req) => {
-        if jsr_resolver.req_to_nv(&package_req).await.is_some() {
+        if jsr_resolver
+          .req_to_nv(&package_req)
+          .await
+          .ok()
+          .flatten()
+          .is_some()
+        {
           bail!(
             "{entry_text} is missing a prefix. Did you mean `{}`?",
             crate::colors::yellow(format!("deno {cmd_name} jsr:{package_req}"))
           )
-        } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+        } else if npm_resolver
+          .req_to_nv(&package_req)
+          .await
+          .ok()
+          .flatten()
+          .is_some()
+        {
           bail!(
             "{entry_text} is missing a prefix. Did you mean `{}`?",
             crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}"))
@@ -609,19 +625,25 @@ trait PackageInfoProvider {
   const SPECIFIER_PREFIX: &str;
   /// The help to return if a package is found by this provider
   const HELP: NotFoundHelp;
-  async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv>;
-  async fn latest_version(&self, req: &PackageReq) -> Option<Version>;
+  async fn req_to_nv(
+    &self,
+    req: &PackageReq,
+  ) -> Result<Option<PackageNv>, AnyError>;
+  async fn latest_version(&self, name: &PackageName) -> Option<Version>;
 }
 
 impl PackageInfoProvider for Arc<JsrFetchResolver> {
   const HELP: NotFoundHelp = NotFoundHelp::JsrPackage;
   const SPECIFIER_PREFIX: &str = "jsr";
-  async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
-    (**self).req_to_nv(req).await
+  async fn req_to_nv(
+    &self,
+    req: &PackageReq,
+  ) -> Result<Option<PackageNv>, AnyError> {
+    Ok((**self).req_to_nv(req).await)
   }
 
-  async fn latest_version(&self, req: &PackageReq) -> Option<Version> {
-    let info = self.package_info(&req.name).await?;
+  async fn latest_version(&self, name: &PackageName) -> Option<Version> {
+    let info = self.package_info(name).await?;
     best_version(
       info
         .versions
@@ -636,13 +658,17 @@ impl PackageInfoProvider for Arc<JsrFetchResolver> {
 impl PackageInfoProvider for Arc<NpmFetchResolver> {
   const HELP: NotFoundHelp = NotFoundHelp::NpmPackage;
   const SPECIFIER_PREFIX: &str = "npm";
-  async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
+  async fn req_to_nv(
+    &self,
+    req: &PackageReq,
+  ) -> Result<Option<PackageNv>, AnyError> {
     (**self).req_to_nv(req).await
   }
 
-  async fn latest_version(&self, req: &PackageReq) -> Option<Version> {
-    let info = self.package_info(&req.name).await?;
-    best_version(info.versions.keys()).cloned()
+  async fn latest_version(&self, name: &PackageName) -> Option<Version> {
+    let info = self.package_info(name).await?;
+    best_version(self.applicable_version_infos(&info).map(|vi| &vi.version))
+      .cloned()
   }
 }
 
@@ -662,8 +688,14 @@ async fn find_package_and_select_version_for_req(
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
-    let Some(nv) = main_resolver.req_to_nv(req).await else {
-      if fallback_resolver.req_to_nv(req).await.is_some() {
+    let Some(nv) = main_resolver.req_to_nv(req).await.ok().flatten() else {
+      if fallback_resolver
+        .req_to_nv(req)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+      {
         // it's in the other registry
         return Ok(PackageAndVersion::NotFound {
           package: prefixed_name,
@@ -673,7 +705,7 @@ async fn find_package_and_select_version_for_req(
       }
       if req.version_req.version_text() == "*"
         && let Some(pre_release_version) =
-          main_resolver.latest_version(req).await
+          main_resolver.latest_version(&req.name).await
       {
         return Ok(PackageAndVersion::NotFound {
           package: prefixed_name,

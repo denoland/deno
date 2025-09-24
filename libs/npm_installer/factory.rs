@@ -47,7 +47,6 @@ pub struct NpmInstallerFactoryOptions {
   pub cache_setting: NpmCacheSetting,
   pub caching_strategy: NpmCachingStrategy,
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
-  pub newest_dependency_date: Option<chrono::DateTime<chrono::Utc>>,
   /// Resolves the npm resolution snapshot from the environment.
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
 }
@@ -246,18 +245,14 @@ impl<
       .npm_resolution_installer
       .get_or_try_init(async move {
         Ok(Arc::new(NpmResolutionInstaller::new(
+          self.resolver_factory.npm_version_resolver()?.clone(),
           self.registry_info_provider()?.clone(),
           self
             .install_reporter
             .as_ref()
             .map(|r| r.clone() as Arc<dyn deno_npm::resolution::Reporter>),
           self.resolver_factory.npm_resolution().clone(),
-          self
-            .workspace_factory()
-            .workspace_npm_link_packages()?
-            .clone(),
           self.maybe_lockfile().await?.cloned(),
-          self.options.newest_dependency_date,
         )))
       })
       .await

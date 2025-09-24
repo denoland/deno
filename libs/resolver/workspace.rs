@@ -1615,15 +1615,12 @@ impl BaseUrl<'_> {
 }
 
 #[allow(clippy::disallowed_types)] // ok, because definition
-pub type WorkspaceNpmLinkPackagesRc =
-  deno_maybe_sync::MaybeArc<WorkspaceNpmLinkPackages>;
-
-#[derive(Debug, Default)]
-pub struct WorkspaceNpmLinkPackages(
-  pub HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
+#[derive(Debug, Default, Clone)]
+pub struct WorkspaceNpmLinkPackagesRc(
+  pub std::sync::Arc<HashMap<PackageName, Vec<NpmPackageVersionInfo>>>,
 );
 
-impl WorkspaceNpmLinkPackages {
+impl WorkspaceNpmLinkPackagesRc {
   pub fn from_workspace(workspace: &Workspace) -> Self {
     let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
       HashMap::new();
@@ -1651,7 +1648,7 @@ impl WorkspaceNpmLinkPackages {
         }
       }
     }
-    Self(entries)
+    Self(deno_maybe_sync::new_arc(entries))
   }
 }
 

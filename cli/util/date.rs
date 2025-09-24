@@ -74,7 +74,7 @@ pub fn parse_iso8601_duration(
     None => (input, false),
   };
 
-  let Some(mut s) = s.strip_prefix('P') else {
+  let Some(s) = s.strip_prefix('P') else {
     return Err(ParseIso8601DurationError::MissingP);
   };
   if s.is_empty() {

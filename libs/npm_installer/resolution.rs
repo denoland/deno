@@ -22,13 +22,12 @@ use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSys;
 use deno_npm_cache::RegistryInfoProvider;
 use deno_resolver::display::DisplayTreeNode;
+use deno_resolver::factory::NpmVersionResolverRc;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::workspace::WorkspaceNpmLinkPackages;
 use deno_semver::SmallStackString;
 use deno_semver::StackString;
-use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -54,12 +53,11 @@ pub struct NpmResolutionInstaller<
   TNpmCacheHttpClient: NpmCacheHttpClient,
   TSys: NpmResolutionInstallerSys,
 > {
+  npm_version_resolver: NpmVersionResolverRc,
   registry_info_provider: Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>,
   reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
   resolution: Arc<NpmResolutionCell>,
   maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
-  newest_dependency_date: Option<chrono::DateTime<chrono::Utc>>,
-  link_packages: Arc<WorkspaceNpmLinkPackages>,
   update_queue: TaskQueue,
 }
 
@@ -67,22 +65,20 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
   NpmResolutionInstaller<TNpmCacheHttpClient, TSys>
 {
   pub fn new(
+    npm_version_resolver: NpmVersionResolverRc,
     registry_info_provider: Arc<
       RegistryInfoProvider<TNpmCacheHttpClient, TSys>,
     >,
     reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
     resolution: Arc<NpmResolutionCell>,
-    link_packages: Arc<WorkspaceNpmLinkPackages>,
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
-    newest_dependency_date: Option<chrono::DateTime<chrono::Utc>>,
   ) -> Self {
     Self {
+      npm_version_resolver,
       registry_info_provider,
       reporter,
       resolution,
-      link_packages,
       maybe_lockfile,
-      newest_dependency_date,
       update_queue: Default::default(),
     }
   }
@@ -119,12 +115,6 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     &self,
     package_reqs: &[PackageReq],
   ) -> deno_npm::resolution::AddPkgReqsResult {
-    fn get_types_node_version() -> VersionReq {
-      // WARNING: When bumping this version, check if anything needs to be
-      // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-      VersionReq::parse_from_npm("24.0.4 - 24.2.0").unwrap()
-    }
-
     let snapshot = self.resolution.snapshot();
     if package_reqs
       .iter()
@@ -149,9 +139,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
         self.registry_info_provider.as_ref(),
         AddPkgReqsOptions {
           package_reqs,
-          types_node_version_req: Some(get_types_node_version()),
-          link_packages: &self.link_packages.0,
-          newest_dependency_date: self.newest_dependency_date,
+          version_resolver: &self.npm_version_resolver,
         },
         self.reporter.as_deref(),
       )
@@ -170,9 +158,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
             self.registry_info_provider.as_ref(),
             AddPkgReqsOptions {
               package_reqs,
-              types_node_version_req: Some(get_types_node_version()),
-              link_packages: &self.link_packages.0,
-              newest_dependency_date: self.newest_dependency_date,
+              version_resolver: &self.npm_version_resolver,
             },
             self.reporter.as_deref(),
           )
