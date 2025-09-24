@@ -3504,3 +3504,68 @@ fn handle_invalid_path_error() {
   let output = deno_cmd.arg("run").arg("///a/b").output().unwrap();
   assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 }
+
+#[tokio::test]
+async fn test_permission_broker() {
+  use std::path::Path;
+  use std::process::Stdio;
+  use std::time::Duration;
+
+  use tempfile::NamedTempFile;
+  use tokio::fs;
+  use tokio::time::timeout;
+
+  let ctx = TestContext::default();
+  let dir = ctx.temp_dir();
+  let socket_path = dir.path().join(std::path::Path::new("broker.sock"));
+
+  // Start the broker process
+  let broker_script =
+    util::testdata_path().join("run/permission_broker/broker.ts");
+  let mut broker_process = util::deno_cmd()
+    .arg("run")
+    .arg("-REN")
+    .arg(&broker_script)
+    .arg(socket_path)
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()
+    .expect("Failed to start broker process");
+
+  // Give the broker time to start up
+  tokio::time::sleep(Duration::from_millis(100)).await;
+
+  // Run the test with the permission broker
+  let test_script =
+    util::testdata_path().join("run/permission_broker/test1.ts");
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .env("DENO_PERMISSION_BROKER_PATH", socket_path.to_string_lossy())
+    .arg(&test_script)
+    .output()
+    .await
+    .expect("Failed to run test script");
+
+  // Kill the broker process
+  broker_process.kill().await.ok();
+
+  // Read expected output
+  let expected_output = fs::read_to_string(
+    util::testdata_path().join("run/permission_broker/test1.out"),
+  )
+  .await
+  .expect("Failed to read expected output");
+
+  let actual_stderr = String::from_utf8_lossy(&output.stderr);
+
+  // Normalize the output for comparison (remove timestamps and replace with wildcards)
+  let normalized_actual =
+    util::wildcard_match(&expected_output, &actual_stderr);
+
+  assert!(
+    normalized_actual,
+    "Permission broker test failed.\nExpected:\n{}\nActual:\n{}",
+    expected_output, actual_stderr
+  );
+}

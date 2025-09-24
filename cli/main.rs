@@ -582,7 +582,7 @@ pub fn main() {
     Box::new(util::draw_thread::DrawThread::show),
   );
 
-  if let Some(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH").ok() {
+  if let Ok(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH") {
     let broker =
       deno_runtime::deno_permissions::PermissionBroker::new(socket_path);
     deno_runtime::deno_permissions::set_broker(broker);

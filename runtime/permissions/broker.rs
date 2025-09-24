@@ -53,7 +53,7 @@ pub struct PermissionBroker {
 
 impl PermissionBroker {
   pub fn new(socket_path: impl Into<PathBuf>) -> Self {
-    let stream = match UnixStream::connect(&socket_path.into()) {
+    let stream = match UnixStream::connect(socket_path.into()) {
       Ok(s) => s,
       Err(err) => {
         log::error!("Failed to create permission broker: {:?}", err);
@@ -66,7 +66,7 @@ impl PermissionBroker {
     }
   }
 
-  fn send_request(
+  fn check(
     &self,
     permission: &str,
     stringified_value: Option<String>,
@@ -85,7 +85,8 @@ impl PermissionBroker {
 
     let json = serde_json::to_string(&request).unwrap();
 
-    eprintln!("-> broker req   {}", json);
+    // TODO(bartlomieju): remove before landing
+    log::trace!("-> broker req   {}", json);
 
     stream.write_all(json.as_bytes())?;
 
@@ -98,7 +99,8 @@ impl PermissionBroker {
       serde_json::from_str::<PermissionBrokerResponse>(response_line.trim())
         .map_err(std::io::Error::other)?;
 
-    eprintln!("<- broker resp  {:?}", response);
+    // TODO(bartlomieju): remove before landing
+    log::trace!("<- broker resp  {:?}", response);
 
     if response.id != id {
       return Err(std::io::Error::other(
@@ -125,11 +127,9 @@ pub fn maybe_check_with_broker(
   stringified_value_fn: impl Fn() -> Option<String>,
 ) -> Option<BrokerResponse> {
   let maybe_broker = PERMISSION_BROKER.lock();
-  let Some(broker) = maybe_broker.as_ref() else {
-    return None;
-  };
+  let broker = maybe_broker.as_ref()?;
 
-  let resp = match broker.send_request(name, stringified_value_fn()) {
+  let resp = match broker.check(name, stringified_value_fn()) {
     Ok(resp) => resp,
     Err(err) => {
       log::error!("{:?}", err);

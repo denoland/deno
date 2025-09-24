@@ -59,7 +59,6 @@ pub fn set_current_stacktrace(get_stack: GetFormattedStackFn) {
 
 pub fn permission_prompt(
   message: &str,
-  stringified_value: Option<&str>,
   flag: &str,
   api_name: Option<&str>,
   is_unary: bool,
@@ -68,14 +67,9 @@ pub fn permission_prompt(
     before_callback();
   }
   let stack = MAYBE_CURRENT_STACKTRACE.lock().take();
-  let r = PERMISSION_PROMPTER.lock().prompt(
-    message,
-    stringified_value,
-    flag,
-    api_name,
-    is_unary,
-    stack,
-  );
+  let r = PERMISSION_PROMPTER
+    .lock()
+    .prompt(message, flag, api_name, is_unary, stack);
   if let Some(after_callback) = MAYBE_AFTER_PROMPT_CALLBACK.lock().as_mut() {
     after_callback();
   }
@@ -102,7 +96,6 @@ pub trait PermissionPrompter: Send + Sync {
   fn prompt(
     &mut self,
     message: &str,
-    stringified_value: Option<&str>,
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
@@ -117,7 +110,6 @@ impl PermissionPrompter for DeniedPrompter {
   fn prompt(
     &mut self,
     _message: &str,
-    _stringified_value: Option<&str>,
     _name: &str,
     _api_name: Option<&str>,
     _is_unary: bool,
@@ -329,7 +321,6 @@ impl PermissionPrompter for TtyPrompter {
   fn prompt(
     &mut self,
     message: &str,
-    _stringified_value: Option<&str>,
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,

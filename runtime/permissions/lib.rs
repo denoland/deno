@@ -459,7 +459,7 @@ impl PermissionState {
       info,
       is_unary,
     } = options;
-    match permission_prompt(msg, info, name, api_name, is_unary) {
+    match permission_prompt(msg, name, api_name, is_unary) {
       PromptResponse::Allow => {
         Self::log_perm_access(name, || info.map(|i| i.to_string()));
         (Ok(()), false)
@@ -561,7 +561,6 @@ impl UnitPermission {
       if PromptResponse::Allow
         == permission_prompt(
           &format!("access to {}", self.description),
-          None,
           self.name,
           Some("Deno.permissions.query()"),
           false,
@@ -873,7 +872,6 @@ impl<
     .unwrap();
     match permission_prompt(
       &message,
-      None,
       TAllowDesc::QueryDesc::flag_name(),
       Some("Deno.permissions.request()"),
       true,
