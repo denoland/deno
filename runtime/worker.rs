@@ -627,7 +627,7 @@ impl MainWorker {
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),
-        &mut js_runtime,
+        js_runtime.inspector(),
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
