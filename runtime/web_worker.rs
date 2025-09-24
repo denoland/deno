@@ -116,7 +116,7 @@ pub enum WorkerThreadType {
 impl<'s> WorkerThreadType {
   pub fn to_v8(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::String> {
     v8::String::new(
       scope,
@@ -704,7 +704,7 @@ impl WebWorker {
 
     let bootstrap_fn_global = {
       let context = js_runtime.main_context();
-      let scope = &mut js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut js_runtime);
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
       let bootstrap_str =
@@ -751,7 +751,7 @@ impl WebWorker {
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     {
-      let scope = &mut self.js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut self.js_runtime);
       let args = options.as_v8(scope);
       let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
       let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
@@ -1003,7 +1003,7 @@ impl WebWorker {
   // Starts polling for messages from worker host from JavaScript.
   fn start_polling_for_messages(&mut self) {
     let poll_for_messages_fn = self.poll_for_messages_fn.take().unwrap();
-    let scope = &mut self.js_runtime.handle_scope();
+    deno_core::scope!(scope, &mut self.js_runtime);
     let poll_for_messages =
       v8::Local::<v8::Value>::new(scope, poll_for_messages_fn);
     let fn_ = v8::Local::<v8::Function>::try_from(poll_for_messages).unwrap();
@@ -1015,7 +1015,7 @@ impl WebWorker {
   fn has_message_event_listener(&mut self) -> bool {
     let has_message_event_listener_fn =
       self.has_message_event_listener_fn.as_ref().unwrap();
-    let scope = &mut self.js_runtime.handle_scope();
+    deno_core::scope!(scope, &mut self.js_runtime);
     let has_message_event_listener =
       v8::Local::<v8::Value>::new(scope, has_message_event_listener_fn);
     let fn_ =

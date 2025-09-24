@@ -80,7 +80,7 @@ impl GPUAdapter {
 
   #[getter]
   #[global]
-  fn info(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn info(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.id);
       let limits = self.instance.adapter_limits(self.id);
@@ -95,7 +95,10 @@ impl GPUAdapter {
 
   #[getter]
   #[global]
-  fn features(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn features(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> v8::Global<v8::Object> {
     self.features.get(scope, |scope| {
       let features = self.instance.adapter_features(self.id);
       let features = features_to_feature_names(features);
@@ -105,7 +108,7 @@ impl GPUAdapter {
 
   #[getter]
   #[global]
-  fn limits(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn limits(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.limits.get(scope, |_| {
       let adapter_limits = self.instance.adapter_limits(self.id);
       GPUSupportedLimits(adapter_limits)
@@ -117,8 +120,8 @@ impl GPUAdapter {
   fn request_device(
     &self,
     state: &mut OpState,
-    isolate_ptr: *mut v8::Isolate,
-    scope: &mut v8::HandleScope,
+    isolate: &v8::Isolate,
+    scope: &mut v8::PinScope<'_, '_>,
     #[webidl] descriptor: GPUDeviceDescriptor,
   ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
     let features = self.instance.adapter_features(self.id);
@@ -202,6 +205,9 @@ impl GPUAdapter {
     let context = v8::Global::new(scope, context);
 
     let task_device = device.clone();
+
+    // SAFETY: just grabbing the raw pointer
+    let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
     deno_unsync::spawn(async move {
       loop {
         // TODO(@crowlKats): check for uncaptured_receiver.is_closed instead once tokio is upgraded
@@ -216,8 +222,9 @@ impl GPUAdapter {
         };
 
         // SAFETY: eh, it's safe
-        let isolate: &mut v8::Isolate = unsafe { &mut *isolate_ptr };
-        let scope = &mut v8::HandleScope::with_context(isolate, &context);
+        let mut isolate =
+          unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate_ptr) };
+        v8::scope_with_context!(scope, &mut isolate, &context);
         let error = deno_core::error::to_v8_error(scope, &error);
 
         let error_event_class =
@@ -439,7 +446,7 @@ unsafe impl GarbageCollected for GPUSupportedFeatures {
 
 impl GPUSupportedFeatures {
   pub fn new(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     features: HashSet<GPUFeatureName>,
   ) -> Self {
     let set = v8::Set::new(scope);

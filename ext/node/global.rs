@@ -111,7 +111,7 @@ impl GlobalsStorage {
 }
 
 pub fn global_template_middleware<'s>(
-  _scope: &mut v8::HandleScope<'s, ()>,
+  _scope: &mut v8::PinScope<'s, '_, ()>,
   template: v8::Local<'s, v8::ObjectTemplate>,
 ) -> v8::Local<'s, v8::ObjectTemplate> {
   let mut config = v8::NamedPropertyHandlerConfiguration::new().flags(
@@ -135,7 +135,7 @@ pub fn global_template_middleware<'s>(
 }
 
 pub fn global_object_middleware<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   global: v8::Local<'s, v8::Object>,
 ) {
   // ensure the global object is not Object.prototype
@@ -218,7 +218,7 @@ pub fn global_object_middleware<'s>(
 }
 
 fn is_managed_key(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   key: v8::Local<v8::Name>,
 ) -> bool {
   let Ok(str): Result<v8::Local<v8::String>, _> = key.try_into() else {
@@ -235,7 +235,7 @@ fn is_managed_key(
   MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok()
 }
 
-fn current_mode(scope: &mut v8::HandleScope) -> Mode {
+fn current_mode(scope: &mut v8::PinScope<'_, '_>) -> Mode {
   let Some(host_defined_options) = scope.get_current_host_defined_options()
   else {
     return Mode::Deno;
@@ -252,7 +252,7 @@ fn current_mode(scope: &mut v8::HandleScope) -> Mode {
 }
 
 pub fn getter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
@@ -286,7 +286,7 @@ pub fn getter<'s>(
 }
 
 pub fn setter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
@@ -318,7 +318,7 @@ pub fn setter<'s>(
 }
 
 pub fn query<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Integer>,
@@ -351,7 +351,7 @@ pub fn query<'s>(
 }
 
 pub fn deleter<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Boolean>,
@@ -387,7 +387,7 @@ pub fn deleter<'s>(
 }
 
 pub fn enumerator<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue<v8::Array>,
 ) {
@@ -417,7 +417,7 @@ pub fn enumerator<'s>(
 }
 
 pub fn definer<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   descriptor: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
@@ -452,7 +452,7 @@ pub fn definer<'s>(
 }
 
 pub fn descriptor<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Name>,
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
@@ -463,7 +463,7 @@ pub fn descriptor<'s>(
 
   let mode = current_mode(scope);
 
-  let scope = &mut v8::TryCatch::new(scope);
+  v8::tc_scope!(scope, scope);
 
   let context = scope.get_current_context();
   let inner = {

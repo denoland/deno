@@ -85,6 +85,7 @@ const {
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   SymbolAsyncIterator,
+  SymbolDispose,
   SymbolIterator,
   SymbolFor,
   TypeError,
@@ -98,7 +99,7 @@ import {
   ReadableStreamPrototype,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
-import { pathFromURL, SymbolDispose } from "ext:deno_web/00_infra.js";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 
 function chmodSync(path, mode) {
   op_fs_chmod_sync(pathFromURL(path), mode);
