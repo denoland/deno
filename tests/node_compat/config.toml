@@ -301,7 +301,7 @@
 "parallel/test-dgram-send-cb-quelches-error.js" = {}
 "parallel/test-dgram-send-default-host.js" = {}
 "parallel/test-dgram-send-empty-array.js" = { flaky = true }
-"parallel/test-dgram-send-empty-buffer.js" = { flaky = true }
+"parallel/test-dgram-send-empty-buffer.js" = { darwin = false, flaky = true }
 "parallel/test-dgram-send-empty-packet.js" = { flaky = true }
 "parallel/test-dgram-send-error.js" = {}
 "parallel/test-dgram-send-invalid-msg-type.js" = {}
@@ -426,6 +426,8 @@
 "parallel/test-file-write-stream5.js" = {}
 "parallel/test-finalization-registry-shutdown.js" = {}
 "parallel/test-fs-buffertype-writesync.js" = {}
+"parallel/test-fs-chmod-mask.js" = {}
+"parallel/test-fs-chmod.js" = {}
 "parallel/test-fs-chown-type-check.js" = {}
 "parallel/test-fs-close.js" = {}
 # TODO(bartlomieju): appears that part of the test that's broke was removed in Node 24.0
@@ -436,11 +438,14 @@
 "parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
 "parallel/test-fs-fsync.js" = {}
+"parallel/test-fs-glob.mjs" = {}
 "parallel/test-fs-internal-assertencoding.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
 "parallel/test-fs-make-callback.js" = {}
 "parallel/test-fs-makeStatsCallback.js" = {}
+"parallel/test-fs-mkdtemp-prefix-check.js" = {}
+"parallel/test-fs-mkdtemp.js" = {}
 "parallel/test-fs-open-flags.js" = {}
 "parallel/test-fs-open-no-close.js" = {}
 "parallel/test-fs-open-numeric-flags.js" = {}
@@ -448,6 +453,8 @@
 "parallel/test-fs-promises-exists.js" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
+"parallel/test-fs-read-empty-buffer.js" = {}
+"parallel/test-fs-read-file-assert-encoding.js" = {}
 "parallel/test-fs-read-file-sync-hostname.js" = {}
 "parallel/test-fs-read-stream-autoClose.js" = {}
 "parallel/test-fs-read-stream-double-close.js" = {}
@@ -468,10 +475,12 @@
 "parallel/test-fs-readfile-unlink.js" = {}
 "parallel/test-fs-readfile-zero-byte-liar.js" = {}
 "parallel/test-fs-readfilesync-enoent.js" = {}
+"parallel/test-fs-readlink-type-check.js" = {}
 "parallel/test-fs-readv-promisify.js" = {}
 "parallel/test-fs-ready-event-stream.js" = {}
 "parallel/test-fs-rename-type-check.js" = {}
 "parallel/test-fs-rmdir-type-check.js" = {}
+"parallel/test-fs-statfs.js" = {}
 "parallel/test-fs-stream-fs-options.js" = {}
 "parallel/test-fs-stream-options.js" = {}
 "parallel/test-fs-symlink-buffer-path.js" = {}
@@ -906,6 +915,7 @@
 "parallel/test-readline-interface-escapecodetimeout.js" = {}
 "parallel/test-readline-interface-no-trailing-newline.js" = {}
 "parallel/test-readline-interface-recursive-writes.js" = {}
+"parallel/test-readline-line-separators.js" = {}
 "parallel/test-readline-position.js" = {}
 "parallel/test-readline-reopen.js" = {}
 "parallel/test-readline-set-raw-mode.js" = {}

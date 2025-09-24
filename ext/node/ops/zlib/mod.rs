@@ -273,7 +273,7 @@ impl ZlibInner {
 
   fn check_error(
     error_info: Option<(i32, String)>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     this: &v8::Global<v8::Object>,
   ) -> bool {
     let Some((err, msg)) = error_info else {
@@ -302,7 +302,10 @@ pub struct Zlib {
   inner: RefCell<Option<ZlibInner>>,
 }
 
-impl deno_core::GarbageCollected for Zlib {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for Zlib {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Zlib"
   }
@@ -410,7 +413,7 @@ impl Zlib {
   pub fn write_sync(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -445,7 +448,7 @@ impl Zlib {
   fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -561,7 +564,10 @@ pub struct BrotliEncoder {
   ctx: Rc<RefCell<Option<BrotliEncoderCtx>>>,
 }
 
-impl deno_core::GarbageCollected for BrotliEncoder {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for BrotliEncoder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"BrotliEncoder"
   }
@@ -627,7 +633,7 @@ impl BrotliEncoder {
   pub fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: u8,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -726,7 +732,10 @@ pub struct BrotliDecoder {
   ctx: Rc<RefCell<Option<BrotliDecoderCtx>>>,
 }
 
-impl deno_core::GarbageCollected for BrotliDecoder {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for BrotliDecoder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"BrotliDecoder"
   }
@@ -801,7 +810,7 @@ impl BrotliDecoder {
   pub fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] _flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,

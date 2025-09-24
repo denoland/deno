@@ -1142,7 +1142,7 @@ impl DenoIdGenerator {
 }
 
 fn parse_trace_id(
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   trace_id: v8::Local<'_, v8::Value>,
 ) -> TraceId {
   if let Ok(string) = trace_id.try_cast() {
@@ -1171,7 +1171,7 @@ fn parse_trace_id(
 }
 
 fn parse_span_id(
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   span_id: v8::Local<'_, v8::Value>,
 ) -> SpanId {
   if let Ok(string) = span_id.try_cast() {
@@ -1260,7 +1260,7 @@ macro_rules! attr {
 
 #[op2(fast)]
 fn op_otel_log<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   message: v8::Local<'s, v8::Value>,
   #[smi] level: i32,
   span: v8::Local<'s, v8::Value>,
@@ -1320,7 +1320,7 @@ fn op_otel_log<'s>(
 
 #[op2(fast)]
 fn op_otel_log_foreign(
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] message: String,
   #[smi] level: i32,
   trace_id: v8::Local<'_, v8::Value>,
@@ -1389,7 +1389,7 @@ pub fn report_event(name: &'static str, data: impl std::fmt::Display) {
 }
 
 fn owned_string<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   string: v8::Local<'s, v8::String>,
 ) -> String {
   let x = v8::ValueView::new(scope, string);
@@ -1403,7 +1403,10 @@ fn owned_string<'s>(
 
 struct OtelTracer(InstrumentationScope);
 
-impl deno_core::GarbageCollected for OtelTracer {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for OtelTracer {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelTracer"
   }
@@ -1442,7 +1445,7 @@ impl OtelTracer {
   #[cppgc]
   fn start_span<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     #[cppgc] parent: Option<&OtelSpan>,
     name: v8::Local<'s, v8::Value>,
     #[smi] span_kind: u8,
@@ -1522,7 +1525,7 @@ impl OtelTracer {
   #[cppgc]
   fn start_span_foreign<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     parent_trace_id: v8::Local<'s, v8::Value>,
     parent_span_id: v8::Local<'s, v8::Value>,
     name: v8::Local<'s, v8::Value>,
@@ -1616,7 +1619,10 @@ enum OtelSpanState {
   Done(SpanContext),
 }
 
-impl deno_core::GarbageCollected for OtelSpan {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for OtelSpan {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelSpan"
   }
@@ -1748,7 +1754,7 @@ fn span_attributes(
 
 #[op2(fast)]
 fn op_otel_span_attribute1<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
   key: v8::Local<'s, v8::Value>,
@@ -1772,7 +1778,7 @@ fn op_otel_span_attribute1<'s>(
 
 #[op2(fast)]
 fn op_otel_span_attribute2<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
   key1: v8::Local<'s, v8::Value>,
@@ -1800,7 +1806,7 @@ fn op_otel_span_attribute2<'s>(
 #[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 fn op_otel_span_attribute3<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'_, v8::Value>,
   #[smi] location: u32,
   key1: v8::Local<'s, v8::Value>,
@@ -1830,7 +1836,7 @@ fn op_otel_span_attribute3<'s>(
 
 #[op2(fast)]
 fn op_otel_span_update_name<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'s, v8::Value>,
   name: v8::Local<'s, v8::Value>,
 ) {
@@ -1851,7 +1857,7 @@ fn op_otel_span_update_name<'s>(
 
 #[op2(fast)]
 fn op_otel_span_add_link<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   span: v8::Local<'s, v8::Value>,
   trace_id: v8::Local<'s, v8::Value>,
   span_id: v8::Local<'s, v8::Value>,
@@ -1893,7 +1899,10 @@ fn op_otel_span_add_link<'s>(
 
 struct OtelMeter(opentelemetry::metrics::Meter);
 
-impl deno_core::GarbageCollected for OtelMeter {
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for OtelMeter {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"OtelMeter"
   }
@@ -1927,7 +1936,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_counter<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -1946,7 +1955,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_up_down_counter<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -1965,7 +1974,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_gauge<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -1984,7 +1993,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_histogram<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -2025,7 +2034,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_observable_counter<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -2046,7 +2055,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_observable_up_down_counter<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -2067,7 +2076,7 @@ impl OtelMeter {
   #[cppgc]
   fn create_observable_gauge<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: v8::Local<'s, v8::Value>,
     description: v8::Local<'s, v8::Value>,
     unit: v8::Local<'s, v8::Value>,
@@ -2094,7 +2103,10 @@ enum Instrument {
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 
-impl GarbageCollected for Instrument {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Instrument {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Instrument"
   }
@@ -2103,7 +2115,7 @@ impl GarbageCollected for Instrument {
 fn create_instrument<'a, 'b, T>(
   cb: impl FnOnce(String) -> InstrumentBuilder<'b, T>,
   cb2: impl FnOnce(InstrumentBuilder<'b, T>) -> Instrument,
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   name: v8::Local<'a, v8::Value>,
   description: v8::Local<'a, v8::Value>,
   unit: v8::Local<'a, v8::Value>,
@@ -2125,7 +2137,7 @@ fn create_instrument<'a, 'b, T>(
 fn create_async_instrument<'a, 'b, T>(
   cb: impl FnOnce(String) -> AsyncInstrumentBuilder<'b, T, f64>,
   cb2: impl FnOnce(AsyncInstrumentBuilder<'b, T, f64>),
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   name: v8::Local<'a, v8::Value>,
   description: v8::Local<'a, v8::Value>,
   unit: v8::Local<'a, v8::Value>,
@@ -2184,7 +2196,7 @@ fn op_otel_metric_record0(
 #[op2(fast)]
 fn op_otel_metric_record1(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2224,7 +2236,7 @@ fn op_otel_metric_record1(
 #[op2(fast)]
 fn op_otel_metric_record2(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2272,7 +2284,7 @@ fn op_otel_metric_record2(
 #[op2(fast)]
 fn op_otel_metric_record3(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2343,7 +2355,7 @@ fn op_otel_metric_observable_record0(
 #[op2(fast)]
 fn op_otel_metric_observable_record1(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2376,7 +2388,7 @@ fn op_otel_metric_observable_record1(
 #[op2(fast)]
 fn op_otel_metric_observable_record2(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2415,7 +2427,7 @@ fn op_otel_metric_observable_record2(
 #[op2(fast)]
 fn op_otel_metric_observable_record3(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'_>,
+  scope: &mut v8::PinScope<'_, '_>,
   instrument: v8::Local<'_, v8::Value>,
   value: f64,
   key1: v8::Local<'_, v8::Value>,
@@ -2459,7 +2471,7 @@ fn op_otel_metric_observable_record3(
 #[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 fn op_otel_metric_attribute3<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   state: &mut OpState,
   #[smi] capacity: u32,
   key1: v8::Local<'s, v8::Value>,
@@ -2537,25 +2549,27 @@ struct GcMetricData(RefCell<GcMetricDataInner>);
 
 impl GcMetricData {
   extern "C" fn prologue_callback(
-    isolate: *mut v8::Isolate,
+    isolate: v8::UnsafeRawIsolatePtr,
     _gc_type: v8::GCType,
     _flags: v8::GCCallbackFlags,
     _data: *mut c_void,
   ) {
     // SAFETY: Isolate is valid during callback
-    let isolate = unsafe { &mut *isolate };
+    let isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
     let this = isolate.get_slot::<Self>().unwrap();
     this.0.borrow_mut().start = Instant::now();
   }
 
   extern "C" fn epilogue_callback(
-    isolate: *mut v8::Isolate,
+    isolate: v8::UnsafeRawIsolatePtr,
     gc_type: v8::GCType,
     _flags: v8::GCCallbackFlags,
     _data: *mut c_void,
   ) {
     // SAFETY: Isolate is valid during callback
-    let isolate = unsafe { &mut *isolate };
+    let isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
     let this = isolate.get_slot::<Self>().unwrap();
     let this = this.0.borrow_mut();
 
@@ -2587,7 +2601,7 @@ struct HeapMetricData {
 }
 
 #[op2(fast)]
-fn op_otel_enable_isolate_metrics(scope: &mut v8::HandleScope) {
+fn op_otel_enable_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
   if scope.get_slot::<GcMetricData>().is_some() {
     return;
   }
@@ -2649,7 +2663,7 @@ fn op_otel_enable_isolate_metrics(scope: &mut v8::HandleScope) {
 }
 
 #[op2(fast)]
-fn op_otel_collect_isolate_metrics(scope: &mut v8::HandleScope) {
+fn op_otel_collect_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
   let data = scope.get_slot::<HeapMetricData>().unwrap().clone();
   for i in 0..scope.get_number_of_data_slots() {
     let Some(space) = scope.get_heap_space_statistics(i as _) else {

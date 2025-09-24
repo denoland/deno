@@ -893,6 +893,7 @@ async fn npm_install_after_modification(
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // surface any errors in the package.json
+  let start = std::time::Instant::now();
   let npm_installer = cli_factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
@@ -903,6 +904,7 @@ async fn npm_install_after_modification(
     let npm_resolver = cli_factory.npm_resolver().await?;
     super::installer::print_install_report(
       &cli_factory.sys(),
+      start.elapsed(),
       install_reporter,
       workspace,
       npm_resolver,

@@ -48,7 +48,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
   type Error = validators::Error;
 
   fn from_v8(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<Self, Self::Error> {
     use validators::Error;
@@ -175,7 +175,7 @@ struct ApplyChangesetOptions<'a> {
 // Local references.
 impl<'a> ApplyChangesetOptions<'a> {
   fn from_value(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<Option<Self>, validators::Error> {
     use validators::Error;
@@ -235,7 +235,10 @@ pub struct DatabaseSync {
   location: String,
 }
 
-impl GarbageCollected for DatabaseSync {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for DatabaseSync {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DatabaseSync"
   }
@@ -348,7 +351,7 @@ fn open_db(
 }
 
 fn database_constructor(
-  _: &mut v8::HandleScope,
+  _: &mut v8::PinScope<'_, '_>,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), validators::Error> {
   // TODO(littledivy): use `IsConstructCall()`
@@ -360,7 +363,7 @@ fn database_constructor(
 }
 
 fn is_open(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), SqliteError> {
   let this_ = args.this();
@@ -567,7 +570,7 @@ impl DatabaseSync {
   #[reentrant]
   fn apply_changeset<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[validate(validators::changeset_buffer)]
     #[buffer]
     changeset: &[u8],
@@ -575,8 +578,8 @@ impl DatabaseSync {
   ) -> Result<bool, SqliteError> {
     let options = ApplyChangesetOptions::from_value(scope, options)?;
 
-    struct HandlerCtx<'a, 'b> {
-      scope: &'a mut v8::HandleScope<'b>,
+    struct HandlerCtx<'a, 'b, 'c> {
+      scope: &'a mut v8::PinScope<'b, 'c>,
       confict: Option<v8::Local<'b, v8::Function>>,
       filter: Option<v8::Local<'b, v8::Function>>,
     }
@@ -595,7 +598,7 @@ impl DatabaseSync {
           let recv = v8::undefined(ctx.scope).into();
           let args = [v8::Integer::new(ctx.scope, e_conflict).into()];
 
-          let tc_scope = &mut v8::TryCatch::new(ctx.scope);
+          v8::tc_scope!(tc_scope, ctx.scope);
 
           let ret = conflict
             .call(tc_scope, recv, &args)

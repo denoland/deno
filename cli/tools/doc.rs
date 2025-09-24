@@ -88,6 +88,7 @@ async fn generate_doc_nodes_for_builtin_types(
         resolver: None,
         unstable_bytes_imports: false,
         unstable_text_imports: false,
+        jsr_metadata_store: None,
       },
     )
     .await;
@@ -160,6 +161,7 @@ pub async fn doc(
         GraphWalkErrorsOptions {
           check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
+          will_type_check: false,
           allow_unknown_media_types: false,
           allow_unknown_jsr_exports: false,
         },

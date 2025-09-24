@@ -2,6 +2,7 @@
 
 mod esbuild;
 mod externals;
+mod html;
 mod provider;
 mod transform;
 
@@ -27,6 +28,7 @@ use deno_config::workspace::TsTypeLib;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
+use deno_core::parking_lot::RwLock;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
@@ -45,7 +47,6 @@ use deno_resolver::loader::RequestedModuleType;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
-use esbuild_client::EsbuildFlags;
 use esbuild_client::EsbuildFlagsBuilder;
 use esbuild_client::EsbuildService;
 use esbuild_client::protocol;
@@ -80,6 +81,105 @@ use crate::util::file_watcher::WatcherRestartMode;
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
 
+pub async fn prepare_inputs(
+  resolver: &CliResolver,
+  sys: CliSys,
+  npm_resolver: &CliNpmResolver,
+  node_resolver: &CliNodeResolver,
+  init_cwd: &Path,
+  bundle_flags: &BundleFlags,
+  plugin_handler: &mut DenoPluginHandler,
+) -> Result<BundlerInput, AnyError> {
+  let resolved_entrypoints =
+    resolve_entrypoints(resolver, init_cwd, &bundle_flags.entrypoints)?;
+
+  // Partition into HTML and non-HTML entrypoints
+  let mut html_paths = Vec::new();
+  let mut script_entry_urls = Vec::new();
+  for url in &resolved_entrypoints {
+    if url.as_str().to_lowercase().ends_with(".html") {
+      html_paths.push(url.to_file_path().unwrap());
+    } else {
+      script_entry_urls.push(url.clone());
+    }
+  }
+
+  if html_paths.is_empty() {
+    plugin_handler
+      .prepare_module_load(&resolved_entrypoints)
+      .await?;
+
+    let roots =
+      resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
+    plugin_handler.prepare_module_load(&roots).await?;
+    Ok(BundlerInput::Entrypoints(
+      roots.into_iter().map(|e| ("".into(), e.into())).collect(),
+    ))
+  } else {
+    // require an outdir when any HTML is present
+    if bundle_flags.output_dir.is_none() {
+      return Err(deno_core::anyhow::anyhow!(
+        "--outdir is required when bundling HTML entrypoints",
+      ));
+    }
+    if bundle_flags.output_path.is_some() {
+      return Err(deno_core::anyhow::anyhow!(
+        "--output is not supported with HTML entrypoints; use --outdir",
+      ));
+    }
+
+    // Prepare HTML pages and temp entry modules
+    let mut html_pages = Vec::new();
+    let mut to_cache_urls = Vec::new();
+    let mut entries: Vec<(String, String)> = Vec::new();
+    let virtual_modules = Arc::new(VirtualModules::new());
+
+    for html_path in &html_paths {
+      let entry = html::load_html_entrypoint(init_cwd, html_path)?;
+
+      let virtual_module_path =
+        deno_path_util::url_from_file_path(&entry.virtual_module_path)?;
+      let virtual_module_path = virtual_module_path.to_string();
+      virtual_modules.insert(
+        virtual_module_path.clone(),
+        VirtualModule::new(
+          entry.temp_module.as_bytes().to_vec(),
+          esbuild_client::BuiltinLoader::Js,
+        ),
+      );
+
+      for script in &entry.scripts {
+        if let Some(path) = &script.resolved_path {
+          let url = deno_path_util::url_from_file_path(path)?;
+          to_cache_urls.push(url);
+        }
+      }
+
+      entries.push(("".into(), virtual_module_path));
+      html_pages.push(entry);
+    }
+
+    plugin_handler.virtual_modules = Some(virtual_modules);
+
+    // Prepare non-HTML entries too
+    let _ = plugin_handler.prepare_module_load(&script_entry_urls).await;
+    let roots =
+      resolve_roots(script_entry_urls, sys, npm_resolver, node_resolver);
+    let _ = plugin_handler.prepare_module_load(&roots).await;
+    for url in roots {
+      entries.push(("".into(), url.into()));
+    }
+
+    // Pre-cache modules referenced by HTML pages
+    let _ = plugin_handler.prepare_module_load(&to_cache_urls).await;
+
+    Ok(BundlerInput::EntrypointsWithHtml {
+      entries,
+      html_pages,
+    })
+  }
+}
+
 pub async fn bundle_init(
   mut flags: Arc<Flags>,
   bundle_flags: &BundleFlags,
@@ -106,7 +206,7 @@ pub async fn bundle_init(
 
   let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
   #[allow(clippy::arc_with_non_send_sync)]
-  let plugin_handler = Arc::new(DenoPluginHandler {
+  let mut plugin_handler = Arc::new(DenoPluginHandler {
     file_fetcher: factory.file_fetcher()?.clone(),
     resolver: resolver.clone(),
     module_load_preparer,
@@ -123,17 +223,19 @@ pub async fn bundle_init(
     cjs_tracker: factory.cjs_tracker()?.clone(),
     emitter: factory.emitter()?.clone(),
     deferred_resolve_errors: Default::default(),
+    virtual_modules: None,
   });
 
-  let resolved_entrypoints =
-    resolve_entrypoints(&resolver, &init_cwd, &bundle_flags.entrypoints)?;
-  let _ = plugin_handler
-    .prepare_module_load(&resolved_entrypoints)
-    .await;
-
-  let roots =
-    resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
-  let _ = plugin_handler.prepare_module_load(&roots).await;
+  let input = prepare_inputs(
+    &resolver,
+    sys,
+    npm_resolver,
+    node_resolver,
+    &init_cwd,
+    bundle_flags,
+    Arc::get_mut(&mut plugin_handler).unwrap(),
+  )
+  .await?;
 
   let esbuild = EsbuildService::new(
     esbuild_path,
@@ -149,9 +251,10 @@ pub async fn bundle_init(
     let res = esbuild.wait_for_exit().await;
     log::warn!("esbuild exited: {:?}", res);
   });
-
-  let esbuild_flags = configure_esbuild_flags(bundle_flags);
-  let entries = roots.into_iter().map(|e| ("".into(), e.into())).collect();
+  let esbuild_flags = configure_esbuild_flags(
+    bundle_flags,
+    matches!(input, BundlerInput::EntrypointsWithHtml { .. }),
+  );
   let bundler = EsbuildBundler::new(
     client,
     plugin_handler.clone(),
@@ -162,7 +265,7 @@ pub async fn bundle_init(
     on_end_rx,
     init_cwd.clone(),
     esbuild_flags,
-    entries,
+    input.clone(),
   );
 
   Ok(bundler)
@@ -184,11 +287,22 @@ pub async fn bundle(
   let duration = end.duration_since(start);
 
   if bundle_flags.watch {
+    if !response.errors.is_empty() || !response.warnings.is_empty() {
+      handle_esbuild_errors_and_warnings(
+        &response,
+        &init_cwd,
+        &bundler.plugin_handler.take_deferred_resolve_errors(),
+      );
+      if !response.errors.is_empty() {
+        deno_core::anyhow::bail!("bundling failed");
+      }
+    }
     return bundle_watch(
       flags,
       bundler,
       bundle_flags.minify,
       bundle_flags.platform,
+      bundle_flags.output_dir.as_ref().map(Path::new),
     )
     .await;
   }
@@ -206,6 +320,8 @@ pub async fn bundle(
       &init_cwd,
       should_replace_require_shim(bundle_flags.platform),
       bundle_flags.minify,
+      bundler.input.clone(),
+      bundle_flags.output_dir.as_ref().map(Path::new),
     )?;
 
     if bundle_flags.output_dir.is_some() || bundle_flags.output_path.is_some() {
@@ -235,15 +351,39 @@ async fn bundle_watch(
   bundler: EsbuildBundler,
   minified: bool,
   platform: BundlePlatform,
+  output_dir: Option<&Path>,
 ) -> Result<(), AnyError> {
-  let initial_roots = bundler
-    .roots
-    .iter()
-    .filter_map(|(_, root)| {
-      let url = Url::parse(root).ok()?;
-      deno_path_util::url_to_file_path(&url).ok()
-    })
-    .collect::<Vec<_>>();
+  let (initial_roots, always_watch) = match &bundler.input {
+    BundlerInput::Entrypoints(entries) => (
+      entries
+        .iter()
+        .filter_map(|(_, root)| {
+          let url = Url::parse(root).ok()?;
+          deno_path_util::url_to_file_path(&url).ok()
+        })
+        .collect::<Vec<_>>(),
+      vec![],
+    ),
+    BundlerInput::EntrypointsWithHtml {
+      entries,
+      html_pages,
+    } => {
+      let mut roots = entries
+        .iter()
+        .filter_map(|(_, root)| {
+          let url = Url::parse(root).ok()?;
+          deno_path_util::url_to_file_path(&url).ok()
+        })
+        .collect::<Vec<_>>();
+      let always = html_pages
+        .iter()
+        .map(|p| p.path.clone())
+        .collect::<Vec<_>>();
+      roots.extend(always.iter().cloned());
+      (roots, always)
+    }
+  };
+  let always_watch = Rc::new(always_watch);
   let current_roots = Rc::new(RefCell::new(initial_roots.clone()));
   let bundler = Rc::new(tokio::sync::Mutex::new(bundler));
   let mut print_config =
@@ -259,15 +399,14 @@ async fn bundle_watch(
       watcher_communicator.show_path_changed(changed_paths.clone());
       let bundler = Rc::clone(&bundler);
       let current_roots = current_roots.clone();
+      let always_watch = always_watch.clone();
       Ok(async move {
         let mut bundler = bundler.lock().await;
         let start = std::time::Instant::now();
         if let Some(changed_paths) = changed_paths {
-          bundler
-            .plugin_handler
-            .reload_specifiers(&changed_paths)
-            .await?;
+          bundler.reload_specifiers(&changed_paths).await?;
         }
+        let input = bundler.input.clone();
         let response = bundler.rebuild().await?;
         handle_esbuild_errors_and_warnings(
           &response,
@@ -281,10 +420,13 @@ async fn bundle_watch(
             &bundler.cwd,
             should_replace_require_shim(platform),
             minified,
+            input,
+            output_dir,
           )?;
           print_finished_message(&metafile, &output_infos, start.elapsed())?;
 
-          let new_watched = get_input_paths_for_watch(&response);
+          let mut new_watched = get_input_paths_for_watch(&response);
+          new_watched.extend(always_watch.iter().cloned());
           *current_roots.borrow_mut() = new_watched.clone();
           let _ = watcher_communicator.watch_paths(new_watched);
         } else {
@@ -329,6 +471,17 @@ pub enum BundlingMode {
   Watch,
 }
 
+#[derive(Debug, Clone)]
+pub enum BundlerInput {
+  Entrypoints(Vec<(String, String)>),
+  EntrypointsWithHtml {
+    entries: Vec<(String, String)>,
+    html_pages: Vec<html::HtmlEntrypoint>,
+  },
+}
+
+pub type EsbuildFlags = Vec<String>;
+
 pub struct EsbuildBundler {
   client: esbuild_client::ProtocolClient,
   plugin_handler: Arc<DenoPluginHandler>,
@@ -336,7 +489,7 @@ pub struct EsbuildBundler {
   mode: BundlingMode,
   cwd: PathBuf,
   flags: EsbuildFlags,
-  roots: Vec<(String, String)>,
+  input: BundlerInput,
 }
 
 impl EsbuildBundler {
@@ -347,7 +500,7 @@ impl EsbuildBundler {
     on_end_rx: tokio::sync::mpsc::Receiver<esbuild_client::OnEndArgs>,
     cwd: PathBuf,
     flags: EsbuildFlags,
-    roots: Vec<(String, String)>,
+    input: BundlerInput,
   ) -> EsbuildBundler {
     EsbuildBundler {
       client,
@@ -356,7 +509,7 @@ impl EsbuildBundler {
       mode,
       cwd,
       flags,
-      roots,
+      input,
     }
   }
 
@@ -366,10 +519,14 @@ impl EsbuildBundler {
   // doesn't actually do anything, it's just registering the args/flags
   // we're going to use for all of the rebuilds.
   fn make_build_request(&self) -> protocol::BuildRequest {
+    let entries = match &self.input {
+      BundlerInput::Entrypoints(entries) => entries.clone(),
+      BundlerInput::EntrypointsWithHtml { entries, .. } => entries.clone(),
+    };
     protocol::BuildRequest {
-      entries: self.roots.clone(),
+      entries,
       key: 0,
-      flags: self.flags.to_flags(),
+      flags: self.flags.clone(),
       write: false,
       stdin_contents: None.into(),
       stdin_resolve_dir: None.into(),
@@ -396,11 +553,12 @@ impl EsbuildBundler {
   }
 
   async fn build(&self) -> Result<BuildResponse, AnyError> {
-    let response = self
+    let response: BuildResponse = self
       .client
       .send_build_request(self.make_build_request())
       .await
-      .unwrap();
+      .unwrap()
+      .map_err(|e| message_to_error(&e, &self.cwd))?;
 
     Ok(response)
   }
@@ -411,12 +569,72 @@ impl EsbuildBundler {
         panic!("rebuild not supported for one-shot mode")
       }
       BundlingMode::Watch => {
-        let _response = self.client.send_rebuild_request(0).await.unwrap();
+        log::trace!("sending rebuild request");
+        let _response = self
+          .client
+          .send_rebuild_request(0)
+          .await
+          .unwrap()
+          .map_err(|e| message_to_error(&e, &self.cwd))?;
         let response = self.on_end_rx.recv().await.unwrap();
         Ok(response.into())
       }
     }
   }
+
+  async fn reload_specifiers(
+    &mut self,
+    changed_paths: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    self.reload_html_entrypoints(changed_paths)?;
+    self.plugin_handler.reload_specifiers(changed_paths).await?;
+    Ok(())
+  }
+
+  fn reload_html_entrypoints(
+    &mut self,
+    changed_paths: &[PathBuf],
+  ) -> Result<(), AnyError> {
+    let BundlerInput::EntrypointsWithHtml { html_pages, .. } = &mut self.input
+    else {
+      return Ok(());
+    };
+
+    if changed_paths.is_empty() {
+      return Ok(());
+    }
+
+    for page in html_pages.iter_mut() {
+      if !changed_paths
+        .iter()
+        .any(|changed| changed == &page.path || changed == &page.canonical_path)
+      {
+        continue;
+      }
+
+      let updated = html::load_html_entrypoint(&self.cwd, &page.path)?;
+      let virtual_module_url =
+        deno_path_util::url_from_file_path(&updated.virtual_module_path)?
+          .to_string();
+      self.plugin_handler.update_virtual_module(
+        &virtual_module_url,
+        VirtualModule::new(
+          updated.temp_module.as_bytes().to_vec(),
+          esbuild_client::BuiltinLoader::Js,
+        ),
+      );
+      *page = updated;
+    }
+
+    Ok(())
+  }
+}
+
+fn message_to_error(
+  message: &esbuild_client::protocol::Message,
+  current_dir: &Path,
+) -> AnyError {
+  deno_core::anyhow::anyhow!("{}", format_message(message, current_dir))
 }
 
 // TODO(nathanwhit): MASSIVE HACK
@@ -565,6 +783,42 @@ fn requested_type_from_map(
   }
 }
 
+#[derive(Clone)]
+pub struct VirtualModule {
+  contents: Vec<u8>,
+  loader: esbuild_client::BuiltinLoader,
+}
+
+impl VirtualModule {
+  pub fn new(contents: Vec<u8>, loader: esbuild_client::BuiltinLoader) -> Self {
+    Self { contents, loader }
+  }
+}
+
+pub struct VirtualModules {
+  modules: RwLock<IndexMap<String, VirtualModule>>,
+}
+
+impl VirtualModules {
+  pub fn new() -> Self {
+    Self {
+      modules: RwLock::new(IndexMap::new()),
+    }
+  }
+
+  pub fn insert(&self, path: String, contents: VirtualModule) {
+    self.modules.write().insert(path, contents);
+  }
+
+  pub fn get(&self, path: &str) -> Option<VirtualModule> {
+    self.modules.read().get(path).cloned()
+  }
+
+  pub fn contains(&self, path: &str) -> bool {
+    self.modules.read().contains_key(path)
+  }
+}
+
 pub struct DeferredResolveError {
   path: String,
   error: ResolveWithGraphError,
@@ -580,7 +834,7 @@ pub struct DenoPluginHandler {
   externals_matcher: Option<ExternalsMatcher>,
   on_end_tx: tokio::sync::mpsc::Sender<esbuild_client::OnEndArgs>,
   deferred_resolve_errors: Arc<Mutex<Vec<DeferredResolveError>>>,
-
+  virtual_modules: Option<Arc<VirtualModules>>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
@@ -589,6 +843,12 @@ pub struct DenoPluginHandler {
 impl DenoPluginHandler {
   fn take_deferred_resolve_errors(&self) -> Vec<DeferredResolveError> {
     std::mem::take(&mut *self.deferred_resolve_errors.lock())
+  }
+
+  fn update_virtual_module(&self, path: &str, module: VirtualModule) {
+    if let Some(virtual_modules) = &self.virtual_modules {
+      virtual_modules.insert(path.to_string(), module);
+    }
   }
 }
 
@@ -649,6 +909,18 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnResolveArgs,
   ) -> Result<Option<esbuild_client::OnResolveResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_resolve"));
+
+    if let Some(virtual_modules) = &self.virtual_modules
+      && virtual_modules.contains(&args.path)
+    {
+      return Ok(Some(esbuild_client::OnResolveResult {
+        path: Some(args.path),
+        plugin_name: Some("deno".to_string()),
+        namespace: Some("deno".to_string()),
+        ..Default::default()
+      }));
+    }
+
     if let Some(matcher) = &self.externals_matcher
       && matcher.is_pre_resolve_match(&args.path)
     {
@@ -719,6 +991,17 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_load"));
+    if let Some(virtual_modules) = &self.virtual_modules
+      && let Some(module) = virtual_modules.get(&args.path)
+    {
+      let contents = module.contents.clone();
+      let loader = module.loader;
+      return Ok(Some(esbuild_client::OnLoadResult {
+        contents: Some(contents),
+        loader: Some(loader),
+        ..Default::default()
+      }));
+    }
     let result = self
       .bundle_load(&args.path, &requested_type_from_map(&args.with))
       .await;
@@ -1228,7 +1511,7 @@ impl DenoPluginHandler {
     source: &Arc<str>,
     is_known_script: Option<bool>,
   ) -> Result<Arc<str>, BundleLoadError> {
-    let parsed_source = self.parsed_source_cache.get_matching_parsed_source(
+    let parsed_source = self.parsed_source_cache.remove_or_parse_module(
       specifier,
       media_type,
       source.clone(),
@@ -1473,14 +1756,17 @@ async fn ensure_esbuild_downloaded(
   Ok(esbuild_path)
 }
 
-fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
+fn configure_esbuild_flags(
+  bundle_flags: &BundleFlags,
+  is_html: bool,
+) -> Vec<String> {
   let mut builder = EsbuildFlagsBuilder::default();
 
   builder
     .bundle(bundle_flags.inline_imports)
     .minify(bundle_flags.minify)
     .splitting(bundle_flags.code_splitting)
-    .external(bundle_flags.external.clone())
+    .externals(bundle_flags.external.clone())
     .tree_shaking(true)
     .format(match bundle_flags.format {
       BundleFormat::Esm => esbuild_client::Format::Esm,
@@ -1507,6 +1793,14 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
   }
   builder.metafile(true);
 
+  if is_html {
+    builder.platform(esbuild_client::Platform::Browser);
+    builder.splitting(true);
+    builder.entry_names("[dir]/[name]-[hash]");
+    builder.chunk_names("[dir]/[name]-[hash]");
+    builder.asset_names("[dir]/[name]-[hash]");
+    builder.metafile(true);
+  }
   match bundle_flags.platform {
     deno_bundle_runtime::BundlePlatform::Browser => {
       builder.platform(esbuild_client::Platform::Browser);
@@ -1514,7 +1808,7 @@ fn configure_esbuild_flags(bundle_flags: &BundleFlags) -> EsbuildFlags {
     deno_bundle_runtime::BundlePlatform::Deno => {}
   }
 
-  builder.build().unwrap()
+  builder.build()
 }
 
 // extract the path from a message like "Could not resolve "path/to/file.ts""
@@ -1564,17 +1858,6 @@ fn handle_esbuild_errors_and_warnings(
   }
 }
 
-fn is_js(path: &Path) -> bool {
-  if let Some(ext) = path.extension() {
-    matches!(
-      ext.to_string_lossy().as_ref(),
-      "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" | "dts"
-    )
-  } else {
-    false
-  }
-}
-
 pub struct OutputFileInfo {
   relative_path: PathBuf,
   size: usize,
@@ -1586,19 +1869,30 @@ pub struct ProcessedContents {
   is_js: bool,
 }
 
+fn is_js(path: &Path) -> bool {
+  if let Some(ext) = path.extension() {
+    matches!(
+      ext.to_string_lossy().as_ref(),
+      "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" | "dts"
+    )
+  } else {
+    false
+  }
+}
+
 pub fn maybe_process_contents(
-  file: &esbuild_client::protocol::BuildOutputFile,
+  file: &OutputFile<'_>,
   should_replace_require_shim: bool,
   minified: bool,
 ) -> Result<ProcessedContents, AnyError> {
-  let path = Path::new(&file.path);
-  let is_js = is_js(path) || file.path.ends_with("<stdout>");
+  let path = &file.path;
+  let is_js = is_js(path) || path.ends_with("<stdout>");
   if is_js {
-    let string = String::from_utf8(file.contents.clone())?;
+    let string = str::from_utf8(&file.contents)?;
     let string = if should_replace_require_shim {
-      replace_require_shim(&string, minified)
+      replace_require_shim(string, minified)
     } else {
-      string
+      string.to_string()
     };
     Ok(ProcessedContents {
       contents: Some(string.into_bytes()),
@@ -1611,18 +1905,101 @@ pub fn maybe_process_contents(
     })
   }
 }
+
+pub struct OutputFile<'a> {
+  pub path: PathBuf,
+  pub contents: Cow<'a, [u8]>,
+  pub hash: Option<String>,
+}
+
+impl<'a> std::fmt::Debug for OutputFile<'a> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("OutputFile")
+      .field("path", &self.path)
+      .field("hash", &self.hash)
+      .finish()
+  }
+}
+
+impl<'a> From<&'a esbuild_client::protocol::BuildOutputFile>
+  for OutputFile<'a>
+{
+  fn from(file: &'a esbuild_client::protocol::BuildOutputFile) -> Self {
+    OutputFile {
+      path: PathBuf::from(&file.path),
+      contents: Cow::Borrowed(&file.contents),
+      hash: Some(file.hash.clone()),
+    }
+  }
+}
+
+impl<'a> From<esbuild_client::protocol::BuildOutputFile> for OutputFile<'a> {
+  fn from(file: esbuild_client::protocol::BuildOutputFile) -> Self {
+    OutputFile {
+      path: PathBuf::from(&file.path),
+      contents: Cow::Owned(file.contents),
+      hash: Some(file.hash),
+    }
+  }
+}
+
+pub fn collect_output_files<'a>(
+  response_output_files: Option<&'a [protocol::BuildOutputFile]>,
+  cwd: &Path,
+  input: BundlerInput,
+  outdir: Option<&Path>,
+) -> Result<Vec<OutputFile<'a>>, AnyError> {
+  let outdir = if let Some(outdir) = outdir {
+    if outdir.is_absolute() {
+      Some(outdir.to_path_buf())
+    } else {
+      Some(cwd.join(outdir))
+    }
+  } else {
+    None
+  };
+  let mut output_files: Vec<OutputFile> = response_output_files
+    .map(|fs| {
+      fs.iter()
+        .map(|f| OutputFile {
+          path: PathBuf::from(&f.path),
+          contents: Cow::Borrowed(&f.contents),
+          hash: Some(f.hash.clone()),
+        })
+        .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+
+  if let BundlerInput::EntrypointsWithHtml {
+    entries: _,
+    html_pages,
+  } = input
+  {
+    let outdir = outdir.ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "--outdir is required when bundling HTML entrypoints",
+      )
+    })?;
+
+    let mut html_output_files = html::HtmlOutputFiles::new(&mut output_files);
+    for page in html_pages {
+      page.patch_html_with_response(cwd, &outdir, &mut html_output_files)?;
+    }
+  }
+  Ok(output_files)
+}
+
 pub fn process_result(
   response: &BuildResponse,
   cwd: &Path,
   should_replace_require_shim: bool,
   minified: bool,
+  input: BundlerInput,
+  outdir: Option<&Path>,
 ) -> Result<Vec<OutputFileInfo>, AnyError> {
+  let output_files =
+    collect_output_files(response.output_files.as_deref(), cwd, input, outdir)?;
   let mut exists_cache = std::collections::HashSet::new();
-  let output_files = response
-    .output_files
-    .as_ref()
-    .map(Cow::Borrowed)
-    .unwrap_or_default();
   let mut output_infos = Vec::new();
   for file in output_files.iter() {
     let processed_contents =
@@ -1631,13 +2008,13 @@ pub fn process_result(
     let relative_path =
       pathdiff::diff_paths(path, cwd).unwrap_or_else(|| path.to_path_buf());
     let is_js = processed_contents.is_js;
-    let bytes = processed_contents
+    let bytes: Cow<'_, [u8]> = processed_contents
       .contents
       .map(Cow::Owned)
-      .unwrap_or_else(|| Cow::Borrowed(&file.contents));
+      .unwrap_or_else(|| Cow::Borrowed(file.contents.as_ref()));
 
     if file.path.ends_with("<stdout>") {
-      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_slice())?;
+      crate::display::write_to_stdout_ignore_sigpipe(bytes.as_ref())?;
       continue;
     }
 

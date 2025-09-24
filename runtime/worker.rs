@@ -19,6 +19,7 @@ use deno_core::Extension;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
+use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -97,7 +98,8 @@ pub fn create_validate_import_attributes_callback(
   enable_raw_imports: Arc<AtomicBool>,
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
-    move |scope: &mut v8::HandleScope, attributes: &HashMap<String, String>| {
+    move |scope: &mut v8::PinScope<'_, '_>,
+          attributes: &HashMap<String, String>| {
       let valid_attribute = |kind: &str| {
         enable_raw_imports.load(Ordering::Relaxed)
           && matches!(kind, "bytes" | "text")
@@ -545,11 +547,7 @@ impl MainWorker {
           },
         ),
         deno_cache::deno_cache::args(create_cache),
-        deno_websocket::deno_websocket::args::<PermissionsContainer>(
-          options.bootstrap.user_agent.clone(),
-          services.root_cert_store_provider.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-        ),
+        deno_websocket::deno_websocket::args::<PermissionsContainer>(),
         deno_webstorage::deno_webstorage::args(
           options.origin_storage_dir.clone(),
         ),
@@ -645,7 +643,7 @@ impl MainWorker {
       dispatch_process_exit_event_fn_global,
     ) = {
       let context = js_runtime.main_context();
-      let scope = &mut js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut js_runtime);
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
       let bootstrap_str =
@@ -753,8 +751,8 @@ impl MainWorker {
       }
     }
 
-    let scope = &mut self.js_runtime.handle_scope();
-    let scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(scope, scope);
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
@@ -903,18 +901,24 @@ impl MainWorker {
       self
         .js_runtime
         .inspector()
-        .borrow_mut()
         .wait_for_session_and_break_on_next_statement();
     } else if self.should_wait_for_inspector_session {
-      self.js_runtime.inspector().borrow_mut().wait_for_session();
+      self.js_runtime.inspector().wait_for_session();
     }
   }
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
+  pub fn create_inspector_session(
+    &mut self,
+    cb: deno_core::InspectorSessionSend,
+  ) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
-    self.js_runtime.inspector().borrow().create_local_session(
+    let insp = self.js_runtime.inspector();
+
+    JsRuntimeInspector::create_local_session(
+      insp,
+      cb,
       InspectorSessionOptions {
         kind: InspectorSessionKind::Blocking,
       },
@@ -944,8 +948,8 @@ impl MainWorker {
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
   pub fn dispatch_load_event(&mut self) -> Result<(), Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_load_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_load_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -961,8 +965,8 @@ impl MainWorker {
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
   pub fn dispatch_unload_event(&mut self) -> Result<(), Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_unload_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_unload_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -976,8 +980,8 @@ impl MainWorker {
 
   /// Dispatches process.emit("exit") event for node compat.
   pub fn dispatch_process_exit_event(&mut self) -> Result<(), Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_process_exit_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_process_exit_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -993,8 +997,8 @@ impl MainWorker {
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
   pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_beforeunload_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_beforeunload_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -1012,8 +1016,8 @@ impl MainWorker {
   pub fn dispatch_process_beforeexit_event(
     &mut self,
   ) -> Result<bool, Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_process_beforeexit_event_fn = v8::Local::new(
       tc_scope,
       &self.dispatch_process_beforeexit_event_fn_global,
@@ -1161,12 +1165,12 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
 pub fn create_permissions_stack_trace_callback()
 -> deno_core::OpStackTraceCallback {
   Box::new(|stack: Vec<deno_core::error::JsStackFrame>| {
-    deno_permissions::prompter::set_current_stacktrace(Box::new(|| {
+    deno_permissions::prompter::set_current_stacktrace(Box::new(move || {
       stack
-        .into_iter()
+        .iter()
         .map(|frame| {
           deno_core::error::format_frame::<deno_core::error::NoAnsiColors>(
-            &frame,
+            frame,
           )
         })
         .collect()
@@ -1319,7 +1323,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
 
   fn get_host_defined_options<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<v8::Local<'s, v8::Data>> {
     self

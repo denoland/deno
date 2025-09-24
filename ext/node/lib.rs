@@ -357,8 +357,11 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_lchown<P>,
     ops::fs::op_node_lutimes_sync<P>,
     ops::fs::op_node_lutimes<P>,
+    ops::fs::op_node_mkdtemp_sync<P>,
+    ops::fs::op_node_mkdtemp<P>,
     ops::fs::op_node_open_sync<P>,
     ops::fs::op_node_open<P>,
+    ops::fs::op_node_statfs_sync<P>,
     ops::fs::op_node_statfs<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
@@ -528,7 +531,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_rm.ts",
     "_fs/_fs_rmdir.ts",
     "_fs/_fs_stat.ts",
-    "_fs/_fs_statfs.js",
+    "_fs/_fs_statfs.ts",
     "_fs/_fs_symlink.ts",
     "_fs/_fs_truncate.ts",
     "_fs/_fs_unlink.ts",
@@ -901,7 +904,7 @@ pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
 
 #[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Data> {
   let host_defined_options = v8::PrimitiveArray::new(scope, 1);
   let value = v8::Boolean::new(scope, true);

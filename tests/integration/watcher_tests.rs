@@ -412,6 +412,7 @@ async fn fmt_watch_without_args_test() {
     .current_dir(t.path())
     .arg("fmt")
     .arg("--watch")
+    .arg(".")
     .piped_output()
     .spawn()
     .unwrap();
@@ -2052,6 +2053,87 @@ async fn bundle_watch() {
   wait_contains("Bundled 1 module in", &mut stderr_lines).await;
   let contents = t.path().join("output.js").read_to_string();
   assert_contains!(contents, "console.log(\"hello world\");");
+
+  check_alive_then_kill(child);
+}
+
+#[flaky_test(tokio)]
+async fn bundle_watch_html_entry() {
+  let _server = http_server();
+
+  let t = TempDir::new();
+  let index_html = t.path().join("index.html");
+  index_html.write(
+    r#"<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Initial Page</title>
+  </head>
+  <body>
+    <h1 id="message">Initial Content</h1>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
+"#,
+  );
+  let main_ts = t.path().join("main.ts");
+  main_ts.write(
+    r#"
+  const h1 = document.createElement("h1");
+  h1.textContent = "Hello, World!";
+  document.body.appendChild(h1);
+"#,
+  );
+
+  let out_dir = t.path().join("dist");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("bundle")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--outdir")
+    .arg(&out_dir)
+    .arg(&index_html)
+    .env("NO_COLOR", "1")
+    .envs(env_vars_for_npm_tests())
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Bundled", &mut stderr_lines).await;
+
+  let html_output = out_dir.join("index.html");
+  let contents = html_output.read_to_string();
+  assert_contains!(contents, "Initial Content");
+
+  wait_for_watcher("index.html", &mut stderr_lines).await;
+
+  index_html.write(
+    r#"<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Updated Page</title>
+  </head>
+  <body>
+    <h1 id="message">Updated Content</h1>
+    <p>Watching HTML works</p>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
+"#,
+  );
+
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Bundled", &mut stderr_lines).await;
+
+  let contents = html_output.read_to_string();
+  assert_contains!(contents, "Updated Content");
+  assert_not_contains!(contents, "Initial Content");
 
   check_alive_then_kill(child);
 }

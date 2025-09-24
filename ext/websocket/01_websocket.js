@@ -6,6 +6,7 @@ import { core, primordials } from "ext:core/mod.js";
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
+  internalRidSymbol,
 } = core;
 import {
   op_ws_check_permission_and_cancel_handle,
@@ -45,6 +46,7 @@ const {
   SymbolFor,
   SymbolIterator,
   TypedArrayPrototypeGetByteLength,
+  TypeError,
 } = primordials;
 
 import { URL } from "ext:deno_url/00_url.js";
@@ -70,6 +72,7 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
+import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
 
 webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
   "WebSocketInit",
@@ -82,6 +85,7 @@ webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
       key: "protocols",
       converter: webidl.converters["sequence<DOMString>"],
     },
+    { key: "client", converter: webidl.converters.any },
   ],
 );
 
@@ -142,7 +146,6 @@ const _sendQueue = Symbol("[[sendQueue]]");
 const _queueSend = Symbol("[[queueSend]]");
 const _cancelHandle = Symbol("[[cancelHandle]]");
 
-const _server = Symbol("[[server]]");
 const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
 const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
@@ -206,6 +209,7 @@ class WebSocket extends EventTarget {
 
     let protocols;
     let headers = null;
+    let clientRid = null;
 
     if (typeof initOrProtocols === "string") {
       protocols = [initOrProtocols];
@@ -218,6 +222,25 @@ class WebSocket extends EventTarget {
         headers = headersFromHeaderList([], "request");
         fillHeaders(headers, initOrProtocols.headers);
       }
+
+      // NOTE: non standard extension. This handles Deno.HttpClient parameter
+      if (initOrProtocols.client !== undefined) {
+        if (
+          initOrProtocols.client !== null &&
+          !ObjectPrototypeIsPrototypeOf(
+            HttpClientPrototype,
+            initOrProtocols.client,
+          )
+        ) {
+          throw webidl.makeException(
+            TypeError,
+            "`client` must be a Deno.HttpClient",
+            prefix,
+            "Argument 2",
+          );
+        }
+        clientRid = initOrProtocols.client?.[internalRidSymbol] ?? null;
+      }
     }
 
     if (
@@ -229,7 +252,7 @@ class WebSocket extends EventTarget {
         )
     ) {
       throw new DOMException(
-        "Cannot supply multiple times the same protocol",
+        "Cannot supply the same protocol multiple times",
         "SyntaxError",
       );
     }
@@ -262,6 +285,7 @@ class WebSocket extends EventTarget {
         ArrayPrototypeJoin(protocols, ", "),
         cancelRid,
         headers ? headerListFromHeaders(headers) : null,
+        clientRid,
       ),
       (create) => {
         this[_rid] = create.rid;
@@ -424,7 +448,7 @@ class WebSocket extends EventTarget {
       reason = webidl.converters.USVString(reason, prefix, "Argument 2");
     }
 
-    if (!this[_server]) {
+    if (this[_role] === CLIENT) {
       if (
         code !== undefined &&
         !(code === 1000 || (3000 <= code && code < 5000))
@@ -743,8 +767,8 @@ export {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
+  CLIENT,
   createWebSocketBranded,
   SERVER,
   WebSocket,

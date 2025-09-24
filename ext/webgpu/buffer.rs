@@ -73,7 +73,10 @@ impl WebIdlInterfaceConverter for GPUBuffer {
   const NAME: &'static str = "GPUBuffer";
 }
 
-impl GarbageCollected for GPUBuffer {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUBuffer {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUBuffer"
   }
@@ -199,7 +202,7 @@ impl GPUBuffer {
 
   fn get_mapped_range<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     #[webidl(default = 0)] offset: u64,
     #[webidl] size: Option<u64>,
   ) -> Result<v8::Local<'s, v8::ArrayBuffer>, BufferError> {
@@ -250,7 +253,7 @@ impl GPUBuffer {
   }
 
   #[nofast]
-  fn unmap(&self, scope: &mut v8::HandleScope) -> Result<(), BufferError> {
+  fn unmap(&self, scope: &mut v8::PinScope<'_, '_>) -> Result<(), BufferError> {
     for ab in self.mapped_js_buffers.replace(vec![]) {
       let ab = ab.open(scope);
       ab.detach(None);

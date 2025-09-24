@@ -41,8 +41,8 @@ use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::pki_types::ServerName;
 pub use rustls_tokio_stream::TlsStream;
-use rustls_tokio_stream::TlsStreamRead;
-use rustls_tokio_stream::TlsStreamWrite;
+pub use rustls_tokio_stream::TlsStreamRead;
+pub use rustls_tokio_stream::TlsStreamWrite;
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -269,7 +269,7 @@ pub fn op_tls_key_static(
 
 #[op2]
 pub fn op_tls_cert_resolver_create<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Array> {
   let (resolver, lookup) = new_resolver();
   let resolver = deno_core::cppgc::make_cppgc_object(

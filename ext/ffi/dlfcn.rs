@@ -144,7 +144,7 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
 
 #[op2(stack_trace)]
 pub fn op_ffi_load<'scope, FP>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   state: Rc<RefCell<OpState>>,
   #[string] path: &str,
   #[serde] symbols: HashMap<String, ForeignSymbol>,
@@ -249,16 +249,19 @@ where
   Ok(out.into())
 }
 
-struct FunctionData {
+pub struct FunctionData {
   // Held in a box to keep memory while function is alive.
   #[allow(unused)]
-  symbol: Box<Symbol>,
+  pub symbol: Box<Symbol>,
   // Held in a box to keep inner data alive while function is alive.
   #[allow(unused)]
   turbocall: Option<Turbocall>,
 }
 
-impl GarbageCollected for FunctionData {
+// SAFETY: we're sure `FunctionData` can be GCed
+unsafe impl GarbageCollected for FunctionData {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"FunctionData"
   }
@@ -267,7 +270,7 @@ impl GarbageCollected for FunctionData {
 // Create a JavaScript function for synchronous FFI call to
 // the given symbol.
 fn make_sync_fn<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   symbol: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
   let turbocall = if turbocall::is_compatible(&symbol) {
@@ -306,7 +309,7 @@ fn make_sync_fn<'s>(
 }
 
 fn sync_fn_impl<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   args: v8::FunctionCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {

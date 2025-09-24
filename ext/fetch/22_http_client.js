@@ -11,8 +11,6 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
 import { op_fetch_custom_client } from "ext:core/ops";
 import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
 
@@ -22,6 +20,7 @@ const {
   ObjectDefineProperty,
   ObjectHasOwn,
   StringPrototypeStartsWith,
+  SymbolDispose,
   TypeError,
 } = primordials;
 
@@ -75,9 +74,8 @@ function createHttpClient(options) {
           options.proxy.transport = "http";
           break;
         }
-        case "unix": {
-          break;
-        }
+        case "tcp":
+        case "unix":
         case "vsock": {
           break;
         }

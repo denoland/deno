@@ -24,7 +24,10 @@ impl WebIdlInterfaceConverter for GPUShaderModule {
   const NAME: &'static str = "GPUShaderModule";
 }
 
-impl GarbageCollected for GPUShaderModule {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUShaderModule {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUShaderModule"
   }
