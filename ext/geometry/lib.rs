@@ -207,7 +207,7 @@ impl DOMPointReadOnly {
   #[required(0)]
   fn to_json<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     let mut obj = v8::Object::new(scope);
     set_f64(scope, &mut obj, "x", self.inner.borrow().x);
@@ -221,7 +221,7 @@ impl DOMPointReadOnly {
   #[required(0)]
   fn matrix_transform<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] value: DOMMatrixInit,
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     let matrix = DOMMatrixReadOnly::from_matrix_inner(&value)?;
@@ -271,7 +271,7 @@ impl DOMPoint {
   #[required(0)]
   #[static_method]
   fn from_point<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] init: DOMPointInit,
   ) -> v8::Local<'a, v8::Object> {
     let ro = DOMPointReadOnly::from_point_inner(init);
@@ -489,7 +489,7 @@ impl DOMRectReadOnly {
   #[required(0)]
   fn to_json<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     let mut obj = v8::Object::new(scope);
     set_f64(scope, &mut obj, "x", self.x.get());
@@ -539,7 +539,7 @@ impl DOMRect {
   #[required(0)]
   #[static_method]
   fn from_rect<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] init: DOMRectInit,
   ) -> v8::Local<'a, v8::Object> {
     let ro = DOMRectReadOnly::from_rect_inner(init);
@@ -645,7 +645,7 @@ impl DOMQuad {
   #[required(0)]
   #[cppgc]
   fn constructor(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[webidl] p1: DOMPointInit,
     #[webidl] p2: DOMPointInit,
     #[webidl] p3: DOMPointInit,
@@ -653,7 +653,7 @@ impl DOMQuad {
   ) -> DOMQuad {
     #[inline]
     fn from_point(
-      scope: &mut v8::HandleScope,
+      scope: &mut v8::PinScope<'_, '_>,
       point: DOMPointInit,
     ) -> v8::TracedReference<v8::Object> {
       let ro = DOMPointReadOnly {
@@ -679,12 +679,12 @@ impl DOMQuad {
   #[static_method]
   #[cppgc]
   fn from_rect(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[webidl] rect: DOMRectInit,
   ) -> DOMQuad {
     #[inline]
     fn create_point(
-      scope: &mut v8::HandleScope,
+      scope: &mut v8::PinScope<'_, '_>,
       x: f64,
       y: f64,
       z: f64,
@@ -717,12 +717,12 @@ impl DOMQuad {
   #[static_method]
   #[cppgc]
   fn from_quad(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[webidl] quad: DOMQuadInit,
   ) -> DOMQuad {
     #[inline]
     fn from_point(
-      scope: &mut v8::HandleScope,
+      scope: &mut v8::PinScope<'_, '_>,
       point: DOMPointInit,
     ) -> v8::TracedReference<v8::Object> {
       let ro = DOMPointReadOnly {
@@ -746,7 +746,7 @@ impl DOMQuad {
   #[getter]
   fn p1<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     self.p1.get(scope).unwrap()
   }
@@ -754,7 +754,7 @@ impl DOMQuad {
   #[getter]
   fn p2<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     self.p2.get(scope).unwrap()
   }
@@ -762,7 +762,7 @@ impl DOMQuad {
   #[getter]
   fn p3<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     self.p3.get(scope).unwrap()
   }
@@ -770,7 +770,7 @@ impl DOMQuad {
   #[getter]
   fn p4<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     self.p4.get(scope).unwrap()
   }
@@ -778,11 +778,11 @@ impl DOMQuad {
   #[required(0)]
   fn get_bounds<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     #[inline]
     fn get_ptr(
-      scope: &mut v8::HandleScope,
+      scope: &mut v8::PinScope<'_, '_>,
       value: &v8::TracedReference<v8::Object>,
     ) -> cppgc::UnsafePtr<DOMPointReadOnly> {
       let value = value.get(scope).unwrap();
@@ -819,11 +819,11 @@ impl DOMQuad {
   #[required(0)]
   fn to_json<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     #[inline]
     fn set_object(
-      scope: &mut v8::HandleScope,
+      scope: &mut v8::PinScope<'_, '_>,
       object: &mut v8::Local<v8::Object>,
       key: &str,
       value: &v8::TracedReference<v8::Object>,
@@ -955,7 +955,7 @@ const INDEX_M44: usize = 15;
 impl DOMMatrixReadOnly {
   fn new<'a>(
     state: &mut OpState,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'_>,
@@ -1634,7 +1634,7 @@ impl DOMMatrixReadOnly {
   #[cppgc]
   fn constructor<'a>(
     state: &mut OpState,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
     DOMMatrixReadOnly::new(
@@ -1661,7 +1661,7 @@ impl DOMMatrixReadOnly {
   #[static_method]
   #[cppgc]
   fn from_float32_array<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
     if !value.is_float32_array() {
@@ -1683,7 +1683,7 @@ impl DOMMatrixReadOnly {
   #[static_method]
   #[cppgc]
   fn from_float64_array<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<DOMMatrixReadOnly, GeometryError> {
     if !value.is_float64_array() {
@@ -1847,7 +1847,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn translate<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] tx: Option<webidl::UnrestrictedDouble>,
     #[webidl] ty: Option<webidl::UnrestrictedDouble>,
     #[webidl] tz: Option<webidl::UnrestrictedDouble>,
@@ -1864,7 +1864,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn scale<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] sx: Option<webidl::UnrestrictedDouble>,
     #[webidl] sy: Option<webidl::UnrestrictedDouble>,
     #[webidl] sz: Option<webidl::UnrestrictedDouble>,
@@ -1892,7 +1892,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn scale_non_uniform<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] sx: Option<webidl::UnrestrictedDouble>,
     #[webidl] sy: Option<webidl::UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
@@ -1908,7 +1908,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn scale3d<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] scale: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_x: Option<webidl::UnrestrictedDouble>,
     #[webidl] origin_y: Option<webidl::UnrestrictedDouble>,
@@ -1933,7 +1933,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn rotate<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] rotate_x: Option<webidl::UnrestrictedDouble>,
     #[webidl] rotate_y: Option<webidl::UnrestrictedDouble>,
     #[webidl] rotate_z: Option<webidl::UnrestrictedDouble>,
@@ -1962,7 +1962,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn rotate_from_vector<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
@@ -1977,7 +1977,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn rotate_axis_angle<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] x: Option<webidl::UnrestrictedDouble>,
     #[webidl] y: Option<webidl::UnrestrictedDouble>,
     #[webidl] z: Option<webidl::UnrestrictedDouble>,
@@ -1996,7 +1996,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn skew_x<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] x_deg: Option<webidl::UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
     let x_deg = *x_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
@@ -2009,7 +2009,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn skew_y<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] y_deg: Option<webidl::UnrestrictedDouble>,
   ) -> v8::Local<'a, v8::Object> {
     let y_deg = *y_deg.unwrap_or(webidl::UnrestrictedDouble(0.0));
@@ -2022,7 +2022,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn multiply<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     other: v8::Local<'a, v8::Value>,
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     let out = self.clone();
@@ -2048,7 +2048,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn flip_x<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     let out = self.clone();
     out.flip_x_inner();
@@ -2059,7 +2059,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn flip_y<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     let out = self.clone();
     out.flip_y_inner();
@@ -2070,7 +2070,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn inverse<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     let out = self.clone();
     out.invert_self_inner();
@@ -2082,7 +2082,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn transform_point<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     point: v8::Local<'a, v8::Value>,
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     let out = DOMPointReadOnly {
@@ -2111,7 +2111,7 @@ impl DOMMatrixReadOnly {
   #[required(0)]
   fn to_json<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> v8::Local<'a, v8::Object> {
     let mut obj = v8::Object::new(scope);
     set_f64(scope, &mut obj, "a", self.a_inner());
@@ -2161,7 +2161,7 @@ impl DOMMatrix {
   #[cppgc]
   fn constructor<'a>(
     state: &mut OpState,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     // TODO(petamoriken): Error when deleting next line. proc-macro bug?
     #[webidl] _: bool,
@@ -2180,7 +2180,7 @@ impl DOMMatrix {
   #[required(0)]
   #[static_method]
   fn from_matrix<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl] init: DOMMatrixInit,
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     let ro = DOMMatrixReadOnly::from_matrix_inner(&init)?;
@@ -2192,7 +2192,7 @@ impl DOMMatrix {
   #[required(1)]
   #[static_method]
   fn from_float32_array<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     if !value.is_float32_array() {
@@ -2235,7 +2235,7 @@ impl DOMMatrix {
   #[required(1)]
   #[static_method]
   fn from_float64_array<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<v8::Local<'a, v8::Object>, GeometryError> {
     if !value.is_float64_array() {
@@ -2798,7 +2798,7 @@ impl DOMMatrix {
   fn multiply_self<'a>(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     other: v8::Local<'a, v8::Value>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> Result<v8::Global<v8::Object>, GeometryError> {
@@ -2830,7 +2830,7 @@ impl DOMMatrix {
   fn pre_multiply_self<'a>(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     other: v8::Local<'a, v8::Value>,
     #[proto] ro: &DOMMatrixReadOnly,
   ) -> Result<v8::Global<v8::Object>, GeometryError> {
@@ -2871,7 +2871,7 @@ impl DOMMatrix {
 
 #[inline]
 fn set_f64(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   object: &mut v8::Local<v8::Object>,
   key: &str,
   value: f64,
@@ -2883,7 +2883,7 @@ fn set_f64(
 
 #[inline]
 fn set_boolean(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   object: &mut v8::Local<v8::Object>,
   key: &str,
   value: bool,
@@ -2946,7 +2946,7 @@ fn matrix_transform_point(
 #[op2]
 #[arraybuffer]
 pub fn op_geometry_matrix_to_buffer<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   matrix: v8::Local<'a, v8::Value>,
 ) -> Result<Vec<u8>, GeometryError> {
   let Some(matrix) =
@@ -2970,11 +2970,11 @@ pub fn op_geometry_matrix_to_buffer<'a>(
 #[op2]
 #[string]
 pub fn op_geometry_matrix_to_string<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   matrix: v8::Local<'a, v8::Value>,
 ) -> Result<String, GeometryError> {
   #[inline]
-  fn to_string(scope: &mut v8::HandleScope, value: f64) -> String {
+  fn to_string(scope: &mut v8::PinScope<'_, '_>, value: f64) -> String {
     let number = v8::Number::new(scope, value);
     number.to_string(scope).unwrap().to_rust_string_lossy(scope)
   }
@@ -3013,7 +3013,7 @@ pub fn op_geometry_matrix_to_string<'a>(
 
 #[op2(fast)]
 pub fn op_geometry_matrix_set_matrix_value<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   input: v8::Local<'a, v8::Value>,
   transform_list: v8::Local<'a, v8::Value>,
 ) -> Result<(), GeometryError> {
