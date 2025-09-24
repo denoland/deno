@@ -1,11 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::io::Read;
-use std::io::Write;
-use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicU32;
-
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
@@ -537,113 +531,6 @@ impl PermissionPrompter for TtyPrompter {
     assert!(std::io::stdin().is_terminal() && std::io::stderr().is_terminal());
 
     value
-  }
-}
-
-#[derive(serde::Serialize)]
-struct PermissionBrokerRequest {
-  v: u32,
-  id: u32,
-  datetime: String,
-  permission: String,
-  value: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  stack: Option<Vec<String>>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct PermissionBrokerResponse {
-  id: u32,
-  result: String,
-}
-
-pub struct PermissionBroker {
-  stream: Mutex<UnixStream>,
-  next_id: AtomicU32,
-}
-
-impl PermissionBroker {
-  pub fn new(socket_path: impl Into<PathBuf>) -> std::io::Result<Self> {
-    let stream = UnixStream::connect(&socket_path.into())?;
-    Ok(Self {
-      stream: Mutex::new(stream),
-      next_id: AtomicU32::new(1),
-    })
-  }
-
-  fn send_audit_message(
-    &self,
-    permission: &str,
-    stringified_value: Option<&str>,
-    stack: Option<Vec<String>>,
-  ) -> std::io::Result<PromptResponse> {
-    let mut stream = self.stream.lock();
-    let id = self
-      .next_id
-      .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let request = PermissionBrokerRequest {
-      v: 1,
-      id,
-      datetime: chrono::Utc::now().to_rfc3339(),
-      permission: permission.to_string(),
-      value: stringified_value.map(|s| s.to_string()),
-      stack,
-    };
-
-    let json = serde_json::to_string(&request).unwrap();
-
-    eprintln!("-> broker req   {}", json);
-
-    stream.write_all(json.as_bytes())?;
-
-    // TODO(bartlomieju): this should use line reader
-    // Read response
-    let mut response_buffer = [0u8; 1024];
-    let bytes_read = stream.read(&mut response_buffer)?;
-
-    let Ok(response) = serde_json::from_slice::<PermissionBrokerResponse>(
-      &response_buffer[..bytes_read],
-    ) else {
-      // TODO(bartlomieju): malformed message should crash the process
-      return Ok(PromptResponse::Deny);
-    };
-
-    eprintln!("<- broker resp  {:?}", response);
-
-    if response.id != id {
-      // TODO(bartlomieju): id mismatch should crash the process
-      return Ok(PromptResponse::Deny);
-    }
-
-    let prompt_response = match response.result.as_str() {
-      "allow" => PromptResponse::Allow,
-      "allowAll" => PromptResponse::AllowAll,
-      _ => PromptResponse::Deny,
-    };
-    Ok(prompt_response)
-  }
-}
-
-impl PermissionPrompter for PermissionBroker {
-  fn prompt(
-    &mut self,
-    _message: &str,
-    stringified_value: Option<&str>,
-    name: &str,
-    _api_name: Option<&str>,
-    _is_unary: bool,
-    get_stack: Option<GetFormattedStackFn>,
-  ) -> PromptResponse {
-    let stack = get_stack.map(|f| f());
-
-    match self.send_audit_message(name, stringified_value, stack) {
-      Ok(resp) => resp,
-      Err(_err) => {
-        // TODO(bartlomieju): this should actually kill the process with a specific exit code
-        // If we can't communicate with the broker, deny the permission
-        return PromptResponse::Deny;
-      }
-    }
   }
 }
 

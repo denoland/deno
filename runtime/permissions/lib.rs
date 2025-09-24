@@ -31,13 +31,15 @@ use serde::Serialize;
 use serde::de;
 use url::Url;
 
+pub mod broker;
 pub mod prompter;
 pub mod which;
+pub use broker::PermissionBroker;
+pub use broker::set_broker;
 pub use prompter::DeniedPrompter;
 pub use prompter::GetFormattedStackFn;
 use prompter::MAYBE_CURRENT_STACKTRACE;
 use prompter::PERMISSION_EMOJI;
-pub use prompter::PermissionBroker;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
@@ -45,7 +47,10 @@ use prompter::permission_prompt;
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
 
+use self::broker::has_broker;
+use self::broker::maybe_check_with_broker;
 use self::which::WhichSys;
+use crate::broker::BrokerResponse;
 
 pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 
@@ -477,6 +482,22 @@ impl PermissionState {
     info: impl Fn() -> Option<String>,
     prompt: bool,
   ) -> (Result<(), PermissionDeniedError>, bool, bool) {
+    if let Some(resp) = maybe_check_with_broker(name, &info) {
+      match resp {
+        BrokerResponse::Allow => {
+          Self::log_perm_access(name, info);
+          return (Ok(()), false, false);
+        }
+        BrokerResponse::Deny => {
+          return (
+            Err(Self::permission_denied_error(name, info().as_deref())),
+            false,
+            false,
+          );
+        }
+      }
+    }
+
     match self {
       PermissionState::Granted => {
         Self::log_perm_access(name, info);
@@ -747,6 +768,7 @@ impl<
       && !self.prompt_denied_global
       && self.flag_denied_list.is_empty()
       && self.prompt_denied_list.is_empty()
+      && !has_broker()
   }
 
   pub fn check_all_api(
