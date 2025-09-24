@@ -261,7 +261,7 @@ fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
 
 #[op2]
 pub fn op_http_get_request_method_and_url<'scope, HTTP>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   external: *const c_void,
 ) -> v8::Local<'scope, v8::Array>
 where
@@ -381,7 +381,7 @@ pub fn op_http_get_request_header(
 
 #[op2]
 pub fn op_http_get_request_headers<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   external: *const c_void,
 ) -> v8::Local<'scope, v8::Array> {
   let http =
@@ -497,7 +497,7 @@ pub fn op_http_set_response_header(
 
 #[op2(fast)]
 pub fn op_http_set_response_headers(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   external: *const c_void,
   headers: v8::Local<v8::Array>,
 ) {

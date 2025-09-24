@@ -123,7 +123,7 @@ fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
 
 #[op2]
 pub fn op_node_decode_utf8<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   buf: v8::Local<v8::ArrayBufferView>,
   start: v8::Local<v8::Value>,
   end: v8::Local<v8::Value>,
@@ -174,7 +174,7 @@ enum BufferError {
 
 #[inline(always)]
 fn parse_array_index(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   arg: v8::Local<v8::Value>,
   default: usize,
 ) -> Result<usize, BufferError> {
