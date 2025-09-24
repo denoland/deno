@@ -14,25 +14,21 @@ import { Buffer } from "node:buffer";
 import { readAll, readAllSync } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
-import {
-  BinaryEncodings,
-  Encodings,
-  TextEncodings,
-} from "ext:deno_node/_utils.ts";
+import { Encodings } from "ext:deno_node/_utils.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 
-function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
+function maybeDecode(data: Uint8Array, encoding: Encodings): string;
 function maybeDecode(
   data: Uint8Array,
-  encoding: BinaryEncodings | null,
+  encoding: null,
 ): Buffer;
 function maybeDecode(
   data: Uint8Array,
   encoding: Encodings | null,
 ): string | Buffer {
   const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  if (encoding && encoding !== "binary") return buffer.toString(encoding);
+  if (encoding) return buffer.toString(encoding);
   return buffer;
 }
 
@@ -87,12 +83,8 @@ export function readFile(
 
   if (cb) {
     p.then((data: Uint8Array) => {
-      if (encoding && encoding !== "binary") {
-        const text = maybeDecode(data, encoding);
-        return (cb as TextCallback)(null, text);
-      }
-      const buffer = maybeDecode(data, encoding);
-      (cb as BinaryCallback)(null, buffer);
+      const textOrBuffer = maybeDecode(data, encoding);
+      (cb as BinaryCallback)(null, textOrBuffer);
     }, (err) => cb && cb(denoErrorToNodeError(err, { path, syscall: "open" })));
   }
 }
@@ -135,10 +127,6 @@ export function readFileSync(
     }
   }
   const encoding = getEncoding(opt);
-  if (encoding && encoding !== "binary") {
-    const text = maybeDecode(data, encoding);
-    return text;
-  }
-  const buffer = maybeDecode(data, encoding);
-  return buffer;
+  const textOrBuffer = maybeDecode(data, encoding);
+  return textOrBuffer;
 }

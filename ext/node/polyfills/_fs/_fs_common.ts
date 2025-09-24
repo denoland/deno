@@ -16,6 +16,7 @@ import {
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
 import { type Buffer } from "node:buffer";
+import { assertEncoding } from "ext:deno_node/internal/fs/utils.mjs";
 
 export type CallbackWithError = (err: ErrnoException | null) => void;
 
@@ -74,6 +75,7 @@ export function getEncoding(
     ? optOrCallback
     : optOrCallback.encoding;
   if (!encoding) return null;
+  assertEncoding(encoding);
   return encoding;
 }
 
