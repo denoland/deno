@@ -38,7 +38,6 @@ const {
   ReflectApply,
   Symbol,
   Uint32Array,
-  queueMicrotask,
 } = primordials;
 
 import {
@@ -78,7 +77,8 @@ import { zlib as zlibConstants } from "ext:deno_node/internal_binding/constants.
 
 const kFlushFlag = Symbol("kFlushFlag");
 const kError = Symbol("kError");
-const kHandleWriteScheduled = Symbol("kHandleWriteScheduled");
+const kHandleContinuePending = Symbol("kHandleContinuePending");
+const kHandleAwaitDrain = Symbol("kHandleAwaitDrain");
 
 const {
   // Zlib flush levels
@@ -537,26 +537,41 @@ function processChunkSync(self, chunk, flushFlag) {
   return (buffers.length === 1 ? buffers[0] : Buffer.concat(buffers, nread));
 }
 
+function invokeHandleWrite(handle, self) {
+  const availOutBefore = self._chunkSize - self._outOffset;
+  handle.availOutBefore = availOutBefore;
+  handle.write(
+    handle.flushFlag,
+    handle.buffer, // in
+    handle.inOff, // in_off
+    handle.availInBefore, // in_len
+    self._outBuffer, // out
+    self._outOffset, // out_off
+    availOutBefore,
+  ); // out_len
+}
+
+function pumpHandle(handle, self) {
+  while (handle[kHandleContinuePending] && !handle[kHandleAwaitDrain]) {
+    handle[kHandleContinuePending] = false;
+    invokeHandleWrite(handle, self);
+  }
+}
+
 function processChunk(self, chunk, flushFlag, cb) {
   const handle = self._handle;
   if (!handle) return process.nextTick(cb);
 
   handle.buffer = chunk;
   handle.cb = cb;
-  handle.availOutBefore = self._chunkSize - self._outOffset;
   handle.availInBefore = chunk.byteLength;
   handle.inOff = 0;
   handle.flushFlag = flushFlag;
+  handle[kHandleContinuePending] = false;
+  handle[kHandleAwaitDrain] = false;
 
-  handle.write(
-    flushFlag,
-    chunk, // in
-    0, // in_off
-    handle.availInBefore, // in_len
-    self._outBuffer, // out
-    self._outOffset, // out_off
-    handle.availOutBefore,
-  ); // out_len
+  invokeHandleWrite(handle, self);
+  pumpHandle(handle, self);
 }
 
 function processCallback() {
@@ -609,34 +624,19 @@ function processCallback() {
     handle.inOff += inDelta;
     handle.availInBefore = availInAfter;
 
-    const continueWrite = () => {
-      if (handle[kHandleWriteScheduled]) {
-        handle[kHandleWriteScheduled] = false;
-      }
-      if (self.destroyed) {
-        return;
-      }
-      this.write(
-        handle.flushFlag,
-        this.buffer, // in
-        handle.inOff, // in_off
-        handle.availInBefore, // in_len
-        self._outBuffer, // out
-        self._outOffset, // out_off
-        self._chunkSize,
-      ); // out_len
-    };
+    handle[kHandleContinuePending] = true;
 
     if (!streamBufferIsFull) {
-      if (!handle[kHandleWriteScheduled]) {
-        handle[kHandleWriteScheduled] = true;
-        queueMicrotask(continueWrite);
-      }
+      handle[kHandleAwaitDrain] = false;
     } else {
+      handle[kHandleAwaitDrain] = true;
       const oldRead = self._read;
       self._read = (n) => {
         self._read = oldRead;
-        continueWrite();
+        handle[kHandleAwaitDrain] = false;
+        if (!self.destroyed) {
+          pumpHandle(handle, self);
+        }
         self._read(n);
       };
     }
@@ -662,6 +662,8 @@ function processCallback() {
   }
 
   // Finished with the chunk.
+  handle[kHandleContinuePending] = false;
+  handle[kHandleAwaitDrain] = false;
   this.buffer = null;
   this.cb();
 }
