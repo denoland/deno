@@ -939,8 +939,18 @@ async fn initialize_tunnel(
   let mut cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
 
-  let host = std::env::var("DENO_DEPLOY_TUNNEL_ENDPOINT")
-    .unwrap_or_else(|_| "tunnel.global.prod.deno-cluster.net:443".into());
+  let host = match std::env::var("DENO_DEPLOY_TUNNEL_ENDPOINT") {
+    Ok(host) => host,
+    Err(_) => {
+      const HOST: &str = "_tunneld._udp.prod.deno-cluster.net";
+      let resolver = hickory_resolver::TokioResolver::builder_tokio()?.build();
+      let result = resolver.srv_lookup(HOST).await?;
+      let Some(srv) = result.iter().next() else {
+        deno_core::anyhow::bail!("Unable to resolve {HOST}");
+      };
+      format!("{}:{}", srv.target(), srv.port())
+    }
+  };
 
   let env_token = env::var("DENO_DEPLOY_TOKEN").ok();
   let env_org = env::var("DENO_DEPLOY_ORG").ok();
@@ -1030,7 +1040,9 @@ async fn initialize_tunnel(
           format!("https://{}:{}", addr.hostname(), addr.port())
         };
 
-        log::info!(
+        // This very intentionally uses eprintln so that it does
+        // not interact with its own telemetry ingest.
+        eprintln!(
           "{}",
           colors::green(format!("You are connected to {endpoint}"))
         );
@@ -1041,7 +1053,9 @@ async fn initialize_tunnel(
         } else {
           "".into()
         };
-        log::info!(
+        // This very intentionally uses eprintln so that it does
+        // not interact with its own telemetry ingest.
+        eprintln!(
           "{}",
           colors::green(format!(
             "Reconnecting tunnel in {}s...{}",
