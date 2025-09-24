@@ -38,6 +38,7 @@ const {
   ReflectApply,
   Symbol,
   Uint32Array,
+  queueMicrotask,
 } = primordials;
 
 import {
@@ -77,6 +78,7 @@ import { zlib as zlibConstants } from "ext:deno_node/internal_binding/constants.
 
 const kFlushFlag = Symbol("kFlushFlag");
 const kError = Symbol("kError");
+const kHandleWriteScheduled = Symbol("kHandleWriteScheduled");
 
 const {
   // Zlib flush levels
@@ -607,7 +609,13 @@ function processCallback() {
     handle.inOff += inDelta;
     handle.availInBefore = availInAfter;
 
-    if (!streamBufferIsFull) {
+    const continueWrite = () => {
+      if (handle[kHandleWriteScheduled]) {
+        handle[kHandleWriteScheduled] = false;
+      }
+      if (self.destroyed) {
+        return;
+      }
       this.write(
         handle.flushFlag,
         this.buffer, // in
@@ -617,19 +625,18 @@ function processCallback() {
         self._outOffset, // out_off
         self._chunkSize,
       ); // out_len
+    };
+
+    if (!streamBufferIsFull) {
+      if (!handle[kHandleWriteScheduled]) {
+        handle[kHandleWriteScheduled] = true;
+        queueMicrotask(continueWrite);
+      }
     } else {
       const oldRead = self._read;
       self._read = (n) => {
         self._read = oldRead;
-        this.write(
-          handle.flushFlag,
-          this.buffer, // in
-          handle.inOff, // in_off
-          handle.availInBefore, // in_len
-          self._outBuffer, // out
-          self._outOffset, // out_off
-          self._chunkSize,
-        ); // out_len
+        continueWrite();
         self._read(n);
       };
     }
