@@ -1,4 +1,7 @@
+use crate::tsc::RequestNpmState;
 use crate::tsc::ResolveNonGraphSpecifierTypesError;
+use crate::tsc::get_lazily_loaded_asset;
+use crate::tsc::get_maybe_hash;
 
 use super::Request;
 use super::Response;
@@ -12,6 +15,7 @@ use deno_graph::ModuleGraph;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use typescript_go_client_rust::CallbackHandler;
@@ -40,7 +44,17 @@ fn synthetic_config(
     .as_object_mut()
     .unwrap()
     .insert("allowImportingTsExtensions".to_string(), json!(true));
+  // config.as_object_mut().unwrap().remove("lib");
+  // config
+  //   .as_object_mut()
+  //   .unwrap()
+  //   .insert("lib".to_string(), json!(["dom", "dom.iterable", "esnext"]));
+  // let mut root_names =
+  //   root_names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+  // eprintln!("config: {}", serde_json::to_string(&config)?);
+  // root_names.push("asset:///lib.deno.window.d.ts".to_string());
   serde_json::to_string(&json!({
+
     "compilerOptions": config,
     "files": root_names,
   }))
@@ -101,7 +115,7 @@ fn exec_request_inner(
       "project": &project.id,
     })?,
   )?;
-  eprintln!("diagnostics: {}", diagnostics);
+  // eprintln!("diagnostics: {}", diagnostics);
   let diagnostics =
     deser::<Vec<typescript_go_client_rust::types::Diagnostic>>(diagnostics)?;
 
@@ -226,7 +240,7 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
     name: &str,
     payload: String,
   ) -> Result<String, typescript_go_client_rust::Error> {
-    eprintln!("handle_callback: {}", name);
+    // eprintln!("handle_callback: {} : {}", name, payload);
     let mut state = self.state.borrow_mut();
     match name {
       "readFile" => {
@@ -234,21 +248,39 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
         if payload == state.config_path {
           Ok(jsons!(&state.synthetic_config)?)
         } else {
-          eprintln!("readFile: {}", payload);
-          let contents = match std::fs::read_to_string(payload) {
-            Ok(contents) => contents,
-            Err(e) => match e.kind() {
-              std::io::ErrorKind::NotFound => {
-                return Ok(jsons!(None::<String>)?);
-              }
-              _ => {
-                return Err(typescript_go_client_rust::Error::AdHoc(
-                  e.to_string(),
-                ));
-              }
-            },
-          };
-          Ok(jsons!(&contents)?)
+          // eprintln!("readFile: {}", payload);
+          // let payload =
+          //   deno_path_util::resolve_url_or_path(&payload, &state.current_dir)
+          //     .map_err(adhoc)?;
+          // let path =
+          //   deno_path_util::url_to_file_path(&payload).map_err(adhoc)?;
+          // let contents = match std::fs::read_to_string(path) {
+          //   Ok(contents) => contents,
+          //   Err(e) => match e.kind() {
+          //     std::io::ErrorKind::NotFound => {
+          //       return Ok(jsons!(None::<String>)?);
+          //     }
+          //     _ => {
+          //       return Err(typescript_go_client_rust::Error::AdHoc(
+          //         e.to_string(),
+          //       ));
+          //     }
+          //   },
+          // };
+          let contents = load_inner(&mut *state, &payload).map_err(adhoc)?;
+          // eprintln!("result for {}: {:?}", payload, contents);
+          if let Some(contents) = contents {
+            Ok(jsons!(&contents)?)
+          } else {
+            let path = Path::new(&payload);
+            if let Ok(contents) = std::fs::read_to_string(path) {
+              // eprintln!("fallback result for {}: Some", payload,);
+              Ok(jsons!(&contents)?)
+            } else {
+              // eprintln!("fallback result for {}: None", payload);
+              Ok(jsons!(None::<String>)?)
+            }
+          }
         }
       }
       "resolveModuleName" => {
@@ -420,4 +452,147 @@ pub enum ExecError {
   #[class(generic)]
   #[error(transparent)]
   TsgoClient(#[from] typescript_go_client_rust::Error),
+
+  #[class(generic)]
+  #[error("failed to load from node module: {path}: {error}")]
+  LoadFromNodeModule { path: String, error: std::io::Error },
+
+  #[class(generic)]
+  #[error(transparent)]
+  PackageJsonLoad(#[from] deno_package_json::PackageJsonLoadError),
+}
+
+fn load_inner(
+  state: &mut HandlerState,
+  load_specifier: &str,
+) -> Result<Option<String>, ExecError> {
+  fn load_from_node_modules(
+    specifier: &ModuleSpecifier,
+    npm_state: Option<&RequestNpmState>,
+    media_type: &mut MediaType,
+    is_cjs: &mut bool,
+  ) -> Result<Option<String>, ExecError> {
+    *media_type = MediaType::from_specifier(specifier);
+    let file_path = specifier.to_file_path().unwrap();
+    let code = match std::fs::read_to_string(&file_path) {
+      Ok(code) => code,
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        return Ok(None);
+      }
+      Err(err) => {
+        return Err(ExecError::LoadFromNodeModule {
+          path: file_path.display().to_string(),
+          error: err,
+        });
+      }
+    };
+    // *is_cjs = npm_state
+    //   .map(|npm_state| {
+    //     npm_state.cjs_tracker.is_cjs(specifier, *media_type, &code)
+    //   })
+    //   .unwrap_or(false);
+    Ok(Some(code.into()))
+  }
+
+  let specifier =
+    deno_path_util::resolve_url_or_path(load_specifier, &state.current_dir)
+      .map_err(adhoc)?;
+
+  let mut hash: Option<String> = None;
+  let mut media_type = MediaType::Unknown;
+  let graph = &state.graph;
+  let mut is_cjs = false;
+
+  let data = if load_specifier == "internal:///.tsbuildinfo" {
+    // state
+    //   .maybe_tsbuildinfo
+    //   .as_deref()
+    //   .map(|s| s.to_string().into())
+    None
+  // in certain situations we return a "blank" module to tsc and we need to
+  // handle the request for that module here.
+  } else if load_specifier == super::MISSING_DEPENDENCY_SPECIFIER {
+    None
+  } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
+    let maybe_source = get_lazily_loaded_asset(name);
+    hash = super::get_maybe_hash(maybe_source, 0);
+    media_type = MediaType::from_str(load_specifier);
+    maybe_source.map(String::from)
+  } else if let Some(source) = super::load_raw_import_source(&specifier) {
+    return Ok(Some(source.to_string()));
+  } else {
+    let specifier = if let Some(remapped_specifier) =
+      state.maybe_remapped_specifier(load_specifier)
+    {
+      remapped_specifier
+    } else {
+      &specifier
+    };
+    let maybe_module = graph.try_get(specifier).ok().flatten();
+    let maybe_source = if let Some(module) = maybe_module {
+      match module {
+        Module::Js(module) => {
+          media_type = module.media_type;
+          // if let Some(npm_state) = &state.maybe_npm {
+          //   is_cjs = npm_state.cjs_tracker.is_cjs_with_known_is_script(
+          //     specifier,
+          //     module.media_type,
+          //     module.is_script,
+          //   )?;
+          // }
+          Some(
+            module
+              .fast_check_module()
+              .map(|m| m.source.clone().to_string())
+              .unwrap_or(module.source.text.clone().to_string()),
+          )
+        }
+        Module::Json(module) => {
+          media_type = MediaType::Json;
+          Some(module.source.text.clone().to_string())
+        }
+        Module::Wasm(module) => {
+          media_type = MediaType::Dts;
+          Some(module.source_dts.clone().to_string())
+        }
+        Module::Npm(_) | Module::Node(_) => None,
+        Module::External(module) => {
+          if module.specifier.scheme() != "file" {
+            None
+          } else {
+            // means it's Deno code importing an npm module
+            let specifier = super::resolve_specifier_into_node_modules(
+              &super::CliSys::default(),
+              &module.specifier,
+            );
+            load_from_node_modules(
+              &specifier,
+              state.maybe_npm.as_ref(),
+              &mut media_type,
+              &mut is_cjs,
+            )?
+          }
+        }
+      }
+    } else if let Some(npm) = state
+      .maybe_npm
+      .as_ref()
+      .filter(|npm| npm.node_resolver.in_npm_package(specifier))
+    {
+      load_from_node_modules(
+        specifier,
+        Some(npm),
+        &mut media_type,
+        &mut is_cjs,
+      )?
+    } else {
+      None
+    };
+    // hash = super::get_maybe_hash(maybe_source.as_deref(), state.hash_data);
+    maybe_source
+  };
+  let Some(data) = data else {
+    return Ok(None);
+  };
+  Ok(Some(data.into()))
 }
