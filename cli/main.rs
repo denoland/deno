@@ -636,6 +636,11 @@ pub fn main() {
 async fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
 ) -> Result<Flags, AnyError> {
+  if std::env::var("COMPLETE").is_ok() {
+    crate::args::handle_shell_completion()?;
+    deno_runtime::exit(0);
+  }
+
   let mut flags = match flags_from_vec(args) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
