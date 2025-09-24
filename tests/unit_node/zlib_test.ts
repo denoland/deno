@@ -15,6 +15,7 @@ import {
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  createGunzip,
   deflateSync,
   gzip,
   gzipSync,
@@ -285,4 +286,42 @@ Deno.test("ERR_BUFFER_TOO_LARGE works correctly", () => {
     },
     "Cannot create a Buffer larger than 1 bytes",
   );
+});
+
+// Test for https://github.com/denoland/deno/issues/30829
+Deno.test("zlib doesn't cause stack overflow with large data and small chunks", async () => {
+  const deffered = Promise.withResolvers<void>();
+
+  // Create 64MiB of data
+  const input = Buffer.alloc(64 * 1024 * 1024);
+  const compressed = gzipSync(input);
+
+  // Decompress with small chunk size (64 bytes)
+  const gunzip = createGunzip({ chunkSize: 64 });
+
+  let output = Buffer.alloc(0);
+  gunzip.on("data", (chunk: Buffer) => {
+    output = Buffer.concat([output, chunk]);
+  });
+
+  gunzip.on("end", () => {
+    // Verify the decompressed data matches the original
+    assertEquals(output.length, input.length);
+    deffered.resolve();
+  });
+
+  gunzip.on("error", (err: Error) => {
+    // Should not reach here - if stack overflow occurs, this test will fail
+    throw err;
+  });
+
+  // Use _processChunk directly as in the issue reproduction
+  // @ts-ignore: _processChunk is internal API
+  gunzip._processChunk(compressed, constants.Z_FINISH, (err: Error | null) => {
+    if (err) {
+      throw err;
+    }
+  });
+
+  await deffered.promise;
 });
