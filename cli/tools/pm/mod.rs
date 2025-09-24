@@ -14,7 +14,6 @@ use deno_core::futures::StreamExt;
 use deno_path_util::url_to_file_path;
 use deno_semver::StackString;
 use deno_semver::Version;
-use deno_semver::VersionReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageName;
@@ -688,7 +687,20 @@ async fn find_package_and_select_version_for_req(
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
-    let Some(nv) = main_resolver.req_to_nv(req).await.ok().flatten() else {
+    let Some(nv) = main_resolver.req_to_nv(req).await? else {
+      if req.version_req.version_text() == "*"
+        && let Some(pre_release_version) =
+          main_resolver.latest_version(&req.name).await
+      {
+        return Ok(PackageAndVersion::NotFound {
+          package: prefixed_name,
+          package_req: req.clone(),
+          help: Some(NotFoundHelp::PreReleaseVersion(
+            pre_release_version.clone(),
+          )),
+        });
+      }
+
       if fallback_resolver
         .req_to_nv(req)
         .await
@@ -701,18 +713,6 @@ async fn find_package_and_select_version_for_req(
           package: prefixed_name,
           help: Some(help_if_found_in_fallback),
           package_req: req.clone(),
-        });
-      }
-      if req.version_req.version_text() == "*"
-        && let Some(pre_release_version) =
-          main_resolver.latest_version(&req.name).await
-      {
-        return Ok(PackageAndVersion::NotFound {
-          package: prefixed_name,
-          package_req: req.clone(),
-          help: Some(NotFoundHelp::PreReleaseVersion(
-            pre_release_version.clone(),
-          )),
         });
       }
 
@@ -840,18 +840,7 @@ impl AddRmPackageReq {
       Prefix::Npm => {
         let req_ref =
           NpmPackageReqReference::from_str(&format!("npm:{}", entry_text))?;
-        let mut package_req = req_ref.into_inner().req;
-        // deno_semver defaults to a version req of `*` if none is specified
-        // we want to default to `latest` instead
-        if package_req.version_req == *deno_semver::WILDCARD_VERSION_REQ
-          && package_req.version_req.version_text() == "*"
-          && !entry_text.contains("@*")
-        {
-          package_req.version_req = VersionReq::from_raw_text_and_inner(
-            "latest".into(),
-            deno_semver::RangeSetOrTag::Tag("latest".into()),
-          );
-        }
+        let package_req = req_ref.into_inner().req;
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Npm(package_req),
