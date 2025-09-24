@@ -48,6 +48,7 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
+use deno_runtime::coverage::CoverageCollector;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
@@ -106,7 +107,6 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
-use super::coverage::CoverageCollector;
 use crate::tools::coverage::cover_files;
 use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
@@ -1075,7 +1075,7 @@ async fn run_tests_for_worker_inner(
       };
 
       // Check the result before we check for leaks
-      let scope = &mut worker.js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut worker.js_runtime);
       let result = v8::Local::new(scope, result);
       serde_v8::from_v8::<TestResult>(scope, result)?
     } else {

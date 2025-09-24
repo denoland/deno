@@ -82,7 +82,7 @@ pub fn create_runtime_snapshot(
       })),
       with_runtime_cb: Some(Box::new(|rt| {
         let isolate = rt.v8_isolate();
-        let scope = &mut v8::HandleScope::new(isolate);
+        v8::scope!(scope, isolate);
 
         let tmpl = deno_node::init_global_template(
           scope,
