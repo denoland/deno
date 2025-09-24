@@ -14604,6 +14604,331 @@ Deno.test({
 
 #[test]
 #[timeout(300_000)]
+fn lsp_testing_api_failure() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./deno.json", json!({}).to_string());
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+      Deno.test("test a", () => {
+        throw new Error("Some message.");
+      });
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
+  assert_eq!(params.kind, TestModuleNotificationKind::Replace);
+  assert_eq!(params.label, "test.ts");
+  assert_eq!(params.tests.len(), 1);
+  let test = params.tests.into_iter().next().unwrap();
+  assert_eq!(test.label, "test a");
+  assert_eq!(
+    json!(test.range),
+    json!({
+      "start": { "line": 1,  "character": 11 },
+      "end": { "line": 1,  "character": 15 },
+    }),
+  );
+  assert_eq!(json!(&test.steps), json!([]));
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(res.enqueued.len(), 1);
+  assert_eq!(
+    res.enqueued[0].text_document.uri.as_str(),
+    file.uri().as_str()
+  );
+  assert_eq!(res.enqueued[0].ids.len(), 1);
+  let id = res.enqueued[0].ids[0].clone();
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": id,
+        },
+      },
+    })),
+  );
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let notification = notification.unwrap();
+  let obj = notification.as_object().unwrap();
+  assert_eq!(obj.get("id"), Some(&json!(1)));
+  let message = obj.get("message").unwrap().as_object().unwrap();
+  match message.get("type").and_then(|v| v.as_str()) {
+    Some("failed") => {
+      assert_eq!(
+        message.get("test"),
+        Some(&json!({
+          "textDocument": { "uri": file.uri() },
+          "id": id,
+        })),
+      );
+      assert!(message.contains_key("duration"));
+      assert_eq!(
+        *message.get("messages").unwrap(),
+        json!([
+          {
+            "message": {
+              "kind": "plaintext",
+              "value": format!("Error: Some message.\n        throw new Error(\"Some message.\");\n\u{1b}[0m\u{1b}[31m              ^\u{1b}[0m\n    at \u{1b}[0m\u{1b}[36m{}\u{1b}[0m:\u{1b}[0m\u{1b}[33m3\u{1b}[0m:\u{1b}[0m\u{1b}[33m15\u{1b}[0m", file.url()),
+            },
+            "location": {
+              "uri": file.uri(),
+              "range": {
+                "start": { "line": 2, "character": 14 },
+                "end": { "line": 2, "character": 14 },
+              },
+            },
+          },
+        ]),
+      );
+      let notification =
+        client.read_notification_with_method::<Value>("deno/testRunProgress");
+      assert_eq!(
+        notification,
+        Some(json!({
+          "id": 1,
+          "message": {
+            "type": "end",
+          },
+        })),
+      );
+    }
+    // sometimes on windows, the messages come out of order, but it actually is
+    // working, so if we do get the end before the passed, we will simply let
+    // the test pass
+    Some("end") => (),
+    _ => panic!("unexpected message {}", json!(notification)),
+  }
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_testing_api_describe_it_failure() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({ "nodeModulesDir": "manual" }).to_string(),
+  );
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+      import { describe, it } from "node:test";
+      describe("describe test", () => {
+        it("it test", () => {
+          throw new Error("Some message.");
+        });
+      });
+    "#,
+  );
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testModule")
+    .unwrap();
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification).unwrap();
+  let test_data = params.tests.first().unwrap();
+  let test_step_data = test_data.steps.first().unwrap();
+  assert_eq!(
+    json!(params),
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "kind": "replace",
+      "label": "test.ts",
+      "tests": [
+        {
+          "id": &test_data.id,
+          "label": "describe test",
+          "steps": [
+            {
+              "id": &test_step_data.id,
+              "label": "it test",
+              "range": {
+                "start": { "line": 3,  "character": 8 },
+                "end": { "line": 3,  "character": 10 },
+              },
+            },
+          ],
+          "range": {
+            "start": { "line": 2,  "character": 6 },
+            "end": { "line": 2,  "character": 14 },
+          },
+        }
+      ],
+    }),
+  );
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(
+    json!(&res),
+    json!({
+      "enqueued": [
+        {
+          "textDocument": { "uri": file.uri() },
+          "ids": [&test_data.id],
+        },
+      ],
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  assert_eq!(
+    notification,
+    json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_data.id,
+        },
+      },
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  assert_eq!(
+    notification,
+    json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_data.id,
+          "stepId": &test_step_data.id,
+        },
+      },
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification).unwrap();
+  let duration = params.message.data.get("duration").unwrap();
+  let message_value = params
+    .message
+    .data
+    .get("messages")
+    .unwrap()
+    .as_array()
+    .unwrap()
+    .first()
+    .unwrap()
+    .as_object()
+    .unwrap()
+    .get("message")
+    .unwrap()
+    .as_object()
+    .unwrap()
+    .get("value")
+    .unwrap()
+    .as_str()
+    .unwrap();
+  assert!(message_value.contains("Error: Some message."));
+  assert_eq!(
+    json!(params),
+    json!({
+      "id": 1,
+      "message": {
+        "type": "failed",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_data.id,
+          "stepId": &test_step_data.id,
+        },
+        "messages": [
+          {
+            "message": {
+              "kind": "plaintext",
+              "value": message_value,
+            },
+            "location": {
+              "uri": file.uri(),
+              "range": {
+                "start": { "line": 4, "character": 16 },
+                "end": { "line": 4, "character": 16 },
+              },
+            },
+          },
+        ],
+        "duration": duration,
+      },
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification).unwrap();
+  // sometimes on windows, the messages come out of order, but it actually is
+  // working, so if we do get the end before the passed, we will simply let
+  // the test pass
+  if params.message.typ != "end" {
+    let duration = params.message.data.get("duration").unwrap();
+    assert_eq!(
+      json!(params),
+      json!({
+        "id": 1,
+        "message": {
+          "type": "failed",
+          "test": {
+            "textDocument": { "uri": file.uri() },
+            "id": &test_data.id,
+          },
+          "messages": [
+            {
+              "message": {
+                "kind": "plaintext",
+                "value": "1 test step failed.",
+              },
+            },
+          ],
+          "duration": duration,
+        },
+      }),
+    );
+  }
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_testing_api_describe_it() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -14759,125 +15084,6 @@ fn lsp_testing_api_describe_it() {
         },
       }),
     );
-  }
-  client.shutdown();
-}
-
-#[test]
-#[timeout(300_000)]
-fn lsp_testing_api_failure() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let temp_dir = context.temp_dir();
-  temp_dir.write("./deno.json", json!({}).to_string());
-  let file = temp_dir.source_file(
-    "test.ts",
-    r#"
-      Deno.test("test a", () => {
-        throw new Error("Some message.");
-      });
-    "#,
-  );
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  client.did_open_file(&file);
-  let notification =
-    client.read_notification_with_method::<Value>("deno/testModule");
-  let params: TestModuleNotificationParams =
-    serde_json::from_value(notification.unwrap()).unwrap();
-  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
-  assert_eq!(params.kind, TestModuleNotificationKind::Replace);
-  assert_eq!(params.label, "test.ts");
-  assert_eq!(params.tests.len(), 1);
-  let test = params.tests.into_iter().next().unwrap();
-  assert_eq!(test.label, "test a");
-  assert_eq!(
-    json!(test.range),
-    json!({
-      "start": { "line": 1,  "character": 11 },
-      "end": { "line": 1,  "character": 15 },
-    }),
-  );
-  assert_eq!(json!(&test.steps), json!([]));
-  let res = client.write_request_with_res_as::<TestRunResponseParams>(
-    "deno/testRun",
-    json!({
-      "id": 1,
-      "kind": "run",
-    }),
-  );
-  assert_eq!(res.enqueued.len(), 1);
-  assert_eq!(
-    res.enqueued[0].text_document.uri.as_str(),
-    file.uri().as_str()
-  );
-  assert_eq!(res.enqueued[0].ids.len(), 1);
-  let id = res.enqueued[0].ids[0].clone();
-  let notification =
-    client.read_notification_with_method::<Value>("deno/testRunProgress");
-  assert_eq!(
-    notification,
-    Some(json!({
-      "id": 1,
-      "message": {
-        "type": "started",
-        "test": {
-          "textDocument": { "uri": file.uri() },
-          "id": id,
-        },
-      },
-    })),
-  );
-  let notification =
-    client.read_notification_with_method::<Value>("deno/testRunProgress");
-  let notification = notification.unwrap();
-  let obj = notification.as_object().unwrap();
-  assert_eq!(obj.get("id"), Some(&json!(1)));
-  let message = obj.get("message").unwrap().as_object().unwrap();
-  match message.get("type").and_then(|v| v.as_str()) {
-    Some("failed") => {
-      assert_eq!(
-        message.get("test"),
-        Some(&json!({
-          "textDocument": { "uri": file.uri() },
-          "id": id,
-        })),
-      );
-      assert!(message.contains_key("duration"));
-      assert_eq!(
-        *message.get("messages").unwrap(),
-        json!([
-          {
-            "message": {
-              "kind": "plaintext",
-              "value": format!("Error: Some message.\n        throw new Error(\"Some message.\");\n\u{1b}[0m\u{1b}[31m              ^\u{1b}[0m\n    at \u{1b}[0m\u{1b}[36m{}\u{1b}[0m:\u{1b}[0m\u{1b}[33m3\u{1b}[0m:\u{1b}[0m\u{1b}[33m15\u{1b}[0m", file.url()),
-            },
-            "location": {
-              "uri": file.uri(),
-              "range": {
-                "start": { "line": 2, "character": 14 },
-                "end": { "line": 2, "character": 14 },
-              },
-            },
-          },
-        ]),
-      );
-      let notification =
-        client.read_notification_with_method::<Value>("deno/testRunProgress");
-      assert_eq!(
-        notification,
-        Some(json!({
-          "id": 1,
-          "message": {
-            "type": "end",
-          },
-        })),
-      );
-    }
-    // sometimes on windows, the messages come out of order, but it actually is
-    // working, so if we do get the end before the passed, we will simply let
-    // the test pass
-    Some("end") => (),
-    _ => panic!("unexpected message {}", json!(notification)),
   }
   client.shutdown();
 }
