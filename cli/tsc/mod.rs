@@ -873,6 +873,12 @@ pub fn exec(
         remapped_specifiers.insert(specifier_str.clone(), s.clone());
         specifier_str
       }
+      // "file" if tsgo => {
+      //   let specifier_str = s.to_string();
+      //   let out = specifier_str.strip_prefix("file://").unwrap().to_string();
+      //   remapped_specifiers.insert(out.to_string(), s.clone());
+      //   out
+      // }
       _ => {
         if let Some(new_specifier) = mapped_specifier_for_tsc(s, *mt) {
           root_map.insert(new_specifier.clone(), s.clone());
