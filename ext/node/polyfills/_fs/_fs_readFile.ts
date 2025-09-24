@@ -6,8 +6,8 @@
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
-  getEncoding,
   getSignal,
+  getValidatedEncoding,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { Buffer } from "node:buffer";
@@ -67,7 +67,7 @@ export function readFile(
     cb = callback;
   }
 
-  const encoding = getEncoding(optOrCallback);
+  const encoding = getValidatedEncoding(optOrCallback);
   const signal = getSignal(optOrCallback);
 
   let p: Promise<Uint8Array>;
@@ -126,7 +126,7 @@ export function readFileSync(
       throw denoErrorToNodeError(err, { path, syscall: "open" });
     }
   }
-  const encoding = getEncoding(opt);
+  const encoding = getValidatedEncoding(opt);
   const textOrBuffer = maybeDecode(data, encoding);
   return textOrBuffer;
 }

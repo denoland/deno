@@ -58,6 +58,21 @@ export function isFileOptions(
   );
 }
 
+export function getValidatedEncoding(
+  optOrCallback?:
+    | FileOptions
+    | WriteFileOptions
+    | ((...args: unknown[]) => unknown)
+    | Encodings
+    | null,
+): Encodings | null {
+  const encoding = getEncoding(optOrCallback);
+  if (encoding) {
+    assertEncoding(encoding);
+  }
+  return encoding;
+}
+
 export function getEncoding(
   optOrCallback?:
     | FileOptions
@@ -75,7 +90,6 @@ export function getEncoding(
     ? optOrCallback
     : optOrCallback.encoding;
   if (!encoding) return null;
-  assertEncoding(encoding);
   return encoding;
 }
 
