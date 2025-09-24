@@ -817,7 +817,7 @@ mod tests {
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
       check_mode: TypeCheckMode::All,
     };
-    crate::tsc::exec(request, code_cache)
+    crate::tsc::exec(request, code_cache, false)
   }
 
   #[tokio::test]

@@ -131,6 +131,7 @@ pub struct CheckFlags {
   pub files: Vec<String>,
   pub doc: bool,
   pub doc_only: bool,
+  pub unstable_tsgo: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2212,6 +2213,12 @@ Unless --reload is specified, this command will not re-download already cached d
           Arg::new("file")
             .num_args(1..)
             .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("unstable-tsgo")
+            .long("unstable-tsgo")
+            .help("Use the unstable tsgo backend")
+            .action(ArgAction::SetTrue)
         )
         .arg(allow_import_arg())
         .arg(deny_import_arg())
@@ -5111,6 +5118,7 @@ fn check_parse(
     files,
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
+    unstable_tsgo: matches.get_flag("unstable-tsgo"),
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_and_deny_import_parse(flags, matches)?;

@@ -1726,6 +1726,7 @@ dependencies = [
  "tracing-subscriber",
  "twox-hash 2.1.0",
  "typed-arena",
+ "typescript-go-client-rust",
  "unicode-width 0.1.13",
  "uuid",
  "walkdir",
@@ -7713,6 +7714,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmp"
+version = "0.8.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "228ed7c16fa39782c3b3468e974aec2795e9089153cd08ee2e9aefb3613334c4"
+dependencies = [
+ "byteorder",
+ "num-traits",
+ "paste",
+]
+
+[[package]]
 name = "ron"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9888,6 +9900,17 @@ name = "typenum"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42ff0bf0c66b8238c6f3b578df37d0b7848e55df8577b3f74f92a69acceeb825"
+
+[[package]]
+name = "typescript-go-client-rust"
+version = "0.1.0"
+dependencies = [
+ "indexmap 2.9.0",
+ "rmp",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+]
 
 [[package]]
 name = "tzif"

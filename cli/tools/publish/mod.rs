@@ -375,6 +375,7 @@ impl PublishPreparer {
             lib: self.cli_options.ts_type_lib_window(),
             reload: self.cli_options.reload_flag(),
             type_check_mode: self.cli_options.type_check_mode(),
+            tsgo: self.cli_options.unstable_tsgo(),
           },
         )?;
         // ignore unused parameter diagnostics that may occur due to fast check

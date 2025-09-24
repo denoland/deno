@@ -94,6 +94,8 @@ pub struct CheckOptions {
   pub reload: bool,
   /// Mode to type check with.
   pub type_check_mode: TypeCheckMode,
+  /// Whether to use the unstable tsgo backend.
+  pub tsgo: bool,
 }
 
 pub struct TypeChecker {
@@ -528,6 +530,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
         check_mode: self.options.type_check_mode,
       },
       code_cache,
+      self.options.tsgo,
     )?;
 
     let ambient_modules = response.ambient_modules;

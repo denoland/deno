@@ -804,6 +804,10 @@ pub enum ExecError {
   #[class(inherit)]
   #[error(transparent)]
   Js(Box<deno_core::error::JsError>),
+
+  #[class(inherit)]
+  #[error(transparent)]
+  Go(#[from] go::ExecError),
 }
 
 #[derive(Clone)]
@@ -852,6 +856,7 @@ pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
+  tsgo: bool,
 ) -> Result<Response, ExecError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
@@ -879,7 +884,9 @@ pub fn exec(
     })
     .collect();
 
-  if true {
+  if tsgo {
+    go::exec_request(request, root_names, root_map, remapped_specifiers)
+  } else {
     js::exec_request(
       request,
       root_names,
@@ -887,7 +894,5 @@ pub fn exec(
       remapped_specifiers,
       code_cache,
     )
-  } else {
-    todo!()
   }
 }

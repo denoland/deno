@@ -1210,6 +1210,13 @@ impl CliOptions {
     self.flags.type_check_mode
   }
 
+  pub fn unstable_tsgo(&self) -> bool {
+    match self.sub_command() {
+      DenoSubcommand::Check(check_flags) => check_flags.unstable_tsgo,
+      _ => false,
+    }
+  }
+
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
   }
