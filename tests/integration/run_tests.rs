@@ -3507,13 +3507,10 @@ fn handle_invalid_path_error() {
 
 #[tokio::test]
 async fn test_permission_broker() {
-  use std::path::Path;
   use std::process::Stdio;
   use std::time::Duration;
 
-  use tempfile::NamedTempFile;
   use tokio::fs;
-  use tokio::time::timeout;
 
   let ctx = TestContext::default();
   let dir = ctx.temp_dir();
@@ -3522,33 +3519,30 @@ async fn test_permission_broker() {
   // Start the broker process
   let broker_script =
     util::testdata_path().join("run/permission_broker/broker.ts");
-  let mut broker_process = util::deno_cmd()
+  let mut broker_process = ctx
+    .new_command()
     .arg("run")
     .arg("-REN")
     .arg(&broker_script)
-    .arg(socket_path)
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
+    .arg(&socket_path)
+    .run()
     .spawn()
     .expect("Failed to start broker process");
 
   // Give the broker time to start up
-  tokio::time::sleep(Duration::from_millis(100)).await;
+  tokio::time::sleep(Duration::from_millis(500)).await;
 
   // Run the test with the permission broker
-  let test_script =
-    util::testdata_path().join("run/permission_broker/test1.ts");
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
+  let output = ctx
+    .new_command()
+    .env("DENO_PERMISSION_BROKER_PATH", &socket_path)
     .arg("run")
-    .env("DENO_PERMISSION_BROKER_PATH", socket_path.to_string_lossy())
-    .arg(&test_script)
+    .arg("run/permission_broker/test1.ts")
     .output()
-    .await
     .expect("Failed to run test script");
 
   // Kill the broker process
-  broker_process.kill().await.ok();
+  broker_process.kill().ok();
 
   // Read expected output
   let expected_output = fs::read_to_string(
@@ -3558,6 +3552,15 @@ async fn test_permission_broker() {
   .expect("Failed to read expected output");
 
   let actual_stderr = String::from_utf8_lossy(&output.stderr);
+
+  // Print actual output for debugging
+  if !output.status.success() {
+    eprintln!("Test script failed - stderr: {}", actual_stderr);
+    eprintln!(
+      "Test script failed - stdout: {}",
+      String::from_utf8_lossy(&output.stdout)
+    );
+  }
 
   // Normalize the output for comparison (remove timestamps and replace with wildcards)
   let normalized_actual =
