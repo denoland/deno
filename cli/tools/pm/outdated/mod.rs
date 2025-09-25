@@ -204,8 +204,10 @@ pub async fn outdated(
     factory.npmrc()?.clone(),
     factory.npm_version_resolver()?.clone(),
   ));
-  let jsr_fetch_resolver =
-    Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
+  let jsr_fetch_resolver = Arc::new(JsrFetchResolver::new(
+    file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
 
   if !cli_options.start_dir.has_deno_json()
     && !cli_options.start_dir.has_pkg_json()

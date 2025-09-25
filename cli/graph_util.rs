@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,6 +26,7 @@ use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
+use deno_graph::packages::JsrVersionResolver;
 use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
 use deno_lib::util::result::downcast_ref_deno_resolve_error;
@@ -655,6 +657,7 @@ pub struct ModuleGraphBuilder {
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
+  jsr_version_resolver: Arc<JsrVersionResolver>,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_reporter: Option<Arc<dyn deno_graph::source::Reporter>>,
   module_info_cache: Arc<ModuleInfoCache>,
@@ -679,6 +682,7 @@ impl ModuleGraphBuilder {
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
+    jsr_version_resolver: Arc<JsrVersionResolver>,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_reporter: Option<Arc<dyn deno_graph::source::Reporter>>,
     module_info_cache: Arc<ModuleInfoCache>,
@@ -700,6 +704,7 @@ impl ModuleGraphBuilder {
       file_fetcher,
       global_http_cache,
       in_npm_pkg_checker,
+      jsr_version_resolver,
       lockfile,
       maybe_reporter,
       module_info_cache,
@@ -767,10 +772,12 @@ impl ModuleGraphBuilder {
           file_system: &self.sys,
           jsr_metadata_store: None,
           jsr_url_provider: &CliJsrUrlProvider,
+          jsr_version_resolver: Cow::Borrowed(
+            self.jsr_version_resolver.as_ref(),
+          ),
           npm_resolver: Some(self.npm_graph_resolver.as_ref()),
           module_analyzer: &analyzer,
           module_info_cacher: self.module_info_cache.as_ref(),
-          newest_dependency_date: self.cli_options.newest_dependency_date(),
           reporter: maybe_reporter,
           resolver: Some(&graph_resolver),
           locker: locker.as_mut().map(|l| l as _),

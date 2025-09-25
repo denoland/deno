@@ -787,6 +787,7 @@ impl CliFactory {
             self.file_fetcher()?.clone(),
             self.global_http_cache()?.clone(),
             self.in_npm_pkg_checker()?.clone(),
+            self.jsr_version_resolver()?.clone(),
             self.maybe_lockfile().await?.cloned(),
             self.graph_reporter()?.clone(),
             self.module_info_cache()?.clone(),

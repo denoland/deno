@@ -19,6 +19,9 @@ use deno_core::futures::future::try_join;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::serde_json;
+use deno_core::url::Url;
+use deno_graph::JsrPackageReqNotFoundError;
+use deno_graph::packages::JsrPackageVersionInfo;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_package_json::PackageJsonDepsMap;
 use deno_package_json::PackageJsonRc;
@@ -614,8 +617,15 @@ impl DepManager {
             info_futures.push(async {
               let nv = if let Some(nv) = resolved_nv {
                 nv
-              } else {
+              } else if let Some(nv) =
                 self.jsr_fetch_resolver.req_to_nv(&dep.req).await?
+              {
+                nv
+              } else {
+                return Result::<
+                  Option<(Url, Arc<JsrPackageVersionInfo>)>,
+                  JsrPackageReqNotFoundError,
+                >::Ok(None);
               };
               if let Some(info) =
                 self.jsr_fetch_resolver.package_version_info(&nv).await
@@ -623,9 +633,9 @@ impl DepManager {
                 let specifier =
                   ModuleSpecifier::parse(&format!("jsr:/{}/", &dep.req))
                     .unwrap();
-                return Some((specifier, info));
+                return Ok(Some((specifier, info)));
               }
-              None
+              Ok(None)
             });
           }
         }
@@ -633,7 +643,7 @@ impl DepManager {
     }
 
     while let Some(info_future) = info_futures.next().await {
-      if let Some((specifier, info)) = info_future {
+      if let Some((specifier, info)) = info_future? {
         let exports = info.exports();
         for (k, _) in exports {
           if let Ok(spec) = specifier.join(k) {
@@ -782,8 +792,12 @@ impl DepManager {
           async {
             let semver_req = &dep.req;
             let _permit = jsr_sema.acquire().await;
-            let semver_compatible =
-              self.jsr_fetch_resolver.req_to_nv(semver_req).await;
+            let semver_compatible = self
+              .jsr_fetch_resolver
+              .req_to_nv(semver_req)
+              .await
+              .ok()
+              .flatten();
             let info =
               self.jsr_fetch_resolver.package_info(&semver_req.name).await;
             let latest = info

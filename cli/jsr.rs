@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_core::serde_json;
+use deno_graph::JsrPackageReqNotFoundError;
 use deno_graph::packages::JsrPackageInfo;
-use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
-use deno_semver::Version;
+use deno_graph::packages::JsrVersionResolver;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
@@ -24,68 +24,66 @@ pub struct JsrFetchResolver {
   info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
   info_by_name: DashMap<String, Option<Arc<JsrPackageInfo>>>,
   file_fetcher: Arc<CliFileFetcher>,
-}
-
-fn select_version<'a, I>(versions: I, req: &PackageReq) -> Option<Version>
-where
-  I: IntoIterator<Item = (&'a Version, &'a JsrPackageInfoVersion)>,
-{
-  let mut versions = versions.into_iter().collect::<Vec<_>>();
-  versions.sort_by_key(|(v, _)| *v);
-  versions
-    .into_iter()
-    .rev()
-    .find(|(v, i)| {
-      !i.yanked && req.version_req.tag().is_none() && req.version_req.matches(v)
-    })
-    .map(|(v, _)| v.clone())
+  jsr_version_resolver: Arc<JsrVersionResolver>,
 }
 
 impl JsrFetchResolver {
-  pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
+  pub fn new(
+    file_fetcher: Arc<CliFileFetcher>,
+    jsr_version_resolver: Arc<JsrVersionResolver>,
+  ) -> Self {
     Self {
       nv_by_req: Default::default(),
       info_by_nv: Default::default(),
       info_by_name: Default::default(),
       file_fetcher,
+      jsr_version_resolver,
     }
   }
 
-  pub async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv> {
+  pub async fn req_to_nv(
+    &self,
+    req: &PackageReq,
+  ) -> Result<Option<PackageNv>, JsrPackageReqNotFoundError> {
     if let Some(nv) = self.nv_by_req.get(req) {
-      return nv.value().clone();
+      return Ok(nv.value().clone());
     }
     let maybe_get_nv = || async {
       let name = req.name.clone();
       let package_info = self.package_info(&name).await;
-      if package_info.is_none() {
+      let Some(package_info) = package_info else {
         log::debug!("no package info found for jsr:{name}");
-        return None;
-      }
-      let package_info = package_info?;
+        return Ok(None);
+      };
       // Find the first matching version of the package.
-      let version = select_version(&package_info.versions, req);
-      let version = if let Some(version) = version {
+      let version = self.jsr_version_resolver.resolve_version(
+        req,
+        &package_info,
+        Vec::new().into_iter(),
+      );
+      let resolved_version = if let Ok(version) = version {
         version
       } else {
-        let info = self.force_refresh_package_info(&name).await;
-        let Some(info) = info else {
+        let package_info = self.force_refresh_package_info(&name).await;
+        let Some(package_info) = package_info else {
           log::debug!("no package info found for jsr:{name}");
-          return None;
+          return Ok(None);
         };
-        let version = select_version(&info.versions, req);
-        let Some(version) = version else {
-          log::debug!("no matching version found for jsr:{req}");
-          return None;
-        };
-        version
+        self.jsr_version_resolver.resolve_version(
+          req,
+          &package_info,
+          Vec::new().into_iter(),
+        )?
       };
-      Some(PackageNv { name, version })
+      Ok(Some(PackageNv {
+        name,
+        version: resolved_version.version.clone(),
+      }))
     };
-    let nv = maybe_get_nv().await;
+    let nv = maybe_get_nv().await?;
 
     self.nv_by_req.insert(req.clone(), nv.clone());
-    nv
+    Ok(nv)
   }
 
   pub async fn force_refresh_package_info(
@@ -119,6 +117,8 @@ impl JsrFetchResolver {
     jsr_url().join(&format!("{}/meta.json", name)).ok()
   }
 
+  // todo(dsherret): this should return error messages and only `None` when the package
+  // doesn't exist
   pub async fn package_info(&self, name: &str) -> Option<Arc<JsrPackageInfo>> {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();

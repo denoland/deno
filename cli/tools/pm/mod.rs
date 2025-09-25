@@ -438,7 +438,10 @@ pub async fn add(
   let npmrc = cli_factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(
+    deps_file_fetcher.clone(),
+    cli_factory.jsr_version_resolver()?.clone(),
+  ));
   let npm_resolver = Arc::new(NpmFetchResolver::new(
     deps_file_fetcher,
     npmrc.clone(),
@@ -638,7 +641,7 @@ impl PackageInfoProvider for Arc<JsrFetchResolver> {
     &self,
     req: &PackageReq,
   ) -> Result<Option<PackageNv>, AnyError> {
-    Ok((**self).req_to_nv(req).await)
+    Ok((**self).req_to_nv(req).await?)
   }
 
   async fn latest_version(&self, name: &PackageName) -> Option<Version> {
