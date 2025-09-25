@@ -658,11 +658,11 @@ async fn resolve_flags_and_init(
   load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
 
   if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
-    flags.connected = true;
+    flags.tunnel = true;
   }
 
   // Tunnel sets up env vars and OTEL, so connect before everything else.
-  if flags.connected {
+  if flags.tunnel {
     if let Err(err) = initialize_tunnel(&flags).await {
       exit_for_error(err.context("Failed to start with --connected"));
     }
@@ -914,9 +914,9 @@ async fn auth_tunnel(
 ) -> Result<String, deno_core::anyhow::Error> {
   let mut args = vec!["deploy".to_string(), "tunnel-login".to_string()];
 
-  if let Some(token) = env_token {
+  if let Some(token) = &env_token {
     args.push("--token".to_string());
-    args.push(token);
+    args.push(token.clone());
   }
 
   let mut child = tokio::process::Command::new(env::current_exe()?)
@@ -928,7 +928,11 @@ async fn auth_tunnel(
     deno_runtime::exit(1);
   }
 
-  Ok(tools::deploy::get_token_entry()?.get_password()?)
+  if let Some(token) = env_token {
+    Ok(token)
+  } else {
+    Ok(tools::deploy::get_token_entry()?.get_password()?)
+  }
 }
 
 #[allow(clippy::print_stderr)]
