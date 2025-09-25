@@ -784,6 +784,7 @@ pub struct Flags {
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
+  // TODO(#30752): hook this up so users can specify it
   pub minimum_dependency_age: Option<chrono::DateTime<chrono::Utc>>,
   pub no_remote: bool,
   pub no_lock: bool,
@@ -3896,7 +3897,6 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(preload_arg())
-    .arg(min_dep_age_arg())
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
@@ -4483,13 +4483,6 @@ fn preload_arg() -> Arg {
     .action(ArgAction::Append)
     .help("A list of files that will be executed before the main module")
     .value_hint(ValueHint::FilePath)
-}
-
-fn min_dep_age_arg() -> Arg {
-  Arg::new("minimum-dependency-age")
-    .long("minimum-dependency-age")
-    .value_parser(minutes_duration_or_date_parser)
-    .help("(Unstable) The age in minutes, ISO-8601 duration, or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, or '2025-09-16T10:48:01+00:00' for an absolute cutoff time).")
 }
 
 fn ca_file_arg() -> Arg {
@@ -6138,7 +6131,6 @@ fn compile_args_without_check_parse(
   ca_file_arg_parse(flags, matches);
   unsafely_ignore_certificate_errors_parse(flags, matches);
   preload_arg_parse(flags, matches);
-  min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6414,10 +6406,6 @@ fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(preload) = matches.remove_many::<String>("preload") {
     flags.preload = preload.collect();
   }
-}
-
-fn min_dep_age_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.minimum_dependency_age = matches.remove_one("minimum-dependency-age");
 }
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
