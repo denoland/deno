@@ -727,7 +727,7 @@ async fn find_package_and_select_version_for_req(
             )),
           });
         }
-        return Err(err.into());
+        return Err(err);
       }
     };
     let range_symbol = if req.version_req.version_text().starts_with('~') {

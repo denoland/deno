@@ -527,7 +527,7 @@ impl CliFactory {
   pub fn jsr_version_resolver(
     &self,
   ) -> Result<&Arc<JsrVersionResolver>, AnyError> {
-    Ok(self.resolver_factory()?.jsr_version_resolver()?)
+    self.resolver_factory()?.jsr_version_resolver()
   }
 
   pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
@@ -603,7 +603,7 @@ impl CliFactory {
   pub fn npm_version_resolver(
     &self,
   ) -> Result<&Arc<NpmVersionResolver>, AnyError> {
-    Ok(self.resolver_factory()?.npm_version_resolver()?)
+    self.resolver_factory()?.npm_version_resolver()
   }
 
   pub fn install_reporter(
