@@ -61,24 +61,21 @@ impl JsrFetchResolver {
         &package_info,
         Vec::new().into_iter(),
       );
-      let resolved_version = if let Ok(version) = version {
-        version
+      let version = if let Ok(version) = version {
+        version.version.clone()
       } else {
         let package_info = self.force_refresh_package_info(&name).await;
         let Some(package_info) = package_info else {
           log::debug!("no package info found for jsr:{name}");
           return Ok(None);
         };
-        self.jsr_version_resolver.resolve_version(
-          req,
-          &package_info,
-          Vec::new().into_iter(),
-        )?
+        self
+          .jsr_version_resolver
+          .resolve_version(req, &package_info, Vec::new().into_iter())?
+          .version
+          .clone()
       };
-      Ok(Some(PackageNv {
-        name,
-        version: resolved_version.version.clone(),
-      }))
+      Ok(Some(PackageNv { name, version }))
     };
     let nv = maybe_get_nv().await?;
 

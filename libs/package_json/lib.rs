@@ -233,6 +233,7 @@ pub struct PackageJson {
   pub peer_dependencies: Option<IndexMap<String, String>>,
   pub peer_dependencies_meta: Option<Value>,
   pub optional_dependencies: Option<IndexMap<String, String>>,
+  pub directories: Option<Map<String, Value>>,
   pub scripts: Option<IndexMap<String, String>>,
   pub workspaces: Option<Vec<String>>,
   pub os: Option<Vec<String>>,
@@ -303,6 +304,7 @@ impl PackageJson {
         peer_dependencies: None,
         peer_dependencies_meta: None,
         optional_dependencies: None,
+        directories: None,
         scripts: None,
         workspaces: None,
         os: None,
@@ -390,10 +392,10 @@ impl PackageJson {
       .map(|exports| {
         if is_conditional_exports_main_sugar(&exports)? {
           let mut map = Map::new();
-          map.insert(".".to_string(), exports.to_owned());
+          map.insert(".".to_string(), exports);
           Ok::<_, PackageJsonLoadError>(Some(map))
         } else {
-          Ok(exports.as_object().map(|o| o.to_owned()))
+          Ok(map_object(exports))
         }
       })
       .transpose()?
@@ -426,6 +428,8 @@ impl PackageJson {
 
     let scripts: Option<IndexMap<String, String>> =
       package_json.remove("scripts").and_then(parse_string_map);
+    let directories: Option<Map<String, Value>> =
+      package_json.remove("directories").and_then(map_object);
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
@@ -447,9 +451,8 @@ impl PackageJson {
       .remove("typings")
       .or_else(|| package_json.remove("types"))
       .and_then(map_string);
-    let types_versions = package_json
-      .remove("typesVersions")
-      .and_then(|exports| exports.as_object().map(|o| o.to_owned()));
+    let types_versions =
+      package_json.remove("typesVersions").and_then(map_object);
     let workspaces = package_json
       .remove("workspaces")
       .and_then(parse_string_array);
@@ -475,6 +478,7 @@ impl PackageJson {
       peer_dependencies,
       peer_dependencies_meta,
       optional_dependencies,
+      directories,
       scripts,
       workspaces,
       os,

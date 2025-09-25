@@ -690,40 +690,45 @@ async fn find_package_and_select_version_for_req(
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
-    let Some(nv) = main_resolver.req_to_nv(req).await? else {
-      if req.version_req.version_text() == "*"
-        && let Some(pre_release_version) =
-          main_resolver.latest_version(&req.name).await
-      {
-        return Ok(PackageAndVersion::NotFound {
-          package: prefixed_name,
-          package_req: req.clone(),
-          help: Some(NotFoundHelp::PreReleaseVersion(
-            pre_release_version.clone(),
-          )),
-        });
-      }
+    let nv = match main_resolver.req_to_nv(req).await {
+      Ok(Some(nv)) => nv,
+      Ok(None) => {
+        if fallback_resolver
+          .req_to_nv(req)
+          .await
+          .ok()
+          .flatten()
+          .is_some()
+        {
+          // it's in the other registry
+          return Ok(PackageAndVersion::NotFound {
+            package: prefixed_name,
+            help: Some(help_if_found_in_fallback),
+            package_req: req.clone(),
+          });
+        }
 
-      if fallback_resolver
-        .req_to_nv(req)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
-      {
-        // it's in the other registry
         return Ok(PackageAndVersion::NotFound {
           package: prefixed_name,
-          help: Some(help_if_found_in_fallback),
+          help: None,
           package_req: req.clone(),
         });
       }
-
-      return Ok(PackageAndVersion::NotFound {
-        package: prefixed_name,
-        help: None,
-        package_req: req.clone(),
-      });
+      Err(err) => {
+        if req.version_req.version_text() == "*"
+          && let Some(pre_release_version) =
+            main_resolver.latest_version(&req.name).await
+        {
+          return Ok(PackageAndVersion::NotFound {
+            package: prefixed_name,
+            package_req: req.clone(),
+            help: Some(NotFoundHelp::PreReleaseVersion(
+              pre_release_version.clone(),
+            )),
+          });
+        }
+        return Err(err.into());
+      }
     };
     let range_symbol = if req.version_req.version_text().starts_with('~') {
       "~"
