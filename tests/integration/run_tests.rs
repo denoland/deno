@@ -3505,70 +3505,105 @@ fn handle_invalid_path_error() {
   assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 }
 
+#[derive(serde::Deserialize)]
+struct PermissionAuditRequest {
+  id: u64,
+  #[allow(dead_code)]
+  v: u64,
+  permission: String,
+  value: String,
+}
+
+async fn run_broker<F>(socket_path: PathRef, permission_callback: F)
+where
+  F: Fn(PermissionAuditRequest) -> serde_json::Value + Send + Sync,
+{
+  use tokio::io::AsyncBufReadExt;
+  use tokio::io::AsyncWriteExt;
+  use tokio::io::BufReader;
+  use tokio::net::UnixListener;
+
+  // Remove existing socket file if it exists
+  let _ = std::fs::remove_file(&socket_path);
+
+  let listener =
+    UnixListener::bind(&socket_path).expect("Failed to bind Unix socket");
+
+  while let Ok((mut stream, _)) = listener.accept().await {
+    let mut reader = BufReader::new(&mut stream);
+    let mut line = String::new();
+
+    match reader.read_line(&mut line).await {
+      Ok(0) => continue, // EOF
+      Ok(_) => {
+        // Parse the JSON request
+        let request =
+          serde_json::from_str::<PermissionAuditRequest>(&line.trim()).unwrap();
+        assert_eq!(request.v, 1);
+        let response = permission_callback(request);
+
+        let response_json = serde_json::to_string(&response).unwrap();
+        let _ = stream.write_all(response_json.as_bytes()).await;
+        let _ = stream.write_all(b"\n").await;
+      }
+      Err(_) => continue,
+    }
+  }
+}
+
 #[tokio::test]
 async fn test_permission_broker() {
-  use std::process::Stdio;
   use std::time::Duration;
 
-  use tokio::fs;
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  context.deno_dir().path().canonicalize().make_dir_readonly();
+  let temp_dir = context.temp_dir().path().canonicalize();
+  let socket_path = temp_dir.join(std::path::Path::new("broker.sock"));
 
-  let ctx = TestContext::default();
-  let dir = ctx.temp_dir();
-  let socket_path = dir.path().join(std::path::Path::new("broker.sock"));
+  eprintln!("starting task");
+  // Start the broker task
+  let broker_task = tokio::spawn(run_broker(socket_path.clone(), |request| {
+    let result = if request.permission == "env" {
+      "deny".to_string()
+    } else {
+      "allow".to_string()
+    };
 
-  // Start the broker process
-  let broker_script =
-    util::testdata_path().join("run/permission_broker/broker.ts");
-  let mut broker_process = ctx
-    .new_command()
-    .arg("run")
-    .arg("-REN")
-    .arg(&broker_script)
-    .arg(&socket_path)
-    .run()
-    .spawn()
-    .expect("Failed to start broker process");
+    json!({
+      "id": request.id,
+      "result": result
+    })
+  }));
+  eprintln!("spawned task");
 
   // Give the broker time to start up
   tokio::time::sleep(Duration::from_millis(500)).await;
 
+  eprintln!("slept");
   // Run the test with the permission broker
-  let output = ctx
+  temp_dir.join("log.txt").write("Lorem ipsum dolor sit amet");
+  temp_dir.join("main.ts").write(
+    r#"
+Deno.readTextFileSync("./log.txt");
+Deno.readTextFileSync("./log.txt");
+
+Deno.writeTextFileSync("./scratch.txt", "Lorem ipsum dolor sit amet");
+
+Deno.env.get("DOESNT_EXIT")
+  "#,
+  );
+  eprintln!("starting process");
+  let output = context
     .new_command()
     .env("DENO_PERMISSION_BROKER_PATH", &socket_path)
-    .arg("run")
-    .arg("run/permission_broker/test1.ts")
-    .output()
-    .expect("Failed to run test script");
+    .args("run main.ts")
+    // .stdout(Stdio::inherit())
+    // .stderr(Stdio::inherit())
+    .run();
+  // eprintln!("ending process {:?}", output.is_err());
 
   // Kill the broker process
-  broker_process.kill().ok();
+  broker_task.abort();
 
-  // Read expected output
-  let expected_output = fs::read_to_string(
-    util::testdata_path().join("run/permission_broker/test1.out"),
-  )
-  .await
-  .expect("Failed to read expected output");
-
-  let actual_stderr = String::from_utf8_lossy(&output.stderr);
-
-  // Print actual output for debugging
-  if !output.status.success() {
-    eprintln!("Test script failed - stderr: {}", actual_stderr);
-    eprintln!(
-      "Test script failed - stdout: {}",
-      String::from_utf8_lossy(&output.stdout)
-    );
-  }
-
-  // Normalize the output for comparison (remove timestamps and replace with wildcards)
-  let normalized_actual =
-    util::wildcard_match(&expected_output, &actual_stderr);
-
-  assert!(
-    normalized_actual,
-    "Permission broker test failed.\nExpected:\n{}\nActual:\n{}",
-    expected_output, actual_stderr
-  );
+  output.assert_matches_text("uga buga");
 }
