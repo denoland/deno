@@ -815,6 +815,9 @@ mod test {
       "dependencies": {
         "name": "1.2",
       },
+      "directories": {
+        "bin": "./bin",
+      },
       "devDependencies": {
         "name": "1.2",
       },
