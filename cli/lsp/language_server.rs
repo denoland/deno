@@ -2317,10 +2317,57 @@ impl Inner {
     if kinds.is_empty()
       || kinds.contains(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
     {
+      let Some(document) = self.get_document(
+        &params.text_document.uri,
+        Enabled::Filter,
+        Exists::Enforce,
+        Diagnosable::Filter,
+      )?
+      else {
+        return Ok(None);
+      };
+      let Some(module) = self.get_primary_module(&document)? else {
+        return Ok(None);
+      };
+      let organize_imports_edit = self
+        .ts_server
+        .organize_imports(self.snapshot(), &module, token)
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!(
+              "Unable to get organize imports edit from TypeScript: {:#}",
+              err
+            );
+            LspError::internal_error()
+          }
+        })?;
+      let mut changes_with_modules = IndexMap::new();
+      changes_with_modules.extend(
+        fix_ts_import_changes(&organize_imports_edit, &module, self, token)
+          .map_err(|err| {
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              error!("Unable to fix import changes: {:#}", err);
+              LspError::internal_error()
+            }
+          })?
+          .into_iter()
+          .map(|c| (c, module.clone())),
+      );
+
       all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-        title: "Organize Imports".to_string(),
+        title: "Organize imports".to_string(),
         kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
-        data: Some(json!({"uri": params.text_document.uri})),
+        edit: file_text_changes_to_workspace_edit(
+          &changes_with_modules,
+          self,
+          token,
+        )?,
+        data: Some(json!({ "uri": params.text_document.uri})),
         ..Default::default()
       }));
     }
@@ -2500,58 +2547,6 @@ impl Inner {
           }
         }
       }
-      code_action
-    } else if kind == CodeActionKind::SOURCE_ORGANIZE_IMPORTS {
-      let mut code_action = params;
-      let Some(document) = self.get_document(
-        &code_action
-          .data
-          .as_ref()
-          .and_then(|d| d.get("uri"))
-          .and_then(|v| from_value(v.clone()).ok())
-          .ok_or_else(|| {
-            LspError::invalid_params("The CodeAction's data is invalid.")
-          })?,
-        Enabled::Filter,
-        Exists::Enforce,
-        Diagnosable::Filter,
-      )?
-      else {
-        return Ok(code_action);
-      };
-      let Some(module) = self.get_primary_module(&document)? else {
-        return Ok(code_action);
-      };
-      let organize_imports_edit = self
-        .ts_server
-        .organize_imports(self.snapshot(), &module, token)
-        .await
-        .map_err(|err| {
-          if token.is_cancelled() {
-            LspError::request_cancelled()
-          } else {
-            error!(
-              "Unable to get organize imports edit from TypeScript: {:#}",
-              err
-            );
-            LspError::internal_error()
-          }
-        })?;
-      let edits =
-        fix_ts_import_changes(&organize_imports_edit, &module, self, token)
-          .map_err(|err| {
-            if token.is_cancelled() {
-              LspError::request_cancelled()
-            } else {
-              error!("Unable to fix import changes: {:#}", err);
-              LspError::internal_error()
-            }
-          })?;
-      code_action.edit =
-        ts_changes_to_edit(&edits, &module, self).map_err(|err| {
-          error!("Unable to convert changes to edits: {:#}", err);
-          LspError::internal_error()
-        })?;
       code_action
     } else {
       // The code action doesn't need to be resolved
