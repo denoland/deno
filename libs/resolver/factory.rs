@@ -112,6 +112,10 @@ pub type DenoNodeCodeTranslatorRc<TSys> = NodeCodeTranslatorRc<
 >;
 #[allow(clippy::disallowed_types)]
 pub type NpmVersionResolverRc = deno_maybe_sync::MaybeArc<NpmVersionResolver>;
+#[cfg(feature = "graph")]
+#[allow(clippy::disallowed_types)]
+pub type JsrVersionResolverRc =
+  deno_maybe_sync::MaybeArc<deno_graph::packages::JsrVersionResolver>;
 
 #[derive(Debug, Boxed)]
 pub struct HttpCacheCreateError(pub Box<HttpCacheCreateErrorKind>);
@@ -691,6 +695,8 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   #[cfg(feature = "graph")]
   found_package_json_dep_flag: crate::graph::FoundPackageJsonDepFlagRc,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
+  #[cfg(feature = "graph")]
+  jsr_version_resolver: Deferred<JsrVersionResolverRc>,
   node_code_translator: Deferred<DenoNodeCodeTranslatorRc<TSys>>,
   node_resolver: Deferred<
     NodeResolverRc<
@@ -746,6 +752,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       #[cfg(feature = "graph")]
       found_package_json_dep_flag: Default::default(),
       in_npm_package_checker: Default::default(),
+      #[cfg(feature = "graph")]
+      jsr_version_resolver: Default::default(),
       node_code_translator: Default::default(),
       node_resolver: Default::default(),
       npm_module_loader: Default::default(),
@@ -916,6 +924,17 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         ),
       };
       Ok(DenoInNpmPackageChecker::new(options))
+    })
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn jsr_version_resolver(
+    &self,
+  ) -> Result<&JsrVersionResolverRc, anyhow::Error> {
+    self.jsr_version_resolver.get_or_try_init(|| {
+      Ok(new_rc(deno_graph::packages::JsrVersionResolver {
+        newest_dependency_date: self.options.newest_dependency_date,
+      }))
     })
   }
 

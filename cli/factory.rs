@@ -16,6 +16,7 @@ use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
+use deno_graph::packages::JsrVersionResolver;
 use deno_lib::args::CaData;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::npm_process_state;
@@ -521,6 +522,12 @@ impl CliFactory {
     &self,
   ) -> Result<&DenoInNpmPackageChecker, AnyError> {
     self.resolver_factory()?.in_npm_package_checker()
+  }
+
+  pub fn jsr_version_resolver(
+    &self,
+  ) -> Result<&Arc<JsrVersionResolver>, AnyError> {
+    Ok(self.resolver_factory()?.jsr_version_resolver()?)
   }
 
   pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
