@@ -688,10 +688,23 @@ impl Default for TypeCheckMode {
   }
 }
 
-fn duration_or_date_parser(
+fn minutes_duration_or_date_parser(
   s: &str,
 ) -> Result<chrono::DateTime<chrono::Utc>, clap::Error> {
   use crate::util::date::ParseIso8601DurationError;
+
+  if s.chars().all(|c| c.is_ascii_digit()) {
+    let minutes: i64 = match s.parse() {
+      Ok(value) => value,
+      Err(err) => {
+        return Err(clap::Error::raw(
+          ErrorKind::InvalidValue,
+          format!("failed parsing integer to minutes: {err}"),
+        ));
+      }
+    };
+    return Ok(chrono::Utc::now() - chrono::Duration::minutes(minutes));
+  }
 
   let datetime_parse_err = match DateTime::parse_from_rfc3339(s) {
     Ok(dt) => return Ok(dt.with_timezone(&chrono::Utc)),
@@ -4475,8 +4488,8 @@ fn preload_arg() -> Arg {
 fn min_dep_age_arg() -> Arg {
   Arg::new("minimum-dependency-age")
     .long("minimum-dependency-age")
-    .value_parser(duration_or_date_parser)
-    .help("(Unstable) The ISO-8601 duration or RFC3339 absolute timestamp (e.g. 'P2D' for two days, or '2025-09-16T10:48:01+00:00' for an absolute cutoff time).")
+    .value_parser(minutes_duration_or_date_parser)
+    .help("(Unstable) The age in minutes, ISO-8601 duration, or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, or '2025-09-16T10:48:01+00:00' for an absolute cutoff time).")
 }
 
 fn ca_file_arg() -> Arg {
