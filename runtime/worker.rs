@@ -98,7 +98,8 @@ pub fn create_validate_import_attributes_callback(
   enable_raw_imports: Arc<AtomicBool>,
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
-    move |scope: &mut v8::HandleScope, attributes: &HashMap<String, String>| {
+    move |scope: &mut v8::PinScope<'_, '_>,
+          attributes: &HashMap<String, String>| {
       let valid_attribute = |kind: &str| {
         enable_raw_imports.load(Ordering::Relaxed)
           && matches!(kind, "bytes" | "text")
@@ -642,7 +643,7 @@ impl MainWorker {
       dispatch_process_exit_event_fn_global,
     ) = {
       let context = js_runtime.main_context();
-      let scope = &mut js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut js_runtime);
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
       let bootstrap_str =
@@ -750,8 +751,8 @@ impl MainWorker {
       }
     }
 
-    let scope = &mut self.js_runtime.handle_scope();
-    let scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(scope, scope);
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
@@ -900,10 +901,9 @@ impl MainWorker {
       self
         .js_runtime
         .inspector()
-        .borrow_mut()
         .wait_for_session_and_break_on_next_statement();
     } else if self.should_wait_for_inspector_session {
-      self.js_runtime.inspector().borrow_mut().wait_for_session();
+      self.js_runtime.inspector().wait_for_session();
     }
   }
 
@@ -948,8 +948,8 @@ impl MainWorker {
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
   pub fn dispatch_load_event(&mut self) -> Result<(), Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_load_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_load_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -965,8 +965,8 @@ impl MainWorker {
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
   pub fn dispatch_unload_event(&mut self) -> Result<(), Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_unload_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_unload_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -980,8 +980,8 @@ impl MainWorker {
 
   /// Dispatches process.emit("exit") event for node compat.
   pub fn dispatch_process_exit_event(&mut self) -> Result<(), Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_process_exit_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_process_exit_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -997,8 +997,8 @@ impl MainWorker {
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
   pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_beforeunload_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_beforeunload_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -1016,8 +1016,8 @@ impl MainWorker {
   pub fn dispatch_process_beforeexit_event(
     &mut self,
   ) -> Result<bool, Box<JsError>> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_process_beforeexit_event_fn = v8::Local::new(
       tc_scope,
       &self.dispatch_process_beforeexit_event_fn_global,
@@ -1323,7 +1323,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
 
   fn get_host_defined_options<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<v8::Local<'s, v8::Data>> {
     self
