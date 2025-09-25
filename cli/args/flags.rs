@@ -3916,7 +3916,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .num_args(0..=1)
           .require_equals(true)
           .default_missing_value("")
-          .short('P');
+          .short('P')
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires);
         }
