@@ -1,7 +1,6 @@
 use crate::tsc::RequestNpmState;
 use crate::tsc::ResolveNonGraphSpecifierTypesError;
 use crate::tsc::get_lazily_loaded_asset;
-use crate::tsc::get_maybe_hash;
 
 use super::Request;
 use super::Response;
@@ -20,8 +19,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use typescript_go_client_rust::CallbackHandler;
 use typescript_go_client_rust::SyncRpcChannel;
+use typescript_go_client_rust::types::GetImpliedNodeFormatForFilePayload;
 use typescript_go_client_rust::types::Project;
 use typescript_go_client_rust::types::ResolveModuleNamePayload;
+use typescript_go_client_rust::types::ResolveTypeReferenceDirectivePayload;
 
 macro_rules! jsons {
   ($($arg:tt)*) => {
@@ -206,6 +207,7 @@ impl Handler {
         current_dir,
         graph,
         maybe_npm,
+        module_kind_map: HashMap::new(),
       }),
     }
   }
@@ -219,6 +221,9 @@ struct HandlerState {
   current_dir: PathBuf,
   graph: Arc<ModuleGraph>,
   maybe_npm: Option<super::RequestNpmState>,
+
+  module_kind_map:
+    HashMap<String, typescript_go_client_rust::types::ResolutionMode>,
 }
 
 impl typescript_go_client_rust::CallbackHandler for Handler {
@@ -229,6 +234,8 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
       "readFile",
       "resolveModuleName",
       "getPackageJsonScopeIfApplicable",
+      "resolveTypeReferenceDirective",
+      "getImpliedNodeFormatForFile",
     ]
     .into_iter()
     .map(|s| s.to_owned())
@@ -292,8 +299,36 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
           "extension": extension,
         })?)
       }
-      "getPackageJsonScopeIfApplicable" => Ok(String::new()),
-
+      "getPackageJsonScopeIfApplicable" => Ok(jsons!(None::<String>)?),
+      "resolveTypeReferenceDirective" => {
+        log::debug!("resolveTypeReferenceDirective: {}", payload);
+        let payload = deser::<ResolveTypeReferenceDirectivePayload>(payload)?;
+        let payload = ResolveModuleNamePayload {
+          module_name: payload.type_reference_directive_name,
+          containing_file: payload.containing_file,
+          resolution_mode: payload.resolution_mode,
+        };
+        let (out_name, extension) = resolve_name(&mut *state, payload)?;
+        // let url = deno_core::ModuleSpecifier::parse(&out_name).unwrap();
+        // let file_path = deno_path_util::url_to_file_path(&url).unwrap();
+        // let out_name = file_path.to_string_lossy();
+        log::debug!(
+          "resolveTypeReferenceDirective: {:?}",
+          (&out_name, &extension)
+        );
+        Ok(jsons!({
+          "resolvedFileName": out_name,
+          "primary": true,
+        })?)
+      }
+      "getImpliedNodeFormatForFile" => {
+        let payload = deser::<GetImpliedNodeFormatForFilePayload>(payload)?;
+        let module_kind = state
+          .module_kind_map
+          .get(&payload.file_name)
+          .unwrap_or(&typescript_go_client_rust::types::ResolutionMode::ESM);
+        Ok(jsons!(&module_kind)?)
+      }
       _ => unreachable!(),
     }
   }
@@ -460,6 +495,10 @@ pub enum ExecError {
   #[class(generic)]
   #[error(transparent)]
   PackageJsonLoad(#[from] deno_package_json::PackageJsonLoadError),
+
+  #[class(generic)]
+  #[error(transparent)]
+  PackageJsonLoadError(#[from] node_resolver::errors::PackageJsonLoadError),
 }
 
 fn load_inner(
@@ -486,11 +525,14 @@ fn load_inner(
         });
       }
     };
-    // *is_cjs = npm_state
-    //   .map(|npm_state| {
-    //     npm_state.cjs_tracker.is_cjs(specifier, *media_type, &code)
-    //   })
-    //   .unwrap_or(false);
+    let code_arc = code.clone().into();
+    *is_cjs = npm_state
+      .map(|npm_state| {
+        npm_state
+          .cjs_tracker
+          .is_cjs(specifier, *media_type, &code_arc)
+      })
+      .unwrap_or(false);
     Ok(Some(code.into()))
   }
 
@@ -498,7 +540,7 @@ fn load_inner(
     deno_path_util::resolve_url_or_path(load_specifier, &state.current_dir)
       .map_err(adhoc)?;
 
-  let mut hash: Option<String> = None;
+  // let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
   let graph = &state.graph;
   let mut is_cjs = false;
@@ -515,7 +557,7 @@ fn load_inner(
     None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
-    hash = super::get_maybe_hash(maybe_source, 0);
+    // hash = super::get_maybe_hash(maybe_source, 0);
     media_type = MediaType::from_str(load_specifier);
     maybe_source.map(String::from)
   } else if let Some(source) = super::load_raw_import_source(&specifier) {
@@ -533,13 +575,13 @@ fn load_inner(
       match module {
         Module::Js(module) => {
           media_type = module.media_type;
-          // if let Some(npm_state) = &state.maybe_npm {
-          //   is_cjs = npm_state.cjs_tracker.is_cjs_with_known_is_script(
-          //     specifier,
-          //     module.media_type,
-          //     module.is_script,
-          //   )?;
-          // }
+          if let Some(npm_state) = &state.maybe_npm {
+            is_cjs = npm_state.cjs_tracker.is_cjs_with_known_is_script(
+              specifier,
+              module.media_type,
+              module.is_script,
+            )?;
+          }
           Some(
             module
               .fast_check_module()
@@ -591,8 +633,38 @@ fn load_inner(
     // hash = super::get_maybe_hash(maybe_source.as_deref(), state.hash_data);
     maybe_source
   };
+  let module_kind = get_resolution_mode(is_cjs, media_type);
+  state
+    .module_kind_map
+    .insert(load_specifier.to_string(), module_kind);
   let Some(data) = data else {
     return Ok(None);
   };
   Ok(Some(data.into()))
+}
+
+fn get_resolution_mode(
+  is_cjs: bool,
+  media_type: MediaType,
+) -> typescript_go_client_rust::types::ResolutionMode {
+  if is_cjs {
+    typescript_go_client_rust::types::ResolutionMode::CommonJS
+  } else {
+    match media_type {
+      MediaType::Cjs | MediaType::Dcts | MediaType::Cts => {
+        typescript_go_client_rust::types::ResolutionMode::CommonJS
+      }
+
+      MediaType::Css
+      | MediaType::Json
+      | MediaType::Html
+      | MediaType::Sql
+      | MediaType::Wasm
+      | MediaType::SourceMap
+      | MediaType::Unknown => {
+        typescript_go_client_rust::types::ResolutionMode::None
+      }
+      _ => typescript_go_client_rust::types::ResolutionMode::ESM,
+    }
+  }
 }
