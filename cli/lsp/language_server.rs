@@ -2269,6 +2269,16 @@ impl Inner {
       .as_ref()
       .and_then(|values| values.first().map(|v| v.as_str().to_owned()))
       .unwrap_or_default();
+    if only.is_empty()
+      || only.starts_with(CodeActionKind::SOURCE_ORGANIZE_IMPORTS.as_str())
+    {
+      all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+        title: "Organize Imports".to_string(),
+        kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
+        data: Some(json!({"uri": params.text_document.uri})),
+        ..Default::default()
+      }));
+    }
     let refactor_infos = self
       .ts_server
       .get_applicable_refactors(
@@ -2488,6 +2498,58 @@ impl Inner {
           }
         }
       }
+      code_action
+    } else if kind == CodeActionKind::SOURCE_ORGANIZE_IMPORTS {
+      let mut code_action = params;
+      let Some(document) = self.get_document(
+        &code_action
+          .data
+          .as_ref()
+          .and_then(|d| d.get("uri"))
+          .and_then(|v| from_value(v.clone()).ok())
+          .ok_or_else(|| {
+            LspError::invalid_params("The CodeAction's data is invalid.")
+          })?,
+        Enabled::Filter,
+        Exists::Enforce,
+        Diagnosable::Filter,
+      )?
+      else {
+        return Ok(code_action);
+      };
+      let Some(module) = self.get_primary_module(&document)? else {
+        return Ok(code_action);
+      };
+      let organize_imports_edit = self
+        .ts_server
+        .organize_imports(self.snapshot(), &module, token)
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!(
+              "Unable to get organize imports edit from TypeScript: {:#}",
+              err
+            );
+            LspError::internal_error()
+          }
+        })?;
+      let edits =
+        fix_ts_import_changes(&organize_imports_edit, &module, self, token)
+          .map_err(|err| {
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              error!("Unable to fix import changes: {:#}", err);
+              LspError::internal_error()
+            }
+          })?;
+      code_action.edit =
+        ts_changes_to_edit(&edits, &module, self).map_err(|err| {
+          error!("Unable to convert changes to edits: {:#}", err);
+          LspError::internal_error()
+        })?;
       code_action
     } else {
       // The code action doesn't need to be resolved
