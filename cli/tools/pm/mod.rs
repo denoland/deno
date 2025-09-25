@@ -970,7 +970,7 @@ mod test {
       (("alias@jsr:foo", None), jsr_pkg_req("alias", "foo")),
       (
         ("@alias/pkg@npm:foo", None),
-        npm_pkg_req("@alias/pkg", "foo@latest"),
+        npm_pkg_req("@alias/pkg", "foo@*"),
       ),
       (
         ("@alias/pkg@jsr:foo", None),
@@ -980,17 +980,11 @@ mod test {
         ("alias@jsr:foo@^1.5.0", None),
         jsr_pkg_req("alias", "foo@^1.5.0"),
       ),
-      (("foo", Some(Prefix::Npm)), npm_pkg_req("foo", "foo@latest")),
+      (("foo", Some(Prefix::Npm)), npm_pkg_req("foo", "foo@*")),
       (("foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
-      (
-        ("npm:foo", Some(Prefix::Npm)),
-        npm_pkg_req("foo", "foo@latest"),
-      ),
+      (("npm:foo", Some(Prefix::Npm)), npm_pkg_req("foo", "foo@*")),
       (("jsr:foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
-      (
-        ("npm:foo", Some(Prefix::Jsr)),
-        npm_pkg_req("foo", "foo@latest"),
-      ),
+      (("npm:foo", Some(Prefix::Jsr)), npm_pkg_req("foo", "foo@*")),
       (("jsr:foo", Some(Prefix::Npm)), jsr_pkg_req("foo", "foo")),
     ];
 
