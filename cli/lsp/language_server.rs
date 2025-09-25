@@ -2262,23 +2262,13 @@ impl Inner {
     code_actions.set_preferred_fixes();
     all_actions.extend(code_actions.get_response());
 
+    let kinds = params.context.only.unwrap_or_default();
+
     // Refactor
-    let only = params
-      .context
-      .only
-      .as_ref()
-      .and_then(|values| values.first().map(|v| v.as_str().to_owned()))
+    let only = kinds
+      .first()
+      .and_then(|v| Some(v.as_str().to_owned()))
       .unwrap_or_default();
-    if only.is_empty()
-      || only.starts_with(CodeActionKind::SOURCE_ORGANIZE_IMPORTS.as_str())
-    {
-      all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-        title: "Organize Imports".to_string(),
-        kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
-        data: Some(json!({"uri": params.text_document.uri})),
-        ..Default::default()
-      }));
-    }
     let refactor_infos = self
       .ts_server
       .get_applicable_refactors(
@@ -2322,6 +2312,18 @@ impl Inner {
         .into_iter()
         .map(CodeActionOrCommand::CodeAction),
     );
+
+    // Organize imports
+    if kinds.is_empty()
+      || kinds.contains(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
+    {
+      all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+        title: "Organize Imports".to_string(),
+        kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
+        data: Some(json!({"uri": params.text_document.uri})),
+        ..Default::default()
+      }));
+    }
 
     let code_action_disabled_capable =
       self.config.code_action_disabled_capable();
