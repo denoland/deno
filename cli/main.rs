@@ -658,11 +658,11 @@ async fn resolve_flags_and_init(
   load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
 
   if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
-    flags.connected = true;
+    flags.tunnel = true;
   }
 
   // Tunnel sets up env vars and OTEL, so connect before everything else.
-  if flags.connected {
+  if flags.tunnel {
     if let Err(err) = initialize_tunnel(&flags).await {
       exit_for_error(err.context("Failed to start with --connected"));
     }
