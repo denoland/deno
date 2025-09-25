@@ -37,6 +37,7 @@ use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::module_error_for_tsc_diagnostic;
 use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tsc;
@@ -105,6 +106,7 @@ pub struct TypeChecker {
   module_graph_builder: Arc<ModuleGraphBuilder>,
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
+  package_json_resolver: Arc<CliPackageJsonResolver>,
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
@@ -119,6 +121,7 @@ impl TypeChecker {
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
     npm_resolver: CliNpmResolver,
+    package_json_resolver: Arc<CliPackageJsonResolver>,
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
@@ -130,6 +133,7 @@ impl TypeChecker {
       module_graph_builder,
       node_resolver,
       npm_resolver,
+      package_json_resolver,
       sys,
       compiler_options_resolver,
       code_cache,
@@ -235,6 +239,7 @@ impl TypeChecker {
         cjs_tracker: &self.cjs_tracker,
         node_resolver: &self.node_resolver,
         npm_resolver: &self.npm_resolver,
+        package_json_resolver: &self.package_json_resolver,
         compiler_options_resolver: &self.compiler_options_resolver,
         log_level: self.cli_options.log_level(),
         npm_check_state_hash: check_state_hash(&self.npm_resolver),
@@ -364,6 +369,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   cjs_tracker: &'a Arc<TypeCheckingCjsTracker>,
   node_resolver: &'a Arc<CliNodeResolver>,
   npm_resolver: &'a CliNpmResolver,
+  package_json_resolver: &'a Arc<CliPackageJsonResolver>,
   compiler_options_resolver: &'a CompilerOptionsResolver,
   type_check_cache: TypeCheckCache,
   groups: Vec<CheckGroup<'a>>,
@@ -524,6 +530,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
           cjs_tracker: self.cjs_tracker.clone(),
           node_resolver: self.node_resolver.clone(),
           npm_resolver: self.npm_resolver.clone(),
+          package_json_resolver: self.package_json_resolver.clone(),
         }),
         maybe_tsbuildinfo,
         root_names,

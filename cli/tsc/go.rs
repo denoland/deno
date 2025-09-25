@@ -52,7 +52,7 @@ fn synthetic_config(
   //   .insert("lib".to_string(), json!(["dom", "dom.iterable", "esnext"]));
   // let mut root_names =
   //   root_names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-  // eprintln!("config: {}", serde_json::to_string(&config)?);
+  log::debug!("config: {}", serde_json::to_string(&config)?);
   // root_names.push("asset:///lib.deno.window.d.ts".to_string());
   serde_json::to_string(&json!({
 
@@ -130,7 +130,7 @@ fn exec_request_inner(
 
 fn convert_diagnostic(
   diagnostic: typescript_go_client_rust::types::Diagnostic,
-  diagnostics: &[typescript_go_client_rust::types::Diagnostic],
+  _diagnostics: &[typescript_go_client_rust::types::Diagnostic],
 ) -> super::Diagnostic {
   let (start, end) = if diagnostic.start.line == 0
     && diagnostic.start.character == 0
@@ -198,6 +198,9 @@ impl Handler {
     graph: Arc<ModuleGraph>,
     maybe_npm: Option<super::RequestNpmState>,
   ) -> Self {
+    if maybe_npm.is_none() {
+      panic!("no npm state");
+    }
     Self {
       state: RefCell::new(HandlerState {
         config_path,
@@ -211,6 +214,39 @@ impl Handler {
       }),
     }
   }
+}
+
+fn get_package_json_scope_if_applicable(
+  state: &mut HandlerState,
+  payload: String,
+) -> Result<String, typescript_go_client_rust::Error> {
+  if let Some(maybe_npm) = state.maybe_npm.as_ref() {
+    let file_path = deser::<String>(&payload)?;
+    let file_path = if let Ok(specifier) = ModuleSpecifier::parse(&file_path) {
+      deno_path_util::url_to_file_path(&specifier).ok()
+    } else {
+      Some(PathBuf::from(file_path))
+    };
+    let Some(file_path) = file_path else {
+      return Ok(jsons!(None::<String>)?);
+    };
+    if let Some(package_json) = maybe_npm
+      .package_json_resolver
+      .get_closest_package_json_path(&file_path)
+    {
+      let package_directory = package_json.parent();
+      let contents = std::fs::read_to_string(&package_json).ok();
+      if let Some(contents) = contents {
+        return Ok(jsons!({
+          "packageDirectory": package_directory,
+          "directoryExists": true,
+          "contents": contents,
+        })?);
+      }
+    }
+  }
+
+  Ok(jsons!(None::<String>)?)
 }
 
 struct HandlerState {
@@ -234,8 +270,10 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
       "readFile",
       "resolveModuleName",
       "getPackageJsonScopeIfApplicable",
+      "getPackageScopeForPath",
       "resolveTypeReferenceDirective",
       "getImpliedNodeFormatForFile",
+      "isNodeSourceFile",
     ]
     .into_iter()
     .map(|s| s.to_owned())
@@ -299,7 +337,12 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
           "extension": extension,
         })?)
       }
-      "getPackageJsonScopeIfApplicable" => Ok(jsons!(None::<String>)?),
+      "getPackageJsonScopeIfApplicable" => {
+        get_package_json_scope_if_applicable(&mut *state, payload)
+      }
+      "getPackageScopeForPath" => {
+        get_package_json_scope_if_applicable(&mut *state, payload)
+      }
       "resolveTypeReferenceDirective" => {
         log::debug!("resolveTypeReferenceDirective: {}", payload);
         let payload = deser::<ResolveTypeReferenceDirectivePayload>(payload)?;
@@ -328,6 +371,23 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
           .get(&payload.file_name)
           .unwrap_or(&typescript_go_client_rust::types::ResolutionMode::ESM);
         Ok(jsons!(&module_kind)?)
+      }
+      "isNodeSourceFile" => {
+        let path = deser::<String>(payload)?;
+        let state = &*state;
+        let result = ModuleSpecifier::parse(&path)
+          .ok()
+          .or_else(|| {
+            deno_path_util::resolve_url_or_path(&path, &state.current_dir).ok()
+          })
+          .and_then(|specifier| {
+            state
+              .maybe_npm
+              .as_ref()
+              .map(|n| n.node_resolver.in_npm_package(&specifier))
+          })
+          .unwrap_or(false);
+        Ok(jsons!(result)?)
       }
       _ => unreachable!(),
     }

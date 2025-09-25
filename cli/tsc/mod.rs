@@ -36,6 +36,7 @@ use crate::args::CompilerOptions;
 use crate::args::TypeCheckMode;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
@@ -455,6 +456,7 @@ pub struct RequestNpmState {
   pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
   pub node_resolver: Arc<CliNodeResolver>,
   pub npm_resolver: CliNpmResolver,
+  pub package_json_resolver: Arc<CliPackageJsonResolver>,
 }
 
 /// A structure representing a request to be sent to the tsc runtime.
