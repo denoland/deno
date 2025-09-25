@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -18,6 +19,7 @@ use deno_lib::worker::ResolveNpmBinaryEntrypointError;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
+use deno_runtime::coverage::CoverageCollector;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
@@ -28,8 +30,6 @@ use crate::args::CliLockfile;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
-use crate::tools::coverage::CoverageCollector;
-use crate::tools::coverage::CoverageCollectorState;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tools::run::hmr::HmrRunnerState;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -38,12 +38,9 @@ use crate::util::progress_bar::ProgressBar;
 
 pub type CreateHmrRunnerCb = Box<dyn Fn() -> HmrRunnerState + Send + Sync>;
 
-pub type CreateCoverageCollectorCb =
-  Box<dyn Fn() -> CoverageCollectorState + Send + Sync>;
-
 pub struct CliMainWorkerOptions {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
-  pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
+  pub maybe_coverage_dir: Option<PathBuf>,
   pub default_npm_caching_strategy: NpmCachingStrategy,
   pub needs_test_modules: bool,
 }
@@ -51,7 +48,7 @@ pub struct CliMainWorkerOptions {
 /// Data shared between the factory and workers.
 struct SharedState {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
-  pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
+  pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
 }
 
@@ -235,16 +232,9 @@ impl CliMainWorker {
   pub fn maybe_setup_coverage_collector(
     &mut self,
   ) -> Option<CoverageCollector> {
-    let create_coverage_collector =
-      self.shared.create_coverage_collector.as_ref()?;
-
-    let coverage_collector_state = create_coverage_collector();
-    let state = coverage_collector_state.clone();
-
-    let callback =
-      Box::new(move |message| coverage_collector_state.callback(message));
-    let session = self.worker.create_inspector_session(callback);
-    let mut coverage_collector = CoverageCollector::new(state, session);
+    let coverage_dir = self.shared.maybe_coverage_dir.as_ref()?;
+    let mut coverage_collector =
+      CoverageCollector::new(self.worker.js_runtime(), coverage_dir.clone());
     coverage_collector.start_collecting();
 
     Some(coverage_collector)
@@ -322,7 +312,7 @@ impl CliMainWorkerFactory {
       sys,
       shared: Arc::new(SharedState {
         create_hmr_runner: options.create_hmr_runner,
-        create_coverage_collector: options.create_coverage_collector,
+        maybe_coverage_dir: options.maybe_coverage_dir,
         maybe_file_watcher_communicator,
       }),
       default_npm_caching_strategy: options.default_npm_caching_strategy,
