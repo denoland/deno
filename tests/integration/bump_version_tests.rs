@@ -219,7 +219,11 @@ fn deno_version_without_increment_shows_current() {
 
   cwd.join("deno.json").write(r#"{"version": "2.3.4"}"#);
 
-  let output = context.new_command().args("bump-version").split_output().run();
+  let output = context
+    .new_command()
+    .args("bump-version")
+    .split_output()
+    .run();
 
   output.assert_exit_code(0);
   assert_contains!(output.stderr(), "2.3.4");
