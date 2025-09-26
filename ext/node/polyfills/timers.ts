@@ -25,6 +25,7 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 export { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
 import * as timers from "ext:deno_web/02_timers.js";
 import { AbortError } from "ext:deno_node/internal/errors.ts";
+import * as timersPromises from "ext:deno_node/timers/promises.ts";
 
 const clearTimeout_ = timers.clearTimeout;
 const clearInterval_ = timers.clearInterval;
@@ -40,13 +41,12 @@ export function setTimeout(
 
 ObjectDefineProperty(setTimeout, promisify.custom, {
   __proto__: null,
-  value: (timeout: number, ...args: unknown[]) => {
-    return new Promise((cb) =>
-      setTimeout(cb, timeout, ...new SafeArrayIterator(args))
-    );
-  },
   enumerable: true,
+  get() {
+    return timersPromises.setTimeout;
+  },
 });
+
 export function clearTimeout(timeout?: Timeout | number) {
   if (timeout == null) {
     return;
@@ -174,7 +174,7 @@ async function* setIntervalAsync(
 }
 
 export const promises = {
-  setTimeout: promisify(setTimeout),
+  setTimeout: timersPromises.setTimeout,
   setImmediate: promisify(setImmediate),
   setInterval: setIntervalAsync,
 };
