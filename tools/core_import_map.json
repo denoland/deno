@@ -658,8 +658,6 @@
     "ext:deno_node/path/separator.ts": "../ext/node/polyfills/path/separator.ts",
     "ext:deno_node/readline/promises.ts": "../ext/node/polyfills/readline/promises.ts",
     "ext:deno_node/repl.ts": "../ext/node/polyfills/repl.ts",
-    "ext:deno_node/timers.ts": "../ext/node/polyfills/timers.ts",
-    "ext:deno_node/timers/promises.ts": "../ext/node/polyfills/timers/promises.ts",
     "ext:deno_os/30_os.js": "../ext/os/30_os.js",
     "ext:deno_os/40_signals.js": "../ext/os/40_signals.js",
     "ext:deno_process/40_process.js": "../ext/process/40_process.js",
