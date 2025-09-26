@@ -31,10 +31,12 @@ use serde::Serialize;
 use serde::de;
 use url::Url;
 
+#[cfg(unix)]
 pub mod broker;
 pub mod prompter;
 pub mod which;
 pub use broker::PermissionBroker;
+#[cfg(unix)]
 pub use broker::set_broker;
 pub use prompter::DeniedPrompter;
 pub use prompter::GetFormattedStackFn;
@@ -47,10 +49,29 @@ use prompter::permission_prompt;
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
 
-use self::broker::has_broker;
-use self::broker::maybe_check_with_broker;
 use self::which::WhichSys;
-use crate::broker::BrokerResponse;
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum BrokerResponse {
+  Allow,
+  Deny,
+}
+
+#[cfg(unix)]
+use self::broker::has_broker;
+
+#[cfg(not(unix))]
+fn has_broker() -> bool {
+  false
+}
+
+#[cfg(unix)]
+use self::broker::maybe_check_with_broker;
+
+#[cfg(not(unix))]
+fn maybe_check_with_broker() -> Option<BrokerResponse> {
+  None
+}
 
 pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 
@@ -482,7 +503,9 @@ impl PermissionState {
     info: impl Fn() -> Option<String>,
     prompt: bool,
   ) -> (Result<(), PermissionDeniedError>, bool, bool) {
-    if let Some(resp) = maybe_check_with_broker(name, &info) {
+    if cfg!(unix)
+      && let Some(resp) = maybe_check_with_broker(name, &info)
+    {
       match resp {
         BrokerResponse::Allow => {
           Self::log_perm_access(name, info);

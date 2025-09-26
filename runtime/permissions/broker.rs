@@ -5,30 +5,25 @@ use std::io::BufReader;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicU32;
 
-use once_cell::sync::Lazy;
 use parking_lot::Mutex;
+
+use super::BrokerResponse;
 
 // TODO(bartlomieju): currently randomly selected exit code, it should
 // be documented
 static BROKER_EXIT_CODE: i32 = 87;
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum BrokerResponse {
-  Allow,
-  Deny,
-}
-
-static PERMISSION_BROKER: Lazy<Mutex<Option<PermissionBroker>>> =
-  Lazy::new(|| Mutex::new(None));
+static PERMISSION_BROKER: OnceLock<PermissionBroker> = OnceLock::new();
 
 pub fn set_broker(broker: PermissionBroker) {
-  *PERMISSION_BROKER.lock() = Some(broker);
+  assert!(PERMISSION_BROKER.set(broker).is_ok());
 }
 
 pub fn has_broker() -> bool {
-  PERMISSION_BROKER.lock().is_some()
+  PERMISSION_BROKER.get().is_some()
 }
 
 #[derive(serde::Serialize)]
@@ -122,8 +117,7 @@ pub fn maybe_check_with_broker(
   name: &str,
   stringified_value_fn: impl Fn() -> Option<String>,
 ) -> Option<BrokerResponse> {
-  let maybe_broker = PERMISSION_BROKER.lock();
-  let broker = maybe_broker.as_ref()?;
+  let broker = PERMISSION_BROKER.get()?;
 
   let resp = match broker.check(name, stringified_value_fn()) {
     Ok(resp) => resp,

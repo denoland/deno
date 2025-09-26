@@ -3516,12 +3516,16 @@ async fn test_permission_broker_doesnt_exit() {
     .args("run run/permission_broker/test1.ts")
     .run();
   output.assert_exit_code(87);
-  output.assert_matches_text("Failed to create permission broker[WILDCARD]");
+  output.assert_matches_text(
+    "[WILDCARD]Failed to create permission broker[WILDCARD]",
+  );
 }
 
 #[tokio::test]
+#[cfg(test)]
 async fn test_permission_broker() {
-  use std::time::Duration;
+  use std::io::BufRead;
+  use std::io::BufReader;
 
   let context = TestContext::default();
   let socket_path = context.temp_dir().path().join("broker.sock");
@@ -3536,8 +3540,22 @@ async fn test_permission_broker() {
     .spawn()
     .unwrap();
 
-  // TODO(bartlomieju): this will be flaky on CI for sure
-  tokio::time::sleep(Duration::from_millis(5_000)).await;
+  let broker_stdout = broker.stdout.take().unwrap();
+
+  let mut broker_reader = BufReader::new(broker_stdout);
+  let mut line = String::new();
+  loop {
+    line.clear();
+    match broker_reader.read_line(&mut line) {
+      Ok(0) => break, // EOF
+      Ok(_) => {
+        if line.starts_with("Permission broker listening on") {
+          break;
+        }
+      }
+      Err(err) => panic!("{}", err),
+    }
+  }
 
   let output = context
     .new_command()
@@ -3546,15 +3564,15 @@ async fn test_permission_broker() {
     .run();
   output.assert_exit_code(1);
   output.assert_matches_text(
-    "error:[WILDCARD]NotCapable: Requires env access[WILDCARD]",
+    "Warning Permission broker is an experimental feature\nerror:[WILDCARD]NotCapable: Requires env access[WILDCARD]",
   );
 
   let _ = broker.kill();
-  let broker_output = broker.wait_with_output().unwrap();
-  let broker_stdout = String::from_utf8(broker_output.stdout).unwrap();
+  line.clear();
+  broker_reader.read_to_string(&mut line).unwrap();
 
   test_util::assertions::assert_wildcard_match(
-    &broker_stdout,
+    &line,
     r#"[WILDCARD]
 {"v":1,"id":1,"datetime":"[WILDCARD]","permission":"read","value":"\"./run/permission_broker/scratch.txt\""}
 {"v":1,"id":2,"datetime":"[WILDCARD]","permission":"read","value":"\"./run/permission_broker/scratch.txt\""}

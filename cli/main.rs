@@ -562,6 +562,22 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   deno_runtime::exit(70);
 }
 
+#[cfg(not(unix))]
+fn maybe_setup_permission_broker() {}
+
+#[cfg(unix)]
+fn maybe_setup_permission_broker() {
+  if let Ok(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH") {
+    log::warn!(
+      "{} Permission broker is an experimental feature",
+      colors::yellow("Warning")
+    );
+    let broker =
+      deno_runtime::deno_permissions::PermissionBroker::new(socket_path);
+    deno_runtime::deno_permissions::set_broker(broker);
+  }
+}
+
 pub fn main() {
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
@@ -582,15 +598,7 @@ pub fn main() {
     Box::new(util::draw_thread::DrawThread::show),
   );
 
-  if let Ok(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH") {
-    log::warn!(
-      "{} Permission broker is an experimental feature",
-      colors::yellow("Warning")
-    );
-    let broker =
-      deno_runtime::deno_permissions::PermissionBroker::new(socket_path);
-    deno_runtime::deno_permissions::set_broker(broker);
-  }
+  maybe_setup_permission_broker();
 
   rustls::crypto::aws_lc_rs::default_provider()
     .install_default()
