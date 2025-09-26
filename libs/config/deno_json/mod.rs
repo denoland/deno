@@ -979,6 +979,7 @@ pub struct ConfigFileJson {
 
   pub name: Option<String>,
   pub version: Option<String>,
+  pub private: Option<bool>,
   pub workspace: Option<Value>,
   pub links: Option<Value>,
   #[serde(rename = "patch")]
@@ -1421,6 +1422,10 @@ impl ConfigFile {
 
   pub fn is_package(&self) -> bool {
     self.json.name.is_some() && self.json.exports.is_some()
+  }
+
+  pub fn is_private_package(&self) -> bool {
+    matches!(self.json.private, Some(true))
   }
 
   pub fn is_workspace(&self) -> bool {

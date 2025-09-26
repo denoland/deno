@@ -1683,7 +1683,7 @@ impl WorkspaceDirectory {
   ) -> Option<JsrPackageConfig> {
     let deno_json = self.maybe_deno_json()?;
     let pkg_name = deno_json.json.name.as_ref()?;
-    if !deno_json.is_package() {
+    if !deno_json.is_package() || deno_json.json.is_private_package() {
       return None;
     }
     Some(JsrPackageConfig {
