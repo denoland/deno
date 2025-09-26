@@ -2267,7 +2267,7 @@ impl Inner {
     // Refactor
     let only = kinds
       .first()
-      .and_then(|v| Some(v.as_str().to_owned()))
+      .map(|v| v.as_str().to_owned())
       .unwrap_or_default();
     let refactor_infos = self
       .ts_server
