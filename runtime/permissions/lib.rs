@@ -504,10 +504,11 @@ impl PermissionState {
     self,
     name: &'static str,
     api_name: Option<&str>,
+    stringify_value_fn: impl Fn() -> Option<String>,
     info: impl Fn() -> Option<String>,
     prompt: bool,
   ) -> (Result<(), PermissionDeniedError>, bool, bool) {
-    if let Some(resp) = maybe_check_with_broker(name, &info) {
+    if let Some(resp) = maybe_check_with_broker(name, &stringify_value_fn) {
       match resp {
         BrokerResponse::Allow => {
           Self::log_perm_access(name, info);
@@ -608,10 +609,13 @@ impl UnitPermission {
 
   pub fn check(
     &mut self,
+    stringify_value_fn: impl Fn() -> Option<String>,
     info: impl Fn() -> Option<String>,
   ) -> Result<(), PermissionDeniedError> {
     let (result, prompted, _is_allow_all) =
-      self.state.check(self.name, None, info, self.prompt);
+      self
+        .state
+        .check(self.name, None, stringify_value_fn, info, self.prompt);
     if prompted {
       if result.is_ok() {
         self.state = PermissionState::Granted;
@@ -818,6 +822,7 @@ impl<
       .check(
         TAllowDesc::QueryDesc::flag_name(),
         api_name,
+        || desc.map(|d| d.display_name().to_string()),
         || desc.map(|d| format_display_name(d.display_name()).into_owned()),
         self.prompt,
       );
@@ -2905,6 +2910,7 @@ impl UnaryPermission<AllowRunDescriptor, DenyRunDescriptor> {
       self.query_desc(None, AllowPartial::TreatAsDenied).check(
         RunQueryDescriptor::flag_name(),
         api_name,
+        || None,
         || None,
         /* prompt */ false,
       );

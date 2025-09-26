@@ -3505,6 +3505,7 @@ fn handle_invalid_path_error() {
   assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn test_permission_broker_doesnt_exit() {
   let context = TestContext::default();
@@ -3521,8 +3522,8 @@ async fn test_permission_broker_doesnt_exit() {
   );
 }
 
+#[cfg(unix)]
 #[tokio::test]
-#[cfg(test)]
 async fn test_permission_broker() {
   use std::io::BufRead;
   use std::io::BufReader;
@@ -3574,10 +3575,10 @@ async fn test_permission_broker() {
   test_util::assertions::assert_wildcard_match(
     &line,
     r#"[WILDCARD]
-{"v":1,"id":1,"datetime":"[WILDCARD]","permission":"read","value":"\"./run/permission_broker/scratch.txt\""}
-{"v":1,"id":2,"datetime":"[WILDCARD]","permission":"read","value":"\"./run/permission_broker/scratch.txt\""}
-{"v":1,"id":3,"datetime":"[WILDCARD]","permission":"read","value":"\"./run/permission_broker/log.txt\""}
-{"v":1,"id":4,"datetime":"[WILDCARD]","permission":"write","value":"\"./run/permission_broker/log.txt\""}
+{"v":1,"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
+{"v":1,"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
 {"v":1,"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
 [WILDCARD]"#,
   );
