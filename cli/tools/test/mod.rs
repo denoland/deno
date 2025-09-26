@@ -306,6 +306,7 @@ impl From<&TestDescription> for TestFailureDescription {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct TestFailureFormatOptions {
   pub hide_stacktraces: bool,
+  pub strip_ascii_color: bool,
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -599,6 +600,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
   let failure_format_options = TestFailureFormatOptions {
     hide_stacktraces: options.hide_stacktraces,
+    strip_ascii_color: false,
   };
   let reporter: Box<dyn TestReporter> = match &options.reporter {
     TestReporterConfig::Dot => Box::new(DotTestReporter::new(
@@ -631,6 +633,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
       junit_path.to_string(),
       TestFailureFormatOptions {
         hide_stacktraces: options.hide_stacktraces,
+        strip_ascii_color: true,
       },
     ));
     return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
