@@ -16,12 +16,13 @@ const child = new Deno.Command(Deno.execPath(), {
   args: [
     "run",
     "-A",
-    `--connected=localhost:${server.addr.port}`,
+    "--connected",
     "--cert",
     "../../../testdata/tls/RootCA.crt",
     "client.ts",
   ],
   env: {
+    DENO_DEPLOY_TUNNEL_ENDPOINT: `localhost:${server.addr.port}`,
     DENO_DEPLOY_TOKEN: "token",
     DENO_DEPLOY_ORG: "org",
     DENO_DEPLOY_APP: "app",
@@ -61,6 +62,10 @@ async function handleConnection(incoming: Deno.QuicIncoming) {
       conn.close({ closeCode: 1, reason: "expected Control" });
       return;
     }
+    console.log({
+      subcommand: header.metadata.subcommand,
+      entrypoint: header.metadata.entrypoint,
+    });
     const auth = await readStreamHeader(reader);
     if (auth.headerType !== "AuthenticateApp") {
       conn.close({ closeCode: 1, reason: "expected AuthenticateApp" });

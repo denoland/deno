@@ -52,6 +52,7 @@ use crate::jsr::JsrFetchResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::sys::CliSys;
+use crate::util::display;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 mod bin_name_resolver;
@@ -426,6 +427,7 @@ pub(crate) async fn install_from_entrypoints(
   flags: Arc<Flags>,
   entrypoints: &[String],
 ) -> Result<(), AnyError> {
+  let started = std::time::Instant::now();
   let factory = CliFactory::from_flags(flags.clone());
   let emitter = factory.emitter()?;
   let main_graph_container = factory.main_module_graph_container().await?;
@@ -450,6 +452,7 @@ pub(crate) async fn install_from_entrypoints(
 
   print_install_report(
     &factory.sys(),
+    started.elapsed(),
     &factory.install_reporter()?.unwrap().clone(),
     factory.workspace_resolver().await?,
     factory.npm_resolver().await?,
@@ -469,14 +472,16 @@ async fn install_local(
       install_from_entrypoints(flags, &entrypoints).await
     }
     InstallFlagsLocal::TopLevel => {
+      let start = std::time::Instant::now();
       let factory = CliFactory::from_flags(flags);
-      install_top_level(&factory).await
+      install_top_level(&factory, start).await
     }
   }
 }
 
 pub fn print_install_report(
   sys: &dyn sys_traits::boxed::FsOpenBoxed,
+  elapsed: std::time::Duration,
   install_reporter: &InstallReporter,
   workspace: &WorkspaceResolver<CliSys>,
   npm_resolver: &CliNpmResolver,
@@ -564,36 +569,71 @@ pub fn print_install_report(
   if !rep.stats.intialized_npm.is_empty()
     || !rep.stats.downloaded_jsr.is_empty()
   {
+    let total_installed =
+      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len();
     log::info!(
-      "Packages: {}",
-      rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-    );
-    log::info!(
-      "{}",
-      deno_terminal::colors::green("+".repeat(
-        rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-      ))
+      "{} {} {} {} {}",
+      deno_terminal::colors::gray("Installed"),
+      total_installed,
+      deno_terminal::colors::gray(format!(
+        "package{}",
+        if total_installed > 1 { "s" } else { "" },
+      )),
+      deno_terminal::colors::gray("in"),
+      display::human_elapsed_with_ms_limit(elapsed.as_millis(), 3_000)
     );
 
+    let total_reused = rep.stats.reused_npm.get() + rep.stats.reused_jsr.len();
     log::info!(
-      "Resolved: {}, reused: {}, downloaded: {}, added: {}",
-      deno_terminal::colors::green(
-        rep.stats.resolved_npm.len() + rep.stats.resolved_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.reused_npm.get() + rep.stats.reused_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.downloaded_npm.get() + rep.stats.downloaded_jsr.len()
-      ),
-      deno_terminal::colors::green(
-        rep.stats.intialized_npm.len() + rep.stats.downloaded_jsr.len()
-      ),
+      "{} {} {}",
+      deno_terminal::colors::gray("Reused"),
+      total_reused,
+      deno_terminal::colors::gray(format!(
+        "package{} from cache",
+        if total_reused == 1 { "" } else { "s" },
+      )),
     );
-    log::info!("");
+    if total_reused > 0 {
+      log::info!(
+        "{}",
+        deno_terminal::colors::yellow_bold("+".repeat(total_reused))
+      );
+    }
+
+    let jsr_downloaded = rep.stats.downloaded_jsr.len();
+    log::info!(
+      "{} {} {}",
+      deno_terminal::colors::gray("Downloaded"),
+      jsr_downloaded,
+      deno_terminal::colors::gray(format!(
+        "package{} from JSR",
+        if jsr_downloaded == 1 { "" } else { "s" },
+      )),
+    );
+    if jsr_downloaded > 0 {
+      log::info!(
+        "{}",
+        deno_terminal::colors::green("+".repeat(jsr_downloaded))
+      );
+    }
+
+    let npm_download = rep.stats.downloaded_npm.get();
+    log::info!(
+      "{} {} {}",
+      deno_terminal::colors::gray("Downloaded"),
+      npm_download,
+      deno_terminal::colors::gray(format!(
+        "package{} from npm",
+        if npm_download == 1 { "" } else { "s" },
+      )),
+    );
+    if npm_download > 0 {
+      log::info!("{}", deno_terminal::colors::green("+".repeat(npm_download)));
+    }
   }
 
   if !installed_normal_deps.is_empty() || !rep.stats.downloaded_jsr.is_empty() {
+    log::info!("");
     log::info!("{}", deno_terminal::colors::cyan("Dependencies:"));
     let mut jsr_packages = rep
       .stats
@@ -647,7 +687,10 @@ pub fn print_install_report(
   }
 }
 
-async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
+async fn install_top_level(
+  factory: &CliFactory,
+  started: std::time::Instant,
+) -> Result<(), AnyError> {
   // surface any errors in the package.json
   factory
     .npm_installer()
@@ -668,6 +711,7 @@ async fn install_top_level(factory: &CliFactory) -> Result<(), AnyError> {
   let npm_resolver = factory.npm_resolver().await?;
   print_install_report(
     &factory.sys(),
+    started.elapsed(),
     &install_reporter,
     workspace,
     npm_resolver,
@@ -743,10 +787,14 @@ async fn install_global(
   let npmrc = factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(
+    deps_file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
   let npm_resolver = Arc::new(NpmFetchResolver::new(
     deps_file_fetcher.clone(),
     npmrc.clone(),
+    factory.npm_version_resolver()?.clone(),
   ));
 
   let entry_text = install_flags_global.module_url.as_str();
@@ -755,12 +803,24 @@ async fn install_global(
     if let Ok(Err(package_req)) =
       super::pm::AddRmPackageReq::parse(entry_text, None)
     {
-      if jsr_resolver.req_to_nv(&package_req).await.is_some() {
+      if jsr_resolver
+        .req_to_nv(&package_req)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+      {
         bail!(
           "{entry_text} is missing a prefix. Did you mean `{}`?",
           crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
         );
-      } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+      } else if npm_resolver
+        .req_to_nv(&package_req)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+      {
         bail!(
           "{entry_text} is missing a prefix. Did you mean `{}`?",
           crate::colors::yellow(format!("deno install -g npm:{package_req}"))
@@ -1072,6 +1132,7 @@ mod tests {
   use std::process::Command;
 
   use deno_lib::args::UnstableConfig;
+  use deno_npm::resolution::NpmVersionResolver;
   use test_util::TempDir;
   use test_util::testdata_path;
 
@@ -1089,7 +1150,9 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
-    let resolver = BinNameResolver::new(&http_client, &registry_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
     super::create_install_shim(&resolver, &cwd, flags, install_flags_global)
       .await
   }
@@ -1101,7 +1164,9 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
-    let resolver = BinNameResolver::new(&http_client, &registry_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
     super::resolve_shim_data(&resolver, &cwd, flags, install_flags_global).await
   }
 

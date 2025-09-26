@@ -102,7 +102,7 @@ pub fn op_node_call_is_from_dependency<
   TSys: ExtNodeSys + 'static,
 >(
   state: &mut OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
 ) -> bool {
   // non internal call site should appear in < 20 frames
   let Some(stack_trace) = v8::StackTrace::current_stack_trace(scope, 20) else {

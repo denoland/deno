@@ -24,7 +24,9 @@ impl deno_core::webidl::WebIdlInterfaceConverter for GPUBindGroupLayout {
   const NAME: &'static str = "GPUBindGroupLayout";
 }
 
-impl GarbageCollected for GPUBindGroupLayout {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUBindGroupLayout {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUBindGroupLayout"
   }

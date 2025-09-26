@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.4.5"
+version = "2.5.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -103,6 +103,7 @@ base64.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
 bytes.workspace = true
+bytes-str = "0.2.5"
 capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
 clap = { workspace = true, features = ["env", "string", "wrap_help", "error-context"] }
@@ -120,7 +121,7 @@ dprint-plugin-json.workspace = true
 dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
-esbuild_client = { version = "0.6.0", features = ["serde"] }
+esbuild_client = { version = "0.7.1", features = ["serde"] }
 fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
@@ -139,6 +140,7 @@ lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
+lol_html = "2.6.0"
 lsp-types.workspace = true
 malva.workspace = true
 markup_fmt.workspace = true
@@ -181,6 +183,7 @@ tower-lsp.workspace = true
 tracing = { workspace = true, features = ["log"], optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"], optional = true }
+twox-hash.workspace = true
 typed-arena.workspace = true
 unicode-width.workspace = true
 uuid = { workspace = true, features = ["serde"] }

@@ -24,7 +24,10 @@ pub struct GPUComputePassEncoder {
   pub label: String,
 }
 
-impl GarbageCollected for GPUComputePassEncoder {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUComputePassEncoder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUComputePassEncoder"
   }
@@ -143,7 +146,7 @@ impl GPUComputePassEncoder {
 
   fn set_bind_group<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl(options(enforce_range = true))] index: u32,
     #[webidl] bind_group: Nullable<Ref<crate::bind_group::GPUBindGroup>>,
     dynamic_offsets: v8::Local<'a, v8::Value>,

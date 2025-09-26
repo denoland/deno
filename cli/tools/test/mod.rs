@@ -36,7 +36,6 @@ use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::error::CoreErrorKind;
 use deno_core::error::JsError;
-use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
@@ -49,6 +48,7 @@ use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
+use deno_runtime::coverage::CoverageCollector;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
@@ -107,7 +107,6 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
-use super::coverage::CoverageCollector;
 use crate::tools::coverage::cover_files;
 use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
@@ -394,35 +393,39 @@ impl TestFailure {
   }
 
   pub fn error_location(&self) -> Option<TestLocation> {
+    let TestFailure::JsError(js_error) = self else {
+      return None;
+    };
+    // The first line of user code comes above the test file.
+    // The call stack usually contains the top 10 frames, and cuts off after that.
+    // We need to explicitly check for the test runner here.
+    // - Checking for a `ext:` is not enough, since other Deno `ext:`s can appear in the call stack.
+    // - This check guarantees that the next frame is inside of the Deno.test(),
+    //   and not somewhere else.
     const TEST_RUNNER: &str = "ext:cli/40_test.js";
-    match self {
-      TestFailure::JsError(js_error) => js_error
-        .frames
-        .iter()
-        // The first line of user code comes above the test file.
-        // The call stack usually contains the top 10 frames, and cuts off after that.
-        // We need to explicitly check for the test runner here.
-        // - Checking for a `ext:` is not enough, since other Deno `ext:`s can appear in the call stack.
-        // - This check guarantees that the next frame is inside of the Deno.test(),
-        //   and not somewhere else.
-        .position(|v| v.file_name.as_deref() == Some(TEST_RUNNER))
-        // Go one up in the stack frame, this is where the user code was
-        .and_then(|index| index.checked_sub(1))
-        .and_then(|index| {
-          let user_frame = &js_error.frames[index];
-          let file_name = user_frame.file_name.as_ref()?.to_string();
-          // Turn into zero based indices
-          let line_number = user_frame.line_number.map(|v| v - 1)? as u32;
-          let column_number =
-            user_frame.column_number.map(|v| v - 1).unwrap_or(0) as u32;
-          Some(TestLocation {
-            file_name,
-            line_number,
-            column_number,
-          })
-        }),
-      _ => None,
-    }
+    let runner_frame_index = js_error
+      .frames
+      .iter()
+      .position(|f| f.file_name.as_deref() == Some(TEST_RUNNER))?;
+    let frame = js_error
+      .frames
+      .split_at(runner_frame_index)
+      .0
+      .iter()
+      .rfind(|f| {
+        f.file_name.as_ref().is_some_and(|f| {
+          f.starts_with("file:") && !f.contains("node_modules")
+        })
+      })?;
+    let file_name = frame.file_name.as_ref()?.clone();
+    // Turn into zero based indices
+    let line_number = frame.line_number.map(|v| v - 1)? as u32;
+    let column_number = frame.column_number.map(|v| v - 1).unwrap_or(0) as u32;
+    Some(TestLocation {
+      file_name,
+      line_number,
+      column_number,
+    })
   }
 
   fn format_label(&self) -> String {
@@ -668,7 +671,7 @@ async fn configure_main_worker(
       None,
     )
     .await?;
-  let coverage_collector = worker.maybe_setup_coverage_collector().await?;
+  let coverage_collector = worker.maybe_setup_coverage_collector();
   if options.trace_leaks {
     worker
       .execute_script_static(
@@ -804,13 +807,7 @@ async fn test_specifier_inner(
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
   if let Some(coverage_collector) = &mut coverage_collector {
-    worker
-      .js_runtime
-      .with_event_loop_future(
-        coverage_collector.stop_collecting().boxed_local(),
-        PollEventLoopOptions::default(),
-      )
-      .await?;
+    coverage_collector.stop_collecting()?;
   }
   Ok(())
 }
@@ -1082,7 +1079,7 @@ async fn run_tests_for_worker_inner(
       };
 
       // Check the result before we check for leaks
-      let scope = &mut worker.js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut worker.js_runtime);
       let result = v8::Local::new(scope, result);
       serde_v8::from_v8::<TestResult>(scope, result)?
     } else {

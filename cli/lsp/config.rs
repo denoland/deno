@@ -43,6 +43,7 @@ use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
 use deno_package_json::PackageJsonCache;
+use deno_package_json::PackageJsonCacheResult;
 use deno_path_util::url_to_file_path;
 use deno_resolver::factory::ConfigDiscoveryOption;
 use deno_resolver::factory::ResolverFactory;
@@ -555,7 +556,7 @@ pub struct WorkspaceSettings {
 
   /// Cache local modules and their dependencies on `textDocument/didSave`
   /// notifications corresponding to them.
-  #[serde(default)]
+  #[serde(default = "default_to_true")]
   pub cache_on_save: bool,
 
   /// Override the default stores used to validate certificates. This overrides
@@ -632,7 +633,7 @@ impl Default for WorkspaceSettings {
       disable_paths: vec![],
       enable_paths: None,
       cache: None,
-      cache_on_save: false,
+      cache_on_save: true,
       certificate_stores: None,
       config: None,
       import_map: None,
@@ -1433,7 +1434,7 @@ impl ConfigData {
         is_package_manager_subcommand: false,
         frozen_lockfile: None,
         lock_arg: None,
-        lockfile_skip_write: false,
+        lockfile_skip_write: true,
         node_modules_dir: Some(resolve_node_modules_dir_mode(
           &member_dir.workspace,
           byonm,
@@ -1451,8 +1452,13 @@ impl ConfigData {
       ResolverFactoryOptions {
         // these default options are fine because we don't use this for
         // anything other than resolving the lockfile at the moment
+        allow_json_imports:
+          deno_resolver::loader::AllowJsonImports::WithAttribute,
+        bare_node_builtins: false,
         compiler_options_overrides: Default::default(),
         is_cjs_resolution_mode: Default::default(),
+        on_mapped_resolution_diagnostic: None,
+        newest_dependency_date: None,
         npm_system_info: Default::default(),
         node_code_translator_mode: Default::default(),
         node_resolver_options: NodeResolverOptions::default(),
@@ -1461,11 +1467,8 @@ impl ConfigData {
         package_json_cache: None,
         package_json_dep_resolution: None,
         specified_import_map: None,
-        bare_node_builtins: false,
+        types_node_version_req: Some(crate::npm::get_types_node_version_req()),
         unstable_sloppy_imports: false,
-        on_mapped_resolution_diagnostic: None,
-        allow_json_imports:
-          deno_resolver::loader::AllowJsonImports::WithAttribute,
       },
     );
     let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
@@ -1774,9 +1777,10 @@ impl ConfigTree {
 
   pub fn is_watched_file(&self, specifier: &Url) -> bool {
     let path = specifier.path();
-    if path.ends_with("/deno.json")
-      || path.ends_with("/deno.jsonc")
-      || path.ends_with("/package.json")
+    if !path.contains("/node_modules/")
+      && (path.ends_with("/deno.json")
+        || path.ends_with("/deno.jsonc")
+        || path.ends_with("/package.json"))
       || path.ends_with("/node_modules/.package-lock.json")
       || path.ends_with("/node_modules/.yarn-integrity.json")
       || path.ends_with("/node_modules/.modules.yaml")
@@ -2035,11 +2039,20 @@ impl deno_config::deno_json::DenoJsonCache for DenoJsonMemCache {
 struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
 
 impl deno_package_json::PackageJsonCache for PackageJsonMemCache {
-  fn get(&self, path: &Path) -> Option<Arc<PackageJson>> {
-    self.0.lock().get(path).cloned()
+  fn get(&self, path: &Path) -> PackageJsonCacheResult {
+    self
+      .0
+      .lock()
+      .get(path)
+      .cloned()
+      .map(|value| PackageJsonCacheResult::Hit(Some(value)))
+      .unwrap_or_else(|| PackageJsonCacheResult::NotCached)
   }
 
-  fn set(&self, path: PathBuf, data: Arc<PackageJson>) {
+  fn set(&self, path: PathBuf, data: Option<Arc<PackageJson>>) {
+    let Some(data) = data else {
+      return;
+    };
     self.0.lock().insert(path, data);
   }
 }
@@ -2146,7 +2159,7 @@ mod tests {
         disable_paths: vec![],
         enable_paths: None,
         cache: None,
-        cache_on_save: false,
+        cache_on_save: true,
         certificate_stores: None,
         config: None,
         import_map: None,
