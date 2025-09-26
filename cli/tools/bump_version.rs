@@ -12,7 +12,6 @@ use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::json;
 use log::info;
-use log::warn;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
