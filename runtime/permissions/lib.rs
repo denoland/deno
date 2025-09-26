@@ -35,6 +35,7 @@ use url::Url;
 pub mod broker;
 pub mod prompter;
 pub mod which;
+#[cfg(unix)]
 pub use broker::PermissionBroker;
 #[cfg(unix)]
 pub use broker::set_broker;
@@ -69,7 +70,10 @@ fn has_broker() -> bool {
 use self::broker::maybe_check_with_broker;
 
 #[cfg(not(unix))]
-fn maybe_check_with_broker() -> Option<BrokerResponse> {
+fn maybe_check_with_broker(
+  name: &str,
+  stringified_value_fn: impl Fn() -> Option<String>,
+) -> Option<BrokerResponse> {
   None
 }
 
