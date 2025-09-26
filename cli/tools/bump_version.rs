@@ -210,58 +210,7 @@ fn find_config_files(
   Ok(configs)
 }
 
-fn is_git_repository() -> bool {
-  std::path::Path::new(".git").exists()
-}
-
-fn create_git_tag(version: &str) -> Result<(), AnyError> {
-  let output = std::process::Command::new("git")
-    .args(["tag", &format!("v{}", version)])
-    .output()
-    .context("Failed to execute git tag command")?;
-
-  if !output.status.success() {
-    bail!(
-      "Failed to create git tag: {}",
-      String::from_utf8_lossy(&output.stderr)
-    );
-  }
-
-  Ok(())
-}
-
-fn commit_version_changes(version: &str) -> Result<(), AnyError> {
-  // Stage all changes
-  let output = std::process::Command::new("git")
-    .args(["add", "-A"])
-    .output()
-    .context("Failed to execute git add command")?;
-
-  if !output.status.success() {
-    bail!(
-      "Failed to stage changes: {}",
-      String::from_utf8_lossy(&output.stderr)
-    );
-  }
-
-  // Commit changes
-  let commit_msg = format!("chore: bump version to {}", version);
-  let output = std::process::Command::new("git")
-    .args(["commit", "-m", &commit_msg])
-    .output()
-    .context("Failed to execute git commit command")?;
-
-  if !output.status.success() {
-    bail!(
-      "Failed to commit changes: {}",
-      String::from_utf8_lossy(&output.stderr)
-    );
-  }
-
-  Ok(())
-}
-
-pub fn version_command(
+pub fn bump_version_command(
   flags: Arc<Flags>,
   version_flags: VersionFlags,
 ) -> Result<(), AnyError> {
@@ -310,44 +259,11 @@ pub fn version_command(
     }
   };
 
-  if version_flags.dry_run {
-    info!("Current version: {}", current_version);
-    info!("New version: {}", new_version);
-    for config in &configs {
-      info!("Would update: {}", config.display_path());
-    }
-    return Ok(());
-  }
-
   // Update version in all config files
   for config in &mut configs {
     config.set_version(&new_version.to_string());
     config.commit()?;
     info!("Updated version in {}", config.display_path());
-  }
-
-  // Handle git operations only if we're in a git repository
-  let is_git_repo = is_git_repository();
-
-  if version_flags.git_commit_all {
-    if is_git_repo {
-      commit_version_changes(&new_version.to_string())?;
-      info!("Committed version changes");
-    } else {
-      warn!("Skipping git commit: not in a git repository");
-    }
-  }
-
-  if !version_flags.no_git_tag {
-    if is_git_repo {
-      if let Err(e) = create_git_tag(&new_version.to_string()) {
-        warn!("Failed to create git tag: {}", e);
-      } else {
-        info!("Created git tag v{}", new_version);
-      }
-    } else {
-      warn!("Skipping git tag: not in a git repository");
-    }
   }
 
   info!(

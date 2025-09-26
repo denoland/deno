@@ -114,9 +114,6 @@ pub struct RemoveFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VersionFlags {
   pub increment: Option<VersionIncrement>,
-  pub dry_run: bool,
-  pub no_git_tag: bool,
-  pub git_commit_all: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -546,7 +543,7 @@ pub enum DenoSubcommand {
   Types,
   Upgrade(UpgradeFlags),
   Vendor,
-  Version(VersionFlags),
+  BumpVersion(VersionFlags),
   Publish(PublishFlags),
   Help(HelpFlags),
 }
@@ -1541,7 +1538,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
         "uninstall" => uninstall_parse(&mut flags, &mut m),
         "update" => outdated_parse(&mut flags, &mut m, true)?,
         "upgrade" => upgrade_parse(&mut flags, &mut m),
-        "version" => version_parse(&mut flags, &mut m),
+        "bump-version" => bump_version_parse(&mut flags, &mut m),
         "vendor" => vendor_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
         _ => unreachable!(),
@@ -1804,7 +1801,7 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
-        .subcommand(version_subcommand())
+        .subcommand(bump_version_subcommand())
         .subcommand(vendor_subcommand());
 
       let help = help_subcommand(&cmd);
@@ -3789,19 +3786,19 @@ different location, use the <c>--output</> flag:
   })
 }
 
-fn version_subcommand() -> Command {
+fn bump_version_subcommand() -> Command {
   command(
-    "version",
+    "bump-version",
     cstr!(
       "Update version in configuration file.
-  <p(245)>deno version patch</>  # 1.0.0 -> 1.0.1
-  <p(245)>deno version minor</>  # 1.0.0 -> 1.1.0
-  <p(245)>deno version major</>  # 1.0.0 -> 2.0.0
+  <p(245)>deno bump-version patch</>  # 1.0.0 -> 1.0.1
+  <p(245)>deno bump-version minor</>  # 1.0.0 -> 1.1.0
+  <p(245)>deno bump-version major</>  # 1.0.0 -> 2.0.0
 
 Additional options:
-  <p(245)>deno version patch --dry-run</>        # Show what would change
-  <p(245)>deno version patch --no-git-tag</>     # Don't create git tag
-  <p(245)>deno version patch --git-commit-all</> # Stage and commit all changes"
+  <p(245)>deno bump-version patch --dry-run</>        # Show what would change
+  <p(245)>deno bump-version patch --no-git-tag</>     # Don't create git tag
+  <p(245)>deno bump-version patch --git-commit-all</> # Stage and commit all changes"
     ),
     UnstableArgsConfig::None,
   )
@@ -3820,24 +3817,6 @@ Additional options:
             "prerelease",
           ])
           .index(1),
-      )
-      .arg(
-        Arg::new("dry-run")
-          .long("dry-run")
-          .help("Show what would change without making changes")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("no-git-tag")
-          .long("no-git-tag")
-          .help("Don't create a git tag")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("git-commit-all")
-          .long("git-commit-all")
-          .help("Stage and commit all changes")
-          .action(ArgAction::SetTrue),
       )
   })
 }
@@ -5039,7 +5018,7 @@ fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn bump_version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let increment =
     matches
       .remove_one::<String>("increment")
@@ -5054,12 +5033,7 @@ fn version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         _ => None,
       });
 
-  flags.subcommand = DenoSubcommand::Version(VersionFlags {
-    increment,
-    dry_run: matches.get_flag("dry-run"),
-    no_git_tag: matches.get_flag("no-git-tag"),
-    git_commit_all: matches.get_flag("git-commit-all"),
-  });
+  flags.subcommand = DenoSubcommand::BumpVersion(VersionFlags { increment });
 }
 
 fn outdated_parse(

@@ -14,7 +14,7 @@ fn deno_version_patch_increments_correctly() {
 
   let output = context
     .new_command()
-    .args("version patch")
+    .args("bump-version patch")
     .split_output()
     .run();
 
@@ -36,7 +36,7 @@ fn deno_version_minor_increments_correctly() {
 
   let output = context
     .new_command()
-    .args("version minor")
+    .args("bump-version minor")
     .split_output()
     .run();
 
@@ -58,7 +58,7 @@ fn deno_version_major_increments_correctly() {
 
   let output = context
     .new_command()
-    .args("version major")
+    .args("bump-version major")
     .split_output()
     .run();
 
@@ -80,7 +80,7 @@ fn deno_version_prerelease_increments_correctly() {
 
   let output = context
     .new_command()
-    .args("version prerelease")
+    .args("bump-version prerelease")
     .split_output()
     .run();
 
@@ -90,7 +90,7 @@ fn deno_version_prerelease_increments_correctly() {
   // Test subsequent prerelease increment
   let output = context
     .new_command()
-    .args("version prerelease")
+    .args("bump-version prerelease")
     .split_output()
     .run();
 
@@ -121,7 +121,7 @@ fn deno_version_works_with_deno_json() {
 
   let output = context
     .new_command()
-    .args("version patch")
+    .args("bump-version patch")
     .split_output()
     .run();
 
@@ -156,7 +156,7 @@ fn deno_version_works_with_package_json() {
 
   let output = context
     .new_command()
-    .args("version minor")
+    .args("bump-version minor")
     .split_output()
     .run();
 
@@ -183,7 +183,7 @@ fn deno_version_works_with_both_files() {
 
   let output = context
     .new_command()
-    .args("version patch")
+    .args("bump-version patch")
     .split_output()
     .run();
 
@@ -204,35 +204,12 @@ fn deno_version_fails_without_config_files() {
 
   let output = context
     .new_command()
-    .args("version patch")
+    .args("bump-version patch")
     .split_output()
     .run();
 
   output.assert_exit_code(1);
   assert_contains!(output.stderr(), "No deno.json or package.json found");
-}
-
-#[test]
-fn deno_version_dry_run_shows_changes() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let cwd = context.temp_dir().path();
-
-  cwd.join("deno.json").write(r#"{"version": "1.0.0"}"#);
-
-  let output = context
-    .new_command()
-    .args("version patch --dry-run")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Current version: 1.0.0");
-  assert_contains!(output.stderr(), "New version: 1.0.1");
-  assert_contains!(output.stderr(), "Would update:");
-
-  // Verify the file was NOT updated
-  let deno_json_content = cwd.join("deno.json").read_to_string();
-  assert_contains!(deno_json_content, r#""version": "1.0.0""#);
 }
 
 #[test]
@@ -242,7 +219,7 @@ fn deno_version_without_increment_shows_current() {
 
   cwd.join("deno.json").write(r#"{"version": "2.3.4"}"#);
 
-  let output = context.new_command().args("version").split_output().run();
+  let output = context.new_command().args("bump-version").split_output().run();
 
   output.assert_exit_code(0);
   assert_contains!(output.stderr(), "2.3.4");
@@ -262,7 +239,7 @@ fn deno_version_creates_default_version_when_missing() {
 
   let output = context
     .new_command()
-    .args("version patch")
+    .args("bump-version patch")
     .split_output()
     .run();
 
