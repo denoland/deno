@@ -507,9 +507,7 @@ impl PermissionState {
     info: impl Fn() -> Option<String>,
     prompt: bool,
   ) -> (Result<(), PermissionDeniedError>, bool, bool) {
-    if cfg!(unix)
-      && let Some(resp) = maybe_check_with_broker(name, &info)
-    {
+    if let Some(resp) = maybe_check_with_broker(name, &info) {
       match resp {
         BrokerResponse::Allow => {
           Self::log_perm_access(name, info);

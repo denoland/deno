@@ -27,11 +27,11 @@ pub fn has_broker() -> bool {
 }
 
 #[derive(serde::Serialize)]
-struct PermissionBrokerRequest {
+struct PermissionBrokerRequest<'a> {
   v: u32,
   id: u32,
   datetime: String,
-  permission: String,
+  permission: &'a str,
   value: Option<String>,
 }
 
@@ -74,7 +74,7 @@ impl PermissionBroker {
       v: 1,
       id,
       datetime: chrono::Utc::now().to_rfc3339(),
-      permission: permission.to_string(),
+      permission,
       value: stringified_value,
     };
 
