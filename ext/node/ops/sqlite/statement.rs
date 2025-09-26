@@ -30,7 +30,7 @@ impl<'a> ToV8<'a> for RunStatementResult {
 
   fn to_v8(
     self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     v8_static_strings! {
       LAST_INSERT_ROW_ID = "lastInsertRowid",
@@ -226,7 +226,7 @@ impl StatementSync {
   fn column_value<'a>(
     &self,
     index: i32,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
     // as it lives as long as the StatementSync instance.
@@ -281,7 +281,7 @@ impl StatementSync {
   // Read the current row of the prepared statement.
   fn read_row<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<Option<v8::Local<'a, v8::Object>>, SqliteError> {
     if self.step()? {
       return Ok(None);
@@ -314,7 +314,7 @@ impl StatementSync {
 
   fn bind_value(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<v8::Value>,
     index: i32,
   ) -> Result<(), SqliteError> {
@@ -409,7 +409,7 @@ impl StatementSync {
   // Bind the parameters to the prepared statement.
   fn bind_params(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<(), SqliteError> {
     let raw = self.inner;
@@ -547,7 +547,7 @@ impl StatementSync {
   // Optionally, parameters can be bound to the prepared statement.
   fn get<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     self.reset()?;
@@ -571,7 +571,7 @@ impl StatementSync {
   #[to_v8]
   fn run(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<RunStatementResult, SqliteError> {
     let db_rc = self.db.upgrade().ok_or(SqliteError::InUse)?;
@@ -599,7 +599,7 @@ impl StatementSync {
   // Optionally, parameters can be bound to the prepared statement.
   fn all<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Array>, SqliteError> {
     let mut arr = vec![];
@@ -617,7 +617,7 @@ impl StatementSync {
 
   fn iterate<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Object>, SqliteError> {
     macro_rules! v8_static_strings {
@@ -641,7 +641,7 @@ impl StatementSync {
 
     self.bind_params(scope, params)?;
 
-    let iterate_next = |scope: &mut v8::HandleScope,
+    let iterate_next = |scope: &mut v8::PinScope<'_, '_>,
                         args: v8::FunctionCallbackArguments,
                         mut rv: v8::ReturnValue| {
       let context = v8::Local::<v8::External>::try_from(args.data())
@@ -688,7 +688,7 @@ impl StatementSync {
       rv.set(result.into());
     };
 
-    let iterate_return = |scope: &mut v8::HandleScope,
+    let iterate_return = |scope: &mut v8::PinScope<'_, '_>,
                           args: v8::FunctionCallbackArguments,
                           mut rv: v8::ReturnValue| {
       let context = v8::Local::<v8::External>::try_from(args.data())
