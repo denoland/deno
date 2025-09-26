@@ -1032,7 +1032,7 @@ async fn resolve_shim_data(
     if let Some(new_text) = remove_import_map_field_from_text(&config_text) {
       if flags.import_map_paths.is_empty() {
         log::warn!(
-          "{} \"importMap\" field in the specified config file we be ignored as unimplemented. Use the --import-map flag instead.",
+          "{} \"importMap\" field in the specified config file will be ignored as unimplemented. Use the --import-map flag instead.",
           crate::colors::yellow("Warning"),
         );
       }
