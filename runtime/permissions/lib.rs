@@ -3708,7 +3708,7 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_has_all_permissions(
+  pub fn check_has_all_permissions(
     &self,
     context_path: &Path,
   ) -> Result<(), PermissionCheckError> {
