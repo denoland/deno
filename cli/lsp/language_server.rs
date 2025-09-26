@@ -2317,18 +2317,6 @@ impl Inner {
     if kinds.is_empty()
       || kinds.contains(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
     {
-      let Some(document) = self.get_document(
-        &params.text_document.uri,
-        Enabled::Filter,
-        Exists::Enforce,
-        Diagnosable::Filter,
-      )?
-      else {
-        return Ok(None);
-      };
-      let Some(module) = self.get_primary_module(&document)? else {
-        return Ok(None);
-      };
       let document_has_errors = params.context.diagnostics.iter().any(|d| {
         // Assume diagnostics without a severity are errors
         matches!(d.severity, Some(DiagnosticSeverity::ERROR) | None)
