@@ -103,6 +103,7 @@ pub struct JsrPackageConfig {
   pub member_dir: WorkspaceDirectoryRc,
   pub config_file: ConfigFileRc,
   pub license: Option<String>,
+  pub private: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -742,6 +743,7 @@ impl Workspace {
         name: c.json.name.clone()?,
         config_file: c.clone(),
         license: c.to_license(),
+        private: c.is_private_package(),
       })
     })
   }
@@ -1683,7 +1685,7 @@ impl WorkspaceDirectory {
   ) -> Option<JsrPackageConfig> {
     let deno_json = self.maybe_deno_json()?;
     let pkg_name = deno_json.json.name.as_ref()?;
-    if !deno_json.is_package() || deno_json.json.is_private_package() {
+    if !deno_json.is_package() {
       return None;
     }
     Some(JsrPackageConfig {
@@ -1691,6 +1693,7 @@ impl WorkspaceDirectory {
       config_file: deno_json.clone(),
       member_dir: self.clone(),
       license: deno_json.to_license(),
+      private: deno_json.is_private_package(),
     })
   }
 

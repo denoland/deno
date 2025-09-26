@@ -86,12 +86,24 @@ pub async fn publish(
   let cli_options = cli_factory.cli_options()?;
   let directory_path = cli_options.initial_cwd();
   let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
+  publish_configs.retain(|config| {
+    if config.private {
+      log::info!("Skipping private package {}", config.name);
+      return false;
+    }
+    true
+  });
   if publish_configs.is_empty() {
     match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
-        debug_assert!(!deno_json.is_package());
+        debug_assert!(
+          !deno_json.is_package() || deno_json.is_private_package()
+        );
         if deno_json.json.name.is_none() {
           bail!("Missing 'name' field in '{}'.", deno_json.specifier);
+        }
+        if deno_json.is_private_package() {
+          return Ok(());
         }
         error_missing_exports_field(deno_json)?;
       }

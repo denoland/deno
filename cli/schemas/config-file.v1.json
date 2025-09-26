@@ -849,6 +849,10 @@
       "type": "string",
       "description": "The version of this JSR package."
     },
+    "private": {
+      "type": "boolean",
+      "description": "Whether this JSR package is private and should not be published."
+    },
     "exports": {
       "oneOf": [
         {
