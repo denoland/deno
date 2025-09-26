@@ -688,7 +688,7 @@ impl WebWorker {
     if let Some(server) = services.maybe_inspector_server {
       server.register_inspector(
         options.main_module.to_string(),
-        &mut js_runtime,
+        js_runtime.inspector(),
         false,
       );
     }
