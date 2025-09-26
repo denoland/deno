@@ -739,6 +739,8 @@ pub struct Flags {
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
+  // TODO(#30752): hook this up so users can specify it
+  pub minimum_dependency_age: Option<chrono::DateTime<chrono::Utc>>,
   pub no_remote: bool,
   pub no_lock: bool,
   pub no_npm: bool,

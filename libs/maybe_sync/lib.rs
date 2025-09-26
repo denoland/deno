@@ -104,3 +104,9 @@ mod inner {
 pub fn new_rc<T>(value: T) -> MaybeArc<T> {
   MaybeArc::new(value)
 }
+
+#[allow(clippy::disallowed_types)]
+#[inline]
+pub fn new_arc<T>(value: T) -> std::sync::Arc<T> {
+  std::sync::Arc::new(value)
+}

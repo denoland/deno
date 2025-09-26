@@ -20,6 +20,7 @@ async-trait.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
 capacity_builder.workspace = true
+chrono.workspace = true
 deno_config.workspace = true
 deno_error.workspace = true
 deno_graph.workspace = true
