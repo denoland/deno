@@ -83,12 +83,9 @@ impl PermissionBroker {
       value: stringified_value,
     };
 
-    let json = serde_json::to_string(&request).unwrap();
-
-    // TODO(bartlomieju): remove before landing
-    log::trace!("-> broker req   {}", json);
-
-    stream.write_all(json.as_bytes())?;
+    let msg = format!("{}\n", serde_json::to_string(&request).unwrap());
+    log::trace!("-> broker req   {}", msg);
+    stream.write_all(msg.as_bytes())?;
 
     // Read response using line reader
     let mut reader = BufReader::new(&mut *stream);
@@ -99,7 +96,6 @@ impl PermissionBroker {
       serde_json::from_str::<PermissionBrokerResponse>(response_line.trim())
         .map_err(std::io::Error::other)?;
 
-    // TODO(bartlomieju): remove before landing
     log::trace!("<- broker resp  {:?}", response);
 
     if response.id != id {

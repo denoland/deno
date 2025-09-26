@@ -37,18 +37,18 @@ async function handleConnection(conn: Deno.Conn): Promise<void> {
       }
 
       const newlineIndex = buffer.indexOf(0x0A); // ASCII code for '\n'
-
       if (newlineIndex === -1) {
         throw new Error("Message is not a JSONL");
       }
       const messageBytes = buffer.subarray(0, newlineIndex);
       const message = new TextDecoder().decode(messageBytes);
+      console.log(message);
       const request = JSON.parse(message) as PermissionAuditRequest;
       const response = { id: request.id, result: "allow" };
       if (request.permission === "env") {
         response.result = "deny";
       }
-      const buf = new TextEncoder().encode(JSON.stringify(response));
+      const buf = new TextEncoder().encode(JSON.stringify(response) + "\n");
       const written = await conn.write(buf);
       if (written != buf.length) {
         throw new Error("Bad write");

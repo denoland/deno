@@ -3505,105 +3505,62 @@ fn handle_invalid_path_error() {
   assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 }
 
-#[derive(serde::Deserialize)]
-struct PermissionAuditRequest {
-  id: u64,
-  #[allow(dead_code)]
-  v: u64,
-  permission: String,
-  value: String,
-}
+#[tokio::test]
+async fn test_permission_broker_doesnt_exit() {
+  let context = TestContext::default();
+  let socket_path = context.temp_dir().path().join("broker.sock");
 
-async fn run_broker<F>(socket_path: PathRef, permission_callback: F)
-where
-  F: Fn(PermissionAuditRequest) -> serde_json::Value + Send + Sync,
-{
-  use tokio::io::AsyncBufReadExt;
-  use tokio::io::AsyncWriteExt;
-  use tokio::io::BufReader;
-  use tokio::net::UnixListener;
-
-  // Remove existing socket file if it exists
-  let _ = std::fs::remove_file(&socket_path);
-
-  let listener =
-    UnixListener::bind(&socket_path).expect("Failed to bind Unix socket");
-
-  while let Ok((mut stream, _)) = listener.accept().await {
-    let mut reader = BufReader::new(&mut stream);
-    let mut line = String::new();
-
-    match reader.read_line(&mut line).await {
-      Ok(0) => continue, // EOF
-      Ok(_) => {
-        // Parse the JSON request
-        let request =
-          serde_json::from_str::<PermissionAuditRequest>(&line.trim()).unwrap();
-        assert_eq!(request.v, 1);
-        let response = permission_callback(request);
-
-        let response_json = serde_json::to_string(&response).unwrap();
-        let _ = stream.write_all(response_json.as_bytes()).await;
-        let _ = stream.write_all(b"\n").await;
-      }
-      Err(_) => continue,
-    }
-  }
+  let output = context
+    .new_command()
+    .env("DENO_PERMISSION_BROKER_PATH", &socket_path)
+    .args("run run/permission_broker/test1.ts")
+    .run();
+  output.assert_exit_code(87);
+  output.assert_matches_text("Failed to create permission broker[WILDCARD]");
 }
 
 #[tokio::test]
 async fn test_permission_broker() {
   use std::time::Duration;
 
-  let context = TestContextBuilder::default().use_temp_cwd().build();
-  context.deno_dir().path().canonicalize().make_dir_readonly();
-  let temp_dir = context.temp_dir().path().canonicalize();
-  let socket_path = temp_dir.join(std::path::Path::new("broker.sock"));
+  let context = TestContext::default();
+  let socket_path = context.temp_dir().path().join("broker.sock");
 
-  eprintln!("starting task");
-  // Start the broker task
-  let broker_task = tokio::spawn(run_broker(socket_path.clone(), |request| {
-    let result = if request.permission == "env" {
-      "deny".to_string()
-    } else {
-      "allow".to_string()
-    };
+  let mut broker = context
+    .new_command()
+    .arg("run")
+    .arg("-A")
+    .arg("run/permission_broker/broker.ts")
+    .arg(&socket_path)
+    .stdout(Stdio::piped())
+    .spawn()
+    .unwrap();
 
-    json!({
-      "id": request.id,
-      "result": result
-    })
-  }));
-  eprintln!("spawned task");
+  // TODO(bartlomieju): this will be flaky on CI for sure
+  tokio::time::sleep(Duration::from_millis(5_000)).await;
 
-  // Give the broker time to start up
-  tokio::time::sleep(Duration::from_millis(500)).await;
-
-  eprintln!("slept");
-  // Run the test with the permission broker
-  temp_dir.join("log.txt").write("Lorem ipsum dolor sit amet");
-  temp_dir.join("main.ts").write(
-    r#"
-Deno.readTextFileSync("./log.txt");
-Deno.readTextFileSync("./log.txt");
-
-Deno.writeTextFileSync("./scratch.txt", "Lorem ipsum dolor sit amet");
-
-Deno.env.get("DOESNT_EXIT")
-  "#,
-  );
-  eprintln!("starting process");
   let output = context
     .new_command()
     .env("DENO_PERMISSION_BROKER_PATH", &socket_path)
-    .args("run main.ts")
-    // .stdout(Stdio::inherit())
-    // .stderr(Stdio::inherit())
+    .args("run run/permission_broker/test1.ts")
     .run();
-  // eprintln!("ending process {:?}", output.is_err());
+  output.assert_exit_code(1);
+  output.assert_matches_text(
+    "error:[WILDCARD]NotCapable: Requires env access[WILDCARD]",
+  );
 
-  // Kill the broker process
-  broker_task.abort();
+  let _ = broker.kill();
+  let broker_output = broker.wait_with_output().unwrap();
+  let broker_stdout = String::from_utf8(broker_output.stdout).unwrap();
 
-  output.assert_matches_text("uga buga");
+  test_util::assertions::assert_wildcard_match(
+    &broker_stdout,
+    r#"[WILDCARD]
+{"v":1,"id":1,"datetime":"[WILDCARD]","permission":"read","value":"\"./run/permission_broker/scratch.txt\""}
+{"v":1,"id":2,"datetime":"[WILDCARD]","permission":"read","value":"\"./run/permission_broker/scratch.txt\""}
+{"v":1,"id":3,"datetime":"[WILDCARD]","permission":"read","value":"\"./run/permission_broker/log.txt\""}
+{"v":1,"id":4,"datetime":"[WILDCARD]","permission":"write","value":"\"./run/permission_broker/log.txt\""}
+{"v":1,"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
+[WILDCARD]"#,
+  );
 }

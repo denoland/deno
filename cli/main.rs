@@ -583,6 +583,10 @@ pub fn main() {
   );
 
   if let Ok(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH") {
+    log::warn!(
+      "{} Permission broker is an experimental feature",
+      colors::yellow("Warning")
+    );
     let broker =
       deno_runtime::deno_permissions::PermissionBroker::new(socket_path);
     deno_runtime::deno_permissions::set_broker(broker);
