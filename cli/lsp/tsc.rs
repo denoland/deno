@@ -1536,11 +1536,11 @@ impl TsServer {
       )
       .await
       .and_then(|mut changes| {
-        for changes in &mut changes {
+        for file_change in &mut changes {
           if token.is_cancelled() {
             return Err(anyhow!("request cancelled"));
           }
-          changes.normalize(&self.specifier_map)?;
+          file_change.normalize(&self.specifier_map)?;
         }
         Ok(changes)
       })
