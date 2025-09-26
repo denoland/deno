@@ -2329,9 +2329,13 @@ impl Inner {
       let Some(module) = self.get_primary_module(&document)? else {
         return Ok(None);
       };
+      let document_has_errors = params.context.diagnostics.iter().any(|d| {
+        // Assume diagnostics without a severity are errors
+        matches!(d.severity, Some(DiagnosticSeverity::ERROR) | None)
+      });
       let organize_imports_edit = self
         .ts_server
-        .organize_imports(self.snapshot(), &module, token)
+        .organize_imports(self.snapshot(), &module, document_has_errors, token)
         .await
         .map_err(|err| {
           if token.is_cancelled() {

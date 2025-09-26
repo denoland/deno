@@ -1497,6 +1497,7 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     module: &DocumentModule,
+    document_has_errors: bool,
     token: &CancellationToken,
   ) -> Result<Vec<FileTextChanges>, AnyError> {
     let req = TscRequest::OrganizeImports((
@@ -1507,7 +1508,11 @@ impl TsServer {
             .specifier_map
             .denormalize(&module.specifier, module.media_type),
         },
-        mode: Some(OrganizeImportsMode::All),
+        mode: if document_has_errors {
+          Some(OrganizeImportsMode::SortAndCombine)
+        } else {
+          Some(OrganizeImportsMode::All)
+        },
       },
       (&snapshot
         .config
