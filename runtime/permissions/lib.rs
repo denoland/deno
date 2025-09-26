@@ -71,8 +71,8 @@ use self::broker::maybe_check_with_broker;
 
 #[cfg(not(unix))]
 fn maybe_check_with_broker(
-  name: &str,
-  stringified_value_fn: impl Fn() -> Option<String>,
+  _name: &str,
+  _stringified_value_fn: impl Fn() -> Option<String>,
 ) -> Option<BrokerResponse> {
   None
 }
