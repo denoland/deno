@@ -12,7 +12,7 @@ use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::workspace::WorkspaceNpmLinkPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
@@ -184,7 +184,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     maybe_node_modules_path: Option<PathBuf>,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
-    workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
+    workspace_link_packages: WorkspaceNpmLinkPackagesRc,
     install_reporter: Option<Arc<dyn InstallReporter>>,
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =

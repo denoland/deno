@@ -16,6 +16,7 @@ use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
+use deno_graph::packages::JsrVersionResolver;
 use deno_lib::args::CaData;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::npm_process_state;
@@ -26,6 +27,7 @@ use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::LibMainWorkerOptions;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
@@ -99,7 +101,6 @@ use crate::resolver::CliResolver;
 use crate::resolver::on_resolve_diagnostic;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
-use crate::tools::coverage::CoverageCollectorState;
 use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunnerState;
@@ -429,7 +430,11 @@ impl CliFactory {
   pub fn bin_name_resolver(&self) -> Result<BinNameResolver<'_>, AnyError> {
     let http_client = self.http_client_provider();
     let npm_api = self.npm_installer_factory()?.registry_info_provider()?;
-    Ok(BinNameResolver::new(http_client, npm_api.as_ref()))
+    Ok(BinNameResolver::new(
+      http_client,
+      npm_api.as_ref(),
+      self.npm_version_resolver()?,
+    ))
   }
 
   pub fn root_cert_store_provider(&self) -> &Arc<dyn RootCertStoreProvider> {
@@ -519,6 +524,12 @@ impl CliFactory {
     self.resolver_factory()?.in_npm_package_checker()
   }
 
+  pub fn jsr_version_resolver(
+    &self,
+  ) -> Result<&Arc<JsrVersionResolver>, AnyError> {
+    self.resolver_factory()?.jsr_version_resolver()
+  }
+
   pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
     self.npm_installer_factory()?.npm_cache()
   }
@@ -587,6 +598,12 @@ impl CliFactory {
         },
       ))
     })
+  }
+
+  pub fn npm_version_resolver(
+    &self,
+  ) -> Result<&Arc<NpmVersionResolver>, AnyError> {
+    self.resolver_factory()?.npm_version_resolver()
   }
 
   pub fn install_reporter(
@@ -770,6 +787,7 @@ impl CliFactory {
             self.file_fetcher()?.clone(),
             self.global_http_cache()?.clone(),
             self.in_npm_pkg_checker()?.clone(),
+            self.jsr_version_resolver()?.clone(),
             self.maybe_lockfile().await?.cloned(),
             self.graph_reporter()?.clone(),
             self.module_info_cache()?.clone(),
@@ -1026,6 +1044,7 @@ impl CliFactory {
       None, // DenoRtNativeAddonLoader
       self.feature_checker()?.clone(),
       fs.clone(),
+      cli_options.coverage_dir(),
       self.maybe_inspector_server()?.clone(),
       Box::new(module_loader_factory),
       node_resolver.clone(),
@@ -1113,19 +1132,12 @@ impl CliFactory {
     } else {
       None
     };
-    let create_coverage_collector =
-      if let Some(coverage_dir) = cli_options.coverage_dir() {
-        let fn_: crate::worker::CreateCoverageCollectorCb =
-          Box::new(move || CoverageCollectorState::new(coverage_dir.clone()));
-        Some(fn_)
-      } else {
-        None
-      };
+    let maybe_coverage_dir = cli_options.coverage_dir();
 
     Ok(CliMainWorkerOptions {
       needs_test_modules: cli_options.sub_command().needs_test(),
       create_hmr_runner,
-      create_coverage_collector,
+      maybe_coverage_dir,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
     })
   }
@@ -1153,6 +1165,7 @@ impl CliFactory {
           } else {
             IsCjsResolutionMode::Disabled
           },
+          newest_dependency_date: options.newest_dependency_date(),
           node_analysis_cache: Some(node_analysis_cache),
           node_resolver_options: NodeResolverOptions {
             conditions: NodeConditionOptions {
@@ -1201,6 +1214,7 @@ impl CliFactory {
               .clone(),
           })),
           bare_node_builtins: options.unstable_bare_node_builtins(),
+          types_node_version_req: Some(crate::npm::get_types_node_version_req()),
           unstable_sloppy_imports: options.unstable_sloppy_imports(),
           on_mapped_resolution_diagnostic: Some(Arc::new(
             on_resolve_diagnostic,

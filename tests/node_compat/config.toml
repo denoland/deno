@@ -454,6 +454,7 @@
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
 "parallel/test-fs-read-empty-buffer.js" = {}
+"parallel/test-fs-read-file-assert-encoding.js" = {}
 "parallel/test-fs-read-file-sync-hostname.js" = {}
 "parallel/test-fs-read-stream-autoClose.js" = {}
 "parallel/test-fs-read-stream-double-close.js" = {}

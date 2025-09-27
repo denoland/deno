@@ -2,11 +2,15 @@
 
 import { primordials } from "ext:core/mod.js";
 const {
+  FunctionPrototypeBind,
   MapPrototypeGet,
   MapPrototypeDelete,
   ObjectDefineProperty,
   Promise,
+  PromiseReject,
+  PromiseWithResolvers,
   SafeArrayIterator,
+  SafePromisePrototypeFinally,
 } = primordials;
 
 import {
@@ -19,12 +23,19 @@ import {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
+  validateNumber,
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
-import { promisify } from "ext:deno_node/internal/util.mjs";
+import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
 export { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
 import * as timers from "ext:deno_web/02_timers.js";
 import { AbortError } from "ext:deno_node/internal/errors.ts";
+import { kResistStopPropagation } from "ext:deno_node/internal/event_target.mjs";
+import type { Abortable } from "node:events";
+
+interface TimerOptions extends Abortable {
+  ref?: boolean | undefined;
+}
 
 const clearTimeout_ = timers.clearTimeout;
 const clearInterval_ = timers.clearInterval;
@@ -38,15 +49,80 @@ export function setTimeout(
   return new Timeout(callback, timeout, args, false, true);
 }
 
+function cancelListenerHandler(
+  clear: typeof clearTimeout,
+  reject: typeof PromiseReject,
+  signal: AbortSignal | undefined,
+) {
+  if (!this._destroyed) {
+    clear(this);
+    reject(new AbortError(undefined, { cause: signal?.reason }));
+  }
+}
+
+function setTimeoutPromise<T = void>(
+  after: number | undefined,
+  value: T,
+  options: TimerOptions = kEmptyObject,
+): Promise<T> {
+  try {
+    if (typeof after !== "undefined") {
+      validateNumber(after, "delay");
+    }
+
+    validateObject(options, "options");
+
+    if (typeof options?.signal !== "undefined") {
+      validateAbortSignal(options.signal, "options.signal");
+    }
+
+    if (typeof options?.ref !== "undefined") {
+      validateBoolean(options.ref, "options.ref");
+    }
+  } catch (err) {
+    return PromiseReject(err);
+  }
+
+  const { signal, ref = true } = options;
+
+  if (signal?.aborted) {
+    return PromiseReject(new AbortError(undefined, { cause: signal.reason }));
+  }
+
+  let oncancel: EventListenerOrEventListenerObject | undefined;
+  const { promise, resolve, reject } = PromiseWithResolvers();
+  const timeout = new Timeout(resolve, after, [value], false, ref);
+  if (signal) {
+    oncancel = FunctionPrototypeBind(
+      cancelListenerHandler,
+      timeout,
+      clearTimeout,
+      reject,
+      signal,
+    );
+
+    signal.addEventListener("abort", oncancel, {
+      __proto__: null,
+      [kResistStopPropagation]: true,
+    });
+  }
+
+  return oncancel !== undefined
+    ? SafePromisePrototypeFinally(
+      promise,
+      () => signal!.removeEventListener("abort", oncancel),
+    )
+    : promise;
+}
+
 ObjectDefineProperty(setTimeout, promisify.custom, {
   __proto__: null,
-  value: (timeout: number, ...args: unknown[]) => {
-    return new Promise((cb) =>
-      setTimeout(cb, timeout, ...new SafeArrayIterator(args))
-    );
-  },
   enumerable: true,
+  get() {
+    return setTimeoutPromise;
+  },
 });
+
 export function clearTimeout(timeout?: Timeout | number) {
   if (timeout == null) {
     return;
@@ -174,7 +250,7 @@ async function* setIntervalAsync(
 }
 
 export const promises = {
-  setTimeout: promisify(setTimeout),
+  setTimeout: setTimeoutPromise,
   setImmediate: promisify(setImmediate),
   setInterval: setIntervalAsync,
 };
@@ -184,7 +260,7 @@ promises.scheduler = {
     delay: number,
     options?: { signal?: AbortSignal },
   ): Promise<void> {
-    return await promises.setTimeout(delay, undefined, options);
+    return await setTimeoutPromise(delay, undefined, options);
   },
   yield: promises.setImmediate,
 };

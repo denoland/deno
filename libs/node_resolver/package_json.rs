@@ -2,11 +2,11 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
 use deno_package_json::PackageJson;
+use deno_package_json::PackageJsonCacheResult;
 use deno_package_json::PackageJsonRc;
 use sys_traits::FsRead;
 
@@ -55,11 +55,18 @@ impl PackageJsonThreadLocalCache {
 }
 
 impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
-  fn get(&self, path: &Path) -> Option<PackageJsonRc> {
-    CACHE.with_borrow(|cache| cache.get(path).cloned())
+  fn get(&self, path: &Path) -> PackageJsonCacheResult {
+    CACHE.with_borrow(|cache| match cache.get(path).cloned() {
+      Some(value) => PackageJsonCacheResult::Hit(Some(value)),
+      None => PackageJsonCacheResult::NotCached,
+    })
   }
 
-  fn set(&self, path: PathBuf, package_json: PackageJsonRc) {
+  fn set(&self, path: PathBuf, package_json: Option<PackageJsonRc>) {
+    let Some(package_json) = package_json else {
+      // We don't cache misses.
+      return;
+    };
     CACHE.with_borrow_mut(|cache| cache.insert(path, package_json));
   }
 }
@@ -111,12 +118,7 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
       path,
     );
     match result {
-      Ok(pkg_json) => Ok(Some(pkg_json)),
-      Err(deno_package_json::PackageJsonLoadError::Io { source, .. })
-        if source.kind() == ErrorKind::NotFound =>
-      {
-        Ok(None)
-      }
+      Ok(pkg_json) => Ok(pkg_json),
       Err(err) => Err(PackageJsonLoadError(err)),
     }
   }

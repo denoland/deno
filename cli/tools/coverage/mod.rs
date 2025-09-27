@@ -2,12 +2,9 @@
 
 use std::fs;
 use std::fs::File;
-use std::io::BufWriter;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::AtomicI32;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
@@ -16,12 +13,9 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
-use deno_core::LocalInspectorSession;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::error::CoreError;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
@@ -30,7 +24,6 @@ use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use reporter::CoverageReporter;
 use text_lines::TextLines;
-use uuid::Uuid;
 
 use self::ignore_directives::has_file_ignore_directive;
 use self::ignore_directives::lex_comments;
@@ -43,7 +36,6 @@ use crate::cdp;
 use crate::factory::CliFactory;
 use crate::file_fetcher::TextDecodedFile;
 use crate::sys::CliSys;
-use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
 
@@ -53,145 +45,6 @@ mod range_tree;
 pub mod reporter;
 mod util;
 use merge::ProcessCoverage;
-
-static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
-
-fn next_msg_id() -> i32 {
-  NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-}
-
-#[derive(Debug)]
-pub struct CoverageCollectorInner {
-  dir: PathBuf,
-  coverage_msg_id: Option<i32>,
-}
-
-#[derive(Clone, Debug)]
-pub struct CoverageCollectorState(Arc<Mutex<CoverageCollectorInner>>);
-
-impl CoverageCollectorState {
-  pub fn new(dir: PathBuf) -> Self {
-    Self(Arc::new(Mutex::new(CoverageCollectorInner {
-      dir,
-      coverage_msg_id: None,
-    })))
-  }
-
-  pub fn callback(&self, msg: deno_core::InspectorMsg) {
-    let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
-      return;
-    };
-    let maybe_coverage_msg_id = self.0.lock().coverage_msg_id.as_ref().cloned();
-
-    if let Some(coverage_msg_id) = maybe_coverage_msg_id
-      && coverage_msg_id == msg_id
-    {
-      let message: serde_json::Value =
-        serde_json::from_str(&msg.content).unwrap();
-      let coverages: cdp::TakePreciseCoverageResponse =
-        serde_json::from_value(message["result"].clone()).unwrap();
-      self.write_coverages(coverages.result);
-    }
-  }
-
-  fn write_coverages(&self, script_coverages: Vec<cdp::ScriptCoverage>) {
-    for script_coverage in script_coverages {
-      // Filter out internal and http/https JS files, eval'd scripts,
-      // and scripts with invalid urls from being included in coverage reports
-      if script_coverage.url.is_empty()
-        || script_coverage.url.starts_with("ext:")
-        || script_coverage.url.starts_with("[ext:")
-        || script_coverage.url.starts_with("http:")
-        || script_coverage.url.starts_with("https:")
-        || script_coverage.url.starts_with("node:")
-        || Url::parse(&script_coverage.url).is_err()
-      {
-        continue;
-      }
-
-      let filename = format!("{}.json", Uuid::new_v4());
-      let filepath = self.0.lock().dir.join(filename);
-
-      let file = match File::create(&filepath) {
-        Ok(f) => f,
-        Err(err) => {
-          log::error!(
-            "Failed to create coverage file at {:?}, reason: {:?}",
-            filepath,
-            err
-          );
-          continue;
-        }
-      };
-      let mut out = BufWriter::new(file);
-      let coverage = serde_json::to_string(&script_coverage).unwrap();
-      let formatted_coverage =
-        format_json(&filepath, &coverage, &Default::default())
-          .ok()
-          .flatten()
-          .unwrap_or(coverage);
-
-      if let Err(err) = out.write_all(formatted_coverage.as_bytes()) {
-        log::error!(
-          "Failed to write coverage file at {:?}, reason: {:?}",
-          filepath,
-          err
-        );
-        continue;
-      }
-      if let Err(err) = out.flush() {
-        log::error!(
-          "Failed to flush coverage file at {:?}, reason: {:?}",
-          filepath,
-          err
-        );
-        continue;
-      }
-    }
-  }
-}
-
-pub struct CoverageCollector {
-  pub state: CoverageCollectorState,
-  session: LocalInspectorSession,
-}
-
-impl CoverageCollector {
-  pub fn new(
-    state: CoverageCollectorState,
-    session: LocalInspectorSession,
-  ) -> Self {
-    Self { state, session }
-  }
-
-  pub fn start_collecting(&mut self) {
-    self
-      .session
-      .post_message::<()>(next_msg_id(), "Profiler.enable", None);
-    self.session.post_message(
-      next_msg_id(),
-      "Profiler.startPreciseCoverage",
-      Some(cdp::StartPreciseCoverageArgs {
-        call_count: true,
-        detailed: true,
-        allow_triggered_updates: false,
-      }),
-    );
-  }
-
-  pub fn stop_collecting(&mut self) -> Result<(), CoreError> {
-    fs::create_dir_all(&self.state.0.lock().dir)?;
-    let msg_id = next_msg_id();
-    self.state.0.lock().coverage_msg_id.replace(msg_id);
-
-    self.session.post_message::<()>(
-      msg_id,
-      "Profiler.takePreciseCoverage",
-      None,
-    );
-    Ok(())
-  }
-}
 
 #[derive(Debug, Clone)]
 struct BranchCoverageItem {

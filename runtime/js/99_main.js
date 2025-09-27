@@ -44,6 +44,7 @@ const {
   PromiseResolve,
   StringPrototypePadEnd,
   Symbol,
+  SymbolDispose,
   SymbolIterator,
   TypeError,
 } = primordials;
@@ -87,7 +88,7 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
+import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 

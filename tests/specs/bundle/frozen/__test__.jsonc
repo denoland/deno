@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "bundle --frozen main.tsx",
+      "output": "fail.out",
+      "exitCode": 1
+    }
+  ]
+}

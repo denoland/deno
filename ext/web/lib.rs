@@ -208,7 +208,7 @@ fn op_encoding_normalize_label(
 
 #[op2]
 fn op_encoding_decode_utf8<'a>(
-  scope: &mut v8::HandleScope<'a>,
+  scope: &mut v8::PinScope<'a, '_>,
   #[anybuffer] zero_copy: &[u8],
   ignore_bom: bool,
 ) -> Result<v8::Local<'a, v8::String>, WebError> {
@@ -365,7 +365,7 @@ unsafe impl deno_core::GarbageCollected for TextDecoderResource {
 #[op2(fast(op_encoding_encode_into_fast))]
 #[allow(deprecated)]
 fn op_encoding_encode_into(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   input: v8::Local<v8::Value>,
   #[buffer] buffer: &mut [u8],
   #[buffer] out_buf: &mut [u32],

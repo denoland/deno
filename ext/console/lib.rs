@@ -10,7 +10,7 @@ deno_core::extension!(
 
 #[op2]
 pub fn op_preview_entries<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   object: &v8::Object,
   slow_path: bool,
 ) -> v8::Local<'s, v8::Value> {

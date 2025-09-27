@@ -10,11 +10,10 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_unsync::sync::TaskQueue;
 use parking_lot::Mutex;
 use thiserror::Error;
-
-use super::WorkspaceNpmLinkPackages;
 
 #[derive(Debug, Clone)]
 pub enum NpmResolverManagedSnapshotOption<TSys: LockfileSys> {
@@ -32,7 +31,7 @@ enum SyncState<TSys: LockfileSys> {
 #[derive(Debug)]
 pub struct NpmResolutionInitializer<TSys: LockfileSys> {
   npm_resolution: Arc<NpmResolutionCell>,
-  link_packages: Arc<WorkspaceNpmLinkPackages>,
+  link_packages: WorkspaceNpmLinkPackagesRc,
   queue: TaskQueue,
   sync_state: Mutex<SyncState<TSys>>,
 }
@@ -40,7 +39,7 @@ pub struct NpmResolutionInitializer<TSys: LockfileSys> {
 impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
   pub fn new(
     npm_resolution: Arc<NpmResolutionCell>,
-    link_packages: Arc<WorkspaceNpmLinkPackages>,
+    link_packages: WorkspaceNpmLinkPackagesRc,
     snapshot_option: NpmResolverManagedSnapshotOption<TSys>,
   ) -> Self {
     Self {
@@ -126,7 +125,7 @@ pub struct ResolveSnapshotError {
 #[allow(clippy::result_large_err)]
 fn resolve_snapshot<TSys: LockfileSys>(
   snapshot: NpmResolverManagedSnapshotOption<TSys>,
-  link_packages: &WorkspaceNpmLinkPackages,
+  link_packages: &WorkspaceNpmLinkPackagesRc,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, ResolveSnapshotError>
 {
   match snapshot {
@@ -155,7 +154,7 @@ pub enum SnapshotFromLockfileError {
 
 fn snapshot_from_lockfile<TSys: LockfileSys>(
   lockfile: Arc<LockfileLock<TSys>>,
-  link_packages: &WorkspaceNpmLinkPackages,
+  link_packages: &WorkspaceNpmLinkPackagesRc,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
     deno_npm::resolution::SnapshotFromLockfileParams {

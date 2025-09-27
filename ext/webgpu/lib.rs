@@ -107,7 +107,7 @@ deno_core::extension!(
 #[cppgc]
 pub fn op_create_gpu(
   state: &mut OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   webidl_brand: v8::Local<v8::Value>,
   set_event_target_data: v8::Local<v8::Value>,
   error_event_class: v8::Local<v8::Value>,
@@ -237,11 +237,11 @@ impl<T: GarbageCollected + 'static> SameObject<T> {
 
   pub fn get<F>(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     f: F,
   ) -> v8::Global<v8::Object>
   where
-    F: FnOnce(&mut v8::HandleScope) -> T,
+    F: FnOnce(&mut v8::PinScope<'_, '_>) -> T,
   {
     self
       .cell
@@ -256,7 +256,7 @@ impl<T: GarbageCollected + 'static> SameObject<T> {
   #[allow(unused)]
   pub fn set(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     value: T,
   ) -> Result<(), v8::Global<v8::Object>> {
     let obj = deno_core::cppgc::make_cppgc_object(scope, value);
@@ -265,7 +265,7 @@ impl<T: GarbageCollected + 'static> SameObject<T> {
 
   pub fn try_unwrap(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Option<deno_core::cppgc::UnsafePtr<T>> {
     let obj = self.cell.get()?;
     let val = v8::Local::new(scope, obj);

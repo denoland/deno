@@ -47,6 +47,7 @@ const {
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   Symbol,
+  SymbolAsyncDispose,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
@@ -89,7 +90,6 @@ import {
   UpgradedConn,
 } from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
-import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 import {
   builtinTracer,
   ContextManager,

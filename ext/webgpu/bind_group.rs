@@ -6,8 +6,8 @@ use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
-use deno_core::v8::HandleScope;
 use deno_core::v8::Local;
+use deno_core::v8::PinScope;
 use deno_core::v8::Value;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::WebIdlConverter;
@@ -104,7 +104,7 @@ impl<'a> WebIdlConverter<'a> for GPUBindingResource {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut HandleScope<'a>,
+    scope: &mut PinScope<'a, '_>,
     value: Local<'a, Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,

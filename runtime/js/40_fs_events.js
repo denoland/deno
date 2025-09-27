@@ -11,9 +11,8 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
+  SymbolDispose,
 } = primordials;
-
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
 class FsWatcher {
   #rid = 0;

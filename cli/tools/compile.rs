@@ -483,6 +483,7 @@ fn get_os_specific_filepath(
 #[cfg(test)]
 mod test {
   use deno_npm::registry::TestNpmRegistryApi;
+  use deno_npm::resolution::NpmVersionResolver;
 
   pub use super::*;
   use crate::http_util::HttpClientProvider;
@@ -491,7 +492,9 @@ mod test {
   async fn resolve_compile_executable_output_path_target_linux() {
     let http_client = HttpClientProvider::new(None, None);
     let npm_api = TestNpmRegistryApi::default();
-    let bin_name_resolver = BinNameResolver::new(&http_client, &npm_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let bin_name_resolver =
+      BinNameResolver::new(&http_client, &npm_api, &npm_version_resolver);
     let path = resolve_compile_executable_output_path(
       &bin_name_resolver,
       &CompileFlags {
@@ -520,7 +523,9 @@ mod test {
   async fn resolve_compile_executable_output_path_target_windows() {
     let http_client = HttpClientProvider::new(None, None);
     let npm_api = TestNpmRegistryApi::default();
-    let bin_name_resolver = BinNameResolver::new(&http_client, &npm_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let bin_name_resolver =
+      BinNameResolver::new(&http_client, &npm_api, &npm_version_resolver);
     let path = resolve_compile_executable_output_path(
       &bin_name_resolver,
       &CompileFlags {

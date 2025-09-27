@@ -904,7 +904,7 @@ pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
 
 #[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Data> {
   let host_defined_options = v8::PrimitiveArray::new(scope, 1);
   let value = v8::Boolean::new(scope, true);

@@ -96,7 +96,10 @@ impl GPUDevice {
 
   #[getter]
   #[global]
-  fn features(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn features(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> v8::Global<v8::Object> {
     self.features.get(scope, |scope| {
       let features = self.instance.device_features(self.id);
       let features = features_to_feature_names(features);
@@ -106,7 +109,7 @@ impl GPUDevice {
 
   #[getter]
   #[global]
-  fn limits(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn limits(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.limits.get(scope, |_| {
       let limits = self.instance.device_limits(self.id);
       GPUSupportedLimits(limits)
@@ -117,7 +120,7 @@ impl GPUDevice {
   #[global]
   fn adapter_info(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> v8::Global<v8::Object> {
     self.adapter_info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.adapter);
@@ -133,7 +136,7 @@ impl GPUDevice {
 
   #[getter]
   #[global]
-  fn queue(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn queue(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.queue_obj.get(scope, |_| GPUQueue {
       id: self.queue,
       error_handler: self.error_handler.clone(),
@@ -631,7 +634,7 @@ impl GPUDevice {
   #[global]
   fn pop_error_scope(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> Result<v8::Global<v8::Value>, JsErrorBox> {
     if self.error_handler.is_lost.get().is_some() {
       let val = v8::null(scope).cast::<v8::Value>();

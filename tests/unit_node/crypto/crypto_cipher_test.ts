@@ -4,6 +4,7 @@ import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { buffer, text } from "node:stream/consumers";
 import { assert, assertEquals, assertThrows } from "@std/assert";
+import { AssertionError } from "node:assert";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),
@@ -486,5 +487,85 @@ Deno.test({
       RangeError,
       "wrong final block length",
     );
+  },
+});
+
+Deno.test({
+  name: "Cipheriv - change encoding after first update",
+  fn() {
+    const cipher = crypto.createCipheriv(
+      "aes-128-cbc",
+      new Uint8Array(16),
+      new Uint8Array(16),
+    );
+    cipher.update(new Uint8Array(16), undefined, "hex");
+    assertThrows(
+      () => {
+        cipher.final("utf-8");
+      },
+      AssertionError,
+      "Cannot change encoding",
+    );
+
+    cipher.final();
+  },
+});
+
+Deno.test({
+  name: "Decipheriv - change encoding after first update",
+  fn() {
+    const decipher = crypto.createDecipheriv(
+      "aes-256-cbc",
+      new Uint8Array(32),
+      new Uint8Array(16),
+    );
+    decipher.update(new Uint32Array(), undefined, "hex");
+    assertThrows(
+      () => {
+        decipher.final("utf-8");
+      },
+      AssertionError,
+      "Cannot change encoding",
+    );
+
+    decipher.final();
+  },
+});
+
+// https://github.com/denoland/deno/issues/30722
+Deno.test({
+  name: "base64 cipher/decipher with non multiple of 4 char length",
+  fn() {
+    const aes256Encrypt = (plaintext: string, key: string) => {
+      const hash = crypto.createHash("sha256").update(key).digest();
+      const iv = crypto.randomBytes(16);
+      const cipher = crypto.createCipheriv("aes-256-cbc", hash, iv);
+
+      let encrypted = cipher.update(plaintext, "utf8", "base64");
+      encrypted += cipher.final("base64");
+
+      return iv.toString("base64") + "." + encrypted;
+    };
+
+    const aes256Decrypt = (encryptedText: string, key: string): string => {
+      const hash = crypto.createHash("sha256").update(key).digest();
+      const [ivPart, encryptedPart] = encryptedText.split(".");
+
+      const iv = Buffer.from(ivPart, "base64");
+      const decipher = crypto.createDecipheriv("aes-256-cbc", hash, iv);
+
+      let decrypted = decipher.update(encryptedPart, "base64", "utf8");
+      decrypted += decipher.final("utf8");
+
+      return decrypted;
+    };
+
+    const key = "my secret key";
+    const text = "The quick brown fox jumps over the lazy dog";
+
+    const cipherText = aes256Encrypt(text, key);
+    const decryptedText = aes256Decrypt(cipherText, key);
+
+    assertEquals(decryptedText, text);
   },
 });

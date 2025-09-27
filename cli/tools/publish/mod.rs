@@ -49,6 +49,7 @@ use crate::args::PublishFlags;
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::factory::CliFactory;
+use crate::graph_util::CreatePublishGraphOptions;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::registry;
@@ -294,10 +295,11 @@ impl PublishPreparer {
     let build_fast_check_graph = !allow_slow_types;
     let graph = self
       .module_graph_creator
-      .create_and_validate_publish_graph(
-        package_configs,
+      .create_publish_graph(CreatePublishGraphOptions {
+        packages: package_configs,
         build_fast_check_graph,
-      )
+        validate_graph: true,
+      })
       .await?;
 
     // todo(dsherret): move to lint rule

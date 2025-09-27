@@ -44,7 +44,7 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
   // SAFETY: calling user provided function pointer.
   let value = unsafe { (info.cb)(info.env as napi_env, info_ptr as *mut _) };
   if let Some(exc) = unsafe { &mut *info.env }.last_exception.take() {
-    let scope = unsafe { &mut v8::CallbackScope::new(callback_info) };
+    v8::callback_scope!(unsafe scope, callback_info);
     let exc = v8::Local::new(scope, exc);
     scope.throw_exception(exc);
   }
@@ -54,7 +54,7 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
 }
 
 pub fn create_function<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   env: *mut Env,
   name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
@@ -75,7 +75,7 @@ pub fn create_function<'s>(
 }
 
 pub fn create_function_template<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   env: *mut Env,
   name: Option<v8::Local<v8::String>>,
   cb: napi_callback,

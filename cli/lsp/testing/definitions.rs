@@ -1,11 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashMap;
-use std::collections::HashSet;
-
 use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_lib::util::checksum;
+use indexmap::IndexMap;
+use indexmap::IndexSet;
 use lsp::Range;
 use tower_lsp::lsp_types as lsp;
 
@@ -24,13 +23,13 @@ pub struct TestDefinition {
   pub range: Option<Range>,
   pub is_dynamic: bool,
   pub parent_id: Option<String>,
-  pub step_ids: HashSet<String>,
+  pub step_ids: IndexSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestModule {
   pub specifier: ModuleSpecifier,
-  pub defs: HashMap<String, TestDefinition>,
+  pub defs: IndexMap<String, TestDefinition>,
 }
 
 impl TestModule {

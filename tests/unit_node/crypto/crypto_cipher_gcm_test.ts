@@ -17,9 +17,10 @@ const aesGcm = (bits: string, key: Uint8Array) => {
   ): [string, Buffer] => {
     const cipher = crypto.createCipheriv(ALGO, key, iv);
     cipher.setAAD(aad);
-    let enc = cipher.update(str, "base64", "base64");
-    enc += cipher.final("base64");
-    return [enc, cipher.getAuthTag()];
+    let encBuf = cipher.update(str, "base64");
+    const finalBuf = cipher.final();
+    encBuf = Buffer.concat([encBuf, finalBuf]);
+    return [encBuf.toString("base64"), cipher.getAuthTag()];
   };
 
   const decrypt = (
@@ -31,10 +32,11 @@ const aesGcm = (bits: string, key: Uint8Array) => {
     const decipher = crypto.createDecipheriv(ALGO, key, iv);
     decipher.setAuthTag(authTag);
     decipher.setAAD(aad);
-    let str = decipher.update(enc, "base64", "base64");
-    str += decipher.final("base64");
+    let buf = decipher.update(enc, "base64");
+    const finalBuf = decipher.final();
+    buf = Buffer.concat([buf, finalBuf]);
 
-    return str;
+    return buf.toString("base64");
   };
 
   return {

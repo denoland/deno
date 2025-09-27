@@ -163,7 +163,7 @@ where
 
 #[op2(stack_trace)]
 pub fn op_ffi_get_buf<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,
@@ -225,7 +225,7 @@ where
 
 #[op2(stack_trace)]
 pub fn op_ffi_cstr_read<FP, 'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   state: &mut OpState,
   ptr: *mut c_void,
   #[number] offset: isize,

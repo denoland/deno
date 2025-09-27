@@ -50,7 +50,7 @@ impl From<ErrorCode> for deno_error::PropertyValue {
 }
 
 pub(super) fn sql_str(
-  _: &mut v8::HandleScope,
+  _: &mut v8::PinScope<'_, '_>,
   value: v8::Local<v8::Value>,
 ) -> Result<(), Error> {
   if value.is_string() {
@@ -63,7 +63,7 @@ pub(super) fn sql_str(
 }
 
 pub(super) fn changeset_buffer(
-  _: &mut v8::HandleScope,
+  _: &mut v8::PinScope<'_, '_>,
   value: v8::Local<v8::Value>,
 ) -> Result<(), Error> {
   if value.is_uint8_array() {
@@ -76,7 +76,7 @@ pub(super) fn changeset_buffer(
 }
 
 pub(super) fn path_str(
-  _: &mut v8::HandleScope,
+  _: &mut v8::PinScope<'_, '_>,
   value: v8::Local<v8::Value>,
 ) -> Result<(), Error> {
   if value.is_string() {
@@ -89,7 +89,7 @@ pub(super) fn path_str(
 }
 
 pub(super) fn allow_bare_named_params_bool(
-  _: &mut v8::HandleScope,
+  _: &mut v8::PinScope<'_, '_>,
   value: v8::Local<v8::Value>,
 ) -> Result<(), Error> {
   if value.is_boolean() {
@@ -102,7 +102,7 @@ pub(super) fn allow_bare_named_params_bool(
 }
 
 pub(super) fn read_big_ints_bool(
-  _: &mut v8::HandleScope,
+  _: &mut v8::PinScope<'_, '_>,
   value: v8::Local<v8::Value>,
 ) -> Result<(), Error> {
   if value.is_boolean() {

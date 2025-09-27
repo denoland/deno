@@ -45,6 +45,7 @@ use crate::cache::Caches;
 use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::graph_util::CreatePublishGraphOptions;
 use crate::graph_util::ModuleGraphCreator;
 use crate::sys::CliSys;
 use crate::tools::fmt::run_parallelized;
@@ -435,7 +436,11 @@ impl WorkspaceLinter {
       self.workspace_module_graph = Some(
         async move {
           module_graph_creator
-            .create_and_validate_publish_graph(&packages, true)
+            .create_publish_graph(CreatePublishGraphOptions {
+              packages: &packages,
+              build_fast_check_graph: true,
+              validate_graph: false,
+            })
             .await
             .map(Rc::new)
             .map_err(Rc::new)

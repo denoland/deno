@@ -35,7 +35,7 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,
@@ -145,7 +145,7 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,
@@ -240,7 +240,7 @@ impl<'a> WebIdlConverter<'a> for GPUColor {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,
@@ -346,7 +346,7 @@ impl<'a> WebIdlConverter<'a> for GPUPipelineLayoutOrGPUAutoLayoutMode {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,

@@ -25,7 +25,7 @@ impl FromV8<'_> for SessionOptions {
   type Error = validators::Error;
 
   fn from_v8(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, validators::Error> {
     use validators::Error;

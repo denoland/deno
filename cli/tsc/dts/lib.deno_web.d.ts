@@ -737,7 +737,7 @@ type ReadableStreamController<T> =
 
 /** @category Streams */
 interface ReadableStreamGenericReader {
-  readonly closed: Promise<undefined>;
+  readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
 }
 
@@ -1079,9 +1079,9 @@ declare var WritableStreamDefaultController: {
  * @category Streams
  */
 interface WritableStreamDefaultWriter<W = any> {
-  readonly closed: Promise<undefined>;
+  readonly closed: Promise<void>;
   readonly desiredSize: number | null;
-  readonly ready: Promise<undefined>;
+  readonly ready: Promise<void>;
   abort(reason?: any): Promise<void>;
   close(): Promise<void>;
   releaseLock(): void;
@@ -1533,7 +1533,7 @@ interface WebTransport {
     WebTransportReceiveStream
   >;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/ready) */
-  readonly ready: Promise<undefined>;
+  readonly ready: Promise<void>;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/close) */
   close(closeInfo?: WebTransportCloseInfo): void;
   /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/createBidirectionalStream) */

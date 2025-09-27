@@ -52,6 +52,7 @@ const {
   SetPrototypeDelete,
   SetPrototypeForEach,
   SymbolAsyncIterator,
+  SymbolDispose,
   Symbol,
   TypeError,
   TypedArrayPrototypeSubarray,
@@ -65,7 +66,6 @@ import {
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
 
 async function write(rid, data) {
   return await core.write(rid, data);

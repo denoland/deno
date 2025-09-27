@@ -1,0 +1,8 @@
+cover [WILDCARD]main2.js ... 78.571% (11/14)
+   8 | worker.onerror = (e) => {
+   9 |   p.reject(e);
+  10 | };
+cover [WILDCARD]worker2.js ... 72.727% (8/11)
+   5 | function onTimeout() {
+   6 |   console.log("hello again");
+   7 | }

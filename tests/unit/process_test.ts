@@ -583,7 +583,7 @@ Deno.test(
     permissions: { run: true, read: true, write: true },
     ignore: Deno.build.os === "windows",
   },
-  async function non_existent_cwd(): Promise<void> {
+  async function nonExistentCwd(): Promise<void> {
     // @ts-ignore `Deno.run()` was soft-removed in Deno 2.
     const p = Deno.run({
       cmd: [
@@ -608,5 +608,72 @@ Deno.test(
     p.stdout.close();
     assertStrictEquals(code, 1);
     assertStringIncludes(stderr, "failed resolving cwd:");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { run: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function runWatchAndSigint(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const tempFile = `${tempDir}/temp_watch_file.ts`;
+    await Deno.writeTextFile(tempFile, "console.log('watch test');");
+
+    // @ts-ignore `Deno.run()` was soft-removed in Deno 2.
+    const p = Deno.run({
+      cmd: ["deno", "run", "--watch", tempFile],
+      stdout: "piped",
+      stderr: "null",
+    });
+
+    Deno.kill(p.pid, "SIGINT");
+    const data = new Uint8Array(10);
+    const out = await p.stdout.read(data);
+    assertEquals(out, null);
+    p.stdout.close();
+    p.close();
+
+    await Deno.remove(tempFile);
+    await Deno.remove(tempDir);
+  },
+);
+
+Deno.test(
+  {
+    permissions: { run: true, read: true, write: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function runWatchWaitForSigint(): Promise<void> {
+    const tempDir = await Deno.makeTempDir();
+    const tempFile = `${tempDir}/temp_watch_file.ts`;
+    await Deno.writeTextFile(
+      tempFile,
+      `Deno.addSignalListener("SIGINT", () => {
+  console.log("SIGINT");
+  ac.abort();
+});
+
+Deno.serve({ signal: ac.signal }, () => new Response("Hello World"));
+`,
+    );
+
+    // @ts-ignore `Deno.run()` was soft-removed in Deno 2.
+    const p = Deno.run({
+      cmd: ["deno", "run", "--watch", tempFile],
+      stdout: "piped",
+      stderr: "null",
+    });
+
+    Deno.kill(p.pid, "SIGINT");
+    const data = new Uint8Array(10);
+    const out = await p.stdout.read(data);
+    assertEquals(out, null);
+    p.stdout.close();
+    p.close();
+
+    await Deno.remove(tempFile);
+    await Deno.remove(tempDir);
   },
 );

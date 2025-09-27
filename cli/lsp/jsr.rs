@@ -13,6 +13,7 @@ use deno_graph::ModuleSpecifier;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
+use deno_graph::packages::JsrVersionResolver;
 use deno_resolver::workspace::WorkspaceResolver;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -88,7 +89,10 @@ impl JsrCacheResolver {
         Some(Arc::new(JsrPackageInfo {
           versions: [(
             nv.version.clone(),
-            JsrPackageInfoVersion { yanked: false },
+            JsrPackageInfoVersion {
+              yanked: false,
+              created_at: None,
+            },
           )]
           .into_iter()
           .collect(),
@@ -323,7 +327,13 @@ pub struct CliJsrSearchApi {
 
 impl CliJsrSearchApi {
   pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
-    let resolver = JsrFetchResolver::new(file_fetcher.clone());
+    let resolver = JsrFetchResolver::new(
+      file_fetcher.clone(),
+      Arc::new(JsrVersionResolver {
+        // not currently supported in the lsp
+        newest_dependency_date: None,
+      }),
+    );
     Self {
       file_fetcher,
       resolver,

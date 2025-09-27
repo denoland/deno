@@ -1,0 +1,11 @@
+cover [WILDCARD]main3.js ... 72.000% (18/25)
+   5 | worker.onmessage = (e) => {
+   6 |   p.resolve(e);
+   7 | };
+-----|-----
+  15 | } catch {
+-----|-----
+  18 | if (!rejected) {
+  19 |   throw new Error("Expected promise to reject");
+  20 | }
+cover [WILDCARD]worker3.js ... 100.000% (9/9)
