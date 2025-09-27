@@ -6387,6 +6387,9 @@ declare namespace Deno {
     cid: number;
     /** The port of the vsock to connect to. */
     port: number;
+  } | {
+    transport: "tunnel";
+    kind: "agent";
   };
 
   /**

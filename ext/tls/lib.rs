@@ -225,6 +225,12 @@ impl ServerCertVerifier for NoServerNameVerification {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum TunnelKind {
+  Agent,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase", tag = "transport")]
 pub enum Proxy {
   #[serde(rename_all = "camelCase")]
@@ -242,6 +248,9 @@ pub enum Proxy {
   Vsock {
     cid: u32,
     port: u32,
+  },
+  Tunnel {
+    kind: TunnelKind,
   },
 }
 
