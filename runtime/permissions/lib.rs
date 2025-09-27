@@ -31,8 +31,14 @@ use serde::Serialize;
 use serde::de;
 use url::Url;
 
+#[cfg(unix)]
+pub mod broker;
 pub mod prompter;
 pub mod which;
+#[cfg(unix)]
+pub use broker::PermissionBroker;
+#[cfg(unix)]
+pub use broker::set_broker;
 pub use prompter::DeniedPrompter;
 pub use prompter::GetFormattedStackFn;
 use prompter::MAYBE_CURRENT_STACKTRACE;
@@ -45,6 +51,31 @@ pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
 
 use self::which::WhichSys;
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum BrokerResponse {
+  Allow,
+  Deny,
+}
+
+#[cfg(unix)]
+use self::broker::has_broker;
+
+#[cfg(not(unix))]
+fn has_broker() -> bool {
+  false
+}
+
+#[cfg(unix)]
+use self::broker::maybe_check_with_broker;
+
+#[cfg(not(unix))]
+fn maybe_check_with_broker(
+  _name: &str,
+  _stringified_value_fn: impl Fn() -> Option<String>,
+) -> Option<BrokerResponse> {
+  None
+}
 
 pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 
@@ -473,9 +504,26 @@ impl PermissionState {
     self,
     name: &'static str,
     api_name: Option<&str>,
+    stringify_value_fn: impl Fn() -> Option<String>,
     info: impl Fn() -> Option<String>,
     prompt: bool,
   ) -> (Result<(), PermissionDeniedError>, bool, bool) {
+    if let Some(resp) = maybe_check_with_broker(name, &stringify_value_fn) {
+      match resp {
+        BrokerResponse::Allow => {
+          Self::log_perm_access(name, info);
+          return (Ok(()), false, false);
+        }
+        BrokerResponse::Deny => {
+          return (
+            Err(Self::permission_denied_error(name, info().as_deref())),
+            false,
+            false,
+          );
+        }
+      }
+    }
+
     match self {
       PermissionState::Granted => {
         Self::log_perm_access(name, info);
@@ -561,10 +609,13 @@ impl UnitPermission {
 
   pub fn check(
     &mut self,
+    stringify_value_fn: impl Fn() -> Option<String>,
     info: impl Fn() -> Option<String>,
   ) -> Result<(), PermissionDeniedError> {
     let (result, prompted, _is_allow_all) =
-      self.state.check(self.name, None, info, self.prompt);
+      self
+        .state
+        .check(self.name, None, stringify_value_fn, info, self.prompt);
     if prompted {
       if result.is_ok() {
         self.state = PermissionState::Granted;
@@ -745,6 +796,7 @@ impl<
       && !self.prompt_denied_global
       && self.flag_denied_list.is_empty()
       && self.prompt_denied_list.is_empty()
+      && !has_broker()
   }
 
   pub fn check_all_api(
@@ -770,6 +822,7 @@ impl<
       .check(
         TAllowDesc::QueryDesc::flag_name(),
         api_name,
+        || desc.map(|d| d.display_name().to_string()),
         || desc.map(|d| format_display_name(d.display_name()).into_owned()),
         self.prompt,
       );
@@ -2857,6 +2910,7 @@ impl UnaryPermission<AllowRunDescriptor, DenyRunDescriptor> {
       self.query_desc(None, AllowPartial::TreatAsDenied).check(
         RunQueryDescriptor::flag_name(),
         api_name,
+        || None,
         || None,
         /* prompt */ false,
       );
