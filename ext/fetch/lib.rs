@@ -676,8 +676,6 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
-  pub remote_addr_ip: Option<String>,
-  pub remote_addr_port: Option<u16>,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
   /// In the tuple, the first element is an error message and the second one is
@@ -732,15 +730,6 @@ pub async fn op_fetch_send(
   }
 
   let content_length = hyper::body::Body::size_hint(res.body()).exact();
-  let remote_addr = res
-    .extensions()
-    .get::<hyper_util::client::legacy::connect::HttpInfo>()
-    .map(|info| info.remote_addr());
-  let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
-    (Some(addr.ip().to_string()), Some(addr.port()))
-  } else {
-    (None, None)
-  };
 
   let response_rid = state
     .borrow_mut()
@@ -754,8 +743,6 @@ pub async fn op_fetch_send(
     url,
     response_rid,
     content_length,
-    remote_addr_ip,
-    remote_addr_port,
     error: None,
   })
 }

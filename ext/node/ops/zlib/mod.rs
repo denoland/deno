@@ -273,7 +273,7 @@ impl ZlibInner {
 
   fn check_error(
     error_info: Option<(i32, String)>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     this: &v8::Global<v8::Object>,
   ) -> bool {
     let Some((err, msg)) = error_info else {
@@ -413,7 +413,7 @@ impl Zlib {
   pub fn write_sync(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -448,7 +448,7 @@ impl Zlib {
   fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -633,7 +633,7 @@ impl BrotliEncoder {
   pub fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: u8,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -810,7 +810,7 @@ impl BrotliDecoder {
   pub fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] _flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
