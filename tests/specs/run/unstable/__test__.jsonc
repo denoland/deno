@@ -1,10 +1,5 @@
 {
   "tests": {
-    "broadcast_channel": {
-      "args": "run broadcast_channel.ts",
-      "exitCode": 1,
-      "output": "broadcast_channel.out"
-    },
     "bundle": {
       "args": "run bundle.ts",
       "exitCode": 1,
