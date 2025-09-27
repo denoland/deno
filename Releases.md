@@ -6,6 +6,12 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.14 / 2025.05.13
+
+- fix(ext/node): set default callback for `fs.close` (#30720)
+- fix(ext/node): validate `fs.close` callback function (#30679)
+- fix: reject running `.bat` and `.cmd` directly on windows (#30818)
+
 ### 2.1.13 / 2025.05.13
 
 - fix: handling of contradictory global permission flags (#29213)
