@@ -852,6 +852,8 @@ impl DenoPluginHandler {
   }
 }
 
+// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum PluginImportKind {
@@ -882,6 +884,8 @@ impl From<protocol::ImportKind> for PluginImportKind {
   }
 }
 
+// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PluginOnResolveArgs {
@@ -893,6 +897,8 @@ struct PluginOnResolveArgs {
   with: IndexMap<String, String>,
 }
 
+// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PluginOnLoadArgs {
