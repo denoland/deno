@@ -98,15 +98,8 @@ const validateInteger = hideStackFrames(
   },
 );
 
-/**
- * @param {unknown} value
- * @param {string} name
- * @param {{
- *   allowArray?: boolean,
- *   allowFunction?: boolean,
- *   nullable?: boolean
- * }} [options]
- */
+/** @typedef {(value: unknown, name: string, options?: number) => asserts value is object} ValidateObject */
+/** @type {ValidateObject} */
 const validateObject = hideStackFrames((value, name, options) => {
   const useDefaultOptions = options == null;
   const allowArray = useDefaultOptions ? false : options.allowArray;
@@ -177,11 +170,9 @@ function validateString(value, name) {
   }
 }
 
-/**
- * @param {unknown} value
- * @param {string} name
- */
-function validateNumber(value, name, min = undefined, max) {
+/** @typedef {(value: unknown, name: string, min?: number, max?: number) => asserts value is number} ValidateNumber */
+/** @type {ValidateNumber} */
+const validateNumber = hideStackFrames((value, name, min = undefined, max) => {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
   }
@@ -198,7 +189,7 @@ function validateNumber(value, name, min = undefined, max) {
       value,
     );
   }
-}
+});
 
 /**
  * @param {unknown} value

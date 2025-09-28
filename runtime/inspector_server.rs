@@ -15,14 +15,13 @@ use deno_core::InspectorMsg;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::InspectorSessionProxy;
-use deno_core::JsRuntime;
+use deno_core::JsRuntimeInspector;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::channel::oneshot;
 use deno_core::futures::future;
 use deno_core::futures::prelude::*;
-use deno_core::futures::select;
 use deno_core::futures::stream::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
@@ -101,10 +100,9 @@ impl InspectorServer {
   pub fn register_inspector(
     &self,
     module_url: String,
-    js_runtime: &mut JsRuntime,
+    inspector: Rc<JsRuntimeInspector>,
     wait_for_session: bool,
   ) {
-    let inspector = js_runtime.inspector();
     let session_sender = inspector.get_session_sender();
     let deregister_rx = inspector.add_deregister_handler();
     let info = InspectorInfo::new(
@@ -145,16 +143,16 @@ fn handle_ws_request(
     .strip_prefix("/ws/")
     .and_then(|s| Uuid::parse_str(s).ok());
 
-  if maybe_uuid.is_none() {
+  let Some(uuid) = maybe_uuid else {
     return http::Response::builder()
       .status(http::StatusCode::BAD_REQUEST)
       .body(Box::new(Bytes::from("Malformed inspector UUID").into()));
-  }
+  };
 
   // run in a block to not hold borrow to `inspector_map` for too long
   let new_session_tx = {
     let inspector_map = inspector_map_rc.borrow();
-    let maybe_inspector_info = inspector_map.get(&maybe_uuid.unwrap());
+    let maybe_inspector_info = inspector_map.get(&uuid);
 
     if maybe_inspector_info.is_none() {
       return http::Response::builder()
@@ -168,28 +166,19 @@ fn handle_ws_request(
   let (parts, _) = req.into_parts();
   let mut req = http::Request::from_parts(parts, body);
 
-  let (resp, fut) = match fastwebsockets::upgrade::upgrade(&mut req) {
-    Ok((resp, fut)) => {
-      let (parts, _body) = resp.into_parts();
-      let resp = http::Response::from_parts(
-        parts,
-        Box::new(http_body_util::Full::new(Bytes::new())),
-      );
-      (resp, fut)
-    }
-    _ => {
-      return http::Response::builder()
-        .status(http::StatusCode::BAD_REQUEST)
-        .body(Box::new(
-          Bytes::from("Not a valid Websocket Request").into(),
-        ));
-    }
+  let Ok((resp, upgrade_fut)) = fastwebsockets::upgrade::upgrade(&mut req)
+  else {
+    return http::Response::builder()
+      .status(http::StatusCode::BAD_REQUEST)
+      .body(Box::new(
+        Bytes::from("Not a valid Websocket Request").into(),
+      ));
   };
 
   // spawn a task that will wait for websocket connection and then pump messages between
   // the socket and inspector proxy
   spawn(async move {
-    let websocket = match fut.await {
+    let websocket = match upgrade_fut.await {
       Ok(w) => w,
       Err(err) => {
         log::error!(
@@ -220,6 +209,11 @@ fn handle_ws_request(
     pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
   });
 
+  let (parts, _body) = resp.into_parts();
+  let resp = http::Response::from_parts(
+    parts,
+    Box::new(http_body_util::Full::new(Bytes::new())),
+  );
   Ok(resp)
 }
 
@@ -263,34 +257,18 @@ async fn server(
     Rc::new(RefCell::new(HashMap::<Uuid, InspectorInfo>::new()));
 
   let inspector_map = Rc::clone(&inspector_map_);
-  let mut register_inspector_handler = pin!(
-    register_inspector_rx
-      .map(|info| {
-        log::info!(
-          "Debugger listening on {}",
-          info.get_websocket_debugger_url(&info.host.to_string())
-        );
-        log::info!("Visit chrome://inspect to connect to the debugger.");
-        if info.wait_for_session {
-          log::info!("Deno is waiting for debugger to connect.");
-        }
-        if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
-          panic!("Inspector UUID already in map");
-        }
-      })
-      .collect::<()>()
-  );
+  let register_inspector_handler =
+    listen_for_new_inspectors(register_inspector_rx, inspector_map.clone())
+      .boxed_local();
 
   let inspector_map = Rc::clone(&inspector_map_);
-  let mut deregister_inspector_handler = pin!(
-    future::poll_fn(|cx| {
-      inspector_map
-        .borrow_mut()
-        .retain(|_, info| info.deregister_rx.poll_unpin(cx) == Poll::Pending);
-      Poll::<Never>::Pending
-    })
-    .fuse()
-  );
+  let deregister_inspector_handler = future::poll_fn(|cx| {
+    inspector_map
+      .borrow_mut()
+      .retain(|_, info| info.deregister_rx.poll_unpin(cx) == Poll::Pending);
+    Poll::<Never>::Pending
+  })
+  .boxed_local();
 
   let json_version_response = json!({
     "Browser": name,
@@ -307,8 +285,7 @@ async fn server(
     }
   };
 
-  let mut server_handler =
-    pin!(deno_core::unsync::spawn(async move {
+  let server_handler = async move {
     loop {
       let mut rx = shutdown_server_rx.resubscribe();
       let mut shutdown_rx = pin!(rx.recv());
@@ -392,13 +369,32 @@ async fn server(
         }
       });
     }
-  })
-  .fuse());
+  }
+  .boxed_local();
 
-  select! {
+  tokio::select! {
     _ = register_inspector_handler => {},
     _ = deregister_inspector_handler => unreachable!(),
     _ = server_handler => {},
+  }
+}
+
+async fn listen_for_new_inspectors(
+  mut register_inspector_rx: UnboundedReceiver<InspectorInfo>,
+  inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
+) {
+  while let Some(info) = register_inspector_rx.next().await {
+    log::info!(
+      "Debugger listening on {}",
+      info.get_websocket_debugger_url(&info.host.to_string())
+    );
+    log::info!("Visit chrome://inspect to connect to the debugger.");
+    if info.wait_for_session {
+      log::info!("Deno is waiting for debugger to connect.");
+    }
+    if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
+      panic!("Inspector UUID already in map");
+    }
   }
 }
 

@@ -532,7 +532,7 @@ async fn get_jsr_completions(
       let export_prefix = sub_path.unwrap_or("");
       let req = req_ref.req();
       let nv = match jsr_resolver {
-        Some(jsr_resolver) => jsr_resolver.req_to_nv(req).await,
+        Some(jsr_resolver) => jsr_resolver.req_to_nv(req).await.ok().flatten(),
         None => None,
       };
       let nv = nv.or_else(|| PackageNv::from_str(&req.to_string()).ok())?;
