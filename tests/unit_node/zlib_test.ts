@@ -16,9 +16,9 @@ import {
   createBrotliDecompress,
   createDeflate,
   deflateSync,
+  gunzip,
   gzip,
   gzipSync,
-  gunzip,
   unzipSync,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
