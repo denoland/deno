@@ -77,8 +77,6 @@ import { zlib as zlibConstants } from "ext:deno_node/internal_binding/constants.
 
 const kFlushFlag = Symbol("kFlushFlag");
 const kError = Symbol("kError");
-const kHandleContinuePending = Symbol("kHandleContinuePending");
-const kHandleAwaitDrain = Symbol("kHandleAwaitDrain");
 
 const {
   // Zlib flush levels
@@ -537,28 +535,35 @@ function processChunkSync(self, chunk, flushFlag) {
   return (buffers.length === 1 ? buffers[0] : Buffer.concat(buffers, nread));
 }
 
-function invokeHandleWrite(handle, self) {
-  const availOutBefore = self._chunkSize - self._outOffset;
-  handle.availOutBefore = availOutBefore;
-  handle.write(
-    handle.flushFlag,
-    handle.buffer, // in
-    handle.inOff, // in_off
-    handle.availInBefore, // in_len
-    self._outBuffer, // out
-    self._outOffset, // out_off
-    availOutBefore,
-  ); // out_len
+// Trampoline pattern implementation
+// Executes thunks (functions) in a loop to avoid stack overflow
+// from deep recursion. Each thunk returns either another thunk
+// to continue processing, or null/undefined to stop.
+function trampoline(fn) {
+  let result = fn();
+  while (typeof result === "function") {
+    result = result();
+  }
+  return result;
 }
 
-function pumpHandle(handle, self) {
-  // Process pending writes iteratively instead of recursively to avoid stack overflow.
-  // This breaks the recursive chain between processCallback and handle.write()
-  // by using flags to track work that needs to be done.
-  while (handle[kHandleContinuePending] && !handle[kHandleAwaitDrain] && !self.destroyed) {
-    handle[kHandleContinuePending] = false;
-    invokeHandleWrite(handle, self);
-  }
+function createWriteThunk(handle, self) {
+  return () => {
+    const availOutBefore = self._chunkSize - self._outOffset;
+    handle.availOutBefore = availOutBefore;
+    handle.write(
+      handle.flushFlag,
+      handle.buffer, // in
+      handle.inOff, // in_off
+      handle.availInBefore, // in_len
+      self._outBuffer, // out
+      self._outOffset, // out_off
+      availOutBefore,
+    ); // out_len
+    // The write() call will trigger processCallback
+    // which may return another thunk
+    return handle.nextThunk;
+  };
 }
 
 function processChunk(self, chunk, flushFlag, cb) {
@@ -570,11 +575,10 @@ function processChunk(self, chunk, flushFlag, cb) {
   handle.availInBefore = chunk.byteLength;
   handle.inOff = 0;
   handle.flushFlag = flushFlag;
-  handle[kHandleContinuePending] = false;
-  handle[kHandleAwaitDrain] = false;
+  handle.nextThunk = null;
 
-  invokeHandleWrite(handle, self);
-  pumpHandle(handle, self);
+  // Start the trampoline with the first write thunk
+  trampoline(createWriteThunk(handle, self));
 }
 
 function processCallback() {
@@ -627,21 +631,21 @@ function processCallback() {
     handle.inOff += inDelta;
     handle.availInBefore = availInAfter;
 
-    handle[kHandleContinuePending] = true;
-
     if (!streamBufferIsFull) {
-      handle[kHandleAwaitDrain] = false;
+      // Return a thunk to continue processing
+      handle.nextThunk = createWriteThunk(handle, self);
     } else {
-      handle[kHandleAwaitDrain] = true;
+      // When stream buffer is full, we need to wait for drain
       const oldRead = self._read;
       self._read = (n) => {
         self._read = oldRead;
-        handle[kHandleAwaitDrain] = false;
         if (!self.destroyed) {
-          pumpHandle(handle, self);
+          // Resume with trampoline when stream is ready
+          trampoline(createWriteThunk(handle, self));
         }
         self._read(n);
       };
+      handle.nextThunk = null; // Stop the trampoline for now
     }
     return;
   }
@@ -665,8 +669,7 @@ function processCallback() {
   }
 
   // Finished with the chunk.
-  handle[kHandleContinuePending] = false;
-  handle[kHandleAwaitDrain] = false;
+  handle.nextThunk = null; // Signal completion to trampoline
   this.buffer = null;
   this.cb();
 }
