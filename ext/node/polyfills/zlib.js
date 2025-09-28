@@ -552,7 +552,10 @@ function invokeHandleWrite(handle, self) {
 }
 
 function pumpHandle(handle, self) {
-  while (handle[kHandleContinuePending] && !handle[kHandleAwaitDrain]) {
+  // Process pending writes iteratively instead of recursively to avoid stack overflow.
+  // This breaks the recursive chain between processCallback and handle.write()
+  // by using flags to track work that needs to be done.
+  while (handle[kHandleContinuePending] && !handle[kHandleAwaitDrain] && !self.destroyed) {
     handle[kHandleContinuePending] = false;
     invokeHandleWrite(handle, self);
   }
