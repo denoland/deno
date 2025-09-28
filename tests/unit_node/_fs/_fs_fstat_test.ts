@@ -2,7 +2,7 @@
 
 import { fstat, fstatSync } from "node:fs";
 import { fail } from "@std/assert";
-import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";
+import { assertStats, assertStatsBigInt } from "../_test_utils.ts";
 import type { BigIntStats, Stats } from "node:fs";
 
 Deno.test({
