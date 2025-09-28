@@ -11,7 +11,6 @@ import {
 import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { Buffer } from "node:buffer";
-import console from "node:console";
 
 export { BigIntStats, Stats };
 
@@ -149,7 +148,6 @@ export function CFISBIS(
   fileInfo: Deno.FileInfo,
   bigInt: boolean,
 ): Stats | BigIntStats {
-  console.log(fileInfo, bigInt);
   if (bigInt) return convertFileInfoToBigIntStats(fileInfo);
   return convertFileInfoToStats(fileInfo);
 }
