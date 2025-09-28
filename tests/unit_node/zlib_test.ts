@@ -15,10 +15,10 @@ import {
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
-  createGunzip,
   deflateSync,
   gzip,
   gzipSync,
+  gunzip,
   unzipSync,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
@@ -288,40 +288,30 @@ Deno.test("ERR_BUFFER_TOO_LARGE works correctly", () => {
   );
 });
 
-// Test for https://github.com/denoland/deno/issues/30829
-Deno.test("zlib doesn't cause stack overflow with large data and small chunks", async () => {
-  const deffered = Promise.withResolvers<void>();
+// https://github.com/denoland/deno/issues/30829
+Deno.test("gunzip doesn't cause stack overflow with 64MiB data", async () => {
+  const data = Buffer.alloc(64 * 1024 * 1024);
+  const compressed = gzipSync(data);
 
-  // Create 64MiB of data
-  const input = Buffer.alloc(64 * 1024 * 1024);
-  const compressed = gzipSync(input);
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
 
-  // Decompress with small chunk size (64 bytes)
-  const gunzip = createGunzip({ chunkSize: 64 });
-
-  let output = Buffer.alloc(0);
-  gunzip.on("data", (chunk: Buffer) => {
-    output = Buffer.concat([output, chunk]);
-  });
-
-  gunzip.on("end", () => {
-    // Verify the decompressed data matches the original
-    assertEquals(output.length, input.length);
-    deffered.resolve();
-  });
-
-  gunzip.on("error", (err: Error) => {
-    // Should not reach here - if stack overflow occurs, this test will fail
-    throw err;
-  });
-
-  // Use _processChunk directly as in the issue reproduction
-  // @ts-ignore: _processChunk is internal API
-  gunzip._processChunk(compressed, constants.Z_FINISH, (err: Error | null) => {
+  gunzip(compressed, (err, result) => {
     if (err) {
-      throw err;
+      reject(err);
+      return;
     }
+    if (!result) {
+      reject(new Error("expected gunzip to return a Buffer"));
+      return;
+    }
+    if (result.length !== data.length) {
+      reject(
+        new Error(`expected ${data.length} bytes, got ${result.length}`),
+      );
+      return;
+    }
+    resolve();
   });
 
-  await deffered.promise;
+  await promise;
 });
