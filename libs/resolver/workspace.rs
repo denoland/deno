@@ -3245,7 +3245,7 @@ mod test {
           StackString::from_static("1")
         )]),
         bundle_dependencies: Vec::from([StackString::from_static("my-dep")]),
-        bundled_dependencies: Vec::from([StackString::from_static("my-dep")]),
+        bundled_dependencies: Vec::new(),
         optional_dependencies: HashMap::from([(
           StackString::from_static("optional-dep"),
           StackString::from_static("~1")
