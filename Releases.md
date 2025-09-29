@@ -6,6 +6,55 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.5.2 / 2025.09.24
+
+- feat(lsp): describe/it test editor support (#30802)
+- fix(bundle): reload html entrypoints with --watch (#30790)
+- fix(check): support "compilerOptions.paths" (#30766)
+- fix(cli/bundle): respect --frozen flag deno bundle command (#30825)
+- fix(coverage): collect coverage data for workers (#30807)
+- fix(dts): add `Uint8Array` base64/hex methods (#30686)
+- fix(dts): update stream type declarations to use `Promise<void>` (#30820)
+- fix(ext/node): `fs.readFile`, `fs.readFileSync` assert encoding (#30830)
+- fix(ext/node): `fs.statfsSync` and `fs.statfs` compatibility (#30662)
+- fix(ext/node): accept ArrayBuffer on crypto.timingSafeEqual (#30773)
+- fix(ext/node): crypto `Cipheriv` and `Decipheriv` base64 encoding (#30806)
+- fix(ext/ws): send User-Agent header in WS handshake (#30758)
+- fix(fetch): handle proxied urls correctly and add test (#30794)
+- fix(lint): skip module graph validation (#30815)
+- fix(tunnel): make auth more robust (#30731)
+- fix: add top level permissions key to config file schema (#30765)
+- fix: reject running `.bat` and `.cmd` directly on windows (#30818)
+- fix: restore Windows debug info (#30778)
+- perf(lsp): don't watch node_modules files (#30768)
+- perf: stack allocated v8 scopes (#30827)
+- perf: support negative caching of package.json (#30792)
+
+### 2.5.1 / 2025.09.16
+
+- feat(unstable): support `Deno.HttpClient` in `WebSocket` (#30692)
+- feat(unstable): tcp proxy for `Deno.HttpClient` (#30700)
+- fix(bundle): set the type of the outputFile in the deno bundle to
+  `Uint8Array<ArrayBuffer>` (#30716)
+- fix(check): filter resolution errors for bare ambient modules (#30690)
+- fix(ext/fetch): mark unix and vsock proxy conns as proxy (#30699)
+- fix(ext/node): handle falsy values enumerability in process.env (#30708)
+- fix(ext/node): implement `fchmod` on windows (#30704)
+- fix(ext/node): make `fs.glob` accepts `URL` cwd (#30705)
+- fix(ext/node): set default callback for `fs.close` (#30720)
+- fix(ext/node): validate `fs.close` callback function (#30679)
+- fix(ext/node): validate fs.read on empty buffer (#30706)
+- fix(ext/node): validate readlink arguments (#30691)
+- fix(ffi): check that fast calls are taken (#30658)
+- fix(http): duplicate listener should inherit onError and signal (#30680)
+- fix(init): regression where `deno init --npm` stopped working on mac (#30730)
+- fix(lsp): don't write lockfile during cache-on-save (#30733)
+- fix(node): reduce chance of module not found error due to missing copy package
+  (#30744)
+- fix(permissions): point to correct config file in error message in workspace
+  containing permissions at root (#30742)
+- fix: Add info/hint for unstable Deno.bundle API (#30682)
+
 ### 2.5.0 / 2025.09.10
 
 - feat(BREAKING/fmt): prompt or require `deno fmt .` when providing no files and

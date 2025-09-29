@@ -787,10 +787,14 @@ async fn install_global(
   let npmrc = factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(
+    deps_file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
   let npm_resolver = Arc::new(NpmFetchResolver::new(
     deps_file_fetcher.clone(),
     npmrc.clone(),
+    factory.npm_version_resolver()?.clone(),
   ));
 
   let entry_text = install_flags_global.module_url.as_str();
@@ -799,12 +803,24 @@ async fn install_global(
     if let Ok(Err(package_req)) =
       super::pm::AddRmPackageReq::parse(entry_text, None)
     {
-      if jsr_resolver.req_to_nv(&package_req).await.is_some() {
+      if jsr_resolver
+        .req_to_nv(&package_req)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+      {
         bail!(
           "{entry_text} is missing a prefix. Did you mean `{}`?",
           crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
         );
-      } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+      } else if npm_resolver
+        .req_to_nv(&package_req)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+      {
         bail!(
           "{entry_text} is missing a prefix. Did you mean `{}`?",
           crate::colors::yellow(format!("deno install -g npm:{package_req}"))
@@ -1116,6 +1132,7 @@ mod tests {
   use std::process::Command;
 
   use deno_lib::args::UnstableConfig;
+  use deno_npm::resolution::NpmVersionResolver;
   use test_util::TempDir;
   use test_util::testdata_path;
 
@@ -1133,7 +1150,9 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
-    let resolver = BinNameResolver::new(&http_client, &registry_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
     super::create_install_shim(&resolver, &cwd, flags, install_flags_global)
       .await
   }
@@ -1145,7 +1164,9 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
-    let resolver = BinNameResolver::new(&http_client, &registry_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
     super::resolve_shim_data(&resolver, &cwd, flags, install_flags_global).await
   }
 

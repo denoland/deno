@@ -156,7 +156,7 @@ impl UnsafeWindowSurface {
   fn get_context(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
   ) -> v8::Global<v8::Object> {
     self.context.get(scope, |_| GPUCanvasContext {
       surface_id: self.id,
@@ -169,7 +169,10 @@ impl UnsafeWindowSurface {
   }
 
   #[nofast]
-  fn present(&self, scope: &mut v8::HandleScope) -> Result<(), JsErrorBox> {
+  fn present(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> Result<(), JsErrorBox> {
     let Some(context) = self.context.try_unwrap(scope) else {
       return Err(JsErrorBox::type_error("getContext was never called"));
     };
@@ -178,7 +181,7 @@ impl UnsafeWindowSurface {
   }
 
   #[fast]
-  fn resize(&self, width: u32, height: u32, scope: &mut v8::HandleScope) {
+  fn resize(&self, width: u32, height: u32, scope: &mut v8::PinScope<'_, '_>) {
     self.width.replace(width);
     self.height.replace(height);
 
@@ -210,7 +213,7 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
   type Error = JsErrorBox;
 
   fn from_v8(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: Local<'a, Value>,
   ) -> Result<Self, Self::Error> {
     let obj = value

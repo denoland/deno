@@ -110,14 +110,14 @@ pub struct FsStat {
   pub ctime: Option<u64>,
 
   pub dev: u64,
-  pub ino: Option<u64>,
+  pub ino: u64,
   pub mode: u32,
-  pub nlink: Option<u64>,
+  pub nlink: u64,
   pub uid: u32,
   pub gid: u32,
   pub rdev: u64,
   pub blksize: u64,
-  pub blocks: Option<u64>,
+  pub blocks: u64,
   pub is_block_device: bool,
   pub is_char_device: bool,
   pub is_fifo: bool,
@@ -126,20 +126,6 @@ pub struct FsStat {
 
 impl FsStat {
   pub fn from_std(metadata: std::fs::Metadata) -> Self {
-    macro_rules! unix_some_or_none {
-      ($member:ident) => {{
-        #[cfg(unix)]
-        {
-          use std::os::unix::fs::MetadataExt;
-          Some(metadata.$member())
-        }
-        #[cfg(not(unix))]
-        {
-          None
-        }
-      }};
-    }
-
     macro_rules! unix_or_zero {
       ($member:ident) => {{
         #[cfg(unix)]
@@ -203,14 +189,14 @@ impl FsStat {
       ctime: get_ctime(unix_or_zero!(ctime)),
 
       dev: unix_or_zero!(dev),
-      ino: unix_some_or_none!(ino),
+      ino: unix_or_zero!(ino),
       mode: unix_or_zero!(mode),
-      nlink: unix_some_or_none!(nlink),
+      nlink: unix_or_zero!(nlink),
       uid: unix_or_zero!(uid),
       gid: unix_or_zero!(gid),
       rdev: unix_or_zero!(rdev),
       blksize: unix_or_zero!(blksize),
-      blocks: unix_some_or_none!(blocks),
+      blocks: unix_or_zero!(blocks),
       is_block_device: unix_or_false!(is_block_device),
       is_char_device: unix_or_false!(is_char_device),
       is_fifo: unix_or_false!(is_fifo),

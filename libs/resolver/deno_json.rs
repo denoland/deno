@@ -108,6 +108,7 @@ pub struct ParsedCompilerOptions {
 static ALLOWED_COMPILER_OPTIONS: phf::Set<&'static str> = phf::phf_set! {
   "allowUnreachableCode",
   "allowUnusedLabels",
+  "baseUrl",
   "checkJs",
   "erasableSyntaxOnly",
   "emitDecoratorMetadata",
@@ -130,6 +131,7 @@ static ALLOWED_COMPILER_OPTIONS: phf::Set<&'static str> = phf::phf_set! {
   "noUncheckedIndexedAccess",
   "noUnusedLocals",
   "noUnusedParameters",
+  "paths",
   "rootDirs",
   "skipLibCheck",
   "strict",
@@ -370,6 +372,99 @@ pub struct TranspileAndEmitOptions {
 pub type TranspileAndEmitOptionsRc =
   deno_maybe_sync::MaybeArc<TranspileAndEmitOptions>;
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+struct WildcardString {
+  prefix: String,
+  suffix_if_wildcard: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]
+pub struct CompilerOptionsPaths {
+  resolved: Vec<(String, WildcardString, Vec<WildcardString>)>,
+}
+
+impl CompilerOptionsPaths {
+  fn new(
+    object: &serde_json::Map<String, serde_json::Value>,
+    base: &Url,
+  ) -> Self {
+    let resolved = object
+      .iter()
+      .filter_map(|(raw_key, value)| {
+        let value = value.as_array()?;
+        let mut key_prefix = raw_key.as_str();
+        let mut key_suffix_if_wildcard = None;
+        if let Some((prefix, suffix)) = raw_key.split_once('*') {
+          if suffix.contains('*') {
+            return None;
+          }
+          key_prefix = prefix;
+          key_suffix_if_wildcard = Some(suffix);
+        }
+        let key_prefix = if key_prefix.starts_with("./")
+          || key_prefix.starts_with("../")
+          || key_prefix.starts_with("/")
+        {
+          base.join(key_prefix).ok()?.to_string()
+        } else {
+          key_prefix.to_string()
+        };
+        let key = WildcardString {
+          prefix: key_prefix,
+          suffix_if_wildcard: key_suffix_if_wildcard.map(|s| s.to_string()),
+        };
+        let paths = value
+          .iter()
+          .filter_map(|entry| {
+            let mut entry_prefix = entry.as_str()?;
+            let mut entry_suffix_if_wildcard = None;
+            if let Some((prefix, suffix)) = entry_prefix.split_once('*') {
+              if suffix.contains('*') {
+                return None;
+              }
+              entry_prefix = prefix;
+              entry_suffix_if_wildcard = Some(suffix);
+            }
+            let entry_prefix = base.join(entry_prefix).ok()?.to_string();
+            Some(WildcardString {
+              prefix: entry_prefix,
+              suffix_if_wildcard: entry_suffix_if_wildcard
+                .map(|s| s.to_string()),
+            })
+          })
+          .collect();
+        Some((raw_key.clone(), key, paths))
+      })
+      .collect();
+    Self { resolved }
+  }
+
+  pub fn resolve_candidates(
+    &self,
+    specifier: &str,
+  ) -> Option<(impl Iterator<Item = Url>, String)> {
+    self.resolved.iter().find_map(|(raw_key, key, paths)| {
+      let mut matched = specifier.strip_prefix(&key.prefix)?;
+      if let Some(key_suffix) = &key.suffix_if_wildcard {
+        matched = matched.strip_suffix(key_suffix)?;
+      } else if !matched.is_empty() {
+        return None;
+      }
+      Some((
+        paths.iter().filter_map(move |path| {
+          if let Some(path_suffix) = &path.suffix_if_wildcard {
+            Url::parse(&format!("{}{matched}{}", &path.prefix, path_suffix))
+              .ok()
+          } else {
+            Url::parse(&path.prefix).ok()
+          }
+        }),
+        raw_key.clone(),
+      ))
+    })
+  }
+}
+
 #[derive(Debug, Default)]
 struct LoggedWarnings {
   experimental_decorators: AtomicFlag,
@@ -397,6 +492,8 @@ struct MemoizedValues {
   module: OnceCell<CompilerOptionsModule>,
   module_resolution: OnceCell<CompilerOptionsModuleResolution>,
   check_js: OnceCell<bool>,
+  base_url: OnceCell<Option<Url>>,
+  paths: OnceCell<CompilerOptionsPaths>,
   root_dirs: OnceCell<Vec<Url>>,
 }
 
@@ -679,6 +776,51 @@ impl CompilerOptionsData {
     })
   }
 
+  fn base_url(&self) -> Option<&Url> {
+    let base_url = self.memoized.base_url.get_or_init(|| {
+      let base_url = self.sources.iter().rev().find_map(|s| {
+        s.compiler_options
+          .as_ref()?
+          .0
+          .as_object()?
+          .get("baseUrl")?
+          .as_str()
+      })?;
+      url_from_directory_path(
+        &url_to_file_path(&self.sources.last()?.specifier)
+          .ok()?
+          .parent()?
+          .join(base_url),
+      )
+      .ok()
+    });
+    base_url.as_ref()
+  }
+
+  pub fn paths(&self) -> &CompilerOptionsPaths {
+    self.memoized.paths.get_or_init(|| {
+      let Some((source_specifier, paths)) =
+        self.sources.iter().rev().find_map(|s| {
+          Some((
+            &s.specifier,
+            s.compiler_options
+              .as_ref()?
+              .0
+              .as_object()?
+              .get("paths")?
+              .as_object()?,
+          ))
+        })
+      else {
+        return Default::default();
+      };
+      CompilerOptionsPaths::new(
+        paths,
+        self.base_url().unwrap_or(source_specifier),
+      )
+    })
+  }
+
   pub fn root_dirs(&self) -> &Vec<Url> {
     self.memoized.root_dirs.get_or_init(|| {
       let Some((source_specifier, root_dirs)) =
@@ -700,7 +842,7 @@ impl CompilerOptionsData {
         .iter()
         .filter_map(|s| {
           url_from_directory_path(
-            &url_to_file_path(source_specifier)
+            &url_to_file_path(self.base_url().unwrap_or(source_specifier))
               .ok()?
               .parent()?
               .join(s.as_str()?),

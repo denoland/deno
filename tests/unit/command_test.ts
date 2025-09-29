@@ -781,6 +781,28 @@ Deno.test(
 
 Deno.test(
   {
+    permissions: { run: true, read: true, write: true },
+    ignore: Deno.build.os !== "windows",
+  },
+  async function rejectBatAndCmdFiles() {
+    const tempDir = await Deno.makeTempDir();
+    const fileName = tempDir + "/test.bat";
+    const file = await Deno.open(fileName, {
+      create: true,
+      write: true,
+    });
+
+    await assertRejects(async () => {
+      await new Deno.Command(fileName, {
+        args: ["&calc.exe"],
+      }).output();
+    }, Deno.errors.PermissionDenied);
+    file.close();
+  },
+);
+
+Deno.test(
+  {
     permissions: { run: true, read: true },
     ignore: Deno.build.os === "windows",
   },

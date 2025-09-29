@@ -21,19 +21,25 @@ fn visit_arrow(
   parent_id: &str,
   text_info: &SourceTextInfo,
   test_module: &mut TestModule,
+  is_describe: bool,
 ) {
-  if let Some((maybe_test_context, maybe_step_var)) =
-    parse_test_context_param(arrow_expr.params.first())
-  {
-    let mut collector = TestStepCollector::new(
-      maybe_test_context,
-      maybe_step_var,
-      parent_id,
-      text_info,
-      test_module,
-    );
-    arrow_expr.body.visit_with(&mut collector);
-  }
+  let (maybe_test_context, maybe_step_var) = if is_describe {
+    (None, None)
+  } else {
+    match parse_test_context_param(arrow_expr.params.first()) {
+      Some(r) => r,
+      None => return,
+    }
+  };
+  let mut collector = TestStepCollector::new(
+    maybe_test_context,
+    maybe_step_var,
+    parent_id,
+    text_info,
+    test_module,
+    is_describe,
+  );
+  arrow_expr.body.visit_with(&mut collector);
 }
 
 /// Parse a function for any test steps and return them.
@@ -42,19 +48,25 @@ fn visit_fn(
   parent_id: &str,
   text_info: &SourceTextInfo,
   test_module: &mut TestModule,
+  is_describe: bool,
 ) {
-  if let Some((maybe_test_context, maybe_step_var)) =
-    parse_test_context_param(function.params.first().map(|p| &p.pat))
-  {
-    let mut collector = TestStepCollector::new(
-      maybe_test_context,
-      maybe_step_var,
-      parent_id,
-      text_info,
-      test_module,
-    );
-    function.body.visit_with(&mut collector);
-  }
+  let (maybe_test_context, maybe_step_var) = if is_describe {
+    (None, None)
+  } else {
+    match parse_test_context_param(function.params.first().map(|p| &p.pat)) {
+      Some(r) => r,
+      None => return,
+    }
+  };
+  let mut collector = TestStepCollector::new(
+    maybe_test_context,
+    maybe_step_var,
+    parent_id,
+    text_info,
+    test_module,
+    is_describe,
+  );
+  function.body.visit_with(&mut collector);
 }
 
 /// Parse a param of a test function for the test context binding, or any
@@ -135,7 +147,9 @@ fn visit_call_expr(
   parent_id: Option<&str>,
   text_info: &SourceTextInfo,
   test_module: &mut TestModule,
+  is_describe: bool,
 ) {
+  let should_recurse = !(is_describe && parent_id.is_some());
   if let Some(expr) = node.args.first().map(|es| es.expr.as_ref()) {
     match expr {
       ast::Expr::Object(obj_lit) => {
@@ -181,6 +195,9 @@ fn visit_call_expr(
           false,
           parent_id.map(str::to_owned),
         );
+        if !should_recurse {
+          return;
+        }
         for prop in &obj_lit.props {
           let ast::PropOrSpread::Prop(prop) = prop else {
             continue;
@@ -195,10 +212,22 @@ fn visit_call_expr(
               if sym == "fn" {
                 match key_value_prop.value.as_ref() {
                   ast::Expr::Arrow(arrow_expr) => {
-                    visit_arrow(arrow_expr, &id, text_info, test_module);
+                    visit_arrow(
+                      arrow_expr,
+                      &id,
+                      text_info,
+                      test_module,
+                      is_describe,
+                    );
                   }
                   ast::Expr::Fn(fn_expr) => {
-                    visit_fn(&fn_expr.function, &id, text_info, test_module);
+                    visit_fn(
+                      &fn_expr.function,
+                      &id,
+                      text_info,
+                      test_module,
+                      is_describe,
+                    );
                   }
                   _ => {}
                 }
@@ -212,7 +241,13 @@ fn visit_call_expr(
                 continue;
               };
               if sym == "fn" {
-                visit_fn(&method_prop.function, &id, text_info, test_module);
+                visit_fn(
+                  &method_prop.function,
+                  &id,
+                  text_info,
+                  test_module,
+                  is_describe,
+                );
                 break;
               }
             }
@@ -229,7 +264,10 @@ fn visit_call_expr(
             false,
             parent_id.map(str::to_owned),
           );
-          visit_fn(&fn_expr.function, &id, text_info, test_module);
+          if !should_recurse {
+            return;
+          }
+          visit_fn(&fn_expr.function, &id, text_info, test_module, is_describe);
         }
       }
       ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
@@ -240,12 +278,21 @@ fn visit_call_expr(
           false,
           parent_id.map(str::to_owned),
         );
+        if !should_recurse {
+          return;
+        }
         match node.args.get(1).map(|es| es.expr.as_ref()) {
           Some(ast::Expr::Fn(fn_expr)) => {
-            visit_fn(&fn_expr.function, &id, text_info, test_module);
+            visit_fn(
+              &fn_expr.function,
+              &id,
+              text_info,
+              test_module,
+              is_describe,
+            );
           }
           Some(ast::Expr::Arrow(arrow_expr)) => {
-            visit_arrow(arrow_expr, &id, text_info, test_module);
+            visit_arrow(arrow_expr, &id, text_info, test_module, is_describe);
           }
           _ => {}
         }
@@ -259,12 +306,21 @@ fn visit_call_expr(
             false,
             parent_id.map(str::to_owned),
           );
+          if !should_recurse {
+            return;
+          }
           match node.args.get(1).map(|es| es.expr.as_ref()) {
             Some(ast::Expr::Fn(fn_expr)) => {
-              visit_fn(&fn_expr.function, &id, text_info, test_module);
+              visit_fn(
+                &fn_expr.function,
+                &id,
+                text_info,
+                test_module,
+                is_describe,
+              );
             }
             Some(ast::Expr::Arrow(arrow_expr)) => {
-              visit_arrow(arrow_expr, &id, text_info, test_module);
+              visit_arrow(arrow_expr, &id, text_info, test_module, is_describe);
             }
             _ => {}
           }
@@ -279,7 +335,10 @@ fn visit_call_expr(
             false,
             parent_id.map(str::to_owned),
           );
-          visit_fn(fn_expr, &parent_id, text_info, test_module);
+          if !should_recurse {
+            return;
+          }
+          visit_fn(fn_expr, &parent_id, text_info, test_module, is_describe);
         }
       }
       _ => {
@@ -306,6 +365,7 @@ struct TestStepCollector<'a> {
   parent_id: &'a str,
   text_info: &'a SourceTextInfo,
   test_module: &'a mut TestModule,
+  is_describe: bool,
 }
 
 impl<'a> TestStepCollector<'a> {
@@ -315,6 +375,7 @@ impl<'a> TestStepCollector<'a> {
     parent_id: &'a str,
     text_info: &'a SourceTextInfo,
     test_module: &'a mut TestModule,
+    is_describe: bool,
   ) -> Self {
     let mut vars = HashSet::new();
     if let Some(var) = maybe_step_var {
@@ -326,48 +387,63 @@ impl<'a> TestStepCollector<'a> {
       parent_id,
       text_info,
       test_module,
+      is_describe,
     }
   }
 }
 
 impl Visit for TestStepCollector<'_> {
   fn visit_call_expr(&mut self, node: &ast::CallExpr) {
-    if let ast::Callee::Expr(callee_expr) = &node.callee {
-      match callee_expr.as_ref() {
-        // Identify calls to identified variables
+    let ast::Callee::Expr(callee_expr) = &node.callee else {
+      return;
+    };
+    let mut prop_chain = ["", ""];
+    let mut current_segment = callee_expr.as_ref();
+    let mut rightmost_symbol_range = None;
+    for (i, name) in prop_chain.iter_mut().enumerate().rev() {
+      match current_segment {
         ast::Expr::Ident(ident) => {
-          if self.vars.contains(&ident.sym.to_string()) {
-            visit_call_expr(
-              node,
-              None,
-              source_range_to_lsp_range(&ident.range(), self.text_info),
-              Some(self.parent_id),
-              self.text_info,
-              self.test_module,
-            );
-          }
+          *name = ident.sym.as_str();
+          rightmost_symbol_range.get_or_insert_with(|| ident.range());
+          break;
         }
-        // Identify calls to `test.step()`
         ast::Expr::Member(member_expr) => {
-          if let Some(test_context) = &self.maybe_test_context
-            && let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop
-            && ns_prop_ident.sym.eq("step")
-            && let ast::Expr::Ident(ident) = member_expr.obj.as_ref()
-            && ident.sym == *test_context
-          {
-            visit_call_expr(
-              node,
-              None,
-              source_range_to_lsp_range(&ns_prop_ident.range(), self.text_info),
-              Some(self.parent_id),
-              self.text_info,
-              self.test_module,
-            );
+          if i == 0 {
+            return;
           }
+          let ast::MemberProp::Ident(right) = &member_expr.prop else {
+            return;
+          };
+          *name = right.sym.as_str();
+          rightmost_symbol_range.get_or_insert_with(|| right.range());
+          current_segment = &member_expr.obj;
         }
-        _ => (),
+        _ => return,
       }
     }
+    let Some(rightmost_symbol_range) = rightmost_symbol_range else {
+      debug_assert!(false, "rightmost symbol range should always be defined");
+      return;
+    };
+    match (
+      self.is_describe,
+      self.maybe_test_context.as_deref(),
+      prop_chain,
+    ) {
+      (true, _, ["", "it"] | ["it", "ignore" | "only" | "skip"]) => {}
+      (false, Some(c), [s, "step"]) if s == c => {}
+      (false, _, ["", s]) if self.vars.contains(s) => {}
+      _ => return,
+    }
+    visit_call_expr(
+      node,
+      None,
+      source_range_to_lsp_range(&rightmost_symbol_range, self.text_info),
+      Some(self.parent_id),
+      self.text_info,
+      self.test_module,
+      self.is_describe,
+    );
   }
 
   fn visit_var_decl(&mut self, node: &ast::VarDecl) {
@@ -460,88 +536,54 @@ impl TestCollector {
 
 impl Visit for TestCollector {
   fn visit_call_expr(&mut self, node: &ast::CallExpr) {
-    fn visit_if_deno_test(
-      collector: &mut TestCollector,
-      node: &ast::CallExpr,
-      range: &deno_ast::SourceRange,
-      ns_prop_ident: &ast::IdentName,
-      member_expr: &ast::MemberExpr,
-    ) {
-      if ns_prop_ident.sym == "test" {
-        let ast::Expr::Ident(ident) = member_expr.obj.as_ref() else {
-          return;
-        };
-
-        if ident.sym != "Deno" {
-          return;
-        }
-
-        visit_call_expr(
-          node,
-          Some(&collector.fns),
-          source_range_to_lsp_range(range, &collector.text_info),
-          None,
-          &collector.text_info,
-          &mut collector.test_module,
-        );
-      }
-    }
-
     let ast::Callee::Expr(callee_expr) = &node.callee else {
       return;
     };
-
-    match callee_expr.as_ref() {
-      ast::Expr::Ident(ident) => {
-        if self.vars.contains(&ident.sym.to_string()) {
-          visit_call_expr(
-            node,
-            Some(&self.fns),
-            source_range_to_lsp_range(&ident.range(), &self.text_info),
-            None,
-            &self.text_info,
-            &mut self.test_module,
-          );
+    let mut prop_chain = ["", "", ""];
+    let mut current_segment = callee_expr.as_ref();
+    let mut rightmost_symbol_range = None;
+    for (i, name) in prop_chain.iter_mut().enumerate().rev() {
+      match current_segment {
+        ast::Expr::Ident(ident) => {
+          *name = ident.sym.as_str();
+          rightmost_symbol_range.get_or_insert_with(|| ident.range());
+          break;
         }
-      }
-      ast::Expr::Member(member_expr) => {
-        let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop else {
-          return;
-        };
-
-        let ns_prop_ident_name = ns_prop_ident.sym.to_string();
-
-        visit_if_deno_test(
-          self,
-          node,
-          &ns_prop_ident.range(),
-          ns_prop_ident,
-          member_expr,
-        );
-
-        if ns_prop_ident_name == "ignore" || ns_prop_ident_name == "only" {
-          let ast::Expr::Member(child_member_expr) = member_expr.obj.as_ref()
-          else {
+        ast::Expr::Member(member_expr) => {
+          if i == 0 {
+            return;
+          }
+          let ast::MemberProp::Ident(right) = &member_expr.prop else {
             return;
           };
-
-          let ast::MemberProp::Ident(child_ns_prop_ident) =
-            &child_member_expr.prop
-          else {
-            return;
-          };
-
-          visit_if_deno_test(
-            self,
-            node,
-            &ns_prop_ident.range(),
-            child_ns_prop_ident,
-            child_member_expr,
-          );
+          *name = right.sym.as_str();
+          rightmost_symbol_range.get_or_insert_with(|| right.range());
+          current_segment = &member_expr.obj;
         }
+        _ => return,
       }
-      _ => (),
     }
+    let Some(rightmost_symbol_range) = rightmost_symbol_range else {
+      debug_assert!(false, "rightmost symbol range should always be defined");
+      return;
+    };
+    let is_describe = match prop_chain {
+      ["", "Deno", "test"] | ["Deno", "test", "ignore" | "only"] => false,
+      ["", "", "describe"] | ["", "describe", "ignore" | "only" | "skip"] => {
+        true
+      }
+      ["", "", s] if self.vars.contains(s) => false,
+      _ => return,
+    };
+    visit_call_expr(
+      node,
+      Some(&self.fns),
+      source_range_to_lsp_range(&rightmost_symbol_range, &self.text_info),
+      None,
+      &self.text_info,
+      &mut self.test_module,
+      is_describe,
+    );
   }
 
   fn visit_var_decl(&mut self, node: &ast::VarDecl) {
@@ -620,6 +662,7 @@ impl Visit for TestCollector {
 pub mod tests {
   use deno_core::resolve_url;
   use lsp::Position;
+  use pretty_assertions::assert_eq;
 
   use super::*;
   use crate::lsp::testing::definitions::TestDefinition;
@@ -1174,6 +1217,126 @@ pub mod tests {
             }
           ),
         ].into_iter().collect(),
+      }
+    );
+  }
+
+  #[test]
+  fn test_test_collector_describe_it() {
+    let test_module = collect(
+      r#"
+      describe("foo", () => {
+        it("foo step 1", () => {});
+        it.ignore("foo step 2", () => {});
+        it.only("foo step 3", () => {});
+        it.skip("foo step 4", () => {});
+      });
+      describe.ignore("bar", () => {});
+      describe.only("baz", () => {});
+      describe.skip("qux", () => {});
+    "#,
+    );
+    assert_eq!(
+      &test_module,
+      &TestModule {
+        specifier: test_module.specifier.clone(),
+        defs: vec![
+          (
+            "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
+            TestDefinition {
+              id: "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
+              name: "foo".to_string(),
+              range: Some(new_range(1, 6, 1, 14)),
+              is_dynamic: false,
+              parent_id: None,
+              step_ids: [
+                "757cd9c4ee3042df742884fd8ebc3f8f60a523c13f09f2b425112424d704d1c1".to_string(),
+                "5be2a4c1f46c2efb816381a3b1a22fe271f59a91e695ad6324780168d9ed17b1".to_string(),
+                "821a21d7a8c0a0c09538ad10e683a8ea5907d14048d0ee264bcc300efb86f09d".to_string(),
+                "778232aa6936db81c7f94c67c7ec9c60340f5aea76247fa183798264b690ef56".to_string(),
+              ].into_iter().collect(),
+            },
+          ),
+          (
+            "821a21d7a8c0a0c09538ad10e683a8ea5907d14048d0ee264bcc300efb86f09d".to_string(),
+            TestDefinition {
+              id: "821a21d7a8c0a0c09538ad10e683a8ea5907d14048d0ee264bcc300efb86f09d".to_string(),
+              name: "foo step 1".to_string(),
+              range: Some(new_range(2, 8, 2, 10)),
+              is_dynamic: false,
+              parent_id: Some("87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string()),
+              step_ids: Default::default(),
+            },
+          ),
+          (
+            "778232aa6936db81c7f94c67c7ec9c60340f5aea76247fa183798264b690ef56".to_string(),
+            TestDefinition {
+              id: "778232aa6936db81c7f94c67c7ec9c60340f5aea76247fa183798264b690ef56".to_string(),
+              name: "foo step 2".to_string(),
+              range: Some(new_range(3, 11, 3, 17)),
+              is_dynamic: false,
+              parent_id: Some("87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string()),
+              step_ids: Default::default(),
+            },
+          ),
+          (
+            "5be2a4c1f46c2efb816381a3b1a22fe271f59a91e695ad6324780168d9ed17b1".to_string(),
+            TestDefinition {
+              id: "5be2a4c1f46c2efb816381a3b1a22fe271f59a91e695ad6324780168d9ed17b1".to_string(),
+              name: "foo step 3".to_string(),
+              range: Some(new_range(4, 11, 4, 15)),
+              is_dynamic: false,
+              parent_id: Some("87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string()),
+              step_ids: Default::default(),
+            },
+          ),
+          (
+            "757cd9c4ee3042df742884fd8ebc3f8f60a523c13f09f2b425112424d704d1c1".to_string(),
+            TestDefinition {
+              id: "757cd9c4ee3042df742884fd8ebc3f8f60a523c13f09f2b425112424d704d1c1".to_string(),
+              name: "foo step 4".to_string(),
+              range: Some(new_range(5, 11, 5, 15)),
+              is_dynamic: false,
+              parent_id: Some("87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string()),
+              step_ids: Default::default(),
+            },
+          ),
+          (
+            "4e3802608de755b3b67088cc5146f14f5a5757f050f7f506b9c33e94eb4b7c73".to_string(),
+            TestDefinition {
+              id: "4e3802608de755b3b67088cc5146f14f5a5757f050f7f506b9c33e94eb4b7c73".to_string(),
+              name: "qux".to_string(),
+              range: Some(new_range(9, 15, 9, 19)),
+              is_dynamic: false,
+              parent_id: None,
+              step_ids: Default::default(),
+            },
+          ),
+          (
+            "e1bd61cdaf5e64863d3d85baffe3e43bd57cdb8dc0b5d6a9e03ade18b7f68d47".to_string(),
+            TestDefinition {
+              id: "e1bd61cdaf5e64863d3d85baffe3e43bd57cdb8dc0b5d6a9e03ade18b7f68d47".to_string(),
+              name: "bar".to_string(),
+              range: Some(new_range(7, 15, 7, 21)),
+              is_dynamic: false,
+              parent_id: None,
+              step_ids: Default::default(),
+            },
+          ),
+          (
+            "3899772fca803def19cb92f852057a0117e3dfdd0dc6cd25e9180bef221605d4".to_string(),
+            TestDefinition {
+              id: "3899772fca803def19cb92f852057a0117e3dfdd0dc6cd25e9180bef221605d4".to_string(),
+              name: "baz".to_string(),
+              range: Some(new_range(8, 15, 8, 19)),
+              is_dynamic: false,
+              parent_id: None,
+              step_ids: Default::default(),
+            },
+          ),
+        ]
+        .into_iter()
+        .collect(),
       }
     );
   }
