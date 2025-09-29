@@ -1709,6 +1709,7 @@ fn pkg_json_to_version_info(
       .as_ref()
       .map(|d| parse_stack_string_array(d))
       .unwrap_or_default(),
+    bundled_dependencies: Vec::new(),
     optional_dependencies: parse_deps(pkg_json.optional_dependencies.as_ref()),
     peer_dependencies: parse_deps(pkg_json.peer_dependencies.as_ref()),
     peer_dependencies_meta: pkg_json
@@ -3244,6 +3245,7 @@ mod test {
           StackString::from_static("1")
         )]),
         bundle_dependencies: Vec::from([StackString::from_static("my-dep")]),
+        bundled_dependencies: Vec::new(),
         optional_dependencies: HashMap::from([(
           StackString::from_static("optional-dep"),
           StackString::from_static("~1")
