@@ -86,7 +86,10 @@ impl FileSystem for RealFs {
     access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn File>> {
     let std_file = open_with_access_check(options, path, access_check)?;
-    Ok(Rc::new(StdFileResourceInner::file(std_file)))
+    Ok(Rc::new(StdFileResourceInner::file(
+      std_file,
+      Some(path.to_path_buf()),
+    )))
   }
   async fn open_async<'a>(
     &'a self,
@@ -95,7 +98,10 @@ impl FileSystem for RealFs {
     access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>> {
     let std_file = open_with_access_check(options, &path, access_check)?;
-    Ok(Rc::new(StdFileResourceInner::file(std_file)))
+    Ok(Rc::new(StdFileResourceInner::file(
+      std_file,
+      Some(path.to_path_buf()),
+    )))
   }
 
   fn mkdir_sync(

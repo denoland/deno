@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::io;
+use std::path::Path;
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -200,6 +201,10 @@ impl FsStat {
 
 #[async_trait::async_trait(?Send)]
 pub trait File {
+  /// Provides the path of the file, which is used for checking
+  /// metadata permission updates.
+  fn maybe_path(&self) -> Option<&Path>;
+
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize>;
   async fn read(self: Rc<Self>, limit: usize) -> FsResult<BufView> {
     let buf = BufMutView::new(limit);
