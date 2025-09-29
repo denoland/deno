@@ -1868,7 +1868,7 @@ pub async fn op_fs_file_truncate_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_futime_sync(
+pub fn op_fs_futime_sync<P: FsPermissions + 'static>(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[number] atime_secs: i64,
@@ -1878,12 +1878,19 @@ pub fn op_fs_futime_sync(
 ) -> Result<(), FsOpsError> {
   let file =
     FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state.borrow::<P>().check_open(
+      Cow::Borrowed(path),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.FsFile.prototype.utimeSync()",
+    )?;
+  }
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
 
 #[op2(async)]
-pub async fn op_fs_futime_async(
+pub async fn op_fs_futime_async<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[number] atime_secs: i64,
@@ -1893,6 +1900,13 @@ pub async fn op_fs_futime_async(
 ) -> Result<(), FsOpsError> {
   let file = FileResource::get_file(&state.borrow(), rid)
     .map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state.borrow().borrow::<P>().check_open(
+      Cow::Borrowed(path),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.FsFile.prototype.utime()",
+    )?;
+  }
   file
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;
