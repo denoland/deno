@@ -204,13 +204,13 @@ pub async fn compile_eszip(
   };
 
   let transpile_and_emit_options = compiler_options_resolver
-    .for_specifier(cli_options.workspace().root_dir())
+    .for_specifier(cli_options.workspace().root_dir_url())
     .transpile_options()?;
   let transpile_options = transpile_and_emit_options.transpile.clone();
   let emit_options = transpile_and_emit_options.emit.clone();
 
   let parser = parsed_source_cache.as_capturing_parser();
-  let root_dir_url = cli_options.workspace().root_dir();
+  let root_dir_url = cli_options.workspace().root_dir_url();
   log::debug!("Binary root dir: {}", root_dir_url);
   let relative_file_base = eszip::EszipRelativeFileBaseUrl::new(root_dir_url);
   let mut eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
@@ -483,6 +483,7 @@ fn get_os_specific_filepath(
 #[cfg(test)]
 mod test {
   use deno_npm::registry::TestNpmRegistryApi;
+  use deno_npm::resolution::NpmVersionResolver;
 
   pub use super::*;
   use crate::http_util::HttpClientProvider;
@@ -491,7 +492,9 @@ mod test {
   async fn resolve_compile_executable_output_path_target_linux() {
     let http_client = HttpClientProvider::new(None, None);
     let npm_api = TestNpmRegistryApi::default();
-    let bin_name_resolver = BinNameResolver::new(&http_client, &npm_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let bin_name_resolver =
+      BinNameResolver::new(&http_client, &npm_api, &npm_version_resolver);
     let path = resolve_compile_executable_output_path(
       &bin_name_resolver,
       &CompileFlags {
@@ -520,7 +523,9 @@ mod test {
   async fn resolve_compile_executable_output_path_target_windows() {
     let http_client = HttpClientProvider::new(None, None);
     let npm_api = TestNpmRegistryApi::default();
-    let bin_name_resolver = BinNameResolver::new(&http_client, &npm_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let bin_name_resolver =
+      BinNameResolver::new(&http_client, &npm_api, &npm_version_resolver);
     let path = resolve_compile_executable_output_path(
       &bin_name_resolver,
       &CompileFlags {

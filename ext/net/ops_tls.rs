@@ -28,6 +28,7 @@ use deno_error::JsErrorBox;
 use deno_permissions::OpenAccessKind;
 use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
+use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeyLookup;
 use deno_tls::TlsKeys;
@@ -40,8 +41,8 @@ use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::pki_types::ServerName;
 pub use rustls_tokio_stream::TlsStream;
-use rustls_tokio_stream::TlsStreamRead;
-use rustls_tokio_stream::TlsStreamWrite;
+pub use rustls_tokio_stream::TlsStreamRead;
+pub use rustls_tokio_stream::TlsStreamWrite;
 use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -232,6 +233,7 @@ pub struct ConnectTlsArgs {
   ca_certs: Vec<String>,
   alpn_protocols: Option<Vec<String>>,
   server_name: Option<String>,
+  unsafely_disable_hostname_verification: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -242,6 +244,7 @@ pub struct StartTlsArgs {
   hostname: String,
   alpn_protocols: Option<Vec<String>>,
   reject_unauthorized: Option<bool>,
+  unsafely_disable_hostname_verification: Option<bool>,
 }
 
 #[op2]
@@ -266,7 +269,7 @@ pub fn op_tls_key_static(
 
 #[op2]
 pub fn op_tls_cert_resolver_create<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Array> {
   let (resolver, lookup) = new_resolver();
   let resolver = deno_core::cppgc::make_cppgc_object(
@@ -343,6 +346,9 @@ where
     Some(Vec::new())
   };
 
+  let unsafely_disable_hostname_verification =
+    args.unsafely_disable_hostname_verification.unwrap_or(false);
+
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
@@ -367,13 +373,14 @@ where
 
   let tls_null = TlsKeysHolder::from(TlsKeys::Null);
   let key_pair = key_pair.unwrap_or(&tls_null);
-  let mut tls_config = create_client_config(
+  let mut tls_config = create_client_config(TlsClientConfigOptions {
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    key_pair.take(),
-    SocketUse::GeneralSsl,
-  )?;
+    unsafely_disable_hostname_verification,
+    cert_chain_and_key: key_pair.take(),
+    socket_use: SocketUse::GeneralSsl,
+  })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
@@ -413,6 +420,8 @@ where
     .borrow()
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
+  let unsafely_disable_hostname_verification =
+    args.unsafely_disable_hostname_verification.unwrap_or(false);
 
   let cert_file = {
     let mut s = state.borrow_mut();
@@ -466,13 +475,14 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let mut tls_config = create_client_config(
+  let mut tls_config = create_client_config(TlsClientConfigOptions {
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    key_pair.take(),
-    SocketUse::GeneralSsl,
-  )?;
+    unsafely_disable_hostname_verification,
+    cert_chain_and_key: key_pair.take(),
+    socket_use: SocketUse::GeneralSsl,
+  })?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
@@ -504,6 +514,7 @@ pub struct ListenTlsArgs {
   reuse_port: bool,
   #[serde(default)]
   load_balanced: bool,
+  tcp_backlog: i32,
 }
 
 #[op2(stack_trace)]
@@ -533,9 +544,9 @@ where
     .ok_or(NetError::NoResolvedAddress)?;
 
   let tcp_listener = if args.load_balanced {
-    TcpListener::bind_load_balanced(bind_addr)
+    TcpListener::bind_load_balanced(bind_addr, args.tcp_backlog)
   } else {
-    TcpListener::bind_direct(bind_addr, args.reuse_port)
+    TcpListener::bind_direct(bind_addr, args.reuse_port, args.tcp_backlog)
   }?;
   let local_addr = tcp_listener.local_addr()?;
   let alpn = args

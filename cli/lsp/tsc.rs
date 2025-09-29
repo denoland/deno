@@ -280,7 +280,7 @@ impl<'a> ToV8<'a> for ChangeKind {
   type Error = Infallible;
   fn to_v8(
     self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     Smi(self as u8).to_v8(scope)
   }
@@ -309,7 +309,7 @@ impl<'a> ToV8<'a> for PendingChange {
   type Error = Infallible;
   fn to_v8(
     self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     let modified_scripts = {
       let mut modified_scripts_v8 =
@@ -421,8 +421,6 @@ impl PendingChange {
     }
   }
 }
-
-pub type MaybeAmbientModules = Option<Vec<String>>;
 
 impl TsServer {
   pub fn new(performance: Arc<Performance>) -> Self {
@@ -538,46 +536,55 @@ impl TsServer {
   pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
-    modules: &[Arc<DocumentModule>],
+    module: &DocumentModule,
     token: &CancellationToken,
-  ) -> Result<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules), AnyError>
-  {
-    let Some((compiler_options_key, scope, notebook_uri)) =
-      modules.first().map(|m| {
-        (
-          &m.compiler_options_key,
-          m.scope.as_ref(),
-          m.notebook_uri.as_ref(),
-        )
-      })
-    else {
-      return Ok(Default::default());
-    };
-    let specifiers = modules
-      .iter()
-      .map(|m| self.specifier_map.denormalize(&m.specifier, m.media_type))
-      .collect();
-    let req =
-      TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
+  ) -> Result<Vec<crate::tsc::Diagnostic>, AnyError> {
+    let req = TscRequest::GetDiagnostics((
+      self
+        .specifier_map
+        .denormalize(&module.specifier, module.media_type),
+      snapshot.project_version,
+    ));
     self
-      .request::<(Vec<Vec<crate::tsc::Diagnostic>>, MaybeAmbientModules)>(
+      .request::<Vec<crate::tsc::Diagnostic>>(
         snapshot,
         req,
-        compiler_options_key,
-        scope,
-        notebook_uri,
+        &module.compiler_options_key,
+        module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
-      .and_then(|(mut diagnostics, ambient_modules)| {
-        for diagnostic in diagnostics.iter_mut().flatten() {
+      .and_then(|mut diagnostics| {
+        for diagnostic in &mut diagnostics {
           if token.is_cancelled() {
             return Err(anyhow!("request cancelled"));
           }
           normalize_diagnostic(diagnostic, &self.specifier_map)?;
         }
-        Ok((diagnostics, ambient_modules))
+        Ok(diagnostics)
       })
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn get_ambient_modules(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    compiler_options_key: &CompilerOptionsKey,
+    notebook_uri: Option<&Arc<Uri>>,
+    token: &CancellationToken,
+  ) -> Result<Vec<String>, AnyError> {
+    let req = TscRequest::GetAmbientModules;
+    self
+      .request::<Vec<String>>(
+        snapshot.clone(),
+        req,
+        compiler_options_key,
+        None,
+        notebook_uri,
+        token,
+      )
+      .await
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -764,7 +771,7 @@ impl TsServer {
     trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
     token: &CancellationToken,
-  ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
+  ) -> Result<Vec<ApplicableRefactorInfo>, AnyError> {
     let trigger_kind = trigger_kind.map(|reason| match reason {
       lsp::CodeActionTriggerKind::INVOKED => "invoked",
       lsp::CodeActionTriggerKind::AUTOMATIC => "implicit",
@@ -792,10 +799,6 @@ impl TsServer {
         token,
       )
       .await
-      .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -2104,12 +2107,11 @@ impl DocumentSpan {
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(
-        &target_specifier,
-        module.scope.as_deref(),
-      )?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
         (
@@ -2148,12 +2150,11 @@ impl DocumentSpan {
     language_server: &language_server::Inner,
   ) -> Option<ModuleSpecifier> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(
-        &target_specifier,
-        module.scope.as_deref(),
-      )?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
     let range = self.text_span.to_range(target_module.line_index.clone());
     let mut target = uri_to_url(&target_module.uri);
     target.set_fragment(Some(&format!(
@@ -2206,12 +2207,15 @@ impl NavigateToItem {
   pub fn to_symbol_information(
     &self,
     scope: Option<&Url>,
+    compiler_options_key: &CompilerOptionsKey,
     language_server: &language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(&target_specifier, scope)?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      scope,
+      Some(compiler_options_key),
+    )?;
     let range = self.text_span.to_range(target_module.line_index.clone());
     let location = lsp::Location {
       uri: target_module.uri.as_ref().clone(),
@@ -2255,11 +2259,11 @@ impl InlayHintDisplayPart {
   ) -> lsp::InlayHintLabelPart {
     let location = self.file.as_ref().and_then(|f| {
       let target_specifier = resolve_url(f).ok()?;
-      let target_module = language_server
-        .document_modules
-        .inspect_module_for_specifier(
+      let target_module =
+        language_server.document_modules.module_for_specifier(
           &target_specifier,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )?;
       let range = self
         .span
@@ -2581,11 +2585,11 @@ impl RenameLocation {
         includes_non_files = true;
         continue;
       }
-      let Some(target_module) = language_server
-        .document_modules
-        .inspect_module_for_specifier(
+      let Some(target_module) =
+        language_server.document_modules.module_for_specifier(
           &target_specifier,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )
       else {
         continue;
@@ -2802,14 +2806,11 @@ impl FileTextChanges {
     let target_module = if is_new_file {
       None
     } else {
-      Some(
-        language_server
-          .document_modules
-          .inspect_module_for_specifier(
-            &target_specifier,
-            module.scope.as_deref(),
-          )?,
-      )
+      Some(language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+        Some(&module.compiler_options_key),
+      )?)
     };
     let target_uri = target_module
       .as_ref()
@@ -2847,14 +2848,11 @@ impl FileTextChanges {
     let target_module = if is_new_file {
       None
     } else {
-      Some(
-        language_server
-          .document_modules
-          .inspect_module_for_specifier(
-            &target_specifier,
-            module.scope.as_deref(),
-          )?,
-      )
+      Some(language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+        Some(&module.compiler_options_key),
+      )?)
     };
     let target_uri = target_module
       .as_ref()
@@ -3306,12 +3304,11 @@ impl ReferenceEntry {
     let target_module = if target_specifier == *module.specifier {
       module.clone()
     } else {
-      language_server
-        .document_modules
-        .inspect_module_for_specifier(
-          &target_specifier,
-          module.scope.as_deref(),
-        )?
+      language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+        Some(&module.compiler_options_key),
+      )?
     };
     Some(lsp::Location {
       uri: target_module.uri.as_ref().clone(),
@@ -3364,12 +3361,11 @@ impl CallHierarchyItem {
     maybe_root_path: Option<&Path>,
   ) -> Option<(lsp::CallHierarchyItem, Arc<DocumentModule>)> {
     let target_specifier = resolve_url(&self.file).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_for_specifier(
-        &target_specifier,
-        module.scope.as_deref(),
-      )?;
+    let target_module = language_server.document_modules.module_for_specifier(
+      &target_specifier,
+      module.scope.as_deref(),
+      Some(&module.compiler_options_key),
+    )?;
 
     let use_file_name = self.is_source_file_item();
     let maybe_file_path = url_to_file_path(&target_module.specifier).ok();
@@ -4723,7 +4719,7 @@ struct LoadResponse {
 
 #[op2]
 fn op_load<'s>(
-  scope: &'s mut v8::HandleScope,
+  scope: &'s mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   #[string] specifier: &str,
 ) -> Result<v8::Local<'s, v8::Value>, LoadError> {
@@ -4815,7 +4811,7 @@ impl<'a> ToV8<'a> for TscRequestArray {
 
   fn to_v8(
     self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     let id = self.id.to_v8(scope).unwrap_infallible();
 
@@ -5280,7 +5276,7 @@ impl TscRuntime {
   fn new(mut js_runtime: JsRuntime) -> Self {
     let server_main_loop_fn_global = {
       let context = js_runtime.main_context();
-      let scope = &mut js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut js_runtime);
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
       let server_main_loop_fn_str =
@@ -5317,7 +5313,7 @@ fn run_tsc_thread(
     request_rx,
     enable_tracing,
   ));
-  let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
+  let tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
@@ -5328,7 +5324,7 @@ fn run_tsc_thread(
   if let Some(server) = maybe_inspector_server {
     server.register_inspector(
       "ext:deno_tsc/99_main_compiler.js".to_string(),
-      &mut tsc_runtime,
+      tsc_runtime.inspector(),
       false,
     );
   }
@@ -5365,7 +5361,7 @@ fn run_tsc_thread(
       let mut runtime = tsc_runtime.lock().await;
       let main_loop = runtime.server_main_loop_fn_global.clone();
       let args = {
-        let scope = &mut runtime.js_runtime.handle_scope();
+        deno_core::scope!(scope, &mut runtime.js_runtime);
         let enable_debug_local =
           v8::Local::<v8::Value>::from(v8::Boolean::new(scope, enable_debug));
         [v8::Global::new(scope, enable_debug_local)]
@@ -5772,8 +5768,9 @@ pub struct JsNull;
 
 #[derive(Debug, Clone, Serialize)]
 enum TscRequest {
-  GetDiagnostics((Vec<String>, usize)),
+  GetDiagnostics((String, usize)),
 
+  GetAmbientModules,
   CleanupSemanticCache,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
   FindReferences((String, u32)),
@@ -5885,13 +5882,14 @@ impl TscRequest {
   /// function
   fn to_server_request<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), serde_v8::Error>
   {
     let args = match self {
       TscRequest::GetDiagnostics(args) => {
         ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))
       }
+      TscRequest::GetAmbientModules => ("$getAmbientModules", None),
       TscRequest::FindReferences(args) => {
         ("findReferences", Some(serde_v8::to_v8(scope, args)?))
       }
@@ -5986,6 +5984,7 @@ impl TscRequest {
   fn method(&self) -> &'static str {
     match self {
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
+      TscRequest::GetAmbientModules => "$getAmbientModules",
       TscRequest::CleanupSemanticCache => "$cleanupSemanticCache",
       TscRequest::FindReferences(_) => "findReferences",
       TscRequest::GetNavigationTree(_) => "getNavigationTree",
@@ -6064,6 +6063,7 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let compiler_options_resolver =
       Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let linter_resolver = Arc::new(LspLinterResolver::new(
       &config,
       &compiler_options_resolver,
@@ -6171,29 +6171,23 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
-          "start": {
-            "line": 0,
-            "character": 0,
-          },
-          "end": {
-            "line": 0,
-            "character": 7
-          },
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 7 },
           "fileName": specifier,
           "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the \'lib\' compiler option to include 'dom'.",
           "sourceLine": "console.log(\"hello deno\");",
           "category": 1,
-          "code": 2584
+          "code": 2584,
         }
-      ]]),
+      ]),
     );
   }
 
@@ -6226,11 +6220,11 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[tokio::test]
@@ -6264,11 +6258,11 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[tokio::test]
@@ -6298,13 +6292,13 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 1,
@@ -6321,7 +6315,7 @@ mod tests {
           "code": 6133,
           "reportsUnnecessary": true,
         }
-      ]]),
+      ]),
     );
   }
 
@@ -6356,11 +6350,11 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[tokio::test]
@@ -6397,13 +6391,13 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 1,
@@ -6435,7 +6429,7 @@ mod tests {
           "category": 1,
           "code": 1109
         }
-      ]]),
+      ]),
     );
   }
 
@@ -6464,13 +6458,13 @@ mod tests {
         None,
       )
       .unwrap();
-    let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 0,
@@ -6486,7 +6480,7 @@ mod tests {
           "category": 1,
           "code": 1003,
         }
-      ]]),
+      ]),
     );
   }
 
@@ -6528,13 +6522,13 @@ mod tests {
       .document_modules
       .module_for_specifier(&specifier, scope, None)
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
-      json!([[
+      json!([
         {
           "start": {
             "line": 2,
@@ -6550,7 +6544,7 @@ mod tests {
           "code": 2339,
           "category": 1,
         }
-      ]]),
+      ]),
     );
     let dep_document = snapshot
       .document_modules
@@ -6591,11 +6585,11 @@ mod tests {
       .document_modules
       .module_for_specifier(&specifier, scope, None)
       .unwrap();
-    let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot.clone(), &[module], &Default::default())
+    let diagnostics = ts_server
+      .get_diagnostics(snapshot.clone(), &module, &Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!([[]]));
+    assert_eq!(json!(diagnostics), json!([]));
   }
 
   #[test]

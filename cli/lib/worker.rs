@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
 use deno_path_util::url_from_file_path;
@@ -330,7 +331,7 @@ pub struct LibMainWorkerOptions {
   pub has_node_modules_dir: bool,
   pub inspect_brk: bool,
   pub inspect_wait: bool,
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
   pub is_inspecting: bool,
   /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
@@ -365,6 +366,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
+  maybe_coverage_dir: Option<PathBuf>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
@@ -376,6 +378,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   storage_key_resolver: StorageKeyResolver,
   sys: TSys,
   options: LibMainWorkerOptions,
+  bundle_provider: Option<Arc<dyn BundleProvider>>,
 }
 
 impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
@@ -504,9 +507,10 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         worker_type: args.worker_type,
         stdio: stdio.clone(),
         cache_storage_dir,
-        strace_ops: shared.options.strace_ops.clone(),
+        trace_ops: shared.options.trace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
         enable_raw_imports: shared.options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
       };
@@ -528,6 +532,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
+    maybe_coverage_dir: Option<PathBuf>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<
@@ -540,6 +545,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     sys: TSys,
     options: LibMainWorkerOptions,
     roots: LibWorkerFactoryRoots,
+    bundle_provider: Option<Arc<dyn BundleProvider>>,
   ) -> Self {
     Self {
       shared: Arc::new(LibWorkerFactorySharedState {
@@ -550,6 +556,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         deno_rt_native_addon_loader,
         feature_checker,
         fs,
+        maybe_coverage_dir,
         maybe_inspector_server,
         module_loader_factory,
         node_resolver,
@@ -560,6 +567,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         storage_key_resolver,
         sys,
         options,
+        bundle_provider,
       }),
     }
   }
@@ -646,6 +654,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       feature_checker,
       permissions,
       v8_code_cache: shared.code_cache.clone(),
+      bundle_provider: shared.bundle_provider.clone(),
     };
 
     let options = WorkerOptions {
@@ -690,7 +699,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
-      strace_ops: shared.options.strace_ops.clone(),
+      trace_ops: shared.options.trace_ops.clone(),
       cache_storage_dir,
       origin_storage_dir,
       stdio,
@@ -811,37 +820,37 @@ impl LibMainWorker {
   }
 
   #[inline]
-  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
-    self.worker.create_inspector_session()
+  pub fn create_inspector_session(
+    &mut self,
+    cb: deno_core::InspectorSessionSend,
+  ) -> LocalInspectorSession {
+    self.worker.create_inspector_session(cb)
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_load_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_load_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, Box<JsError>> {
     self.worker.dispatch_beforeunload_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
+  pub fn dispatch_process_beforeexit_event(
+    &mut self,
+  ) -> Result<bool, Box<JsError>> {
     self.worker.dispatch_process_beforeexit_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_unload_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_unload_event()
   }
 
   #[inline]
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), Box<JsError>> {
     self.worker.dispatch_process_exit_event()
   }
 

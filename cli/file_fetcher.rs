@@ -397,6 +397,7 @@ mod tests {
         "content-type".to_string(),
         "application/javascript".to_string(),
       )])),
+      loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
     };
     file_fetcher.insert_memory_files(file.clone());
 

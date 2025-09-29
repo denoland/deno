@@ -4,8 +4,29 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
-import { ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH } from "ext:deno_node/internal/errors.ts";
-import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
+import {
+  ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH,
+  ERR_INVALID_ARG_TYPE,
+} from "ext:deno_node/internal/errors.ts";
+import { core } from "ext:core/mod.js";
+
+const {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} = core;
+
+function validateBuffer(
+  buf: unknown,
+  name: string,
+): asserts buf is ArrayBufferLike | ArrayBufferView {
+  if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      name,
+      ["Buffer", "ArrayBuffer", "TypedArray", "DataView"],
+      buf,
+    );
+  }
+}
 
 function toDataView(ab: ArrayBufferLike | ArrayBufferView): DataView {
   if (ArrayBuffer.isView(ab)) {

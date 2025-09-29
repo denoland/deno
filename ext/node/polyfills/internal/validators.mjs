@@ -210,27 +210,22 @@ function validateBoolean(value, name) {
   }
 }
 
-/**
- * @param {unknown} value
- * @param {string} name
- * @param {unknown[]} oneOf
- */
-const validateOneOf = hideStackFrames(
-  (value, name, oneOf) => {
-    if (!ArrayPrototypeIncludes(oneOf, value)) {
-      const allowed = ArrayPrototypeJoin(
-        ArrayPrototypeMap(
-          oneOf,
-          (v) => (typeof v === "string" ? `'${v}'` : String(v)),
-        ),
-        ", ",
-      );
-      const reason = "must be one of: " + allowed;
+/** @typedef {<T>(value: unknown, name: string, oneOf: readonly T[]) => asserts value is T} ValidateOneOf */
+/** @type {ValidateOneOf} */
+const validateOneOf = hideStackFrames((value, name, oneOf) => {
+  if (!ArrayPrototypeIncludes(oneOf, value)) {
+    const allowed = ArrayPrototypeJoin(
+      ArrayPrototypeMap(
+        oneOf,
+        (v) => (typeof v === "string" ? `'${v}'` : String(v)),
+      ),
+      ", ",
+    );
+    const reason = "must be one of: " + allowed;
 
-      throw new codes.ERR_INVALID_ARG_VALUE(name, value, reason);
-    }
-  },
-);
+    throw new codes.ERR_INVALID_ARG_VALUE(name, value, reason);
+  }
+});
 
 export function validateEncoding(data, encoding) {
   const normalizedEncoding = normalizeEncoding(encoding);

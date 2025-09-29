@@ -7,13 +7,14 @@ use std::sync::Arc;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::WebIDL;
-use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use tokio::sync::Mutex;
 
 use super::device::GPUDevice;
 use crate::Instance;
+use crate::SameObject;
+use crate::error::GPUGenericError;
 use crate::webidl::GPUFeatureName;
 use crate::webidl::features_to_feature_names;
 
@@ -60,7 +61,10 @@ impl Drop for GPUAdapter {
   }
 }
 
-impl GarbageCollected for GPUAdapter {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUAdapter {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUAdapter"
   }
@@ -68,9 +72,15 @@ impl GarbageCollected for GPUAdapter {
 
 #[op2]
 impl GPUAdapter {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUAdapter, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[global]
-  fn info(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn info(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.id);
       let limits = self.instance.adapter_limits(self.id);
@@ -85,7 +95,10 @@ impl GPUAdapter {
 
   #[getter]
   #[global]
-  fn features(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn features(
+    &self,
+    scope: &mut v8::PinScope<'_, '_>,
+  ) -> v8::Global<v8::Object> {
     self.features.get(scope, |scope| {
       let features = self.instance.adapter_features(self.id);
       let features = features_to_feature_names(features);
@@ -95,7 +108,7 @@ impl GPUAdapter {
 
   #[getter]
   #[global]
-  fn limits(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn limits(&self, scope: &mut v8::PinScope<'_, '_>) -> v8::Global<v8::Object> {
     self.limits.get(scope, |_| {
       let adapter_limits = self.instance.adapter_limits(self.id);
       GPUSupportedLimits(adapter_limits)
@@ -107,8 +120,8 @@ impl GPUAdapter {
   fn request_device(
     &self,
     state: &mut OpState,
-    isolate_ptr: *mut v8::Isolate,
-    scope: &mut v8::HandleScope,
+    isolate: &v8::Isolate,
+    scope: &mut v8::PinScope<'_, '_>,
     #[webidl] descriptor: GPUDeviceDescriptor,
   ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
     let features = self.instance.adapter_features(self.id);
@@ -192,6 +205,9 @@ impl GPUAdapter {
     let context = v8::Global::new(scope, context);
 
     let task_device = device.clone();
+
+    // SAFETY: just grabbing the raw pointer
+    let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
     deno_unsync::spawn(async move {
       loop {
         // TODO(@crowlKats): check for uncaptured_receiver.is_closed instead once tokio is upgraded
@@ -206,8 +222,9 @@ impl GPUAdapter {
         };
 
         // SAFETY: eh, it's safe
-        let isolate: &mut v8::Isolate = unsafe { &mut *isolate_ptr };
-        let scope = &mut v8::HandleScope::with_context(isolate, &context);
+        let mut isolate =
+          unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate_ptr) };
+        v8::scope_with_context!(scope, &mut isolate, &context);
         let error = deno_core::error::to_v8_error(scope, &error);
 
         let error_event_class =
@@ -248,7 +265,10 @@ pub enum CreateDeviceError {
 
 pub struct GPUSupportedLimits(pub wgpu_types::Limits);
 
-impl GarbageCollected for GPUSupportedLimits {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUSupportedLimits {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUSupportedLimits"
   }
@@ -256,6 +276,12 @@ impl GarbageCollected for GPUSupportedLimits {
 
 #[op2]
 impl GPUSupportedLimits {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUSupportedLimits, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   fn maxTextureDimension1D(&self) -> u32 {
     self.0.max_texture_dimension_1d
@@ -409,7 +435,10 @@ impl GPUSupportedLimits {
 
 pub struct GPUSupportedFeatures(v8::Global<v8::Value>);
 
-impl GarbageCollected for GPUSupportedFeatures {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUSupportedFeatures {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUSupportedFeatures"
   }
@@ -417,7 +446,7 @@ impl GarbageCollected for GPUSupportedFeatures {
 
 impl GPUSupportedFeatures {
   pub fn new(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     features: HashSet<GPUFeatureName>,
   ) -> Self {
     let set = v8::Set::new(scope);
@@ -433,6 +462,12 @@ impl GPUSupportedFeatures {
 
 #[op2]
 impl GPUSupportedFeatures {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUSupportedFeatures, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[global]
   #[symbol("setlike_set")]
   fn set(&self) -> v8::Global<v8::Value> {
@@ -446,7 +481,10 @@ pub struct GPUAdapterInfo {
   pub subgroup_max_size: u32,
 }
 
-impl GarbageCollected for GPUAdapterInfo {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUAdapterInfo {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUAdapterInfo"
   }
@@ -454,6 +492,12 @@ impl GarbageCollected for GPUAdapterInfo {
 
 #[op2]
 impl GPUAdapterInfo {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUAdapterInfo, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn vendor(&self) -> String {

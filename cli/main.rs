@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use std::env;
 use std::future::Future;
 use std::io::IsTerminal;
+use std::io::Write as _;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -58,7 +59,6 @@ use factory::CliFactory;
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
-use self::args::load_env_variables_from_env_file;
 use self::util::draw_thread::DrawThread;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -67,6 +67,8 @@ use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
+use crate::util::watch_env_tracker::WatchEnvTracker;
+use crate::util::watch_env_tracker::load_env_variables_from_env_files;
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -131,7 +133,7 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Bundle(bundle_flags) => spawn_subcommand(async {
       log::warn!(
-        "⚠️ {} is experimental and subject to changes",
+        "⚠️  {} is experimental and subject to changes",
         colors::cyan("deno bundle")
       );
       tools::bundle::bundle(flags, bundle_flags).await
@@ -241,7 +243,28 @@ async fn run_subcommand(
       spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
-      if run_flags.is_stdin() {
+      if run_flags.print_task_list {
+        let task_flags = TaskFlags {
+          cwd: None,
+          task: None,
+          is_run: true,
+          recursive: false,
+          filter: None,
+          eval: false,
+        };
+        let mut flags = flags.deref().clone();
+        flags.subcommand = DenoSubcommand::Task(task_flags.clone());
+        writeln!(
+          &mut std::io::stdout(),
+          "Please specify a {} or a {}.\n",
+          colors::bold("[SCRIPT_ARG]"),
+          colors::bold("task name")
+        )?;
+        std::io::stdout().flush()?;
+        tools::task::execute_script(Arc::new(flags), task_flags)
+          .await
+          .map(|_| 1)
+      } else if run_flags.is_stdin() {
         // these futures are boxed to prevent stack overflows on Windows
         tools::run::run_from_stdin(flags.clone(), unconfigured_runtime, roots)
           .boxed_local()
@@ -295,9 +318,7 @@ async fn run_subcommand(
               .await;
             }
             let script_err_msg = script_err.to_string();
-            if script_err_msg.starts_with(MODULE_NOT_FOUND)
-              || script_err_msg.starts_with(UNSUPPORTED_SCHEME)
-            {
+            if should_fallback_on_run_error(script_err_msg.as_str()) {
               if run_flags.bare {
                 let mut cmd = args::clap_root();
                 cmd.build();
@@ -406,7 +427,7 @@ async fn run_subcommand(
       1,
     ),
     DenoSubcommand::Vendor => exit_with_message(
-      "⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
+      "⚠️  `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       1,
     ),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
@@ -435,6 +456,29 @@ async fn run_subcommand(
   };
 
   handle.await?
+}
+
+/// Determines whether a error encountered during `deno run`
+/// should trigger fallback behavior, such as attempting to run a Deno task
+/// with the same name.
+///
+/// Checks if the error message indicates a "module not found",
+/// "unsupported scheme", or certain OS-level import failures (such as
+/// "Is a directory" or "Access is denied"); if so, Deno will attempt to
+/// interpret the original argument as a script name or task instead of a
+/// file path.
+///
+/// See: https://github.com/denoland/deno/issues/28878
+fn should_fallback_on_run_error(script_err: &str) -> bool {
+  if script_err.starts_with(MODULE_NOT_FOUND)
+    || script_err.starts_with(UNSUPPORTED_SCHEME)
+  {
+    return true;
+  }
+  let re = lazy_regex::regex!(
+    r"Import 'file:///.+?' failed\.\n\s+0: .+ \(os error \d+\)"
+  );
+  re.is_match(script_err)
 }
 
 #[allow(clippy::print_stderr)]
@@ -603,8 +647,31 @@ async fn resolve_flags_and_init(
     }
     Err(err) => exit_for_error(AnyError::from(err)),
   };
+  // preserve already loaded env variables
+  if flags.subcommand.watch_flags().is_some() {
+    WatchEnvTracker::snapshot();
+  }
+  let env_file_paths: Option<Vec<std::path::PathBuf>> = flags
+    .env_file
+    .as_ref()
+    .map(|files| files.iter().map(PathBuf::from).collect());
+  load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
 
-  load_env_variables_from_env_file(flags.env_file.as_ref(), flags.log_level);
+  if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
+    flags.tunnel = true;
+  }
+
+  // Tunnel sets up env vars and OTEL, so connect before everything else.
+  if flags.tunnel {
+    if let Err(err) = initialize_tunnel(&flags).await {
+      exit_for_error(err.context("Failed to start with --connected"));
+    }
+    // SAFETY: We're doing this before any threads are created.
+    unsafe {
+      std::env::set_var("DENO_CONNECTED", "1");
+    }
+  }
+
   flags.unstable_config.fill_with_env();
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
@@ -618,22 +685,6 @@ async fn resolve_flags_and_init(
       .collect();
   }
 
-  // Tunnel is initialized before OTEL since
-  // OTEL data is submitted via the tunnel.
-  if let Some(host) = flags
-    .connected
-    .clone()
-    .or_else(|| env::var("DENO_CONNECTED").ok())
-  {
-    if let Err(err) = initialize_tunnel(&host, &flags).await {
-      exit_for_error(err.context("Failed to start with --connected"));
-    }
-    // SAFETY: We're doing this before any threads are created.
-    unsafe {
-      std::env::set_var("DENO_CONNECTED", &host);
-    }
-  }
-
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
   deno_telemetry::init(
@@ -641,14 +692,28 @@ async fn resolve_flags_and_init(
     otel_config.clone(),
   )?;
 
+  if flags.permission_set.is_some() {
+    log::warn!(
+      "{} Permissions in the config file is an experimental feature and may change in the future.",
+      colors::yellow("Warning")
+    );
+  }
+
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
     log::warn!(
-      "⚠️  {}",
-      colors::yellow(
-        "The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags"
-      )
+      "{} The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead.\nLearn more at: https://docs.deno.com/runtime/manual/tools/unstable_flags",
+      colors::yellow("Warning")
     );
+  }
+
+  if let Ok(audit_path) = std::env::var("DENO_AUDIT_PERMISSIONS") {
+    let audit_file = deno_runtime::deno_permissions::AUDIT_FILE.set(
+      deno_core::parking_lot::Mutex::new(std::fs::File::create(audit_path)?),
+    );
+    if audit_file.is_err() {
+      log::warn!("⚠️  {}", colors::yellow("Audit file is already set"));
+    }
   }
 
   Ok(flags)
@@ -761,7 +826,6 @@ fn wait_for_start(
         roots.compiled_wasm_module_store.clone(),
       ),
       additional_extensions: vec![],
-      enable_raw_imports: false,
     });
 
     let (rx, mut tx): (
@@ -845,9 +909,18 @@ fn wait_for_start(
   })
 }
 
-async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
+async fn auth_tunnel(
+  env_token: Option<String>,
+) -> Result<String, deno_core::anyhow::Error> {
+  let mut args = vec!["deploy".to_string(), "tunnel-login".to_string()];
+
+  if let Some(token) = &env_token {
+    args.push("--token".to_string());
+    args.push(token.clone());
+  }
+
   let mut child = tokio::process::Command::new(env::current_exe()?)
-    .args(["deploy", "tunnel-login"])
+    .args(args)
     .spawn()?;
   let out = child.wait().await?;
 
@@ -855,50 +928,44 @@ async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
     deno_runtime::exit(1);
   }
 
-  Ok(tools::deploy::get_token_entry()?.get_password()?)
+  if let Some(token) = env_token {
+    Ok(token)
+  } else {
+    Ok(tools::deploy::get_token_entry()?.get_password()?)
+  }
 }
 
 #[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
-  host: &str,
   flags: &Flags,
 ) -> Result<(), deno_core::anyhow::Error> {
   let mut factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let mut cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
-  if deploy_config.is_none() {
-    let _ = tools::deploy::get_token_entry()?.delete_credential();
-  }
 
-  let token = if let Ok(token) = std::env::var("DENO_UNSTABLE_TUNNEL_TOKEN") {
-    token
+  let host = std::env::var("DENO_DEPLOY_TUNNEL_ENDPOINT")
+    .unwrap_or_else(|_| "tunnel.global.prod.deno-cluster.net:443".into());
+
+  let env_token = env::var("DENO_DEPLOY_TOKEN").ok();
+  let env_org = env::var("DENO_DEPLOY_ORG").ok();
+  let env_app = env::var("DENO_DEPLOY_APP").ok();
+
+  let token = if env_token.is_some() && env_org.is_some() && env_app.is_some() {
+    env_token.clone().unwrap()
   } else {
-    match tools::deploy::get_token_entry()?.get_password() {
-      Ok(token) => token,
-      Err(keyring::Error::NoEntry) => {
-        let token = auth_tunnel().await?;
-
-        if deploy_config.is_none() {
-          // we regenerate the factory & CliOptions since auth_tunnel updates
-          // the config file with the deploy config, only if it was not set previously.
-          factory = CliFactory::from_flags(Arc::new(flags.clone()));
-          cli_options = factory.cli_options()?;
-        }
-
-        token
-      }
-      Err(e) => {
-        exit_for_error(e.into());
-      }
-    }
+    auth_tunnel(env_token.clone()).await?
   };
 
-  let (org, app) = if let (Ok(org), Ok(app)) = (
-    std::env::var("DENO_UNSTABLE_TUNNEL_ORG"),
-    std::env::var("DENO_UNSTABLE_TUNNEL_APP"),
-  ) {
+  let (org, app) = if let (Some(org), Some(app)) = (env_org, env_app) {
     (org, app)
   } else {
+    if deploy_config.is_none() {
+      // we regenerate the factory & CliOptions since auth_tunnel updates
+      // the config file with the deploy config, only if it was not set previously.
+      factory = CliFactory::from_flags(Arc::new(flags.clone()));
+      cli_options = factory.cli_options()?;
+    }
+
     let deploy_config = cli_options
       .start_dir
       .to_deploy_config()?
@@ -918,11 +985,14 @@ async fn initialize_tunnel(
   let root_cert_store = cert_store_provider.get_or_try_init()?.clone();
 
   let tls_config = deno_runtime::deno_tls::create_client_config(
-    Some(root_cert_store),
-    vec![],
-    None,
-    deno_runtime::deno_tls::TlsKeys::Null,
-    deno_runtime::deno_tls::SocketUse::GeneralSsl,
+    deno_runtime::deno_tls::TlsClientConfigOptions {
+      root_cert_store: Some(root_cert_store),
+      ca_certs: vec![],
+      unsafely_ignore_certificate_errors: None,
+      unsafely_disable_hostname_verification: false,
+      cert_chain_and_key: deno_runtime::deno_tls::TlsKeys::Null,
+      socket_use: deno_runtime::deno_tls::SocketUse::GeneralSsl,
+    },
   )?;
 
   let mut metadata = HashMap::new();
@@ -930,14 +1000,28 @@ async fn initialize_tunnel(
     "hostname".into(),
     deno_runtime::deno_os::sys_info::hostname(),
   );
-  if let Some(entrypoint) = match &flags.subcommand {
-    DenoSubcommand::Run(run_flags) => Some(run_flags.script.to_owned()),
-    DenoSubcommand::Serve(serve_flags) => Some(serve_flags.script.to_owned()),
-    DenoSubcommand::Repl(_) => Some("<repl>".into()),
-    DenoSubcommand::Eval(_) => Some("<eval>".into()),
-    _ => None,
-  } {
-    metadata.insert("entrypoint".into(), entrypoint);
+  match &flags.subcommand {
+    DenoSubcommand::Run(run_flags) => {
+      metadata.insert("subcommand".into(), "run".into());
+      metadata.insert("entrypoint".into(), run_flags.script.clone());
+    }
+    DenoSubcommand::Serve(serve_flags) => {
+      metadata.insert("subcommand".into(), "serve".into());
+      metadata.insert("entrypoint".into(), serve_flags.script.clone());
+    }
+    DenoSubcommand::Task(task_flags) => {
+      metadata.insert("subcommand".into(), "task".into());
+      if let Some(task) = &task_flags.task {
+        metadata.insert("task".into(), task.clone());
+      }
+    }
+    DenoSubcommand::Repl(_) => {
+      metadata.insert("subcommand".into(), "repl".into());
+    }
+    DenoSubcommand::Eval(_) => {
+      metadata.insert("subcommand".into(), "eval".into());
+    }
+    _ => {}
   }
 
   let on_event = |event| {
@@ -952,7 +1036,7 @@ async fn initialize_tunnel(
 
         log::info!(
           "{}",
-          colors::green(format!("You are connected to {endpoint}!"))
+          colors::green(format!("You are connected to {endpoint}"))
         );
       }
       Event::Reconnect(duration, reason) => {
@@ -992,7 +1076,7 @@ async fn initialize_tunnel(
     Err(deno_runtime::deno_net::tunnel::Error::Unauthorized) => {
       tools::deploy::get_token_entry()?.delete_credential()?;
 
-      let token = auth_tunnel().await?;
+      let token = auth_tunnel(env_token).await?;
       deno_runtime::deno_net::tunnel::TunnelConnection::connect(
         addr,
         hostname.to_owned(),

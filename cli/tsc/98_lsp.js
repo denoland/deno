@@ -25,9 +25,6 @@ import {
 const core = globalThis.Deno.core;
 const ops = core.ops;
 
-/** @type {Map<string, string[]>} */
-const ambientModulesCache = new Map();
-
 const ChangeKind = {
   Opened: 0,
   Modified: 1,
@@ -240,8 +237,14 @@ function lspToTsCompilerOptions(config) {
   Object.assign(options, {
     allowNonTsExtensions: true,
     allowImportingTsExtensions: true,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    module: options.module === ts.ModuleKind.ESNext ||
+        options.module === ts.ModuleKind.Preserve
+      ? options.module
+      : ts.ModuleKind.NodeNext,
+    moduleResolution:
+      options.moduleResolution === ts.ModuleResolutionKind.Bundler
+        ? ts.ModuleResolutionKind.Bundler
+        : ts.ModuleResolutionKind.NodeNext,
   });
   if (errors.length > 0) {
     debug(ts.formatDiagnostics(errors, host));
@@ -362,28 +365,6 @@ function formatErrorWithArgs(error, args) {
     }]`;
   }
   return errorString;
-}
-
-/**
- * @param {string[]} a
- * @param {string[]} b
- */
-function arraysEqual(a, b) {
-  if (a === b) {
-    return true;
-  }
-  if (a === null || b === null) {
-    return false;
-  }
-  if (a.length !== b.length) {
-    return false;
-  }
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /**
@@ -534,28 +515,14 @@ function serverRequestInner(
         return respond(id, [[], null]);
       }
       try {
-        /** @type {any[][]} */
-        const diagnosticsList = [];
-        for (const specifier of args[0]) {
-          diagnosticsList.push(fromTypeScriptDiagnostics([
-            ...ls.getSemanticDiagnostics(specifier),
-            ...ls.getSuggestionDiagnostics(specifier),
-            ...ls.getSyntacticDiagnostics(specifier),
-          ].filter(filterMapDiagnostic)));
-        }
-        let ambient =
-          ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
-            symbol.getName()
-          ) ?? [];
-        const previousAmbient = ambientModulesCache.get(compilerOptionsKey);
-        if (
-          ambient && previousAmbient && arraysEqual(ambient, previousAmbient)
-        ) {
-          ambient = null; // null => use previous value
-        } else {
-          ambientModulesCache.set(compilerOptionsKey, ambient);
-        }
-        return respond(id, [diagnosticsList, ambient]);
+        /** @type {string} */
+        const specifier = args[0];
+        const diagnostics = fromTypeScriptDiagnostics([
+          ...ls.getSemanticDiagnostics(specifier),
+          ...ls.getSuggestionDiagnostics(specifier),
+          ...ls.getSyntacticDiagnostics(specifier),
+        ].filter(filterMapDiagnostic));
+        return respond(id, diagnostics);
       } catch (e) {
         if (
           !isCancellationError(e)
@@ -575,6 +542,14 @@ function serverRequestInner(
         }
         return respond(id, [[], null]);
       }
+    }
+    case "$getAmbientModules": {
+      return respond(
+        id,
+        ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
+          symbol.getName()
+        ) ?? [],
+      );
     }
     default:
       if (typeof ls[method] === "function") {

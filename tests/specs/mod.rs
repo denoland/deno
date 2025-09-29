@@ -25,8 +25,9 @@ use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
 
-static NO_CAPTURE: Lazy<bool> =
-  Lazy::new(|| std::env::args().any(|arg| arg == "--nocapture"));
+static NO_CAPTURE: Lazy<bool> = Lazy::new(|| {
+  std::env::args().any(|arg| arg == "--no-capture" || arg == "--nocapture")
+});
 
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
@@ -129,6 +130,8 @@ struct MultiStepMetaData {
   /// Whether the temporary directory should be symlinked to another path.
   #[serde(default)]
   pub symlinked_temp_dir: bool,
+  #[serde(default)]
+  pub flaky: bool,
   /// The base environment to use for the test.
   #[serde(default)]
   pub base: Option<String>,
@@ -169,6 +172,7 @@ impl SingleTestMetaData {
       base: self.base,
       cwd: None,
       if_cond: self.step.if_cond.clone(),
+      flaky: self.step.flaky,
       temp_dir: self.temp_dir,
       canonicalized_temp_dir: self.canonicalized_temp_dir,
       symlinked_temp_dir: self.symlinked_temp_dir,
@@ -296,18 +300,26 @@ fn run_test_inner(
   cwd: &PathRef,
   diagnostic_logger: Rc<RefCell<Vec<u8>>>,
 ) {
-  let context = test_context_from_metadata(metadata, cwd, diagnostic_logger);
-  for step in metadata
-    .steps
-    .iter()
-    .filter(|s| should_run(s.if_cond.as_deref()))
-  {
-    let run_func = || run_step(step, metadata, cwd, &context);
-    if step.flaky {
-      run_flaky(run_func);
-    } else {
-      run_func();
+  let run_fn = || {
+    let context =
+      test_context_from_metadata(metadata, cwd, diagnostic_logger.clone());
+    for step in metadata
+      .steps
+      .iter()
+      .filter(|s| should_run(s.if_cond.as_deref()))
+    {
+      let run_func = || run_step(step, metadata, cwd, &context);
+      if step.flaky {
+        run_flaky(run_func);
+      } else {
+        run_func();
+      }
     }
+  };
+  if metadata.flaky {
+    run_flaky(run_fn);
+  } else {
+    run_fn();
   }
 }
 

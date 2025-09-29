@@ -43,7 +43,10 @@ pub struct AsyncWrap {
   async_id: i64,
 }
 
-impl GarbageCollected for AsyncWrap {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for AsyncWrap {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"AsyncWrap"
   }
@@ -88,7 +91,10 @@ pub struct HandleWrap {
   state: Rc<Cell<State>>,
 }
 
-impl GarbageCollected for HandleWrap {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for HandleWrap {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"HandleWrap"
   }
@@ -133,7 +139,7 @@ impl HandleWrap {
     &self,
     op_state: Rc<RefCell<OpState>>,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[global] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
     if self.state.get() != State::Initialized {
@@ -144,7 +150,7 @@ impl HandleWrap {
     // This effectively mimicks Node's OnClose callback.
     //
     // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L135-L157
-    let on_close = move |scope: &mut v8::HandleScope| {
+    let on_close = move |scope: &mut v8::PinScope<'_, '_>| {
       assert!(state.get() == State::Closing);
       state.set(State::Closed);
 
@@ -205,12 +211,12 @@ impl HandleWrap {
 }
 
 fn uv_close<F>(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   op_state: Rc<RefCell<OpState>>,
   this: v8::Global<v8::Object>,
   on_close: F,
 ) where
-  F: FnOnce(&mut v8::HandleScope) + 'static,
+  F: FnOnce(&mut v8::PinScope<'_, '_>) + 'static,
 {
   // Call _onClose() on the JS handles. Not needed for Rust handles.
   let this = v8::Local::new(scope, this);

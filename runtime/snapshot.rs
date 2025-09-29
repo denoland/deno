@@ -64,6 +64,7 @@ pub fn create_runtime_snapshot(
     ops::permissions::deno_permissions::lazy_init(),
     ops::tty::deno_tty::lazy_init(),
     ops::http::deno_http_runtime::lazy_init(),
+    deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
     ops::bootstrap::deno_bootstrap::init(Some(snapshot_options), false),
     runtime::lazy_init(),
     ops::web_worker::deno_web_worker::lazy_init(),
@@ -80,7 +81,7 @@ pub fn create_runtime_snapshot(
       })),
       with_runtime_cb: Some(Box::new(|rt| {
         let isolate = rt.v8_isolate();
-        let scope = &mut v8::HandleScope::new(isolate);
+        v8::scope!(scope, isolate);
 
         let tmpl = deno_node::init_global_template(
           scope,

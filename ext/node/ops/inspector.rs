@@ -4,11 +4,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
+use deno_core::InspectorMsg;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
-use deno_core::futures::channel::mpsc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -61,11 +61,9 @@ pub fn op_inspector_url() -> Option<String> {
 
 #[op2(fast)]
 pub fn op_inspector_wait(state: &OpState) -> bool {
-  match state.try_borrow::<Rc<RefCell<JsRuntimeInspector>>>() {
+  match state.try_borrow::<Rc<JsRuntimeInspector>>() {
     Some(inspector) => {
-      inspector
-        .borrow_mut()
-        .wait_for_session_and_break_on_next_statement();
+      inspector.wait_for_session_and_break_on_next_statement();
       true
     }
     None => false,
@@ -81,10 +79,13 @@ pub fn op_inspector_emit_protocol_event(
 }
 
 struct JSInspectorSession {
-  tx: RefCell<Option<mpsc::UnboundedSender<String>>>,
+  session: RefCell<Option<deno_core::LocalInspectorSession>>,
 }
 
-impl GarbageCollected for JSInspectorSession {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for JSInspectorSession {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"JSInspectorSession"
   }
@@ -107,8 +108,8 @@ pub enum InspectorConnectError {
 #[op2(stack_trace)]
 #[cppgc]
 pub fn op_inspector_connect<'s, P>(
-  isolate: *mut v8::Isolate,
-  scope: &mut v8::HandleScope<'s>,
+  isolate: &v8::Isolate,
+  scope: &mut v8::PinScope<'s, '_>,
   state: &mut OpState,
   connect_to_main_thread: bool,
   callback: v8::Local<'s, v8::Function>,
@@ -128,39 +129,44 @@ where
   let context = v8::Global::new(scope, context);
   let callback = v8::Global::new(scope, callback);
 
-  let inspector = state
-    .borrow::<Rc<RefCell<JsRuntimeInspector>>>()
-    .borrow_mut();
+  let inspector = state.borrow::<Rc<JsRuntimeInspector>>().clone();
 
-  let tx = inspector.create_raw_session(
+  // SAFETY: just grabbing the raw pointer
+  let isolate = unsafe { isolate.as_raw_isolate_ptr() };
+
+  // The inspector connection does not keep the event loop alive but
+  // when the inspector sends a message to the frontend, the JS that
+  // that runs may keep the event loop alive so we have to call back
+  // synchronously, instead of using the usual LocalInspectorSession
+  // UnboundedReceiver<InspectorMsg> API.
+  let callback = Box::new(move |message: InspectorMsg| {
+    // SAFETY: This function is called directly by the inspector, so
+    //   1) The isolate is still valid
+    //   2) We are on the same thread as the Isolate
+    let mut isolate = unsafe { v8::Isolate::from_raw_isolate_ptr(isolate) };
+    v8::callback_scope!(unsafe let scope, &mut isolate);
+    let context = v8::Local::new(scope, context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+    v8::tc_scope!(let scope, scope);
+    let recv = v8::undefined(scope);
+    if let Some(message) = v8::String::new(scope, &message.content) {
+      let callback = v8::Local::new(scope, callback.clone());
+      callback.call(scope, recv.into(), &[message.into()]);
+    }
+  });
+
+  let session = JsRuntimeInspector::create_local_session(
+    inspector,
+    callback,
     InspectorSessionOptions {
       kind: InspectorSessionKind::NonBlocking {
         wait_for_disconnect: false,
       },
     },
-    // The inspector connection does not keep the event loop alive but
-    // when the inspector sends a message to the frontend, the JS that
-    // that runs may keep the event loop alive so we have to call back
-    // synchronously, instead of using the usual LocalInspectorSession
-    // UnboundedReceiver<InspectorMsg> API.
-    Box::new(move |message| {
-      // SAFETY: This function is called directly by the inspector, so
-      //   1) The isolate is still valid
-      //   2) We are on the same thread as the Isolate
-      let scope = unsafe { &mut v8::CallbackScope::new(&mut *isolate) };
-      let context = v8::Local::new(scope, context.clone());
-      let scope = &mut v8::ContextScope::new(scope, context);
-      let scope = &mut v8::TryCatch::new(scope);
-      let recv = v8::undefined(scope);
-      if let Some(message) = v8::String::new(scope, &message.content) {
-        let callback = v8::Local::new(scope, callback.clone());
-        callback.call(scope, recv.into(), &[message.into()]);
-      }
-    }),
   );
 
   Ok(JSInspectorSession {
-    tx: RefCell::new(Some(tx)),
+    session: RefCell::new(Some(session)),
   })
 }
 
@@ -169,12 +175,12 @@ pub fn op_inspector_dispatch(
   #[cppgc] session: &JSInspectorSession,
   #[string] message: String,
 ) {
-  if let Some(tx) = &*session.tx.borrow() {
-    let _ = tx.unbounded_send(message);
+  if let Some(session) = &mut *session.session.borrow_mut() {
+    session.dispatch(message);
   }
 }
 
 #[op2(fast)]
 pub fn op_inspector_disconnect(#[cppgc] session: &JSInspectorSession) {
-  drop(session.tx.borrow_mut().take());
+  drop(session.session.borrow_mut().take());
 }

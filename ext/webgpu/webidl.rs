@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 
 use deno_core::WebIDL;
-use deno_core::cppgc::Ptr;
+use deno_core::cppgc::Ref;
 use deno_core::v8;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::IntOptions;
@@ -35,7 +35,7 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,
@@ -145,7 +145,7 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,
@@ -240,7 +240,7 @@ impl<'a> WebIdlConverter<'a> for GPUColor {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,
@@ -323,7 +323,7 @@ pub(crate) enum GPUAutoLayoutMode {
 }
 
 pub(crate) enum GPUPipelineLayoutOrGPUAutoLayoutMode {
-  PipelineLayout(Ptr<crate::pipeline_layout::GPUPipelineLayout>),
+  PipelineLayout(Ref<crate::pipeline_layout::GPUPipelineLayout>),
   AutoLayoutMode(GPUAutoLayoutMode),
 }
 
@@ -346,7 +346,7 @@ impl<'a> WebIdlConverter<'a> for GPUPipelineLayoutOrGPUAutoLayoutMode {
   type Options = ();
 
   fn convert<'b>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
     context: ContextFn<'b>,

@@ -14,7 +14,7 @@ use super::DiskCache;
 use super::DiskCacheSys;
 
 #[allow(clippy::disallowed_types)]
-pub type EmitCacheRc<TSys> = crate::sync::MaybeArc<EmitCache<TSys>>;
+pub type EmitCacheRc<TSys> = deno_maybe_sync::MaybeArc<EmitCache<TSys>>;
 
 #[sys_traits::auto_impl]
 pub trait EmitCacheSys: DiskCacheSys + sys_traits::EnvVar {}

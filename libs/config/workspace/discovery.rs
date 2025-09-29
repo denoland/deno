@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_maybe_sync::new_rc;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonLoadError;
 use deno_package_json::PackageJsonRc;
@@ -38,7 +39,6 @@ use crate::glob::FilePatterns;
 use crate::glob::PathOrPattern;
 use crate::glob::PathOrPatternSet;
 use crate::glob::is_glob_pattern;
-use crate::sync::new_rc;
 use crate::util::is_skippable_io_error;
 use crate::workspace::ConfigReadError;
 use crate::workspace::Workspace;
@@ -278,7 +278,7 @@ fn discover_workspace_config_files_for_single_dir<
             "package.json file found at '{}'",
             pkg_json_path.display()
           );
-          Ok(Some(pkg_json))
+          Ok(pkg_json)
         }
         Err(PackageJsonLoadError::Io { source, .. })
           if is_skippable_io_error(&source) =>
@@ -614,7 +614,7 @@ fn handle_workspace_with_members<TSys: FsRead + FsMetadata + FsReadDir>(
       if !root_workspace.config_folders.contains_key(key) {
         return Err(
           WorkspaceDiscoverErrorKind::ConfigNotWorkspaceMember {
-            workspace_url: (**root_workspace.root_dir()).clone(),
+            workspace_url: (**root_workspace.root_dir_url()).clone(),
             config_url: config_folder_config_specifier(config_folder)
               .into_owned(),
           }
@@ -770,7 +770,7 @@ fn resolve_workspace_for_config_folder<
           .set_vendor_folder(maybe_vendor_dir.clone())
           .collect_file_patterns(
             sys,
-            FilePatterns {
+            &FilePatterns {
               base: dir_path.to_path_buf(),
               include: Some(PathOrPatternSet::new(patterns)),
               exclude: PathOrPatternSet::new(Vec::new()),

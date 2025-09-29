@@ -21,7 +21,8 @@ Deno.test("WebTransport", async () => {
   });
 
   (async () => {
-    for await (const conn of listener) {
+    for await (const incoming of listener) {
+      const conn = await incoming.accept();
       const wt = await Deno.upgradeWebTransport(conn);
 
       assertEquals(wt.url, `https://localhost:${server.addr.port}/path`);

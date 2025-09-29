@@ -4,3 +4,12 @@ Download http://localhost:4260/@denotest%2fsay-hello
 Download http://localhost:4260/@denotest/add/1.0.0.tgz
 [UNORDERED_END]
 Initialize @denotest/add@1.0.0
+Installed 1 package in [WILDCARD]
+Reused 0 packages from cache
+Downloaded 0 packages from JSR
+Downloaded 2 packages from npm
+++
+
+Dependencies:
++ npm:@denotest/add 1.0.0
+

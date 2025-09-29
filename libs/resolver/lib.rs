@@ -62,15 +62,14 @@ pub mod npm;
 pub mod npmrc;
 #[cfg(feature = "sync")]
 mod rt;
-mod sync;
 pub mod workspace;
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc<TSys> =
-  crate::sync::MaybeArc<WorkspaceResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<WorkspaceResolver<TSys>>;
 
 #[allow(clippy::disallowed_types)]
-pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
+pub(crate) type NpmCacheDirRc = deno_maybe_sync::MaybeArc<NpmCacheDir>;
 
 #[derive(Debug, Clone)]
 pub struct DenoResolution {
@@ -95,6 +94,9 @@ impl DenoResolveError {
           // deno_graph checks specifically for an ImportMapError
           MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
           MappedResolutionError::Workspace(e) => {
+            ResolveError::Other(JsErrorBox::from_err(e))
+          }
+          MappedResolutionError::NotFoundInCompilerOptionsPaths(e) => {
             ResolveError::Other(JsErrorBox::from_err(e))
           }
         }
@@ -245,7 +247,7 @@ pub type RawDenoResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,

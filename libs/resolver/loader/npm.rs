@@ -41,7 +41,7 @@ pub enum NpmModuleLoadError {
   StrippingTypesNodeModules(#[from] StrippingTypesNodeModulesError),
   #[class(inherit)]
   #[error(transparent)]
-  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
   #[class(inherit)]
   #[error(transparent)]
   TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),
@@ -96,7 +96,7 @@ pub trait NpmModuleLoaderSys: NodeCodeTranslatorSys {}
 
 #[allow(clippy::disallowed_types)]
 pub type DenoNpmModuleLoaderRc<TSys> =
-  crate::sync::MaybeArc<DenoNpmModuleLoader<TSys>>;
+  deno_maybe_sync::MaybeArc<DenoNpmModuleLoader<TSys>>;
 
 pub type DenoNpmModuleLoader<TSys> = NpmModuleLoader<
   crate::cjs::analyzer::DenoCjsCodeAnalyzer<TSys>,
