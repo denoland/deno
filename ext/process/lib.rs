@@ -690,6 +690,20 @@ fn compute_run_cmd_and_check_permissions(
       command: arg_cmd.to_string(),
       error: Box::new(e),
     })?;
+  if let Some(ext) = cmd.extension() {
+    if cfg!(windows) && (ext == "bat" || ext == "cmd") {
+      return Err(ProcessError::SpawnFailed {
+        command: arg_cmd.to_string(),
+        error: Box::new(
+          std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Use a shell to execute .bat or .cmd files",
+          )
+          .into(),
+        ),
+      });
+    }
+  }
   check_run_permission(
     state,
     &RunQueryDescriptor::Path {
