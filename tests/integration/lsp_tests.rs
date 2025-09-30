@@ -7698,12 +7698,13 @@ fn lsp_code_actions_organize_imports() {
   client.initialize_default();
 
   let uri = "file:///a/file.ts";
-  // Unordered imports with some unused ones
-  let source = r#"import { c, a, b } from "./b.ts";
+  // Unordered imports from multiple files with some unused ones
+  let source = r#"import { z, y } from "./z.ts";
+import { c, a, b } from "./b.ts";
 import { d } from "./a.ts";
 import unused from "./c.ts";
 
-console.log(b, a, c);
+console.log(b, a, c, d, y, z);
 "#;
   client.did_open(json!({
     "textDocument": {
@@ -7747,15 +7748,16 @@ console.log(b, a, c);
                   "start": { "line": 0, "character": 0 },
                   "end": { "line": 1, "character": 0 }
                 },
-                // Unused imports from "./a.ts" and "./c.ts" are removed,
-                // imports from "./b.ts" are sorted alphabetically
-                "newText": "import { a, b, c } from \"./b.ts\";\n"
+                // All organized imports in the first replacement:
+                // files sorted alphabetically, imports within files sorted alphabetically
+                "newText": "import { d } from \"./a.ts\";\nimport { a, b, c } from \"./b.ts\";\nimport { y, z } from \"./z.ts\";\n"
               },
               {
                 "range": {
                   "start": { "line": 1, "character": 0 },
                   "end": { "line": 2, "character": 0 }
                 },
+                // Second line removed (replaced by organized imports above)
                 "newText": ""
               },
               {
@@ -7763,6 +7765,15 @@ console.log(b, a, c);
                   "start": { "line": 2, "character": 0 },
                   "end": { "line": 3, "character": 0 }
                 },
+                // Third line removed (replaced by organized imports above)
+                "newText": ""
+              },
+              {
+                "range": {
+                  "start": { "line": 3, "character": 0 },
+                  "end": { "line": 4, "character": 0 }
+                },
+                // Unused import from "./c.ts" is removed
                 "newText": ""
               }
             ]
