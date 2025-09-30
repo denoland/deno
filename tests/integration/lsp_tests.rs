@@ -7692,6 +7692,137 @@ fn lsp_quote_style_from_workspace_settings() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_code_actions_organize_imports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri = "file:///a/file.ts";
+  // Unordered imports with some unused ones
+  let source = r#"import { c, a, b } from "./b.ts";
+import { d } from "./a.ts";
+import unused from "./c.ts";
+
+console.log(b, a, c);
+"#;
+  client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": source,
+    }
+  }));
+
+  // Request "Organize Imports" action
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+
+  let expected = json!([
+    {
+      "title": "Organize imports",
+      "kind": "source.organizeImports",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": {
+              "uri": uri,
+              "version": 1
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 1, "character": 0 }
+                },
+                // Unused imports from "./a.ts" and "./c.ts" are removed,
+                // imports from "./b.ts" are sorted alphabetically
+                "newText": "import { a, b, c } from \"./b.ts\";\n"
+              },
+              {
+                "range": {
+                  "start": { "line": 1, "character": 0 },
+                  "end": { "line": 2, "character": 0 }
+                },
+                "newText": ""
+              },
+              {
+                "range": {
+                  "start": { "line": 2, "character": 0 },
+                  "end": { "line": 3, "character": 0 }
+                },
+                "newText": ""
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "uri": uri
+      }
+    }
+  ]);
+
+  assert_eq!(res, expected);
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_code_actions_organize_imports_already_organized() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri = "file:///a/file.ts";
+  // Already organized imports
+  let source = r#"import { a, b, c } from "./b.ts";
+
+console.log(a, b, c);
+"#;
+  client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": source,
+    }
+  }));
+
+  // Request "Organize Imports" action
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();

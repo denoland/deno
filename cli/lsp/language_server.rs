@@ -2336,32 +2336,35 @@ impl Inner {
             LspError::internal_error()
           }
         })?;
-      let mut changes_with_modules = IndexMap::new();
-      changes_with_modules.extend(
-        fix_ts_import_changes(&organize_imports_edit, &module, self, token)
-          .map_err(|err| {
-            if token.is_cancelled() {
-              LspError::request_cancelled()
-            } else {
-              error!("Unable to fix import changes: {:#}", err);
-              LspError::internal_error()
-            }
-          })?
-          .into_iter()
-          .map(|c| (c, module.clone())),
-      );
 
-      all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-        title: "Organize imports".to_string(),
-        kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
-        edit: file_text_changes_to_workspace_edit(
-          &changes_with_modules,
-          self,
-          token,
-        )?,
-        data: Some(json!({ "uri": params.text_document.uri})),
-        ..Default::default()
-      }));
+      if !organize_imports_edit.is_empty() {
+        let mut changes_with_modules = IndexMap::new();
+        changes_with_modules.extend(
+          fix_ts_import_changes(&organize_imports_edit, &module, self, token)
+            .map_err(|err| {
+              if token.is_cancelled() {
+                LspError::request_cancelled()
+              } else {
+                error!("Unable to fix import changes: {:#}", err);
+                LspError::internal_error()
+              }
+            })?
+            .into_iter()
+            .map(|c| (c, module.clone())),
+        );
+
+        all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+          title: "Organize imports".to_string(),
+          kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
+          edit: file_text_changes_to_workspace_edit(
+            &changes_with_modules,
+            self,
+            token,
+          )?,
+          data: Some(json!({ "uri": params.text_document.uri})),
+          ..Default::default()
+        }));
+      }
     }
 
     let code_action_disabled_capable =
