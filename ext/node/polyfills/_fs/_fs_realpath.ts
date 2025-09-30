@@ -29,6 +29,7 @@ function encodeRealpathResult(
   if (options.encoding === "buffer") {
     return asBuffer;
   }
+  // deno-lint-ignore prefer-primordials
   return asBuffer.toString(options.encoding);
 }
 
