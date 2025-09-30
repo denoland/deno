@@ -79,7 +79,7 @@ deno_task_shell = "=0.26.0"
 deno_terminal = "=0.2.2"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.100.0"
+eszip = "=0.101.0"
 
 denokv_proto = "0.12.0"
 denokv_remote = "0.12.0"
