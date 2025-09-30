@@ -454,7 +454,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           .unwrap();
           let value = deno_lockfile::LockfileLinkContent {
             dependencies: deno_json.dependencies(),
-            optional_dependencies: deno_json.dependencies(),
+            optional_dependencies: Default::default(),
             peer_dependencies: Default::default(),
             peer_dependencies_meta: Default::default(),
           };
