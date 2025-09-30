@@ -691,19 +691,19 @@ fn compute_run_cmd_and_check_permissions(
       error: Box::new(e),
     })?;
   #[cfg(windows)]
-  if let Some(ext) = cmd.extension()
-    && (ext == "bat" || ext == "cmd")
-  {
-    return Err(ProcessError::SpawnFailed {
-      command: arg_cmd.to_string(),
-      error: Box::new(
-        std::io::Error::new(
-          std::io::ErrorKind::PermissionDenied,
-          "Use a shell to execute .bat or .cmd files",
-        )
-        .into(),
-      ),
-    });
+  if let Some(ext) = cmd.extension() {
+    if ext == "bat" || ext == "cmd" {
+      return Err(ProcessError::SpawnFailed {
+        command: arg_cmd.to_string(),
+        error: Box::new(
+          std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Use a shell to execute .bat or .cmd files",
+          )
+          .into(),
+        ),
+      });
+    }
   }
   check_run_permission(
     state,
