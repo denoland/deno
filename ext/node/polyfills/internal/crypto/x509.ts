@@ -201,7 +201,7 @@ export class X509Certificate {
   }
 
   get subject(): string {
-    return op_node_x509_get_subject(this.#handle);
+    return op_node_x509_get_subject(this.#handle) || undefined;
   }
 
   get subjectAltName(): string | undefined {
