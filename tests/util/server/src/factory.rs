@@ -8,14 +8,14 @@ use glob::glob;
 #[macro_export]
 macro_rules! unit_test_factory {
   ($test_fn:ident, $base:literal, $glob:literal, [ $( $test:ident $(= $($path:ident)/+)? ),+ $(,)? ]) => {
-    #[test]
+    #[flaky_test::flaky_test]
     fn check_test_glob() {
       $crate::factory::check_test_glob($base, $glob, [ $( ( stringify!($test), stringify!( $( $($path)/+ )? ) ) ),+ ].as_slice());
     }
 
     $(
       #[allow(non_snake_case)]
-      #[test]
+      #[flaky_test::flaky_test]
       fn $test() {
         $test_fn($crate::factory::get_path(stringify!($test), stringify!( $( $($path)/+ )?)))
       }
@@ -23,7 +23,7 @@ macro_rules! unit_test_factory {
   };
   (__test__ $($prefix:ident)* $test:ident) => {
     #[allow(non_snake_case)]
-    #[test]
+    #[flaky_test::flaky_test]
     fn $test() {
       $test_fn(stringify!($($prefix)/+ $test))
     }
