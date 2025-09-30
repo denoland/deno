@@ -6,6 +6,14 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.15 / 2025.09.30
+
+- fix: reject running `.bat` and `.cmd` directly on windows (#30818)
+- fix(ext/node): set default callback for `fs.close` (#30720)
+- fix(ext/node): validate `fs.close` callback function (#30679)
+- fix(fs): improve file stat checks (#30876)
+- fix(fs): improve file utime checks (#30872)
+
 ### 2.2.14 / 2025.07.16
 
 - fix: upgrade deno_core to 0.344.1 (#30118)
