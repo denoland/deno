@@ -427,6 +427,9 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           // the npm resolution when it changes
           let value = deno_lockfile::LockfileLinkContent {
             dependencies: collect_deps(pkg_json.dependencies.as_ref()),
+            optional_dependencies: collect_deps(
+              pkg_json.optional_dependencies.as_ref(),
+            ),
             peer_dependencies: collect_deps(
               pkg_json.peer_dependencies.as_ref(),
             ),
@@ -451,6 +454,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           .unwrap();
           let value = deno_lockfile::LockfileLinkContent {
             dependencies: deno_json.dependencies(),
+            optional_dependencies: deno_json.dependencies(),
             peer_dependencies: Default::default(),
             peer_dependencies_meta: Default::default(),
           };
