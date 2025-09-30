@@ -1550,13 +1550,18 @@ pub async fn op_fs_file_sync_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_file_stat_sync(
+pub fn op_fs_file_stat_sync<P: FsPermissions + 'static>(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), FsOpsError> {
   let file =
     FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state
+      .borrow_mut::<P>()
+      .check_read_path(path, "Deno.FsFile.prototype.statSync()")?;
+  }
   let stat = file.stat_sync()?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
@@ -1565,12 +1570,18 @@ pub fn op_fs_file_stat_sync(
 
 #[op2(async)]
 #[serde]
-pub async fn op_fs_file_stat_async(
+pub async fn op_fs_file_stat_async<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<SerializableStat, FsOpsError> {
   let file = FileResource::get_file(&state.borrow(), rid)
     .map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state
+      .borrow_mut()
+      .borrow_mut::<P>()
+      .check_read_path(path, "Deno.FsFile.prototype.stat()")?;
+  }
   let stat = file.stat_async().await?;
   Ok(stat.into())
 }
