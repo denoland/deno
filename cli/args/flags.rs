@@ -2215,6 +2215,7 @@ Unless --reload is specified, this command will not re-download already cached d
         )
         .arg(allow_import_arg())
         .arg(deny_import_arg())
+        .arg(v8_flags_arg())
       }
     )
 }
@@ -5098,6 +5099,7 @@ fn check_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  v8_flags_arg_parse(flags, matches);
   let files = match matches.remove_many::<String>("file") {
     Some(f) => f.collect(),
     None => vec![".".to_string()], // default
@@ -12980,6 +12982,27 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           ..Default::default()
         },
         ..Default::default()
+      }
+    );
+  }
+
+  #[test]
+  fn check_with_v8_flags() {
+    let flags =
+      flags_from_vec(svec!["deno", "check", "--v8-flags=--help", "script.ts",])
+        .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        v8_flags: svec!["--help"],
+        ..Flags::default()
       }
     );
   }
