@@ -28,7 +28,7 @@ pub enum StaticError {
 
 #[op2]
 pub fn op_ffi_get_static<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[string] name: String,

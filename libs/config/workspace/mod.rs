@@ -2633,6 +2633,7 @@ pub mod test {
   use std::cell::RefCell;
   use std::collections::HashMap;
 
+  use deno_package_json::PackageJsonCacheResult;
   use deno_path_util::normalize_path;
   use deno_path_util::url_from_directory_path;
   use deno_path_util::url_from_file_path;
@@ -5836,11 +5837,18 @@ pub mod test {
   struct PkgJsonMemCache(RefCell<HashMap<PathBuf, PackageJsonRc>>);
 
   impl deno_package_json::PackageJsonCache for PkgJsonMemCache {
-    fn get(&self, path: &Path) -> Option<PackageJsonRc> {
-      self.0.borrow().get(path).cloned()
+    fn get(&self, path: &Path) -> PackageJsonCacheResult {
+      match self.0.borrow().get(path).cloned() {
+        Some(value) => PackageJsonCacheResult::Hit(Some(value)),
+        None => PackageJsonCacheResult::NotCached,
+      }
     }
 
-    fn set(&self, path: PathBuf, value: PackageJsonRc) {
+    fn set(&self, path: PathBuf, value: Option<PackageJsonRc>) {
+      let Some(value) = value else {
+        // Don't cache misses (no negative cache).
+        return;
+      };
       self.0.borrow_mut().insert(path, value);
     }
   }

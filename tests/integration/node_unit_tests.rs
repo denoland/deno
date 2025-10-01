@@ -68,6 +68,7 @@ util::unit_test_factory!(
     crypto_pbkdf2_test = crypto / crypto_pbkdf2_test,
     crypto_scrypt_test = crypto / crypto_scrypt_test,
     crypto_sign_test = crypto / crypto_sign_test,
+    crypto_timing_safe_equal_test = crypto / crypto_timing_safe_equal_test,
     events_test,
     dgram_test,
     domain_test,

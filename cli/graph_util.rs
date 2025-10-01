@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,6 +26,7 @@ use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
+use deno_graph::packages::JsrVersionResolver;
 use deno_graph::source::Loader;
 use deno_graph::source::ResolveError;
 use deno_lib::util::result::downcast_ref_deno_resolve_error;
@@ -385,6 +387,12 @@ pub struct CreateGraphOptions<'a> {
   pub npm_caching: NpmCachingStrategy,
 }
 
+pub struct CreatePublishGraphOptions<'a> {
+  pub packages: &'a [JsrPackageConfig],
+  pub build_fast_check_graph: bool,
+  pub validate_graph: bool,
+}
+
 pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
@@ -436,10 +444,9 @@ impl ModuleGraphCreator {
       .await
   }
 
-  pub async fn create_and_validate_publish_graph(
+  pub async fn create_publish_graph(
     &self,
-    package_configs: &[JsrPackageConfig],
-    build_fast_check_graph: bool,
+    options: CreatePublishGraphOptions<'_>,
   ) -> Result<ModuleGraph, AnyError> {
     struct PublishLoader(CliDenoGraphLoader);
 
@@ -485,7 +492,7 @@ impl ModuleGraphCreator {
     }
 
     let mut roots = Vec::new();
-    for package_config in package_configs {
+    for package_config in options.packages {
       roots.extend(package_config.config_file.resolve_export_value_urls()?);
     }
 
@@ -502,15 +509,18 @@ impl ModuleGraphCreator {
         npm_caching: self.options.default_npm_caching_strategy(),
       })
       .await?;
-    self.graph_valid(&graph)?;
+    if options.validate_graph {
+      self.graph_valid(&graph)?;
+    }
     if self.options.type_check_mode().is_true()
       && !graph_has_external_remote(&graph)
     {
       self.type_check_graph(graph.clone())?;
     }
 
-    if build_fast_check_graph {
-      let fast_check_workspace_members = package_configs
+    if options.build_fast_check_graph {
+      let fast_check_workspace_members = options
+        .packages
         .iter()
         .map(|p| config_to_deno_graph_workspace_member(&p.config_file))
         .collect::<Result<Vec<_>, _>>()?;
@@ -647,6 +657,7 @@ pub struct ModuleGraphBuilder {
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
+  jsr_version_resolver: Arc<JsrVersionResolver>,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_reporter: Option<Arc<dyn deno_graph::source::Reporter>>,
   module_info_cache: Arc<ModuleInfoCache>,
@@ -671,6 +682,7 @@ impl ModuleGraphBuilder {
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
+    jsr_version_resolver: Arc<JsrVersionResolver>,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_reporter: Option<Arc<dyn deno_graph::source::Reporter>>,
     module_info_cache: Arc<ModuleInfoCache>,
@@ -692,6 +704,7 @@ impl ModuleGraphBuilder {
       file_fetcher,
       global_http_cache,
       in_npm_pkg_checker,
+      jsr_version_resolver,
       lockfile,
       maybe_reporter,
       module_info_cache,
@@ -757,7 +770,11 @@ impl ModuleGraphBuilder {
           passthrough_jsr_specifiers: false,
           executor: Default::default(),
           file_system: &self.sys,
+          jsr_metadata_store: None,
           jsr_url_provider: &CliJsrUrlProvider,
+          jsr_version_resolver: Cow::Borrowed(
+            self.jsr_version_resolver.as_ref(),
+          ),
           npm_resolver: Some(self.npm_graph_resolver.as_ref()),
           module_analyzer: &analyzer,
           module_info_cacher: self.module_info_cache.as_ref(),
@@ -766,7 +783,6 @@ impl ModuleGraphBuilder {
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: self.cli_options.unstable_raw_imports(),
-          jsr_metadata_store: None,
         },
         options.npm_caching,
       )
