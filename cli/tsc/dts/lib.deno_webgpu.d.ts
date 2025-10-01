@@ -1620,19 +1620,31 @@ declare var GPUError: {
 };
 
 /** @category GPU */
-declare class GPUOutOfMemoryError extends GPUError {
-  constructor(message: string);
-}
+interface GPUOutOfMemoryError extends GPUError {}
 
 /** @category GPU */
-declare class GPUValidationError extends GPUError {
-  constructor(message: string);
-}
+declare var GPUOutOfMemoryError: {
+  prototype: GPUOutOfMemoryError;
+  new (message?: string): GPUOutOfMemoryError;
+};
 
 /** @category GPU */
-declare class GPUInternalError extends GPUError {
-  constructor(message: string);
-}
+interface GPUValidationError extends GPUError {}
+
+/** @category GPU */
+declare var GPUValidationError: {
+  prototype: GPUValidationError;
+  new (message?: string): GPUValidationError;
+};
+
+/** @category GPU */
+interface GPUInternalError extends GPUError {}
+
+/** @category GPU */
+declare var GPUInternalError: {
+  prototype: GPUInternalError;
+  new (message?: string): GPUInternalError;
+};
 
 /** @category GPU */
 type GPUErrorFilter = "out-of-memory" | "validation" | "internal";
