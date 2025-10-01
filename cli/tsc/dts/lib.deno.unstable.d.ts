@@ -162,6 +162,8 @@ declare namespace Deno {
       success: boolean;
       outputFiles?: OutputFile[];
     }
+
+    export {}; // only export exports
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
