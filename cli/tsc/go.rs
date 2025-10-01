@@ -169,7 +169,7 @@ fn convert_diagnostic(
     reports_deprecated: Some(diagnostic.reports_deprecated),
     reports_unnecessary: Some(diagnostic.reports_unnecessary),
     source: None,
-    source_line: None,
+    source_line: Some(diagnostic.source_line),
   }
 }
 
