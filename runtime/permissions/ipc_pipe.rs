@@ -5,7 +5,7 @@ use std::io::Read;
 use std::io::Write;
 use std::io::{self};
 
-pub struct LocalStream(Inner);
+pub struct IpcPipe(Inner);
 
 #[cfg(unix)]
 type Inner = std::os::unix::net::UnixStream;
@@ -13,7 +13,7 @@ type Inner = std::os::unix::net::UnixStream;
 #[cfg(not(unix))]
 type Inner = std::fs::File;
 
-impl LocalStream {
+impl IpcPipe {
   /// Connect to a local IPC endpoint.
   /// - Unix: `addr` like `/tmp/deno.sock`
   /// - Windows: `addr` like `\\.\pipe\deno-permission-broker`
@@ -23,7 +23,7 @@ impl LocalStream {
 }
 
 #[cfg(unix)]
-impl LocalStream {
+impl IpcPipe {
   fn connect_impl(addr: &OsStr) -> io::Result<Self> {
     use std::os::unix::net::UnixStream;
     use std::path::Path;
@@ -34,7 +34,7 @@ impl LocalStream {
 }
 
 #[cfg(windows)]
-impl LocalStream {
+impl IpcPipe {
   fn connect_impl(addr: &OsStr) -> io::Result<Self> {
     use std::os::windows::ffi::OsStrExt;
     use std::os::windows::io::FromRawHandle;
@@ -100,7 +100,7 @@ impl LocalStream {
 }
 
 #[cfg(all(not(unix), not(windows)))]
-impl LocalStream {
+impl IpcPipe {
   fn connect_impl(_addr: &OsStr) -> io::Result<Self> {
     Err(io::Error::new(
       io::ErrorKind::Unsupported,
@@ -109,13 +109,13 @@ impl LocalStream {
   }
 }
 
-impl Read for LocalStream {
+impl Read for IpcPipe {
   fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
     self.0.read(buf)
   }
 }
 
-impl Write for LocalStream {
+impl Write for IpcPipe {
   fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
     self.0.write(buf)
   }

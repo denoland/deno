@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicU32;
 use parking_lot::Mutex;
 
 use super::BrokerResponse;
-use crate::ipc_pipe::LocalStream;
+use crate::ipc_pipe::IpcPipe;
 
 // TODO(bartlomieju): currently randomly selected exit code, it should
 // be documented
@@ -42,14 +42,14 @@ struct PermissionBrokerResponse {
 }
 
 pub struct PermissionBroker {
-  stream: Mutex<LocalStream>,
+  stream: Mutex<IpcPipe>,
   next_id: AtomicU32,
 }
 
 impl PermissionBroker {
   pub fn new(socket_path: impl Into<PathBuf>) -> Self {
     let socket_path = socket_path.into();
-    let stream = match LocalStream::connect(&socket_path) {
+    let stream = match IpcPipe::connect(&socket_path) {
       Ok(s) => s,
       Err(err) => {
         log::error!("Failed to create permission broker: {:?}", err);
