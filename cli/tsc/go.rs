@@ -45,17 +45,8 @@ fn synthetic_config(
     .as_object_mut()
     .unwrap()
     .insert("allowImportingTsExtensions".to_string(), json!(true));
-  // config.as_object_mut().unwrap().remove("lib");
-  // config
-  //   .as_object_mut()
-  //   .unwrap()
-  //   .insert("lib".to_string(), json!(["dom", "dom.iterable", "esnext"]));
-  // let mut root_names =
-  //   root_names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
   log::debug!("config: {}", serde_json::to_string(&config)?);
-  // root_names.push("asset:///lib.deno.window.d.ts".to_string());
   serde_json::to_string(&json!({
-
     "compilerOptions": config,
     "files": root_names,
   }))
@@ -116,7 +107,6 @@ fn exec_request_inner(
       "project": &project.id,
     })?,
   )?;
-  // eprintln!("diagnostics: {}", diagnostics);
   let diagnostics = deser::<
     Vec<deno_typescript_go_client_rust::types::Diagnostic>,
   >(diagnostics)?;
@@ -286,7 +276,6 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
     name: &str,
     payload: String,
   ) -> Result<String, deno_typescript_go_client_rust::Error> {
-    // eprintln!("handle_callback: {} : {}", name, payload);
     let mut state = self.state.borrow_mut();
     match name {
       "readFile" => {
@@ -294,36 +283,14 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
         if payload == state.config_path {
           Ok(jsons!(&state.synthetic_config)?)
         } else {
-          // eprintln!("readFile: {}", payload);
-          // let payload =
-          //   deno_path_util::resolve_url_or_path(&payload, &state.current_dir)
-          //     .map_err(adhoc)?;
-          // let path =
-          //   deno_path_util::url_to_file_path(&payload).map_err(adhoc)?;
-          // let contents = match std::fs::read_to_string(path) {
-          //   Ok(contents) => contents,
-          //   Err(e) => match e.kind() {
-          //     std::io::ErrorKind::NotFound => {
-          //       return Ok(jsons!(None::<String>)?);
-          //     }
-          //     _ => {
-          //       return Err(deno_typescript_go_client_rust::Error::AdHoc(
-          //         e.to_string(),
-          //       ));
-          //     }
-          //   },
-          // };
           let contents = load_inner(&mut *state, &payload).map_err(adhoc)?;
-          // eprintln!("result for {}: {:?}", payload, contents);
           if let Some(contents) = contents {
             Ok(jsons!(&contents)?)
           } else {
             let path = Path::new(&payload);
             if let Ok(contents) = std::fs::read_to_string(path) {
-              // eprintln!("fallback result for {}: Some", payload,);
               Ok(jsons!(&contents)?)
             } else {
-              // eprintln!("fallback result for {}: None", payload);
               Ok(jsons!(None::<String>)?)
             }
           }
@@ -353,9 +320,6 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
           resolution_mode: payload.resolution_mode,
         };
         let (out_name, extension) = resolve_name(&mut *state, payload)?;
-        // let url = deno_core::ModuleSpecifier::parse(&out_name).unwrap();
-        // let file_path = deno_path_util::url_to_file_path(&url).unwrap();
-        // let out_name = file_path.to_string_lossy();
         log::debug!(
           "resolveTypeReferenceDirective: {:?}",
           (&out_name, &extension)
@@ -602,7 +566,6 @@ fn load_inner(
     deno_path_util::resolve_url_or_path(load_specifier, &state.current_dir)
       .map_err(adhoc)?;
 
-  // let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
   let graph = &state.graph;
   let mut is_cjs = false;
@@ -613,13 +576,12 @@ fn load_inner(
     //   .as_deref()
     //   .map(|s| s.to_string().into())
     None
-  // in certain situations we return a "blank" module to tsc and we need to
-  // handle the request for that module here.
+    // in certain situations we return a "blank" module to tsc and we need to
+    // handle the request for that module here.
   } else if load_specifier == super::MISSING_DEPENDENCY_SPECIFIER {
     None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
-    // hash = super::get_maybe_hash(maybe_source, 0);
     media_type = MediaType::from_str(load_specifier);
     maybe_source.map(String::from)
   } else if let Some(source) = super::load_raw_import_source(&specifier) {
@@ -692,7 +654,6 @@ fn load_inner(
     } else {
       None
     };
-    // hash = super::get_maybe_hash(maybe_source.as_deref(), state.hash_data);
     maybe_source
   };
   let module_kind = get_resolution_mode(is_cjs, media_type);
