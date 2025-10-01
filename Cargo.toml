@@ -42,6 +42,7 @@ members = [
   "libs/npm_installer",
   "libs/package_json",
   "libs/resolver",
+  "libs/typescript_go_client",
   "runtime",
   "runtime/features",
   "runtime/permissions",
@@ -134,6 +135,7 @@ deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.
 napi_sym = { version = "0.147.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.55.0", path = "./libs/node_resolver" }
 test_util = { package = "test_server", path = "./tests/util/server" }
+deno_typescript_go_client_rust = { version = "0.1.0", path = "./libs/typescript_go_client" }
 
 deno_tunnel = "0.8.0"
 

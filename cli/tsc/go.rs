@@ -12,17 +12,17 @@ use deno_core::serde_json::json;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
+use deno_typescript_go_client_rust::CallbackHandler;
+use deno_typescript_go_client_rust::SyncRpcChannel;
+use deno_typescript_go_client_rust::types::GetImpliedNodeFormatForFilePayload;
+use deno_typescript_go_client_rust::types::Project;
+use deno_typescript_go_client_rust::types::ResolveModuleNamePayload;
+use deno_typescript_go_client_rust::types::ResolveTypeReferenceDirectivePayload;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use typescript_go_client_rust::CallbackHandler;
-use typescript_go_client_rust::SyncRpcChannel;
-use typescript_go_client_rust::types::GetImpliedNodeFormatForFilePayload;
-use typescript_go_client_rust::types::Project;
-use typescript_go_client_rust::types::ResolveModuleNamePayload;
-use typescript_go_client_rust::types::ResolveTypeReferenceDirectivePayload;
 
 macro_rules! jsons {
   ($($arg:tt)*) => {
@@ -117,8 +117,9 @@ fn exec_request_inner(
     })?,
   )?;
   // eprintln!("diagnostics: {}", diagnostics);
-  let diagnostics =
-    deser::<Vec<typescript_go_client_rust::types::Diagnostic>>(diagnostics)?;
+  let diagnostics = deser::<
+    Vec<deno_typescript_go_client_rust::types::Diagnostic>,
+  >(diagnostics)?;
 
   Ok(Response {
     diagnostics: convert_diagnostics(diagnostics),
@@ -129,8 +130,8 @@ fn exec_request_inner(
 }
 
 fn convert_diagnostic(
-  diagnostic: typescript_go_client_rust::types::Diagnostic,
-  _diagnostics: &[typescript_go_client_rust::types::Diagnostic],
+  diagnostic: deno_typescript_go_client_rust::types::Diagnostic,
+  _diagnostics: &[deno_typescript_go_client_rust::types::Diagnostic],
 ) -> super::Diagnostic {
   let (start, end) = if diagnostic.start.line == 0
     && diagnostic.start.character == 0
@@ -174,7 +175,7 @@ fn convert_diagnostic(
 }
 
 fn convert_diagnostics(
-  diagnostics: Vec<typescript_go_client_rust::types::Diagnostic>,
+  diagnostics: Vec<deno_typescript_go_client_rust::types::Diagnostic>,
 ) -> super::Diagnostics {
   super::diagnostics::Diagnostics::from(
     diagnostics
@@ -219,7 +220,7 @@ impl Handler {
 fn get_package_json_scope_if_applicable(
   state: &mut HandlerState,
   payload: String,
-) -> Result<String, typescript_go_client_rust::Error> {
+) -> Result<String, deno_typescript_go_client_rust::Error> {
   if let Some(maybe_npm) = state.maybe_npm.as_ref() {
     let file_path = deser::<String>(&payload)?;
     let file_path = if let Ok(specifier) = ModuleSpecifier::parse(&file_path) {
@@ -259,10 +260,10 @@ struct HandlerState {
   maybe_npm: Option<super::RequestNpmState>,
 
   module_kind_map:
-    HashMap<String, typescript_go_client_rust::types::ResolutionMode>,
+    HashMap<String, deno_typescript_go_client_rust::types::ResolutionMode>,
 }
 
-impl typescript_go_client_rust::CallbackHandler for Handler {
+impl deno_typescript_go_client_rust::CallbackHandler for Handler {
   fn supported_callbacks(
     &self,
   ) -> std::collections::HashSet<std::string::String> {
@@ -284,7 +285,7 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
     &self,
     name: &str,
     payload: String,
-  ) -> Result<String, typescript_go_client_rust::Error> {
+  ) -> Result<String, deno_typescript_go_client_rust::Error> {
     // eprintln!("handle_callback: {} : {}", name, payload);
     let mut state = self.state.borrow_mut();
     match name {
@@ -306,7 +307,7 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
           //       return Ok(jsons!(None::<String>)?);
           //     }
           //     _ => {
-          //       return Err(typescript_go_client_rust::Error::AdHoc(
+          //       return Err(deno_typescript_go_client_rust::Error::AdHoc(
           //         e.to_string(),
           //       ));
           //     }
@@ -366,10 +367,10 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
       }
       "getImpliedNodeFormatForFile" => {
         let payload = deser::<GetImpliedNodeFormatForFilePayload>(payload)?;
-        let module_kind = state
-          .module_kind_map
-          .get(&payload.file_name)
-          .unwrap_or(&typescript_go_client_rust::types::ResolutionMode::ESM);
+        let module_kind =
+          state.module_kind_map.get(&payload.file_name).unwrap_or(
+            &deno_typescript_go_client_rust::types::ResolutionMode::ESM,
+          );
         Ok(jsons!(&module_kind)?)
       }
       "isNodeSourceFile" => {
@@ -394,14 +395,15 @@ impl typescript_go_client_rust::CallbackHandler for Handler {
   }
 }
 
-fn adhoc(err: impl std::error::Error) -> typescript_go_client_rust::Error {
-  typescript_go_client_rust::Error::AdHoc(err.to_string())
+fn adhoc(err: impl std::error::Error) -> deno_typescript_go_client_rust::Error {
+  deno_typescript_go_client_rust::Error::AdHoc(err.to_string())
 }
 
 fn resolve_name(
   handler: &mut HandlerState,
   payload: ResolveModuleNamePayload,
-) -> Result<(String, Option<&'static str>), typescript_go_client_rust::Error> {
+) -> Result<(String, Option<&'static str>), deno_typescript_go_client_rust::Error>
+{
   let graph = &handler.graph;
   let maybe_npm = handler.maybe_npm.as_ref();
   let referrer = if let Some(remapped_specifier) =
@@ -439,7 +441,7 @@ fn resolve_name(
     .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
   let resolution_mode = if matches!(
     payload.resolution_mode,
-    typescript_go_client_rust::types::ResolutionMode::CommonJS
+    deno_typescript_go_client_rust::types::ResolutionMode::CommonJS
   ) {
     super::ResolutionMode::Require
   } else {
@@ -546,7 +548,7 @@ pub enum ExecError {
   SerdeJson(#[from] serde_json::Error),
   #[class(generic)]
   #[error(transparent)]
-  TsgoClient(#[from] typescript_go_client_rust::Error),
+  TsgoClient(#[from] deno_typescript_go_client_rust::Error),
 
   #[class(generic)]
   #[error("failed to load from node module: {path}: {error}")]
@@ -706,13 +708,13 @@ fn load_inner(
 fn get_resolution_mode(
   is_cjs: bool,
   media_type: MediaType,
-) -> typescript_go_client_rust::types::ResolutionMode {
+) -> deno_typescript_go_client_rust::types::ResolutionMode {
   if is_cjs {
-    typescript_go_client_rust::types::ResolutionMode::CommonJS
+    deno_typescript_go_client_rust::types::ResolutionMode::CommonJS
   } else {
     match media_type {
       MediaType::Cjs | MediaType::Dcts | MediaType::Cts => {
-        typescript_go_client_rust::types::ResolutionMode::CommonJS
+        deno_typescript_go_client_rust::types::ResolutionMode::CommonJS
       }
 
       MediaType::Css
@@ -722,9 +724,9 @@ fn get_resolution_mode(
       | MediaType::Wasm
       | MediaType::SourceMap
       | MediaType::Unknown => {
-        typescript_go_client_rust::types::ResolutionMode::None
+        deno_typescript_go_client_rust::types::ResolutionMode::None
       }
-      _ => typescript_go_client_rust::types::ResolutionMode::ESM,
+      _ => deno_typescript_go_client_rust::types::ResolutionMode::ESM,
     }
   }
 }

@@ -1647,6 +1647,7 @@ dependencies = [
  "deno_telemetry",
  "deno_terminal 0.2.2",
  "deno_tower_lsp",
+ "deno_typescript_go_client_rust",
  "dhat",
  "dissimilar",
  "dotenvy",
@@ -1726,7 +1727,6 @@ dependencies = [
  "tracing-subscriber",
  "twox-hash 2.1.0",
  "typed-arena",
- "typescript-go-client-rust",
  "unicode-width 0.1.13",
  "uuid",
  "walkdir",
@@ -3071,6 +3071,19 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "deno_typescript_go_client_rust"
+version = "0.1.0"
+dependencies = [
+ "indexmap 2.9.0",
+ "log",
+ "rmp",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -9900,19 +9913,6 @@ name = "typenum"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42ff0bf0c66b8238c6f3b578df37d0b7848e55df8577b3f74f92a69acceeb825"
-
-[[package]]
-name = "typescript-go-client-rust"
-version = "0.1.0"
-dependencies = [
- "indexmap 2.9.0",
- "log",
- "rmp",
- "serde",
- "serde_json",
- "serde_repr",
- "thiserror 2.0.12",
-]
 
 [[package]]
 name = "tzif"
