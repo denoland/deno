@@ -46,6 +46,7 @@ async function createUnixSocketServer(socketPath: string): Promise<void> {
         const response = { id: request.id, result: "allow" };
         if (request.permission === "env") {
           response.result = "deny";
+          response.reason = "Make sure to enable reading env vars.";
         }
         const buf = new TextEncoder().encode(JSON.stringify(response) + "\n");
         const written = await conn.write(buf);
@@ -205,6 +206,9 @@ async function createWindowsNamedPipeServer(spec: string): Promise<void> {
         const response = {
           id: request.id,
           result: request.permission === "env" ? "deny" : "allow",
+          reason: request.permission === "env"
+            ? "Make sure to enable reading env vars."
+            : undefined,
         };
         const out = encoder.encode(JSON.stringify(response) + "\n");
         writeAll(hPipe, out);
