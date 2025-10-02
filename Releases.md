@@ -23,7 +23,7 @@ https://github.com/denoland/deno_install
 - fix(fs): improve file utime checks (#30872)
 - fix(npm): do not error when packument version contains both bundleDependencies
   and bundledDependencies (#30875)
-- fix(tunnel): rename `--connected` to `--tunnel` and better handle
+- fix(unstable/tunnel): rename `--connected` to `--tunnel` and better handle
   `DENO_DEPLOY_TOKEN` env variable (#30786)
 - fix: add support for passing v8 flags on `deno check` (#30868)
 - fix: do not purge lockfile when linking and the linked package's reqs have not
