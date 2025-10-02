@@ -1,4 +1,7 @@
-use std::io::{self, BufRead, Result, Write};
+use std::io::BufRead;
+use std::io::Result;
+use std::io::Write;
+use std::io::{self};
 
 /// Lower-level wrapper around RPC-related messaging and process management.
 pub struct RpcConnection<R: BufRead, W: Write> {

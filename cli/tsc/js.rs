@@ -5,9 +5,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use super::LAZILY_LOADED_STATIC_ASSETS;
-use super::ResolveArgs;
-use super::ResolveError;
 use deno_ast::MediaType;
 use deno_core::FastString;
 use deno_core::JsRuntime;
@@ -32,6 +29,9 @@ use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use node_resolver::ResolutionMode;
 use node_resolver::resolve_specifier_into_node_modules;
 
+use super::LAZILY_LOADED_STATIC_ASSETS;
+use super::ResolveArgs;
+use super::ResolveError;
 use crate::args::TypeCheckMode;
 use crate::sys::CliSys;
 use crate::tsc::Diagnostics;

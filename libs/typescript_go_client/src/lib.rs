@@ -1,12 +1,13 @@
 pub mod connection;
 pub mod types;
 
-use std::{
-  collections::HashSet,
-  ffi::OsStr,
-  io::{BufReader, BufWriter},
-  process::{Child, ChildStdin, ChildStdout},
-};
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::io::BufReader;
+use std::io::BufWriter;
+use std::process::Child;
+use std::process::ChildStdin;
+use std::process::ChildStdout;
 
 use connection::RpcConnection;
 
