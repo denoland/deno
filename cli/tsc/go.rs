@@ -1,12 +1,15 @@
-use crate::tsc::RequestNpmState;
-use crate::tsc::ResolveNonGraphSpecifierTypesError;
-use crate::tsc::get_lazily_loaded_asset;
+mod tsgo_version;
 
-use super::Request;
-use super::Response;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::CompilerOptions;
+use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_graph::Module;
@@ -18,11 +21,14 @@ use deno_typescript_go_client_rust::types::GetImpliedNodeFormatForFilePayload;
 use deno_typescript_go_client_rust::types::Project;
 use deno_typescript_go_client_rust::types::ResolveModuleNamePayload;
 use deno_typescript_go_client_rust::types::ResolveTypeReferenceDirectivePayload;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
+
+use super::Request;
+use super::Response;
+use crate::cache::DenoDir;
+use crate::http_util::HttpClientProvider;
+use crate::tsc::RequestNpmState;
+use crate::tsc::ResolveNonGraphSpecifierTypesError;
+use crate::tsc::get_lazily_loaded_asset;
 
 macro_rules! jsons {
   ($($arg:tt)*) => {
@@ -690,4 +696,31 @@ fn get_resolution_mode(
       _ => deno_typescript_go_client_rust::types::ResolutionMode::ESM,
     }
   }
+}
+
+struct Hashes {
+  windows_x64: &'static str,
+  macos_x64: &'static str,
+  macos_arm64: &'static str,
+  linux_x64: &'static str,
+  linux_arm64: &'static str,
+}
+
+const HASHES: Hashes = Hashes {
+  windows_x64: "sha256-1234567890",
+  macos_x64: "sha256-1234567890",
+  macos_arm64: "sha256-1234567890",
+  linux_x64: "sha256-1234567890",
+  linux_arm64: "sha256-1234567890",
+};
+
+fn get_download_url(platform: &str) -> String {
+  format!("{}tsgo-{}", tsgo_version::DOWNLOAD_BASE_URL)
+}
+
+async fn ensure_tsgo(
+  deno_dir: &DenoDir,
+  http_client_provider: Arc<HttpClientProvider>,
+) -> Result<(), AnyError> {
+  let client = http_client_provider.get_or_create()?;
 }
