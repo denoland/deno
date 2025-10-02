@@ -1781,7 +1781,7 @@
                 "character": 26
               }
             },
-            "message": "Relative import path \"\" not prefixed with / or ./ or ../ and not in import map from \"file:///decohub/mod.ts\"",
+            "message": "Import \"\" not a dependency and not in import map from \"file:///decohub/mod.ts\"",
             "code": "resolver-error",
             "severity": 1,
             "source": "deno"
@@ -1862,7 +1862,7 @@
                 "character": 26
               }
             },
-            "message": "Relative import path \"\" not prefixed with / or ./ or ../ and not in import map from \"file:///decohub/mod.ts\"",
+            "message": "Import \"\" not a dependency and not in import map from \"file:///decohub/mod.ts\"",
             "code": "resolver-error",
             "severity": 1,
             "source": "deno"
