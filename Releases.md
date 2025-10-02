@@ -12,6 +12,7 @@ https://github.com/denoland/deno_install
 - feat(unstable): permission broker - support custom error messages (#30902)
 - feat(unstable): support named pipes on Windows for the permission broker
   (#30894)
+- fix(check): do not error for unsupported URL schemes (#30904)
 - fix(clean): do not panic on failure to get local cache path in clean --except
   (#30895)
 - fix(cli/util): terminate watch file with sigint (#30635)
