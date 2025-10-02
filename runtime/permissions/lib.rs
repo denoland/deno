@@ -46,7 +46,7 @@ use self::which::WhichSys;
 #[derive(Debug, Eq, PartialEq)]
 pub enum BrokerResponse {
   Allow,
-  Deny,
+  Deny { message: Option<String> },
 }
 
 use self::broker::has_broker;
@@ -55,11 +55,12 @@ use self::broker::maybe_check_with_broker;
 pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[error("Requires {access}, {}", format_permission_error(.name))]
+#[error("{}", custom_message.as_ref().cloned().unwrap_or_else(|| format!("Requires {access}, {}", format_permission_error(.name))))]
 #[class("NotCapable")]
 pub struct PermissionDeniedError {
   pub access: String,
   pub name: &'static str,
+  pub custom_message: Option<String>,
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -446,6 +447,7 @@ impl PermissionState {
     PermissionDeniedError {
       access: Self::fmt_access(name, info),
       name,
+      custom_message: None,
     }
   }
 
@@ -489,9 +491,13 @@ impl PermissionState {
           Self::log_perm_access(name, info);
           return (Ok(()), false, false);
         }
-        BrokerResponse::Deny => {
+        BrokerResponse::Deny { message } => {
           return (
-            Err(Self::permission_denied_error(name, info().as_deref())),
+            Err(PermissionDeniedError {
+              access: Self::fmt_access(name, info().as_deref()),
+              name,
+              custom_message: message,
+            }),
             false,
             false,
           );

@@ -27,6 +27,7 @@ pub fn has_broker() -> bool {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PermissionBrokerRequest<'a> {
   v: u32,
   id: u32,
@@ -36,9 +37,11 @@ struct PermissionBrokerRequest<'a> {
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PermissionBrokerResponse {
   id: u32,
   result: String,
+  reason: Option<String>,
 }
 
 pub struct PermissionBroker {
@@ -102,7 +105,9 @@ impl PermissionBroker {
 
     let prompt_response = match response.result.as_str() {
       "allow" => BrokerResponse::Allow,
-      "deny" => BrokerResponse::Deny,
+      "deny" => BrokerResponse::Deny {
+        message: response.reason,
+      },
       _ => {
         return Err(std::io::Error::other(
           "Permission broker unknown result variant",

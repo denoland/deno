@@ -15,6 +15,9 @@
         "grant",
         "deny"
       ]
+    },
+    "reason": {
+      "description": "Message to display to the user on deny."
     }
   }
 }
