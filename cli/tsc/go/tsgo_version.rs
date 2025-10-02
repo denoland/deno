@@ -10,12 +10,45 @@ pub struct Hashes {
   pub linux_x64: &'static str,
   pub linux_arm64: &'static str,
 }
-pub const VERSION: &str = "v0.0.3-deno";
-pub const DOWNLOAD_BASE_URL: &str = "https://github.com/nathanwhit/typescript-go-rs/releases/download/v0.0.3-deno";
+
+impl Hashes {
+  pub const fn all(&self) -> [&'static str; 5] {
+    [
+      self.windows_x64,
+      self.macos_x64,
+      self.macos_arm64,
+      self.linux_x64,
+      self.linux_arm64,
+    ]
+  }
+}
+
+pub const VERSION: &str = "0.0.6-deno";
+pub const DOWNLOAD_BASE_URL: &str = "https://github.com/nathanwhit/typescript-go-rs/releases/download/v0.0.6-deno";
 pub const HASHES: Hashes = Hashes {
-  windows_x64: "sha256:e60c4c072a4211c1fc9e2fbfdd5add6a2578e1bbe4c7eb55f60532bbf151ede4",
-  macos_x64: "sha256:a7a82393161d215b7ce478123e22b2687d135fef4c6812f03ee512a8beafb9e4",
-  macos_arm64: "sha256:1add4462467001652d535905e3d4ac57b1e629a9beaf9a7be0be0c814c214494",
-  linux_x64: "sha256:3cf4a59cb0058e7ea85b65f8c46b8418aecf5d041d0ee57f98767d6539b5955c",
-  linux_arm64: "sha256:1ed024ad321b3913ffa88b1283fa3c4274f0ab4aeac5ed475d44a5e858f359d4",
+  windows_x64: "sha256:00b7df63639b470a22bcc5e91a8402147796c763c1a2b0a1925d98d1ca1c2c86",
+  macos_x64: "sha256:7ea668112dbea97b1b7da9615813711e07ac63a96595898b91028c0ddc38fb10",
+  macos_arm64: "sha256:8d3b0e4ece89ef8b028fcb672c8de2d00dd182b57b5ea504d02cb85788a14594",
+  linux_x64: "sha256:0333d558d9d8639897b393aad5a41062241412c719ba19486c08b6b5ff3cbe56",
+  linux_arm64: "sha256:f1b26cfbb6fc0bd0fcf8a5b78ec77d18c6ccaac1ca2d050e645bc3c669c62e13",
+};
+
+const _: () = {
+  let sha256 = "sha256".as_bytes();
+
+  let mut i = 0;
+  let hashes = HASHES.all();
+
+  while i < hashes.len() {
+    let hash = hashes[i].as_bytes();
+    let mut j = 0;
+
+    while j < 6 {
+      if hash[j] != sha256[j] {
+        panic!("Hash algorithm is not sha256");
+      }
+      j += 1;
+    }
+    i += 1;
+  }
 };

@@ -40,66 +40,14 @@ export function unindent(strings: TemplateStringsArray, ...values: unknown[]) {
 
 const repo = "nathanwhit/typescript-go-rs";
 
-export interface GitHubRelease {
-  url: string;
-  assets_url: string;
-  upload_url: string;
-  html_url: string;
-  id: number;
-  author: GitHubUser;
-  node_id: string;
+interface GitHubRelease {
   tag_name: string;
-  target_commitish: string;
-  name: string;
-  draft: boolean;
-  immutable: boolean;
-  prerelease: boolean;
-  created_at: string; // ISO timestamp
-  updated_at: string; // ISO timestamp
-  published_at: string; // ISO timestamp
   assets: GitHubAsset[];
-  tarball_url: string;
-  zipball_url: string;
-  body: string;
 }
 
-export interface GitHubUser {
-  login: string;
-  id: number;
-  node_id: string;
-  avatar_url: string;
-  gravatar_id: string;
-  url: string;
-  html_url: string;
-  followers_url: string;
-  following_url: string;
-  gists_url: string;
-  starred_url: string;
-  subscriptions_url: string;
-  organizations_url: string;
-  repos_url: string;
-  events_url: string;
-  received_events_url: string;
-  type: string; // "User" | "Bot" | "Organization"
-  user_view_type: string; // e.g. "public"
-  site_admin: boolean;
-}
-
-export interface GitHubAsset {
-  url: string;
-  id: number;
-  node_id: string;
+interface GitHubAsset {
   name: string;
-  label: string;
-  uploader: GitHubUser;
-  content_type: string;
-  state: string; // e.g. "uploaded"
-  size: number; // in bytes
   digest: string; // sha256:...
-  download_count: number;
-  created_at: string; // ISO timestamp
-  updated_at: string; // ISO timestamp
-  browser_download_url: string;
 }
 
 const latest = await fetch(
@@ -107,6 +55,8 @@ const latest = await fetch(
 ).then((res) => res.json()) as GitHubRelease;
 
 const version = latest.tag_name;
+
+const versionNoV = version.replace(/^v/, "");
 
 const file = fileURLToPath(import.meta.resolve(
   "../cli/tsc/go/tsgo_version.rs",
@@ -121,10 +71,10 @@ if (!match) {
   currentVersion = match[1];
 }
 console.log("Current version: ", currentVersion);
-if (currentVersion === version) {
+if (currentVersion === versionNoV) {
   console.log("Version is up to date, updating generated code");
 } else {
-  console.log("Updating version to: ", version);
+  console.log("Updating version to: ", versionNoV);
 }
 
 function findHashes(
@@ -183,7 +133,20 @@ const newContent = unindent`
     pub linux_x64: &'static str,
     pub linux_arm64: &'static str,
   }
-  pub const VERSION: &str = "${version}";
+  
+  impl Hashes {
+    pub const fn all(&self) -> [&'static str; 5] {
+      [
+        self.windows_x64,
+        self.macos_x64,
+        self.macos_arm64,
+        self.linux_x64,
+        self.linux_arm64,
+      ]
+    }
+  }
+
+  pub const VERSION: &str = "${versionNoV}";
   pub const DOWNLOAD_BASE_URL: &str = "https://github.com/${repo}/releases/download/${version}";
   pub const HASHES: Hashes = Hashes {
     windows_x64: "${hashes.windows_x64}",
@@ -192,12 +155,32 @@ const newContent = unindent`
     linux_x64: "${hashes.linux_x64}",
     linux_arm64: "${hashes.linux_arm64}",
   };
+  
+  const _: () = {
+    let sha256 = "sha256".as_bytes();
+
+    let mut i = 0;
+    let hashes = HASHES.all();
+
+    while i < hashes.len() {
+      let hash = hashes[i].as_bytes();
+      let mut j = 0;
+
+      while j < 6 {
+        if hash[j] != sha256[j] {
+          panic!("Hash algorithm is not sha256");
+        }
+        j += 1;
+      }
+      i += 1;
+    }
+  };
 `;
 
 await Deno.writeTextFile(file, newContent);
 
-if (currentVersion !== version) {
-  console.log("Version updated to ", version);
+if (currentVersion !== versionNoV) {
+  console.log("Version updated to ", versionNoV);
 }
 
 await import("./format.js");

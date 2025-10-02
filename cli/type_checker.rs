@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -95,8 +96,6 @@ pub struct CheckOptions {
   pub reload: bool,
   /// Mode to type check with.
   pub type_check_mode: TypeCheckMode,
-  /// Whether to use the unstable tsgo backend.
-  pub tsgo: bool,
 }
 
 pub struct TypeChecker {
@@ -110,6 +109,7 @@ pub struct TypeChecker {
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
+  tsgo_path: Option<PathBuf>,
 }
 
 impl TypeChecker {
@@ -125,6 +125,7 @@ impl TypeChecker {
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
+    tsgo_path: Option<PathBuf>,
   ) -> Self {
     Self {
       caches,
@@ -137,6 +138,7 @@ impl TypeChecker {
       sys,
       compiler_options_resolver,
       code_cache,
+      tsgo_path,
     }
   }
 
@@ -251,6 +253,7 @@ impl TypeChecker {
         options,
         seen_diagnotics: Default::default(),
         code_cache: self.code_cache.clone(),
+        tsgo_path: self.tsgo_path.clone(),
       }),
     ))
   }
@@ -379,6 +382,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   seen_diagnotics: HashSet<String>,
   options: CheckOptions,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
+  tsgo_path: Option<PathBuf>,
 }
 
 impl Iterator for DiagnosticsByFolderRealIterator<'_> {
@@ -537,7 +541,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
         check_mode: self.options.type_check_mode,
       },
       code_cache,
-      self.options.tsgo,
+      self.tsgo_path.as_deref(),
     )?;
 
     let ambient_modules = response.ambient_modules;

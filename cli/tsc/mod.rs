@@ -5,6 +5,7 @@ mod js;
 
 use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
@@ -48,6 +49,7 @@ pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
+pub use self::go::ensure_tsgo;
 
 pub fn get_types_declaration_file_text() -> String {
   let lib_names = vec![
@@ -858,7 +860,7 @@ pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
-  tsgo: bool,
+  maybe_tsgo_path: Option<&Path>,
 ) -> Result<Response, ExecError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
@@ -892,8 +894,14 @@ pub fn exec(
     })
     .collect();
 
-  if tsgo {
-    go::exec_request(request, root_names, root_map, remapped_specifiers)
+  if let Some(tsgo_path) = maybe_tsgo_path {
+    go::exec_request(
+      request,
+      root_names,
+      root_map,
+      remapped_specifiers,
+      tsgo_path,
+    )
   } else {
     js::exec_request(
       request,
