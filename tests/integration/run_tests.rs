@@ -3505,11 +3505,14 @@ fn handle_invalid_path_error() {
   assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn test_permission_broker_doesnt_exit() {
   let context = TestContext::default();
-  let socket_path = context.temp_dir().path().join("broker.sock");
+  let socket_path = if cfg!(windows) {
+    PathRef::new(r"\\.\pipe\deno-permission-broker")
+  } else {
+    context.temp_dir().path().join("broker.sock")
+  };
 
   let output = context
     .new_command()
@@ -3522,14 +3525,17 @@ async fn test_permission_broker_doesnt_exit() {
   );
 }
 
-#[cfg(unix)]
 #[tokio::test]
 async fn test_permission_broker() {
   use std::io::BufRead;
   use std::io::BufReader;
 
   let context = TestContext::default();
-  let socket_path = context.temp_dir().path().join("broker.sock");
+  let socket_path = if cfg!(windows) {
+    PathRef::new(r"\\.\pipe\deno-permission-broker")
+  } else {
+    context.temp_dir().path().join("broker.sock")
+  };
 
   let mut broker = context
     .new_command()
@@ -3551,6 +3557,7 @@ async fn test_permission_broker() {
       Ok(0) => break, // EOF
       Ok(_) => {
         if line.starts_with("Permission broker listening on") {
+          eprintln!("{}", line);
           break;
         }
       }

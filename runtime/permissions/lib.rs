@@ -31,25 +31,16 @@ use serde::Serialize;
 use serde::de;
 use url::Url;
 
-#[cfg(unix)]
 pub mod broker;
+mod ipc_pipe;
 pub mod prompter;
 pub mod which;
-#[cfg(unix)]
-pub use broker::PermissionBroker;
-#[cfg(unix)]
-pub use broker::set_broker;
-pub use prompter::DeniedPrompter;
-pub use prompter::GetFormattedStackFn;
+
 use prompter::MAYBE_CURRENT_STACKTRACE;
 use prompter::PERMISSION_EMOJI;
-pub use prompter::PermissionPrompter;
-pub use prompter::PromptCallback;
-pub use prompter::PromptResponse;
 use prompter::permission_prompt;
-pub use prompter::set_prompt_callbacks;
-pub use prompter::set_prompter;
 
+use self::prompter::PromptResponse;
 use self::which::WhichSys;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -58,24 +49,8 @@ pub enum BrokerResponse {
   Deny,
 }
 
-#[cfg(unix)]
 use self::broker::has_broker;
-
-#[cfg(not(unix))]
-fn has_broker() -> bool {
-  false
-}
-
-#[cfg(unix)]
 use self::broker::maybe_check_with_broker;
-
-#[cfg(not(unix))]
-fn maybe_check_with_broker(
-  _name: &str,
-  _stringified_value_fn: impl Fn() -> Option<String>,
-) -> Option<BrokerResponse> {
-  None
-}
 
 pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 
@@ -4815,6 +4790,7 @@ mod tests {
   use serde_json::json;
 
   use super::*;
+  use crate::prompter::set_prompter;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
