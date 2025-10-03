@@ -329,3 +329,27 @@ Deno.test(
     assert(!s.isSocket);
   },
 );
+
+Deno.test(
+  { permissions: { read: false, write: true } },
+  async function fsFileStatFailPermissions() {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    using file = await Deno.open(filename, {
+      read: false,
+      write: true,
+      create: true,
+    });
+
+    await assertRejects(
+      () => file.stat(),
+      Deno.errors.NotCapable,
+      "Requires read access to",
+    );
+    assertThrows(
+      () => file.statSync(),
+      Deno.errors.NotCapable,
+      "Requires read access to",
+    );
+  },
+);

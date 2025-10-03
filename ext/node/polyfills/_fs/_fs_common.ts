@@ -16,6 +16,7 @@ import {
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
 import { type Buffer } from "node:buffer";
+import { assertEncoding } from "ext:deno_node/internal/fs/utils.mjs";
 
 export type CallbackWithError = (err: ErrnoException | null) => void;
 
@@ -55,6 +56,21 @@ export function isFileOptions(
     (fileOptions as FileOptions).signal != undefined ||
     (fileOptions as WriteFileOptions).mode != undefined
   );
+}
+
+export function getValidatedEncoding(
+  optOrCallback?:
+    | FileOptions
+    | WriteFileOptions
+    | ((...args: unknown[]) => unknown)
+    | Encodings
+    | null,
+): Encodings | null {
+  const encoding = getEncoding(optOrCallback);
+  if (encoding) {
+    assertEncoding(encoding);
+  }
+  return encoding;
 }
 
 export function getEncoding(

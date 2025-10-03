@@ -4,7 +4,7 @@
 // This script is used to generate the @types/deno package on DefinitelyTyped.
 
 import $ from "jsr:@david/dax@0.42.0";
-import { Node, Project } from "jsr:@ts-morph/ts-morph@23.0.0";
+import { type NamedNode, Node, Project } from "jsr:@ts-morph/ts-morph@27.0.0";
 import * as semver from "jsr:@std/semver@1.0.3";
 
 const rootDir = $.path(import.meta.dirname!).parentOrThrow();
@@ -54,23 +54,23 @@ async function createDenoDtsFile() {
   );
 
   for (const statement of file.getStatementsWithComments()) {
-    if (Node.isCommentStatement(statement)) {
-      const statementText = statement.getText();
-      if (statementText.includes("<reference")) {
-        statement.remove();
-        continue;
-      }
-    }
-    const shouldKeepKeep = (Node.isModuleDeclaration(statement) ||
-      Node.isInterfaceDeclaration(statement) ||
-      Node.isTypeAliasDeclaration(statement) ||
-      Node.isClassDeclaration(statement)) &&
-      (matchesAny(statement.getName(), [
-        "Deno",
-      ]) || statement.getName()?.startsWith("GPU"));
-    if (!shouldKeepKeep) {
+    if (Node.isCommentNode(statement)) {
       statement.remove();
       continue;
+    }
+    const shouldKeepNode = (namedNode: NamedNode) => {
+      return matchesAny(namedNode.getName(), [
+        "Deno",
+      ]) || namedNode.getName()?.startsWith("GPU");
+    };
+    if (Node.isVariableStatement(statement)) {
+      for (const decl of statement.getDeclarations()) {
+        if (!shouldKeepNode(decl)) {
+          decl.remove();
+        }
+      }
+    } else if (!shouldKeepNode(statement)) {
+      statement.remove();
     }
   }
 

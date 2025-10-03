@@ -6,6 +6,55 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.5.3 / 2025.10.02
+
+- feat(unstable): add permission broker (#30826)
+- feat(unstable): permission broker - support custom error messages (#30902)
+- feat(unstable): support named pipes on Windows for the permission broker
+  (#30894)
+- fix(check): do not error for unsupported URL schemes (#30904)
+- fix(clean): do not panic on failure to get local cache path in clean --except
+  (#30895)
+- fix(cli/util): terminate watch file with sigint (#30635)
+- fix(dts): update some GPU types to not cause errors in upcoming DOM type
+  declarations (#30893)
+- fix(ext/node): allow ATTACH DATABASE with `--allow-all` (#30763)
+- fix(ext/node): setTimeout promisified to handle abort signal (#30855)
+- fix(fs): improve file stat checks (#30876)
+- fix(fs): improve file utime checks (#30872)
+- fix(npm): do not error when packument version contains both bundleDependencies
+  and bundledDependencies (#30875)
+- fix(unstable/tunnel): rename `--connected` to `--tunnel` and better handle
+  `DENO_DEPLOY_TOKEN` env variable (#30786)
+- fix: add support for passing v8 flags on `deno check` (#30868)
+- fix: do not purge lockfile when linking and the linked package's reqs have not
+  changed (#30877)
+- fix: show --permission-set help only once (#30844)
+
+### 2.5.2 / 2025.09.24
+
+- feat(lsp): describe/it test editor support (#30802)
+- fix(bundle): reload html entrypoints with --watch (#30790)
+- fix(check): support "compilerOptions.paths" (#30766)
+- fix(cli/bundle): respect --frozen flag deno bundle command (#30825)
+- fix(coverage): collect coverage data for workers (#30807)
+- fix(dts): add `Uint8Array` base64/hex methods (#30686)
+- fix(dts): update stream type declarations to use `Promise<void>` (#30820)
+- fix(ext/node): `fs.readFile`, `fs.readFileSync` assert encoding (#30830)
+- fix(ext/node): `fs.statfsSync` and `fs.statfs` compatibility (#30662)
+- fix(ext/node): accept ArrayBuffer on crypto.timingSafeEqual (#30773)
+- fix(ext/node): crypto `Cipheriv` and `Decipheriv` base64 encoding (#30806)
+- fix(ext/ws): send User-Agent header in WS handshake (#30758)
+- fix(fetch): handle proxied urls correctly and add test (#30794)
+- fix(lint): skip module graph validation (#30815)
+- fix(tunnel): make auth more robust (#30731)
+- fix: add top level permissions key to config file schema (#30765)
+- fix: reject running `.bat` and `.cmd` directly on windows (#30818)
+- fix: restore Windows debug info (#30778)
+- perf(lsp): don't watch node_modules files (#30768)
+- perf: stack allocated v8 scopes (#30827)
+- perf: support negative caching of package.json (#30792)
+
 ### 2.5.1 / 2025.09.16
 
 - feat(unstable): support `Deno.HttpClient` in `WebSocket` (#30692)

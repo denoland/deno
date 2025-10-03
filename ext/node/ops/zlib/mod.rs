@@ -273,7 +273,7 @@ impl ZlibInner {
 
   fn check_error(
     error_info: Option<(i32, String)>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     this: &v8::Global<v8::Object>,
   ) -> bool {
     let Some((err, msg)) = error_info else {
@@ -413,7 +413,7 @@ impl Zlib {
   pub fn write_sync(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -448,7 +448,7 @@ impl Zlib {
   fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -633,7 +633,7 @@ impl BrotliEncoder {
   pub fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] flush: u8,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
@@ -743,7 +743,7 @@ unsafe impl deno_core::GarbageCollected for BrotliDecoder {
 
 fn decoder_param(
   i: u32,
-) -> ffi::decompressor::ffi::interface::BrotliDecoderParameter {
+) -> Option<ffi::decompressor::ffi::interface::BrotliDecoderParameter> {
   const _: () = {
     assert!(
       std::mem::size_of::<
@@ -752,8 +752,11 @@ fn decoder_param(
         == std::mem::size_of::<u32>(),
     );
   };
-  // SAFETY: `i` is a valid u32 value that corresponds to a BrotliDecoderParameter.
-  unsafe { std::mem::transmute(i) }
+  match i {
+    0 => Some(ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION),
+    1 => Some(ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_LARGE_WINDOW),
+    _ => None
+  }
 }
 
 #[op2]
@@ -780,11 +783,11 @@ impl BrotliDecoder {
         std::ptr::null_mut(),
       );
       for (i, &value) in params.iter().enumerate() {
-        ffi::decompressor::ffi::BrotliDecoderSetParameter(
-          state,
-          decoder_param(i as u32),
-          value,
-        );
+        if let Some(param) = decoder_param(i as u32) {
+          ffi::decompressor::ffi::BrotliDecoderSetParameter(
+            state, param, value,
+          );
+        }
       }
 
       state
@@ -810,7 +813,7 @@ impl BrotliDecoder {
   pub fn write(
     &self,
     #[this] this: v8::Global<v8::Object>,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     #[smi] _flush: i32,
     #[buffer] input: &[u8],
     #[smi] in_off: u32,
