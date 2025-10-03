@@ -312,6 +312,26 @@ class Response {
   }
 
   /**
+   * Constructs a custom JSTZ response type to transfer the specified amount in mutez.
+   * @param {number|string} amount - The amount in mutez to transfer.
+   * @returns {Response}
+   */
+  static transfer(amount) {
+    const response = webidl.createBranded(Response);
+    response[_response] = newInnerResponse();
+    response[_headers] = headersFromHeaderList(
+      response[_response].headerList,
+      "response",
+    );
+    // Set the custom header
+    fillHeaders(
+      response[_headers],
+      { "X-JSTZ-TRANSFER": String(amount) },
+    );
+    return response;
+  }
+
+  /**
    * @param {BodyInit | null} body
    * @param {ResponseInit} init
    */
@@ -444,6 +464,7 @@ ObjectDefineProperties(Response, {
   json: { __proto__: null, enumerable: true },
   redirect: { __proto__: null, enumerable: true },
   error: { __proto__: null, enumerable: true },
+  transfer: { __proto__: null, enumerable: true },
 });
 const ResponsePrototype = Response.prototype;
 mixinBody(ResponsePrototype, _body, _mimeType);
