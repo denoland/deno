@@ -881,11 +881,7 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  sys_traits::BaseFsCanonicalize
-  + sys_traits::BaseFsMetadata
-  + sys_traits::BaseFsRead
-  + sys_traits::EnvCurrentDir
-  + Clone
+  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
 {
 }
 

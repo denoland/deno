@@ -5,6 +5,7 @@
 #![deny(clippy::unused_async)]
 #![deny(clippy::unnecessary_wraps)]
 
+use std::collections::BTreeMap;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
@@ -39,6 +40,19 @@ pub enum PackageJsonCacheResult {
 pub trait PackageJsonCache {
   fn get(&self, path: &Path) -> PackageJsonCacheResult;
   fn set(&self, path: PathBuf, package_json: Option<PackageJsonRc>);
+}
+
+#[derive(Debug, Clone)]
+pub enum PackageJsonBins {
+  Directory(PathBuf),
+  Bins(BTreeMap<String, PathBuf>),
+}
+
+#[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
+#[class(generic)]
+#[error("'{}' did not have a name", pkg_json_path.display())]
+pub struct MissingPkgJsonNameError {
+  pkg_json_path: PathBuf,
 }
 
 #[derive(Debug, Clone, JsError, PartialEq, Eq, Boxed)]
@@ -426,10 +440,10 @@ impl PackageJson {
       .remove("optionalDependencies")
       .and_then(parse_string_map);
 
-    let scripts: Option<IndexMap<String, String>> =
-      package_json.remove("scripts").and_then(parse_string_map);
     let directories: Option<Map<String, Value>> =
       package_json.remove("directories").and_then(map_object);
+    let scripts: Option<IndexMap<String, String>> =
+      package_json.remove("scripts").and_then(parse_string_map);
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
@@ -516,6 +530,53 @@ impl PackageJson {
         dev_dependencies: get_map(self.dev_dependencies.as_ref()),
       })
     })
+  }
+
+  pub fn resolve_default_bin_name(
+    &self,
+  ) -> Result<&str, MissingPkgJsonNameError> {
+    let Some(name) = &self.name else {
+      return Err(MissingPkgJsonNameError {
+        pkg_json_path: self.path.clone(),
+      });
+    };
+    let name = name.split("/").last().unwrap();
+    Ok(name)
+  }
+
+  pub fn resolve_bins(
+    &self,
+  ) -> Result<PackageJsonBins, MissingPkgJsonNameError> {
+    match &self.bin {
+      Some(Value::String(path)) => {
+        let name = self.resolve_default_bin_name()?;
+        Ok(PackageJsonBins::Bins(BTreeMap::from([(
+          name.to_string(),
+          self.dir_path().join(path),
+        )])))
+      }
+      Some(Value::Object(o)) => Ok(PackageJsonBins::Bins(
+        o.iter()
+          .filter_map(|(key, value)| {
+            let Value::String(path) = value else {
+              return None;
+            };
+            Some((key.clone(), self.dir_path().join(path)))
+          })
+          .collect::<BTreeMap<_, _>>(),
+      )),
+      _ => {
+        let bin_directory =
+          self.directories.as_ref().and_then(|d| d.get("bin"));
+        match bin_directory {
+          Some(Value::String(bin_dir)) => {
+            let bin_dir = self.dir_path().join(bin_dir);
+            Ok(PackageJsonBins::Directory(bin_dir))
+          }
+          _ => Ok(PackageJsonBins::Bins(Default::default())),
+        }
+      }
+    }
   }
 }
 

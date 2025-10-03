@@ -462,8 +462,8 @@ impl<'a> TaskRunner<'a> {
     };
 
     let custom_commands = task_runner::resolve_custom_commands(
-      self.npm_resolver,
       self.node_resolver,
+      self.npm_resolver,
     )?;
 
     self
@@ -505,8 +505,8 @@ impl<'a> TaskRunner<'a> {
       format!("post{}", task_name),
     ];
     let custom_commands = task_runner::resolve_custom_commands(
-      self.npm_resolver,
       self.node_resolver,
+      self.npm_resolver,
     )?;
 
     for task_name in &task_names {
