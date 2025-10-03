@@ -535,50 +535,26 @@ function processChunkSync(self, chunk, flushFlag) {
   return (buffers.length === 1 ? buffers[0] : Buffer.concat(buffers, nread));
 }
 
-// Trampoline pattern implementation
-// Executes thunks (functions) in a loop to avoid stack overflow
-// from deep recursion. Each thunk returns either another thunk
-// to continue processing, or null/undefined to stop.
-function trampoline(fn) {
-  let result = fn();
-  while (typeof result === "function") {
-    result = result();
-  }
-  return result;
-}
-
-function createWriteThunk(handle, self) {
-  return () => {
-    const availOutBefore = self._chunkSize - self._outOffset;
-    handle.availOutBefore = availOutBefore;
-    handle.write(
-      handle.flushFlag,
-      handle.buffer, // in
-      handle.inOff, // in_off
-      handle.availInBefore, // in_len
-      self._outBuffer, // out
-      self._outOffset, // out_off
-      availOutBefore,
-    ); // out_len
-    // The write() call will trigger processCallback
-    // which may return another thunk
-    return handle.nextThunk;
-  };
-}
-
 function processChunk(self, chunk, flushFlag, cb) {
   const handle = self._handle;
   if (!handle) return process.nextTick(cb);
 
   handle.buffer = chunk;
   handle.cb = cb;
+  handle.availOutBefore = self._chunkSize - self._outOffset;
   handle.availInBefore = chunk.byteLength;
   handle.inOff = 0;
   handle.flushFlag = flushFlag;
-  handle.nextThunk = null;
 
-  // Start the trampoline with the first write thunk
-  trampoline(createWriteThunk(handle, self));
+  handle.write(
+    flushFlag,
+    chunk, // in
+    0, // in_off
+    handle.availInBefore, // in_len
+    self._outBuffer, // out
+    self._outOffset, // out_off
+    handle.availOutBefore,
+  ); // out_len
 }
 
 function processCallback() {
@@ -632,20 +608,38 @@ function processCallback() {
     handle.availInBefore = availInAfter;
 
     if (!streamBufferIsFull) {
-      // Return a thunk to continue processing
-      handle.nextThunk = createWriteThunk(handle, self);
+      process.nextTick(() => {
+        if (!self.destroyed) {
+          this.write(
+            handle.flushFlag,
+            this.buffer, // in
+            handle.inOff, // in_off
+            handle.availInBefore, // in_len
+            self._outBuffer, // out
+            self._outOffset, // out_off
+            self._chunkSize,
+          ); // out_len
+        }
+      });
     } else {
-      // When stream buffer is full, we need to wait for drain
       const oldRead = self._read;
       self._read = (n) => {
         self._read = oldRead;
-        if (!self.destroyed) {
-          // Resume with trampoline when stream is ready
-          trampoline(createWriteThunk(handle, self));
-        }
+        process.nextTick(() => {
+          if (!self.destroyed) {
+            handle.write(
+              handle.flushFlag,
+              handle.buffer, // in
+              handle.inOff, // in_off
+              handle.availInBefore, // in_len
+              self._outBuffer, // out
+              self._outOffset, // out_off
+              self._chunkSize,
+            ); // out_len
+          }
+        });
         self._read(n);
       };
-      handle.nextThunk = null; // Stop the trampoline for now
     }
     return;
   }
@@ -669,7 +663,6 @@ function processCallback() {
   }
 
   // Finished with the chunk.
-  handle.nextThunk = null; // Signal completion to trampoline
   this.buffer = null;
   this.cb();
 }
