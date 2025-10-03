@@ -608,36 +608,28 @@ function processCallback() {
     handle.availInBefore = availInAfter;
 
     if (!streamBufferIsFull) {
-      process.nextTick(() => {
-        if (!self.destroyed) {
-          this.write(
-            handle.flushFlag,
-            this.buffer, // in
-            handle.inOff, // in_off
-            handle.availInBefore, // in_len
-            self._outBuffer, // out
-            self._outOffset, // out_off
-            self._chunkSize,
-          ); // out_len
-        }
-      });
+      this.write(
+        handle.flushFlag,
+        this.buffer, // in
+        handle.inOff, // in_off
+        handle.availInBefore, // in_len
+        self._outBuffer, // out
+        self._outOffset, // out_off
+        self._chunkSize,
+      ); // out_len
     } else {
       const oldRead = self._read;
       self._read = (n) => {
         self._read = oldRead;
-        process.nextTick(() => {
-          if (!self.destroyed) {
-            handle.write(
-              handle.flushFlag,
-              handle.buffer, // in
-              handle.inOff, // in_off
-              handle.availInBefore, // in_len
-              self._outBuffer, // out
-              self._outOffset, // out_off
-              self._chunkSize,
-            ); // out_len
-          }
-        });
+        this.write(
+          handle.flushFlag,
+          this.buffer, // in
+          handle.inOff, // in_off
+          handle.availInBefore, // in_len
+          self._outBuffer, // out
+          self._outOffset, // out_off
+          self._chunkSize,
+        ); // out_len
         self._read(n);
       };
     }
