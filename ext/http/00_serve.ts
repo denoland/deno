@@ -11,6 +11,7 @@ import {
   op_http_cancel,
   op_http_close,
   op_http_close_after_finish,
+  op_http_get_request_extra_info,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_metric_handle_otel_error,
@@ -105,8 +106,6 @@ import {
   updateSpanFromResponse,
 } from "ext:deno_telemetry/util.ts";
 
-const _upgraded = Symbol("_upgraded");
-
 function internalServerError() {
   // "Internal Server Error"
   return new Response(
@@ -165,6 +164,7 @@ class InnerRequest {
   #upgraded;
   #urlValue;
   #completed;
+  #extraInfo;
   request;
 
   constructor(external, context) {
@@ -194,7 +194,7 @@ class InnerRequest {
     this.#external = null;
   }
 
-  get [_upgraded]() {
+  get upgraded() {
     return this.#upgraded;
   }
 
@@ -209,6 +209,7 @@ class InnerRequest {
     if (upgradeType == "upgradeHttpRaw") {
       const external = this.#external;
 
+      this.version;
       this.url();
       this.headerList;
       this.close();
@@ -229,6 +230,7 @@ class InnerRequest {
     if (upgradeType == "upgradeWebSocket") {
       const external = this.#external;
 
+      this.version;
       this.url();
       this.headerList;
       this.close();
@@ -370,6 +372,20 @@ class InnerRequest {
       ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
     }
     return headers;
+  }
+
+  get version() {
+    if (this.#extraInfo === undefined) {
+      this.#extraInfo = op_http_get_request_extra_info(this.#external);
+    }
+    return this.#extraInfo[0];
+  }
+
+  get protocol() {
+    if (this.#extraInfo === undefined) {
+      this.#extraInfo = op_http_get_request_extra_info(this.#external);
+    }
+    return this.#extraInfo[1];
   }
 
   get external() {
@@ -569,8 +585,11 @@ function mapToCallback(context, callback, onError) {
     }
 
     const inner = toInnerResponse(response);
-    if (innerRequest?.[_upgraded]) {
-      if (response.status !== 101) {
+    if (innerRequest?.upgraded) {
+      if (
+        (innerRequest.version < 2 && response.status !== 101) ||
+        (innerRequest.version >= 2 && response.status !== 200)
+      ) {
         import.meta.log(
           "error",
           "Upgrade response was not returned from callback",
