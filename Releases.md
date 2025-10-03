@@ -6,6 +6,31 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.5.3 / 2025.10.02
+
+- feat(unstable): add permission broker (#30826)
+- feat(unstable): permission broker - support custom error messages (#30902)
+- feat(unstable): support named pipes on Windows for the permission broker
+  (#30894)
+- fix(check): do not error for unsupported URL schemes (#30904)
+- fix(clean): do not panic on failure to get local cache path in clean --except
+  (#30895)
+- fix(cli/util): terminate watch file with sigint (#30635)
+- fix(dts): update some GPU types to not cause errors in upcoming DOM type
+  declarations (#30893)
+- fix(ext/node): allow ATTACH DATABASE with `--allow-all` (#30763)
+- fix(ext/node): setTimeout promisified to handle abort signal (#30855)
+- fix(fs): improve file stat checks (#30876)
+- fix(fs): improve file utime checks (#30872)
+- fix(npm): do not error when packument version contains both bundleDependencies
+  and bundledDependencies (#30875)
+- fix(unstable/tunnel): rename `--connected` to `--tunnel` and better handle
+  `DENO_DEPLOY_TOKEN` env variable (#30786)
+- fix: add support for passing v8 flags on `deno check` (#30868)
+- fix: do not purge lockfile when linking and the linked package's reqs have not
+  changed (#30877)
+- fix: show --permission-set help only once (#30844)
+
 ### 2.5.2 / 2025.09.24
 
 - feat(lsp): describe/it test editor support (#30802)

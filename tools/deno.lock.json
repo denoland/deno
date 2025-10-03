@@ -34,7 +34,9 @@
     "jsr:@std/streams@0.221.0": "0.221.0",
     "jsr:@std/yaml@0.221": "0.221.0",
     "jsr:@ts-morph/common@0.24": "0.24.0",
+    "jsr:@ts-morph/common@0.28": "0.28.0",
     "jsr:@ts-morph/ts-morph@23.0.0": "23.0.0",
+    "jsr:@ts-morph/ts-morph@27.0.0": "27.0.0",
     "npm:@types/decompress@4.2.7": "4.2.7",
     "npm:@types/node@*": "24.2.0",
     "npm:decompress@4.2.1": "4.2.1",
@@ -168,11 +170,25 @@
         "jsr:@std/path@~0.225.2"
       ]
     },
+    "@ts-morph/common@0.28.0": {
+      "integrity": "c168c35cd31ebc9cb811bd32d8eedbf331bd7f3e3f3f29bb1a5010f6d7ece94b",
+      "dependencies": [
+        "jsr:@std/fs@1",
+        "jsr:@std/path@1"
+      ]
+    },
     "@ts-morph/ts-morph@23.0.0": {
       "integrity": "5c5bf3187fc3d696ca0cc295e9e024e9c8d52051852cfea67f8e932cfbde0810",
       "dependencies": [
         "jsr:@david/code-block-writer",
-        "jsr:@ts-morph/common"
+        "jsr:@ts-morph/common@0.24"
+      ]
+    },
+    "@ts-morph/ts-morph@27.0.0": {
+      "integrity": "03a93ea311d25a70642db60b376700560a942fc5bfab52718b5e448692d13ed7",
+      "dependencies": [
+        "jsr:@david/code-block-writer",
+        "jsr:@ts-morph/common@0.28"
       ]
     }
   },
