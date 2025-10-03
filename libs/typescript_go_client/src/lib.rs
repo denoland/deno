@@ -1,3 +1,8 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+// Partially extracted / adapted from https://github.com/microsoft/libsyncrpc
+// Copyright 2024 Microsoft Corporation. MIT license.
+
 pub mod connection;
 pub mod types;
 
