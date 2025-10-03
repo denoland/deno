@@ -629,6 +629,17 @@ impl<
       }
     }
 
+    if !matches!(
+      specifier.scheme(),
+      "file" | "http" | "https" | "blob" | "data"
+    ) {
+      return Box::pin(std::future::ready(Ok(Some(
+        deno_graph::source::LoadResponse::External {
+          specifier: specifier.clone(),
+        },
+      ))));
+    }
+
     self.load_or_cache(
       LoadStrategy {
         file_fetcher: self.file_fetcher.clone(),

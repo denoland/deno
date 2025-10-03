@@ -5,6 +5,7 @@
 #![deny(clippy::unused_async)]
 #![deny(clippy::unnecessary_wraps)]
 
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -30,9 +31,14 @@ pub type PackageJsonDepsRc = deno_maybe_sync::MaybeArc<PackageJsonDeps>;
 #[allow(clippy::disallowed_types)]
 type PackageJsonDepsRcCell = deno_maybe_sync::MaybeOnceLock<PackageJsonDepsRc>;
 
+pub enum PackageJsonCacheResult {
+  Hit(Option<PackageJsonRc>),
+  NotCached,
+}
+
 pub trait PackageJsonCache {
-  fn get(&self, path: &Path) -> Option<PackageJsonRc>;
-  fn set(&self, path: PathBuf, package_json: PackageJsonRc);
+  fn get(&self, path: &Path) -> PackageJsonCacheResult;
+  fn set(&self, path: PathBuf, package_json: Option<PackageJsonRc>);
 }
 
 #[derive(Debug, Clone)]
@@ -254,24 +260,36 @@ impl PackageJson {
     sys: &impl FsRead,
     maybe_cache: Option<&dyn PackageJsonCache>,
     path: &Path,
-  ) -> Result<PackageJsonRc, PackageJsonLoadError> {
-    match maybe_cache.and_then(|c| c.get(path)) {
-      Some(item) => Ok(item),
-      _ => match sys.fs_read_to_string_lossy(path) {
-        Ok(file_text) => {
-          let pkg_json =
-            PackageJson::load_from_string(path.to_path_buf(), &file_text)?;
-          let pkg_json = deno_maybe_sync::new_rc(pkg_json);
-          if let Some(cache) = maybe_cache {
-            cache.set(path.to_path_buf(), pkg_json.clone());
+  ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
+    let cache_entry = maybe_cache
+      .map(|c| c.get(path))
+      .unwrap_or(PackageJsonCacheResult::NotCached);
+
+    match cache_entry {
+      PackageJsonCacheResult::Hit(item) => Ok(item),
+      PackageJsonCacheResult::NotCached => {
+        match sys.fs_read_to_string_lossy(path) {
+          Ok(file_text) => {
+            let pkg_json =
+              PackageJson::load_from_string(path.to_path_buf(), &file_text)?;
+            let pkg_json = deno_maybe_sync::new_rc(pkg_json);
+            if let Some(cache) = maybe_cache {
+              cache.set(path.to_path_buf(), Some(pkg_json.clone()));
+            }
+            Ok(Some(pkg_json))
           }
-          Ok(pkg_json)
+          Err(err) if err.kind() == ErrorKind::NotFound => {
+            if let Some(cache) = maybe_cache {
+              cache.set(path.to_path_buf(), None);
+            }
+            Ok(None)
+          }
+          Err(err) => Err(PackageJsonLoadError::Io {
+            path: path.to_path_buf(),
+            source: err,
+          }),
         }
-        Err(err) => Err(PackageJsonLoadError::Io {
-          path: path.to_path_buf(),
-          source: err,
-        }),
-      },
+      }
     }
   }
 
@@ -425,6 +443,8 @@ impl PackageJson {
       package_json.remove("directories").and_then(map_object);
     let scripts: Option<IndexMap<String, String>> =
       package_json.remove("scripts").and_then(parse_string_map);
+    let directories: Option<Map<String, Value>> =
+      package_json.remove("directories").and_then(map_object);
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
@@ -839,6 +859,9 @@ mod test {
       "type": "module",
       "dependencies": {
         "name": "1.2",
+      },
+      "directories": {
+        "bin": "./bin",
       },
       "devDependencies": {
         "name": "1.2",

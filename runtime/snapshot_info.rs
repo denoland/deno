@@ -34,6 +34,15 @@ impl deno_web::TimersPermission for Permissions {
 }
 
 impl deno_fetch::FetchPermissions for Permissions {
+  fn check_net(
+    &mut self,
+    _host: &str,
+    _port: u16,
+    _api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    unreachable!("snapshotting!")
+  }
+
   fn check_net_url(
     &mut self,
     _url: &deno_core::url::Url,
