@@ -467,7 +467,7 @@ impl ShellCommand for NodeModulesFileRunCommand {
 
 pub fn resolve_custom_commands(
   npm_resolver: &CliNpmResolver,
-  node_resolver: &CliNodeResolver,
+  package_json_resolver: &CliPackageJsonResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut commands = match npm_resolver {
     CliNpmResolver::Byonm(npm_resolver) => {
@@ -476,7 +476,7 @@ pub fn resolve_custom_commands(
       resolve_npm_commands_from_bin_dir(&bin_dir)
     }
     CliNpmResolver::Managed(npm_resolver) => {
-      resolve_managed_npm_commands(npm_resolver, node_resolver)?
+      resolve_managed_npm_commands(npm_resolver, package_json_resolver)?
     }
   };
   commands.insert("npm".to_string(), Rc::new(NpmCommand));
@@ -574,14 +574,13 @@ fn resolve_execution_path_from_npx_shim(
 
 fn resolve_managed_npm_commands(
   npm_resolver: &CliManagedNpmResolver,
-  node_resolver: &CliNodeResolver,
-  package_json_resolver: CliPackageJsonResolver,
+  package_json_resolver: &CliPackageJsonResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
   for id in npm_resolver.resolution().top_level_packages() {
     let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
     let Some(package_json) = package_json_resolver
-      .load_package_json(package_folder.join("package.json"))?
+      .load_package_json(&package_folder.join("package.json"))?
     else {
       continue;
     };

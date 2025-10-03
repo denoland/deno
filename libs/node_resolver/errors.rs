@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
-use deno_package_json::MissingPkgJsonNameError;
 use deno_path_util::UrlToFilePathError;
 use thiserror::Error;
 use url::Url;

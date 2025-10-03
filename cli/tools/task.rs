@@ -41,6 +41,7 @@ use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
@@ -178,7 +179,7 @@ pub async fn execute_script(
   let maybe_lockfile = factory.maybe_lockfile().await?.cloned();
   let npm_installer = factory.npm_installer_if_managed().await?;
   let npm_resolver = factory.npm_resolver().await?;
-  let node_resolver = factory.node_resolver().await?;
+  let package_json_resolver = factory.resolver_factory()?.pkg_json_resolver();
   let progress_bar = factory.text_only_progress_bar();
   let mut env_vars = task_runner::real_env_vars();
 
@@ -197,7 +198,7 @@ pub async fn execute_script(
     task_flags: &task_flags,
     npm_installer: npm_installer.map(|n| n.as_ref()),
     npm_resolver,
-    node_resolver: node_resolver.as_ref(),
+    package_json_resolver: package_json_resolver.as_ref(),
     progress_bar,
     env_vars,
     cli_options,
@@ -252,7 +253,7 @@ struct TaskRunner<'a> {
   task_flags: &'a TaskFlags,
   npm_installer: Option<&'a CliNpmInstaller>,
   npm_resolver: &'a CliNpmResolver,
-  node_resolver: &'a CliNodeResolver,
+  package_json_resolver: &'a CliPackageJsonResolver,
   progress_bar: &'a ProgressBar,
   env_vars: HashMap<OsString, OsString>,
   cli_options: &'a CliOptions,
@@ -463,7 +464,7 @@ impl<'a> TaskRunner<'a> {
 
     let custom_commands = task_runner::resolve_custom_commands(
       self.npm_resolver,
-      self.node_resolver,
+      self.package_json_resolver,
     )?;
 
     self
@@ -506,7 +507,7 @@ impl<'a> TaskRunner<'a> {
     ];
     let custom_commands = task_runner::resolve_custom_commands(
       self.npm_resolver,
-      self.node_resolver,
+      self.package_json_resolver,
     )?;
 
     for task_name in &task_names {

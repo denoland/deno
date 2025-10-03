@@ -47,7 +47,7 @@ pub enum PackageJsonBins {
   Bins(Vec<String>),
 }
 
-#[derive(Debug, Clone, JsError, PartialEq, Eq, Boxed)]
+#[derive(Debug, Clone, Error, JsError, PartialEq, Eq)]
 #[class(generic)]
 #[error("'{}' did not have a name", pkg_json_path.display())]
 pub struct MissingPkgJsonNameError {
@@ -443,8 +443,6 @@ impl PackageJson {
       package_json.remove("directories").and_then(map_object);
     let scripts: Option<IndexMap<String, String>> =
       package_json.remove("scripts").and_then(parse_string_map);
-    let directories: Option<Map<String, Value>> =
-      package_json.remove("directories").and_then(map_object);
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
