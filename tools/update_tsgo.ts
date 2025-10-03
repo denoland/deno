@@ -38,7 +38,7 @@ export function unindent(strings: TemplateStringsArray, ...values: unknown[]) {
   return trimIndent(raw);
 }
 
-const repo = "nathanwhit/typescript-go-rs";
+const repo = "denoland/typescript-go";
 
 interface GitHubRelease {
   tag_name: string;
@@ -147,7 +147,8 @@ const newContent = unindent`
   }
 
   pub const VERSION: &str = "${versionNoV}";
-  pub const DOWNLOAD_BASE_URL: &str = "https://github.com/${repo}/releases/download/${version}";
+  pub const DOWNLOAD_BASE_URL: &str = 
+    "https://github.com/${repo}/releases/download/${version}";
   pub const HASHES: Hashes = Hashes {
     windows_x64: "${hashes.windows_x64}",
     macos_x64: "${hashes.macos_x64}",
