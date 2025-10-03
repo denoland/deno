@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 mod tsgo_version;
 
 use std::cell::RefCell;
@@ -97,7 +99,7 @@ fn exec_request_inner(
 
   let callbacks = handler.supported_callbacks();
   let bin_path = tsgo_path;
-  let mut channel = SyncRpcChannel::new(&bin_path, vec!["--api"], handler)?;
+  let mut channel = SyncRpcChannel::new(bin_path, vec!["--api"], handler)?;
 
   channel.request_sync(
     "configure",
@@ -297,7 +299,7 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
         if payload == state.config_path {
           Ok(jsons!(&state.synthetic_config)?)
         } else {
-          let contents = load_inner(&mut *state, &payload).map_err(adhoc)?;
+          let contents = load_inner(&mut state, &payload).map_err(adhoc)?;
           if let Some(contents) = contents {
             Ok(jsons!(&contents)?)
           } else {
@@ -312,7 +314,7 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
       }
       "resolveModuleName" => {
         let payload = deser::<ResolveModuleNamePayload>(payload)?;
-        let (out_name, extension) = resolve_name(&mut *state, payload)?;
+        let (out_name, extension) = resolve_name(&mut state, payload)?;
 
         Ok(jsons!({
           "resolvedFileName": out_name,
@@ -320,10 +322,10 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
         })?)
       }
       "getPackageJsonScopeIfApplicable" => {
-        get_package_json_scope_if_applicable(&mut *state, payload)
+        get_package_json_scope_if_applicable(&mut state, payload)
       }
       "getPackageScopeForPath" => {
-        get_package_json_scope_if_applicable(&mut *state, payload)
+        get_package_json_scope_if_applicable(&mut state, payload)
       }
       "resolveTypeReferenceDirective" => {
         log::debug!("resolveTypeReferenceDirective: {}", payload);
@@ -333,7 +335,7 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
           containing_file: payload.containing_file,
           resolution_mode: payload.resolution_mode,
         };
-        let (out_name, extension) = resolve_name(&mut *state, payload)?;
+        let (out_name, extension) = resolve_name(&mut state, payload)?;
         log::debug!(
           "resolveTypeReferenceDirective: {:?}",
           (&out_name, &extension)
@@ -434,7 +436,7 @@ fn resolve_name(
         // we could get this from the resolved dep, but for now assume
         // the value resolved in TypeScript is better
         resolution_mode,
-        &graph,
+        graph,
         maybe_npm,
       )
       .map_err(adhoc)?
@@ -577,7 +579,7 @@ fn load_inner(
           .is_cjs(specifier, *media_type, &code_arc)
       })
       .unwrap_or(false);
-    Ok(Some(code.into()))
+    Ok(Some(code))
   }
 
   let specifier =
@@ -613,7 +615,8 @@ fn load_inner(
       &specifier
     };
     let maybe_module = graph.try_get(specifier).ok().flatten();
-    let maybe_source = if let Some(module) = maybe_module {
+
+    if let Some(module) = maybe_module {
       match module {
         Module::Js(module) => {
           media_type = module.media_type;
@@ -671,8 +674,7 @@ fn load_inner(
       )?
     } else {
       None
-    };
-    maybe_source
+    }
   };
   let module_kind = get_resolution_mode(is_cjs, media_type);
   state
@@ -681,7 +683,7 @@ fn load_inner(
   let Some(data) = data else {
     return Ok(None);
   };
-  Ok(Some(data.into()))
+  Ok(Some(data))
 }
 
 fn get_resolution_mode(
@@ -813,7 +815,7 @@ pub async fn ensure_tsgo(
   }
 
   std::fs::create_dir_all(&folder_path)
-    .map_err(|e| DownloadError::CreateTempDirFailed(e))?;
+    .map_err(DownloadError::CreateTempDirFailed)?;
 
   let client = http_client_provider
     .get_or_create()
@@ -821,7 +823,7 @@ pub async fn ensure_tsgo(
   let download_url = get_download_url(platform);
   log::debug!("Downloading tsgo from {}", download_url);
   let temp = tempfile::tempdir().map_err(DownloadError::CreateTempDirFailed)?;
-  let path = temp.path().join(format!("tsgo.zip"));
+  let path = temp.path().join("tsgo.zip");
   log::debug!("Downloading tsgo to {}", path.display());
   let data = client
     .download(
@@ -845,7 +847,7 @@ pub async fn ensure_tsgo(
   let unpacked_path =
     crate::util::archive::unpack_into_dir(crate::util::archive::UnpackArgs {
       exe_name: "tsgo",
-      archive_name: &format!("tsgo.zip"),
+      archive_name: "tsgo.zip",
       archive_data: &data,
       is_windows: cfg!(windows),
       dest_path: temp.path(),

@@ -144,7 +144,6 @@ impl<T: CallbackHandler> SyncRpcChannel<T> {
   /// Unlike `requestSync`, this method will not do any of its own encoding or
   /// decoding of payload data. Everything will be as sent/received through the
   /// underlying protocol.
-
   pub fn request_bytes_sync(
     &mut self,
     method: &str,
@@ -162,7 +161,7 @@ impl<T: CallbackHandler> SyncRpcChannel<T> {
       match ty.try_into().map_err(Error::from_reason)? {
         MessageType::Response => {
           if name == method_bytes {
-            return Ok(payload.into());
+            return Ok(payload);
           } else {
             let name = String::from_utf8_lossy(&name);
             return Err(Error::from_reason(format!(
@@ -174,7 +173,7 @@ impl<T: CallbackHandler> SyncRpcChannel<T> {
           return Err(Error::RpcConnection(self.conn.create_error(
             &String::from_utf8_lossy(&name),
             payload,
-            &method,
+            method,
           )));
         }
         MessageType::Call => {
@@ -204,10 +203,9 @@ impl<T: CallbackHandler> SyncRpcChannel<T> {
         "no callback named `{name}` found"
       )));
     }
-    let res = self.callback_handler.handle_callback(
-      name,
-      String::from_utf8(payload).map_err(|e| Error::Utf8(e))?,
-    );
+    let res = self
+      .callback_handler
+      .handle_callback(name, String::from_utf8(payload).map_err(Error::Utf8)?);
     match res {
       Ok(res) => {
         self

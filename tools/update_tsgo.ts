@@ -1,6 +1,8 @@
 #!/usr/bin/env -S deno run -RWN --allow-run=deno
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+// deno-lint-ignore-file no-console
+
 import { fileURLToPath } from "node:url";
 
 /**
@@ -41,7 +43,7 @@ export function unindent(strings: TemplateStringsArray, ...values: unknown[]) {
 const repo = "denoland/typescript-go";
 
 interface GitHubRelease {
-  tag_name: string;
+  "tag_name": string;
   assets: GitHubAsset[];
 }
 
@@ -80,18 +82,18 @@ if (currentVersion === versionNoV) {
 function findHashes(
   release: GitHubRelease,
 ): {
-  windows_x64: string;
-  macos_x64: string;
-  macos_arm64: string;
-  linux_x64: string;
-  linux_arm64: string;
+  windowsX64: string;
+  macosX64: string;
+  macosArm64: string;
+  linuxX64: string;
+  linuxArm64: string;
 } {
   const hashes = {
-    windows_x64: "",
-    macos_x64: "",
-    macos_arm64: "",
-    linux_x64: "",
-    linux_arm64: "",
+    windowsX64: "",
+    macosX64: "",
+    macosArm64: "",
+    linuxX64: "",
+    linuxArm64: "",
   };
   for (const asset of release.assets) {
     const parts = asset.name.split("-");
@@ -99,15 +101,15 @@ function findHashes(
     const archAndExtension = parts[parts.length - 1];
     const arch = archAndExtension.split(".")[0];
     if (os === "windows" && arch === "x64") {
-      hashes.windows_x64 = asset.digest;
+      hashes.windowsX64 = asset.digest;
     } else if (os === "macos" && arch === "x64") {
-      hashes.macos_x64 = asset.digest;
+      hashes.macosX64 = asset.digest;
     } else if (os === "macos" && arch === "arm64") {
-      hashes.macos_arm64 = asset.digest;
+      hashes.macosArm64 = asset.digest;
     } else if (os === "linux" && arch === "x64") {
-      hashes.linux_x64 = asset.digest;
+      hashes.linuxX64 = asset.digest;
     } else if (os === "linux" && arch === "arm64") {
-      hashes.linux_arm64 = asset.digest;
+      hashes.linuxArm64 = asset.digest;
     }
   }
   return hashes;
@@ -150,11 +152,11 @@ const newContent = unindent`
   pub const DOWNLOAD_BASE_URL: &str = 
     "https://github.com/${repo}/releases/download/${version}";
   pub const HASHES: Hashes = Hashes {
-    windows_x64: "${hashes.windows_x64}",
-    macos_x64: "${hashes.macos_x64}",
-    macos_arm64: "${hashes.macos_arm64}",
-    linux_x64: "${hashes.linux_x64}",
-    linux_arm64: "${hashes.linux_arm64}",
+    windows_x64: "${hashes.windowsX64}",
+    macos_x64: "${hashes.macosX64}",
+    macos_arm64: "${hashes.macosArm64}",
+    linux_x64: "${hashes.linuxX64}",
+    linux_arm64: "${hashes.linuxArm64}",
   };
   
   const _: () = {
