@@ -6,6 +6,7 @@ use color_print::cformat;
 use color_print::cstr;
 use deno_core::error::JsError;
 use deno_core::error::format_frame;
+use deno_core::url::Url;
 use deno_terminal::colors;
 
 #[derive(Debug, Clone)]
@@ -90,6 +91,7 @@ impl deno_core::error::ErrorFormat for AnsiColors {
       }
       LineNumber | ColumnNumber => colors::yellow(s).to_string().into(),
       FunctionName | PromiseAll => colors::italic_bold(s).to_string().into(),
+      WorkingDirPath => colors::gray(s).to_string().into(),
     }
   }
 }
@@ -170,6 +172,7 @@ fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference<'_>> {
 fn format_aggregated_error(
   aggregated_errors: &Vec<JsError>,
   circular_reference_index: usize,
+  initial_cwd: Option<&Url>,
 ) -> String {
   let mut s = String::new();
   let mut nested_circular_reference_index = circular_reference_index;
@@ -187,6 +190,7 @@ fn format_aggregated_error(
       }),
       false,
       vec![],
+      initial_cwd,
     );
 
     for line in error_string.trim_start_matches("Uncaught ").lines() {
@@ -202,6 +206,7 @@ fn format_js_error_inner(
   circular: Option<IndexedErrorReference>,
   include_source_code: bool,
   suggestions: Vec<FixSuggestion>,
+  initial_cwd: Option<&Url>,
 ) -> String {
   let mut s = String::new();
 
@@ -221,6 +226,7 @@ fn format_js_error_inner(
         .as_ref()
         .map(|circular| circular.index)
         .unwrap_or(0),
+      initial_cwd,
     );
     s.push_str(&aggregated_message);
   }
@@ -239,7 +245,12 @@ fn format_js_error_inner(
     0,
   ));
   for frame in &js_error.frames {
-    write!(s, "\n    at {}", format_frame::<AnsiColors>(frame, None)).unwrap();
+    write!(
+      s,
+      "\n    at {}",
+      format_frame::<AnsiColors>(frame, initial_cwd)
+    )
+    .unwrap();
   }
   if let Some(cause) = &js_error.cause {
     let is_caused_by_circular = circular
@@ -251,7 +262,7 @@ fn format_js_error_inner(
       colors::cyan(format!("[Circular *{}]", circular.unwrap().index))
         .to_string()
     } else {
-      format_js_error_inner(cause, circular, false, vec![])
+      format_js_error_inner(cause, circular, false, vec![], initial_cwd)
     };
 
     write!(
@@ -465,14 +476,17 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
 }
 
 /// Format a [`JsError`] for terminal output.
-pub fn format_js_error(js_error: &JsError) -> String {
+pub fn format_js_error(
+  js_error: &JsError,
+  initial_cwd: Option<&Url>,
+) -> String {
   let circular =
     find_recursive_cause(js_error).map(|reference| IndexedErrorReference {
       reference,
       index: 1,
     });
   let suggestions = get_suggestions_for_terminal_errors(js_error);
-  format_js_error_inner(js_error, circular, true, suggestions)
+  format_js_error_inner(js_error, circular, true, suggestions, initial_cwd)
 }
 
 #[cfg(test)]

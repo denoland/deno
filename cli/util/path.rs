@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::path::Path;
 
 use deno_ast::MediaType;
@@ -99,25 +98,9 @@ pub fn relative_specifier(
     return Some("./".to_string());
   }
 
-  // workaround using parent directory until https://github.com/servo/rust-url/pull/754 is merged
-  let from = if !from.path().ends_with('/') {
-    if let Some(end_slash) = from.path().rfind('/') {
-      let mut new_from = from.clone();
-      new_from.set_path(&from.path()[..end_slash + 1]);
-      Cow::Owned(new_from)
-    } else {
-      Cow::Borrowed(from)
-    }
-  } else {
-    Cow::Borrowed(from)
-  };
-
   // workaround for url crate not adding a trailing slash for a directory
   // it seems to be fixed once a version greater than 2.2.2 is released
-  let mut text = from.make_relative(to)?;
-  if is_dir && !text.ends_with('/') && to.query().is_none() {
-    text.push('/');
-  }
+  let text = from.make_relative(to)?;
 
   let text = if text.starts_with("../") || text.starts_with("./") {
     text

@@ -757,6 +757,7 @@ pub struct InternalFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct Flags {
+  pub initial_cwd: Option<PathBuf>,
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
   pub argv: Vec<String>,
@@ -1392,8 +1393,15 @@ static DENO_HELP: &str = cstr!(
 <y>Discord:</> https://discord.gg/deno
 ");
 
-/// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
+  flags_from_vec_with_initial_cwd(args, None)
+}
+
+/// Main entry point for parsing deno's command line flags.
+pub fn flags_from_vec_with_initial_cwd(
+  args: Vec<OsString>,
+  initial_cwd: Option<PathBuf>,
+) -> clap::error::Result<Flags> {
   let mut app = clap_root();
   let mut matches =
     app
@@ -1420,7 +1428,10 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
         _ => e,
       })?;
 
-  let mut flags = Flags::default();
+  let mut flags = Flags {
+    initial_cwd,
+    ..Default::default()
+  };
 
   // to pass all flags, even help and
   if matches.subcommand_matches("deploy").is_some() {
@@ -1484,6 +1495,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
     }
 
     help_parse(&mut flags, subcommand);
+
     return Ok(flags);
   }
 
