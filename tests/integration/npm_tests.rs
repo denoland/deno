@@ -1784,7 +1784,7 @@ fn check_css_package_json_exports() {
     .new_command()
     .args("check main.ts")
     .run()
-    .assert_matches_text("Download [WILDCARD]css-export\nDownload [WILDCARD]css-export/1.0.0.tgz\nCheck [WILDCARD]/main.ts\n")
+    .assert_matches_text("Download [WILDCARD]css-export\nDownload [WILDCARD]css-export/1.0.0.tgz\nCheck [WILDCARD]/main.ts\n✅ All files typecheck successfully\n")
     .assert_exit_code(0);
 }
 

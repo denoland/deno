@@ -11,7 +11,7 @@
     },
     "check": {
       "args": "check http://localhost:4545/run/002_hello.ts",
-      "output": "Download http://localhost:4545/run/002_hello.ts\nCheck http://localhost:4545/run/002_hello.ts\n"
+      "output": "Download http://localhost:4545/run/002_hello.ts\nCheck http://localhost:4545/run/002_hello.ts\n✅ All files typecheck successfully\n"
     }
   }
 }

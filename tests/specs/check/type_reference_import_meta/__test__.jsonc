@@ -13,7 +13,7 @@
         },
         {
           "args": "check ./main.ts",
-          "output": "Check [WILDCARD]main.ts\n"
+          "output": "Check [WILDCARD]main.ts\n✅ All files typecheck successfully\n"
         }
       ]
     },
@@ -29,7 +29,7 @@
         },
         {
           "args": "check ./main.ts",
-          "output": "Check [WILDCARD]main.ts\n"
+          "output": "Check [WILDCARD]main.ts\n✅ All files typecheck successfully\n"
         }
       ]
     },
@@ -45,7 +45,7 @@
         },
         {
           "args": "check ./main.ts",
-          "output": "Check [WILDCARD]main.ts\n"
+          "output": "Check [WILDCARD]main.ts\n✅ All files typecheck successfully\n"
         }
       ]
     }

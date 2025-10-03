@@ -152,7 +152,9 @@ fn check_error_in_dep_then_fix() {
 
   temp_dir.write("greet.ts", correct_code);
   let output = check_command.run();
-  output.assert_matches_text("Check [WILDCARD]main.ts\n");
+  output.assert_matches_text(
+    "Check [WILDCARD]main.ts\n✅ All files typecheck successfully\n",
+  );
 
   temp_dir.write("greet.ts", incorrect_code);
   let output = check_command.run();
