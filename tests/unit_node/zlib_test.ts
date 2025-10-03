@@ -252,12 +252,12 @@ Deno.test("crc32 doesn't overflow", () => {
 });
 
 Deno.test("crc32 large input", () => {
-  let checkSum = 0xffffffff; 
-  for (let i = 0; i < 2**16; i++) {
+  let checkSum = 0xffffffff;
+  for (let i = 0; i < 2 ** 16; i++) {
     checkSum = crc32("", checkSum);
   }
   assertEquals(checkSum, 0xffffffff);
-})
+});
 
 Deno.test("BrotliCompress", async () => {
   const deffered = Promise.withResolvers<void>();
