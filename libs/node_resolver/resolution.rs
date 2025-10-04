@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
@@ -9,15 +10,20 @@ use anyhow::Error as AnyError;
 use anyhow::bail;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
+use deno_package_json::PackageJsonRc;
 use deno_path_util::url_to_file_path;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use lazy_regex::Lazy;
+use regex::Regex;
 use serde_json::Map;
 use serde_json::Value;
 use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
+use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
+use sys_traits::FsReadDir;
 use url::Url;
 
 use crate::InNpmPackageChecker;
@@ -32,6 +38,7 @@ use crate::errors::FinalizeResolutionError;
 use crate::errors::InvalidModuleSpecifierError;
 use crate::errors::InvalidPackageTargetError;
 use crate::errors::LegacyResolveError;
+use crate::errors::MissingPkgJsonError;
 use crate::errors::ModuleNotFoundError;
 use crate::errors::NodeJsErrorCode;
 use crate::errors::NodeJsErrorCoded;
@@ -49,8 +56,8 @@ use crate::errors::PackageSubpathResolveErrorKind;
 use crate::errors::PackageTargetNotFoundError;
 use crate::errors::PackageTargetResolveError;
 use crate::errors::PackageTargetResolveErrorKind;
-use crate::errors::ResolveBinaryCommandsError;
 use crate::errors::ResolvePkgJsonBinExportError;
+use crate::errors::ResolvePkgNpmBinaryCommandsError;
 use crate::errors::TypesNotFoundError;
 use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnknownBuiltInNodeModuleError;
@@ -257,7 +264,10 @@ struct ResolutionConfig {
 }
 
 #[sys_traits::auto_impl]
-pub trait NodeResolverSys: FsCanonicalize + FsMetadata + FsRead {}
+pub trait NodeResolverSys:
+  FsCanonicalize + FsMetadata + FsRead + FsReadDir
+{
+}
 
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
@@ -741,56 +751,120 @@ impl<
     Ok(url_or_path)
   }
 
-  pub fn resolve_binary_commands(
-    &self,
-    package_folder: &Path,
-  ) -> Result<Vec<String>, ResolveBinaryCommandsError> {
-    let pkg_json_path = package_folder.join("package.json");
-    let Some(package_json) =
-      self.pkg_json_resolver.load_package_json(&pkg_json_path)?
-    else {
-      return Ok(Vec::new());
-    };
-
-    Ok(match &package_json.bin {
-      Some(Value::String(_)) => {
-        let Some(name) = &package_json.name else {
-          return Err(ResolveBinaryCommandsError::MissingPkgJsonName {
-            pkg_json_path,
-          });
-        };
-        let name = name.split("/").last().unwrap();
-        vec![name.to_string()]
-      }
-      Some(Value::Object(o)) => {
-        o.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>()
-      }
-      _ => Vec::new(),
-    })
-  }
-
   pub fn resolve_binary_export(
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
   ) -> Result<PathBuf, ResolvePkgJsonBinExportError> {
-    let pkg_json_path = package_folder.join("package.json");
-    let Some(package_json) =
-      self.pkg_json_resolver.load_package_json(&pkg_json_path)?
-    else {
-      return Err(ResolvePkgJsonBinExportError::MissingPkgJson {
-        pkg_json_path,
-      });
+    let (pkg_json, items) = self
+      .resolve_npm_binary_commands_for_package_with_pkg_json(package_folder)?;
+    // TODO(bartlomieju): skipped checking errors for commonJS resolution and
+    // "preserveSymlinksMain"/"preserveSymlinks" options.
+    let bin_name = match sub_path {
+      Some(bin_name) => bin_name,
+      None => pkg_json
+        .resolve_default_bin_name()
+        .map_err(ResolvePkgNpmBinaryCommandsError::MissingPkgJsonName)?,
     };
-    let bin_entry =
-      resolve_bin_entry_value(&package_json, sub_path).map_err(|err| {
+    let path =
+      resolve_bin_entry_value(&pkg_json, &items, bin_name).map_err(|err| {
         ResolvePkgJsonBinExportError::InvalidBinProperty {
           message: err.to_string(),
         }
       })?;
+    Ok(path.to_path_buf())
+  }
+
+  pub fn resolve_npm_binary_commands_for_package(
+    &self,
+    package_folder: &Path,
+  ) -> Result<BTreeMap<String, PathBuf>, ResolvePkgNpmBinaryCommandsError> {
+    let (_pkg_json, items) = self
+      .resolve_npm_binary_commands_for_package_with_pkg_json(package_folder)?;
+    Ok(items)
+  }
+
+  fn resolve_npm_binary_commands_for_package_with_pkg_json(
+    &self,
+    package_folder: &Path,
+  ) -> Result<
+    (PackageJsonRc, BTreeMap<String, PathBuf>),
+    ResolvePkgNpmBinaryCommandsError,
+  > {
+    let pkg_json_path = package_folder.join("package.json");
+    let Some(package_json) =
+      self.pkg_json_resolver.load_package_json(&pkg_json_path)?
+    else {
+      return Err(ResolvePkgNpmBinaryCommandsError::MissingPkgJson(
+        MissingPkgJsonError { pkg_json_path },
+      ));
+    };
+    let bins = package_json.resolve_bins()?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
-    Ok(package_folder.join(bin_entry))
+    let items = match bins {
+      deno_package_json::PackageJsonBins::Directory(path_buf) => {
+        self.resolve_npm_commands_from_bin_dir(&path_buf)
+      }
+      deno_package_json::PackageJsonBins::Bins(items) => items,
+    };
+    Ok((package_json, items))
+  }
+
+  pub fn resolve_npm_commands_from_bin_dir(
+    &self,
+    bin_dir: &Path,
+  ) -> BTreeMap<String, PathBuf> {
+    log::debug!("Resolving npm commands in '{}'.", bin_dir.display());
+    let mut result = BTreeMap::new();
+    match self.sys.fs_read_dir(bin_dir) {
+      Ok(entries) => {
+        for entry in entries {
+          let Ok(entry) = entry else {
+            continue;
+          };
+          if let Some((command, path)) =
+            self.resolve_bin_dir_entry_command(entry)
+          {
+            result.insert(command, path);
+          }
+        }
+      }
+      Err(err) => {
+        log::debug!("Failed read_dir for '{}': {:#}", bin_dir.display(), err);
+      }
+    }
+    result
+  }
+
+  fn resolve_bin_dir_entry_command(
+    &self,
+    entry: TSys::ReadDirEntry,
+  ) -> Option<(String, PathBuf)> {
+    if entry.path().extension().is_some() {
+      return None; // only look at files without extensions (even on Windows)
+    }
+    let file_type = entry.file_type().ok()?;
+    let path = if file_type.is_file() {
+      entry.path()
+    } else if file_type.is_symlink() {
+      Cow::Owned(self.sys.fs_canonicalize(entry.path()).ok()?)
+    } else {
+      return None;
+    };
+    let text = self.sys.fs_read_to_string_lossy(&path).ok()?;
+    let command_name = entry.file_name().to_string_lossy().into_owned();
+    if let Some(path) = resolve_execution_path_from_npx_shim(path, &text) {
+      log::debug!(
+        "Resolved npx command '{}' to '{}'.",
+        command_name,
+        path.display()
+      );
+      Some((command_name, path))
+    } else {
+      log::debug!("Failed resolving npx command '{}'.", command_name);
+      None
+    }
   }
 
   /// Resolves an npm package folder path from the specified referrer.
@@ -2119,49 +2193,56 @@ fn resolve_pkg_json_import<'a>(
   }
 }
 
+/// This is not ideal, but it works ok because it allows us to bypass
+/// the shebang and execute the script directly with Deno.
+fn resolve_execution_path_from_npx_shim(
+  file_path: Cow<Path>,
+  text: &str,
+) -> Option<PathBuf> {
+  static SCRIPT_PATH_RE: Lazy<Regex> =
+    lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
+
+  let maybe_first_line = {
+    let index = text.find("\n")?;
+    Some(&text[0..index])
+  };
+
+  if let Some(first_line) = maybe_first_line {
+    // NOTE(bartlomieju): this is not perfect, but handle two most common scenarios
+    // where Node is run without any args. If there are args then we use `NodeCommand`
+    // struct.
+    if first_line == "#!/usr/bin/env node"
+      || first_line == "#!/usr/bin/env -S node"
+    {
+      // launch this file itself because it's a JS file
+      return Some(file_path.into_owned());
+    }
+  }
+
+  // Search for...
+  // > "$basedir/../next/dist/bin/next" "$@"
+  // ...which is what it will look like on Windows
+  SCRIPT_PATH_RE
+    .captures(text)
+    .and_then(|c| c.get(1))
+    .map(|relative_path| {
+      file_path.parent().unwrap().join(relative_path.as_str())
+    })
+}
+
 fn resolve_bin_entry_value<'a>(
-  package_json: &'a PackageJson,
-  bin_name: Option<&str>,
-) -> Result<&'a str, AnyError> {
-  let bin = match &package_json.bin {
-    Some(bin) => bin,
-    None => bail!(
-      "'{}' did not have a bin property",
-      package_json.path.display(),
-    ),
-  };
-  let bin_entry = match bin {
-    Value::String(_) => {
-      if bin_name.is_some()
-        && bin_name
-          != package_json
-            .name
-            .as_deref()
-            .map(|name| name.rsplit_once('/').map_or(name, |(_, name)| name))
-      {
-        None
-      } else {
-        Some(bin)
-      }
-    }
-    Value::Object(o) => {
-      if let Some(bin_name) = bin_name {
-        o.get(bin_name)
-      } else if o.len() == 1
-        || o.len() > 1 && o.values().all(|v| v == o.values().next().unwrap())
-      {
-        o.values().next()
-      } else {
-        package_json.name.as_ref().and_then(|n| o.get(n))
-      }
-    }
-    _ => bail!(
-      "'{}' did not have a bin property with a string or object value",
+  package_json: &PackageJson,
+  bins: &'a BTreeMap<String, PathBuf>,
+  bin_name: &str,
+) -> Result<&'a Path, AnyError> {
+  if bins.is_empty() {
+    bail!(
+      "'{}' did not have a bin property with a string or non-empty object value",
       package_json.path.display()
-    ),
-  };
-  let bin_entry = match bin_entry {
-    Some(e) => e,
+    );
+  }
+  match bins.get(bin_name) {
+    Some(e) => Ok(e),
     None => {
       let prefix = package_json
         .name
@@ -2176,21 +2257,14 @@ fn resolve_bin_entry_value<'a>(
           prefix
         })
         .unwrap_or_default();
-      let keys = bin
-        .as_object()
-        .map(|o| {
-          o.keys()
-            .map(|k| format!(" * {prefix}{k}"))
-            .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+      let keys = bins
+        .keys()
+        .map(|k| format!(" * {prefix}{k}"))
+        .collect::<Vec<_>>();
       bail!(
-        "'{}' did not have a bin entry{}{}",
+        "'{}' did not have a bin entry for '{}'{}",
         package_json.path.display(),
-        bin_name
-          .or(package_json.name.as_deref())
-          .map(|name| format!(" for '{}'", name))
-          .unwrap_or_default(),
+        bin_name,
         if keys.is_empty() {
           "".to_string()
         } else {
@@ -2198,13 +2272,6 @@ fn resolve_bin_entry_value<'a>(
         }
       )
     }
-  };
-  match bin_entry {
-    Value::String(s) => Ok(s),
-    _ => bail!(
-      "'{}' had a non-string sub property of bin",
-      package_json.path.display(),
-    ),
   }
 }
 
@@ -2473,6 +2540,7 @@ impl<'a, TSys: FsMetadata> TypesVersions<'a, TSys> {
 
 #[cfg(test)]
 mod tests {
+  use deno_package_json::PackageJsonBins;
   use serde_json::json;
   use sys_traits::FsCreateDirAll;
   use sys_traits::FsWrite;
@@ -2487,135 +2555,169 @@ mod tests {
   #[test]
   fn test_resolve_bin_entry_value() {
     // should resolve the specified value
-    let pkg_json = build_package_json(json!({
-      "name": "pkg",
-      "version": "1.1.1",
-      "bin": {
-        "bin1": "./value1",
-        "bin2": "./value2",
-        "pkg": "./value3",
-      }
-    }));
-    assert_eq!(
-      resolve_bin_entry_value(&pkg_json, Some("bin1")).unwrap(),
-      "./value1"
-    );
+    {
+      let pkg_json = build_package_json(json!({
+        "name": "pkg",
+        "version": "1.1.1",
+        "bin": {
+          "bin1": "./value1",
+          "bin2": "./value2",
+          "pkg": "./value3",
+        }
+      }));
+      let bins = match pkg_json.resolve_bins().unwrap() {
+        PackageJsonBins::Directory(_) => unreachable!(),
+        PackageJsonBins::Bins(bins) => bins,
+      };
+      assert_eq!(
+        resolve_bin_entry_value(&pkg_json, &bins, "bin1").unwrap(),
+        pkg_json.dir_path().join("./value1")
+      );
+      assert_eq!(
+        resolve_bin_entry_value(&pkg_json, &bins, "pkg").unwrap(),
+        pkg_json.dir_path().join("./value3")
+      );
 
-    // should resolve the value with the same name when not specified
-    assert_eq!(
-      resolve_bin_entry_value(&pkg_json, None).unwrap(),
-      "./value3"
-    );
-
-    // should not resolve when specified value does not exist
-    assert_eq!(
-      resolve_bin_entry_value(&pkg_json, Some("other"),)
-        .err()
-        .unwrap()
-        .to_string(),
-      concat!(
-        "'/package.json' did not have a bin entry for 'other'\n",
-        "\n",
-        "Possibilities:\n",
-        " * npm:pkg@1.1.1/bin1\n",
-        " * npm:pkg@1.1.1/bin2\n",
-        " * npm:pkg@1.1.1/pkg"
-      )
-    );
+      // should not resolve when specified value does not exist
+      assert_eq!(
+        resolve_bin_entry_value(&pkg_json, &bins, "other")
+          .err()
+          .unwrap()
+          .to_string(),
+        concat!(
+          "'/package.json' did not have a bin entry for 'other'\n",
+          "\n",
+          "Possibilities:\n",
+          " * npm:pkg@1.1.1/bin1\n",
+          " * npm:pkg@1.1.1/bin2\n",
+          " * npm:pkg@1.1.1/pkg"
+        )
+      );
+    }
 
     // should not resolve when default value can't be determined
-    let pkg_json = build_package_json(json!({
-      "name": "pkg",
-      "version": "1.1.1",
-      "bin": {
-        "bin": "./value1",
-        "bin2": "./value2",
-      }
-    }));
-    assert_eq!(
-      resolve_bin_entry_value(&pkg_json, None)
-        .err()
-        .unwrap()
-        .to_string(),
-      concat!(
-        "'/package.json' did not have a bin entry for 'pkg'\n",
-        "\n",
-        "Possibilities:\n",
-        " * npm:pkg@1.1.1/bin\n",
-        " * npm:pkg@1.1.1/bin2",
-      )
-    );
+    {
+      let pkg_json = build_package_json(json!({
+        "name": "pkg",
+        "version": "1.1.1",
+        "bin": {
+          "bin": "./value1",
+          "bin2": "./value2",
+        }
+      }));
+      let bins = match pkg_json.resolve_bins().unwrap() {
+        PackageJsonBins::Directory(_) => unreachable!(),
+        PackageJsonBins::Bins(bins) => bins,
+      };
+      assert_eq!(
+        resolve_bin_entry_value(&pkg_json, &bins, "pkg")
+          .err()
+          .unwrap()
+          .to_string(),
+        concat!(
+          "'/package.json' did not have a bin entry for 'pkg'\n",
+          "\n",
+          "Possibilities:\n",
+          " * npm:pkg@1.1.1/bin\n",
+          " * npm:pkg@1.1.1/bin2",
+        )
+      );
+    }
 
     // should resolve since all the values are the same
-    let pkg_json = build_package_json(json!({
-      "name": "pkg",
-      "version": "1.2.3",
-      "bin": {
-        "bin1": "./value",
-        "bin2": "./value",
-      }
-    }));
-    assert_eq!(
-      resolve_bin_entry_value(&pkg_json, None,).unwrap(),
-      "./value"
-    );
+    {
+      let pkg_json = build_package_json(json!({
+        "name": "pkg",
+        "version": "1.2.3",
+        "bin": {
+          "bin1": "./value",
+          "bin2": "./value",
+        }
+      }));
+      let bins = match pkg_json.resolve_bins().unwrap() {
+        PackageJsonBins::Directory(_) => unreachable!(),
+        PackageJsonBins::Bins(bins) => bins,
+      };
+      assert_eq!(
+        resolve_bin_entry_value(&pkg_json, &bins, "pkg").unwrap(),
+        pkg_json.dir_path().join("./value")
+      );
+    }
 
     // should not resolve when specified and is a string
-    let pkg_json = build_package_json(json!({
-      "name": "pkg",
-      "version": "1.2.3",
-      "bin": "./value",
-    }));
-    assert_eq!(
-      resolve_bin_entry_value(&pkg_json, Some("path"),)
-        .err()
-        .unwrap()
-        .to_string(),
-      "'/package.json' did not have a bin entry for 'path'"
-    );
+    {
+      let pkg_json = build_package_json(json!({
+        "name": "pkg",
+        "version": "1.2.3",
+        "bin": "./value",
+      }));
+      let bins = match pkg_json.resolve_bins().unwrap() {
+        PackageJsonBins::Directory(_) => unreachable!(),
+        PackageJsonBins::Bins(bins) => bins,
+      };
+      assert_eq!(
+        resolve_bin_entry_value(&pkg_json, &bins, "path")
+          .err()
+          .unwrap()
+          .to_string(),
+        "'/package.json' did not have a bin entry for 'path'"
+      );
+    }
 
     // no version in the package.json
-    let pkg_json = build_package_json(json!({
-      "name": "pkg",
-      "bin": {
-        "bin1": "./value1",
-        "bin2": "./value2",
-      }
-    }));
-    assert_eq!(
-      resolve_bin_entry_value(&pkg_json, None)
-        .err()
-        .unwrap()
-        .to_string(),
-      concat!(
-        "'/package.json' did not have a bin entry for 'pkg'\n",
-        "\n",
-        "Possibilities:\n",
-        " * npm:pkg/bin1\n",
-        " * npm:pkg/bin2",
-      )
-    );
+    {
+      let pkg_json = build_package_json(json!({
+        "name": "pkg",
+        "bin": {
+          "bin1": "./value1",
+          "bin2": "./value2",
+        }
+      }));
+      let bins = match pkg_json.resolve_bins().unwrap() {
+        PackageJsonBins::Directory(_) => unreachable!(),
+        PackageJsonBins::Bins(bins) => bins,
+      };
+      assert_eq!(
+        resolve_bin_entry_value(&pkg_json, &bins, "pkg")
+          .err()
+          .unwrap()
+          .to_string(),
+        concat!(
+          "'/package.json' did not have a bin entry for 'pkg'\n",
+          "\n",
+          "Possibilities:\n",
+          " * npm:pkg/bin1\n",
+          " * npm:pkg/bin2",
+        )
+      );
+    }
 
     // no name or version in the package.json
-    let pkg_json = build_package_json(json!({
-      "bin": {
-        "bin1": "./value1",
-        "bin2": "./value2",
-      }
-    }));
-    assert_eq!(
-      resolve_bin_entry_value(&pkg_json, None)
-        .err()
-        .unwrap()
-        .to_string(),
-      concat!(
-        "'/package.json' did not have a bin entry\n",
-        "\n",
-        "Possibilities:\n",
-        " * bin1\n",
-        " * bin2",
-      )
-    );
+    {
+      let pkg_json = build_package_json(json!({
+        "bin": {
+          "bin1": "./value1",
+          "bin2": "./value2",
+        }
+      }));
+      let bins = match pkg_json.resolve_bins().unwrap() {
+        PackageJsonBins::Directory(_) => unreachable!(),
+        PackageJsonBins::Bins(bins) => bins,
+      };
+      assert_eq!(
+        resolve_bin_entry_value(&pkg_json, &bins, "bin")
+          .err()
+          .unwrap()
+          .to_string(),
+        concat!(
+          "'/package.json' did not have a bin entry\n",
+          "\n",
+          "Possibilities:\n",
+          " * bin1\n",
+          " * bin2",
+        )
+      );
+    }
   }
 
   #[test]
@@ -2768,5 +2870,49 @@ mod tests {
         "ts3.1/file.d.ts"
       );
     }
+  }
+
+  #[test]
+  fn test_resolve_execution_path_from_npx_shim() {
+    // example shim on unix
+    let unix_shim = r#"#!/usr/bin/env node
+"use strict";
+console.log('Hi!');
+"#;
+    let path = PathBuf::from("/node_modules/.bin/example");
+    assert_eq!(
+      resolve_execution_path_from_npx_shim(Cow::Borrowed(&path), unix_shim)
+        .unwrap(),
+      path
+    );
+    // example shim on unix
+    let unix_shim = r#"#!/usr/bin/env -S node
+"use strict";
+console.log('Hi!');
+"#;
+    let path = PathBuf::from("/node_modules/.bin/example");
+    assert_eq!(
+      resolve_execution_path_from_npx_shim(Cow::Borrowed(&path), unix_shim)
+        .unwrap(),
+      path
+    );
+    // example shim on windows
+    let windows_shim = r#"#!/bin/sh
+basedir=$(dirname "$(echo "$0" | sed -e 's,\\,/,g')")
+
+case `uname` in
+    *CYGWIN*|*MINGW*|*MSYS*) basedir=`cygpath -w "$basedir"`;;
+esac
+
+if [ -x "$basedir/node" ]; then
+  exec "$basedir/node"  "$basedir/../example/bin/example" "$@"
+else
+  exec node  "$basedir/../example/bin/example" "$@"
+fi"#;
+    assert_eq!(
+      resolve_execution_path_from_npx_shim(Cow::Borrowed(&path), windows_shim)
+        .unwrap(),
+      path.parent().unwrap().join("../example/bin/example")
+    );
   }
 }

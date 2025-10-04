@@ -6290,6 +6290,7 @@ dependencies = [
  "deno_semver",
  "futures",
  "lazy-regex",
+ "log",
  "once_cell",
  "path-clean",
  "pretty_assertions",
