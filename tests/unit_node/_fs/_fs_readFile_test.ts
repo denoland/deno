@@ -3,6 +3,7 @@ import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { promises, readFile, readFileSync } from "node:fs";
 import * as path from "@std/path";
 import { assert, assertEquals, assertMatch } from "@std/assert";
+import { Buffer } from "node:buffer";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
@@ -143,4 +144,46 @@ Deno.test("fs.readFileSync error message contains path + syscall", () => {
       assertMatch(err.message, /[,\s]open\s/);
     }
   }
+});
+
+Deno.test("fs.readFile returns Buffer when encoding is not provided", async () => {
+  const data = await new Promise<Uint8Array>((res, rej) => {
+    readFile(testData, (err, data) => {
+      if (err) {
+        rej(err);
+      }
+      res(data as Uint8Array);
+    });
+  });
+
+  assert(data instanceof Uint8Array);
+  assertEquals(Buffer.isBuffer(data), true);
+  assertEquals(data.toString(), "hello world");
+});
+
+Deno.test("fs.readFile binary encoding returns string", async () => {
+  const data = await new Promise<string>((res, rej) => {
+    readFile(testData, { encoding: "binary" }, (err, data) => {
+      if (err) {
+        rej(err);
+      }
+      res(data as string);
+    });
+  });
+
+  assertEquals(typeof data, "string");
+  assertEquals(data, "hello world");
+});
+
+Deno.test("fs.readFileSync returns Buffer when encoding is not provided", () => {
+  const data = readFileSync(testData);
+  assert(data instanceof Uint8Array);
+  assertEquals(Buffer.isBuffer(data), true);
+  assertEquals(data.toString(), "hello world");
+});
+
+Deno.test("fs.readFileSync binary encoding returns string", () => {
+  const data = readFileSync(testData, { encoding: "binary" });
+  assertEquals(typeof data, "string");
+  assertEquals(data, "hello world");
 });

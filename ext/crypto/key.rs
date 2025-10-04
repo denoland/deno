@@ -9,14 +9,6 @@ use aws_lc_rs::signature::EcdsaVerificationAlgorithm;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Serialize, Deserialize, Copy, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum KeyType {
-  Public,
-  Private,
-  Secret,
-}
-
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]
 pub enum CryptoHash {
   #[serde(rename = "SHA-1")]
@@ -96,19 +88,6 @@ impl hkdf::KeyType for HkdfOutput<usize> {
   fn len(&self) -> usize {
     self.0
   }
-}
-
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub enum KeyUsage {
-  Encrypt,
-  Decrypt,
-  Sign,
-  Verify,
-  DeriveKey,
-  DeriveBits,
-  WrapKey,
-  UnwrapKey,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]

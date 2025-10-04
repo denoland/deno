@@ -34,6 +34,7 @@ use deno_graph::Resolution;
 use deno_lib::args::CaData;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
@@ -115,6 +116,7 @@ use crate::lsp::diagnostics::generate_module_diagnostics;
 use crate::lsp::lint::LspLinterResolver;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
+use crate::npm::get_types_node_version_req;
 use crate::sys::CliSys;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -377,6 +379,7 @@ impl LanguageServer {
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
     force_global_cache: bool,
+    lockfile_skip_write: bool,
   ) -> LspResult<Option<Value>> {
     async fn create_graph_for_caching(
       factory: CliFactory,
@@ -439,6 +442,7 @@ impl LanguageServer {
       specifiers,
       referrer,
       force_global_cache,
+      lockfile_skip_write,
     );
 
     match prepare_cache_result {
@@ -458,7 +462,12 @@ impl LanguageServer {
 
         // now get the lock back to update with the new information
         *self.did_change_batch_queue.borrow_mut() = None;
-        self.inner.write().await.post_cache().await;
+        self
+          .inner
+          .write()
+          .await
+          .post_cache(!lockfile_skip_write)
+          .await;
         self.performance.measure(mark);
       }
       Err(err) => {
@@ -582,8 +591,14 @@ impl Inner {
     );
     let jsr_search_api =
       CliJsrSearchApi::new(module_registry.file_fetcher.clone());
-    let npm_search_api =
-      CliNpmSearchApi::new(module_registry.file_fetcher.clone());
+    let npm_search_api = CliNpmSearchApi::new(
+      module_registry.file_fetcher.clone(),
+      Arc::new(NpmVersionResolver {
+        types_node_version_req: Some(get_types_node_version_req()),
+        link_packages: Default::default(),
+        newest_dependency_date: None,
+      }),
+    );
     let config = Config::default();
     let ts_server = Arc::new(TsServer::new(performance.clone()));
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
@@ -832,8 +847,17 @@ impl Inner {
     }
     self.jsr_search_api =
       CliJsrSearchApi::new(self.module_registry.file_fetcher.clone());
-    self.npm_search_api =
-      CliNpmSearchApi::new(self.module_registry.file_fetcher.clone());
+    self.npm_search_api = CliNpmSearchApi::new(
+      self.module_registry.file_fetcher.clone(),
+      Arc::new(NpmVersionResolver {
+        types_node_version_req: Some(get_types_node_version_req()),
+        // todo(dsherret): the npm_search_api should probably be specific
+        // to each workspace so that the link packages can be properly
+        // hooked up
+        link_packages: Default::default(),
+        newest_dependency_date: None,
+      }),
+    );
     self.performance.measure(mark);
   }
 
@@ -1254,7 +1278,9 @@ impl Inner {
             };
             specifier
           };
-          if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
+          if let Err(err) =
+            ls.cache(vec![specifier], referrer, false, true).await
+          {
             lsp_warn!("{:#}", err);
           }
         });
@@ -1451,7 +1477,7 @@ impl Inner {
     self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
       spawn(async move {
         if let Err(err) = ls
-          .cache(vec![], module.specifier.as_ref().clone(), false)
+          .cache(vec![], module.specifier.as_ref().clone(), false, true)
           .await
         {
           lsp_warn!(
@@ -4085,7 +4111,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         serde_json::from_value(json!(params.arguments))
           .map_err(|err| LspError::invalid_params(err.to_string()))?;
       self
-        .cache(specifiers, referrer, options.force_global_cache)
+        .cache(specifiers, referrer, options.force_global_cache, false)
         .await
     } else if params.command == "deno.reloadImportRegistries" {
       *self.did_change_batch_queue.borrow_mut() = None;
@@ -4694,6 +4720,7 @@ impl Inner {
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
     force_global_cache: bool,
+    lockfile_skip_write: bool,
   ) -> Result<PrepareCacheResult, AnyError> {
     let config_data = self.config.tree.data_for_specifier(&referrer);
     let scope = config_data.map(|d| d.scope.clone());
@@ -4725,6 +4752,7 @@ impl Inner {
     let mut cli_factory = CliFactory::from_flags(Arc::new(Flags {
       internal: InternalFlags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
+        lockfile_skip_write,
         ..Default::default()
       },
       ca_stores: workspace_settings.certificate_stores.clone(),
@@ -4776,9 +4804,22 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn post_cache(&mut self) {
-    self.resolver.did_cache();
-    self.refresh_dep_info();
+  async fn post_cache(&mut self, did_write_lockfile: bool) {
+    if did_write_lockfile {
+      // Most of the refresh steps will happen in `did_change_watched_files()`,
+      // since the lockfile was written.
+      self.resolver.did_cache();
+      self.refresh_dep_info();
+    } else {
+      self.refresh_config_tree().await;
+      self.update_cache();
+      self.refresh_resolver().await;
+      self.refresh_compiler_options_resolver();
+      self.refresh_linter_resolver();
+      self.refresh_documents_config();
+      self.resolver.did_cache();
+      self.refresh_dep_info();
+    }
     self.project_changed(vec![], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();

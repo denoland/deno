@@ -27,6 +27,7 @@ const {
   Promise,
   PromiseResolve,
   SafeArrayIterator,
+  SymbolAsyncDispose,
   Uint8ArrayPrototype,
 } = primordials;
 
@@ -198,6 +199,10 @@ export class FileHandle extends EventEmitter {
 
   createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
     return new WriteStream(undefined, { ...options, fd: this.fd });
+  }
+
+  [SymbolAsyncDispose]() {
+    return this.close();
   }
 }
 

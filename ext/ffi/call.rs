@@ -67,7 +67,7 @@ unsafe fn ffi_call_rtype_struct(
 
 // A one-off synchronous FFI call.
 pub(crate) fn ffi_call_sync<'scope>(
-  scope: &mut v8::HandleScope<'scope>,
+  scope: &mut v8::PinScope<'scope, '_>,
   args: v8::FunctionCallbackArguments,
   symbol: &Symbol,
   out_buffer: Option<OutBuffer>,
@@ -301,7 +301,7 @@ fn ffi_call(
 #[op2(async, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr_nonblocking<FP>(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
   #[serde] def: ForeignFunction,
@@ -349,7 +349,7 @@ where
 #[op2(async)]
 #[serde]
 pub fn op_ffi_call_nonblocking(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[string] symbol: String,
@@ -400,7 +400,7 @@ pub fn op_ffi_call_nonblocking(
 #[op2(reentrant, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
   #[serde] def: ForeignFunction,

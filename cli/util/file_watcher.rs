@@ -15,6 +15,7 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_lib::util::result::js_error_downcast_ref;
 use deno_runtime::fmt_errors::format_js_error;
+use deno_signals;
 use log::info;
 use notify::Error as NotifyError;
 use notify::RecommendedWatcher;
@@ -374,6 +375,9 @@ where
 
     select! {
       _ = receiver_future => {},
+      _ = deno_signals::ctrl_c() => {
+        return Ok(());
+      },
       _ = restart_rx.recv() => {
         print_after_restart();
         continue;
@@ -407,6 +411,9 @@ where
     // watched paths has changed.
     select! {
       _ = receiver_future => {},
+      _ = deno_signals::ctrl_c() => {
+        return Ok(());
+      },
       _ = restart_rx.recv() => {
         print_after_restart();
         continue;

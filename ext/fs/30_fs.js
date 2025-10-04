@@ -85,6 +85,7 @@ const {
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   SymbolAsyncIterator,
+  SymbolDispose,
   SymbolIterator,
   SymbolFor,
   TypeError,
@@ -98,7 +99,7 @@ import {
   ReadableStreamPrototype,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
-import { pathFromURL, SymbolDispose } from "ext:deno_web/00_infra.js";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 
 function chmodSync(path, mode) {
   op_fs_chmod_sync(pathFromURL(path), mode);
@@ -396,7 +397,7 @@ function parseFileInfo(response) {
     ctime: response.ctimeSet === true ? new Date(Number(response.ctime)) : null,
     dev: response.dev,
     mode: response.mode,
-    ino: response.inoSet ? response.ino : null,
+    ino: response.inoSet ? Number(response.ino) : null,
     nlink: response.nlinkSet ? response.nlink : null,
     uid: unix ? response.uid : null,
     gid: unix ? response.gid : null,

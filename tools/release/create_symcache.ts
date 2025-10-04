@@ -10,10 +10,7 @@ import path from "node:path";
 let debugFile = Deno.execPath();
 
 if (Deno.build.os === "windows") {
-  // TODO(bartlomieju): fix the regression from V8 upgrade
-  // https://github.com/denoland/deno/pull/30629
-  // debugFile = debugFile.replace(/\.exe$/, ".pdb");
-  Deno.exit(0);
+  debugFile = debugFile.replace(/\.exe$/, ".pdb");
 } else if (Deno.build.os === "darwin") {
   const resolvedPath = Deno.realPathSync(`${debugFile}.dSYM`);
   const { name } = path.parse(resolvedPath);

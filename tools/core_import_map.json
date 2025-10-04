@@ -544,6 +544,7 @@
     "ext:deno_node/_fs/_fs_readlink.ts": "../ext/node/polyfills/_fs/_fs_readlink.ts",
     "ext:deno_node/_fs/_fs_readv.ts": "../ext/node/polyfills/_fs/_fs_readv.ts",
     "ext:deno_node/_fs/_fs_stat.ts": "../ext/node/polyfills/_fs/_fs_stat.ts",
+    "ext:deno_node/_fs/_fs_statfs.ts": "../ext/node/polyfills/_fs/_fs_statfs.ts",
     "ext:deno_node/_fs/_fs_symlink.ts": "../ext/node/polyfills/_fs/_fs_symlink.ts",
     "ext:deno_node/_fs/_fs_unlink.ts": "../ext/node/polyfills/_fs/_fs_unlink.ts",
     "ext:deno_node/_fs/_fs_utimes.ts": "../ext/node/polyfills/_fs/_fs_utimes.ts",
