@@ -358,6 +358,12 @@ impl fmt::Display for Diagnostic {
 #[class(generic)]
 pub struct Diagnostics(Vec<Diagnostic>);
 
+impl From<Vec<Diagnostic>> for Diagnostics {
+  fn from(diagnostics: Vec<Diagnostic>) -> Self {
+    Diagnostics(diagnostics)
+  }
+}
+
 impl Diagnostics {
   #[cfg(test)]
   pub fn new(diagnostics: Vec<Diagnostic>) -> Self {

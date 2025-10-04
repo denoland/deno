@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonCacheResult;
 use deno_package_json::PackageJsonRc;
+use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 
 use crate::errors::PackageJsonLoadError;
@@ -76,12 +77,12 @@ pub type PackageJsonResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<PackageJsonResolver<TSys>>;
 
 #[derive(Debug)]
-pub struct PackageJsonResolver<TSys: FsRead> {
+pub struct PackageJsonResolver<TSys: FsRead + FsMetadata> {
   sys: TSys,
   loader_cache: Option<PackageJsonCacheRc>,
 }
 
-impl<TSys: FsRead> PackageJsonResolver<TSys> {
+impl<TSys: FsRead + FsMetadata> PackageJsonResolver<TSys> {
   pub fn new(sys: TSys, loader_cache: Option<PackageJsonCacheRc>) -> Self {
     Self { sys, loader_cache }
   }
@@ -93,12 +94,23 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
     self.get_closest_package_jsons(file_path).next().transpose()
   }
 
+  pub fn get_closest_package_json_path(
+    &self,
+    file_path: &Path,
+  ) -> Option<PathBuf> {
+    ClosestPackageJsonsIterator::<true, TSys> {
+      current_path: file_path,
+      resolver: self,
+    }
+    .next()
+  }
+
   /// Gets the closest package.json files, iterating from the
   /// nearest directory to the furthest ancestor directory.
   pub fn get_closest_package_jsons<'a>(
     &'a self,
     file_path: &'a Path,
-  ) -> ClosestPackageJsonsIterator<'a, TSys> {
+  ) -> ClosestPackageJsonsIterator<'a, false, TSys> {
     ClosestPackageJsonsIterator {
       current_path: file_path,
       resolver: self,
@@ -124,12 +136,18 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
   }
 }
 
-pub struct ClosestPackageJsonsIterator<'a, TSys: FsRead> {
+pub struct ClosestPackageJsonsIterator<
+  'a,
+  const PATH: bool,
+  TSys: FsRead + FsMetadata,
+> {
   current_path: &'a Path,
   resolver: &'a PackageJsonResolver<TSys>,
 }
 
-impl<'a, TSys: FsRead> Iterator for ClosestPackageJsonsIterator<'a, TSys> {
+impl<'a, TSys: FsRead + FsMetadata> Iterator
+  for ClosestPackageJsonsIterator<'a, false, TSys>
+{
   type Item = Result<PackageJsonRc, PackageJsonLoadError>;
 
   fn next(&mut self) -> Option<Self::Item> {
@@ -142,6 +160,23 @@ impl<'a, TSys: FsRead> Iterator for ClosestPackageJsonsIterator<'a, TSys> {
           // skip
         }
         Err(err) => return Some(Err(err)),
+      }
+    }
+    None
+  }
+}
+
+impl<'a, TSys: FsRead + FsMetadata> Iterator
+  for ClosestPackageJsonsIterator<'a, true, TSys>
+{
+  type Item = PathBuf;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    while let Some(parent) = self.current_path.parent() {
+      self.current_path = parent;
+      let package_json_path = parent.join("package.json");
+      if self.resolver.sys.fs_metadata(&package_json_path).is_ok() {
+        return Some(package_json_path);
       }
     }
     None
