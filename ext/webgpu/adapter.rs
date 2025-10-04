@@ -117,10 +117,9 @@ impl GPUAdapter {
 
   #[async_method(fake)]
   #[global]
-  fn request_device(
+  fn request_device<'s>(
     &self,
     state: &mut OpState,
-    isolate: &v8::Isolate,
     scope: &mut v8::PinScope<'_, '_>,
     #[webidl] descriptor: GPUDeviceDescriptor,
   ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
@@ -163,10 +162,6 @@ impl GPUAdapter {
     let (lost_sender, lost_receiver) = tokio::sync::oneshot::channel();
     let (uncaptured_sender, mut uncaptured_receiver) =
       tokio::sync::mpsc::unbounded_channel();
-    let (
-      uncaptured_sender_is_closed_sender,
-      mut uncaptured_sender_is_closed_receiver,
-    ) = tokio::sync::oneshot::channel::<()>();
 
     let device = GPUDevice {
       instance: self.instance.clone(),
@@ -178,7 +173,6 @@ impl GPUAdapter {
       error_handler: Arc::new(super::error::DeviceErrorHandler::new(
         lost_sender,
         uncaptured_sender,
-        uncaptured_sender_is_closed_sender,
       )),
       adapter: self.id,
       lost_receiver: Mutex::new(Some(lost_receiver)),
@@ -196,57 +190,67 @@ impl GPUAdapter {
     set_event_target_data.call(scope, null.into(), &[device.into()]);
 
     let key = v8::String::new(scope, "dispatchEvent").unwrap();
-    let val = device.get(scope, key.into()).unwrap();
-    let func = v8::Global::new(scope, val.try_cast::<v8::Function>().unwrap());
-    let device = v8::Global::new(scope, device.cast::<v8::Value>());
-    let error_event_class = state.borrow::<crate::ErrorEventClass>().0.clone();
+    let func = device
+      .get(scope, key.into())
+      .unwrap()
+      .cast::<v8::Function>();
 
     let context = scope.get_current_context();
-    let context = v8::Global::new(scope, context);
 
-    let task_device = device.clone();
+    let spawner = state.borrow::<deno_core::V8TaskSpawner>().clone();
+    // Cloning a v8::Global requires a valid isolate, but we don't
+    // know if we have one, so wrap them all in an Rc
+    struct Globals {
+      device: v8::Global<v8::Object>,
+      context: v8::Global<v8::Context>,
+      func: v8::Global<v8::Function>,
+    }
+    let globals = Rc::new(Globals {
+      device: v8::Global::new(scope, device),
+      context: v8::Global::new(scope, context),
+      func: v8::Global::new(scope, func),
+    });
 
-    // SAFETY: just grabbing the raw pointer
-    let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
     deno_unsync::spawn(async move {
       loop {
-        // TODO(@crowlKats): check for uncaptured_receiver.is_closed instead once tokio is upgraded
-        if !matches!(
-          uncaptured_sender_is_closed_receiver.try_recv(),
-          Err(tokio::sync::oneshot::error::TryRecvError::Empty)
-        ) {
-          break;
-        }
         let Some(error) = uncaptured_receiver.recv().await else {
           break;
         };
 
-        // SAFETY: eh, it's safe
-        let mut isolate =
-          unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate_ptr) };
-        v8::scope_with_context!(scope, &mut isolate, &context);
-        let error = deno_core::error::to_v8_error(scope, &error);
+        let globals = globals.clone();
+        spawner.spawn(move |task_scope| {
+          v8::scope_with_context!(scope, task_scope, &globals.context);
+          v8::tc_scope!(let scope, scope);
+          let error = deno_core::error::to_v8_error(scope, &error);
 
-        let error_event_class =
-          v8::Local::new(scope, error_event_class.clone());
-        let constructor =
-          v8::Local::<v8::Function>::try_from(error_event_class).unwrap();
-        let kind = v8::String::new(scope, "uncapturederror").unwrap();
+          let error_event_class = deno_core::JsRuntime::op_state_from(scope)
+            .borrow()
+            .borrow::<crate::ErrorEventClass>()
+            .0
+            .clone();
+          let error_event_class = v8::Local::new(scope, error_event_class);
+          let constructor =
+            v8::Local::<v8::Function>::try_from(error_event_class).unwrap();
+          let kind = v8::String::new(scope, "uncapturederror").unwrap();
 
-        let obj = v8::Object::new(scope);
-        let key = v8::String::new(scope, "error").unwrap();
-        obj.set(scope, key.into(), error);
+          let obj = v8::Object::new(scope);
+          let key = v8::String::new(scope, "error").unwrap();
+          obj.set(scope, key.into(), error);
 
-        let event = constructor
-          .new_instance(scope, &[kind.into(), obj.into()])
-          .unwrap();
+          let event = constructor
+            .new_instance(scope, &[kind.into(), obj.into()])
+            .unwrap();
 
-        let recv = v8::Local::new(scope, task_device.clone());
-        func.open(scope).call(scope, recv, &[event.into()]);
+          let recv = v8::Local::new(scope, globals.device.clone());
+          globals
+            .func
+            .open(scope)
+            .call(scope, recv.into(), &[event.into()]);
+        });
       }
     });
 
-    Ok(device)
+    Ok(v8::Global::new(scope, device.cast::<v8::Value>()))
   }
 }
 
