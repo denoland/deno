@@ -146,15 +146,16 @@ impl GPUAdapter {
       ),
       required_limits,
       memory_hints: Default::default(),
+      experimental_features: Default::default(),
+      trace: match std::env::var("DENO_WEBGPU_TRACE") {
+        Ok(p) => wgpu_types::Trace::Directory(p.into()),
+        _ => wgpu_types::Trace::Off,
+      },
     };
 
     let (device, queue) = self.instance.adapter_request_device(
       self.id,
       &wgpu_descriptor,
-      std::env::var("DENO_WEBGPU_TRACE")
-        .ok()
-        .as_ref()
-        .map(std::path::Path::new),
       None,
       None,
     )?;

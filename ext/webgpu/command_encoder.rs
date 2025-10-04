@@ -82,6 +82,7 @@ impl GPUCommandEncoder {
                 .load_op
                 .with_default_value(attachment.clear_value.map(Into::into)),
               store_op: attachment.store_op.into(),
+              depth_slice: None,
             }
           })
         })
@@ -131,7 +132,7 @@ impl GPUCommandEncoder {
 
     let (render_pass, err) = self
       .instance
-      .command_encoder_create_render_pass(self.id, &wgpu_descriptor);
+      .command_encoder_begin_render_pass(self.id, &wgpu_descriptor);
 
     self.error_handler.push_error(err);
 
@@ -160,12 +161,12 @@ impl GPUCommandEncoder {
 
     let wgpu_descriptor = wgpu_core::command::ComputePassDescriptor {
       label: crate::transform_label(descriptor.label.clone()),
-      timestamp_writes: timestamp_writes.as_ref(),
+      timestamp_writes: timestamp_writes,
     };
 
     let (compute_pass, err) = self
       .instance
-      .command_encoder_create_compute_pass(self.id, &wgpu_descriptor);
+      .command_encoder_begin_compute_pass(self.id, &wgpu_descriptor);
 
     self.error_handler.push_error(err);
 
@@ -194,7 +195,7 @@ impl GPUCommandEncoder {
         source_offset,
         destination.id,
         destination_offset,
-        size,
+        Some(size),
       )
       .err();
 
@@ -351,9 +352,10 @@ impl GPUCommandEncoder {
       label: crate::transform_label(descriptor.label.clone()),
     };
 
-    let (id, err) = self
-      .instance
-      .command_encoder_finish(self.id, &wgpu_descriptor);
+    let (id, err) =
+      self
+        .instance
+        .command_encoder_finish(self.id, &wgpu_descriptor, None);
 
     self.error_handler.push_error(err);
 

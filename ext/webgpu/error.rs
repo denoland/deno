@@ -12,8 +12,9 @@ use wgpu_core::binding_model::GetBindGroupLayoutError;
 use wgpu_core::command::ClearError;
 use wgpu_core::command::CommandEncoderError;
 use wgpu_core::command::ComputePassError;
-use wgpu_core::command::CopyError;
 use wgpu_core::command::CreateRenderBundleError;
+use wgpu_core::command::EncoderStateError;
+use wgpu_core::command::PassStateError;
 use wgpu_core::command::QueryError;
 use wgpu_core::command::RenderBundleError;
 use wgpu_core::command::RenderPassError;
@@ -215,12 +216,6 @@ impl From<CreateRenderBundleError> for GPUError {
   }
 }
 
-impl From<CopyError> for GPUError {
-  fn from(err: CopyError) -> Self {
-    GPUError::Validation(fmt_err(&err))
-  }
-}
-
 impl From<CommandEncoderError> for GPUError {
   fn from(err: CommandEncoderError) -> Self {
     GPUError::Validation(fmt_err(&err))
@@ -343,6 +338,18 @@ impl From<ConfigureSurfaceError> for GPUError {
 
 impl From<WaitIdleError> for GPUError {
   fn from(err: WaitIdleError) -> Self {
+    GPUError::Validation(fmt_err(&err))
+  }
+}
+
+impl From<PassStateError> for GPUError {
+  fn from(err: PassStateError) -> Self {
+    GPUError::Validation(fmt_err(&err))
+  }
+}
+
+impl From<EncoderStateError> for GPUError {
+  fn from(err: EncoderStateError) -> Self {
     GPUError::Validation(fmt_err(&err))
   }
 }
