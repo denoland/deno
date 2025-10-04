@@ -127,6 +127,7 @@ faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
 fs3.workspace = true
+hickory-resolver.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
