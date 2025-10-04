@@ -478,6 +478,7 @@
 "parallel/test-fs-readlink-type-check.js" = {}
 "parallel/test-fs-readv-promisify.js" = {}
 "parallel/test-fs-ready-event-stream.js" = {}
+"parallel/test-fs-realpath-buffer-encoding.js" = {}
 "parallel/test-fs-rename-type-check.js" = {}
 "parallel/test-fs-rmdir-type-check.js" = {}
 "parallel/test-fs-statfs.js" = {}

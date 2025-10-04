@@ -56,7 +56,7 @@ import {
   isDate,
   isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
-import { once } from "ext:deno_node/internal/util.mjs";
+import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import {
   validateAbortSignal,
@@ -343,7 +343,13 @@ export function getDirent(path, name, type, callback) {
   }
 }
 
-export function getOptions(options, defaultOptions) {
+/**
+ * @template T
+ * @param {unknown} options
+ * @param {T} [defaultOptions]
+ * @returns {T}
+ */
+export function getOptions(options, defaultOptions = kEmptyObject) {
   if (
     options === null || options === undefined ||
     typeof options === "function"
