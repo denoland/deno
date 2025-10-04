@@ -129,11 +129,8 @@ impl GPUTexture {
     self.usage
   }
   #[fast]
-  fn destroy(&self) -> Result<(), JsErrorBox> {
-    self
-      .instance
-      .texture_destroy(self.id)
-      .map_err(|e| JsErrorBox::generic(e.to_string()))
+  fn destroy(&self) {
+    self.instance.texture_destroy(self.id);
   }
 
   #[cppgc]

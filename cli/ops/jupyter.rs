@@ -257,6 +257,7 @@ pub fn op_jupyter_create_png_from_texture(
   let (command_buffer, maybe_err) = texture.instance.command_encoder_finish(
     command_encoder,
     &wgpu_types::CommandBufferDescriptor { label: None },
+    None,
   );
   if let Some(maybe_err) = maybe_err {
     return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
@@ -287,7 +288,10 @@ pub fn op_jupyter_create_png_from_texture(
     .instance
     .device_poll(
       texture.device_id,
-      wgpu_types::Maintain::WaitForSubmissionIndex(index),
+      wgpu_types::PollType::Wait {
+        submission_index: Some(index),
+        timeout: None,
+      },
     )
     .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
 
@@ -368,7 +372,10 @@ pub fn op_jupyter_get_buffer(
 
   buffer.instance.device_poll(
     buffer.device,
-    wgpu_types::Maintain::WaitForSubmissionIndex(index),
+    wgpu_types::PollType::Wait {
+      submission_index: Some(index),
+      timeout: None,
+    },
   )?;
 
   let (slice_pointer, range_size) = buffer

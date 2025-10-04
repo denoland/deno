@@ -384,8 +384,8 @@ napi-sys = { version = "=2.2.2", default-features = false }
 
 # webgpu
 raw-window-handle = "0.6.0"
-wgpu-core = "24.0.0"
-wgpu-types = "24.0.0"
+wgpu-core = "27.0.1"
+wgpu-types = "27.0.1"
 
 # macros
 quote = "1"

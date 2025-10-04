@@ -162,7 +162,7 @@ impl GPUCanvasContext {
 
     match output.status {
       SurfaceStatus::Good | SurfaceStatus::Suboptimal => {
-        let id = output.texture_id.unwrap();
+        let id = output.texture.unwrap();
 
         let texture = GPUTexture {
           instance: config.device.instance.clone(),

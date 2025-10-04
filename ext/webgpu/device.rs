@@ -406,7 +406,7 @@ impl GPUDevice {
           }
           GPUBindingResource::BufferBinding(buffer_binding) => {
             BindingResource::Buffer(wgpu_core::binding_model::BufferBinding {
-              buffer_id: buffer_binding.buffer.id,
+              buffer: buffer_binding.buffer.id,
               offset: buffer_binding.offset,
               size: buffer_binding.size.and_then(NonZeroU64::new),
             })
@@ -660,15 +660,28 @@ impl GPUDevice {
 
   #[fast]
   fn start_capture(&self) {
-    self.instance.device_start_capture(self.id);
+    unsafe {
+      self
+        .instance
+        .device_start_graphics_debugger_capture(self.id);
+    }
   }
+
   #[fast]
   fn stop_capture(&self) {
     self
       .instance
-      .device_poll(self.id, wgpu_types::Maintain::wait())
+      .device_poll(
+        self.id,
+        wgpu_types::PollType::Wait {
+          submission_index: None,
+          timeout: None,
+        },
+      )
       .unwrap();
-    self.instance.device_stop_capture(self.id);
+    unsafe {
+      self.instance.device_stop_graphics_debugger_capture(self.id);
+    }
   }
 }
 
@@ -683,9 +696,8 @@ impl GPUDevice {
       stage: ProgrammableStageDescriptor {
         module: descriptor.compute.module.id,
         entry_point: descriptor.compute.entry_point.map(Into::into),
-        constants: Cow::Owned(
-          descriptor.compute.constants.into_iter().collect(),
-        ),
+        constants: descriptor.compute.constants.into_iter().collect(),
+
         zero_initialize_workgroup_memory: true,
       },
       cache: None,
@@ -694,7 +706,6 @@ impl GPUDevice {
     let (id, err) = self.instance.device_create_compute_pipeline(
       self.id,
       &wgpu_descriptor,
-      None,
       None,
     );
 
@@ -716,9 +727,7 @@ impl GPUDevice {
       stage: ProgrammableStageDescriptor {
         module: descriptor.vertex.module.id,
         entry_point: descriptor.vertex.entry_point.map(Into::into),
-        constants: Cow::Owned(
-          descriptor.vertex.constants.into_iter().collect(),
-        ),
+        constants: descriptor.vertex.constants.into_iter().collect(),
         zero_initialize_workgroup_memory: true,
       },
       buffers: Cow::Owned(
@@ -818,7 +827,7 @@ impl GPUDevice {
           stage: ProgrammableStageDescriptor {
             module: fragment.module.id,
             entry_point: fragment.entry_point.map(Into::into),
-            constants: Cow::Owned(fragment.constants.into_iter().collect()),
+            constants: fragment.constants.into_iter().collect(),
             zero_initialize_workgroup_memory: true,
           },
           targets: Cow::Owned(
@@ -875,7 +884,6 @@ impl GPUDevice {
       self.id,
       &wgpu_descriptor,
       None,
-      None,
     );
 
     self.error_handler.push_error(err);
@@ -923,10 +931,18 @@ impl GPUDeviceLostInfo {
 
 #[op2(fast)]
 pub fn op_webgpu_device_start_capture(#[cppgc] device: &GPUDevice) {
-  device.instance.device_start_capture(device.id);
+  unsafe {
+    device
+      .instance
+      .device_start_graphics_debugger_capture(device.id);
+  }
 }
 
 #[op2(fast)]
 pub fn op_webgpu_device_stop_capture(#[cppgc] device: &GPUDevice) {
-  device.instance.device_stop_capture(device.id);
+  unsafe {
+    device
+      .instance
+      .device_stop_graphics_debugger_capture(device.id);
+  }
 }
