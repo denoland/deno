@@ -107,8 +107,8 @@ impl NpmPackageExtraInfoProvider {
     } else {
       match self.fetch_from_package_json(package_path).await {
         Ok(extra_info) => {
-          // some packages have bin in registry but not in package.json (e.g. esbuild-wasm)
-          // still not sure how that happens
+          // some packages that use "directories.bin" have a "bin" entry in
+          // the packument, but not in package.json (e.g. esbuild-wasm)
           if (expected.bin && extra_info.bin.is_none())
             || (expected.scripts && extra_info.scripts.is_empty())
           {
