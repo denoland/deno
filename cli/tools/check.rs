@@ -55,5 +55,8 @@ pub async fn check(
 
   main_graph_container
     .check_specifiers(&specifiers_for_typecheck, Default::default())
-    .await
+    .await?;
+
+  log::info!("✅ All files typecheck successfully");
+  Ok(())
 }
