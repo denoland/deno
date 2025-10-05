@@ -65,6 +65,7 @@ import {
   codeMap,
   errorMap,
   mapSysErrnoToUvErrno,
+  UV_EBADF,
 } from "ext:deno_node/internal_binding/uv.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
@@ -2669,6 +2670,13 @@ interface UvExceptionContext {
   dest?: string;
 }
 export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
+    return uvException({
+      errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
   const errno = extractOsErrorNumberFromErrorMessage(e);
   if (typeof errno === "undefined") {
     return e;
