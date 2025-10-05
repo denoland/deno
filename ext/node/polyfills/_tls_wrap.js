@@ -753,7 +753,7 @@ export function checkServerIdentity(hostname, cert) {
       // Match against Common Name only if no supported identifiers exist.
       const cn = subject.CN;
 
-      if (ArrayIsArray(cn)) {
+      if (Array.isArray(cn)) {
         valid = cn.some(wildcard);
       } else if (cn) {
         valid = wildcard(cn);
