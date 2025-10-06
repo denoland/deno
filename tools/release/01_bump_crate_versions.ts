@@ -73,13 +73,13 @@ async function updateReleasesMd() {
   const gitLog = await getGitLog();
   const releasesMdFile = workspace.getReleasesMdFile();
   const cliVersion = semver.parse(cliCrate.version)!;
-  const preBodyText = releaseHasBlogPost()
+  const bodyPreText = releaseHasBlogPost()
     ? `Read more: http://deno.com/blog/v${cliVersion.major}.${cliVersion.minor}`
     : undefined;
   releasesMdFile.updateWithGitLog({
     version: cliCrate.version,
     gitLog,
-    preBodyText,
+    bodyPreText,
   });
 
   await workspace.runFormatter();
