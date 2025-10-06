@@ -56,7 +56,7 @@ export class DenoWorkspace {
 
   getReleasesMdFile() {
     return new ReleasesMdFile(
-      $.path.join(DenoWorkspace.rootDirPath, "Releases.md"),
+      DenoWorkspace.rootDirPath.join("Releases.md"),
     );
   }
 
