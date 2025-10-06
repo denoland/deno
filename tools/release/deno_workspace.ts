@@ -6,8 +6,8 @@ export class DenoWorkspace {
   #repo: Repo;
 
   static get rootDirPath() {
-    const currentDirPath = $.path.dirname($.path.fromFileUrl(import.meta.url));
-    return $.path.resolve(currentDirPath, "../../");
+    const currentDirPath = $.path(import.meta.dirname!);
+    return currentDirPath.parentOrThrow().parentOrThrow();
   }
 
   static async load(): Promise<DenoWorkspace> {

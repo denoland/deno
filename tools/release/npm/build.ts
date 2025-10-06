@@ -58,7 +58,7 @@ Learn more about the Deno runtime
 [in the documentation](https://docs.deno.com/runtime/manual).
 `;
 
-const currentDir = $.path(import.meta.url).parentOrThrow();
+const currentDir = $.path(import.meta.dirname!);
 const rootDir = currentDir.parentOrThrow().parentOrThrow().parentOrThrow();
 const outputDir = currentDir.join("./dist");
 const scopeDir = outputDir.join("@deno");
