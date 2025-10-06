@@ -7,6 +7,7 @@
 import {
   ObjectAssign,
   StringPrototypeReplace,
+  ArrayIsArray
 } from "ext:deno_node/internal/primordials.mjs";
 import assert from "ext:deno_node/internal/assert.mjs";
 import * as net from "node:net";
@@ -753,7 +754,7 @@ export function checkServerIdentity(hostname, cert) {
       // Match against Common Name only if no supported identifiers exist.
       const cn = subject.CN;
 
-      if (Array.isArray(cn)) {
+      if (ArrayIsArray(cn)) {
         valid = cn.some(wildcard);
       } else if (cn) {
         valid = wildcard(cn);
