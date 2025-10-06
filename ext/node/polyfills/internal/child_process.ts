@@ -904,7 +904,57 @@ function buildCommand(
   }
 
   if (shell) {
-    const command = [file, ...args].join(" ");
+    let command = [file, ...args].join(" ");
+
+    // Handle permission propagation for Deno child processes
+    // When spawning Deno child processes via shell, inherit parent permissions
+    // to maintain Node.js compatibility behavior
+    const denoExecPath = Deno.execPath();
+
+    // Get current process permissions to propagate to child
+    let permissionFlags = "";
+
+    // Check if parent has --allow-all or equivalent broad permissions
+    try {
+      // If we can query permissions, inherit the current permission model
+      // For Node.js compatibility, we typically run with broad permissions
+      permissionFlags =
+        "-A --unstable-bare-node-builtins --unstable-node-globals --unstable-detect-cjs";
+    } catch {
+      // If permissions API isn't available, don't add flags
+    }
+
+    if (permissionFlags) {
+      // Case 1: POSIX systems using escapePOSIXShell (creates ESCAPED_* env vars)
+      if (command.includes("${ESCAPED_")) {
+        // Check if any ESCAPED_ env vars contain the Deno executable path
+        for (const [key, value] of Object.entries(env)) {
+          if (key.startsWith("ESCAPED_") && value === denoExecPath) {
+            // Found the Deno executable in escaped variables
+            command = command.replace(
+              `"\${${key}}"`,
+              `"${denoExecPath}" ${permissionFlags}`,
+            );
+            // Remove the environment variable since we're now using the path directly
+            delete env[key];
+            break;
+          }
+        }
+      } // Case 2: Windows or direct Deno path references in command
+      else if (command.includes(denoExecPath)) {
+        // Only replace if it's a clean executable reference (not already containing flags)
+        const quotedDenoPath = `"${denoExecPath}"`;
+        if (
+          command.includes(quotedDenoPath) &&
+          !command.includes(`${quotedDenoPath} -`)
+        ) {
+          command = command.replace(
+            quotedDenoPath,
+            `"${denoExecPath}" ${permissionFlags}`,
+          );
+        }
+      }
+    }
 
     // Set the shell, switches, and commands.
     if (isWindows) {

@@ -141,6 +141,7 @@
 "parallel/test-child-process-disconnect.js" = {}
 "parallel/test-child-process-double-pipe.js" = {}
 "parallel/test-child-process-exec-cwd.js" = {}
+"parallel/test-child-process-exec-encoding.js" = {}
 "parallel/test-child-process-exec-env.js" = {}
 "parallel/test-child-process-exec-error.js" = {}
 "parallel/test-child-process-exec-kill-throws.js" = {}
@@ -1031,6 +1032,7 @@
 "parallel/test-stream-pipeline-async-iterator.js" = {}
 "parallel/test-stream-pipeline-duplex.js" = {}
 "parallel/test-stream-pipeline-listeners.js" = {}
+"parallel/test-stream-pipeline-process.js" = {}
 "parallel/test-stream-pipeline-queued-end-in-destroy.js" = {}
 "parallel/test-stream-pipeline-uncaught.js" = {}
 "parallel/test-stream-pipeline-with-empty-string.js" = {}
