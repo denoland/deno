@@ -11,12 +11,12 @@ const denoLibCrate = workspace.getDenoLibCrate();
 const originalCliVersion = cliCrate.version;
 
 if (Deno.args.some((a) => a === "--rc")) {
-  const cliVersion = semver.parse(cliCrate.version)!;
+  let cliVersion = semver.parse(cliCrate.version)!;
 
-  if (cliVersion.prerelease[0] != "rc") {
-    cliVersion.increment("minor");
+  if (cliVersion.prerelease?.[0] != "rc") {
+    cliVersion = semver.increment(cliVersion, "minor");
   }
-  cliVersion.increment("pre", "rc");
+  cliVersion = increment(cliVersion, "prerelease", { prerelease: "rc" });
 
   const version = cliVersion.toString();
 

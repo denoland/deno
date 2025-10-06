@@ -15,6 +15,7 @@
     "jsr:@std/path@1": "1.1.2",
     "jsr:@std/path@^1.1.1": "1.1.2",
     "jsr:@std/semver@^1.0.5": "1.0.5",
+    "jsr:@std/yaml@0.221": "0.221.0",
     "npm:octokit@^5.0.3": "5.0.3_@octokit+core@7.0.5"
   },
   "jsr": {
@@ -81,6 +82,9 @@
     },
     "@std/semver@1.0.5": {
       "integrity": "529f79e83705714c105ad0ba55bec0f9da0f24d2f726b6cc1c15e505cc2c0624"
+    },
+    "@std/yaml@0.221.0": {
+      "integrity": "bac8913ee4f6fc600d4b92cc020f755070e22687ad242341f31d123ff690ae98"
     }
   },
   "npm": {

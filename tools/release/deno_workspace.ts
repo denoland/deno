@@ -56,7 +56,7 @@ export class DenoWorkspace {
 
   getReleasesMdFile() {
     return new ReleasesMdFile(
-      DenoWorkspace.rootDirPath.join("Releases.md"),
+      DenoWorkspace.rootDirPath.join("Releases.md").toString(),
     );
   }
 
