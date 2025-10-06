@@ -72,9 +72,14 @@ try {
 async function updateReleasesMd() {
   const gitLog = await getGitLog();
   const releasesMdFile = workspace.getReleasesMdFile();
+  const cliVersion = semver.parse(cliCrate.version)!;
+  const preBodyText = releaseHasBlogPost()
+    ? `Read more: http://deno.com/blog/v${cliVersion.major}.${cliVersion.minor}`
+    : undefined;
   releasesMdFile.updateWithGitLog({
     version: cliCrate.version,
     gitLog,
+    preBodyText,
   });
 
   await workspace.runFormatter();
@@ -151,4 +156,12 @@ async function assertDenoBinaryVersion(expectedVersion: string) {
     $.logError("Error: Expected", expectedVersion, "but found", text);
     Deno.exit(1);
   }
+}
+
+function releaseHasBlogPost() {
+  const pastVersion = semver.parse(originalCliVersion)!;
+  const newVersion = semver.parse(cliCrate.version)!;
+
+  return pastVersion.major !== newVersion.major ||
+    pastVersion.minor !== newVersion.minor;
 }
