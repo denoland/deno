@@ -5,9 +5,9 @@
 // deno-lint-ignore-file prefer-primordials
 
 import {
+  ArrayIsArray,
   ObjectAssign,
   StringPrototypeReplace,
-  ArrayIsArray
 } from "ext:deno_node/internal/primordials.mjs";
 import assert from "ext:deno_node/internal/assert.mjs";
 import * as net from "node:net";
