@@ -16,6 +16,7 @@ import {
   createBrotliDecompress,
   createDeflate,
   deflateSync,
+  gunzip,
   gzip,
   gzipSync,
   unzipSync,
@@ -251,6 +252,14 @@ Deno.test("crc32 doesn't overflow", () => {
   assertEquals(checksum, 1466848669);
 });
 
+Deno.test("crc32 large input", () => {
+  let checkSum = 0xffffffff;
+  for (let i = 0; i < 2 ** 16; i++) {
+    checkSum = crc32("", checkSum);
+  }
+  assertEquals(checkSum, 0xffffffff);
+});
+
 Deno.test("BrotliCompress", async () => {
   const deffered = Promise.withResolvers<void>();
   // @ts-ignore: BrotliCompress is not typed
@@ -285,4 +294,32 @@ Deno.test("ERR_BUFFER_TOO_LARGE works correctly", () => {
     },
     "Cannot create a Buffer larger than 1 bytes",
   );
+});
+
+// https://github.com/denoland/deno/issues/30829
+Deno.test("gunzip doesn't cause stack overflow with 64MiB data", async () => {
+  const data = Buffer.alloc(64 * 1024 * 1024);
+  const compressed = gzipSync(data);
+
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  gunzip(compressed, (err, result) => {
+    if (err) {
+      reject(err);
+      return;
+    }
+    if (!result) {
+      reject(new Error("expected gunzip to return a Buffer"));
+      return;
+    }
+    if (result.length !== data.length) {
+      reject(
+        new Error(`expected ${data.length} bytes, got ${result.length}`),
+      );
+      return;
+    }
+    resolve();
+  });
+
+  await promise;
 });

@@ -1772,13 +1772,20 @@ pub async fn op_fs_file_sync_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_file_stat_sync(
+pub fn op_fs_file_stat_sync<P: FsPermissions + 'static>(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[buffer] stat_out_buf: &mut [u32],
 ) -> Result<(), FsOpsError> {
   let file =
     FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state.borrow::<P>().check_open(
+      Cow::Borrowed(path),
+      OpenAccessKind::Read,
+      "Deno.FsFile.prototype.statSync()",
+    )?;
+  }
   let stat = file.stat_sync()?;
   let serializable_stat = SerializableStat::from(stat);
   serializable_stat.write(stat_out_buf);
@@ -1787,12 +1794,19 @@ pub fn op_fs_file_stat_sync(
 
 #[op2(async)]
 #[serde]
-pub async fn op_fs_file_stat_async(
+pub async fn op_fs_file_stat_async<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<SerializableStat, FsOpsError> {
   let file = FileResource::get_file(&state.borrow(), rid)
     .map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state.borrow().borrow::<P>().check_open(
+      Cow::Borrowed(path),
+      OpenAccessKind::Read,
+      "Deno.FsFile.prototype.stat()",
+    )?;
+  }
   let stat = file.stat_async().await?;
   Ok(stat.into())
 }
@@ -1868,7 +1882,7 @@ pub async fn op_fs_file_truncate_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_futime_sync(
+pub fn op_fs_futime_sync<P: FsPermissions + 'static>(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[number] atime_secs: i64,
@@ -1878,12 +1892,19 @@ pub fn op_fs_futime_sync(
 ) -> Result<(), FsOpsError> {
   let file =
     FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state.borrow::<P>().check_open(
+      Cow::Borrowed(path),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.FsFile.prototype.utimeSync()",
+    )?;
+  }
   file.utime_sync(atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
   Ok(())
 }
 
 #[op2(async)]
-pub async fn op_fs_futime_async(
+pub async fn op_fs_futime_async<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[number] atime_secs: i64,
@@ -1893,6 +1914,13 @@ pub async fn op_fs_futime_async(
 ) -> Result<(), FsOpsError> {
   let file = FileResource::get_file(&state.borrow(), rid)
     .map_err(FsOpsErrorKind::Resource)?;
+  if let Some(path) = file.maybe_path() {
+    _ = state.borrow().borrow::<P>().check_open(
+      Cow::Borrowed(path),
+      OpenAccessKind::WriteNoFollow,
+      "Deno.FsFile.prototype.utime()",
+    )?;
+  }
   file
     .utime_async(atime_secs, atime_nanos, mtime_secs, mtime_nanos)
     .await?;
@@ -2059,15 +2087,21 @@ create_struct_writer! {
     birthtime: u64,
     ctime_set: bool,
     ctime: u64,
-    // Following are only valid under Unix.
+    // Stats below are platform dependent.
+    // On Unix, they are always available.
+    // On Windows, the `*_set` fields are used
+    // to indicate if the corresponding field is resolved.
     dev: u64,
+    ino_set: bool,
     ino: u64,
     mode: u32,
+    nlink_set: bool,
     nlink: u64,
     uid: u32,
     gid: u32,
     rdev: u64,
     blksize: u64,
+    blocks_set: bool,
     blocks: u64,
     is_block_device: bool,
     is_char_device: bool,
@@ -2094,14 +2128,17 @@ impl From<FsStat> for SerializableStat {
       ctime: stat.ctime.unwrap_or(0),
 
       dev: stat.dev,
-      ino: stat.ino,
+      ino_set: stat.ino.is_some(),
+      ino: stat.ino.unwrap_or(0),
       mode: stat.mode,
-      nlink: stat.nlink,
+      nlink_set: stat.nlink.is_some(),
+      nlink: stat.nlink.unwrap_or(0),
       uid: stat.uid,
       gid: stat.gid,
       rdev: stat.rdev,
       blksize: stat.blksize,
-      blocks: stat.blocks,
+      blocks_set: stat.blocks.is_some(),
+      blocks: stat.blocks.unwrap_or(0),
       is_block_device: stat.is_block_device,
       is_char_device: stat.is_char_device,
       is_fifo: stat.is_fifo,

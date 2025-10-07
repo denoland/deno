@@ -745,6 +745,8 @@ pub struct Flags {
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
+  // TODO(#30752): hook this up so users can specify it
+  pub minimum_dependency_age: Option<chrono::DateTime<chrono::Utc>>,
   pub no_remote: bool,
   pub no_lock: bool,
   pub no_npm: bool,
@@ -761,7 +763,7 @@ pub struct Flags {
   pub eszip: bool,
   pub node_conditions: Vec<String>,
   pub preload: Vec<String>,
-  pub connected: bool,
+  pub tunnel: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -2243,6 +2245,7 @@ Unless --reload is specified, this command will not re-download already cached d
         )
         .arg(allow_import_arg())
         .arg(deny_import_arg())
+        .arg(v8_flags_arg())
       }
     )
 }
@@ -3400,7 +3403,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
     .arg(coverage_arg())
-    .arg(connected_arg())
+    .arg(tunnel_arg())
 }
 
 fn run_subcommand() -> Command {
@@ -3477,7 +3480,7 @@ Start a server defined in server.ts, watching for changes and running on port 50
     )
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
-    .arg(connected_arg())
+    .arg(tunnel_arg())
 }
 
 fn task_subcommand() -> Command {
@@ -3530,7 +3533,7 @@ Evaluate a task from string:
           ).action(ArgAction::SetTrue)
       )
       .arg(node_modules_dir_arg())
-      .arg(connected_arg())
+      .arg(tunnel_arg())
   })
 }
 
@@ -3946,7 +3949,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .num_args(0..=1)
           .require_equals(true)
           .default_missing_value("")
-          .short('P');
+          .short('P')
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires);
         }
@@ -4673,9 +4677,11 @@ fn no_check_arg() -> Arg {
     .help_heading(TYPE_CHECKING_HEADING)
 }
 
-fn connected_arg() -> Arg {
-  Arg::new("connected")
-    .long("connected")
+fn tunnel_arg() -> Arg {
+  Arg::new("tunnel")
+    .long("tunnel")
+    .alias("connected")
+    .short('t')
     .hide(true)
     .num_args(0..=1)
     .require_equals(true)
@@ -5133,6 +5139,7 @@ fn check_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  v8_flags_arg_parse(flags, matches);
   let files = match matches.remove_many::<String>("file") {
     Some(f) => f.collect(),
     None => vec![".".to_string()], // default
@@ -5788,7 +5795,7 @@ fn run_parse(
   runtime_args_parse(flags, matches, true, true, true)?;
   ext_arg_parse(flags, matches);
 
-  flags.connected = matches.get_flag("connected");
+  flags.tunnel = matches.get_flag("tunnel");
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
 
@@ -5860,7 +5867,7 @@ fn serve_parse(
   }
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
-  flags.connected = matches.get_flag("connected");
+  flags.tunnel = matches.get_flag("tunnel");
 
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
@@ -5913,7 +5920,7 @@ fn task_parse(
     None
   };
 
-  flags.connected = matches.get_flag("connected");
+  flags.tunnel = matches.get_flag("tunnel");
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
@@ -13015,6 +13022,27 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           ..Default::default()
         },
         ..Default::default()
+      }
+    );
+  }
+
+  #[test]
+  fn check_with_v8_flags() {
+    let flags =
+      flags_from_vec(svec!["deno", "check", "--v8-flags=--help", "script.ts",])
+        .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        v8_flags: svec!["--help"],
+        ..Flags::default()
       }
     );
   }
