@@ -4,4 +4,4 @@ export = other;
 ~~~~~~~~~~~~~~~
     at file:///[WILDLINE]/other.d.ts:1:1
 
-✅ All files typecheck successfully
+✅ Type check successful

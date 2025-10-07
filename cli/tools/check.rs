@@ -57,6 +57,6 @@ pub async fn check(
     .check_specifiers(&specifiers_for_typecheck, Default::default())
     .await?;
 
-  log::info!("✅ All files typecheck successfully");
+  log::info!("✅ Type check successful");
   Ok(())
 }
