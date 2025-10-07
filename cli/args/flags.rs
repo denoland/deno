@@ -4652,7 +4652,6 @@ fn tunnel_arg() -> Arg {
     .long("tunnel")
     .alias("connected")
     .short('t')
-    .hide(true)
     .num_args(0..=1)
     .require_equals(true)
     .action(ArgAction::SetTrue)
