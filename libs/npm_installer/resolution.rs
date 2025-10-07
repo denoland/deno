@@ -13,7 +13,6 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
-use deno_npm::resolution::AddPkgReqsOptions;
 use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -42,6 +41,13 @@ pub struct AddPkgReqsResult {
   pub results: Vec<Result<PackageNv, NpmResolutionError>>,
   /// The final result of resolving and caching all the package requirements.
   pub dependencies_result: Result<(), JsErrorBox>,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct AddPkgReqsOptions<'a> {
+  pub package_reqs: &'a [PackageReq],
+  /// If dependencies should be deduplicated.
+  pub should_dedup: bool,
 }
 
 #[sys_traits::auto_impl]
@@ -93,11 +99,11 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
 
   pub async fn add_package_reqs(
     &self,
-    package_reqs: &[PackageReq],
+    options: AddPkgReqsOptions<'_>,
   ) -> AddPkgReqsResult {
     // only allow one thread in here at a time
     let _snapshot_lock = self.update_queue.acquire().await;
-    let result = self.add_package_reqs_to_snapshot(package_reqs).await;
+    let result = self.add_package_reqs_to_snapshot(options).await;
 
     AddPkgReqsResult {
       results: result.results,
@@ -113,16 +119,18 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
 
   async fn add_package_reqs_to_snapshot(
     &self,
-    package_reqs: &[PackageReq],
+    options: AddPkgReqsOptions<'_>,
   ) -> deno_npm::resolution::AddPkgReqsResult {
     let snapshot = self.resolution.snapshot();
-    if package_reqs
+    if options
+      .package_reqs
       .iter()
       .all(|req| snapshot.package_reqs().contains_key(req))
     {
       log::debug!("Snapshot already up to date. Skipping npm resolution.");
       return deno_npm::resolution::AddPkgReqsResult {
-        results: package_reqs
+        results: options
+          .package_reqs
           .iter()
           .map(|req| Ok(snapshot.package_reqs().get(req).unwrap().clone()))
           .collect(),
@@ -137,8 +145,9 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     let result = snapshot
       .add_pkg_reqs(
         self.registry_info_provider.as_ref(),
-        AddPkgReqsOptions {
-          package_reqs,
+        deno_npm::resolution::AddPkgReqsOptions {
+          package_reqs: options.package_reqs,
+          should_dedup: options.should_dedup,
           version_resolver: &self.npm_version_resolver,
         },
         self.reporter.as_deref(),
@@ -156,8 +165,9 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
         snapshot
           .add_pkg_reqs(
             self.registry_info_provider.as_ref(),
-            AddPkgReqsOptions {
-              package_reqs,
+            deno_npm::resolution::AddPkgReqsOptions {
+              package_reqs: options.package_reqs,
+              should_dedup: options.should_dedup,
               version_resolver: &self.npm_version_resolver,
             },
             self.reporter.as_deref(),

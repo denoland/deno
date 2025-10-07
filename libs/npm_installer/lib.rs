@@ -55,6 +55,7 @@ use self::local::LocalNpmPackageInstaller;
 pub use self::local::LocalSetupCache;
 use self::package_json::NpmInstallDepsProvider;
 use self::package_json::PackageJsonDepValueParseWithLocationError;
+use self::resolution::AddPkgReqsOptions;
 use self::resolution::AddPkgReqsResult;
 use self::resolution::NpmResolutionInstaller;
 use self::resolution::NpmResolutionInstallerSys;
@@ -82,6 +83,11 @@ pub struct LifecycleScriptsConfig {
   pub root_dir: PathBuf,
   /// Part of an explicit `deno install`
   pub explicit_install: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct NpmInstallOptions {
+  pub should_dedup: bool,
 }
 
 pub trait InstallProgressReporter:
@@ -234,13 +240,13 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   /// This includes setting up the `node_modules` directory, if applicable.
   pub async fn add_and_cache_package_reqs(
     &self,
-    packages: &[PackageReq],
+    options: AddPkgReqsOptions<'_>,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
     self
       .add_package_reqs_raw(
-        packages,
-        Some(PackageCaching::Only(packages.into())),
+        options,
+        Some(PackageCaching::Only(options.package_reqs.into())),
       )
       .await
       .dependencies_result
@@ -248,33 +254,33 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
   pub async fn add_package_reqs_no_cache(
     &self,
-    packages: &[PackageReq],
+    options: AddPkgReqsOptions<'_>,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
     self
-      .add_package_reqs_raw(packages, None)
+      .add_package_reqs_raw(options, None)
       .await
       .dependencies_result
   }
 
   pub async fn add_package_reqs(
     &self,
-    packages: &[PackageReq],
+    options: AddPkgReqsOptions<'_>,
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
     self
-      .add_package_reqs_raw(packages, Some(caching))
+      .add_package_reqs_raw(options, Some(caching))
       .await
       .dependencies_result
   }
 
   pub async fn add_package_reqs_raw(
     &self,
-    packages: &[PackageReq],
+    options: AddPkgReqsOptions<'_>,
     caching: Option<PackageCaching<'_>>,
   ) -> AddPkgReqsResult {
-    if packages.is_empty() {
+    if options.package_reqs.is_empty() {
       return AddPkgReqsResult {
         dependencies_result: Ok(()),
         results: vec![],
@@ -286,7 +292,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
     let mut result = self
       .npm_resolution_installer
-      .add_package_reqs(packages)
+      .add_package_reqs(options)
       .await;
 
     if result.dependencies_result.is_ok()
@@ -306,7 +312,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       let _permit = self.install_queue.acquire().await;
       let uncached = {
         let cached_reqs = self.cached_reqs.lock();
-        packages
+        options
+          .package_reqs
           .iter()
           .filter(|req| !cached_reqs.contains(req))
           .collect::<Vec<_>>()
@@ -328,6 +335,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
   pub async fn inject_synthetic_types_node_package(
     &self,
+    options: NpmInstallOptions,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
 
@@ -341,7 +349,13 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
     let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     self
-      .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
+      .add_package_reqs(
+        AddPkgReqsOptions {
+          package_reqs: reqs,
+          should_dedup: options.should_dedup,
+        },
+        PackageCaching::Only(reqs.into()),
+      )
       .await?;
 
     Ok(())
@@ -404,6 +418,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   /// return value of `false` means that new packages were added to the NPM resolution.
   pub async fn ensure_top_level_package_json_install(
     &self,
+    options: NpmInstallOptions,
   ) -> Result<bool, JsErrorBox> {
     if !self.top_level_install_flag.raise() {
       return Ok(true); // already did this

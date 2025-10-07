@@ -1737,19 +1737,6 @@ fn pkg_json_to_version_info(
           .collect()
       })
       .unwrap_or_default(),
-    directories: pkg_json
-      .directories
-      .as_ref()
-      .map(|directories| {
-        directories
-          .iter()
-          .filter_map(|(k, v)| {
-            let v = v.as_str()?;
-            Some((SmallStackString::from_str(k), v.to_string()))
-          })
-          .collect()
-      })
-      .unwrap_or_default(),
     // not worth increasing memory for showing a deprecated
     // message for linked packages
     deprecated: None,
