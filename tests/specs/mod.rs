@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
+use std::path::Path;
 use std::rc::Rc;
 
 use anyhow::Context;
@@ -57,13 +58,15 @@ struct MultiTestMetaData {
   pub tests: BTreeMap<String, JsonMap>,
   #[serde(default)]
   pub ignore: bool,
+  #[serde(default)]
+  pub variants: BTreeMap<String, JsonMap>,
 }
 
 impl MultiTestMetaData {
   pub fn into_collected_tests(
     mut self,
     parent_test: &CollectedTest,
-  ) -> Vec<CollectedTest<serde_json::Value>> {
+  ) -> Vec<CollectedCategoryOrTest<serde_json::Value>> {
     fn merge_json_value(
       multi_test_meta_data: &MultiTestMetaData,
       value: &mut JsonMap,
@@ -94,6 +97,18 @@ impl MultiTestMetaData {
       if multi_test_meta_data.ignore && !value.contains_key("ignore") {
         value.insert("ignore".to_string(), true.into());
       }
+      if !multi_test_meta_data.variants.is_empty() {
+        if !value.contains_key("variants") {
+          value.insert("variants".to_string(), JsonMap::default().into());
+        }
+        let variants_obj =
+          value.get_mut("variants").unwrap().as_object_mut().unwrap();
+        for (key, value) in &multi_test_meta_data.variants {
+          if !variants_obj.contains_key(key) {
+            variants_obj.insert(key.into(), value.clone().into());
+          }
+        }
+      }
     }
 
     let mut collected_tests = Vec::with_capacity(self.tests.len());
@@ -105,8 +120,29 @@ impl MultiTestMetaData {
         data: serde_json::Value::Object(json_data),
       });
     }
-
-    collected_tests
+    let mut all_tests = Vec::with_capacity(collected_tests.len());
+    for test in collected_tests {
+      if let Some(variants) = test
+        .data
+        .as_object()
+        .and_then(|o| o.get("variants"))
+        .and_then(|v| v.as_object())
+        && !variants.is_empty()
+      {
+        all_tests.push(
+          dbg!(map_variants(
+            &test.data,
+            &test.path,
+            &test.name,
+            variants.iter()
+          ))
+          .unwrap(),
+        );
+      } else {
+        all_tests.push(CollectedCategoryOrTest::Test(test));
+      }
+    }
+    all_tests
   }
 }
 
@@ -145,6 +181,8 @@ struct MultiStepMetaData {
   pub steps: Vec<StepMetaData>,
   #[serde(default)]
   pub ignore: bool,
+  #[serde(default)]
+  pub variants: BTreeMap<String, JsonMap>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -164,6 +202,9 @@ struct SingleTestMetaData {
   pub step: StepMetaData,
   #[serde(default)]
   pub ignore: bool,
+  #[allow(dead_code)]
+  #[serde(default)]
+  pub variants: BTreeMap<String, JsonMap>,
 }
 
 impl SingleTestMetaData {
@@ -180,6 +221,7 @@ impl SingleTestMetaData {
       envs: Default::default(),
       steps: vec![self.step],
       ignore: self.ignore,
+      variants: Default::default(),
     }
   }
 }
@@ -201,6 +243,8 @@ struct StepMetaData {
   pub output: String,
   #[serde(default)]
   pub exit_code: i32,
+  #[serde(default)]
+  pub variants: BTreeMap<String, JsonMap>,
 }
 
 pub fn main() {
@@ -230,6 +274,40 @@ pub fn main() {
   );
 }
 
+fn map_variants<'a, I>(
+  test_data: &serde_json::Value,
+  test_path: &Path,
+  test_name: &str,
+  variants: I,
+) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError>
+where
+  I: IntoIterator<Item = (&'a String, &'a serde_json::Value)>,
+{
+  let mut children = Vec::with_capacity(2);
+  for (variant_name, variant_data) in variants {
+    let mut child_data = test_data.clone();
+    let child_obj = child_data
+      .as_object_mut()
+      .unwrap()
+      .get_mut("variants")
+      .unwrap()
+      .as_object_mut()
+      .unwrap();
+    child_obj.clear();
+    child_obj.insert(variant_name.clone(), variant_data.clone());
+    children.push(CollectedCategoryOrTest::Test(CollectedTest {
+      name: format!("{}::{}", test_name, variant_name),
+      path: test_path.to_path_buf(),
+      data: child_data,
+    }));
+  }
+  Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
+    children,
+    name: test_name.to_string(),
+    path: test_path.to_path_buf(),
+  }))
+}
+
 /// Maps a __test__.jsonc file to a category of tests if it contains a "test" object.
 fn map_test_within_file(
   test: CollectedTest,
@@ -245,14 +323,17 @@ fn map_test_within_file(
       .with_context(|| format!("Failed deserializing {}", test_path))
       .map_err(CollectTestsError::Other)?;
     Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
-      children: data
-        .into_collected_tests(&test)
-        .into_iter()
-        .map(CollectedCategoryOrTest::Test)
-        .collect(),
+      children: data.into_collected_tests(&test),
       name: test.name,
       path: test.path,
     }))
+  } else if let Some(variants) = metadata_value
+    .as_object()
+    .and_then(|o| o.get("variants"))
+    .and_then(|v| v.as_object())
+    && !variants.is_empty()
+  {
+    map_variants(&metadata_value, &test.path, &test.name, variants.iter())
   } else {
     Ok(CollectedCategoryOrTest::Test(CollectedTest {
       name: test.name,
@@ -324,6 +405,7 @@ fn run_test_inner(
 }
 
 fn deserialize_value(metadata_value: serde_json::Value) -> MultiStepMetaData {
+  let metadata_string = metadata_value.to_string();
   // checking for "steps" leads to a more targeted error message
   // instead of when deserializing an untagged enum
   if metadata_value
@@ -336,7 +418,7 @@ fn deserialize_value(metadata_value: serde_json::Value) -> MultiStepMetaData {
     serde_json::from_value::<SingleTestMetaData>(metadata_value)
       .map(|s| s.into_multi())
   }
-  .context("Failed to parse test spec")
+  .with_context(|| format!("Failed to parse test spec: {}", metadata_string))
   .unwrap()
 }
 
@@ -435,9 +517,70 @@ fn run_step(
   let command = context
     .new_command()
     .envs(metadata.envs.iter().chain(step.envs.iter()));
+  let variants = step.variants.clone();
+
+  let multi_step_variants = metadata.variants.clone();
+
+  let pairs = if !multi_step_variants.is_empty() || !variants.is_empty() {
+    let mut variant = variants.values().next().cloned().unwrap_or_default();
+    let multi_step_variant = multi_step_variants
+      .values()
+      .next()
+      .cloned()
+      .unwrap_or_default();
+
+    for (name, value) in multi_step_variant {
+      if !variant.contains_key(&name) {
+        variant.insert(name, value.clone());
+      }
+    }
+
+    let mut pairs = variant
+      .into_iter()
+      .filter_map(|(name, value)| {
+        if let Some(value) = value.as_str() {
+          Some((format!("${{{}}}", name), value.to_string()))
+        } else {
+          None
+        }
+      })
+      .collect::<Vec<_>>();
+    pairs.sort_by(|a, b| a.0.cmp(&b.0).reverse());
+    pairs
+  } else {
+    Vec::new()
+  };
+
   let command = match &step.args {
-    VecOrString::Vec(args) => command.args_vec(args),
-    VecOrString::String(text) => command.args(text),
+    VecOrString::Vec(args) => {
+      if pairs.is_empty() {
+        command.args_vec(args)
+      } else {
+        let mut args_replaced = args.clone();
+        for arg in args {
+          for (from, to) in &pairs {
+            let arg_replaced = arg.replace(from, to);
+            if arg_replaced.is_empty() && &arg_replaced != arg {
+              continue;
+            }
+            args_replaced.push(arg_replaced);
+          }
+        }
+
+        command.args_vec(args)
+      }
+    }
+    VecOrString::String(text) => {
+      if pairs.is_empty() {
+        command.args(text)
+      } else {
+        let mut text = text.clone();
+        for (from, to) in &pairs {
+          text = text.replace(from, to);
+        }
+        command.args(text)
+      }
+    }
   };
   let command = match step.cwd.as_ref().or(metadata.cwd.as_ref()) {
     Some(cwd) => command.current_dir(cwd),
@@ -465,15 +608,27 @@ fn run_step(
     None => command,
   };
   let output = command.run();
-  if step.output.ends_with(".out") {
-    let test_output_path = cwd.join(&step.output);
+
+  let step_output = {
+    if pairs.is_empty() {
+      step.output.clone()
+    } else {
+      let mut output = step.output.clone();
+      for (from, to) in pairs {
+        output = output.replace(&from, &to);
+      }
+      output
+    }
+  };
+  if step_output.ends_with(".out") {
+    let test_output_path = cwd.join(&step_output);
     output.assert_matches_file(test_output_path);
   } else {
     assert!(
-      step.output.len() <= 160,
+      step_output.len() <= 160,
       "The \"output\" property in your __test__.jsonc file is too long. Please extract this to an `.out` file to improve readability."
     );
-    output.assert_matches_text(&step.output);
+    output.assert_matches_text(&step_output);
   }
   output.assert_exit_code(step.exit_code);
 }

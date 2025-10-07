@@ -59,6 +59,16 @@
         },
         "ignore": {
           "type": "boolean"
+        },
+        "variants": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       }
     },
@@ -107,6 +117,16 @@
           },
           "ignore": {
             "type": "boolean"
+          },
+          "variants": {
+            "type": "object",
+            "patternProperties": {
+              ".*": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              }
+            },
+            "additionalProperties": false
           }
         }
       }, {
@@ -165,6 +185,16 @@
         },
         "ignore": {
           "type": "boolean"
+        },
+        "variants": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       }
     }
