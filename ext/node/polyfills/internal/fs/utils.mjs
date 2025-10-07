@@ -56,7 +56,7 @@ import {
   isDate,
   isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
-import { once } from "ext:deno_node/internal/util.mjs";
+import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import {
   validateAbortSignal,
@@ -75,7 +75,7 @@ import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { stat, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import process from "node:process";
-
+import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
 import {
   fs as fsConstants,
   os as osConstants,
@@ -343,7 +343,13 @@ export function getDirent(path, name, type, callback) {
   }
 }
 
-export function getOptions(options, defaultOptions) {
+/**
+ * @template T
+ * @param {unknown} options
+ * @param {T} [defaultOptions]
+ * @returns {T}
+ */
+export function getOptions(options, defaultOptions = kEmptyObject) {
   if (
     options === null || options === undefined ||
     typeof options === "function"
@@ -936,6 +942,8 @@ export function warnOnNonPortableTemplate(template) {
   }
 }
 
+/** @import { CopyOptionsBase } from "ext:deno_node/_fs/cp/cp.d.ts" */
+/** @type {CopyOptionsBase} */
 const defaultCpOptions = {
   dereference: false,
   errorOnExist: false,
@@ -943,6 +951,7 @@ const defaultCpOptions = {
   force: true,
   preserveTimestamps: false,
   recursive: false,
+  verbatimSymlinks: false,
 };
 
 const defaultRmOptions = {
@@ -958,6 +967,7 @@ const defaultRmdirOptions = {
   recursive: false,
 };
 
+/** @type {(options: CopyOptionsBase | undefined) => CopyOptionsBase} */
 export const validateCpOptions = hideStackFrames((options) => {
   if (options === undefined) {
     return { ...defaultCpOptions };
@@ -969,6 +979,11 @@ export const validateCpOptions = hideStackFrames((options) => {
   validateBoolean(options.force, "options.force");
   validateBoolean(options.preserveTimestamps, "options.preserveTimestamps");
   validateBoolean(options.recursive, "options.recursive");
+  validateBoolean(options.verbatimSymlinks, "options.verbatimSymlinks");
+  options.mode = getValidMode(options.mode, "copyFile");
+  if (options.dereference === true && options.verbatimSymlinks === true) {
+    throw new ERR_INCOMPATIBLE_OPTION_PAIR("dereference", "verbatimSymlinks");
+  }
   if (options.filter !== undefined) {
     validateFunction(options.filter, "options.filter");
   }
