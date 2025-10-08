@@ -6,7 +6,7 @@
     },
     {
       "args": "run main.ts",
-      "output": "1\n1\n1\n"
+      "output": "1\n2\n1\n"
     }
   ]
 }
