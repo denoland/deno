@@ -533,7 +533,10 @@ fn categorize_installed_npm_deps(
         continue;
       };
       match s {
-        deno_package_json::PackageJsonDepValue::File(_) => todo!(),
+        deno_package_json::PackageJsonDepValue::File(_) => {
+          // TODO(nathanwhit)
+          // TODO(bartlomieju)
+        }
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           dev_deps.insert(package_req.name.to_string());
         }
