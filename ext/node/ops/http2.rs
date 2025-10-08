@@ -1,590 +1,213 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::future::poll_fn;
-use std::rc::Rc;
-use std::task::Poll;
-
-use bytes::Bytes;
-use deno_core::AsyncRefCell;
-use deno_core::BufView;
-use deno_core::ByteString;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::JsBuffer;
-use deno_core::OpState;
-use deno_core::RcRef;
-use deno_core::Resource;
-use deno_core::ResourceId;
-use deno_core::error::ResourceError;
 use deno_core::op2;
-use deno_core::serde::Serialize;
-use deno_net::raw::NetworkStream;
-use deno_net::raw::take_network_stream_resource;
-use h2;
-use h2::Reason;
-use h2::RecvStream;
-use http;
-use http::HeaderMap;
-use http::Response;
-use http::StatusCode;
-use http::header::HeaderName;
-use http::header::HeaderValue;
-use http::request::Parts;
-use url::Url;
+use libnghttp2_sys as ffi;
+use serde::Serialize;
 
-pub struct Http2Client {
-  pub client: AsyncRefCell<h2::client::SendRequest<BufView>>,
-  pub url: Url,
+// veubwwwww
+// xx$vbxA: u32,ýk^veu$w
+// veueikr: &'static strýkww
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub struct Http2Constants {
+  nghttp2_hcat_request: u32,
+  nghttp2_hcat_response: u32,
+  nghttp2_hcat_push_response: u32,
+  nghttp2_hcat_headers: u32,
+  nghttp2_nv_flag_none: u32,
+  nghttp2_nv_flag_no_index: u32,
+  nghttp2_err_deferred: i32,
+  nghttp2_err_stream_id_not_available: i32,
+  nghttp2_err_invalid_argument: i32,
+  nghttp2_err_stream_closed: i32,
+  nghttp2_err_nomem: i32,
+  stream_option_empty_payload: i32,
+  stream_option_get_trailers: i32,
+
+  http2_header_status: &'static str,
+  http2_header_method: &'static str,
+  http2_header_authority: &'static str,
+  http2_header_scheme: &'static str,
+  http2_header_path: &'static str,
+  http2_header_protocol: &'static str,
+  http2_header_access_control_allow_credentials: &'static str,
+  http2_header_access_control_max_age: &'static str,
+  http2_header_access_control_request_method: &'static str,
+  http2_header_age: &'static str,
+  http2_header_authorization: &'static str,
+  http2_header_content_encoding: &'static str,
+  http2_header_content_language: &'static str,
+  http2_header_content_length: &'static str,
+  http2_header_content_location: &'static str,
+  http2_header_content_md5: &'static str,
+  http2_header_content_range: &'static str,
+  http2_header_content_type: &'static str,
+  http2_header_cookie: &'static str,
+  http2_header_date: &'static str,
+  http2_header_dnt: &'static str,
+  http2_header_etag: &'static str,
+  http2_header_expires: &'static str,
+  http2_header_from: &'static str,
+  http2_header_host: &'static str,
+  http2_header_if_match: &'static str,
+  http2_header_if_none_match: &'static str,
+  http2_header_if_modified_since: &'static str,
+  http2_header_if_range: &'static str,
+  http2_header_if_unmodified_since: &'static str,
+  http2_header_last_modified: &'static str,
+  http2_header_location: &'static str,
+  http2_header_max_forwards: &'static str,
+  http2_header_proxy_authorization: &'static str,
+  http2_header_range: &'static str,
+  http2_header_referer: &'static str,
+  http2_header_retry_after: &'static str,
+  http2_header_set_cookie: &'static str,
+  http2_header_tk: &'static str,
+  http2_header_upgrade_insecure_requests: &'static str,
+  http2_header_user_agent: &'static str,
+  http2_header_x_content_type_options: &'static str,
+
+  http2_header_connection: &'static str,
+  http2_header_upgrade: &'static str,
+  http2_header_http2_settings: &'static str,
+  http2_header_te: &'static str,
+  http2_header_transfer_encoding: &'static str,
+  http2_header_keep_alive: &'static str,
+  http2_header_proxy_connection: &'static str,
+
+  http2_method_connect: &'static str,
+  http2_method_delete: &'static str,
+  http2_method_get: &'static str,
+  http2_method_head: &'static str,
+
+  nghttp2_err_frame_size_error: u32,
+  nghttp2_session_server: u32,
+  nghttp2_session_client: u32,
+  nghttp2_stream_state_idle: u32,
+  nghttp2_stream_state_open: u32,
+  nghttp2_stream_state_reserved_local: u32,
+  nghttp2_stream_state_reserved_remote: u32,
+  nghttp2_stream_state_half_closed_local: u32,
+  nghttp2_stream_state_half_closed_remote: u32,
+  nghttp2_stream_state_closed: u32,
+  nghttp2_flag_none: u32,
+  nghttp2_flag_end_stream: u32,
+  nghttp2_flag_end_headers: u32,
+  nghttp2_flag_ack: u32,
+  nghttp2_flag_padded: u32,
+  nghttp2_flag_priority: u32,
+  default_settings_header_table_size: u32,
+  default_settings_enable_push: u32,
+  default_settings_max_concurrent_streams: u32,
+  default_settings_initial_window_size: u32,
+  default_settings_max_frame_size: u32,
+  default_settings_max_header_list_size: u32,
+  default_settings_enable_connect_protocol: u32,
+  max_max_frame_size: u32,
+  min_max_frame_size: u32,
+  max_initial_window_size: u32,
+  nghttp2_settings_header_table_size: u32,
+  nghttp2_settings_enable_push: u32,
+  nghttp2_settings_max_concurrent_streams: u32,
+  nghttp2_settings_initial_window_size: u32,
+  nghttp2_settings_max_frame_size: u32,
+  nghttp2_settings_max_header_list_size: u32,
+  nghttp2_settings_enable_connect_protocol: u32,
+  padding_strategy_none: u32,
+  padding_strategy_aligned: u32,
+  padding_strategy_max: u32,
+  padding_strategy_callback: u32,
+
+  nghttp2_no_error: u32,
+  nghttp2_protocol_error: u32,
+  nghttp2_internal_error: u32,
+  nghttp2_flow_control_error: u32,
+  nghttp2_settings_timeout: u32,
+  nghttp2_stream_closed: u32,
+  nghttp2_frame_size_error: u32,
+  nghttp2_refused_stream: u32,
+  nghttp2_cancel: u32,
+  nghttp2_compression_error: u32,
+  nghttp2_connect_error: u32,
+  nghttp2_enhance_your_calm: u32,
+  nghttp2_inadequate_security: u32,
+  nghttp2_http_1_1_required: u32,
+
+  header_table_size: u32,
+  enable_push: u32,
+  max_concurrent_streams: u32,
+  initial_window_size: u32,
+  max_frame_size: u32,
+  max_header_list_size: u32,
+  enable_connect_protocol: u32,
 }
 
-impl Resource for Http2Client {
-  fn name(&self) -> Cow<'_, str> {
-    "http2Client".into()
-  }
-}
+// Stream is not going to have any DATA frames
+const STREAM_OPTION_EMPTY_PAYLOAD: i32 = 0x1;
+// Stream might have trailing headers
+const STREAM_OPTION_GET_TRAILERS: i32 = 0x2;
 
-#[derive(Debug)]
-pub struct Http2ClientConn {
-  pub conn: AsyncRefCell<h2::client::Connection<NetworkStream, BufView>>,
-  cancel_handle: CancelHandle,
-}
-
-impl Resource for Http2ClientConn {
-  fn name(&self) -> Cow<'_, str> {
-    "http2ClientConnection".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel()
-  }
-}
-
-#[derive(Debug)]
-pub struct Http2ClientStream {
-  pub response: AsyncRefCell<h2::client::ResponseFuture>,
-  pub stream: AsyncRefCell<h2::SendStream<BufView>>,
-}
-
-impl Resource for Http2ClientStream {
-  fn name(&self) -> Cow<'_, str> {
-    "http2ClientStream".into()
-  }
-}
-
-#[derive(Debug)]
-pub struct Http2ClientResponseBody {
-  pub body: AsyncRefCell<h2::RecvStream>,
-  pub trailers_rx:
-    AsyncRefCell<Option<tokio::sync::oneshot::Receiver<Option<HeaderMap>>>>,
-  pub trailers_tx:
-    AsyncRefCell<Option<tokio::sync::oneshot::Sender<Option<HeaderMap>>>>,
-}
-
-impl Resource for Http2ClientResponseBody {
-  fn name(&self) -> Cow<'_, str> {
-    "http2ClientResponseBody".into()
-  }
-}
-
-#[derive(Debug)]
-pub struct Http2ServerConnection {
-  pub conn: AsyncRefCell<h2::server::Connection<NetworkStream, BufView>>,
-}
-
-impl Resource for Http2ServerConnection {
-  fn name(&self) -> Cow<'_, str> {
-    "http2ServerConnection".into()
-  }
-}
-
-pub struct Http2ServerSendResponse {
-  pub send_response: AsyncRefCell<h2::server::SendResponse<BufView>>,
-}
-
-impl Resource for Http2ServerSendResponse {
-  fn name(&self) -> Cow<'_, str> {
-    "http2ServerSendResponse".into()
-  }
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum Http2Error {
-  #[class(inherit)]
-  #[error(transparent)]
-  Resource(
-    #[from]
-    #[inherit]
-    ResourceError,
-  ),
-  #[class(inherit)]
-  #[error(transparent)]
-  UrlParse(
-    #[from]
-    #[inherit]
-    url::ParseError,
-  ),
-  #[class(generic)]
-  #[error(transparent)]
-  H2(#[from] h2::Error),
-  #[class(inherit)]
-  #[error(transparent)]
-  TakeNetworkStream(
-    #[from]
-    #[inherit]
-    deno_net::raw::TakeNetworkStreamError,
-  ),
-}
-
-#[op2(async)]
+#[op2]
 #[serde]
-pub async fn op_http2_connect(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[string] url: String,
-) -> Result<(ResourceId, ResourceId), Http2Error> {
-  // No permission check necessary because we're using an existing connection
-  let network_stream = {
-    let mut state = state.borrow_mut();
-    take_network_stream_resource(&mut state.resource_table, rid)?
-  };
+pub fn op_http2_constants() -> Http2Constants {
+  Http2Constants {
+    nghttp2_hcat_request: ffi::NGHTTP2_HCAT_REQUEST,
+    nghttp2_hcat_response: ffi::NGHTTP2_HCAT_RESPONSE,
+    nghttp2_hcat_push_response: ffi::NGHTTP2_HCAT_PUSH_RESPONSE,
+    nghttp2_hcat_headers: ffi::NGHTTP2_HCAT_HEADERS,
+    nghttp2_nv_flag_none: ffi::NGHTTP2_NV_FLAG_NONE,
+    nghttp2_nv_flag_no_index: ffi::NGHTTP2_NV_FLAG_NO_INDEX,
+    nghttp2_err_deferred: ffi::NGHTTP2_ERR_DEFERRED,
+    nghttp2_err_stream_id_not_available:
+      ffi::NGHTTP2_ERR_STREAM_ID_NOT_AVAILABLE,
+    nghttp2_err_invalid_argument: ffi::NGHTTP2_ERR_INVALID_ARGUMENT,
+    nghttp2_err_stream_closed: ffi::NGHTTP2_ERR_STREAM_CLOSED,
+    nghttp2_err_nomem: ffi::NGHTTP2_ERR_NOMEM,
+    stream_option_empty_payload: STREAM_OPTION_EMPTY_PAYLOAD,
+    stream_option_get_trailers: STREAM_OPTION_GET_TRAILERS,
 
-  let url = Url::parse(&url)?;
-
-  let (client, conn) =
-    h2::client::Builder::new().handshake(network_stream).await?;
-  let mut state = state.borrow_mut();
-  let client_rid = state.resource_table.add(Http2Client {
-    client: AsyncRefCell::new(client),
-    url,
-  });
-  let conn_rid = state.resource_table.add(Http2ClientConn {
-    conn: AsyncRefCell::new(conn),
-    cancel_handle: CancelHandle::new(),
-  });
-  Ok((client_rid, conn_rid))
-}
-
-#[op2(async)]
-#[smi]
-pub async fn op_http2_listen(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<ResourceId, Http2Error> {
-  let stream =
-    take_network_stream_resource(&mut state.borrow_mut().resource_table, rid)?;
-
-  let conn = h2::server::Builder::new().handshake(stream).await?;
-  Ok(
-    state
-      .borrow_mut()
-      .resource_table
-      .add(Http2ServerConnection {
-        conn: AsyncRefCell::new(conn),
-      }),
-  )
-}
-
-#[op2(async)]
-#[serde]
-pub async fn op_http2_accept(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<
-  Option<(Vec<(ByteString, ByteString)>, ResourceId, ResourceId)>,
-  Http2Error,
-> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2ServerConnection>(rid)?;
-  let mut conn = RcRef::map(&resource, |r| &r.conn).borrow_mut().await;
-  match conn.accept().await {
-    Some(res) => {
-      let (req, resp) = res?;
-      let (parts, body) = req.into_parts();
-      let (trailers_tx, trailers_rx) = tokio::sync::oneshot::channel();
-      let stm =
-        state
-          .borrow_mut()
-          .resource_table
-          .add(Http2ClientResponseBody {
-            body: AsyncRefCell::new(body),
-            trailers_rx: AsyncRefCell::new(Some(trailers_rx)),
-            trailers_tx: AsyncRefCell::new(Some(trailers_tx)),
-          });
-
-      let Parts {
-        uri,
-        method,
-        headers,
-        ..
-      } = parts;
-      let mut req_headers = Vec::with_capacity(headers.len() + 4);
-      req_headers.push((
-        ByteString::from(":method"),
-        ByteString::from(method.as_str()),
-      ));
-      req_headers.push((
-        ByteString::from(":scheme"),
-        ByteString::from(uri.scheme().map(|s| s.as_str()).unwrap_or("http")),
-      ));
-      req_headers.push((
-        ByteString::from(":path"),
-        ByteString::from(
-          uri.path_and_query().map(|p| p.as_str()).unwrap_or(""),
-        ),
-      ));
-      req_headers.push((
-        ByteString::from(":authority"),
-        ByteString::from(uri.authority().map(|a| a.as_str()).unwrap_or("")),
-      ));
-      for (key, val) in headers.iter() {
-        req_headers.push((key.as_str().into(), val.as_bytes().into()));
-      }
-
-      let resp =
-        state
-          .borrow_mut()
-          .resource_table
-          .add(Http2ServerSendResponse {
-            send_response: AsyncRefCell::new(resp),
-          });
-
-      Ok(Some((req_headers, stm, resp)))
-    }
-    _ => Ok(None),
-  }
-}
-
-#[op2(async)]
-#[serde]
-pub async fn op_http2_send_response(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[smi] status: u16,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
-) -> Result<(ResourceId, u32), Http2Error> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2ServerSendResponse>(rid)?;
-  let mut send_response = RcRef::map(resource, |r| &r.send_response)
-    .borrow_mut()
-    .await;
-  let mut response = Response::new(());
-  if let Ok(status) = StatusCode::from_u16(status) {
-    *response.status_mut() = status;
-  }
-  for (name, value) in headers {
-    response.headers_mut().append(
-      HeaderName::from_bytes(&name).unwrap(),
-      HeaderValue::from_bytes(&value).unwrap(),
-    );
-  }
-
-  let stream = send_response.send_response(response, false)?;
-  let stream_id = stream.stream_id();
-
-  Ok((rid, stream_id.into()))
-}
-
-#[op2(async)]
-pub async fn op_http2_poll_client_connection(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<(), Http2Error> {
-  let resource = state.borrow().resource_table.get::<Http2ClientConn>(rid)?;
-
-  let cancel_handle = RcRef::map(resource.clone(), |this| &this.cancel_handle);
-  let mut conn = RcRef::map(resource, |this| &this.conn).borrow_mut().await;
-
-  match (&mut *conn).or_cancel(cancel_handle).await {
-    Ok(result) => result?,
-    Err(_) => {
-      // TODO(bartlomieju): probably need a better mechanism for closing the connection
-
-      // cancelled
-    }
-  }
-
-  Ok(())
-}
-
-#[op2(async)]
-#[serde]
-pub async fn op_http2_client_request(
-  state: Rc<RefCell<OpState>>,
-  #[smi] client_rid: ResourceId,
-  // TODO(bartlomieju): maybe use a vector with fixed layout to save sending
-  // 4 strings of keys?
-  #[serde] mut pseudo_headers: HashMap<String, String>,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
-) -> Result<(ResourceId, u32), Http2Error> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2Client>(client_rid)?;
-
-  let url = resource.url.clone();
-
-  let pseudo_path = pseudo_headers.remove(":path").unwrap_or("/".to_string());
-  let pseudo_method = pseudo_headers
-    .remove(":method")
-    .unwrap_or("GET".to_string());
-  // TODO(bartlomieju): handle all pseudo-headers (:authority, :scheme)
-  let _pseudo_authority = pseudo_headers
-    .remove(":authority")
-    .unwrap_or("/".to_string());
-  let _pseudo_scheme = pseudo_headers
-    .remove(":scheme")
-    .unwrap_or("http".to_string());
-
-  let url = url.join(&pseudo_path)?;
-
-  let mut req = http::Request::builder()
-    .uri(url.as_str())
-    .method(pseudo_method.as_str());
-
-  for (name, value) in headers {
-    req.headers_mut().unwrap().append(
-      HeaderName::from_bytes(&name).unwrap(),
-      HeaderValue::from_bytes(&value).unwrap(),
-    );
-  }
-
-  let request = req.body(()).unwrap();
-
-  let resource = {
-    let state = state.borrow();
-    state.resource_table.get::<Http2Client>(client_rid)?
-  };
-  let mut client = RcRef::map(&resource, |r| &r.client).borrow_mut().await;
-  poll_fn(|cx| client.poll_ready(cx)).await?;
-  let (response, stream) = client.send_request(request, false).unwrap();
-  let stream_id = stream.stream_id();
-  let stream_rid = state.borrow_mut().resource_table.add(Http2ClientStream {
-    response: AsyncRefCell::new(response),
-    stream: AsyncRefCell::new(stream),
-  });
-  Ok((stream_rid, stream_id.into()))
-}
-
-#[op2(async)]
-pub async fn op_http2_client_send_data(
-  state: Rc<RefCell<OpState>>,
-  #[smi] stream_rid: ResourceId,
-  #[buffer] data: JsBuffer,
-  end_of_stream: bool,
-) -> Result<(), Http2Error> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2ClientStream>(stream_rid)?;
-  let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
-
-  stream.send_data(data.to_vec().into(), end_of_stream)?;
-  Ok(())
-}
-
-#[op2(async)]
-pub async fn op_http2_client_reset_stream(
-  state: Rc<RefCell<OpState>>,
-  #[smi] stream_rid: ResourceId,
-  #[smi] code: u32,
-) -> Result<(), ResourceError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2ClientStream>(stream_rid)?;
-  let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
-  stream.send_reset(h2::Reason::from(code));
-  Ok(())
-}
-
-#[op2(async)]
-pub async fn op_http2_client_send_trailers(
-  state: Rc<RefCell<OpState>>,
-  #[smi] stream_rid: ResourceId,
-  #[serde] trailers: Vec<(ByteString, ByteString)>,
-) -> Result<(), Http2Error> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2ClientStream>(stream_rid)?;
-  let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
-
-  let mut trailers_map = http::HeaderMap::new();
-  for (name, value) in trailers {
-    trailers_map.insert(
-      HeaderName::from_bytes(&name).unwrap(),
-      HeaderValue::from_bytes(&value).unwrap(),
-    );
-  }
-
-  stream.send_trailers(trailers_map)?;
-  Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Http2ClientResponse {
-  headers: Vec<(ByteString, ByteString)>,
-  body_rid: ResourceId,
-  status_code: u16,
-}
-
-#[op2(async)]
-#[serde]
-pub async fn op_http2_client_get_response(
-  state: Rc<RefCell<OpState>>,
-  #[smi] stream_rid: ResourceId,
-) -> Result<(Http2ClientResponse, bool), Http2Error> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2ClientStream>(stream_rid)?;
-  let mut response_future =
-    RcRef::map(&resource, |r| &r.response).borrow_mut().await;
-
-  let response = (&mut *response_future).await?;
-
-  let (parts, body) = response.into_parts();
-  let status = parts.status;
-  let mut res_headers = Vec::new();
-  for (key, val) in parts.headers.iter() {
-    res_headers.push((key.as_str().into(), val.as_bytes().into()));
-  }
-  let end_stream = body.is_end_stream();
-
-  let (trailers_tx, trailers_rx) = tokio::sync::oneshot::channel();
-  let body_rid =
-    state
-      .borrow_mut()
-      .resource_table
-      .add(Http2ClientResponseBody {
-        body: AsyncRefCell::new(body),
-        trailers_rx: AsyncRefCell::new(Some(trailers_rx)),
-        trailers_tx: AsyncRefCell::new(Some(trailers_tx)),
-      });
-  Ok((
-    Http2ClientResponse {
-      headers: res_headers,
-      body_rid,
-      status_code: status.into(),
-    },
-    end_stream,
-  ))
-}
-
-enum DataOrTrailers {
-  Data(Bytes),
-  Trailers(HeaderMap),
-  Eof,
-}
-
-fn poll_data_or_trailers(
-  cx: &mut std::task::Context,
-  body: &mut RecvStream,
-) -> Poll<Result<DataOrTrailers, h2::Error>> {
-  if let Poll::Ready(trailers) = body.poll_trailers(cx) {
-    match trailers? {
-      Some(trailers) => {
-        return Poll::Ready(Ok(DataOrTrailers::Trailers(trailers)));
-      }
-      _ => {
-        return Poll::Ready(Ok(DataOrTrailers::Eof));
-      }
-    }
-  }
-  if let Poll::Ready(Some(data)) = body.poll_data(cx) {
-    let data = data?;
-    body.flow_control().release_capacity(data.len())?;
-    return Poll::Ready(Ok(DataOrTrailers::Data(data)));
-    // If `poll_data` returns `Ready(None)`, poll one more time to check for trailers
-  }
-  // Return pending here as poll_data will keep the waker
-  Poll::Pending
-}
-
-#[op2(async)]
-#[serde]
-pub async fn op_http2_client_get_response_body_chunk(
-  state: Rc<RefCell<OpState>>,
-  #[smi] body_rid: ResourceId,
-) -> Result<(Option<Vec<u8>>, bool, bool), Http2Error> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2ClientResponseBody>(body_rid)?;
-  let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
-
-  loop {
-    let result = poll_fn(|cx| poll_data_or_trailers(cx, &mut body)).await;
-    if let Err(err) = result {
-      match err.reason() {
-        Some(Reason::NO_ERROR) => return Ok((None, true, false)),
-        Some(Reason::CANCEL) => return Ok((None, false, true)),
-        _ => return Err(err.into()),
-      }
-    }
-    match result.unwrap() {
-      DataOrTrailers::Data(data) => {
-        return Ok((Some(data.to_vec()), false, false));
-      }
-      DataOrTrailers::Trailers(trailers) => {
-        if let Some(trailers_tx) = RcRef::map(&resource, |r| &r.trailers_tx)
-          .borrow_mut()
-          .await
-          .take()
-        {
-          _ = trailers_tx.send(Some(trailers));
-        };
-
-        continue;
-      }
-      DataOrTrailers::Eof => {
-        RcRef::map(&resource, |r| &r.trailers_tx)
-          .borrow_mut()
-          .await
-          .take();
-        return Ok((None, true, false));
-      }
-    };
-  }
-}
-
-#[op2(async)]
-#[serde]
-pub async fn op_http2_client_get_response_trailers(
-  state: Rc<RefCell<OpState>>,
-  #[smi] body_rid: ResourceId,
-) -> Result<Option<Vec<(ByteString, ByteString)>>, ResourceError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2ClientResponseBody>(body_rid)?;
-  let trailers = RcRef::map(&resource, |r| &r.trailers_rx)
-    .borrow_mut()
-    .await
-    .take();
-  if let Some(trailers) = trailers {
-    match trailers.await {
-      Ok(Some(trailers)) => {
-        let mut v = Vec::with_capacity(trailers.len());
-        for (key, value) in trailers.iter() {
-          v.push((
-            ByteString::from(key.as_str()),
-            ByteString::from(value.as_bytes()),
-          ));
-        }
-        Ok(Some(v))
-      }
-      _ => Ok(None),
-    }
-  } else {
-    Ok(None)
+    // whvFr_llywwvt,ý5pbi"ýkwwi"ýkwwb
+    http2_header_status: ":status",
+    http2_header_method: ":method",
+    http2_header_authority: ":authority",
+    http2_header_scheme: ":scheme",
+    http2_header_path: ":path",
+    http2_header_protocol: ":protocol",
+    http2_header_access_control_allow_credentials: "access-control_allow_credentials",
+    http2_header_access_control_max_age: "access-control-max-age",
+    http2_header_access_control_request_method: "access-control-request-method",
+    http2_header_age: "age",
+    http2_header_authorization: "authorization",
+    http2_header_content_encoding: "content-encoding",
+    http2_header_content_language: "content-language",
+    http2_header_content_length: "content-length",
+    http2_header_content_location: "content-location",
+    http2_header_content_md5: "content-md5",
+    http2_header_content_range: "content-range",
+    http2_header_content_type: "content-type",
+    http2_header_cookie: "cookie",
+    http2_header_date: "date",
+    http2_header_dnt: "dnt",
+    http2_header_etag: "etag",
+    http2_header_expires: "expires",
+    http2_header_from: "from",
+    http2_header_host: "host",
+    http2_header_if_match: "if-match",
+    http2_header_if_none_match: "if-none-match",
+    http2_header_if_modified_since: "if-modified-since",
+    http2_header_if_range: "if-range",
+    http2_header_if_unmodified_since: "if-unmodified-since",
+    http2_header_last_modified: "last-modified",
+    http2_header_location: "location",
+    http2_header_max_forwards: "max-forwards",
+    http2_header_proxy_authorization: "proxy-authorization",
+    http2_header_range: "range",
+    http2_header_referer: "referer",
+    http2_header_retry_after: "retry-after",
+    http2_header_set_cookie: "set-cookie",
+    http2_header_tk: "tk",
+    http2_header_upgrade_insecure_requests: "upgrade-insecure-requests",
+    http2_header_user_agent: "agent",
+    http2_header_x_content_type_options: "x-content-type-options",
   }
 }

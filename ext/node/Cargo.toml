@@ -51,7 +51,6 @@ ecdsa.workspace = true
 ed25519-dalek = { workspace = true, features = ["digest", "pkcs8", "rand_core", "signature"] }
 elliptic-curve.workspace = true
 faster-hex.workspace = true
-h2.workspace = true
 hkdf.workspace = true
 http.workspace = true
 http-body-util.workspace = true
@@ -61,6 +60,8 @@ idna.workspace = true
 ipnetwork.workspace = true
 k256.workspace = true
 libc.workspace = true
+# h2.workspace = true
+libnghttp2-sys = { git = "https://github.com/littledivy/nghttp2-rs", branch = "main" }
 libz-sys.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
