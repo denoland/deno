@@ -79,17 +79,22 @@ pub async fn approve_scripts(
     node_modules_dir.display()
   );
 
-  // Read the existing .state.toml file
+  // TODO(bartlomieju): this will error out if there are no scripts to approve (ie. no .state.json on disk)
+  // Read the existing .state.json file
   let mut state = read_state_json(&node_modules_dir)
     .context("Failed to read .state.json file")?;
 
   if state.ignored_scripts.is_empty() {
     println!("No packages with lifecycle scripts found in .state.json");
-  } else {
-    println!("Current packages with lifecycle scripts:");
-    for package in &state.ignored_scripts {
-      println!("  - {}", package);
-    }
+    return Ok(());
+  }
+
+  eprintln!(
+    "WARNING: interactive mode is not available yet, please `deno approve-scripts <value>`"
+  );
+  println!("Current packages with lifecycle scripts:");
+  for package in &state.ignored_scripts {
+    println!("  - {}", package);
   }
 
   // Display the packages that would be approved
