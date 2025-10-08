@@ -538,11 +538,9 @@ fn run_step(
     let mut pairs = variant
       .into_iter()
       .filter_map(|(name, value)| {
-        if let Some(value) = value.as_str() {
-          Some((format!("${{{}}}", name), value.to_string()))
-        } else {
-          None
-        }
+        value
+          .as_str()
+          .map(|value| (format!("${{{}}}", name), value.to_string()))
       })
       .collect::<Vec<_>>();
     pairs.sort_by(|a, b| a.0.cmp(&b.0).reverse());
