@@ -216,7 +216,7 @@ impl SingleTestMetaData {
       envs: Default::default(),
       steps: vec![self.step],
       ignore: self.ignore,
-      variants: Default::default(),
+      variants: self.variants,
     }
   }
 }
