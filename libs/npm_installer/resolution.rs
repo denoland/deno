@@ -158,7 +158,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       /* this string is used in tests */
       "Running npm resolution."
     );
-    let should_dedup = self.has_js_execution_started_flag.is_raised();
+    let should_dedup = !self.has_js_execution_started_flag.is_raised();
     let result = snapshot
       .add_pkg_reqs(
         self.registry_info_provider.as_ref(),

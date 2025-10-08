@@ -2379,8 +2379,6 @@ dependencies = [
 [[package]]
 name = "deno_lockfile"
 version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79df4fa29c2e423822bfef1ab5e83093b48481824d5ef7a61c1de1c32c7c302a"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -11321,7 +11319,3 @@ checksum = "16099418600b4d8f028622f73ff6e3deaabdff330fb9a2a131dea781ee8b0768"
 dependencies = [
  "zune-core",
 ]
-
-[[patch.unused]]
-name = "deno_lockfile"
-version = "0.31.2"
