@@ -4,9 +4,11 @@ mod tsgo_version;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::OnceLock;
 
 use deno_ast::MediaType;
@@ -25,7 +27,7 @@ use deno_typescript_go_client_rust::types::GetImpliedNodeFormatForFilePayload;
 use deno_typescript_go_client_rust::types::Project;
 use deno_typescript_go_client_rust::types::ResolveModuleNamePayload;
 use deno_typescript_go_client_rust::types::ResolveTypeReferenceDirectivePayload;
-use sha2::Digest;
+use sha2::Digest as _;
 
 use super::Request;
 use super::Response;
@@ -33,6 +35,7 @@ use crate::cache::DenoDir;
 use crate::http_util::HttpClientProvider;
 use crate::tsc::RequestNpmState;
 use crate::tsc::ResolveNonGraphSpecifierTypesError;
+use crate::tsc::as_ts_script_kind;
 use crate::tsc::get_lazily_loaded_asset;
 
 macro_rules! jsons {
@@ -52,11 +55,8 @@ fn synthetic_config(
   root_names: &[String],
 ) -> Result<String, serde_json::Error> {
   let mut config = serde_json::to_value(config)?;
-  config
-    .as_object_mut()
-    .unwrap()
-    .insert("allowImportingTsExtensions".to_string(), json!(true));
-  log::debug!("config: {}", serde_json::to_string(&config)?);
+  let obj = config.as_object_mut().unwrap();
+  obj.insert("allowImportingTsExtensions".to_string(), json!(true));
   serde_json::to_string(&json!({
     "compilerOptions": config,
     "files": root_names,
@@ -180,6 +180,15 @@ fn convert_diagnostic(
   }
 }
 
+static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> = LazyLock::new(|| {
+  [
+    1452, 1471, 1479, 1543, 2306, 2688, 2792, 2307, 2834, 2835, 5009, 5055,
+    5070, 7016,
+  ]
+  .into_iter()
+  .collect()
+});
+
 fn convert_diagnostics(
   diagnostics: Vec<deno_typescript_go_client_rust::types::Diagnostic>,
 ) -> super::Diagnostics {
@@ -187,6 +196,7 @@ fn convert_diagnostics(
     diagnostics
       .iter()
       .map(|diagnostic| convert_diagnostic(diagnostic.clone(), &diagnostics))
+      .filter(|diagnostic| !IGNORED_DIAGNOSTIC_CODES.contains(&diagnostic.code))
       .collect::<Vec<_>>(),
   )
 }
@@ -295,15 +305,18 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
     let mut state = self.state.borrow_mut();
     match name {
       "readFile" => {
+        log::debug!("readFile: {}", payload);
         let payload = deser::<String>(payload)?;
         if payload == state.config_path {
           Ok(jsons!(&state.synthetic_config)?)
         } else {
-          let contents = load_inner(&mut state, &payload).map_err(adhoc)?;
-          if let Some(contents) = contents {
+          let result = load_inner(&mut state, &payload).map_err(adhoc)?;
+          if let Some(result) = result {
+            let contents = result.contents;
             Ok(jsons!(&contents)?)
           } else {
             let path = Path::new(&payload);
+
             if let Ok(contents) = std::fs::read_to_string(path) {
               Ok(jsons!(&contents)?)
             } else {
@@ -311,6 +324,12 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
             }
           }
         }
+      }
+      "loadSourceFile" => {
+        let payload = deser::<String>(payload)?;
+        log::debug!("loadSourceFile: {}", payload);
+        let result = load_inner(&mut state, &payload).map_err(adhoc)?;
+        Ok(jsons!(&result)?)
       }
       "resolveModuleName" => {
         let payload = deser::<ResolveModuleNamePayload>(payload)?;
@@ -547,10 +566,18 @@ pub enum ExecError {
   DownloadError(#[from] DownloadError),
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadResult {
+  contents: String,
+  script_kind: i32,
+}
+
 fn load_inner(
   state: &mut HandlerState,
   load_specifier: &str,
-) -> Result<Option<String>, ExecError> {
+) -> Result<Option<LoadResult>, ExecError> {
+  log::debug!("load_inner: {}", load_specifier);
   fn load_from_node_modules(
     specifier: &ModuleSpecifier,
     npm_state: Option<&RequestNpmState>,
@@ -605,7 +632,10 @@ fn load_inner(
     media_type = MediaType::from_str(load_specifier);
     maybe_source.map(String::from)
   } else if let Some(source) = super::load_raw_import_source(&specifier) {
-    return Ok(Some(source.to_string()));
+    return Ok(Some(LoadResult {
+      contents: source.to_string(),
+      script_kind: as_ts_script_kind(MediaType::TypeScript),
+    }));
   } else {
     let specifier = if let Some(remapped_specifier) =
       state.maybe_remapped_specifier(load_specifier)
@@ -677,13 +707,17 @@ fn load_inner(
     }
   };
   let module_kind = get_resolution_mode(is_cjs, media_type);
+  let script_kind = as_ts_script_kind(media_type);
   state
     .module_kind_map
     .insert(load_specifier.to_string(), module_kind);
   let Some(data) = data else {
     return Ok(None);
   };
-  Ok(Some(data))
+  Ok(Some(LoadResult {
+    contents: data,
+    script_kind,
+  }))
 }
 
 fn get_resolution_mode(
@@ -742,6 +776,8 @@ pub enum DownloadError {
   CreateTempDirFailed(#[source] std::io::Error),
   #[error("hash mismatch: expected {0}, got {1}")]
   HashMismatch(String, String),
+  #[error("binary not found: {0}")]
+  BinaryNotFound(String),
 }
 
 fn verify_hash(platform: &str, data: &[u8]) -> Result<(), DownloadError> {
@@ -780,9 +816,15 @@ pub async fn ensure_tsgo(
     return Ok(bin_path);
   }
 
-  if cfg!(debug_assertions) && std::env::var("TSGO_PATH").is_ok() {
-    let tsgo_path = std::env::var("TSGO_PATH").unwrap();
-    return Ok(TSGO_PATH.get_or_init(|| PathBuf::from(tsgo_path)));
+  if let Ok(tsgo_path) = std::env::var("DENO_TSGO_PATH") {
+    let tsgo_path = Path::new(&tsgo_path);
+    if tsgo_path.exists() {
+      return Ok(TSGO_PATH.get_or_init(|| PathBuf::from(tsgo_path)));
+    } else {
+      return Err(DownloadError::BinaryNotFound(
+        tsgo_path.to_string_lossy().into_owned(),
+      ));
+    }
   }
 
   let platform = match (std::env::consts::OS, std::env::consts::ARCH) {

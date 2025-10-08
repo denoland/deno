@@ -868,6 +868,7 @@ pub fn exec(
   // op state so when requested, we can remap to the original specifier.
   let mut root_map = HashMap::new();
   let mut remapped_specifiers = HashMap::new();
+  log::debug!("exec request, root_names: {:?}", request.root_names);
   let root_names: Vec<String> = request
     .root_names
     .iter()
