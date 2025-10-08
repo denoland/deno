@@ -130,13 +130,8 @@ impl MultiTestMetaData {
         && !variants.is_empty()
       {
         all_tests.push(
-          dbg!(map_variants(
-            &test.data,
-            &test.path,
-            &test.name,
-            variants.iter()
-          ))
-          .unwrap(),
+          map_variants(&test.data, &test.path, &test.name, variants.iter())
+            .unwrap(),
         );
       } else {
         all_tests.push(CollectedCategoryOrTest::Test(test));
@@ -508,55 +503,101 @@ fn run_flaky(action: impl Fn()) {
   action();
 }
 
+// in the future we could consider using https://docs.rs/aho_corasick to do multiple replacements at once
+// in practice, though, i suspect the numbers here will be small enough that the naive approach is fast enough
+fn variant_substitutions(
+  variants: &BTreeMap<String, JsonMap>,
+  multi_step_variants: &BTreeMap<String, JsonMap>,
+) -> Vec<(String, String)> {
+  if variants.is_empty() && multi_step_variants.is_empty() {
+    return Vec::new();
+  }
+  let mut variant = variants.values().next().cloned().unwrap_or_default();
+  let multi_step_variant = multi_step_variants
+    .values()
+    .next()
+    .cloned()
+    .unwrap_or_default();
+
+  for (name, value) in multi_step_variant {
+    if !variant.contains_key(&name) {
+      variant.insert(name, value.clone());
+    }
+  }
+
+  let mut pairs = variant
+    .into_iter()
+    .filter_map(|(name, value)| {
+      value
+        .as_str()
+        .map(|value| (format!("${{{}}}", name), value.to_string()))
+    })
+    .collect::<Vec<_>>();
+  pairs.sort_by(|a, b| a.0.cmp(&b.0).reverse());
+  pairs
+}
+
+fn substitute_variants_into_envs(
+  pairs: &Vec<(String, String)>,
+  envs: &mut HashMap<String, String>,
+) {
+  enum Update {
+    Remove(String),
+    Replace(String, String),
+  }
+  let mut updates = Vec::new();
+  for (key, value) in pairs {
+    for (k, v) in envs.iter() {
+      let replaced = v.replace(key.as_str(), value);
+      if replaced.is_empty() && &replaced != v {
+        updates.push(Update::Remove(k.clone()));
+        continue;
+      }
+      updates.push(Update::Replace(k.clone(), replaced));
+    }
+  }
+  for update in updates {
+    match update {
+      Update::Remove(key) => {
+        envs.remove(&key);
+      }
+      Update::Replace(key, value) => {
+        envs.insert(key, value);
+      }
+    }
+  }
+}
+
 fn run_step(
   step: &StepMetaData,
   metadata: &MultiStepMetaData,
   cwd: &PathRef,
   context: &test_util::TestContext,
 ) {
-  let command = context
-    .new_command()
-    .envs(metadata.envs.iter().chain(step.envs.iter()));
-  let variants = step.variants.clone();
+  let substs = variant_substitutions(&step.variants, &metadata.variants);
 
-  let multi_step_variants = metadata.variants.clone();
-
-  let pairs = if !multi_step_variants.is_empty() || !variants.is_empty() {
-    let mut variant = variants.values().next().cloned().unwrap_or_default();
-    let multi_step_variant = multi_step_variants
-      .values()
-      .next()
-      .cloned()
-      .unwrap_or_default();
-
-    for (name, value) in multi_step_variant {
-      if !variant.contains_key(&name) {
-        variant.insert(name, value.clone());
-      }
-    }
-
-    let mut pairs = variant
-      .into_iter()
-      .filter_map(|(name, value)| {
-        value
-          .as_str()
-          .map(|value| (format!("${{{}}}", name), value.to_string()))
-      })
-      .collect::<Vec<_>>();
-    pairs.sort_by(|a, b| a.0.cmp(&b.0).reverse());
-    pairs
+  let command = if substs.is_empty() {
+    let envs = metadata.envs.iter().chain(step.envs.iter());
+    context.new_command().envs(envs)
   } else {
-    Vec::new()
+    let mut envs = metadata
+      .envs
+      .iter()
+      .chain(step.envs.iter())
+      .map(|(key, value)| (key.clone(), value.clone()))
+      .collect::<HashMap<_, _>>();
+    substitute_variants_into_envs(&substs, &mut envs);
+    context.new_command().envs(envs)
   };
 
   let command = match &step.args {
     VecOrString::Vec(args) => {
-      if pairs.is_empty() {
+      if substs.is_empty() {
         command.args_vec(args)
       } else {
         let mut args_replaced = args.clone();
         for arg in args {
-          for (from, to) in &pairs {
+          for (from, to) in &substs {
             let arg_replaced = arg.replace(from, to);
             if arg_replaced.is_empty() && &arg_replaced != arg {
               continue;
@@ -569,11 +610,11 @@ fn run_step(
       }
     }
     VecOrString::String(text) => {
-      if pairs.is_empty() {
+      if substs.is_empty() {
         command.args(text)
       } else {
         let mut text = text.clone();
-        for (from, to) in &pairs {
+        for (from, to) in &substs {
           text = text.replace(from, to);
         }
         command.args(text)
@@ -608,11 +649,11 @@ fn run_step(
   let output = command.run();
 
   let step_output = {
-    if pairs.is_empty() {
+    if substs.is_empty() {
       step.output.clone()
     } else {
       let mut output = step.output.clone();
-      for (from, to) in pairs {
+      for (from, to) in substs {
         output = output.replace(&from, &to);
       }
       output
