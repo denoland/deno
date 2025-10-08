@@ -13,6 +13,8 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
 use deno_semver::package::PackageNv;
+use serde::Deserialize;
+use serde::Serialize;
 use sys_traits::FsMetadata;
 use sys_traits::FsWrite;
 
@@ -225,23 +227,21 @@ impl<'a, TSys: FsMetadata + FsWrite> LifecycleScripts<'a, TSys> {
     &self,
     deno_local_registry_dir: &Path,
   ) -> Result<(), std::io::Error> {
-    if !self.packages_with_scripts_not_run.is_empty() {
-      let mut ignored_scripts: Vec<String> = self
-        .packages_with_scripts_not_run
-        .iter()
-        .map(|(package, _)| package.id.nv.name.to_string())
-        .collect();
-      // Sort alphabetically
-      ignored_scripts.sort();
-      let mut toml_content = String::new();
-      toml_content.push_str("ignored-scripts = [\n");
-      for package_name in &ignored_scripts {
-        toml_content.push_str(&format!("  \"{}\",\n", package_name));
-      }
-      let state_file_path = deno_local_registry_dir.join(".state.toml");
-      toml_content.push_str("]\n");
-      self.sys.fs_write(&state_file_path, toml_content)?;
+    if self.packages_with_scripts_not_run.is_empty() {
+      return Ok(());
     }
+
+    let mut ignored_scripts: Vec<String> = self
+      .packages_with_scripts_not_run
+      .iter()
+      .map(|(package, _)| package.id.nv.name.to_string())
+      .collect();
+    ignored_scripts.sort();
+    let state = LifecycleScriptsState { ignored_scripts };
+    let state_file_path = deno_local_registry_dir.join(".state.json");
+    let json_str = serde_json::to_string_pretty(&state).unwrap();
+    self.sys.fs_write(&state_file_path, json_str)?;
+
     Ok(())
   }
 
@@ -264,4 +264,10 @@ pub static LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR: &str =
 
 pub fn is_running_lifecycle_script(sys: &impl sys_traits::EnvVar) -> bool {
   sys.env_var(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR).is_ok()
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LifecycleScriptsState {
+  pub ignored_scripts: Vec<String>,
 }

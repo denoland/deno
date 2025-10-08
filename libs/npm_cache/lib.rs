@@ -150,7 +150,6 @@ pub trait NpmCacheSys:
   + FsMetadata
   + FsOpen
   + FsRead
-  // TODO(bartlomieju): remove
   + FsWrite
   + FsReadDir
   + FsRemoveDirAll
