@@ -9392,6 +9392,7 @@ dependencies = [
  "url",
  "win32job",
  "winapi",
+ "zip",
 ]
 
 [[package]]
