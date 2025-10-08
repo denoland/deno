@@ -108,6 +108,7 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
       https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
 - [ ] This will open a PR. Review and merge it.
 - [ ] Create a `$VERSION` tag (_without_ `v` prefix).
+- [ ] This will trigger a publish CI run. Verify that it completes sucessfully.
 
 ## Update MDN
 

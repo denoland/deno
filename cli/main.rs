@@ -562,20 +562,17 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   deno_runtime::exit(70);
 }
 
-#[cfg(not(unix))]
-fn maybe_setup_permission_broker() {}
-
-#[cfg(unix)]
 fn maybe_setup_permission_broker() {
-  if let Ok(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH") {
-    log::warn!(
-      "{} Permission broker is an experimental feature",
-      colors::yellow("Warning")
-    );
-    let broker =
-      deno_runtime::deno_permissions::PermissionBroker::new(socket_path);
-    deno_runtime::deno_permissions::set_broker(broker);
-  }
+  let Ok(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH") else {
+    return;
+  };
+  log::warn!(
+    "{} Permission broker is an experimental feature",
+    colors::yellow("Warning")
+  );
+  let broker =
+    deno_runtime::deno_permissions::broker::PermissionBroker::new(socket_path);
+  deno_runtime::deno_permissions::broker::set_broker(broker);
 }
 
 pub fn main() {
@@ -593,7 +590,7 @@ pub fn main() {
     deno_subprocess_windows::disable_stdio_inheritance();
     colors::enable_ansi(); // For Windows 10
   }
-  deno_runtime::deno_permissions::set_prompt_callbacks(
+  deno_runtime::deno_permissions::prompter::set_prompt_callbacks(
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
   );
@@ -675,7 +672,14 @@ async fn resolve_flags_and_init(
     .map(|files| files.iter().map(PathBuf::from).collect());
   load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
 
-  if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
+  if deno_lib::args::has_flag_env_var("DENO_CONNECTED")
+    && matches!(
+      flags.subcommand,
+      DenoSubcommand::Run { .. }
+        | DenoSubcommand::Serve { .. }
+        | DenoSubcommand::Task { .. }
+    )
+  {
     flags.tunnel = true;
   }
 

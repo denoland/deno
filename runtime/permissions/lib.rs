@@ -31,60 +31,36 @@ use serde::Serialize;
 use serde::de;
 use url::Url;
 
-#[cfg(unix)]
 pub mod broker;
+mod ipc_pipe;
 pub mod prompter;
 pub mod which;
-#[cfg(unix)]
-pub use broker::PermissionBroker;
-#[cfg(unix)]
-pub use broker::set_broker;
-pub use prompter::DeniedPrompter;
-pub use prompter::GetFormattedStackFn;
+
 use prompter::MAYBE_CURRENT_STACKTRACE;
 use prompter::PERMISSION_EMOJI;
-pub use prompter::PermissionPrompter;
-pub use prompter::PromptCallback;
-pub use prompter::PromptResponse;
 use prompter::permission_prompt;
-pub use prompter::set_prompt_callbacks;
-pub use prompter::set_prompter;
 
+use self::prompter::PromptResponse;
 use self::which::WhichSys;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum BrokerResponse {
   Allow,
-  Deny,
+  Deny { message: Option<String> },
 }
 
-#[cfg(unix)]
 use self::broker::has_broker;
-
-#[cfg(not(unix))]
-fn has_broker() -> bool {
-  false
-}
-
-#[cfg(unix)]
 use self::broker::maybe_check_with_broker;
-
-#[cfg(not(unix))]
-fn maybe_check_with_broker(
-  _name: &str,
-  _stringified_value_fn: impl Fn() -> Option<String>,
-) -> Option<BrokerResponse> {
-  None
-}
 
 pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[error("Requires {access}, {}", format_permission_error(.name))]
+#[error("{}", custom_message.as_ref().cloned().unwrap_or_else(|| format!("Requires {access}, {}", format_permission_error(.name))))]
 #[class("NotCapable")]
 pub struct PermissionDeniedError {
   pub access: String,
   pub name: &'static str,
+  pub custom_message: Option<String>,
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -471,6 +447,7 @@ impl PermissionState {
     PermissionDeniedError {
       access: Self::fmt_access(name, info),
       name,
+      custom_message: None,
     }
   }
 
@@ -514,9 +491,13 @@ impl PermissionState {
           Self::log_perm_access(name, info);
           return (Ok(()), false, false);
         }
-        BrokerResponse::Deny => {
+        BrokerResponse::Deny { message } => {
           return (
-            Err(Self::permission_denied_error(name, info().as_deref())),
+            Err(PermissionDeniedError {
+              access: Self::fmt_access(name, info().as_deref()),
+              name,
+              custom_message: message,
+            }),
             false,
             false,
           );
@@ -4815,6 +4796,7 @@ mod tests {
   use serde_json::json;
 
   use super::*;
+  use crate::prompter::set_prompter;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {
