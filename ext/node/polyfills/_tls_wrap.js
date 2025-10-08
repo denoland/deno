@@ -5,6 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import {
+  ArrayIsArray,
   ObjectAssign,
   StringPrototypeReplace,
 } from "ext:deno_node/internal/primordials.mjs";

@@ -65,6 +65,7 @@ import {
   codeMap,
   errorMap,
   mapSysErrnoToUvErrno,
+  UV_EBADF,
 } from "ext:deno_node/internal_binding/uv.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
@@ -584,6 +585,38 @@ function makeSystemErrorWithCode(key: string, msgPrfix: string) {
   };
 }
 
+export const ERR_FS_CP_DIR_TO_NON_DIR = makeSystemErrorWithCode(
+  "ERR_FS_CP_DIR_TO_NON_DIR",
+  "Cannot overwrite non-directory with directory",
+);
+export const ERR_FS_CP_EEXIST = makeSystemErrorWithCode(
+  "ERR_FS_CP_EEXIST",
+  "Target already exists",
+);
+export const ERR_FS_CP_EINVAL = makeSystemErrorWithCode(
+  "ERR_FS_CP_EINVAL",
+  "Invalid src or dest",
+);
+export const ERR_FS_CP_FIFO_PIPE = makeSystemErrorWithCode(
+  "ERR_FS_CP_FIFO_PIPE",
+  "Cannot copy a FIFO pipe",
+);
+export const ERR_FS_CP_NON_DIR_TO_DIR = makeSystemErrorWithCode(
+  "ERR_FS_CP_NON_DIR_TO_DIR",
+  "Cannot overwrite directory with non-directory",
+);
+export const ERR_FS_CP_SOCKET = makeSystemErrorWithCode(
+  "ERR_FS_CP_SOCKET",
+  "Cannot copy a socket file",
+);
+export const ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY = makeSystemErrorWithCode(
+  "ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY",
+  "Cannot overwrite symlink in subdirectory of self",
+);
+export const ERR_FS_CP_UNKNOWN = makeSystemErrorWithCode(
+  "ERR_FS_CP_UNKNOWN",
+  "Cannot copy an unknown file type",
+);
 export const ERR_FS_EISDIR = makeSystemErrorWithCode(
   "ERR_FS_EISDIR",
   "Path is a directory",
@@ -2669,6 +2702,13 @@ interface UvExceptionContext {
   dest?: string;
 }
 export function denoErrorToNodeError(e: Error, ctx: UvExceptionContext) {
+  if (ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)) {
+    return uvException({
+      errno: UV_EBADF,
+      ...ctx,
+    });
+  }
+
   const errno = extractOsErrorNumberFromErrorMessage(e);
   if (typeof errno === "undefined") {
     return e;
@@ -2899,7 +2939,15 @@ export default {
   ERR_EVENT_RECURSION,
   ERR_FALSY_VALUE_REJECTION,
   ERR_FEATURE_UNAVAILABLE_ON_PLATFORM,
+  ERR_FS_CP_DIR_TO_NON_DIR,
+  ERR_FS_CP_EEXIST,
+  ERR_FS_CP_EINVAL,
   ERR_FS_EISDIR,
+  ERR_FS_CP_FIFO_PIPE,
+  ERR_FS_CP_NON_DIR_TO_DIR,
+  ERR_FS_CP_SOCKET,
+  ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY,
+  ERR_FS_CP_UNKNOWN,
   ERR_FS_FILE_TOO_LARGE,
   ERR_FS_INVALID_SYMLINK_TYPE,
   ERR_FS_RMDIR_ENOTDIR,

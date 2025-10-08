@@ -923,7 +923,7 @@ impl BrotliDecoder {
 }
 
 #[op2(fast)]
-pub fn op_zlib_crc32_string(#[string] data: &str, #[smi] value: u32) -> u32 {
+pub fn op_zlib_crc32_string(#[string] data: &str, value: u32) -> u32 {
   // SAFETY: `data` is a valid buffer.
   unsafe {
     zlib::crc32(value as c_ulong, data.as_ptr(), data.len() as u32) as u32
@@ -931,7 +931,7 @@ pub fn op_zlib_crc32_string(#[string] data: &str, #[smi] value: u32) -> u32 {
 }
 
 #[op2(fast)]
-pub fn op_zlib_crc32(#[buffer] data: &[u8], #[smi] value: u32) -> u32 {
+pub fn op_zlib_crc32(#[buffer] data: &[u8], value: u32) -> u32 {
   // SAFETY: `data` is a valid buffer.
   unsafe {
     zlib::crc32(value as c_ulong, data.as_ptr(), data.len() as u32) as u32
