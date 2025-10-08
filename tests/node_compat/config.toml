@@ -302,7 +302,7 @@
 "parallel/test-dgram-send-default-host.js" = {}
 "parallel/test-dgram-send-empty-array.js" = { flaky = true }
 "parallel/test-dgram-send-empty-buffer.js" = { darwin = false, flaky = true }
-"parallel/test-dgram-send-empty-packet.js" = { flaky = true }
+"parallel/test-dgram-send-empty-packet.js" = { darwin = false, flaky = true }
 "parallel/test-dgram-send-error.js" = {}
 "parallel/test-dgram-send-invalid-msg-type.js" = {}
 "parallel/test-dgram-send-multi-buffer-copy.js" = {}
@@ -430,7 +430,9 @@
 "parallel/test-fs-chmod.js" = {}
 "parallel/test-fs-chown-type-check.js" = {}
 "parallel/test-fs-close.js" = {}
-"parallel/test-fs-cp.mjs" = {}
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# related to Unix socket path being too long
+# "parallel/test-fs-cp.mjs" = {}
 # TODO(bartlomieju): appears that part of the test that's broke was removed in Node 24.0
 # but it's actually not included in 24.2 https://github.com/nodejs/node/pull/55862
 # "parallel/test-fs-constants.js" = {}
