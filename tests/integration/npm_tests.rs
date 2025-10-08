@@ -1674,7 +1674,9 @@ console.log(getValue());
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("7\n");
   let output = test_context.new_command().args("check main.ts").run();
-  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+  output.assert_matches_text(
+    "Check file:///[WILDCARD]/main.ts\n✅ Type check successful\n",
+  );
 }
 
 #[test]
