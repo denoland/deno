@@ -22,6 +22,6 @@
     "output": "Check file:///[WILDCARD]exists_dynamic_import.ts\n✅ Type check successful\n"
   }, {
     "args": "run --check --reload exists_dynamic_import.ts",
-    "output": "Check file:///[WILDCARD]exists_dynamic_import.ts\n✅ Type check successful\n"
+    "output": "Check file:///[WILDCARD]exists_dynamic_import.ts\n"
   }]
 }
