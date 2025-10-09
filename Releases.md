@@ -8,7 +8,8 @@ https://github.com/denoland/deno_install
 
 ### 2.5.4 / 2025.10.09
 
-- feat(internal): support variants of spec tests (#30947)
+- fix(cache): don't try to set up node_modules with node_modules_dir manual in
+  deno cache (#30957)
 - fix(cli): jsx pragma-related swc panics (#30935)
 - fix(ext/node): `fs.cp` and `fs.cpSync` compatibility (#30502)
 - fix(ext/node): `fs.stat` and `fs.statSync` compatibility (#30866)
