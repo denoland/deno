@@ -623,7 +623,7 @@ Deno.test(
 
     // @ts-ignore `Deno.run()` was soft-removed in Deno 2.
     const p = Deno.run({
-      cmd: ["deno", "run", "--watch", tempFile],
+      cmd: [Deno.execPath(), "run", "--watch", tempFile],
       stdout: "piped",
       stderr: "null",
     });
@@ -661,7 +661,7 @@ Deno.serve({ signal: ac.signal }, () => new Response("Hello World"));
 
     // @ts-ignore `Deno.run()` was soft-removed in Deno 2.
     const p = Deno.run({
-      cmd: ["deno", "run", "--watch", tempFile],
+      cmd: [Deno.execPath(), "run", "--watch", tempFile],
       stdout: "piped",
       stderr: "null",
     });
