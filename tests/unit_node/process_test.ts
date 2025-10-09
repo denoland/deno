@@ -476,6 +476,15 @@ Deno.test({
 });
 
 Deno.test({
+  "name": "process.env: checking symbol in env should not require permission",
+  permissions: 'none',
+  fn() {
+    const symbol = Symbol.for('67');
+    Reflect.has(globalThis.process.env, symbol);
+  },
+});
+
+Deno.test({
   name: "process.stdin",
   fn() {
     // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
