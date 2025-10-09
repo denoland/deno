@@ -396,16 +396,17 @@ pub async fn audit(
   let snapshot = npm_resolver.resolution().snapshot();
 
   eprintln!("snapshot {:?}", snapshot);
-  eprintln!("snapshot top level {:#?}", snapshot.top_level_packages());
-  eprintln!("snapshot reqs {:#?}", snapshot.package_reqs());
+  // eprintln!("snapshot top level {:#?}", snapshot.top_level_packages());
+  // eprintln!("snapshot reqs {:#?}", snapshot.package_reqs());
 
   let http_provider = HttpClientProvider::new(None, None);
   let client = http_provider.get_or_create().unwrap();
 
   let purls = snapshot
-    .package_reqs()
-    .into_iter()
-    .map(|(k, v)| format!("pkg:npm/{}@{}", v.name, v.version))
+    .all_packages_for_every_system()
+    .map(|package| {
+      format!("pkg:npm/{}@{}", package.id.nv.name, package.id.nv.version)
+    })
     .collect::<Vec<_>>();
 
   eprintln!("purls {:#?}", purls);

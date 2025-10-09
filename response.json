@@ -1,0 +1,48 @@
+Object {
+    "id": String("39044789440"), 
+    "author": Array [String("lukastaegert")], 
+    "size": Number(2740266), 
+    "type": String("npm"), 
+    "name": String("rollup"), 
+    "version": String("4.43.0"), 
+    "alerts": Array [
+        {
+            "type": "malware",
+            "props": {
+                "note": "Package has been removed from the npm registry due to security concerns.\n\nThis is a placeholder package published by the npm security team to prevent malicious usage of the package name.\nThe original package likely contained harmful code.",
+                "id": null
+            },
+            "key": "Qkfz5GivRmp3U0R2XR8VYnOOo0nUoT_MNVz6hUvie3-s",
+            "actionSource": {
+                "candidates": [
+                    {
+                        "action": "error",
+                        "actionPolicyIndex": 0,
+                        "repoLabelId": "",
+                        "type": "org-policy"
+                    }
+                ],
+                "type": "org-policy"
+            },
+            "fix": {
+                "type": "remove",
+                "description": "Remove this package and either replace with a verified alternative from a trusted source or revert to a known-safe previous version."
+            },
+            "action": "error",
+            "severity": "critical",
+            "category": "supplyChainRisk"
+        }
+    ], 
+    "score": Object {
+        "license": Number(1), 
+        "maintenance": Number(0.99), 
+        "overall": Number(0.97), 
+        "quality": Number(1), 
+        "supplyChain": Number(0.97), 
+        "vulnerability": Number(1)
+    }, 
+    "inputPurl": String("pkg:npm/rollup@4.43.0"), 
+    "batchIndex": Number(0),
+    "license": String("0BSD AND ISC AND MIT"), 
+    "licenseDetails": Array []
+}
