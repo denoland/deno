@@ -11,6 +11,8 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
+use deno_core::futures::future::join_all;
+use deno_core::serde_json;
 use deno_path_util::url_to_file_path;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -20,6 +22,7 @@ use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deps::KeyPath;
+use eszip::v2::Url;
 use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstObjectProp;
 use jsonc_parser::cst::CstRootNode;
@@ -33,6 +36,7 @@ use crate::args::RemoveFlags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
+use crate::http_util::HttpClientProvider;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
@@ -394,6 +398,46 @@ pub async fn audit(
   eprintln!("snapshot {:?}", snapshot);
   eprintln!("snapshot top level {:#?}", snapshot.top_level_packages());
   eprintln!("snapshot reqs {:#?}", snapshot.package_reqs());
+
+  let http_provider = HttpClientProvider::new(None, None);
+  let client = http_provider.get_or_create().unwrap();
+
+  let purls = snapshot
+    .package_reqs()
+    .into_iter()
+    .map(|(k, v)| format!("pkg:npm/{}@{}", v.name, v.version))
+    .collect::<Vec<_>>();
+
+  eprintln!("purls {:#?}", purls);
+
+  let futures = purls
+    .into_iter()
+    .map(|purl| {
+      let url = Url::parse(&format!(
+        "https://firewall-api.socket.dev/purl/{}",
+        percent_encoding::utf8_percent_encode(
+          &purl,
+          percent_encoding::NON_ALPHANUMERIC
+        )
+      ))
+      .unwrap();
+      client.download_text(url).boxed_local()
+    })
+    .collect::<Vec<_>>();
+
+  let purl_results = join_all(futures).await;
+  eprintln!("purl results {:#?}", purl_results);
+  for purl_result in purl_results {
+    match purl_result {
+      Ok(r) => {
+        let json_obj: serde_json::Value = serde_json::from_str(&r).unwrap();
+        eprintln!("{:?}", json_obj);
+      }
+      Err(err) => {
+        eprintln!("failed to get result {:?}", err)
+      }
+    }
+  }
   Ok(())
 }
 
