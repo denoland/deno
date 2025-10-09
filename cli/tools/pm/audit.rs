@@ -9,10 +9,12 @@ use deno_core::serde_json;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use eszip::v2::Url;
 use serde::Deserialize;
+use serde::Serialize;
 
 use crate::args::AuditFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
+use crate::http_util;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
 
@@ -31,11 +33,11 @@ pub async fn audit(
     npm::call_audits_api(&snapshot, http_provider.get_or_create().unwrap())
       .await?;
 
-  let _purl_responses = socket_dev::call_firewall_api(
-    &snapshot,
-    http_provider.get_or_create().unwrap(),
-  )
-  .await?;
+  // let _purl_responses = socket_dev::call_firewall_api(
+  //   &snapshot,
+  //   http_provider.get_or_create().unwrap(),
+  // )
+  // .await?;
 
   // for response in purl_responses {
   //   if let Some(score) = response.score {
@@ -72,9 +74,10 @@ mod npm {
     let mut requires = HashMap::with_capacity(top_level_packages.len());
     let mut dependencies = HashMap::with_capacity(top_level_packages.len());
     for package in top_level_packages {
-      requires.insert(package.nv.to_string(), package.nv.version.to_string());
+      requires
+        .insert(package.nv.name.to_string(), package.nv.version.to_string());
       dependencies.insert(
-        package.nv.to_string(),
+        package.nv.name.to_string(),
         Box::new(DependencyDescriptor {
           version: package.nv.version.to_string(),
           // TODO
@@ -82,7 +85,7 @@ mod npm {
           // TODO
           dependencies: vec![],
         }),
-      )
+      );
     }
 
     let body = serde_json::json!({
@@ -94,10 +97,12 @@ mod npm {
         "dependencies": dependencies,
     });
 
+    eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
     let url = Url::parse("https://registry.npmjs.org/-/npm/v1/security/audits")
       .unwrap();
-    let future = client.post_json(url, body).send().boxed_local();
-    let json_str = future.await?;
+    let future = client.post_json(url, &body)?.send().boxed_local();
+    let response = future.await?;
+    let json_str = http_util::body_to_string(response).await.unwrap();
     dbg!(&json_str);
     let json_obj: serde_json::Value = serde_json::from_str(&json_str)?;
     dbg!(&json_obj);
