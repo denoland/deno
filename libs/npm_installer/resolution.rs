@@ -29,6 +29,7 @@ use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageKind;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_terminal::colors;
@@ -286,7 +287,20 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       return;
     };
 
+    if snapshot.is_empty() {
+      return;
+    }
+
     let mut lockfile = lockfile.lock();
+    lockfile.content.packages.npm.clear();
+    lockfile
+      .content
+      .packages
+      .specifiers
+      .retain(|req, _| match req.kind {
+        PackageKind::Npm => false,
+        PackageKind::Jsr => true,
+      });
     for (package_req, nv) in snapshot.package_reqs() {
       let id = &snapshot.resolve_package_from_deno_module(nv).unwrap().id;
       lockfile.insert_package_specifier(
