@@ -11,8 +11,6 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::futures::future::join_all;
-use deno_core::serde_json;
 use deno_path_util::url_to_file_path;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -22,28 +20,27 @@ use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deps::KeyPath;
-use eszip::v2::Url;
 use jsonc_parser::cst::CstObject;
 use jsonc_parser::cst::CstObjectProp;
 use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::json;
 
 use crate::args::AddFlags;
-use crate::args::AuditFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::RemoveFlags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
-use crate::http_util::HttpClientProvider;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
+mod audit;
 mod cache_deps;
 pub(crate) mod deps;
 mod outdated;
 
+pub use audit::audit;
 pub use cache_deps::cache_top_level_deps;
 pub use outdated::outdated;
 
@@ -383,63 +380,6 @@ fn path_distance(a: &Path, b: &Path) -> usize {
     return usize::MAX;
   };
   diff.components().count()
-}
-
-pub async fn audit(
-  flags: Arc<Flags>,
-  audit_flags: AuditFlags,
-) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options()?;
-  let npm_resolver = factory.npm_resolver().await?;
-  let npm_resolver = npm_resolver.as_managed().unwrap();
-  let snapshot = npm_resolver.resolution().snapshot();
-
-  eprintln!("snapshot {:?}", snapshot);
-  // eprintln!("snapshot top level {:#?}", snapshot.top_level_packages());
-  // eprintln!("snapshot reqs {:#?}", snapshot.package_reqs());
-
-  let http_provider = HttpClientProvider::new(None, None);
-  let client = http_provider.get_or_create().unwrap();
-
-  let purls = snapshot
-    .all_packages_for_every_system()
-    .map(|package| {
-      format!("pkg:npm/{}@{}", package.id.nv.name, package.id.nv.version)
-    })
-    .collect::<Vec<_>>();
-
-  eprintln!("purls {:#?}", purls);
-
-  let futures = purls
-    .into_iter()
-    .map(|purl| {
-      let url = Url::parse(&format!(
-        "https://firewall-api.socket.dev/purl/{}",
-        percent_encoding::utf8_percent_encode(
-          &purl,
-          percent_encoding::NON_ALPHANUMERIC
-        )
-      ))
-      .unwrap();
-      client.download_text(url).boxed_local()
-    })
-    .collect::<Vec<_>>();
-
-  let purl_results = join_all(futures).await;
-  eprintln!("purl results {:#?}", purl_results);
-  for purl_result in purl_results {
-    match purl_result {
-      Ok(r) => {
-        let json_obj: serde_json::Value = serde_json::from_str(&r).unwrap();
-        eprintln!("{:?}", json_obj);
-      }
-      Err(err) => {
-        eprintln!("failed to get result {:?}", err)
-      }
-    }
-  }
-  Ok(())
 }
 
 pub async fn add(
