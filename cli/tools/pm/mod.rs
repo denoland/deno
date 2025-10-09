@@ -26,6 +26,7 @@ use jsonc_parser::cst::CstRootNode;
 use jsonc_parser::json;
 
 use crate::args::AddFlags;
+use crate::args::AuditFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::RemoveFlags;
@@ -378,6 +379,22 @@ fn path_distance(a: &Path, b: &Path) -> usize {
     return usize::MAX;
   };
   diff.components().count()
+}
+
+pub async fn audit(
+  flags: Arc<Flags>,
+  audit_flags: AuditFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let npm_resolver = factory.npm_resolver().await?;
+  let npm_resolver = npm_resolver.as_managed().unwrap();
+  let snapshot = npm_resolver.resolution().snapshot();
+
+  eprintln!("snapshot {:?}", snapshot);
+  eprintln!("snapshot top level {:#?}", snapshot.top_level_packages());
+  eprintln!("snapshot reqs {:#?}", snapshot.package_reqs());
+  Ok(())
 }
 
 pub async fn add(
