@@ -1661,6 +1661,7 @@ dependencies = [
  "faster-hex",
  "flate2",
  "fs3",
+ "hickory-resolver",
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
