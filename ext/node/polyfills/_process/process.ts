@@ -63,8 +63,9 @@ const OBJECT_PROTO_PROP_NAMES = ObjectGetOwnPropertyNames(ObjectPrototype);
  * https://nodejs.org/api/process.html#process_process_env
  * Requires env permissions
  */
-export const env: InstanceType<ObjectConstructor> & Record<string | symbol, string> =
-  new Proxy(Object(), {
+export const env:
+  & InstanceType<ObjectConstructor>
+  & Record<string | symbol, string> = new Proxy(Object(), {
     get: (target, prop) => {
       if (typeof prop === "symbol") {
         return target[prop];

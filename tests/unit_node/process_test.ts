@@ -477,9 +477,9 @@ Deno.test({
 
 Deno.test({
   "name": "process.env: checking symbol in env should not require permission",
-  permissions: 'none',
+  permissions: "none",
   fn() {
-    const symbol = Symbol.for('67');
+    const symbol = Symbol.for("67");
     Reflect.has(globalThis.process.env, symbol);
   },
 });
