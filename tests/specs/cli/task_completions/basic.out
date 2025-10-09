@@ -1,0 +1,4 @@
+build[WILDCHAR]Build the project
+dev
+test[WILDCHAR]Test the project
+--[WILDCARD]
