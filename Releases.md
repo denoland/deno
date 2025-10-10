@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.5.4 / 2025.10.09
+
+- fix(cache): don't try to set up node_modules with node_modules_dir manual in
+  deno cache (#30957)
+- fix(cli): jsx pragma-related swc panics (#30935)
+- fix(ext/node): `fs.cp` and `fs.cpSync` compatibility (#30502)
+- fix(ext/node): `fs.stat` and `fs.statSync` compatibility (#30866)
+- fix(ext/node): avoid stack overflow in `node:zlib`'s `gunzip` (#30865)
+- fix(ext/node): fs.realpath buffer encoding (#30885)
+- fix(ext/node): inspect X509Certificate class (#30882)
+- fix(ext/node): map BadResource error to the corresponding node error (#30926)
+- fix(ext/node): omit `smi` from `zlib.crc32` op function (#30907)
+- fix(tunnel): prevent auth subprocess loop with tasks (#30896)
+- fix(tunnel): unhide --tunnel flag (#30940)
+- fix(update): preserve tilde in version range (#30946)
+- fix(webgpu): crash after isolate disposal (#30909)
+- fix: use ArrayIsArray primordial (#30927)
+
 ### 2.5.3 / 2025.10.02
 
 - feat(unstable): add permission broker (#30826)

@@ -1293,7 +1293,6 @@ fn new_workspace_factory_options(
       flags.subcommand,
       DenoSubcommand::Install(_)
         | DenoSubcommand::Uninstall(_)
-        | DenoSubcommand::Cache(_)
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Remove(_)
         | DenoSubcommand::Init(_)
