@@ -158,7 +158,10 @@ pub async fn run_all_servers() {
     nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
 
   if let Err(e) = ensure_tsgo_prebuilt().await {
-    eprintln!("failed to ensure tsgo prebuilt: {e}");
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!("failed to ensure tsgo prebuilt: {e}");
+    }
   }
 
   let mut futures = vec![
@@ -1507,6 +1510,9 @@ const fn tsgo_platform() -> &'static str {
   }
 }
 pub fn tsgo_prebuilt_path() -> PathRef {
+  if let Ok(path) = std::env::var("DENO_TSGO_PATH") {
+    return PathRef::new(path);
+  }
   let folder = match std::env::consts::OS {
     "linux" => "linux64",
     "windows" => "win",

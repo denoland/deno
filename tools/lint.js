@@ -325,7 +325,7 @@ async function ensureNoUnusedOutFiles() {
   function checkObject(baseDirPath, obj, substsInit = {}) {
     const substs = { ...substsInit };
 
-    if ('variants' in obj) {
+    if ("variants" in obj) {
       for (const variantValue of Object.values(obj.variants)) {
         for (const [substKey, substValue] of Object.entries(variantValue)) {
           const subst = `\$\{${substKey}\}`;
@@ -345,7 +345,10 @@ async function ensureNoUnusedOutFiles() {
           if (value.includes(subst)) {
             for (const substValue of substValues) {
               const substitutedValue = value.replaceAll(subst, substValue);
-              const substitutedOutFilePath = join(baseDirPath, substitutedValue);
+              const substitutedOutFilePath = join(
+                baseDirPath,
+                substitutedValue,
+              );
               outFilePaths.delete(substitutedOutFilePath);
             }
           }
