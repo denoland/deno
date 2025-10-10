@@ -26,6 +26,7 @@ use sys_traits::FsReadDir;
 use sys_traits::FsRemoveDirAll;
 use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
+use sys_traits::FsWrite;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
 use url::Url;
@@ -149,6 +150,7 @@ pub trait NpmCacheSys:
   + FsMetadata
   + FsOpen
   + FsRead
+  + FsWrite
   + FsReadDir
   + FsRemoveDirAll
   + FsRemoveFile

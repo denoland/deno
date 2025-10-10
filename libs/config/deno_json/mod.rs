@@ -955,6 +955,17 @@ pub struct DeployConfig {
   pub app: String,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct SerializedInstallConfig {
+  pub approved_scripts: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct InstallConfig {
+  pub approved_scripts: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigFileJson {
@@ -976,6 +987,7 @@ pub struct ConfigFileJson {
   pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
+  pub install: Option<Value>,
 
   pub name: Option<String>,
   pub version: Option<String>,
@@ -1917,6 +1929,26 @@ impl ConfigFile {
             source: error,
           },
         )?))
+      }
+      None => Ok(None),
+    }
+  }
+
+  pub fn to_install_config(
+    &self,
+  ) -> Result<Option<InstallConfig>, ToInvalidConfigError> {
+    match &self.json.install {
+      Some(config) => {
+        let serialized: SerializedInstallConfig = 
+          serde_json::from_value(config.clone()).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "install",
+              source: error,
+            }
+          })?;
+        Ok(Some(InstallConfig {
+          approved_scripts: serialized.approved_scripts.unwrap_or_default(),
+        }))
       }
       None => Ok(None),
     }
@@ -2952,6 +2984,68 @@ mod tests {
         NodeModulesDirMode::deserialize(input).map_err(|e| e.to_string()),
         expected
       );
+    }
+  }
+
+  #[test]
+  fn test_to_install_config() {
+    // Test with no install config
+    let config_text = r#"{}"#;
+    let config_specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    assert!(config_file.to_install_config().unwrap().is_none());
+
+    // Test with empty install config
+    let config_text = r#"{ "install": {} }"#;
+    let config_specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let install_config = config_file.to_install_config().unwrap().unwrap();
+    assert_eq!(install_config.approved_scripts, Vec::<String>::new());
+
+    // Test with approved scripts
+    let config_text = r#"{
+      "install": {
+        "approvedScripts": ["script1", "script2", "npm:some-package"]
+      }
+    }"#;
+    let config_specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let install_config = config_file.to_install_config().unwrap().unwrap();
+    assert_eq!(
+      install_config.approved_scripts,
+      vec!["script1", "script2", "npm:some-package"]
+    );
+
+    // Test with null approved scripts (should default to empty)
+    let config_text = r#"{
+      "install": {
+        "approvedScripts": null
+      }
+    }"#;
+    let config_specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let install_config = config_file.to_install_config().unwrap().unwrap();
+    assert_eq!(install_config.approved_scripts, Vec::<String>::new());
+  }
+
+  #[test]
+  fn test_install_config_parse_error() {
+    // Test with invalid approved scripts (not a string array)
+    let config_text = r#"{
+      "install": {
+        "approvedScripts": "invalid"
+      }
+    }"#;
+    let config_specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let result = config_file.to_install_config();
+    assert!(result.is_err());
+    let error = result.unwrap_err();
+    match error {
+      ToInvalidConfigError::Parse { config, .. } => {
+        assert_eq!(config, "install");
+      }
+      _ => panic!("Expected parse error"),
     }
   }
 }
