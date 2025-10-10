@@ -1529,7 +1529,9 @@ console.log(getValue());
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("5\n");
   let output = test_context.new_command().args("check main.ts").run();
-  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+  output.assert_matches_text(
+    "Check file:///[WILDCARD]/main.ts\n✅ Type check successful\n",
+  );
 }
 
 #[test]
@@ -1653,7 +1655,9 @@ console.log(add(1, 2));
     .new_command()
     .args("check ./project-b/main.ts")
     .run();
-  output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
+  output.assert_matches_text(
+    "Check file:///[WILDCARD]/project-b/main.ts\n✅ Type check successful\n",
+  );
 
   // Now a file in the main directory should just be able to
   // import it via node resolution even though a package.json
@@ -1670,7 +1674,9 @@ console.log(getValue());
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("7\n");
   let output = test_context.new_command().args("check main.ts").run();
-  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+  output.assert_matches_text(
+    "Check file:///[WILDCARD]/main.ts\n✅ Type check successful\n",
+  );
 }
 
 #[test]
@@ -1752,7 +1758,9 @@ console.log(add(1, 2));
     .new_command()
     .args("check ./project-b/main.ts")
     .run();
-  output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
+  output.assert_matches_text(
+    "Check file:///[WILDCARD]/project-b/main.ts\n✅ Type check successful\n",
+  );
 
   // Now a file in the main directory should just be able to
   // import it via node resolution even though a package.json
@@ -1769,7 +1777,9 @@ console.log(getValue());
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text("7\n");
   let output = test_context.new_command().args("check main.ts").run();
-  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+  output.assert_matches_text(
+    "Check file:///[WILDCARD]/main.ts\n✅ Type check successful\n",
+  );
 }
 
 #[test]
@@ -1784,7 +1794,7 @@ fn check_css_package_json_exports() {
     .new_command()
     .args("check main.ts")
     .run()
-    .assert_matches_text("Download [WILDCARD]css-export\nDownload [WILDCARD]css-export/1.0.0.tgz\nCheck [WILDCARD]/main.ts\n")
+    .assert_matches_text("Download [WILDCARD]css-export\nDownload [WILDCARD]css-export/1.0.0.tgz\nCheck [WILDCARD]/main.ts\n✅ Type check successful\n")
     .assert_exit_code(0);
 }
 
