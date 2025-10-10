@@ -672,21 +672,12 @@ async fn resolve_flags_and_init(
     .map(|files| files.iter().map(PathBuf::from).collect());
   load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
 
-  if deno_lib::args::has_flag_env_var("DENO_CONNECTED")
-    && matches!(
-      flags.subcommand,
-      DenoSubcommand::Run { .. }
-        | DenoSubcommand::Serve { .. }
-        | DenoSubcommand::Task { .. }
-        | DenoSubcommand::Eval { .. }
-        | DenoSubcommand::Repl { .. }
-    )
-  {
+  if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
     flags.tunnel = true;
   }
 
   // Tunnel sets up env vars and OTEL, so connect before everything else.
-  if flags.tunnel {
+  if flags.tunnel && !matches(flags.subcommand, DenoSubcommand::Deploy { .. }) {
     if let Err(err) = initialize_tunnel(&flags).await {
       exit_for_error(err.context("Failed to start with tunnel"));
     }
