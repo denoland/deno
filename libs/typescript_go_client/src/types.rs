@@ -14,7 +14,6 @@ pub struct Position {
 #[derive(serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
-  pub id: DiagnosticId,
   pub file_name: String,
   pub start: Position,
   pub end: Position,
@@ -23,8 +22,8 @@ pub struct Diagnostic {
   pub code: u32,
   pub category: String,
   pub message: String,
-  pub message_chain: Vec<DiagnosticId>,
-  pub related_information: Vec<DiagnosticId>,
+  pub message_chain: Vec<Diagnostic>,
+  pub related_information: Vec<Diagnostic>,
   pub reports_unnecessary: bool,
   pub reports_deprecated: bool,
   pub skipped_on_no_emit: bool,

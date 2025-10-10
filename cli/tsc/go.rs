@@ -172,7 +172,17 @@ fn convert_diagnostic(
     file_name: Some(diagnostic.file_name),
     missing_specifier: None,
     other: Default::default(),
-    related_information: None,
+    related_information: if diagnostic.related_information.is_empty() {
+      None
+    } else {
+      Some(
+        diagnostic
+          .related_information
+          .into_iter()
+          .map(|d| convert_diagnostic(d, _diagnostics))
+          .collect::<Vec<_>>(),
+      )
+    },
     reports_deprecated: Some(diagnostic.reports_deprecated),
     reports_unnecessary: Some(diagnostic.reports_unnecessary),
     source: None,
