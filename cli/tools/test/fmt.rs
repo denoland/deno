@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::ops::AddAssign;
 
+use console_static_text::ansi::strip_ansi_codes;
 use deno_core::stats::RuntimeActivity;
 use deno_core::stats::RuntimeActivityDiff;
 use deno_core::stats::RuntimeActivityTrace;
@@ -88,10 +89,19 @@ pub fn format_test_error(
     .exception_message
     .trim_start_matches("Uncaught ")
     .to_string();
-  if options.hide_stacktraces {
-    return js_error.exception_message;
+  let message = if options.hide_stacktraces {
+    js_error.exception_message
+  } else {
+    format_js_error(&js_error)
+  };
+  // This is a first pass route. I think that the exception message should always
+  // be free of ANSI codes anyway so it would be more efficient to alter `format_js_error`
+  // to not print ANSI codes if `options.strip_ascii_color` is set to `true`.
+  if options.strip_ascii_color {
+    strip_ansi_codes(&message).to_string()
+  } else {
+    message
   }
-  format_js_error(&js_error)
 }
 
 pub fn format_sanitizer_diff(
@@ -424,7 +434,11 @@ pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
 
 #[cfg(test)]
 mod tests {
+  use deno_core::error::JsError;
+  use deno_core::error::JsStackFrame;
   use deno_core::stats::RuntimeActivity;
+
+  use crate::tools::test::format_test_error;
 
   macro_rules! leak_format_test {
     ($name:ident, $appeared:literal, [$($activity:expr),*], $expected:literal) => {
@@ -452,4 +466,39 @@ mod tests {
     " - An async call to op_unknown was started in this test, but never completed.\n\
     To get more details where leaks occurred, run again with the --trace-leaks flag.\n"
   );
+
+  #[test]
+  fn format_result_can_ignore_ascii_characters() {
+    let jserror = JsError {
+      exception_message: "Uncaught Error: test error".to_string(),
+      frames: vec![JsStackFrame::from_location(
+        Some("File name".to_string()),
+        Some(10),
+        Some(15),
+      )],
+      name: Some("Error".to_string()),
+      message: Some("test error".to_string()),
+      source_line: None,
+      source_line_frame_index: None,
+      stack: None,
+      cause: None,
+      aggregated: None,
+      additional_properties: vec![],
+    };
+
+    let with_ascii_options = super::TestFailureFormatOptions {
+      hide_stacktraces: false,
+      strip_ascii_color: false,
+    };
+    let with_ascii = format_test_error(&jserror, &with_ascii_options);
+
+    assert!(with_ascii.contains("\x1b"));
+
+    let without_ascii_options = super::TestFailureFormatOptions {
+      hide_stacktraces: false,
+      strip_ascii_color: true,
+    };
+    let without_ascii = format_test_error(&jserror, &without_ascii_options);
+    assert!(!without_ascii.contains("\x1b"));
+  }
 }
