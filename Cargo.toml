@@ -132,9 +132,9 @@ deno_resolver = { version = "0.50.0", path = "./libs/resolver" }
 deno_runtime = { version = "0.227.0", path = "./runtime" }
 deno_snapshots = { version = "0.34.0", path = "./cli/snapshot" }
 deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.14.0" }
+deno_typescript_go_client_rust = { version = "0.1.0", path = "./libs/typescript_go_client" }
 napi_sym = { version = "0.149.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.57.0", path = "./libs/node_resolver" }
-deno_typescript_go_client_rust = { version = "0.1.0", path = "./libs/typescript_go_client" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
 deno_tunnel = "0.8.0"
