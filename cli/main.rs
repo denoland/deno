@@ -1060,7 +1060,6 @@ async fn initialize_tunnel(
 
         // We explicitly use eprintln instead of log here since
         // there is a circular dep between tunnel and telemetry
-        #[allow(clippy::print_stderr)]
         eprintln!(
           "{}",
           colors::green(format!("You are connected to {endpoint}"))
@@ -1074,7 +1073,6 @@ async fn initialize_tunnel(
         };
         // We explicitly use eprintln instead of log here since
         // there is a circular dep between tunnel and telemetry
-        #[allow(clippy::print_stderr)]
         eprintln!(
           "{}",
           colors::green(format!(
