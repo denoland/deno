@@ -1211,10 +1211,7 @@ impl CliOptions {
   }
 
   pub fn unstable_tsgo(&self) -> bool {
-    match self.sub_command() {
-      DenoSubcommand::Check(check_flags) => check_flags.unstable_tsgo,
-      _ => false,
-    }
+    self.flags.unstable_config.tsgo || self.workspace().has_unstable("tsgo")
   }
 
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
