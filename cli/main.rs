@@ -678,6 +678,8 @@ async fn resolve_flags_and_init(
       DenoSubcommand::Run { .. }
         | DenoSubcommand::Serve { .. }
         | DenoSubcommand::Task { .. }
+        | DenoSubcommand::Eval { .. }
+        | DenoSubcommand::Repl { .. }
     )
   {
     flags.tunnel = true;
@@ -1056,7 +1058,10 @@ async fn initialize_tunnel(
           format!("https://{}:{}", addr.hostname(), addr.port())
         };
 
-        log::info!(
+        // We explicitly use eprintln instead of log here since
+        // there is a circular dep between tunnel and telemetry
+        #[allow(clippy::print_stderr)]
+        eprintln!(
           "{}",
           colors::green(format!("You are connected to {endpoint}"))
         );
@@ -1067,7 +1072,10 @@ async fn initialize_tunnel(
         } else {
           "".into()
         };
-        log::info!(
+        // We explicitly use eprintln instead of log here since
+        // there is a circular dep between tunnel and telemetry
+        #[allow(clippy::print_stderr)]
+        eprintln!(
           "{}",
           colors::green(format!(
             "Reconnecting tunnel in {}s...{}",
