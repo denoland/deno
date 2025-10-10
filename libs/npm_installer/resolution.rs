@@ -128,6 +128,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       results: result.results,
       dependencies_result: match result.dep_graph_result {
         Ok(snapshot) => {
+          self.resolution.mark_not_pending();
           self.resolution.set_snapshot(snapshot);
           Ok(())
         }
@@ -141,9 +142,10 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     package_reqs: &[PackageReq],
   ) -> deno_npm::resolution::AddPkgReqsResult {
     let snapshot = self.resolution.snapshot();
-    if package_reqs
-      .iter()
-      .all(|req| snapshot.package_reqs().contains_key(req))
+    if !self.resolution.is_pending()
+      && package_reqs
+        .iter()
+        .all(|req| snapshot.package_reqs().contains_key(req))
     {
       log::debug!("Snapshot already up to date. Skipping npm resolution.");
       return deno_npm::resolution::AddPkgReqsResult {

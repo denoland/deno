@@ -274,7 +274,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
     caching: Option<PackageCaching<'_>>,
   ) -> AddPkgReqsResult {
-    if packages.is_empty() {
+    if packages.is_empty() && !self.npm_resolution.is_pending() {
       return AddPkgReqsResult {
         dependencies_result: Ok(()),
         results: vec![],

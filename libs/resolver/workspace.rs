@@ -3203,9 +3203,6 @@ mod test {
   "bundleDependencies": [
     "my-dep"
   ],
-  "directories": {
-    "bin": "./bin"
-  },
   "peerDependenciesMeta": {
     "my-peer-dep": {
       "optional": true
@@ -3247,10 +3244,6 @@ mod test {
         )]),
         os: vec![SmallStackString::from_static("win32")],
         cpu: vec![SmallStackString::from_static("x86_64")],
-        directories: HashMap::from([(
-          SmallStackString::from_static("bin"),
-          "./bin".to_string(),
-        ),]),
         scripts: HashMap::from([
           (
             SmallStackString::from_static("script"),
