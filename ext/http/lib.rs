@@ -60,6 +60,7 @@ use deno_telemetry::Histogram;
 use deno_telemetry::MeterProvider;
 use deno_telemetry::OTEL_GLOBALS;
 use deno_telemetry::UpDownCounter;
+use deno_websocket::WsStreamKind;
 use deno_websocket::ws_create_server_stream;
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -159,6 +160,7 @@ deno_core::extension!(
     http_next::op_http_get_request_headers,
     http_next::op_http_request_on_cancel,
     http_next::op_http_get_request_method_and_url<HTTP>,
+    http_next::op_http_get_request_extra_info,
     http_next::op_http_get_request_cancelled,
     http_next::op_http_read_request_body,
     http_next::op_http_serve_on<HTTP>,
@@ -209,6 +211,7 @@ deno_core::extension!(
     http_next::op_http_get_request_headers,
     http_next::op_http_request_on_cancel,
     http_next::op_http_get_request_method_and_url<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_extra_info,
     http_next::op_http_get_request_cancelled,
     http_next::op_http_read_request_body,
     http_next::op_http_serve_on<DefaultHttpPropertyExtractor>,
@@ -1553,7 +1556,7 @@ async fn op_http_upgrade_websocket(
   );
   Ok(ws_create_server_stream(
     &mut state.borrow_mut(),
-    transport,
+    WsStreamKind::Network(transport),
     bytes,
   ))
 }
