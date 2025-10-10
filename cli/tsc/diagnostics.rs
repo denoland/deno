@@ -81,10 +81,10 @@ impl From<i64> for DiagnosticCategory {
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticMessageChain {
-  message_text: String,
-  category: DiagnosticCategory,
-  code: i64,
-  next: Option<Vec<DiagnosticMessageChain>>,
+  pub message_text: String,
+  pub category: DiagnosticCategory,
+  pub code: i64,
+  pub next: Option<Vec<DiagnosticMessageChain>>,
 }
 
 impl DiagnosticMessageChain {
@@ -357,6 +357,12 @@ impl fmt::Display for Diagnostic {
 #[derive(Clone, Debug, Default, Eq, PartialEq, deno_error::JsError)]
 #[class(generic)]
 pub struct Diagnostics(Vec<Diagnostic>);
+
+impl From<Vec<Diagnostic>> for Diagnostics {
+  fn from(diagnostics: Vec<Diagnostic>) -> Self {
+    Diagnostics(diagnostics)
+  }
+}
 
 impl Diagnostics {
   #[cfg(test)]

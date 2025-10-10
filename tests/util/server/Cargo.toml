@@ -62,6 +62,7 @@ tempfile.workspace = true
 termcolor.workspace = true
 tokio.workspace = true
 url.workspace = true
+zip.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }

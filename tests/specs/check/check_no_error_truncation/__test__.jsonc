@@ -1,5 +1,16 @@
 {
   "args": "check --quiet no_error_truncation/main.ts --config no_error_truncation/deno.json",
   "output": "no_error_truncation/main.out",
-  "exitCode": 1
+  "exitCode": 1,
+  "variants": {
+    "tsgo": {
+      "use_tsgo": "1"
+    },
+    "tsc": {
+      "use_tsgo": ""
+    }
+  },
+  "envs": {
+    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
+  }
 }

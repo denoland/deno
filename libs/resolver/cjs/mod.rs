@@ -6,6 +6,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageJsonLoadError;
+use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
@@ -21,12 +22,15 @@ pub type CjsTrackerRc<TInNpmPackageChecker, TSys> =
 /// be CJS or ESM after they're loaded based on their contents. So these
 /// files will be "maybe CJS" until they're loaded.
 #[derive(Debug)]
-pub struct CjsTracker<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead> {
+pub struct CjsTracker<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TSys: FsRead + FsMetadata,
+> {
   is_cjs_resolver: IsCjsResolver<TInNpmPackageChecker, TSys>,
   known: MaybeDashMap<Url, ResolutionMode>,
 }
 
-impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
   CjsTracker<TInNpmPackageChecker, TSys>
 {
   pub fn new(
@@ -155,14 +159,14 @@ pub enum IsCjsResolutionMode {
 #[derive(Debug)]
 pub struct IsCjsResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
-  TSys: FsRead,
+  TSys: FsRead + FsMetadata,
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   mode: IsCjsResolutionMode,
 }
 
-impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
   IsCjsResolver<TInNpmPackageChecker, TSys>
 {
   pub fn new(
