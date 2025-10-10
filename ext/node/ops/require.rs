@@ -26,8 +26,6 @@ use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::errors::PackageJsonLoadError;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 
 use crate::ExtNodeSys;
