@@ -57,10 +57,13 @@ fn synthetic_config(
   let mut config = serde_json::to_value(config)?;
   let obj = config.as_object_mut().unwrap();
   obj.insert("allowImportingTsExtensions".to_string(), json!(true));
-  serde_json::to_string(&json!({
+  obj.insert("skipDefaultLibCheck".to_string(), json!(true));
+  let config = serde_json::to_string(&json!({
     "compilerOptions": config,
     "files": root_names,
-  }))
+  }))?;
+  log::debug!("synthetic config: {}", config);
+  Ok(config)
 }
 
 pub fn exec_request(
@@ -135,6 +138,53 @@ fn exec_request_inner(
   })
 }
 
+fn diagnostic_category(category: &str) -> super::DiagnosticCategory {
+  match category {
+    "error" => super::DiagnosticCategory::Error,
+    "warning" => super::DiagnosticCategory::Warning,
+    "message" => super::DiagnosticCategory::Message,
+    "suggestion" => super::DiagnosticCategory::Suggestion,
+    _ => unreachable!(),
+  }
+}
+
+fn maybe_rewrite_message(message: String, code: u64) -> String {
+  if code == 2304 && message.starts_with("Cannot find name 'Deno'") {
+    r#"Cannot find name 'Deno'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'deno.ns' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib="deno.ns" />"#.to_string()
+  } else if code == 2581 {
+    r#"Cannot find name '$'. Did you mean to import jQuery? Try adding `import $ from "npm:jquery";`."#.to_string()
+  } else if code == 2580 {
+    let regex = lazy_regex::regex!(r#"Cannot find name '([^']+)'"#);
+    let captures = regex.captures(&message).unwrap();
+    let name = captures.get(1).unwrap().as_str();
+    format!("Cannot find name '{}'.", name)
+  } else if code == 1203 {
+    "Export assignment cannot be used when targeting ECMAScript modules. Consider using 'export default' or another module format instead. This will start erroring in a future version of Deno 2 in order to align with TypeScript.".to_string()
+  } else if code == 2339 && message.contains("on type 'typeof Deno'") {
+    let regex = lazy_regex::regex!(
+      r#"Property '([^']+)' does not exist on type 'typeof Deno'"#
+    );
+    let captures = regex.captures(&message).unwrap();
+    let name = captures.get(1).unwrap().as_str();
+    format!(
+      "Property '{name}' does not exist on type 'typeof Deno'. 'Deno.{name}' is an unstable API. If not, try changing the 'lib' compiler option to include 'deno.unstable' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib=\"deno.unstable\" />",
+    )
+  } else {
+    message
+  }
+}
+
+fn maybe_remap_category(
+  code: u64,
+  category: super::DiagnosticCategory,
+) -> super::DiagnosticCategory {
+  if code == 1203 {
+    super::DiagnosticCategory::Warning
+  } else {
+    category
+  }
+}
+
 fn convert_diagnostic(
   diagnostic: deno_typescript_go_client_rust::types::Diagnostic,
   _diagnostics: &[deno_typescript_go_client_rust::types::Diagnostic],
@@ -150,13 +200,10 @@ fn convert_diagnostic(
   };
 
   super::Diagnostic {
-    category: match diagnostic.category.as_str() {
-      "error" => super::DiagnosticCategory::Error,
-      "warning" => super::DiagnosticCategory::Warning,
-      "message" => super::DiagnosticCategory::Message,
-      "suggestion" => super::DiagnosticCategory::Suggestion,
-      _ => unreachable!(),
-    },
+    category: maybe_remap_category(
+      diagnostic.code as u64,
+      diagnostic_category(diagnostic.category.as_str()),
+    ),
     code: diagnostic.code as u64,
     start: start.map(|s| super::Position {
       line: s.line,
@@ -167,8 +214,11 @@ fn convert_diagnostic(
       character: e.character,
     }),
     original_source_start: None,
-    message_text: Some(diagnostic.message),
     message_chain: None,
+    message_text: Some(maybe_rewrite_message(
+      diagnostic.message,
+      diagnostic.code as u64,
+    )),
     file_name: Some(diagnostic.file_name),
     missing_specifier: None,
     other: Default::default(),
@@ -199,6 +249,10 @@ static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> = LazyLock::new(|| {
   .collect()
 });
 
+fn should_ignore_diagnostic(diagnostic: &super::Diagnostic) -> bool {
+  IGNORED_DIAGNOSTIC_CODES.contains(&diagnostic.code)
+}
+
 fn convert_diagnostics(
   diagnostics: Vec<deno_typescript_go_client_rust::types::Diagnostic>,
 ) -> super::Diagnostics {
@@ -206,7 +260,7 @@ fn convert_diagnostics(
     diagnostics
       .iter()
       .map(|diagnostic| convert_diagnostic(diagnostic.clone(), &diagnostics))
-      .filter(|diagnostic| !IGNORED_DIAGNOSTIC_CODES.contains(&diagnostic.code))
+      .filter(|diagnostic| !should_ignore_diagnostic(diagnostic))
       .collect::<Vec<_>>(),
   )
 }
@@ -238,6 +292,7 @@ impl Handler {
         graph,
         maybe_npm,
         module_kind_map: HashMap::new(),
+        load_result_pending: HashMap::new(),
       }),
     }
   }
@@ -247,6 +302,7 @@ fn get_package_json_scope_if_applicable(
   state: &mut HandlerState,
   payload: String,
 ) -> Result<String, deno_typescript_go_client_rust::Error> {
+  log::debug!("get_package_json_scope_if_applicable: {}", payload);
   if let Some(maybe_npm) = state.maybe_npm.as_ref() {
     let file_path = deser::<String>(&payload)?;
     let file_path = if let Ok(specifier) = ModuleSpecifier::parse(&file_path) {
@@ -287,6 +343,8 @@ struct HandlerState {
 
   module_kind_map:
     HashMap<String, deno_typescript_go_client_rust::types::ResolutionMode>,
+
+  load_result_pending: HashMap<String, LoadResult>,
 }
 
 impl deno_typescript_go_client_rust::CallbackHandler for Handler {
@@ -320,7 +378,12 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
         if payload == state.config_path {
           Ok(jsons!(&state.synthetic_config)?)
         } else {
+          if let Some(load_result) = state.load_result_pending.remove(&payload)
+          {
+            return Ok(jsons!(load_result.contents)?);
+          }
           let result = load_inner(&mut state, &payload).map_err(adhoc)?;
+
           if let Some(result) = result {
             let contents = result.contents;
             Ok(jsons!(&contents)?)
@@ -338,8 +401,12 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
       "loadSourceFile" => {
         let payload = deser::<String>(payload)?;
         log::debug!("loadSourceFile: {}", payload);
-        let result = load_inner(&mut state, &payload).map_err(adhoc)?;
-        Ok(jsons!(&result)?)
+        if let Some(load_result) = state.load_result_pending.remove(&payload) {
+          Ok(jsons!(&load_result)?)
+        } else {
+          let result = load_inner(&mut state, &payload).map_err(adhoc)?;
+          Ok(jsons!(&result)?)
+        }
       }
       "resolveModuleName" => {
         let payload = deser::<ResolveModuleNamePayload>(payload)?;
@@ -351,10 +418,15 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
         })?)
       }
       "getPackageJsonScopeIfApplicable" => {
-        get_package_json_scope_if_applicable(&mut state, payload)
+        log::debug!("getPackageJsonScopeIfApplicable: {}", payload);
+        get_package_json_scope_if_applicable(&mut state, payload).inspect(
+          |res| log::debug!("getPackageJsonScopeIfApplicable -> {}", res),
+        )
       }
       "getPackageScopeForPath" => {
+        log::debug!("getPackageScopeForPath: {}", payload);
         get_package_json_scope_if_applicable(&mut state, payload)
+          .inspect(|res| log::debug!("getPackageScopeForPath -> {}", res))
       }
       "resolveTypeReferenceDirective" => {
         log::debug!("resolveTypeReferenceDirective: {}", payload);
@@ -371,16 +443,41 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
         );
         Ok(jsons!({
           "resolvedFileName": out_name,
+          "extension": extension,
           "primary": true,
         })?)
       }
       "getImpliedNodeFormatForFile" => {
         let payload = deser::<GetImpliedNodeFormatForFilePayload>(payload)?;
-        let module_kind =
-          state.module_kind_map.get(&payload.file_name).unwrap_or(
-            &deno_typescript_go_client_rust::types::ResolutionMode::ESM,
-          );
-        Ok(jsons!(&module_kind)?)
+        log::debug!("getImpliedNodeFormatForFile: {:?}", payload);
+        // check if we already determined the module kind from a previous load
+        if let Some(module_kind) = state.module_kind_map.get(&payload.file_name)
+        {
+          log::debug!("getImpliedNodeFormatForFile -> {:?}", module_kind);
+          Ok(jsons!(&module_kind)?)
+        } else {
+          // if not, load the file and determine the module kind
+          let load_result =
+            load_inner(&mut state, &payload.file_name).map_err(adhoc)?;
+          if let Some(load_result) = load_result {
+            // store the load result in the pending map to avoid loading the file again
+            state
+              .load_result_pending
+              .insert(payload.file_name.clone(), load_result);
+            let module_kind = state
+              .module_kind_map
+              .get(&payload.file_name)
+              .copied()
+              .unwrap_or(
+                deno_typescript_go_client_rust::types::ResolutionMode::ESM,
+              );
+            Ok(jsons!(&module_kind)?)
+          } else {
+            Ok(jsons!(
+              &deno_typescript_go_client_rust::types::ResolutionMode::ESM
+            )?)
+          }
+        }
       }
       "isNodeSourceFile" => {
         let path = deser::<String>(payload)?;
@@ -718,6 +815,7 @@ fn load_inner(
   };
   let module_kind = get_resolution_mode(is_cjs, media_type);
   let script_kind = as_ts_script_kind(media_type);
+  log::debug!("load_inner {load_specifier} -> {:?}", module_kind);
   state
     .module_kind_map
     .insert(load_specifier.to_string(), module_kind);

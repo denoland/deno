@@ -81,10 +81,10 @@ impl From<i64> for DiagnosticCategory {
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticMessageChain {
-  message_text: String,
-  category: DiagnosticCategory,
-  code: i64,
-  next: Option<Vec<DiagnosticMessageChain>>,
+  pub message_text: String,
+  pub category: DiagnosticCategory,
+  pub code: i64,
+  pub next: Option<Vec<DiagnosticMessageChain>>,
 }
 
 impl DiagnosticMessageChain {

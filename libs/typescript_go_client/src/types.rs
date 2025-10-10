@@ -32,7 +32,9 @@ pub struct Diagnostic {
 
 pub type DiagnosticId = u32;
 
-#[derive(serde_repr::Deserialize_repr, serde_repr::Serialize_repr, Debug)]
+#[derive(
+  serde_repr::Deserialize_repr, serde_repr::Serialize_repr, Debug, Clone, Copy,
+)]
 #[repr(u32)]
 pub enum ResolutionMode {
   None = 0,
@@ -40,7 +42,7 @@ pub enum ResolutionMode {
   ESM = 99,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveModuleNamePayload {
   pub module_name: String,
