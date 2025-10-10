@@ -677,7 +677,7 @@ async fn resolve_flags_and_init(
   }
 
   // Tunnel sets up env vars and OTEL, so connect before everything else.
-  if flags.tunnel && !matches(flags.subcommand, DenoSubcommand::Deploy { .. }) {
+  if flags.tunnel && !matches!(flags.subcommand, DenoSubcommand::Deploy { .. }) {
     if let Err(err) = initialize_tunnel(&flags).await {
       exit_for_error(err.context("Failed to start with tunnel"));
     }
