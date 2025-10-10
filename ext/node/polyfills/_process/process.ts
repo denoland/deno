@@ -63,8 +63,9 @@ const OBJECT_PROTO_PROP_NAMES = ObjectGetOwnPropertyNames(ObjectPrototype);
  * https://nodejs.org/api/process.html#process_process_env
  * Requires env permissions
  */
-export const env: InstanceType<ObjectConstructor> & Record<string, string> =
-  new Proxy(Object(), {
+export const env:
+  & InstanceType<ObjectConstructor>
+  & Record<string | symbol, string> = new Proxy(Object(), {
     get: (target, prop) => {
       if (typeof prop === "symbol") {
         return target[prop];
@@ -97,7 +98,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
       Deno.env.set(String(prop), String(value));
       return true; // success
     },
-    has: (_target, prop) => typeof denoEnvGet(String(prop)) === "string",
+    has: (_target, prop) => typeof env[prop] === "string",
     deleteProperty(_target, key) {
       Deno.env.delete(String(key));
       return true;
