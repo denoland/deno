@@ -107,6 +107,9 @@ pub struct AddFlags {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AuditFlags {}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RemoveFlags {
   pub packages: Vec<String>,
 }
@@ -497,6 +500,7 @@ pub struct BundleFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
+  Audit(AuditFlags),
   Remove(RemoveFlags),
   Bench(BenchFlags),
   Bundle(BundleFlags),
@@ -1494,6 +1498,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
 
       match subcommand.as_str() {
         "add" => add_parse(&mut flags, &mut m)?,
+        "audit" => audit_parse(&mut flags, &mut m)?,
         "remove" => remove_parse(&mut flags, &mut m),
         "bench" => bench_parse(&mut flags, &mut m)?,
         "bundle" => bundle_parse(&mut flags, &mut m)?,
@@ -1756,6 +1761,7 @@ pub fn clap_root() -> Command {
     .defer(|cmd| {
       let cmd = cmd
         .subcommand(add_subcommand())
+        .subcommand(audit_subcommand())
         .subcommand(remove_subcommand())
         .subcommand(bench_subcommand())
         .subcommand(bundle_subcommand())
@@ -1854,6 +1860,14 @@ Or multiple dependencies at once:
       .args(lock_args())
       .args(default_registry_args())
   })
+}
+fn audit_subcommand() -> Command {
+  command(
+    "audit",
+    cstr!("Audit currently installed dependencies."),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| cmd.args(lock_args()).args(default_registry_args()))
 }
 
 fn default_registry_args() -> [Arg; 2] {
@@ -4934,6 +4948,15 @@ fn allow_scripts_arg_parse(
         .collect::<Result<_, _>>()?,
     );
   }
+  Ok(())
+}
+
+fn audit_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  lock_args_parse(flags, matches);
+  flags.subcommand = DenoSubcommand::Audit(AuditFlags {});
   Ok(())
 }
 
