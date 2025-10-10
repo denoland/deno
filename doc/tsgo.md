@@ -7,8 +7,8 @@ In the CLI, we have a small abstraction over the tsc backend in
 [cli/tsc/mod.rs](../cli/tsc/mod.rs). Along with some shared types and
 functionality, the main piece is the `exec` function, which takes a "request" to
 be served by the typescript compiler and returns the result. This now has two
-different "backend" which can serve the request – the current tsc, which runs
-in an isolate and communicates via ops, and typescript-go which runs in a
+different "backend" which can serve the request – the current tsc, which runs in
+an isolate and communicates via ops, and typescript-go which runs in a
 subprocess and uses IPC.
 
 From a high level, the way the tsgo backend works is that we download a
