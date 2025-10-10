@@ -786,7 +786,7 @@ Deno.test(
   },
   async function rejectBatAndCmdFiles() {
     const tempDir = await Deno.makeTempDir();
-    for (const ext in [".bat", ".BaT", ".bAT", ".BAT"]) {
+    for (const ext of [".bat", ".BaT", ".bAT", ".BAT"]) {
       const fileName = tempDir + "/test" + ext;
       const file = await Deno.open(fileName, {
         create: true,
