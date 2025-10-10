@@ -1676,6 +1676,14 @@ Socket.prototype._destroy = function (exception, cb) {
     this[kBytesWritten] = this._handle.bytesWritten;
 
     this._handle.close(() => {
+      const kHttpOwned = Symbol.for("node:socket_http_owned");
+      if (!this[kHttpOwned]) {
+        // if you have a socket-level Readable, *that* is where you'd push(null)
+        // Make sure you DO NOT do it while HTTP owns the socket.
+      } else {
+        // EOF suppressed (HTTP-owned)
+      }
+      // teardown + emit('close') as you already do
       this._handle.onread = _noop;
       this._handle = null;
       this._sockname = undefined;
