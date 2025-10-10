@@ -322,11 +322,34 @@ async function ensureNoUnusedOutFiles() {
     return entry.path.endsWith("__test__.jsonc");
   });
 
-  function checkObject(baseDirPath, obj) {
+  function checkObject(baseDirPath, obj, substsInit = {}) {
+    const substs = { ...substsInit };
+
+    if ('variants' in obj) {
+      for (const variantValue of Object.values(obj.variants)) {
+        for (const [substKey, substValue] of Object.entries(variantValue)) {
+          const subst = `\$\{${substKey}\}`;
+          if (subst in substs) {
+            substs[subst].push(substValue);
+          } else {
+            substs[subst] = [substValue];
+          }
+        }
+      }
+    }
     for (const [key, value] of Object.entries(obj)) {
       if (typeof value === "object") {
-        checkObject(baseDirPath, value);
+        checkObject(baseDirPath, value, substs);
       } else if (key === "output" && typeof value === "string") {
+        for (const [subst, substValues] of Object.entries(substs)) {
+          if (value.includes(subst)) {
+            for (const substValue of substValues) {
+              const substitutedValue = value.replaceAll(subst, substValue);
+              const substitutedOutFilePath = join(baseDirPath, substitutedValue);
+              outFilePaths.delete(substitutedOutFilePath);
+            }
+          }
+        }
         const outFilePath = join(baseDirPath, value);
         outFilePaths.delete(outFilePath);
       }
