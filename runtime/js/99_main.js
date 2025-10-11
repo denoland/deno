@@ -459,17 +459,17 @@ function processRejectionHandled(promise, reason) {
 }
 
 function dispatchLoadEvent() {
-  globalThis_.dispatchEvent(new Event("load"));
+  globalThis_.dispatchEvent(new event.Event("load"));
 }
 
 function dispatchBeforeUnloadEvent() {
   return globalThis_.dispatchEvent(
-    new Event("beforeunload", { cancelable: true }),
+    new event.Event("beforeunload", { cancelable: true }),
   );
 }
 
 function dispatchUnloadEvent() {
-  globalThis_.dispatchEvent(new Event("unload"));
+  globalThis_.dispatchEvent(new event.Event("unload"));
 }
 
 let hasBootstrapped = false;
@@ -975,7 +975,7 @@ event.saveGlobalThisReference(globalThis);
 event.defineEventHandler(globalThis, "unhandledrejection");
 
 // Nothing listens to this, but it warms up the code paths for event dispatch
-(new event.EventTarget()).dispatchEvent(new Event("warmup"));
+(new event.EventTarget()).dispatchEvent(new event.Event("warmup"));
 
 removeImportedOps();
 
