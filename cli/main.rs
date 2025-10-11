@@ -686,7 +686,7 @@ async fn resolve_flags_and_init(
   // Tunnel sets up env vars and OTEL, so connect before everything else.
   if flags.tunnel {
     if let Err(err) = initialize_tunnel(&flags).await {
-      exit_for_error(err.context("Failed to start with --connected"));
+      exit_for_error(err.context("Failed to start with tunnel"));
     }
     // SAFETY: We're doing this before any threads are created.
     unsafe {
