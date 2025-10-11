@@ -18,15 +18,9 @@ const {
   Symbol,
 } = primordials;
 
+import { op_http2_constants, op_http2_http_state } from "ext:core/ops";
 import { _checkIsHttpToken as checkIsHttpToken } from "node:_http_common";
-
-const binding = internalBinding("http2");
-import {
-  codes,
-  getMessage,
-  hideStackFrames,
-  kIsNodeError,
-} from "ext:deno_node/internal/errors.ts";
+import { codes, hideStackFrames } from "ext:deno_node/internal/errors.ts";
 
 const {
   ERR_HTTP2_CONNECT_AUTHORITY,
@@ -34,9 +28,7 @@ const {
   ERR_HTTP2_CONNECT_SCHEME,
   ERR_HTTP2_HEADER_SINGLE_VALUE,
   ERR_HTTP2_INVALID_CONNECTION_HEADERS,
-  ERR_HTTP2_INVALID_PSEUDOHEADER: {
-    HideStackFramesError: ERR_HTTP2_INVALID_PSEUDOHEADER,
-  },
+  ERR_HTTP2_INVALID_PSEUDOHEADER,
   ERR_HTTP2_INVALID_SETTING_VALUE,
   ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS,
   ERR_INVALID_ARG_TYPE,
@@ -111,7 +103,7 @@ const {
   HTTP2_METHOD_DELETE,
   HTTP2_METHOD_GET,
   HTTP2_METHOD_HEAD,
-} = binding.constants;
+} = op_http2_constants();
 
 // This set is defined strictly by the HTTP/2 specification. Only
 // :-prefixed headers defined by that specification may be added to
@@ -186,14 +178,8 @@ const kNoPayloadMethods = new SafeSet([
 // the native side with values that are filled in on demand, the js code then
 // reads those values out. The set of IDX constants that follow identify the
 // relevant data positions within these buffers.
-const { settingsBuffer, optionsBuffer } = binding;
-
-// Note that Float64Array is used here because there is no Int64Array available
-// and these deal with numbers that can be beyond the range of Uint32 and Int32.
-// The values set on the native side will always be integers. This is not a
-// unique example of this, this pattern can be found in use in other parts of
-// Node.js core as a performance optimization.
-const { sessionState, streamState } = binding;
+const { settingsBuffer, optionsBuffer, sessionState, streamState } =
+  op_http2_http_state();
 
 const IDX_SETTINGS_HEADER_TABLE_SIZE = 0;
 const IDX_SETTINGS_ENABLE_PUSH = 1;
@@ -904,15 +890,13 @@ class NghttpError extends Error {
   constructor(integerCode, customErrorCode) {
     super(
       customErrorCode
-        ? getMessage(customErrorCode, [], null)
+        // TODO(littledivy): add getMessage in errors.ts
+        // ? getMessage(customErrorCode, [], null)
+        ? undefined
         : binding.nghttp2ErrorString(integerCode),
     );
     this.code = customErrorCode || "ERR_HTTP2_ERROR";
     this.errno = integerCode;
-  }
-
-  get [kIsNodeError]() {
-    return true;
   }
 
   toString() {
@@ -927,7 +911,7 @@ const assertIsObject = hideStackFrames((value, name, types) => {
       typeof value !== "object" ||
       ArrayIsArray(value))
   ) {
-    throw new ERR_INVALID_ARG_TYPE.HideStackFramesError(
+    throw new ERR_INVALID_ARG_TYPE(
       name,
       types || "Object",
       value,
@@ -941,7 +925,7 @@ const assertIsArray = hideStackFrames((value, name, types) => {
     (value === null ||
       !ArrayIsArray(value))
   ) {
-    throw new ERR_INVALID_ARG_TYPE.HideStackFramesError(
+    throw new ERR_INVALID_ARG_TYPE(
       name,
       types || "Array",
       value,
@@ -1038,8 +1022,38 @@ function getAuthority(headers) {
     return headers[HTTP2_HEADER_HOST];
   }
 }
+export {
+  assertIsArray,
+  assertIsObject,
+  assertValidPseudoHeader,
+  assertValidPseudoHeaderResponse,
+  assertValidPseudoHeaderTrailer,
+  assertWithinRange,
+  buildNgHeaderString,
+  getAuthority,
+  getDefaultSettings,
+  getSessionState,
+  getSettings,
+  getStreamState,
+  isPayloadMeaningless,
+  kAuthority,
+  kProtocol,
+  kProxySocket,
+  kRequest,
+  kSensitiveHeaders,
+  kSocket,
+  MAX_ADDITIONAL_SETTINGS,
+  NghttpError,
+  prepareRequestHeadersArray,
+  prepareRequestHeadersObject,
+  remoteCustomSettingsToBuffer,
+  sessionName,
+  toHeaderObject,
+  updateOptionsBuffer,
+  updateSettingsBuffer,
+};
 
-module.exports = {
+export default {
   assertIsObject,
   assertIsArray,
   assertValidPseudoHeader,

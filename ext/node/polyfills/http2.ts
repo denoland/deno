@@ -27,11 +27,14 @@ const {
   Uint8Array,
 } = primordials;
 
+import { Http2Session as InternalHttp2Session } from "ext:core/ops";
+
 import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
 import tls from "node:tls";
 import { EventEmitter } from "node:events";
+import { kTimeout } from "ext:deno_node/internal/timers.mjs";
 import { format } from "node:util";
 import {
   validateArray,
@@ -44,6 +47,7 @@ import {
   validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { customInspectSymbol as kInspect } from "ext:deno_node/internal/util.mjs";
 import {
   ERR_HTTP2_ALTSVC_INVALID_ORIGIN,
   ERR_HTTP2_ALTSVC_LENGTH,
@@ -59,6 +63,48 @@ import {
   ERR_OUT_OF_RANGE,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
+import {
+  kAfterAsyncWrite,
+  kBoundSession,
+  kHandle,
+  kMaybeDestroy,
+  kSession,
+  kUpdateTimer,
+  onStreamRead,
+  setStreamTimeout,
+  writeGeneric,
+  writevGeneric,
+} from "ext:deno_node/internal/stream_base_commons.ts";
+import {
+  assertIsArray,
+  assertIsObject,
+  assertValidPseudoHeaderResponse,
+  assertValidPseudoHeaderTrailer,
+  assertWithinRange,
+  buildNgHeaderString,
+  getAuthority,
+  getDefaultSettings,
+  getSessionState,
+  getSettings,
+  getStreamState,
+  isPayloadMeaningless,
+  kAuthority,
+  kProtocol,
+  kProxySocket,
+  kRequest,
+  kSensitiveHeaders,
+  kSocket,
+  MAX_ADDITIONAL_SETTINGS,
+  NghttpError,
+  prepareRequestHeadersArray,
+  prepareRequestHeadersObject,
+  remoteCustomSettingsToBuffer,
+  sessionName,
+  toHeaderObject,
+  updateOptionsBuffer,
+  updateSettingsBuffer,
+} from "ext:deno_node/internal/http2/util.ts";
+import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 let debug = debuglog("http2", (fn) => {
   debug = fn;
@@ -91,26 +137,28 @@ const kSessionPriorityListenerCount = 0;
 const kBitfield = 0;
 
 // Private symbols
-const kOptions = Symbol("kOptions");
-const kSessions = Symbol("kSessions");
-const kBoundSession = Symbol("kBoundSession");
-const kState = Symbol("kState");
-const kEncrypted = Symbol("kEncrypted");
-const kAlpnProtocol = Symbol("kAlpnProtocol");
-const kType = Symbol("kType");
-const kProxySocket = Symbol("kProxySocket");
-const kSocket = Symbol("kSocket");
-const kTimeout = Symbol("kTimeout");
-const kHandle = Symbol("kHandle");
+const kAlpnProtocol = Symbol("alpnProtocol");
+const kEncrypted = Symbol("encrypted");
+const kID = Symbol("id");
+const kInit = Symbol("init");
+const kInfoHeaders = Symbol("sent-info-headers");
+const kLocalSettings = Symbol("local-settings");
 const kNativeFields = Symbol("kNativeFields");
-const kLocalSettings = Symbol("kLocalSettings");
-const kRemoteSettings = Symbol("kRemoteSettings");
-const kServer = Symbol("kServer");
-const kIncomingMessage = Symbol("kIncomingMessage");
-const kServerResponse = Symbol("kServerResponse");
-const kUpdateTimer = Symbol("kUpdateTimer");
-const kMaybeDestroy = Symbol("kMaybeDestroy");
-const kInspect = Symbol("kInspect");
+const kOptions = Symbol("options");
+const kOwner = owner_symbol;
+const kOrigin = Symbol("origin");
+const kPendingRequestCalls = Symbol("kPendingRequestCalls");
+const kProceed = Symbol("proceed");
+const kRemoteSettings = Symbol("remote-settings");
+const kRequestAsyncResource = Symbol("requestAsyncResource");
+const kSentHeaders = Symbol("sent-headers");
+const kRawHeaders = Symbol("raw-headers");
+const kSentTrailers = Symbol("sent-trailers");
+const kServer = Symbol("server");
+const kState = Symbol("state");
+const kType = Symbol("type");
+const kWriteGeneric = Symbol("write-generic");
+const kSessions = Symbol("sessions");
 
 // Regular expressions
 const kQuotedString = /^[\x20-\x21\x23-\x5B\x5D-\x7E]*$/;
@@ -442,7 +490,7 @@ function setupHandle(socket, type, options) {
   if (options.remoteCustomSettings) {
     remoteCustomSettingsToBuffer(options.remoteCustomSettings);
   }
-  const handle = new binding.Http2Session(type);
+  const handle = new InternalHttp2Session(type);
   handle[kOwner] = this;
 
   handle.consume(socket._handle);
