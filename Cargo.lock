@@ -2505,7 +2505,6 @@ dependencies = [
  "elliptic-curve",
  "errno",
  "faster-hex",
- "h2 0.4.7",
  "hkdf",
  "http 1.1.0",
  "http-body-util",
@@ -2515,6 +2514,7 @@ dependencies = [
  "ipnetwork",
  "k256",
  "libc",
+ "libnghttp2-sys",
  "libz-sys",
  "md-5",
  "md4",
@@ -5806,6 +5806,15 @@ name = "libm"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
+
+[[package]]
+name = "libnghttp2-sys"
+version = "0.1.11+1.64.0"
+source = "git+https://github.com/littledivy/nghttp2-rs?branch=main#38af7dae220f8c16f5d1e23b7d95375928776298"
+dependencies = [
+ "cc",
+ "libc",
+]
 
 [[package]]
 name = "libredox"
