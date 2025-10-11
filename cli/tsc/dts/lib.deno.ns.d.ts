@@ -4511,13 +4511,13 @@ declare namespace Deno {
    * Give the following command line invocation of Deno:
    *
    * ```sh
-   * deno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi
+   * deno eval "console.log(Deno.args)" Sushi Maguro Hamachi
    * ```
    *
    * Then `Deno.args` will contain:
    *
    * ```ts
-   * [ "Sushi" ]
+   * [ "Sushi", "Maguro", "Hamachi" ]
    * ```
    *
    * If you are looking for a structured way to parse arguments, there is
