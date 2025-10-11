@@ -1670,7 +1670,7 @@ fn lsp_hover() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "```typescript\nconst Deno.args: string[]\n```\n\nReturns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno eval \"console.log(Deno.args)\" Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.\n\n*@category* - Runtime",
+        "value": "```typescript\nconst Deno.args: string[]\n```\n\nReturns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno eval \"console.log(Deno.args)\" Sushi Maguro Hamachi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\", \"Maguro\", \"Hamachi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.\n\n*@category* - Runtime",
       },
       "range": {
         "start": { "line": 0, "character": 17 },
