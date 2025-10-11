@@ -289,10 +289,6 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       return;
     };
 
-    if snapshot.is_empty() {
-      return;
-    }
-
     let mut lockfile = lockfile.lock();
     lockfile.content.packages.npm.clear();
     lockfile
