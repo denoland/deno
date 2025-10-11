@@ -844,6 +844,7 @@
 "parallel/test-path-basename.js" = {}
 "parallel/test-path-dirname.js" = {}
 "parallel/test-path-extname.js" = {}
+"parallel/test-path-glob.js" = {}
 "parallel/test-path-isabsolute.js" = {}
 "parallel/test-path-makelong.js" = {}
 "parallel/test-path-normalize.js" = {}
