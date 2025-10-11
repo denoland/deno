@@ -536,6 +536,7 @@
     "ext:deno_node/_fs/cp/cp_sync.ts": "../ext/node/polyfills/_fs/cp/cp_sync.ts",
     "ext:deno_node/_fs/_fs_dir.ts": "../ext/node/polyfills/_fs/_fs_dir.ts",
     "ext:deno_node/_fs/_fs_exists.ts": "../ext/node/polyfills/_fs/_fs_exists.ts",
+    "ext:deno_node/_fs/_fs_glob.ts": "../ext/node/polyfills/_fs/_fs_glob.ts",
     "ext:deno_node/_fs/_fs_lstat.ts": "../ext/node/polyfills/_fs/_fs_lstat.ts",
     "ext:deno_node/_fs/_fs_mkdir.ts": "../ext/node/polyfills/_fs/_fs_mkdir.ts",
     "ext:deno_node/_fs/_fs_open.ts": "../ext/node/polyfills/_fs/_fs_open.ts",
