@@ -23,8 +23,13 @@ import {
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import process from "node:process";
+import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
+
+const lazyLoadGlob = core.createLazyLoader<typeof fsGlob>(
+  "ext:deno_node/_fs/_fs_glob.ts",
+);
 
 const {
   ArrayPrototypeIncludes,
@@ -1157,6 +1162,12 @@ export function parse(path: string): ParsedPath {
 
 export const _makeLong = toNamespacedPath;
 
+let lazyMatchGlobPattern: typeof fsGlob.matchGlobPattern;
+export const matchesGlob = (path: string, pattern: string): boolean => {
+  lazyMatchGlobPattern ??= lazyLoadGlob().matchGlobPattern;
+  return lazyMatchGlobPattern(path, pattern, true);
+};
+
 export default {
   basename,
   delimiter,
@@ -1172,4 +1183,5 @@ export default {
   sep,
   toNamespacedPath,
   _makeLong,
+  matchesGlob,
 };
