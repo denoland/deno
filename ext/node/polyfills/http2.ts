@@ -37,6 +37,7 @@ import { EventEmitter } from "node:events";
 import { kTimeout } from "ext:deno_node/internal/timers.mjs";
 import { format } from "node:util";
 import {
+  isUint32,
   validateArray,
   validateBuffer,
   validateFunction,
@@ -112,8 +113,6 @@ let debug = debuglog("http2", (fn) => {
 
 // HTTP2 Constants
 const MAX_ADDITIONAL_SETTINGS = 10;
-const kMaxStreams = 2 ** 31 - 1;
-const kMaxALTSVC = 16382;
 
 // NGHTTP2 Constants
 const NGHTTP2_NO_ERROR = 0;
@@ -160,8 +159,12 @@ const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
 const kSessions = Symbol("sessions");
 
-// Regular expressions
-const kQuotedString = /^[\x20-\x21\x23-\x5B\x5D-\x7E]*$/;
+const kMaxFrameSize = (2 ** 24) - 1;
+const kMaxInt = (2 ** 32) - 1;
+const kMaxStreams = (2 ** 32) - 1;
+const kMaxALTSVC = (2 ** 14) - 2;
+
+const kQuotedString = /^[\x09\x20-\x5b\x5d-\x7e\x80-\xff]*$/;
 
 // Placeholder classes and functions - these need proper implementation
 class Http2ServerRequest {}
@@ -190,19 +193,19 @@ const setAndValidatePriorityOptions = hideStackFrames((options) => {
   if (options.parent === undefined) {
     options.parent = 0;
   } else {
-    validateNumber.withoutStackTrace(options.parent, "options.parent", 0);
+    validateNumber(options.parent, "options.parent", 0);
   }
 
   if (options.exclusive === undefined) {
     options.exclusive = false;
   } else {
-    validateBoolean.withoutStackTrace(options.exclusive, "options.exclusive");
+    validateBoolean(options.exclusive, "options.exclusive");
   }
 
   if (options.silent === undefined) {
     options.silent = false;
   } else {
-    validateBoolean.withoutStackTrace(options.silent, "options.silent");
+    validateBoolean(options.silent, "options.silent");
   }
 });
 
@@ -350,7 +353,7 @@ function pingCallback(cb) {
 // All settings are optional and may be left undefined
 const validateSettings = hideStackFrames((settings) => {
   if (settings === undefined) return;
-  assertIsObject.withoutStackTrace(
+  assertIsObject(
     settings.customSettings,
     "customSettings",
     "Number",
@@ -361,13 +364,13 @@ const validateSettings = hideStackFrames((settings) => {
       throw new ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS();
     }
     for (const { 0: key, 1: value } of entries) {
-      assertWithinRange.withoutStackTrace(
+      assertWithinRange(
         "customSettings:id",
         Number(key),
         0,
         0xffff,
       );
-      assertWithinRange.withoutStackTrace(
+      assertWithinRange(
         "customSettings:value",
         Number(value),
         0,
@@ -376,37 +379,37 @@ const validateSettings = hideStackFrames((settings) => {
     }
   }
 
-  assertWithinRange.withoutStackTrace(
+  assertWithinRange(
     "headerTableSize",
     settings.headerTableSize,
     0,
     kMaxInt,
   );
-  assertWithinRange.withoutStackTrace(
+  assertWithinRange(
     "initialWindowSize",
     settings.initialWindowSize,
     0,
     kMaxInt,
   );
-  assertWithinRange.withoutStackTrace(
+  assertWithinRange(
     "maxFrameSize",
     settings.maxFrameSize,
     16384,
     kMaxFrameSize,
   );
-  assertWithinRange.withoutStackTrace(
+  assertWithinRange(
     "maxConcurrentStreams",
     settings.maxConcurrentStreams,
     0,
     kMaxStreams,
   );
-  assertWithinRange.withoutStackTrace(
+  assertWithinRange(
     "maxHeaderListSize",
     settings.maxHeaderListSize,
     0,
     kMaxInt,
   );
-  assertWithinRange.withoutStackTrace(
+  assertWithinRange(
     "maxHeaderSize",
     settings.maxHeaderSize,
     0,
@@ -463,6 +466,11 @@ function trackAssignmentsTypedArray(typedArray) {
   });
 }
 
+// Top level to avoid creating a closure
+function emit(self, ...args) {
+  ReflectApply(self.emit, self, args);
+}
+
 // Creates the internal binding.Http2Session handle for an Http2Session
 // instance. This occurs only after the socket connection has been
 // established. Note: the binding.Http2Session will take over ownership
@@ -480,7 +488,7 @@ function setupHandle(socket, type, options) {
   assert(
     socket._handle !== undefined,
     "Internal HTTP/2 Failure. The socket is not connected. Please " +
-      "report this as a bug in Node.js",
+      "report this as a bug",
   );
 
   debugSession(type, "setting up session handle");
@@ -493,7 +501,11 @@ function setupHandle(socket, type, options) {
   const handle = new InternalHttp2Session(type);
   handle[kOwner] = this;
 
-  handle.consume(socket._handle);
+  // TODO: how?
+  // handle.consume(stream?.[internalRidSymbol]);
+  // socket._handle.pushStreamListener(handle);
+  debug("i/o stream consumed");
+
   handle.ongracefulclosecomplete = this[kMaybeDestroy].bind(this, null);
 
   this[kHandle] = handle;
@@ -777,8 +789,8 @@ class Http2Session extends EventEmitter {
     this[kNativeFields] ||= trackAssignmentsTypedArray(
       new Uint8Array(kSessionUint8FieldCount),
     );
-    this.on("newListener", sessionListenerAdded);
-    this.on("removeListener", sessionListenerRemoved);
+    // this.on("newListener", sessionListenerAdded);
+    // this.on("removeListener", sessionListenerRemoved);
 
     // Process data on the next tick - a remoteSettings handler may be attached.
     // https://github.com/nodejs/node/issues/35981
@@ -975,6 +987,8 @@ class Http2Session extends EventEmitter {
 
   // The settings currently in effect for the remote peer.
   get remoteSettings() {
+    return {}; // TODO
+
     if (
       this[kNativeFields][kBitfield] &
       (1 << kSessionRemoteSettingsIsUpToDate)
@@ -1263,6 +1277,39 @@ class ServerHttp2Session extends Http2Session {
   }
 }
 
+// Handles the on('stream') event for a session and forwards
+// it on to the server object.
+function sessionOnStream(stream, headers, flags, rawHeaders) {
+  if (this[kServer] !== undefined) {
+    this[kServer].emit("stream", stream, headers, flags, rawHeaders);
+  }
+}
+
+function sessionOnPriority(stream, parent, weight, exclusive) {
+  if (this[kServer] !== undefined) {
+    this[kServer].emit("priority", stream, parent, weight, exclusive);
+  }
+}
+
+function sessionOnError(error) {
+  if (this[kServer] !== undefined) {
+    this[kServer].emit("sessionError", error, this);
+  }
+}
+
+// When the session times out on the server, try emitting a timeout event.
+// If no handler is registered, destroy the session.
+function sessionOnTimeout() {
+  // If destroyed or closed already, do nothing
+  if (this.destroyed || this.closed) {
+    return;
+  }
+  const server = this[kServer];
+  if (!server.emit("timeout", this)) {
+    this.destroy(); // No error code, just things down.
+  }
+}
+
 function connectionListener(socket) {
   debug("Http2Session server: received a connection");
   const options = this[kOptions] || {};
@@ -1342,6 +1389,7 @@ function onServerStream(
   flags,
   rawHeaders,
 ) {
+  console.log("onServerStream todo");
 }
 
 function setupCompat(ev) {

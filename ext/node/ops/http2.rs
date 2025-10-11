@@ -358,8 +358,8 @@ enum Http2OptionsIndex {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Http2State<'a> {
-  session_state_buffer: serde_v8::Value<'a>,
-  stream_state_buffer: serde_v8::Value<'a>,
+  session_state: serde_v8::Value<'a>,
+  stream_state: serde_v8::Value<'a>,
   options_buffer: serde_v8::Value<'a>,
   settings_buffer: serde_v8::Value<'a>,
 }
@@ -430,12 +430,12 @@ impl<'a> Http2State<'a> {
 
     unsafe {
       Self {
-        session_state_buffer: static_f32array(
+        session_state: static_f32array(
           scope,
           &raw mut SESSION_STATE_BUFFER,
           Http2SessionStateIndex::IDX_SESSION_STATE_COUNT as usize,
         ),
-        stream_state_buffer: static_f32array(
+        stream_state: static_f32array(
           scope,
           &raw mut STREAM_STATE_BUFFER,
           Http2StreamStateIndex::IDX_STREAM_STATE_COUNT as usize,
@@ -477,4 +477,21 @@ unsafe impl deno_core::GarbageCollected for Http2Session {
 }
 
 #[op2]
-impl Http2Session {}
+impl Http2Session {
+  #[constructor]
+  #[cppgc]
+  fn new(_: bool) -> Http2Session {
+    Http2Session {}
+  }
+
+  #[fast]
+  fn settings(&self) -> bool {
+    true
+  }
+
+  #[fast]
+  fn local_settings(&self) {}
+
+  #[fast]
+  fn refresh_state(&self) {}
+}
