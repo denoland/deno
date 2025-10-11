@@ -46,6 +46,18 @@ pub type FoundPackageJsonDepFlagRc =
 #[derive(Debug, Default)]
 pub struct FoundPackageJsonDepFlag(AtomicFlag);
 
+impl FoundPackageJsonDepFlag {
+  #[inline(always)]
+  pub fn raise(&self) -> bool {
+    self.0.raise()
+  }
+
+  #[inline(always)]
+  pub fn is_raised(&self) -> bool {
+    self.0.is_raised()
+  }
+}
+
 #[derive(Debug, deno_error::JsError, Boxed)]
 pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
 
@@ -119,18 +131,6 @@ pub struct CouldNotResolveNpmNvError {
 impl NodeJsErrorCoded for CouldNotResolveNpmNvError {
   fn code(&self) -> node_resolver::errors::NodeJsErrorCode {
     self.source.code()
-  }
-}
-
-impl FoundPackageJsonDepFlag {
-  #[inline(always)]
-  pub fn raise(&self) -> bool {
-    self.0.raise()
-  }
-
-  #[inline(always)]
-  pub fn is_raised(&self) -> bool {
-    self.0.is_raised()
   }
 }
 

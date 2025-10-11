@@ -125,14 +125,21 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
         }
       }
       None => {
-        let err =
-          Arc::new(JsErrorBox::from_err(deno_resolver::npm::NoNpmError));
-        NpmResolvePkgReqsResult {
-          results: package_reqs
-            .iter()
-            .map(|_| Err(NpmLoadError::RegistryInfo(err.clone())))
-            .collect(),
-          dep_graph_result: Err(err),
+        if package_reqs.is_empty() {
+          NpmResolvePkgReqsResult {
+            results: Default::default(),
+            dep_graph_result: Ok(()),
+          }
+        } else {
+          let err =
+            Arc::new(JsErrorBox::from_err(deno_resolver::npm::NoNpmError));
+          NpmResolvePkgReqsResult {
+            results: package_reqs
+              .iter()
+              .map(|_| Err(NpmLoadError::RegistryInfo(err.clone())))
+              .collect(),
+            dep_graph_result: Err(err),
+          }
         }
       }
     }

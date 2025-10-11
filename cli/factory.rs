@@ -972,6 +972,7 @@ impl CliFactory {
     let in_npm_pkg_checker = self.in_npm_pkg_checker()?;
     let workspace_factory = self.workspace_factory()?;
     let resolver_factory = self.resolver_factory()?;
+    let npm_installer_factory = self.npm_installer_factory()?;
     let cjs_tracker = self.cjs_tracker()?.clone();
     let npm_registry_permission_checker = {
       let mode = if resolver_factory.use_byonm()? {
@@ -1002,6 +1003,9 @@ impl CliFactory {
       },
       self.emitter()?.clone(),
       self.file_fetcher()?.clone(),
+      npm_installer_factory
+        .has_js_execution_started_flag()
+        .clone(),
       in_npm_pkg_checker.clone(),
       self.main_module_graph_container().await?.clone(),
       self.memory_files().clone(),

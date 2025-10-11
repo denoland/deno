@@ -97,7 +97,10 @@ impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
         if let Some(snapshot) = maybe_snapshot {
           self
             .npm_resolution
-            .set_snapshot(NpmResolutionSnapshot::new(snapshot));
+            .set_snapshot(NpmResolutionSnapshot::new(snapshot.snapshot));
+          if snapshot.is_pending {
+            self.npm_resolution.mark_pending();
+          }
         }
         let mut sync_state = self.sync_state.lock();
         *sync_state = SyncState::Success;
@@ -126,8 +129,7 @@ pub struct ResolveSnapshotError {
 fn resolve_snapshot<TSys: LockfileSys>(
   snapshot: NpmResolverManagedSnapshotOption<TSys>,
   link_packages: &WorkspaceNpmLinkPackagesRc,
-) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, ResolveSnapshotError>
-{
+) -> Result<Option<SnapshotWithPending>, ResolveSnapshotError> {
   match snapshot {
     NpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
@@ -141,7 +143,12 @@ fn resolve_snapshot<TSys: LockfileSys>(
         Ok(None)
       }
     }
-    NpmResolverManagedSnapshotOption::Specified(snapshot) => Ok(snapshot),
+    NpmResolverManagedSnapshotOption::Specified(maybe_snapshot) => {
+      Ok(maybe_snapshot.map(|snapshot| SnapshotWithPending {
+        snapshot,
+        is_pending: false,
+      }))
+    }
   }
 }
 
@@ -152,17 +159,26 @@ pub enum SnapshotFromLockfileError {
   SnapshotFromLockfile(#[from] deno_npm::resolution::SnapshotFromLockfileError),
 }
 
+struct SnapshotWithPending {
+  snapshot: ValidSerializedNpmResolutionSnapshot,
+  is_pending: bool,
+}
+
 fn snapshot_from_lockfile<TSys: LockfileSys>(
   lockfile: Arc<LockfileLock<TSys>>,
   link_packages: &WorkspaceNpmLinkPackagesRc,
-) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
+) -> Result<SnapshotWithPending, SnapshotFromLockfileError> {
+  let lockfile = lockfile.lock();
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
     deno_npm::resolution::SnapshotFromLockfileParams {
       link_packages: &link_packages.0,
-      lockfile: &lockfile.lock(),
+      lockfile: &lockfile,
       default_tarball_url: Default::default(),
     },
   )?;
 
-  Ok(snapshot)
+  Ok(SnapshotWithPending {
+    snapshot,
+    is_pending: lockfile.has_content_changed,
+  })
 }

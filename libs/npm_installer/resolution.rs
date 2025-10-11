@@ -29,9 +29,11 @@ use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageKind;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_terminal::colors;
+use deno_unsync::sync::AtomicFlag;
 use deno_unsync::sync::TaskQueue;
 
 pub struct AddPkgReqsResult {
@@ -44,6 +46,26 @@ pub struct AddPkgReqsResult {
   pub dependencies_result: Result<(), JsErrorBox>,
 }
 
+pub type HasJsExecutionStartedFlagRc = Arc<HasJsExecutionStartedFlag>;
+
+/// A flag that indicates if JS execution has started, which
+/// will tell the npm resolution to not do a deduplication pass
+/// and instead npm resolution should only be additive.
+#[derive(Debug, Default)]
+pub struct HasJsExecutionStartedFlag(AtomicFlag);
+
+impl HasJsExecutionStartedFlag {
+  #[inline(always)]
+  pub fn raise(&self) -> bool {
+    self.0.raise()
+  }
+
+  #[inline(always)]
+  pub fn is_raised(&self) -> bool {
+    self.0.is_raised()
+  }
+}
+
 #[sys_traits::auto_impl]
 pub trait NpmResolutionInstallerSys: LockfileSys + NpmCacheSys {}
 
@@ -53,6 +75,7 @@ pub struct NpmResolutionInstaller<
   TNpmCacheHttpClient: NpmCacheHttpClient,
   TSys: NpmResolutionInstallerSys,
 > {
+  has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
   npm_version_resolver: NpmVersionResolverRc,
   registry_info_provider: Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>,
   reporter: Option<Arc<dyn deno_npm::resolution::Reporter>>,
@@ -65,6 +88,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
   NpmResolutionInstaller<TNpmCacheHttpClient, TSys>
 {
   pub fn new(
+    has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
     npm_version_resolver: NpmVersionResolverRc,
     registry_info_provider: Arc<
       RegistryInfoProvider<TNpmCacheHttpClient, TSys>,
@@ -74,6 +98,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   ) -> Self {
     Self {
+      has_js_execution_started_flag,
       npm_version_resolver,
       registry_info_provider,
       reporter,
@@ -103,6 +128,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       results: result.results,
       dependencies_result: match result.dep_graph_result {
         Ok(snapshot) => {
+          self.resolution.mark_not_pending();
           self.resolution.set_snapshot(snapshot);
           Ok(())
         }
@@ -116,9 +142,10 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     package_reqs: &[PackageReq],
   ) -> deno_npm::resolution::AddPkgReqsResult {
     let snapshot = self.resolution.snapshot();
-    if package_reqs
-      .iter()
-      .all(|req| snapshot.package_reqs().contains_key(req))
+    if !self.resolution.is_pending()
+      && package_reqs
+        .iter()
+        .all(|req| snapshot.package_reqs().contains_key(req))
     {
       log::debug!("Snapshot already up to date. Skipping npm resolution.");
       return deno_npm::resolution::AddPkgReqsResult {
@@ -134,11 +161,13 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
       /* this string is used in tests */
       "Running npm resolution."
     );
+    let should_dedup = !self.has_js_execution_started_flag.is_raised();
     let result = snapshot
       .add_pkg_reqs(
         self.registry_info_provider.as_ref(),
         AddPkgReqsOptions {
           package_reqs,
+          should_dedup,
           version_resolver: &self.npm_version_resolver,
         },
         self.reporter.as_deref(),
@@ -158,6 +187,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
             self.registry_info_provider.as_ref(),
             AddPkgReqsOptions {
               package_reqs,
+              should_dedup,
               version_resolver: &self.npm_version_resolver,
             },
             self.reporter.as_deref(),
@@ -260,6 +290,15 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
     };
 
     let mut lockfile = lockfile.lock();
+    lockfile.content.packages.npm.clear();
+    lockfile
+      .content
+      .packages
+      .specifiers
+      .retain(|req, _| match req.kind {
+        PackageKind::Npm => false,
+        PackageKind::Jsr => true,
+      });
     for (package_req, nv) in snapshot.package_reqs() {
       let id = &snapshot.resolve_package_from_deno_module(nv).unwrap().id;
       lockfile.insert_package_specifier(

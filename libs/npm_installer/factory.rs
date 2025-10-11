@@ -25,6 +25,7 @@ use crate::initializer::NpmResolutionInitializer;
 use crate::initializer::NpmResolverManagedSnapshotOption;
 use crate::lifecycle_scripts::LifecycleScriptsExecutor;
 use crate::package_json::NpmInstallDepsProvider;
+use crate::resolution::HasJsExecutionStartedFlagRc;
 use crate::resolution::NpmResolutionInstaller;
 
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
@@ -74,6 +75,7 @@ pub struct NpmInstallerFactory<
   TSys: NpmInstallerFactorySys,
 > {
   resolver_factory: Arc<ResolverFactory<TSys>>,
+  has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
   http_client: Arc<TNpmCacheHttpClient>,
   lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
   reporter: TReporter,
@@ -113,6 +115,7 @@ impl<
   ) -> Self {
     Self {
       resolver_factory,
+      has_js_execution_started_flag: Default::default(),
       http_client,
       lifecycle_scripts_executor,
       reporter,
@@ -127,6 +130,10 @@ impl<
       install_reporter,
       options,
     }
+  }
+
+  pub fn has_js_execution_started_flag(&self) -> &HasJsExecutionStartedFlagRc {
+    &self.has_js_execution_started_flag
   }
 
   pub fn http_client(&self) -> &Arc<TNpmCacheHttpClient> {
@@ -245,6 +252,7 @@ impl<
       .npm_resolution_installer
       .get_or_try_init(async move {
         Ok(Arc::new(NpmResolutionInstaller::new(
+          self.has_js_execution_started_flag.clone(),
           self.resolver_factory.npm_version_resolver()?.clone(),
           self.registry_info_provider()?.clone(),
           self
