@@ -538,6 +538,103 @@ unsafe extern "C" fn on_begin_headers_callbacks(
     0
 }
 
+unsafe extern "C" fn on_header_callback(
+  session: *mut ffi::nghttp2_session,
+  frame: *const ffi::nghttp2_frame,
+  name: *mut ffi::nghttp2_rcbuf,
+  value: *mut ffi::nghttp2_rcbuf,
+  flags: u8,
+  data: *mut c_void,
+) -> i32 {
+    0
+}
+
+unsafe extern "C" fn on_frame_recv_callback(
+  session: *mut ffi::nghttp2_session,
+  frame: *const ffi::nghttp2_frame,
+  data: *mut c_void,
+) -> i32 {
+    0
+}
+
+unsafe extern "C" fn on_stream_close_callback(
+  session: *mut ffi::nghttp2_session,
+  stream_id: i32,
+  error_code: u32,
+  data: *mut c_void,
+) -> i32 {
+    0
+}
+
+unsafe extern "C" fn on_data_chunk_recv_callback(
+  session: *mut ffi::nghttp2_session,
+  flags: u8,
+  stream_id: i32,
+  data: *const u8,
+  len: usize,
+  user_data: *mut c_void,
+) -> i32 {
+    0
+}
+
+unsafe extern "C" fn on_frame_not_send_callback(
+  session: *mut ffi::nghttp2_session,
+  frame: *const ffi::nghttp2_frame,
+  lib_error_code: i32,
+  data: *mut c_void,
+) -> i32 {
+    0
+}
+  
+unsafe extern "C" fn on_invalid_header_callback(
+  session: *mut ffi::nghttp2_session,
+  frame: *const ffi::nghttp2_frame,
+  name: *mut ffi::nghttp2_rcbuf,
+  value: *mut ffi::nghttp2_rcbuf,
+  flags: u8,
+  data: *mut c_void,
+) -> i32 {
+    0
+}
+
+unsafe extern "C" fn on_nghttp_error_callback(
+  session: *mut ffi::nghttp2_session,
+  lib_error_code: i32,
+  msg: *const std::ffi::c_char,
+  len: usize,
+  data: *mut c_void,
+) -> i32 {
+    0
+}
+
+unsafe extern "C" fn on_send_data_callback(
+  session: *mut ffi::nghttp2_session,
+  frame: *mut ffi::nghttp2_frame,
+  framehd: *const u8,
+  length: usize,
+  source: *mut ffi::nghttp2_data_source,
+  data: *mut c_void,
+) -> i32 {
+    0
+}
+
+unsafe extern "C" fn on_invalid_frame_recv_callback(
+  session: *mut ffi::nghttp2_session,
+  frame: *const ffi::nghttp2_frame,
+  lib_error_code: i32,
+  data: *mut c_void,
+) -> i32 {
+    0
+}
+
+unsafe extern "C" fn on_frame_send_callback(
+  session: *mut ffi::nghttp2_session,
+  frame: *const ffi::nghttp2_frame,
+  data: *mut c_void,
+) -> i32 {
+    0
+}
+
 impl Http2Session {
   fn callbacks() -> *mut ffi::nghttp2_session_callbacks {
     let mut callbacks: *mut ffi::nghttp2_session_callbacks =
@@ -549,27 +646,46 @@ impl Http2Session {
         callbacks,
         Some(on_begin_headers_callbacks),
       );
-      /*
       ffi::nghttp2_session_callbacks_set_on_header_callback2(
-        &mut callbacks, OnHeaderCallback);
+        callbacks,
+        Some(on_header_callback),
+      );
       ffi::nghttp2_session_callbacks_set_on_frame_recv_callback(
-        &mut callbacks, OnFrameReceive);
+        callbacks,
+        Some(on_frame_recv_callback),
+      );
       ffi::nghttp2_session_callbacks_set_on_stream_close_callback(
-        &mut callbacks, OnStreamClose);
+        callbacks,
+        Some(on_stream_close_callback),
+      );
       ffi::nghttp2_session_callbacks_set_on_data_chunk_recv_callback(
-        &mut callbacks, OnDataChunkReceived);
+        callbacks,
+        Some(on_data_chunk_recv_callback),
+      );
       ffi::nghttp2_session_callbacks_set_on_frame_not_send_callback(
-        &mut callbacks, OnFrameNotSent);
+        callbacks,
+        Some(on_frame_not_send_callback),
+      );
       ffi::nghttp2_session_callbacks_set_on_invalid_header_callback2(
-        &mut callbacks, OnInvalidHeader);
-      ffi::nghttp2_session_callbacks_set_error_callback2(&mut callbacks, OnNghttpError);
+        callbacks,
+        Some(on_invalid_header_callback),
+      );
+      ffi::nghttp2_session_callbacks_set_error_callback2(
+        callbacks,
+        Some(on_nghttp_error_callback),
+      );
       ffi::nghttp2_session_callbacks_set_send_data_callback(
-        &mut callbacks, OnSendData);
+        callbacks,
+        Some(on_send_data_callback),
+      );
       ffi::nghttp2_session_callbacks_set_on_invalid_frame_recv_callback(
-        &mut callbacks, OnInvalidFrame);
+        callbacks,
+        Some(on_invalid_frame_recv_callback),
+      );
       ffi::nghttp2_session_callbacks_set_on_frame_send_callback(
-        &mut callbacks, OnFrameSent);
-      */
+        callbacks,
+        Some(on_frame_send_callback),
+      );
     }
     callbacks
   }
