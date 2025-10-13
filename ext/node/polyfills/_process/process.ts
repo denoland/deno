@@ -16,14 +16,19 @@ const {
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ReflectDefineProperty,
+  ReflectHas,
   TypeErrorPrototype,
 } = primordials;
-const { build } = core;
+const { build, createLazyLoader } = core;
 
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
 import { ERR_INVALID_OBJECT_DEFINE_PROPERTY } from "ext:deno_node/internal/errors.ts";
+import type * as process from "node:process";
+
+const loadProcess = createLazyLoader<typeof process>("node:process");
+let nodeProcess: typeof process | undefined;
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
@@ -103,7 +108,8 @@ export const env:
       }
 
       if (typeof value !== "string") {
-        process.emitWarning(
+        nodeProcess ??= loadProcess();
+        nodeProcess.emitWarning(
           "Assigning any value other than a string, number, or boolean to a " +
             "process.env property is deprecated. Please make sure to convert the value " +
             "to a string before setting process.env with it.",
@@ -117,7 +123,7 @@ export const env:
     },
     has: (target, prop) => {
       if (typeof prop === "symbol") {
-        return prop in target;
+        return ReflectHas(target, prop);
       }
 
       return typeof denoEnvGet(prop) === "string";
