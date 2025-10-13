@@ -31,6 +31,7 @@ use sha2::Digest as _;
 
 use super::Request;
 use super::Response;
+use crate::args::TypeCheckMode;
 use crate::cache::DenoDir;
 use crate::http_util::HttpClientProvider;
 use crate::tsc::RequestNpmState;
@@ -53,11 +54,14 @@ fn deser<T: serde::de::DeserializeOwned>(
 fn synthetic_config(
   config: &CompilerOptions,
   root_names: &[String],
+  type_check_mode: TypeCheckMode,
 ) -> Result<String, serde_json::Error> {
   let mut config = serde_json::to_value(config)?;
   let obj = config.as_object_mut().unwrap();
   obj.insert("allowImportingTsExtensions".to_string(), json!(true));
-  obj.insert("skipDefaultLibCheck".to_string(), json!(true));
+  if type_check_mode != TypeCheckMode::All {
+    obj.insert("skipDefaultLibCheck".to_string(), json!(true));
+  }
   let config = serde_json::to_string(&json!({
     "compilerOptions": config,
     "files": root_names,
@@ -92,7 +96,7 @@ fn exec_request_inner(
 ) -> Result<Response, ExecError> {
   let handler = Handler::new(
     "/virtual/tsconfig.json".to_string(),
-    synthetic_config(request.config.as_ref(), &root_names)?,
+    synthetic_config(request.config.as_ref(), &root_names, request.check_mode)?,
     remapped_specifiers,
     root_map,
     std::env::current_dir().unwrap(),
@@ -120,10 +124,16 @@ fn exec_request_inner(
   )?;
   let project = deser::<Project>(project)?;
 
+  let file_names = if request.check_mode != TypeCheckMode::All {
+    root_names
+  } else {
+    Vec::new()
+  };
   let diagnostics = channel.request_sync(
     "getDiagnostics",
     jsons!({
       "project": &project.id,
+      "fileNames": file_names,
     })?,
   )?;
   let diagnostics = deser::<
