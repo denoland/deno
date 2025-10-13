@@ -25,10 +25,9 @@ import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
 import { ERR_INVALID_OBJECT_DEFINE_PROPERTY } from "ext:deno_node/internal/errors.ts";
-import type * as process from "node:process";
 
-const loadProcess = createLazyLoader<typeof process>("node:process");
-let nodeProcess: typeof process | undefined;
+const loadProcess = createLazyLoader<NodeJS.Process>("node:process");
+let nodeProcess: NodeJS.Process | undefined;
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
