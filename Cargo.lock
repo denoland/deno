@@ -1931,8 +1931,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.362.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be08f717b55b73bbb9a96e8c6854f8693d34f5c4dd41c7284c338d923709473c"
+source = "git+https://github.com/denoland/deno_core.git?branch=import-range-load#8a7dda45b4c137fe1e511dbf3e2932716a4b9cce"
 dependencies = [
  "anyhow",
  "az",
@@ -2653,8 +2652,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.238.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18cde9a34023084eec749c6264bb5be7f3c8e843dbc8b75874c6da3b8b200f02"
+source = "git+https://github.com/denoland/deno_core.git?branch=import-range-load#8a7dda45b4c137fe1e511dbf3e2932716a4b9cce"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro-rules",
@@ -8270,8 +8268,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.271.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4046e43ba5435ecd4412ded9c0e44845f2e7bdd6a89d9e0fcd2b862edeb0324d"
+source = "git+https://github.com/denoland/deno_core.git?branch=import-range-load#8a7dda45b4c137fe1e511dbf3e2932716a4b9cce"
 dependencies = [
  "deno_error",
  "num-bigint",
