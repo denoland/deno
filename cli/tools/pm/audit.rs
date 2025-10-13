@@ -117,6 +117,17 @@ mod npm {
     dev: bool,
     dependencies: Vec<Box<DependencyDescriptor>>,
   }
+
+  #[derive(Debug, Deserialize)]
+  #[serde(rename_all = "camelCase")]
+  pub struct FirewallScore {
+    pub license: f64,
+    pub maintenance: f64,
+    pub overall: f64,
+    pub quality: f64,
+    pub supply_chain: f64,
+    pub vulnerability: f64,
+  }
 }
 
 mod socket_dev {
