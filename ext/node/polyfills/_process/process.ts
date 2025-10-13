@@ -15,6 +15,7 @@ const {
   Proxy,
   ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
+  ReflectDefineProperty,
   TypeErrorPrototype,
 } = primordials;
 const { build } = core;
@@ -22,6 +23,7 @@ const { build } = core;
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
+import { ERR_INVALID_OBJECT_DEFINE_PROPERTY } from "ext:deno_node/internal/errors.ts";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
@@ -127,6 +129,33 @@ export const env:
       }
 
       Deno.env.delete(String(key));
+      return true;
+    },
+    defineProperty(target, property, attributes) {
+      if (attributes?.get || attributes?.set) {
+        throw new ERR_INVALID_OBJECT_DEFINE_PROPERTY(
+          "'process.env' does not accept an " +
+            "accessor(getter/setter) descriptor",
+        );
+      }
+
+      if (
+        !attributes?.configurable || !attributes?.enumerable ||
+        !attributes?.writable
+      ) {
+        throw new ERR_INVALID_OBJECT_DEFINE_PROPERTY(
+          "'process.env' only accepts a " +
+            "configurable, writable," +
+            " and enumerable data descriptor",
+        );
+      }
+
+      if (typeof property === "symbol") {
+        ReflectDefineProperty(target, property, attributes);
+        return true;
+      }
+
+      Deno.env.set(String(property), String(attributes?.value));
       return true;
     },
   });

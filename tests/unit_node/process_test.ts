@@ -414,6 +414,14 @@ Deno.test({
       ),
     );
 
+    Object.defineProperty(process.env, "HELLO", {
+      value: "OTHER_WORLD",
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+    assertEquals(process.env.HELLO, "OTHER_WORLD");
+
     // deno-lint-ignore no-prototype-builtins
     assert(process.env.hasOwnProperty("HELLO"));
     assert("HELLO" in process.env);
@@ -495,9 +503,19 @@ Deno.test({
     // @ts-expect-error getting a symbol key
     assertEquals(process.env[symbol], "foo");
     assert(Reflect.has(process.env, symbol));
+
     // @ts-expect-error deleting a symbol key
     delete process.env[symbol];
     assertFalse(Reflect.has(process.env, symbol));
+
+    Object.defineProperty(process.env, symbol, {
+      value: "bar",
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+    // @ts-expect-error getting a symbol key
+    assertEquals(process.env[symbol], "bar");
   },
 });
 
