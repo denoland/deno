@@ -129,6 +129,7 @@ mod npm {
     });
 
     for adv in advisories {
+      let actions = adv.find_actions(&response.actions);
       log::info!("╭ {}", colors::bold(adv.title.to_string()));
       log::info!(
         "│   {} {}",
@@ -148,7 +149,20 @@ mod npm {
         adv.vulnerable_versions
       );
       log::info!("│    {} {}", colors::gray("Patched:"), adv.patched_versions);
-      log::info!("╰─      {} {}", colors::gray("Info:"), adv.url);
+      if actions.is_empty() {
+        log::info!("╰─      {} {}", colors::gray("Info:"), adv.url);
+      } else {
+        log::info!("│       {} {}", colors::gray("Info:"), adv.url);
+      }
+      if actions.len() == 1 {
+        log::info!("╰─   {} {}", colors::gray("Actions:"), actions[0]);
+      } else {
+        log::info!("│    {} {}", colors::gray("Actions:"), actions[0]);
+        for action in &actions[1..actions.len() - 2] {
+          log::info!("│             {}", action);
+        }
+        log::info!("╰─            {}", actions[actions.len() - 1]);
+      }
       log::info!("");
     }
 
@@ -205,6 +219,34 @@ mod npm {
     pub module_name: String,
     pub vulnerable_versions: String,
     pub patched_versions: String,
+  }
+
+  impl AuditAdvisory {
+    fn find_actions(&self, actions: &[AuditAction]) -> Vec<String> {
+      let mut acts = vec![];
+
+      for action in actions {
+        if action
+          .resolves
+          .iter()
+          .any(|action_resolve| action_resolve.id == self.id)
+        {
+          acts.push(format!(
+            "{} {}@{}{}",
+            action.action,
+            action.module,
+            action.target,
+            if action.is_major {
+              " (major upgrade)"
+            } else {
+              ""
+            }
+          ))
+        }
+      }
+
+      acts
+    }
   }
 
   #[derive(Debug, Deserialize)]
