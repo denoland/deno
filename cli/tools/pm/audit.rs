@@ -13,6 +13,7 @@ use serde::Serialize;
 
 use crate::args::AuditFlags;
 use crate::args::Flags;
+use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util;
 use crate::http_util::HttpClient;
@@ -64,6 +65,8 @@ pub async fn audit(
 mod npm {
   use std::collections::HashMap;
 
+  use deno_core::anyhow::Context;
+
   use super::*;
 
   pub async fn call_audits_api(
@@ -97,16 +100,70 @@ mod npm {
         "dependencies": dependencies,
     });
 
-    eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
+    // eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
     let url = Url::parse("https://registry.npmjs.org/-/npm/v1/security/audits")
       .unwrap();
     let future = client.post_json(url, &body)?.send().boxed_local();
     let response = future.await?;
-    let json_str = http_util::body_to_string(response).await.unwrap();
-    dbg!(&json_str);
-    let json_obj: serde_json::Value = serde_json::from_str(&json_str)?;
-    dbg!(&json_obj);
+    let json_str = http_util::body_to_string(response)
+      .await
+      .context("Failed to read response from the npm registry API")?;
+    let response: AuditResponse = serde_json::from_str(&json_str)
+      .context("Failed to deserialize response from the npm registry API")?;
+    // dbg!(&response);
+
+    print_report(response);
+
     Ok(())
+  }
+
+  fn print_report(response: AuditResponse) {
+    let vulns = response.metadata.vulnerabilities;
+    if vulns.total() == 0 {
+      return;
+    }
+
+    let mut advisories = response.advisories.values().collect::<Vec<_>>();
+    advisories.sort_by_cached_key(|adv| {
+      format!("{}@{}", adv.module_name, adv.vulnerable_versions)
+    });
+
+    for adv in advisories {
+      log::info!("╭ {}", colors::bold(adv.title.to_string()));
+      log::info!(
+        "│   {} {}",
+        colors::gray("Severity:"),
+        match adv.severity.as_str() {
+          "low" => colors::bold("low").to_string(),
+          "moderate" => colors::yellow("moderate").to_string(),
+          "high" => colors::red("high").to_string(),
+          "critical" => colors::red("critical").to_string(),
+          sev => sev.to_string(),
+        }
+      );
+      log::info!("│    {} {}", colors::gray("Package:"), adv.module_name);
+      log::info!(
+        "│ {} {}",
+        colors::gray("Vulnerable:"),
+        adv.vulnerable_versions
+      );
+      log::info!("│    {} {}", colors::gray("Patched:"), adv.patched_versions);
+      log::info!("╰─      {} {}", colors::gray("Info:"), adv.url);
+      log::info!("");
+    }
+
+    log::info!("Found {} vulnerabilities", colors::red(vulns.total()),);
+    log::info!(
+      "Severity: {} {}, {} {}, {} {}, {} {}",
+      colors::bold(vulns.low),
+      colors::bold("low"),
+      colors::yellow(vulns.moderate),
+      colors::yellow("moderate"),
+      colors::red(vulns.high),
+      colors::red("high"),
+      colors::red(vulns.critical),
+      colors::red("critical"),
+    );
   }
 
   #[derive(Debug, Serialize)]
@@ -119,14 +176,67 @@ mod npm {
   }
 
   #[derive(Debug, Deserialize)]
+  pub struct AuditActionResolve {
+    pub id: i32,
+    pub path: String,
+    pub dev: bool,
+    pub optional: bool,
+    pub bundled: bool,
+  }
+
+  #[derive(Debug, Deserialize)]
+  pub struct AuditAction {
+    #[serde(rename = "isMajor")]
+    pub is_major: bool,
+    pub action: String,
+    pub resolves: Vec<AuditActionResolve>,
+    pub module: String,
+    pub target: String,
+  }
+
+  #[derive(Debug, Deserialize)]
+  pub struct AuditAdvisory {
+    pub id: i32,
+    pub title: String,
+    pub cves: Vec<String>,
+    pub cwe: Vec<String>,
+    pub severity: String,
+    pub url: String,
+    pub module_name: String,
+    pub vulnerable_versions: String,
+    pub patched_versions: String,
+  }
+
+  #[derive(Debug, Deserialize)]
+  pub struct AuditVulnerabilities {
+    pub info: i32,
+    pub low: i32,
+    pub moderate: i32,
+    pub high: i32,
+    pub critical: i32,
+  }
+
+  impl AuditVulnerabilities {
+    fn total(&self) -> i32 {
+      self.low + self.moderate + self.high + self.critical
+    }
+  }
+
+  #[derive(Debug, Deserialize)]
   #[serde(rename_all = "camelCase")]
-  pub struct FirewallScore {
-    pub license: f64,
-    pub maintenance: f64,
-    pub overall: f64,
-    pub quality: f64,
-    pub supply_chain: f64,
-    pub vulnerability: f64,
+  pub struct AuditMetadata {
+    pub vulnerabilities: AuditVulnerabilities,
+    pub dependencies: i32,
+    pub dev_dependencies: i32,
+    pub optional_dependencies: i32,
+    pub total_dependencies: i32,
+  }
+
+  #[derive(Debug, Deserialize)]
+  pub struct AuditResponse {
+    pub actions: Vec<AuditAction>,
+    pub advisories: HashMap<i32, AuditAdvisory>,
+    pub metadata: AuditMetadata,
   }
 }
 
