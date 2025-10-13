@@ -64,10 +64,49 @@ pub async fn audit(
 
 mod npm {
   use std::collections::HashMap;
+  use std::collections::HashSet;
 
   use deno_core::anyhow::Context;
+  use deno_npm::NpmPackageId;
 
   use super::*;
+
+  fn get_dependency_descriptors_for_deps(
+    seen: &mut HashSet<String>,
+    npm_resolution_snapshot: &NpmResolutionSnapshot,
+    package_id: &NpmPackageId,
+  ) -> HashMap<String, Box<DependencyDescriptor>> {
+    let resolution_package =
+      npm_resolution_snapshot.package_from_id(package_id).unwrap();
+    let mut deps_map =
+      HashMap::with_capacity(resolution_package.dependencies.len());
+    for dep in resolution_package.dependencies.iter() {
+      if seen.contains(&dep.0.to_string()) {
+        continue;
+      }
+      seen.insert(dep.0.to_string());
+
+      let dep_deps = get_dependency_descriptors_for_deps(
+        seen,
+        npm_resolution_snapshot,
+        dep.1,
+      );
+      deps_map.insert(
+        dep.0.to_string(),
+        Box::new(DependencyDescriptor {
+          version: dep.1.nv.version.to_string(),
+          // TODO(bartlomieju): not sure how to determine that from the snapshot
+          dev: false,
+          requires: dep_deps
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.version.to_string()))
+            .collect(),
+          dependencies: dep_deps,
+        }),
+      );
+    }
+    deps_map
+  }
 
   pub async fn call_audits_api(
     npm_resolution_snapshot: &NpmResolutionSnapshot,
@@ -76,17 +115,28 @@ mod npm {
     let top_level_packages = npm_resolution_snapshot.top_level_packages();
     let mut requires = HashMap::with_capacity(top_level_packages.len());
     let mut dependencies = HashMap::with_capacity(top_level_packages.len());
+    let seen = &mut HashSet::with_capacity(top_level_packages.len() * 100);
     for package in top_level_packages {
       requires
         .insert(package.nv.name.to_string(), package.nv.version.to_string());
+      seen.insert(package.nv.name.to_string());
+      let package_deps = get_dependency_descriptors_for_deps(
+        seen,
+        npm_resolution_snapshot,
+        package,
+      );
+      eprintln!("inserting2 {}", package.nv.name.to_string());
       dependencies.insert(
         package.nv.name.to_string(),
         Box::new(DependencyDescriptor {
           version: package.nv.version.to_string(),
-          // TODO
+          // TODO(bartlomieju): not sure how to determine that from the snapshot
           dev: false,
-          // TODO
-          dependencies: vec![],
+          requires: package_deps
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.version.to_string()))
+            .collect(),
+          dependencies: package_deps,
         }),
       );
     }
@@ -100,7 +150,7 @@ mod npm {
         "dependencies": dependencies,
     });
 
-    // eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
+    eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
     let url = Url::parse("https://registry.npmjs.org/-/npm/v1/security/audits")
       .unwrap();
     let future = client.post_json(url, &body)?.send().boxed_local();
@@ -186,7 +236,8 @@ mod npm {
   struct DependencyDescriptor {
     version: String,
     dev: bool,
-    dependencies: Vec<Box<DependencyDescriptor>>,
+    requires: HashMap<String, String>,
+    dependencies: HashMap<String, Box<DependencyDescriptor>>,
   }
 
   #[derive(Debug, Deserialize)]
