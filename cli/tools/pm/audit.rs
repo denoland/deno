@@ -81,10 +81,18 @@ mod npm {
     let mut deps_map =
       HashMap::with_capacity(resolution_package.dependencies.len());
     for dep in resolution_package.dependencies.iter() {
-      if seen.contains(&dep.0.to_string()) {
+      if seen.contains(&format!(
+        "{}@{}",
+        dep.0.to_string(),
+        dep.1.nv.version.to_string()
+      )) {
         continue;
       }
-      seen.insert(dep.0.to_string());
+      seen.insert(format!(
+        "{}@{}",
+        dep.0.to_string(),
+        dep.1.nv.version.to_string()
+      ));
 
       let dep_deps = get_dependency_descriptors_for_deps(
         seen,
@@ -119,13 +127,16 @@ mod npm {
     for package in top_level_packages {
       requires
         .insert(package.nv.name.to_string(), package.nv.version.to_string());
-      seen.insert(package.nv.name.to_string());
+      seen.insert(format!(
+        "{}@{}",
+        package.nv.name.to_string(),
+        package.nv.version.to_string()
+      ));
       let package_deps = get_dependency_descriptors_for_deps(
         seen,
         npm_resolution_snapshot,
         package,
       );
-      eprintln!("inserting2 {}", package.nv.name.to_string());
       dependencies.insert(
         package.nv.name.to_string(),
         Box::new(DependencyDescriptor {
@@ -150,7 +161,7 @@ mod npm {
         "dependencies": dependencies,
     });
 
-    eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
+    // eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
     let url = Url::parse("https://registry.npmjs.org/-/npm/v1/security/audits")
       .unwrap();
     let future = client.post_json(url, &body)?.send().boxed_local();
