@@ -225,7 +225,7 @@ fn unadded_dependency_message_with_import_map() {
   let mut expected_lsp_messages = Vec::from([
     "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
     "'x' is declared but its value is never read.",
-    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
+    "Import \"@std/fs\" not a dependency and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
   ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
@@ -282,7 +282,7 @@ fn unadded_dependency_message() {
   let mut expected_lsp_messages = Vec::from([
     "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
     "'x' is declared but its value is never read.",
-    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
+    "Import \"@std/fs\" not a dependency and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
   ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
@@ -1670,7 +1670,7 @@ fn lsp_hover() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "```typescript\nconst Deno.args: string[]\n```\n\nReturns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.\n\n*@category* - Runtime",
+        "value": "```typescript\nconst Deno.args: string[]\n```\n\nReturns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno eval \"console.log(Deno.args)\" Sushi Maguro Hamachi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\", \"Maguro\", \"Hamachi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.\n\n*@category* - Runtime",
       },
       "range": {
         "start": { "line": 0, "character": 17 },
@@ -10680,7 +10680,7 @@ fn lsp_completions_node_builtin() {
           "severity": 1,
           "code": "import-node-prefix-missing",
           "source": "deno",
-          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\n  hint: If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
+          "message": "Import \"fs\" not a dependency\n  hint: If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
           "data": {
             "specifier": "fs"
           },
@@ -14290,18 +14290,21 @@ export function B() {
 struct TestData {
   id: String,
   label: String,
-  steps: Option<Vec<TestData>>,
+  #[serde(skip_serializing_if = "Vec::is_empty")]
+  #[serde(default)]
+  steps: Vec<TestData>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   range: Option<lsp::Range>,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 enum TestModuleNotificationKind {
   Insert,
   Replace,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TestModuleNotificationParams {
   text_document: lsp::TextDocumentIdentifier,
@@ -14310,17 +14313,34 @@ struct TestModuleNotificationParams {
   tests: Vec<TestData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EnqueuedTestModule {
   text_document: lsp::TextDocumentIdentifier,
   ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TestRunResponseParams {
   enqueued: Vec<EnqueuedTestModule>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestRunProgressParams {
+  pub id: u32,
+  pub message: TestRunProgressMessage,
+}
+
+// Note: This struct is more bare than the definition in CLI, to help stay
+// consistent and keep the test harness independent.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TestRunProgressMessage {
+  #[serde(rename = "type")]
+  pub typ: String,
+  #[serde(flatten)]
+  pub data: serde_json::Map<String, Value>,
 }
 
 #[test]
@@ -14385,9 +14405,8 @@ Deno.test({
       }
     })
   );
-  let steps = test.steps.as_ref().unwrap();
-  assert_eq!(steps.len(), 1);
-  let step = &steps[0];
+  assert_eq!(test.steps.len(), 1);
+  let step = &test.steps[0];
   assert_eq!(step.label, "step of test a");
   assert_eq!(
     step.range,
@@ -14617,7 +14636,7 @@ fn lsp_testing_api_failure() {
       "end": { "line": 1,  "character": 15 },
     }),
   );
-  assert_eq!(json!(&test.steps), json!(null));
+  assert_eq!(json!(&test.steps), json!([]));
   let res = client.write_request_with_res_as::<TestRunResponseParams>(
     "deno/testRun",
     json!({
@@ -14698,6 +14717,373 @@ fn lsp_testing_api_failure() {
     // the test pass
     Some("end") => (),
     _ => panic!("unexpected message {}", json!(notification)),
+  }
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_testing_api_describe_it_failure() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({ "nodeModulesDir": "manual" }).to_string(),
+  );
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+      import { describe, it } from "node:test";
+      describe("describe test", () => {
+        it("it test", () => {
+          throw new Error("Some message.");
+        });
+      });
+    "#,
+  );
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testModule")
+    .unwrap();
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification).unwrap();
+  let test_data = params.tests.first().unwrap();
+  let test_step_data = test_data.steps.first().unwrap();
+  assert_eq!(
+    json!(params),
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "kind": "replace",
+      "label": "test.ts",
+      "tests": [
+        {
+          "id": &test_data.id,
+          "label": "describe test",
+          "steps": [
+            {
+              "id": &test_step_data.id,
+              "label": "it test",
+              "range": {
+                "start": { "line": 3,  "character": 8 },
+                "end": { "line": 3,  "character": 10 },
+              },
+            },
+          ],
+          "range": {
+            "start": { "line": 2,  "character": 6 },
+            "end": { "line": 2,  "character": 14 },
+          },
+        }
+      ],
+    }),
+  );
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(
+    json!(&res),
+    json!({
+      "enqueued": [
+        {
+          "textDocument": { "uri": file.uri() },
+          "ids": [&test_data.id],
+        },
+      ],
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  assert_eq!(
+    notification,
+    json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_data.id,
+        },
+      },
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  assert_eq!(
+    notification,
+    json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_data.id,
+          "stepId": &test_step_data.id,
+        },
+      },
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification).unwrap();
+  let duration = params.message.data.get("duration").unwrap();
+  let message_value = params
+    .message
+    .data
+    .get("messages")
+    .unwrap()
+    .as_array()
+    .unwrap()
+    .first()
+    .unwrap()
+    .as_object()
+    .unwrap()
+    .get("message")
+    .unwrap()
+    .as_object()
+    .unwrap()
+    .get("value")
+    .unwrap()
+    .as_str()
+    .unwrap();
+  assert!(message_value.contains("Error: Some message."));
+  assert_eq!(
+    json!(params),
+    json!({
+      "id": 1,
+      "message": {
+        "type": "failed",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_data.id,
+          "stepId": &test_step_data.id,
+        },
+        "messages": [
+          {
+            "message": {
+              "kind": "plaintext",
+              "value": message_value,
+            },
+            "location": {
+              "uri": file.uri(),
+              "range": {
+                "start": { "line": 4, "character": 16 },
+                "end": { "line": 4, "character": 16 },
+              },
+            },
+          },
+        ],
+        "duration": duration,
+      },
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification).unwrap();
+  // sometimes on windows, the messages come out of order, but it actually is
+  // working, so if we do get the end before the passed, we will simply let
+  // the test pass
+  if params.message.typ != "end" {
+    let duration = params.message.data.get("duration").unwrap();
+    assert_eq!(
+      json!(params),
+      json!({
+        "id": 1,
+        "message": {
+          "type": "failed",
+          "test": {
+            "textDocument": { "uri": file.uri() },
+            "id": &test_data.id,
+          },
+          "messages": [
+            {
+              "message": {
+                "kind": "plaintext",
+                "value": "1 test step failed.",
+              },
+            },
+          ],
+          "duration": duration,
+        },
+      }),
+    );
+  }
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_testing_api_describe_it() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({ "nodeModulesDir": "manual" }).to_string(),
+  );
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+      import { describe, it } from "node:test";
+      describe("describe test", () => {
+        it("it test", () => {});
+      });
+    "#,
+  );
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testModule")
+    .unwrap();
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification).unwrap();
+  let test_data = params.tests.first().unwrap();
+  let test_step_data = test_data.steps.first().unwrap();
+  assert_eq!(
+    json!(params),
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "kind": "replace",
+      "label": "test.ts",
+      "tests": [
+        {
+          "id": &test_data.id,
+          "label": "describe test",
+          "steps": [
+            {
+              "id": &test_step_data.id,
+              "label": "it test",
+              "range": {
+                "start": { "line": 3,  "character": 8 },
+                "end": { "line": 3,  "character": 10 },
+              },
+            },
+          ],
+          "range": {
+            "start": { "line": 2,  "character": 6 },
+            "end": { "line": 2,  "character": 14 },
+          },
+        }
+      ],
+    }),
+  );
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(
+    json!(&res),
+    json!({
+      "enqueued": [
+        {
+          "textDocument": { "uri": file.uri() },
+          "ids": [&test_data.id],
+        },
+      ],
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  assert_eq!(
+    notification,
+    json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_data.id,
+        },
+      },
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  assert_eq!(
+    notification,
+    json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_data.id,
+          "stepId": &test_step_data.id,
+        },
+      },
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification).unwrap();
+  let duration = params.message.data.get("duration").unwrap();
+  assert_eq!(
+    json!(params),
+    json!({
+      "id": 1,
+      "message": {
+        "type": "passed",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_data.id,
+          "stepId": &test_step_data.id,
+        },
+        "duration": duration,
+      },
+    }),
+  );
+  let notification = client
+    .read_notification_with_method::<Value>("deno/testRunProgress")
+    .unwrap();
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification).unwrap();
+  // sometimes on windows, the messages come out of order, but it actually is
+  // working, so if we do get the end before the passed, we will simply let
+  // the test pass
+  if params.message.typ != "end" {
+    let duration = params.message.data.get("duration").unwrap();
+    assert_eq!(
+      json!(params),
+      json!({
+        "id": 1,
+        "message": {
+          "type": "passed",
+          "test": {
+            "textDocument": { "uri": file.uri() },
+            "id": &test_data.id,
+          },
+          "duration": duration,
+        },
+      }),
+    );
   }
   client.shutdown();
 }
@@ -19232,7 +19618,7 @@ fn lsp_push_diagnostics() {
             "severity": 1,
             "code": "import-prefix-missing",
             "source": "deno",
-            "message": "Relative import path \"foo\" not prefixed with / or ./ or ../\n  hint: If you want to use the npm package, try running `deno add npm:foo`",
+            "message": "Import \"foo\" not a dependency\n  hint: If you want to use the npm package, try running `deno add npm:foo`",
           },
         ],
         "version": 1,

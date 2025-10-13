@@ -15,6 +15,8 @@ use std::os::fd::AsRawFd;
 use std::os::unix::io::FromRawFd;
 #[cfg(windows)]
 use std::os::windows::io::FromRawHandle;
+use std::path::Path;
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
@@ -255,8 +257,9 @@ deno_core::extension!(deno_io,
           StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stdin(stdin_state),
             STDIN_HANDLE.try_clone().unwrap(),
+            None,
           ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
         }),
         "stdin".to_string(),
       ));
@@ -267,8 +270,9 @@ deno_core::extension!(deno_io,
           StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stdout,
             STDOUT_HANDLE.try_clone().unwrap(),
+            None,
           ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
         }),
         "stdout".to_string(),
       ));
@@ -279,8 +283,9 @@ deno_core::extension!(deno_io,
           StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stderr,
             STDERR_HANDLE.try_clone().unwrap(),
+            None,
           ),
-          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe, None),
         }),
         "stderr".to_string(),
       ));
@@ -494,14 +499,19 @@ pub struct StdFileResourceInner {
   // to occur at a time
   cell_async_task_queue: Rc<TaskQueue>,
   handle: ResourceHandleFd,
+  maybe_path: Option<PathBuf>,
 }
 
 impl StdFileResourceInner {
-  pub fn file(fs_file: StdFile) -> Self {
-    StdFileResourceInner::new(StdFileResourceKind::File, fs_file)
+  pub fn file(fs_file: StdFile, maybe_path: Option<PathBuf>) -> Self {
+    StdFileResourceInner::new(StdFileResourceKind::File, fs_file, maybe_path)
   }
 
-  fn new(kind: StdFileResourceKind, fs_file: StdFile) -> Self {
+  fn new(
+    kind: StdFileResourceKind,
+    fs_file: StdFile,
+    maybe_path: Option<PathBuf>,
+  ) -> Self {
     // We know this will be an fd
     let handle = ResourceHandle::from_fd_like(&fs_file).as_fd_like().unwrap();
     StdFileResourceInner {
@@ -509,6 +519,7 @@ impl StdFileResourceInner {
       handle,
       cell: RefCell::new(Some(fs_file)),
       cell_async_task_queue: Default::default(),
+      maybe_path,
     }
   }
 
@@ -659,6 +670,10 @@ impl StdFileResourceInner {
 
 #[async_trait::async_trait(?Send)]
 impl crate::fs::File for StdFileResourceInner {
+  fn maybe_path(&self) -> Option<&Path> {
+    self.maybe_path.as_deref()
+  }
+
   fn write_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<usize> {
     // Rust will line buffer and we don't want that behavior
     // (see https://github.com/denoland/deno/issues/948), so flush stdout and stderr.
@@ -1101,6 +1116,7 @@ impl crate::fs::File for StdFileResourceInner {
         cell: RefCell::new(Some(inner.try_clone()?)),
         cell_async_task_queue: Default::default(),
         handle: self.handle,
+        maybe_path: self.maybe_path.clone(),
       })),
       None => Err(FsError::FileBusy),
     }
@@ -1305,6 +1321,12 @@ pub fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
           | ((libc::S_IREAD | libc::S_IWRITE) >> 6))
           as u32;
       }
+
+      /* The on-disk allocation size in 512-byte units. */
+      fsstat.blocks =
+        Some(file_info.StandardInformation.AllocationSize as u64 >> 9);
+      fsstat.ino = Some(file_info.InternalInformation.IndexNumber as u64);
+      fsstat.nlink = Some(file_info.StandardInformation.NumberOfLinks as u64);
     }
 
     Ok(())

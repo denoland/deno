@@ -20,7 +20,6 @@ import {
   CreateReadStreamOptions,
   CreateWriteStreamOptions,
 } from "node:fs/promises";
-import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 const {
   Error,
   ObjectAssign,
@@ -28,6 +27,7 @@ const {
   Promise,
   PromiseResolve,
   SafeArrayIterator,
+  SymbolAsyncDispose,
   Uint8ArrayPrototype,
 } = primordials;
 

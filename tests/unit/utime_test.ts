@@ -30,6 +30,28 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, write: true } },
+  async function fsFileUtimeFailPermissions() {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    Deno.writeTextFileSync(filename, "");
+    Deno.permissions.revokeSync({ name: "write" });
+    using file = await Deno.open(filename, {
+      read: true,
+      write: false,
+    });
+
+    const atime = 1000;
+    const mtime = 50000;
+    await assertRejects(
+      () => file.utime(atime, mtime),
+      Deno.errors.NotCapable,
+      "Requires write access to",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
   function futimeSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const filename = testDir + "/file.txt";
@@ -46,6 +68,28 @@ Deno.test(
     const fileInfo = Deno.statSync(filename);
     assertEquals(fileInfo.atime, new Date(atime * 1000));
     assertEquals(fileInfo.mtime, new Date(mtime * 1000));
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function fsFileUtimeSyncFailPermissions() {
+    const testDir = Deno.makeTempDirSync();
+    const filename = testDir + "/file.txt";
+    Deno.writeTextFileSync(filename, "");
+    Deno.permissions.revokeSync({ name: "write" });
+    using file = Deno.openSync(filename, {
+      read: true,
+      write: false,
+    });
+
+    const atime = 1000;
+    const mtime = 50000;
+    assertThrows(
+      () => file.utimeSync(atime, mtime),
+      Deno.errors.NotCapable,
+      "Requires write access to",
+    );
   },
 );
 

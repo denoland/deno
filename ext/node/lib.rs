@@ -349,8 +349,6 @@ deno_core::extension!(deno_node,
     ops::dns::op_node_getaddrinfo<P>,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_fs_exists<P>,
-    ops::fs::op_node_cp_sync<P>,
-    ops::fs::op_node_cp<P>,
     ops::fs::op_node_lchmod_sync<P>,
     ops::fs::op_node_lchmod<P>,
     ops::fs::op_node_lchown_sync<P>,
@@ -501,7 +499,9 @@ deno_core::extension!(deno_node,
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
-    "_fs/_fs_cp.js",
+    "_fs/_fs_cp.ts",
+    "_fs/cp/cp.ts",
+    "_fs/cp/cp_sync.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
     "_fs/_fs_fchmod.ts",
@@ -904,7 +904,7 @@ pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
 
 #[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Data> {
   let host_defined_options = v8::PrimitiveArray::new(scope, 1);
   let value = v8::Boolean::new(scope, true);
