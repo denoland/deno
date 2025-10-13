@@ -2,11 +2,16 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::ffi::c_void;
 
+use deno_core::AsyncResult;
 use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
+use deno_net::io::TcpStreamResource;
+use deno_net::raw::NetworkStream;
 use libnghttp2_sys as ffi;
 use serde::Serialize;
 
@@ -458,6 +463,12 @@ impl<'a> Http2State<'a> {
   }
 }
 
+#[repr(i32)]
+enum SessionType {
+  Server,
+  Client,
+}
+
 #[op2]
 #[serde]
 pub fn op_http2_http_state<'a>(
@@ -466,7 +477,11 @@ pub fn op_http2_http_state<'a>(
   Http2State::create(scope)
 }
 
-pub struct Http2Session {}
+pub struct Http2Session {
+  type_: SessionType,
+  session: *mut ffi::nghttp2_session,
+  callbacks: *mut ffi::nghttp2_session_callbacks,
+}
 
 unsafe impl deno_core::GarbageCollected for Http2Session {
   fn trace(&self, _: &mut v8::cppgc::Visitor) {}
@@ -476,17 +491,152 @@ unsafe impl deno_core::GarbageCollected for Http2Session {
   }
 }
 
+struct Http2SessionDriver {
+  stream: Rc<TcpStreamResource>,
+  session: *mut ffi::nghttp2_session,
+}
+
+impl Http2SessionDriver {
+  pub async fn read(
+    self: Rc<Self>,
+    data: &mut [u8],
+  ) -> Result<usize, std::io::Error> {
+    dbg!(data.len());
+    let nread = self.stream.clone().read(data).await?;
+
+    let ret = unsafe {
+      ffi::nghttp2_session_mem_recv(self.session, data.as_mut_ptr() as _, nread)
+    };
+    dbg!(ret);
+    Ok(nread)
+  }
+
+  pub async fn write(
+    self: Rc<Self>,
+    data: &[u8],
+  ) -> Result<usize, std::io::Error> {
+    dbg!(data.len());
+    self.stream.clone().write(data).await
+  }
+}
+
+impl Resource for Http2SessionDriver {
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+}
+
+// Called by nghttp2 at the start of receiving a HEADERS frame. We use this
+// callback to determine if a new stream is being created or if we are simply
+// adding a new block of headers to an existing stream. The header pairs
+// themselves are set in the OnHeaderCallback
+unsafe extern "C" fn on_begin_headers_callbacks(
+  session: *mut ffi::nghttp2_session,
+  frame: *const ffi::nghttp2_frame,
+  data: *mut c_void,
+) -> i32 {
+    dbg!(frame);
+    0
+}
+
+impl Http2Session {
+  fn callbacks() -> *mut ffi::nghttp2_session_callbacks {
+    let mut callbacks: *mut ffi::nghttp2_session_callbacks =
+      std::ptr::null_mut();
+    unsafe {
+      assert_eq!(ffi::nghttp2_session_callbacks_new(&mut callbacks), 0);
+
+      ffi::nghttp2_session_callbacks_set_on_begin_headers_callback(
+        callbacks,
+        Some(on_begin_headers_callbacks),
+      );
+      /*
+      ffi::nghttp2_session_callbacks_set_on_header_callback2(
+        &mut callbacks, OnHeaderCallback);
+      ffi::nghttp2_session_callbacks_set_on_frame_recv_callback(
+        &mut callbacks, OnFrameReceive);
+      ffi::nghttp2_session_callbacks_set_on_stream_close_callback(
+        &mut callbacks, OnStreamClose);
+      ffi::nghttp2_session_callbacks_set_on_data_chunk_recv_callback(
+        &mut callbacks, OnDataChunkReceived);
+      ffi::nghttp2_session_callbacks_set_on_frame_not_send_callback(
+        &mut callbacks, OnFrameNotSent);
+      ffi::nghttp2_session_callbacks_set_on_invalid_header_callback2(
+        &mut callbacks, OnInvalidHeader);
+      ffi::nghttp2_session_callbacks_set_error_callback2(&mut callbacks, OnNghttpError);
+      ffi::nghttp2_session_callbacks_set_send_data_callback(
+        &mut callbacks, OnSendData);
+      ffi::nghttp2_session_callbacks_set_on_invalid_frame_recv_callback(
+        &mut callbacks, OnInvalidFrame);
+      ffi::nghttp2_session_callbacks_set_on_frame_send_callback(
+        &mut callbacks, OnFrameSent);
+      */
+    }
+    callbacks
+  }
+
+  fn create(session_type: SessionType) -> Self {
+    let mut session: *mut ffi::nghttp2_session = std::ptr::null_mut();
+    let func = match session_type {
+      SessionType::Server => ffi::nghttp2_session_server_new2,
+      SessionType::Client => ffi::nghttp2_session_client_new2,
+    };
+
+    unsafe {
+      (func)(
+        &mut session,
+        Self::callbacks(),
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+      );
+    }
+
+    Self {
+      type_: session_type,
+      session,
+      callbacks: std::ptr::null_mut(),
+    }
+  }
+}
+
 #[op2]
 impl Http2Session {
   #[constructor]
   #[cppgc]
-  fn new(_: bool) -> Http2Session {
-    Http2Session {}
+  fn new(#[smi] type_: i32) -> Http2Session {
+    Http2Session::create(match type_ {
+      0 => SessionType::Server,
+      1 => SessionType::Client,
+      _ => unreachable!(),
+    })
   }
+
+  #[fast]
+  #[smi]
+  fn consume(&self, state: &mut OpState, rid: u32) -> u32 {
+    let stream = state.resource_table.take::<TcpStreamResource>(rid).unwrap();
+    state.resource_table.add(Http2SessionDriver {
+      stream,
+      session: self.session,
+    })
+  }
+
+  #[fast]
+  fn destroy(&self) {}
 
   #[fast]
   fn settings(&self) -> bool {
     true
+  }
+
+  #[fast]
+  fn goaway(&self) {}
+
+  #[fast]
+  fn set_graceful_close(&self) {}
+
+  #[fast]
+  fn has_pending_data(&self) -> bool {
+    false
   }
 
   #[fast]

@@ -3,6 +3,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 
+const { internalRidSymbol } = core;
 const {
   ArrayFrom,
   ArrayIsArray,
@@ -33,6 +34,9 @@ import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
 import tls from "node:tls";
+import {
+  kStreamBaseField,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { EventEmitter } from "node:events";
 import { kTimeout } from "ext:deno_node/internal/timers.mjs";
 import { format } from "node:util";
@@ -501,9 +505,11 @@ function setupHandle(socket, type, options) {
   const handle = new InternalHttp2Session(type);
   handle[kOwner] = this;
 
-  // TODO: how?
-  // handle.consume(stream?.[internalRidSymbol]);
-  // socket._handle.pushStreamListener(handle);
+  const b = socket._handle[kStreamBaseField]?.[internalRidSymbol];
+  // TODO: take the resource in rust and drive http2 over it. stop tcp_wrap in js??
+  socket._handle[kStreamBaseField][internalRidSymbol] = handle.consume(
+    b,
+  );
   debug("i/o stream consumed");
 
   handle.ongracefulclosecomplete = this[kMaybeDestroy].bind(this, null);
@@ -1153,6 +1159,14 @@ class Http2Session extends EventEmitter {
     }
   }
 }
+
+const setTimeoutValue = {
+  configurable: true,
+  enumerable: true,
+  writable: true,
+  value: setStreamTimeout,
+};
+ObjectDefineProperty(Http2Session.prototype, "setTimeout", setTimeoutValue);
 
 // ServerHttp2Session instances should never have to wait for the socket
 // to connect as they are always created after the socket has already been
