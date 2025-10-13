@@ -877,6 +877,7 @@
 "parallel/test-process-emitwarning.js" = {}
 "parallel/test-process-env-allowed-flags.js" = {}
 "parallel/test-process-env-delete.js" = {}
+"parallel/test-process-env-deprecation.js" = {}
 "parallel/test-process-env-sideeffects.js" = {}
 "parallel/test-process-env-tz.js" = {}
 "parallel/test-process-env-windows-error-reset.js" = {}

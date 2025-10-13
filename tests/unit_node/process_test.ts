@@ -485,6 +485,23 @@ Deno.test({
 });
 
 Deno.test({
+  // NB(Tango992): Node.js does not support using symbols as env keys,
+  // thus this test should be omitted once we align with Node.js behavior.
+  name: "process.env: setting and getting a symbol key",
+  fn() {
+    const symbol = Symbol.for("foo");
+    // @ts-expect-error setting a symbol key
+    process.env[symbol] = "foo";
+    // @ts-expect-error getting a symbol key
+    assertEquals(process.env[symbol], "foo");
+    assert(Reflect.has(process.env, symbol));
+    // @ts-expect-error deleting a symbol key
+    delete process.env[symbol];
+    assertFalse(Reflect.has(process.env, symbol));
+  },
+});
+
+Deno.test({
   name: "process.stdin",
   fn() {
     // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.

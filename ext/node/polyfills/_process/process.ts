@@ -94,12 +94,38 @@ export const env:
         };
       }
     },
-    set(_target, prop, value) {
+    set(target, prop, value) {
+      if (typeof prop === "symbol") {
+        target[prop] = value;
+        return true;
+      }
+
+      if (typeof value !== "string") {
+        process.emitWarning(
+          "Assigning any value other than a string, number, or boolean to a " +
+            "process.env property is deprecated. Please make sure to convert the value " +
+            "to a string before setting process.env with it.",
+          "DeprecationWarning",
+          "DEP0104",
+        );
+      }
+
       Deno.env.set(String(prop), String(value));
       return true; // success
     },
-    has: (_target, prop) => typeof env[prop] === "string",
-    deleteProperty(_target, key) {
+    has: (target, prop) => {
+      if (typeof prop === "symbol") {
+        return prop in target;
+      }
+
+      return typeof denoEnvGet(prop) === "string";
+    },
+    deleteProperty(target, key) {
+      if (typeof key === "symbol") {
+        delete target[key];
+        return true;
+      }
+
       Deno.env.delete(String(key));
       return true;
     },
