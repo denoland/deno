@@ -81,18 +81,12 @@ mod npm {
     let mut deps_map =
       HashMap::with_capacity(resolution_package.dependencies.len());
     for dep in resolution_package.dependencies.iter() {
-      if seen.contains(&format!(
-        "{}@{}",
-        dep.0.to_string(),
-        dep.1.nv.version.to_string()
-      )) {
+      let seen_str =
+        format!("{}@{}", dep.0.to_string(), dep.1.nv.version.to_string());
+      if seen.contains(&seen_str) {
         continue;
       }
-      seen.insert(format!(
-        "{}@{}",
-        dep.0.to_string(),
-        dep.1.nv.version.to_string()
-      ));
+      seen.insert(seen_str);
 
       let dep_deps = get_dependency_descriptors_for_deps(
         seen,
@@ -193,7 +187,7 @@ mod npm {
       let actions = adv.find_actions(&response.actions);
       log::info!("╭ {}", colors::bold(adv.title.to_string()));
       log::info!(
-        "│   {} {}",
+        "│ {}   {}",
         colors::gray("Severity:"),
         match adv.severity.as_str() {
           "low" => colors::bold("low").to_string(),
@@ -203,26 +197,26 @@ mod npm {
           sev => sev.to_string(),
         }
       );
-      log::info!("│    {} {}", colors::gray("Package:"), adv.module_name);
+      log::info!("│ {}    {}", colors::gray("Package:"), adv.module_name);
       log::info!(
         "│ {} {}",
         colors::gray("Vulnerable:"),
         adv.vulnerable_versions
       );
-      log::info!("│    {} {}", colors::gray("Patched:"), adv.patched_versions);
+      log::info!("│ {}    {}", colors::gray("Patched:"), adv.patched_versions);
       if actions.is_empty() {
-        log::info!("╰─      {} {}", colors::gray("Info:"), adv.url);
+        log::info!("╰ {}      {}", colors::gray("Info:"), adv.url);
       } else {
-        log::info!("│       {} {}", colors::gray("Info:"), adv.url);
+        log::info!("│ {}       {}", colors::gray("Info:"), adv.url);
       }
       if actions.len() == 1 {
-        log::info!("╰─   {} {}", colors::gray("Actions:"), actions[0]);
+        log::info!("╰ {}    {}", colors::gray("Actions:"), actions[0]);
       } else {
-        log::info!("│    {} {}", colors::gray("Actions:"), actions[0]);
+        log::info!("│ {}    {}", colors::gray("Actions:"), actions[0]);
         for action in &actions[1..actions.len() - 2] {
           log::info!("│             {}", action);
         }
-        log::info!("╰─            {}", actions[actions.len() - 1]);
+        log::info!("╰            {}", actions[actions.len() - 1]);
       }
       log::info!("");
     }
