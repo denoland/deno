@@ -6,7 +6,11 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { newAsyncId } from "ext:deno_node/internal/async_hooks.ts";
+import {
+  AsyncHook,
+  executionAsyncId as internalExecutionAsyncId,
+  newAsyncId,
+} from "ext:deno_node/internal/async_hooks.ts";
 
 const {
   ObjectDefineProperties,
@@ -138,16 +142,15 @@ export class AsyncLocalStorage {
   }
 
   static snapshot() {
-    return AsyncLocalStorage.bind((
-      cb: (...args: unknown[]) => unknown,
-      ...args: unknown[]
-    ) => ReflectApply(cb, null, args));
+    const resource = new AsyncResource("AsyncLocalStorage.snapshot");
+    return function (cb: (...args: unknown[]) => unknown, ...args: unknown[]) {
+      return resource.runInAsyncScope(cb, null, ...args);
+    };
   }
 }
 
-export function executionAsyncId() {
-  return 0;
-}
+// Re-export executionAsyncId from internal
+export const executionAsyncId = internalExecutionAsyncId;
 
 export function triggerAsyncId() {
   return 0;
@@ -224,16 +227,20 @@ export const asyncWrapProviders = ObjectFreeze({
   VERIFYREQUEST: 62,
 });
 
-class AsyncHook {
-  enable() {
-  }
-
-  disable() {
-  }
-}
-
-export function createHook() {
-  return new AsyncHook();
+// Use the AsyncHook from the internal module
+export function createHook(callbacks: {
+  init?: (
+    asyncId: number,
+    type: string,
+    triggerAsyncId: number,
+    resource: unknown,
+  ) => void;
+  before?: (asyncId: number) => void;
+  after?: (asyncId: number) => void;
+  destroy?: (asyncId: number) => void;
+  promiseResolve?: (asyncId: number) => void;
+}) {
+  return new AsyncHook(callbacks);
 }
 
 export default {

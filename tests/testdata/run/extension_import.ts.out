@@ -1,9 +1,1 @@
-error: Unsupported scheme "ext" for module "ext:runtime/01_errors.js". Supported schemes:
- - "blob"
- - "data"
- - "file"
- - "http"
- - "https"
- - "jsr"
- - "npm"
-    at [WILDCARD]/extension_import.ts:1:8
+error: Importing ext: modules is only allowed from ext: and node: modules. Tried to import ext:runtime/01_errors.js from file:///[WILDLINE]/extension_import.ts

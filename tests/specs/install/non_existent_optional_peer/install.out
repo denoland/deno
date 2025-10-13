@@ -4,3 +4,11 @@ Download http://localhost:4260/uWebSockets.js
 Download http://localhost:4260/@denotest/non-existent-optional-peer/1.0.0.tgz
 [UNORDERED_END]
 Initialize @denotest/non-existent-optional-peer@1.0.0
+Installed [WILDLINE] package in [WILDCARD]
+Reused [WILDLINE] packages from cache
+Downloaded [WILDLINE] packages from JSR
+Downloaded [WILDLINE] packages from npm
+[WILDLINE]
+
+Dependencies:
+[WILDCARD]

@@ -1,5 +1,5 @@
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "symbol-mangling-version=v0"]
 
 [target.'cfg(all(windows, debug_assertions))']
 rustflags = [

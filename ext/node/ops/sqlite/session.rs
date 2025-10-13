@@ -25,7 +25,7 @@ impl FromV8<'_> for SessionOptions {
   type Error = validators::Error;
 
   fn from_v8(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, validators::Error> {
     use validators::Error;
@@ -90,7 +90,10 @@ pub struct Session {
   pub(crate) db: Weak<RefCell<Option<rusqlite::Connection>>>,
 }
 
-impl GarbageCollected for Session {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Session {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Session"
   }
@@ -121,6 +124,12 @@ impl Session {
 
 #[op2]
 impl Session {
+  #[constructor]
+  #[cppgc]
+  fn create(_: bool) -> Session {
+    unreachable!()
+  }
+
   // Closes the session.
   #[fast]
   #[undefined]

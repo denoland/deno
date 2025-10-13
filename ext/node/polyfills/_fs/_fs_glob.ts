@@ -42,6 +42,7 @@ import {
 import assert from "node:assert";
 
 import type { ErrnoException } from "ext:deno_node/_global.d.ts";
+import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 
 interface GlobOptionsBase {
   /**
@@ -336,7 +337,7 @@ export class Glob {
   constructor(pattern, options = kEmptyObject) {
     validateObject(options, "options");
     const { exclude, cwd, withFileTypes } = options;
-    this.#root = cwd ?? ".";
+    this.#root = toPathIfFileURL(cwd) ?? ".";
     this.#withFileTypes = !!withFileTypes;
     if (exclude != null) {
       validateStringArrayOrFunction(exclude, "options.exclude");
@@ -925,12 +926,15 @@ export class Glob {
 
 /**
  * Check if a path matches a glob pattern
- * @param {string} path the path to check
- * @param {string} pattern the glob pattern to match
- * @param {boolean} windows whether the path is on a Windows system, defaults to `isWindows`
- * @returns {boolean}
+ * @param path the path to check
+ * @param pattern the glob pattern to match
+ * @param windows whether the path is on a Windows system, defaults to `isWindows`
  */
-export function matchGlobPattern(path, pattern, windows = isWindows) {
+export function matchGlobPattern(
+  path: string,
+  pattern: string,
+  windows = isWindows,
+): boolean {
   validateString(path, "path");
   validateString(pattern, "pattern");
   return lazyMinimatch().default.minimatch(path, pattern, {

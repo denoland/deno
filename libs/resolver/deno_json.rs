@@ -14,8 +14,11 @@ use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CompilerOptionsSource;
 use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceRc;
 use deno_error::JsError;
+use deno_maybe_sync::new_rc;
 use deno_path_util::normalize_path;
+use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
@@ -25,6 +28,7 @@ use indexmap::IndexSet;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolver;
+use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 #[cfg(feature = "sync")]
 use once_cell::sync::OnceCell;
@@ -39,19 +43,16 @@ use url::Url;
 
 use crate::collections::FolderScopedWithUnscopedMap;
 use crate::factory::ConfigDiscoveryOption;
-use crate::factory::WorkspaceDirectoryProvider;
 use crate::npm::DenoInNpmPackageChecker;
-use crate::npm::NpmResolver;
 use crate::npm::NpmResolverSys;
-use crate::sync::new_rc;
 
 #[allow(clippy::disallowed_types)]
-type UrlRc = crate::sync::MaybeArc<Url>;
+type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 #[allow(clippy::disallowed_types)]
-type CompilerOptionsRc = crate::sync::MaybeArc<CompilerOptions>;
+type CompilerOptionsRc = deno_maybe_sync::MaybeArc<CompilerOptions>;
 #[allow(clippy::disallowed_types)]
 pub type CompilerOptionsTypesRc =
-  crate::sync::MaybeArc<Vec<(Url, Vec<String>)>>;
+  deno_maybe_sync::MaybeArc<Vec<(Url, Vec<String>)>>;
 
 /// A structure that represents a set of options that were ignored and the
 /// path those options came from.
@@ -107,6 +108,7 @@ pub struct ParsedCompilerOptions {
 static ALLOWED_COMPILER_OPTIONS: phf::Set<&'static str> = phf::phf_set! {
   "allowUnreachableCode",
   "allowUnusedLabels",
+  "baseUrl",
   "checkJs",
   "erasableSyntaxOnly",
   "emitDecoratorMetadata",
@@ -129,6 +131,7 @@ static ALLOWED_COMPILER_OPTIONS: phf::Set<&'static str> = phf::phf_set! {
   "noUncheckedIndexedAccess",
   "noUnusedLocals",
   "noUnusedParameters",
+  "paths",
   "rootDirs",
   "skipLibCheck",
   "strict",
@@ -159,7 +162,25 @@ pub fn parse_compiler_options(
     // know about this option. It will still take this option into account
     // because the graph resolves the JSX import source to the types for TSC.
     if key != "types" && key != "jsxImportSourceTypes" {
-      if ALLOWED_COMPILER_OPTIONS.contains(key.as_str()) {
+      if (key == "module"
+        && value
+          .as_str()
+          .map(|s| {
+            matches!(
+              s.to_ascii_lowercase().as_str(),
+              "nodenext" | "esnext" | "preserve"
+            )
+          })
+          .unwrap_or(false))
+        || (key == "moduleResolution"
+          && value
+            .as_str()
+            .map(|s| {
+              matches!(s.to_ascii_lowercase().as_str(), "nodenext" | "bundler")
+            })
+            .unwrap_or(false))
+        || ALLOWED_COMPILER_OPTIONS.contains(key.as_str())
+      {
         allowed.insert(key, value.to_owned());
       } else {
         ignored.push(key);
@@ -207,7 +228,21 @@ pub struct JsxImportSourceConfig {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type JsxImportSourceConfigRc = crate::sync::MaybeArc<JsxImportSourceConfig>;
+pub type JsxImportSourceConfigRc =
+  deno_maybe_sync::MaybeArc<JsxImportSourceConfig>;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+enum CompilerOptionsModule {
+  NodeNext,
+  EsNext,
+  Preserve,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum CompilerOptionsModuleResolution {
+  NodeNext,
+  Bundler,
+}
 
 #[derive(Debug, Clone, Error, JsError)]
 #[class(type)]
@@ -265,7 +300,6 @@ pub fn get_base_compiler_options_for_emit(
       "jsxFactory": "React.createElement",
       "jsxFragmentFactory": "React.Fragment",
       "module": "NodeNext",
-      "moduleResolution": "NodeNext",
     })),
     CompilerOptionsType::Check { lib } => CompilerOptions::new(json!({
       "allowJs": true,
@@ -287,7 +321,6 @@ pub fn get_base_compiler_options_for_emit(
         (TsTypeLib::DenoWorker, CompilerOptionsSourceKind::TsConfig) => vec!["deno.worker", "deno.unstable", "dom"],
       },
       "module": "NodeNext",
-      "moduleResolution": "NodeNext",
       "moduleDetection": "force",
       "noEmit": true,
       "noImplicitOverride": match source_kind {
@@ -337,16 +370,109 @@ pub struct TranspileAndEmitOptions {
 #[cfg(feature = "deno_ast")]
 #[allow(clippy::disallowed_types)]
 pub type TranspileAndEmitOptionsRc =
-  crate::sync::MaybeArc<TranspileAndEmitOptions>;
+  deno_maybe_sync::MaybeArc<TranspileAndEmitOptions>;
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+struct WildcardString {
+  prefix: String,
+  suffix_if_wildcard: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]
+pub struct CompilerOptionsPaths {
+  resolved: Vec<(String, WildcardString, Vec<WildcardString>)>,
+}
+
+impl CompilerOptionsPaths {
+  fn new(
+    object: &serde_json::Map<String, serde_json::Value>,
+    base: &Url,
+  ) -> Self {
+    let resolved = object
+      .iter()
+      .filter_map(|(raw_key, value)| {
+        let value = value.as_array()?;
+        let mut key_prefix = raw_key.as_str();
+        let mut key_suffix_if_wildcard = None;
+        if let Some((prefix, suffix)) = raw_key.split_once('*') {
+          if suffix.contains('*') {
+            return None;
+          }
+          key_prefix = prefix;
+          key_suffix_if_wildcard = Some(suffix);
+        }
+        let key_prefix = if key_prefix.starts_with("./")
+          || key_prefix.starts_with("../")
+          || key_prefix.starts_with("/")
+        {
+          base.join(key_prefix).ok()?.to_string()
+        } else {
+          key_prefix.to_string()
+        };
+        let key = WildcardString {
+          prefix: key_prefix,
+          suffix_if_wildcard: key_suffix_if_wildcard.map(|s| s.to_string()),
+        };
+        let paths = value
+          .iter()
+          .filter_map(|entry| {
+            let mut entry_prefix = entry.as_str()?;
+            let mut entry_suffix_if_wildcard = None;
+            if let Some((prefix, suffix)) = entry_prefix.split_once('*') {
+              if suffix.contains('*') {
+                return None;
+              }
+              entry_prefix = prefix;
+              entry_suffix_if_wildcard = Some(suffix);
+            }
+            let entry_prefix = base.join(entry_prefix).ok()?.to_string();
+            Some(WildcardString {
+              prefix: entry_prefix,
+              suffix_if_wildcard: entry_suffix_if_wildcard
+                .map(|s| s.to_string()),
+            })
+          })
+          .collect();
+        Some((raw_key.clone(), key, paths))
+      })
+      .collect();
+    Self { resolved }
+  }
+
+  pub fn resolve_candidates(
+    &self,
+    specifier: &str,
+  ) -> Option<(impl Iterator<Item = Url>, String)> {
+    self.resolved.iter().find_map(|(raw_key, key, paths)| {
+      let mut matched = specifier.strip_prefix(&key.prefix)?;
+      if let Some(key_suffix) = &key.suffix_if_wildcard {
+        matched = matched.strip_suffix(key_suffix)?;
+      } else if !matched.is_empty() {
+        return None;
+      }
+      Some((
+        paths.iter().filter_map(move |path| {
+          if let Some(path_suffix) = &path.suffix_if_wildcard {
+            Url::parse(&format!("{}{matched}{}", &path.prefix, path_suffix))
+              .ok()
+          } else {
+            Url::parse(&path.prefix).ok()
+          }
+        }),
+        raw_key.clone(),
+      ))
+    })
+  }
+}
 
 #[derive(Debug, Default)]
 struct LoggedWarnings {
   experimental_decorators: AtomicFlag,
-  folders: crate::sync::MaybeDashSet<Url>,
+  folders: deno_maybe_sync::MaybeDashSet<Url>,
 }
 
 #[allow(clippy::disallowed_types)]
-type LoggedWarningsRc = crate::sync::MaybeArc<LoggedWarnings>;
+type LoggedWarningsRc = deno_maybe_sync::MaybeArc<LoggedWarnings>;
 
 #[derive(Default, Debug)]
 struct MemoizedValues {
@@ -363,7 +489,12 @@ struct MemoizedValues {
   jsx_import_source_config: OnceCell<
     Result<Option<JsxImportSourceConfigRc>, ToMaybeJsxImportSourceConfigError>,
   >,
+  module: OnceCell<CompilerOptionsModule>,
+  module_resolution: OnceCell<CompilerOptionsModuleResolution>,
   check_js: OnceCell<bool>,
+  base_url: OnceCell<Option<Url>>,
+  paths: OnceCell<CompilerOptionsPaths>,
+  root_dirs: OnceCell<Vec<Url>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -584,6 +715,49 @@ impl CompilerOptionsData {
     result.as_ref().map(|c| c.as_ref()).map_err(Clone::clone)
   }
 
+  fn module(&self) -> CompilerOptionsModule {
+    *self.memoized.module.get_or_init(|| {
+      let value = self.sources.iter().rev().find_map(|s| {
+        s.compiler_options
+          .as_ref()?
+          .0
+          .as_object()?
+          .get("module")?
+          .as_str()
+      });
+      match value.map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("esnext") => CompilerOptionsModule::EsNext,
+        Some("preserve") => CompilerOptionsModule::Preserve,
+        _ => CompilerOptionsModule::NodeNext,
+      }
+    })
+  }
+
+  pub fn module_resolution(&self) -> CompilerOptionsModuleResolution {
+    *self.memoized.module_resolution.get_or_init(|| {
+      let value = self.sources.iter().rev().find_map(|s| {
+        s.compiler_options
+          .as_ref()?
+          .0
+          .as_object()?
+          .get("moduleResolution")?
+          .as_str()
+      });
+      match value.map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("nodenext") => CompilerOptionsModuleResolution::NodeNext,
+        Some("bundler") => CompilerOptionsModuleResolution::Bundler,
+        _ => match self.module() {
+          CompilerOptionsModule::NodeNext => {
+            CompilerOptionsModuleResolution::NodeNext
+          }
+          CompilerOptionsModule::EsNext | CompilerOptionsModule::Preserve => {
+            CompilerOptionsModuleResolution::Bundler
+          }
+        },
+      }
+    })
+  }
+
   pub fn check_js(&self) -> bool {
     *self.memoized.check_js.get_or_init(|| {
       self
@@ -599,6 +773,83 @@ impl CompilerOptionsData {
             .as_bool()
         })
         .unwrap_or(false)
+    })
+  }
+
+  fn base_url(&self) -> Option<&Url> {
+    let base_url = self.memoized.base_url.get_or_init(|| {
+      let base_url = self.sources.iter().rev().find_map(|s| {
+        s.compiler_options
+          .as_ref()?
+          .0
+          .as_object()?
+          .get("baseUrl")?
+          .as_str()
+      })?;
+      url_from_directory_path(
+        &url_to_file_path(&self.sources.last()?.specifier)
+          .ok()?
+          .parent()?
+          .join(base_url),
+      )
+      .ok()
+    });
+    base_url.as_ref()
+  }
+
+  pub fn paths(&self) -> &CompilerOptionsPaths {
+    self.memoized.paths.get_or_init(|| {
+      let Some((source_specifier, paths)) =
+        self.sources.iter().rev().find_map(|s| {
+          Some((
+            &s.specifier,
+            s.compiler_options
+              .as_ref()?
+              .0
+              .as_object()?
+              .get("paths")?
+              .as_object()?,
+          ))
+        })
+      else {
+        return Default::default();
+      };
+      CompilerOptionsPaths::new(
+        paths,
+        self.base_url().unwrap_or(source_specifier),
+      )
+    })
+  }
+
+  pub fn root_dirs(&self) -> &Vec<Url> {
+    self.memoized.root_dirs.get_or_init(|| {
+      let Some((source_specifier, root_dirs)) =
+        self.sources.iter().rev().find_map(|s| {
+          Some((
+            &s.specifier,
+            s.compiler_options
+              .as_ref()?
+              .0
+              .as_object()?
+              .get("rootDirs")?
+              .as_array()?,
+          ))
+        })
+      else {
+        return Vec::new();
+      };
+      root_dirs
+        .iter()
+        .filter_map(|s| {
+          url_from_directory_path(
+            &url_to_file_path(self.base_url().unwrap_or(source_specifier))
+              .ok()?
+              .parent()?
+              .join(s.as_str()?),
+          )
+          .ok()
+        })
+        .collect()
     })
   }
 
@@ -676,7 +927,7 @@ impl TsConfigFileFilter {
 }
 
 #[allow(clippy::disallowed_types)]
-type TsConfigFileFilterRc = crate::sync::MaybeArc<TsConfigFileFilter>;
+type TsConfigFileFilterRc = deno_maybe_sync::MaybeArc<TsConfigFileFilter>;
 
 #[derive(Debug)]
 pub struct TsConfigData {
@@ -708,29 +959,38 @@ fn is_maybe_directory_error(err: &std::io::Error) -> bool {
     || cfg!(windows) && kind == ErrorKind::PermissionDenied
 }
 
-type TsConfigNodeResolver<TSys> = NodeResolver<
+pub(crate) type TsConfigNodeResolver<TSys, TNpfr> = NodeResolver<
   DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
-  NpmResolver<TSys>,
+  TNpfr,
   TSys,
 >;
 
-type GetNodeResolverFn<'a, NSys> =
-  Box<dyn Fn(&Url) -> Option<&'a TsConfigNodeResolver<NSys>> + 'a>;
+type GetNodeResolverFn<'a, NSys, TNpfr> =
+  Box<dyn Fn(&Url) -> Option<&'a TsConfigNodeResolver<NSys, TNpfr>> + 'a>;
 
-struct TsConfigCollector<'a, 'b, TSys: FsRead, NSys: NpmResolverSys> {
+struct TsConfigCollector<
+  'a,
+  'b,
+  TSys: FsRead,
+  NSys: NpmResolverSys,
+  TNpfr: NpmPackageFolderResolver,
+> {
   roots: BTreeSet<PathBuf>,
   collected: IndexMap<UrlRc, Rc<TsConfigData>>,
   read_cache: HashMap<PathBuf, Result<Rc<TsConfigData>, Rc<std::io::Error>>>,
   currently_reading: IndexSet<PathBuf>,
   sys: &'a TSys,
-  get_node_resolver: GetNodeResolverFn<'b, NSys>,
+  get_node_resolver: GetNodeResolverFn<'b, NSys, TNpfr>,
   logged_warnings: &'a LoggedWarningsRc,
   overrides: CompilerOptionsOverrides,
 }
 
-impl<TSys: FsRead + std::fmt::Debug, NSys: NpmResolverSys> std::fmt::Debug
-  for TsConfigCollector<'_, '_, TSys, NSys>
+impl<
+  TSys: FsRead + std::fmt::Debug,
+  NSys: NpmResolverSys,
+  TNpfr: NpmPackageFolderResolver,
+> std::fmt::Debug for TsConfigCollector<'_, '_, TSys, NSys, TNpfr>
 {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("TsConfigCollector")
@@ -744,12 +1004,17 @@ impl<TSys: FsRead + std::fmt::Debug, NSys: NpmResolverSys> std::fmt::Debug
   }
 }
 
-impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
-  TsConfigCollector<'a, 'b, TSys, NSys>
+impl<
+  'a,
+  'b,
+  TSys: FsRead,
+  NSys: NpmResolverSys,
+  TNpfr: NpmPackageFolderResolver,
+> TsConfigCollector<'a, 'b, TSys, NSys, TNpfr>
 {
   fn new(
     sys: &'a TSys,
-    get_node_resolver: GetNodeResolverFn<'b, NSys>,
+    get_node_resolver: GetNodeResolverFn<'b, NSys, TNpfr>,
     logged_warnings: &'a LoggedWarningsRc,
     overrides: CompilerOptionsOverrides,
   ) -> Self {
@@ -925,12 +1190,19 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       });
     let include = object
       .and_then(|o| {
-        PathOrPatternSet::from_include_relative_path_or_patterns(
-          dir_path,
+        PathOrPatternSet::from_absolute_paths(
           &o.get("include")?
             .as_array()?
             .iter()
-            .filter_map(|v| Some(v.as_str()?.to_string()))
+            .filter_map(|v| {
+              let path = Path::new(v.as_str()?);
+              let absolute_path = if path.is_absolute() {
+                normalize_path(Cow::Borrowed(path))
+              } else {
+                normalize_path(Cow::Owned(dir_path.join(path)))
+              };
+              Some(absolute_path.to_string_lossy().into_owned())
+            })
             .collect::<Vec<_>>(),
         )
         .ok()
@@ -944,12 +1216,19 @@ impl<'a, 'b, TSys: FsRead, NSys: NpmResolverSys>
       .or_else(|| files.is_some().then(Default::default));
     let exclude = object
       .and_then(|o| {
-        PathOrPatternSet::from_exclude_relative_path_or_patterns(
-          dir_path,
+        PathOrPatternSet::from_absolute_paths(
           &o.get("exclude")?
             .as_array()?
             .iter()
-            .filter_map(|v| Some(v.as_str()?.to_string()))
+            .filter_map(|v| {
+              let path = Path::new(v.as_str()?);
+              let absolute_path = if path.is_absolute() {
+                normalize_path(Cow::Borrowed(path))
+              } else {
+                normalize_path(Cow::Owned(dir_path.join(path)))
+              };
+              Some(absolute_path.to_string_lossy().into_owned())
+            })
             .collect::<Vec<_>>(),
         )
         .ok()
@@ -1040,10 +1319,14 @@ impl Default for CompilerOptionsResolver {
 }
 
 impl CompilerOptionsResolver {
-  pub fn new<TSys: FsRead, NSys: NpmResolverSys>(
+  pub fn new<
+    TSys: FsRead,
+    NSys: NpmResolverSys,
+    TNpfr: NpmPackageFolderResolver,
+  >(
     sys: &TSys,
-    workspace_directory_provider: &WorkspaceDirectoryProvider,
-    node_resolver: &TsConfigNodeResolver<NSys>,
+    workspace: &WorkspaceRc,
+    node_resolver: &TsConfigNodeResolver<NSys, TNpfr>,
     config_discover: &ConfigDiscoveryOption,
     overrides: &CompilerOptionsOverrides,
   ) -> Self {
@@ -1068,7 +1351,7 @@ impl CompilerOptionsResolver {
       &logged_warnings,
       overrides.clone(),
     );
-    let root_dir = workspace_directory_provider.root();
+    let root_dir = workspace.root_dir();
     let mut workspace_configs =
       FolderScopedWithUnscopedMap::new(CompilerOptionsData::new(
         root_dir.to_configured_compiler_options_sources(),
@@ -1077,17 +1360,17 @@ impl CompilerOptionsResolver {
         logged_warnings.clone(),
         overrides.clone(),
       ));
-    for (dir_url, dir) in workspace_directory_provider.entries() {
+    for dir in workspace.resolve_member_dirs() {
       if dir.has_deno_or_pkg_json() {
         ts_config_collector.add_root(dir.dir_path().join("tsconfig.json"));
       }
-      if let Some(dir_url) = dir_url {
+      if dir.dir_url() != root_dir.dir_url() {
         workspace_configs.insert(
-          dir_url.clone(),
+          dir.dir_url().clone(),
           CompilerOptionsData::new(
             dir.to_configured_compiler_options_sources(),
             CompilerOptionsSourceKind::DenoJson,
-            Some(dir_url.clone()),
+            Some(dir.dir_url().clone()),
             logged_warnings.clone(),
             overrides.clone(),
           ),
@@ -1170,10 +1453,18 @@ impl CompilerOptionsResolver {
     self.workspace_configs.count() + self.ts_configs.len()
   }
 
-  pub fn new_for_dirs_by_scope<TSys: FsRead, NSys: NpmResolverSys>(
+  pub fn has_root_dirs(&self) -> bool {
+    self.entries().any(|(_, d, _)| !d.root_dirs().is_empty())
+  }
+
+  pub fn new_for_dirs_by_scope<
+    TSys: FsRead,
+    NSys: NpmResolverSys,
+    TNpfr: NpmPackageFolderResolver,
+  >(
     sys: &TSys,
     dirs_by_scope: BTreeMap<&UrlRc, &WorkspaceDirectory>,
-    get_node_resolver: GetNodeResolverFn<'_, NSys>,
+    get_node_resolver: GetNodeResolverFn<'_, NSys, TNpfr>,
   ) -> Self {
     let logged_warnings = new_rc(LoggedWarnings::default());
     let mut ts_config_collector = TsConfigCollector::new(
@@ -1221,7 +1512,7 @@ impl deno_graph::CheckJsResolver for CompilerOptionsResolver {
 
 #[allow(clippy::disallowed_types)]
 pub type CompilerOptionsResolverRc =
-  crate::sync::MaybeArc<CompilerOptionsResolver>;
+  deno_maybe_sync::MaybeArc<CompilerOptionsResolver>;
 
 /// JSX config stored in `CompilerOptionsResolver`, but fallibly resolved
 /// ahead of time as needed for the graph resolver.
@@ -1281,17 +1572,40 @@ fn compiler_options_to_transpile_and_emit_options(
       "error" => deno_ast::ImportsNotUsedAsValues::Error,
       _ => deno_ast::ImportsNotUsedAsValues::Remove,
     };
-  let (transform_jsx, jsx_automatic, jsx_development, precompile_jsx) =
-    match overrides.preserve_jsx {
-      true => (false, false, false, false),
-      false => match options.jsx.as_str() {
-        "react" => (true, false, false, false),
-        "react-jsx" => (true, true, false, false),
-        "react-jsxdev" => (true, true, true, false),
-        "precompile" => (false, false, false, true),
-        _ => (false, false, false, false),
-      },
-    };
+  let jsx = match overrides.preserve_jsx {
+    true => None,
+    false => match options.jsx.as_str() {
+      "react" => {
+        Some(deno_ast::JsxRuntime::Classic(deno_ast::JsxClassicOptions {
+          factory: options.jsx_factory,
+          fragment_factory: options.jsx_fragment_factory,
+        }))
+      }
+      "react-jsx" => Some(deno_ast::JsxRuntime::Automatic(
+        deno_ast::JsxAutomaticOptions {
+          development: false,
+          import_source: options.jsx_import_source,
+        },
+      )),
+      "react-jsxdev" => Some(deno_ast::JsxRuntime::Automatic(
+        deno_ast::JsxAutomaticOptions {
+          development: true,
+          import_source: options.jsx_import_source,
+        },
+      )),
+      "precompile" => Some(deno_ast::JsxRuntime::Precompile(
+        deno_ast::JsxPrecompileOptions {
+          automatic: deno_ast::JsxAutomaticOptions {
+            development: false,
+            import_source: options.jsx_import_source,
+          },
+          skip_elements: options.jsx_precompile_skip_elements,
+          dynamic_props: None,
+        },
+      )),
+      _ => None,
+    },
+  };
   let source_map = if options.inline_source_map {
     deno_ast::SourceMapOption::Inline
   } else if options.source_map {
@@ -1300,19 +1614,15 @@ fn compiler_options_to_transpile_and_emit_options(
     deno_ast::SourceMapOption::None
   };
   let transpile = deno_ast::TranspileOptions {
-    use_ts_decorators: options.experimental_decorators,
-    use_decorators_proposal: !options.experimental_decorators,
-    emit_metadata: options.emit_decorator_metadata,
+    decorators: if options.experimental_decorators {
+      deno_ast::DecoratorsTranspileOption::LegacyTypeScript {
+        emit_metadata: options.emit_decorator_metadata,
+      }
+    } else {
+      deno_ast::DecoratorsTranspileOption::Ecma
+    },
     imports_not_used_as_values,
-    jsx_automatic,
-    jsx_development,
-    jsx_factory: options.jsx_factory,
-    jsx_fragment_factory: options.jsx_fragment_factory,
-    jsx_import_source: options.jsx_import_source,
-    precompile_jsx,
-    precompile_jsx_skip_elements: options.jsx_precompile_skip_elements,
-    precompile_jsx_dynamic_props: None,
-    transform_jsx,
+    jsx,
     var_decl_imports: false,
     // todo(dsherret): support verbatim_module_syntax here properly
     verbatim_module_syntax: false,

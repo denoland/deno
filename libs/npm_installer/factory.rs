@@ -51,6 +51,23 @@ pub struct NpmInstallerFactoryOptions {
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
 }
 
+pub trait InstallReporter:
+  deno_npm::resolution::Reporter
+  + deno_graph::source::Reporter
+  + deno_npm_cache::TarballCacheReporter
+  + crate::InstallProgressReporter
+{
+}
+
+impl<
+  T: deno_npm::resolution::Reporter
+    + deno_graph::source::Reporter
+    + deno_npm_cache::TarballCacheReporter
+    + crate::InstallProgressReporter,
+> InstallReporter for T
+{
+}
+
 pub struct NpmInstallerFactory<
   TNpmCacheHttpClient: NpmCacheHttpClient,
   TReporter: Reporter,
@@ -77,6 +94,7 @@ pub struct NpmInstallerFactory<
     Deferred<Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>>,
   tarball_cache: Deferred<Arc<TarballCache<TNpmCacheHttpClient, TSys>>>,
   options: NpmInstallerFactoryOptions,
+  install_reporter: Option<Arc<dyn InstallReporter + 'static>>,
 }
 
 impl<
@@ -90,6 +108,7 @@ impl<
     http_client: Arc<TNpmCacheHttpClient>,
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     reporter: TReporter,
+    install_reporter: Option<Arc<dyn InstallReporter + 'static>>,
     options: NpmInstallerFactoryOptions,
   ) -> Self {
     Self {
@@ -105,6 +124,7 @@ impl<
       npm_resolution_installer: Default::default(),
       registry_info_provider: Default::default(),
       tarball_cache: Default::default(),
+      install_reporter,
       options,
     }
   }
@@ -225,13 +245,14 @@ impl<
       .npm_resolution_installer
       .get_or_try_init(async move {
         Ok(Arc::new(NpmResolutionInstaller::new(
+          self.resolver_factory.npm_version_resolver()?.clone(),
           self.registry_info_provider()?.clone(),
+          self
+            .install_reporter
+            .as_ref()
+            .map(|r| r.clone() as Arc<dyn deno_npm::resolution::Reporter>),
           self.resolver_factory.npm_resolution().clone(),
           self.maybe_lockfile().await?.cloned(),
-          self
-            .workspace_factory()
-            .workspace_npm_link_packages()?
-            .clone(),
         )))
       })
       .await
@@ -283,6 +304,7 @@ impl<
             self.options.lifecycle_scripts_config.clone(),
             self.resolver_factory.npm_system_info().clone(),
             workspace_npm_link_packages.clone(),
+            self.install_reporter.clone(),
           )))
         }
         .boxed_local(),
@@ -315,6 +337,10 @@ impl<
         self.http_client.clone(),
         workspace_factory.sys().clone(),
         workspace_factory.npmrc()?.clone(),
+        self
+          .install_reporter
+          .as_ref()
+          .map(|r| r.clone() as Arc<dyn deno_npm_cache::TarballCacheReporter>),
       )))
     })
   }

@@ -131,6 +131,54 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   await promise;
 });
 
+Deno.test("tls.connect after-read tls upgrade", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ctl = new AbortController();
+  const serve = Deno.serve({
+    port: 8444,
+    key,
+    cert,
+    signal: ctl.signal,
+  }, () => new Response("hello"));
+
+  await delay(200);
+
+  const socket = net.connect({
+    host: "localhost",
+    port: 8444,
+  });
+  socket.on("connect", () => {
+    socket.on("data", () => {});
+    socket.on("close", resolve);
+
+    socket.removeAllListeners("data");
+
+    const conn = tls.connect({
+      host: "localhost",
+      port: 8444,
+      socket,
+      secureContext: {
+        ca: rootCaCert,
+        key: null,
+        cert: null,
+        // deno-lint-ignore no-explicit-any
+      } as any,
+    });
+
+    conn.setEncoding("utf8");
+    conn.write(`GET / HTTP/1.1\nHost: www.google.com\n\n`);
+
+    conn.on("data", (e) => {
+      assertStringIncludes(e, "hello");
+      conn.destroy();
+      ctl.abort();
+    });
+  });
+
+  await serve.finished;
+  await promise;
+});
+
 Deno.test("tls.createServer creates a TLS server", async () => {
   const deferred = Promise.withResolvers<void>();
   const server = tls.createServer(
@@ -184,18 +232,6 @@ Deno.test("tls.createServer creates a TLS server", async () => {
 Deno.test("TLSSocket can construct without options", () => {
   // deno-lint-ignore no-explicit-any
   new tls.TLSSocket(new stream.PassThrough() as any);
-});
-
-Deno.test("tlssocket._handle._parentWrap is set", () => {
-  // Note: This feature is used in popular 'http2-wrapper' module
-  // https://github.com/szmarczak/http2-wrapper/blob/51eeaf59ff9344fb192b092241bfda8506983620/source/utils/js-stream-socket.js#L6
-  const parentWrap =
-    // deno-lint-ignore no-explicit-any
-    ((new tls.TLSSocket(new stream.PassThrough() as any, {}) as any)
-      // deno-lint-ignore no-explicit-any
-      ._handle as any)!
-      ._parentWrap;
-  assertInstanceOf(parentWrap, stream.PassThrough);
 });
 
 Deno.test("tls.connect() throws InvalidData when there's error in certificate", async () => {
@@ -271,6 +307,58 @@ Deno.test("tls connect upgrade tcp", async () => {
   socket.destroy();
 });
 
+Deno.test("tlssocket._handle._parentWrap is set", () => {
+  // Note: This feature is used in popular 'http2-wrapper' module
+  // https://github.com/szmarczak/http2-wrapper/blob/51eeaf59ff9344fb192b092241bfda8506983620/source/utils/js-stream-socket.js#L6
+  const parentWrap =
+    // deno-lint-ignore no-explicit-any
+    ((new tls.TLSSocket(new stream.PassThrough() as any, {}) as any)
+      // deno-lint-ignore no-explicit-any
+      ._handle as any)!
+      ._parentWrap;
+  assertInstanceOf(parentWrap, stream.PassThrough);
+});
+
+Deno.test({
+  name: "tls connect upgrade js socket wrapper",
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  class SocketWrapper extends stream.Duplex {
+    socket: net.Socket;
+
+    constructor() {
+      super();
+      this.socket = new net.Socket();
+    }
+
+    // deno-lint-ignore no-explicit-any
+    override _write(chunk: any, encoding: any, callback: any) {
+      this.socket.write(chunk, encoding, callback);
+    }
+
+    override _read() {
+    }
+
+    connect(port: number, host: string) {
+      this.socket.connect(port, host);
+      this.socket.on("data", (data) => this.push(data));
+      this.socket.on("end", () => this.push(null));
+    }
+  }
+
+  const socket = new SocketWrapper();
+  socket.connect(443, "google.com");
+
+  const secure = tls.connect({ socket, host: "google.com" });
+  secure.on("secureConnect", () => resolve());
+
+  await promise;
+  socket.destroy();
+});
+
 Deno.test({
   name: "[node/tls] tls.Server.unref() works",
   ignore: Deno.build.os === "windows",
@@ -303,4 +391,53 @@ Deno.test({
     throw new Error(`stderr: ${new TextDecoder().decode(stderr)}`);
   }
   assertEquals(new TextDecoder().decode(stdout), "");
+});
+
+Deno.test("mTLS client certificate authentication", async () => {
+  const clientKey = key;
+  const clientCert = cert;
+
+  const server = tls.createServer({
+    key,
+    cert,
+    requestCert: true,
+    rejectUnauthorized: true,
+    ca: [rootCaCert],
+  }, (socket) => {
+    socket.write("mTLS success!");
+    socket.end();
+  });
+
+  const { promise, resolve, reject } = Promise.withResolvers<string>();
+
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any)?.port;
+
+    const client = tls.connect({
+      host: "localhost",
+      port,
+      key: clientKey,
+      cert: clientCert,
+      ca: rootCaCert,
+    });
+
+    client.setEncoding("utf8");
+    let data = "";
+    client.on("data", (chunk) => {
+      data += chunk;
+    });
+
+    client.on("end", () => {
+      resolve(data);
+    });
+
+    client.on("error", (err) => {
+      reject(err);
+    });
+  });
+
+  const result = await promise;
+  assertEquals(result, "mTLS success!");
+  server.close();
 });

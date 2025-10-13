@@ -9615,8 +9615,6 @@
         "request-constructor-init-body-override.any.html": true,
         "request-constructor-init-body-override.any.worker.html": true,
         "request-init-001.sub.html": [
-          "Check method init value of patch and associated getter",
-          "Check method init value of patCh and associated getter",
           "Check referrer init value of /relative/ressource and associated getter",
           "Check referrer init value of http://web-platform.test:8000/relative/ressource?query=true#fragment and associated getter",
           "Check referrer init value of http://web-platform.test:8000/ and associated getter",
@@ -14554,6 +14552,7 @@
     "eventhandlers.any.worker.html?wpt_flags=h2": true,
     "eventhandlers.any.worker.html?wss": true,
     "idlharness.any.html": [
+      "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",
@@ -14572,6 +14571,7 @@
       "Stringification of new CloseEvent(\"close\")"
     ],
     "idlharness.any.worker.html": [
+      "WebSocket interface object length",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",

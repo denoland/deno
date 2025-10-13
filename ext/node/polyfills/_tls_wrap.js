@@ -5,6 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import {
+  ArrayIsArray,
   ObjectAssign,
   StringPrototypeReplace,
 } from "ext:deno_node/internal/primordials.mjs";
@@ -35,13 +36,21 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import { startTlsInternal } from "ext:deno_net/02_tls.js";
-import { internals } from "ext:core/mod.js";
-import { op_tls_canonicalize_ipv4_address } from "ext:core/ops";
+import { core, internals } from "ext:core/mod.js";
+import {
+  op_node_tls_handshake,
+  op_node_tls_start,
+  op_tls_canonicalize_ipv4_address,
+  op_tls_key_null,
+  op_tls_key_static,
+} from "ext:core/ops";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
 const kPendingSession = Symbol("pendingSession");
 const kRes = Symbol("res");
+
+const tlsStreamRids = new Uint32Array(2);
 
 let debug = debuglog("tls", (fn) => {
   debug = fn;
@@ -81,17 +90,44 @@ export class TLSSocket extends net.Socket {
       "localhost";
     tlsOptions.hostname = hostname;
 
-    const _cert = tlsOptions?.secureContext?.cert;
-    const _key = tlsOptions?.secureContext?.key;
-
+    const cert = tlsOptions?.secureContext?.cert;
+    const key = tlsOptions?.secureContext?.key;
+    const hasTlsKey = key != undefined &&
+      cert != undefined;
+    const keyPair = hasTlsKey
+      ? op_tls_key_static(cert, key)
+      : op_tls_key_null();
     let caCerts = tlsOptions?.secureContext?.ca;
-    if (typeof caCerts === "string") caCerts = [caCerts];
-    else if (isArrayBufferView(caCerts) || isAnyArrayBuffer(caCerts)) {
+    if (typeof caCerts === "string") {
+      caCerts = [caCerts];
+    } else if (isArrayBufferView(caCerts) || isAnyArrayBuffer(caCerts)) {
       caCerts = [new TextDecoder().decode(caCerts)];
+    } else if (Array.isArray(caCerts)) {
+      caCerts = caCerts.map((cert) => {
+        if (typeof cert === "string") {
+          return cert;
+        } else if (isArrayBufferView(cert) || isAnyArrayBuffer(cert)) {
+          return new TextDecoder().decode(cert);
+        }
+        return cert;
+      });
     }
+
+    tlsOptions.keyPair = keyPair;
     tlsOptions.caCerts = caCerts;
     tlsOptions.alpnProtocols = opts.ALPNProtocols;
     tlsOptions.rejectUnauthorized = opts.rejectUnauthorized !== false;
+
+    try {
+      if (
+        opts.checkServerIdentity &&
+        typeof opts.checkServerIdentity == "function" &&
+        opts.checkServerIdentity() == undefined
+      ) {
+        // If checkServerIdentity is no-op, we disable hostname verification.
+        tlsOptions.unsafelyDisableHostnameVerification = true;
+      }
+    } catch { /* pass */ }
 
     super({
       handle: _wrapHandle(tlsOptions, socket),
@@ -99,6 +135,7 @@ export class TLSSocket extends net.Socket {
       manualStart: true, // This prevents premature reading from TLS handle
     });
     if (socket) {
+      this.on("close", () => this._parent?.emit("close"));
       this._parent = socket;
     }
     this._tlsOptions = tlsOptions;
@@ -128,10 +165,17 @@ export class TLSSocket extends net.Socket {
 
     /** Wraps the given socket and adds the tls capability to the underlying
      * handle */
-    function _wrapHandle(tlsOptions, wrap) {
+    function _wrapHandle(tlsOptions, socket) {
       let handle;
+      let wrap;
 
-      if (wrap) {
+      if (socket) {
+        if (socket instanceof net.Socket && socket._handle) {
+          wrap = socket;
+        } else {
+          wrap = new JSStreamSocket(socket);
+        }
+
         handle = wrap._handle;
       }
 
@@ -156,13 +200,14 @@ export class TLSSocket extends net.Socket {
         }
 
         try {
-          const conn = await startTlsInternal(
-            handle[kStreamBaseField],
+          const conn = await startTls(
+            wrap,
+            handle,
             options,
           );
           try {
             const hs = await conn.handshake();
-            if (hs.alpnProtocol) {
+            if (hs?.alpnProtocol) {
               tlssock.alpnProtocol = hs.alpnProtocol;
             } else {
               tlssock.alpnProtocol = false;
@@ -196,7 +241,7 @@ export class TLSSocket extends net.Socket {
       // An example usage of `_parentWrap` in npm module:
       // https://github.com/szmarczak/http2-wrapper/blob/51eeaf59ff9344fb192b092241bfda8506983620/source/utils/js-stream-socket.js#L6
       handle._parent = handle;
-      handle._parentWrap = wrap;
+      handle._parentWrap = socket;
 
       return handle;
     }
@@ -235,9 +280,74 @@ export class TLSSocket extends net.Socket {
     // TODO(kt3k): implement this
   }
 
+  setMaxSendFragment(_maxSendFragment) {
+    // TODO(littledivy): implement this
+  }
+
   getPeerCertificate(detailed = false) {
     const conn = this[kHandle]?.[kStreamBaseField];
     if (conn) return conn[internals.getPeerCertificate](detailed);
+  }
+
+  getCipher() {
+    return "";
+  }
+}
+
+class JSStreamSocket {
+  #rid;
+
+  constructor(stream) {
+    this.stream = stream;
+  }
+
+  init(options) {
+    op_node_tls_start(options, tlsStreamRids);
+    this.#rid = tlsStreamRids[0];
+    const channelRid = tlsStreamRids[1];
+
+    this.stream.on("data", (data) => {
+      core.write(channelRid, data);
+    });
+
+    const buf = new Uint8Array(1024 * 16);
+    (async () => {
+      while (true) {
+        try {
+          const nread = await core.read(channelRid, buf);
+          this.stream.write(buf.slice(0, nread));
+        } catch {
+          break;
+        }
+      }
+    })();
+
+    this.stream.on("close", () => {
+      core.close(this.#rid);
+      core.close(channelRid);
+    });
+  }
+
+  handshake() {
+    return op_node_tls_handshake(this.#rid);
+  }
+
+  read(buf) {
+    return core.read(this.#rid, buf);
+  }
+
+  write(data) {
+    return core.write(this.#rid, data);
+  }
+}
+
+function startTls(wrap, handle, options) {
+  if (wrap instanceof JSStreamSocket) {
+    options.caCerts ??= [];
+    wrap.init(options);
+    return wrap;
+  } else {
+    return startTlsInternal(handle[kStreamBaseField], options);
   }
 }
 

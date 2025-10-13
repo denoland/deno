@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::path::Path;
+
 use deno_core::OpState;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
@@ -100,7 +102,7 @@ pub fn op_node_call_is_from_dependency<
   TSys: ExtNodeSys + 'static,
 >(
   state: &mut OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
 ) -> bool {
   // non internal call site should appear in < 20 frames
   let Some(stack_trace) = v8::StackTrace::current_stack_trace(scope, 20) else {
@@ -145,4 +147,32 @@ pub fn op_node_call_is_from_dependency<
       >>().in_npm_package(&specifier);
   }
   only_internal
+}
+
+#[op2(fast)]
+pub fn op_node_in_npm_package<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
+  state: &mut OpState,
+  #[string] path: &str,
+) -> bool {
+  let specifier = if deno_path_util::specifier_has_uri_scheme(path) {
+    match url::Url::parse(path) {
+      Ok(url) => url,
+      Err(_) => return false,
+    }
+  } else {
+    match deno_path_util::url_from_file_path(Path::new(path)) {
+      Ok(url) => url,
+      Err(_) => return false,
+    }
+  };
+
+  state.borrow::<NodeResolverRc<
+    TInNpmPackageChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>().in_npm_package(&specifier)
 }

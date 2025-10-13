@@ -1,12 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+import { primordials } from "ext:core/mod.js";
 import {
   DatabaseSync,
   op_node_database_backup,
   StatementSync,
 } from "ext:core/ops";
-
 import { Buffer } from "node:buffer";
+
+const {
+  ObjectDefineProperty,
+  SymbolFor,
+} = primordials;
 
 interface BackupOptions {
   /**
@@ -96,6 +101,14 @@ export const constants = {
   SQLITE_CHANGESET_CONSTRAINT: 4,
   SQLITE_CHANGESET_FOREIGN_KEY: 5,
 };
+
+const sqliteTypeSymbol = SymbolFor("sqlite-type");
+ObjectDefineProperty(DatabaseSync.prototype, sqliteTypeSymbol, {
+  __proto__: null,
+  value: "node:sqlite",
+  enumerable: false,
+  configurable: true,
+});
 
 export { backup, DatabaseSync, StatementSync };
 

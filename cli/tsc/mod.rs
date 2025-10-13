@@ -290,11 +290,13 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.d.ts"),
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
+    maybe_compressed_lib!("lib.esnext.error.d.ts"),
     maybe_compressed_lib!("lib.esnext.float16.d.ts"),
     maybe_compressed_lib!("lib.esnext.full.d.ts"),
     maybe_compressed_lib!("lib.esnext.intl.d.ts"),
     maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
+    maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
     maybe_compressed_lib!("lib.scripthost.d.ts"),
     maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
     maybe_compressed_lib!("lib.webworker.d.ts"),
@@ -454,7 +456,7 @@ impl TypeCheckingCjsTracker {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     is_script: bool,
-  ) -> Result<bool, node_resolver::errors::ClosestPkgJsonError> {
+  ) -> Result<bool, node_resolver::errors::PackageJsonLoadError> {
     self
       .cjs_tracker
       .is_cjs_with_known_is_script(specifier, media_type, is_script)
@@ -646,7 +648,7 @@ pub enum LoadError {
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
   #[error("{0}")]
-  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  ClosestPkgJson(#[from] node_resolver::errors::PackageJsonLoadError),
 }
 
 #[derive(Debug, Serialize)]
@@ -738,23 +740,7 @@ fn op_load_inner(
     } else {
       &specifier
     };
-    let maybe_module = match graph.try_get(specifier) {
-      Ok(maybe_module) => maybe_module,
-      Err(err) => match err.as_kind() {
-        deno_graph::ModuleErrorKind::UnsupportedMediaType {
-          media_type,
-          ..
-        } => {
-          return Ok(Some(LoadResponse {
-            data: FastString::from_static(""),
-            version: Some("1".to_string()),
-            script_kind: as_ts_script_kind(*media_type),
-            is_cjs: false,
-          }));
-        }
-        _ => None,
-      },
-    };
+    let maybe_module = graph.try_get(specifier).ok().flatten();
     let maybe_source = if let Some(module) = maybe_module {
       match module {
         Module::Js(module) => {
@@ -1296,7 +1282,6 @@ fn op_respond_inner(state: &mut OpState, args: RespondArgs) {
   state.maybe_response = Some(args);
 }
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ExecError {
   #[class(generic)]
@@ -1304,7 +1289,7 @@ pub enum ExecError {
   ResponseNotSet,
   #[class(inherit)]
   #[error(transparent)]
-  Js(deno_core::error::JsError),
+  Js(Box<deno_core::error::JsError>),
 }
 
 #[derive(Clone)]

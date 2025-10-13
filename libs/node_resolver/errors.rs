@@ -521,37 +521,14 @@ impl NodeJsErrorCoded for TypesNotFoundError {
 }
 
 #[derive(Debug, Error, JsError)]
-pub enum PackageJsonLoadError {
-  #[class(inherit)]
-  #[error("[{}] Invalid package config. {}", self.code(), .0)]
-  PackageJson(#[from] deno_package_json::PackageJsonLoadError),
-  #[class(generic)]
-  #[error("[{}] JSR specifiers are not supported in package.json: {req}", self.code())]
-  JsrReqUnsupported { req: String },
-}
+#[class(inherit)]
+#[error("[{}] Invalid package config. {}", self.code(), .0)]
+pub struct PackageJsonLoadError(pub deno_package_json::PackageJsonLoadError);
 
 impl NodeJsErrorCoded for PackageJsonLoadError {
   fn code(&self) -> NodeJsErrorCode {
     NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
   }
-}
-
-impl NodeJsErrorCoded for ClosestPkgJsonError {
-  fn code(&self) -> NodeJsErrorCode {
-    match self.as_kind() {
-      ClosestPkgJsonErrorKind::Load(e) => e.code(),
-    }
-  }
-}
-
-#[derive(Debug, Boxed, JsError)]
-pub struct ClosestPkgJsonError(pub Box<ClosestPkgJsonErrorKind>);
-
-#[derive(Debug, Error, JsError)]
-pub enum ClosestPkgJsonErrorKind {
-  #[class(inherit)]
-  #[error(transparent)]
-  Load(#[from] PackageJsonLoadError),
 }
 
 #[derive(Debug, Error, JsError)]
@@ -583,7 +560,7 @@ impl PackageImportsResolveError {
   pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
       PackageImportsResolveErrorKind::Target(err) => err.maybe_specifier(),
-      PackageImportsResolveErrorKind::ClosestPkgJson(_)
+      PackageImportsResolveErrorKind::PkgJsonLoad(_)
       | PackageImportsResolveErrorKind::InvalidModuleSpecifier(_)
       | PackageImportsResolveErrorKind::NotDefined(_) => None,
     }
@@ -594,7 +571,7 @@ impl PackageImportsResolveError {
 pub enum PackageImportsResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
-  ClosestPkgJson(ClosestPkgJsonError),
+  PkgJsonLoad(PackageJsonLoadError),
   #[class(inherit)]
   #[error(transparent)]
   InvalidModuleSpecifier(#[from] InvalidModuleSpecifierError),
@@ -618,7 +595,7 @@ impl PackageImportsResolveErrorKind {
 impl NodeJsErrorCoded for PackageImportsResolveErrorKind {
   fn code(&self) -> NodeJsErrorCode {
     match self {
-      Self::ClosestPkgJson(e) => e.code(),
+      Self::PkgJsonLoad(e) => e.code(),
       Self::InvalidModuleSpecifier(e) => e.code(),
       Self::NotDefined(e) => e.code(),
       Self::Target(e) => e.code(),
@@ -629,7 +606,7 @@ impl NodeJsErrorCoded for PackageImportsResolveErrorKind {
 impl NodeJsErrorCoded for PackageResolveErrorKind {
   fn code(&self) -> NodeJsErrorCode {
     match self {
-      PackageResolveErrorKind::ClosestPkgJson(e) => e.code(),
+      PackageResolveErrorKind::PkgJsonLoad(e) => e.code(),
       PackageResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
       PackageResolveErrorKind::PackageFolderResolve(e) => e.code(),
       PackageResolveErrorKind::ExportsResolve(e) => e.code(),
@@ -652,7 +629,7 @@ impl PackageResolveError {
       PackageResolveErrorKind::UrlToFilePath(err) => {
         Some(Cow::Owned(UrlOrPath::Url(err.0.clone())))
       }
-      PackageResolveErrorKind::ClosestPkgJson(_)
+      PackageResolveErrorKind::PkgJsonLoad(_)
       | PackageResolveErrorKind::InvalidModuleSpecifier(_)
       | PackageResolveErrorKind::PackageFolderResolve(_) => None,
     }
@@ -663,7 +640,7 @@ impl PackageResolveError {
 pub enum PackageResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
-  ClosestPkgJson(#[from] ClosestPkgJsonError),
+  PkgJsonLoad(#[from] PackageJsonLoadError),
   #[class(inherit)]
   #[error(transparent)]
   InvalidModuleSpecifier(#[from] InvalidModuleSpecifierError),
@@ -685,7 +662,7 @@ pub enum PackageResolveErrorKind {
 impl PackageResolveErrorKind {
   pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
     match self {
-      PackageResolveErrorKind::ClosestPkgJson(_)
+      PackageResolveErrorKind::PkgJsonLoad(_)
       | PackageResolveErrorKind::InvalidModuleSpecifier(_)
       | PackageResolveErrorKind::PackageFolderResolve(_)
       | PackageResolveErrorKind::ExportsResolve(_)
@@ -915,13 +892,13 @@ impl NodeJsErrorCoded for ModuleNotFoundError {
   self.code(),
   dir_url,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
-  suggested_file_name.map(|file_name| format!("\nDid you mean to import {file_name} within the directory?")).unwrap_or_default(),
+  suggestion.as_ref().map(|suggestion| format!("\nDid you mean to import '{suggestion}'?")).unwrap_or_default(),
 )]
 #[property("code" = self.code())]
 pub struct UnsupportedDirImportError {
   pub dir_url: UrlOrPath,
   pub maybe_referrer: Option<UrlOrPath>,
-  pub suggested_file_name: Option<&'static str>,
+  pub suggestion: Option<String>,
 }
 
 impl NodeJsErrorCoded for UnsupportedDirImportError {

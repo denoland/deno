@@ -87,7 +87,7 @@ use node_resolver::ResolutionMode;
 use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionSys;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
@@ -361,7 +361,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
   fn get_host_defined_options<'s>(
     &self,
-    scope: &mut deno_core::v8::HandleScope<'s>,
+    scope: &mut deno_core::v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
     let name = Url::parse(name).ok()?;
@@ -644,7 +644,10 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     })
   }
 
-  fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError> {
+  fn is_maybe_cjs(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError> {
     let media_type = MediaType::from_specifier(specifier);
     self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
@@ -924,10 +927,8 @@ pub async fn run(
       if metadata.unstable_config.sloppy_imports {
         SloppyImportsOptions::Enabled
       } else {
-        SloppyImportsOptions::Disabled
+        SloppyImportsOptions::Unspecified
       },
-      Default::default(),
-      Default::default(),
       Default::default(),
       sys.clone(),
     )
@@ -1004,7 +1005,7 @@ pub async fn run(
     has_node_modules_dir,
     inspect_brk: false,
     inspect_wait: false,
-    strace_ops: None,
+    trace_ops: None,
     is_inspecting: false,
     is_standalone: true,
     auto_serve: false,
@@ -1034,6 +1035,7 @@ pub async fn run(
     feature_checker,
     fs,
     None,
+    None,
     Box::new(module_loader_factory),
     node_resolver.clone(),
     create_npm_process_state_provider(&npm_resolver),
@@ -1043,6 +1045,7 @@ pub async fn run(
     sys.clone(),
     lib_main_worker_options,
     Default::default(),
+    None,
   );
 
   // Initialize v8 once from the main thread.

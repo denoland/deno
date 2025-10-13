@@ -459,6 +459,55 @@ fn permissions_trace() {
     });
 }
 
+#[test]
+fn permissions_audit() {
+  let ctx = TestContext::default();
+  let dir = ctx.temp_dir();
+  let path = dir.path().join(std::path::Path::new("audit.jsonl"));
+
+  ctx
+    .new_command()
+    .env("DENO_AUDIT_PERMISSIONS", &path)
+    .args_vec(["run", "-A", "run/permissions_audit.ts"])
+    .run()
+    .skip_output_check();
+
+  let file = std::fs::read_to_string(path).unwrap();
+  test_util::assertions::assert_wildcard_match(
+    &file,
+    r#"{"v":1,"datetime":"[WILDCARD]","permission":"sys","value":"hostname"}
+{"v":1,"datetime":"[WILDCARD]","permission":"read","value":"[WILDCARD]"}
+{"v":1,"datetime":"[WILDCARD]","permission":"write","value":"[WILDCARD]"}
+{"v":1,"datetime":"[WILDCARD]","permission":"env","value":"FOO"}
+"#,
+  );
+}
+
+#[test]
+fn permissions_audit_with_traces() {
+  let ctx = TestContext::default();
+  let dir = ctx.temp_dir();
+  let path = dir.path().join(std::path::Path::new("audit.jsonl"));
+
+  ctx
+    .new_command()
+    .env("DENO_AUDIT_PERMISSIONS", &path)
+    .env("DENO_TRACE_PERMISSIONS", "1")
+    .args_vec(["run", "-A", "run/permissions_audit.ts"])
+    .run()
+    .skip_output_check();
+
+  let file = std::fs::read_to_string(path).unwrap();
+  test_util::assertions::assert_wildcard_match(
+    &file,
+    r#"{"v":1,"datetime":"[WILDCARD]","permission":"sys","value":"hostname","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"read","value":"[WILDCARD]","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"write","value":"[WILDCARD]","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"env","value":"FOO","stack":[WILDCARD]}
+"#,
+  );
+}
+
 itest!(lock_write_fetch {
   args: "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
   output: "run/lock_write_fetch/main.out",
@@ -2273,7 +2322,7 @@ async fn test_resolve_dns() {
     let records = Parser::new(
       &zone_file,
       None,
-      Some(Name::from_str("example.com").unwrap()),
+      Some(Name::from_str("example.com.").unwrap()),
     )
     .parse();
     if records.is_err() {
@@ -3454,4 +3503,90 @@ fn handle_invalid_path_error() {
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("///a/b").output().unwrap();
   assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
+}
+
+#[flaky_test::flaky_test]
+fn test_permission_broker_doesnt_exit() {
+  let context = TestContext::default();
+  let socket_path = if cfg!(windows) {
+    PathRef::new(r"\\.\pipe\deno-permission-broker")
+  } else {
+    context.temp_dir().path().join("broker.sock")
+  };
+
+  let output = context
+    .new_command()
+    .env("DENO_PERMISSION_BROKER_PATH", &socket_path)
+    .args("run run/permission_broker/test1.ts")
+    .run();
+  output.assert_exit_code(87);
+  output.assert_matches_text(
+    "[WILDCARD]Failed to create permission broker[WILDCARD]",
+  );
+}
+
+#[flaky_test::flaky_test]
+fn test_permission_broker() {
+  use std::io::BufRead;
+  use std::io::BufReader;
+
+  let context = TestContext::default();
+  let socket_path = if cfg!(windows) {
+    PathRef::new(r"\\.\pipe\deno-permission-broker")
+  } else {
+    context.temp_dir().path().join("broker.sock")
+  };
+
+  let mut broker = context
+    .new_command()
+    .arg("run")
+    .arg("-A")
+    .arg("run/permission_broker/broker.ts")
+    .arg(&socket_path)
+    .stdout(Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let broker_stdout = broker.stdout.take().unwrap();
+
+  let mut broker_reader = BufReader::new(broker_stdout);
+  let mut line = String::new();
+  loop {
+    line.clear();
+    match broker_reader.read_line(&mut line) {
+      Ok(0) => break, // EOF
+      Ok(_) => {
+        if line.starts_with("Permission broker listening on") {
+          eprintln!("{}", line);
+          break;
+        }
+      }
+      Err(err) => panic!("{}", err),
+    }
+  }
+
+  let output = context
+    .new_command()
+    .env("DENO_PERMISSION_BROKER_PATH", &socket_path)
+    .args("run run/permission_broker/test1.ts")
+    .run();
+  output.assert_exit_code(1);
+  output.assert_matches_text(
+    "Warning Permission broker is an experimental feature\nerror:[WILDCARD]NotCapable: Make sure to enable reading env vars.[WILDCARD]",
+  );
+
+  let _ = broker.kill();
+  line.clear();
+  broker_reader.read_to_string(&mut line).unwrap();
+
+  test_util::assertions::assert_wildcard_match(
+    &line,
+    r#"[WILDCARD]
+{"v":1,"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
+{"v":1,"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
+{"v":1,"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
+[WILDCARD]"#,
+  );
 }

@@ -1,0 +1,10 @@
+Immediate { _immediateId: [WILDLINE] }
+Timeout {
+  _idleTimeout: 1000,
+  _onTimeout: [Function (anonymous)],
+  _timerArgs: [],
+  _isRepeat: false,
+  _destroyed: false,
+  [Symbol(refed)]: true,
+  [Symbol(timerId)]: [WILDLINE]
+}

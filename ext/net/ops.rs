@@ -21,7 +21,6 @@ use deno_core::ResourceId;
 use deno_core::op2;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
-use hickory_proto::rr::rdata::caa::Value;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
 use hickory_resolver::ResolveError;
@@ -29,6 +28,7 @@ use hickory_resolver::ResolveErrorKind;
 use hickory_resolver::config::NameServerConfigGroup;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
+use hickory_resolver::name_server::TokioConnectionProvider;
 use hickory_resolver::system_conf;
 use quinn::rustls;
 use serde::Deserialize;
@@ -452,7 +452,10 @@ pub struct NetPermToken {
   pub resolved_ips: Vec<String>,
 }
 
-impl deno_core::GarbageCollected for NetPermToken {
+// SAFETY: we're sure `NetPermToken` can be GCed
+unsafe impl deno_core::GarbageCollected for NetPermToken {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"NetPermToken"
   }
@@ -574,6 +577,7 @@ pub fn op_net_listen_tcp<NP>(
   #[serde] addr: IpAddr,
   reuse_port: bool,
   load_balanced: bool,
+  tcp_backlog: i32,
 ) -> Result<(ResourceId, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -589,9 +593,9 @@ where
     .ok_or_else(|| NetError::NoResolvedAddress)?;
 
   let listener = if load_balanced {
-    TcpListener::bind_load_balanced(addr)
+    TcpListener::bind_load_balanced(addr, tcp_backlog)
   } else {
-    TcpListener::bind_direct(addr, reuse_port)
+    TcpListener::bind_direct(addr, reuse_port, tcp_backlog)
   }?;
   let local_addr = listener.local_addr()?;
   let listener_resource = NetworkListenerResource::new(listener);
@@ -638,7 +642,7 @@ where
       target_os = "linux"
     ))]
     socket_tmp.set_reuse_address(true)?;
-    #[cfg(all(unix, not(target_os = "linux")))]
+    #[cfg(all(unix, not(any(target_os = "android", target_os = "linux"))))]
     socket_tmp.set_reuse_port(true)?;
   }
   let socket_addr = socket2::SockAddr::from(addr);
@@ -696,7 +700,7 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_vsock<NP>(
@@ -744,7 +748,11 @@ where
   ))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
 #[op2]
 #[serde]
 pub fn op_net_connect_vsock<NP>() -> Result<(), NetError>
@@ -754,7 +762,7 @@ where
   Err(NetError::VsockUnsupported)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_vsock<NP>(
@@ -787,7 +795,11 @@ where
   Ok((rid, local_addr.cid(), local_addr.port()))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
 #[op2]
 #[serde]
 pub fn op_net_listen_vsock<NP>() -> Result<(), NetError>
@@ -797,7 +809,7 @@ where
   Err(NetError::VsockUnsupported)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(async)]
 #[serde]
 pub async fn op_net_accept_vsock(
@@ -836,7 +848,11 @@ pub async fn op_net_accept_vsock(
   ))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
 #[op2]
 #[serde]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {
@@ -1011,7 +1027,11 @@ where
     }
   }
 
-  let resolver = hickory_resolver::Resolver::tokio(config, opts);
+  let provider = TokioConnectionProvider::default();
+  let resolver =
+    hickory_resolver::Resolver::builder_with_config(config, provider)
+      .with_options(opts)
+      .build();
 
   let lookup_fut = resolver.lookup(query, record_type);
 
@@ -1125,29 +1145,13 @@ fn format_rdata(
         .as_aname()
         .map(ToString::to_string)
         .map(DnsRecordData::Aname),
-      CAA => r.as_caa().map(|caa| DnsRecordData::Caa {
-        critical: caa.issuer_critical(),
-        tag: caa.tag().to_string(),
-        value: match caa.value() {
-          Value::Issuer(name, key_values) => {
-            let mut s = String::new();
-
-            if let Some(name) = name {
-              s.push_str(&name.to_string());
-            } else if name.is_none() && key_values.is_empty() {
-              s.push(';');
-            }
-
-            for key_value in key_values {
-              s.push_str("; ");
-              s.push_str(&key_value.to_string());
-            }
-
-            s
-          }
-          Value::Url(url) => url.to_string(),
-          Value::Unknown(data) => String::from_utf8(data.to_vec()).unwrap(),
-        },
+      CAA => r.as_caa().map(|caa| {
+        DnsRecordData::Caa {
+          critical: caa.issuer_critical(),
+          tag: caa.tag().to_string(),
+          // hickory_proto now handles CAA records encoding within the CAA struct, we can assume that it's safe to unwrap here
+          value: str::from_utf8(caa.raw_value()).unwrap().to_string(),
+        }
       }),
       CNAME => r
         .as_cname()
@@ -1471,7 +1475,7 @@ mod tests {
     let sockets = Arc::new(Mutex::new(vec![]));
     let clone_addr = addr.clone();
     let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-    let listener = TcpListener::bind_direct(addr, false).unwrap();
+    let listener = TcpListener::bind_direct(addr, false, 511).unwrap();
     let accept_fut = listener.accept().boxed_local();
     let store_fut = async move {
       let socket = accept_fut.await.unwrap();

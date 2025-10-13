@@ -4,3 +4,11 @@
 [WILDCARD]Download http://localhost:4260/@denotest%2fesm-basic
 [WILDCARD]Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 [WILDCARD]Initialize @denotest/esm-basic@1.0.0
+Installed [WILDLINE] package in [WILDCARD]
+Reused [WILDLINE] packages from cache
+Downloaded [WILDLINE] packages from JSR
+Downloaded [WILDLINE] packages from npm
+[WILDLINE]
+
+Dependencies:
+[WILDCARD]

@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_ast::SourceRange;
@@ -55,6 +56,7 @@ use super::language_server;
 use super::resolver::LspResolver;
 use super::tsc;
 use crate::args::jsr_url;
+use crate::lsp::urls::uri_to_url;
 use crate::tools::lint::CliLinter;
 use crate::util::path::relative_specifier;
 
@@ -320,7 +322,7 @@ impl<'a> TsResponseImportMapper<'a> {
       self.resolver.get_scoped_resolver(self.scope.as_deref());
 
     if let Some(dep_name) =
-      scoped_resolver.resource_url_to_configured_dep_key(specifier)
+      scoped_resolver.resource_url_to_configured_dep_key(specifier, referrer)
     {
       return Some(dep_name);
     }
@@ -545,6 +547,7 @@ impl<'a> TsResponseImportMapper<'a> {
     specifier: &str,
     referrer: &ModuleSpecifier,
     resolution_mode: ResolutionMode,
+    new_file_hints: &[Url],
   ) -> Option<String> {
     let specifier_stem = specifier.strip_suffix(".js").unwrap_or(specifier);
     let specifiers = std::iter::once(Cow::Borrowed(specifier)).chain(
@@ -567,9 +570,10 @@ impl<'a> TsResponseImportMapper<'a> {
         .ok()
         .and_then(|s| self.tsc_specifier_map.normalize(s.as_str()).ok())
         .filter(|s| {
-          self
-            .document_modules
-            .specifier_exists(s, self.scope.as_deref())
+          new_file_hints.contains(s)
+            || self
+              .document_modules
+              .specifier_exists(s, self.scope.as_deref())
         })
         && let Some(specifier) = self
           .check_specifier(&specifier, referrer)
@@ -690,6 +694,11 @@ pub fn fix_ts_import_changes(
   token: &CancellationToken,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
   let mut r = Vec::new();
+  let new_file_hints = changes
+    .iter()
+    .filter(|c| c.is_new_file.unwrap_or(false))
+    .filter_map(|c| resolve_url(&c.file_name).ok())
+    .collect::<Vec<_>>();
   for change in changes {
     if token.is_cancelled() {
       return Err(anyhow!("request cancelled"));
@@ -701,11 +710,11 @@ pub fn fix_ts_import_changes(
     let target_module = if is_new_file {
       None
     } else {
-      let Some(target_module) = language_server
-        .document_modules
-        .inspect_module_for_specifier(
+      let Some(target_module) =
+        language_server.document_modules.module_for_specifier(
           &target_specifier,
           module.scope.as_deref(),
+          Some(&module.compiler_options_key),
         )
       else {
         continue;
@@ -731,6 +740,7 @@ pub fn fix_ts_import_changes(
                 specifier,
                 &target_specifier,
                 resolution_mode,
+                &new_file_hints,
               )
             {
               line.replace(specifier, &new_specifier)
@@ -753,6 +763,54 @@ pub fn fix_ts_import_changes(
       text_changes,
       is_new_file: change.is_new_file,
     });
+  }
+  Ok(r)
+}
+
+pub fn fix_ts_import_changes_for_file_rename(
+  changes: Vec<tsc::FileTextChanges>,
+  new_uri: &str,
+  old_module: &DocumentModule,
+  language_server: &language_server::Inner,
+  token: &CancellationToken,
+) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
+  let Ok(new_uri) = Uri::from_str(new_uri) else {
+    return Ok(Vec::new());
+  };
+  if !new_uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+    return Ok(Vec::new());
+  }
+  let new_file_hints = [uri_to_url(&new_uri)];
+  let mut r = Vec::with_capacity(changes.len());
+  for mut change in changes {
+    if token.is_cancelled() {
+      return Err(anyhow!("request cancelled"));
+    }
+    let Ok(target_specifier) = resolve_url(&change.file_name) else {
+      continue;
+    };
+    let Some(target_module) =
+      language_server.document_modules.module_for_specifier(
+        &target_specifier,
+        old_module.scope.as_deref(),
+        Some(&old_module.compiler_options_key),
+      )
+    else {
+      continue;
+    };
+    let import_mapper =
+      language_server.get_ts_response_import_mapper(&target_module);
+    for text_change in &mut change.text_changes {
+      if let Some(new_specifier) = import_mapper.check_unresolved_specifier(
+        &text_change.new_text,
+        &target_module.specifier,
+        target_module.resolution_mode,
+        &new_file_hints,
+      ) {
+        text_change.new_text = new_specifier;
+      }
+    }
+    r.push(change);
   }
   Ok(r)
 }
@@ -783,6 +841,12 @@ fn fix_ts_import_action<'a>(
     specifier,
     &module.specifier,
     module.resolution_mode,
+    &action
+      .changes
+      .iter()
+      .filter(|c| c.is_new_file.unwrap_or(false))
+      .filter_map(|c| resolve_url(&c.file_name).ok())
+      .collect::<Vec<_>>(),
   ) {
     let description = action.description.replace(specifier, &new_specifier);
     let changes = action
@@ -1297,12 +1361,15 @@ impl CodeActionCollection {
       // other diagnostics that could be bundled together in a "fix all" code
       // action
       file_diagnostics.iter().any(|d| {
-        if d == diagnostic || d.code.is_none() || diagnostic.code.is_none() {
-          false
-        } else {
-          d.code == diagnostic.code
-            || is_equivalent_code(&d.code, &diagnostic.code)
+        if d.source.as_deref() != Some(DiagnosticSource::Ts.as_lsp_source())
+          || d == diagnostic
+          || d.code.is_none()
+          || diagnostic.code.is_none()
+        {
+          return false;
         }
+        d.code == diagnostic.code
+          || is_equivalent_code(&d.code, &diagnostic.code)
       })
     }
   }

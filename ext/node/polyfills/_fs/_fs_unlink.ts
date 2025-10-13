@@ -6,7 +6,6 @@ import { primordials } from "ext:core/mod.js";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import * as pathModule from "node:path";
 
 const {
   PromisePrototypeThen,
@@ -20,7 +19,7 @@ export function unlink(
   validateFunction(callback, "callback");
 
   PromisePrototypeThen(
-    Deno.remove(pathModule.toNamespacedPath(path)),
+    Deno.remove(path),
     () => callback(),
     (err: Error) =>
       callback(denoErrorToNodeError(err, { syscall: "unlink", path })),
@@ -34,7 +33,7 @@ export const unlinkPromise = promisify(unlink) as (
 export function unlinkSync(path: string | Buffer | URL): void {
   path = getValidatedPathToString(path);
   try {
-    Deno.removeSync(pathModule.toNamespacedPath(path));
+    Deno.removeSync(path);
   } catch (err) {
     throw denoErrorToNodeError(err as Error, { syscall: "unlink", path });
   }

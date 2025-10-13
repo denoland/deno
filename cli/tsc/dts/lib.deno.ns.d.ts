@@ -1166,6 +1166,78 @@ declare namespace Deno {
       options: Omit<TestDefinition, "fn" | "only">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Register a function to be called before all tests in the current scope.
+     *
+     * These functions are run in FIFO order (first in, first out).
+     *
+     * If an exception is raised during execution of this hook, the remaining `beforeAll` hooks will not be run.
+     *
+     * ```ts
+     * Deno.test.beforeAll(() => {
+     *   // Setup code that runs once before all tests
+     *   console.log("Setting up test suite");
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    beforeAll(
+      fn: () => void | Promise<void>,
+    ): void;
+
+    /** Register a function to be called before each test in the current scope.
+     *
+     * These functions are run in FIFO order (first in, first out).
+     *
+     * If an exception is raised during execution of this hook, the remaining hooks will not be run and the currently running
+     * test case will be marked as failed.
+     *
+     * ```ts
+     * Deno.test.beforeEach(() => {
+     *   // Setup code that runs before each test
+     *   console.log("Setting up test");
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    beforeEach(fn: () => void | Promise<void>): void;
+
+    /** Register a function to be called after each test in the current scope.
+     *
+     * These functions are run in LIFO order (last in, first out).
+     *
+     * If an exception is raised during execution of this hook, the remaining hooks will not be run and the currently running
+     * test case will be marked as failed.
+     *
+     * ```ts
+     * Deno.test.afterEach(() => {
+     *   // Cleanup code that runs after each test
+     *   console.log("Cleaning up test");
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    afterEach(fn: () => void | Promise<void>): void;
+
+    /** Register a function to be called after all tests in the current scope have finished running.
+     *
+     * These functions are run in the LIFO order (last in, first out).
+     *
+     * If an exception is raised during execution of this hook, the remaining `afterAll` hooks will not be run.
+     *
+     * ```ts
+     * Deno.test.afterAll(() => {
+     *   // Cleanup code that runs once after all tests
+     *   console.log("Cleaning up test suite");
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    afterAll(fn: () => void | Promise<void>): void;
   }
 
   /**
@@ -2701,7 +2773,8 @@ declare namespace Deno {
    * | 1      | execute only |
    * | 0      | no permission |
    *
-   * NOTE: This API currently throws on Windows
+   * Note: On Windows, only the read and write permissions can be modified.
+   * Distinctions between owner, group, and others are not supported.
    *
    * Requires `allow-write` permission.
    *
@@ -2718,8 +2791,6 @@ declare namespace Deno {
    * ```
    *
    * For a full description, see {@linkcode Deno.chmod}.
-   *
-   * NOTE: This API currently throws on Windows
    *
    * Requires `allow-write` permission.
    *
@@ -2983,17 +3054,15 @@ declare namespace Deno {
     ctime: Date | null;
     /** ID of the device containing the file. */
     dev: number;
-    /** Inode number.
-     *
-     * _Linux/Mac OS only._ */
+    /** Corresponds to the inode number on Unix systems. On Windows, this is
+     * the file index number that is unique within a volume. This may not be
+     * available on all platforms. */
     ino: number | null;
     /** The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory.
      */
     mode: number | null;
-    /** Number of hard links pointing to this file.
-     *
-     * _Linux/Mac OS only._ */
+    /** Number of hard links pointing to this file. */
     nlink: number | null;
     /** User ID of the owner of this file.
      *
@@ -3011,9 +3080,7 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     blksize: number | null;
-    /** Number of blocks allocated to the file, in 512-byte units.
-     *
-     * _Linux/Mac OS only._ */
+    /** Number of blocks allocated to the file, in 512-byte units. */
     blocks: number | null;
     /**  True if this is info for a block device.
      *
@@ -3720,8 +3787,8 @@ declare namespace Deno {
    */
   export class ChildProcess implements AsyncDisposable {
     get stdin(): WritableStream<Uint8Array<ArrayBufferLike>>;
-    get stdout(): ReadableStream<Uint8Array<ArrayBuffer>>;
-    get stderr(): ReadableStream<Uint8Array<ArrayBuffer>>;
+    get stdout(): SubprocessReadableStream;
+    get stderr(): SubprocessReadableStream;
     readonly pid: number;
     /** Get the status of the child. */
     readonly status: Promise<CommandStatus>;
@@ -3745,6 +3812,36 @@ declare namespace Deno {
     unref(): void;
 
     [Symbol.asyncDispose](): Promise<void>;
+  }
+
+  /**
+   * The interface for stdout and stderr streams for child process returned from
+   * {@linkcode Deno.Command.spawn}.
+   *
+   * @category Subprocess
+   */
+  export interface SubprocessReadableStream
+    extends ReadableStream<Uint8Array<ArrayBuffer>> {
+    /**
+     * Reads the stream to completion. It returns a promise that resolves with
+     * an `ArrayBuffer`.
+     */
+    arrayBuffer(): Promise<ArrayBuffer>;
+    /**
+     * Reads the stream to completion. It returns a promise that resolves with
+     * a `Uint8Array`.
+     */
+    bytes(): Promise<Uint8Array<ArrayBuffer>>;
+    /**
+     * Reads the stream to completion. It returns a promise that resolves with
+     * the result of parsing the body text as JSON.
+     */
+    json(): Promise<any>;
+    /**
+     * Reads the stream to completion. It returns a promise that resolves with
+     * a `USVString` (text).
+     */
+    text(): Promise<string>;
   }
 
   /**
@@ -4414,13 +4511,13 @@ declare namespace Deno {
    * Give the following command line invocation of Deno:
    *
    * ```sh
-   * deno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi
+   * deno eval "console.log(Deno.args)" Sushi Maguro Hamachi
    * ```
    *
    * Then `Deno.args` will contain:
    *
    * ```ts
-   * [ "Sushi" ]
+   * [ "Sushi", "Maguro", "Hamachi" ]
    * ```
    *
    * If you are looking for a structured way to parse arguments, there is
@@ -5158,6 +5255,18 @@ declare namespace Deno {
 
     /** Sets `SO_REUSEPORT` on POSIX systems. */
     reusePort?: boolean;
+
+    /** Maximum number of pending connections in the listen queue.
+     *
+     * This parameter controls how many incoming connections can be queued by the
+     * operating system while waiting for the application to accept them. If more
+     * connections arrive when the queue is full, they will be refused.
+     *
+     * The kernel may adjust this value (e.g., rounding up to the next power of 2
+     * plus 1). Different operating systems have different maximum limits.
+     *
+     * @default {511} */
+    tcpBacklog?: number;
   }
 
   /**
@@ -6232,10 +6341,11 @@ declare namespace Deno {
    * {@linkcode Deno.CreateHttpClientOptions}.
    *
    * Supported proxies:
-   *  - HTTP/HTTPS proxy: this uses the HTTP CONNECT method to tunnel HTTP
-   *    requests through a different server.
+   *  - HTTP/HTTPS proxy: this uses passthrough to tunnel HTTP requests, or HTTP
+   *    CONNECT to tunnel HTTPS requests through a different server.
    *  - SOCKS5 proxy: this uses the SOCKS5 protocol to tunnel TCP connections
    *    through a different server.
+   *  - TCP socket: this sends all requests to a specified TCP socket.
    *  - Unix domain socket: this sends all requests to a local Unix domain
    *    socket rather than a TCP socket. *Not supported on Windows.*
    *  - Vsock socket: this sends all requests to a local vsock socket.
@@ -6257,6 +6367,12 @@ declare namespace Deno {
     url: string;
     /** The basic auth credentials to be used against the proxy server. */
     basicAuth?: BasicAuth;
+  } | {
+    transport: "tcp";
+    /** The hostname of the TCP server to connect to. */
+    hostname: string;
+    /** The port of the TCP server to connect to. */
+    port: number;
   } | {
     transport: "unix";
     /** The path to the unix domain socket to use. */

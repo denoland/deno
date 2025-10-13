@@ -1,0 +1,5 @@
+cover [WILDCARD]main1.js ... 78.571% (11/14)
+   8 | worker.onerror = (e) => {
+   9 |   p.reject(e);
+  10 | };
+cover [WILDCARD]worker1.js ... 100.000% (8/8)

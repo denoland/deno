@@ -56,12 +56,14 @@ use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::SocketUse;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use deno_tls::rustls::RootCertStore;
 pub use fs_fetch_handler::FsFetchHandler;
 use http::Extensions;
+use http::HeaderMap;
 use http::Method;
 use http::Uri;
 use http::header::ACCEPT;
@@ -78,13 +80,17 @@ use http_body_util::BodyExt;
 use http_body_util::combinators::BoxBody;
 use hyper::body::Frame;
 use hyper_util::client::legacy::Builder as HyperClientBuilder;
+use hyper_util::client::legacy::connect::Connection;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::rt::TokioExecutor;
+use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
 use serde::Deserialize;
 use serde::Serialize;
+use tower::BoxError;
+use tower::Service;
 use tower::ServiceExt;
 use tower::retry;
 use tower_http::decompression::Decompression;
@@ -399,6 +405,12 @@ impl Drop for ResourceToBodyAdapter {
 }
 
 pub trait FetchPermissions {
+  fn check_net(
+    &mut self,
+    host: &str,
+    port: u16,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError>;
   fn check_net_url(
     &mut self,
     url: &Url,
@@ -420,6 +432,20 @@ pub trait FetchPermissions {
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net(
+    &mut self,
+    host: &str,
+    port: u16,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    deno_permissions::PermissionsContainer::check_net(
+      self,
+      &(host, Some(port)),
+      api_name,
+    )
+  }
+
   #[inline(always)]
   fn check_net_url(
     &mut self,
@@ -650,8 +676,6 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
-  pub remote_addr_ip: Option<String>,
-  pub remote_addr_port: Option<u16>,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
   /// In the tuple, the first element is an error message and the second one is
@@ -706,15 +730,6 @@ pub async fn op_fetch_send(
   }
 
   let content_length = hyper::body::Body::size_hint(res.body()).exact();
-  let remote_addr = res
-    .extensions()
-    .get::<hyper_util::client::legacy::connect::HttpInfo>()
-    .map(|info| info.remote_addr());
-  let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
-    (Some(addr.ip().to_string()), Some(addr.port()))
-  } else {
-    (None, None)
-  };
 
   let response_rid = state
     .borrow_mut()
@@ -728,8 +743,6 @@ pub async fn op_fetch_send(
     url,
     response_rid,
     content_length,
-    remote_addr_ip,
-    remote_addr_port,
     error: None,
   })
 }
@@ -924,6 +937,9 @@ where
         let url = Url::parse(url)?;
         permissions.check_net_url(&url, "Deno.createHttpClient()")?;
       }
+      Proxy::Tcp { hostname, port } => {
+        permissions.check_net(hostname, *port, "Deno.createHttpClient()")?;
+      }
       Proxy::Unix {
         path: original_path,
       } => {
@@ -1055,14 +1071,17 @@ pub fn create_http_client(
   user_agent: &str,
   options: CreateHttpClientOptions,
 ) -> Result<Client, HttpClientCreateError> {
-  let mut tls_config = deno_tls::create_client_config(
-    options.root_cert_store,
-    options.ca_certs,
-    options.unsafely_ignore_certificate_errors,
-    options.client_cert_chain_and_key.into(),
-    deno_tls::SocketUse::Http,
-  )
-  .map_err(HttpClientCreateError::Tls)?;
+  let mut tls_config =
+    deno_tls::create_client_config(deno_tls::TlsClientConfigOptions {
+      root_cert_store: options.root_cert_store,
+      ca_certs: options.ca_certs,
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors,
+      unsafely_disable_hostname_verification: false,
+      cert_chain_and_key: options.client_cert_chain_and_key.into(),
+      socket_use: deno_tls::SocketUse::Http,
+    })
+    .map_err(HttpClientCreateError::Tls)?;
 
   // Proxy TLS should not send ALPN
   tls_config.alpn_protocols.clear();
@@ -1112,6 +1131,13 @@ pub fn create_http_client(
         }
         intercept
       }
+      Proxy::Tcp {
+        hostname: host,
+        port,
+      } => {
+        let target = proxy::Target::new_tcp(host, port);
+        proxy::Intercept::all(target)
+      }
       #[cfg(not(windows))]
       Proxy::Unix { path } => {
         let target = proxy::Target::new_unix(PathBuf::from(path));
@@ -1121,12 +1147,20 @@ pub fn create_http_client(
       Proxy::Unix { .. } => {
         return Err(HttpClientCreateError::UnixProxyNotSupportedOnWindows);
       }
-      #[cfg(any(target_os = "linux", target_os = "macos"))]
+      #[cfg(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      ))]
       Proxy::Vsock { cid, port } => {
         let target = proxy::Target::new_vsock(cid, port);
         proxy::Intercept::all(target)
       }
-      #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+      #[cfg(not(any(
+        target_os = "android",
+        target_os = "linux",
+        target_os = "macos"
+      )))]
       Proxy::Vsock { .. } => {
         return Err(HttpClientCreateError::VsockProxyNotSupported);
       }
@@ -1136,7 +1170,7 @@ pub fn create_http_client(
   let proxies = Arc::new(proxies);
   let connector = proxy::ProxyConnector {
     http: http_connector,
-    proxies: proxies.clone(),
+    proxies,
     tls: tls_config,
     tls_proxy: proxy_tls_config,
     user_agent: Some(user_agent.clone()),
@@ -1163,13 +1197,13 @@ pub fn create_http_client(
     }
   }
 
-  let pooled_client = builder.build(connector);
+  let pooled_client = builder.build(connector.clone());
   let retry_client = retry::Retry::new(FetchRetry, pooled_client);
   let decompress = Decompression::new(retry_client).gzip(true).br(true);
 
   Ok(Client {
     inner: decompress,
-    proxies,
+    connector,
     user_agent,
   })
 }
@@ -1188,9 +1222,58 @@ pub struct Client {
       hyper_util::client::legacy::Client<Connector, ReqBody>,
     >,
   >,
-  // Used to check whether to include a proxy-authorization header
-  proxies: Arc<proxy::Proxies>,
+  connector: Connector,
   user_agent: HeaderValue,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ClientConnectError {
+  #[class(type)]
+  #[error("HTTP/1.1 not supported by this client")]
+  Http1NotSupported,
+  #[class(type)]
+  #[error("HTTP/2 not supported by this client")]
+  Http2NotSupported,
+  #[class(generic)]
+  #[error(transparent)]
+  Connector(BoxError),
+}
+
+impl Client {
+  pub async fn connect(
+    &self,
+    uri: Uri,
+    socket_use: SocketUse,
+  ) -> Result<
+    impl tokio::io::AsyncRead
+    + tokio::io::AsyncWrite
+    + Connection
+    + Unpin
+    + Send
+    + 'static,
+    ClientConnectError,
+  > {
+    let mut connector = match socket_use {
+      SocketUse::Http1Only => {
+        let Some(connector) = self.connector.clone().h1_only() else {
+          return Err(ClientConnectError::Http1NotSupported);
+        };
+        connector
+      }
+      SocketUse::Http2Only => {
+        let Some(connector) = self.connector.clone().h2_only() else {
+          return Err(ClientConnectError::Http2NotSupported);
+        };
+        connector
+      }
+      _ => self.connector.clone(),
+    };
+    let connection = connector
+      .call(uri)
+      .await
+      .map_err(ClientConnectError::Connector)?;
+    Ok(TokioIo::new(connection))
+  }
 }
 
 type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
@@ -1252,21 +1335,51 @@ impl std::error::Error for ClientSendError {
   }
 }
 
+pub trait CommonRequest {
+  fn uri(&self) -> &Uri;
+  fn headers_mut(&mut self) -> &mut HeaderMap;
+}
+
+impl CommonRequest for http::Request<ReqBody> {
+  fn uri(&self) -> &Uri {
+    self.uri()
+  }
+
+  fn headers_mut(&mut self) -> &mut HeaderMap {
+    self.headers_mut()
+  }
+}
+
+impl CommonRequest for http::request::Builder {
+  fn uri(&self) -> &Uri {
+    http::request::Builder::uri_ref(self).expect("uri not set")
+  }
+
+  fn headers_mut(&mut self) -> &mut HeaderMap {
+    http::request::Builder::headers_mut(self).expect("headers not set")
+  }
+}
+
 impl Client {
-  pub async fn send(
-    self,
-    mut req: http::Request<ReqBody>,
-  ) -> Result<http::Response<ResBody>, ClientSendError> {
+  /// Injects common headers like User-Agent and Proxy-Authorization.
+  pub fn inject_common_headers(&self, req: &mut impl CommonRequest) {
     req
       .headers_mut()
       .entry(USER_AGENT)
       .or_insert_with(|| self.user_agent.clone());
 
-    req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
-
-    if let Some(auth) = self.proxies.http_forward_auth(req.uri()) {
+    if let Some(auth) = self.connector.proxies.http_forward_auth(req.uri()) {
       req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
     }
+  }
+
+  pub async fn send(
+    self,
+    mut req: http::Request<ReqBody>,
+  ) -> Result<http::Response<ResBody>, ClientSendError> {
+    self.inject_common_headers(&mut req);
+
+    req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
 
     let uri = req.uri().clone();
 

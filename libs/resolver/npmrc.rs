@@ -16,7 +16,7 @@ use thiserror::Error;
 use url::Url;
 
 #[allow(clippy::disallowed_types)]
-pub type ResolvedNpmRcRc = crate::sync::MaybeArc<ResolvedNpmRc>;
+pub type ResolvedNpmRcRc = deno_maybe_sync::MaybeArc<ResolvedNpmRc>;
 
 #[derive(Debug, Boxed)]
 pub struct NpmRcDiscoverError(pub Box<NpmRcDiscoverErrorKind>);

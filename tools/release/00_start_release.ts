@@ -5,7 +5,7 @@
 
 import { $, createOctoKit, semver } from "./deps.ts";
 
-const currentDirPath = $.path(import.meta).parentOrThrow();
+const currentDirPath = $.path(import.meta.dirname!);
 
 $.logStep("Getting next version...");
 const currentVersion = semver.parse(getCliVersion())!;
@@ -38,11 +38,11 @@ if (Deno.args.some((a) => a === "--dry-run")) {
 
 function getNextVersion(originalVersion: semver.SemVer) {
   if (Deno.args.some((a) => a === "--patch")) {
-    return originalVersion.increment("patch");
+    return semver.increment(originalVersion, "patch");
   } else if (Deno.args.some((a) => a === "--minor")) {
-    return originalVersion.increment("minor");
+    return semver.increment(originalVersion, "minor");
   } else if (Deno.args.some((a) => a === "--major")) {
-    return originalVersion.increment("major");
+    return semver.increment(originalVersion, "major");
   } else {
     throw new Error("Missing argument");
   }

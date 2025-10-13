@@ -48,6 +48,7 @@ use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::sys::CliSys;
+use crate::util;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::path::get_extension;
@@ -165,6 +166,8 @@ fn resolve_paths_with_options_batches(
   cli_options: &CliOptions,
   fmt_flags: &FmtFlags,
 ) -> Result<Vec<PathsWithOptions>, AnyError> {
+  maybe_show_format_confirmation(cli_options, fmt_flags)?;
+
   let members_fmt_options =
     cli_options.resolve_fmt_options_for_members(fmt_flags)?;
   let mut paths_with_options_batches =
@@ -184,6 +187,37 @@ fn resolve_paths_with_options_batches(
     return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
+}
+
+fn maybe_show_format_confirmation(
+  cli_options: &CliOptions,
+  fmt_flags: &FmtFlags,
+) -> Result<(), AnyError> {
+  if fmt_flags.check
+    || !fmt_flags.files.include.is_empty()
+    || cli_options.workspace().deno_jsons().next().is_some()
+    || cli_options.workspace().package_jsons().next().is_some()
+  {
+    return Ok(());
+  }
+
+  let confirm_result =
+    util::console::confirm(util::console::ConfirmOptions {
+      default: true,
+      message: format!(
+        "{} It looks like you're not in a workspace. Are you sure you want to format the entire '{}' directory?",
+        colors::yellow("Warning"),
+        cli_options.initial_cwd().display()
+      ),
+    })
+    .unwrap_or(false);
+  if confirm_result {
+    Ok(())
+  } else {
+    bail!(
+      "Did not format non-workspace directory. Run again specifying the current directory (ex. `deno fmt .`)"
+    )
+  }
 }
 
 async fn format_files(
@@ -237,7 +271,7 @@ fn collect_fmt_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), files)
+  .collect_file_patterns(&CliSys::default(), &files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -1398,6 +1432,12 @@ fn get_typescript_config_builder(
     options.space_surrounding_properties
   {
     builder.space_surrounding_properties(space_surrounding_properties);
+    builder.import_declaration_space_surrounding_named_imports(
+      space_surrounding_properties,
+    );
+    builder.export_declaration_space_surrounding_named_exports(
+      space_surrounding_properties,
+    );
   }
 
   builder

@@ -4,6 +4,16 @@ import { assert, assertEquals, assertThrows } from "@std/assert";
 
 const tempDir = Deno.makeTempDirSync();
 
+Deno.test("[node/sqlite] sqlite-type symbol", () => {
+  const db = new DatabaseSync(":memory:");
+  const sqliteTypeSymbol = Symbol.for("sqlite-type");
+
+  // @ts-ignore `sqliteTypeSymbol` is not available in `@types:node` for version 24.3
+  assertEquals(db[sqliteTypeSymbol], "node:sqlite");
+
+  db.close();
+});
+
 Deno.test("[node/sqlite] in-memory databases", () => {
   const db1 = new DatabaseSync(":memory:");
   const db2 = new DatabaseSync(":memory:");

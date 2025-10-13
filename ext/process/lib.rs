@@ -752,6 +752,26 @@ fn compute_run_cmd_and_check_permissions(
       command: arg_cmd.to_string(),
       error: Box::new(e),
     })?;
+  // Undocumented feature of CreateProcess API allows spawning batch files directly
+  // without proper argument escaping. We reject it here.
+  #[cfg(windows)]
+  if let Some(ext) = cmd.extension() {
+    let ext_str = ext.to_string_lossy();
+    if ext_str.eq_ignore_ascii_case("bat")
+      || ext_str.eq_ignore_ascii_case("cmd")
+    {
+      return Err(ProcessError::SpawnFailed {
+        command: arg_cmd.to_string(),
+        error: Box::new(
+          std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Use a shell to execute .bat or .cmd files",
+          )
+          .into(),
+        ),
+      });
+    }
+  }
   check_run_permission(
     state,
     &RunQueryDescriptor::Path(

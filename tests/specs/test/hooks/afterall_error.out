@@ -1,0 +1,28 @@
+Check [WILDCARD]afterall_error.ts
+running 1 test from ./afterall_error.ts
+first test ...
+------- output -------
+test executed
+----- output end -----
+first test ... ok ([WILDCARD])
+------- post-test output -------
+afterAll 1 executed
+Uncaught error from ./afterall_error.ts FAILED
+
+ ERRORS 
+
+./afterall_error.ts (uncaught error)
+error: Error: afterAll 1 failed
+  throw new Error("afterAll 1 failed");
+        ^
+    at [WILDCARD]afterall_error.ts:9:9
+This error was not caught from a test and caused the test runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+ FAILURES 
+
+./afterall_error.ts (uncaught error)
+
+FAILED | 1 passed | 1 failed ([WILDCARD])
+
+error: Test failed
