@@ -427,6 +427,10 @@ async fn run_subcommand(
       1,
     ),
     DenoSubcommand::BumpVersion(version_flags) => spawn_subcommand(async {
+      log::warn!(
+        "⚠️  {} is experimental and subject to change",
+        colors::cyan("deno bump-version")
+      );
       tools::bump_version::bump_version_command(flags, version_flags)
     }),
     DenoSubcommand::Vendor => exit_with_message(
