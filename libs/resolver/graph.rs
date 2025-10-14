@@ -46,6 +46,18 @@ pub type FoundPackageJsonDepFlagRc =
 #[derive(Debug, Default)]
 pub struct FoundPackageJsonDepFlag(AtomicFlag);
 
+impl FoundPackageJsonDepFlag {
+  #[inline(always)]
+  pub fn raise(&self) -> bool {
+    self.0.raise()
+  }
+
+  #[inline(always)]
+  pub fn is_raised(&self) -> bool {
+    self.0.is_raised()
+  }
+}
+
 #[derive(Debug, deno_error::JsError, Boxed)]
 pub struct ResolveWithGraphError(pub Box<ResolveWithGraphErrorKind>);
 
@@ -119,18 +131,6 @@ pub struct CouldNotResolveNpmNvError {
 impl NodeJsErrorCoded for CouldNotResolveNpmNvError {
   fn code(&self) -> node_resolver::errors::NodeJsErrorCode {
     self.source.code()
-  }
-}
-
-impl FoundPackageJsonDepFlag {
-  #[inline(always)]
-  pub fn raise(&self) -> bool {
-    self.0.raise()
-  }
-
-  #[inline(always)]
-  pub fn is_raised(&self) -> bool {
-    self.0.is_raised()
   }
 }
 
@@ -827,7 +827,7 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
   maybe_specifier.map(|s| s.as_str())
 }
 
-fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
+pub fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
   use deno_terminal::colors;
   format!(
     "{}:{}:{}",
