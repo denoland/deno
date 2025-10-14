@@ -492,6 +492,7 @@ struct MemoizedValues {
   module: OnceCell<CompilerOptionsModule>,
   module_resolution: OnceCell<CompilerOptionsModuleResolution>,
   check_js: OnceCell<bool>,
+  skip_lib_check: OnceCell<bool>,
   base_url: OnceCell<Option<Url>>,
   paths: OnceCell<CompilerOptionsPaths>,
   root_dirs: OnceCell<Vec<Url>>,
@@ -770,6 +771,24 @@ impl CompilerOptionsData {
             .0
             .as_object()?
             .get("checkJs")?
+            .as_bool()
+        })
+        .unwrap_or(false)
+    })
+  }
+
+  pub fn skip_lib_check(&self) -> bool {
+    *self.memoized.skip_lib_check.get_or_init(|| {
+      self
+        .sources
+        .iter()
+        .rev()
+        .find_map(|s| {
+          s.compiler_options
+            .as_ref()?
+            .0
+            .as_object()?
+            .get("skipLibCheck")?
             .as_bool()
         })
         .unwrap_or(false)

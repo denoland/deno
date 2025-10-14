@@ -779,6 +779,15 @@ impl<'a> GraphWalker<'a> {
         }
       }
 
+      if module.media_type().is_declaration() {
+        let compiler_options_data = self
+          .compiler_options_resolver
+          .for_specifier(module.specifier());
+        if compiler_options_data.skip_lib_check() {
+          continue;
+        }
+      }
+
       if let Some(deps) = maybe_module_dependencies {
         for dep in deps.values() {
           // walk both the code and type dependencies
