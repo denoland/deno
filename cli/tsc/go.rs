@@ -111,7 +111,11 @@ fn exec_request_inner(
     "configure",
     jsons!({
       "callbacks": callbacks.iter().collect::<Vec<_>>(),
-      "logFile": ""
+      "logFile": "",
+      "forkContextInfo": {
+        "typesNodeIgnorableNames": super::TYPES_NODE_IGNORABLE_NAMES,
+        "nodeOnlyGlobalNames": super::NODE_ONLY_GLOBALS,
+      },
     })?,
   )?;
 

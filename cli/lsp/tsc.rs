@@ -4720,15 +4720,6 @@ struct LoadResponse {
 }
 
 #[op2]
-#[serde]
-fn op_ignored_diagnostic_codes() -> Vec<u64> {
-  crate::tsc::IGNORED_DIAGNOSTIC_CODES
-    .iter()
-    .copied()
-    .collect()
-}
-
-#[op2]
 fn op_load<'s>(
   scope: &'s mut v8::PinScope<'_, '_>,
   state: &mut OpState,
@@ -5278,6 +5269,12 @@ fn op_project_version(state: &mut OpState) -> usize {
   r
 }
 
+#[op2]
+#[serde]
+fn op_tsc_constants() -> crate::tsc::TscConstants {
+  crate::tsc::TscConstants::new()
+}
+
 struct TscRuntime {
   js_runtime: JsRuntime,
   server_main_loop_fn_global: v8::Global<v8::Function>,
@@ -5402,7 +5399,7 @@ deno_core::extension!(deno_tsc,
     op_is_cancelled,
     op_is_node_file,
     op_load,
-    op_ignored_diagnostic_codes,
+    op_tsc_constants,
     op_release,
     op_resolve,
     op_respond,

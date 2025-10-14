@@ -303,7 +303,12 @@ const CACHE_URL_PREFIX = "cache:///";
 
 /** Diagnostics that are intentionally ignored when compiling TypeScript in
  * Deno, as they provide misleading or incorrect information. */
-const IGNORED_DIAGNOSTICS = ops.op_ignored_diagnostic_codes();
+const TSC_CONSTANTS = ops.op_tsc_constants();
+const IGNORED_DIAGNOSTICS = TSC_CONSTANTS.ignoredDiagnosticCodes;
+const TYPES_NODE_IGNORABLE_NAMES = new Set(
+  TSC_CONSTANTS.typesNodeIgnorableNames,
+);
+const NODE_ONLY_GLOBALS = new Set(TSC_CONSTANTS.nodeOnlyGlobals);
 
 // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
 /** Error thrown on cancellation. */
@@ -807,97 +812,14 @@ export function filterMapDiagnostic(diagnostic) {
 
 // list of globals that should be kept in Node's globalThis
 ts.deno.setNodeOnlyGlobalNames(
-  new Set([
-    "__dirname",
-    "__filename",
-    '"buffer"',
-    "Buffer",
-    "BufferConstructor",
-    "BufferEncoding",
-    "clearImmediate",
-    "clearInterval",
-    "clearTimeout",
-    "console",
-    "Console",
-    "crypto",
-    "ErrorConstructor",
-    "gc",
-    "Global",
-    "localStorage",
-    "queueMicrotask",
-    "RequestInit",
-    "ResponseInit",
-    "sessionStorage",
-    "setImmediate",
-    "setInterval",
-    "setTimeout",
-  ]),
+  NODE_ONLY_GLOBALS,
 );
 // List of globals in @types/node that collide with Deno's types.
 // When the `@types/node` package attempts to assign to these types
 // if the type is already in the global symbol table, then assignment
 // will be a no-op, but if the global type does not exist then the package can
 // create the global.
-const setTypesNodeIgnorableNames = new Set([
-  "AbortController",
-  "AbortSignal",
-  "AsyncIteratorObject",
-  "atob",
-  "Blob",
-  "BroadcastChannel",
-  "btoa",
-  "ByteLengthQueuingStrategy",
-  "CloseEvent",
-  "CompressionStream",
-  "CountQueuingStrategy",
-  "CustomEvent",
-  "DecompressionStream",
-  "Disposable",
-  "DOMException",
-  "Event",
-  "EventSource",
-  "EventTarget",
-  "fetch",
-  "File",
-  "Float32Array",
-  "Float64Array",
-  "FormData",
-  "Headers",
-  "ImportMeta",
-  "MessageChannel",
-  "MessageEvent",
-  "MessagePort",
-  "Navigator",
-  "performance",
-  "PerformanceEntry",
-  "PerformanceMark",
-  "PerformanceMeasure",
-  "QueuingStrategy",
-  "QueuingStrategySize",
-  "ReadableByteStreamController",
-  "ReadableStream",
-  "ReadableStreamBYOBReader",
-  "ReadableStreamBYOBRequest",
-  "ReadableStreamDefaultController",
-  "ReadableStreamDefaultReader",
-  "ReadonlyArray",
-  "Request",
-  "Response",
-  "Storage",
-  "TextDecoder",
-  "TextDecoderStream",
-  "TextEncoder",
-  "TextEncoderStream",
-  "TransformStream",
-  "TransformStreamDefaultController",
-  "URL",
-  "URLPattern",
-  "URLSearchParams",
-  "WebSocket",
-  "WritableStream",
-  "WritableStreamDefaultController",
-  "WritableStreamDefaultWriter",
-]);
+const setTypesNodeIgnorableNames = TYPES_NODE_IGNORABLE_NAMES;
 ts.deno.setTypesNodeIgnorableNames(setTypesNodeIgnorableNames);
 
 /**
