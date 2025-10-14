@@ -1076,6 +1076,16 @@ fn diagnose_dependency(
     return; // ignore, surface typescript errors instead
   }
 
+  if referrer_module.media_type.is_declaration() {
+    let compiler_options_data = snapshot
+      .compiler_options_resolver
+      .for_key(&referrer_module.compiler_options_key)
+      .expect("Key should be in sync with resolver.");
+    if compiler_options_data.skip_lib_check {
+      return;
+    }
+  }
+
   let import_map = snapshot
     .resolver
     .get_scoped_resolver(referrer_module.scope.as_deref())
