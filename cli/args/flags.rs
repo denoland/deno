@@ -1882,6 +1882,8 @@ fn audit_subcommand() -> Command {
       .arg(
         Arg::new("level")
           .long("level")
+          .alias("audit-level")
+          .alias("severity")
           .help("Only show advisories with severity greater or equal to the one specified")
           .value_parser([
             "low",
