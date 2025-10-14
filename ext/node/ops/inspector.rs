@@ -6,7 +6,6 @@ use std::rc::Rc;
 use deno_core::GarbageCollected;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use deno_core::op2;
@@ -158,10 +157,8 @@ where
   let session = JsRuntimeInspector::create_local_session(
     inspector,
     callback,
-    InspectorSessionOptions {
-      kind: InspectorSessionKind::NonBlocking {
-        wait_for_disconnect: false,
-      },
+    InspectorSessionKind::NonBlocking {
+      wait_for_disconnect: false,
     },
   );
 
