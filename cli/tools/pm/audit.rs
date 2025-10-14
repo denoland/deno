@@ -74,7 +74,7 @@ mod npm {
 
   use super::*;
 
-  #[derive(Clone, Copy, Debug)]
+  #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
   enum AdvisorySeverity {
     Low,
     Moderate,
@@ -195,7 +195,7 @@ mod npm {
         "dependencies": dependencies,
     });
 
-    // eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
+    eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
     let response = match call_audits_api_inner(client, body).await {
       Ok(s) => s,
       Err(err) => {
@@ -210,7 +210,7 @@ mod npm {
 
     let vulns = response.metadata.vulnerabilities;
     if vulns.total() == 0 {
-      return;
+      return Ok(());
     }
 
     let mut advisories = response.advisories.values().collect::<Vec<_>>();
@@ -221,6 +221,7 @@ mod npm {
     let minimal_severity =
       AdvisorySeverity::parse(&audit_flags.severity).unwrap();
     print_report(
+      vulns,
       advisories,
       response.actions,
       minimal_severity,
@@ -231,7 +232,8 @@ mod npm {
   }
 
   fn print_report(
-    advisories: Vec<AuditAdvisory>,
+    vulns: AuditVulnerabilities,
+    advisories: Vec<&AuditAdvisory>,
     actions: Vec<AuditAction>,
     minimal_severity: AdvisorySeverity,
     ignore_unfixable: bool,
