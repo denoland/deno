@@ -21,7 +21,7 @@ use crate::http_util::HttpClientProvider;
 
 pub async fn audit(
   flags: Arc<Flags>,
-  _audit_flags: AuditFlags,
+  audit_flags: AuditFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
   let _cli_options = factory.cli_options()?;
@@ -30,9 +30,12 @@ pub async fn audit(
   let snapshot = npm_resolver.resolution().snapshot();
 
   let http_provider = HttpClientProvider::new(None, None);
-  let _npm_response =
-    npm::call_audits_api(&snapshot, http_provider.get_or_create().unwrap())
-      .await?;
+  let _npm_response = npm::call_audits_api(
+    audit_flags,
+    &snapshot,
+    http_provider.get_or_create().unwrap(),
+  )
+  .await?;
 
   // let _purl_responses = socket_dev::call_firewall_api(
   //   &snapshot,
@@ -70,6 +73,26 @@ mod npm {
   use deno_npm::NpmPackageId;
 
   use super::*;
+
+  #[derive(Clone, Copy, Debug)]
+  enum AdvisorySeverity {
+    Low,
+    Moderate,
+    High,
+    Critical,
+  }
+
+  impl AdvisorySeverity {
+    fn parse(str_: &str) -> Option<Self> {
+      match str_ {
+        "low" => Some(Self::Low),
+        "moderate" => Some(Self::Moderate),
+        "high" => Some(Self::High),
+        "critical" => Some(Self::Critical),
+        _ => None,
+      }
+    }
+  }
 
   fn get_dependency_descriptors_for_deps(
     seen: &mut HashSet<String>,
@@ -110,7 +133,24 @@ mod npm {
     deps_map
   }
 
+  pub async fn call_audits_api_inner(
+    client: HttpClient,
+    body: serde_json::Value,
+  ) -> Result<AuditResponse, AnyError> {
+    let url = Url::parse("https://registry.npmjs.org/-/npm/v1/security/audits")
+      .unwrap();
+    let future = client.post_json(url, &body)?.send().boxed_local();
+    let response = future.await?;
+    let json_str = http_util::body_to_string(response)
+      .await
+      .context("Failed to read response from the npm registry API")?;
+    let response: AuditResponse = serde_json::from_str(&json_str)
+      .context("Failed to deserialize response from the npm registry API")?;
+    Ok(response)
+  }
+
   pub async fn call_audits_api(
+    audit_flags: AuditFlags,
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
   ) -> Result<(), AnyError> {
@@ -156,23 +196,18 @@ mod npm {
     });
 
     // eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
-    let url = Url::parse("https://registry.npmjs.org/-/npm/v1/security/audits")
-      .unwrap();
-    let future = client.post_json(url, &body)?.send().boxed_local();
-    let response = future.await?;
-    let json_str = http_util::body_to_string(response)
-      .await
-      .context("Failed to read response from the npm registry API")?;
-    let response: AuditResponse = serde_json::from_str(&json_str)
-      .context("Failed to deserialize response from the npm registry API")?;
+    let response = match call_audits_api_inner(client, body).await {
+      Ok(s) => s,
+      Err(err) => {
+        if audit_flags.ignore_registry_errors {
+          return Ok(());
+        } else {
+          return Err(err);
+        }
+      }
+    };
     // dbg!(&response);
 
-    print_report(response);
-
-    Ok(())
-  }
-
-  fn print_report(response: AuditResponse) {
     let vulns = response.metadata.vulnerabilities;
     if vulns.total() == 0 {
       return;
@@ -183,18 +218,46 @@ mod npm {
       format!("{}@{}", adv.module_name, adv.vulnerable_versions)
     });
 
+    let minimal_severity =
+      AdvisorySeverity::parse(&audit_flags.severity).unwrap();
+    print_report(
+      advisories,
+      response.actions,
+      minimal_severity,
+      audit_flags.ignore_unfixable,
+    );
+
+    Ok(())
+  }
+
+  fn print_report(
+    advisories: Vec<AuditAdvisory>,
+    actions: Vec<AuditAction>,
+    minimal_severity: AdvisorySeverity,
+    ignore_unfixable: bool,
+  ) {
     for adv in advisories {
-      let actions = adv.find_actions(&response.actions);
+      let Some(severity) = AdvisorySeverity::parse(&adv.severity) else {
+        continue;
+      };
+      if severity < minimal_severity {
+        continue;
+      }
+
+      let actions = adv.find_actions(&actions);
+      if actions.is_empty() && ignore_unfixable {
+        continue;
+      }
+
       log::info!("╭ {}", colors::bold(adv.title.to_string()));
       log::info!(
         "│ {}   {}",
         colors::gray("Severity:"),
-        match adv.severity.as_str() {
-          "low" => colors::bold("low").to_string(),
-          "moderate" => colors::yellow("moderate").to_string(),
-          "high" => colors::red("high").to_string(),
-          "critical" => colors::red("critical").to_string(),
-          sev => sev.to_string(),
+        match severity {
+          AdvisorySeverity::Low => colors::bold("low"),
+          AdvisorySeverity::Moderate => colors::yellow("moderate"),
+          AdvisorySeverity::High => colors::red("high"),
+          AdvisorySeverity::Critical => colors::red("critical"),
         }
       );
       log::info!("│ {}    {}", colors::gray("Package:"), adv.module_name);

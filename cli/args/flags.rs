@@ -107,7 +107,15 @@ pub struct AddFlags {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct AuditFlags {}
+pub struct AuditFlags {
+  pub severity: String,
+  pub ignore_registry_errors: bool,
+  pub ignore_unfixable: bool,
+  pub dev: bool,
+  pub prod: bool,
+  pub optional: bool,
+  pub ignore: Vec<String>,
+}
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RemoveFlags {
@@ -1867,7 +1875,34 @@ fn audit_subcommand() -> Command {
     cstr!("Audit currently installed dependencies."),
     UnstableArgsConfig::None,
   )
-  .defer(|cmd| cmd.args(lock_args()).args(default_registry_args()))
+  .defer(|cmd| {
+    cmd
+      .args(lock_args())
+      .args(default_registry_args())
+      .arg(
+        Arg::new("level")
+          .long("level")
+          .help("Only show advisories with severity greater or equal to the one specified")
+          .value_parser([
+            "low",
+            "moderate",
+            "high",
+            "critical",
+          ]),
+      )
+      .arg(
+        Arg::new("ignore-unfixable")
+          .long("ignore-unfixable")
+          .help("Ignore advisories that don't have any actions to resolve them")
+          .action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("ignore-registry-errors")
+          .long("ignore-registry-errors")
+          .help("Return exit code 0 if remote service(s) responds with an error.")
+          .action(ArgAction::SetTrue)
+      )
+  })
 }
 
 fn default_registry_args() -> [Arg; 2] {
@@ -4956,7 +4991,25 @@ fn audit_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   lock_args_parse(flags, matches);
-  flags.subcommand = DenoSubcommand::Audit(AuditFlags {});
+  let severity = matches
+    .remove_one::<String>("level")
+    .unwrap_or_else(|| "low".to_string());
+  let ignore_unfixable = matches.get_flag("ignore-unfixable");
+  let ignore_registry_errors = matches.get_flag("ignore-registry-errors");
+  let dev = true;
+  let prod = true;
+  let optional = true;
+  let ignore = vec![];
+
+  flags.subcommand = DenoSubcommand::Audit(AuditFlags {
+    severity,
+    dev,
+    prod,
+    optional,
+    ignore_registry_errors,
+    ignore_unfixable,
+    ignore,
+  });
   Ok(())
 }
 
