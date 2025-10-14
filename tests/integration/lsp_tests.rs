@@ -19164,6 +19164,33 @@ fn do_not_auto_import_from_definitely_typed() {
     client.shutdown();
   }
 }
+#[test]
+#[timeout(300_000)]
+fn lsp_skip_lib_check_graph_errors() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "skipLibCheck": true,
+      },
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "types.d.ts",
+    r#"
+      /// <reference path="./nonexistent.d.ts" />
+      /// <reference path="nonexistent" />
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
 
 #[test]
 #[timeout(300_000)]
