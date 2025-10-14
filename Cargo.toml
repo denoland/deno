@@ -54,9 +54,6 @@ members = [
 ]
 exclude = ["tests/util/std/hash/_wasm"]
 
-[patch.crates-io]
-deno_core = { git = "https://github.com/denoland/deno_core.git", branch = "import-range-load" }
-
 [workspace.package]
 authors = ["the Deno authors"]
 edition = "2024"
@@ -65,7 +62,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.50.3", features = ["transpiling"] }
-deno_core = { version = "0.362.0" }
+deno_core = { version = "0.363.0" }
 
 deno_cache_dir = "=0.25.0"
 deno_doc = "=0.185.0"
