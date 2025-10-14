@@ -958,6 +958,7 @@ impl<'a> ResolverFactory<'a> {
         newest_dependency_date: None,
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
+        Default::default(),
         npm_version_resolver,
         registry_info_provider.clone(),
         None,
