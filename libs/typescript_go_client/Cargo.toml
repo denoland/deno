@@ -4,6 +4,8 @@
 name = "deno_typescript_go_client_rust"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "Rust library to communicate with TSGO binary over IPC"
 
 [dependencies]
 indexmap = { version = "2", features = ["serde"] }
