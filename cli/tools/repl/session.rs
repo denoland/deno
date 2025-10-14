@@ -20,7 +20,6 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
-use deno_core::InspectorPostMessageError;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
@@ -263,15 +262,12 @@ impl ReplSessionState {
     let _ = sender.send(message);
   }
 
-  async fn wait_for_response(
-    &self,
-    msg_id: i32,
-  ) -> Result<serde_json::Value, InspectorPostMessageError> {
+  async fn wait_for_response(&self, msg_id: i32) -> serde_json::Value {
     if let Some(message_state) = self.0.lock().messages.remove(&msg_id) {
       let InspectorMessageState::Ready(mut value) = message_state else {
         unreachable!();
       };
-      return Ok(value["result"].take());
+      return value["result"].take();
     }
 
     let (tx, rx) = oneshot::channel();
@@ -281,7 +277,7 @@ impl ReplSessionState {
       .messages
       .insert(msg_id, InspectorMessageState::WaitingFor(tx));
     let mut value = rx.await.unwrap();
-    Ok(value["result"].take())
+    value["result"].take()
   }
 }
 
@@ -417,10 +413,14 @@ impl ReplSession {
     &mut self,
     method: &str,
     params: Option<T>,
-  ) -> Result<Value, InspectorPostMessageError> {
+  ) -> Value {
     let msg_id = next_msg_id();
     self.session.post_message(msg_id, method, params);
-    let fut = self.state.wait_for_response(msg_id).boxed_local();
+    let fut = self
+      .state
+      .wait_for_response(msg_id)
+      .map(Ok::<_, ()>)
+      .boxed_local();
 
     self
       .worker
@@ -436,6 +436,7 @@ impl ReplSession {
         },
       )
       .await
+      .unwrap()
   }
 
   pub async fn run_event_loop(&mut self) -> Result<(), CoreError> {
@@ -608,7 +609,7 @@ impl ReplSession {
           throw_on_side_effect: None,
         }),
       )
-      .await?;
+      .await;
     Ok(())
   }
 
@@ -633,7 +634,7 @@ impl ReplSession {
           throw_on_side_effect: None,
         }),
       )
-      .await?;
+      .await;
     Ok(())
   }
 
@@ -665,7 +666,7 @@ impl ReplSession {
           throw_on_side_effect: None,
         }),
       )
-      .await?;
+      .await;
 
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
@@ -700,7 +701,7 @@ impl ReplSession {
           throw_on_side_effect: None,
         }),
       )
-      .await?;
+      .await;
 
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
@@ -904,8 +905,8 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<cdp::EvaluateResponse, InspectorPostMessageError> {
-    self
+  ) -> Result<cdp::EvaluateResponse, JsErrorBox> {
+    let res = self
       .post_message_with_event_loop(
         "Runtime.evaluate",
         Some(cdp::EvaluateArgs {
@@ -926,10 +927,8 @@ impl ReplSession {
           unique_context_id: None,
         }),
       )
-      .await
-      .and_then(|res| {
-        serde_json::from_value(res).map_err(|e| JsErrorBox::from_err(e).into())
-      })
+      .await;
+    serde_json::from_value(res).map_err(JsErrorBox::from_err)
   }
 }
 

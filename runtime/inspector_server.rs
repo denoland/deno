@@ -13,7 +13,6 @@ use std::thread;
 
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntimeInspector;
 use deno_core::futures::channel::mpsc;
@@ -197,10 +196,8 @@ fn handle_ws_request(
     let inspector_session_proxy = InspectorSessionProxy {
       tx: outbound_tx,
       rx: inbound_rx,
-      options: InspectorSessionOptions {
-        kind: InspectorSessionKind::NonBlocking {
-          wait_for_disconnect: true,
-        },
+      kind: InspectorSessionKind::NonBlocking {
+        wait_for_disconnect: true,
       },
     };
 

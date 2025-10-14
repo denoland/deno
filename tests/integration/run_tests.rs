@@ -3474,7 +3474,7 @@ fn emit_failed_readonly_file_system() {
     .new_command()
     .args("run --log-level=debug main.ts")
     .run();
-  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
+  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]main.ts[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }
 
 // todo(dsherret): waiting on fix in https://github.com/servo/rust-url/issues/505
