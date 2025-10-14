@@ -4652,8 +4652,14 @@ fn tunnel_arg() -> Arg {
     .long("tunnel")
     .alias("connected")
     .short('t')
-    .hide(true)
     .num_args(0..=1)
+    .help(cstr!(
+      "Execute tasks with a tunnel to Deno Deploy.
+
+    Create a secure connection between your local machine and Deno Deploy,
+    providing access to centralised environment variables, logging,
+    and serving from your local environment to the public internet"
+    ))
     .require_equals(true)
     .action(ArgAction::SetTrue)
 }

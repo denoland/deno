@@ -6,7 +6,7 @@ use crate::*;
 pub struct CallbackInfo {
   pub env: *mut Env,
   pub cb: napi_callback,
-  pub cb_info: napi_callback_info,
+  pub data: *mut c_void,
   pub args: *const c_void,
 }
 
@@ -15,12 +15,12 @@ impl CallbackInfo {
   pub fn new_raw(
     env: *mut Env,
     cb: napi_callback,
-    cb_info: napi_callback_info,
+    data: *mut c_void,
   ) -> *mut Self {
     Box::into_raw(Box::new(Self {
       env,
       cb,
-      cb_info,
+      data,
       args: std::ptr::null(),
     }))
   }
@@ -58,10 +58,10 @@ pub fn create_function<'s>(
   env: *mut Env,
   name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
-  cb_info: napi_callback_info,
+  data: *mut c_void,
 ) -> v8::Local<'s, v8::Function> {
   let external =
-    v8::External::new(scope, CallbackInfo::new_raw(env, cb, cb_info) as *mut _);
+    v8::External::new(scope, CallbackInfo::new_raw(env, cb, data) as *mut _);
   let function = v8::Function::builder_raw(call_fn)
     .data(external.into())
     .build(scope)

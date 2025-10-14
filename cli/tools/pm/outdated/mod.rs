@@ -305,13 +305,23 @@ fn choose_new_version_req(
         latest_available: false,
       };
     };
-    let exact = if let Some(range) = dep.req.version_req.range() {
-      range.0[0].start == range.0[0].end
+    // Detect the original operator to preserve it
+    let version_req_str = dep.req.version_req.to_string();
+    let operator = if version_req_str.starts_with('~') {
+      "~"
+    } else if version_req_str.starts_with('^') {
+      "^"
     } else {
-      false
+      // Check if it's an exact version (no operator)
+      let exact = if let Some(range) = dep.req.version_req.range() {
+        range.0[0].start == range.0[0].end
+      } else {
+        false
+      };
+      if exact { "" } else { "^" }
     };
     let candidate_version_req = VersionReq::parse_from_specifier(
-      format!("{}{}", if exact { "" } else { "^" }, preferred.version).as_str(),
+      format!("{}{}", operator, preferred.version).as_str(),
     )
     .unwrap();
     if preferred.version <= resolved.version

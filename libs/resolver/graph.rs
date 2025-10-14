@@ -827,7 +827,7 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
   maybe_specifier.map(|s| s.as_str())
 }
 
-fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
+pub fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
   use deno_terminal::colors;
   format!(
     "{}:{}:{}",
