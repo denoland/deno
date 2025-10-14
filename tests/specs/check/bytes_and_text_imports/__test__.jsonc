@@ -4,6 +4,10 @@
   "exitCode": 1,
   "variants": {
     // TODO(nathanwhit): not implemented yet, needs tsgo changes
+    //  see appendRawImportFragment in cli/tsc/97_ts_host.js and the code that calls it.
+    //  it will need tsgo changes because the import kind is not easily available on the tsgo side
+    //  during resolution.
+    //
     // "tsgo": {
     //   "use_tsgo": "1"
     // },

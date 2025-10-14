@@ -51,6 +51,10 @@ fn deser<T: serde::de::DeserializeOwned>(
   serde_json::from_str::<T>(payload.as_ref())
 }
 
+// the way tsgo currently works, it really wants an actual tsconfig.json file.
+// it also doesn't let you just pass in root file names. instead of making more changes in tsgo,
+// work around both by making a fake tsconfig.json file with the `"files"` field set to the root file names.
+// it's "synthetic" because it's not actually on disk, we pass a fake path to load it from memory.
 fn synthetic_config(
   config: &CompilerOptions,
   root_names: &[String],
@@ -99,7 +103,7 @@ fn exec_request_inner(
     synthetic_config(request.config.as_ref(), &root_names, request.check_mode)?,
     remapped_specifiers,
     root_map,
-    std::env::current_dir().unwrap(),
+    request.initial_cwd,
     request.graph.clone(),
     request.maybe_npm,
   );
@@ -735,6 +739,8 @@ fn load_inner(
   let mut is_cjs = false;
 
   let data = if load_specifier == "internal:///.tsbuildinfo" {
+    // TODO(nathanwhit): first off need extra API to emit the tsbuildinfo on the tsgo side.
+    //  second, for some reason tsgo just never tries to load the tsbuildinfo, unclear why.
     // state
     //   .maybe_tsbuildinfo
     //   .as_deref()

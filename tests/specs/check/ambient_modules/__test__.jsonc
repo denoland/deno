@@ -21,7 +21,8 @@
     }
   ],
   "variants": {
-    // TODO(nathanwhit): not implemented yet, needs extra api on tsgo side
+    // TODO(nathanwhit): not implemented yet, needs extra api to get ambient modules on
+    //  the tsgo side
     // "tsgo": {
     //   "use_tsgo": "1"
     // },

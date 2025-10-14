@@ -254,6 +254,7 @@ impl TypeChecker {
         seen_diagnotics: Default::default(),
         code_cache: self.code_cache.clone(),
         tsgo_path: self.tsgo_path.clone(),
+        initial_cwd: self.cli_options.initial_cwd().to_path_buf(),
       }),
     ))
   }
@@ -383,6 +384,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   options: CheckOptions,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
   tsgo_path: Option<PathBuf>,
+  initial_cwd: PathBuf,
 }
 
 impl Iterator for DiagnosticsByFolderRealIterator<'_> {
@@ -539,6 +541,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
         maybe_tsbuildinfo,
         root_names,
         check_mode: self.options.type_check_mode,
+        initial_cwd: self.initial_cwd.clone(),
       },
       code_cache,
       self.tsgo_path.as_deref(),

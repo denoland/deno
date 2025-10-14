@@ -6,6 +6,7 @@ mod js;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
@@ -477,6 +478,8 @@ pub struct Request {
   /// program.
   pub root_names: Vec<(ModuleSpecifier, MediaType)>,
   pub check_mode: TypeCheckMode,
+
+  pub initial_cwd: PathBuf,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

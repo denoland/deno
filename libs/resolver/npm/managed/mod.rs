@@ -267,15 +267,7 @@ pub struct ManagedInNpmPackageChecker {
 
 impl InNpmPackageChecker for ManagedInNpmPackageChecker {
   fn in_npm_package(&self, specifier: &Url) -> bool {
-    let res = specifier.as_ref().starts_with(self.root_dir.as_str());
-    if cfg!(any(target_os = "windows", target_os = "macos")) {
-      res
-        || specifier
-          .as_ref()
-          .starts_with(&self.root_dir.as_str().to_lowercase())
-    } else {
-      res
-    }
+    specifier.as_ref().starts_with(self.root_dir.as_str())
   }
 }
 

@@ -818,6 +818,7 @@ mod tests {
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
       check_mode: TypeCheckMode::All,
+      initial_cwd: std::env::current_dir().unwrap(),
     };
     crate::tsc::exec(request, code_cache, None)
   }
