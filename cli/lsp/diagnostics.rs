@@ -1077,12 +1077,17 @@ fn diagnose_dependency(
   }
 
   if referrer_module.media_type.is_declaration() {
-    let skip_lib_check = snapshot
+    let compiler_options_data = snapshot
       .compiler_options_resolver
-      .for_key(&referrer_module.compiler_options_key)
-      .map(|d| d.skip_lib_check)
-      .unwrap_or(false); // Should never occur.
-    if skip_lib_check {
+      .for_key(&referrer_module.compiler_options_key);
+    if compiler_options_data.is_none() {
+      lsp_warn!(
+        "Key was not in sync with resolver while checking `skipLibCheck`. This should be impossible."
+      );
+      #[cfg(debug_assertions)]
+      unreachable!();
+    }
+    if compiler_options_data.is_some_and(|d| d.skip_lib_check) {
       return;
     }
   }
