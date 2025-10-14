@@ -16,7 +16,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_typescript_go_client_rust::CallbackHandler;
 use deno_typescript_go_client_rust::SyncRpcChannel;
 use deno_typescript_go_client_rust::types::GetImpliedNodeFormatForFilePayload;
@@ -30,7 +29,6 @@ use super::Request;
 use super::Response;
 use crate::args::TypeCheckMode;
 use crate::tsc::RequestNpmState;
-use crate::tsc::ResolveNonGraphSpecifierTypesError;
 use crate::tsc::as_ts_script_kind;
 use crate::tsc::get_lazily_loaded_asset;
 
@@ -523,112 +521,26 @@ fn resolve_name(
   };
   let referrer_module = graph.get(&referrer);
   let specifier = payload.module_name;
-  if specifier.starts_with("node:") {
-    return Ok((
-      super::MISSING_DEPENDENCY_SPECIFIER.to_string(),
-      Some(MediaType::Dts.as_ts_extension()),
-    ));
-  }
-
-  if specifier.starts_with("asset:///") {
-    let ext = MediaType::from_str(&specifier).as_ts_extension();
-    return Ok((specifier, Some(ext)));
-  }
-
-  let resolved_dep = referrer_module
-    .and_then(|m| match m {
-      Module::Js(m) => m.dependencies_prefer_fast_check().get(&specifier),
-      Module::Json(_) => None,
-      Module::Wasm(m) => m.dependencies.get(&specifier),
-      Module::Npm(_) | Module::Node(_) | Module::External(_) => None,
-    })
-    .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
-  let resolution_mode = if matches!(
-    payload.resolution_mode,
-    deno_typescript_go_client_rust::types::ResolutionMode::CommonJS
-  ) {
-    super::ResolutionMode::Require
-  } else {
-    super::ResolutionMode::Import
-  };
-
-  let maybe_result = match resolved_dep {
-    Some(deno_graph::ResolutionResolved { specifier, .. }) => {
-      super::resolve_graph_specifier_types(
-        specifier,
-        &referrer,
-        // we could get this from the resolved dep, but for now assume
-        // the value resolved in TypeScript is better
-        resolution_mode,
-        graph,
-        maybe_npm,
-      )
-      .map_err(adhoc)?
-    }
-    _ => {
-      match super::resolve_non_graph_specifier_types(
-        &specifier,
-        &referrer,
-        resolution_mode,
-        maybe_npm,
-      ) {
-        Ok(maybe_result) => maybe_result,
-        Err(
-          err
-          @ ResolveNonGraphSpecifierTypesError::ResolvePkgFolderFromDenoReq(
-            ResolvePkgFolderFromDenoReqError::Managed(_),
-          ),
-        ) => {
-          // it's most likely requesting the jsxImportSource, which isn't loaded
-          // into the graph when not using jsx, so just ignore this error
-          if specifier.ends_with("/jsx-runtime") {
-            None
-          } else {
-            return Err(adhoc(err));
-          }
-        }
-        Err(err) => return Err(adhoc(err)),
+  let result = super::resolve_specifier_for_tsc(
+    specifier,
+    &referrer,
+    graph,
+    match payload.resolution_mode {
+      deno_typescript_go_client_rust::types::ResolutionMode::None => {
+        super::ResolutionMode::Import
       }
-    }
-  };
-  let result = match maybe_result {
-    Some((specifier, media_type)) => {
-      let specifier_str = match specifier.scheme() {
-        "data" | "blob" => {
-          let specifier_str = super::hash_url(&specifier, media_type);
-          handler
-            .remapped_specifiers
-            .insert(specifier_str.clone(), specifier);
-          specifier_str
-        }
-        _ => {
-          if let Some(specifier_str) =
-            super::mapped_specifier_for_tsc(&specifier, media_type)
-          {
-            handler
-              .remapped_specifiers
-              .insert(specifier_str.clone(), specifier);
-            specifier_str
-          } else {
-            specifier.to_string()
-          }
-        }
-      };
-      (
-        specifier_str,
-        match media_type {
-          MediaType::Css => Some(".js"), // surface these as .js for typescript
-          MediaType::Unknown => None,
-          media_type => Some(media_type.as_ts_extension()),
-        },
-      )
-    }
-    None => (
-      super::MISSING_DEPENDENCY_SPECIFIER.to_string(),
-      Some(MediaType::Dts.as_ts_extension()),
-    ),
-  };
-  log::debug!("Resolved {} from {} to {:?}", specifier, referrer, result);
+      deno_typescript_go_client_rust::types::ResolutionMode::CommonJS => {
+        super::ResolutionMode::Require
+      }
+      deno_typescript_go_client_rust::types::ResolutionMode::ESM => {
+        super::ResolutionMode::Import
+      }
+    },
+    maybe_npm,
+    referrer_module,
+    &mut handler.remapped_specifiers,
+  )
+  .map_err(adhoc)?;
 
   Ok(result)
 }

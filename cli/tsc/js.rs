@@ -23,11 +23,9 @@ use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_graph::ResolutionResolved;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::resolve_url_or_path;
-use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use node_resolver::ResolutionMode;
 use node_resolver::resolve_specifier_into_node_modules;
 
@@ -42,18 +40,13 @@ use crate::tsc::LoadError;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::tsc::Request;
 use crate::tsc::RequestNpmState;
-use crate::tsc::ResolveNonGraphSpecifierTypesError;
 use crate::tsc::Response;
 use crate::tsc::Stats;
 use crate::tsc::as_ts_script_kind;
 use crate::tsc::get_hash;
 use crate::tsc::get_lazily_loaded_asset;
 use crate::tsc::get_maybe_hash;
-use crate::tsc::hash_url;
 use crate::tsc::load_raw_import_source;
-use crate::tsc::resolve_graph_specifier_types;
-use crate::tsc::resolve_non_graph_specifier_types;
-use crate::util::path::mapped_specifier_for_tsc;
 
 #[op2]
 #[string]
@@ -138,109 +131,19 @@ fn op_resolve_inner(
   };
   let referrer_module = state.graph.get(&referrer);
   for (is_cjs, specifier) in args.specifiers {
-    if specifier.starts_with("node:") {
-      resolved.push((
-        MISSING_DEPENDENCY_SPECIFIER.to_string(),
-        Some(MediaType::Dts.as_ts_extension()),
-      ));
-      continue;
-    }
-
-    if specifier.starts_with("asset:///") {
-      let ext = MediaType::from_str(&specifier).as_ts_extension();
-      resolved.push((specifier, Some(ext)));
-      continue;
-    }
-
-    let resolved_dep = referrer_module
-      .and_then(|m| match m {
-        Module::Js(m) => m.dependencies_prefer_fast_check().get(&specifier),
-        Module::Json(_) => None,
-        Module::Wasm(m) => m.dependencies.get(&specifier),
-        Module::Npm(_) | Module::Node(_) | Module::External(_) => None,
-      })
-      .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
-    let resolution_mode = if is_cjs {
-      ResolutionMode::Require
-    } else {
-      ResolutionMode::Import
-    };
-
-    let maybe_result = match resolved_dep {
-      Some(ResolutionResolved { specifier, .. }) => {
-        resolve_graph_specifier_types(
-          specifier,
-          &referrer,
-          // we could get this from the resolved dep, but for now assume
-          // the value resolved in TypeScript is better
-          resolution_mode,
-          &state.graph,
-          state.maybe_npm.as_ref(),
-        )?
-      }
-      _ => {
-        match resolve_non_graph_specifier_types(
-          &specifier,
-          &referrer,
-          resolution_mode,
-          state.maybe_npm.as_ref(),
-        ) {
-          Ok(maybe_result) => maybe_result,
-          Err(
-            err @ ResolveNonGraphSpecifierTypesError::ResolvePkgFolderFromDenoReq(
-              ResolvePkgFolderFromDenoReqError::Managed(_),
-            ),
-          ) => {
-            // it's most likely requesting the jsxImportSource, which isn't loaded
-            // into the graph when not using jsx, so just ignore this error
-            if specifier.ends_with("/jsx-runtime") {
-              None
-            } else {
-              return Err(err.into());
-            }
-          }
-          Err(err) => return Err(err.into()),
-        }
-      }
-    };
-    let result = match maybe_result {
-      Some((specifier, media_type)) => {
-        let specifier_str = match specifier.scheme() {
-          "data" | "blob" => {
-            let specifier_str = hash_url(&specifier, media_type);
-            state
-              .remapped_specifiers
-              .insert(specifier_str.clone(), specifier);
-            specifier_str
-          }
-          _ => {
-            if let Some(specifier_str) =
-              mapped_specifier_for_tsc(&specifier, media_type)
-            {
-              state
-                .remapped_specifiers
-                .insert(specifier_str.clone(), specifier);
-              specifier_str
-            } else {
-              specifier.to_string()
-            }
-          }
-        };
-        (
-          specifier_str,
-          match media_type {
-            MediaType::Css => Some(".js"), // surface these as .js for typescript
-            MediaType::Unknown => None,
-            media_type => Some(media_type.as_ts_extension()),
-          },
-        )
-      }
-      None => (
-        MISSING_DEPENDENCY_SPECIFIER.to_string(),
-        Some(MediaType::Dts.as_ts_extension()),
-      ),
-    };
-    log::debug!("Resolved {} from {} to {:?}", specifier, referrer, result);
+    let result = super::resolve_specifier_for_tsc(
+      specifier,
+      &referrer,
+      &state.graph,
+      if is_cjs {
+        ResolutionMode::Require
+      } else {
+        ResolutionMode::Import
+      },
+      state.maybe_npm.as_ref(),
+      referrer_module,
+      &mut state.remapped_specifiers,
+    )?;
     resolved.push(result);
   }
 
@@ -865,7 +768,7 @@ mod tests {
     )
     .unwrap();
     assert_eq!(
-      hash_url(&specifier, MediaType::JavaScript),
+      crate::tsc::hash_url(&specifier, MediaType::JavaScript),
       "data:///d300ea0796bd72b08df10348e0b70514c021f2e45bfe59cec24e12e97cd79c58.js"
     );
   }

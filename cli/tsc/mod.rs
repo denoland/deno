@@ -920,6 +920,112 @@ pub fn exec(
   }
 }
 
+pub(crate) fn resolve_specifier_for_tsc(
+  specifier: String,
+  referrer: &ModuleSpecifier,
+  graph: &ModuleGraph,
+  resolution_mode: ResolutionMode,
+  maybe_npm: Option<&RequestNpmState>,
+  referrer_module: Option<&Module>,
+  remapped_specifiers: &mut HashMap<String, ModuleSpecifier>,
+) -> Result<(String, Option<&'static str>), ResolveError> {
+  if specifier.starts_with("node:") {
+    return Ok((
+      MISSING_DEPENDENCY_SPECIFIER.to_string(),
+      Some(MediaType::Dts.as_ts_extension()),
+    ));
+  }
+
+  if specifier.starts_with("asset:///") {
+    let ext = MediaType::from_str(&specifier).as_ts_extension();
+    return Ok((specifier, Some(ext)));
+  }
+
+  let resolved_dep = referrer_module
+    .and_then(|m| match m {
+      Module::Js(m) => m.dependencies_prefer_fast_check().get(&specifier),
+      Module::Json(_) => None,
+      Module::Wasm(m) => m.dependencies.get(&specifier),
+      Module::Npm(_) | Module::Node(_) | Module::External(_) => None,
+    })
+    .and_then(|d| d.maybe_type.ok().or_else(|| d.maybe_code.ok()));
+
+  let maybe_result = match resolved_dep {
+    Some(deno_graph::ResolutionResolved { specifier, .. }) => {
+      resolve_graph_specifier_types(
+        specifier,
+        referrer,
+        // we could get this from the resolved dep, but for now assume
+        // the value resolved in TypeScript is better
+        resolution_mode,
+        graph,
+        maybe_npm,
+      )?
+    }
+    _ => {
+      match resolve_non_graph_specifier_types(
+        &specifier,
+        referrer,
+        resolution_mode,
+        maybe_npm,
+      ) {
+        Ok(maybe_result) => maybe_result,
+        Err(
+          err
+          @ ResolveNonGraphSpecifierTypesError::ResolvePkgFolderFromDenoReq(
+            ResolvePkgFolderFromDenoReqError::Managed(_),
+          ),
+        ) => {
+          // it's most likely requesting the jsxImportSource, which isn't loaded
+          // into the graph when not using jsx, so just ignore this error
+          if specifier.ends_with("/jsx-runtime") {
+            None
+          } else {
+            return Err(err.into());
+          }
+        }
+        Err(err) => return Err(err.into()),
+      }
+    }
+  };
+  let result = match maybe_result {
+    Some((specifier, media_type)) => {
+      let specifier_str = match specifier.scheme() {
+        "data" | "blob" => {
+          let specifier_str = hash_url(&specifier, media_type);
+
+          remapped_specifiers.insert(specifier_str.clone(), specifier);
+          specifier_str
+        }
+        _ => {
+          if let Some(specifier_str) =
+            mapped_specifier_for_tsc(&specifier, media_type)
+          {
+            remapped_specifiers.insert(specifier_str.clone(), specifier);
+            specifier_str
+          } else {
+            specifier.to_string()
+          }
+        }
+      };
+      (
+        specifier_str,
+        match media_type {
+          MediaType::Css => Some(".js"), // surface these as .js for typescript
+          MediaType::Unknown => None,
+          media_type => Some(media_type.as_ts_extension()),
+        },
+      )
+    }
+    None => (
+      MISSING_DEPENDENCY_SPECIFIER.to_string(),
+      Some(MediaType::Dts.as_ts_extension()),
+    ),
+  };
+  log::debug!("Resolved {} from {} to {:?}", specifier, referrer, result);
+  Ok(result)
+}
+
 pub(crate) static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
   LazyLock::new(|| {
     [
