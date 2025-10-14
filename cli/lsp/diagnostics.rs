@@ -1077,11 +1077,12 @@ fn diagnose_dependency(
   }
 
   if referrer_module.media_type.is_declaration() {
-    let compiler_options_data = snapshot
+    let skip_lib_check = snapshot
       .compiler_options_resolver
       .for_key(&referrer_module.compiler_options_key)
-      .expect("Key should be in sync with resolver.");
-    if compiler_options_data.skip_lib_check {
+      .map(|d| d.skip_lib_check)
+      .unwrap_or(false); // Should never occur.
+    if skip_lib_check {
       return;
     }
   }
