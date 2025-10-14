@@ -54,7 +54,7 @@ impl Error {
 }
 
 pub trait CallbackHandler {
-  fn supported_callbacks(&self) -> HashSet<String>;
+  fn supported_callbacks(&self) -> &'static [&'static str];
 
   fn handle_callback(
     &self,
@@ -80,7 +80,7 @@ pub struct SyncRpcChannel<T> {
   child: Child,
   conn: RpcConnection<BufReader<ChildStdout>, BufWriter<ChildStdin>>,
   callback_handler: T,
-  supported_callbacks: HashSet<String>,
+  supported_callbacks: HashSet<&'static str>,
 }
 
 impl<T: CallbackHandler> SyncRpcChannel<T> {
@@ -109,7 +109,7 @@ impl<T: CallbackHandler> SyncRpcChannel<T> {
         BufWriter::new(child.stdin.take().expect("Where did ChildStdin go?")),
       )
       .map_err(Error::RpcConnection)?,
-      supported_callbacks,
+      supported_callbacks: supported_callbacks.iter().copied().collect(),
       callback_handler,
       child,
     })

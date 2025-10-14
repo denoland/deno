@@ -4720,6 +4720,15 @@ struct LoadResponse {
 }
 
 #[op2]
+#[serde]
+fn op_ignored_diagnostic_codes() -> Vec<u64> {
+  crate::tsc::IGNORED_DIAGNOSTIC_CODES
+    .iter()
+    .copied()
+    .collect()
+}
+
+#[op2]
 fn op_load<'s>(
   scope: &'s mut v8::PinScope<'_, '_>,
   state: &mut OpState,
@@ -5393,6 +5402,7 @@ deno_core::extension!(deno_tsc,
     op_is_cancelled,
     op_is_node_file,
     op_load,
+    op_ignored_diagnostic_codes,
     op_release,
     op_resolve,
     op_respond,

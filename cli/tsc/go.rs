@@ -4,11 +4,9 @@ mod tsgo_version;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::sync::OnceLock;
 
 use deno_ast::MediaType;
@@ -254,17 +252,8 @@ fn convert_diagnostic(
   }
 }
 
-static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> = LazyLock::new(|| {
-  [
-    1452, 1471, 1479, 1543, 2306, 2688, 2792, 2307, 2834, 2835, 5009, 5055,
-    5070, 7016,
-  ]
-  .into_iter()
-  .collect()
-});
-
 fn should_ignore_diagnostic(diagnostic: &super::Diagnostic) -> bool {
-  IGNORED_DIAGNOSTIC_CODES.contains(&diagnostic.code)
+  super::IGNORED_DIAGNOSTIC_CODES.contains(&diagnostic.code)
 }
 
 fn convert_diagnostics(
@@ -293,9 +282,6 @@ impl Handler {
     graph: Arc<ModuleGraph>,
     maybe_npm: Option<super::RequestNpmState>,
   ) -> Self {
-    if maybe_npm.is_none() {
-      panic!("no npm state");
-    }
     Self {
       state: RefCell::new(HandlerState {
         config_path,
@@ -329,10 +315,13 @@ fn get_package_json_scope_if_applicable(
     };
     if let Some(package_json) = maybe_npm
       .package_json_resolver
-      .get_closest_package_json_path(&file_path)
+      .get_closest_package_jsons(&file_path)
+      .next()
+      .map(|r| r.ok())
+      .flatten()
     {
-      let package_directory = package_json.parent();
-      let contents = std::fs::read_to_string(&package_json).ok();
+      let package_directory = package_json.path.parent();
+      let contents = serde_json::to_string(&package_json).ok();
       if let Some(contents) = contents {
         return Ok(jsons!({
           "packageDirectory": package_directory,
@@ -362,10 +351,8 @@ struct HandlerState {
 }
 
 impl deno_typescript_go_client_rust::CallbackHandler for Handler {
-  fn supported_callbacks(
-    &self,
-  ) -> std::collections::HashSet<std::string::String> {
-    [
+  fn supported_callbacks(&self) -> &'static [&'static str] {
+    &[
       "readFile",
       "resolveModuleName",
       "getPackageJsonScopeIfApplicable",
@@ -374,9 +361,6 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
       "getImpliedNodeFormatForFile",
       "isNodeSourceFile",
     ]
-    .into_iter()
-    .map(|s| s.to_owned())
-    .collect()
   }
 
   fn handle_callback(
