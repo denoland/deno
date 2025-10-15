@@ -51,9 +51,12 @@ pub struct StandaloneData {
 
 macro_rules! loggy {
     ($($arg:tt)*) => {
-      #[cfg(target_vendor = "apple", target_arch = "x86_64")]
+      #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))]
         {
-          eprintln!($($arg)*);
+          #[allow(clippy::print_stderr)]
+          {
+            eprintln!($($arg)*);
+          }
         }
     };
 }
