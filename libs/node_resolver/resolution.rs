@@ -2244,6 +2244,12 @@ fn resolve_bin_entry_value<'a>(
   match bins.get(bin_name) {
     Some(e) => Ok(e),
     None => {
+      if bins.len() > 1
+        && let Some(first) = bins.values().next()
+        && bins.values().all(|path| path == first)
+      {
+        return Ok(first);
+      }
       let prefix = package_json
         .name
         .as_ref()
@@ -2253,13 +2259,21 @@ fn resolve_bin_entry_value<'a>(
             prefix.push('@');
             prefix.push_str(version);
           }
-          prefix.push('/');
           prefix
         })
         .unwrap_or_default();
+      let default_bin = package_json.resolve_default_bin_name().ok();
       let keys = bins
         .keys()
-        .map(|k| format!(" * {prefix}{k}"))
+        .map(|k| {
+          if prefix.is_empty() {
+            format!(" * {k}")
+          } else if Some(k.as_str()) == default_bin {
+            format!(" * {prefix}")
+          } else {
+            format!(" * {prefix}/{k}")
+          }
+        })
         .collect::<Vec<_>>();
       bail!(
         "'{}' did not have a bin entry for '{}'{}",
@@ -2590,7 +2604,7 @@ mod tests {
           "Possibilities:\n",
           " * npm:pkg@1.1.1/bin1\n",
           " * npm:pkg@1.1.1/bin2\n",
-          " * npm:pkg@1.1.1/pkg"
+          " * npm:pkg@1.1.1"
         )
       );
     }
@@ -2660,7 +2674,12 @@ mod tests {
           .err()
           .unwrap()
           .to_string(),
-        "'/package.json' did not have a bin entry for 'path'"
+        concat!(
+          "'/package.json' did not have a bin entry for 'path'\n",
+          "\n",
+          "Possibilities:\n",
+          " * npm:pkg@1.2.3"
+        )
       );
     }
 
@@ -2710,7 +2729,7 @@ mod tests {
           .unwrap()
           .to_string(),
         concat!(
-          "'/package.json' did not have a bin entry\n",
+          "'/package.json' did not have a bin entry for 'bin'\n",
           "\n",
           "Possibilities:\n",
           " * bin1\n",
