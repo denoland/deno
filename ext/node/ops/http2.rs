@@ -1,8 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::collections::HashMap;
 use std::ffi::c_void;
+use std::rc::Rc;
 
 use deno_core::AsyncResult;
 use deno_core::OpState;
@@ -362,7 +363,7 @@ enum Http2OptionsIndex {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Http2State<'a> {
+struct JSHttp2State<'a> {
   session_state: serde_v8::Value<'a>,
   stream_state: serde_v8::Value<'a>,
   options_buffer: serde_v8::Value<'a>,
@@ -381,7 +382,7 @@ static mut SETTINGS_BUFFER: [u32;
     + 1
     + (2 * MAX_ADDITIONAL_SETTINGS)] = [0; _];
 
-impl<'a> Http2State<'a> {
+impl<'a> JSHttp2State<'a> {
   pub(crate) fn create(scope: &mut v8::PinScope<'a, 'a>) -> Self {
     fn static_f32array<'a>(
       scope: &mut v8::PinScope<'a, 'a>,
@@ -463,6 +464,7 @@ impl<'a> Http2State<'a> {
   }
 }
 
+#[derive(Debug)]
 #[repr(i32)]
 enum SessionType {
   Server,
@@ -473,14 +475,68 @@ enum SessionType {
 #[serde]
 pub fn op_http2_http_state<'a>(
   scope: &mut v8::PinScope<'a, 'a>,
-) -> Http2State<'a> {
-  Http2State::create(scope)
+) -> JSHttp2State<'a> {
+  JSHttp2State::create(scope)
+}
+
+struct Session {
+  // Keep track of each stream's reference for this session using
+  // it's frame id.
+  streams: HashMap<i32, Rc<Http2Stream>>,
+
+  isolate: v8::UnsafeRawIsolatePtr,
+  context: v8::Global<v8::Context>,
+  op_state: Rc<RefCell<OpState>>,
+  this: v8::Global<v8::Object>,
+}
+
+struct HeadersFrameCb(v8::Global<v8::Function>);
+
+#[op2]
+pub fn op_http2_callbacks(
+  state: &mut OpState,
+  #[global] headers_frame_cb: v8::Global<v8::Function>,
+) {
+  state.put(HeadersFrameCb(headers_frame_cb));
+}
+
+impl Session {
+  fn find_stream(&self, frame_id: i32) -> Option<&Rc<Http2Stream>> {
+    self.streams.get(&frame_id)
+  }
+
+  // Called by `on_frame_recv` to notify JavaScript that a complete
+  // HEADERS frame has been received and processed. This method converts the
+  // received headers into a JavaScript array and pushes those out to JS.
+  fn handle_headers_frame(&self, frame: *const ffi::nghttp2_frame) {
+    // SAFETY: This method is called by `on_frame_recv`.
+    // The isolate is valid and we are on the same thread as the isolate.
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let id = frame_id(frame);
+    let stream = self.find_stream(id);
+
+    let state = self.op_state.borrow();
+    let onheaders_fn = state.borrow::<HeadersFrameCb>();
+    let recv = v8::Local::new(scope, &self.this);
+    let callback = v8::Local::new(scope, &onheaders_fn.0);
+
+    drop(state);
+    callback.call(scope, recv.into(), &[]);
+  }
 }
 
 pub struct Http2Session {
   type_: SessionType,
   session: *mut ffi::nghttp2_session,
   callbacks: *mut ffi::nghttp2_session_callbacks,
+  // Shared data between nghttp2 callbacks and JS object. Must only
+  // live as long as `self.session`.
+  inner: *mut Session,
 }
 
 unsafe impl deno_core::GarbageCollected for Http2Session {
@@ -525,6 +581,43 @@ impl Resource for Http2SessionDriver {
   deno_core::impl_writable!();
 }
 
+#[derive(Debug)]
+struct Http2Stream {
+  session: *mut Session,
+  id: i32,
+  // As headers are received for this stream, they are temporarily stored
+  // until the full HEADER frame is received.
+  current_headers_category: ffi::nghttp2_headers_category,
+}
+
+impl Http2Stream {
+  fn new(
+    session: *mut Session,
+    id: i32,
+    cat: ffi::nghttp2_headers_category,
+  ) -> Self {
+    Self {
+      session,
+      id,
+      current_headers_category: cat,
+    }
+  }
+}
+
+impl Resource for Http2Stream {}
+
+fn frame_id(frame: *const ffi::nghttp2_frame) -> i32 {
+  // SAFETY: valid pointer and union tag check
+  unsafe {
+    let frame = &*frame;
+    if frame.hd.type_ as u32 == ffi::NGHTTP2_PUSH_PROMISE {
+      frame.push_promise.promised_stream_id
+    } else {
+      frame.hd.stream_id
+    }
+  }
+}
+
 // Called by nghttp2 at the start of receiving a HEADERS frame. We use this
 // callback to determine if a new stream is being created or if we are simply
 // adding a new block of headers to an existing stream. The header pairs
@@ -534,8 +627,28 @@ unsafe extern "C" fn on_begin_headers_callbacks(
   frame: *const ffi::nghttp2_frame,
   data: *mut c_void,
 ) -> i32 {
-    dbg!(frame);
-    0
+  let session = &mut *(data as *mut Session);
+  let id = frame_id(frame);
+
+  let stream = session.find_stream(id);
+  match stream {
+    // The common case is that we're creating a new stream. The less likely
+    // case is that we're receiving a set of trailers
+    None => {
+      let stream =
+        Http2Stream::new(data as *mut Session, id, (&*frame).headers.cat);
+      let mut state = session.op_state.borrow_mut();
+
+      let rid = state.resource_table.add(stream);
+
+      let stream_rc = state.resource_table.get::<Http2Stream>(rid).unwrap();
+      session.streams.insert(id, stream_rc);
+    }
+    Some(s) => {}
+    _ => {}
+  }
+
+  0
 }
 
 unsafe extern "C" fn on_header_callback(
@@ -546,15 +659,28 @@ unsafe extern "C" fn on_header_callback(
   flags: u8,
   data: *mut c_void,
 ) -> i32 {
-    0
+  0
 }
 
+// Called by nghttp2 when a complete HTTP2 frame has been received. There are
+// only a handful of frame types that we care about handling here.
 unsafe extern "C" fn on_frame_recv_callback(
   session: *mut ffi::nghttp2_session,
   frame: *const ffi::nghttp2_frame,
   data: *mut c_void,
 ) -> i32 {
-    0
+  let session = &mut *(data as *mut Session);
+  let type_ = (&*frame).hd.type_;
+
+  match type_ as u32 {
+    ffi::NGHTTP2_PUSH_PROMISE | ffi::NGHTTP2_HEADERS => {
+      session.handle_headers_frame(frame);
+    }
+    // TODO
+    _ => {}
+  }
+
+  0
 }
 
 unsafe extern "C" fn on_stream_close_callback(
@@ -563,7 +689,7 @@ unsafe extern "C" fn on_stream_close_callback(
   error_code: u32,
   data: *mut c_void,
 ) -> i32 {
-    0
+  0
 }
 
 unsafe extern "C" fn on_data_chunk_recv_callback(
@@ -574,7 +700,7 @@ unsafe extern "C" fn on_data_chunk_recv_callback(
   len: usize,
   user_data: *mut c_void,
 ) -> i32 {
-    0
+  0
 }
 
 unsafe extern "C" fn on_frame_not_send_callback(
@@ -583,9 +709,9 @@ unsafe extern "C" fn on_frame_not_send_callback(
   lib_error_code: i32,
   data: *mut c_void,
 ) -> i32 {
-    0
+  0
 }
-  
+
 unsafe extern "C" fn on_invalid_header_callback(
   session: *mut ffi::nghttp2_session,
   frame: *const ffi::nghttp2_frame,
@@ -594,7 +720,7 @@ unsafe extern "C" fn on_invalid_header_callback(
   flags: u8,
   data: *mut c_void,
 ) -> i32 {
-    0
+  0
 }
 
 unsafe extern "C" fn on_nghttp_error_callback(
@@ -604,7 +730,7 @@ unsafe extern "C" fn on_nghttp_error_callback(
   len: usize,
   data: *mut c_void,
 ) -> i32 {
-    0
+  0
 }
 
 unsafe extern "C" fn on_send_data_callback(
@@ -615,7 +741,7 @@ unsafe extern "C" fn on_send_data_callback(
   source: *mut ffi::nghttp2_data_source,
   data: *mut c_void,
 ) -> i32 {
-    0
+  0
 }
 
 unsafe extern "C" fn on_invalid_frame_recv_callback(
@@ -624,7 +750,7 @@ unsafe extern "C" fn on_invalid_frame_recv_callback(
   lib_error_code: i32,
   data: *mut c_void,
 ) -> i32 {
-    0
+  0
 }
 
 unsafe extern "C" fn on_frame_send_callback(
@@ -632,7 +758,7 @@ unsafe extern "C" fn on_frame_send_callback(
   frame: *const ffi::nghttp2_frame,
   data: *mut c_void,
 ) -> i32 {
-    0
+  0
 }
 
 impl Http2Session {
@@ -690,18 +816,41 @@ impl Http2Session {
     callbacks
   }
 
-  fn create(session_type: SessionType) -> Self {
+  fn create(
+    this: v8::Global<v8::Object>,
+    isolate: &v8::Isolate,
+    scope: &mut v8::PinScope<'_, '_>,
+    op_state: Rc<RefCell<OpState>>,
+    session_type: SessionType,
+  ) -> Self {
     let mut session: *mut ffi::nghttp2_session = std::ptr::null_mut();
     let func = match session_type {
       SessionType::Server => ffi::nghttp2_session_server_new2,
       SessionType::Client => ffi::nghttp2_session_client_new2,
     };
 
+    let context = scope.get_current_context();
+    let context = v8::Global::new(scope, context);
+    // SAFETY: just grabbing the raw pointer
+    let isolate = unsafe { isolate.as_raw_isolate_ptr() };
+
+    let mut inner = Box::into_raw(Box::new(Session {
+      streams: HashMap::new(),
+      op_state,
+      context,
+      isolate,
+      this,
+    }));
+
+    // SAFETY: inner is owned by Http2Session but
+    // never holds a mutable reference.
+    //
+    // TODO(littledivy): there are safer ways to do this
     unsafe {
       (func)(
         &mut session,
         Self::callbacks(),
-        std::ptr::null_mut(),
+        inner as *mut _ as *mut _,
         std::ptr::null_mut(),
       );
     }
@@ -710,6 +859,7 @@ impl Http2Session {
       type_: session_type,
       session,
       callbacks: std::ptr::null_mut(),
+      inner,
     }
   }
 }
@@ -718,12 +868,24 @@ impl Http2Session {
 impl Http2Session {
   #[constructor]
   #[cppgc]
-  fn new(#[smi] type_: i32) -> Http2Session {
-    Http2Session::create(match type_ {
-      0 => SessionType::Server,
-      1 => SessionType::Client,
-      _ => unreachable!(),
-    })
+  fn new(
+    #[this] this: v8::Global<v8::Object>,
+    isolate: &v8::Isolate,
+    scope: &mut v8::PinScope<'_, '_>,
+    op_state: Rc<RefCell<OpState>>,
+    #[smi] type_: i32,
+  ) -> Http2Session {
+    Http2Session::create(
+      this,
+      isolate,
+      scope,
+      op_state,
+      match type_ {
+        0 => SessionType::Server,
+        1 => SessionType::Client,
+        _ => unreachable!(),
+      },
+    )
   }
 
   #[fast]
