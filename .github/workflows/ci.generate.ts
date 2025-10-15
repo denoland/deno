@@ -777,19 +777,18 @@ const ci = {
           },
         },
         {
-          name: "Upload PR artifact (linux)",
+          name: "Upload PR artifact",
           if: [
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "(github.repository == 'denoland/deno' &&",
-            "(github.ref == 'refs/heads/main' ||",
-            "startsWith(github.ref, 'refs/tags/'))))",
+            "matrix.job == 'test'",
           ].join("\n"),
           uses: "actions/upload-artifact@v4",
           with: {
             name:
               "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
-            path: "target/release/deno",
+            path: [
+              "target/debug/deno",
+              "target/debug/denort",
+            ].join("\n"),
           },
         },
         {
@@ -972,8 +971,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib --features=panic-trace",
-            "cargo test --locked --tests --features=panic-trace",
+            "cargo test --locked --lib --features=panic-trace compile::",
+            "cargo test --locked --tests --features=panic-trace compile::",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },

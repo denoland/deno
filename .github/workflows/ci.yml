@@ -377,17 +377,14 @@ jobs:
           du -h target/release/deno
         env:
           NO_COLOR: 1
-      - name: Upload PR artifact (linux)
-        if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
-          matrix.profile == 'release' && (matrix.use_sysroot ||
-          (github.repository == 'denoland/deno' &&
-          (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/')))))
+      - name: Upload PR artifact
+        if: '!(matrix.skip) && (matrix.job == ''test'')'
         uses: actions/upload-artifact@v4
         with:
           name: 'deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}'
-          path: target/release/deno
+          path: |-
+            target/debug/deno
+            target/debug/denort
       - name: Pre-release (linux)
         if: |-
           !(matrix.skip) && (matrix.os == 'linux' &&
@@ -521,8 +518,8 @@ jobs:
           matrix.profile == 'debug' &&
           (startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux'))
         run: |-
-          cargo test --locked --lib --features=panic-trace
-          cargo test --locked --tests --features=panic-trace
+          cargo test --locked --lib --features=panic-trace compile::
+          cargo test --locked --tests --features=panic-trace compile::
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test (release)

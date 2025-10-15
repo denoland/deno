@@ -49,18 +49,6 @@ pub struct StandaloneData {
   pub vfs: Arc<FileBackedVfs>,
 }
 
-macro_rules! loggy {
-    ($($arg:tt)*) => {
-      #[cfg(all(target_vendor = "apple", target_arch = "x86_64"))]
-        {
-          #[allow(clippy::print_stderr)]
-          {
-            eprintln!($($arg)*);
-          }
-        }
-    };
-}
-
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a standalone
 /// binary by skipping over the trailer width at the end of the file,
@@ -69,9 +57,7 @@ macro_rules! loggy {
 pub fn extract_standalone(
   cli_args: Cow<[OsString]>,
 ) -> Result<StandaloneData, AnyError> {
-  loggy!("extract_standalone");
   let data = find_section()?;
-  loggy!("found section");
 
   let root_path = {
     let maybe_current_exe = std::env::current_exe().ok();
