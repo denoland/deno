@@ -15,10 +15,15 @@ import {
   isPosixPathSeparator,
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import process from "node:process";
+import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
+
+const lazyLoadGlob = core.createLazyLoader<typeof fsGlob>(
+  "ext:deno_node/_fs/_fs_glob.ts",
+);
 
 const {
   StringPrototypeReplace,
@@ -502,6 +507,12 @@ export function parse(path: string): ParsedPath {
 
 export const _makeLong = toNamespacedPath;
 
+let lazyMatchGlobPattern: typeof fsGlob.matchGlobPattern;
+export const matchesGlob = (path: string, pattern: string): boolean => {
+  lazyMatchGlobPattern ??= lazyLoadGlob().matchGlobPattern;
+  return lazyMatchGlobPattern(path, pattern, false);
+};
+
 export default {
   basename,
   delimiter,
@@ -517,4 +528,5 @@ export default {
   sep,
   toNamespacedPath,
   _makeLong,
+  matchesGlob,
 };
