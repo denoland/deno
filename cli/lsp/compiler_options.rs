@@ -23,6 +23,7 @@ pub struct LspCompilerOptionsData {
   pub workspace_dir_or_source_url: Option<Arc<Url>>,
   pub compiler_options: Arc<CompilerOptions>,
   pub compiler_options_types: Arc<Vec<(Url, Vec<String>)>>,
+  pub skip_lib_check: bool,
   pub jsx_import_source_config: Option<Arc<JsxImportSourceConfig>>,
   pub ts_config_files: Option<(Arc<Url>, Vec<TsConfigFile>)>,
 }
@@ -84,6 +85,7 @@ impl LspCompilerOptionsResolver {
                 ))
               }),
             compiler_options_types: d.compiler_options_types().clone(),
+            skip_lib_check: d.skip_lib_check(),
             jsx_import_source_config: d
               .jsx_import_source_config()
               .inspect_err(|err| {
