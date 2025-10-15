@@ -55,6 +55,11 @@ fn synthetic_config(
   if type_check_mode != TypeCheckMode::All {
     obj.insert("skipDefaultLibCheck".to_string(), json!(true));
   }
+  if let Some(jsx) = obj.get("jsx")
+    && jsx.as_str() == Some("precompile")
+  {
+    obj.insert("jsx".to_string(), json!("react-jsx"));
+  }
   let config = serde_json::to_string(&json!({
     "compilerOptions": config,
     "files": root_names,
