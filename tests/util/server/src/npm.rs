@@ -297,6 +297,29 @@ fn create_package_version_info(
     serde_json::from_str(&package_json_text)?;
   version_info.insert("dist".to_string(), dist.into());
 
+  // add a bin entry for a directories.bin package.json entry as this
+  // is what the npm registry does as well
+  if let Some(directories) = version_info.get("directories") {
+    if !version_info.contains_key("bin") {
+      if let Some(bin) = directories
+        .as_object()
+        .and_then(|o| o.get("bin"))
+        .and_then(|v| v.as_str())
+      {
+        let mut bins = serde_json::Map::new();
+        for entry in std::fs::read_dir(version_folder.join(bin))? {
+          let entry = entry?;
+          let file_name = entry.file_name().to_string_lossy().to_string();
+          bins.insert(
+            file_name.to_string(),
+            format!("{}/{}", bin, file_name).into(),
+          );
+        }
+        version_info.insert("bin".into(), bins.into());
+      }
+    }
+  }
+
   Ok((tarball_bytes, version_info))
 }
 
