@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+#![allow(clippy::print_stderr)]
+
 use std::borrow::Cow;
 use std::env;
 use std::sync::Arc;
@@ -66,6 +68,10 @@ fn load_env_vars(env_vars: &IndexMap<String, String>) {
 
 fn main() {
   init_logging(None, None);
+  #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+  unsafe {
+    backtrace_on_segfault();
+  };
 
   deno_runtime::deno_permissions::mark_standalone();
 
@@ -98,6 +104,49 @@ fn main() {
   unwrap_or_exit::<()>(create_and_run_current_thread_with_maybe_metrics(
     future,
   ));
+}
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub unsafe fn backtrace_on_segfault() {
+  use nix::sys::signal;
+  static ONCE: std::sync::Once = std::sync::Once::new();
+
+  ONCE.call_once(|| {
+    // Use u128 for alignment.
+    let buf = Vec::leak(vec![0u128; 4096]);
+    let stack = libc::stack_t {
+      ss_sp: buf.as_ptr() as *mut libc::c_void,
+      ss_flags: 0,
+      ss_size: buf.len() * std::mem::size_of::<u128>(),
+    };
+    let mut old = libc::stack_t {
+      ss_sp: std::ptr::null_mut(),
+      ss_flags: 0,
+      ss_size: 0,
+    };
+    let ret = unsafe { libc::sigaltstack(&stack, &mut old) };
+    assert_eq!(ret, 0, "sigaltstack failed");
+
+    let sig_action = signal::SigAction::new(
+      signal::SigHandler::Handler(handle_sigsegv),
+      signal::SaFlags::SA_NODEFER | signal::SaFlags::SA_ONSTACK,
+      signal::SigSet::empty(),
+    );
+    unsafe {
+      signal::sigaction(signal::SIGSEGV, &sig_action).unwrap();
+    }
+    // signal::sigaction(signal::SIGABRT, &sig_action).unwrap();
+  })
+}
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+extern "C" fn handle_sigsegv(_: i32) {
+  eprintln!(
+    "Stack Overflow:\n{}",
+    std::backtrace::Backtrace::force_capture()
+  );
+  eprintln!("aborting");
+  std::process::abort();
 }
 
 fn init_logging(
