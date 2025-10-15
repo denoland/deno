@@ -488,6 +488,7 @@ fn get_npm_package(
   let mut versions = serde_json::Map::new();
   let mut latest_version = semver::Version::parse("0.0.0").unwrap();
   let mut dist_tags = serde_json::Map::new();
+  let mut time = serde_json::Map::new();
   for entry in fs::read_dir(&package_folder)? {
     let entry = entry?;
     let file_type = entry.file_type()?;
@@ -535,6 +536,10 @@ fn get_npm_package(
       dist_tags.insert(tag.to_string(), version.clone().into());
     }
 
+    if let Some(date) = version_info.get("publishDate") {
+      time.insert(version.clone(), date.clone());
+    }
+
     versions.insert(version.clone(), version_info.into());
     let version = semver::Version::parse(&version)?;
     if version.cmp(&latest_version).is_gt() {
@@ -551,6 +556,7 @@ fn get_npm_package(
   registry_file.insert("name".to_string(), package_name.to_string().into());
   registry_file.insert("versions".to_string(), versions.into());
   registry_file.insert("dist-tags".to_string(), dist_tags.into());
+  registry_file.insert("time".to_string(), time.into());
   Ok(Some(CustomNpmPackage {
     registry_file: serde_json::to_string(&registry_file).unwrap(),
     tarballs,

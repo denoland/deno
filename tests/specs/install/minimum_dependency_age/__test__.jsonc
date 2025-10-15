@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install npm:@denotest/add jsr:@denotest/add --minimum-dependency-age=2025-05-01T20:00:00.000Z",
+    "output": "install.out"
+  }, {
+    "args": "outdated --minimum-dependency-age=2025-05-01T20:00:00.000Z",
+    "output": "outdated.out"
+  }, {
+    "args": "update --latest --minimum-dependency-age=2025-05-01T20:00:00.000Z",
+    "output": "update.out"
+  }]
+}
