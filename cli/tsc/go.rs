@@ -151,7 +151,7 @@ fn diagnostic_category(category: &str) -> super::DiagnosticCategory {
     "warning" => super::DiagnosticCategory::Warning,
     "message" => super::DiagnosticCategory::Message,
     "suggestion" => super::DiagnosticCategory::Suggestion,
-    _ => unreachable!(),
+    _ => unreachable!("unexpected diagnostic category: {category}"),
   }
 }
 

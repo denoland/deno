@@ -52,9 +52,15 @@ interface GitHubAsset {
   digest: string; // sha256:...
 }
 
-const latest = await fetch(
+const latestResponse = await fetch(
   `https://api.github.com/repos/${repo}/releases/latest`,
-).then((res) => res.json()) as GitHubRelease;
+);
+if (!latestResponse.ok) {
+  throw new Error(
+    `Failed to fetch latest release: ${latestResponse.statusText}`,
+  );
+}
+const latest = await latestResponse.json() as GitHubRelease;
 
 const version = latest.tag_name;
 
