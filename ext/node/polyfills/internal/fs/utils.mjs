@@ -19,6 +19,8 @@ const {
   Number,
   NumberIsFinite,
   NumberIsInteger,
+  ObjectDefineProperties,
+  ObjectDefineProperty,
   ObjectIs,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -54,7 +56,7 @@ import {
   isDate,
   isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
-import { once } from "ext:deno_node/internal/util.mjs";
+import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import {
   validateAbortSignal,
@@ -73,7 +75,7 @@ import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import { stat, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import process from "node:process";
-
+import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
 import {
   fs as fsConstants,
   os as osConstants,
@@ -341,7 +343,13 @@ export function getDirent(path, name, type, callback) {
   }
 }
 
-export function getOptions(options, defaultOptions) {
+/**
+ * @template T
+ * @param {unknown} options
+ * @param {T} [defaultOptions]
+ * @returns {T}
+ */
+export function getOptions(options, defaultOptions = kEmptyObject) {
   if (
     options === null || options === undefined ||
     typeof options === "function"
@@ -508,6 +516,70 @@ function dateFromMs(ms) {
   return new Date(Number(ms) + 0.5);
 }
 
+const lazyDateFields = {
+  __proto__: null,
+  atime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.atime = dateFromMs(this.atimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "atime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  mtime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.mtime = dateFromMs(this.mtimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "mtime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  ctime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.ctime = dateFromMs(this.ctimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "ctime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+  birthtime: {
+    __proto__: null,
+    enumerable: true,
+    configurable: true,
+    get() {
+      return this.birthtime = dateFromMs(this.birthtimeMs);
+    },
+    set(value) {
+      ObjectDefineProperty(this, "birthtime", {
+        __proto__: null,
+        value,
+        writable: true,
+      });
+    },
+  },
+};
+
 export function BigIntStats(
   dev,
   mode,
@@ -548,11 +620,11 @@ export function BigIntStats(
   this.atime = dateFromMs(this.atimeMs);
   this.mtime = dateFromMs(this.mtimeMs);
   this.ctime = dateFromMs(this.ctimeMs);
-  this.birthtime = dateFromMs(this.birthtimeMs);
 }
 
 ObjectSetPrototypeOf(BigIntStats.prototype, StatsBase.prototype);
 ObjectSetPrototypeOf(BigIntStats, StatsBase);
+ObjectDefineProperties(BigIntStats.prototype, lazyDateFields);
 
 BigIntStats.prototype._checkModeProperty = function (property) {
   if (
@@ -601,11 +673,11 @@ export function Stats(
   this.atime = dateFromMs(atimeMs);
   this.mtime = dateFromMs(mtimeMs);
   this.ctime = dateFromMs(ctimeMs);
-  this.birthtime = dateFromMs(birthtimeMs);
 }
 
 ObjectSetPrototypeOf(Stats.prototype, StatsBase.prototype);
 ObjectSetPrototypeOf(Stats, StatsBase);
+ObjectDefineProperties(Stats.prototype, lazyDateFields);
 
 // HACK: Workaround for https://github.com/standard-things/esm/issues/821.
 // TODO(ronag): Remove this as soon as `esm` publishes a fixed version.
@@ -870,6 +942,8 @@ export function warnOnNonPortableTemplate(template) {
   }
 }
 
+/** @import { CopyOptionsBase } from "ext:deno_node/_fs/cp/cp.d.ts" */
+/** @type {CopyOptionsBase} */
 const defaultCpOptions = {
   dereference: false,
   errorOnExist: false,
@@ -877,6 +951,7 @@ const defaultCpOptions = {
   force: true,
   preserveTimestamps: false,
   recursive: false,
+  verbatimSymlinks: false,
 };
 
 const defaultRmOptions = {
@@ -892,6 +967,7 @@ const defaultRmdirOptions = {
   recursive: false,
 };
 
+/** @type {(options: CopyOptionsBase | undefined) => CopyOptionsBase} */
 export const validateCpOptions = hideStackFrames((options) => {
   if (options === undefined) {
     return { ...defaultCpOptions };
@@ -903,6 +979,11 @@ export const validateCpOptions = hideStackFrames((options) => {
   validateBoolean(options.force, "options.force");
   validateBoolean(options.preserveTimestamps, "options.preserveTimestamps");
   validateBoolean(options.recursive, "options.recursive");
+  validateBoolean(options.verbatimSymlinks, "options.verbatimSymlinks");
+  options.mode = getValidMode(options.mode, "copyFile");
+  if (options.dereference === true && options.verbatimSymlinks === true) {
+    throw new ERR_INCOMPATIBLE_OPTION_PAIR("dereference", "verbatimSymlinks");
+  }
   if (options.filter !== undefined) {
     validateFunction(options.filter, "options.filter");
   }
