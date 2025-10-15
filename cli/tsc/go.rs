@@ -488,7 +488,7 @@ impl deno_typescript_go_client_rust::CallbackHandler for Handler {
           .unwrap_or(false);
         Ok(jsons!(result)?)
       }
-      _ => unreachable!(),
+      _ => unreachable!("unknown callback: {name}"),
     }
   }
 }
