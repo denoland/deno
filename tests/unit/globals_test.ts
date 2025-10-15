@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+import { join } from "@std/path";
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
@@ -207,4 +208,24 @@ Deno.test(function globalGlobalIsWritable() {
   globalThis.global = "can write to `global`";
   // @ts-ignore the typings here are wrong
   globalThis.global = globalThis;
+});
+
+Deno.test(async function overwriteEventOnExternalModule() {
+  const importPath = join(
+    Deno.cwd(),
+    "tests",
+    "testdata",
+    "overwrite-event.ts",
+  );
+  const script = `import("${importPath}")`;
+
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["eval", script],
+    stdout: "null",
+    stderr: "null",
+  });
+
+  const child = command.spawn();
+  const status = await child.status;
+  assert(status.success);
 });
