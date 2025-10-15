@@ -57,7 +57,9 @@ pub struct StandaloneData {
 pub fn extract_standalone(
   cli_args: Cow<[OsString]>,
 ) -> Result<StandaloneData, AnyError> {
+  eprintln!("extract_standalone");
   let data = find_section()?;
+  eprintln!("found section");
 
   let root_path = {
     let maybe_current_exe = std::env::current_exe().ok();
