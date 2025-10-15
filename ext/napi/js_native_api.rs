@@ -188,7 +188,7 @@ fn napi_create_function<'s>(
   name: *const c_char,
   length: usize,
   cb: Option<napi_callback>,
-  cb_info: napi_callback_info,
+  data: *mut c_void,
   result: *mut napi_value<'s>,
 ) -> napi_status {
   let env_ptr = env as *mut Env;
@@ -206,8 +206,7 @@ fn napi_create_function<'s>(
 
   unsafe {
     v8::callback_scope!(unsafe scope, env.context());
-    *result =
-      create_function(scope, env_ptr, name, cb.unwrap(), cb_info).into();
+    *result = create_function(scope, env_ptr, name, cb.unwrap(), data).into();
   }
 
   napi_ok
@@ -1674,7 +1673,7 @@ fn napi_get_cb_info(
 
   if !data.is_null() {
     unsafe {
-      *data = cbinfo.cb_info;
+      *data = cbinfo.data;
     }
   }
 
