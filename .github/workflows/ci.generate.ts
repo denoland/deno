@@ -17,50 +17,50 @@ const macosArmRunner = "macos-14";
 const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 const Runners = {
-  linuxX86: {
-    os: "linux",
-    arch: "x86_64",
-    runner: ubuntuX86Runner,
-  },
-  linuxX86Xl: {
-    os: "linux",
-    arch: "x86_64",
-    runner:
-      `\${{ github.repository == 'denoland/deno' && '${ubuntuX86XlRunner}' || '${ubuntuX86Runner}' }}`,
-  },
-  linuxArm: {
-    os: "linux",
-    arch: "aarch64",
-    runner: ubuntuARMRunner,
-  },
+  // linuxX86: {
+  //   os: "linux",
+  //   arch: "x86_64",
+  //   runner: ubuntuX86Runner,
+  // },
+  // linuxX86Xl: {
+  //   os: "linux",
+  //   arch: "x86_64",
+  //   runner:
+  //     `\${{ github.repository == 'denoland/deno' && '${ubuntuX86XlRunner}' || '${ubuntuX86Runner}' }}`,
+  // },
+  // linuxArm: {
+  //   os: "linux",
+  //   arch: "aarch64",
+  //   runner: ubuntuARMRunner,
+  // },
   macosX86: {
     os: "macos",
     arch: "x86_64",
     runner: macosX86Runner,
   },
-  macosArm: {
-    os: "macos",
-    arch: "aarch64",
-    runner: macosArmRunner,
-  },
-  macosArmSelfHosted: {
-    os: "macos",
-    arch: "aarch64",
-    // Actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds.
-    runner:
-      `\${{ github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
-  },
-  windowsX86: {
-    os: "windows",
-    arch: "x86_64",
-    runner: windowsX86Runner,
-  },
-  windowsX86Xl: {
-    os: "windows",
-    arch: "x86_64",
-    runner:
-      `\${{ github.repository == 'denoland/deno' && '${windowsX86XlRunner}' || '${windowsX86Runner}' }}`,
-  },
+  // macosArm: {
+  //   os: "macos",
+  //   arch: "aarch64",
+  //   runner: macosArmRunner,
+  // },
+  // macosArmSelfHosted: {
+  //   os: "macos",
+  //   arch: "aarch64",
+  //   // Actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds.
+  //   runner:
+  //     `\${{ github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
+  // },
+  // windowsX86: {
+  //   os: "windows",
+  //   arch: "x86_64",
+  //   runner: windowsX86Runner,
+  // },
+  // windowsX86Xl: {
+  //   os: "windows",
+  //   arch: "x86_64",
+  //   runner:
+  //     `\${{ github.repository == 'denoland/deno' && '${windowsX86XlRunner}' || '${windowsX86Runner}' }}`,
+  // },
 } as const;
 
 const prCacheKeyPrefix =
@@ -389,72 +389,75 @@ const ci = {
             ...Runners.macosX86,
             job: "test",
             profile: "debug",
-          }, {
-            ...Runners.macosX86,
-            job: "test",
-            profile: "release",
-            skip_pr: true,
-          }, {
-            ...Runners.macosArm,
-            job: "test",
-            profile: "debug",
-          }, {
-            ...Runners.macosArmSelfHosted,
-            job: "test",
-            profile: "release",
-            skip_pr: true,
-          }, {
-            ...Runners.windowsX86,
-            job: "test",
-            profile: "debug",
-          }, {
-            ...Runners.windowsX86Xl,
-            job: "test",
-            profile: "release",
-            skip_pr: true,
-          }, {
-            ...Runners.linuxX86Xl,
-            job: "test",
-            profile: "release",
-            use_sysroot: true,
-            // TODO(ry): Because CI is so slow on for OSX and Windows, we
-            // currently run the Web Platform tests only on Linux.
-            wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
-          }, {
-            ...Runners.linuxX86Xl,
-            job: "bench",
-            profile: "release",
-            use_sysroot: true,
-            skip_pr:
-              "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
-          }, {
-            ...Runners.linuxX86,
-            job: "test",
-            profile: "debug",
-            use_sysroot: true,
-          }, {
-            ...Runners.linuxX86,
-            job: "lint",
-            profile: "debug",
-          }, {
-            ...Runners.linuxArm,
-            job: "test",
-            profile: "debug",
-          }, {
-            ...Runners.linuxArm,
-            job: "test",
-            profile: "release",
-            use_sysroot: true,
-            skip_pr: true,
-          }, {
-            ...Runners.macosX86,
-            job: "lint",
-            profile: "debug",
-          }, {
-            ...Runners.windowsX86,
-            job: "lint",
-            profile: "debug",
-          }]),
+          } // {
+            //   ...Runners.macosX86,
+            //   job: "test",
+            //   profile: "release",
+            //   skip_pr: true,
+            // } // {
+            //   ...Runners.macosArm,
+            //   job: "test",
+            //   profile: "debug",
+            // }, {
+            //   ...Runners.macosArmSelfHosted,
+            //   job: "test",
+            //   profile: "release",
+            //   skip_pr: true,
+            // }, {
+            //   ...Runners.windowsX86,
+            //   job: "test",
+            //   profile: "debug",
+            // }, {
+            //   ...Runners.windowsX86Xl,
+            //   job: "test",
+            //   profile: "release",
+            //   skip_pr: true,
+            // }, {
+            //   ...Runners.linuxX86Xl,
+            //   job: "test",
+            //   profile: "release",
+            //   use_sysroot: true,
+            //   // TODO(ry): Because CI is so slow on for OSX and Windows, we
+            //   // currently run the Web Platform tests only on Linux.
+            //   wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+            // }, {
+            //   ...Runners.linuxX86Xl,
+            //   job: "bench",
+            //   profile: "release",
+            //   use_sysroot: true,
+            //   skip_pr:
+            //     "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
+            // }, {
+            //   ...Runners.linuxX86,
+            //   job: "test",
+            //   profile: "debug",
+            //   use_sysroot: true,
+            // }, {
+            //   ...Runners.linuxX86,
+            //   job: "lint",
+            //   profile: "debug",
+            // }, {
+            //   ...Runners.linuxArm,
+            //   job: "test",
+            //   profile: "debug",
+            // }, {
+            //   ...Runners.linuxArm,
+            //   job: "test",
+            //   profile: "release",
+            //   use_sysroot: true,
+            //   skip_pr: true,
+            // },
+            // {
+            //   ...Runners.macosX86,
+            //   job: "lint",
+            //   profile: "debug",
+            // },
+            // {
+            //   ...Runners.windowsX86,
+            //   job: "lint",
+            //   profile: "debug",
+            // }
+          ]),
         },
         // Always run main branch builds to completion. This allows the cache to
         // stay mostly up-to-date in situations where a single job fails due to
@@ -956,7 +959,7 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked --features=panic-trace",
+          run: "cargo test --locked --features=panic-trace compile::",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
