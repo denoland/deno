@@ -1684,10 +1684,20 @@ impl Inner {
       .into_iter()
       .map(|e| (uri_to_url(&e.uri), e))
       .collect::<Vec<_>>();
-    if changes
-      .iter()
-      .any(|(s, _)| self.config.tree.is_watched_file(s))
-    {
+    if changes.iter().any(|(specifier, _)| {
+      let path = specifier.path();
+      !path.contains("/node_modules/")
+        && (path.ends_with("/deno.json")
+          || path.ends_with("/deno.jsonc")
+          || path.ends_with("/package.json")
+          || path.ends_with("/tsconfig.json"))
+        || path.ends_with("/node_modules/.package-lock.json")
+        || path.ends_with("/node_modules/.yarn-integrity.json")
+        || path.ends_with("/node_modules/.modules.yaml")
+        || path.ends_with("/node_modules/.deno/.setup-cache.bin")
+        || self.config.tree.is_watched_file(specifier)
+        || self.compiler_options_resolver.is_watched_file(specifier)
+    }) {
       let mut deno_config_changes = IndexSet::with_capacity(changes.len());
       let mut changed_deno_json = false;
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
