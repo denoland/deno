@@ -14,7 +14,6 @@ use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::CompilerOptions;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_typescript_go_client_rust::CallbackHandler;
 use deno_typescript_go_client_rust::SyncRpcChannel;
@@ -28,9 +27,6 @@ pub use setup::ensure_tsgo;
 use super::Request;
 use super::Response;
 use crate::args::TypeCheckMode;
-use crate::tsc::RequestNpmState;
-use crate::tsc::as_ts_script_kind;
-use crate::tsc::get_lazily_loaded_asset;
 
 macro_rules! jsons {
   ($($arg:tt)*) => {
@@ -567,10 +563,6 @@ pub enum ExecError {
   TsgoClient(#[from] deno_typescript_go_client_rust::Error),
 
   #[class(generic)]
-  #[error("failed to load from node module: {path}: {error}")]
-  LoadFromNodeModule { path: String, error: std::io::Error },
-
-  #[class(generic)]
   #[error(transparent)]
   PackageJsonLoad(#[from] deno_package_json::PackageJsonLoadError),
 
@@ -581,6 +573,10 @@ pub enum ExecError {
   #[class(generic)]
   #[error(transparent)]
   DownloadError(#[from] DownloadError),
+
+  #[class(generic)]
+  #[error(transparent)]
+  LoadError(#[from] super::LoadError),
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -590,152 +586,55 @@ struct LoadResult {
   script_kind: i32,
 }
 
+impl super::LoadContent for String {
+  fn from_static(source: &'static str) -> Self {
+    source.to_string()
+  }
+  fn from_string(source: String) -> Self {
+    source
+  }
+  fn from_arc_str(source: Arc<str>) -> Self {
+    source.to_string()
+  }
+}
+
+impl super::Mapper for HandlerState {
+  fn maybe_remapped_specifier(
+    &self,
+    specifier: &str,
+  ) -> Option<&ModuleSpecifier> {
+    self.maybe_remapped_specifier(specifier)
+  }
+}
+
 fn load_inner(
   state: &mut HandlerState,
   load_specifier: &str,
 ) -> Result<Option<LoadResult>, ExecError> {
   log::debug!("load_inner: {}", load_specifier);
-  fn load_from_node_modules(
-    specifier: &ModuleSpecifier,
-    npm_state: Option<&RequestNpmState>,
-    media_type: &mut MediaType,
-    is_cjs: &mut bool,
-  ) -> Result<Option<String>, ExecError> {
-    *media_type = MediaType::from_specifier(specifier);
-    let file_path = specifier.to_file_path().unwrap();
-    let code = match std::fs::read_to_string(&file_path) {
-      Ok(code) => code,
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        return Ok(None);
-      }
-      Err(err) => {
-        return Err(ExecError::LoadFromNodeModule {
-          path: file_path.display().to_string(),
-          error: err,
-        });
-      }
-    };
-    let code_arc = code.clone().into();
-    *is_cjs = npm_state
-      .map(|npm_state| {
-        npm_state
-          .cjs_tracker
-          .is_cjs(specifier, *media_type, &code_arc)
-      })
-      .unwrap_or(false);
-    Ok(Some(code))
-  }
-
-  let specifier =
-    deno_path_util::resolve_url_or_path(load_specifier, &state.current_dir)
-      .map_err(adhoc)?;
-
-  let mut media_type = MediaType::Unknown;
-  let graph = &state.graph;
-  let mut is_cjs = false;
-
-  let data = if load_specifier == "internal:///.tsbuildinfo" {
-    // TODO(nathanwhit): first off need extra API to emit the tsbuildinfo on the tsgo side.
-    //  second, for some reason tsgo just never tries to load the tsbuildinfo, unclear why.
-    // state
-    //   .maybe_tsbuildinfo
-    //   .as_deref()
-    //   .map(|s| s.to_string().into())
-    None
-    // in certain situations we return a "blank" module to tsc and we need to
-    // handle the request for that module here.
-  } else if load_specifier == super::MISSING_DEPENDENCY_SPECIFIER {
-    None
-  } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
-    let maybe_source = get_lazily_loaded_asset(name);
-    media_type = MediaType::from_str(load_specifier);
-    maybe_source.map(String::from)
-  } else if let Some(source) = super::load_raw_import_source(&specifier) {
-    return Ok(Some(LoadResult {
-      contents: source.to_string(),
-      script_kind: as_ts_script_kind(MediaType::TypeScript),
-    }));
-  } else {
-    let specifier = if let Some(remapped_specifier) =
-      state.maybe_remapped_specifier(load_specifier)
-    {
-      remapped_specifier
-    } else {
-      &specifier
-    };
-    let maybe_module = graph.try_get(specifier).ok().flatten();
-
-    if let Some(module) = maybe_module {
-      match module {
-        Module::Js(module) => {
-          media_type = module.media_type;
-          if let Some(npm_state) = &state.maybe_npm {
-            is_cjs = npm_state.cjs_tracker.is_cjs_with_known_is_script(
-              specifier,
-              module.media_type,
-              module.is_script,
-            )?;
-          }
-          Some(
-            module
-              .fast_check_module()
-              .map(|m| m.source.clone().to_string())
-              .unwrap_or(module.source.text.clone().to_string()),
-          )
-        }
-        Module::Json(module) => {
-          media_type = MediaType::Json;
-          Some(module.source.text.clone().to_string())
-        }
-        Module::Wasm(module) => {
-          media_type = MediaType::Dts;
-          Some(module.source_dts.clone().to_string())
-        }
-        Module::Npm(_) | Module::Node(_) => None,
-        Module::External(module) => {
-          if module.specifier.scheme() != "file" {
-            None
-          } else {
-            // means it's Deno code importing an npm module
-            let specifier = super::resolve_specifier_into_node_modules(
-              &super::CliSys::default(),
-              &module.specifier,
-            );
-            load_from_node_modules(
-              &specifier,
-              state.maybe_npm.as_ref(),
-              &mut media_type,
-              &mut is_cjs,
-            )?
-          }
-        }
-      }
-    } else if let Some(npm) = state
-      .maybe_npm
-      .as_ref()
-      .filter(|npm| npm.node_resolver.in_npm_package(specifier))
-    {
-      load_from_node_modules(
-        specifier,
-        Some(npm),
-        &mut media_type,
-        &mut is_cjs,
-      )?
-    } else {
-      None
-    }
+  let result = super::load_for_tsc(
+    load_specifier,
+    state.maybe_npm.as_ref(),
+    &state.current_dir,
+    &state.graph,
+    None,
+    0,
+    state,
+  )?;
+  let Some(result) = result else {
+    return Ok(None);
   };
+  let is_cjs = result.is_cjs;
+  let media_type = result.media_type;
+
   let module_kind = get_resolution_mode(is_cjs, media_type);
-  let script_kind = as_ts_script_kind(media_type);
+  let script_kind = super::as_ts_script_kind(media_type);
   log::debug!("load_inner {load_specifier} -> {:?}", module_kind);
   state
     .module_kind_map
     .insert(load_specifier.to_string(), module_kind);
-  let Some(data) = data else {
-    return Ok(None);
-  };
   Ok(Some(LoadResult {
-    contents: data,
+    contents: result.data,
     script_kind,
   }))
 }

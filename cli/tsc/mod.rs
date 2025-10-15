@@ -6,6 +6,7 @@ mod js;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -920,7 +921,7 @@ pub fn exec(
   }
 }
 
-pub(crate) fn resolve_specifier_for_tsc(
+pub fn resolve_specifier_for_tsc(
   specifier: String,
   referrer: &ModuleSpecifier,
   graph: &ModuleGraph,
@@ -1026,7 +1027,172 @@ pub(crate) fn resolve_specifier_for_tsc(
   Ok(result)
 }
 
-pub(crate) static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
+pub trait LoadContent: AsRef<str> {
+  fn from_static(source: &'static str) -> Self;
+  fn from_string(source: String) -> Self;
+  fn from_arc_str(source: Arc<str>) -> Self;
+}
+
+#[derive(Debug)]
+pub struct LoadResponse<T: LoadContent> {
+  data: T,
+  version: Option<String>,
+  is_cjs: bool,
+  media_type: MediaType,
+}
+
+pub trait Mapper {
+  fn maybe_remapped_specifier(
+    &self,
+    specifier: &str,
+  ) -> Option<&ModuleSpecifier>;
+}
+
+pub fn load_for_tsc<T: LoadContent, M: Mapper>(
+  load_specifier: &str,
+  maybe_npm: Option<&RequestNpmState>,
+  current_dir: &Path,
+  graph: &ModuleGraph,
+  maybe_tsbuildinfo: Option<&str>,
+  hash_data: u64,
+  remapper: &M,
+) -> Result<Option<LoadResponse<T>>, LoadError> {
+  fn load_from_node_modules<T: LoadContent>(
+    specifier: &ModuleSpecifier,
+    npm_state: Option<&RequestNpmState>,
+    media_type: &mut MediaType,
+    is_cjs: &mut bool,
+  ) -> Result<Option<T>, LoadError> {
+    *media_type = MediaType::from_specifier(specifier);
+    let file_path = specifier.to_file_path().unwrap();
+    let code = match std::fs::read_to_string(&file_path) {
+      Ok(code) => code,
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        return Ok(None);
+      }
+      Err(err) => {
+        return Err(LoadError::LoadFromNodeModule {
+          path: file_path.display().to_string(),
+          error: err,
+        });
+      }
+    };
+    let code: Arc<str> = code.into();
+    *is_cjs = npm_state
+      .map(|npm_state| {
+        npm_state.cjs_tracker.is_cjs(specifier, *media_type, &code)
+      })
+      .unwrap_or(false);
+    Ok(Some(T::from_arc_str(code)))
+  }
+
+  let specifier =
+    deno_path_util::resolve_url_or_path(load_specifier, current_dir)?;
+
+  let mut hash: Option<String> = None;
+  let mut media_type = MediaType::Unknown;
+  let mut is_cjs = false;
+
+  let data = if load_specifier == "internal:///.tsbuildinfo" {
+    maybe_tsbuildinfo.map(|s| T::from_string(s.to_string()))
+  // in certain situations we return a "blank" module to tsc and we need to
+  // handle the request for that module here.
+  } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
+    None
+  } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
+    let maybe_source = get_lazily_loaded_asset(name);
+    hash = get_maybe_hash(maybe_source, hash_data);
+    media_type = MediaType::from_str(load_specifier);
+    maybe_source.map(T::from_static)
+  } else if let Some(source) = load_raw_import_source(&specifier) {
+    return Ok(Some(LoadResponse {
+      data: T::from_static(source),
+      version: Some("1".to_string()),
+      is_cjs: false,
+      media_type: MediaType::TypeScript,
+    }));
+  } else {
+    let specifier = if let Some(remapped_specifier) =
+      remapper.maybe_remapped_specifier(load_specifier)
+    {
+      remapped_specifier
+    } else {
+      &specifier
+    };
+    let maybe_module = graph.try_get(specifier).ok().flatten();
+    let maybe_source = if let Some(module) = maybe_module {
+      match module {
+        Module::Js(module) => {
+          media_type = module.media_type;
+          if let Some(npm_state) = &maybe_npm {
+            is_cjs = npm_state.cjs_tracker.is_cjs_with_known_is_script(
+              specifier,
+              module.media_type,
+              module.is_script,
+            )?;
+          }
+          Some(
+            module
+              .fast_check_module()
+              .map(|m| T::from_arc_str(m.source.clone()))
+              .unwrap_or(T::from_arc_str(module.source.text.clone())),
+          )
+        }
+        Module::Json(module) => {
+          media_type = MediaType::Json;
+          Some(T::from_arc_str(module.source.text.clone()))
+        }
+        Module::Wasm(module) => {
+          media_type = MediaType::Dts;
+          Some(T::from_arc_str(module.source_dts.clone()))
+        }
+        Module::Npm(_) | Module::Node(_) => None,
+        Module::External(module) => {
+          if module.specifier.scheme() != "file" {
+            None
+          } else {
+            // means it's Deno code importing an npm module
+            let specifier = resolve_specifier_into_node_modules(
+              &CliSys::default(),
+              &module.specifier,
+            );
+            load_from_node_modules(
+              &specifier,
+              maybe_npm,
+              &mut media_type,
+              &mut is_cjs,
+            )?
+          }
+        }
+      }
+    } else if let Some(npm) = maybe_npm
+      .as_ref()
+      .filter(|npm| npm.node_resolver.in_npm_package(specifier))
+    {
+      load_from_node_modules(
+        specifier,
+        Some(npm),
+        &mut media_type,
+        &mut is_cjs,
+      )?
+    } else {
+      None
+    };
+    hash = get_maybe_hash(maybe_source.as_ref().map(|s| s.as_ref()), hash_data);
+    maybe_source
+  };
+  let Some(data) = data else {
+    return Ok(None);
+  };
+  Ok(Some(LoadResponse {
+    data,
+    version: hash,
+    is_cjs,
+    media_type,
+  }))
+}
+
+pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
   LazyLock::new(|| {
     [
       // TS1452: 'resolution-mode' assertions are only supported when `moduleResolution` is `node16` or `nodenext`.
@@ -1075,7 +1241,7 @@ pub(crate) static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
     .collect()
   });
 
-pub(crate) static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
+pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "AbortController",
   "AbortSignal",
   "AsyncIteratorObject",
@@ -1136,7 +1302,7 @@ pub(crate) static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "WritableStreamDefaultWriter",
 ];
 
-pub(crate) static NODE_ONLY_GLOBALS: &[&str] = &[
+pub static NODE_ONLY_GLOBALS: &[&str] = &[
   "__dirname",
   "__filename",
   "\"buffer\"",

@@ -2,12 +2,10 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_ast::MediaType;
 use deno_core::FastString;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -21,32 +19,24 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::resolve_url_or_path;
 use node_resolver::ResolutionMode;
-use node_resolver::resolve_specifier_into_node_modules;
 
 use super::LAZILY_LOADED_STATIC_ASSETS;
 use super::ResolveArgs;
 use super::ResolveError;
 use crate::args::TypeCheckMode;
-use crate::sys::CliSys;
 use crate::tsc::Diagnostics;
 use crate::tsc::ExecError;
 use crate::tsc::LoadError;
-use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::tsc::Request;
 use crate::tsc::RequestNpmState;
 use crate::tsc::Response;
 use crate::tsc::Stats;
-use crate::tsc::as_ts_script_kind;
 use crate::tsc::get_hash;
-use crate::tsc::get_lazily_loaded_asset;
-use crate::tsc::get_maybe_hash;
-use crate::tsc::load_raw_import_source;
 
 #[op2]
 #[string]
@@ -270,6 +260,18 @@ struct RespondArgs {
   pub stats: Stats,
 }
 
+impl super::LoadContent for FastString {
+  fn from_static(source: &'static str) -> Self {
+    FastString::from_static(source)
+  }
+  fn from_string(source: String) -> Self {
+    FastString::from(source)
+  }
+  fn from_arc_str(source: Arc<str>) -> Self {
+    FastString::from(source)
+  }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
@@ -288,149 +290,37 @@ fn op_load(
   op_load_inner(state, load_specifier)
 }
 
+impl super::Mapper for State {
+  fn maybe_remapped_specifier(
+    &self,
+    specifier: &str,
+  ) -> Option<&ModuleSpecifier> {
+    self.maybe_remapped_specifier(specifier)
+  }
+}
+
 fn op_load_inner(
   state: &mut OpState,
   load_specifier: &str,
 ) -> Result<Option<LoadResponse>, LoadError> {
-  fn load_from_node_modules(
-    specifier: &ModuleSpecifier,
-    npm_state: Option<&RequestNpmState>,
-    media_type: &mut MediaType,
-    is_cjs: &mut bool,
-  ) -> Result<Option<FastString>, LoadError> {
-    *media_type = MediaType::from_specifier(specifier);
-    let file_path = specifier.to_file_path().unwrap();
-    let code = match std::fs::read_to_string(&file_path) {
-      Ok(code) => code,
-      Err(err) if err.kind() == ErrorKind::NotFound => {
-        return Ok(None);
-      }
-      Err(err) => {
-        return Err(LoadError::LoadFromNodeModule {
-          path: file_path.display().to_string(),
-          error: err,
-        });
-      }
-    };
-    let code: Arc<str> = code.into();
-    *is_cjs = npm_state
-      .map(|npm_state| {
-        npm_state.cjs_tracker.is_cjs(specifier, *media_type, &code)
-      })
-      .unwrap_or(false);
-    Ok(Some(code.into()))
-  }
-
-  let state = state.borrow_mut::<State>();
-
-  let specifier = resolve_url_or_path(load_specifier, &state.current_dir)?;
-
-  let mut hash: Option<String> = None;
-  let mut media_type = MediaType::Unknown;
-  let graph = &state.graph;
-  let mut is_cjs = false;
-
-  let data = if load_specifier == "internal:///.tsbuildinfo" {
-    state
-      .maybe_tsbuildinfo
-      .as_deref()
-      .map(|s| s.to_string().into())
-  // in certain situations we return a "blank" module to tsc and we need to
-  // handle the request for that module here.
-  } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
-    None
-  } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
-    let maybe_source = get_lazily_loaded_asset(name);
-    hash = get_maybe_hash(maybe_source, state.hash_data);
-    media_type = MediaType::from_str(load_specifier);
-    maybe_source.map(FastString::from_static)
-  } else if let Some(source) = load_raw_import_source(&specifier) {
-    return Ok(Some(LoadResponse {
-      data: FastString::from_static(source),
-      version: Some("1".to_string()),
-      script_kind: as_ts_script_kind(MediaType::TypeScript),
-      is_cjs: false,
-    }));
-  } else {
-    let specifier = if let Some(remapped_specifier) =
-      state.maybe_remapped_specifier(load_specifier)
-    {
-      remapped_specifier
-    } else {
-      &specifier
-    };
-    let maybe_module = graph.try_get(specifier).ok().flatten();
-    let maybe_source = if let Some(module) = maybe_module {
-      match module {
-        Module::Js(module) => {
-          media_type = module.media_type;
-          if let Some(npm_state) = &state.maybe_npm {
-            is_cjs = npm_state.cjs_tracker.is_cjs_with_known_is_script(
-              specifier,
-              module.media_type,
-              module.is_script,
-            )?;
-          }
-          Some(
-            module
-              .fast_check_module()
-              .map(|m| FastString::from(m.source.clone()))
-              .unwrap_or(module.source.text.clone().into()),
-          )
-        }
-        Module::Json(module) => {
-          media_type = MediaType::Json;
-          Some(FastString::from(module.source.text.clone()))
-        }
-        Module::Wasm(module) => {
-          media_type = MediaType::Dts;
-          Some(FastString::from(module.source_dts.clone()))
-        }
-        Module::Npm(_) | Module::Node(_) => None,
-        Module::External(module) => {
-          if module.specifier.scheme() != "file" {
-            None
-          } else {
-            // means it's Deno code importing an npm module
-            let specifier = resolve_specifier_into_node_modules(
-              &CliSys::default(),
-              &module.specifier,
-            );
-            load_from_node_modules(
-              &specifier,
-              state.maybe_npm.as_ref(),
-              &mut media_type,
-              &mut is_cjs,
-            )?
-          }
-        }
-      }
-    } else if let Some(npm) = state
-      .maybe_npm
-      .as_ref()
-      .filter(|npm| npm.node_resolver.in_npm_package(specifier))
-    {
-      load_from_node_modules(
-        specifier,
-        Some(npm),
-        &mut media_type,
-        &mut is_cjs,
-      )?
-    } else {
-      None
-    };
-    hash = get_maybe_hash(maybe_source.as_deref(), state.hash_data);
-    maybe_source
-  };
-  let Some(data) = data else {
-    return Ok(None);
-  };
-  Ok(Some(LoadResponse {
-    data,
-    version: hash,
-    script_kind: as_ts_script_kind(media_type),
-    is_cjs,
-  }))
+  let state = state.borrow::<State>();
+  Ok(
+    super::load_for_tsc::<FastString, _>(
+      load_specifier,
+      state.maybe_npm.as_ref(),
+      &state.current_dir,
+      &state.graph,
+      state.maybe_tsbuildinfo.as_deref(),
+      state.hash_data,
+      state,
+    )?
+    .map(|res| LoadResponse {
+      data: res.data,
+      version: res.version,
+      is_cjs: res.is_cjs,
+      script_kind: super::as_ts_script_kind(res.media_type),
+    }),
+  )
 }
 
 pub fn exec_request(
@@ -622,6 +512,7 @@ impl State {
 
 #[cfg(test)]
 mod tests {
+  use deno_ast::MediaType;
   use deno_core::OpState;
   use deno_core::futures::future;
   use deno_core::parking_lot::Mutex;
@@ -636,6 +527,8 @@ mod tests {
   use super::super::DiagnosticCategory;
   use super::*;
   use crate::args::CompilerOptions;
+  use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
+  use crate::tsc::get_lazily_loaded_asset;
 
   #[derive(Debug, Default)]
   pub struct MockLoader {
