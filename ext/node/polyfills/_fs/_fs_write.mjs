@@ -24,7 +24,7 @@ import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
 
 const { ObjectDefineProperty } = primordials;
 
-export function writeSync(fd, buffer, offset, length, position) {
+export function writeSync(fd, buffer, offsetOrOptions, length, position) {
   fd = getValidatedFd(fd);
 
   const innerWriteSync = (fd, buffer, offset, length, position) => {
@@ -40,7 +40,15 @@ export function writeSync(fd, buffer, offset, length, position) {
     return currentOffset - offset;
   };
 
+  let offset = offsetOrOptions;
   if (isArrayBufferView(buffer)) {
+    if (typeof offset === "object") {
+      ({
+        offset = 0,
+        length = buffer.byteLength - offset,
+        position = null,
+      } = offsetOrOptions ?? { __proto__: null });
+    }
     if (position === undefined) {
       position = null;
     }
@@ -68,7 +76,7 @@ export function writeSync(fd, buffer, offset, length, position) {
  * https://nodejs.org/api/fs.html#fswritefd-buffer-offset-length-position-callback
  * https://github.com/nodejs/node/blob/42ad4137aadda69c51e1df48eee9bc2e5cebca5c/lib/fs.js#L797
  */
-export function write(fd, buffer, offset, length, position, callback) {
+export function write(fd, buffer, offsetOrOptions, length, position, callback) {
   fd = getValidatedFd(fd);
 
   const innerWrite = async (fd, buffer, offset, length, position) => {
@@ -87,8 +95,16 @@ export function write(fd, buffer, offset, length, position, callback) {
     return currentOffset - offset;
   };
 
+  let offset = offsetOrOptions;
   if (isArrayBufferView(buffer)) {
     callback = maybeCallback(callback || position || length || offset);
+    if (typeof offset === "object") {
+      ({
+        offset = 0,
+        length = buffer.byteLength - offset,
+        position = null,
+      } = offsetOrOptions ?? { __proto__: null });
+    }
     if (offset == null || typeof offset === "function") {
       offset = 0;
     } else {
