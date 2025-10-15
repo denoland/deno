@@ -81,7 +81,7 @@ pub fn parse_iso8601_duration(
     return Err(ParseIso8601DurationError::MissingDesignator);
   }
 
-  // weeks-only short form
+  // weeks-only short form: PnW
   if let Some(num) = s.strip_suffix(['W', 'w']) {
     let weeks: i64 = num
       .parse()
@@ -123,7 +123,7 @@ pub fn parse_iso8601_duration(
     let mut frac_start = i;
     let mut frac_len = 0usize;
     if i < bytes.len() && bytes[i] == b'.' {
-      i += 1;
+      i += 1; // skip '.'
       frac_start = i;
       while i < bytes.len() && bytes[i].is_ascii_digit() {
         i += 1;
@@ -134,6 +134,9 @@ pub fn parse_iso8601_duration(
       }
     }
 
+    // end of the integer slice (just before '.' if present)
+    let int_end = if frac_len > 0 { frac_start - 1 } else { i };
+
     if i >= bytes.len() {
       return Err(ParseIso8601DurationError::MissingUnit);
     }
@@ -142,7 +145,7 @@ pub fn parse_iso8601_duration(
     i += 1;
 
     // integral value
-    let int_val: i64 = s[start..start + (frac_start - start)]
+    let int_val: i64 = s[start..int_end]
       .parse()
       .map_err(|_| ParseIso8601DurationError::InvalidNumber)?;
 
@@ -161,27 +164,36 @@ pub fn parse_iso8601_duration(
 
       (true, 'H', 0) => Duration::hours(int_val),
       (true, 'M', 0) => Duration::minutes(int_val),
+
       // Seconds may be fractional: PT1.5S
       (true, 'S', _) => {
         let mut d = Duration::seconds(int_val);
         if frac_len > 0 {
-          let frac_str = &s[frac_start..frac_start + frac_len];
-          let nanos = {
-            let n = frac_str.chars().take(9).collect::<String>();
-            let scale = 9 - n.len();
-            let base: i64 = n.parse().map_err(|_| {
-              ParseIso8601DurationError::InvalidFractionalSeconds
-            })?;
-            base * 10_i64.pow(scale as u32)
-          };
-          d += Duration::nanoseconds(nanos);
+          let frac_str = &s[frac_start..(frac_start + frac_len)];
+          // take up to 9 digits for nanoseconds, right-pad with zeros
+          let n = frac_str.chars().take(9).collect::<String>();
+          let scale = 9 - n.len();
+          let base: i64 = n
+            .parse()
+            .map_err(|_| ParseIso8601DurationError::InvalidFractionalSeconds)?;
+          let nanos = base
+            .checked_mul(10_i64.pow(scale as u32))
+            .ok_or(ParseIso8601DurationError::Overflow)?;
+          d = d
+            .checked_add(&Duration::nanoseconds(nanos))
+            .ok_or(ParseIso8601DurationError::Overflow)?;
         }
         d
       }
 
-      (true, _, _) => {
+      // any other time-unit with a fraction is invalid because only seconds allow fractions
+      (true, _, f) if f > 0 => {
         return Err(ParseIso8601DurationError::FractionalNotAllowed);
       }
+
+      // unknown/invalid unit in time section (without fraction)
+      (true, _, _) => return Err(ParseIso8601DurationError::InvalidUnit),
+
       _ => return Err(ParseIso8601DurationError::InvalidUnit),
     };
 
