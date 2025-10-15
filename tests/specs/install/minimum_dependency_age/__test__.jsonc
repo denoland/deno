@@ -9,5 +9,8 @@
   }, {
     "args": "update --latest --minimum-dependency-age=2025-05-01T20:00:00.000Z",
     "output": "update.out"
+  }, {
+    "args": "outdated",
+    "output": "outdated_no_min_dep_age.out"
   }]
 }

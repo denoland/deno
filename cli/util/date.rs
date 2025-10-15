@@ -174,7 +174,7 @@ pub fn parse_iso8601_duration(
             })?;
             base * 10_i64.pow(scale as u32)
           };
-          d = d + Duration::nanoseconds(nanos);
+          d += Duration::nanoseconds(nanos);
         }
         d
       }

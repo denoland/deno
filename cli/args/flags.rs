@@ -718,7 +718,7 @@ fn minutes_duration_or_date_parser(
   }
   // try duration
   match crate::util::date::parse_iso8601_duration(s) {
-    Ok(duration) => return Ok(chrono::Utc::now() - duration),
+    Ok(duration) => Ok(chrono::Utc::now() - duration),
     Err(ParseIso8601DurationError::MissingP) => Err(clap::Error::raw(
       ErrorKind::InvalidValue,
       format!(
