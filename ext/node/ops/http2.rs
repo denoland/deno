@@ -8,6 +8,7 @@ use std::rc::Rc;
 use deno_core::AsyncResult;
 use deno_core::OpState;
 use deno_core::Resource;
+use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
@@ -15,6 +16,8 @@ use deno_net::io::TcpStreamResource;
 use deno_net::raw::NetworkStream;
 use libnghttp2_sys as ffi;
 use serde::Serialize;
+
+use crate::ops::handle_wrap::AsyncWrap;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -482,7 +485,7 @@ pub fn op_http2_http_state<'a>(
 struct Session {
   // Keep track of each stream's reference for this session using
   // it's frame id.
-  streams: HashMap<i32, Rc<Http2Stream>>,
+  streams: HashMap<i32, (v8::Global<v8::Object>, cppgc::Ref<Http2Stream>)>,
 
   isolate: v8::UnsafeRawIsolatePtr,
   context: v8::Global<v8::Context>,
@@ -501,8 +504,12 @@ pub fn op_http2_callbacks(
 }
 
 impl Session {
-  fn find_stream(&self, frame_id: i32) -> Option<&Rc<Http2Stream>> {
-    self.streams.get(&frame_id)
+  fn find_stream(&self, frame_id: i32) -> Option<&cppgc::Ref<Http2Stream>> {
+    self.streams.get(&frame_id).map(|v| &v.1)
+  }
+
+  fn find_stream_obj(&self, frame_id: i32) -> Option<&v8::Global<v8::Object>> {
+    self.streams.get(&frame_id).map(|v| &v.0)
   }
 
   // Called by `on_frame_recv` to notify JavaScript that a complete
@@ -518,7 +525,7 @@ impl Session {
     let scope = &mut v8::ContextScope::new(scope, context);
 
     let id = frame_id(frame);
-    let stream = self.find_stream(id);
+    let stream = self.find_stream_obj(id).unwrap();
 
     let state = self.op_state.borrow();
     let onheaders_fn = state.borrow::<HeadersFrameCb>();
@@ -526,7 +533,10 @@ impl Session {
     let callback = v8::Local::new(scope, &onheaders_fn.0);
 
     drop(state);
-    callback.call(scope, recv.into(), &[]);
+
+    let handle = v8::Local::new(scope, stream);
+    let id = v8::Number::new(scope, id.into());
+    callback.call(scope, recv.into(), &[handle.into(), id.into()]);
   }
 }
 
@@ -582,7 +592,7 @@ impl Resource for Http2SessionDriver {
 }
 
 #[derive(Debug)]
-struct Http2Stream {
+pub struct Http2Stream {
   session: *mut Session,
   id: i32,
   // As headers are received for this stream, they are temporarily stored
@@ -592,19 +602,69 @@ struct Http2Stream {
 
 impl Http2Stream {
   fn new(
-    session: *mut Session,
+    session: &mut Session,
     id: i32,
     cat: ffi::nghttp2_headers_category,
-  ) -> Self {
-    Self {
-      session,
-      id,
-      current_headers_category: cat,
-    }
+  ) -> (v8::Global<v8::Object>, Option<cppgc::Ref<Self>>) {
+    // SAFETY: This method is called by `on_frame_recv`.
+    // The isolate is valid and we are on the same thread as the isolate.
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, session.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let obj = cppgc::make_cppgc_empty_object::<Http2Stream>(scope);
+    let async_wrap = {
+      let mut state = session.op_state.borrow_mut();
+      AsyncWrap::create(&mut state, 0)
+    };
+    cppgc::wrap_object(
+      scope,
+      obj,
+      Self {
+        session: session as _,
+        id,
+        current_headers_category: cat,
+      },
+    );
+
+    (
+      v8::Global::new(scope, obj),
+      cppgc::try_unwrap_cppgc_persistent_object::<Http2Stream>(
+        scope,
+        obj.into(),
+      ),
+    )
   }
 }
 
 impl Resource for Http2Stream {}
+
+unsafe impl deno_core::GarbageCollected for Http2Stream {
+  fn trace(&self, _: &mut v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Http2Stream"
+  }
+}
+
+#[op2]
+impl Http2Stream {
+  #[fast]
+  fn response(&self) {}
+
+  #[fast]
+  fn refresh_state(&self) {}
+
+  #[fast]
+  fn write_utf8_string(&self) -> i32 {
+    0
+  }
+
+  #[fast]
+  fn shutdown(&self) {}
+}
 
 fn frame_id(frame: *const ffi::nghttp2_frame) -> i32 {
   // SAFETY: valid pointer and union tag check
@@ -635,14 +695,8 @@ unsafe extern "C" fn on_begin_headers_callbacks(
     // The common case is that we're creating a new stream. The less likely
     // case is that we're receiving a set of trailers
     None => {
-      let stream =
-        Http2Stream::new(data as *mut Session, id, (&*frame).headers.cat);
-      let mut state = session.op_state.borrow_mut();
-
-      let rid = state.resource_table.add(stream);
-
-      let stream_rc = state.resource_table.get::<Http2Stream>(rid).unwrap();
-      session.streams.insert(id, stream_rc);
+      let (obj, stream) = Http2Stream::new(session, id, (&*frame).headers.cat);
+      session.streams.insert(id, (obj, stream.unwrap()));
     }
     Some(s) => {}
     _ => {}

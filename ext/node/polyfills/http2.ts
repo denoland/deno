@@ -33,15 +33,17 @@ import {
   op_http2_callbacks,
   op_http2_constants,
 } from "ext:core/ops";
-
 import net from "node:net";
 import assert from "node:assert";
 import http from "node:http";
 import { Duplex } from "node:stream";
 import tls from "node:tls";
+import dc from "node:diagnostics_channel";
 import {
   kStreamBaseField,
 } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { utcDate } from "ext:deno_node/internal/http.ts";
+import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { EventEmitter } from "node:events";
 import {
   defaultTriggerAsyncIdScope,
@@ -120,6 +122,18 @@ import {
   updateSettingsBuffer,
 } from "ext:deno_node/internal/http2/util.ts";
 import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
+
+const onClientStreamCreatedChannel = dc.channel("http2.client.stream.created");
+const onClientStreamStartChannel = dc.channel("http2.client.stream.start");
+const onClientStreamErrorChannel = dc.channel("http2.client.stream.error");
+const onClientStreamFinishChannel = dc.channel("http2.client.stream.finish");
+const onClientStreamCloseChannel = dc.channel("http2.client.stream.close");
+const onServerStreamCreatedChannel = dc.channel("http2.server.stream.created");
+const onServerStreamStartChannel = dc.channel("http2.server.stream.start");
+const onServerStreamErrorChannel = dc.channel("http2.server.stream.error");
+const onServerStreamFinishChannel = dc.channel("http2.server.stream.finish");
+const onServerStreamCloseChannel = dc.channel("http2.server.stream.close");
+
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 let debug = debuglog("http2", (fn) => {
   debug = fn;
@@ -849,7 +863,7 @@ function finishCloseStream(code) {
 }
 
 // An Http2Stream is a Duplex stream that is backed by a
-// node::http2::Http2Stream handle implementing StreamBase.
+// http2::Http2Stream handle implementing StreamBase.
 class Http2Stream extends Duplex {
   constructor(session, options) {
     options.allowHalfOpen = true;
@@ -911,7 +925,7 @@ class Http2Stream extends Duplex {
     session[kState].streams.set(id, this);
 
     this[kID] = id;
-    this[async_id_symbol] = handle.getAsyncId();
+    //this[async_id_symbol] = handle.getAsyncId();
     handle[kOwner] = this;
     this[kHandle] = handle;
     handle.onread = onStreamRead;
@@ -1343,6 +1357,107 @@ class Http2Stream extends Duplex {
   }
 }
 
+function prepareResponseHeaders(stream, headersParam, options) {
+  let headers;
+  let statusCode;
+
+  if (ArrayIsArray(headersParam)) {
+    ({
+      headers,
+      statusCode,
+    } = prepareResponseHeadersArray(headersParam, options));
+    stream[kRawHeaders] = headers;
+  } else {
+    ({
+      headers,
+      statusCode,
+    } = prepareResponseHeadersObject(headersParam, options));
+    stream[kSentHeaders] = headers;
+  }
+
+  const headersList = buildNgHeaderString(
+    headers,
+    assertValidPseudoHeaderResponse,
+  );
+
+  return { headers, headersList, statusCode };
+}
+
+function prepareResponseHeadersObject(oldHeaders, options) {
+  assertIsObject(oldHeaders, "headers", ["Object", "Array"]);
+  const headers = { __proto__: null };
+
+  if (oldHeaders !== null && oldHeaders !== undefined) {
+    // This loop is here for performance reason. Do not change.
+    for (const key in oldHeaders) {
+      if (ObjectHasOwn(oldHeaders, key)) {
+        headers[key] = oldHeaders[key];
+      }
+    }
+    headers[kSensitiveHeaders] = oldHeaders[kSensitiveHeaders];
+  }
+
+  const statusCode = headers[HTTP2_HEADER_STATUS] =
+    headers[HTTP2_HEADER_STATUS] | 0 || HTTP_STATUS_OK;
+
+  if (options.sendDate == null || options.sendDate) {
+    headers[HTTP2_HEADER_DATE] ??= utcDate();
+  }
+
+  validatePreparedResponseHeaders(headers, statusCode);
+
+  return {
+    headers,
+    statusCode: headers[HTTP2_HEADER_STATUS],
+  };
+}
+
+function prepareResponseHeadersArray(headers, options) {
+  let statusCode;
+  let isDateSet = false;
+
+  for (let i = 0; i < headers.length; i += 2) {
+    const header = headers[i].toLowerCase();
+    const value = headers[i + 1];
+
+    if (header === HTTP2_HEADER_STATUS) {
+      statusCode = value | 0;
+    } else if (header === HTTP2_HEADER_DATE) {
+      isDateSet = true;
+    }
+  }
+
+  if (!statusCode) {
+    statusCode = HTTP_STATUS_OK;
+    headers.unshift(HTTP2_HEADER_STATUS, statusCode);
+  }
+
+  if (!isDateSet && (options.sendDate == null || options.sendDate)) {
+    headers.push(HTTP2_HEADER_DATE, utcDate());
+  }
+
+  validatePreparedResponseHeaders(headers, statusCode);
+
+  return { headers, statusCode };
+}
+
+function validatePreparedResponseHeaders(headers, statusCode) {
+  // This is intentionally stricter than the HTTP/1 implementation, which
+  // allows values between 100 and 999 (inclusive) in order to allow for
+  // backwards compatibility with non-spec compliant code. With HTTP/2,
+  // we have the opportunity to start fresh with stricter spec compliance.
+  // This will have an impact on the compatibility layer for anyone using
+  // non-standard, non-compliant status codes.
+  if (statusCode < 200 || statusCode > 599) {
+    throw new ERR_HTTP2_STATUS_INVALID(statusCode);
+  }
+
+  const neverIndex = headers[kSensitiveHeaders];
+  if (neverIndex !== undefined && !ArrayIsArray(neverIndex)) {
+    throw new ERR_INVALID_ARG_VALUE("headers[http2.neverIndex]", neverIndex);
+  }
+}
+
 class ServerHttp2Stream extends Http2Stream {
   constructor(session, handle, id, options, headers) {
     super(session, options);
@@ -1514,6 +1629,8 @@ class ServerHttp2Stream extends Http2Stream {
       this.end();
     }
 
+    console.log("response", headersList, streamOptions);
+    return; // TODO
     const ret = this[kHandle].respond(headersList, streamOptions);
     if (ret < 0) {
       this.destroy(new NghttpError(ret));
