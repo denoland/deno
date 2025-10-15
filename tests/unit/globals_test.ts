@@ -214,7 +214,8 @@ Deno.test(async function overwriteEventOnExternalModuleShouldNotCrash() {
   const tmpDir = await Deno.makeTempDir();
 
   const externalModulePath = join(tmpDir, "overwrite_event.ts");
-  const externalModuleContent = `globalThis.Event = class {}; export default {};`;
+  const externalModuleContent =
+    `globalThis.Event = class {}; export default {};`;
   await Deno.writeTextFile(externalModulePath, externalModuleContent);
 
   const entrypointPath = join(tmpDir, "index.ts");
