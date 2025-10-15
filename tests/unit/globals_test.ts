@@ -212,14 +212,17 @@ Deno.test(function globalGlobalIsWritable() {
 
 Deno.test(async function overwriteEventOnExternalModuleShouldNotCrash() {
   const tmpDir = await Deno.makeTempDir();
-  const filePath = join(tmpDir, "overwrite_event.ts");
-  const filePathUrl = new URL(filePath, import.meta.url);
 
-  const moduleContent = `globalThis.Event = class {};export default {};`;
-  await Deno.writeTextFile(filePathUrl, moduleContent);
+  const externalModulePath = join(tmpDir, "overwrite_event.ts");
+  const externalModuleContent = `globalThis.Event = class {}; export default {};`;
+  await Deno.writeTextFile(externalModulePath, externalModuleContent);
+
+  const entrypointPath = join(tmpDir, "index.ts");
+  const entrypointContent = `import("./overwrite_event.ts");`;
+  await Deno.writeTextFile(entrypointPath, entrypointContent);
 
   const command = new Deno.Command(Deno.execPath(), {
-    args: ["eval", `import("${filePathUrl.href}");`],
+    args: ["run", "-A", entrypointPath],
     stdout: "null",
     stderr: "null",
   });
