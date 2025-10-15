@@ -14,6 +14,7 @@ use futures::FutureExt;
 use futures::future::LocalBoxFuture;
 use http::HeaderMap;
 use http::HeaderValue;
+use http_body_util::BodyExt;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper::Request;
 use hyper::Response;
@@ -164,6 +165,21 @@ async fn private_npm_registry3_handler(
   handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_3).await
 }
 
+async fn npm_security_audits(
+  req: Request<Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  let body = req.into_body().collect().await?.to_bytes();
+  let json_obj: serde_json::Value = serde_json::from_slice(&body)?;
+  eprintln!("body bytes {:?}", json_obj);
+
+  let json_body = serde_json::json!({});
+
+  Response::builder()
+    .status(StatusCode::NOT_FOUND)
+    .body(empty_body())
+    .map_err(|e| e.into())
+}
+
 async fn handle_req_for_registry(
   req: Request<Incoming>,
   test_npm_registry: &npm::TestNpmRegistry,
@@ -172,6 +188,11 @@ async fn handle_req_for_registry(
 
   // serve the registry package files
   let uri_path = req.uri().path();
+
+  if uri_path == "/-/npm/v1/security/audits" {
+    return npm_security_audits(req).await;
+  }
+
   let mut file_path = root_dir.to_path_buf();
   file_path.push(uri_path[1..].replace("%2f", "/").replace("%2F", "/"));
 

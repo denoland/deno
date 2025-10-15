@@ -1,0 +1,72 @@
+{
+  "actions": [
+    {
+      "isMajor": true,
+      "action": "install",
+      "resolves": [
+        {
+          "id": 1087527,
+          "path": "express>connect>body-parser>qs",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        },
+        {
+          "id": 1090859,
+          "path": "express>connect>express-session>uid-safe>base64-url",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "module": "express",
+      "target": "5.1.0"
+    }
+  ],
+  "advisories": {
+    "1087527": {
+      "findings": [
+        { "version": "4.0.0", "paths": ["express>connect>body-parser>qs"] }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://nvd.nist.gov/vuln/detail/CVE-2017-1000048\n- https://github.com/ljharb/qs/issues/200\n- https://github.com/ljharb/qs/commit/beade029171b8cef9cee0d03ebe577e2dd84976d\n- https://access.redhat.com/errata/RHSA-2017:2672\n- https://snyk.io/vuln/npm:qs:20170213\n- https://www.npmjs.com/advisories/1469\n- https://github.com/advisories/GHSA-gqgv-6jq5-jjj9",
+      "created": "2020-04-30T17:16:47.000Z",
+      "id": 1087527,
+      "npm_advisory_id": null,
+      "overview": "Affected version of `qs` are vulnerable to Prototype Pollution because it is possible to bypass the protection. The `qs.parse` function fails to properly prevent an object's prototype to be altered when parsing arbitrary input. Input containing `[` or `]` may bypass the prototype pollution protection and alter the Object prototype. This allows attackers to override properties that will exist in all objects, which may lead to Denial of Service or Remote Code Execution in specific circumstances.\n\n\n## Recommendation\n\nUpgrade to 6.0.4, 6.1.2, 6.2.3, 6.3.2 or later.",
+      "reported_by": null,
+      "title": "Prototype Pollution Protection Bypass in qs",
+      "metadata": null,
+      "cves": ["CVE-2017-1000048"],
+      "access": "public",
+      "severity": "high",
+      "module_name": "qs",
+      "vulnerable_versions": "<6.0.4",
+      "github_advisory_id": "GHSA-gqgv-6jq5-jjj9",
+      "recommendation": "Upgrade to version 6.0.4 or later",
+      "patched_versions": ">=6.0.4",
+      "updated": "2023-01-09T05:02:30.000Z",
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      },
+      "cwe": ["CWE-20"],
+      "url": "https://github.com/advisories/GHSA-gqgv-6jq5-jjj9"
+    }
+  },
+  "muted": [],
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 8,
+      "moderate": 5,
+      "high": 9,
+      "critical": 2
+    },
+    "dependencies": 318,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 318
+  }
+}

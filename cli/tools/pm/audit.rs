@@ -7,6 +7,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::future::join_all;
 use deno_core::serde_json;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_resolver::npmrc::npm_registry_url;
 use eszip::v2::Url;
 use serde::Deserialize;
 use serde::Serialize;
@@ -18,6 +19,7 @@ use crate::factory::CliFactory;
 use crate::http_util;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
+use crate::sys::CliSys;
 
 pub async fn audit(
   flags: Arc<Flags>,
@@ -29,9 +31,12 @@ pub async fn audit(
   let npm_resolver = npm_resolver.as_managed().unwrap();
   let snapshot = npm_resolver.resolution().snapshot();
 
+  let sys = CliSys::default();
+  let npm_url = npm_registry_url(&sys);
   let http_provider = HttpClientProvider::new(None, None);
   let _npm_response = npm::call_audits_api(
     audit_flags,
+    npm_url,
     &snapshot,
     http_provider.get_or_create().unwrap(),
   )
@@ -134,16 +139,17 @@ mod npm {
   }
 
   pub async fn call_audits_api_inner(
+    npm_url: Url,
     client: HttpClient,
     body: serde_json::Value,
   ) -> Result<AuditResponse, AnyError> {
-    let url = Url::parse("https://registry.npmjs.org/-/npm/v1/security/audits")
-      .unwrap();
+    let url = npm_url.join("/-/npm/v1/security/audits").unwrap();
     let future = client.post_json(url, &body)?.send().boxed_local();
     let response = future.await?;
     let json_str = http_util::body_to_string(response)
       .await
       .context("Failed to read response from the npm registry API")?;
+    eprintln!("json_str {}", json_str);
     let response: AuditResponse = serde_json::from_str(&json_str)
       .context("Failed to deserialize response from the npm registry API")?;
     Ok(response)
@@ -151,6 +157,7 @@ mod npm {
 
   pub async fn call_audits_api(
     audit_flags: AuditFlags,
+    npm_url: Url,
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
   ) -> Result<(), AnyError> {
@@ -196,7 +203,7 @@ mod npm {
     });
 
     eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
-    let response = match call_audits_api_inner(client, body).await {
+    let response = match call_audits_api_inner(npm_url, client, body).await {
       Ok(s) => s,
       Err(err) => {
         if audit_flags.ignore_registry_errors {
@@ -269,6 +276,11 @@ mod npm {
         adv.vulnerable_versions
       );
       log::info!("│ {}    {}", colors::gray("Patched:"), adv.patched_versions);
+      if let Some(finding) = adv.findings.first() {
+        if let Some(path) = finding.paths.first() {
+          log::info!("│ {}       {}", colors::gray("Path:"), path);
+        }
+      }
       if actions.is_empty() {
         log::info!("╰ {}      {}", colors::gray("Info:"), adv.url);
       } else {
@@ -330,9 +342,16 @@ mod npm {
   }
 
   #[derive(Debug, Deserialize)]
+  pub struct AdvisoryFinding {
+    pub version: String,
+    pub paths: Vec<String>,
+  }
+
+  #[derive(Debug, Deserialize)]
   pub struct AuditAdvisory {
     pub id: i32,
     pub title: String,
+    pub findings: Vec<AdvisoryFinding>,
     pub cves: Vec<String>,
     pub cwe: Vec<String>,
     pub severity: String,
