@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { join } from "@std/path";
+import { join } from "node:path/posix";
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
