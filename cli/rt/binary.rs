@@ -49,6 +49,15 @@ pub struct StandaloneData {
   pub vfs: Arc<FileBackedVfs>,
 }
 
+macro_rules! loggy {
+    ($($arg:tt)*) => {
+      #[cfg(target_vendor = "apple", target_arch = "x86_64")]
+        {
+          eprintln!($($arg)*);
+        }
+    };
+}
+
 /// This function will try to run this binary as a standalone binary
 /// produced by `deno compile`. It determines if this is a standalone
 /// binary by skipping over the trailer width at the end of the file,
@@ -57,9 +66,9 @@ pub struct StandaloneData {
 pub fn extract_standalone(
   cli_args: Cow<[OsString]>,
 ) -> Result<StandaloneData, AnyError> {
-  eprintln!("extract_standalone");
+  loggy!("extract_standalone");
   let data = find_section()?;
-  eprintln!("found section");
+  loggy!("found section");
 
   let root_path = {
     let maybe_current_exe = std::env::current_exe().ok();
