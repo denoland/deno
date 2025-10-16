@@ -56,10 +56,6 @@ thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 
-[target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
-nix.workspace = true
-libc.workspace = true
-
 [target.'cfg(windows)'.dependencies]
 memmap2.workspace = true
 deno_subprocess_windows.workspace = true
