@@ -786,18 +786,20 @@ Deno.test(
   },
   async function rejectBatAndCmdFiles() {
     const tempDir = await Deno.makeTempDir();
-    const fileName = tempDir + "/test.bat";
-    const file = await Deno.open(fileName, {
-      create: true,
-      write: true,
-    });
+    for (const ext of [".bat", ".BaT", ".bAT", ".BAT"]) {
+      const fileName = tempDir + "/test" + ext;
+      const file = await Deno.open(fileName, {
+        create: true,
+        write: true,
+      });
 
-    await assertRejects(async () => {
-      await new Deno.Command(fileName, {
-        args: ["&calc.exe"],
-      }).output();
-    }, Deno.errors.PermissionDenied);
-    file.close();
+      await assertRejects(async () => {
+        await new Deno.Command(fileName, {
+          args: ["&calc.exe"],
+        }).output();
+      }, Deno.errors.PermissionDenied);
+      file.close();
+    }
   },
 );
 

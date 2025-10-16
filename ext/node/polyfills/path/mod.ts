@@ -37,6 +37,7 @@ export const {
   sep,
   toNamespacedPath,
   _makeLong,
+  matchesGlob,
 } = path;
 export default path;
 export * from "ext:deno_node/path/common.ts";

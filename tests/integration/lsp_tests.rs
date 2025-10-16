@@ -1670,7 +1670,7 @@ fn lsp_hover() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "```typescript\nconst Deno.args: string[]\n```\n\nReturns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.\n\n*@category* - Runtime",
+        "value": "```typescript\nconst Deno.args: string[]\n```\n\nReturns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno eval \"console.log(Deno.args)\" Sushi Maguro Hamachi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\", \"Maguro\", \"Hamachi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.\n\n*@category* - Runtime",
       },
       "range": {
         "start": { "line": 0, "character": 17 },
@@ -17569,6 +17569,48 @@ fn lsp_tsconfig_root_dirs() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_tsconfig_watched() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let file = temp_dir.source_file("main.ts", "document;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 8 },
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "deno-ts",
+        "message": "Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.",
+      },
+    ]),
+  );
+  let tsconfig_file = temp_dir.source_file(
+    "tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  client.did_change_watched_files(json!({
+    "changes": [{ "uri": tsconfig_file.uri(), "type": 1 }],
+  }));
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -19163,6 +19205,33 @@ fn do_not_auto_import_from_definitely_typed() {
     );
     client.shutdown();
   }
+}
+#[test]
+#[timeout(300_000)]
+fn lsp_skip_lib_check_graph_errors() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "skipLibCheck": true,
+      },
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "types.d.ts",
+    r#"
+      /// <reference path="./nonexistent.d.ts" />
+      /// <reference path="nonexistent" />
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
 }
 
 #[test]
