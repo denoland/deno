@@ -541,4 +541,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-libsui = { git = "https://github.com/denoland/sui", rev = "8620b57dd5c4f8b7380488171f418fd437835ef6" }
+libsui = { git = "https://github.com/denoland/sui", rev = "f0a493ce0a4b22df4ec5c9d12f5a28e12284bfce" }

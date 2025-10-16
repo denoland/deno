@@ -5846,7 +5846,7 @@ dependencies = [
 [[package]]
 name = "libsui"
 version = "0.10.0"
-source = "git+https://github.com/denoland/sui?rev=8620b57dd5c4f8b7380488171f418fd437835ef6#8620b57dd5c4f8b7380488171f418fd437835ef6"
+source = "git+https://github.com/denoland/sui?rev=f0a493ce0a4b22df4ec5c9d12f5a28e12284bfce#f0a493ce0a4b22df4ec5c9d12f5a28e12284bfce"
 dependencies = [
  "editpe",
  "image",
