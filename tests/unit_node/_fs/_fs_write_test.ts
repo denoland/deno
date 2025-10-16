@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// deno-lint-ignore-file no-console
-
 import { closeSync, openSync, write, writeSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { assertEquals } from "@std/assert";
