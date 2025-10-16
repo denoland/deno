@@ -17569,6 +17569,48 @@ fn lsp_tsconfig_root_dirs() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_tsconfig_watched() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let file = temp_dir.source_file("main.ts", "document;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 8 },
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "deno-ts",
+        "message": "Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.",
+      },
+    ]),
+  );
+  let tsconfig_file = temp_dir.source_file(
+    "tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  client.did_change_watched_files(json!({
+    "changes": [{ "uri": tsconfig_file.uri(), "type": 1 }],
+  }));
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
