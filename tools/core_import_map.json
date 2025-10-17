@@ -550,7 +550,7 @@
     "ext:deno_node/_fs/_fs_unlink.ts": "../ext/node/polyfills/_fs/_fs_unlink.ts",
     "ext:deno_node/_fs/_fs_utimes.ts": "../ext/node/polyfills/_fs/_fs_utimes.ts",
     "ext:deno_node/_fs/_fs_watch.ts": "../ext/node/polyfills/_fs/_fs_watch.ts",
-    "ext:deno_node/_fs/_fs_write.mjs": "../ext/node/polyfills/_fs/_fs_write.mjs",
+    "ext:deno_node/_fs/_fs_write.ts": "../ext/node/polyfills/_fs/_fs_write.ts",
     "ext:deno_node/_fs/_fs_writev.ts": "../ext/node/polyfills/_fs/_fs_writev.ts",
     "ext:deno_node/_global.d.ts": "../ext/node/polyfills/_global.d.ts",
     "ext:deno_node/_next_tick.ts": "../ext/node/polyfills/_next_tick.ts",

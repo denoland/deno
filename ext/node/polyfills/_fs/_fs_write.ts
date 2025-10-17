@@ -20,14 +20,42 @@ import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
 import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 import { primordials } from "ext:core/mod.js";
-import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
+import {
+  customPromisifyArgs,
+  kEmptyObject,
+} from "ext:deno_node/internal/util.mjs";
+import type { ErrnoException } from "ext:deno_node/_global.d.ts";
 
 const { ObjectDefineProperty } = primordials;
 
-export function writeSync(fd, buffer, offset, length, position) {
+type Callback = (
+  err: ErrnoException | null,
+  written?: number,
+  strOrBuffer?: string | ArrayBufferView,
+) => void;
+
+type WriteOptions = {
+  offset?: number;
+  length?: number;
+  position?: number | null;
+};
+
+export function writeSync(
+  fd: number,
+  buffer: ArrayBufferView | string,
+  offsetOrOptions?: number | WriteOptions | null,
+  length?: number | null,
+  position?: number | null,
+): number {
   fd = getValidatedFd(fd);
 
-  const innerWriteSync = (fd, buffer, offset, length, position) => {
+  const innerWriteSync = (
+    fd: number,
+    buffer: ArrayBufferView | Uint8Array,
+    offset: number,
+    length: number,
+    position: number | null | undefined,
+  ) => {
     buffer = arrayBufferViewToUint8Array(buffer);
     if (typeof position === "number") {
       op_fs_seek_sync(fd, position, io.SeekMode.Start);
@@ -35,12 +63,23 @@ export function writeSync(fd, buffer, offset, length, position) {
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
-      currentOffset += io.writeSync(fd, buffer.subarray(currentOffset, end));
+      currentOffset += io.writeSync(
+        fd,
+        (buffer as Uint8Array).subarray(currentOffset, end),
+      );
     }
     return currentOffset - offset;
   };
 
+  let offset = offsetOrOptions;
   if (isArrayBufferView(buffer)) {
+    if (typeof offset === "object") {
+      ({
+        offset = 0,
+        length = buffer.byteLength - (offset as number),
+        position = null,
+      } = offsetOrOptions ?? kEmptyObject);
+    }
     if (position === undefined) {
       position = null;
     }
@@ -57,9 +96,6 @@ export function writeSync(fd, buffer, offset, length, position) {
   }
   validateStringAfterArrayBufferView(buffer, "buffer");
   validateEncoding(buffer, length);
-  if (offset === undefined) {
-    offset = null;
-  }
   buffer = Buffer.from(buffer, length);
   return innerWriteSync(fd, buffer, 0, buffer.length, position);
 }
@@ -68,10 +104,23 @@ export function writeSync(fd, buffer, offset, length, position) {
  * https://nodejs.org/api/fs.html#fswritefd-buffer-offset-length-position-callback
  * https://github.com/nodejs/node/blob/42ad4137aadda69c51e1df48eee9bc2e5cebca5c/lib/fs.js#L797
  */
-export function write(fd, buffer, offset, length, position, callback) {
+export function write(
+  fd: number,
+  buffer: ArrayBufferView | string,
+  offsetOrOptions?: number | WriteOptions | Callback | null,
+  length?: number | Callback | null,
+  position?: number | Callback | null,
+  callback?: Callback,
+) {
   fd = getValidatedFd(fd);
 
-  const innerWrite = async (fd, buffer, offset, length, position) => {
+  const innerWrite = async (
+    fd: number,
+    buffer: ArrayBufferView | Uint8Array,
+    offset: number,
+    length: number,
+    position: number | null | undefined,
+  ) => {
     buffer = arrayBufferViewToUint8Array(buffer);
     if (typeof position === "number") {
       await op_fs_seek_async(fd, position, io.SeekMode.Start);
@@ -81,14 +130,23 @@ export function write(fd, buffer, offset, length, position, callback) {
     while (currentOffset - offset < length) {
       currentOffset += await io.write(
         fd,
-        buffer.subarray(currentOffset, end),
+        (buffer as Uint8Array).subarray(currentOffset, end),
       );
     }
     return currentOffset - offset;
   };
 
+  let offset = offsetOrOptions;
   if (isArrayBufferView(buffer)) {
     callback = maybeCallback(callback || position || length || offset);
+
+    if (typeof offset === "object") {
+      ({
+        offset = 0,
+        length = buffer.byteLength - (offset as number),
+        position = null,
+      } = offsetOrOptions ?? kEmptyObject);
+    }
     if (offset == null || typeof offset === "function") {
       offset = 0;
     } else {
@@ -103,9 +161,9 @@ export function write(fd, buffer, offset, length, position, callback) {
     validateOffsetLengthWrite(offset, length, buffer.byteLength);
     innerWrite(fd, buffer, offset, length, position).then(
       (nwritten) => {
-        callback(null, nwritten, buffer);
+        callback!(null, nwritten, buffer);
       },
-      (err) => callback(err),
+      (err) => callback!(err),
     );
     return;
   }
@@ -129,7 +187,8 @@ export function write(fd, buffer, offset, length, position, callback) {
   validateEncoding(str, length);
   callback = maybeCallback(position);
   buffer = Buffer.from(str, length);
-  innerWrite(fd, buffer, 0, buffer.length, offset, callback).then(
+
+  innerWrite(fd, buffer, 0, buffer.length, offset).then(
     (nwritten) => {
       callback(null, nwritten, buffer);
     },

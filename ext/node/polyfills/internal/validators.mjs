@@ -79,6 +79,7 @@ const validateBuffer = hideStackFrames((buffer, name = "buffer") => {
   }
 });
 
+/** @type {ValidateNumber} */
 const validateInteger = hideStackFrames(
   (
     value,
@@ -116,6 +117,7 @@ const validateObject = hideStackFrames((value, name, options) => {
   }
 });
 
+/** @type {ValidateNumber} */
 const validateInt32 = hideStackFrames(
   (value, name, min = -2147483648, max = 2147483647) => {
     // The defaults for min and max correspond to the limits of 32-bit integers.
