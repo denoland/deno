@@ -3,7 +3,6 @@
 // Note: Only add code in this folder that has no application specific logic
 pub mod archive;
 pub mod console;
-pub mod date;
 pub mod display;
 pub mod draw_thread;
 pub mod extract;

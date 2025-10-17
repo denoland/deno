@@ -12,7 +12,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use chrono::DateTime;
 use clap::Arg;
 use clap::ArgAction;
 use clap::ArgMatches;
@@ -28,6 +27,7 @@ use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
+use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -690,46 +690,9 @@ impl Default for TypeCheckMode {
 
 fn minutes_duration_or_date_parser(
   s: &str,
-) -> Result<chrono::DateTime<chrono::Utc>, clap::Error> {
-  use crate::util::date::ParseIso8601DurationError;
-
-  if s.chars().all(|c| c.is_ascii_digit()) {
-    let minutes: i64 = match s.parse() {
-      Ok(value) => value,
-      Err(err) => {
-        return Err(clap::Error::raw(
-          ErrorKind::InvalidValue,
-          format!("failed parsing integer to minutes: {err}"),
-        ));
-      }
-    };
-    return Ok(chrono::Utc::now() - chrono::Duration::minutes(minutes));
-  }
-
-  let datetime_parse_err = match DateTime::parse_from_rfc3339(s) {
-    Ok(dt) => return Ok(dt.with_timezone(&chrono::Utc)),
-    Err(err) => err,
-  };
-  // accept offsets without colon (e.g., +0900) and optional seconds
-  if let Ok(dt) = DateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%z")
-    .or_else(|_| DateTime::parse_from_str(s, "%Y-%m-%dT%H:%M%z"))
-  {
-    return Ok(dt.with_timezone(&chrono::Utc));
-  }
-  // try duration
-  match crate::util::date::parse_iso8601_duration(s) {
-    Ok(duration) => Ok(chrono::Utc::now() - duration),
-    Err(ParseIso8601DurationError::MissingP) => Err(clap::Error::raw(
-      ErrorKind::InvalidValue,
-      format!(
-        "expected RFC3339 datetime or ISO-8601 duration: {datetime_parse_err}"
-      ),
-    )),
-    Err(err) => Err(clap::Error::raw(
-      ErrorKind::InvalidValue,
-      format!("expected RFC3339 datetime or ISO-8601 duration: {err}"),
-    )),
-  }
+) -> Result<NewestDependencyDate, clap::Error> {
+  deno_config::parse_minutes_duration_or_date(&sys_traits::impls::RealSys, s)
+    .map_err(|e| clap::Error::raw(clap::error::ErrorKind::InvalidValue, e))
 }
 
 fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
@@ -784,7 +747,7 @@ pub struct Flags {
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
-  pub minimum_dependency_age: Option<chrono::DateTime<chrono::Utc>>,
+  pub minimum_dependency_age: Option<NewestDependencyDate>,
   pub no_remote: bool,
   pub no_lock: bool,
   pub no_npm: bool,
@@ -4492,7 +4455,7 @@ fn min_dep_age_arg() -> Arg {
   Arg::new("minimum-dependency-age")
     .long("minimum-dependency-age")
     .value_parser(minutes_duration_or_date_parser)
-    .help("(Unstable) The age in minutes, ISO-8601 duration, or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, or '2025-09-16T10:48:01+00:00' for an absolute cutoff time).")
+    .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16T10:48:01+00:00' for an absolute cutoff time, '0' to disable)")
 }
 
 fn ca_file_arg() -> Arg {

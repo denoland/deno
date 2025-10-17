@@ -11,6 +11,7 @@ use deno_cache_dir::GlobalHttpCacheRc;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::VendorEnablement;
@@ -229,6 +230,7 @@ pub trait WorkspaceFactorySys:
   + deno_cache_dir::GlobalHttpCacheSys
   + deno_cache_dir::LocalHttpCacheSys
   + crate::loader::NpmModuleLoaderSys
+  + sys_traits::SystemTimeNow
 {
 }
 
@@ -660,7 +662,7 @@ pub struct ResolverFactoryOptions {
   pub compiler_options_overrides: CompilerOptionsOverrides,
   pub is_cjs_resolution_mode: IsCjsResolutionMode,
   /// Prevents installing packages newer than the specified date.
-  pub newest_dependency_date: Option<chrono::DateTime<chrono::Utc>>,
+  pub newest_dependency_date: Option<NewestDependencyDate>,
   pub node_analysis_cache: Option<NodeAnalysisCacheRc>,
   pub node_code_translator_mode: node_resolver::analyze::NodeCodeTranslatorMode,
   pub node_resolver_options: NodeResolverOptions,
@@ -697,6 +699,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   #[cfg(feature = "graph")]
   jsr_version_resolver: Deferred<JsrVersionResolverRc>,
+  newest_dependency_date: Deferred<Option<chrono::DateTime<chrono::Utc>>>,
   node_code_translator: Deferred<DenoNodeCodeTranslatorRc<TSys>>,
   node_resolver: Deferred<
     NodeResolverRc<
@@ -733,9 +736,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     workspace_factory: WorkspaceFactoryRc<TSys>,
     options: ResolverFactoryOptions,
   ) -> Self {
-    if let Some(newest_dependency_date) = options.newest_dependency_date {
-      log::debug!("Newest dependency date: {}", newest_dependency_date);
-    }
     Self {
       sys: NodeResolutionSys::new(
         workspace_factory.sys.clone(),
@@ -754,6 +754,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       in_npm_package_checker: Default::default(),
       #[cfg(feature = "graph")]
       jsr_version_resolver: Default::default(),
+      newest_dependency_date: Default::default(),
       node_code_translator: Default::default(),
       node_resolver: Default::default(),
       npm_module_loader: Default::default(),
@@ -933,9 +934,35 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
   ) -> Result<&JsrVersionResolverRc, anyhow::Error> {
     self.jsr_version_resolver.get_or_try_init(|| {
       Ok(new_rc(deno_graph::packages::JsrVersionResolver {
-        newest_dependency_date: self.options.newest_dependency_date,
+        newest_dependency_date: self.newest_dependency_date()?,
       }))
     })
+  }
+
+  /// The newest allowed dependency date.
+  pub fn newest_dependency_date(
+    &self,
+  ) -> Result<Option<chrono::DateTime<chrono::Utc>>, anyhow::Error> {
+    self
+      .newest_dependency_date
+      .get_or_try_init(|| {
+        let maybe_date = if let Some(date) = self.options.newest_dependency_date
+        {
+          date.into_option()
+        } else {
+          let workspace_factory = self.workspace_factory();
+          let workspace = &workspace_factory.workspace_directory()?.workspace;
+          workspace
+            .minimum_dependency_age(workspace_factory.sys())?
+            .map(|d| d.into_option())
+            .flatten()
+        };
+        if let Some(newest_dependency_date) = &maybe_date {
+          log::debug!("Newest dependency date: {}", newest_dependency_date);
+        }
+        Ok(maybe_date)
+      })
+      .copied()
   }
 
   pub fn node_code_translator(
@@ -1050,7 +1077,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.npm_version_resolver.get_or_try_init(|| {
       Ok(new_rc(NpmVersionResolver {
         types_node_version_req: self.options.types_node_version_req.clone(),
-        newest_dependency_date: self.options.newest_dependency_date,
+        newest_dependency_date: self.newest_dependency_date()?,
         link_packages: self
           .workspace_factory
           .workspace_npm_link_packages()?
