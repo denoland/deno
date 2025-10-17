@@ -4455,7 +4455,7 @@ fn min_dep_age_arg() -> Arg {
   Arg::new("minimum-dependency-age")
     .long("minimum-dependency-age")
     .value_parser(minutes_duration_or_date_parser)
-    .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16T10:48:01+00:00' for an absolute cutoff time, '0' to disable)")
+    .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable)")
 }
 
 fn ca_file_arg() -> Arg {

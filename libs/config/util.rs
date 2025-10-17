@@ -77,6 +77,10 @@ fn parse_enabled_minutes_duration_or_date(
   {
     return Ok(dt.with_timezone(&chrono::Utc));
   }
+  // accept simple date format (YYYY-MM-DD) and treat as midnight UTC
+  if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+    return Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc());
+  }
   // try duration
   match parse_iso8601_duration(s) {
     Ok(duration) => {
@@ -294,6 +298,11 @@ fn parse_iso8601_duration(
 
 #[cfg(test)]
 mod tests {
+  use std::time::SystemTime;
+
+  use chrono::TimeZone;
+  use chrono::Utc;
+
   use super::*;
 
   #[cfg(windows)]
@@ -334,5 +343,59 @@ mod tests {
     assert!(parse_iso8601_duration("PT").is_err());
     assert!(parse_iso8601_duration("PT1.2M").is_err()); // fractional minutes rejected
     assert!(parse_iso8601_duration("P1WT1H").is_err()); // W must be alone
+  }
+
+  #[test]
+  fn test_parse_minutes_duration_or_date() {
+    struct TestEnv;
+
+    impl sys_traits::SystemTimeNow for TestEnv {
+      fn sys_time_now(&self) -> SystemTime {
+        let datetime = Utc.with_ymd_and_hms(2025, 6, 1, 0, 0, 0).unwrap();
+        SystemTime::from(datetime)
+      }
+    }
+
+    // zero becomes disabled to prevent issues with clock drift
+    assert_eq!(
+      parse_minutes_duration_or_date(&TestEnv, "0").unwrap(),
+      NewestDependencyDate::Disabled
+    );
+
+    assert_eq!(
+      parse_minutes_duration_or_date(&TestEnv, "120").unwrap(),
+      NewestDependencyDate::Enabled(
+        Utc.with_ymd_and_hms(2025, 5, 31, 22, 0, 0).unwrap()
+      )
+    );
+
+    assert_eq!(
+      parse_minutes_duration_or_date(&TestEnv, "2025-01-01").unwrap(),
+      NewestDependencyDate::Enabled(
+        Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap()
+      )
+    );
+
+    assert_eq!(
+      parse_minutes_duration_or_date(&TestEnv, "2025-01-01").unwrap(),
+      NewestDependencyDate::Enabled(
+        Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap()
+      )
+    );
+
+    assert_eq!(
+      parse_minutes_duration_or_date(&TestEnv, "2025-09-16T12:50:10+00:00")
+        .unwrap(),
+      NewestDependencyDate::Enabled(
+        Utc.with_ymd_and_hms(2025, 9, 16, 12, 50, 10).unwrap()
+      )
+    );
+
+    assert_eq!(
+      parse_minutes_duration_or_date(&TestEnv, "P2D").unwrap(),
+      NewestDependencyDate::Enabled(
+        Utc.with_ymd_and_hms(2025, 5, 30, 0, 0, 0).unwrap()
+      )
+    );
   }
 }
