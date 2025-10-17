@@ -5846,7 +5846,8 @@ dependencies = [
 [[package]]
 name = "libsui"
 version = "0.10.0"
-source = "git+https://github.com/denoland/sui?rev=e02be989d54d376ed411c924e2aa43c9c3fba9fb#e02be989d54d376ed411c924e2aa43c9c3fba9fb"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6744db763b6e19aff65ebac2c85cf71358b3aae385828fcf0d1e02878ab7767b"
 dependencies = [
  "editpe",
  "image",
