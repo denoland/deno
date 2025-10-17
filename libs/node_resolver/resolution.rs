@@ -746,8 +746,6 @@ impl<
       resolution_kind,
       maybe_referrer.as_ref(),
     )?;
-    // TODO(bartlomieju): skipped checking errors for commonJS resolution and
-    // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(url_or_path)
   }
 
@@ -758,8 +756,6 @@ impl<
   ) -> Result<PathBuf, ResolvePkgJsonBinExportError> {
     let (pkg_json, items) = self
       .resolve_npm_binary_commands_for_package_with_pkg_json(package_folder)?;
-    // TODO(bartlomieju): skipped checking errors for commonJS resolution and
-    // "preserveSymlinksMain"/"preserveSymlinks" options.
     let bin_name = match sub_path {
       Some(bin_name) => bin_name,
       None => pkg_json
