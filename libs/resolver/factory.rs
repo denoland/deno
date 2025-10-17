@@ -11,6 +11,7 @@ use deno_cache_dir::GlobalHttpCacheRc;
 use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::LocalHttpCache;
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::deno_json::MinimumDependencyAgeConfig;
 use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
@@ -699,7 +700,7 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   #[cfg(feature = "graph")]
   jsr_version_resolver: Deferred<JsrVersionResolverRc>,
-  newest_dependency_date: Deferred<Option<chrono::DateTime<chrono::Utc>>>,
+  minimum_dependency_age: Deferred<MinimumDependencyAgeConfig>,
   node_code_translator: Deferred<DenoNodeCodeTranslatorRc<TSys>>,
   node_resolver: Deferred<
     NodeResolverRc<
@@ -754,7 +755,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       in_npm_package_checker: Default::default(),
       #[cfg(feature = "graph")]
       jsr_version_resolver: Default::default(),
-      newest_dependency_date: Default::default(),
+      minimum_dependency_age: Default::default(),
       node_code_translator: Default::default(),
       node_resolver: Default::default(),
       npm_module_loader: Default::default(),
@@ -933,35 +934,50 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     &self,
   ) -> Result<&JsrVersionResolverRc, anyhow::Error> {
     self.jsr_version_resolver.get_or_try_init(|| {
+      let minimum_dependency_age_config =
+        self.minimum_dependency_age_config()?;
       Ok(new_rc(deno_graph::packages::JsrVersionResolver {
-        newest_dependency_date: self.newest_dependency_date()?,
+        newest_dependency_date_options:
+          deno_graph::packages::NewestDependencyDateOptions {
+            date: minimum_dependency_age_config
+              .date
+              .as_ref()
+              .and_then(|d| d.into_option())
+              .map(deno_graph::packages::NewestDependencyDate),
+            exclude_jsr_pkgs: minimum_dependency_age_config
+              .exclude
+              .iter()
+              .filter_map(|v| v.strip_prefix("jsr:"))
+              .map(|v| v.into())
+              .collect(),
+          },
       }))
     })
   }
 
   /// The newest allowed dependency date.
-  pub fn newest_dependency_date(
+  pub fn minimum_dependency_age_config(
     &self,
-  ) -> Result<Option<chrono::DateTime<chrono::Utc>>, anyhow::Error> {
-    self
-      .newest_dependency_date
-      .get_or_try_init(|| {
-        let maybe_date = if let Some(date) = self.options.newest_dependency_date
-        {
-          date.into_option()
-        } else {
-          let workspace_factory = self.workspace_factory();
-          let workspace = &workspace_factory.workspace_directory()?.workspace;
-          workspace
-            .minimum_dependency_age(workspace_factory.sys())?
-            .and_then(|d| d.into_option())
-        };
-        if let Some(newest_dependency_date) = &maybe_date {
-          log::debug!("Newest dependency date: {}", newest_dependency_date);
-        }
-        Ok(maybe_date)
+  ) -> Result<&MinimumDependencyAgeConfig, anyhow::Error> {
+    self.minimum_dependency_age.get_or_try_init(|| {
+      let maybe_date = if let Some(date) = self.options.newest_dependency_date {
+        date.into_option()
+      } else {
+        let workspace_factory = self.workspace_factory();
+        let workspace = &workspace_factory.workspace_directory()?.workspace;
+        workspace
+          .minimum_dependency_age(workspace_factory.sys())?
+          .and_then(|d| d.into_option())
+      };
+      if let Some(newest_dependency_date) = &maybe_date {
+        log::debug!("Newest dependency date: {}", newest_dependency_date);
+      }
+      Ok(MinimumDependencyAgeConfig {
+        date: maybe_date.map(NewestDependencyDate::Enabled),
+        // TODO(#31010): deserialize this from the config
+        exclude: Vec::new(),
       })
-      .copied()
+    })
   }
 
   pub fn node_code_translator(
@@ -1074,9 +1090,24 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     &self,
   ) -> Result<&NpmVersionResolverRc, anyhow::Error> {
     self.npm_version_resolver.get_or_try_init(|| {
+      let minimum_dependency_age_config =
+        self.minimum_dependency_age_config()?;
       Ok(new_rc(NpmVersionResolver {
         types_node_version_req: self.options.types_node_version_req.clone(),
-        newest_dependency_date: self.newest_dependency_date()?,
+        newest_dependency_date_options:
+          deno_npm::resolution::NewestDependencyDateOptions {
+            date: minimum_dependency_age_config
+              .date
+              .as_ref()
+              .and_then(|d| d.into_option())
+              .map(deno_npm::resolution::NewestDependencyDate),
+            exclude: minimum_dependency_age_config
+              .exclude
+              .iter()
+              .filter_map(|v| v.strip_prefix("npm:"))
+              .map(|v| v.into())
+              .collect(),
+          },
         link_packages: self
           .workspace_factory
           .workspace_npm_link_packages()?

@@ -891,6 +891,13 @@ impl NewestDependencyDate {
   }
 }
 
+#[derive(Debug, Clone)]
+pub struct MinimumDependencyAgeConfig {
+  pub date: Option<NewestDependencyDate>,
+  // TODO(#31010): hook this up
+  pub exclude: Vec<String>,
+}
+
 #[derive(Debug, Error, JsError)]
 #[class(type)]
 pub enum MinimumDependencyAgeParseError {
