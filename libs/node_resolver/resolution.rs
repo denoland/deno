@@ -2209,8 +2209,7 @@ fn resolve_execution_path_from_npx_shim(
 
   if let Some(first_line) = maybe_first_line {
     // NOTE(bartlomieju): this is not perfect, but handle two most common scenarios
-    // where Node is run without any args. If there are args then we use `NodeCommand`
-    // struct.
+    // where Node is run without any args.
     if first_line == "#!/usr/bin/env node"
       || first_line == "#!/usr/bin/env -S node"
     {
