@@ -25,6 +25,7 @@ use crate::initializer::NpmResolutionInitializer;
 use crate::initializer::NpmResolverManagedSnapshotOption;
 use crate::lifecycle_scripts::LifecycleScriptsExecutor;
 use crate::package_json::NpmInstallDepsProvider;
+use crate::resolution::HasJsExecutionStartedFlagRc;
 use crate::resolution::NpmResolutionInstaller;
 
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
@@ -51,12 +52,30 @@ pub struct NpmInstallerFactoryOptions {
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
 }
 
+pub trait InstallReporter:
+  deno_npm::resolution::Reporter
+  + deno_graph::source::Reporter
+  + deno_npm_cache::TarballCacheReporter
+  + crate::InstallProgressReporter
+{
+}
+
+impl<
+  T: deno_npm::resolution::Reporter
+    + deno_graph::source::Reporter
+    + deno_npm_cache::TarballCacheReporter
+    + crate::InstallProgressReporter,
+> InstallReporter for T
+{
+}
+
 pub struct NpmInstallerFactory<
   TNpmCacheHttpClient: NpmCacheHttpClient,
   TReporter: Reporter,
   TSys: NpmInstallerFactorySys,
 > {
   resolver_factory: Arc<ResolverFactory<TSys>>,
+  has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
   http_client: Arc<TNpmCacheHttpClient>,
   lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
   reporter: TReporter,
@@ -77,6 +96,7 @@ pub struct NpmInstallerFactory<
     Deferred<Arc<RegistryInfoProvider<TNpmCacheHttpClient, TSys>>>,
   tarball_cache: Deferred<Arc<TarballCache<TNpmCacheHttpClient, TSys>>>,
   options: NpmInstallerFactoryOptions,
+  install_reporter: Option<Arc<dyn InstallReporter + 'static>>,
 }
 
 impl<
@@ -90,10 +110,12 @@ impl<
     http_client: Arc<TNpmCacheHttpClient>,
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
     reporter: TReporter,
+    install_reporter: Option<Arc<dyn InstallReporter + 'static>>,
     options: NpmInstallerFactoryOptions,
   ) -> Self {
     Self {
       resolver_factory,
+      has_js_execution_started_flag: Default::default(),
       http_client,
       lifecycle_scripts_executor,
       reporter,
@@ -105,8 +127,13 @@ impl<
       npm_resolution_installer: Default::default(),
       registry_info_provider: Default::default(),
       tarball_cache: Default::default(),
+      install_reporter,
       options,
     }
+  }
+
+  pub fn has_js_execution_started_flag(&self) -> &HasJsExecutionStartedFlagRc {
+    &self.has_js_execution_started_flag
   }
 
   pub fn http_client(&self) -> &Arc<TNpmCacheHttpClient> {
@@ -225,13 +252,15 @@ impl<
       .npm_resolution_installer
       .get_or_try_init(async move {
         Ok(Arc::new(NpmResolutionInstaller::new(
+          self.has_js_execution_started_flag.clone(),
+          self.resolver_factory.npm_version_resolver()?.clone(),
           self.registry_info_provider()?.clone(),
+          self
+            .install_reporter
+            .as_ref()
+            .map(|r| r.clone() as Arc<dyn deno_npm::resolution::Reporter>),
           self.resolver_factory.npm_resolution().clone(),
           self.maybe_lockfile().await?.cloned(),
-          self
-            .workspace_factory()
-            .workspace_npm_link_packages()?
-            .clone(),
         )))
       })
       .await
@@ -283,6 +312,7 @@ impl<
             self.options.lifecycle_scripts_config.clone(),
             self.resolver_factory.npm_system_info().clone(),
             workspace_npm_link_packages.clone(),
+            self.install_reporter.clone(),
           )))
         }
         .boxed_local(),
@@ -315,6 +345,10 @@ impl<
         self.http_client.clone(),
         workspace_factory.sys().clone(),
         workspace_factory.npmrc()?.clone(),
+        self
+          .install_reporter
+          .as_ref()
+          .map(|r| r.clone() as Arc<dyn deno_npm_cache::TarballCacheReporter>),
       )))
     })
   }

@@ -156,10 +156,10 @@ fn op_create_worker(
   };
   let args_name = args.name;
   let worker_type = args.worker_type;
-  if let WorkerThreadType::Classic = worker_type {
-    if let TestingFeaturesEnabled(false) = state.borrow() {
-      return Err(CreateWorkerError::ClassicWorkers);
-    }
+  if let WorkerThreadType::Classic = worker_type
+    && let TestingFeaturesEnabled(false) = state.borrow()
+  {
+    return Err(CreateWorkerError::ClassicWorkers);
   }
 
   if args.permissions.is_some() {
@@ -169,6 +169,7 @@ fn op_create_worker(
       "Worker.deno.permissions",
     );
   }
+
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {

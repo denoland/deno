@@ -110,5 +110,5 @@ pub fn op_worker_threads_filename<
       url_path.to_path_buf(),
     ));
   }
-  Ok(Some(url.to_string()))
+  Ok(Some(url.into()))
 }

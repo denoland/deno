@@ -180,16 +180,16 @@ impl FilePatterns {
       },
     );
     for p in &negated_excludes {
-      if let Some(base_path) = p.base_path() {
-        if !include_patterns_by_base_path.contains_key(&base_path) {
-          let has_any_base_parent = include_patterns_by_base_path
-            .keys()
-            .any(|k| base_path.starts_with(k))
-            || include_paths.iter().any(|p| base_path.starts_with(p));
-          // don't include an orphaned negated pattern
-          if has_any_base_parent {
-            include_patterns_by_base_path.insert(base_path, Vec::new());
-          }
+      if let Some(base_path) = p.base_path()
+        && !include_patterns_by_base_path.contains_key(&base_path)
+      {
+        let has_any_base_parent = include_patterns_by_base_path
+          .keys()
+          .any(|k| base_path.starts_with(k))
+          || include_paths.iter().any(|p| base_path.starts_with(p));
+        // don't include an orphaned negated pattern
+        if has_any_base_parent {
+          include_patterns_by_base_path.insert(base_path, Vec::new());
         }
       }
     }
@@ -514,7 +514,11 @@ impl PathOrPattern {
       .map(|maybe_pattern| {
         maybe_pattern
           .map(PathOrPattern::Pattern)
-          .unwrap_or_else(|| PathOrPattern::Path(normalize_path(path)))
+          .unwrap_or_else(|| {
+            PathOrPattern::Path(
+              normalize_path(Cow::Borrowed(Path::new(path))).into_owned(),
+            )
+          })
       })
       .map_err(|err| err.into())
   }
@@ -530,9 +534,13 @@ impl PathOrPattern {
     } else if has_url_prefix(p) {
       PathOrPattern::new(p)
     } else if let Some(path) = p.strip_prefix('!') {
-      Ok(PathOrPattern::NegatedPath(normalize_path(base.join(path))))
+      Ok(PathOrPattern::NegatedPath(
+        normalize_path(Cow::Owned(base.join(path))).into_owned(),
+      ))
     } else {
-      Ok(PathOrPattern::Path(normalize_path(base.join(p))))
+      Ok(PathOrPattern::Path(
+        normalize_path(Cow::Owned(base.join(p))).into_owned(),
+      ))
     }
   }
 
@@ -651,7 +659,7 @@ impl GlobPattern {
     GlobPattern::new(&pattern)
   }
 
-  pub fn as_str(&self) -> Cow<str> {
+  pub fn as_str(&self) -> Cow<'_, str> {
     if self.is_negated {
       Cow::Owned(format!("!{}", self.pattern.as_str()))
     } else {

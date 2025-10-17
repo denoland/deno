@@ -180,7 +180,7 @@ deno_core::extension!(
 struct ChildResource(RefCell<AsyncChild>, u32);
 
 impl Resource for ChildResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "child".into()
   }
 }
@@ -313,7 +313,7 @@ impl TryFrom<ExitStatus> for ChildStatus {
         success: false,
         code: 128 + signal,
         #[cfg(unix)]
-        signal: Some(deno_os::signal::signal_int_to_str(signal)?.to_string()),
+        signal: Some(deno_signals::signal_int_to_str(signal)?.to_string()),
         #[cfg(not(unix))]
         signal: None,
       }
@@ -470,20 +470,20 @@ fn create_command(
     if let Some(fd) = maybe_npm_process_state {
       fds_to_close.push(fd);
     }
-    if let Some(ipc) = args.ipc {
-      if ipc >= 0 {
-        let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
-        fds_to_dup.push((ipc_fd2, ipc));
-        fds_to_close.push(ipc_fd2);
-        /* One end returned to parent process (this) */
-        let pipe_rid = state.resource_table.add(IpcJsonStreamResource::new(
-          ipc_fd1 as _,
-          IpcRefTracker::new(state.external_ops_tracker.clone()),
-        )?);
-        /* The other end passed to child process via NODE_CHANNEL_FD */
-        command.env("NODE_CHANNEL_FD", format!("{}", ipc));
-        ipc_rid = Some(pipe_rid);
-      }
+    if let Some(ipc) = args.ipc
+      && ipc >= 0
+    {
+      let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
+      fds_to_dup.push((ipc_fd2, ipc));
+      fds_to_close.push(ipc_fd2);
+      /* One end returned to parent process (this) */
+      let pipe_rid = state.resource_table.add(IpcJsonStreamResource::new(
+        ipc_fd1 as _,
+        IpcRefTracker::new(state.external_ops_tracker.clone()),
+      )?);
+      /* The other end passed to child process via NODE_CHANNEL_FD */
+      command.env("NODE_CHANNEL_FD", format!("{}", ipc));
+      ipc_rid = Some(pipe_rid);
     }
 
     for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
@@ -542,24 +542,24 @@ fn create_command(
     if let Some(handle) = maybe_npm_process_state {
       handles_to_close.push(handle);
     }
-    if let Some(ipc) = args.ipc {
-      if ipc >= 0 {
-        let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
+    if let Some(ipc) = args.ipc
+      && ipc >= 0
+    {
+      let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
 
-        /* One end returned to parent process (this) */
-        let pipe_rid =
-          Some(state.resource_table.add(IpcJsonStreamResource::new(
-            hd1 as i64,
-            IpcRefTracker::new(state.external_ops_tracker.clone()),
-          )?));
+      /* One end returned to parent process (this) */
+      let pipe_rid =
+        Some(state.resource_table.add(IpcJsonStreamResource::new(
+          hd1 as i64,
+          IpcRefTracker::new(state.external_ops_tracker.clone()),
+        )?));
 
-        /* The other end passed to child process via NODE_CHANNEL_FD */
-        command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
+      /* The other end passed to child process via NODE_CHANNEL_FD */
+      command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
 
-        handles_to_close.push(hd2);
+      handles_to_close.push(hd2);
 
-        ipc_rid = pipe_rid;
-      }
+      ipc_rid = pipe_rid;
     }
 
     for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
@@ -667,7 +667,7 @@ fn spawn_child(
       }
 
       return Err(ProcessError::SpawnFailed {
-        command: command.get_program().to_string_lossy().to_string(),
+        command: command.get_program().to_string_lossy().into_owned(),
         error: Box::new(err.into()),
       });
     }
@@ -752,6 +752,26 @@ fn compute_run_cmd_and_check_permissions(
       command: arg_cmd.to_string(),
       error: Box::new(e),
     })?;
+  // Undocumented feature of CreateProcess API allows spawning batch files directly
+  // without proper argument escaping. We reject it here.
+  #[cfg(windows)]
+  if let Some(ext) = cmd.extension() {
+    let ext_str = ext.to_string_lossy();
+    if ext_str.eq_ignore_ascii_case("bat")
+      || ext_str.eq_ignore_ascii_case("cmd")
+    {
+      return Err(ProcessError::SpawnFailed {
+        command: arg_cmd.to_string(),
+        error: Box::new(
+          std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Use a shell to execute .bat or .cmd files",
+          )
+          .into(),
+        ),
+      });
+    }
+  }
   check_run_permission(
     state,
     &RunQueryDescriptor::Path(
@@ -878,7 +898,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
 }
 
 fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
-  deno_path_util::normalize_path(cwd.join(path))
+  deno_path_util::normalize_path(Cow::Owned(cwd.join(path))).into_owned()
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -1015,7 +1035,7 @@ fn op_spawn_sync(
     create_command(state, args, "Deno.Command().outputSync()")?;
 
   let mut child = command.spawn().map_err(|e| ProcessError::SpawnFailed {
-    command: command.get_program().to_string_lossy().to_string(),
+    command: command.get_program().to_string_lossy().into_owned(),
     error: Box::new(e.into()),
   })?;
   if let Some(input) = input {
@@ -1029,7 +1049,7 @@ fn op_spawn_sync(
     child
       .wait_with_output()
       .map_err(|e| ProcessError::SpawnFailed {
-        command: command.get_program().to_string_lossy().to_string(),
+        command: command.get_program().to_string_lossy().into_owned(),
         error: Box::new(e.into()),
       })?;
   Ok(SpawnOutput {
@@ -1084,7 +1104,7 @@ mod deprecated {
   }
 
   impl Resource for ChildResource {
-    fn name(&self) -> Cow<str> {
+    fn name(&self) -> Cow<'_, str> {
       "child".into()
     }
   }
@@ -1263,7 +1283,7 @@ mod deprecated {
 
   #[cfg(unix)]
   pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
-    let signo = deno_os::signal::signal_str_to_int(signal)
+    let signo = deno_signals::signal_str_to_int(signal)
       .map_err(SignalError::InvalidSignalStr)?;
     use nix::sys::signal::Signal;
     use nix::sys::signal::kill as unix_kill;
@@ -1291,7 +1311,7 @@ mod deprecated {
 
     if !matches!(signal, "SIGKILL" | "SIGTERM") {
       Err(
-        SignalError::InvalidSignalStr(deno_os::signal::InvalidSignalStrError(
+        SignalError::InvalidSignalStr(deno_signals::InvalidSignalStrError(
           signal.to_string(),
         ))
         .into(),

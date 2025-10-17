@@ -17,6 +17,7 @@ const {
   ObjectEntries,
   SafeArrayIterator,
   String,
+  SymbolAsyncDispose,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   SafePromiseAll,
@@ -26,13 +27,11 @@ const {
 
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { readAll } from "ext:deno_io/12_io.js";
-import {
-  assert,
-  pathFromURL,
-  SymbolAsyncDispose,
-} from "ext:deno_web/00_infra.js";
+import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
+import { packageData } from "ext:deno_fetch/22_body.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
+  ReadableStream,
   readableStreamCollectIntoUint8Array,
   readableStreamForRidUnrefable,
   readableStreamForRidUnrefableRef,
@@ -229,6 +228,7 @@ const _extraPipeRids = Symbol("[[_extraPipeRids]]");
 
 internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
 internals.getExtraPipeRids = (process) => process[_extraPipeRids];
+internals.kExtraStdio = kExtraStdio;
 
 class ChildProcess {
   #rid;
@@ -291,11 +291,17 @@ class ChildProcess {
     }
 
     if (stdoutRid !== null) {
-      this.#stdout = readableStreamForRidUnrefable(stdoutRid);
+      this.#stdout = readableStreamForRidUnrefable(
+        stdoutRid,
+        ReadableStreamWithCollectors,
+      );
     }
 
     if (stderrRid !== null) {
-      this.#stderr = readableStreamForRidUnrefable(stderrRid);
+      this.#stderr = readableStreamForRidUnrefable(
+        stderrRid,
+        ReadableStreamWithCollectors,
+      );
     }
 
     const onAbort = () => {
@@ -386,6 +392,32 @@ class ChildProcess {
   }
 }
 
+class ReadableStreamWithCollectors extends ReadableStream {
+  constructor(underlyingSource = undefined, strategy = undefined) {
+    super(underlyingSource, strategy);
+  }
+
+  async arrayBuffer() {
+    const buffer = await readableStreamCollectIntoUint8Array(this);
+    return packageData(buffer, "ArrayBuffer", null);
+  }
+
+  async bytes() {
+    const buffer = await readableStreamCollectIntoUint8Array(this);
+    return packageData(buffer, "bytes", null);
+  }
+
+  async json() {
+    const buffer = await readableStreamCollectIntoUint8Array(this);
+    return packageData(buffer, "JSON", null);
+  }
+
+  async text() {
+    const buffer = await readableStreamCollectIntoUint8Array(this);
+    return packageData(buffer, "text", null);
+  }
+}
+
 function spawn(command, options) {
   if (options?.stdin === "piped") {
     throw new TypeError(
@@ -412,6 +444,7 @@ function spawnSync(command, {
   stderr = "piped",
   windowsRawArguments = false,
   [kInputOption]: input,
+  [kNeedsNpmProcessState]: needsNpmProcessState = false,
 } = { __proto__: null }) {
   if (stdin === "piped") {
     throw new TypeError(
@@ -432,7 +465,7 @@ function spawnSync(command, {
     windowsRawArguments,
     extraStdio: [],
     detached: false,
-    needsNpmProcessState: false,
+    needsNpmProcessState,
     input,
   });
   return {

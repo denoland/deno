@@ -440,10 +440,6 @@ function pathFromURL(pathOrUrl) {
 internals.pathFromURL = pathFromURL;
 
 // deno-lint-ignore prefer-primordials
-export const SymbolDispose = Symbol.dispose;
-// deno-lint-ignore prefer-primordials
-export const SymbolAsyncDispose = Symbol.asyncDispose;
-// deno-lint-ignore prefer-primordials
 export const SymbolMetadata = Symbol.metadata ?? Symbol("Symbol.metadata");
 
 export {

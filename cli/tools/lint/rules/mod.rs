@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::LintRulesConfig;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
@@ -153,9 +153,9 @@ impl LintRuleProvider {
   pub fn resolve_lint_rules_err_empty(
     &self,
     rules: LintRulesConfig,
-    maybe_config_file: Option<&ConfigFile>,
+    maybe_workspace_dir: Option<&WorkspaceDirectory>,
   ) -> Result<ConfiguredRules, AnyError> {
-    let lint_rules = self.resolve_lint_rules(rules, maybe_config_file);
+    let lint_rules = self.resolve_lint_rules(rules, maybe_workspace_dir);
     if lint_rules.rules.is_empty() {
       bail!("No rules have been configured")
     }
@@ -183,7 +183,7 @@ impl LintRuleProvider {
   pub fn resolve_lint_rules(
     &self,
     rules: LintRulesConfig,
-    maybe_config_file: Option<&ConfigFile>,
+    maybe_workspace_dir: Option<&WorkspaceDirectory>,
   ) -> ConfiguredRules {
     let all_rules = self.all_rules();
     let mut all_rule_names = HashSet::with_capacity(all_rules.len());
@@ -194,7 +194,7 @@ impl LintRuleProvider {
       all_rules.into_iter(),
       rules
         .tags
-        .or_else(|| Some(get_default_tags(maybe_config_file))),
+        .or_else(|| Some(get_default_tags(maybe_workspace_dir))),
       rules.exclude,
       rules.include,
     );
@@ -205,11 +205,24 @@ impl LintRuleProvider {
   }
 }
 
-fn get_default_tags(maybe_config_file: Option<&ConfigFile>) -> Vec<String> {
+fn get_default_tags(
+  maybe_workspace_dir: Option<&WorkspaceDirectory>,
+) -> Vec<String> {
   let mut tags = Vec::with_capacity(2);
   tags.push("recommended".to_string());
-  if maybe_config_file.map(|c| c.is_package()).unwrap_or(false) {
-    tags.push("jsr".to_string());
+  if let Some(member_dir) = maybe_workspace_dir {
+    if member_dir
+      .maybe_deno_json()
+      .map(|c| c.is_package())
+      .unwrap_or(false)
+    {
+      tags.push("jsr".to_string());
+    }
+    if member_dir.maybe_deno_json().is_some()
+      || member_dir.maybe_pkg_json().is_some()
+    {
+      tags.push("workspace".to_string());
+    }
   }
   tags
 }
@@ -234,16 +247,16 @@ fn filtered_rules(
         true
       };
 
-      if let Some(includes) = &maybe_include {
-        if includes.contains(&rule.code().to_owned()) {
-          passes |= true;
-        }
+      if let Some(includes) = &maybe_include
+        && includes.contains(&rule.code().to_owned())
+      {
+        passes |= true;
       }
 
-      if let Some(excludes) = &maybe_exclude {
-        if excludes.contains(&rule.code().to_owned()) {
-          passes &= false;
-        }
+      if let Some(excludes) = &maybe_exclude
+        && excludes.contains(&rule.code().to_owned())
+      {
+        passes &= false;
       }
 
       passes

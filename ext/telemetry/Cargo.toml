@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_telemetry"
-version = "0.33.0"
+version = "0.41.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -37,5 +37,5 @@ thiserror.workspace = true
 tokio.workspace = true
 tower-service.workspace = true
 
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true

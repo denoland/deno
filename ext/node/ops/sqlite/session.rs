@@ -25,7 +25,7 @@ impl FromV8<'_> for SessionOptions {
   type Error = validators::Error;
 
   fn from_v8(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::PinScope<'_, '_>,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, validators::Error> {
     use validators::Error;
@@ -46,36 +46,36 @@ impl FromV8<'_> for SessionOptions {
     }
 
     let table_string = TABLE_STRING.v8_string(scope).unwrap();
-    if let Some(table_value) = obj.get(scope, table_string.into()) {
-      if !table_value.is_undefined() {
-        if !table_value.is_string() {
-          return Err(Error::InvalidArgType(
-            "The \"options.table\" argument must be a string.",
-          ));
-        }
-        let table =
-          v8::Local::<v8::String>::try_from(table_value).map_err(|_| {
-            Error::InvalidArgType(
-              "The \"options.table\" argument must be a string.",
-            )
-          })?;
-        options.table = Some(table.to_rust_string_lossy(scope).to_string());
+    if let Some(table_value) = obj.get(scope, table_string.into())
+      && !table_value.is_undefined()
+    {
+      if !table_value.is_string() {
+        return Err(Error::InvalidArgType(
+          "The \"options.table\" argument must be a string.",
+        ));
       }
+      let table =
+        v8::Local::<v8::String>::try_from(table_value).map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.table\" argument must be a string.",
+          )
+        })?;
+      options.table = Some(table.to_rust_string_lossy(scope).to_string());
     }
 
     let db_string = DB_STRING.v8_string(scope).unwrap();
-    if let Some(db_value) = obj.get(scope, db_string.into()) {
-      if !db_value.is_undefined() {
-        if !db_value.is_string() {
-          return Err(Error::InvalidArgType(
-            "The \"options.db\" argument must be a string.",
-          ));
-        }
-        let db = v8::Local::<v8::String>::try_from(db_value).map_err(|_| {
-          Error::InvalidArgType("The \"options.db\" argument must be a string.")
-        })?;
-        options.db = Some(db.to_rust_string_lossy(scope).to_string());
+    if let Some(db_value) = obj.get(scope, db_string.into())
+      && !db_value.is_undefined()
+    {
+      if !db_value.is_string() {
+        return Err(Error::InvalidArgType(
+          "The \"options.db\" argument must be a string.",
+        ));
       }
+      let db = v8::Local::<v8::String>::try_from(db_value).map_err(|_| {
+        Error::InvalidArgType("The \"options.db\" argument must be a string.")
+      })?;
+      options.db = Some(db.to_rust_string_lossy(scope).to_string());
     }
 
     Ok(options)
@@ -90,7 +90,10 @@ pub struct Session {
   pub(crate) db: Weak<RefCell<Option<rusqlite::Connection>>>,
 }
 
-impl GarbageCollected for Session {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Session {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Session"
   }
@@ -121,6 +124,12 @@ impl Session {
 
 #[op2]
 impl Session {
+  #[constructor]
+  #[cppgc]
+  fn create(_: bool) -> Session {
+    unreachable!()
+  }
+
   // Closes the session.
   #[fast]
   #[undefined]

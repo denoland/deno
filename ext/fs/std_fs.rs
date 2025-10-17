@@ -5,6 +5,7 @@
 use std::borrow::Cow;
 use std::fs;
 use std::io;
+use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
@@ -84,7 +85,10 @@ impl FileSystem for RealFs {
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
     let std_file = open_with_checked_path(options, path)?;
-    Ok(Rc::new(StdFileResourceInner::file(std_file)))
+    Ok(Rc::new(StdFileResourceInner::file(
+      std_file,
+      Some(path.to_path_buf()),
+    )))
   }
   async fn open_async<'a>(
     &'a self,
@@ -92,7 +96,10 @@ impl FileSystem for RealFs {
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
     let std_file = open_with_checked_path(options, &path.as_checked_path())?;
-    Ok(Rc::new(StdFileResourceInner::file(std_file)))
+    Ok(Rc::new(StdFileResourceInner::file(
+      std_file,
+      Some(path.to_path_buf()),
+    )))
   }
 
   fn mkdir_sync(
@@ -112,10 +119,21 @@ impl FileSystem for RealFs {
     spawn_blocking(move || mkdir(&path, recursive, mode)).await?
   }
 
+  #[cfg(unix)]
   fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
     chmod(path, mode)
   }
+  #[cfg(not(unix))]
+  fn chmod_sync(&self, path: &CheckedPath, mode: i32) -> FsResult<()> {
+    chmod(path, mode)
+  }
+
+  #[cfg(unix)]
   async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()> {
+    spawn_blocking(move || chmod(&path, mode)).await?
+  }
+  #[cfg(not(unix))]
+  async fn chmod_async(&self, path: CheckedPathBuf, mode: i32) -> FsResult<()> {
     spawn_blocking(move || chmod(&path, mode)).await?
   }
 
@@ -461,12 +479,26 @@ fn chmod(path: &Path, mode: u32) -> FsResult<()> {
   Ok(())
 }
 
-// TODO: implement chmod for Windows (#4357)
 #[cfg(not(unix))]
-fn chmod(path: &Path, _mode: u32) -> FsResult<()> {
-  // Still check file/dir exists on Windows
-  std::fs::metadata(path)?;
-  Err(FsError::NotSupported)
+fn chmod(path: &Path, mode: i32) -> FsResult<()> {
+  use std::os::windows::ffi::OsStrExt;
+
+  // Windows chmod doesn't follow symlinks unlike the UNIX counterpart,
+  // so we have to resolve the symlink manually
+  let resolved_path = realpath(path)?;
+
+  let wchar_path = resolved_path
+    .as_os_str()
+    .encode_wide()
+    .chain(std::iter::once(0))
+    .collect::<Vec<_>>();
+
+  // SAFETY: `path` is a null-terminated string.
+  let result = unsafe { libc::wchmod(wchar_path.as_ptr(), mode) };
+  if result != 0 {
+    return Err(io::Error::last_os_error().into());
+  }
+  Ok(())
 }
 
 #[cfg(unix)]
@@ -657,7 +689,14 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         use std::os::unix::fs::PermissionsExt;
         builder.mode(fs::symlink_metadata(from)?.permissions().mode());
       }
-      builder.create(to)?;
+
+      // The target directory might already exists. If it does,
+      // continue copying all entries instead of aborting.
+      if let Err(err) = builder.create(to)
+        && err.kind() != ErrorKind::AlreadyExists
+      {
+        return Err(FsError::Io(err));
+      }
 
       let mut entries: Vec<_> = fs::read_dir(from)?
         .map(|res| res.map(|e| e.file_name()))
@@ -776,8 +815,13 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     }
   }
 
-  if let Ok(m) = fs::metadata(to) {
-    if m.is_dir() {
+  if let Ok(m) = fs::metadata(to)
+    && m.is_dir()
+  {
+    // Only target sub dir when source is not a dir itself
+    if let Ok(from_meta) = fs::metadata(from)
+      && !from_meta.is_dir()
+    {
       return cp_(
         source_meta,
         from,
@@ -791,16 +835,16 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     }
   }
 
-  if let Ok(m) = fs::symlink_metadata(to) {
-    if is_identical(&source_meta, &m) {
-      return Err(
-        io::Error::new(
-          io::ErrorKind::InvalidInput,
-          "the source and destination are the same file",
-        )
-        .into(),
-      );
-    }
+  if let Ok(m) = fs::symlink_metadata(to)
+    && is_identical(&source_meta, &m)
+  {
+    return Err(
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "the source and destination are the same file",
+      )
+      .into(),
+    );
   }
 
   cp_(source_meta, from, to)
@@ -824,7 +868,7 @@ fn stat(path: &Path) -> FsResult<FsStat> {
   let file = opts.open(path)?;
   let metadata = file.metadata()?;
   let mut fsstat = FsStat::from_std(metadata);
-  stat_extra(&file, &mut fsstat)?;
+  deno_io::stat_extra(&file, &mut fsstat)?;
   Ok(fsstat)
 }
 
@@ -847,130 +891,8 @@ fn lstat(path: &Path) -> FsResult<FsStat> {
   let file = opts.open(path)?;
   let metadata = file.metadata()?;
   let mut fsstat = FsStat::from_std(metadata);
-  stat_extra(&file, &mut fsstat)?;
+  deno_io::stat_extra(&file, &mut fsstat)?;
   Ok(fsstat)
-}
-
-#[cfg(windows)]
-fn stat_extra(file: &std::fs::File, fsstat: &mut FsStat) -> FsResult<()> {
-  use std::os::windows::io::AsRawHandle;
-
-  unsafe fn get_dev(
-    handle: winapi::shared::ntdef::HANDLE,
-  ) -> std::io::Result<u64> {
-    use winapi::shared::minwindef::FALSE;
-    use winapi::um::fileapi::BY_HANDLE_FILE_INFORMATION;
-    use winapi::um::fileapi::GetFileInformationByHandle;
-
-    // SAFETY: winapi calls
-    unsafe {
-      let info = {
-        let mut info =
-          std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
-        if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
-          return Err(std::io::Error::last_os_error());
-        }
-
-        info.assume_init()
-      };
-
-      Ok(info.dwVolumeSerialNumber as u64)
-    }
-  }
-
-  const WINDOWS_TICK: i64 = 10_000; // 100-nanosecond intervals in a millisecond
-  const SEC_TO_UNIX_EPOCH: i64 = 11_644_473_600; // Seconds between Windows epoch and Unix epoch
-
-  fn windows_time_to_unix_time_msec(windows_time: &i64) -> i64 {
-    let milliseconds_since_windows_epoch = windows_time / WINDOWS_TICK;
-    milliseconds_since_windows_epoch - SEC_TO_UNIX_EPOCH * 1000
-  }
-
-  use windows_sys::Wdk::Storage::FileSystem::FILE_ALL_INFORMATION;
-  use windows_sys::Win32::Foundation::NTSTATUS;
-
-  unsafe fn query_file_information(
-    handle: winapi::shared::ntdef::HANDLE,
-  ) -> Result<FILE_ALL_INFORMATION, NTSTATUS> {
-    use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
-    use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
-    use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
-    use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
-
-    // SAFETY: winapi calls
-    unsafe {
-      let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
-      let mut io_status_block =
-        std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
-      let status = NtQueryInformationFile(
-        handle as _,
-        io_status_block.as_mut_ptr(),
-        info.as_mut_ptr() as *mut _,
-        std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
-        18, /* FileAllInformation */
-      );
-
-      if status < 0 {
-        let converted_status = RtlNtStatusToDosError(status);
-
-        // If error more data is returned, then it means that the buffer is too small to get full filename information
-        // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
-        // since struct is populated with other data anyway.
-        // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
-        if converted_status != ERROR_MORE_DATA {
-          return Err(converted_status as NTSTATUS);
-        }
-      }
-
-      Ok(info.assume_init())
-    }
-  }
-
-  // SAFETY: winapi calls
-  unsafe {
-    let file_handle = file.as_raw_handle();
-
-    fsstat.dev = get_dev(file_handle)?;
-
-    if let Ok(file_info) = query_file_information(file_handle) {
-      fsstat.ctime = Some(windows_time_to_unix_time_msec(
-        &file_info.BasicInformation.ChangeTime,
-      ) as u64);
-
-      if file_info.BasicInformation.FileAttributes
-        & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
-        != 0
-      {
-        fsstat.is_symlink = true;
-      }
-
-      if file_info.BasicInformation.FileAttributes
-        & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY
-        != 0
-      {
-        fsstat.mode |= libc::S_IFDIR as u32;
-        fsstat.size = 0;
-      } else {
-        fsstat.mode |= libc::S_IFREG as u32;
-        fsstat.size = file_info.StandardInformation.EndOfFile as u64;
-      }
-
-      if file_info.BasicInformation.FileAttributes
-        & winapi::um::winnt::FILE_ATTRIBUTE_READONLY
-        != 0
-      {
-        fsstat.mode |=
-          (libc::S_IREAD | (libc::S_IREAD >> 3) | (libc::S_IREAD >> 6)) as u32;
-      } else {
-        fsstat.mode |= ((libc::S_IREAD | libc::S_IWRITE)
-          | ((libc::S_IREAD | libc::S_IWRITE) >> 3)
-          | ((libc::S_IREAD | libc::S_IWRITE) >> 6))
-          as u32;
-      }
-    }
-
-    Ok(())
-  }
 }
 
 fn exists(path: &Path) -> bool {
@@ -983,20 +905,7 @@ fn exists(path: &Path) -> bool {
 
   #[cfg(windows)]
   {
-    use std::os::windows::ffi::OsStrExt;
-
-    use winapi::um::fileapi::GetFileAttributesW;
-    use winapi::um::fileapi::INVALID_FILE_ATTRIBUTES;
-
-    let path = path
-      .as_os_str()
-      .encode_wide()
-      .chain(std::iter::once(0))
-      .collect::<Vec<_>>();
-    // Safety: `path` is a null-terminated string
-    let attrs = unsafe { GetFileAttributesW(path.as_ptr()) };
-
-    attrs != INVALID_FILE_ATTRIBUTES
+    fs::exists(path).unwrap_or(false)
   }
 }
 
@@ -1109,6 +1018,15 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
     #[cfg(not(unix))]
     let _ = mode; // avoid unused warning
   }
+  if let Some(custom_flags) = options.custom_flags {
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::OpenOptionsExt;
+      open_options.custom_flags(custom_flags);
+    }
+    #[cfg(not(unix))]
+    let _ = custom_flags;
+  }
   open_options.read(options.read);
   open_options.create(options.create);
   open_options.write(options.write);
@@ -1147,7 +1065,14 @@ pub fn open_options_for_checked_path(
     // with the exception of /proc/ which is too special, and /dev/std* which might point to
     // proc.
     use std::os::unix::fs::OpenOptionsExt;
-    opts.custom_flags(libc::O_NOFOLLOW);
+    match options.custom_flags {
+      Some(flags) => {
+        opts.custom_flags(flags | libc::O_NOFOLLOW);
+      }
+      None => {
+        opts.custom_flags(libc::O_NOFOLLOW);
+      }
+    }
   }
 
   opts

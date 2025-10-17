@@ -1,8 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI32;
 
 use deno_ast::ImportsNotUsedAsValues;
+use deno_ast::JsxAutomaticOptions;
+use deno_ast::JsxClassicOptions;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParseDiagnosticsError;
@@ -16,7 +20,6 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
-use deno_core::InspectorPostMessageError;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
@@ -25,6 +28,9 @@ use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
+use deno_core::futures::channel::mpsc::UnboundedSender;
+use deno_core::futures::channel::mpsc::unbounded;
+use deno_core::parking_lot::Mutex as SyncMutex;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
@@ -43,6 +49,7 @@ use once_cell::sync::Lazy;
 use regex::Match;
 use regex::Regex;
 use tokio::sync::Mutex;
+use tokio::sync::oneshot;
 
 use crate::args::CliOptions;
 use crate::cdp;
@@ -51,14 +58,13 @@ use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmInstaller;
 use crate::resolver::CliResolver;
-use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventReceiver;
+use crate::tools::test::TestEventTracker;
 use crate::tools::test::TestFailureFormatOptions;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::reporters::TestReporter;
 use crate::tools::test::run_tests_for_worker;
-use crate::tools::test::send_test_event;
 use crate::tools::test::worker_has_tests;
 
 fn comment_source_to_position_range(
@@ -87,18 +93,20 @@ fn comment_source_to_position_range(
 fn get_prelude() -> String {
   r#"(() => {
   const repl_internal = {
-      lastEvalResult: undefined,
-      lastThrownError: undefined,
-      inspectArgs: Deno[Deno.internal].inspectArgs,
-      noColor: Deno.noColor,
-      get closed() {
-        try {
-          return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
-        } catch {
-          return false;
-        }
+    String,
+    lastEvalResult: undefined,
+    lastThrownError: undefined,
+    inspectArgs: Deno[Deno.internal].inspectArgs,
+    noColor: Deno.noColor,
+    get closed() {
+      try {
+        return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+      } catch {
+        return false;
       }
     }
+  };
+
   Object.defineProperty(globalThis, "_", {
     configurable: true,
     get: () => repl_internal.lastEvalResult,
@@ -130,7 +138,7 @@ fn get_prelude() -> String {
 
   globalThis.clear = console.clear.bind(console);
 
-  return repl_internal
+  return repl_internal;
 })()"#.to_string()
 }
 
@@ -165,18 +173,15 @@ pub struct TsEvaluateResponse {
   pub value: cdp::EvaluateResponse,
 }
 
-struct ReplJsxState {
-  factory: String,
-  frag_factory: String,
-  import_source: Option<String>,
-}
-
 pub struct ReplSession {
   internal_object_id: Option<RemoteObjectId>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
   resolver: Arc<CliResolver>,
-  pub worker: MainWorker,
+  // NB: `session` and `state` must come before Worker, so that relevant V8 objects
+  // are dropped before the isolate is dropped with `worker`.
   session: LocalInspectorSession,
+  state: ReplSessionState,
+  pub worker: MainWorker,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
   pub notifications: Arc<Mutex<UnboundedReceiver<Value>>>,
@@ -185,8 +190,100 @@ pub struct ReplSession {
   test_reporter_factory: Box<dyn Fn() -> Box<dyn TestReporter>>,
   /// This is only optional because it's temporarily taken when evaluating.
   test_event_receiver: Option<TestEventReceiver>,
-  jsx: ReplJsxState,
-  experimental_decorators: bool,
+  jsx: deno_ast::JsxRuntime,
+  decorators: deno_ast::DecoratorsTranspileOption,
+}
+
+// TODO: duplicated in `cli/tools/run/hmr.rs`
+#[derive(Debug)]
+enum InspectorMessageState {
+  Ready(serde_json::Value),
+  WaitingFor(oneshot::Sender<serde_json::Value>),
+}
+
+#[derive(Debug)]
+pub struct ReplSessionInner {
+  messages: HashMap<i32, InspectorMessageState>,
+  notification_tx: UnboundedSender<serde_json::Value>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ReplSessionState(Arc<SyncMutex<ReplSessionInner>>);
+
+impl ReplSessionState {
+  pub fn new(notification_tx: UnboundedSender<serde_json::Value>) -> Self {
+    Self(Arc::new(SyncMutex::new(ReplSessionInner {
+      messages: HashMap::new(),
+      notification_tx,
+    })))
+  }
+
+  fn callback(&self, msg: deno_core::InspectorMsg) {
+    let deno_core::InspectorMsgKind::Message(msg_id) = msg.kind else {
+      if let Ok(value) = serde_json::from_str(&msg.content) {
+        let _ = self.0.lock().notification_tx.unbounded_send(value);
+      }
+      return;
+    };
+
+    let message: serde_json::Value = match serde_json::from_str(&msg.content) {
+      Ok(v) => v,
+      Err(error) => match error.classify() {
+        serde_json::error::Category::Syntax => serde_json::json!({
+          "id": msg_id,
+          "result": {
+            "result": {
+              "type": "error",
+              "description": "Unterminated string literal",
+              "value": "Unterminated string literal",
+            },
+            "exceptionDetails": {
+              "exceptionId": 0,
+              "text": "Unterminated string literal",
+              "lineNumber": 0,
+              "columnNumber": 0
+            },
+          },
+        }),
+        _ => panic!("Could not parse inspector message"),
+      },
+    };
+
+    let mut state = self.0.lock();
+    let Some(message_state) = state.messages.remove(&msg_id) else {
+      state
+        .messages
+        .insert(msg_id, InspectorMessageState::Ready(message));
+      return;
+    };
+    let InspectorMessageState::WaitingFor(sender) = message_state else {
+      return;
+    };
+    let _ = sender.send(message);
+  }
+
+  async fn wait_for_response(&self, msg_id: i32) -> serde_json::Value {
+    if let Some(message_state) = self.0.lock().messages.remove(&msg_id) {
+      let InspectorMessageState::Ready(mut value) = message_state else {
+        unreachable!();
+      };
+      return value["result"].take();
+    }
+
+    let (tx, rx) = oneshot::channel();
+    self
+      .0
+      .lock()
+      .messages
+      .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+    let mut value = rx.await.unwrap();
+    value["result"].take()
+  }
+}
+
+static NEXT_MSG_ID: AtomicI32 = AtomicI32::new(0);
+fn next_msg_id() -> i32 {
+  NEXT_MSG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl ReplSession {
@@ -201,23 +298,20 @@ impl ReplSession {
     test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
-    let mut session = worker.create_inspector_session();
 
-    worker
-      .js_runtime
-      .with_event_loop_future(
-        session
-          .post_message::<()>("Runtime.enable", None)
-          .boxed_local(),
-        PollEventLoopOptions::default(),
-      )
-      .await?;
+    let (notification_tx, mut notification_rx) = unbounded();
+    let repl_session_state = ReplSessionState::new(notification_tx);
+    let state = repl_session_state.clone();
+    let callback =
+      Box::new(move |message| repl_session_state.callback(message));
+    let mut session = worker.create_inspector_session(callback);
+
+    session.post_message::<()>(next_msg_id(), "Runtime.enable", None);
 
     // Enabling the runtime domain will always send trigger one executionContextCreated for each
     // context the inspector knows about so we grab the execution context from that since
     // our inspector does not support a default context (0 is an invalid context id).
     let context_id: u64;
-    let mut notification_rx = session.take_notification_rx();
 
     loop {
       let notification = notification_rx.next().await.unwrap();
@@ -253,17 +347,17 @@ impl ReplSession {
           cli_options.initial_cwd().to_string_lossy(),
         )
       })?;
-    let experimental_decorators = compiler_options_resolver
+    let transpile_options = &compiler_options_resolver
       .for_specifier(&cwd_url)
       .transpile_options()?
-      .transpile
-      .use_ts_decorators;
+      .transpile;
     let mut repl_session = ReplSession {
       internal_object_id: None,
       npm_installer,
       resolver,
       worker,
       session,
+      state,
       context_id,
       language_server,
       referrer,
@@ -280,12 +374,8 @@ impl ReplSession {
       }),
       main_module,
       test_event_receiver: Some(test_event_receiver),
-      jsx: ReplJsxState {
-        factory: "React.createElement".to_string(),
-        frag_factory: "React.Fragment".to_string(),
-        import_source: None,
-      },
-      experimental_decorators,
+      jsx: transpile_options.jsx.clone().unwrap_or_default(),
+      decorators: transpile_options.decorators.clone(),
     };
 
     // inject prelude
@@ -323,12 +413,20 @@ impl ReplSession {
     &mut self,
     method: &str,
     params: Option<T>,
-  ) -> Result<Value, InspectorPostMessageError> {
+  ) -> Value {
+    let msg_id = next_msg_id();
+    self.session.post_message(msg_id, method, params);
+    let fut = self
+      .state
+      .wait_for_response(msg_id)
+      .map(Ok::<_, ()>)
+      .boxed_local();
+
     self
       .worker
       .js_runtime
       .with_event_loop_future(
-        self.session.post_message(method, params).boxed_local(),
+        fut,
         PollEventLoopOptions {
           // NOTE(bartlomieju): this is an important bit; we don't want to pump V8
           // message loop here, so that GC won't run. Otherwise, the resulting
@@ -338,6 +436,7 @@ impl ReplSession {
         },
       )
       .await
+      .unwrap()
   }
 
   pub async fn run_event_loop(&mut self) -> Result<(), CoreError> {
@@ -469,26 +568,25 @@ impl ReplSession {
         self.test_event_receiver.take().unwrap(),
         (self.test_reporter_factory)(),
       ));
+      let event_tracker =
+        TestEventTracker::new(self.worker.js_runtime.op_state());
       run_tests_for_worker(
         &mut self.worker,
         &self.main_module,
         &Default::default(),
         &Default::default(),
+        &event_tracker,
       )
       .await
       .unwrap();
-      send_test_event(
-        &self.worker.js_runtime.op_state(),
-        TestEvent::ForceEndReport,
-      )
-      .unwrap();
+      event_tracker.force_end_report().unwrap();
       self.test_event_receiver = Some(report_tests_handle.await.unwrap().1);
     }
 
     result
   }
 
-  async fn set_last_thrown_error(
+  pub async fn set_last_thrown_error(
     &mut self,
     error: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
@@ -511,11 +609,11 @@ impl ReplSession {
           throw_on_side_effect: None,
         }),
       )
-      .await?;
+      .await;
     Ok(())
   }
 
-  async fn set_last_eval_result(
+  pub async fn set_last_eval_result(
     &mut self,
     evaluate_result: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
@@ -536,7 +634,7 @@ impl ReplSession {
           throw_on_side_effect: None,
         }),
       )
-      .await?;
+      .await;
     Ok(())
   }
 
@@ -568,7 +666,7 @@ impl ReplSession {
           throw_on_side_effect: None,
         }),
       )
-      .await?;
+      .await;
 
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
@@ -603,7 +701,7 @@ impl ReplSession {
           throw_on_side_effect: None,
         }),
       )
-      .await?;
+      .await;
 
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
@@ -627,7 +725,7 @@ impl ReplSession {
           }
         }"#
           .to_string(),
-        &[evaluate_result.clone()],
+        std::slice::from_ref(evaluate_result),
       )
       .await?;
     let s = response
@@ -669,19 +767,9 @@ impl ReplSession {
     let transpiled_src = parsed_source
       .transpile(
         &deno_ast::TranspileOptions {
-          use_ts_decorators: self.experimental_decorators,
-          use_decorators_proposal: !self.experimental_decorators,
-          emit_metadata: false,
+          decorators: self.decorators.clone(),
           imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
-          transform_jsx: true,
-          precompile_jsx: false,
-          precompile_jsx_skip_elements: None,
-          precompile_jsx_dynamic_props: None,
-          jsx_automatic: self.jsx.import_source.is_some(),
-          jsx_development: false,
-          jsx_factory: self.jsx.factory.clone(),
-          jsx_fragment_factory: self.jsx.frag_factory.clone(),
-          jsx_import_source: self.jsx.import_source.clone(),
+          jsx: Some(self.jsx.clone()),
           var_decl_imports: true,
           verbatim_module_syntax: false,
         },
@@ -719,15 +807,49 @@ impl ReplSession {
     }
 
     if let Some(jsx) = analyzed_pragmas.jsx {
-      self.jsx.factory = jsx.text;
-      self.jsx.import_source = None;
+      match &mut self.jsx {
+        deno_ast::JsxRuntime::Classic(jsx_classic_options) => {
+          jsx_classic_options.factory = jsx.text;
+        }
+        deno_ast::JsxRuntime::Automatic(_)
+        | deno_ast::JsxRuntime::Precompile(_) => {
+          self.jsx = deno_ast::JsxRuntime::Classic(JsxClassicOptions {
+            factory: jsx.text,
+            ..Default::default()
+          });
+        }
+      }
     }
     if let Some(jsx_frag) = analyzed_pragmas.jsx_fragment {
-      self.jsx.frag_factory = jsx_frag.text;
-      self.jsx.import_source = None;
+      match &mut self.jsx {
+        deno_ast::JsxRuntime::Classic(jsx_classic_options) => {
+          jsx_classic_options.fragment_factory = jsx_frag.text;
+        }
+        deno_ast::JsxRuntime::Automatic(_)
+        | deno_ast::JsxRuntime::Precompile(_) => {
+          self.jsx = deno_ast::JsxRuntime::Classic(JsxClassicOptions {
+            fragment_factory: jsx_frag.text,
+            ..Default::default()
+          });
+        }
+      }
     }
     if let Some(jsx_import_source) = analyzed_pragmas.jsx_import_source {
-      self.jsx.import_source = Some(jsx_import_source.text);
+      match &mut self.jsx {
+        deno_ast::JsxRuntime::Classic(_) => {
+          self.jsx = deno_ast::JsxRuntime::Automatic(JsxAutomaticOptions {
+            import_source: Some(jsx_import_source.text),
+            development: false,
+          });
+        }
+        deno_ast::JsxRuntime::Automatic(automatic)
+        | deno_ast::JsxRuntime::Precompile(deno_ast::JsxPrecompileOptions {
+          automatic,
+          ..
+        }) => {
+          automatic.import_source = Some(jsx_import_source.text);
+        }
+      }
     }
   }
 
@@ -783,8 +905,8 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<cdp::EvaluateResponse, InspectorPostMessageError> {
-    self
+  ) -> Result<cdp::EvaluateResponse, JsErrorBox> {
+    let res = self
       .post_message_with_event_loop(
         "Runtime.evaluate",
         Some(cdp::EvaluateArgs {
@@ -805,10 +927,8 @@ impl ReplSession {
           unique_context_id: None,
         }),
       )
-      .await
-      .and_then(|res| {
-        serde_json::from_value(res).map_err(|e| JsErrorBox::from_err(e).into())
-      })
+      .await;
+    serde_json::from_value(res).map_err(JsErrorBox::from_err)
   }
 }
 
@@ -936,46 +1056,46 @@ fn analyze_jsx_pragmas(
       continue; // invalid
     }
 
-    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            true,
-          ),
-        });
-      }
+    if let Some(captures) = JSX_IMPORT_SOURCE_RE.captures(&c.text)
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx_import_source = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          true,
+        ),
+      });
     }
 
-    if let Some(captures) = JSX_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            false,
-          ),
-        });
-      }
+    if let Some(captures) = JSX_RE.captures(&c.text)
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          false,
+        ),
+      });
     }
 
-    if let Some(captures) = JSX_FRAG_RE.captures(&c.text) {
-      if let Some(m) = captures.get(1) {
-        analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
-          text: m.as_str().to_string(),
-          range: comment_source_to_position_range(
-            c.start(),
-            &m,
-            parsed_source.text_info_lazy(),
-            false,
-          ),
-        });
-      }
+    if let Some(captures) = JSX_FRAG_RE.captures(&c.text)
+      && let Some(m) = captures.get(1)
+    {
+      analyzed_pragmas.jsx_fragment = Some(SpecifierWithRange {
+        text: m.as_str().to_string(),
+        range: comment_source_to_position_range(
+          c.start(),
+          &m,
+          parsed_source.text_info_lazy(),
+          false,
+        ),
+      });
     }
   }
 

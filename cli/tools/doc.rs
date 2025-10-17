@@ -39,6 +39,7 @@ use crate::graph_util::graph_exit_integrity_errors;
 use crate::graph_util::graph_walk_errors;
 use crate::sys::CliSys;
 use crate::tsc::get_types_declaration_file_text;
+use crate::util::fs::CollectSpecifiersOptions;
 use crate::util::fs::collect_specifiers;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
@@ -78,7 +79,9 @@ async fn generate_doc_nodes_for_builtin_types(
         passthrough_jsr_specifiers: false,
         executor: Default::default(),
         file_system: &NullFileSystem,
+        jsr_metadata_store: None,
         jsr_url_provider: Default::default(),
+        jsr_version_resolver: Default::default(),
         locker: None,
         module_analyzer: analyzer,
         module_info_cacher: Default::default(),
@@ -127,17 +130,20 @@ pub async fn doc(
       let sys = CliSys::default();
 
       let module_specifiers = collect_specifiers(
-        FilePatterns {
-          base: cli_options.initial_cwd().to_path_buf(),
-          include: Some(
-            PathOrPatternSet::from_include_relative_path_or_patterns(
-              cli_options.initial_cwd(),
-              source_files,
-            )?,
-          ),
-          exclude: Default::default(),
+        CollectSpecifiersOptions {
+          file_patterns: FilePatterns {
+            base: cli_options.initial_cwd().to_path_buf(),
+            include: Some(
+              PathOrPatternSet::from_include_relative_path_or_patterns(
+                cli_options.initial_cwd(),
+                source_files,
+              )?,
+            ),
+            exclude: Default::default(),
+          },
+          vendor_folder: cli_options.vendor_dir_path().map(ToOwned::to_owned),
+          include_ignored_specified: false,
         },
-        cli_options.vendor_dir_path().map(ToOwned::to_owned),
         |_| true,
       )?;
       let graph = module_graph_creator
@@ -156,6 +162,7 @@ pub async fn doc(
         GraphWalkErrorsOptions {
           check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
+          will_type_check: false,
           allow_unknown_media_types: false,
           allow_unknown_jsr_exports: false,
         },
@@ -273,13 +280,12 @@ impl deno_doc::html::HrefResolver for DocResolver {
     target: UrlResolveKind,
   ) -> String {
     let path = deno_doc::html::href_path_resolve(current, target);
-    if self.strip_trailing_html {
-      if let Some(path) = path
+    if self.strip_trailing_html
+      && let Some(path) = path
         .strip_suffix("index.html")
         .or_else(|| path.strip_suffix(".html"))
-      {
-        return path.to_owned();
-      }
+    {
+      return path.to_owned();
     }
 
     path
@@ -306,7 +312,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
 
     if url.domain() == Some("deno.land") {
       url.set_query(Some(&format!("s={}", symbol.join("."))));
-      return Some(url.to_string());
+      return Some(url.into());
     }
 
     None

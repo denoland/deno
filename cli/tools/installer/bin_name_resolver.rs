@@ -6,6 +6,7 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_semver::npm::NpmPackageReqReference;
 
 use crate::http_util::HttpClientProvider;
@@ -13,16 +14,19 @@ use crate::http_util::HttpClientProvider;
 pub struct BinNameResolver<'a> {
   http_client_provider: &'a HttpClientProvider,
   npm_registry_api: &'a dyn NpmRegistryApi,
+  npm_version_resolver: &'a NpmVersionResolver,
 }
 
 impl<'a> BinNameResolver<'a> {
   pub fn new(
     http_client_provider: &'a HttpClientProvider,
     npm_registry_api: &'a dyn NpmRegistryApi,
+    npm_version_resolver: &'a NpmVersionResolver,
   ) -> Self {
     Self {
       http_client_provider,
       npm_registry_api,
+      npm_version_resolver,
     }
   }
 
@@ -31,22 +35,21 @@ impl<'a> BinNameResolver<'a> {
     // perform a request, and see if it redirects another file instead.
     let mut url = url.clone();
 
-    if matches!(url.scheme(), "http" | "https") && url.path() == "/" {
-      if let Ok(client) = self.http_client_provider.get_or_create() {
-        if let Ok(redirected_url) = client
-          .get_redirected_url(url.clone(), &Default::default())
-          .await
-        {
-          url = redirected_url;
-        }
-      }
+    if matches!(url.scheme(), "http" | "https")
+      && url.path() == "/"
+      && let Ok(client) = self.http_client_provider.get_or_create()
+      && let Ok(redirected_url) = client
+        .get_redirected_url(url.clone(), &Default::default())
+        .await
+    {
+      url = redirected_url;
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&url) {
-      if let Some(sub_path) = npm_ref.sub_path() {
-        if !sub_path.contains('/') {
-          return Some(sub_path.to_string());
-        }
+      if let Some(sub_path) = npm_ref.sub_path()
+        && !sub_path.contains('/')
+      {
+        return Some(sub_path.to_string());
       }
 
       match self.resolve_name_from_npm(&npm_ref).await {
@@ -64,12 +67,11 @@ impl<'a> BinNameResolver<'a> {
       if !npm_ref.req().name.contains('/') {
         return Some(npm_ref.into_inner().req.name.into_string());
       }
-      if let Some(scope_and_pkg) = npm_ref.req().name.strip_prefix('@') {
-        if let Some((scope, package)) = scope_and_pkg.split_once('/') {
-          if package == "cli" {
-            return Some(scope.to_string());
-          }
-        }
+      if let Some(scope_and_pkg) = npm_ref.req().name.strip_prefix('@')
+        && let Some((scope, package)) = scope_and_pkg.split_once('/')
+        && package == "cli"
+      {
+        return Some(scope.to_string());
       }
 
       return None;
@@ -88,10 +90,10 @@ impl<'a> BinNameResolver<'a> {
     let path = PathBuf::from(percent_decode.decode_utf8_lossy().as_ref());
 
     let mut stem = path.file_stem()?.to_string_lossy();
-    if matches!(stem.as_ref(), "main" | "mod" | "index" | "cli") {
-      if let Some(parent_name) = path.parent().and_then(|p| p.file_name()) {
-        stem = parent_name.to_string_lossy();
-      }
+    if matches!(stem.as_ref(), "main" | "mod" | "index" | "cli")
+      && let Some(parent_name) = path.parent().and_then(|p| p.file_name())
+    {
+      stem = parent_name.to_string_lossy();
     }
 
     // if atmark symbol appears in the index other than 0 (e.g. `foo@bar`) we use
@@ -123,11 +125,14 @@ impl<'a> BinNameResolver<'a> {
     package_info: &NpmPackageInfo,
     npm_ref: &NpmPackageReqReference,
   ) -> Option<String> {
-    let version = crate::npm::version_from_package_info(
-      package_info,
-      &npm_ref.req().version_req,
-    )?;
-    let version_info = package_info.versions.get(version)?;
+    let version_info = self
+      .npm_version_resolver
+      .resolve_best_package_version_info(
+        &npm_ref.req().version_req,
+        package_info,
+        Vec::new().into_iter(),
+      )
+      .ok()?;
     let bin_entries = version_info.bin.as_ref()?;
     match bin_entries {
       deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {}
@@ -147,6 +152,7 @@ mod test {
 
   use deno_core::url::Url;
   use deno_npm::registry::TestNpmRegistryApi;
+  use deno_npm::resolution::NpmVersionResolver;
 
   use super::BinNameResolver;
   use crate::http_util::HttpClientProvider;
@@ -160,7 +166,9 @@ mod test {
         HashMap::from([("gemini".to_string(), "./bin.js".to_string())]),
       ))
     });
-    let resolver = BinNameResolver::new(&http_client, &registry_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
     resolver.infer_name_from_url(url).await
   }
 

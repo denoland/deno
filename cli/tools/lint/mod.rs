@@ -17,6 +17,7 @@ use deno_config::deno_json::LintRulesConfig;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDirectoryRc;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -44,6 +45,7 @@ use crate::cache::Caches;
 use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::graph_util::CreatePublishGraphOptions;
 use crate::graph_util::ModuleGraphCreator;
 use crate::sys::CliSys;
 use crate::tools::fmt::run_parallelized;
@@ -210,7 +212,7 @@ async fn lint_with_watch(
 }
 
 struct PathsWithOptions {
-  dir: WorkspaceDirectory,
+  dir: WorkspaceDirectoryRc,
   paths: Vec<PathBuf>,
   options: LintOptions,
 }
@@ -282,7 +284,7 @@ impl WorkspaceLinter {
     &mut self,
     cli_options: &Arc<CliOptions>,
     lint_options: LintOptions,
-    member_dir: WorkspaceDirectory,
+    member_dir: WorkspaceDirectoryRc,
     paths: Vec<PathBuf>,
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
@@ -290,10 +292,9 @@ impl WorkspaceLinter {
     let exclude = lint_options.rules.exclude.clone();
 
     let plugin_specifiers = lint_options.plugins.clone();
-    let lint_rules = self.lint_rule_provider.resolve_lint_rules(
-      lint_options.rules,
-      member_dir.maybe_deno_json().map(|c| c.as_ref()),
-    );
+    let lint_rules = self
+      .lint_rule_provider
+      .resolve_lint_rules(lint_options.rules, Some(&member_dir));
 
     let mut maybe_incremental_cache = None;
 
@@ -352,10 +353,10 @@ impl WorkspaceLinter {
     let reporter_lock = self.reporter_lock.clone();
 
     let mut futures = Vec::with_capacity(2);
-    if linter.has_package_rules() {
-      if let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths) {
-        futures.push(fut);
-      }
+    if linter.has_package_rules()
+      && let Some(fut) = self.run_package_rules(&linter, &member_dir, &paths)
+    {
+      futures.push(fut);
     }
 
     let maybe_incremental_cache_ = maybe_incremental_cache.clone();
@@ -366,10 +367,10 @@ impl WorkspaceLinter {
         let file_text = deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
         // don't bother rechecking this file if it didn't have any diagnostics before
-        if let Some(incremental_cache) = &maybe_incremental_cache_ {
-          if incremental_cache.is_file_same(&file_path, &file_text) {
-            return Ok(());
-          }
+        if let Some(incremental_cache) = &maybe_incremental_cache_
+          && incremental_cache.is_file_same(&file_path, &file_text)
+        {
+          return Ok(());
         }
 
         let r = linter.lint_file(
@@ -377,17 +378,16 @@ impl WorkspaceLinter {
           file_text,
           cli_options.ext_flag().as_deref(),
         );
-        if let Ok((file_source, file_diagnostics)) = &r {
-          if let Some(incremental_cache) = &maybe_incremental_cache_ {
-            if file_diagnostics.is_empty() {
-              // update the incremental cache if there were no diagnostics
-              incremental_cache.update_file(
-                &file_path,
-                // ensure the returned text is used here as it may have been modified via --fix
-                file_source.text(),
-              )
-            }
-          }
+        if let Ok((file_source, file_diagnostics)) = &r
+          && let Some(incremental_cache) = &maybe_incremental_cache_
+          && file_diagnostics.is_empty()
+        {
+          // update the incremental cache if there were no diagnostics
+          incremental_cache.update_file(
+            &file_path,
+            // ensure the returned text is used here as it may have been modified via --fix
+            file_source.text(),
+          )
         }
 
         let success = handle_lint_result(
@@ -427,16 +427,20 @@ impl WorkspaceLinter {
   fn run_package_rules(
     &mut self,
     linter: &Arc<CliLinter>,
-    member_dir: &WorkspaceDirectory,
+    member_dir: &WorkspaceDirectoryRc,
     paths: &[PathBuf],
-  ) -> Option<LocalBoxFuture<Result<(), AnyError>>> {
+  ) -> Option<LocalBoxFuture<'_, Result<(), AnyError>>> {
     if self.workspace_module_graph.is_none() {
       let module_graph_creator = self.module_graph_creator.clone();
       let packages = self.workspace_dir.jsr_packages_for_publish();
       self.workspace_module_graph = Some(
         async move {
           module_graph_creator
-            .create_and_validate_publish_graph(&packages, true)
+            .create_publish_graph(CreatePublishGraphOptions {
+              packages: &packages,
+              build_fast_check_graph: true,
+              validate_graph: false,
+            })
             .await
             .map(Rc::new)
             .map_err(Rc::new)
@@ -500,7 +504,7 @@ fn collect_lint_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), files)
+  .collect_file_patterns(&CliSys::default(), &files)
 }
 
 #[allow(clippy::print_stdout)]
@@ -589,10 +593,8 @@ fn lint_stdin(
   let deno_lint_config =
     resolve_lint_config(compiler_options_resolver, start_dir.dir_url())?;
   let lint_options = LintOptions::resolve(lint_config, &lint_flags)?;
-  let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
-    lint_options.rules,
-    start_dir.maybe_deno_json().map(|c| c.as_ref()),
-  )?;
+  let configured_rules = lint_rule_provider
+    .resolve_lint_rules_err_empty(lint_options.rules, Some(start_dir))?;
   let mut file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
   if let Some(ext) = cli_options.ext_flag() {
     file_path.set_extension(ext);
@@ -662,11 +664,15 @@ fn resolve_lint_config(
     .for_specifier(specifier)
     .transpile_options()?
     .transpile;
+  let jsx_classic_options =
+    transpile_options.jsx.as_ref().and_then(|jsx| match jsx {
+      deno_ast::JsxRuntime::Classic(classic) => Some(classic),
+      _ => None,
+    });
   Ok(deno_lint::linter::LintConfig {
-    default_jsx_factory: (!transpile_options.jsx_automatic)
-      .then(|| transpile_options.jsx_factory.clone()),
-    default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
-      .then(|| transpile_options.jsx_fragment_factory.clone()),
+    default_jsx_factory: jsx_classic_options.map(|o| o.factory.clone()),
+    default_jsx_fragment_factory: jsx_classic_options
+      .map(|o| o.fragment_factory.clone()),
   })
 }
 

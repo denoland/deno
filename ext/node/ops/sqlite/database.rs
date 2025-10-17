@@ -48,7 +48,7 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
   type Error = validators::Error;
 
   fn from_v8(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<Self, Self::Error> {
     use validators::Error;
@@ -74,29 +74,29 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
     }
 
     let open_string = OPEN_STRING.v8_string(scope).unwrap();
-    if let Some(open) = obj.get(scope, open_string.into()) {
-      if !open.is_undefined() {
-        options.open = v8::Local::<v8::Boolean>::try_from(open)
-          .map_err(|_| {
-            Error::InvalidArgType(
-              "The \"options.open\" argument must be a boolean.",
-            )
-          })?
-          .is_true();
-      }
+    if let Some(open) = obj.get(scope, open_string.into())
+      && !open.is_undefined()
+    {
+      options.open = v8::Local::<v8::Boolean>::try_from(open)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.open\" argument must be a boolean.",
+          )
+        })?
+        .is_true();
     }
 
     let read_only_string = READ_ONLY_STRING.v8_string(scope).unwrap();
-    if let Some(read_only) = obj.get(scope, read_only_string.into()) {
-      if !read_only.is_undefined() {
-        options.read_only = v8::Local::<v8::Boolean>::try_from(read_only)
-          .map_err(|_| {
-            Error::InvalidArgType(
-              "The \"options.readOnly\" argument must be a boolean.",
-            )
-          })?
-          .is_true();
-      }
+    if let Some(read_only) = obj.get(scope, read_only_string.into())
+      && !read_only.is_undefined()
+    {
+      options.read_only = v8::Local::<v8::Boolean>::try_from(read_only)
+        .map_err(|_| {
+          Error::InvalidArgType(
+            "The \"options.readOnly\" argument must be a boolean.",
+          )
+        })?
+        .is_true();
     }
 
     let enable_foreign_key_constraints_string =
@@ -105,9 +105,9 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         .unwrap();
     if let Some(enable_foreign_key_constraints) =
       obj.get(scope, enable_foreign_key_constraints_string.into())
+      && !enable_foreign_key_constraints.is_undefined()
     {
-      if !enable_foreign_key_constraints.is_undefined() {
-        options.enable_foreign_key_constraints =
+      options.enable_foreign_key_constraints =
           v8::Local::<v8::Boolean>::try_from(enable_foreign_key_constraints)
             .map_err(|_| {
               Error::InvalidArgType(
@@ -115,23 +115,21 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
             )
             })?
             .is_true();
-      }
     }
 
     let allow_extension_string =
       ALLOW_EXTENSION_STRING.v8_string(scope).unwrap();
     if let Some(allow_extension) = obj.get(scope, allow_extension_string.into())
+      && !allow_extension.is_undefined()
     {
-      if !allow_extension.is_undefined() {
-        options.allow_extension =
-          v8::Local::<v8::Boolean>::try_from(allow_extension)
-            .map_err(|_| {
-              Error::InvalidArgType(
-                "The \"options.allowExtension\" argument must be a boolean.",
-              )
-            })?
-            .is_true();
-      }
+      options.allow_extension =
+        v8::Local::<v8::Boolean>::try_from(allow_extension)
+          .map_err(|_| {
+            Error::InvalidArgType(
+              "The \"options.allowExtension\" argument must be a boolean.",
+            )
+          })?
+          .is_true();
     }
 
     let enable_double_quoted_string_literals_string =
@@ -140,9 +138,9 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
         .unwrap();
     if let Some(enable_double_quoted_string_literals) =
       obj.get(scope, enable_double_quoted_string_literals_string.into())
+      && !enable_double_quoted_string_literals.is_undefined()
     {
-      if !enable_double_quoted_string_literals.is_undefined() {
-        options.enable_double_quoted_string_literals =
+      options.enable_double_quoted_string_literals =
             v8::Local::<v8::Boolean>::try_from(enable_double_quoted_string_literals)
                 .map_err(|_| {
                 Error::InvalidArgType(
@@ -150,7 +148,6 @@ impl<'a> FromV8<'a> for DatabaseSyncOptions {
                 )
                 })?
                 .is_true();
-      }
     }
 
     Ok(options)
@@ -178,7 +175,7 @@ struct ApplyChangesetOptions<'a> {
 // Local references.
 impl<'a> ApplyChangesetOptions<'a> {
   fn from_value(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
   ) -> Result<Option<Self>, validators::Error> {
     use validators::Error;
@@ -202,29 +199,29 @@ impl<'a> ApplyChangesetOptions<'a> {
     }
 
     let filter_string = FILTER_STRING.v8_string(scope).unwrap();
-    if let Some(filter) = obj.get(scope, filter_string.into()) {
-      if !filter.is_undefined() {
-        if !filter.is_function() {
-          return Err(Error::InvalidArgType(
-            "The \"options.filter\" argument must be a function.",
-          ));
-        }
-
-        options.filter = Some(filter);
+    if let Some(filter) = obj.get(scope, filter_string.into())
+      && !filter.is_undefined()
+    {
+      if !filter.is_function() {
+        return Err(Error::InvalidArgType(
+          "The \"options.filter\" argument must be a function.",
+        ));
       }
+
+      options.filter = Some(filter);
     }
 
     let on_conflict_string = ON_CONFLICT_STRING.v8_string(scope).unwrap();
-    if let Some(on_conflict) = obj.get(scope, on_conflict_string.into()) {
-      if !on_conflict.is_undefined() {
-        if !on_conflict.is_function() {
-          return Err(Error::InvalidArgType(
-            "The \"options.onConflict\" argument must be a function.",
-          ));
-        }
-
-        options.on_conflict = Some(on_conflict);
+    if let Some(on_conflict) = obj.get(scope, on_conflict_string.into())
+      && !on_conflict.is_undefined()
+    {
+      if !on_conflict.is_function() {
+        return Err(Error::InvalidArgType(
+          "The \"options.onConflict\" argument must be a function.",
+        ));
       }
+
+      options.on_conflict = Some(on_conflict);
     }
 
     Ok(Some(options))
@@ -238,7 +235,10 @@ pub struct DatabaseSync {
   location: String,
 }
 
-impl GarbageCollected for DatabaseSync {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for DatabaseSync {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"DatabaseSync"
   }
@@ -275,13 +275,20 @@ fn open_db(
   allow_extension: bool,
 ) -> Result<rusqlite::Connection, SqliteError> {
   let perms = state.borrow::<PermissionsContainer>();
+  let disable_attach = perms
+    .check_has_all_permissions(Path::new(location))
+    .is_err();
+
   if location == ":memory:" {
     let conn = rusqlite::Connection::open_in_memory()?;
-    assert!(set_db_config(
-      &conn,
-      SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
-      false
-    ));
+    if disable_attach {
+      assert!(set_db_config(
+        &conn,
+        SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
+        false
+      ));
+      conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+    }
 
     if allow_extension {
       perms.check_ffi_all()?;
@@ -293,7 +300,6 @@ fn open_db(
       ));
     }
 
-    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     return Ok(conn);
   }
 
@@ -313,11 +319,14 @@ fn open_db(
       location,
       rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
     )?;
-    assert!(set_db_config(
-      &conn,
-      SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
-      false
-    ));
+    if disable_attach {
+      assert!(set_db_config(
+        &conn,
+        SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
+        false
+      ));
+      conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+    }
 
     if allow_extension {
       perms.check_ffi_all()?;
@@ -329,7 +338,6 @@ fn open_db(
       ));
     }
 
-    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     return Ok(conn);
   }
 
@@ -345,13 +353,15 @@ fn open_db(
     ));
   }
 
-  conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+  if disable_attach {
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+  }
 
   Ok(conn)
 }
 
 fn database_constructor(
-  _: &mut v8::HandleScope,
+  _: &mut v8::PinScope<'_, '_>,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), validators::Error> {
   // TODO(littledivy): use `IsConstructCall()`
@@ -363,7 +373,7 @@ fn database_constructor(
 }
 
 fn is_open(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   args: &v8::FunctionCallbackArguments,
 ) -> Result<(), SqliteError> {
   let this_ = args.this();
@@ -570,7 +580,7 @@ impl DatabaseSync {
   #[reentrant]
   fn apply_changeset<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[validate(validators::changeset_buffer)]
     #[buffer]
     changeset: &[u8],
@@ -578,8 +588,8 @@ impl DatabaseSync {
   ) -> Result<bool, SqliteError> {
     let options = ApplyChangesetOptions::from_value(scope, options)?;
 
-    struct HandlerCtx<'a, 'b> {
-      scope: &'a mut v8::HandleScope<'b>,
+    struct HandlerCtx<'a, 'b, 'c> {
+      scope: &'a mut v8::PinScope<'b, 'c>,
       confict: Option<v8::Local<'b, v8::Function>>,
       filter: Option<v8::Local<'b, v8::Function>>,
     }
@@ -598,7 +608,7 @@ impl DatabaseSync {
           let recv = v8::undefined(ctx.scope).into();
           let args = [v8::Integer::new(ctx.scope, e_conflict).into()];
 
-          let tc_scope = &mut v8::TryCatch::new(ctx.scope);
+          v8::tc_scope!(tc_scope, ctx.scope);
 
           let ret = conflict
             .call(tc_scope, recv, &args)

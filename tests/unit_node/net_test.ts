@@ -5,6 +5,7 @@ import { assert, assertEquals } from "@std/assert";
 import * as path from "@std/path";
 import * as http from "node:http";
 import * as dns from "node:dns";
+import * as dnsPromises from "node:dns/promises";
 import util from "node:util";
 import console from "node:console";
 
@@ -89,7 +90,7 @@ Deno.test("[node/net] net.connect().unref() works", async () => {
             const socket = net.connect(${port}, "${hostname}", () => {
               console.log("connected");
               socket.unref();
-              socket.on("data", (data) => console.log(data.toString()));
+              socket.on("data", (data) => data.toString());
               socket.write("GET / HTTP/1.1\\n\\n");
             });
           `,
@@ -282,4 +283,23 @@ Deno.test("[node/dns] dns.lookup (all=true) util promisify", async () => {
   assert(Array.isArray(result));
   assert(typeof result[0].address === "string");
   assert(typeof result[0].family === "number");
+});
+
+Deno.test("[node/dns] resolve IPv6 addresses", async () => {
+  const resolveResults = await dnsPromises.resolve("deno.land", "AAAA");
+  for (const address of resolveResults) {
+    await dnsPromises.lookup(address);
+  }
+
+  const resolve6Results = await dnsPromises.resolve6("deno.land");
+  for (const address of resolve6Results) {
+    await dnsPromises.lookup(address);
+  }
+
+  const resolve6ttlResults = await dnsPromises.resolve6("deno.land", {
+    ttl: true,
+  });
+  for (const { address } of resolve6ttlResults) {
+    await dnsPromises.lookup(address);
+  }
 });

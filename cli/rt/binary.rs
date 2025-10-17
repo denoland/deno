@@ -88,7 +88,11 @@ pub fn extract_standalone(
     let fs_root = VfsRoot {
       dir: VirtualDirectory {
         // align the name of the directory with the root dir
-        name: root_path.file_name().unwrap().to_string_lossy().to_string(),
+        name: root_path
+          .file_name()
+          .unwrap()
+          .to_string_lossy()
+          .into_owned(),
         entries: vfs_root_entries,
       },
       root_path: root_path.clone(),
@@ -770,7 +774,7 @@ fn check_has_len(input: &[u8], len: usize) -> std::io::Result<()> {
   }
 }
 
-fn read_string_lossy(input: &[u8]) -> std::io::Result<(&[u8], Cow<str>)> {
+fn read_string_lossy(input: &[u8]) -> std::io::Result<(&[u8], Cow<'_, str>)> {
   let (input, data_bytes) = read_bytes_with_u32_len(input)?;
   Ok((input, String::from_utf8_lossy(data_bytes)))
 }

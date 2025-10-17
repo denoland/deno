@@ -16,6 +16,7 @@ import {
 } from "ext:core/ops";
 const {
   ArrayFrom,
+  ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeReverse,
@@ -36,13 +37,13 @@ const {
   StringPrototypeReplace,
   Symbol,
   SymbolAsyncIterator,
+  SymbolDispose,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
 import { ReadableStream } from "ext:deno_web/06_streams.js";
 
 const encodeCursor: (
@@ -566,6 +567,122 @@ class AtomicOperation {
     throw new TypeError(
       "'Deno.AtomicOperation' is not a promise: did you forget to call 'commit()'",
     );
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    const operations = [];
+
+    // Format checks
+    for (let i = 0; i < this.#checks.length; ++i) {
+      const check = this.#checks[i];
+      const key = check[0];
+      const versionstamp = check[1];
+      const keyStr = inspect(key, inspectOptions);
+      const versionstampStr = versionstamp === null
+        ? "null"
+        : `"${versionstamp}"`;
+      ArrayPrototypePush(
+        operations,
+        `  check({ key: ${keyStr}, versionstamp: ${versionstampStr} })`,
+      );
+    }
+
+    // Format mutations
+    for (let i = 0; i < this.#mutations.length; ++i) {
+      const mutation = this.#mutations[i];
+      const key = mutation[0];
+      const type = mutation[1];
+      const rawValue = mutation[2];
+      const expireIn = mutation[3];
+      const keyStr = inspect(key, inspectOptions);
+
+      if (type === "delete") {
+        ArrayPrototypePush(operations, `  delete(${keyStr})`);
+      } else {
+        // Deserialize value for display
+        let value;
+        try {
+          if (rawValue === null) {
+            value = null;
+          } else {
+            switch (rawValue.kind) {
+              case "v8":
+                value = core.deserialize(rawValue.value, { forStorage: true });
+                break;
+              case "bytes":
+                value = rawValue.value;
+                break;
+              case "u64":
+                value = new KvU64(rawValue.value);
+                break;
+              default:
+                value = rawValue;
+            }
+          }
+        } catch {
+          // If deserialization fails, show the raw value structure
+          value = `[${rawValue?.kind || "unknown"} value]`;
+        }
+
+        const valueStr = inspect(value, inspectOptions);
+
+        if (type === "set" && expireIn !== undefined) {
+          ArrayPrototypePush(
+            operations,
+            `  set(${keyStr}, ${valueStr}, { expireIn: ${expireIn} })`,
+          );
+        } else {
+          ArrayPrototypePush(operations, `  ${type}(${keyStr}, ${valueStr})`);
+        }
+      }
+    }
+
+    // Format enqueues
+    for (let i = 0; i < this.#enqueues.length; ++i) {
+      const enqueue = this.#enqueues[i];
+      const serializedMessage = enqueue[0];
+      const delay = enqueue[1];
+      const keysIfUndelivered = enqueue[2];
+      const backoffSchedule = enqueue[3];
+
+      // Deserialize message for display
+      let message;
+      try {
+        message = core.deserialize(serializedMessage, { forStorage: true });
+      } catch {
+        message = "[serialized message]";
+      }
+
+      const messageStr = inspect(message, inspectOptions);
+
+      if (
+        delay === 0 && keysIfUndelivered.length === 0 &&
+        backoffSchedule === null
+      ) {
+        ArrayPrototypePush(operations, `  enqueue(${messageStr})`);
+      } else {
+        const options = [];
+        if (delay !== 0) ArrayPrototypePush(options, `delay: ${delay}`);
+        if (keysIfUndelivered.length > 0) {
+          const keysStr = inspect(keysIfUndelivered, inspectOptions);
+          ArrayPrototypePush(options, `keysIfUndelivered: ${keysStr}`);
+        }
+        if (backoffSchedule !== null) {
+          const scheduleStr = inspect(backoffSchedule, inspectOptions);
+          ArrayPrototypePush(options, `backoffSchedule: ${scheduleStr}`);
+        }
+        ArrayPrototypePush(
+          operations,
+          `  enqueue(${messageStr}, { ${ArrayPrototypeJoin(options, ", ")} })`,
+        );
+      }
+    }
+
+    if (operations.length === 0) {
+      return "AtomicOperation (empty)";
+    }
+
+    return `AtomicOperation\n${ArrayPrototypeJoin(operations, "\n")}`;
   }
 }
 

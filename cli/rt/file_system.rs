@@ -95,6 +95,7 @@ impl DenoRtSys {
           truncate: true,
           append: false,
           create_new: false,
+          custom_flags: None,
           mode: None,
         },
         &old_file_bytes,
@@ -165,11 +166,24 @@ impl FileSystem for DenoRtSys {
     RealFs.mkdir_async(path, recursive, mode).await
   }
 
+  #[cfg(unix)]
   fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.chmod_sync(path, mode)
   }
+  #[cfg(not(unix))]
+  fn chmod_sync(&self, path: &CheckedPath, mode: i32) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.chmod_sync(path, mode)
+  }
+
+  #[cfg(unix)]
   async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.chmod_async(path, mode).await
+  }
+  #[cfg(not(unix))]
+  async fn chmod_async(&self, path: CheckedPathBuf, mode: i32) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.chmod_async(path, mode).await
   }
@@ -191,6 +205,21 @@ impl FileSystem for DenoRtSys {
   ) -> FsResult<()> {
     self.error_if_in_vfs(&path)?;
     RealFs.chown_async(path, uid, gid).await
+  }
+
+  fn exists_sync(&self, path: &CheckedPath) -> bool {
+    if self.0.is_path_within(path) {
+      self.0.exists(path)
+    } else {
+      RealFs.exists_sync(path)
+    }
+  }
+  async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
+    if self.0.is_path_within(&path) {
+      Ok(self.0.exists(&path))
+    } else {
+      RealFs.exists_async(path).await
+    }
   }
 
   fn lchmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
@@ -617,6 +646,7 @@ fn not_supported(name: &str) -> std::io::Error {
 impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
   type Metadata = BoxedFsMetadataValue;
 
+  #[allow(mismatched_lifetime_syntaxes)]
   fn file_name(&self) -> Cow<std::ffi::OsStr> {
     Cow::Borrowed(self.metadata.name.as_ref())
   }
@@ -629,7 +659,7 @@ impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
     Ok(BoxedFsMetadataValue(Box::new(self.metadata.clone())))
   }
 
-  fn path(&self) -> Cow<Path> {
+  fn path(&self) -> Cow<'_, Path> {
     Cow::Owned(self.parent_path.join(&self.metadata.name))
   }
 }
@@ -1072,7 +1102,7 @@ impl VfsRoot {
     &self,
     path: &Path,
     case_sensitivity: FileSystemCaseSensitivity,
-  ) -> std::io::Result<(PathBuf, VfsEntryRef)> {
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'_>)> {
     self.find_entry_no_follow_inner(path, &mut HashSet::new(), case_sensitivity)
   }
 
@@ -1224,6 +1254,12 @@ impl FileBackedVfsFile {
 
 #[async_trait::async_trait(?Send)]
 impl deno_io::fs::File for FileBackedVfsFile {
+  fn maybe_path(&self) -> Option<&Path> {
+    // ok because a vfs file will never be written to and this
+    // method is only used for checking write permissions
+    None
+  }
+
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
     self.read_to_buf(buf).map_err(Into::into)
   }
@@ -1413,13 +1449,13 @@ impl FileBackedVfsMetadata {
       blksize: 0,
       size: self.len,
       dev: 0,
-      ino: 0,
+      ino: None,
       mode: 0,
-      nlink: 0,
+      nlink: None,
       uid: 0,
       gid: 0,
       rdev: 0,
-      blocks: 0,
+      blocks: None,
       is_block_device: false,
       is_char_device: false,
       is_fifo: false,
@@ -1461,6 +1497,10 @@ impl FileBackedVfs {
 
   pub fn is_path_within(&self, path: &Path) -> bool {
     path.starts_with(&self.fs_root.root_path)
+  }
+
+  pub fn exists(&self, path: &Path) -> bool {
+    self.fs_root.find_entry(path, self.case_sensitivity).is_ok()
   }
 
   pub fn open_file(

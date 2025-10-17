@@ -93,14 +93,14 @@ jobs:
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: linux
             arch: x86_64
-            runner: '${{ github.repository == ''denoland/deno'' && ''ubuntu-24.04-xl'' || ''ubuntu-24.04'' }}'
+            runner: '${{ github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
             job: test
             profile: release
             use_sysroot: true
             wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
           - os: linux
             arch: x86_64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''ubuntu-24.04-xl'' || ''ubuntu-24.04'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
             job: bench
             profile: release
             use_sysroot: true
@@ -188,8 +188,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '66-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '66-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '76-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '76-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
@@ -267,23 +267,23 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           # Avoid running man-db triggers, which sometimes takes several minutes
           # to complete.
-          sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
+          sudo apt-get -qq remove --purge -y man-db > /dev/null 2> /dev/null
           # Remove older clang before we install
-          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' > /dev/null 2> /dev/null
+          sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'clang-17*' 'clang-18*' 'clang-19*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'llvm-17*' 'llvm-18*' 'llvm-19*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' 'lld-17*' 'lld-18*' 'lld-19*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-19.list
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-20 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-20.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install --no-install-recommends clang-19 lld-19 clang-tools-19 clang-format-19 clang-tidy-19 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends clang-19 lld-19 clang-tools-19 clang-format-19 clang-tidy-19
+          sudo apt-get install -y --no-install-recommends clang-20 lld-20 clang-tools-20 clang-format-20 clang-tidy-20 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-20 lld-20 clang-tools-20 clang-format-20 clang-tidy-20
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
-          clang-19 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+          clang-20 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
 
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20250207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
@@ -316,8 +316,8 @@ jobs:
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-19
-            -C link-arg=-fuse-ld=lld-19
+            -C linker=clang-20
+            -C link-arg=-fuse-ld=lld-20
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -328,8 +328,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-19
-            -C link-arg=-fuse-ld=lld-19
+            -C linker=clang-20
+            -C link-arg=-fuse-ld=lld-20
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -338,7 +338,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-19
+          CC=/usr/bin/clang-20
           CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
@@ -391,7 +391,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '66-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '76-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -406,11 +406,6 @@ jobs:
       - name: test_format.js
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
-      - name: Lint PR title
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && github.event_name == ''pull_request'' && matrix.os == ''linux'')'
-        env:
-          PR_TITLE: '${{ github.event.pull_request.title }}'
-        run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - name: lint.js
         if: '!(matrix.skip) && (matrix.job == ''lint'')'
         env:
@@ -777,7 +772,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '66-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '76-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   libs:
     name: build libs
     needs:

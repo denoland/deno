@@ -52,7 +52,6 @@ use hyper_utils::run_server_with_acceptor;
 
 use super::https::SupportedHttpVersions;
 use super::https::get_tls_listener_stream;
-use super::std_path;
 use super::testdata_path;
 use crate::TEST_SERVERS_COUNT;
 
@@ -226,13 +225,12 @@ async fn hyper_hello(port: u16) {
   .await;
 }
 
-fn redirect_resp(url: String) -> Response<UnsyncBoxBody<Bytes, Infallible>> {
+fn redirect_resp(url: &str) -> Response<UnsyncBoxBody<Bytes, Infallible>> {
   let mut redirect_resp = Response::new(UnsyncBoxBody::new(Empty::new()));
   *redirect_resp.status_mut() = StatusCode::MOVED_PERMANENTLY;
-  redirect_resp.headers_mut().insert(
-    http::header::LOCATION,
-    HeaderValue::from_str(&url[..]).unwrap(),
-  );
+  redirect_resp
+    .headers_mut()
+    .insert(http::header::LOCATION, HeaderValue::from_str(url).unwrap());
 
   redirect_resp
 }
@@ -244,7 +242,7 @@ async fn redirect(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{PORT}{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn double_redirects(
@@ -254,7 +252,7 @@ async fn double_redirects(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{REDIRECT_PORT}{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn inf_redirects(
@@ -264,7 +262,7 @@ async fn inf_redirects(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{INF_REDIRECTS_PORT}{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn another_redirect(
@@ -274,7 +272,7 @@ async fn another_redirect(
   assert_eq!(&p[0..1], "/");
   let url = format!("http://localhost:{PORT}/subdir{p}");
 
-  Ok(redirect_resp(url))
+  Ok(redirect_resp(&url))
 }
 
 async fn auth_redirect(
@@ -284,13 +282,12 @@ async fn auth_redirect(
     .headers()
     .get("authorization")
     .map(|v| v.to_str().unwrap())
+    && auth.to_lowercase() == format!("bearer {TEST_AUTH_TOKEN}")
   {
-    if auth.to_lowercase() == format!("bearer {TEST_AUTH_TOKEN}") {
-      let p = req.uri().path();
-      assert_eq!(&p[0..1], "/");
-      let url = format!("http://localhost:{PORT}{p}");
-      return Ok(redirect_resp(url));
-    }
+    let p = req.uri().path();
+    assert_eq!(&p[0..1], "/");
+    let url = format!("http://localhost:{PORT}{p}");
+    return Ok(redirect_resp(&url));
   }
 
   let mut resp = Response::new(UnsyncBoxBody::new(Empty::new()));
@@ -312,7 +309,7 @@ async fn basic_auth_redirect(
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
       let url = format!("http://localhost:{PORT}{p}");
-      return Ok(redirect_resp(url));
+      return Ok(redirect_resp(&url));
     }
   }
 
@@ -421,22 +418,22 @@ async fn absolute_redirect(
       .collect();
 
     if let Some(url) = query_params.get("redirect_to") {
-      let redirect = redirect_resp(url.to_owned());
+      let redirect = redirect_resp(url);
       return Ok(redirect);
     }
   }
 
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
-    let redirect = redirect_resp(url.to_string());
+    let redirect = redirect_resp(url);
     return Ok(redirect);
   }
 
-  if path.starts_with("/a/b/c") {
-    if let Some(x_loc) = req.headers().get("x-location") {
-      let loc = x_loc.to_str().unwrap();
-      return Ok(redirect_resp(loc.to_string()));
-    }
+  if path.starts_with("/a/b/c")
+    && let Some(x_loc) = req.headers().get("x-location")
+  {
+    let loc = x_loc.to_str().unwrap();
+    return Ok(redirect_resp(loc));
   }
 
   let file_path = testdata_path().join(&req.uri().path()[1..]);
@@ -1160,13 +1157,7 @@ console.log("imported", import.meta.url);
         return Ok(file_resp);
       }
 
-      if let Some(suffix) = uri_path.strip_prefix("/deno_std/") {
-        let file_path = std_path().join(suffix);
-        if let Ok(file) = tokio::fs::read(&file_path).await {
-          let file_resp = custom_headers(uri_path, file);
-          return Ok(file_resp);
-        }
-      } else if let Some(suffix) = uri_path.strip_prefix("/sleep/") {
+      if let Some(suffix) = uri_path.strip_prefix("/sleep/") {
         let duration = suffix.parse::<u64>().unwrap();
         tokio::time::sleep(Duration::from_millis(duration)).await;
         return Response::builder()

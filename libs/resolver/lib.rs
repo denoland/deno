@@ -26,7 +26,6 @@ use node_resolver::UrlOrPathRef;
 use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
-use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::UnknownBuiltInNodeModuleError;
 use npm::NodeModulesOutOfDateError;
 use npm::NpmReqResolverRc;
@@ -63,15 +62,14 @@ pub mod npm;
 pub mod npmrc;
 #[cfg(feature = "sync")]
 mod rt;
-mod sync;
 pub mod workspace;
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc<TSys> =
-  crate::sync::MaybeArc<WorkspaceResolver<TSys>>;
+  deno_maybe_sync::MaybeArc<WorkspaceResolver<TSys>>;
 
 #[allow(clippy::disallowed_types)]
-pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
+pub(crate) type NpmCacheDirRc = deno_maybe_sync::MaybeArc<NpmCacheDir>;
 
 #[derive(Debug, Clone)]
 pub struct DenoResolution {
@@ -98,13 +96,16 @@ impl DenoResolveError {
           MappedResolutionError::Workspace(e) => {
             ResolveError::Other(JsErrorBox::from_err(e))
           }
+          MappedResolutionError::NotFoundInCompilerOptionsPaths(e) => {
+            ResolveError::Other(JsErrorBox::from_err(e))
+          }
         }
       }
       err => ResolveError::Other(JsErrorBox::from_err(err)),
     }
   }
 
-  pub fn maybe_specifier(&self) -> Option<Cow<UrlOrPath>> {
+  pub fn maybe_specifier(&self) -> Option<Cow<'_, UrlOrPath>> {
     match self.as_kind() {
       DenoResolveErrorKind::Node(err) => err.maybe_specifier(),
       DenoResolveErrorKind::PathToUrl(err) => {
@@ -246,7 +247,7 @@ pub type RawDenoResolverRc<
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
   TSys,
-> = crate::sync::MaybeArc<
+> = deno_maybe_sync::MaybeArc<
   RawDenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -393,13 +394,7 @@ impl<
             resolution_kind,
           )
           .map_err(|e| {
-            DenoResolveErrorKind::Node(
-              NodeResolveErrorKind::PackageResolve(
-                PackageResolveErrorKind::SubpathResolve(e).into_box(),
-              )
-              .into_box(),
-            )
-            .into_box()
+            DenoResolveErrorKind::Node(e.into_node_resolve_error()).into_box()
           })
           .and_then(|r| Ok(r.into_url()?)),
         MappedResolution::PackageJson {
@@ -466,13 +461,8 @@ impl<
                       resolution_kind,
                     )
                     .map_err(|e| {
-                      DenoResolveErrorKind::Node(
-                        NodeResolveErrorKind::PackageResolve(
-                          PackageResolveErrorKind::SubpathResolve(e).into_box(),
-                        )
-                        .into_box(),
-                      )
-                      .into_box()
+                      DenoResolveErrorKind::Node(e.into_node_resolve_error())
+                        .into_box()
                     })
                 })
                 .and_then(|r| Ok(r.into_url()?)),
@@ -505,14 +495,11 @@ impl<
     // as it might cause them confusion or duplicate dependencies. Additionally, this folder has
     // special treatment in the language server so it will definitely cause issues/confusion there
     // if they do this.
-    if let Some(vendor_specifier) = &self.maybe_vendor_specifier {
-      if let Ok(specifier) = &result {
-        if specifier.as_str().starts_with(vendor_specifier.as_str()) {
-          return Err(
-            DenoResolveErrorKind::InvalidVendorFolderImport.into_box(),
-          );
-        }
-      }
+    if let Some(vendor_specifier) = &self.maybe_vendor_specifier
+      && let Ok(specifier) = &result
+      && specifier.as_str().starts_with(vendor_specifier.as_str())
+    {
+      return Err(DenoResolveErrorKind::InvalidVendorFolderImport.into_box());
     }
 
     let Some(NodeAndNpmResolvers {

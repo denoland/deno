@@ -118,31 +118,33 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &["run", "tests/testdata/benches/response_string_perf.js"],
     None,
   ),
-  (
-    "check",
-    &[
-      "check",
-      "--reload",
-      "--unstable",
-      "--config",
-      "tests/config/deno.json",
-      "tests/util/std/http/file_server_test.ts",
-    ],
-    None,
-  ),
-  (
-    "no_check",
-    &[
-      "cache",
-      "--reload",
-      "--no-check",
-      "--unstable",
-      "--config",
-      "tests/config/deno.json",
-      "tests/util/std/http/file_server_test.ts",
-    ],
-    None,
-  ),
+  // TODO(bartlomieju): temporarily disabled, because we can't upgrade `tests/util/std` submodule
+  // due to needing it to be published.
+  // (
+  //   "check",
+  //   &[
+  //     "check",
+  //     "--reload",
+  //     "--unstable",
+  //     "--config",
+  //     "tests/config/deno.json",
+  //     "tests/util/std/http/file_server_test.ts",
+  //   ],
+  //   None,
+  // ),
+  // (
+  //   "no_check",
+  //   &[
+  //     "cache",
+  //     "--reload",
+  //     "--no-check",
+  //     "--unstable",
+  //     "--config",
+  //     "tests/config/deno.json",
+  //     "tests/util/std/http/file_server_test.ts",
+  //   ],
+  //   None,
+  // ),
 ];
 
 const RESULT_KEYS: &[&str] =
@@ -278,10 +280,10 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
     let file_mtime = meta.modified()?;
 
     // If multiple copies of a file are found, use the most recent one.
-    if let Some(stored_mtime) = mtimes.get(&filename) {
-      if *stored_mtime > file_mtime {
-        continue;
-      }
+    if let Some(stored_mtime) = mtimes.get(&filename)
+      && *stored_mtime > file_mtime
+    {
+      continue;
     }
 
     mtimes.insert(filename.clone(), file_mtime);

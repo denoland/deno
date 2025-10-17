@@ -98,7 +98,6 @@ mod request_body;
 mod request_properties;
 mod response_body;
 mod service;
-mod websocket_upgrade;
 
 use fly_accept_encoding::Encoding;
 pub use http_next::HttpNextError;
@@ -108,7 +107,6 @@ pub use request_properties::HttpListenProperties;
 pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
-pub use websocket_upgrade::WebSocketUpgradeError;
 
 struct OtelCollectors {
   duration: Histogram<f64>,
@@ -732,7 +730,7 @@ impl HttpConnResource {
 }
 
 impl Resource for HttpConnResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpConn".into()
   }
 
@@ -855,7 +853,7 @@ impl HttpStreamReadResource {
 }
 
 impl Resource for HttpStreamReadResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpReadStream".into()
   }
 
@@ -938,7 +936,7 @@ impl HttpStreamWriteResource {
 }
 
 impl Resource for HttpStreamWriteResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpWriteStream".into()
   }
 }
@@ -1051,7 +1049,7 @@ fn req_url(
   scheme: &'static str,
   addr: &HttpSocketAddr,
 ) -> String {
-  let host: Cow<str> = match addr {
+  let host: Cow<'_, str> = match addr {
     HttpSocketAddr::IpSocket(addr) => {
       if let Some(auth) = req.uri().authority() {
         match addr.port() {
@@ -1302,13 +1300,13 @@ fn http_response(
 // If user provided a ETag header for uncompressed data, we need to
 // ensure it is a Weak Etag header ("W/").
 fn weaken_etag(hmap: &mut hyper_v014::HeaderMap) {
-  if let Some(etag) = hmap.get_mut(hyper_v014::header::ETAG) {
-    if !etag.as_bytes().starts_with(b"W/") {
-      let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
-      v.extend(b"W/");
-      v.extend(etag.as_bytes());
-      *etag = v.try_into().unwrap();
-    }
+  if let Some(etag) = hmap.get_mut(hyper_v014::header::ETAG)
+    && !etag.as_bytes().starts_with(b"W/")
+  {
+    let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
+    v.extend(b"W/");
+    v.extend(etag.as_bytes());
+    *etag = v.try_into().unwrap();
   }
 }
 
@@ -1317,13 +1315,13 @@ fn weaken_etag(hmap: &mut hyper_v014::HeaderMap) {
 // to make sure cache services do not serve uncompressed data to clients that
 // support compression.
 fn ensure_vary_accept_encoding(hmap: &mut hyper_v014::HeaderMap) {
-  if let Some(v) = hmap.get_mut(hyper_v014::header::VARY) {
-    if let Ok(s) = v.to_str() {
-      if !s.to_lowercase().contains("accept-encoding") {
-        *v = format!("Accept-Encoding, {s}").try_into().unwrap()
-      }
-      return;
+  if let Some(v) = hmap.get_mut(hyper_v014::header::VARY)
+    && let Ok(s) = v.to_str()
+  {
+    if !s.to_lowercase().contains("accept-encoding") {
+      *v = format!("Accept-Encoding, {s}").try_into().unwrap()
     }
+    return;
   }
   hmap.insert(
     hyper_v014::header::VARY,
@@ -1434,10 +1432,10 @@ async fn op_http_write(
 
   if let Some(otel) = stream.otel_info.as_ref() {
     let mut maybe_otel_info = otel.borrow_mut();
-    if let Some(otel_info) = maybe_otel_info.as_mut() {
-      if let Some(response_size) = otel_info.response_size.as_mut() {
-        *response_size += buf.len() as u64;
-      }
+    if let Some(otel_info) = maybe_otel_info.as_mut()
+      && let Some(response_size) = otel_info.response_size.as_mut()
+    {
+      *response_size += buf.len() as u64;
     }
   }
 
@@ -1686,7 +1684,7 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
       Ok(res) => return res,
       Err(x) => x,
     };
-  #[cfg(any(target_os = "linux", target_os = "macos"))]
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
   let upgraded =
     match maybe_extract_network_stream::<tokio_vsock::VsockStream, _>(upgraded)
     {

@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -17,7 +18,6 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 
 mod ops;
-pub mod signal;
 pub mod sys_info;
 
 pub use ops::signal::SignalError;
@@ -114,9 +114,10 @@ pub enum OsError {
 fn op_exec_path() -> Result<String, OsError> {
   let current_exe = env::current_exe().unwrap();
   // normalize path so it doesn't include '.' or '..' components
-  let path = normalize_path(current_exe);
+  let path = normalize_path(Cow::Owned(current_exe));
 
   path
+    .into_owned()
     .into_os_string()
     .into_string()
     .map_err(OsError::InvalidUtf8)
@@ -150,7 +151,7 @@ fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
 #[op2(fast, stack_trace)]
 fn op_set_env(
   state: &mut OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] key: &str,
   #[string] value: &str,
 ) -> Result<(), OsError> {
@@ -519,7 +520,7 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
 
 #[op2(fast)]
 fn op_runtime_memory_usage(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[buffer] out: &mut [f64],
 ) {
   let s = scope.get_heap_statistics();

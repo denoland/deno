@@ -5,11 +5,14 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Error as AnyError;
+use capacity_builder::StringBuilder;
 use deno_config::workspace::Workspace;
 use deno_error::JsErrorBox;
 use deno_lockfile::Lockfile;
 use deno_lockfile::NpmPackageInfoProvider;
 use deno_lockfile::WorkspaceMemberConfig;
+use deno_maybe_sync::MaybeSend;
+use deno_maybe_sync::MaybeSync;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
@@ -24,8 +27,6 @@ use node_resolver::PackageJson;
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 use crate::workspace::WorkspaceNpmLinkPackagesRc;
 
 pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
@@ -33,7 +34,7 @@ pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 impl<T> NpmRegistryApiEx for T where T: NpmRegistryApi + MaybeSend + MaybeSync {}
 
 #[allow(clippy::disallowed_types)]
-type NpmRegistryApiRc = crate::sync::MaybeArc<dyn NpmRegistryApiEx>;
+type NpmRegistryApiRc = deno_maybe_sync::MaybeArc<dyn NpmRegistryApiEx>;
 
 pub struct LockfileNpmPackageInfoApiAdapter {
   api: NpmRegistryApiRc,
@@ -190,7 +191,7 @@ pub enum LockfileWriteError {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type LockfileLockRc<TSys> = crate::sync::MaybeArc<LockfileLock<TSys>>;
+pub type LockfileLockRc<TSys> = deno_maybe_sync::MaybeArc<LockfileLock<TSys>>;
 
 #[derive(Debug)]
 pub struct LockfileLock<TSys: LockfileSys> {
@@ -203,7 +204,7 @@ pub struct LockfileLock<TSys: LockfileSys> {
 
 impl<TSys: LockfileSys> LockfileLock<TSys> {
   /// Get the inner deno_lockfile::Lockfile.
-  pub fn lock(&self) -> Guard<Lockfile> {
+  pub fn lock(&self) -> Guard<'_, Lockfile> {
     Guard {
       guard: self.lockfile.lock(),
     }
@@ -220,6 +221,24 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     options: deno_lockfile::SetWorkspaceConfigOptions,
   ) {
     self.lockfile.lock().set_workspace_config(options);
+  }
+
+  #[cfg(feature = "graph")]
+  pub fn fill_graph(&self, graph: &mut deno_graph::ModuleGraph) {
+    let lockfile = self.lockfile.lock();
+    graph.fill_from_lockfile(deno_graph::FillFromLockfileOptions {
+      redirects: lockfile
+        .content
+        .redirects
+        .iter()
+        .map(|(from, to)| (from.as_str(), to.as_str())),
+      package_specifiers: lockfile
+        .content
+        .packages
+        .specifiers
+        .iter()
+        .map(|(dep, id)| (dep, id.as_str())),
+    });
   }
 
   pub fn overwrite(&self) -> bool {
@@ -320,7 +339,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       api,
     )
     .await?;
-    let root_url = workspace.root_dir();
+    let root_url = workspace.root_dir_url();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
@@ -394,15 +413,23 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
               .unwrap_or_default()
           }
 
-          let key = format!(
-            "npm:{}@{}",
-            pkg_json.name.as_ref()?,
-            pkg_json.version.as_ref()?
-          );
+          let name = pkg_json.name.as_ref()?;
+          let key = StringBuilder::<String>::build(|builder| {
+            builder.append("npm:");
+            builder.append(name);
+            if let Some(version) = &pkg_json.version {
+              builder.append('@');
+              builder.append(version);
+            }
+          })
+          .unwrap();
           // anything that affects npm resolution should go here in order to bust
           // the npm resolution when it changes
           let value = deno_lockfile::LockfileLinkContent {
             dependencies: collect_deps(pkg_json.dependencies.as_ref()),
+            optional_dependencies: collect_deps(
+              pkg_json.optional_dependencies.as_ref(),
+            ),
             peer_dependencies: collect_deps(
               pkg_json.peer_dependencies.as_ref(),
             ),
@@ -414,6 +441,25 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           };
           Some((key, value))
         })
+        .chain(workspace.link_deno_jsons().filter_map(|deno_json| {
+          let name = deno_json.json.name.as_ref()?;
+          let key = StringBuilder::<String>::build(|builder| {
+            builder.append("jsr:");
+            builder.append(name);
+            if let Some(version) = &deno_json.json.version {
+              builder.append('@');
+              builder.append(version);
+            }
+          })
+          .unwrap();
+          let value = deno_lockfile::LockfileLinkContent {
+            dependencies: deno_json.dependencies(),
+            optional_dependencies: Default::default(),
+            peer_dependencies: Default::default(),
+            peer_dependencies_meta: Default::default(),
+          };
+          Some((key, value))
+        }))
         .collect(),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {

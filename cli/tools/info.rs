@@ -8,7 +8,6 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_error::JsErrorClass;
@@ -26,6 +25,7 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_path_util::resolve_url_or_path;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::display::DisplayTreeNode;
 use deno_semver::npm::NpmPackageNvReference;
@@ -328,13 +328,13 @@ fn add_npm_packages_to_json(
               .resolve_package_from_deno_module(package_ref.nv())
               .ok()
           });
-        if let Some(pkg) = maybe_package {
-          if let Some(module) = module.as_object_mut() {
-            module.insert(
-              "npmPackage".to_string(),
-              pkg.id.as_serialized().into_string().into(),
-            );
-          }
+        if let Some(pkg) = maybe_package
+          && let Some(module) = module.as_object_mut()
+        {
+          module.insert(
+            "npmPackage".to_string(),
+            pkg.id.as_serialized().into_string().into(),
+          );
         }
       }
 
@@ -344,17 +344,14 @@ fn add_npm_packages_to_json(
       if let Some(dependencies) = dependencies {
         for dep in dependencies.iter_mut().flat_map(|d| d.as_object_mut()) {
           if let Some(specifier) = dep.get("specifier").and_then(|s| s.as_str())
+            && let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier)
+            && let Ok(pkg) =
+              npm_snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
           {
-            if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
-              if let Ok(pkg) =
-                npm_snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
-              {
-                dep.insert(
-                  "npmPackage".to_string(),
-                  pkg.id.as_serialized().into_string().into(),
-                );
-              }
-            }
+            dep.insert(
+              "npmPackage".to_string(),
+              pkg.id.as_serialized().into_string().into(),
+            );
           }
 
           // don't show this in the output unless someone needs it
@@ -440,16 +437,15 @@ impl NpmInfo {
   ) {
     self.packages.insert(package.id.clone(), package.clone());
     if let Ok(folder) = npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)
+      && let Ok(size) = crate::util::fs::dir_size(&folder)
     {
-      if let Ok(size) = crate::util::fs::dir_size(&folder) {
-        self.package_sizes.insert(package.id.clone(), size);
-      }
+      self.package_sizes.insert(package.id.clone(), size);
     }
     for id in package.dependencies.values() {
-      if !self.packages.contains_key(id) {
-        if let Some(package) = npm_snapshot.package_from_id(id) {
-          self.fill_package_info(package, npm_resolver, npm_snapshot);
-        }
+      if !self.packages.contains_key(id)
+        && let Some(package) = npm_snapshot.package_from_id(id)
+      {
+        self.fill_package_info(package, npm_resolver, npm_snapshot);
       }
     }
   }
@@ -509,15 +505,15 @@ impl<'a> GraphDisplayContext<'a> {
           Module::Wasm(module) => module.maybe_cache_info.as_ref(),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         };
-        if let Some(cache_info) = maybe_cache_info {
-          if let Some(local) = &cache_info.local {
-            writeln!(
-              writer,
-              "{} {}",
-              colors::bold("local:"),
-              local.to_string_lossy()
-            )?;
-          }
+        if let Some(cache_info) = maybe_cache_info
+          && let Some(local) = &cache_info.local
+        {
+          writeln!(
+            writer,
+            "{} {}",
+            colors::bold("local:"),
+            local.to_string_lossy()
+          )?;
         }
         if let Some(module) = root.js() {
           writeln!(writer, "{} {}", colors::bold("type:"), module.media_type)?;
@@ -577,15 +573,15 @@ impl<'a> GraphDisplayContext<'a> {
 
   fn build_dep_info(&mut self, dep: &Dependency) -> Vec<DisplayTreeNode> {
     let mut children = Vec::with_capacity(2);
-    if !dep.maybe_code.is_none() {
-      if let Some(child) = self.build_resolved_info(&dep.maybe_code, false) {
-        children.push(child);
-      }
+    if !dep.maybe_code.is_none()
+      && let Some(child) = self.build_resolved_info(&dep.maybe_code, false)
+    {
+      children.push(child);
     }
-    if !dep.maybe_type.is_none() {
-      if let Some(child) = self.build_resolved_info(&dep.maybe_type, true) {
-        children.push(child);
-      }
+    if !dep.maybe_type.is_none()
+      && let Some(child) = self.build_resolved_info(&dep.maybe_type, true)
+    {
+      children.push(child);
     }
     children
   }
@@ -649,12 +645,11 @@ impl<'a> GraphDisplayContext<'a> {
         }
         Specifier(_) => match module {
           Module::Js(module) => {
-            if let Some(types_dep) = &module.maybe_types_dependency {
-              if let Some(child) =
+            if let Some(types_dep) = &module.maybe_types_dependency
+              && let Some(child) =
                 self.build_resolved_info(&types_dep.dependency, true)
-              {
-                tree_node.children.push(child);
-              }
+            {
+              tree_node.children.push(child);
             }
             for dep in module.dependencies.values() {
               tree_node.children.extend(self.build_dep_info(dep));
@@ -690,16 +685,16 @@ impl<'a> GraphDisplayContext<'a> {
         dep_id.as_serialized(),
         size_str
       ));
-      if let Some(package) = self.npm_info.packages.get(dep_id) {
-        if !package.dependencies.is_empty() {
-          let was_seen =
-            !self.seen.insert(package.id.as_serialized().into_string());
-          if was_seen {
-            child.text = format!("{} {}", child.text, colors::gray("*"));
-          } else {
-            let package = package.clone();
-            child.children.extend(self.build_npm_deps(&package));
-          }
+      if let Some(package) = self.npm_info.packages.get(dep_id)
+        && !package.dependencies.is_empty()
+      {
+        let was_seen =
+          !self.seen.insert(package.id.as_serialized().into_string());
+        if was_seen {
+          child.text = format!("{} {}", child.text, colors::gray("*"));
+        } else {
+          let package = package.clone();
+          child.children.extend(self.build_npm_deps(&package));
         }
       }
       children.push(child);

@@ -47,6 +47,7 @@ pub use registry_info::get_package_url;
 pub use remote::maybe_auth_header_value_for_npm_registry;
 pub use tarball::EnsurePackageError;
 pub use tarball::TarballCache;
+pub use tarball::TarballCacheReporter;
 
 use self::rt::spawn_blocking;
 
@@ -436,15 +437,15 @@ fn with_folder_sync_lock(
   match inner(sys, output_folder, action) {
     Ok(()) => Ok(()),
     Err(err) => {
-      if let Err(remove_err) = sys.fs_remove_dir_all(output_folder) {
-        if remove_err.kind() != std::io::ErrorKind::NotFound {
-          return Err(WithFolderSyncLockError::SetUpPackageCacheDir {
-            package: Box::new(package.clone()),
-            error: Box::new(err),
-            remove_error: remove_err,
-            output_folder: output_folder.to_path_buf(),
-          });
-        }
+      if let Err(remove_err) = sys.fs_remove_dir_all(output_folder)
+        && remove_err.kind() != std::io::ErrorKind::NotFound
+      {
+        return Err(WithFolderSyncLockError::SetUpPackageCacheDir {
+          package: Box::new(package.clone()),
+          error: Box::new(err),
+          remove_error: remove_err,
+          output_folder: output_folder.to_path_buf(),
+        });
       }
       Err(err)
     }

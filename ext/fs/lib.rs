@@ -3,12 +3,14 @@
 mod interface;
 mod ops;
 mod std_fs;
-pub mod sync;
 
 use std::borrow::Cow;
 use std::path::Path;
 
 pub use deno_io::fs::FsError;
+pub use deno_maybe_sync as sync;
+pub use deno_maybe_sync::MaybeSend;
+pub use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use deno_permissions::PermissionCheckError;
@@ -24,8 +26,6 @@ pub use crate::ops::OperationError;
 use crate::ops::*;
 pub use crate::std_fs::RealFs;
 pub use crate::std_fs::open_options_for_checked_path;
-pub use crate::sync::MaybeSend;
-pub use crate::sync::MaybeSync;
 
 pub trait FsPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -52,10 +52,6 @@ pub trait FsPermissions {
   ) -> Result<CheckedPath<'a>, PermissionCheckError>;
   fn check_write_all(&self, api_name: &str)
   -> Result<(), PermissionCheckError>;
-
-  fn allows_all(&self) -> bool {
-    false
-  }
 }
 
 impl FsPermissions for deno_permissions::PermissionsContainer {
@@ -109,10 +105,6 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_write_all(self, api_name)
   }
-
-  fn allows_all(&self) -> bool {
-    self.allows_all()
-  }
 }
 
 pub const UNSTABLE_FEATURE_NAME: &str = "fs";
@@ -121,7 +113,7 @@ deno_core::extension!(deno_fs,
   deps = [ deno_web ],
   parameters = [P: FsPermissions],
   ops = [
-    op_fs_cwd<P>,
+    op_fs_cwd,
     op_fs_umask,
     op_fs_chdir<P>,
 
@@ -174,8 +166,8 @@ deno_core::extension!(deno_fs,
     op_fs_file_sync_data_async,
     op_fs_file_sync_sync,
     op_fs_file_sync_async,
-    op_fs_file_stat_sync,
-    op_fs_file_stat_async,
+    op_fs_file_stat_sync<P>,
+    op_fs_file_stat_async<P>,
     op_fs_fchmod_async,
     op_fs_fchmod_sync,
     op_fs_fchown_async,
@@ -186,8 +178,8 @@ deno_core::extension!(deno_fs,
     op_fs_funlock_sync,
     op_fs_ftruncate_sync,
     op_fs_file_truncate_async,
-    op_fs_futime_sync,
-    op_fs_futime_async,
+    op_fs_futime_sync<P>,
+    op_fs_futime_async<P>,
 
   ],
   esm = [ "30_fs.js" ],

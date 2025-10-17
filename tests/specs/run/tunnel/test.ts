@@ -16,15 +16,16 @@ const child = new Deno.Command(Deno.execPath(), {
   args: [
     "run",
     "-A",
-    `--connected=localhost:${server.addr.port}`,
+    "--connected",
     "--cert",
     "../../../testdata/tls/RootCA.crt",
     "client.ts",
   ],
   env: {
-    DENO_UNSTABLE_TUNNEL_TOKEN: "token",
-    DENO_UNSTABLE_TUNNEL_ORG: "org",
-    DENO_UNSTABLE_TUNNEL_APP: "app",
+    DENO_DEPLOY_TUNNEL_ENDPOINT: `localhost:${server.addr.port}`,
+    DENO_DEPLOY_TOKEN: "token",
+    DENO_DEPLOY_ORG: "org",
+    DENO_DEPLOY_APP: "app",
   },
   stdout: "inherit",
   stderr: "inherit",
@@ -36,11 +37,13 @@ setTimeout(() => {
   Deno.exit(1);
 }, 5000);
 
-for await (const conn of listener) {
-  handleConnection(conn);
+for await (const incoming of listener) {
+  handleConnection(incoming);
 }
 
-async function handleConnection(conn: Deno.QuicConn) {
+async function handleConnection(incoming: Deno.QuicIncoming) {
+  const conn = await incoming.accept();
+
   {
     const { value: bi } = await conn.incomingBidirectionalStreams
       .getReader()
@@ -59,6 +62,10 @@ async function handleConnection(conn: Deno.QuicConn) {
       conn.close({ closeCode: 1, reason: "expected Control" });
       return;
     }
+    console.log({
+      subcommand: header.metadata.subcommand,
+      entrypoint: header.metadata.entrypoint,
+    });
     const auth = await readStreamHeader(reader);
     if (auth.headerType !== "AuthenticateApp") {
       conn.close({ closeCode: 1, reason: "expected AuthenticateApp" });

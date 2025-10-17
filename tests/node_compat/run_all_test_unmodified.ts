@@ -16,6 +16,7 @@ import { partition } from "@std/collections/partition";
 import { stripAnsiCode } from "@std/fmt/colors";
 import { version as nodeVersion } from "./runner/suite/node_version.ts";
 import {
+  configFile,
   parseFlags,
   RUN_ARGS,
   TEST_ARGS,
@@ -23,6 +24,7 @@ import {
 } from "./common.ts";
 import { generateTestSerialId } from "./test.ts";
 
+const testSuitePath = new URL(import.meta.resolve("./runner/suite/"));
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 const IS_CI = !!Deno.env.get("CI");
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
@@ -70,12 +72,18 @@ const NODE_IGNORED_TEST_DIRS = [
   "wpt",
 ];
 
-const NODE_IGNORED_TEST_CASES = new Set([
-  "parallel/test-benchmark-cli.js", // testing private benchmark utility
-  "parallel/test-buffer-backing-arraybuffer.js", // Deno does not allow heap-allocated ArrayBuffer, and we can't change it (for now)
-  "parallel/test-eventsource-disabled.js", // EventSource global is always available in Deno (Web API)
-  "parallel/test-crypto-secure-heap.js", // Secure heap is OpenSSL specific, not in Deno.
-]);
+const runnerOs = Deno.build.os;
+const ignoredTests = Object.entries(configFile.tests)
+  .flatMap((
+    [testName, config],
+  ) => {
+    if (config[runnerOs as keyof typeof config] !== false) return [];
+    return [{ testName, reason: config.reason }];
+  });
+
+const NODE_IGNORED_TEST_CASES_TO_REASON = new Map<string, string | undefined>(
+  ignoredTests.map(({ testName, reason }) => [testName, reason]),
+);
 
 /** The group is the directory name of the test file.
  * e.g. parallel, internet, pummel, sequential, pseudo-tty, etc */
@@ -98,23 +106,48 @@ enum NodeTestFileResult {
   IGNORED = "ignored", // ignored because the test case does not need to pass in Deno
 }
 
-interface NodeTestFileReport {
-  result: NodeTestFileResult;
+interface NonIgnoredTestFileReport {
+  result:
+    | NodeTestFileResult.PASS
+    | NodeTestFileResult.FAIL
+    | NodeTestFileResult.SKIP; // Currently skipped tests will not be written to the report
   error?: ErrorExit | ErrorTimeout | ErrorUnexpected;
-  usesNodeTest: boolean; // whether the test uses `node:test` module
 }
+
+interface IgnoredTestFileReport {
+  result: NodeTestFileResult.IGNORED;
+  reason: string | undefined;
+  error?: undefined;
+}
+
+type NodeTestFileReport = (NonIgnoredTestFileReport | IgnoredTestFileReport) & {
+  usesNodeTest: boolean; // whether the test uses `node:test` module
+};
 
 type TestReports = Record<string, NodeTestFileReport>;
 
-type SingleResultInfo = {
+type BaseSingleResultInfo = {
   usesNodeTest?: 1; // Uses this form to minimize the size of the report.json
 };
 
-export type SingleResult = [
-  pass: boolean | "IGNORE",
+type IgnoredSingleResultInfo = BaseSingleResultInfo & {
+  ignoreReason: string | undefined;
+};
+
+type NonIgnoredSingleResult = [
+  pass: boolean,
   error: ErrorExit | ErrorTimeout | ErrorUnexpected | undefined,
-  info: SingleResultInfo,
+  info: BaseSingleResultInfo,
 ];
+
+type IgnoredSingleResult = [
+  pass: "IGNORE",
+  error: undefined,
+  info: IgnoredSingleResultInfo,
+];
+
+export type SingleResult = NonIgnoredSingleResult | IgnoredSingleResult;
+
 type ErrorExit = {
   code: number;
   stderr: string;
@@ -171,13 +204,18 @@ export async function runSingle(
 ): Promise<NodeTestFileReport> {
   const testSerialId = generateTestSerialId();
   let cmd: Deno.ChildProcess | undefined;
-  const testPath_ = "tests/node_compat/runner/suite/test/" + testPath;
+  const testPath_ = "test/" + testPath;
   let usesNodeTest = false;
   try {
-    const source = await Deno.readTextFile(testPath_);
+    const testFileUrl = new URL(testPath_, testSuitePath);
+    const source = await Deno.readTextFile(testFileUrl);
     usesNodeTest = usesNodeTestModule(source);
-    if (NODE_IGNORED_TEST_CASES.has(testPath)) {
-      return { result: NodeTestFileResult.IGNORED, usesNodeTest };
+    if (NODE_IGNORED_TEST_CASES_TO_REASON.has(testPath)) {
+      return {
+        result: NodeTestFileResult.IGNORED,
+        usesNodeTest,
+        reason: NODE_IGNORED_TEST_CASES_TO_REASON.get(testPath),
+      };
     }
     const [v8Flags, nodeOptions] = getFlags(source);
     cmd = new Deno.Command(Deno.execPath(), {
@@ -195,6 +233,7 @@ export async function runSingle(
       },
       stdout: "piped",
       stderr: "piped",
+      cwd: testSuitePath,
     }).spawn();
     const result = await deadline(cmd.output(), TIMEOUT);
     if (result.code === 0) {
@@ -227,7 +266,8 @@ export async function runSingle(
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
       return runSingle(testPath, { flaky, retry: retry + 1 });
-    } else if (flaky && retry < 3) {
+    } else if (flaky && retry < 5) {
+      await new Promise((resolve) => setTimeout(resolve, 100 * retry));
       return runSingle(testPath, { flaky, retry: retry + 1 });
     } else {
       return {
@@ -248,7 +288,7 @@ function transformReportsIntoResults(
     if (value.result === NodeTestFileResult.SKIP) {
       throw new Error("Can't transform 'SKIP' result into `SingleResult`");
     }
-    const info = {} as SingleResultInfo;
+    const info = {} as BaseSingleResultInfo;
     if (value.usesNodeTest) {
       info.usesNodeTest = 1;
     }
@@ -256,7 +296,9 @@ function transformReportsIntoResults(
     if (value.result === NodeTestFileResult.FAIL) {
       result = [false, value.error, info];
     } else if (value.result === NodeTestFileResult.IGNORED) {
-      result = ["IGNORE", undefined, info];
+      // @ts-expect-error info is now `IgnoredSingleResultInfo`
+      info.ignoreReason = value.reason;
+      result = ["IGNORE", undefined, info as IgnoredSingleResultInfo];
     }
     results[key] = result;
   }
@@ -407,6 +449,7 @@ async function main() {
       }
       default:
         console.warn(
+          // @ts-expect-error unknown result type
           `Unknown result (${fileResult.result}) for ${testPath}`,
         );
     }

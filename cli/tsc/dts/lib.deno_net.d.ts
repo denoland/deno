@@ -191,6 +191,18 @@ declare namespace Deno {
      *
      * @default {"0.0.0.0"} */
     hostname?: string;
+
+    /** Maximum number of pending connections in the listen queue.
+     *
+     * This parameter controls how many incoming connections can be queued by the
+     * operating system while waiting for the application to accept them. If more
+     * connections arrive when the queue is full, they will be refused.
+     *
+     * The kernel may adjust this value (e.g., rounding up to the next power of 2
+     * plus 1). Different operating systems have different maximum limits.
+     *
+     * @default {511} */
+    tcpBacklog?: number;
   }
 
   /** @category Network */
@@ -456,6 +468,15 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
+    /** If true, the certificate's common name or subject alternative names will not be
+     * checked against the hostname provided in the options.
+     *
+     * This disables hostname verification but still validates the certificate chain.
+     * Use with caution and only when connecting to known servers.
+     *
+     * @default {false}
+     */
+    unsafelyDisableHostnameVerification?: boolean;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -505,6 +526,15 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
+    /** If true, the certificate's common name or subject alternative names will not be
+     * checked against the hostname provided in the options.
+     *
+     * This disables hostname verification but still validates the certificate chain.
+     * Use with caution and only when connecting to known servers.
+     *
+     * @default {false}
+     */
+    unsafelyDisableHostnameVerification?: boolean;
   }
 
   /** Start TLS handshake from an existing connection using an optional list of
@@ -757,7 +787,7 @@ declare namespace Deno {
    * @experimental
    * @category Network
    */
-  export interface QuicListener extends AsyncIterable<QuicConn> {
+  export interface QuicListener extends AsyncIterable<QuicIncoming> {
     /** Waits for and resolves to the next incoming connection. */
     incoming(): Promise<QuicIncoming>;
 
@@ -767,7 +797,7 @@ declare namespace Deno {
     /** Stops the listener. This does not close the endpoint. */
     stop(): void;
 
-    [Symbol.asyncIterator](): AsyncIterableIterator<QuicConn>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<QuicIncoming>;
 
     /** The endpoint for this listener. */
     readonly endpoint: QuicEndpoint;

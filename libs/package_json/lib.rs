@@ -5,6 +5,7 @@
 #![deny(clippy::unused_async)]
 #![deny(clippy::unnecessary_wraps)]
 
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -23,18 +24,21 @@ use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
-mod sync;
+#[allow(clippy::disallowed_types)]
+pub type PackageJsonRc = deno_maybe_sync::MaybeArc<PackageJson>;
+#[allow(clippy::disallowed_types)]
+pub type PackageJsonDepsRc = deno_maybe_sync::MaybeArc<PackageJsonDeps>;
+#[allow(clippy::disallowed_types)]
+type PackageJsonDepsRcCell = deno_maybe_sync::MaybeOnceLock<PackageJsonDepsRc>;
 
-#[allow(clippy::disallowed_types)]
-pub type PackageJsonRc = crate::sync::MaybeArc<PackageJson>;
-#[allow(clippy::disallowed_types)]
-pub type PackageJsonDepsRc = crate::sync::MaybeArc<PackageJsonDeps>;
-#[allow(clippy::disallowed_types)]
-type PackageJsonDepsRcCell = crate::sync::MaybeOnceLock<PackageJsonDepsRc>;
+pub enum PackageJsonCacheResult {
+  Hit(Option<PackageJsonRc>),
+  NotCached,
+}
 
 pub trait PackageJsonCache {
-  fn get(&self, path: &Path) -> Option<PackageJsonRc>;
-  fn set(&self, path: PathBuf, package_json: PackageJsonRc);
+  fn get(&self, path: &Path) -> PackageJsonCacheResult;
+  fn set(&self, path: PathBuf, package_json: Option<PackageJsonRc>);
 }
 
 #[derive(Debug, Clone, JsError, PartialEq, Eq, Boxed)]
@@ -224,10 +228,12 @@ pub struct PackageJson {
   pub types: Option<String>,
   pub types_versions: Option<Map<String, Value>>,
   pub dependencies: Option<IndexMap<String, String>>,
+  pub bundle_dependencies: Option<Vec<String>>,
   pub dev_dependencies: Option<IndexMap<String, String>>,
   pub peer_dependencies: Option<IndexMap<String, String>>,
   pub peer_dependencies_meta: Option<Value>,
   pub optional_dependencies: Option<IndexMap<String, String>>,
+  pub directories: Option<Map<String, Value>>,
   pub scripts: Option<IndexMap<String, String>>,
   pub workspaces: Option<Vec<String>>,
   pub os: Option<Vec<String>>,
@@ -241,24 +247,36 @@ impl PackageJson {
     sys: &impl FsRead,
     maybe_cache: Option<&dyn PackageJsonCache>,
     path: &Path,
-  ) -> Result<PackageJsonRc, PackageJsonLoadError> {
-    match maybe_cache.and_then(|c| c.get(path)) {
-      Some(item) => Ok(item),
-      _ => match sys.fs_read_to_string_lossy(path) {
-        Ok(file_text) => {
-          let pkg_json =
-            PackageJson::load_from_string(path.to_path_buf(), &file_text)?;
-          let pkg_json = crate::sync::new_rc(pkg_json);
-          if let Some(cache) = maybe_cache {
-            cache.set(path.to_path_buf(), pkg_json.clone());
+  ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
+    let cache_entry = maybe_cache
+      .map(|c| c.get(path))
+      .unwrap_or(PackageJsonCacheResult::NotCached);
+
+    match cache_entry {
+      PackageJsonCacheResult::Hit(item) => Ok(item),
+      PackageJsonCacheResult::NotCached => {
+        match sys.fs_read_to_string_lossy(path) {
+          Ok(file_text) => {
+            let pkg_json =
+              PackageJson::load_from_string(path.to_path_buf(), &file_text)?;
+            let pkg_json = deno_maybe_sync::new_rc(pkg_json);
+            if let Some(cache) = maybe_cache {
+              cache.set(path.to_path_buf(), Some(pkg_json.clone()));
+            }
+            Ok(Some(pkg_json))
           }
-          Ok(pkg_json)
+          Err(err) if err.kind() == ErrorKind::NotFound => {
+            if let Some(cache) = maybe_cache {
+              cache.set(path.to_path_buf(), None);
+            }
+            Ok(None)
+          }
+          Err(err) => Err(PackageJsonLoadError::Io {
+            path: path.to_path_buf(),
+            source: err,
+          }),
         }
-        Err(err) => Err(PackageJsonLoadError::Io {
-          path: path.to_path_buf(),
-          source: err,
-        }),
-      },
+      }
     }
   }
 
@@ -281,10 +299,12 @@ impl PackageJson {
         imports: None,
         bin: None,
         dependencies: None,
+        bundle_dependencies: None,
         dev_dependencies: None,
         peer_dependencies: None,
         peer_dependencies_meta: None,
         optional_dependencies: None,
+        directories: None,
         scripts: None,
         workspaces: None,
         os: None,
@@ -372,10 +392,10 @@ impl PackageJson {
       .map(|exports| {
         if is_conditional_exports_main_sugar(&exports)? {
           let mut map = Map::new();
-          map.insert(".".to_string(), exports.to_owned());
+          map.insert(".".to_string(), exports);
           Ok::<_, PackageJsonLoadError>(Some(map))
         } else {
-          Ok(exports.as_object().map(|o| o.to_owned()))
+          Ok(map_object(exports))
         }
       })
       .transpose()?
@@ -394,6 +414,10 @@ impl PackageJson {
     let dev_dependencies = package_json
       .remove("devDependencies")
       .and_then(parse_string_map);
+    let bundle_dependencies = package_json
+      .remove("bundleDependencies")
+      .or_else(|| package_json.remove("bundledDependencies"))
+      .and_then(parse_string_array);
     let peer_dependencies = package_json
       .remove("peerDependencies")
       .and_then(parse_string_map);
@@ -404,6 +428,8 @@ impl PackageJson {
 
     let scripts: Option<IndexMap<String, String>> =
       package_json.remove("scripts").and_then(parse_string_map);
+    let directories: Option<Map<String, Value>> =
+      package_json.remove("directories").and_then(map_object);
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
@@ -425,9 +451,8 @@ impl PackageJson {
       .remove("typings")
       .or_else(|| package_json.remove("types"))
       .and_then(map_string);
-    let types_versions = package_json
-      .remove("typesVersions")
-      .and_then(|exports| exports.as_object().map(|o| o.to_owned()));
+    let types_versions =
+      package_json.remove("typesVersions").and_then(map_object);
     let workspaces = package_json
       .remove("workspaces")
       .and_then(parse_string_array);
@@ -449,9 +474,11 @@ impl PackageJson {
       bin,
       dependencies,
       dev_dependencies,
+      bundle_dependencies,
       peer_dependencies,
       peer_dependencies_meta,
       optional_dependencies,
+      directories,
       scripts,
       workspaces,
       os,
@@ -788,6 +815,9 @@ mod test {
       "dependencies": {
         "name": "1.2",
       },
+      "directories": {
+        "bin": "./bin",
+      },
       "devDependencies": {
         "name": "1.2",
       },
@@ -800,6 +830,9 @@ mod test {
       "optionalDependencies": {
         "optional": "1.1"
       },
+      "bundleDependencies": [
+        "name"
+      ],
       "peerDependencies": {
         "peer": "1.0"
       },

@@ -28,12 +28,12 @@ mod impl_ {
   use serde::Serialize;
 
   /// Wrapper around v8 value that implements Serialize.
-  struct SerializeWrapper<'a, 'b>(
-    RefCell<&'b mut v8::HandleScope<'a>>,
+  struct SerializeWrapper<'a, 'b, 'c>(
+    RefCell<&'b mut v8::PinScope<'a, 'c>>,
     v8::Local<'a, v8::Value>,
   );
 
-  impl Serialize for SerializeWrapper<'_, '_> {
+  impl Serialize for SerializeWrapper<'_, '_, '_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
       S: Serializer,
@@ -46,7 +46,7 @@ mod impl_ {
   /// This allows us to go from v8 values to JSON without having to
   /// deserialize into a `serde_json::Value` and then reserialize to JSON
   fn serialize_v8_value<'a, S: Serializer>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     value: v8::Local<'a, v8::Value>,
     ser: S,
   ) -> Result<S::Ok, S::Error> {
@@ -107,11 +107,11 @@ mod impl_ {
       )
       .unwrap()
       .into();
-      if let Some(to_json) = object.get(scope, to_json_key) {
-        if let Ok(to_json) = to_json.try_cast::<v8::Function>() {
-          let json_value = to_json.call(scope, object.into(), &[]).unwrap();
-          return serialize_v8_value(scope, json_value, ser);
-        }
+      if let Some(to_json) = object.get(scope, to_json_key)
+        && let Ok(to_json) = to_json.try_cast::<v8::Function>()
+      {
+        let json_value = to_json.call(scope, object.into(), &[]).unwrap();
+        return serialize_v8_value(scope, json_value, ser);
       }
 
       let keys = object
@@ -182,7 +182,7 @@ mod impl_ {
 
   #[op2(async)]
   pub fn op_node_ipc_write<'a>(
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
     value: v8::Local<'a, v8::Value>,
@@ -287,7 +287,7 @@ mod impl_ {
 
     fn serialize_js_to_json(runtime: &mut JsRuntime, js: String) -> String {
       let val = runtime.execute_script("", js).unwrap();
-      let scope = &mut runtime.handle_scope();
+      deno_core::scope!(scope, runtime);
       let val = v8::Local::new(scope, val);
       let mut buf = Vec::new();
       let mut ser = deno_core::serde_json::Serializer::new(&mut buf);

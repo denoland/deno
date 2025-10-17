@@ -10,9 +10,10 @@ use deno_graph::ModuleGraph;
 use deno_graph::WasmModule;
 use deno_media_type::MediaType;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 use url::Url;
 
+use super::AllowJsonImports;
 use super::DenoNpmModuleLoaderRc;
 use super::LoadedModule;
 use super::LoadedModuleOrAsset;
@@ -51,7 +52,7 @@ pub enum LoadPreparedModuleErrorKind {
   Graph(#[from] EnhancedGraphError),
   #[class(inherit)]
   #[error(transparent)]
-  ClosestPkgJson(#[from] ClosestPkgJsonError),
+  ClosestPkgJson(#[from] PackageJsonLoadError),
   #[class(inherit)]
   #[error(transparent)]
   LoadMaybeCjs(#[from] LoadMaybeCjsError),
@@ -93,6 +94,20 @@ pub enum LoadCodeSourceErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UnsupportedScheme(#[from] UnsupportedSchemeError),
+}
+
+// this message list additional `npm` and `jsr` schemes, but they should actually be handled
+// before these APIs are even hit.
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
+#[error(
+  "Unsupported scheme \"{}\" for module \"{}\". Supported schemes:\n - \"blob\"\n - \"data\"\n - \"file\"\n - \"http\"\n - \"https\"\n - \"jsr\"\n - \"npm\"", url.scheme(), url
+)]
+pub struct UnsupportedSchemeError {
+  pub url: Url,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -104,7 +119,7 @@ pub struct LoadUnpreparedModuleError {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type ModuleLoaderRc<TSys> = crate::sync::MaybeArc<ModuleLoader<TSys>>;
+pub type ModuleLoaderRc<TSys> = deno_maybe_sync::MaybeArc<ModuleLoader<TSys>>;
 
 #[sys_traits::auto_impl]
 pub trait ModuleLoaderSys:
@@ -137,6 +152,7 @@ pub struct ModuleLoader<TSys: ModuleLoaderSys> {
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   npm_module_loader: DenoNpmModuleLoaderRc<TSys>,
   prepared_module_loader: PreparedModuleLoader<TSys>,
+  allow_json_imports: AllowJsonImports,
 }
 
 impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
@@ -149,6 +165,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     npm_module_loader: DenoNpmModuleLoaderRc<TSys>,
     parsed_source_cache: ParsedSourceCacheRc,
     sys: TSys,
+    allow_json_imports: AllowJsonImports,
   ) -> Self {
     Self {
       in_npm_pkg_checker,
@@ -160,6 +177,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
         parsed_source_cache,
         sys,
       },
+      allow_json_imports,
     }
   }
 
@@ -184,7 +202,17 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     {
       Some(module_or_asset) => module_or_asset,
       None => {
-        if self.in_npm_pkg_checker.in_npm_package(specifier) {
+        if !matches!(
+          specifier.scheme(),
+          "https" | "http" | "file" | "blob" | "data"
+        ) {
+          return Err(
+            UnsupportedSchemeError {
+              url: specifier.clone(),
+            }
+            .into(),
+          );
+        } else if self.in_npm_pkg_checker.in_npm_package(specifier) {
           let loaded_module = self
             .npm_module_loader
             .load(
@@ -222,6 +250,7 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
         // import attributes) is not JSON we need to fail.
         if loaded_module.media_type == MediaType::Json
           && !matches!(requested_module_type, RequestedModuleType::Json)
+          && matches!(self.allow_json_imports, AllowJsonImports::WithAttribute)
         {
           Err(LoadCodeSourceErrorKind::MissingJsonAttribute.into_box())
         } else {

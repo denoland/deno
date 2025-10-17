@@ -31,8 +31,8 @@ pub struct TcpConnection {
 
 impl TcpConnection {
   /// Boot a load-balanced TCP connection
-  pub fn start(key: SocketAddr) -> std::io::Result<Self> {
-    let listener = bind_socket_and_listen(key, false)?;
+  pub fn start(key: SocketAddr, backlog: i32) -> std::io::Result<Self> {
+    let listener = bind_socket_and_listen(key, false, backlog)?;
     let sock = listener.into();
 
     Ok(Self { sock, key })
@@ -78,11 +78,12 @@ impl TcpListener {
   pub fn bind(
     socket_addr: SocketAddr,
     reuse_port: bool,
+    backlog: i32,
   ) -> std::io::Result<Self> {
     if REUSE_PORT_LOAD_BALANCES && reuse_port {
-      Self::bind_load_balanced(socket_addr)
+      Self::bind_load_balanced(socket_addr, backlog)
     } else {
-      Self::bind_direct(socket_addr, reuse_port)
+      Self::bind_direct(socket_addr, reuse_port, backlog)
     }
   }
 
@@ -91,9 +92,10 @@ impl TcpListener {
   pub fn bind_direct(
     socket_addr: SocketAddr,
     reuse_port: bool,
+    backlog: i32,
   ) -> std::io::Result<Self> {
     // We ignore `reuse_port` on platforms other than Linux to match the existing behaviour.
-    let listener = bind_socket_and_listen(socket_addr, reuse_port)?;
+    let listener = bind_socket_and_listen(socket_addr, reuse_port, backlog)?;
     Ok(Self {
       listener: Some(tokio::net::TcpListener::from_std(listener)?),
       conn: None,
@@ -101,7 +103,10 @@ impl TcpListener {
   }
 
   /// Bind to the port in a load-balanced manner.
-  pub fn bind_load_balanced(socket_addr: SocketAddr) -> std::io::Result<Self> {
+  pub fn bind_load_balanced(
+    socket_addr: SocketAddr,
+    backlog: i32,
+  ) -> std::io::Result<Self> {
     let tcp = &mut CONNS.get_or_init(Default::default).lock().unwrap().tcp;
     if let Some(conn) = tcp.get(&socket_addr) {
       let listener = Some(conn.listener()?);
@@ -110,7 +115,7 @@ impl TcpListener {
         conn: Some(conn.clone()),
       });
     }
-    let conn = Arc::new(TcpConnection::start(socket_addr)?);
+    let conn = Arc::new(TcpConnection::start(socket_addr, backlog)?);
     let listener = Some(conn.listener()?);
     tcp.insert(socket_addr, conn.clone());
     Ok(Self {
@@ -151,6 +156,7 @@ impl Drop for TcpListener {
 fn bind_socket_and_listen(
   socket_addr: SocketAddr,
   reuse_port: bool,
+  backlog: i32,
 ) -> Result<std::net::TcpListener, std::io::Error> {
   let socket = if socket_addr.is_ipv4() {
     socket2::Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?
@@ -170,7 +176,7 @@ fn bind_socket_and_listen(
   socket.set_reuse_address(true)?;
   socket.set_nonblocking(true)?;
   socket.bind(&socket_addr.into())?;
-  socket.listen(128)?;
+  socket.listen(backlog)?;
   let listener = socket.into();
   Ok(listener)
 }

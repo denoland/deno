@@ -18,7 +18,9 @@ use std::time::SystemTime;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_cache_dir::file_fetcher::FetchLocalOptions;
+use deno_cache_dir::file_fetcher::MemoryFiles as _;
 use deno_core::FastString;
+use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleResolutionError;
 use deno_core::ModuleSource;
@@ -37,9 +39,9 @@ use deno_core::futures::io::BufReader;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use deno_graph::WalkOptions;
@@ -50,16 +52,20 @@ use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
 use deno_lib::worker::ModuleLoaderFactory;
+use deno_npm_installer::resolution::HasJsExecutionStartedFlagRc;
 use deno_path_util::PathToUrlError;
+use deno_path_util::resolve_url_or_path;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::file_fetcher::FetchOptions;
 use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
 use deno_resolver::graph::ResolveWithGraphErrorKind;
 use deno_resolver::graph::ResolveWithGraphOptions;
+use deno_resolver::graph::format_range_with_colors;
 use deno_resolver::loader::LoadCodeSourceError;
 use deno_resolver::loader::LoadPreparedModuleError;
 use deno_resolver::loader::LoadedModule;
 use deno_resolver::loader::LoadedModuleOrAsset;
+use deno_resolver::loader::MemoryFiles;
 use deno_resolver::loader::StrippingTypesNodeModulesError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
@@ -73,7 +79,7 @@ use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
@@ -183,7 +189,7 @@ impl ModuleLoadPreparer {
       allow_unknown_media_types,
       skip_graph_roots_validation,
     } = options;
-    let _pb_clear_guard = self.progress_bar.clear_guard();
+    let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut loader = self
       .module_graph_builder
@@ -273,7 +279,7 @@ impl ModuleLoadPreparer {
         .collect::<Vec<_>>()
         .join(", ")
     );
-    let _pb_clear_guard = self.progress_bar.clear_guard();
+    let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut loader = self
       .module_graph_builder
@@ -325,8 +331,10 @@ struct SharedCliModuleLoaderState {
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<CliEmitter>,
   file_fetcher: Arc<CliFileFetcher>,
+  has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
+  memory_files: Arc<MemoryFiles>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
@@ -386,8 +394,10 @@ impl CliModuleLoaderFactory {
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<CliEmitter>,
     file_fetcher: Arc<CliFileFetcher>,
+    has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
+    memory_files: Arc<MemoryFiles>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     npm_registry_permission_checker: Arc<
       NpmRegistryReadPermissionChecker<CliSys>,
@@ -414,8 +424,10 @@ impl CliModuleLoaderFactory {
         code_cache,
         emitter,
         file_fetcher,
+        has_js_execution_started_flag,
         in_npm_pkg_checker,
         main_module_graph_container,
+        memory_files,
         module_load_preparer,
         npm_registry_permission_checker,
         npm_resolver,
@@ -458,6 +470,7 @@ impl CliModuleLoaderFactory {
       sys: self.shared.sys.clone(),
       graph_container,
       in_npm_pkg_checker: self.shared.in_npm_pkg_checker.clone(),
+      memory_files: self.shared.memory_files.clone(),
       npm_registry_permission_checker: self
         .shared
         .npm_registry_permission_checker
@@ -985,7 +998,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
   fn get_host_defined_options<'s>(
     &self,
-    scope: &mut deno_core::v8::HandleScope<'s>,
+    scope: &mut deno_core::v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
     let name = deno_core::ModuleSpecifier::parse(name).ok()?;
@@ -999,7 +1012,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   fn load(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&ModuleLoadReferrer>,
     _is_dynamic: bool,
     requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
@@ -1018,10 +1031,33 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         inner
           .load_inner(
             &specifier,
-            maybe_referrer.as_ref(),
+            maybe_referrer.as_ref().map(|r| &r.specifier),
             &requested_module_type,
           )
           .await
+          .map_err(|err| {
+            let Some(referrer) = maybe_referrer else {
+              return err;
+            };
+            let position = deno_graph::Position {
+              line: referrer.line_number as usize - 1,
+              character: referrer.column_number as usize - 1,
+            };
+            JsErrorBox::new(
+              err.get_class(),
+              format!(
+                "{err}\n    at {}",
+                format_range_with_colors(&deno_graph::Range {
+                  specifier: referrer.specifier,
+                  range: deno_graph::PositionRange {
+                    start: position,
+                    end: position
+                  },
+                  resolution_mode: None
+                })
+              ),
+            )
+          })
       }
       .boxed_local(),
     )
@@ -1046,10 +1082,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     }
 
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
+      self.0.shared.has_js_execution_started_flag.raise();
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
     if self.0.shared.maybe_eszip_loader.is_some() {
+      self.0.shared.has_js_execution_started_flag.raise();
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
@@ -1118,6 +1156,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           .map_err(JsErrorBox::from_err)?;
         graph.prune_types();
         update_permit.commit();
+        inner.shared.has_js_execution_started_flag.raise();
       }
 
       if is_dynamic {
@@ -1172,7 +1211,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     std::future::ready(()).boxed_local()
   }
 
-  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<'_, [u8]>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
       // we should only be looking for emits for schemes that denote external
@@ -1271,6 +1310,7 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
 struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+  memory_files: Arc<MemoryFiles>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
   graph_container: TGraphContainer,
@@ -1305,10 +1345,21 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   ) -> Result<FastString, JsErrorBox> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
-    let text = self
-      .sys
-      .fs_read_to_string_lossy(path)
-      .map_err(JsErrorBox::from_err)?;
+    let text_result = self.sys.fs_read_to_string_lossy(path);
+    let text = match text_result {
+      Ok(text) => text,
+      Err(err) => {
+        // only bother on error for performance reasons
+        if let Some(file) = deno_path_util::url_from_file_path(path)
+          .ok()
+          .and_then(|s| self.memory_files.get(&s))
+        {
+          Cow::Owned(String::from_utf8_lossy(&file.source).into_owned())
+        } else {
+          return Err(JsErrorBox::from_err(err));
+        }
+      }
+    };
     if media_type.is_emittable() {
       let specifier = deno_path_util::url_from_file_path(path)
         .map_err(JsErrorBox::from_err)?;
@@ -1341,7 +1392,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   fn is_maybe_cjs(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<bool, ClosestPkgJsonError> {
+  ) -> Result<bool, PackageJsonLoadError> {
     let media_type = MediaType::from_specifier(specifier);
     self.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }

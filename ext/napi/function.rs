@@ -6,7 +6,7 @@ use crate::*;
 pub struct CallbackInfo {
   pub env: *mut Env,
   pub cb: napi_callback,
-  pub cb_info: napi_callback_info,
+  pub data: *mut c_void,
   pub args: *const c_void,
 }
 
@@ -15,12 +15,12 @@ impl CallbackInfo {
   pub fn new_raw(
     env: *mut Env,
     cb: napi_callback,
-    cb_info: napi_callback_info,
+    data: *mut c_void,
   ) -> *mut Self {
     Box::into_raw(Box::new(Self {
       env,
       cb,
-      cb_info,
+      data,
       args: std::ptr::null(),
     }))
   }
@@ -44,7 +44,7 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
   // SAFETY: calling user provided function pointer.
   let value = unsafe { (info.cb)(info.env as napi_env, info_ptr as *mut _) };
   if let Some(exc) = unsafe { &mut *info.env }.last_exception.take() {
-    let scope = unsafe { &mut v8::CallbackScope::new(callback_info) };
+    v8::callback_scope!(unsafe scope, callback_info);
     let exc = v8::Local::new(scope, exc);
     scope.throw_exception(exc);
   }
@@ -54,14 +54,14 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
 }
 
 pub fn create_function<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   env: *mut Env,
   name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
-  cb_info: napi_callback_info,
+  data: *mut c_void,
 ) -> v8::Local<'s, v8::Function> {
   let external =
-    v8::External::new(scope, CallbackInfo::new_raw(env, cb, cb_info) as *mut _);
+    v8::External::new(scope, CallbackInfo::new_raw(env, cb, data) as *mut _);
   let function = v8::Function::builder_raw(call_fn)
     .data(external.into())
     .build(scope)
@@ -75,7 +75,7 @@ pub fn create_function<'s>(
 }
 
 pub fn create_function_template<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   env: *mut Env,
   name: Option<v8::Local<v8::String>>,
   cb: napi_callback,

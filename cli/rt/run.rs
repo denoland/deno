@@ -10,6 +10,7 @@ use std::sync::OnceLock;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_core::FastString;
+use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
@@ -87,7 +88,7 @@ use node_resolver::ResolutionMode;
 use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionSys;
-use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::errors::PackageJsonLoadError;
 
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
@@ -319,15 +320,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
             });
         }
 
-        if specifier.scheme() == "jsr" {
-          if let Some(specifier) = self
+        if specifier.scheme() == "jsr"
+          && let Some(specifier) = self
             .shared
             .modules
             .resolve_specifier(&specifier)
             .map_err(JsErrorBox::from_err)?
-          {
-            return Ok(specifier.clone());
-          }
+        {
+          return Ok(specifier.clone());
         }
 
         Ok(
@@ -362,7 +362,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
   fn get_host_defined_options<'s>(
     &self,
-    scope: &mut deno_core::v8::HandleScope<'s>,
+    scope: &mut deno_core::v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
     let name = Url::parse(name).ok()?;
@@ -376,7 +376,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
   fn load(
     &self,
     original_specifier: &Url,
-    maybe_referrer: Option<&Url>,
+    maybe_referrer: Option<&ModuleLoadReferrer>,
     _is_dynamic: bool,
     requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
@@ -405,7 +405,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     if self.shared.node_resolver.in_npm_package(original_specifier) {
       let shared = self.shared.clone();
       let original_specifier = original_specifier.clone();
-      let maybe_referrer = maybe_referrer.cloned();
+      let maybe_referrer = maybe_referrer.map(|r| r.specifier.clone());
       return deno_core::ModuleLoadResponse::Async(
         async move {
           let code_source = shared
@@ -575,7 +575,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     std::future::ready(()).boxed_local()
   }
 
-  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<'_, [u8]>> {
     let url = Url::parse(file_name).ok()?;
     let data = self.shared.modules.read(&url).ok()??;
     data.source_map
@@ -645,7 +645,10 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     })
   }
 
-  fn is_maybe_cjs(&self, specifier: &Url) -> Result<bool, ClosestPkgJsonError> {
+  fn is_maybe_cjs(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError> {
     let media_type = MediaType::from_specifier(specifier);
     self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
@@ -925,10 +928,8 @@ pub async fn run(
       if metadata.unstable_config.sloppy_imports {
         SloppyImportsOptions::Enabled
       } else {
-        SloppyImportsOptions::Disabled
+        SloppyImportsOptions::Unspecified
       },
-      Default::default(),
-      Default::default(),
       Default::default(),
       sys.clone(),
     )
@@ -973,11 +974,11 @@ pub async fn run(
         // do nothing, already granted
       }
       Some(vec) => {
-        vec.push(root_path.to_string_lossy().to_string());
+        vec.push(root_path.to_string_lossy().into_owned());
       }
       None => {
         permissions.allow_read =
-          Some(vec![root_path.to_string_lossy().to_string()]);
+          Some(vec![root_path.to_string_lossy().into_owned()]);
       }
     }
 
@@ -1005,7 +1006,7 @@ pub async fn run(
     has_node_modules_dir,
     inspect_brk: false,
     inspect_wait: false,
-    strace_ops: None,
+    trace_ops: None,
     is_inspecting: false,
     is_standalone: true,
     auto_serve: false,
@@ -1035,6 +1036,7 @@ pub async fn run(
     feature_checker,
     fs,
     None,
+    None,
     Box::new(module_loader_factory),
     node_resolver.clone(),
     create_npm_process_state_provider(&npm_resolver),
@@ -1044,6 +1046,7 @@ pub async fn run(
     sys.clone(),
     lib_main_worker_options,
     Default::default(),
+    None,
   );
 
   // Initialize v8 once from the main thread.

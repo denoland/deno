@@ -46,11 +46,11 @@ impl<'a> LazyGraphSourceParser<'a> {
 type ArcStr = std::sync::Arc<str>;
 
 #[allow(clippy::disallowed_types)]
-pub type ParsedSourceCacheRc = crate::sync::MaybeArc<ParsedSourceCache>;
+pub type ParsedSourceCacheRc = deno_maybe_sync::MaybeArc<ParsedSourceCache>;
 
 #[derive(Debug, Default)]
 pub struct ParsedSourceCache {
-  sources: crate::sync::MaybeDashMap<Url, ParsedSource>,
+  sources: deno_maybe_sync::MaybeDashMap<Url, ParsedSource>,
 }
 
 impl ParsedSourceCache {
@@ -90,14 +90,13 @@ impl ParsedSourceCache {
     media_type: MediaType,
     source: ArcStr,
   ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
-    if let Some(parsed_source) = self.remove_parsed_source(specifier) {
-      if parsed_source.media_type() == media_type
-        && parsed_source.text().as_ref() == source.as_ref()
-      {
-        // note: message used tests
-        log::debug!("Removed parsed source: {}", specifier);
-        return Ok(parsed_source);
-      }
+    if let Some(parsed_source) = self.remove_parsed_source(specifier)
+      && parsed_source.media_type() == media_type
+      && parsed_source.text().as_ref() == source.as_ref()
+    {
+      // note: message used tests
+      log::debug!("Removed parsed source: {}", specifier);
+      return Ok(parsed_source);
     }
     let options = deno_graph::ast::ParseOptions {
       specifier,
@@ -120,7 +119,7 @@ impl ParsedSourceCache {
 
   /// Creates a parser that will reuse a ParsedSource from the store
   /// if it exists, or else parse.
-  pub fn as_capturing_parser(&self) -> CapturingEsParser {
+  pub fn as_capturing_parser(&self) -> CapturingEsParser<'_> {
     CapturingEsParser::new(None, self)
   }
 

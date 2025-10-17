@@ -69,10 +69,12 @@
 "parallel/test-atomics-wake.js" = {}
 "parallel/test-bad-unicode.js" = {}
 "parallel/test-beforeexit-event-exit.js" = {}
+"parallel/test-benchmark-cli.js" = { darwin = false, linux = false, windows = false, reason = "testing private benchmark utility" }
 "parallel/test-btoa-atob.js" = {}
 "parallel/test-buffer-alloc.js" = {}
 "parallel/test-buffer-arraybuffer.js" = {}
 "parallel/test-buffer-ascii.js" = {}
+"parallel/test-buffer-backing-arraybuffer.js.js" = { darwin = false, linux = false, windows = false, reason = "Deno does not allow heap-allocated ArrayBuffer, and we can't change it (for now)" }
 "parallel/test-buffer-badhex.js" = {}
 "parallel/test-buffer-bigint64.js" = {}
 "parallel/test-buffer-bytelength.js" = {}
@@ -117,7 +119,8 @@
 "parallel/test-buffer-set-inspect-max-bytes.js" = {}
 "parallel/test-buffer-sharedarraybuffer.js" = {}
 "parallel/test-buffer-slice.js" = {}
-"parallel/test-buffer-slow.js" = {}
+# TODO(bartlomieju): this is failing on missing warning
+# "parallel/test-buffer-slow.js" = {}
 "parallel/test-buffer-swap.js" = {}
 "parallel/test-buffer-tojson.js" = {}
 "parallel/test-buffer-tostring-range.js" = {}
@@ -144,7 +147,8 @@
 "parallel/test-child-process-exec-stdout-stderr-data-string.js" = {}
 "parallel/test-child-process-execFile-promisified-abortController.js" = {}
 "parallel/test-child-process-execfile-maxbuf.js" = {}
-"parallel/test-child-process-execfile.js" = {}
+# TODO(bartlomieju): this is failing on missing warning
+# "parallel/test-child-process-execfile.js" = {}
 "parallel/test-child-process-execfilesync-maxbuf.js" = {}
 "parallel/test-child-process-exit-code.js" = {}
 "parallel/test-child-process-flush-stdio.js" = {}
@@ -160,7 +164,6 @@
 "parallel/test-child-process-send-cb.js" = {}
 "parallel/test-child-process-set-blocking.js" = {}
 "parallel/test-child-process-silent.js" = {}
-"parallel/test-child-process-spawn-args.js" = {}
 "parallel/test-child-process-spawn-event.js" = {}
 "parallel/test-child-process-spawnsync-args.js" = {}
 "parallel/test-child-process-spawnsync-env.js" = {}
@@ -216,6 +219,7 @@
 "parallel/test-crypto-randomuuid.js" = {}
 "parallel/test-crypto-sec-level.js" = {}
 "parallel/test-crypto-secret-keygen.js" = {}
+"parallel/test-crypto-secure-heap.js" = { darwin = false, linux = false, windows = false, reason = "Secure heap is OpenSSL specific, not in Deno" }
 "parallel/test-crypto-stream.js" = {}
 "parallel/test-crypto-subtle-zero-length.js" = {}
 "parallel/test-crypto-update-encoding.js" = {}
@@ -296,9 +300,9 @@
 "parallel/test-dgram-send-callback-recursive.js" = {}
 "parallel/test-dgram-send-cb-quelches-error.js" = {}
 "parallel/test-dgram-send-default-host.js" = {}
-"parallel/test-dgram-send-empty-array.js" = {}
-"parallel/test-dgram-send-empty-buffer.js" = { flaky = true }
-"parallel/test-dgram-send-empty-packet.js" = {}
+"parallel/test-dgram-send-empty-array.js" = { flaky = true }
+"parallel/test-dgram-send-empty-buffer.js" = { darwin = false, flaky = true }
+"parallel/test-dgram-send-empty-packet.js" = { darwin = false, flaky = true }
 "parallel/test-dgram-send-error.js" = {}
 "parallel/test-dgram-send-invalid-msg-type.js" = {}
 "parallel/test-dgram-send-multi-buffer-copy.js" = {}
@@ -411,35 +415,60 @@
 "parallel/test-events-static-geteventlisteners.js" = {}
 "parallel/test-events-uncaught-exception-stack.js" = {}
 "parallel/test-eventsource.js" = {}
+"parallel/test-eventsource-disabled.js" = { darwin = false, linux = false, windows = false, reason = "EventSource global is always available in Deno (Web API)" }
 "parallel/test-eventtarget-brandcheck.js" = {}
 "parallel/test-eventtarget-once-twice.js" = {}
 "parallel/test-exception-handler.js" = {}
 "parallel/test-exception-handler2.js" = {}
 "parallel/test-fetch.mjs" = {}
 "parallel/test-file-read-noexist.js" = {}
+"parallel/test-file-validate-mode-flag.js" = {}
 "parallel/test-file-write-stream5.js" = {}
 "parallel/test-finalization-registry-shutdown.js" = {}
 "parallel/test-fs-buffertype-writesync.js" = {}
+"parallel/test-fs-chmod-mask.js" = {}
+"parallel/test-fs-chmod.js" = {}
 "parallel/test-fs-chown-type-check.js" = {}
 "parallel/test-fs-close.js" = {}
-"parallel/test-fs-constants.js" = {}
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# related to Unix socket path being too long
+# "parallel/test-fs-cp.mjs" = {}
+# TODO(bartlomieju): appears that part of the test that's broke was removed in Node 24.0
+# but it's actually not included in 24.2 https://github.com/nodejs/node/pull/55862
+# "parallel/test-fs-constants.js" = {}
 "parallel/test-fs-empty-readStream.js" = {}
 "parallel/test-fs-exists.js" = {}
 "parallel/test-fs-existssync-false.js" = {}
 "parallel/test-fs-fchown.js" = {}
+"parallel/test-fs-fsync.js" = {}
+"parallel/test-fs-glob.mjs" = {}
+"parallel/test-fs-internal-assertencoding.js" = {}
 "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
+"parallel/test-fs-make-callback.js" = {}
+"parallel/test-fs-makeStatsCallback.js" = {}
+"parallel/test-fs-mkdtemp-prefix-check.js" = {}
+"parallel/test-fs-mkdtemp.js" = {}
+"parallel/test-fs-open-flags.js" = {}
+"parallel/test-fs-open-no-close.js" = {}
+"parallel/test-fs-open-numeric-flags.js" = {}
+"parallel/test-fs-open.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
+"parallel/test-fs-read-empty-buffer.js" = {}
+"parallel/test-fs-read-file-assert-encoding.js" = {}
 "parallel/test-fs-read-file-sync-hostname.js" = {}
 "parallel/test-fs-read-stream-autoClose.js" = {}
 "parallel/test-fs-read-stream-double-close.js" = {}
 "parallel/test-fs-read-stream-encoding.js" = {}
 "parallel/test-fs-read-stream-fd-leak.js" = {}
 "parallel/test-fs-read-stream-fd.js" = {}
+"parallel/test-fs-read-stream-inherit.js" = {}
 "parallel/test-fs-read-stream-patch-open.js" = {}
+"parallel/test-fs-read-stream-resume.js" = {}
 "parallel/test-fs-read-stream-throw-type-error.js" = {}
+"parallel/test-fs-read-stream.js" = {}
 "parallel/test-fs-read-type.js" = {}
 "parallel/test-fs-read-zero-length.js" = {}
 "parallel/test-fs-readdir-pipe.js" = {}
@@ -449,13 +478,26 @@
 "parallel/test-fs-readfile-unlink.js" = {}
 "parallel/test-fs-readfile-zero-byte-liar.js" = {}
 "parallel/test-fs-readfilesync-enoent.js" = {}
+"parallel/test-fs-readlink-type-check.js" = {}
+"parallel/test-fs-readv-promisify.js" = {}
 "parallel/test-fs-ready-event-stream.js" = {}
+"parallel/test-fs-realpath-buffer-encoding.js" = {}
+"parallel/test-fs-rename-type-check.js" = {}
 "parallel/test-fs-rmdir-type-check.js" = {}
+"parallel/test-fs-stat-bigint.js" = {}
+"parallel/test-fs-statfs.js" = {}
 "parallel/test-fs-stream-fs-options.js" = {}
 "parallel/test-fs-stream-options.js" = {}
+"parallel/test-fs-symlink-buffer-path.js" = {}
+"parallel/test-fs-symlink-dir-junction.js" = {}
+"parallel/test-fs-symlink-dir-junction-relative.js" = {}
+"parallel/test-fs-symlink-dir.js" = {}
+"parallel/test-fs-symlink.js" = {}
+"parallel/test-fs-unlink-type-check.js" = {}
 "parallel/test-fs-util-validateoffsetlength.js" = {}
 "parallel/test-fs-write-negativeoffset.js" = {}
 "parallel/test-fs-write-no-fd.js" = {}
+"parallel/test-fs-write-stream-encoding.js" = {}
 "parallel/test-global-console-exists.js" = {}
 "parallel/test-global-domexception.js" = {}
 "parallel/test-global-encoder.js" = {}
@@ -537,7 +579,6 @@
 "parallel/test-http-header-read.js" = {}
 "parallel/test-http-header-validators.js" = {}
 "parallel/test-http-hex-write.js" = {}
-"parallel/test-http-highwatermark.js" = {}
 "parallel/test-http-host-headers.js" = {}
 "parallel/test-http-incoming-message-destroy.js" = {}
 "parallel/test-http-invalid-path-chars.js" = {}
@@ -550,9 +591,6 @@
 "parallel/test-http-max-sockets.js" = {}
 "parallel/test-http-outgoing-end-types.js" = {}
 "parallel/test-http-outgoing-finished.js" = {}
-"parallel/test-http-outgoing-internal-headernames-getter.js" = {}
-"parallel/test-http-outgoing-internal-headernames-setter.js" = {}
-"parallel/test-http-outgoing-internal-headers.js" = {}
 "parallel/test-http-outgoing-message-write-callback.js" = {}
 "parallel/test-http-outgoing-renderHeaders.js" = {}
 "parallel/test-http-outgoing-settimeout.js" = {}
@@ -575,6 +613,7 @@
 "parallel/test-http-res-write-end-dont-take-array.js" = {}
 "parallel/test-http-response-multiheaders.js" = {}
 "parallel/test-http-response-readable.js" = {}
+"parallel/test-http-response-setheaders.js" = {}
 "parallel/test-http-response-writehead-returns-this.js" = {}
 "parallel/test-http-server-delete-parser.js" = {}
 "parallel/test-http-server-method.query.js" = {}
@@ -795,7 +834,10 @@
 "parallel/test-next-tick.js" = {}
 "parallel/test-no-node-snapshot.js" = {}
 "parallel/test-nodeeventtarget.js" = {}
+"parallel/test-os-checked-function.js" = { darwin = false, linux = false, windows = false, reason = "Node.js specific behavior to check the return value of the C++ bindings" }
+"parallel/test-os-eol.js" = {}
 "parallel/test-os-homedir-no-envvar.js" = {}
+"parallel/test-os-process-priority.js" = {}
 "parallel/test-os-userinfo-handles-getter-errors.js" = {}
 "parallel/test-os.js" = {}
 "parallel/test-outgoing-message-destroy.js" = {}
@@ -804,9 +846,14 @@
 "parallel/test-path-basename.js" = {}
 "parallel/test-path-dirname.js" = {}
 "parallel/test-path-extname.js" = {}
+"parallel/test-path-glob.js" = {}
 "parallel/test-path-isabsolute.js" = {}
+"parallel/test-path-makelong.js" = {}
+"parallel/test-path-normalize.js" = {}
 "parallel/test-path-parse-format.js" = {}
 "parallel/test-path-posix-exists.js" = {}
+"parallel/test-path-relative.js" = {}
+"parallel/test-path-resolve.js" = {}
 "parallel/test-path-win32-exists.js" = {}
 "parallel/test-path-zero-length-strings.js" = {}
 "parallel/test-path.js" = {}
@@ -831,6 +878,8 @@
 "parallel/test-process-emitwarning.js" = {}
 "parallel/test-process-env-allowed-flags.js" = {}
 "parallel/test-process-env-delete.js" = {}
+"parallel/test-process-env-deprecation.js" = {}
+"parallel/test-process-env-ignore-getter-setter.js" = {}
 "parallel/test-process-env-sideeffects.js" = {}
 "parallel/test-process-env-tz.js" = {}
 "parallel/test-process-env-windows-error-reset.js" = {}
@@ -874,6 +923,7 @@
 "parallel/test-readline-interface-escapecodetimeout.js" = {}
 "parallel/test-readline-interface-no-trailing-newline.js" = {}
 "parallel/test-readline-interface-recursive-writes.js" = {}
+"parallel/test-readline-line-separators.js" = {}
 "parallel/test-readline-position.js" = {}
 "parallel/test-readline-reopen.js" = {}
 "parallel/test-readline-set-raw-mode.js" = {}
@@ -920,7 +970,7 @@
 "parallel/test-stdin-script-child-option.js" = {}
 "parallel/test-stdio-pipe-access.js" = {}
 "parallel/test-stdio-pipe-redirect.js" = {}
-"parallel/test-stdio-pipe-stderr.js" = {}
+"parallel/test-stdio-pipe-stderr.js" = { flaky = true }
 "parallel/test-stdio-undestroy.js" = { flaky = true }
 "parallel/test-stdout-cannot-be-closed-child-process-pipe.js" = {}
 "parallel/test-stdout-pipeline-destroy.js" = {}
@@ -958,6 +1008,7 @@
 "parallel/test-stream-event-names.js" = {}
 "parallel/test-stream-events-prepend.js" = {}
 "parallel/test-stream-filter.js" = {}
+"parallel/test-stream-flatMap.js" = {}
 "parallel/test-stream-forEach.js" = {}
 "parallel/test-stream-inheritance.js" = {}
 "parallel/test-stream-ispaused.js" = {}
@@ -989,6 +1040,7 @@
 "parallel/test-stream-pipeline-queued-end-in-destroy.js" = {}
 "parallel/test-stream-pipeline-uncaught.js" = {}
 "parallel/test-stream-pipeline-with-empty-string.js" = {}
+"parallel/test-stream-preprocess.js" = {}
 "parallel/test-stream-promises.js" = {}
 "parallel/test-stream-push-order.js" = {}
 "parallel/test-stream-push-strings.js" = {}
@@ -1007,6 +1059,7 @@
 "parallel/test-stream-readable-error-end.js" = {}
 "parallel/test-stream-readable-event.js" = {}
 "parallel/test-stream-readable-flow-recursion.js" = {}
+"parallel/test-stream-readable-from-web-termination.js" = {}
 "parallel/test-stream-readable-hwm-0-async.js" = {}
 "parallel/test-stream-readable-hwm-0-no-flow-data.js" = {}
 "parallel/test-stream-readable-hwm-0.js" = {}
@@ -1025,7 +1078,8 @@
 "parallel/test-stream-readable-setEncoding-existing-buffers.js" = {}
 "parallel/test-stream-readable-setEncoding-null.js" = {}
 "parallel/test-stream-readable-strategy-option.js" = {}
-"parallel/test-stream-readable-unpipe-resume.js" = {}
+"parallel/test-stream-readable-to-web-termination.js" = {}
+"parallel/test-stream-readable-unpipe-resume.js" = { flaky = true }
 "parallel/test-stream-readable-unshift.js" = {}
 "parallel/test-stream-readable-with-unimplemented-_read.js" = {}
 "parallel/test-stream-readableListening-state.js" = {}
@@ -1069,6 +1123,7 @@
 "parallel/test-stream-writable-needdrain-state.js" = {}
 "parallel/test-stream-writable-null.js" = {}
 "parallel/test-stream-writable-properties.js" = {}
+"parallel/test-stream-writable-samecb-singletick.js" = {}
 "parallel/test-stream-writable-writable.js" = {}
 "parallel/test-stream-writable-write-cb-error.js" = {}
 "parallel/test-stream-writable-write-cb-twice.js" = {}
@@ -1109,6 +1164,8 @@
 "parallel/test-stream3-pause-then-read.js" = {}
 "parallel/test-stream3-pipeline-async-iterator.js" = {}
 "parallel/test-streams-highwatermark.js" = {}
+"parallel/test-string-decoder-end.js" = {}
+"parallel/test-string-decoder-fuzz.js" = {}
 "parallel/test-string-decoder.js" = { flaky = true }
 "parallel/test-sys.js" = {}
 "parallel/test-timers-api-refs.js" = {}
@@ -1165,7 +1222,6 @@
 "parallel/test-tls-pause.js" = {}
 "parallel/test-tls-peer-certificate-encoding.js" = {}
 "parallel/test-tls-psk-server.js" = {}
-"parallel/test-tls-securepair-server.js" = {}
 "parallel/test-tls-server-verify.js" = {}
 "parallel/test-tls-session-cache.js" = {}
 "parallel/test-tls-timeout-server-2.js" = {}
@@ -1193,7 +1249,8 @@
 "parallel/test-url-urltooptions.js" = {}
 "parallel/test-utf8-scripts.js" = {}
 "parallel/test-util-deprecate-invalid-code.js" = {}
-"parallel/test-util-deprecate.js" = {}
+# TODO(bartlomieju): disabled due to missing `pendingDeprecate` function
+# "parallel/test-util-deprecate.js" = {}
 "parallel/test-util-inherits.js" = {}
 "parallel/test-util-inspect-getters-accessing-this.js" = {}
 "parallel/test-util-isDeepStrictEqual.js" = {}
@@ -1314,10 +1371,11 @@
 "parallel/test-zlib-crc32.js" = {}
 "parallel/test-zlib-create-raw.js" = {}
 "parallel/test-zlib-deflate-raw-inherits.js" = {}
-"parallel/test-zlib-destroy-pipe.js" = {}
+# Disable because setImmediate is broken
+# "parallel/test-zlib-destroy-pipe.js" = {}
 "parallel/test-zlib-dictionary-fail.js" = {}
-"parallel/test-zlib-flush-write-sync-interleaved.js" = {}
 "parallel/test-zlib-flush.js" = {}
+"parallel/test-zlib-flush-drain-longblock.js" = {}
 "parallel/test-zlib-from-concatenated-gzip.js" = {}
 "parallel/test-zlib-from-gzip-with-trailing-garbage.js" = {}
 "parallel/test-zlib-from-gzip.js" = {}
@@ -1333,9 +1391,12 @@
 "pseudo-tty/test-tty-stdin-call-end.js" = {}
 "pseudo-tty/test-tty-stdin-end.js" = {}
 "pseudo-tty/test-tty-stdout-end.js" = {}
+"pummel/test-buffer-large-size-buffer-alloc-unsafe-slow.js" = {}
+"pummel/test-buffer-large-size-buffer-alloc-unsafe.js" = {}
 "pummel/test-dh-regr.js" = {}
 "pummel/test-fs-watch-system-limit.js" = {}
 "pummel/test-heapdump-inspector.js" = {}
+"pummel/test-string-decoder-large-buffer.js" = {}
 "sequential/test-buffer-creation-regression.js" = {}
 "sequential/test-child-process-exit.js" = {}
 "sequential/test-cli-syntax-bad.js" = {}
@@ -1359,8 +1420,7 @@
 "sequential/test-debugger-pid.js" = {}
 "sequential/test-diagnostic-dir-cpu-prof.js" = {}
 "sequential/test-diagnostic-dir-heap-prof.js" = {}
-# TODO(kt3k): Enable this when node_test is updated to v24.x
-# "sequential/test-fs-readdir-recursive.js" = {}
+"sequential/test-fs-readdir-recursive.js" = {}
 "sequential/test-fs-stat-sync-overflow.js" = {}
 "sequential/test-http-server-keep-alive-timeout-slow-server.js" = {}
 "sequential/test-inspector-open-dispose.mjs" = {}
@@ -1383,7 +1443,6 @@
 "sequential/test-stream2-fs.js" = {}
 "sequential/test-tls-lookup.js" = {}
 "sequential/test-tls-psk-client.js" = {}
-"sequential/test-tls-securepair-client.js" = {}
 "sequential/test-vm-timeout-rethrow.js" = {}
 "sequential/test-watch-mode-inspect.mjs" = {}
 "sequential/test-worker-fshandles-open-close-on-termination.js" = {}

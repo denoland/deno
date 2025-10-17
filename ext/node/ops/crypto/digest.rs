@@ -15,7 +15,10 @@ pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
 }
 
-impl GarbageCollected for Hasher {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for Hasher {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"Hasher"
   }
@@ -224,19 +227,19 @@ impl Hash {
       }
       "sha256" => {
         let digest = ring_sha2::RingSha256::new();
-        if let Some(length) = output_length {
-          if length != digest.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+        if let Some(length) = output_length
+          && length != digest.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
         }
         return Ok(Hash::FixedSize(Box::new(digest)));
       }
       "sha512" => {
         let digest = ring_sha2::RingSha512::new();
-        if let Some(length) = output_length {
-          if length != digest.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+        if let Some(length) = output_length
+          && length != digest.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
         }
         return Ok(Hash::FixedSize(Box::new(digest)));
       }
@@ -247,11 +250,10 @@ impl Hash {
       algorithm_name,
       fn <D>() {
         let digest: D = Digest::new();
-        if let Some(length) = output_length {
-          if length != digest.output_size() {
+        if let Some(length) = output_length
+          && length != digest.output_size() {
             return Err(HashError::OutputLengthMismatch);
           }
-        }
         FixedSize(Box::new(digest))
       },
       _ => {
@@ -290,10 +292,10 @@ impl Hash {
   ) -> Result<Self, HashError> {
     let hash = match self {
       FixedSize(context) => {
-        if let Some(length) = output_length {
-          if length != context.output_size() {
-            return Err(HashError::OutputLengthMismatch);
-          }
+        if let Some(length) = output_length
+          && length != context.output_size()
+        {
+          return Err(HashError::OutputLengthMismatch);
         }
         FixedSize(context.box_clone())
       }

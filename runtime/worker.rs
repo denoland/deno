@@ -6,6 +6,7 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::sync::LazyLock;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -16,11 +17,12 @@ use deno_cache::SqliteBackedCache;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
+use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
+use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
@@ -71,10 +73,7 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
     let (tx, rx) = tokio::sync::watch::channel(());
 
     tokio::spawn(async move {
-      let mut sigusr2 = tokio::signal::unix::signal(
-        tokio::signal::unix::SignalKind::user_defined2(),
-      )
-      .unwrap();
+      let mut sigusr2 = deno_signals::signal_stream(libc::SIGUSR2).unwrap();
 
       loop {
         sigusr2.recv().await;
@@ -96,12 +95,14 @@ pub(crate) static SIGUSR2_RX: LazyLock<tokio::sync::watch::Receiver<()>> =
 // TODO(bartlomieju): temporary measurement until we start supporting more
 // module types
 pub fn create_validate_import_attributes_callback(
-  enable_raw_imports: bool,
+  enable_raw_imports: Arc<AtomicBool>,
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
-    move |scope: &mut v8::HandleScope, attributes: &HashMap<String, String>| {
+    move |scope: &mut v8::PinScope<'_, '_>,
+          attributes: &HashMap<String, String>| {
       let valid_attribute = |kind: &str| {
-        enable_raw_imports && matches!(kind, "bytes" | "text")
+        enable_raw_imports.load(Ordering::Relaxed)
+          && matches!(kind, "bytes" | "text")
           || matches!(kind, "json")
       };
       for (key, value) in attributes {
@@ -215,6 +216,8 @@ pub struct WorkerServiceOptions<
 
   /// V8 code cache for module and script source code.
   pub v8_code_cache: Option<Arc<dyn CodeCache>>,
+
+  pub bundle_provider: Option<Arc<dyn deno_bundle_runtime::BundleProvider>>,
 }
 
 pub struct WorkerOptions {
@@ -252,7 +255,7 @@ pub struct WorkerOptions {
   // user code.
   pub should_wait_for_inspector_session: bool,
   /// If Some, print a low-level trace output for ops matching the given patterns.
-  pub strace_ops: Option<Vec<String>>,
+  pub trace_ops: Option<Vec<String>>,
 
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
@@ -274,7 +277,7 @@ impl Default for WorkerOptions {
       unsafely_ignore_certificate_errors: Default::default(),
       should_break_on_first_statement: Default::default(),
       should_wait_for_inspector_session: Default::default(),
-      strace_ops: Default::default(),
+      trace_ops: Default::default(),
       maybe_inspector_server: Default::default(),
       format_js_error_fn: Default::default(),
       origin_storage_dir: Default::default(),
@@ -293,7 +296,7 @@ impl Default for WorkerOptions {
 
 pub fn create_op_metrics(
   enable_op_summary_metrics: bool,
-  strace_ops: Option<Vec<String>>,
+  trace_ops: Option<Vec<String>>,
 ) -> (
   Option<Rc<OpMetricsSummaryTracker>>,
   Option<OpMetricsFactoryFn>,
@@ -302,7 +305,7 @@ pub fn create_op_metrics(
   let mut op_metrics_factory_fn: Option<OpMetricsFactoryFn> = None;
   let now = Instant::now();
   let max_len: Rc<std::cell::Cell<usize>> = Default::default();
-  if let Some(patterns) = strace_ops {
+  if let Some(patterns) = trace_ops {
     /// Match an op name against a list of patterns
     fn matches_pattern(patterns: &[String], name: &str) -> bool {
       let mut found_match = false;
@@ -427,7 +430,7 @@ impl MainWorker {
     // Get our op metrics
     let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
       options.bootstrap.enable_op_summary_metrics,
-      options.strace_ops,
+      options.trace_ops,
     );
 
     // Permissions: many ops depend on this
@@ -471,7 +474,6 @@ impl MainWorker {
         compiled_wasm_module_store: services.compiled_wasm_module_store,
         extensions,
         op_metrics_factory_fn,
-        enable_raw_imports: options.enable_raw_imports,
         enable_stack_trace_arg_in_ops: options.enable_stack_trace_arg_in_ops,
       })
     };
@@ -520,6 +522,13 @@ impl MainWorker {
     }));
 
     js_runtime
+      .op_state()
+      .borrow_mut()
+      .borrow::<EnableRawImports>()
+      .0
+      .store(options.enable_raw_imports, Ordering::Relaxed);
+
+    js_runtime
       .lazy_init_extensions(vec![
         deno_web::deno_web::args::<PermissionsContainer>(
           services.blob_store.clone(),
@@ -538,11 +547,7 @@ impl MainWorker {
           },
         ),
         deno_cache::deno_cache::args(create_cache),
-        deno_websocket::deno_websocket::args::<PermissionsContainer>(
-          options.bootstrap.user_agent.clone(),
-          services.root_cert_store_provider.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-        ),
+        deno_websocket::deno_websocket::args::<PermissionsContainer>(),
         deno_webstorage::deno_webstorage::args(
           options.origin_storage_dir.clone(),
         ),
@@ -597,6 +602,9 @@ impl MainWorker {
           options.create_web_worker_cb.clone(),
           options.format_js_error_fn.clone(),
         ),
+        deno_bundle_runtime::deno_bundle_runtime::args(
+          services.bundle_provider.clone(),
+        ),
       ])
       .unwrap();
 
@@ -620,7 +628,7 @@ impl MainWorker {
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),
-        &mut js_runtime,
+        js_runtime.inspector(),
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
@@ -635,7 +643,7 @@ impl MainWorker {
       dispatch_process_exit_event_fn_global,
     ) = {
       let context = js_runtime.main_context();
-      let scope = &mut js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut js_runtime);
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
       let bootstrap_str =
@@ -743,8 +751,8 @@ impl MainWorker {
       }
     }
 
-    let scope = &mut self.js_runtime.handle_scope();
-    let scope = &mut v8::TryCatch::new(scope);
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(scope, scope);
     let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
@@ -800,12 +808,11 @@ impl MainWorker {
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  #[allow(clippy::result_large_err)]
   pub fn execute_script(
     &mut self,
     script_name: &'static str,
     source_code: ModuleCodeString,
-  ) -> Result<v8::Global<v8::Value>, JsError> {
+  ) -> Result<v8::Global<v8::Value>, Box<JsError>> {
     self.js_runtime.execute_script(script_name, source_code)
   }
 
@@ -894,21 +901,25 @@ impl MainWorker {
       self
         .js_runtime
         .inspector()
-        .borrow_mut()
         .wait_for_session_and_break_on_next_statement();
     } else if self.should_wait_for_inspector_session {
-      self.js_runtime.inspector().borrow_mut().wait_for_session();
+      self.js_runtime.inspector().wait_for_session();
     }
   }
 
   /// Create new inspector session. This function panics if Worker
   /// was not configured to create inspector.
-  pub fn create_inspector_session(&mut self) -> LocalInspectorSession {
+  pub fn create_inspector_session(
+    &mut self,
+    cb: deno_core::InspectorSessionSend,
+  ) -> LocalInspectorSession {
     self.js_runtime.maybe_init_inspector();
-    self.js_runtime.inspector().borrow().create_local_session(
-      InspectorSessionOptions {
-        kind: InspectorSessionKind::Blocking,
-      },
+    let insp = self.js_runtime.inspector();
+
+    JsRuntimeInspector::create_local_session(
+      insp,
+      cb,
+      InspectorSessionKind::Blocking,
     )
   }
 
@@ -934,10 +945,9 @@ impl MainWorker {
   /// Dispatches "load" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+  pub fn dispatch_load_event(&mut self) -> Result<(), Box<JsError>> {
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_load_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_load_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -952,10 +962,9 @@ impl MainWorker {
   /// Dispatches "unload" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+  pub fn dispatch_unload_event(&mut self) -> Result<(), Box<JsError>> {
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_unload_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_unload_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -968,10 +977,9 @@ impl MainWorker {
   }
 
   /// Dispatches process.emit("exit") event for node compat.
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), Box<JsError>> {
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_process_exit_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_process_exit_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -986,10 +994,9 @@ impl MainWorker {
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, Box<JsError>> {
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_beforeunload_event_fn =
       v8::Local::new(tc_scope, &self.dispatch_beforeunload_event_fn_global);
     let undefined = v8::undefined(tc_scope);
@@ -1004,10 +1011,11 @@ impl MainWorker {
   }
 
   /// Dispatches process.emit("beforeExit") event for node compat.
-  #[allow(clippy::result_large_err)]
-  pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
-    let scope = &mut self.js_runtime.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
+  pub fn dispatch_process_beforeexit_event(
+    &mut self,
+  ) -> Result<bool, Box<JsError>> {
+    deno_core::scope!(scope, &mut self.js_runtime);
+    v8::tc_scope!(tc_scope, scope);
     let dispatch_process_beforeexit_event_fn = v8::Local::new(
       tc_scope,
       &self.dispatch_process_beforeexit_event_fn_global,
@@ -1079,6 +1087,7 @@ fn common_extensions<
     ops::permissions::deno_permissions::init(),
     ops::tty::deno_tty::init(),
     ops::http::deno_http_runtime::init(),
+    deno_bundle_runtime::deno_bundle_runtime::lazy_init(),
     ops::bootstrap::deno_bootstrap::init(
       has_snapshot.then(Default::default),
       unconfigured_runtime,
@@ -1101,13 +1110,16 @@ struct CommonRuntimeOptions {
   compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   extensions: Vec<Extension>,
   op_metrics_factory_fn: Option<OpMetricsFactoryFn>,
-  enable_raw_imports: bool,
   enable_stack_trace_arg_in_ops: bool,
 }
 
+struct EnableRawImports(Arc<AtomicBool>);
+
 #[allow(clippy::too_many_arguments)]
 fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
-  JsRuntime::new(RuntimeOptions {
+  let enable_raw_imports = Arc::new(AtomicBool::new(false));
+
+  let js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(opts.module_loader),
     startup_snapshot: opts.startup_snapshot,
     create_params: opts.create_params,
@@ -1128,7 +1140,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
       make_wait_for_inspector_disconnect_callback(),
     ),
     validate_import_attributes_cb: Some(
-      create_validate_import_attributes_callback(opts.enable_raw_imports),
+      create_validate_import_attributes_callback(enable_raw_imports.clone()),
     ),
     import_assertions_support: deno_core::ImportAssertionsSupport::Error,
     maybe_op_stack_trace_callback: opts
@@ -1138,18 +1150,25 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
     v8_platform: None,
     custom_module_evaluation_cb: None,
     eval_context_code_cache_cbs: None,
-  })
+  });
+
+  js_runtime
+    .op_state()
+    .borrow_mut()
+    .put(EnableRawImports(enable_raw_imports));
+
+  js_runtime
 }
 
 pub fn create_permissions_stack_trace_callback()
 -> deno_core::OpStackTraceCallback {
   Box::new(|stack: Vec<deno_core::error::JsStackFrame>| {
-    deno_permissions::prompter::set_current_stacktrace(Box::new(|| {
+    deno_permissions::prompter::set_current_stacktrace(Box::new(move || {
       stack
-        .into_iter()
+        .iter()
         .map(|frame| {
           deno_core::error::format_frame::<deno_core::error::NoAnsiColors>(
-            &frame,
+            frame, None,
           )
         })
         .collect()
@@ -1163,7 +1182,6 @@ pub struct UnconfiguredRuntimeOptions {
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub additional_extensions: Vec<Extension>,
-  pub enable_raw_imports: bool,
 }
 
 pub struct UnconfiguredRuntime {
@@ -1199,7 +1217,6 @@ impl UnconfiguredRuntime {
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       extensions,
       op_metrics_factory_fn: None,
-      enable_raw_imports: options.enable_raw_imports,
       enable_stack_trace_arg_in_ops: false,
     });
 
@@ -1237,7 +1254,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&ModuleLoadReferrer>,
     is_dyn_import: bool,
     requested_module_type: deno_core::RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
@@ -1283,7 +1300,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
       .purge_and_prevent_code_cache(module_specifier)
   }
 
-  fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
+  fn get_source_map(&self, file_name: &str) -> Option<Cow<'_, [u8]>> {
     let v = self.0.borrow_mut().clone().unwrap();
     let v = v.get_source_map(file_name);
     v.map(|c| Cow::from(c.into_owned()))
@@ -1304,7 +1321,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
 
   fn get_host_defined_options<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<v8::Local<'s, v8::Data>> {
     self

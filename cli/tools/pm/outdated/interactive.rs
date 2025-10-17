@@ -22,6 +22,8 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::tools::pm::deps::DepId;
 use crate::tools::pm::deps::DepKind;
+use crate::util::console::HideCursorGuard;
+use crate::util::console::RawMode;
 
 #[derive(Debug)]
 pub struct PackageInfo {
@@ -137,7 +139,7 @@ impl State {
     "Select which packages to update (<space> to select, ↑/↓/j/k to navigate, a to select all, i to invert selection, enter to accept, <Ctrl-c> to cancel)"
   }
 
-  fn render(&self) -> anyhow::Result<Vec<TextItem>> {
+  fn render(&self) -> anyhow::Result<Vec<TextItem<'_>>> {
     let mut items = Vec::with_capacity(self.packages.len() + 1);
 
     items.push(TextItem::new_owned(format!(
@@ -249,31 +251,6 @@ fn highlight_new_version(current: &Version, new: &Version) -> String {
   }
 }
 
-struct RawMode {
-  needs_disable: bool,
-}
-
-impl RawMode {
-  fn enable() -> io::Result<Self> {
-    terminal::enable_raw_mode()?;
-    Ok(Self {
-      needs_disable: true,
-    })
-  }
-  fn disable(mut self) -> io::Result<()> {
-    self.needs_disable = false;
-    terminal::disable_raw_mode()
-  }
-}
-
-impl Drop for RawMode {
-  fn drop(&mut self) {
-    if self.needs_disable {
-      let _ = terminal::disable_raw_mode();
-    }
-  }
-}
-
 pub fn select_interactive(
   packages: Vec<PackageInfo>,
 ) -> anyhow::Result<Option<HashSet<DepId>>> {
@@ -305,7 +282,7 @@ pub fn select_interactive(
   }
 
   let mut state = State::new(packages)?;
-  stderr.execute(cursor::Hide)?;
+  let hide_cursor_guard = HideCursorGuard::hide()?;
 
   let instructions_width = format!("? {}", State::instructions_line()).width();
 
@@ -318,38 +295,38 @@ pub fn select_interactive(
       .cols
       .map(|cols| (instructions_width / cols as usize) + 1)
       .unwrap_or(1);
-    if let Some(rows) = size.rows {
-      if items.len() + first_line_rows >= rows as usize {
-        let adj = if scroll_offset == 0 {
-          first_line_rows.saturating_sub(1)
-        } else {
-          0
-        };
-        if state.currently_selected < scroll_offset {
-          scroll_offset = state.currently_selected;
-        } else if state.currently_selected + 1
-          >= scroll_offset + (rows as usize).saturating_sub(adj)
-        {
-          scroll_offset =
-            (state.currently_selected + 1).saturating_sub(rows as usize) + 1;
-        }
-        let adj = if scroll_offset == 0 {
-          first_line_rows.saturating_sub(1)
-        } else {
-          0
-        };
-        let mut new_items = Vec::with_capacity(rows as usize);
-
-        scroll_offset = scroll_offset.clamp(0, items.len() - 1);
-        new_items.extend(
-          items.drain(
-            scroll_offset
-              ..(scroll_offset + (rows as usize).saturating_sub(adj))
-                .min(items.len()),
-          ),
-        );
-        items = new_items;
+    if let Some(rows) = size.rows
+      && items.len() + first_line_rows >= rows as usize
+    {
+      let adj = if scroll_offset == 0 {
+        first_line_rows.saturating_sub(1)
+      } else {
+        0
+      };
+      if state.currently_selected < scroll_offset {
+        scroll_offset = state.currently_selected;
+      } else if state.currently_selected + 1
+        >= scroll_offset + (rows as usize).saturating_sub(adj)
+      {
+        scroll_offset =
+          (state.currently_selected + 1).saturating_sub(rows as usize) + 1;
       }
+      let adj = if scroll_offset == 0 {
+        first_line_rows.saturating_sub(1)
+      } else {
+        0
+      };
+      let mut new_items = Vec::with_capacity(rows as usize);
+
+      scroll_offset = scroll_offset.clamp(0, items.len() - 1);
+      new_items.extend(
+        items.drain(
+          scroll_offset
+            ..(scroll_offset + (rows as usize).saturating_sub(adj))
+              .min(items.len()),
+        ),
+      );
+      items = new_items;
     }
     static_text.eprint_items(items.iter());
 
@@ -407,8 +384,7 @@ pub fn select_interactive(
 
   static_text.eprint_clear();
 
-  crossterm::execute!(&mut stderr, cursor::Show)?;
-
+  hide_cursor_guard.show()?;
   raw_mode.disable()?;
 
   if do_it {
