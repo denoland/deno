@@ -52,6 +52,7 @@ use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
 use deno_lib::worker::ModuleLoaderFactory;
+use deno_npm_installer::resolution::HasJsExecutionStartedFlagRc;
 use deno_path_util::PathToUrlError;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::cache::ParsedSourceCache;
@@ -330,6 +331,7 @@ struct SharedCliModuleLoaderState {
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<CliEmitter>,
   file_fetcher: Arc<CliFileFetcher>,
+  has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   memory_files: Arc<MemoryFiles>,
@@ -392,6 +394,7 @@ impl CliModuleLoaderFactory {
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<CliEmitter>,
     file_fetcher: Arc<CliFileFetcher>,
+    has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
     in_npm_pkg_checker: DenoInNpmPackageChecker,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     memory_files: Arc<MemoryFiles>,
@@ -421,6 +424,7 @@ impl CliModuleLoaderFactory {
         code_cache,
         emitter,
         file_fetcher,
+        has_js_execution_started_flag,
         in_npm_pkg_checker,
         main_module_graph_container,
         memory_files,
@@ -1078,10 +1082,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     }
 
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
+      self.0.shared.has_js_execution_started_flag.raise();
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
     if self.0.shared.maybe_eszip_loader.is_some() {
+      self.0.shared.has_js_execution_started_flag.raise();
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
@@ -1150,6 +1156,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           .map_err(JsErrorBox::from_err)?;
         graph.prune_types();
         update_permit.commit();
+        inner.shared.has_js_execution_started_flag.raise();
       }
 
       if is_dynamic {
