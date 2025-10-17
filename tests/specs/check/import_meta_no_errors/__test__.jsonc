@@ -13,7 +13,7 @@
         },
         {
           "args": "check --all ./main.ts",
-          "output": "Check [WILDCARD]main.ts\n"
+          "output": "Check [WILDCARD]main.ts\n✅ Type check successful\n"
         }
       ]
     },
@@ -29,7 +29,7 @@
         },
         {
           "args": "check --all ./main.ts",
-          "output": "Check [WILDCARD]main.ts\n"
+          "output": "Check [WILDCARD]main.ts\n✅ Type check successful\n"
         }
       ]
     },
@@ -45,7 +45,7 @@
         },
         {
           "args": "check --all ./main.ts",
-          "output": "Check [WILDCARD]main.ts\n"
+          "output": "Check [WILDCARD]main.ts\n✅ Type check successful\n"
         }
       ]
     }

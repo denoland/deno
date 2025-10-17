@@ -2,12 +2,12 @@
   "tests": {
     "star": {
       "args": "check *.ts",
-      "output": "Check [WILDLINE]main.ts\n",
+      "output": "Check [WILDLINE]main.ts\n✅ Type check successful\n",
       "exitCode": 0
     },
     "star_not_found": {
       "args": "check *.js",
-      "output": "Warning No matching files found.\n",
+      "output": "Warning No matching files found.\n✅ Type check successful\n",
       "exitCode": 0
     },
     "glob_star": {
