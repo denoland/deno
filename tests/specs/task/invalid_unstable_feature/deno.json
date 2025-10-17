@@ -9,7 +9,6 @@
     "sloppy-imports",
     "unsafe-proto",
     "webgpu",
-    "broadcast-channel",
     "worker-options",
     "cron",
     "kv",
