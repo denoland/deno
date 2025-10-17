@@ -954,8 +954,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           let workspace = &workspace_factory.workspace_directory()?.workspace;
           workspace
             .minimum_dependency_age(workspace_factory.sys())?
-            .map(|d| d.into_option())
-            .flatten()
+            .and_then(|d| d.into_option())
         };
         if let Some(newest_dependency_date) = &maybe_date {
           log::debug!("Newest dependency date: {}", newest_dependency_date);
