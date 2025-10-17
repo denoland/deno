@@ -6,6 +6,7 @@ use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_graph::JsrPackageReqNotFoundError;
 use deno_graph::packages::JsrPackageInfo;
+use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_graph::packages::JsrVersionResolver;
 use deno_semver::package::PackageNv;
@@ -81,6 +82,15 @@ impl JsrFetchResolver {
 
     self.nv_by_req.insert(req.clone(), nv.clone());
     Ok(nv)
+  }
+
+  pub fn version_matches_newest_dependency_date(
+    &self,
+    version: &JsrPackageInfoVersion,
+  ) -> bool {
+    self
+      .jsr_version_resolver
+      .matches_newest_dependency_date(version)
   }
 
   pub async fn force_refresh_package_info(
