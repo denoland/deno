@@ -79,6 +79,7 @@ export class FileHandle extends EventEmitter {
           read(
             this.fd,
             bufferOrOpt,
+            offsetOrOpt,
             (err, bytesRead, buffer) => {
               if (err) reject(err);
               else resolve({ buffer, bytesRead });

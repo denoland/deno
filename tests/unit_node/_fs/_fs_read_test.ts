@@ -490,9 +490,8 @@ Deno.test({
     await using file = await openPromise(tmpFile, "r");
     const buffer = Buffer.alloc(11);
 
-    // No Buffer in option object
-    const result = await file.read({
-      buffer,
+    // Buffer outside the option object
+    const result = await file.read(buffer, {
       offset: 0,
       length: 5,
       position: -1,
