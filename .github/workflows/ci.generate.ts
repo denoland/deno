@@ -419,7 +419,8 @@ const ci = {
             use_sysroot: true,
             // TODO(ry): Because CI is so slow on for OSX and Windows, we
             // currently run the Web Platform tests only on Linux.
-            wpt: "${{ !startsWith(github.ref, 'refs/tags/') && (github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'ci-wpt-test')) }}",
+            wpt:
+              "${{ !startsWith(github.ref, 'refs/tags/') && (github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'ci-wpt-test')) }}",
           }, {
             ...Runners.linuxX86Xl,
             job: "bench",
