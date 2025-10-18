@@ -836,6 +836,7 @@ Deno.test(function httpUpgradeWebSocket() {
     response.headers.get("sec-websocket-accept"),
     "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
   );
+  response.headers.set("x-new-header", "hello");
 });
 
 Deno.test(function httpUpgradeWebSocketMultipleConnectionOptions() {

@@ -537,7 +537,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_unlink.ts",
     "_fs/_fs_utimes.ts",
     "_fs/_fs_watch.ts",
-    "_fs/_fs_write.mjs",
+    "_fs/_fs_write.ts",
     "_fs/_fs_writeFile.ts",
     "_fs/_fs_writev.ts",
     "_next_tick.ts",
@@ -881,11 +881,7 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  sys_traits::BaseFsCanonicalize
-  + sys_traits::BaseFsMetadata
-  + sys_traits::BaseFsRead
-  + sys_traits::EnvCurrentDir
-  + Clone
+  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
 {
 }
 
