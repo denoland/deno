@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "audit --ignore-registry-errors",
+      "output": "audit.out"
+    }
+  ]
+}

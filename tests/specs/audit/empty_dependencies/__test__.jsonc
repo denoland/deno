@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "audit",
+      "output": "audit.out"
+    }
+  ]
+}
