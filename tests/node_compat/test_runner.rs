@@ -5,6 +5,12 @@ use util::deno_config_path;
 
 #[test]
 fn node_compat_tests() {
+  // Skip Node.js compatibility tests in CI on PRs unless ci-node-test label is present
+  if std::env::var("CI_SKIP_NODE_TEST").unwrap_or_default() == "true" {
+    eprintln!("Skipping Node.js compatibility tests (CI_SKIP_NODE_TEST is set)");
+    return;
+  }
+
   let _server = util::http_server();
 
   let mut deno = util::deno_cmd()
