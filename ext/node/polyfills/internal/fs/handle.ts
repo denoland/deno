@@ -3,12 +3,12 @@
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import { Mode, promises, read, ReadStream, write, WriteStream } from "node:fs";
+import type { ReadAsyncOptions } from "node:fs";
 import { core, primordials } from "ext:core/mod.js";
 export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
-  ReadOptions,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
@@ -57,24 +57,41 @@ export class FileHandle extends EventEmitter {
   }
 
   read(
-    buffer: Uint8Array,
+    buffer: ArrayBufferView,
     offset?: number,
     length?: number,
     position?: number | null,
   ): Promise<ReadResult>;
-  read(options?: ReadOptions): Promise<ReadResult>;
   read(
-    bufferOrOpt: Uint8Array | ReadOptions,
-    offset?: number,
+    buffer: ArrayBufferView,
+    options?: ReadAsyncOptions<NodeJS.ArrayBufferView>,
+  ): Promise<ReadResult>;
+  read(options?: ReadAsyncOptions<NodeJS.ArrayBufferView>): Promise<ReadResult>;
+  read(
+    bufferOrOpt?: ArrayBufferView | ReadAsyncOptions<NodeJS.ArrayBufferView>,
+    offsetOrOpt?: number | ReadAsyncOptions<NodeJS.ArrayBufferView>,
     length?: number,
     position?: number | null,
   ): Promise<ReadResult> {
     if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
+      if (arguments.length === 2) {
+        return new Promise((resolve, reject) => {
+          read(
+            this.fd,
+            bufferOrOpt,
+            (err, bytesRead, buffer) => {
+              if (err) reject(err);
+              else resolve({ buffer, bytesRead });
+            },
+          );
+        });
+      }
+
       return new Promise((resolve, reject) => {
         read(
           this.fd,
           bufferOrOpt,
-          offset,
+          offsetOrOpt,
           length,
           position,
           (err, bytesRead, buffer) => {
