@@ -204,3 +204,58 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "writeSync: negative position value writes at current position",
+  fn() {
+    const tempFile: string = Deno.makeTempFileSync();
+    const fd = openSync(tempFile, "w+");
+    const buffer = Buffer.from("hello world");
+
+    // Write 'hello'
+    writeSync(fd, buffer, 0, 5, -1);
+    const data = Deno.readFileSync(tempFile);
+    assertEquals(decoder.decode(data), "hello");
+
+    // Write ' world'
+    writeSync(fd, buffer, 5, 6, -1);
+    const data2 = Deno.readFileSync(tempFile);
+    assertEquals(decoder.decode(data2), "hello world");
+
+    Deno.removeSync(tempFile);
+    closeSync(fd);
+  },
+});
+
+Deno.test({
+  name: "write: negative position value writes at current position",
+  async fn() {
+    const tempFile: string = await Deno.makeTempFile();
+    await using file = await open(tempFile, "w+");
+    const buffer = Buffer.from("hello world");
+
+    // Write 'hello'
+    await new Promise((resolve, reject) => {
+      write(file.fd, buffer, 0, 5, -1, (err) => {
+        if (err) return reject(err);
+        resolve(undefined);
+      });
+    });
+
+    const data = await Deno.readFile(tempFile);
+    assertEquals(decoder.decode(data), "hello");
+
+    // Write ' world'
+    await new Promise((resolve, reject) => {
+      write(file.fd, buffer, 5, 6, -1, (err) => {
+        if (err) return reject(err);
+        resolve(undefined);
+      });
+    });
+
+    const data2 = await Deno.readFile(tempFile);
+    assertEquals(decoder.decode(data2), "hello world");
+
+    await Deno.remove(tempFile);
+  },
+});
