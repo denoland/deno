@@ -2319,7 +2319,7 @@ impl Inner {
     {
       let document_has_errors = params.context.diagnostics.iter().any(|d| {
         // Assume diagnostics without a severity are errors
-        d.severity.map_or(true, |s| s == DiagnosticSeverity::ERROR)
+        d.severity.is_none_or(|s| s == DiagnosticSeverity::ERROR)
       });
       let organize_imports_edit = self
         .ts_server
