@@ -5820,7 +5820,6 @@ pub struct CombinedCodeFixScope {
 pub enum OrganizeImportsMode {
   All,
   SortAndCombine,
-  RemoveUnused,
 }
 
 #[derive(Debug, Serialize, Clone)]
