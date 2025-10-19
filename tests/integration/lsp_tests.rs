@@ -7750,7 +7750,11 @@ console.log(b, a, c, d, y, z);
                 },
                 // All organized imports in the first replacement:
                 // files sorted alphabetically, imports within files sorted alphabetically
-                "newText": "import { d } from \"./a.ts\";\nimport { a, b, c } from \"./b.ts\";\nimport { y, z } from \"./z.ts\";\n"
+                "newText": concat!(
+                  "import { d } from \"./a.ts\";\n",
+                  "import { a, b, c } from \"./b.ts\";\n",
+                  "import { y, z } from \"./z.ts\";\n",
+                )
               },
               {
                 "range": {
@@ -7901,7 +7905,11 @@ console.log(undeclaredVariable);
                   "end": { "line": 1, "character": 0 }
                 },
                 // Imports sorted alphabetically, but unused imports NOT removed due to error
-                "newText": "import { a } from \"./a.ts\";\nimport { b } from \"./b.ts\";\nimport unused from \"./c.ts\";\n"
+                "newText": concat!(
+                  "import { a } from \"./a.ts\";\n",
+                  "import { b } from \"./b.ts\";\n",
+                  "import unused from \"./c.ts\";\n",
+                )
               },
               {
                 "range": {
