@@ -52,7 +52,7 @@ use crate::deno_json::FmtConfig;
 use crate::deno_json::FmtOptionsConfig;
 use crate::deno_json::LinkConfigParseError;
 use crate::deno_json::LintRulesConfig;
-use crate::deno_json::NewestDependencyDate;
+use crate::deno_json::MinimumDependencyAgeConfig;
 use crate::deno_json::NodeModulesDirMode;
 use crate::deno_json::NodeModulesDirParseError;
 use crate::deno_json::PermissionsConfig;
@@ -174,6 +174,10 @@ pub enum WorkspaceDiagnosticKind {
     "Invalid workspace member name \"{name}\". Ensure the name is in the format '@scope/name'."
   )]
   InvalidMemberName { name: String },
+  #[error(
+    "\"minimumDependencyAge.exclude\" entry \"{entry}\" missing jsr: or npm: prefix."
+  )]
+  MinimumDependencyAgeExcludeMissingPrefix { entry: String },
 }
 
 #[derive(Debug, Error, JsError, Clone, PartialEq, Eq)]
@@ -1120,7 +1124,25 @@ impl Workspace {
               NodeModulesDirMode::None
             },
           },
-        })
+        });
+      }
+      if let Some(serde_json::Value::Object(obj)) =
+        &config.json.minimum_dependency_age
+        && let Some(serde_json::Value::Array(exclude)) = obj.get("exclude")
+      {
+        for item in exclude {
+          if let serde_json::Value::String(value) = item
+            && !value.starts_with("jsr:")
+            && !value.starts_with("npm:")
+          {
+            diagnostics.push(WorkspaceDiagnostic {
+                config_url: config.specifier.clone(),
+                kind: WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
+                  entry: value.to_string()
+                },
+              });
+          }
+        }
       }
     }
 
@@ -1429,36 +1451,14 @@ impl Workspace {
     &self,
     sys: &impl sys_traits::SystemTimeNow,
   ) -> Result<
-    Option<NewestDependencyDate>,
+    MinimumDependencyAgeConfig,
     deno_json::MinimumDependencyAgeParseError,
   > {
     self
       .root_deno_json()
-      .and_then(|c| c.json.minimum_dependency_age.as_ref())
-      .map(|v| match v {
-        serde_json::Value::Null => Ok(None),
-        serde_json::Value::Number(minutes) => match minutes.as_i64() {
-          Some(minutes) => {
-            let now = chrono::DateTime::<chrono::Utc>::from(sys.sys_time_now());
-            let new_time = now - chrono::Duration::minutes(minutes);
-            Ok(Some(NewestDependencyDate::Enabled(new_time)))
-          }
-          None => Err(deno_json::MinimumDependencyAgeParseError::InvalidNumber),
-        },
-        serde_json::Value::String(value) => Ok(Some(
-          crate::util::parse_minutes_duration_or_date(sys, value)?,
-        )),
-        serde_json::Value::Bool(false) => {
-          Ok(Some(NewestDependencyDate::Disabled))
-        }
-        serde_json::Value::Bool(true)
-        | serde_json::Value::Array(_)
-        | serde_json::Value::Object(_) => {
-          Err(deno_json::MinimumDependencyAgeParseError::ExpectedStringOrNumber)
-        }
-      })
+      .map(|c| c.to_minimum_dependency_age_config(sys))
       .transpose()
-      .map(|v| v.flatten())
+      .map(|v| v.unwrap_or_default())
   }
 }
 
@@ -4038,6 +4038,27 @@ pub mod test {
         "name": "@scope/name",
       }),
       vec![WorkspaceDiagnosticKind::MissingExports],
+    );
+  }
+
+  #[test]
+  fn test_workspaces_missing_jsr_npm_prefix_excludes() {
+    run_single_json_diagnostics_test(
+      json!({
+        "minimumDependencyAge": {
+          "date": 120,
+          "exclude": [
+            "jsr:@scope/name",
+            "npm:package",
+            "@scope/name"
+          ]
+        },
+      }),
+      vec![
+        WorkspaceDiagnosticKind::MinimumDependencyAgeExcludeMissingPrefix {
+          entry: "@scope/name".to_string(),
+        },
+      ],
     );
   }
 

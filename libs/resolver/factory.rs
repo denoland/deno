@@ -960,23 +960,22 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     &self,
   ) -> Result<&MinimumDependencyAgeConfig, anyhow::Error> {
     self.minimum_dependency_age.get_or_try_init(|| {
-      let maybe_date = if let Some(date) = self.options.newest_dependency_date {
-        date.into_option()
+      let config = if let Some(date) = self.options.newest_dependency_date {
+        MinimumDependencyAgeConfig {
+          date: Some(date),
+          exclude: Vec::new(),
+        }
       } else {
         let workspace_factory = self.workspace_factory();
         let workspace = &workspace_factory.workspace_directory()?.workspace;
-        workspace
-          .minimum_dependency_age(workspace_factory.sys())?
-          .and_then(|d| d.into_option())
+        workspace.minimum_dependency_age(workspace_factory.sys())?
       };
-      if let Some(newest_dependency_date) = &maybe_date {
+      if let Some(newest_dependency_date) =
+        config.date.and_then(|d| d.into_option())
+      {
         log::debug!("Newest dependency date: {}", newest_dependency_date);
       }
-      Ok(MinimumDependencyAgeConfig {
-        date: maybe_date.map(NewestDependencyDate::Enabled),
-        // TODO(#31010): deserialize this from the config
-        exclude: Vec::new(),
-      })
+      Ok(config)
     })
   }
 
