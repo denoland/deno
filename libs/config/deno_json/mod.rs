@@ -895,6 +895,7 @@ impl NewestDependencyDate {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RawMinimumDependencyAgeConfig {
   pub date: serde_json::Value,
+  #[serde(default)]
   pub exclude: Vec<String>,
 }
 
