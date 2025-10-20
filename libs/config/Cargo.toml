@@ -21,6 +21,7 @@ workspace = ["deno_json", "package_json"]
 [dependencies]
 boxed_error.workspace = true
 capacity_builder = { workspace = true }
+chrono.workspace = true
 deno_error = { workspace = true, features = ["url"] }
 deno_maybe_sync.workspace = true
 deno_package_json = { workspace = true, optional = true }

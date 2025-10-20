@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::resolution::NpmPackageVersionResolver;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_semver::npm::NpmPackageReqReference;
 
@@ -117,19 +117,19 @@ impl<'a> BinNameResolver<'a> {
       .npm_registry_api
       .package_info(&npm_ref.req().name)
       .await?;
-    Ok(self.resolve_name_from_npm_package_info(&package_info, npm_ref))
+    let version_resolver =
+      self.npm_version_resolver.get_for_package(&package_info);
+    Ok(self.resolve_name_from_npm_package_info(&version_resolver, npm_ref))
   }
 
   fn resolve_name_from_npm_package_info(
     &self,
-    package_info: &NpmPackageInfo,
+    version_resolver: &NpmPackageVersionResolver,
     npm_ref: &NpmPackageReqReference,
   ) -> Option<String> {
-    let version_info = self
-      .npm_version_resolver
+    let version_info = version_resolver
       .resolve_best_package_version_info(
         &npm_ref.req().version_req,
-        package_info,
         Vec::new().into_iter(),
       )
       .ok()?;

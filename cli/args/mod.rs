@@ -1352,12 +1352,6 @@ impl CliOptions {
     }
   }
 
-  pub fn newest_dependency_date(
-    &self,
-  ) -> Option<chrono::DateTime<chrono::Utc>> {
-    self.flags.minimum_dependency_age
-  }
-
   pub fn unstable_npm_lazy_caching(&self) -> bool {
     self.flags.unstable_config.npm_lazy_caching
       || self.workspace().has_unstable("npm-lazy-caching")
