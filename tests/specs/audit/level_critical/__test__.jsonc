@@ -1,9 +1,0 @@
-{
-  "tempDir": true,
-  "steps": [
-    {
-      "args": "audit --level critical",
-      "output": "audit.out"
-    }
-  ]
-}

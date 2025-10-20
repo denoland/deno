@@ -1,9 +1,0 @@
-{
-  "tempDir": true,
-  "steps": [
-    {
-      "args": "audit --level moderate",
-      "output": "audit.out"
-    }
-  ]
-}

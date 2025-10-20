@@ -1,9 +1,0 @@
-{
-  "tempDir": true,
-  "steps": [
-    {
-      "args": "audit --ignore-unfixable --level high",
-      "output": "audit.out"
-    }
-  ]
-}

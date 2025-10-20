@@ -149,7 +149,6 @@ mod npm {
     let json_str = http_util::body_to_string(response)
       .await
       .context("Failed to read response from the npm registry API")?;
-    eprintln!("json_str {}", json_str);
     let response: AuditResponse = serde_json::from_str(&json_str)
       .context("Failed to deserialize response from the npm registry API")?;
     Ok(response)
@@ -202,11 +201,15 @@ mod npm {
         "dependencies": dependencies,
     });
 
-    eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
+    // eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
     let response = match call_audits_api_inner(npm_url, client, body).await {
       Ok(s) => s,
       Err(err) => {
         if audit_flags.ignore_registry_errors {
+          log::error!(
+            "Failed to get data from the registry: {}",
+            err.to_string()
+          );
           return Ok(());
         } else {
           return Err(err);
@@ -325,10 +328,11 @@ mod npm {
   #[derive(Debug, Deserialize)]
   pub struct AuditActionResolve {
     pub id: i32,
-    pub path: String,
-    pub dev: bool,
-    pub optional: bool,
-    pub bundled: bool,
+    // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
+    // pub path: String,
+    // pub dev: bool,
+    // pub optional: bool,
+    // pub bundled: bool,
   }
 
   #[derive(Debug, Deserialize)]
@@ -343,7 +347,8 @@ mod npm {
 
   #[derive(Debug, Deserialize)]
   pub struct AdvisoryFinding {
-    pub version: String,
+    // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
+    // pub version: String,
     pub paths: Vec<String>,
   }
 
@@ -352,8 +357,9 @@ mod npm {
     pub id: i32,
     pub title: String,
     pub findings: Vec<AdvisoryFinding>,
-    pub cves: Vec<String>,
-    pub cwe: Vec<String>,
+    // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
+    // pub cves: Vec<String>,
+    // pub cwe: Vec<String>,
     pub severity: String,
     pub url: String,
     pub module_name: String,
@@ -391,7 +397,6 @@ mod npm {
 
   #[derive(Debug, Deserialize)]
   pub struct AuditVulnerabilities {
-    pub info: i32,
     pub low: i32,
     pub moderate: i32,
     pub high: i32,
@@ -408,10 +413,11 @@ mod npm {
   #[serde(rename_all = "camelCase")]
   pub struct AuditMetadata {
     pub vulnerabilities: AuditVulnerabilities,
-    pub dependencies: i32,
-    pub dev_dependencies: i32,
-    pub optional_dependencies: i32,
-    pub total_dependencies: i32,
+    // TODO(bartlomieju): currently not used, commented out so it's not flagged by clippy
+    // pub dependencies: i32,
+    // pub dev_dependencies: i32,
+    // pub optional_dependencies: i32,
+    // pub total_dependencies: i32,
   }
 
   #[derive(Debug, Deserialize)]

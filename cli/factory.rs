@@ -1283,14 +1283,9 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Audit(_)
         | DenoSubcommand::Clean(_)
         | DenoSubcommand::Init(_)
-        | DenoSubcommand::Init(_)
-        | DenoSubcommand::Install(_)
         | DenoSubcommand::Install(_)
         | DenoSubcommand::Outdated(_)
-        | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Remove(_)
-        | DenoSubcommand::Remove(_)
-        | DenoSubcommand::Uninstall(_)
         | DenoSubcommand::Uninstall(_)
     ),
     no_lock: flags.no_lock
