@@ -74,6 +74,7 @@ once_cell.workspace = true
 p224.workspace = true
 p256.workspace = true
 p384.workspace = true
+paste = { version = "1.0.15" }
 pbkdf2.workspace = true
 pkcs8 = { workspace = true, features = ["std", "pkcs5", "encryption"] }
 rand.workspace = true

@@ -2527,6 +2527,7 @@ dependencies = [
  "p224",
  "p256",
  "p384",
+ "paste",
  "pbkdf2",
  "pkcs8",
  "rand 0.8.5",

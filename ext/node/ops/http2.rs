@@ -764,7 +764,12 @@ impl Http2Stream {
     _req: v8::Local<v8::Object>,
     #[string] data: &str,
   ) -> i32 {
-    dbg!(data);
+    let session = unsafe { &*self.session };
+
+    unsafe {
+      ffi::nghttp2_session_resume_data(session.session, self.id);
+    }
+
     0
   }
 
@@ -1067,6 +1072,8 @@ impl Http2Session {
   // Submit SETTINGS frame for the Http2Session
   #[fast]
   fn settings(&self, cb: v8::Local<v8::Function>) -> bool {
+    let settings = Http2Settings::init(self.inner);
+    settings.send();
     true
   }
 
@@ -1086,4 +1093,87 @@ impl Http2Session {
 
   #[fast]
   fn refresh_state(&self) {}
+}
+
+struct Http2Settings {
+  entries: [ffi::nghttp2_settings_entry;
+    Http2SettingsIndex::IDX_SETTINGS_COUNT as usize + MAX_ADDITIONAL_SETTINGS],
+  count: usize,
+  session: *mut Session,
+}
+
+impl Http2Settings {
+  fn init(session: *mut Session) -> Self {
+    unsafe {
+      #[allow(static_mut_refs)]
+      let buffer = &mut SETTINGS_BUFFER;
+      let flags = buffer[Http2SettingsIndex::IDX_SETTINGS_COUNT as usize];
+      let mut count: usize = 0;
+
+      let mut entries = [ffi::nghttp2_settings_entry {
+        settings_id: 0,
+        value: 0,
+      }; _];
+      macro_rules! grab_setting {
+            ($name:ident) => {
+                paste::paste! {
+                if flags & (1 << Http2SettingsIndex::[<IDX_SETTINGS_ $name>] as u8 ) != 0 {
+                    let val = buffer[ Http2SettingsIndex::[<IDX_SETTINGS_ $name>] as usize ];
+                    if count < entries.len() {
+                        entries[count] = ffi::nghttp2_settings_entry {
+                            settings_id: ffi:: [<NGHTTP2_SETTINGS_ $name>] as _,
+                            value: val,
+                        };
+                    }
+                    count += 1;
+                }
+                }
+            };
+        }
+
+      grab_setting!(HEADER_TABLE_SIZE);
+      grab_setting!(ENABLE_PUSH);
+      grab_setting!(INITIAL_WINDOW_SIZE);
+      grab_setting!(MAX_FRAME_SIZE);
+      grab_setting!(MAX_CONCURRENT_STREAMS);
+      grab_setting!(MAX_HEADER_LIST_SIZE);
+      // grab_setting!(ENABLE_CONNECT_PROTOCOL);
+
+      let num_add_settings =
+        buffer[Http2SettingsIndex::IDX_SETTINGS_COUNT as usize + 1] as usize;
+      if num_add_settings > 0 {
+        let offset = Http2SettingsIndex::IDX_SETTINGS_COUNT as usize + 2;
+        for i in 0..num_add_settings {
+          let key = buffer[offset + i * 2];
+          let val = buffer[offset + i * 2 + 1];
+          if count < entries.len() {
+            entries[count] = ffi::nghttp2_settings_entry {
+              settings_id: key as i32,
+              value: val,
+            };
+          }
+          count += 1;
+        }
+      }
+
+      Self {
+        session,
+        entries,
+        count,
+      }
+    }
+  }
+
+  fn send(&self) {
+    unsafe {
+      let session = &*self.session;
+      // TODO: update local settings
+      ffi::nghttp2_submit_settings(
+        session.session,
+        ffi::NGHTTP2_FLAG_NONE as _,
+        self.entries.as_ptr(),
+        self.count,
+      );
+    }
+  }
 }
