@@ -875,6 +875,48 @@ pub struct NodeModulesDirParseError {
   pub source: serde_json::Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewestDependencyDate {
+  Enabled(chrono::DateTime<chrono::Utc>),
+  /// Disable using a minimum dependency date.
+  Disabled,
+}
+
+impl NewestDependencyDate {
+  pub fn into_option(self) -> Option<chrono::DateTime<chrono::Utc>> {
+    match self {
+      Self::Enabled(date_time) => Some(date_time),
+      Self::Disabled => None,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct MinimumDependencyAgeConfig {
+  pub date: Option<NewestDependencyDate>,
+  // TODO(#31010): hook this up
+  pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+pub enum MinimumDependencyAgeParseError {
+  #[error("Unsupported \"minimumDependencyAge\" value.")]
+  ParseDateOrDuration(
+    #[from]
+    #[source]
+    crate::ParseDateOrDurationError,
+  ),
+  #[error(
+    "Unsupported \"minimumDependencyAge\" value. Expected a string or number."
+  )]
+  ExpectedStringOrNumber,
+  #[error(
+    "Unsupported \"minimumDependencyAge\" value. Could not convert number to i64."
+  )]
+  InvalidNumber,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NodeModulesDirMode {
@@ -970,6 +1012,7 @@ pub struct ConfigFileJson {
   pub compile: Option<Value>,
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
+  pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,

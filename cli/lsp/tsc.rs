@@ -280,7 +280,7 @@ impl<'a> ToV8<'a> for ChangeKind {
   type Error = Infallible;
   fn to_v8(
     self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     Smi(self as u8).to_v8(scope)
   }
@@ -309,7 +309,7 @@ impl<'a> ToV8<'a> for PendingChange {
   type Error = Infallible;
   fn to_v8(
     self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     let modified_scripts = {
       let mut modified_scripts_v8 =
@@ -2167,6 +2167,8 @@ impl DocumentSpan {
   }
 }
 
+// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub enum MatchKind {
   #[serde(rename = "exact")]
@@ -4719,7 +4721,7 @@ struct LoadResponse {
 
 #[op2]
 fn op_load<'s>(
-  scope: &'s mut v8::HandleScope,
+  scope: &'s mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   #[string] specifier: &str,
 ) -> Result<v8::Local<'s, v8::Value>, LoadError> {
@@ -4811,7 +4813,7 @@ impl<'a> ToV8<'a> for TscRequestArray {
 
   fn to_v8(
     self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     let id = self.id.to_v8(scope).unwrap_infallible();
 
@@ -5267,6 +5269,12 @@ fn op_project_version(state: &mut OpState) -> usize {
   r
 }
 
+#[op2]
+#[serde]
+fn op_tsc_constants() -> crate::tsc::TscConstants {
+  crate::tsc::TscConstants::new()
+}
+
 struct TscRuntime {
   js_runtime: JsRuntime,
   server_main_loop_fn_global: v8::Global<v8::Function>,
@@ -5276,7 +5284,7 @@ impl TscRuntime {
   fn new(mut js_runtime: JsRuntime) -> Self {
     let server_main_loop_fn_global = {
       let context = js_runtime.main_context();
-      let scope = &mut js_runtime.handle_scope();
+      deno_core::scope!(scope, &mut js_runtime);
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
       let server_main_loop_fn_str =
@@ -5313,7 +5321,7 @@ fn run_tsc_thread(
     request_rx,
     enable_tracing,
   ));
-  let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
+  let tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
@@ -5324,7 +5332,7 @@ fn run_tsc_thread(
   if let Some(server) = maybe_inspector_server {
     server.register_inspector(
       "ext:deno_tsc/99_main_compiler.js".to_string(),
-      &mut tsc_runtime,
+      tsc_runtime.inspector(),
       false,
     );
   }
@@ -5361,7 +5369,7 @@ fn run_tsc_thread(
       let mut runtime = tsc_runtime.lock().await;
       let main_loop = runtime.server_main_loop_fn_global.clone();
       let args = {
-        let scope = &mut runtime.js_runtime.handle_scope();
+        deno_core::scope!(scope, &mut runtime.js_runtime);
         let enable_debug_local =
           v8::Local::<v8::Value>::from(v8::Boolean::new(scope, enable_debug));
         [v8::Global::new(scope, enable_debug_local)]
@@ -5391,6 +5399,7 @@ deno_core::extension!(deno_tsc,
     op_is_cancelled,
     op_is_node_file,
     op_load,
+    op_tsc_constants,
     op_release,
     op_resolve,
     op_respond,
@@ -5882,7 +5891,7 @@ impl TscRequest {
   /// function
   fn to_server_request<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), serde_v8::Error>
   {
     let args = match self {

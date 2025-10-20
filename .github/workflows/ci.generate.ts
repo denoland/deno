@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 71;
+const cacheVersion = 77;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -419,7 +419,8 @@ const ci = {
             use_sysroot: true,
             // TODO(ry): Because CI is so slow on for OSX and Windows, we
             // currently run the Web Platform tests only on Linux.
-            wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+            wpt:
+              "${{ !startsWith(github.ref, 'refs/tags/') && (github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'ci-wpt-test')) }}",
           }, {
             ...Runners.linuxX86Xl,
             job: "bench",
@@ -469,6 +470,8 @@ const ci = {
         RUST_BACKTRACE: "full",
         // disable anyhow's library backtrace
         RUST_LIB_BACKTRACE: 0,
+        CI_SKIP_NODE_TEST:
+          "${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'ci-node-test') }}",
       },
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoStep,
@@ -761,7 +764,7 @@ const ci = {
           name: "Generate symcache",
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
-            "matrix.os != 'windows' && matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
             "github.repository == 'denoland/deno')",
           ].join("\n"),
           run: [
@@ -916,37 +919,14 @@ const ci = {
             "Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
             "Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
-            // TODO(bartlomieju): fix the regression from V8 upgrade
-            // https://github.com/denoland/deno/pull/30629
-            // "target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache",
+            "target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache",
           ].join("\n"),
         },
         {
-          name: "Upload canary to dl.deno.land (windows)",
+          name: "Upload canary to dl.deno.land",
           if: [
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' &&",
-            "matrix.os == 'windows' &&",
-            "github.repository == 'denoland/deno' &&",
-            "github.ref == 'refs/heads/main'",
-          ].join("\n"),
-          run: [
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-            // TODO(bartlomieju): fix the regression from V8 upgrade
-            // https://github.com/denoland/deno/pull/30629
-            // 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
-            "echo ${{ github.sha }} > canary-latest.txt",
-            'gsutil -h "Cache-Control: no-cache" cp canary-latest.txt gs://dl.deno.land/canary-$(rustc -vV | sed -n "s|host: ||p")-latest.txt',
-            "rm canary-latest.txt gha-creds-*.json",
-          ].join("\n"),
-        },
-        {
-          name: "Upload canary to dl.deno.land (unix)",
-          if: [
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'release' &&",
-            "matrix.os != 'windows' &&",
             "github.repository == 'denoland/deno' &&",
             "github.ref == 'refs/heads/main'",
           ].join("\n"),
@@ -1168,9 +1148,7 @@ const ci = {
           run: [
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.sha256sum gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
-            // TODO(bartlomieju): fix the regression from V8 upgrade
-            // https://github.com/denoland/deno/pull/30629
-            // 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
+            'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/',
           ].join("\n"),
         },
         {

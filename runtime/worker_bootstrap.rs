@@ -211,7 +211,7 @@ impl BootstrapOptions {
   /// Return the v8 equivalent of this structure.
   pub fn as_v8<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Value> {
     let scope = RefCell::new(scope);
     let ser = deno_core::serde_v8::Serializer::new(&scope);

@@ -44,6 +44,7 @@ const {
   PromiseResolve,
   StringPrototypePadEnd,
   Symbol,
+  SymbolDispose,
   SymbolIterator,
   TypeError,
 } = primordials;
@@ -87,7 +88,7 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
+import { SymbolMetadata } from "ext:deno_web/00_infra.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
@@ -458,17 +459,17 @@ function processRejectionHandled(promise, reason) {
 }
 
 function dispatchLoadEvent() {
-  globalThis_.dispatchEvent(new Event("load"));
+  globalThis_.dispatchEvent(new event.Event("load"));
 }
 
 function dispatchBeforeUnloadEvent() {
   return globalThis_.dispatchEvent(
-    new Event("beforeunload", { cancelable: true }),
+    new event.Event("beforeunload", { cancelable: true }),
   );
 }
 
 function dispatchUnloadEvent() {
-  globalThis_.dispatchEvent(new Event("unload"));
+  globalThis_.dispatchEvent(new event.Event("unload"));
 }
 
 let hasBootstrapped = false;
@@ -974,7 +975,7 @@ event.saveGlobalThisReference(globalThis);
 event.defineEventHandler(globalThis, "unhandledrejection");
 
 // Nothing listens to this, but it warms up the code paths for event dispatch
-(new event.EventTarget()).dispatchEvent(new Event("warmup"));
+(new event.EventTarget()).dispatchEvent(new event.Event("warmup"));
 
 removeImportedOps();
 

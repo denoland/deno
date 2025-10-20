@@ -1065,27 +1065,21 @@ impl CliOptions {
         let set_config_permission_name = match &self.flags.subcommand {
           DenoSubcommand::Bench(_) => dir
             .to_bench_permissions_config()?
-            .is_some()
-            .then_some("Bench"),
+            .map(|permissions| ("Bench", &permissions.base)),
           DenoSubcommand::Compile(_) => dir
             .to_compile_permissions_config()?
-            .is_some()
-            .then_some("Compile"),
+            .map(|permissions| ("Compile", &permissions.base)),
           DenoSubcommand::Test(_) => dir
             .to_test_permissions_config()?
-            .is_some()
-            .then_some("Test"),
+            .map(|permissions| ("Test", &permissions.base)),
           _ => None,
         };
-        if let Some(name) = set_config_permission_name {
+        if let Some((name, config_file_url)) = set_config_permission_name {
           // prevent people from wasting time wondering why benches/tests are failing
           bail!(
-            "{} permissions were found in the config file. Did you mean to run with `-P` or a permission flag?{}",
+            "{} permissions were found in the config file. Did you mean to run with `-P` or a permission flag?\n    at {}",
             name,
-            dir
-              .maybe_deno_json()
-              .map(|d| format!("\n    at {}", d.specifier))
-              .unwrap_or_default()
+            config_file_url
           );
         }
       }
@@ -1214,6 +1208,10 @@ impl CliOptions {
 
   pub fn type_check_mode(&self) -> TypeCheckMode {
     self.flags.type_check_mode
+  }
+
+  pub fn unstable_tsgo(&self) -> bool {
+    self.flags.unstable_config.tsgo || self.workspace().has_unstable("tsgo")
   }
 
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
@@ -1372,7 +1370,7 @@ impl CliOptions {
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual
-    } else if self.flags.unstable_config.npm_lazy_caching {
+    } else if self.unstable_npm_lazy_caching() {
       NpmCachingStrategy::Lazy
     } else {
       NpmCachingStrategy::Eager

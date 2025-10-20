@@ -30,6 +30,7 @@ use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
+use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -690,6 +691,13 @@ impl Default for TypeCheckMode {
   }
 }
 
+fn minutes_duration_or_date_parser(
+  s: &str,
+) -> Result<NewestDependencyDate, clap::Error> {
+  deno_config::parse_minutes_duration_or_date(&sys_traits::impls::RealSys, s)
+    .map_err(|e| clap::Error::raw(clap::error::ErrorKind::InvalidValue, e))
+}
+
 fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   if !s.starts_with("npm:") {
     bail!(
@@ -742,6 +750,7 @@ pub struct Flags {
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
+  pub minimum_dependency_age: Option<NewestDependencyDate>,
   pub no_remote: bool,
   pub no_lock: bool,
   pub no_npm: bool,
@@ -758,7 +767,7 @@ pub struct Flags {
   pub eszip: bool,
   pub node_conditions: Vec<String>,
   pub preload: Vec<String>,
-  pub connected: Option<String>,
+  pub tunnel: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -2216,6 +2225,7 @@ Unless --reload is specified, this command will not re-download already cached d
         )
         .arg(allow_import_arg())
         .arg(deny_import_arg())
+        .arg(v8_flags_arg())
       }
     )
 }
@@ -3012,7 +3022,7 @@ fn jupyter_subcommand() -> Command {
         .conflicts_with("install"))
 }
 
-fn update_and_outdated_args() -> [Arg; 4] {
+fn update_and_outdated_args() -> [Arg; 5] {
   [
     Arg::new("filters")
       .num_args(0..)
@@ -3036,6 +3046,7 @@ fn update_and_outdated_args() -> [Arg; 4] {
       .short('r')
       .action(ArgAction::SetTrue)
       .help("Include all workspace members"),
+    min_dep_age_arg(),
   ]
 }
 
@@ -3373,7 +3384,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
     .arg(coverage_arg())
-    .arg(connected_arg())
+    .arg(tunnel_arg())
 }
 
 fn run_subcommand() -> Command {
@@ -3450,7 +3461,7 @@ Start a server defined in server.ts, watching for changes and running on port 50
     )
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
-    .arg(connected_arg())
+    .arg(tunnel_arg())
 }
 
 fn task_subcommand() -> Command {
@@ -3504,7 +3515,7 @@ Evaluate a task from string:
           ).action(ArgAction::SetTrue)
       )
       .arg(node_modules_dir_arg())
-      .arg(connected_arg())
+      .arg(tunnel_arg())
   })
 }
 
@@ -3914,6 +3925,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(preload_arg())
+    .arg(min_dep_age_arg())
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
@@ -3930,7 +3942,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
                                              <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>
+                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
   <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                              <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
@@ -3980,7 +3992,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .num_args(0..=1)
           .require_equals(true)
           .default_missing_value("")
-          .short('P');
+          .short('P')
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires);
         }
@@ -4383,7 +4396,7 @@ fn allow_import_arg() -> Arg {
     .require_equals(true)
     .value_name("IP_OR_HOSTNAME")
     .help(cstr!(
-      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>"
+      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>"
     ))
     .value_parser(flags_net::validator)
 }
@@ -4500,6 +4513,13 @@ fn preload_arg() -> Arg {
     .action(ArgAction::Append)
     .help("A list of files that will be executed before the main module")
     .value_hint(ValueHint::FilePath)
+}
+
+fn min_dep_age_arg() -> Arg {
+  Arg::new("minimum-dependency-age")
+    .long("minimum-dependency-age")
+    .value_parser(minutes_duration_or_date_parser)
+    .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable)")
 }
 
 fn ca_file_arg() -> Arg {
@@ -4707,13 +4727,21 @@ fn no_check_arg() -> Arg {
     .help_heading(TYPE_CHECKING_HEADING)
 }
 
-fn connected_arg() -> Arg {
-  Arg::new("connected")
-    .long("connected")
-    .hide(true)
+fn tunnel_arg() -> Arg {
+  Arg::new("tunnel")
+    .long("tunnel")
+    .alias("connected")
+    .short('t')
     .num_args(0..=1)
+    .help(cstr!(
+      "Execute tasks with a tunnel to Deno Deploy.
+
+    Create a secure connection between your local machine and Deno Deploy,
+    providing access to centralised environment variables, logging,
+    and serving from your local environment to the public internet"
+    ))
     .require_equals(true)
-    .default_missing_value("tunnel.global.prod.deno-cluster.net:443")
+    .action(ArgAction::SetTrue)
 }
 
 fn check_arg(checks_local_by_default: bool) -> Arg {
@@ -5055,6 +5083,7 @@ fn outdated_parse(
     recursive,
     kind,
   });
+  min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -5157,6 +5186,7 @@ fn check_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  v8_flags_arg_parse(flags, matches);
   let files = match matches.remove_many::<String>("file") {
     Some(f) => f.collect(),
     None => vec![".".to_string()], // default
@@ -5812,7 +5842,7 @@ fn run_parse(
   runtime_args_parse(flags, matches, true, true, true)?;
   ext_arg_parse(flags, matches);
 
-  flags.connected = matches.remove_one("connected");
+  flags.tunnel = matches.get_flag("tunnel");
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
 
@@ -5884,7 +5914,7 @@ fn serve_parse(
   }
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
 
-  flags.connected = matches.remove_one("connected");
+  flags.tunnel = matches.get_flag("tunnel");
 
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
@@ -5937,7 +5967,7 @@ fn task_parse(
     None
   };
 
-  flags.connected = matches.remove_one("connected");
+  flags.tunnel = matches.get_flag("tunnel");
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
@@ -6161,6 +6191,7 @@ fn compile_args_without_check_parse(
   ca_file_arg_parse(flags, matches);
   unsafely_ignore_certificate_errors_parse(flags, matches);
   preload_arg_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6438,6 +6469,10 @@ fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
+fn min_dep_age_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.minimum_dependency_age = matches.remove_one("minimum-dependency-age");
+}
+
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.ca_data = matches.remove_one::<String>("cert").and_then(CaData::parse);
 }
@@ -6670,6 +6705,7 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
+  flags.unstable_config.tsgo = matches.get_flag("unstable-tsgo");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for feature in deno_runtime::UNSTABLE_FEATURES {
@@ -13052,6 +13088,27 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           ..Default::default()
         },
         ..Default::default()
+      }
+    );
+  }
+
+  #[test]
+  fn check_with_v8_flags() {
+    let flags =
+      flags_from_vec(svec!["deno", "check", "--v8-flags=--help", "script.ts",])
+        .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        v8_flags: svec!["--help"],
+        ..Flags::default()
       }
     );
   }

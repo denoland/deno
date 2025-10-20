@@ -239,7 +239,7 @@ fn format_js_error_inner(
     0,
   ));
   for frame in &js_error.frames {
-    write!(s, "\n    at {}", format_frame::<AnsiColors>(frame)).unwrap();
+    write!(s, "\n    at {}", format_frame::<AnsiColors>(frame, None)).unwrap();
   }
   if let Some(cause) = &js_error.cause {
     let is_caused_by_circular = circular
@@ -356,6 +356,13 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
         FixSuggestion::info("Deno.openKv() is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-kv` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("bundle is not a function") {
+      return vec![
+        FixSuggestion::info("Deno.bundle() is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-bundle` flag to enable this API.",
         ),
       ];
     } else if msg.contains("cron is not a function") {

@@ -23,6 +23,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_lib::args::CaData;
+use deno_npm::NpmPackageId;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsWarning;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::workspace::WorkspaceResolver;
@@ -479,15 +480,22 @@ async fn install_local(
   }
 }
 
-pub fn print_install_report(
-  sys: &dyn sys_traits::boxed::FsOpenBoxed,
-  elapsed: std::time::Duration,
-  install_reporter: &InstallReporter,
-  workspace: &WorkspaceResolver<CliSys>,
+#[derive(Debug, Default)]
+struct CategorizedInstalledDeps {
+  normal_deps: Vec<NpmPackageId>,
+  dev_deps: Vec<NpmPackageId>,
+}
+
+fn categorize_installed_npm_deps(
   npm_resolver: &CliNpmResolver,
-) {
+  workspace: &WorkspaceResolver<CliSys>,
+  install_reporter: &InstallReporter,
+) -> CategorizedInstalledDeps {
+  let Some(managed_resolver) = npm_resolver.as_managed() else {
+    return CategorizedInstalledDeps::default();
+  };
   // compute the summary info
-  let snapshot = npm_resolver.as_managed().unwrap().resolution().snapshot();
+  let snapshot = managed_resolver.resolution().snapshot();
 
   let top_level_packages = snapshot.top_level_packages();
 
@@ -525,7 +533,10 @@ pub fn print_install_report(
         continue;
       };
       match s {
-        deno_package_json::PackageJsonDepValue::File(_) => todo!(),
+        deno_package_json::PackageJsonDepValue::File(_) => {
+          // TODO(nathanwhit)
+          // TODO(bartlomieju)
+        }
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           dev_deps.insert(package_req.name.to_string());
         }
@@ -564,6 +575,19 @@ pub fn print_install_report(
   installed_normal_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
   installed_dev_deps.sort_by(|a, b| a.nv.name.cmp(&b.nv.name));
 
+  CategorizedInstalledDeps {
+    normal_deps: installed_normal_deps.into_iter().cloned().collect(),
+    dev_deps: installed_dev_deps.into_iter().cloned().collect(),
+  }
+}
+
+pub fn print_install_report(
+  sys: &dyn sys_traits::boxed::FsOpenBoxed,
+  elapsed: std::time::Duration,
+  install_reporter: &InstallReporter,
+  workspace: &WorkspaceResolver<CliSys>,
+  npm_resolver: &CliNpmResolver,
+) {
   let rep = install_reporter;
 
   if !rep.stats.intialized_npm.is_empty()
@@ -631,6 +655,11 @@ pub fn print_install_report(
       log::info!("{}", deno_terminal::colors::green("+".repeat(npm_download)));
     }
   }
+
+  let CategorizedInstalledDeps {
+    normal_deps: installed_normal_deps,
+    dev_deps: installed_dev_deps,
+  } = categorize_installed_npm_deps(npm_resolver, workspace, install_reporter);
 
   if !installed_normal_deps.is_empty() || !rep.stats.downloaded_jsr.is_empty() {
     log::info!("");
@@ -787,10 +816,14 @@ async fn install_global(
   let npmrc = factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
+  let jsr_resolver = Arc::new(JsrFetchResolver::new(
+    deps_file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
   let npm_resolver = Arc::new(NpmFetchResolver::new(
     deps_file_fetcher.clone(),
     npmrc.clone(),
+    factory.npm_version_resolver()?.clone(),
   ));
 
   let entry_text = install_flags_global.module_url.as_str();
@@ -799,12 +832,24 @@ async fn install_global(
     if let Ok(Err(package_req)) =
       super::pm::AddRmPackageReq::parse(entry_text, None)
     {
-      if jsr_resolver.req_to_nv(&package_req).await.is_some() {
+      if jsr_resolver
+        .req_to_nv(&package_req)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+      {
         bail!(
           "{entry_text} is missing a prefix. Did you mean `{}`?",
           crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
         );
-      } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+      } else if npm_resolver
+        .req_to_nv(&package_req)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+      {
         bail!(
           "{entry_text} is missing a prefix. Did you mean `{}`?",
           crate::colors::yellow(format!("deno install -g npm:{package_req}"))
@@ -1116,6 +1161,7 @@ mod tests {
   use std::process::Command;
 
   use deno_lib::args::UnstableConfig;
+  use deno_npm::resolution::NpmVersionResolver;
   use test_util::TempDir;
   use test_util::testdata_path;
 
@@ -1133,7 +1179,9 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
-    let resolver = BinNameResolver::new(&http_client, &registry_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
     super::create_install_shim(&resolver, &cwd, flags, install_flags_global)
       .await
   }
@@ -1145,7 +1193,9 @@ mod tests {
     let cwd = std::env::current_dir().unwrap();
     let http_client = HttpClientProvider::new(None, None);
     let registry_api = deno_npm::registry::TestNpmRegistryApi::default();
-    let resolver = BinNameResolver::new(&http_client, &registry_api);
+    let npm_version_resolver = NpmVersionResolver::default();
+    let resolver =
+      BinNameResolver::new(&http_client, &registry_api, &npm_version_resolver);
     super::resolve_shim_data(&resolver, &cwd, flags, install_flags_global).await
   }
 

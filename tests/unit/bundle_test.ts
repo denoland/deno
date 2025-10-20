@@ -8,7 +8,7 @@ import {
   unindent,
 } from "./test_util.ts";
 
-import { join, toFileUrl } from "@std/path";
+import { basename, join, toFileUrl } from "@std/path";
 
 class TempDir implements AsyncDisposable, Disposable {
   private path: string;
@@ -312,4 +312,56 @@ Deno.test("bundle: replaces require shim when platform is deno", async () => {
 
   const output = await evalEsmString(js.text());
   assertEquals(output.default, ["good", 1]);
+});
+
+Deno.test("bundle: html works", async () => {
+  using dir = new TempDir();
+  const entry = dir.join("index.html");
+  const input = unindent`
+    <html>
+      <body>
+        <script src="./index.ts"></script>
+      </body>
+    </html>
+  `;
+  const script = dir.join("index.ts");
+  const scriptInput = unindent`
+    console.log("hello");
+    document.body.innerHTML = "hello";
+  `;
+  const outDir = dir.join("dist");
+
+  await Deno.writeTextFile(entry, input);
+  await Deno.writeTextFile(script, scriptInput);
+
+  const result = await Deno.bundle({
+    entrypoints: [entry],
+    outputDir: outDir,
+    write: false,
+  });
+
+  const js = result.outputFiles!.find((f) =>
+    !!f.contents && f.path.endsWith(".js")
+  );
+  if (!js) {
+    throw new Error("No JS file found");
+  }
+
+  const html = result.outputFiles!.find((f) =>
+    !!f.contents && f.path.endsWith(".html")
+  )!;
+  if (!html) {
+    throw new Error("No HTML file found");
+  }
+
+  assert(result.success);
+  assertEquals(result.errors.length, 0);
+  assertEquals(result.outputFiles!.length, 2);
+
+  const jsFileName = basename(js.path);
+
+  assertStringIncludes(html.text(), `src="./${jsFileName}`);
+
+  assertStringIncludes(js.text(), "innerHTML");
+  assertStringIncludes(js.text(), "hello");
 });

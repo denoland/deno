@@ -52,6 +52,7 @@ use crate::deno_json::FmtConfig;
 use crate::deno_json::FmtOptionsConfig;
 use crate::deno_json::LinkConfigParseError;
 use crate::deno_json::LintRulesConfig;
+use crate::deno_json::NewestDependencyDate;
 use crate::deno_json::NodeModulesDirMode;
 use crate::deno_json::NodeModulesDirParseError;
 use crate::deno_json::PermissionsConfig;
@@ -1014,6 +1015,12 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("lock"),
         });
       }
+      if member_config.json.minimum_dependency_age.is_some() {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: member_config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("minimumDependencyAge"),
+        });
+      }
       if member_config.json.node_modules_dir.is_some() {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: member_config.specifier.clone(),
@@ -1416,6 +1423,42 @@ impl Workspace {
           .map_err(|err| NodeModulesDirParseError { source: err })
       })
       .transpose()
+  }
+
+  pub fn minimum_dependency_age(
+    &self,
+    sys: &impl sys_traits::SystemTimeNow,
+  ) -> Result<
+    Option<NewestDependencyDate>,
+    deno_json::MinimumDependencyAgeParseError,
+  > {
+    self
+      .root_deno_json()
+      .and_then(|c| c.json.minimum_dependency_age.as_ref())
+      .map(|v| match v {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::Number(minutes) => match minutes.as_i64() {
+          Some(minutes) => {
+            let now = chrono::DateTime::<chrono::Utc>::from(sys.sys_time_now());
+            let new_time = now - chrono::Duration::minutes(minutes);
+            Ok(Some(NewestDependencyDate::Enabled(new_time)))
+          }
+          None => Err(deno_json::MinimumDependencyAgeParseError::InvalidNumber),
+        },
+        serde_json::Value::String(value) => Ok(Some(
+          crate::util::parse_minutes_duration_or_date(sys, value)?,
+        )),
+        serde_json::Value::Bool(false) => {
+          Ok(Some(NewestDependencyDate::Disabled))
+        }
+        serde_json::Value::Bool(true)
+        | serde_json::Value::Array(_)
+        | serde_json::Value::Object(_) => {
+          Err(deno_json::MinimumDependencyAgeParseError::ExpectedStringOrNumber)
+        }
+      })
+      .transpose()
+      .map(|v| v.flatten())
   }
 }
 
@@ -2633,6 +2676,7 @@ pub mod test {
   use std::cell::RefCell;
   use std::collections::HashMap;
 
+  use deno_package_json::PackageJsonCacheResult;
   use deno_path_util::normalize_path;
   use deno_path_util::url_from_directory_path;
   use deno_path_util::url_from_file_path;
@@ -3797,12 +3841,14 @@ pub mod test {
       json!({
         "unstable": ["byonm"],
         "lock": false,
+        "minimumDependencyAge": 120,
         "nodeModulesDir": false,
         "vendor": true,
       }),
       json!({
         "unstable": ["sloppy-imports"],
         "lock": true,
+        "minimumDependencyAge": 120,
         "nodeModulesDir": "auto",
         "vendor": false,
       }),
@@ -3843,6 +3889,11 @@ pub mod test {
         },
         WorkspaceDiagnostic {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("lock"),
+          config_url: Url::from_file_path(root_dir().join("member/deno.json"))
+            .unwrap(),
+        },
+        WorkspaceDiagnostic {
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("minimumDependencyAge"),
           config_url: Url::from_file_path(root_dir().join("member/deno.json"))
             .unwrap(),
         },
@@ -5836,11 +5887,18 @@ pub mod test {
   struct PkgJsonMemCache(RefCell<HashMap<PathBuf, PackageJsonRc>>);
 
   impl deno_package_json::PackageJsonCache for PkgJsonMemCache {
-    fn get(&self, path: &Path) -> Option<PackageJsonRc> {
-      self.0.borrow().get(path).cloned()
+    fn get(&self, path: &Path) -> PackageJsonCacheResult {
+      match self.0.borrow().get(path).cloned() {
+        Some(value) => PackageJsonCacheResult::Hit(Some(value)),
+        None => PackageJsonCacheResult::NotCached,
+      }
     }
 
-    fn set(&self, path: PathBuf, value: PackageJsonRc) {
+    fn set(&self, path: PathBuf, value: Option<PackageJsonRc>) {
+      let Some(value) = value else {
+        // Don't cache misses (no negative cache).
+        return;
+      };
       self.0.borrow_mut().insert(path, value);
     }
   }

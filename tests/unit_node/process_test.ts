@@ -414,6 +414,14 @@ Deno.test({
       ),
     );
 
+    Object.defineProperty(process.env, "HELLO", {
+      value: "OTHER_WORLD",
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+    assertEquals(process.env.HELLO, "OTHER_WORLD");
+
     // deno-lint-ignore no-prototype-builtins
     assert(process.env.hasOwnProperty("HELLO"));
     assert("HELLO" in process.env);
@@ -430,6 +438,20 @@ Deno.test({
 
     delete process.env.HELLO;
     assertEquals(process.env.HELLO, undefined);
+  },
+});
+
+// #30701
+Deno.test({
+  name: "process.env handles falsy values correctly",
+  fn() {
+    const key = "TEST_ENV_VAR_EMPTY_STRING";
+    Deno.env.set(key, "");
+
+    assertEquals(process.env[key], "");
+    assertEquals(Object.keys(process.env).includes(key), true);
+    assert(key in process.env);
+    assert(Object.hasOwn(process.env, key));
   },
 });
 
@@ -458,6 +480,42 @@ Deno.test({
     assertFalse("" in process.env);
     assertFalse("\0" in process.env);
     assertFalse("=c:" in process.env);
+  },
+});
+
+Deno.test({
+  "name": "process.env: checking symbol in env should not require permission",
+  permissions: "none",
+  fn() {
+    const symbol = Symbol.for("67");
+    Reflect.has(globalThis.process.env, symbol);
+  },
+});
+
+Deno.test({
+  // NB(Tango992): Node.js does not support using symbols as env keys,
+  // thus this test should be omitted once we align with Node.js behavior.
+  name: "process.env: setting and getting a symbol key",
+  fn() {
+    const symbol = Symbol.for("foo");
+    // @ts-expect-error setting a symbol key
+    process.env[symbol] = "foo";
+    // @ts-expect-error getting a symbol key
+    assertEquals(process.env[symbol], "foo");
+    assert(Reflect.has(process.env, symbol));
+
+    // @ts-expect-error deleting a symbol key
+    delete process.env[symbol];
+    assertFalse(Reflect.has(process.env, symbol));
+
+    Object.defineProperty(process.env, symbol, {
+      value: "bar",
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+    // @ts-expect-error getting a symbol key
+    assertEquals(process.env[symbol], "bar");
   },
 });
 
@@ -1275,4 +1333,11 @@ Deno.test("process.emitWarning() does not print to stderr when it is deprecation
   assertEquals(writeStub.calls.length, 0);
   // deno-lint-ignore no-explicit-any
   (process as any).noDeprecation = false; // Reset noDeprecation
+});
+
+Deno.test("process.moduleLoadList", () => {
+  // deno-lint-ignore no-explicit-any
+  const moduleLoadList = (process as any).moduleLoadList;
+  assert(Array.isArray(moduleLoadList));
+  assertEquals(moduleLoadList.length, 0);
 });

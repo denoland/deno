@@ -26,8 +26,6 @@ use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::errors::PackageJsonLoadError;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 
 use crate::ExtNodeSys;
@@ -696,20 +694,16 @@ pub fn op_require_package_imports_resolve<
 
 #[op2(fast, reentrant)]
 pub fn op_require_break_on_next_statement(state: Rc<RefCell<OpState>>) {
-  let inspector_rc = {
-    let state = state.borrow();
-    state.borrow::<Rc<RefCell<JsRuntimeInspector>>>().clone()
-  };
-  let mut inspector = inspector_rc.borrow_mut();
+  let inspector = { state.borrow().borrow::<Rc<JsRuntimeInspector>>().clone() };
   inspector.wait_for_session_and_break_on_next_statement()
 }
 
 #[op2(fast)]
 pub fn op_require_can_parse_as_esm(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] source: &str,
 ) -> bool {
-  let scope = &mut v8::TryCatch::new(scope);
+  v8::tc_scope!(scope, scope);
   let Some(source) = v8::String::new(scope, source) else {
     return false;
   };

@@ -10,6 +10,7 @@ use std::sync::OnceLock;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_core::FastString;
+use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
@@ -361,7 +362,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
   fn get_host_defined_options<'s>(
     &self,
-    scope: &mut deno_core::v8::HandleScope<'s>,
+    scope: &mut deno_core::v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
     let name = Url::parse(name).ok()?;
@@ -375,7 +376,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
   fn load(
     &self,
     original_specifier: &Url,
-    maybe_referrer: Option<&Url>,
+    maybe_referrer: Option<&ModuleLoadReferrer>,
     _is_dynamic: bool,
     requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
@@ -404,7 +405,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     if self.shared.node_resolver.in_npm_package(original_specifier) {
       let shared = self.shared.clone();
       let original_specifier = original_specifier.clone();
-      let maybe_referrer = maybe_referrer.cloned();
+      let maybe_referrer = maybe_referrer.map(|r| r.specifier.clone());
       return deno_core::ModuleLoadResponse::Async(
         async move {
           let code_source = shared
@@ -1034,6 +1035,7 @@ pub async fn run(
     Some(sys.as_deno_rt_native_addon_loader()),
     feature_checker,
     fs,
+    None,
     None,
     Box::new(module_loader_factory),
     node_resolver.clone(),

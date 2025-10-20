@@ -7,7 +7,7 @@ use deno_error::JsErrorBox;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::registry::NpmRegistryApi;
-use deno_resolver::workspace::WorkspaceNpmLinkPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_semver::package::PackageNv;
 use parking_lot::RwLock;
 
@@ -72,7 +72,7 @@ pub trait NpmPackageExtraInfoProviderSys:
 pub struct NpmPackageExtraInfoProvider {
   npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   sys: Arc<dyn NpmPackageExtraInfoProviderSys>,
-  workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
+  workspace_link_packages: WorkspaceNpmLinkPackagesRc,
 }
 
 impl std::fmt::Debug for NpmPackageExtraInfoProvider {
@@ -85,7 +85,7 @@ impl NpmPackageExtraInfoProvider {
   pub fn new(
     npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
     sys: Arc<dyn NpmPackageExtraInfoProviderSys>,
-    workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
+    workspace_link_packages: WorkspaceNpmLinkPackagesRc,
   ) -> Self {
     Self {
       npm_registry_info_provider,
@@ -107,8 +107,8 @@ impl NpmPackageExtraInfoProvider {
     } else {
       match self.fetch_from_package_json(package_path).await {
         Ok(extra_info) => {
-          // some packages have bin in registry but not in package.json (e.g. esbuild-wasm)
-          // still not sure how that happens
+          // some packages that use "directories.bin" have a "bin" entry in
+          // the packument, but not in package.json (e.g. esbuild-wasm)
           if (expected.bin && extra_info.bin.is_none())
             || (expected.scripts && extra_info.scripts.is_empty())
           {

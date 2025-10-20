@@ -3,4 +3,4 @@ Download http://localhost:4260/chalk
 Download http://localhost:4260/chalk/chalk-5.0.1.tgz
 B
 C
-devDependency import failed: TypeError: Relative import path "xo"[WILDCARD]
+devDependency import failed: TypeError: Import "xo"[WILDCARD]

@@ -3054,17 +3054,15 @@ declare namespace Deno {
     ctime: Date | null;
     /** ID of the device containing the file. */
     dev: number;
-    /** Inode number.
-     *
-     * _Linux/Mac OS only._ */
+    /** Corresponds to the inode number on Unix systems. On Windows, this is
+     * the file index number that is unique within a volume. This may not be
+     * available on all platforms. */
     ino: number | null;
     /** The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory.
      */
     mode: number | null;
-    /** Number of hard links pointing to this file.
-     *
-     * _Linux/Mac OS only._ */
+    /** Number of hard links pointing to this file. */
     nlink: number | null;
     /** User ID of the owner of this file.
      *
@@ -3082,9 +3080,7 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     blksize: number | null;
-    /** Number of blocks allocated to the file, in 512-byte units.
-     *
-     * _Linux/Mac OS only._ */
+    /** Number of blocks allocated to the file, in 512-byte units. */
     blocks: number | null;
     /**  True if this is info for a block device.
      *
@@ -4515,13 +4511,13 @@ declare namespace Deno {
    * Give the following command line invocation of Deno:
    *
    * ```sh
-   * deno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi
+   * deno eval "console.log(Deno.args)" Sushi Maguro Hamachi
    * ```
    *
    * Then `Deno.args` will contain:
    *
    * ```ts
-   * [ "Sushi" ]
+   * [ "Sushi", "Maguro", "Hamachi" ]
    * ```
    *
    * If you are looking for a structured way to parse arguments, there is
@@ -6345,10 +6341,11 @@ declare namespace Deno {
    * {@linkcode Deno.CreateHttpClientOptions}.
    *
    * Supported proxies:
-   *  - HTTP/HTTPS proxy: this uses the HTTP CONNECT method to tunnel HTTP
-   *    requests through a different server.
+   *  - HTTP/HTTPS proxy: this uses passthrough to tunnel HTTP requests, or HTTP
+   *    CONNECT to tunnel HTTPS requests through a different server.
    *  - SOCKS5 proxy: this uses the SOCKS5 protocol to tunnel TCP connections
    *    through a different server.
+   *  - TCP socket: this sends all requests to a specified TCP socket.
    *  - Unix domain socket: this sends all requests to a local Unix domain
    *    socket rather than a TCP socket. *Not supported on Windows.*
    *  - Vsock socket: this sends all requests to a local vsock socket.
@@ -6370,6 +6367,12 @@ declare namespace Deno {
     url: string;
     /** The basic auth credentials to be used against the proxy server. */
     basicAuth?: BasicAuth;
+  } | {
+    transport: "tcp";
+    /** The hostname of the TCP server to connect to. */
+    hostname: string;
+    /** The port of the TCP server to connect to. */
+    port: number;
   } | {
     transport: "unix";
     /** The path to the unix domain socket to use. */

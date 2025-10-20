@@ -562,6 +562,19 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   deno_runtime::exit(70);
 }
 
+fn maybe_setup_permission_broker() {
+  let Ok(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH") else {
+    return;
+  };
+  log::warn!(
+    "{} Permission broker is an experimental feature",
+    colors::yellow("Warning")
+  );
+  let broker =
+    deno_runtime::deno_permissions::broker::PermissionBroker::new(socket_path);
+  deno_runtime::deno_permissions::broker::set_broker(broker);
+}
+
 pub fn main() {
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
@@ -577,10 +590,12 @@ pub fn main() {
     deno_subprocess_windows::disable_stdio_inheritance();
     colors::enable_ansi(); // For Windows 10
   }
-  deno_runtime::deno_permissions::set_prompt_callbacks(
+  deno_runtime::deno_permissions::prompter::set_prompt_callbacks(
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
   );
+
+  maybe_setup_permission_broker();
 
   rustls::crypto::aws_lc_rs::default_provider()
     .install_default()
@@ -661,6 +676,29 @@ async fn resolve_flags_and_init(
     .as_ref()
     .map(|files| files.iter().map(PathBuf::from).collect());
   load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
+
+  if deno_lib::args::has_flag_env_var("DENO_CONNECTED")
+    && matches!(
+      flags.subcommand,
+      DenoSubcommand::Run { .. }
+        | DenoSubcommand::Serve { .. }
+        | DenoSubcommand::Task { .. }
+    )
+  {
+    flags.tunnel = true;
+  }
+
+  // Tunnel sets up env vars and OTEL, so connect before everything else.
+  if flags.tunnel {
+    if let Err(err) = initialize_tunnel(&flags).await {
+      exit_for_error(err.context("Failed to start with tunnel"));
+    }
+    // SAFETY: We're doing this before any threads are created.
+    unsafe {
+      std::env::set_var("DENO_CONNECTED", "1");
+    }
+  }
+
   flags.unstable_config.fill_with_env();
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
@@ -672,22 +710,6 @@ async fn resolve_flags_and_init(
       .split(",")
       .map(|c| c.trim().to_string())
       .collect();
-  }
-
-  // Tunnel is initialized before OTEL since
-  // OTEL data is submitted via the tunnel.
-  if let Some(host) = flags
-    .connected
-    .clone()
-    .or_else(|| env::var("DENO_CONNECTED").ok())
-  {
-    if let Err(err) = initialize_tunnel(&host, &flags).await {
-      exit_for_error(err.context("Failed to start with --connected"));
-    }
-    // SAFETY: We're doing this before any threads are created.
-    unsafe {
-      std::env::set_var("DENO_CONNECTED", &host);
-    }
   }
 
   let otel_config = flags.otel_config();
@@ -914,9 +936,18 @@ fn wait_for_start(
   })
 }
 
-async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
+async fn auth_tunnel(
+  env_token: Option<String>,
+) -> Result<String, deno_core::anyhow::Error> {
+  let mut args = vec!["deploy".to_string(), "tunnel-login".to_string()];
+
+  if let Some(token) = &env_token {
+    args.push("--token".to_string());
+    args.push(token.clone());
+  }
+
   let mut child = tokio::process::Command::new(env::current_exe()?)
-    .args(["deploy", "tunnel-login"])
+    .args(args)
     .spawn()?;
   let out = child.wait().await?;
 
@@ -924,47 +955,44 @@ async fn auth_tunnel() -> Result<String, deno_core::anyhow::Error> {
     deno_runtime::exit(1);
   }
 
-  Ok(tools::deploy::get_token_entry()?.get_password()?)
+  if let Some(token) = env_token {
+    Ok(token)
+  } else {
+    Ok(tools::deploy::get_token_entry()?.get_password()?)
+  }
 }
 
 #[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
-  host: &str,
   flags: &Flags,
 ) -> Result<(), deno_core::anyhow::Error> {
   let mut factory = CliFactory::from_flags(Arc::new(flags.clone()));
   let mut cli_options = factory.cli_options()?;
   let deploy_config = cli_options.start_dir.to_deploy_config()?;
 
-  let token = if let Ok(token) = std::env::var("DENO_DEPLOY_TOKEN") {
-    token
+  let host = std::env::var("DENO_DEPLOY_TUNNEL_ENDPOINT")
+    .unwrap_or_else(|_| "tunnel.global.prod.deno-cluster.net:443".into());
+
+  let env_token = env::var("DENO_DEPLOY_TOKEN").ok();
+  let env_org = env::var("DENO_DEPLOY_ORG").ok();
+  let env_app = env::var("DENO_DEPLOY_APP").ok();
+
+  let token = if env_token.is_some() && env_org.is_some() && env_app.is_some() {
+    env_token.clone().unwrap()
   } else {
-    match tools::deploy::get_token_entry()?.get_password() {
-      Ok(token) => token,
-      Err(keyring::Error::NoEntry) => {
-        let token = auth_tunnel().await?;
-
-        if deploy_config.is_none() {
-          // we regenerate the factory & CliOptions since auth_tunnel updates
-          // the config file with the deploy config, only if it was not set previously.
-          factory = CliFactory::from_flags(Arc::new(flags.clone()));
-          cli_options = factory.cli_options()?;
-        }
-
-        token
-      }
-      Err(e) => {
-        exit_for_error(e.into());
-      }
-    }
+    auth_tunnel(env_token.clone()).await?
   };
 
-  let (org, app) = if let (Ok(org), Ok(app)) = (
-    std::env::var("DENO_DEPLOY_ORG"),
-    std::env::var("DENO_DEPLOY_APP"),
-  ) {
+  let (org, app) = if let (Some(org), Some(app)) = (env_org, env_app) {
     (org, app)
   } else {
+    if deploy_config.is_none() {
+      // we regenerate the factory & CliOptions since auth_tunnel updates
+      // the config file with the deploy config, only if it was not set previously.
+      factory = CliFactory::from_flags(Arc::new(flags.clone()));
+      cli_options = factory.cli_options()?;
+    }
+
     let deploy_config = cli_options
       .start_dir
       .to_deploy_config()?
@@ -999,14 +1027,28 @@ async fn initialize_tunnel(
     "hostname".into(),
     deno_runtime::deno_os::sys_info::hostname(),
   );
-  if let Some(entrypoint) = match &flags.subcommand {
-    DenoSubcommand::Run(run_flags) => Some(run_flags.script.to_owned()),
-    DenoSubcommand::Serve(serve_flags) => Some(serve_flags.script.to_owned()),
-    DenoSubcommand::Repl(_) => Some("<repl>".into()),
-    DenoSubcommand::Eval(_) => Some("<eval>".into()),
-    _ => None,
-  } {
-    metadata.insert("entrypoint".into(), entrypoint);
+  match &flags.subcommand {
+    DenoSubcommand::Run(run_flags) => {
+      metadata.insert("subcommand".into(), "run".into());
+      metadata.insert("entrypoint".into(), run_flags.script.clone());
+    }
+    DenoSubcommand::Serve(serve_flags) => {
+      metadata.insert("subcommand".into(), "serve".into());
+      metadata.insert("entrypoint".into(), serve_flags.script.clone());
+    }
+    DenoSubcommand::Task(task_flags) => {
+      metadata.insert("subcommand".into(), "task".into());
+      if let Some(task) = &task_flags.task {
+        metadata.insert("task".into(), task.clone());
+      }
+    }
+    DenoSubcommand::Repl(_) => {
+      metadata.insert("subcommand".into(), "repl".into());
+    }
+    DenoSubcommand::Eval(_) => {
+      metadata.insert("subcommand".into(), "eval".into());
+    }
+    _ => {}
   }
 
   let on_event = |event| {
@@ -1021,7 +1063,7 @@ async fn initialize_tunnel(
 
         log::info!(
           "{}",
-          colors::green(format!("You are connected to {endpoint}!"))
+          colors::green(format!("You are connected to {endpoint}"))
         );
       }
       Event::Reconnect(duration, reason) => {
@@ -1061,7 +1103,7 @@ async fn initialize_tunnel(
     Err(deno_runtime::deno_net::tunnel::Error::Unauthorized) => {
       tools::deploy::get_token_entry()?.delete_credential()?;
 
-      let token = auth_tunnel().await?;
+      let token = auth_tunnel(env_token).await?;
       deno_runtime::deno_net::tunnel::TunnelConnection::connect(
         addr,
         hostname.to_owned(),

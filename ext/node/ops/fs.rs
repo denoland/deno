@@ -9,9 +9,11 @@ use std::rc::Rc;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::op2;
+use deno_core::unsync::spawn_blocking;
 use deno_fs::FileSystemRc;
 use deno_fs::OpenOptions;
 use deno_io::fs::FileResource;
+use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 use serde::Serialize;
 
@@ -82,60 +84,6 @@ where
   };
 
   Ok(fs.exists_async(path.into_owned()).await?)
-}
-
-#[op2(fast, stack_trace)]
-pub fn op_node_cp_sync<P>(
-  state: &mut OpState,
-  #[string] path: &str,
-  #[string] new_path: &str,
-) -> Result<(), FsError>
-where
-  P: NodePermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Read,
-    Some("node:fs.cpSync"),
-  )?;
-  let new_path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(new_path)),
-    OpenAccessKind::WriteNoFollow,
-    Some("node:fs.cpSync"),
-  )?;
-
-  let fs = state.borrow::<FileSystemRc>();
-  fs.cp_sync(&path, &new_path)?;
-  Ok(())
-}
-
-#[op2(async, stack_trace)]
-pub async fn op_node_cp<P>(
-  state: Rc<RefCell<OpState>>,
-  #[string] path: String,
-  #[string] new_path: String,
-) -> Result<(), FsError>
-where
-  P: NodePermissions + 'static,
-{
-  let (fs, path, new_path) = {
-    let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Read,
-      Some("node:fs.cpSync"),
-    )?;
-    let new_path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(new_path)),
-      OpenAccessKind::WriteNoFollow,
-      Some("node:fs.cpSync"),
-    )?;
-    (state.borrow::<FileSystemRc>().clone(), path, new_path)
-  };
-
-  fs.cp_async(path.into_owned(), new_path.into_owned())
-    .await?;
-  Ok(())
 }
 
 fn get_open_options(mut flags: i32, mode: u32) -> OpenOptions {
@@ -272,9 +220,31 @@ pub struct StatFs {
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_node_statfs<P>(
-  state: Rc<RefCell<OpState>>,
+pub fn op_node_statfs_sync<P>(
+  state: &mut OpState,
   #[string] path: &str,
+  bigint: bool,
+) -> Result<StatFs, FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(Path::new(path)),
+    OpenAccessKind::ReadNoFollow,
+    Some("node:fs.statfsSync"),
+  )?;
+  state
+    .borrow_mut::<P>()
+    .check_sys("statfs", "node:fs.statfsSync")?;
+
+  statfs(path, bigint)
+}
+
+#[op2(async, stack_trace)]
+#[serde]
+pub async fn op_node_statfs<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
   bigint: bool,
 ) -> Result<StatFs, FsError>
 where
@@ -283,7 +253,7 @@ where
   let path = {
     let mut state = state.borrow_mut();
     let path = state.borrow_mut::<P>().check_open(
-      Cow::Borrowed(Path::new(path)),
+      Cow::Owned(PathBuf::from(path)),
       OpenAccessKind::ReadNoFollow,
       Some("node:fs.statfs"),
     )?;
@@ -292,6 +262,14 @@ where
       .check_sys("statfs", "node:fs.statfs")?;
     path
   };
+
+  match spawn_blocking(move || statfs(path, bigint)).await {
+    Ok(result) => result,
+    Err(err) => Err(FsError::Io(err.into())),
+  }
+}
+
+fn statfs(path: CheckedPath, bigint: bool) -> Result<StatFs, FsError> {
   #[cfg(unix)]
   {
     use std::os::unix::ffi::OsStrExt;

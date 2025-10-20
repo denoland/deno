@@ -47,6 +47,7 @@ const {
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   Symbol,
+  SymbolAsyncDispose,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
@@ -55,7 +56,6 @@ const {
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
-import { Event } from "ext:deno_web/02_event.js";
 import {
   fromInnerResponse,
   newInnerResponse,
@@ -76,13 +76,9 @@ import {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
-  SERVER,
-  WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
 import {
-  Deferred,
   getReadableStreamResourceBacking,
   readableStreamForRid,
   ReadableStreamPrototype,
@@ -94,7 +90,6 @@ import {
   UpgradedConn,
 } from "ext:deno_net/01_net.js";
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
-import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 import {
   builtinTracer,
   ContextManager,
@@ -148,10 +143,10 @@ const UPGRADE_RESPONSE_SENTINEL = fromInnerResponse(
   "immutable",
 );
 
-function upgradeHttpRaw(req, conn) {
+function upgradeHttpRaw(req) {
   const inner = toInnerRequest(req);
-  if (inner._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeHttpRaw", conn);
+  if (inner?._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeHttpRaw");
   }
   throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
 }
@@ -203,7 +198,7 @@ class InnerRequest {
     return this.#upgraded;
   }
 
-  _wantsUpgrade(upgradeType, ...originalArgs) {
+  _wantsUpgrade(upgradeType) {
     if (this.#upgraded) {
       throw new Deno.errors.Http("Already upgraded");
     }
@@ -211,77 +206,36 @@ class InnerRequest {
       throw new Deno.errors.Http("Already closed");
     }
 
-    // upgradeHttpRaw is sync
     if (upgradeType == "upgradeHttpRaw") {
       const external = this.#external;
-      const underlyingConn = originalArgs[0];
 
       this.url();
       this.headerList;
       this.close();
 
-      this.#upgraded = () => {};
+      this.#upgraded = true;
 
       const upgradeRid = op_http_upgrade_raw(external);
 
       const conn = new UpgradedConn(
         upgradeRid,
-        underlyingConn?.remoteAddr,
-        underlyingConn?.localAddr,
+        this.remoteAddr,
+        this.#context.listener.addr,
       );
 
       return { response: UPGRADE_RESPONSE_SENTINEL, conn };
     }
 
-    // upgradeWebSocket is sync
     if (upgradeType == "upgradeWebSocket") {
-      const response = originalArgs[0];
-      const ws = originalArgs[1];
-
       const external = this.#external;
 
       this.url();
       this.headerList;
       this.close();
 
-      const goAhead = new Deferred();
-      this.#upgraded = () => {
-        goAhead.resolve();
-      };
-      const wsPromise = op_http_upgrade_websocket_next(
-        external,
-        response.headerList,
-      );
+      this.#upgraded = true;
 
-      // Start the upgrade in the background.
-      (async () => {
-        try {
-          // Returns the upgraded websocket connection
-          const wsRid = await wsPromise;
-
-          // We have to wait for the go-ahead signal
-          await goAhead.promise;
-
-          ws[_rid] = wsRid;
-          ws[_readyState] = WebSocket.OPEN;
-          ws[_role] = SERVER;
-          const event = new Event("open");
-          ws.dispatchEvent(event);
-
-          ws[_eventLoop]();
-          if (ws[_idleTimeoutDuration]) {
-            ws.addEventListener(
-              "close",
-              () => clearTimeout(ws[_idleTimeoutTimeout]),
-            );
-          }
-          ws[_serverHandleIdleTimeout]();
-        } catch (error) {
-          const event = new ErrorEvent("error", { error });
-          ws.dispatchEvent(event);
-        }
-      })();
-      return { response: UPGRADE_RESPONSE_SENTINEL, socket: ws };
+      return op_http_upgrade_websocket_next(external);
     }
   }
 
@@ -616,16 +570,17 @@ function mapToCallback(context, callback, onError) {
 
     const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
-      // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
-      if (response !== UPGRADE_RESPONSE_SENTINEL) {
+      if (response.status !== 101) {
         import.meta.log(
           "error",
           "Upgrade response was not returned from callback",
         );
         context.close();
+        return;
       }
-      innerRequest?.[_upgraded]();
-      return;
+      if (response === UPGRADE_RESPONSE_SENTINEL) {
+        return;
+      }
     }
 
     // Did everything shut down while we were waiting?
@@ -779,7 +734,9 @@ function serve(arg1, arg2) {
     3: duplicateListener,
   } = op_http_serve_address_override();
   if (overrideKind) {
-    let envOptions = duplicateListener ? { __proto__: null } : options;
+    let envOptions = duplicateListener
+      ? { __proto__: null, signal: options.signal, onError: options.onError }
+      : options;
 
     switch (overrideKind) {
       case 1: {
@@ -936,7 +893,7 @@ function serveInner(options, handler) {
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
     loadBalanced: options[kLoadBalanced] ?? false,
-    backlog: options.backlog,
+    tcpBacklog: options.tcpBacklog,
   };
 
   if (options.certFile || options.keyFile) {

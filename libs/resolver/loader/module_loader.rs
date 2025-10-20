@@ -94,6 +94,20 @@ pub enum LoadCodeSourceErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UnsupportedScheme(#[from] UnsupportedSchemeError),
+}
+
+// this message list additional `npm` and `jsr` schemes, but they should actually be handled
+// before these APIs are even hit.
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
+#[error(
+  "Unsupported scheme \"{}\" for module \"{}\". Supported schemes:\n - \"blob\"\n - \"data\"\n - \"file\"\n - \"http\"\n - \"https\"\n - \"jsr\"\n - \"npm\"", url.scheme(), url
+)]
+pub struct UnsupportedSchemeError {
+  pub url: Url,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -188,7 +202,17 @@ impl<TSys: ModuleLoaderSys> ModuleLoader<TSys> {
     {
       Some(module_or_asset) => module_or_asset,
       None => {
-        if self.in_npm_pkg_checker.in_npm_package(specifier) {
+        if !matches!(
+          specifier.scheme(),
+          "https" | "http" | "file" | "blob" | "data"
+        ) {
+          return Err(
+            UnsupportedSchemeError {
+              url: specifier.clone(),
+            }
+            .into(),
+          );
+        } else if self.in_npm_pkg_checker.in_npm_package(specifier) {
           let loaded_module = self
             .npm_module_loader
             .load(
