@@ -216,7 +216,7 @@ impl SingleTestMetaData {
       envs: Default::default(),
       steps: vec![self.step],
       ignore: self.ignore,
-      variants: Default::default(),
+      variants: self.variants,
     }
   }
 }
@@ -541,30 +541,19 @@ fn substitute_variants_into_envs(
   pairs: &Vec<(String, String)>,
   envs: &mut HashMap<String, String>,
 ) {
-  enum Update {
-    Remove(String),
-    Replace(String, String),
-  }
-  let mut updates = Vec::new();
+  let mut to_remove = Vec::new();
   for (key, value) in pairs {
-    for (k, v) in envs.iter() {
+    for (k, v) in envs.iter_mut() {
       let replaced = v.replace(key.as_str(), value);
       if replaced.is_empty() && &replaced != v {
-        updates.push(Update::Remove(k.clone()));
+        to_remove.push(k.clone());
         continue;
       }
-      updates.push(Update::Replace(k.clone(), replaced));
+      *v = replaced;
     }
   }
-  for update in updates {
-    match update {
-      Update::Remove(key) => {
-        envs.remove(&key);
-      }
-      Update::Replace(key, value) => {
-        envs.insert(key, value);
-      }
-    }
+  for key in to_remove {
+    envs.remove(&key);
   }
 }
 
