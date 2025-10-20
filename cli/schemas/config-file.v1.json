@@ -672,6 +672,15 @@
         }
       }
     },
+    "minimumDependencyAge": {
+      "oneOf": [{
+        "description": "(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable).",
+        "type": "string"
+      }, {
+        "description": "(Unstable) The age in minutes.",
+        "type": "number"
+      }]
+    },
     "nodeModulesDir": {
       "oneOf": [
         {
