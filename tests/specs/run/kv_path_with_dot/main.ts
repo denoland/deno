@@ -4,11 +4,9 @@
 // This test ensures that Deno.openKv works with paths containing "./" prefix
 // when run with -A flag, even if the DB file doesn't exist yet.
 
-const dbPath = "./.test_kv.db";
-
 // This should create the DB file successfully
 // Before the fix (deno_path_util <= 0.6.1), this would fail with:
 // "NotFound: No such file or directory (os error 2)"
-using db = await Deno.openKv(dbPath);
+using db = await Deno.openKv( "./.test_kv.db");
 
 console.log("Database opened successfully");
