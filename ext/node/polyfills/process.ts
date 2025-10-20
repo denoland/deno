@@ -833,6 +833,8 @@ process.features = { inspector: false };
 // TODO(kt3k): Get the value from --no-deprecation flag.
 process.noDeprecation = false;
 
+process.moduleLoadList = [];
+
 if (isWindows) {
   delete process.getgid;
   delete process.getuid;
