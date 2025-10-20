@@ -483,6 +483,7 @@ pub fn op_http2_http_state<'a>(
 }
 
 struct Session {
+  session: *mut ffi::nghttp2_session,
   // Keep track of each stream's reference for this session using
   // it's frame id.
   streams: HashMap<i32, (v8::Global<v8::Object>, cppgc::Ref<Http2Stream>)>,
@@ -574,6 +575,20 @@ impl Http2SessionDriver {
       ffi::nghttp2_session_mem_recv(self.session, data.as_mut_ptr() as _, nread)
     };
     dbg!(ret);
+
+    // Write outgoing data
+    loop {
+      let mut src = std::ptr::null();
+      unsafe {
+        let src_len = ffi::nghttp2_session_mem_send(self.session, &mut src);
+        if src_len > 0 {
+          let data = std::slice::from_raw_parts(src, src_len as usize);
+          self.stream.clone().write(data).await?;
+        } else {
+          break;
+        }
+      }
+    }
     Ok(nread)
   }
 
@@ -649,16 +664,107 @@ unsafe impl deno_core::GarbageCollected for Http2Stream {
   }
 }
 
+struct Http2Headers {
+  nva: Vec<ffi::nghttp2_nv>,
+}
+
+impl Http2Headers {
+  fn data(&self) -> *const ffi::nghttp2_nv {
+    self.nva.as_ptr()
+  }
+
+  fn len(&self) -> usize {
+    self.nva.len()
+  }
+}
+
+impl From<(String, usize)> for Http2Headers {
+  fn from(arr: (String, usize)) -> Http2Headers {
+    let mut nva = Vec::new();
+    let mut i = 0;
+
+    let header_contents = arr.0.as_bytes();
+    let count = arr.1;
+    while i < header_contents.len() {
+      if nva.len() >= count {
+        static ZERO: u8 = 0;
+        nva.clear();
+        nva.push(ffi::nghttp2_nv {
+          name: &ZERO as *const _ as *mut _,
+          namelen: 1,
+          value: &ZERO as *const _ as *mut _,
+          valuelen: 1,
+          flags: 0,
+        });
+        break;
+      }
+
+      let name_end = match header_contents[i..].iter().position(|&b| b == 0) {
+        Some(p) => i + p,
+        None => break,
+      };
+      let name_ptr = unsafe { header_contents.as_ptr().add(i) };
+      let namelen = name_end - i;
+      i = name_end + 1;
+      if i >= header_contents.len() {
+        break;
+      }
+
+      let value_end = match header_contents[i..].iter().position(|&b| b == 0) {
+        Some(p) => i + p,
+        None => break,
+      };
+      let value_ptr = unsafe { header_contents.as_ptr().add(i) };
+      let valuelen = value_end - i;
+      i = value_end + 1;
+      if i >= header_contents.len() {
+        break;
+      }
+
+      let flags = *header_contents.get(i).unwrap_or(&0);
+      i += 1;
+
+      nva.push(ffi::nghttp2_nv {
+        name: name_ptr as *mut _,
+        namelen,
+        value: value_ptr as *mut _,
+        valuelen,
+        flags,
+      });
+    }
+
+    Http2Headers { nva }
+  }
+}
+
 #[op2]
 impl Http2Stream {
-  #[fast]
-  fn response(&self) {}
+  fn respond(&self, #[serde] headers: (String, usize), options: i32) {
+    let headers = Http2Headers::from(headers);
+
+    let session = unsafe { &*self.session };
+
+    unsafe {
+      ffi::nghttp2_submit_response(
+        session.session,
+        self.id,
+        headers.data(),
+        headers.len(),
+        std::ptr::null_mut(), // TODO: provider
+      );
+    }
+  }
 
   #[fast]
   fn refresh_state(&self) {}
 
   #[fast]
-  fn write_utf8_string(&self) -> i32 {
+  fn write_utf8_string(
+    &self,
+    _req: v8::Local<v8::Object>,
+    #[string] data: &str,
+  ) -> i32 {
+    dbg!(data);
     0
   }
 
@@ -889,6 +995,7 @@ impl Http2Session {
     let isolate = unsafe { isolate.as_raw_isolate_ptr() };
 
     let mut inner = Box::into_raw(Box::new(Session {
+      session,
       streams: HashMap::new(),
       op_state,
       context,
@@ -907,6 +1014,8 @@ impl Http2Session {
         inner as *mut _ as *mut _,
         std::ptr::null_mut(),
       );
+
+      (&mut *inner).session = session;
     }
 
     Self {
@@ -955,8 +1064,9 @@ impl Http2Session {
   #[fast]
   fn destroy(&self) {}
 
+  // Submit SETTINGS frame for the Http2Session
   #[fast]
-  fn settings(&self) -> bool {
+  fn settings(&self, cb: v8::Local<v8::Function>) -> bool {
     true
   }
 

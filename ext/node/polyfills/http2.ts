@@ -1629,8 +1629,6 @@ class ServerHttp2Stream extends Http2Stream {
       this.end();
     }
 
-    console.log("response", headersList, streamOptions);
-    return; // TODO
     const ret = this[kHandle].respond(headersList, streamOptions);
     if (ret < 0) {
       this.destroy(new NghttpError(ret));
