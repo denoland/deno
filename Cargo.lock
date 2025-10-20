@@ -1647,6 +1647,7 @@ dependencies = [
  "deno_telemetry",
  "deno_terminal 0.2.2",
  "deno_tower_lsp",
+ "deno_typescript_go_client_rust",
  "dhat",
  "dissimilar",
  "dotenvy",
@@ -3071,6 +3072,19 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "deno_typescript_go_client_rust"
+version = "0.1.0"
+dependencies = [
+ "indexmap 2.9.0",
+ "log",
+ "rmp",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -5903,9 +5917,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.27"
+version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
+checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 dependencies = [
  "serde",
 ]
@@ -7715,6 +7729,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmp"
+version = "0.8.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "228ed7c16fa39782c3b3468e974aec2795e9089153cd08ee2e9aefb3613334c4"
+dependencies = [
+ "byteorder",
+ "num-traits",
+ "paste",
+]
+
+[[package]]
 name = "ron"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9369,6 +9394,7 @@ dependencies = [
  "url",
  "win32job",
  "winapi",
+ "zip",
 ]
 
 [[package]]

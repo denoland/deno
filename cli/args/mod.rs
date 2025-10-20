@@ -1210,6 +1210,10 @@ impl CliOptions {
     self.flags.type_check_mode
   }
 
+  pub fn unstable_tsgo(&self) -> bool {
+    self.flags.unstable_config.tsgo || self.workspace().has_unstable("tsgo")
+  }
+
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
   }
