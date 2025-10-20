@@ -1370,7 +1370,7 @@ impl CliOptions {
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual
-    } else if self.flags.unstable_config.npm_lazy_caching {
+    } else if self.unstable_npm_lazy_caching() {
       NpmCachingStrategy::Lazy
     } else {
       NpmCachingStrategy::Eager
