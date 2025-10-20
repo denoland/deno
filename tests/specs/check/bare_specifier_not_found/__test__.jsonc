@@ -1,4 +1,3 @@
-// https://github.com/denoland/deno/issues/30116
 {
   "tests": {
     "import_map": {
@@ -11,5 +10,16 @@
       "output": "check_no_import_map.out",
       "exitCode": 1
     }
+  },
+  "variants": {
+    "tsgo": {
+      "use_tsgo": "1"
+    },
+    "tsc": {
+      "use_tsgo": ""
+    }
+  },
+  "envs": {
+    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
   }
 }

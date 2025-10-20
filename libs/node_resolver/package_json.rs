@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonCacheResult;
 use deno_package_json::PackageJsonRc;
+use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 
 use crate::errors::PackageJsonLoadError;
@@ -76,12 +77,12 @@ pub type PackageJsonResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<PackageJsonResolver<TSys>>;
 
 #[derive(Debug)]
-pub struct PackageJsonResolver<TSys: FsRead> {
+pub struct PackageJsonResolver<TSys: FsRead + FsMetadata> {
   sys: TSys,
   loader_cache: Option<PackageJsonCacheRc>,
 }
 
-impl<TSys: FsRead> PackageJsonResolver<TSys> {
+impl<TSys: FsRead + FsMetadata> PackageJsonResolver<TSys> {
   pub fn new(sys: TSys, loader_cache: Option<PackageJsonCacheRc>) -> Self {
     Self { sys, loader_cache }
   }
@@ -124,12 +125,14 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
   }
 }
 
-pub struct ClosestPackageJsonsIterator<'a, TSys: FsRead> {
+pub struct ClosestPackageJsonsIterator<'a, TSys: FsRead + FsMetadata> {
   current_path: &'a Path,
   resolver: &'a PackageJsonResolver<TSys>,
 }
 
-impl<'a, TSys: FsRead> Iterator for ClosestPackageJsonsIterator<'a, TSys> {
+impl<'a, TSys: FsRead + FsMetadata> Iterator
+  for ClosestPackageJsonsIterator<'a, TSys>
+{
   type Item = Result<PackageJsonRc, PackageJsonLoadError>;
 
   fn next(&mut self) -> Option<Self::Item> {
