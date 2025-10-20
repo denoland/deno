@@ -4,6 +4,7 @@ use test_util as util;
 use util::deno_config_path;
 
 #[test]
+#[allow(clippy::print_stderr)]
 fn node_compat_tests() {
   // Skip Node.js compatibility tests in CI on PRs unless ci-node-test label is present
   if std::env::var("CI_SKIP_NODE_TEST").unwrap_or_default() == "true" {
