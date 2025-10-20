@@ -1169,7 +1169,7 @@ impl CliFactory {
           } else {
             IsCjsResolutionMode::Disabled
           },
-          newest_dependency_date: options.newest_dependency_date(),
+          newest_dependency_date: self.flags.minimum_dependency_age,
           node_analysis_cache: Some(node_analysis_cache),
           node_resolver_options: NodeResolverOptions {
             conditions: NodeConditionOptions {

@@ -65,21 +65,21 @@ deno_ast = { version = "=0.50.3", features = ["transpiling"] }
 deno_core = { version = "0.363.0" }
 
 deno_cache_dir = "=0.25.0"
-deno_doc = "=0.185.0"
+deno_doc = "=0.186.0"
 deno_error = "=0.7.0"
-deno_graph = { version = "=0.102.1", default-features = false }
+deno_graph = { version = "=0.103.0", default-features = false }
 deno_lint = "=0.80.0"
 deno_lockfile = "=0.32.2"
 deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
-deno_npm = "=0.41.0"
+deno_npm = "=0.42.0"
 deno_path_util = "=0.6.1"
 deno_semver = "=0.9.0"
 deno_task_shell = "=0.26.0"
 deno_terminal = "=0.2.2"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-eszip = "=0.103.0"
+eszip = "=0.104.0"
 
 denokv_proto = "0.12.0"
 denokv_remote = "0.12.0"
