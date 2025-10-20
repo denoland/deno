@@ -3,11 +3,12 @@
   "steps": [
     {
       "args": "install",
-      "output": "asdfasdfawertqwerqwer"
+      "output": "install.out"
     },
     {
       "args": "audit",
-      "output": "audit.out"
+      "output": "audit.out",
+      "exitCode": 1
     }
   ]
 }

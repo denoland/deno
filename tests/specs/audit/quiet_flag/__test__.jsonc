@@ -2,8 +2,13 @@
   "tempDir": true,
   "steps": [
     {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
       "args": "audit --quiet",
-      "output": ""
+      "output": "audit.out",
+      "exitCode": 1
     }
   ]
 }

@@ -1876,16 +1876,25 @@ Or multiple dependencies at once:
       .args(default_registry_args())
   })
 }
+
 fn audit_subcommand() -> Command {
   command(
     "audit",
-    cstr!("Audit currently installed dependencies."),
+    cstr!(
+      "Audit currently installed dependencies.
+  <p(245)>deno audit</>
+      
+Show only high and critical severity vulnerabilities
+  <p(245)>deno audit --level=high</>
+
+Don't error if the audit data can't be retrieved from the registry
+  <p(245)>deno audit --ignore-registry-errors</>"
+    ),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
     cmd
       .args(lock_args())
-      .args(default_registry_args())
       .arg(
         Arg::new("level")
           .long("level")

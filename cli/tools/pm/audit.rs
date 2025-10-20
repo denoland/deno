@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::io::Write;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
@@ -24,7 +25,7 @@ use crate::sys::CliSys;
 pub async fn audit(
   flags: Arc<Flags>,
   audit_flags: AuditFlags,
-) -> Result<(), AnyError> {
+) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
   let _cli_options = factory.cli_options()?;
   let npm_resolver = factory.npm_resolver().await?;
@@ -34,40 +35,20 @@ pub async fn audit(
   let sys = CliSys::default();
   let npm_url = npm_registry_url(&sys);
   let http_provider = HttpClientProvider::new(None, None);
-  let _npm_response = npm::call_audits_api(
-    audit_flags,
-    npm_url,
-    &snapshot,
-    http_provider.get_or_create().unwrap(),
-  )
-  .await?;
 
-  // let _purl_responses = socket_dev::call_firewall_api(
+  // socket_dev::call_firewall_api(
   //   &snapshot,
   //   http_provider.get_or_create().unwrap(),
   // )
   // .await?;
 
-  // for response in purl_responses {
-  //   if let Some(score) = response.score {
-  //     if score.overall <= 0.2 {
-  //       eprintln!(
-  //         "{}@{} Low score - {}",
-  //         response.name, response.version, score.overall
-  //       );
-  //     }
-  //   }
-  //   if !response.alerts.is_empty() {
-  //     for alert in response.alerts.iter() {
-  //       eprintln!(
-  //         "{}@{} Alert - {} - {}",
-  //         response.name, response.version, alert.severity, alert.category
-  //       );
-  //     }
-  //   }
-  // }
-
-  Ok(())
+  npm::call_audits_api(
+    audit_flags,
+    npm_url,
+    &snapshot,
+    http_provider.get_or_create().unwrap(),
+  )
+  .await
 }
 
 mod npm {
@@ -159,7 +140,7 @@ mod npm {
     npm_url: Url,
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
-  ) -> Result<(), AnyError> {
+  ) -> Result<i32, AnyError> {
     let top_level_packages = npm_resolution_snapshot.top_level_packages();
     let mut requires = HashMap::with_capacity(top_level_packages.len());
     let mut dependencies = HashMap::with_capacity(top_level_packages.len());
@@ -201,7 +182,6 @@ mod npm {
         "dependencies": dependencies,
     });
 
-    // eprintln!("body {}", serde_json::to_string_pretty(&body).unwrap());
     let response = match call_audits_api_inner(npm_url, client, body).await {
       Ok(s) => s,
       Err(err) => {
@@ -210,17 +190,17 @@ mod npm {
             "Failed to get data from the registry: {}",
             err.to_string()
           );
-          return Ok(());
+          return Ok(0);
         } else {
           return Err(err);
         }
       }
     };
-    // dbg!(&response);
 
     let vulns = response.metadata.vulnerabilities;
     if vulns.total() == 0 {
-      return Ok(());
+      _ = writeln!(&mut std::io::stdout(), "No known vulnerabilities found",);
+      return Ok(0);
     }
 
     let mut advisories = response.advisories.values().collect::<Vec<_>>();
@@ -238,7 +218,7 @@ mod npm {
       audit_flags.ignore_unfixable,
     );
 
-    Ok(())
+    Ok(1)
   }
 
   fn print_report(
@@ -248,6 +228,8 @@ mod npm {
     minimal_severity: AdvisorySeverity,
     ignore_unfixable: bool,
   ) {
+    let stdout = &mut std::io::stdout();
+
     for adv in advisories {
       let Some(severity) = AdvisorySeverity::parse(&adv.severity) else {
         continue;
@@ -261,8 +243,9 @@ mod npm {
         continue;
       }
 
-      log::info!("╭ {}", colors::bold(adv.title.to_string()));
-      log::info!(
+      _ = writeln!(stdout, "╭ {}", colors::bold(adv.title.to_string()));
+      _ = writeln!(
+        stdout,
         "│ {}   {}",
         colors::gray("Severity:"),
         match severity {
@@ -272,37 +255,55 @@ mod npm {
           AdvisorySeverity::Critical => colors::red("critical"),
         }
       );
-      log::info!("│ {}    {}", colors::gray("Package:"), adv.module_name);
-      log::info!(
+      _ = writeln!(
+        stdout,
+        "│ {}    {}",
+        colors::gray("Package:"),
+        adv.module_name
+      );
+      _ = writeln!(
+        stdout,
         "│ {} {}",
         colors::gray("Vulnerable:"),
         adv.vulnerable_versions
       );
-      log::info!("│ {}    {}", colors::gray("Patched:"), adv.patched_versions);
+      _ = writeln!(
+        stdout,
+        "│ {}    {}",
+        colors::gray("Patched:"),
+        adv.patched_versions
+      );
       if let Some(finding) = adv.findings.first() {
         if let Some(path) = finding.paths.first() {
-          log::info!("│ {}       {}", colors::gray("Path:"), path);
+          _ = writeln!(stdout, "│ {}       {}", colors::gray("Path:"), path);
         }
       }
       if actions.is_empty() {
-        log::info!("╰ {}      {}", colors::gray("Info:"), adv.url);
+        _ = writeln!(stdout, "╰ {}      {}", colors::gray("Info:"), adv.url);
       } else {
-        log::info!("│ {}       {}", colors::gray("Info:"), adv.url);
+        _ = writeln!(stdout, "│ {}       {}", colors::gray("Info:"), adv.url);
       }
       if actions.len() == 1 {
-        log::info!("╰ {}    {}", colors::gray("Actions:"), actions[0]);
+        _ =
+          writeln!(stdout, "╰ {}    {}", colors::gray("Actions:"), actions[0]);
       } else {
-        log::info!("│ {}    {}", colors::gray("Actions:"), actions[0]);
+        _ =
+          writeln!(stdout, "│ {}    {}", colors::gray("Actions:"), actions[0]);
         for action in &actions[1..actions.len() - 2] {
-          log::info!("│             {}", action);
+          _ = writeln!(stdout, "│             {}", action);
         }
-        log::info!("╰            {}", actions[actions.len() - 1]);
+        _ = writeln!(stdout, "╰            {}", actions[actions.len() - 1]);
       }
-      log::info!("");
+      _ = writeln!(stdout, "");
     }
 
-    log::info!("Found {} vulnerabilities", colors::red(vulns.total()),);
-    log::info!(
+    _ = writeln!(
+      stdout,
+      "Found {} vulnerabilities",
+      colors::red(vulns.total()),
+    );
+    _ = writeln!(
+      stdout,
       "Severity: {} {}, {} {}, {} {}, {} {}",
       colors::bold(vulns.low),
       colors::bold("low"),
@@ -436,7 +437,7 @@ mod socket_dev {
   pub async fn call_firewall_api(
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
-  ) -> Result<Vec<FirewallResponse>, AnyError> {
+  ) -> Result<(), AnyError> {
     let purls = npm_resolution_snapshot
       .all_packages_for_every_system()
       .map(|package| {
@@ -444,7 +445,7 @@ mod socket_dev {
       })
       .collect::<Vec<_>>();
 
-    eprintln!("purls {:#?}", purls);
+    // eprintln!("purls {:#?}", purls);
 
     let futures = purls
       .into_iter()
@@ -470,7 +471,7 @@ mod socket_dev {
       .filter_map(|result| match result {
         Ok(a) => Some(a),
         Err(err) => {
-          eprintln!("Failed to get result {:?}", err);
+          log::error!("Failed to get result {:?}", err);
           None
         }
       })
@@ -482,7 +483,30 @@ mod socket_dev {
       .collect::<Vec<_>>();
     purl_responses.sort_by_cached_key(|r| r.name.to_string());
 
-    Ok(purl_responses)
+    let stdout = &mut std::io::stdout();
+
+    for response in purl_responses {
+      if let Some(score) = response.score {
+        if score.overall <= 0.2 {
+          _ = writeln!(
+            stdout,
+            "{}@{} Low score - {}",
+            response.name, response.version, score.overall
+          );
+        }
+      }
+      if !response.alerts.is_empty() {
+        for alert in response.alerts.iter() {
+          _ = writeln!(
+            stdout,
+            "{}@{} Alert - {} - {}",
+            response.name, response.version, alert.severity, alert.category
+          );
+        }
+      }
+    }
+
+    Ok(())
   }
 
   #[derive(Debug, Deserialize)]
