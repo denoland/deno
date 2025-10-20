@@ -2,6 +2,10 @@
   "tempDir": true,
   "steps": [
     {
+      "args": "install",
+      "output": "asdfasdfawertqwerqwer"
+    },
+    {
       "args": "audit",
       "output": "audit.out"
     }

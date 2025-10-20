@@ -20,6 +20,7 @@ use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
 use hyper::body::Incoming;
+use serde_json::json;
 use sha2::Digest;
 
 use super::ServerKind;
@@ -70,6 +71,40 @@ pub fn private_npm_registry3(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
     "npm private registry server error",
     private_npm_registry3_handler,
   )
+}
+
+fn foo() {
+  let v = json!({
+    "findings": [
+      {"version": "1.0.0", "paths": ["@denotest/with-vuln1"]}
+    ],
+    "id": 101010,
+    "overview": "Lorem ipsum dolor sit amet",
+    "title": "@denotest/with-vuln1 is susceptible to prototype pollution",
+    "severity": "high",
+    "module_name": "@edenotest/with-vuln1",
+    "vulnerable_versions": "<1.1.0",
+    "recommendations": "Upgrade to version 1.1.0 or later",
+    "patched_versions": ">=1.1.0",
+    "url": "https://example.com/vuln/101010"
+  });
+}
+
+fn foo2() {
+  let v = json!({
+    "findings": [
+      {"version": "1.5.0", "paths": ["@denotest/using-vuln>@denotest/with-vuln2"]}
+    ],
+    "id": 202020,
+    "overview": "Lorem ipsum dolor sit amet",
+    "title": "@denotest/with-vuln2 can steal crypto keys",
+    "severity": "critical",
+    "module_name": "@edenotest/with-vuln2",
+    "vulnerable_versions": "<2.0.0",
+    "recommendations": "Upgrade to version 2.0.0 or later",
+    "patched_versions": ">=2.0.0",
+    "url": "https://example.com/vuln/202020"
+  });
 }
 
 fn run_npm_server<F, S>(
