@@ -526,6 +526,7 @@ impl DepManager {
       pending_changes: Vec::new(),
     }
   }
+
   pub fn from_workspace_dir(
     workspace_dir: &Arc<WorkspaceDirectory>,
     dep_filter: impl DepFilter,
@@ -547,6 +548,7 @@ impl DepManager {
 
     Ok(Self::with_deps_args(deps, args))
   }
+
   pub fn from_workspace(
     workspace: &Arc<Workspace>,
     dep_filter: impl DepFilter,
@@ -759,11 +761,18 @@ impl DepManager {
                 }
 
                 let lower_bound = &semver_compatible.as_ref()?.version;
-                if latest_tag >= lower_bound {
+                let latest_matches_newest_dep_date = self
+                  .npm_version_resolver
+                  .matches_newest_dependency_date(&info, latest_tag);
+                if latest_matches_newest_dep_date && latest_tag >= lower_bound {
                   Some(latest_tag.clone())
                 } else {
                   latest_version(
-                    Some(latest_tag),
+                    if latest_matches_newest_dep_date {
+                      Some(latest_tag)
+                    } else {
+                      None
+                    },
                     self
                       .npm_version_resolver
                       .applicable_version_infos(&info)
@@ -806,7 +815,11 @@ impl DepManager {
                 latest_version(
                   Some(lower_bound),
                   info.versions.iter().filter_map(|(version, version_info)| {
-                    if !version_info.yanked {
+                    if !version_info.yanked
+                      && self
+                        .jsr_fetch_resolver
+                        .version_matches_newest_dependency_date(version_info)
+                    {
                       Some(version)
                     } else {
                       None

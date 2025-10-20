@@ -12,6 +12,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use chrono::DateTime;
 use clap::Arg;
 use clap::ArgAction;
 use clap::ArgMatches;
@@ -699,6 +700,50 @@ impl Default for TypeCheckMode {
   }
 }
 
+fn minutes_duration_or_date_parser(
+  s: &str,
+) -> Result<chrono::DateTime<chrono::Utc>, clap::Error> {
+  use crate::util::date::ParseIso8601DurationError;
+
+  if s.chars().all(|c| c.is_ascii_digit()) {
+    let minutes: i64 = match s.parse() {
+      Ok(value) => value,
+      Err(err) => {
+        return Err(clap::Error::raw(
+          ErrorKind::InvalidValue,
+          format!("failed parsing integer to minutes: {err}"),
+        ));
+      }
+    };
+    return Ok(chrono::Utc::now() - chrono::Duration::minutes(minutes));
+  }
+
+  let datetime_parse_err = match DateTime::parse_from_rfc3339(s) {
+    Ok(dt) => return Ok(dt.with_timezone(&chrono::Utc)),
+    Err(err) => err,
+  };
+  // accept offsets without colon (e.g., +0900) and optional seconds
+  if let Ok(dt) = DateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%z")
+    .or_else(|_| DateTime::parse_from_str(s, "%Y-%m-%dT%H:%M%z"))
+  {
+    return Ok(dt.with_timezone(&chrono::Utc));
+  }
+  // try duration
+  match crate::util::date::parse_iso8601_duration(s) {
+    Ok(duration) => Ok(chrono::Utc::now() - duration),
+    Err(ParseIso8601DurationError::MissingP) => Err(clap::Error::raw(
+      ErrorKind::InvalidValue,
+      format!(
+        "expected RFC3339 datetime or ISO-8601 duration: {datetime_parse_err}"
+      ),
+    )),
+    Err(err) => Err(clap::Error::raw(
+      ErrorKind::InvalidValue,
+      format!("expected RFC3339 datetime or ISO-8601 duration: {err}"),
+    )),
+  }
+}
+
 fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   if !s.starts_with("npm:") {
     bail!(
@@ -751,7 +796,6 @@ pub struct Flags {
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
-  // TODO(#30752): hook this up so users can specify it
   pub minimum_dependency_age: Option<chrono::DateTime<chrono::Utc>>,
   pub no_remote: bool,
   pub no_lock: bool,
@@ -3063,7 +3107,7 @@ fn jupyter_subcommand() -> Command {
         .conflicts_with("install"))
 }
 
-fn update_and_outdated_args() -> [Arg; 4] {
+fn update_and_outdated_args() -> [Arg; 5] {
   [
     Arg::new("filters")
       .num_args(0..)
@@ -3087,6 +3131,7 @@ fn update_and_outdated_args() -> [Arg; 4] {
       .short('r')
       .action(ArgAction::SetTrue)
       .help("Include all workspace members"),
+    min_dep_age_arg(),
   ]
 }
 
@@ -3904,6 +3949,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(preload_arg())
+    .arg(min_dep_age_arg())
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
@@ -4491,6 +4537,13 @@ fn preload_arg() -> Arg {
     .action(ArgAction::Append)
     .help("A list of files that will be executed before the main module")
     .value_hint(ValueHint::FilePath)
+}
+
+fn min_dep_age_arg() -> Arg {
+  Arg::new("minimum-dependency-age")
+    .long("minimum-dependency-age")
+    .value_parser(minutes_duration_or_date_parser)
+    .help("(Unstable) The age in minutes, ISO-8601 duration, or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, or '2025-09-16T10:48:01+00:00' for an absolute cutoff time).")
 }
 
 fn ca_file_arg() -> Arg {
@@ -5081,6 +5134,7 @@ fn outdated_parse(
     recursive,
     kind,
   });
+  min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6175,6 +6229,7 @@ fn compile_args_without_check_parse(
   ca_file_arg_parse(flags, matches);
   unsafely_ignore_certificate_errors_parse(flags, matches);
   preload_arg_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6450,6 +6505,10 @@ fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(preload) = matches.remove_many::<String>("preload") {
     flags.preload = preload.collect();
   }
+}
+
+fn min_dep_age_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.minimum_dependency_age = matches.remove_one("minimum-dependency-age");
 }
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {

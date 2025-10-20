@@ -1108,6 +1108,7 @@ export const getValidMode = hideStackFrames((mode, type) => {
   );
 });
 
+/** @type {(buffer: unknown, name: string) => asserts value is string} */
 export const validateStringAfterArrayBufferView = hideStackFrames(
   (buffer, name) => {
     if (typeof buffer !== "string") {

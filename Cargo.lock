@@ -2187,9 +2187,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.102.1"
+version = "0.102.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8016d1e1adaf918305f0f56ee1c1c73b3fcef136c17e014bbd8fa2d446c6ba4"
+checksum = "8118059b8501bc4726ece51f3a130e6f8b6877e911f659474e8c32949043e1c1"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2378,9 +2378,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64deefbf7192aab1428bf68d2d221cf3161c47481d03a50f4ffc43c7ee10450f"
+checksum = "3d71c0df1464034be21a9472e7ec8f9a21958418d203fa2c40507fb5cafe799d"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -2559,9 +2559,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.41.0"
+version = "0.41.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00d083e04150ff9a330abe8f7a9f702dc9bee98b5d438b27d4ab975dc55fbd5c"
+checksum = "529cc385f0ca2f93163b68ae4d3dbb760e147c7dbcbba0615e48c4e95e5da0fc"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -6290,6 +6290,7 @@ dependencies = [
  "deno_semver",
  "futures",
  "lazy-regex",
+ "log",
  "once_cell",
  "path-clean",
  "pretty_assertions",
