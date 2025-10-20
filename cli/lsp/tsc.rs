@@ -2221,6 +2221,8 @@ impl DocumentSpan {
   }
 }
 
+// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub enum MatchKind {
   #[serde(rename = "exact")]
@@ -5367,7 +5369,7 @@ fn run_tsc_thread(
     request_rx,
     enable_tracing,
   ));
-  let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
+  let tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
@@ -5378,7 +5380,7 @@ fn run_tsc_thread(
   if let Some(server) = maybe_inspector_server {
     server.register_inspector(
       "ext:deno_tsc/99_main_compiler.js".to_string(),
-      &mut tsc_runtime,
+      tsc_runtime.inspector(),
       false,
     );
   }

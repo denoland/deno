@@ -17,12 +17,12 @@ use deno_cache::SqliteBackedCache;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
 use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
+use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
@@ -628,7 +628,7 @@ impl MainWorker {
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),
-        &mut js_runtime,
+        js_runtime.inspector(),
         options.should_break_on_first_statement
           || options.should_wait_for_inspector_session,
       );
@@ -919,9 +919,7 @@ impl MainWorker {
     JsRuntimeInspector::create_local_session(
       insp,
       cb,
-      InspectorSessionOptions {
-        kind: InspectorSessionKind::Blocking,
-      },
+      InspectorSessionKind::Blocking,
     )
   }
 
@@ -1170,7 +1168,7 @@ pub fn create_permissions_stack_trace_callback()
         .iter()
         .map(|frame| {
           deno_core::error::format_frame::<deno_core::error::NoAnsiColors>(
-            frame,
+            frame, None,
           )
         })
         .collect()
@@ -1256,7 +1254,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&ModuleLoadReferrer>,
     is_dyn_import: bool,
     requested_module_type: deno_core::RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {

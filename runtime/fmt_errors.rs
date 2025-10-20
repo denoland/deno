@@ -239,7 +239,7 @@ fn format_js_error_inner(
     0,
   ));
   for frame in &js_error.frames {
-    write!(s, "\n    at {}", format_frame::<AnsiColors>(frame)).unwrap();
+    write!(s, "\n    at {}", format_frame::<AnsiColors>(frame, None)).unwrap();
   }
   if let Some(cause) = &js_error.cause {
     let is_caused_by_circular = circular

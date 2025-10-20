@@ -31,29 +31,36 @@ use serde::Serialize;
 use serde::de;
 use url::Url;
 
+pub mod broker;
+mod ipc_pipe;
 pub mod prompter;
 pub mod which;
-pub use prompter::DeniedPrompter;
-pub use prompter::GetFormattedStackFn;
+
 use prompter::MAYBE_CURRENT_STACKTRACE;
 use prompter::PERMISSION_EMOJI;
-pub use prompter::PermissionPrompter;
-pub use prompter::PromptCallback;
-pub use prompter::PromptResponse;
 use prompter::permission_prompt;
-pub use prompter::set_prompt_callbacks;
-pub use prompter::set_prompter;
 
+use self::prompter::PromptResponse;
 use self::which::WhichSys;
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum BrokerResponse {
+  Allow,
+  Deny { message: Option<String> },
+}
+
+use self::broker::has_broker;
+use self::broker::maybe_check_with_broker;
 
 pub static AUDIT_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[error("Requires {access}, {}", format_permission_error(.name))]
+#[error("{}", custom_message.as_ref().cloned().unwrap_or_else(|| format!("Requires {access}, {}", format_permission_error(.name))))]
 #[class("NotCapable")]
 pub struct PermissionDeniedError {
   pub access: String,
   pub name: &'static str,
+  pub custom_message: Option<String>,
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -440,6 +447,7 @@ impl PermissionState {
     PermissionDeniedError {
       access: Self::fmt_access(name, info),
       name,
+      custom_message: None,
     }
   }
 
@@ -473,9 +481,30 @@ impl PermissionState {
     self,
     name: &'static str,
     api_name: Option<&str>,
+    stringify_value_fn: impl Fn() -> Option<String>,
     info: impl Fn() -> Option<String>,
     prompt: bool,
   ) -> (Result<(), PermissionDeniedError>, bool, bool) {
+    if let Some(resp) = maybe_check_with_broker(name, &stringify_value_fn) {
+      match resp {
+        BrokerResponse::Allow => {
+          Self::log_perm_access(name, info);
+          return (Ok(()), false, false);
+        }
+        BrokerResponse::Deny { message } => {
+          return (
+            Err(PermissionDeniedError {
+              access: Self::fmt_access(name, info().as_deref()),
+              name,
+              custom_message: message,
+            }),
+            false,
+            false,
+          );
+        }
+      }
+    }
+
     match self {
       PermissionState::Granted => {
         Self::log_perm_access(name, info);
@@ -561,10 +590,13 @@ impl UnitPermission {
 
   pub fn check(
     &mut self,
+    stringify_value_fn: impl Fn() -> Option<String>,
     info: impl Fn() -> Option<String>,
   ) -> Result<(), PermissionDeniedError> {
     let (result, prompted, _is_allow_all) =
-      self.state.check(self.name, None, info, self.prompt);
+      self
+        .state
+        .check(self.name, None, stringify_value_fn, info, self.prompt);
     if prompted {
       if result.is_ok() {
         self.state = PermissionState::Granted;
@@ -745,6 +777,7 @@ impl<
       && !self.prompt_denied_global
       && self.flag_denied_list.is_empty()
       && self.prompt_denied_list.is_empty()
+      && !has_broker()
   }
 
   pub fn check_all_api(
@@ -770,6 +803,7 @@ impl<
       .check(
         TAllowDesc::QueryDesc::flag_name(),
         api_name,
+        || desc.map(|d| d.display_name().to_string()),
         || desc.map(|d| format_display_name(d.display_name()).into_owned()),
         self.prompt,
       );
@@ -2858,6 +2892,7 @@ impl UnaryPermission<AllowRunDescriptor, DenyRunDescriptor> {
         RunQueryDescriptor::flag_name(),
         api_name,
         || None,
+        || None,
         /* prompt */ false,
       );
     result.is_ok()
@@ -3660,7 +3695,7 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  fn check_has_all_permissions(
+  pub fn check_has_all_permissions(
     &self,
     context_path: &Path,
   ) -> Result<(), PermissionCheckError> {
@@ -4761,6 +4796,7 @@ mod tests {
   use serde_json::json;
 
   use super::*;
+  use crate::prompter::set_prompter;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {

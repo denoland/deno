@@ -1615,15 +1615,12 @@ impl BaseUrl<'_> {
 }
 
 #[allow(clippy::disallowed_types)] // ok, because definition
-pub type WorkspaceNpmLinkPackagesRc =
-  deno_maybe_sync::MaybeArc<WorkspaceNpmLinkPackages>;
-
-#[derive(Debug, Default)]
-pub struct WorkspaceNpmLinkPackages(
-  pub HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
+#[derive(Debug, Default, Clone)]
+pub struct WorkspaceNpmLinkPackagesRc(
+  pub std::sync::Arc<HashMap<PackageName, Vec<NpmPackageVersionInfo>>>,
 );
 
-impl WorkspaceNpmLinkPackages {
+impl WorkspaceNpmLinkPackagesRc {
   pub fn from_workspace(workspace: &Workspace) -> Self {
     let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
       HashMap::new();
@@ -1651,7 +1648,7 @@ impl WorkspaceNpmLinkPackages {
         }
       }
     }
-    Self(entries)
+    Self(deno_maybe_sync::new_arc(entries))
   }
 }
 
@@ -1712,6 +1709,7 @@ fn pkg_json_to_version_info(
       .as_ref()
       .map(|d| parse_stack_string_array(d))
       .unwrap_or_default(),
+    bundled_dependencies: Vec::new(),
     optional_dependencies: parse_deps(pkg_json.optional_dependencies.as_ref()),
     peer_dependencies: parse_deps(pkg_json.peer_dependencies.as_ref()),
     peer_dependencies_meta: pkg_json
@@ -3231,6 +3229,7 @@ mod test {
           StackString::from_static("1")
         )]),
         bundle_dependencies: Vec::from([StackString::from_static("my-dep")]),
+        bundled_dependencies: Vec::new(),
         optional_dependencies: HashMap::from([(
           StackString::from_static("optional-dep"),
           StackString::from_static("~1")

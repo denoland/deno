@@ -1076,6 +1076,22 @@ fn diagnose_dependency(
     return; // ignore, surface typescript errors instead
   }
 
+  if referrer_module.media_type.is_declaration() {
+    let compiler_options_data = snapshot
+      .compiler_options_resolver
+      .for_key(&referrer_module.compiler_options_key);
+    if compiler_options_data.is_none() {
+      lsp_warn!(
+        "Key was not in sync with resolver while checking `skipLibCheck`. This should be impossible."
+      );
+      #[cfg(debug_assertions)]
+      unreachable!();
+    }
+    if compiler_options_data.is_some_and(|d| d.skip_lib_check) {
+      return;
+    }
+  }
+
   let import_map = snapshot
     .resolver
     .get_scoped_resolver(referrer_module.scope.as_deref())
@@ -1685,7 +1701,7 @@ mod tests {
               "severity": 1,
               "code": "import-prefix-missing",
               "source": "deno",
-              "message": "Relative import path \"bad.js\" not prefixed with / or ./ or ../",
+              "message": "Import \"bad.js\" not a dependency",
             },
             {
               "range": {
@@ -1695,7 +1711,7 @@ mod tests {
               "severity": 1,
               "code": "import-prefix-missing",
               "source": "deno",
-              "message": "Relative import path \"bad.js\" not prefixed with / or ./ or ../",
+              "message": "Import \"bad.js\" not a dependency",
             },
             {
               "range": {
@@ -1705,7 +1721,7 @@ mod tests {
               "severity": 1,
               "code": "import-prefix-missing",
               "source": "deno",
-              "message": "Relative import path \"bad.d.ts\" not prefixed with / or ./ or ../",
+              "message": "Import \"bad.d.ts\" not a dependency",
             },
           ],
         ],

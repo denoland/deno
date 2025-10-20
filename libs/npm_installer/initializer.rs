@@ -10,11 +10,10 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileSys;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_unsync::sync::TaskQueue;
 use parking_lot::Mutex;
 use thiserror::Error;
-
-use super::WorkspaceNpmLinkPackages;
 
 #[derive(Debug, Clone)]
 pub enum NpmResolverManagedSnapshotOption<TSys: LockfileSys> {
@@ -32,7 +31,7 @@ enum SyncState<TSys: LockfileSys> {
 #[derive(Debug)]
 pub struct NpmResolutionInitializer<TSys: LockfileSys> {
   npm_resolution: Arc<NpmResolutionCell>,
-  link_packages: Arc<WorkspaceNpmLinkPackages>,
+  link_packages: WorkspaceNpmLinkPackagesRc,
   queue: TaskQueue,
   sync_state: Mutex<SyncState<TSys>>,
 }
@@ -40,7 +39,7 @@ pub struct NpmResolutionInitializer<TSys: LockfileSys> {
 impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
   pub fn new(
     npm_resolution: Arc<NpmResolutionCell>,
-    link_packages: Arc<WorkspaceNpmLinkPackages>,
+    link_packages: WorkspaceNpmLinkPackagesRc,
     snapshot_option: NpmResolverManagedSnapshotOption<TSys>,
   ) -> Self {
     Self {
@@ -98,7 +97,10 @@ impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
         if let Some(snapshot) = maybe_snapshot {
           self
             .npm_resolution
-            .set_snapshot(NpmResolutionSnapshot::new(snapshot));
+            .set_snapshot(NpmResolutionSnapshot::new(snapshot.snapshot));
+          if snapshot.is_pending {
+            self.npm_resolution.mark_pending();
+          }
         }
         let mut sync_state = self.sync_state.lock();
         *sync_state = SyncState::Success;
@@ -126,9 +128,8 @@ pub struct ResolveSnapshotError {
 #[allow(clippy::result_large_err)]
 fn resolve_snapshot<TSys: LockfileSys>(
   snapshot: NpmResolverManagedSnapshotOption<TSys>,
-  link_packages: &WorkspaceNpmLinkPackages,
-) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, ResolveSnapshotError>
-{
+  link_packages: &WorkspaceNpmLinkPackagesRc,
+) -> Result<Option<SnapshotWithPending>, ResolveSnapshotError> {
   match snapshot {
     NpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
@@ -142,7 +143,12 @@ fn resolve_snapshot<TSys: LockfileSys>(
         Ok(None)
       }
     }
-    NpmResolverManagedSnapshotOption::Specified(snapshot) => Ok(snapshot),
+    NpmResolverManagedSnapshotOption::Specified(maybe_snapshot) => {
+      Ok(maybe_snapshot.map(|snapshot| SnapshotWithPending {
+        snapshot,
+        is_pending: false,
+      }))
+    }
   }
 }
 
@@ -153,17 +159,26 @@ pub enum SnapshotFromLockfileError {
   SnapshotFromLockfile(#[from] deno_npm::resolution::SnapshotFromLockfileError),
 }
 
+struct SnapshotWithPending {
+  snapshot: ValidSerializedNpmResolutionSnapshot,
+  is_pending: bool,
+}
+
 fn snapshot_from_lockfile<TSys: LockfileSys>(
   lockfile: Arc<LockfileLock<TSys>>,
-  link_packages: &WorkspaceNpmLinkPackages,
-) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
+  link_packages: &WorkspaceNpmLinkPackagesRc,
+) -> Result<SnapshotWithPending, SnapshotFromLockfileError> {
+  let lockfile = lockfile.lock();
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
     deno_npm::resolution::SnapshotFromLockfileParams {
       link_packages: &link_packages.0,
-      lockfile: &lockfile.lock(),
+      lockfile: &lockfile,
       default_tarball_url: Default::default(),
     },
   )?;
 
-  Ok(snapshot)
+  Ok(SnapshotWithPending {
+    snapshot,
+    is_pending: lockfile.has_content_changed,
+  })
 }

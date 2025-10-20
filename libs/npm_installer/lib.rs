@@ -12,7 +12,7 @@ use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::workspace::WorkspaceNpmLinkPackages;
+use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
@@ -184,7 +184,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     maybe_node_modules_path: Option<PathBuf>,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
-    workspace_link_packages: Arc<WorkspaceNpmLinkPackages>,
+    workspace_link_packages: WorkspaceNpmLinkPackagesRc,
     install_reporter: Option<Arc<dyn InstallReporter>>,
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
@@ -274,7 +274,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
     caching: Option<PackageCaching<'_>>,
   ) -> AddPkgReqsResult {
-    if packages.is_empty() {
+    if packages.is_empty() && !self.npm_resolution.is_pending() {
       return AddPkgReqsResult {
         dependencies_result: Ok(()),
         results: vec![],
@@ -313,7 +313,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       };
 
       if !uncached.is_empty() {
-        result.dependencies_result = self.cache_packages(caching).await;
+        result.dependencies_result =
+          self.fs_installer.cache_packages(caching).await;
         if result.dependencies_result.is_ok() {
           let mut cached_reqs = self.cached_reqs.lock();
           for req in uncached {
@@ -361,8 +362,12 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     &self,
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
-    self.npm_resolution_initializer.ensure_initialized().await?;
-    self.fs_installer.cache_packages(caching).await
+    if self.npm_resolution.is_pending() {
+      self.add_package_reqs(&[], caching).await
+    } else {
+      self.npm_resolution_initializer.ensure_initialized().await?;
+      self.fs_installer.cache_packages(caching).await
+    }
   }
 
   pub fn ensure_no_pkg_json_dep_errors(

@@ -123,7 +123,7 @@ function upgradeWebSocket(request, options = { __proto__: null }) {
     })();
   }
 
-  const response = fromInnerResponse(r, "immutable");
+  const response = fromInnerResponse(r, "response");
 
   response[_ws] = socket;
 
