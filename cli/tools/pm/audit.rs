@@ -186,10 +186,7 @@ mod npm {
       Ok(s) => s,
       Err(err) => {
         if audit_flags.ignore_registry_errors {
-          log::error!(
-            "Failed to get data from the registry: {}",
-            err.to_string()
-          );
+          log::error!("Failed to get data from the registry: {}", err);
           return Ok(0);
         } else {
           return Err(err);
@@ -273,10 +270,10 @@ mod npm {
         colors::gray("Patched:"),
         adv.patched_versions
       );
-      if let Some(finding) = adv.findings.first() {
-        if let Some(path) = finding.paths.first() {
-          _ = writeln!(stdout, "│ {}       {}", colors::gray("Path:"), path);
-        }
+      if let Some(finding) = adv.findings.first()
+        && let Some(path) = finding.paths.first()
+      {
+        _ = writeln!(stdout, "│ {}       {}", colors::gray("Path:"), path);
       }
       if actions.is_empty() {
         _ = writeln!(stdout, "╰ {}      {}", colors::gray("Info:"), adv.url);
@@ -294,7 +291,7 @@ mod npm {
         }
         _ = writeln!(stdout, "╰            {}", actions[actions.len() - 1]);
       }
-      _ = writeln!(stdout, "");
+      _ = writeln!(stdout);
     }
 
     _ = writeln!(
@@ -318,7 +315,6 @@ mod npm {
 
   #[derive(Debug, Serialize)]
   #[serde(rename_all = "camelCase")]
-
   struct DependencyDescriptor {
     version: String,
     dev: bool,
@@ -486,14 +482,14 @@ mod socket_dev {
     let stdout = &mut std::io::stdout();
 
     for response in purl_responses {
-      if let Some(score) = response.score {
-        if score.overall <= 0.2 {
-          _ = writeln!(
-            stdout,
-            "{}@{} Low score - {}",
-            response.name, response.version, score.overall
-          );
-        }
+      if let Some(score) = response.score
+        && score.overall <= 0.2
+      {
+        _ = writeln!(
+          stdout,
+          "{}@{} Low score - {}",
+          response.name, response.version, score.overall
+        );
       }
       if !response.alerts.is_empty() {
         for alert in response.alerts.iter() {
