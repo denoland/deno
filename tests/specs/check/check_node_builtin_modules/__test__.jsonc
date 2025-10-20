@@ -2,13 +2,26 @@
   "tests": {
     "js": {
       "args": "check --quiet mod.js",
-      "output": "mod.js.out",
+      "output": "mod.js${out_suffix}",
       "exitCode": 1
     },
     "ts": {
       "args": "check --quiet mod.ts",
-      "output": "mod.ts.out",
+      "output": "mod.ts${out_suffix}",
       "exitCode": 1
     }
+  },
+  "variants": {
+    "tsgo": {
+      "use_tsgo": "1",
+      "out_suffix": ".tsgo.out"
+    },
+    "tsc": {
+      "use_tsgo": "",
+      "out_suffix": ".out"
+    }
+  },
+  "envs": {
+    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
   }
 }
