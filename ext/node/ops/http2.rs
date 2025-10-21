@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::rc::Rc;
 
+use bytes::BufMut;
 use deno_core::AsyncResult;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -13,298 +14,18 @@ use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_net::io::TcpStreamResource;
-use deno_net::raw::NetworkStream;
+use deno_net::ops_tls::TlsStreamResource;
 use libnghttp2_sys as ffi;
 use serde::Serialize;
 
 use crate::ops::handle_wrap::AsyncWrap;
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub struct Http2Constants {
-  nghttp2_hcat_request: u32,
-  nghttp2_hcat_response: u32,
-  nghttp2_hcat_push_response: u32,
-  nghttp2_hcat_headers: u32,
-  nghttp2_nv_flag_none: u32,
-  nghttp2_nv_flag_no_index: u32,
-  nghttp2_err_deferred: i32,
-  nghttp2_err_stream_id_not_available: i32,
-  nghttp2_err_invalid_argument: i32,
-  nghttp2_err_stream_closed: i32,
-  nghttp2_err_nomem: i32,
-  stream_option_empty_payload: i32,
-  stream_option_get_trailers: i32,
-
-  http2_header_status: &'static str,
-  http2_header_method: &'static str,
-  http2_header_authority: &'static str,
-  http2_header_scheme: &'static str,
-  http2_header_path: &'static str,
-  http2_header_protocol: &'static str,
-  http2_header_access_control_allow_credentials: &'static str,
-  http2_header_access_control_max_age: &'static str,
-  http2_header_access_control_request_method: &'static str,
-  http2_header_age: &'static str,
-  http2_header_authorization: &'static str,
-  http2_header_content_encoding: &'static str,
-  http2_header_content_language: &'static str,
-  http2_header_content_length: &'static str,
-  http2_header_content_location: &'static str,
-  http2_header_content_md5: &'static str,
-  http2_header_content_range: &'static str,
-  http2_header_content_type: &'static str,
-  http2_header_cookie: &'static str,
-  http2_header_date: &'static str,
-  http2_header_dnt: &'static str,
-  http2_header_etag: &'static str,
-  http2_header_expires: &'static str,
-  http2_header_from: &'static str,
-  http2_header_host: &'static str,
-  http2_header_if_match: &'static str,
-  http2_header_if_none_match: &'static str,
-  http2_header_if_modified_since: &'static str,
-  http2_header_if_range: &'static str,
-  http2_header_if_unmodified_since: &'static str,
-  http2_header_last_modified: &'static str,
-  http2_header_location: &'static str,
-  http2_header_max_forwards: &'static str,
-  http2_header_proxy_authorization: &'static str,
-  http2_header_range: &'static str,
-  http2_header_referer: &'static str,
-  http2_header_retry_after: &'static str,
-  http2_header_set_cookie: &'static str,
-  http2_header_tk: &'static str,
-  http2_header_upgrade_insecure_requests: &'static str,
-  http2_header_user_agent: &'static str,
-  http2_header_x_content_type_options: &'static str,
-
-  http2_header_connection: &'static str,
-  http2_header_upgrade: &'static str,
-  http2_header_http2_settings: &'static str,
-  http2_header_te: &'static str,
-  http2_header_transfer_encoding: &'static str,
-  http2_header_keep_alive: &'static str,
-  http2_header_proxy_connection: &'static str,
-
-  http2_method_connect: &'static str,
-  http2_method_delete: &'static str,
-  http2_method_get: &'static str,
-  http2_method_head: &'static str,
-
-  nghttp2_err_frame_size_error: u32,
-  nghttp2_session_server: u32,
-  nghttp2_session_client: u32,
-  nghttp2_stream_state_idle: u32,
-  nghttp2_stream_state_open: u32,
-  nghttp2_stream_state_reserved_local: u32,
-  nghttp2_stream_state_reserved_remote: u32,
-  nghttp2_stream_state_half_closed_local: u32,
-  nghttp2_stream_state_half_closed_remote: u32,
-  nghttp2_stream_state_closed: u32,
-  nghttp2_flag_none: u32,
-  nghttp2_flag_end_stream: u32,
-  nghttp2_flag_end_headers: u32,
-  nghttp2_flag_ack: u32,
-  nghttp2_flag_padded: u32,
-  nghttp2_flag_priority: u32,
-  default_settings_header_table_size: u32,
-  default_settings_enable_push: u32,
-  default_settings_max_concurrent_streams: u32,
-  default_settings_initial_window_size: u32,
-  default_settings_max_frame_size: u32,
-  default_settings_max_header_list_size: u32,
-  default_settings_enable_connect_protocol: u32,
-  max_max_frame_size: u32,
-  min_max_frame_size: u32,
-  max_initial_window_size: u32,
-  nghttp2_settings_header_table_size: u32,
-  nghttp2_settings_enable_push: u32,
-  nghttp2_settings_max_concurrent_streams: u32,
-  nghttp2_settings_initial_window_size: u32,
-  nghttp2_settings_max_frame_size: u32,
-  nghttp2_settings_max_header_list_size: u32,
-  nghttp2_settings_enable_connect_protocol: u32,
-  padding_strategy_none: u32,
-  padding_strategy_aligned: u32,
-  padding_strategy_max: u32,
-  padding_strategy_callback: u32,
-
-  nghttp2_no_error: u32,
-  nghttp2_protocol_error: u32,
-  nghttp2_internal_error: u32,
-  nghttp2_flow_control_error: u32,
-  nghttp2_settings_timeout: u32,
-  nghttp2_stream_closed: u32,
-  nghttp2_frame_size_error: u32,
-  nghttp2_refused_stream: u32,
-  nghttp2_cancel: u32,
-  nghttp2_compression_error: u32,
-  nghttp2_connect_error: u32,
-  nghttp2_enhance_your_calm: u32,
-  nghttp2_inadequate_security: u32,
-  nghttp2_http_1_1_required: u32,
-
-  header_table_size: u32,
-  enable_push: u32,
-  max_concurrent_streams: u32,
-  initial_window_size: u32,
-  max_frame_size: u32,
-  max_header_list_size: u32,
-  enable_connect_protocol: u32,
-}
-
 // Stream is not going to have any DATA frames
 const STREAM_OPTION_EMPTY_PAYLOAD: i32 = 0x1;
 // Stream might have trailing headers
 const STREAM_OPTION_GET_TRAILERS: i32 = 0x2;
-
-#[op2]
-#[serde]
-pub fn op_http2_constants() -> Http2Constants {
-  Http2Constants {
-    nghttp2_hcat_request: ffi::NGHTTP2_HCAT_REQUEST,
-    nghttp2_hcat_response: ffi::NGHTTP2_HCAT_RESPONSE,
-    nghttp2_hcat_push_response: ffi::NGHTTP2_HCAT_PUSH_RESPONSE,
-    nghttp2_hcat_headers: ffi::NGHTTP2_HCAT_HEADERS,
-    nghttp2_nv_flag_none: ffi::NGHTTP2_NV_FLAG_NONE,
-    nghttp2_nv_flag_no_index: ffi::NGHTTP2_NV_FLAG_NO_INDEX,
-    nghttp2_err_deferred: ffi::NGHTTP2_ERR_DEFERRED,
-    nghttp2_err_stream_id_not_available:
-      ffi::NGHTTP2_ERR_STREAM_ID_NOT_AVAILABLE,
-    nghttp2_err_invalid_argument: ffi::NGHTTP2_ERR_INVALID_ARGUMENT,
-    nghttp2_err_stream_closed: ffi::NGHTTP2_ERR_STREAM_CLOSED,
-    nghttp2_err_nomem: ffi::NGHTTP2_ERR_NOMEM,
-    stream_option_empty_payload: STREAM_OPTION_EMPTY_PAYLOAD,
-    stream_option_get_trailers: STREAM_OPTION_GET_TRAILERS,
-
-    http2_header_status: ":status",
-    http2_header_method: ":method",
-    http2_header_authority: ":authority",
-    http2_header_scheme: ":scheme",
-    http2_header_path: ":path",
-    http2_header_protocol: ":protocol",
-    http2_header_access_control_allow_credentials: "access-control_allow_credentials",
-    http2_header_access_control_max_age: "access-control-max-age",
-    http2_header_access_control_request_method: "access-control-request-method",
-    http2_header_age: "age",
-    http2_header_authorization: "authorization",
-    http2_header_content_encoding: "content-encoding",
-    http2_header_content_language: "content-language",
-    http2_header_content_length: "content-length",
-    http2_header_content_location: "content-location",
-    http2_header_content_md5: "content-md5",
-    http2_header_content_range: "content-range",
-    http2_header_content_type: "content-type",
-    http2_header_cookie: "cookie",
-    http2_header_date: "date",
-    http2_header_dnt: "dnt",
-    http2_header_etag: "etag",
-    http2_header_expires: "expires",
-    http2_header_from: "from",
-    http2_header_host: "host",
-    http2_header_if_match: "if-match",
-    http2_header_if_none_match: "if-none-match",
-    http2_header_if_modified_since: "if-modified-since",
-    http2_header_if_range: "if-range",
-    http2_header_if_unmodified_since: "if-unmodified-since",
-    http2_header_last_modified: "last-modified",
-    http2_header_location: "location",
-    http2_header_max_forwards: "max-forwards",
-    http2_header_proxy_authorization: "proxy-authorization",
-    http2_header_range: "range",
-    http2_header_referer: "referer",
-    http2_header_retry_after: "retry-after",
-    http2_header_set_cookie: "set-cookie",
-    http2_header_tk: "tk",
-    http2_header_upgrade_insecure_requests: "upgrade-insecure-requests",
-    http2_header_user_agent: "agent",
-    http2_header_x_content_type_options: "x-content-type-options",
-
-    http2_header_connection: "connection",
-    http2_header_upgrade: "upgrade",
-    http2_header_http2_settings: "http2-settings",
-    http2_header_te: "te",
-    http2_header_transfer_encoding: "transfer-encoding",
-    http2_header_keep_alive: "keep-alive",
-    http2_header_proxy_connection: "proxy-connection",
-
-    http2_method_connect: "CONNECT",
-    http2_method_delete: "DELETE",
-    http2_method_get: "GET",
-    http2_method_head: "HEAD",
-
-    nghttp2_err_frame_size_error: ffi::NGHTTP2_ERR_FRAME_SIZE_ERROR as u32,
-    nghttp2_session_server: 0,
-    nghttp2_session_client: 1,
-    nghttp2_stream_state_idle: ffi::NGHTTP2_STREAM_STATE_IDLE as u32,
-    nghttp2_stream_state_open: ffi::NGHTTP2_STREAM_STATE_OPEN as u32,
-    nghttp2_stream_state_reserved_local:
-      ffi::NGHTTP2_STREAM_STATE_RESERVED_LOCAL as u32,
-    nghttp2_stream_state_reserved_remote:
-      ffi::NGHTTP2_STREAM_STATE_RESERVED_REMOTE as u32,
-    nghttp2_stream_state_half_closed_local:
-      ffi::NGHTTP2_STREAM_STATE_HALF_CLOSED_LOCAL as u32,
-    nghttp2_stream_state_half_closed_remote:
-      ffi::NGHTTP2_STREAM_STATE_HALF_CLOSED_REMOTE as u32,
-    nghttp2_stream_state_closed: ffi::NGHTTP2_STREAM_STATE_CLOSED as u32,
-    nghttp2_flag_none: ffi::NGHTTP2_FLAG_NONE,
-    nghttp2_flag_end_stream: ffi::NGHTTP2_FLAG_END_STREAM,
-    nghttp2_flag_end_headers: ffi::NGHTTP2_FLAG_END_HEADERS,
-    nghttp2_flag_ack: ffi::NGHTTP2_FLAG_ACK,
-    nghttp2_flag_padded: ffi::NGHTTP2_FLAG_PADDED,
-    nghttp2_flag_priority: ffi::NGHTTP2_FLAG_PRIORITY,
-    default_settings_header_table_size: 4096,
-    default_settings_enable_push: 1,
-    default_settings_max_concurrent_streams: 0xffffffff,
-    default_settings_initial_window_size: 65535,
-    default_settings_max_frame_size: 16384,
-    default_settings_max_header_list_size: 0xffffffff,
-    default_settings_enable_connect_protocol: 0,
-    max_max_frame_size: 16777215,
-    min_max_frame_size: 16384,
-    max_initial_window_size: 2147483647,
-    nghttp2_settings_header_table_size: ffi::NGHTTP2_SETTINGS_HEADER_TABLE_SIZE
-      as u32,
-    nghttp2_settings_enable_push: ffi::NGHTTP2_SETTINGS_ENABLE_PUSH as u32,
-    nghttp2_settings_max_concurrent_streams:
-      ffi::NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS as u32,
-    nghttp2_settings_initial_window_size:
-      ffi::NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE as u32,
-    nghttp2_settings_max_frame_size: ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE
-      as u32,
-    nghttp2_settings_max_header_list_size:
-      ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE as u32,
-    nghttp2_settings_enable_connect_protocol: 8,
-    padding_strategy_none: 0,
-    padding_strategy_aligned: 1,
-    padding_strategy_max: 2,
-    padding_strategy_callback: 3,
-
-    nghttp2_no_error: ffi::NGHTTP2_NO_ERROR,
-    nghttp2_protocol_error: ffi::NGHTTP2_PROTOCOL_ERROR,
-    nghttp2_internal_error: ffi::NGHTTP2_INTERNAL_ERROR,
-    nghttp2_flow_control_error: ffi::NGHTTP2_FLOW_CONTROL_ERROR,
-    nghttp2_settings_timeout: ffi::NGHTTP2_SETTINGS_TIMEOUT,
-    nghttp2_stream_closed: ffi::NGHTTP2_STREAM_CLOSED,
-    nghttp2_frame_size_error: ffi::NGHTTP2_FRAME_SIZE_ERROR,
-    nghttp2_refused_stream: ffi::NGHTTP2_REFUSED_STREAM,
-    nghttp2_cancel: ffi::NGHTTP2_CANCEL,
-    nghttp2_compression_error: ffi::NGHTTP2_COMPRESSION_ERROR,
-    nghttp2_connect_error: ffi::NGHTTP2_CONNECT_ERROR,
-    nghttp2_enhance_your_calm: ffi::NGHTTP2_ENHANCE_YOUR_CALM,
-    nghttp2_inadequate_security: ffi::NGHTTP2_INADEQUATE_SECURITY,
-    nghttp2_http_1_1_required: ffi::NGHTTP2_HTTP_1_1_REQUIRED,
-
-    header_table_size: ffi::NGHTTP2_SETTINGS_HEADER_TABLE_SIZE as u32,
-    enable_push: ffi::NGHTTP2_SETTINGS_ENABLE_PUSH as u32,
-    max_concurrent_streams: ffi::NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS as u32,
-    initial_window_size: ffi::NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE as u32,
-    max_frame_size: ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE as u32,
-    max_header_list_size: ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE as u32,
-    enable_connect_protocol: 8,
-  }
-}
+// Number of max additional settings, thus settings not implemented by nghttp2
+const MAX_ADDITIONAL_SETTINGS: usize = 10;
 
 #[repr(usize)]
 enum Http2SettingsIndex {
@@ -317,9 +38,6 @@ enum Http2SettingsIndex {
   IDX_SETTINGS_ENABLE_CONNECT_PROTOCOL,
   IDX_SETTINGS_COUNT,
 }
-
-// number of max additional settings, thus settings not implemented by nghttp2
-const MAX_ADDITIONAL_SETTINGS: usize = 10;
 
 #[repr(usize)]
 enum Http2SessionStateIndex {
@@ -467,13 +185,6 @@ impl<'a> JSHttp2State<'a> {
   }
 }
 
-#[derive(Debug)]
-#[repr(i32)]
-enum SessionType {
-  Server,
-  Client,
-}
-
 #[op2]
 #[serde]
 pub fn op_http2_http_state<'a>(
@@ -482,11 +193,42 @@ pub fn op_http2_http_state<'a>(
   JSHttp2State::create(scope)
 }
 
+#[derive(Debug)]
+struct NgHttp2StreamWrite {
+  data: bytes::Bytes,
+  stream_id: i32,
+}
+
+impl NgHttp2StreamWrite {
+  fn new(data: bytes::Bytes, stream_id: i32) -> Self {
+    Self { data, stream_id }
+  }
+
+  fn as_ptr(&self) -> *const u8 {
+    self.data.as_ptr()
+  }
+
+  fn len(&self) -> usize {
+    self.data.len()
+  }
+}
+
+#[derive(Debug)]
+#[repr(i32)]
+enum SessionType {
+  Server,
+  Client,
+}
+
 struct Session {
   session: *mut ffi::nghttp2_session,
   // Keep track of each stream's reference for this session using
   // it's frame id.
   streams: HashMap<i32, (v8::Global<v8::Object>, cppgc::Ref<Http2Stream>)>,
+
+  // Outbound data buffering system using bytes::Bytes for zero-copy efficiency
+  outgoing_buffers: Vec<NgHttp2StreamWrite>,
+  outgoing_length: usize,
 
   isolate: v8::UnsafeRawIsolatePtr,
   context: v8::Global<v8::Context>,
@@ -511,6 +253,26 @@ impl Session {
 
   fn find_stream_obj(&self, frame_id: i32) -> Option<&v8::Global<v8::Object>> {
     self.streams.get(&frame_id).map(|v| &v.0)
+  }
+
+  fn push_outgoing_buffer(&mut self, write: NgHttp2StreamWrite) {
+    self.outgoing_length += write.len();
+    self.outgoing_buffers.push(write);
+  }
+
+  fn copy_data_into_outgoing(&mut self, data: &[u8], stream_id: i32) {
+    let bytes_data = bytes::Bytes::copy_from_slice(data);
+    let write = NgHttp2StreamWrite::new(bytes_data, stream_id);
+    self.push_outgoing_buffer(write);
+  }
+
+  fn clear_outgoing(&mut self) {
+    self.outgoing_buffers.clear();
+    self.outgoing_length = 0;
+  }
+
+  fn should_send_pending_data(&self) -> bool {
+    self.outgoing_length > 4096
   }
 
   // Called by `on_frame_recv` to notify JavaScript that a complete
@@ -558,9 +320,14 @@ unsafe impl deno_core::GarbageCollected for Http2Session {
   }
 }
 
+enum NetworkStream {
+  Tcp(Rc<TcpStreamResource>),
+  Tls(Rc<TlsStreamResource>),
+}
+
 struct Http2SessionDriver {
-  stream: Rc<TcpStreamResource>,
-  session: *mut ffi::nghttp2_session,
+  stream: NetworkStream,
+  session: *mut Session,
 }
 
 impl Http2SessionDriver {
@@ -569,26 +336,24 @@ impl Http2SessionDriver {
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
     dbg!(data.len());
-    let nread = self.stream.clone().read(data).await?;
+    let nread = match &self.stream {
+      NetworkStream::Tcp(stream) => stream.clone().read(data).await?,
+      NetworkStream::Tls(stream) => stream.clone().read(data).await?,
+    };
 
+    let session = unsafe { &*self.session };
     let ret = unsafe {
-      ffi::nghttp2_session_mem_recv(self.session, data.as_mut_ptr() as _, nread)
+      ffi::nghttp2_session_mem_recv(
+        session.session,
+        data.as_mut_ptr() as _,
+        nread,
+      )
     };
     dbg!(ret);
 
-    // Write outgoing data
-    loop {
-      let mut src = std::ptr::null();
-      unsafe {
-        let src_len = ffi::nghttp2_session_mem_send(self.session, &mut src);
-        if src_len > 0 {
-          let data = std::slice::from_raw_parts(src, src_len as usize);
-          self.stream.clone().write(data).await?;
-        } else {
-          break;
-        }
-      }
-    }
+    // Send any pending data that nghttp2 wants to output
+    self.send_pending_data().await?;
+
     Ok(nread)
   }
 
@@ -597,7 +362,44 @@ impl Http2SessionDriver {
     data: &[u8],
   ) -> Result<usize, std::io::Error> {
     dbg!(data.len());
-    self.stream.clone().write(data).await
+    match &self.stream {
+      NetworkStream::Tcp(stream) => stream.clone().write(data).await,
+      NetworkStream::Tls(stream) => stream.clone().write(data).await,
+    }
+  }
+
+  async fn send_pending_data(&self) -> Result<(), std::io::Error> {
+    let session = unsafe { &mut *self.session };
+
+    loop {
+      let mut src = std::ptr::null();
+      unsafe {
+        let src_len = ffi::nghttp2_session_mem_send(session.session, &mut src);
+        if src_len > 0 {
+          let data = std::slice::from_raw_parts(src, src_len as usize);
+          match &self.stream {
+            NetworkStream::Tcp(stream) => stream.clone().write(data).await?,
+            NetworkStream::Tls(stream) => stream.clone().write(data).await?,
+          };
+        } else {
+          break;
+        }
+      }
+    }
+
+    // If we have queued outgoing buffers, send them now
+    if !session.outgoing_buffers.is_empty() {
+      for buffer in &session.outgoing_buffers {
+        let data = buffer.data.as_ref();
+        match &self.stream {
+          NetworkStream::Tcp(stream) => stream.clone().write(data).await?,
+          NetworkStream::Tls(stream) => stream.clone().write(data).await?,
+        };
+      }
+      session.clear_outgoing();
+    }
+
+    Ok(())
   }
 }
 
@@ -613,6 +415,10 @@ pub struct Http2Stream {
   // As headers are received for this stream, they are temporarily stored
   // until the full HEADER frame is received.
   current_headers_category: ffi::nghttp2_headers_category,
+  // Track available outbound data length for this stream
+  available_outbound_length: RefCell<usize>,
+  // Buffer for stream data waiting to be sent
+  pending_data: RefCell<bytes::BytesMut>,
 }
 
 impl Http2Stream {
@@ -641,6 +447,8 @@ impl Http2Stream {
         session: session as _,
         id,
         current_headers_category: cat,
+        available_outbound_length: RefCell::new(0),
+        pending_data: RefCell::new(bytes::BytesMut::new()),
       },
     );
 
@@ -665,6 +473,7 @@ unsafe impl deno_core::GarbageCollected for Http2Stream {
 }
 
 struct Http2Headers {
+  backing_store: String,
   nva: Vec<ffi::nghttp2_nv>,
 }
 
@@ -733,7 +542,10 @@ impl From<(String, usize)> for Http2Headers {
       });
     }
 
-    Http2Headers { nva }
+    Http2Headers {
+      nva,
+      backing_store: arr.0,
+    }
   }
 }
 
@@ -744,15 +556,24 @@ impl Http2Stream {
 
     let session = unsafe { &*self.session };
 
+    let mut data_provider = ffi::nghttp2_data_provider {
+      source: ffi::nghttp2_data_source {
+        ptr: std::ptr::null_mut(),
+      },
+      read_callback: Some(on_stream_read_callback),
+    };
+
     unsafe {
       ffi::nghttp2_submit_response(
         session.session,
         self.id,
         headers.data(),
         headers.len(),
-        std::ptr::null_mut(), // TODO: provider
+        &mut data_provider as *mut _,
       );
     }
+
+    std::mem::forget(headers); // TODO: tie backing store up to stream's lifetime
   }
 
   #[fast]
@@ -764,8 +585,16 @@ impl Http2Stream {
     _req: v8::Local<v8::Object>,
     #[string] data: &str,
   ) -> i32 {
-    let session = unsafe { &*self.session };
+    let session = unsafe { &mut *self.session };
 
+    // Add data to stream's pending buffer
+    self
+      .pending_data
+      .borrow_mut()
+      .extend_from_slice(data.as_bytes());
+    *self.available_outbound_length.borrow_mut() += data.len();
+
+    // Resume data for this stream so nghttp2 knows there's data available
     unsafe {
       ffi::nghttp2_session_resume_data(session.session, self.id);
     }
@@ -926,6 +755,40 @@ unsafe extern "C" fn on_frame_send_callback(
   0
 }
 
+// Data provider callback for nghttp2 to read stream data
+unsafe extern "C" fn on_stream_read_callback(
+  session: *mut ffi::nghttp2_session,
+  stream_id: i32,
+  buf: *mut u8,
+  length: usize,
+  data_flags: *mut u32,
+  source: *mut ffi::nghttp2_data_source,
+  user_data: *mut c_void,
+) -> isize {
+  let session = &mut *(user_data as *mut Session);
+
+  if let Some(stream) = session.find_stream(stream_id) {
+    let mut pending_data = stream.pending_data.borrow_mut();
+    if !pending_data.is_empty() {
+      let amount = std::cmp::min(pending_data.len(), length);
+      if amount > 0 {
+        let data_slice = pending_data.split_to(amount);
+        std::ptr::copy_nonoverlapping(data_slice.as_ptr(), buf, amount);
+        *stream.available_outbound_length.borrow_mut() -= amount;
+
+        if pending_data.is_empty() {
+          *data_flags |= ffi::NGHTTP2_DATA_FLAG_EOF as u32;
+        }
+
+        return amount as isize;
+      }
+    }
+  }
+
+  // No data available, defer
+  ffi::NGHTTP2_ERR_DEFERRED as _
+}
+
 impl Http2Session {
   fn callbacks() -> *mut ffi::nghttp2_session_callbacks {
     let mut callbacks: *mut ffi::nghttp2_session_callbacks =
@@ -1006,6 +869,8 @@ impl Http2Session {
       context,
       isolate,
       this,
+      outgoing_buffers: Vec::with_capacity(32),
+      outgoing_length: 0,
     }));
 
     // SAFETY: inner is owned by Http2Session but
@@ -1059,10 +924,19 @@ impl Http2Session {
   #[fast]
   #[smi]
   fn consume(&self, state: &mut OpState, rid: u32) -> u32 {
-    let stream = state.resource_table.take::<TcpStreamResource>(rid).unwrap();
+    let mut stream;
+
+    if let Ok(tcp) = state.resource_table.take::<TcpStreamResource>(rid) {
+      stream = NetworkStream::Tcp(tcp);
+    } else {
+      stream = NetworkStream::Tls(
+        state.resource_table.take::<TlsStreamResource>(rid).unwrap(),
+      );
+    };
+
     state.resource_table.add(Http2SessionDriver {
       stream,
-      session: self.session,
+      session: self.inner,
     })
   }
 
@@ -1175,5 +1049,287 @@ impl Http2Settings {
         self.count,
       );
     }
+  }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub struct Http2Constants {
+  nghttp2_hcat_request: u32,
+  nghttp2_hcat_response: u32,
+  nghttp2_hcat_push_response: u32,
+  nghttp2_hcat_headers: u32,
+  nghttp2_nv_flag_none: u32,
+  nghttp2_nv_flag_no_index: u32,
+  nghttp2_err_deferred: i32,
+  nghttp2_err_stream_id_not_available: i32,
+  nghttp2_err_invalid_argument: i32,
+  nghttp2_err_stream_closed: i32,
+  nghttp2_err_nomem: i32,
+  stream_option_empty_payload: i32,
+  stream_option_get_trailers: i32,
+
+  http2_header_status: &'static str,
+  http2_header_method: &'static str,
+  http2_header_authority: &'static str,
+  http2_header_scheme: &'static str,
+  http2_header_path: &'static str,
+  http2_header_protocol: &'static str,
+  http2_header_access_control_allow_credentials: &'static str,
+  http2_header_access_control_max_age: &'static str,
+  http2_header_access_control_request_method: &'static str,
+  http2_header_age: &'static str,
+  http2_header_authorization: &'static str,
+  http2_header_content_encoding: &'static str,
+  http2_header_content_language: &'static str,
+  http2_header_content_length: &'static str,
+  http2_header_content_location: &'static str,
+  http2_header_content_md5: &'static str,
+  http2_header_content_range: &'static str,
+  http2_header_content_type: &'static str,
+  http2_header_cookie: &'static str,
+  http2_header_date: &'static str,
+  http2_header_dnt: &'static str,
+  http2_header_etag: &'static str,
+  http2_header_expires: &'static str,
+  http2_header_from: &'static str,
+  http2_header_host: &'static str,
+  http2_header_if_match: &'static str,
+  http2_header_if_none_match: &'static str,
+  http2_header_if_modified_since: &'static str,
+  http2_header_if_range: &'static str,
+  http2_header_if_unmodified_since: &'static str,
+  http2_header_last_modified: &'static str,
+  http2_header_location: &'static str,
+  http2_header_max_forwards: &'static str,
+  http2_header_proxy_authorization: &'static str,
+  http2_header_range: &'static str,
+  http2_header_referer: &'static str,
+  http2_header_retry_after: &'static str,
+  http2_header_set_cookie: &'static str,
+  http2_header_tk: &'static str,
+  http2_header_upgrade_insecure_requests: &'static str,
+  http2_header_user_agent: &'static str,
+  http2_header_x_content_type_options: &'static str,
+
+  http2_header_connection: &'static str,
+  http2_header_upgrade: &'static str,
+  http2_header_http2_settings: &'static str,
+  http2_header_te: &'static str,
+  http2_header_transfer_encoding: &'static str,
+  http2_header_keep_alive: &'static str,
+  http2_header_proxy_connection: &'static str,
+
+  http2_method_connect: &'static str,
+  http2_method_delete: &'static str,
+  http2_method_get: &'static str,
+  http2_method_head: &'static str,
+
+  nghttp2_err_frame_size_error: u32,
+  nghttp2_session_server: u32,
+  nghttp2_session_client: u32,
+  nghttp2_stream_state_idle: u32,
+  nghttp2_stream_state_open: u32,
+  nghttp2_stream_state_reserved_local: u32,
+  nghttp2_stream_state_reserved_remote: u32,
+  nghttp2_stream_state_half_closed_local: u32,
+  nghttp2_stream_state_half_closed_remote: u32,
+  nghttp2_stream_state_closed: u32,
+  nghttp2_flag_none: u32,
+  nghttp2_flag_end_stream: u32,
+  nghttp2_flag_end_headers: u32,
+  nghttp2_flag_ack: u32,
+  nghttp2_flag_padded: u32,
+  nghttp2_flag_priority: u32,
+  default_settings_header_table_size: u32,
+  default_settings_enable_push: u32,
+  default_settings_max_concurrent_streams: u32,
+  default_settings_initial_window_size: u32,
+  default_settings_max_frame_size: u32,
+  default_settings_max_header_list_size: u32,
+  default_settings_enable_connect_protocol: u32,
+  max_max_frame_size: u32,
+  min_max_frame_size: u32,
+  max_initial_window_size: u32,
+  nghttp2_settings_header_table_size: u32,
+  nghttp2_settings_enable_push: u32,
+  nghttp2_settings_max_concurrent_streams: u32,
+  nghttp2_settings_initial_window_size: u32,
+  nghttp2_settings_max_frame_size: u32,
+  nghttp2_settings_max_header_list_size: u32,
+  nghttp2_settings_enable_connect_protocol: u32,
+  padding_strategy_none: u32,
+  padding_strategy_aligned: u32,
+  padding_strategy_max: u32,
+  padding_strategy_callback: u32,
+
+  nghttp2_no_error: u32,
+  nghttp2_protocol_error: u32,
+  nghttp2_internal_error: u32,
+  nghttp2_flow_control_error: u32,
+  nghttp2_settings_timeout: u32,
+  nghttp2_stream_closed: u32,
+  nghttp2_frame_size_error: u32,
+  nghttp2_refused_stream: u32,
+  nghttp2_cancel: u32,
+  nghttp2_compression_error: u32,
+  nghttp2_connect_error: u32,
+  nghttp2_enhance_your_calm: u32,
+  nghttp2_inadequate_security: u32,
+  nghttp2_http_1_1_required: u32,
+
+  header_table_size: u32,
+  enable_push: u32,
+  max_concurrent_streams: u32,
+  initial_window_size: u32,
+  max_frame_size: u32,
+  max_header_list_size: u32,
+  enable_connect_protocol: u32,
+}
+
+#[op2]
+#[serde]
+pub fn op_http2_constants() -> Http2Constants {
+  Http2Constants {
+    nghttp2_hcat_request: ffi::NGHTTP2_HCAT_REQUEST,
+    nghttp2_hcat_response: ffi::NGHTTP2_HCAT_RESPONSE,
+    nghttp2_hcat_push_response: ffi::NGHTTP2_HCAT_PUSH_RESPONSE,
+    nghttp2_hcat_headers: ffi::NGHTTP2_HCAT_HEADERS,
+    nghttp2_nv_flag_none: ffi::NGHTTP2_NV_FLAG_NONE,
+    nghttp2_nv_flag_no_index: ffi::NGHTTP2_NV_FLAG_NO_INDEX,
+    nghttp2_err_deferred: ffi::NGHTTP2_ERR_DEFERRED,
+    nghttp2_err_stream_id_not_available:
+      ffi::NGHTTP2_ERR_STREAM_ID_NOT_AVAILABLE,
+    nghttp2_err_invalid_argument: ffi::NGHTTP2_ERR_INVALID_ARGUMENT,
+    nghttp2_err_stream_closed: ffi::NGHTTP2_ERR_STREAM_CLOSED,
+    nghttp2_err_nomem: ffi::NGHTTP2_ERR_NOMEM,
+    stream_option_empty_payload: STREAM_OPTION_EMPTY_PAYLOAD,
+    stream_option_get_trailers: STREAM_OPTION_GET_TRAILERS,
+
+    http2_header_status: ":status",
+    http2_header_method: ":method",
+    http2_header_authority: ":authority",
+    http2_header_scheme: ":scheme",
+    http2_header_path: ":path",
+    http2_header_protocol: ":protocol",
+    http2_header_access_control_allow_credentials: "access-control_allow_credentials",
+    http2_header_access_control_max_age: "access-control-max-age",
+    http2_header_access_control_request_method: "access-control-request-method",
+    http2_header_age: "age",
+    http2_header_authorization: "authorization",
+    http2_header_content_encoding: "content-encoding",
+    http2_header_content_language: "content-language",
+    http2_header_content_length: "content-length",
+    http2_header_content_location: "content-location",
+    http2_header_content_md5: "content-md5",
+    http2_header_content_range: "content-range",
+    http2_header_content_type: "content-type",
+    http2_header_cookie: "cookie",
+    http2_header_date: "date",
+    http2_header_dnt: "dnt",
+    http2_header_etag: "etag",
+    http2_header_expires: "expires",
+    http2_header_from: "from",
+    http2_header_host: "host",
+    http2_header_if_match: "if-match",
+    http2_header_if_none_match: "if-none-match",
+    http2_header_if_modified_since: "if-modified-since",
+    http2_header_if_range: "if-range",
+    http2_header_if_unmodified_since: "if-unmodified-since",
+    http2_header_last_modified: "last-modified",
+    http2_header_location: "location",
+    http2_header_max_forwards: "max-forwards",
+    http2_header_proxy_authorization: "proxy-authorization",
+    http2_header_range: "range",
+    http2_header_referer: "referer",
+    http2_header_retry_after: "retry-after",
+    http2_header_set_cookie: "set-cookie",
+    http2_header_tk: "tk",
+    http2_header_upgrade_insecure_requests: "upgrade-insecure-requests",
+    http2_header_user_agent: "agent",
+    http2_header_x_content_type_options: "x-content-type-options",
+
+    http2_header_connection: "connection",
+    http2_header_upgrade: "upgrade",
+    http2_header_http2_settings: "http2-settings",
+    http2_header_te: "te",
+    http2_header_transfer_encoding: "transfer-encoding",
+    http2_header_keep_alive: "keep-alive",
+    http2_header_proxy_connection: "proxy-connection",
+
+    http2_method_connect: "CONNECT",
+    http2_method_delete: "DELETE",
+    http2_method_get: "GET",
+    http2_method_head: "HEAD",
+
+    nghttp2_err_frame_size_error: ffi::NGHTTP2_ERR_FRAME_SIZE_ERROR as u32,
+    nghttp2_session_server: 0,
+    nghttp2_session_client: 1,
+    nghttp2_stream_state_idle: ffi::NGHTTP2_STREAM_STATE_IDLE as u32,
+    nghttp2_stream_state_open: ffi::NGHTTP2_STREAM_STATE_OPEN as u32,
+    nghttp2_stream_state_reserved_local:
+      ffi::NGHTTP2_STREAM_STATE_RESERVED_LOCAL as u32,
+    nghttp2_stream_state_reserved_remote:
+      ffi::NGHTTP2_STREAM_STATE_RESERVED_REMOTE as u32,
+    nghttp2_stream_state_half_closed_local:
+      ffi::NGHTTP2_STREAM_STATE_HALF_CLOSED_LOCAL as u32,
+    nghttp2_stream_state_half_closed_remote:
+      ffi::NGHTTP2_STREAM_STATE_HALF_CLOSED_REMOTE as u32,
+    nghttp2_stream_state_closed: ffi::NGHTTP2_STREAM_STATE_CLOSED as u32,
+    nghttp2_flag_none: ffi::NGHTTP2_FLAG_NONE,
+    nghttp2_flag_end_stream: ffi::NGHTTP2_FLAG_END_STREAM,
+    nghttp2_flag_end_headers: ffi::NGHTTP2_FLAG_END_HEADERS,
+    nghttp2_flag_ack: ffi::NGHTTP2_FLAG_ACK,
+    nghttp2_flag_padded: ffi::NGHTTP2_FLAG_PADDED,
+    nghttp2_flag_priority: ffi::NGHTTP2_FLAG_PRIORITY,
+    default_settings_header_table_size: 4096,
+    default_settings_enable_push: 1,
+    default_settings_max_concurrent_streams: 0xffffffff,
+    default_settings_initial_window_size: 65535,
+    default_settings_max_frame_size: 16384,
+    default_settings_max_header_list_size: 0xffffffff,
+    default_settings_enable_connect_protocol: 0,
+    max_max_frame_size: 16777215,
+    min_max_frame_size: 16384,
+    max_initial_window_size: 2147483647,
+    nghttp2_settings_header_table_size: ffi::NGHTTP2_SETTINGS_HEADER_TABLE_SIZE
+      as u32,
+    nghttp2_settings_enable_push: ffi::NGHTTP2_SETTINGS_ENABLE_PUSH as u32,
+    nghttp2_settings_max_concurrent_streams:
+      ffi::NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS as u32,
+    nghttp2_settings_initial_window_size:
+      ffi::NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE as u32,
+    nghttp2_settings_max_frame_size: ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE
+      as u32,
+    nghttp2_settings_max_header_list_size:
+      ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE as u32,
+    nghttp2_settings_enable_connect_protocol: 8,
+    padding_strategy_none: 0,
+    padding_strategy_aligned: 1,
+    padding_strategy_max: 2,
+    padding_strategy_callback: 3,
+
+    nghttp2_no_error: ffi::NGHTTP2_NO_ERROR,
+    nghttp2_protocol_error: ffi::NGHTTP2_PROTOCOL_ERROR,
+    nghttp2_internal_error: ffi::NGHTTP2_INTERNAL_ERROR,
+    nghttp2_flow_control_error: ffi::NGHTTP2_FLOW_CONTROL_ERROR,
+    nghttp2_settings_timeout: ffi::NGHTTP2_SETTINGS_TIMEOUT,
+    nghttp2_stream_closed: ffi::NGHTTP2_STREAM_CLOSED,
+    nghttp2_frame_size_error: ffi::NGHTTP2_FRAME_SIZE_ERROR,
+    nghttp2_refused_stream: ffi::NGHTTP2_REFUSED_STREAM,
+    nghttp2_cancel: ffi::NGHTTP2_CANCEL,
+    nghttp2_compression_error: ffi::NGHTTP2_COMPRESSION_ERROR,
+    nghttp2_connect_error: ffi::NGHTTP2_CONNECT_ERROR,
+    nghttp2_enhance_your_calm: ffi::NGHTTP2_ENHANCE_YOUR_CALM,
+    nghttp2_inadequate_security: ffi::NGHTTP2_INADEQUATE_SECURITY,
+    nghttp2_http_1_1_required: ffi::NGHTTP2_HTTP_1_1_REQUIRED,
+
+    header_table_size: ffi::NGHTTP2_SETTINGS_HEADER_TABLE_SIZE as u32,
+    enable_push: ffi::NGHTTP2_SETTINGS_ENABLE_PUSH as u32,
+    max_concurrent_streams: ffi::NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS as u32,
+    initial_window_size: ffi::NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE as u32,
+    max_frame_size: ffi::NGHTTP2_SETTINGS_MAX_FRAME_SIZE as u32,
+    max_header_list_size: ffi::NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE as u32,
+    enable_connect_protocol: 8,
   }
 }

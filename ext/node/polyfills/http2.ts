@@ -2534,6 +2534,7 @@ const setTimeoutValue = {
   writable: true,
   value: setStreamTimeout,
 };
+ObjectDefineProperty(Http2Stream.prototype, "setTimeout", setTimeoutValue);
 ObjectDefineProperty(Http2Session.prototype, "setTimeout", setTimeoutValue);
 
 // ServerHttp2Session instances should never have to wait for the socket
@@ -2701,8 +2702,7 @@ function connectionListener(socket) {
     if (options.allowHTTP1 === true) {
       socket.server[kIncomingMessage] = options.Http1IncomingMessage;
       socket.server[kServerResponse] = options.Http1ServerResponse;
-      // TODO
-      // return httpConnectionListener.call(this, socket);
+      return httpConnectionListener.call(this, socket);
     }
     // Let event handler deal with the socket
     debug(
@@ -2771,6 +2771,7 @@ function onServerStream(
   flags,
   rawHeaders,
 ) {
+  this.emit("request", {}, {});
   console.log("onServerStream todo");
 }
 
@@ -2786,10 +2787,6 @@ function setupCompat(ev) {
       ),
     );
   }
-}
-
-function closeAllSessions(server) {
-  // TODO: Implement session cleanup
 }
 
 function initializeOptions(options) {
@@ -2837,12 +2834,95 @@ function initializeOptions(options) {
   return options;
 }
 
-function createServer(options, handler) {
-  if (typeof options === "function") {
-    handler = options;
-    options = {};
+function initializeTLSOptions(options, servername) {
+  options = initializeOptions(options);
+
+  if (!options.ALPNCallback) {
+    options.ALPNProtocols = ["h2"];
+    if (options.allowHTTP1 === true) {
+      options.ALPNProtocols.push("http/1.1");
+    }
   }
-  return new Http2Server(options, handler);
+
+  if (servername !== undefined && !options.servername) {
+    options.servername = servername;
+  }
+  return options;
+}
+
+function onErrorSecureServerSession(err, socket) {
+  if (!this.emit("clientError", err, socket)) {
+    socket.destroy(err);
+  }
+}
+
+/**
+ * This function closes all active sessions gracefully.
+ * @param {*} server the underlying server whose sessions to be closed
+ */
+function closeAllSessions(server) {
+  const sessions = server[kSessions];
+  if (sessions.size > 0) {
+    for (const session of sessions) {
+      session.close();
+    }
+  }
+}
+
+// alpnprotol in listen method
+// tls listen method opts refractor
+
+class Http2SecureServer extends tls.Server {
+  constructor(options, requestListener) {
+    options = initializeTLSOptions(options);
+    super(options, connectionListener);
+    this[kOptions] = options;
+    this[kSessions] = new SafeSet();
+    this.timeout = 0;
+    this.on("newListener", setupCompat);
+    if (options.allowHTTP1 === true) {
+      this.headersTimeout = 60_000; // Minimum between 60 seconds or requestTimeout
+      this.requestTimeout = 300_000; // 5 minutes
+      this.connectionsCheckingInterval = 30_000; // 30 seconds
+      this.shouldUpgradeCallback = function () {
+        return this.listenerCount("upgrade") > 0;
+      };
+      this.on("listening", setupConnectionsTracking);
+    }
+    if (typeof requestListener === "function") {
+      this.on("request", requestListener);
+    }
+    this.on("tlsClientError", onErrorSecureServerSession);
+  }
+
+  setTimeout(msecs, callback) {
+    this.timeout = msecs;
+    if (callback !== undefined) {
+      validateFunction(callback, "callback");
+      this.on("timeout", callback);
+    }
+    return this;
+  }
+
+  updateSettings(settings) {
+    assertIsObject(settings, "settings");
+    validateSettings(settings);
+    this[kOptions].settings = { ...this[kOptions].settings, ...settings };
+  }
+
+  close() {
+    ReflectApply(tls.Server.prototype.close, this, arguments);
+    if (this[kOptions].allowHTTP1 === true) {
+      httpServerPreClose(this);
+    }
+    closeAllSessions(this);
+  }
+
+  closeIdleConnections() {
+    if (this[kOptions].allowHTTP1 === true) {
+      ReflectApply(HttpServer.prototype.closeIdleConnections, this, arguments);
+    }
+  }
 }
 
 class Http2Server extends net.Server {
@@ -2883,8 +2963,21 @@ class Http2Server extends net.Server {
   }
 }
 
+function createSecureServer(options, handler) {
+  console.log("creatingSecureServer");
+  return new Http2SecureServer(options, handler);
+}
+
+function createServer(options, handler) {
+  if (typeof options === "function") {
+    handler = options;
+    options = {};
+  }
+  return new Http2Server(options, handler);
+}
+
 op_http2_callbacks(onSessionHeaders);
 
-export { createServer };
+export { createSecureServer, createServer };
 
-export default { createServer };
+export default { createServer, createSecureServer };
