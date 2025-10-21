@@ -319,7 +319,7 @@ impl<TSys: NpmResolverSys> NpmResolver<TSys> {
         .resolve_pkg_folder_from_deno_module_req(req, referrer)
         .map_err(ResolvePkgFolderFromDenoReqError::Byonm),
       NpmResolver::Managed(managed_resolver) => managed_resolver
-        .resolve_pkg_folder_from_deno_module_req(req, referrer)
+        .resolve_pkg_folder_from_deno_module_req(req)
         .map_err(ResolvePkgFolderFromDenoReqError::Managed),
     }
   }
