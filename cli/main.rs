@@ -661,6 +661,8 @@ pub fn main() {
 async fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
 ) -> Result<Flags, AnyError> {
+  // this env var is used by clap to enable dynamic completions, it's set by the shell when
+  // executing deno to get dynamic completions.
   if std::env::var("COMPLETE").is_ok() {
     crate::args::handle_shell_completion()?;
     deno_runtime::exit(0);

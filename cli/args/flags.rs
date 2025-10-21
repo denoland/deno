@@ -2372,7 +2372,7 @@ fn completions_subcommand() -> Command {
         Arg::new("dynamic")
           .long("dynamic")
           .action(ArgAction::SetTrue)
-          .help("Generate dynamic completions for the given shell (unstable). This can provide things like available tasks"),
+           .help("Generate dynamic completions for the given shell (unstable), currently this only provides available tasks for `deno task`."),
       )
   })
 }
@@ -5318,6 +5318,8 @@ fn completions_parse(
     flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Dynamic(
       Arc::new(move || {
         // SAFETY: unavoidable
+        // Clap uses this to detect if it should generate dynamic completions, so if it isn't set, clap
+        // will just bail out instead of actually printing out the completion command.
         unsafe {
           std::env::set_var("COMPLETE", &shell);
         }
@@ -5326,6 +5328,10 @@ fn completions_parse(
       }),
     ));
     return;
+  } else if dynamic {
+    log::warn!(
+      "dynamic completions are currently only supported for bash, fish, and zsh"
+    );
   }
 
   match shell {
