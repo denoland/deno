@@ -7694,26 +7694,21 @@ fn lsp_quote_style_from_workspace_settings() {
 #[timeout(300_000)]
 fn lsp_code_actions_organize_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-
-  let uri = "file:///a/file.ts";
-  // Unordered imports from multiple files with some unused ones
-  let source = r#"import { z, y } from "./z.ts";
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"import { z, y } from "./z.ts";
 import { c, a, b } from "./b.ts";
 import { d } from "./a.ts";
 import unused from "./c.ts";
 
 console.log(b, a, c, d, y, z);
-"#;
-  client.did_open(json!({
-    "textDocument": {
-      "uri": uri,
-      "languageId": "typescript",
-      "version": 1,
-      "text": source,
-    }
-  }));
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
 
   // Request "Organize Imports" action
   let res = client.write_request(
@@ -7798,23 +7793,18 @@ console.log(b, a, c, d, y, z);
 #[timeout(300_000)]
 fn lsp_code_actions_organize_imports_already_organized() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-
-  let uri = "file:///a/file.ts";
-  // Already organized imports
-  let source = r#"import { a, b, c } from "./b.ts";
+  let tmp_dir = context.temp_dir();
+  let file = tmp_dir.source_file(
+    "file.ts",
+    r#"import { a, b, c } from "./b.ts";
 
 console.log(a, b, c);
-"#;
-  client.did_open(json!({
-    "textDocument": {
-      "uri": uri,
-      "languageId": "typescript",
-      "version": 1,
-      "text": source,
-    }
-  }));
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
 
   // Request "Organize Imports" action
   let res = client.write_request(
@@ -7840,26 +7830,22 @@ console.log(a, b, c);
 #[timeout(300_000)]
 fn lsp_code_actions_organize_imports_with_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-
-  let uri = "file:///a/file.ts";
+  let temp_dir = context.temp_dir();
   // File with unordered imports and a type error
-  let source = r#"import { b } from "./b.ts";
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"import { b } from "./b.ts";
 import { a } from "./a.ts";
 import unused from "./c.ts";
 
 // Type error: using undeclared variable
 console.log(undeclaredVariable);
-"#;
-  client.did_open(json!({
-    "textDocument": {
-      "uri": uri,
-      "languageId": "typescript",
-      "version": 1,
-      "text": source,
-    }
-  }));
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
 
   // Request "Organize Imports" action with diagnostics indicating an error
   let res = client.write_request(
