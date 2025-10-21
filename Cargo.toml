@@ -302,8 +302,8 @@ lcms2 = "6.1.0"
 # cli
 anstream = "0.6.14"
 bincode = "=1.3.3"
-clap = "=4.5.30"
-clap_complete = "=4.5.45"
+clap = "=4.5.47"
+clap_complete = { version = "=4.5.57", features = ["unstable-dynamic"] }
 clap_complete_fig = "=4.5.2"
 console_static_text = "=0.8.3"
 crossterm = "0.28.1"
