@@ -84,21 +84,21 @@ mod npm {
 
   fn get_dependency_descriptors_for_deps(
     seen: &mut HashSet<PackageNv>,
-    dependencies_snapshot: &NpmResolutionSnapshot,
+    all_dependencies_snapshot: &NpmResolutionSnapshot,
     dev_dependencies_snapshot: &NpmResolutionSnapshot,
     package_id: &NpmPackageId,
   ) -> HashMap<String, Box<DependencyDescriptor>> {
     let mut is_dev = false;
 
     let resolution_package =
-      match dependencies_snapshot.package_from_id(package_id) {
-        Some(p) => p,
-        None => {
+      match dev_dependencies_snapshot.package_from_id(package_id) {
+        Some(p) => {
           is_dev = true;
-          dev_dependencies_snapshot
-            .package_from_id(package_id)
-            .unwrap()
+          p
         }
+        None => all_dependencies_snapshot
+          .package_from_id(package_id)
+          .unwrap(),
       };
     let mut deps_map =
       HashMap::with_capacity(resolution_package.dependencies.len());
@@ -109,7 +109,7 @@ mod npm {
 
       let dep_deps = get_dependency_descriptors_for_deps(
         seen,
-        dependencies_snapshot,
+        all_dependencies_snapshot,
         dev_dependencies_snapshot,
         dep.1,
       );
@@ -156,19 +156,12 @@ mod npm {
     let mut requires = HashMap::with_capacity(top_level_packages.len());
     let mut dependencies = HashMap::with_capacity(top_level_packages.len());
 
-    dbg!(&npm_resolution_snapshot);
-    dbg!(&top_level_packages);
-    // Now let's get two subsets of the snapshot - one for regular deps and one for dev deps
-    let mut all_deps = Vec::with_capacity(top_level_packages.len() * 10);
-    let mut all_dev_deps = Vec::with_capacity(top_level_packages.len() * 10);
+    // Collect all dev dependencies, so they can be properly marked in the request body - since
+    // there's no way to specify `devDependencies` in `deno.json`, this is only iterating
+    // through discovered `package.json` files.
+    let mut all_dev_deps = Vec::with_capacity(32);
     for pkg_json in workspace.package_jsons() {
       let deps = pkg_json.resolve_local_package_json_deps();
-      for v in deps.dependencies.values() {
-        let Ok(PackageJsonDepValue::Req(package_req)) = v else {
-          continue;
-        };
-        all_deps.push(package_req.clone());
-      }
       for v in deps.dev_dependencies.values() {
         let Ok(PackageJsonDepValue::Req(package_req)) = v else {
           continue;
@@ -176,12 +169,9 @@ mod npm {
         all_dev_deps.push(package_req.clone());
       }
     }
-    let dependencies_snapshot = npm_resolution_snapshot.subset(&all_deps);
     let dev_dependencies_snapshot =
       npm_resolution_snapshot.subset(&all_dev_deps);
 
-    dbg!("deps", &dependencies_snapshot);
-    dbg!("dev deps", &dev_dependencies_snapshot);
     // And now let's construct the request body we need for the npm audits API.
     let seen = &mut HashSet::with_capacity(top_level_packages.len() * 100);
     for package in top_level_packages {
@@ -191,7 +181,7 @@ mod npm {
       seen.insert(package.nv.clone());
       let package_deps = get_dependency_descriptors_for_deps(
         seen,
-        &dependencies_snapshot,
+        &npm_resolution_snapshot,
         &dev_dependencies_snapshot,
         package,
       );
