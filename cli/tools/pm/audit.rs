@@ -28,6 +28,7 @@ pub async fn audit(
   audit_flags: AuditFlags,
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
+  let workspace = factory.workspace_resolver().await?;
   let npm_resolver = factory.npm_resolver().await?;
   let npm_resolver = npm_resolver.as_managed().unwrap();
   let snapshot = npm_resolver.resolution().snapshot();
@@ -45,7 +46,8 @@ pub async fn audit(
   // )
   // .await?;
 
-  npm::call_audits_api(audit_flags, npm_url, &snapshot, http_client).await
+  npm::call_audits_api(audit_flags, npm_url, workspace, &snapshot, http_client)
+    .await
 }
 
 mod npm {
@@ -53,9 +55,12 @@ mod npm {
   use std::collections::HashSet;
 
   use deno_npm::NpmPackageId;
+  use deno_package_json::PackageJsonDepValue;
+  use deno_resolver::workspace::WorkspaceResolver;
   use deno_semver::package::PackageNv;
 
   use super::*;
+  use crate::sys::CliSys;
 
   #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
   enum AdvisorySeverity {
@@ -79,11 +84,22 @@ mod npm {
 
   fn get_dependency_descriptors_for_deps(
     seen: &mut HashSet<PackageNv>,
-    npm_resolution_snapshot: &NpmResolutionSnapshot,
+    dependencies_snapshot: &NpmResolutionSnapshot,
+    dev_dependencies_snapshot: &NpmResolutionSnapshot,
     package_id: &NpmPackageId,
   ) -> HashMap<String, Box<DependencyDescriptor>> {
+    let mut is_dev = false;
+
     let resolution_package =
-      npm_resolution_snapshot.package_from_id(package_id).unwrap();
+      match dependencies_snapshot.package_from_id(package_id) {
+        Some(p) => p,
+        None => {
+          is_dev = true;
+          dev_dependencies_snapshot
+            .package_from_id(package_id)
+            .unwrap()
+        }
+      };
     let mut deps_map =
       HashMap::with_capacity(resolution_package.dependencies.len());
     for dep in resolution_package.dependencies.iter() {
@@ -93,15 +109,15 @@ mod npm {
 
       let dep_deps = get_dependency_descriptors_for_deps(
         seen,
-        npm_resolution_snapshot,
+        dependencies_snapshot,
+        dev_dependencies_snapshot,
         dep.1,
       );
       deps_map.insert(
         dep.0.to_string(),
         Box::new(DependencyDescriptor {
           version: dep.1.nv.version.to_string(),
-          // TODO(bartlomieju): not sure how to determine that from the snapshot
-          dev: false,
+          dev: is_dev,
           requires: dep_deps
             .iter()
             .map(|(k, v)| (k.to_string(), v.version.to_string()))
@@ -132,28 +148,58 @@ mod npm {
   pub async fn call_audits_api(
     audit_flags: AuditFlags,
     npm_url: Url,
+    workspace: &WorkspaceResolver<CliSys>,
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
   ) -> Result<i32, AnyError> {
     let top_level_packages = npm_resolution_snapshot.top_level_packages();
     let mut requires = HashMap::with_capacity(top_level_packages.len());
     let mut dependencies = HashMap::with_capacity(top_level_packages.len());
+
+    dbg!(&npm_resolution_snapshot);
+    dbg!(&top_level_packages);
+    // Now let's get two subsets of the snapshot - one for regular deps and one for dev deps
+    let mut all_deps = Vec::with_capacity(top_level_packages.len() * 10);
+    let mut all_dev_deps = Vec::with_capacity(top_level_packages.len() * 10);
+    for pkg_json in workspace.package_jsons() {
+      let deps = pkg_json.resolve_local_package_json_deps();
+      for v in deps.dependencies.values() {
+        let Ok(PackageJsonDepValue::Req(package_req)) = v else {
+          continue;
+        };
+        all_deps.push(package_req.clone());
+      }
+      for v in deps.dev_dependencies.values() {
+        let Ok(PackageJsonDepValue::Req(package_req)) = v else {
+          continue;
+        };
+        all_dev_deps.push(package_req.clone());
+      }
+    }
+    let dependencies_snapshot = npm_resolution_snapshot.subset(&all_deps);
+    let dev_dependencies_snapshot =
+      npm_resolution_snapshot.subset(&all_dev_deps);
+
+    dbg!("deps", &dependencies_snapshot);
+    dbg!("dev deps", &dev_dependencies_snapshot);
+    // And now let's construct the request body we need for the npm audits API.
     let seen = &mut HashSet::with_capacity(top_level_packages.len() * 100);
     for package in top_level_packages {
+      let is_dev = dev_dependencies_snapshot.package_from_id(package).is_some();
       requires
         .insert(package.nv.name.to_string(), package.nv.version.to_string());
       seen.insert(package.nv.clone());
       let package_deps = get_dependency_descriptors_for_deps(
         seen,
-        npm_resolution_snapshot,
+        &dependencies_snapshot,
+        &dev_dependencies_snapshot,
         package,
       );
       dependencies.insert(
         package.nv.name.to_string(),
         Box::new(DependencyDescriptor {
           version: package.nv.version.to_string(),
-          // TODO(bartlomieju): not sure how to determine that from the snapshot
-          dev: false,
+          dev: is_dev,
           requires: package_deps
             .iter()
             .map(|(k, v)| (k.to_string(), v.version.to_string()))
