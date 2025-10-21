@@ -3,6 +3,7 @@
 use std::io::Write;
 use std::sync::Arc;
 
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::future::join_all;
@@ -27,7 +28,6 @@ pub async fn audit(
   audit_flags: AuditFlags,
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let _cli_options = factory.cli_options()?;
   let npm_resolver = factory.npm_resolver().await?;
   let npm_resolver = npm_resolver.as_managed().unwrap();
   let snapshot = npm_resolver.resolution().snapshot();
@@ -35,6 +35,9 @@ pub async fn audit(
   let sys = CliSys::default();
   let npm_url = npm_registry_url(&sys);
   let http_provider = HttpClientProvider::new(None, None);
+  let http_client = http_provider
+    .get_or_create()
+    .context("Failed to create HTTP client")?;
 
   // socket_dev::call_firewall_api(
   //   &snapshot,
@@ -42,21 +45,15 @@ pub async fn audit(
   // )
   // .await?;
 
-  npm::call_audits_api(
-    audit_flags,
-    npm_url,
-    &snapshot,
-    http_provider.get_or_create().unwrap(),
-  )
-  .await
+  npm::call_audits_api(audit_flags, npm_url, &snapshot, http_client).await
 }
 
 mod npm {
   use std::collections::HashMap;
   use std::collections::HashSet;
 
-  use deno_core::anyhow::Context;
   use deno_npm::NpmPackageId;
+  use deno_semver::package::PackageNv;
 
   use super::*;
 
@@ -81,7 +78,7 @@ mod npm {
   }
 
   fn get_dependency_descriptors_for_deps(
-    seen: &mut HashSet<String>,
+    seen: &mut HashSet<PackageNv>,
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     package_id: &NpmPackageId,
   ) -> HashMap<String, Box<DependencyDescriptor>> {
@@ -90,12 +87,9 @@ mod npm {
     let mut deps_map =
       HashMap::with_capacity(resolution_package.dependencies.len());
     for dep in resolution_package.dependencies.iter() {
-      let seen_str =
-        format!("{}@{}", dep.0.to_string(), dep.1.nv.version.to_string());
-      if seen.contains(&seen_str) {
+      if !seen.insert(dep.1.nv.clone()) {
         continue;
       }
-      seen.insert(seen_str);
 
       let dep_deps = get_dependency_descriptors_for_deps(
         seen,
@@ -148,11 +142,7 @@ mod npm {
     for package in top_level_packages {
       requires
         .insert(package.nv.name.to_string(), package.nv.version.to_string());
-      seen.insert(format!(
-        "{}@{}",
-        package.nv.name.to_string(),
-        package.nv.version.to_string()
-      ));
+      seen.insert(package.nv.clone());
       let package_deps = get_dependency_descriptors_for_deps(
         seen,
         npm_resolution_snapshot,
