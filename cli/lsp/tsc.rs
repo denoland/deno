@@ -1492,6 +1492,60 @@ impl TsServer {
       .await
   }
 
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn organize_imports(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    module: &DocumentModule,
+    document_has_errors: bool,
+    token: &CancellationToken,
+  ) -> Result<Vec<FileTextChanges>, AnyError> {
+    let req = TscRequest::OrganizeImports((
+      OrganizeImportsArgs {
+        scope: CombinedCodeFixScope {
+          r#type: "file",
+          file_name: self
+            .specifier_map
+            .denormalize(&module.specifier, module.media_type),
+        },
+        mode: if document_has_errors {
+          Some(OrganizeImportsMode::SortAndCombine)
+        } else {
+          Some(OrganizeImportsMode::All)
+        },
+      },
+      (&snapshot
+        .config
+        .tree
+        .fmt_config_for_specifier(&module.specifier)
+        .options)
+        .into(),
+      Some(UserPreferences::from_config_for_specifier(
+        &snapshot.config,
+        &module.specifier,
+      )),
+    ));
+    self
+      .request::<Vec<FileTextChanges>>(
+        snapshot,
+        req,
+        &module.compiler_options_key,
+        module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
+        token,
+      )
+      .await
+      .and_then(|mut changes| {
+        for file_change in &mut changes {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
+          file_change.normalize(&self.specifier_map)?;
+        }
+        Ok(changes)
+      })
+  }
+
   async fn request<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -5771,6 +5825,21 @@ pub struct CombinedCodeFixScope {
   file_name: String,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub enum OrganizeImportsMode {
+  All,
+  SortAndCombine,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizeImportsArgs {
+  #[serde(flatten)]
+  pub scope: CombinedCodeFixScope,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub mode: Option<OrganizeImportsMode>,
+}
+
 #[derive(Serialize, Clone, Copy)]
 #[allow(dead_code)]
 pub struct JsNull;
@@ -5883,6 +5952,14 @@ enum TscRequest {
   GetNavigateToItems((String, Option<u32>, Option<String>)),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6239
   ProvideInlayHints((String, TextSpan, UserPreferences)),
+  // https://github.com/denoland/deno/blob/v2.5.2/cli/tsc/dts/typescript.d.ts#L6769
+  OrganizeImports(
+    (
+      OrganizeImportsArgs,
+      FormatCodeSettings,
+      Option<UserPreferences>,
+    ),
+  ),
 }
 
 impl TscRequest {
@@ -5984,6 +6061,9 @@ impl TscRequest {
       TscRequest::ProvideInlayHints(args) => {
         ("provideInlayHints", Some(serde_v8::to_v8(scope, args)?))
       }
+      TscRequest::OrganizeImports(args) => {
+        ("organizeImports", Some(serde_v8::to_v8(scope, args)?))
+      }
       TscRequest::CleanupSemanticCache => ("$cleanupSemanticCache", None),
     };
 
@@ -6030,6 +6110,7 @@ impl TscRequest {
       TscRequest::GetSignatureHelpItems(_) => "getSignatureHelpItems",
       TscRequest::GetNavigateToItems(_) => "getNavigateToItems",
       TscRequest::ProvideInlayHints(_) => "provideInlayHints",
+      TscRequest::OrganizeImports(_) => "organizeImports",
     }
   }
 }
