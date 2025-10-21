@@ -288,8 +288,32 @@ impl Session {
     let scope = &mut v8::ContextScope::new(scope, context);
 
     let id = frame_id(frame);
-    let stream = self.find_stream_obj(id).unwrap();
+    let stream_ref = match self.find_stream(id) {
+      Some(s) => s,
+      None => return,
+    };
 
+    let headers = stream_ref.current_headers.borrow();
+    let header_count = headers.len();
+
+    if header_count == 0 {
+      return;
+    }
+
+    // Create the JS headers array
+    // [name1, value1, name2, value2...]
+    let headers_array = v8::Array::new(scope, (header_count * 2) as i32);
+    for (i, (name, value, _flags)) in headers.iter().enumerate() {
+      let name_str = v8::String::new(scope, name).unwrap();
+      let value_str = v8::String::new(scope, value).unwrap();
+      headers_array.set_index(scope, (i * 2) as u32, name_str.into());
+      headers_array.set_index(scope, (i * 2 + 1) as u32, value_str.into());
+    }
+
+    drop(headers);
+    stream_ref.clear_headers();
+
+    let stream_obj = self.find_stream_obj(id).unwrap();
     let state = self.op_state.borrow();
     let onheaders_fn = state.borrow::<HeadersFrameCb>();
     let recv = v8::Local::new(scope, &self.this);
@@ -297,9 +321,22 @@ impl Session {
 
     drop(state);
 
-    let handle = v8::Local::new(scope, stream);
-    let id = v8::Number::new(scope, id.into());
-    callback.call(scope, recv.into(), &[handle.into(), id.into()]);
+    let handle = v8::Local::new(scope, stream_obj);
+    let id_num = v8::Number::new(scope, id.into());
+    let cat = v8::null(scope);
+    let flags = v8::null(scope);
+
+    callback.call(
+      scope,
+      recv.into(),
+      &[
+        handle.into(),
+        id_num.into(),
+        cat.into(),
+        flags.into(),
+        headers_array.into(),
+      ],
+    );
   }
 }
 
@@ -419,6 +456,9 @@ pub struct Http2Stream {
   available_outbound_length: RefCell<usize>,
   // Buffer for stream data waiting to be sent
   pending_data: RefCell<bytes::BytesMut>,
+  // Current headers being processed
+  current_headers: RefCell<Vec<(String, String, u8)>>,
+  current_headers_length: RefCell<usize>,
 }
 
 impl Http2Stream {
@@ -449,6 +489,8 @@ impl Http2Stream {
         current_headers_category: cat,
         available_outbound_length: RefCell::new(0),
         pending_data: RefCell::new(bytes::BytesMut::new()),
+        current_headers: RefCell::new(Vec::new()),
+        current_headers_length: RefCell::new(0),
       },
     );
 
@@ -587,7 +629,6 @@ impl Http2Stream {
   ) -> i32 {
     let session = unsafe { &mut *self.session };
 
-    // Add data to stream's pending buffer
     self
       .pending_data
       .borrow_mut()
@@ -604,6 +645,41 @@ impl Http2Stream {
 
   #[fast]
   fn shutdown(&self) {}
+}
+
+impl Http2Stream {
+  fn add_header(&self, name: &[u8], value: &[u8], flags: u8) -> bool {
+    let name_str = match std::str::from_utf8(name) {
+      Ok(s) => s.to_string(),
+      Err(_) => return false,
+    };
+    let value_str = match std::str::from_utf8(value) {
+      Ok(s) => s.to_string(),
+      Err(_) => return false,
+    };
+
+    let header_length = name.len() + value.len() + 32; // Add some overhead
+    self
+      .current_headers
+      .borrow_mut()
+      .push((name_str, value_str, flags));
+    *self.current_headers_length.borrow_mut() += header_length;
+    true
+  }
+
+  fn clear_headers(&self) {
+    self.current_headers.borrow_mut().clear();
+    *self.current_headers_length.borrow_mut() = 0;
+  }
+
+  fn headers_count(&self) -> usize {
+    self.current_headers.borrow().len()
+  }
+
+  fn start_headers(&self, category: ffi::nghttp2_headers_category) {
+    self.clear_headers();
+    // TODO: Store category for later use
+  }
 }
 
 fn frame_id(frame: *const ffi::nghttp2_frame) -> i32 {
@@ -629,17 +705,22 @@ unsafe extern "C" fn on_begin_headers_callbacks(
 ) -> i32 {
   let session = &mut *(data as *mut Session);
   let id = frame_id(frame);
+  let headers_category = (&*frame).headers.cat;
 
   let stream = session.find_stream(id);
   match stream {
     // The common case is that we're creating a new stream. The less likely
     // case is that we're receiving a set of trailers
     None => {
-      let (obj, stream) = Http2Stream::new(session, id, (&*frame).headers.cat);
+      let (obj, stream) = Http2Stream::new(session, id, headers_category);
+      if let Some(stream_ref) = &stream {
+        stream_ref.start_headers(headers_category);
+      }
       session.streams.insert(id, (obj, stream.unwrap()));
     }
-    Some(s) => {}
-    _ => {}
+    Some(s) => {
+      s.start_headers(headers_category);
+    }
   }
 
   0
@@ -653,6 +734,28 @@ unsafe extern "C" fn on_header_callback(
   flags: u8,
   data: *mut c_void,
 ) -> i32 {
+  let session = &mut *(data as *mut Session);
+  let id = frame_id(frame);
+
+  if let Some(stream) = session.find_stream(id) {
+    let name_vec = ffi::nghttp2_rcbuf_get_buf(name);
+    let value_vec = ffi::nghttp2_rcbuf_get_buf(value);
+
+    let name_slice = std::slice::from_raw_parts(name_vec.base, name_vec.len);
+    let value_slice = std::slice::from_raw_parts(value_vec.base, value_vec.len);
+
+    if !stream.add_header(name_slice, value_slice, flags) {
+      // Too many headers
+      ffi::nghttp2_submit_rst_stream(
+        session.session,
+        ffi::NGHTTP2_FLAG_NONE as u8,
+        id,
+        ffi::NGHTTP2_ENHANCE_YOUR_CALM,
+      );
+      return ffi::NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE as i32;
+    }
+  }
+
   0
 }
 
