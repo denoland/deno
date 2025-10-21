@@ -122,7 +122,11 @@ import {
   updateSettingsBuffer,
 } from "ext:deno_node/internal/http2/util.ts";
 import { ownerSymbol as owner_symbol } from "ext:deno_node/internal_binding/symbols.ts";
-
+import {
+  Http2ServerRequest,
+  Http2ServerResponse,
+  onServerStream,
+} from "ext:deno_node/internal/http2/compat.js";
 const onClientStreamCreatedChannel = dc.channel("http2.client.stream.created");
 const onClientStreamStartChannel = dc.channel("http2.client.stream.start");
 const onClientStreamErrorChannel = dc.channel("http2.client.stream.error");
@@ -250,8 +254,6 @@ const kMaxALTSVC = (2 ** 14) - 2;
 const kQuotedString = /^[\x09\x20-\x5b\x5d-\x7e\x80-\xff]*$/;
 
 // Placeholder classes and functions - these need proper implementation
-class Http2ServerRequest {}
-class Http2ServerResponse {}
 class JSStreamSocket {}
 
 // Validates that priority options are correct, specifically:
@@ -2761,18 +2763,6 @@ function connectionListener(socket) {
   } catch (e) {
     console.error(e);
   }
-}
-
-function onServerStream(
-  ServerRequest,
-  ServerResponse,
-  stream,
-  headers,
-  flags,
-  rawHeaders,
-) {
-  this.emit("request", {}, {});
-  console.log("onServerStream todo");
 }
 
 function setupCompat(ev) {

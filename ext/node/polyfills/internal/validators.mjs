@@ -349,6 +349,86 @@ function validateUnion(value, name, union) {
   }
 }
 
+/*
+  The rules for the Link header field are described here:
+  https://www.rfc-editor.org/rfc/rfc8288.html#section-3
+
+  This regex validates any string surrounded by angle brackets
+  (not necessarily a valid URI reference) followed by zero or more
+  link-params separated by semicolons.
+*/
+const linkValueRegExp = /^(?:<[^>]*>)(?:\s*;\s*[^;"\s]+(?:=(")?[^;"\s]*\1)?)*$/;
+
+/**
+ * @param {any} value
+ * @param {string} name
+ */
+const validateLinkHeaderFormat = hideStackFrames((value, name) => {
+  if (
+    typeof value === "undefined" ||
+    !RegExpPrototypeExec(linkValueRegExp, value)
+  ) {
+    throw new ERR_INVALID_ARG_VALUE(
+      name,
+      value,
+      'must be an array or string of format "</styles.css>; rel=preload; as=style"',
+    );
+  }
+});
+
+/**
+ * Validate provided `this` object by checking that it has specific own property
+ * @param {any} object
+ * @param {string|symbol} fieldKey
+ * @param {string} className
+ */
+const validateThisInternalField = hideStackFrames(
+  (object, fieldKey, className) => {
+    if (
+      typeof object !== "object" || object === null ||
+      !ObjectPrototypeHasOwnProperty(object, fieldKey)
+    ) {
+      throw new ERR_INVALID_THIS(className);
+    }
+  },
+);
+
+/**
+ * @param {any} hints
+ * @returns {string}
+ */
+const validateLinkHeaderValue = hideStackFrames((hints) => {
+  if (typeof hints === "string") {
+    validateLinkHeaderFormat.withoutStackTrace(hints, "hints");
+    return hints;
+  } else if (ArrayIsArray(hints)) {
+    const hintsLength = hints.length;
+    let result = "";
+
+    if (hintsLength === 0) {
+      return result;
+    }
+
+    for (let i = 0; i < hintsLength; i++) {
+      const link = hints[i];
+      validateLinkHeaderFormat.withoutStackTrace(link, "hints");
+      result += link;
+
+      if (i !== hintsLength - 1) {
+        result += ", ";
+      }
+    }
+
+    return result;
+  }
+
+  throw new ERR_INVALID_ARG_VALUE(
+    "hints",
+    hints,
+    'must be an array or string of format "</styles.css>; rel=preload; as=style"',
+  );
+});
+
 const validateFiniteNumber = hideStackFrames((number, name) => {
   // Common case
   if (number === undefined) {
@@ -404,6 +484,8 @@ export default {
   validateString,
   validateStringArray,
   validateUint32,
+
+  validateLinkHeaderValue,
   validateUnion,
   validateFiniteNumber,
   checkRangesOrGetDefault,
@@ -422,6 +504,7 @@ export {
   validateFunction,
   validateInt32,
   validateInteger,
+  validateLinkHeaderValue,
   validateNumber,
   validateObject,
   validateOneOf,
