@@ -11,6 +11,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::sync::LazyLock;
 
 use clap::Arg;
@@ -159,9 +160,31 @@ impl CompileFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CompletionsFlags {
-  pub buf: Box<[u8]>,
+#[derive(Clone)]
+pub enum CompletionsFlags {
+  Static(Box<[u8]>),
+  Dynamic(Arc<dyn Fn() -> Result<(), AnyError> + Send + Sync + 'static>),
+}
+
+impl PartialEq for CompletionsFlags {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Static(l0), Self::Static(r0)) => l0 == r0,
+      (Self::Dynamic(l0), Self::Dynamic(r0)) => Arc::ptr_eq(l0, r0),
+      _ => false,
+    }
+  }
+}
+
+impl Eq for CompletionsFlags {}
+
+impl std::fmt::Debug for CompletionsFlags {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Static(arg0) => f.debug_tuple("Static").field(arg0).finish(),
+      Self::Dynamic(_) => f.debug_tuple("Dynamic").finish(),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -2338,11 +2361,19 @@ fn completions_subcommand() -> Command {
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
-    cmd.disable_help_subcommand(true).arg(
-      Arg::new("shell")
-        .value_parser(["bash", "fish", "powershell", "zsh", "fig"])
-        .required_unless_present("help"),
-    )
+    cmd
+      .disable_help_subcommand(true)
+      .arg(
+        Arg::new("shell")
+          .value_parser(["bash", "fish", "powershell", "zsh", "fig"])
+          .required_unless_present("help"),
+      )
+      .arg(
+        Arg::new("dynamic")
+          .long("dynamic")
+          .action(ArgAction::SetTrue)
+          .help("Generate dynamic completions for the given shell (unstable). This can provide things like available tasks"),
+      )
   })
 }
 
@@ -5278,7 +5309,26 @@ fn completions_parse(
   let mut buf: Vec<u8> = vec![];
   let name = "deno";
 
-  match matches.get_one::<String>("shell").unwrap().as_str() {
+  let dynamic = matches.get_flag("dynamic");
+
+  let shell = matches.get_one::<String>("shell").unwrap().as_str();
+
+  if dynamic && matches!(shell, "bash" | "fish" | "zsh") {
+    let shell = shell.to_string();
+    flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Dynamic(
+      Arc::new(move || {
+        // SAFETY: unavoidable
+        unsafe {
+          std::env::set_var("COMPLETE", &shell);
+        }
+        handle_shell_completion_with_args(std::env::args_os().take(1))?;
+        Ok(())
+      }),
+    ));
+    return;
+  }
+
+  match shell {
     "bash" => generate(Bash, &mut app, name, &mut buf),
     "fish" => generate(Fish, &mut app, name, &mut buf),
     "powershell" => generate(PowerShell, &mut app, name, &mut buf),
@@ -5287,9 +5337,9 @@ fn completions_parse(
     _ => unreachable!(),
   }
 
-  flags.subcommand = DenoSubcommand::Completions(CompletionsFlags {
-    buf: buf.into_boxed_slice(),
-  });
+  flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Static(
+    buf.into_boxed_slice(),
+  ));
 }
 
 fn coverage_parse(
@@ -6005,7 +6055,13 @@ fn task_parse(
 }
 
 pub fn handle_shell_completion() -> Result<(), AnyError> {
-  let args = std::env::args_os().collect::<Vec<_>>();
+  handle_shell_completion_with_args(std::env::args_os())
+}
+
+fn handle_shell_completion_with_args(
+  args: impl IntoIterator<Item = OsString>,
+) -> Result<(), AnyError> {
+  let args = args.into_iter().collect::<Vec<_>>();
   let app = clap_root();
 
   let ran_completion = clap_complete::CompleteEnv::with_factory(|| app.clone())
@@ -9613,7 +9669,7 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "completions", "zsh"]).unwrap();
 
     match r.subcommand {
-      DenoSubcommand::Completions(CompletionsFlags { buf }) => {
+      DenoSubcommand::Completions(CompletionsFlags::Static(buf)) => {
         assert!(!buf.is_empty())
       }
       _ => unreachable!(),

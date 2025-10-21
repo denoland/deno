@@ -60,6 +60,7 @@ const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::util::draw_thread::DrawThread;
+use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::flags_from_vec;
@@ -410,7 +411,16 @@ async fn run_subcommand(
     }
     DenoSubcommand::Completions(completions_flags) => {
       spawn_subcommand(async move {
-        display::write_to_stdout_ignore_sigpipe(&completions_flags.buf)
+        match completions_flags {
+          CompletionsFlags::Static(buf) => {
+            display::write_to_stdout_ignore_sigpipe(&buf)
+              .map_err(AnyError::from)
+          }
+          CompletionsFlags::Dynamic(f) => {
+            f()?;
+            Ok(())
+          }
+        }
       })
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
