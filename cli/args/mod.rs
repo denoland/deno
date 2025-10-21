@@ -1210,6 +1210,10 @@ impl CliOptions {
     self.flags.type_check_mode
   }
 
+  pub fn unstable_tsgo(&self) -> bool {
+    self.flags.unstable_config.tsgo || self.workspace().has_unstable("tsgo")
+  }
+
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
     &self.flags.unsafely_ignore_certificate_errors
   }
@@ -1352,12 +1356,6 @@ impl CliOptions {
     }
   }
 
-  pub fn newest_dependency_date(
-    &self,
-  ) -> Option<chrono::DateTime<chrono::Utc>> {
-    self.flags.minimum_dependency_age
-  }
-
   pub fn unstable_npm_lazy_caching(&self) -> bool {
     self.flags.unstable_config.npm_lazy_caching
       || self.workspace().has_unstable("npm-lazy-caching")
@@ -1372,7 +1370,7 @@ impl CliOptions {
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual
-    } else if self.flags.unstable_config.npm_lazy_caching {
+    } else if self.unstable_npm_lazy_caching() {
       NpmCachingStrategy::Lazy
     } else {
       NpmCachingStrategy::Eager

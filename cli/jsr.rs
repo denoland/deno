@@ -6,9 +6,10 @@ use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_graph::JsrPackageReqNotFoundError;
 use deno_graph::packages::JsrPackageInfo;
-use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
+use deno_graph::packages::JsrPackageVersionResolver;
 use deno_graph::packages::JsrVersionResolver;
+use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
@@ -42,6 +43,14 @@ impl JsrFetchResolver {
     }
   }
 
+  pub fn version_resolver_for_package<'a>(
+    &'a self,
+    name: &PackageName,
+    info: &'a JsrPackageInfo,
+  ) -> JsrPackageVersionResolver<'a> {
+    self.jsr_version_resolver.get_for_package(name, info)
+  }
+
   pub async fn req_to_nv(
     &self,
     req: &PackageReq,
@@ -57,11 +66,11 @@ impl JsrFetchResolver {
         return Ok(None);
       };
       // Find the first matching version of the package.
-      let version = self.jsr_version_resolver.resolve_version(
-        req,
-        &package_info,
-        Vec::new().into_iter(),
-      );
+      let version_resolver = self
+        .jsr_version_resolver
+        .get_for_package(&req.name, &package_info);
+      let version =
+        version_resolver.resolve_version(req, Vec::new().into_iter());
       let version = if let Ok(version) = version {
         version.version.clone()
       } else {
@@ -70,9 +79,11 @@ impl JsrFetchResolver {
           log::debug!("no package info found for jsr:{name}");
           return Ok(None);
         };
-        self
+        let version_resolver = self
           .jsr_version_resolver
-          .resolve_version(req, &package_info, Vec::new().into_iter())?
+          .get_for_package(&req.name, &package_info);
+        version_resolver
+          .resolve_version(req, Vec::new().into_iter())?
           .version
           .clone()
       };
@@ -82,15 +93,6 @@ impl JsrFetchResolver {
 
     self.nv_by_req.insert(req.clone(), nv.clone());
     Ok(nv)
-  }
-
-  pub fn version_matches_newest_dependency_date(
-    &self,
-    version: &JsrPackageInfoVersion,
-  ) -> bool {
-    self
-      .jsr_version_resolver
-      .matches_newest_dependency_date(version)
   }
 
   pub async fn force_refresh_package_info(

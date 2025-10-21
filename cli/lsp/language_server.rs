@@ -596,7 +596,7 @@ impl Inner {
       Arc::new(NpmVersionResolver {
         types_node_version_req: Some(get_types_node_version_req()),
         link_packages: Default::default(),
-        newest_dependency_date: None,
+        newest_dependency_date_options: Default::default(),
       }),
     );
     let config = Config::default();
@@ -855,7 +855,7 @@ impl Inner {
         // to each workspace so that the link packages can be properly
         // hooked up
         link_packages: Default::default(),
-        newest_dependency_date: None,
+        newest_dependency_date_options: Default::default(),
       }),
     );
     self.performance.measure(mark);
