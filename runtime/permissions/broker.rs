@@ -17,9 +17,11 @@ use crate::ipc_pipe::IpcPipe;
 static BROKER_EXIT_CODE: i32 = 87;
 
 static PERMISSION_BROKER: OnceLock<PermissionBroker> = OnceLock::new();
+static PID: OnceLock<u32> = OnceLock::new();
 
 pub fn set_broker(broker: PermissionBroker) {
   assert!(PERMISSION_BROKER.set(broker).is_ok());
+  assert!(PID.set(std::process::id()).is_ok());
 }
 
 pub fn has_broker() -> bool {
@@ -30,6 +32,7 @@ pub fn has_broker() -> bool {
 #[serde(rename_all = "camelCase")]
 struct PermissionBrokerRequest<'a> {
   v: u32,
+  pid: u32,
   id: u32,
   datetime: String,
   permission: &'a str,
@@ -76,6 +79,7 @@ impl PermissionBroker {
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let request = PermissionBrokerRequest {
       v: 1,
+      pid: *PID.get().unwrap(),
       id,
       datetime: chrono::Utc::now().to_rfc3339(),
       permission,
