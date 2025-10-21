@@ -49,7 +49,7 @@ pub enum ByonmResolvePkgFolderFromDenoReqError {
   JsrReqUnsupported { req: PackageReq },
 }
 
-pub struct ByonmNpmResolverCreateOptions<TSys: FsRead> {
+pub struct ByonmNpmResolverCreateOptions<TSys: FsRead + FsMetadata> {
   // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
   pub sys: NodeResolutionSys<TSys>,

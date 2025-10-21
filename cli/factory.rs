@@ -524,6 +524,20 @@ impl CliFactory {
     self.resolver_factory()?.in_npm_package_checker()
   }
 
+  pub async fn tsgo_path(&self) -> Result<Option<&PathBuf>, AnyError> {
+    if self.cli_options()?.unstable_tsgo() {
+      Ok(Some(
+        crate::tsc::ensure_tsgo(
+          self.deno_dir()?,
+          self.http_client_provider().clone(),
+        )
+        .await?,
+      ))
+    } else {
+      Ok(None)
+    }
+  }
+
   pub fn jsr_version_resolver(
     &self,
   ) -> Result<&Arc<JsrVersionResolver>, AnyError> {
@@ -757,6 +771,7 @@ impl CliFactory {
             self.module_graph_builder().await?.clone(),
             self.node_resolver().await?.clone(),
             self.npm_resolver().await?.clone(),
+            self.resolver_factory()?.pkg_json_resolver().clone(),
             self.sys(),
             self.compiler_options_resolver()?.clone(),
             if cli_options.code_cache_enabled() {
@@ -764,6 +779,7 @@ impl CliFactory {
             } else {
               None
             },
+            self.tsgo_path().await?.cloned(),
           )))
         }
         .boxed_local(),
@@ -1169,7 +1185,7 @@ impl CliFactory {
           } else {
             IsCjsResolutionMode::Disabled
           },
-          newest_dependency_date: options.newest_dependency_date(),
+          newest_dependency_date: self.flags.minimum_dependency_age,
           node_analysis_cache: Some(node_analysis_cache),
           node_resolver_options: NodeResolverOptions {
             conditions: NodeConditionOptions {

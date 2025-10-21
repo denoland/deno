@@ -33,6 +33,7 @@ use crate::lsp::LspClientBuilder;
 use crate::nodejs_org_mirror_unset_url;
 use crate::npm_registry_unset_url;
 use crate::pty::Pty;
+use crate::servers::tsgo_prebuilt_path;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
 use crate::tests_path;
@@ -865,6 +866,12 @@ impl TestCommandBuilder {
       envs.insert(
         "NODEJS_ORG_MIRROR".to_string(),
         nodejs_org_mirror_unset_url(),
+      );
+    }
+    if !envs.contains_key("DENO_TSGO_PATH") {
+      envs.insert(
+        "DENO_TSGO_PATH".to_string(),
+        tsgo_prebuilt_path().to_string(),
       );
     }
     for key in &self.envs_remove {

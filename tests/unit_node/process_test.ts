@@ -1334,3 +1334,10 @@ Deno.test("process.emitWarning() does not print to stderr when it is deprecation
   // deno-lint-ignore no-explicit-any
   (process as any).noDeprecation = false; // Reset noDeprecation
 });
+
+Deno.test("process.moduleLoadList", () => {
+  // deno-lint-ignore no-explicit-any
+  const moduleLoadList = (process as any).moduleLoadList;
+  assert(Array.isArray(moduleLoadList));
+  assertEquals(moduleLoadList.length, 0);
+});

@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "test --coverage main_test.ts",
+  "output": "main.out",
+  "exitCode": 0
+}

@@ -596,7 +596,7 @@ impl Inner {
       Arc::new(NpmVersionResolver {
         types_node_version_req: Some(get_types_node_version_req()),
         link_packages: Default::default(),
-        newest_dependency_date: None,
+        newest_dependency_date_options: Default::default(),
       }),
     );
     let config = Config::default();
@@ -855,7 +855,7 @@ impl Inner {
         // to each workspace so that the link packages can be properly
         // hooked up
         link_packages: Default::default(),
-        newest_dependency_date: None,
+        newest_dependency_date_options: Default::default(),
       }),
     );
     self.performance.measure(mark);
@@ -2289,12 +2289,12 @@ impl Inner {
     code_actions.set_preferred_fixes();
     all_actions.extend(code_actions.get_response());
 
+    let kinds = params.context.only.unwrap_or_default();
+
     // Refactor
-    let only = params
-      .context
-      .only
-      .as_ref()
-      .and_then(|values| values.first().map(|v| v.as_str().to_owned()))
+    let only = kinds
+      .first()
+      .map(|v| v.as_str().to_owned())
       .unwrap_or_default();
     let refactor_infos = self
       .ts_server
@@ -2339,6 +2339,60 @@ impl Inner {
         .into_iter()
         .map(CodeActionOrCommand::CodeAction),
     );
+
+    // Organize imports
+    if kinds.is_empty()
+      || kinds.contains(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
+    {
+      let document_has_errors = params.context.diagnostics.iter().any(|d| {
+        // Assume diagnostics without a severity are errors
+        d.severity.is_none_or(|s| s == DiagnosticSeverity::ERROR)
+      });
+      let organize_imports_edit = self
+        .ts_server
+        .organize_imports(self.snapshot(), &module, document_has_errors, token)
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!(
+              "Unable to get organize imports edit from TypeScript: {:#}",
+              err
+            );
+            LspError::internal_error()
+          }
+        })?;
+
+      if !organize_imports_edit.is_empty() {
+        let mut changes_with_modules = IndexMap::new();
+        changes_with_modules.extend(
+          fix_ts_import_changes(&organize_imports_edit, &module, self, token)
+            .map_err(|err| {
+              if token.is_cancelled() {
+                LspError::request_cancelled()
+              } else {
+                error!("Unable to fix import changes: {:#}", err);
+                LspError::internal_error()
+              }
+            })?
+            .into_iter()
+            .map(|c| (c, module.clone())),
+        );
+
+        all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+          title: "Organize imports".to_string(),
+          kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
+          edit: file_text_changes_to_workspace_edit(
+            &changes_with_modules,
+            self,
+            token,
+          )?,
+          data: Some(json!({ "uri": params.text_document.uri})),
+          ..Default::default()
+        }));
+      }
+    }
 
     let code_action_disabled_capable =
       self.config.code_action_disabled_capable();

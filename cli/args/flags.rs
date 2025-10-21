@@ -27,6 +27,7 @@ use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
+use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -687,6 +688,13 @@ impl Default for TypeCheckMode {
   }
 }
 
+fn minutes_duration_or_date_parser(
+  s: &str,
+) -> Result<NewestDependencyDate, clap::Error> {
+  deno_config::parse_minutes_duration_or_date(&sys_traits::impls::RealSys, s)
+    .map_err(|e| clap::Error::raw(clap::error::ErrorKind::InvalidValue, e))
+}
+
 fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   if !s.starts_with("npm:") {
     bail!(
@@ -739,8 +747,7 @@ pub struct Flags {
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
-  // TODO(#30752): hook this up so users can specify it
-  pub minimum_dependency_age: Option<chrono::DateTime<chrono::Utc>>,
+  pub minimum_dependency_age: Option<NewestDependencyDate>,
   pub no_remote: bool,
   pub no_lock: bool,
   pub no_npm: bool,
@@ -3012,7 +3019,7 @@ fn jupyter_subcommand() -> Command {
         .conflicts_with("install"))
 }
 
-fn update_and_outdated_args() -> [Arg; 4] {
+fn update_and_outdated_args() -> [Arg; 5] {
   [
     Arg::new("filters")
       .num_args(0..)
@@ -3036,6 +3043,7 @@ fn update_and_outdated_args() -> [Arg; 4] {
       .short('r')
       .action(ArgAction::SetTrue)
       .help("Include all workspace members"),
+    min_dep_age_arg(),
   ]
 }
 
@@ -3853,6 +3861,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(preload_arg())
+    .arg(min_dep_age_arg())
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
@@ -4442,6 +4451,13 @@ fn preload_arg() -> Arg {
     .value_hint(ValueHint::FilePath)
 }
 
+fn min_dep_age_arg() -> Arg {
+  Arg::new("minimum-dependency-age")
+    .long("minimum-dependency-age")
+    .value_parser(minutes_duration_or_date_parser)
+    .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable)")
+}
+
 fn ca_file_arg() -> Arg {
   Arg::new("cert")
     .long("cert")
@@ -5003,6 +5019,7 @@ fn outdated_parse(
     recursive,
     kind,
   });
+  min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6097,6 +6114,7 @@ fn compile_args_without_check_parse(
   ca_file_arg_parse(flags, matches);
   unsafely_ignore_certificate_errors_parse(flags, matches);
   preload_arg_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6374,6 +6392,10 @@ fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
+fn min_dep_age_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.minimum_dependency_age = matches.remove_one("minimum-dependency-age");
+}
+
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.ca_data = matches.remove_one::<String>("cert").and_then(CaData::parse);
 }
@@ -6606,6 +6628,7 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
+  flags.unstable_config.tsgo = matches.get_flag("unstable-tsgo");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for feature in deno_runtime::UNSTABLE_FEATURES {
