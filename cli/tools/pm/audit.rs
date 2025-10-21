@@ -181,7 +181,7 @@ mod npm {
       seen.insert(package.nv.clone());
       let package_deps = get_dependency_descriptors_for_deps(
         seen,
-        &npm_resolution_snapshot,
+        npm_resolution_snapshot,
         &dev_dependencies_snapshot,
         package,
       );
