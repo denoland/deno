@@ -472,6 +472,7 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+    ops::sqlite::op_node_database_backup<P>,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
