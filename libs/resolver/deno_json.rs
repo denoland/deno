@@ -587,6 +587,15 @@ impl CompilerOptionsData {
         let parsed =
           parse_compiler_options(object, Some(source.specifier.as_ref()));
         result.compiler_options.merge_object_mut(parsed.options);
+        if matches!(typ, CompilerOptionsType::Check { .. })
+          && let Some(compiler_options) =
+            result.compiler_options.0.as_object_mut()
+          && compiler_options.get("isolatedDeclarations")
+            == Some(&serde_json::Value::Bool(true))
+        {
+          compiler_options.insert("declaration".into(), true.into());
+          compiler_options.insert("allowJs".into(), false.into());
+        }
         if let Some(ignored) = parsed.maybe_ignored {
           result.ignored_options.push(ignored);
         }
