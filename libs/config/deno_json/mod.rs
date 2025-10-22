@@ -894,14 +894,14 @@ impl NewestDependencyDate {
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RawMinimumDependencyAgeConfig {
-  pub date: serde_json::Value,
+  pub age: serde_json::Value,
   #[serde(default)]
   pub exclude: Vec<String>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct MinimumDependencyAgeConfig {
-  pub date: Option<NewestDependencyDate>,
+  pub age: Option<NewestDependencyDate>,
   pub exclude: Vec<String>,
 }
 
@@ -2023,12 +2023,12 @@ impl ConfigFile {
             serde_json::from_value(v.clone())
               .map_err(MinimumDependencyAgeParseError::UnsupportedObject)?;
           Ok(MinimumDependencyAgeConfig {
-            date: parse_date(&obj.date, sys)?,
+            age: parse_date(&obj.age, sys)?,
             exclude: obj.exclude,
           })
         }
         _ => Ok(MinimumDependencyAgeConfig {
-          date: parse_date(v, sys)?,
+          age: parse_date(v, sys)?,
           exclude: Default::default(),
         }),
       },

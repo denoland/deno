@@ -4046,7 +4046,7 @@ pub mod test {
     run_single_json_diagnostics_test(
       json!({
         "minimumDependencyAge": {
-          "date": 120,
+          "age": 120,
           "exclude": [
             "jsr:@scope/name",
             "npm:package",

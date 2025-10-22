@@ -940,7 +940,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         newest_dependency_date_options:
           deno_graph::packages::NewestDependencyDateOptions {
             date: minimum_dependency_age_config
-              .date
+              .age
               .as_ref()
               .and_then(|d| d.into_option())
               .map(deno_graph::packages::NewestDependencyDate),
@@ -962,7 +962,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.minimum_dependency_age.get_or_try_init(|| {
       let config = if let Some(date) = self.options.newest_dependency_date {
         MinimumDependencyAgeConfig {
-          date: Some(date),
+          age: Some(date),
           exclude: Vec::new(),
         }
       } else {
@@ -971,7 +971,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         workspace.minimum_dependency_age(workspace_factory.sys())?
       };
       if let Some(newest_dependency_date) =
-        config.date.and_then(|d| d.into_option())
+        config.age.and_then(|d| d.into_option())
       {
         log::debug!("Newest dependency date: {}", newest_dependency_date);
       }
@@ -1096,7 +1096,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
             date: minimum_dependency_age_config
-              .date
+              .age
               .as_ref()
               .and_then(|d| d.into_option())
               .map(deno_npm::resolution::NewestDependencyDate),

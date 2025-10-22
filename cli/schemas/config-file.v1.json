@@ -689,7 +689,7 @@
         "description": "Minimum dependency age config.",
         "additionalProperties": false,
         "properties": {
-          "date": { "$ref": "#/$defs/minimumDependencyAgeDate" },
+          "age": { "$ref": "#/$defs/minimumDependencyAgeDate" },
           "exclude": {
             "type": "array",
             "description": "List of jsr or npm packages to exclude from requiring a minimum dependnecy age.",
