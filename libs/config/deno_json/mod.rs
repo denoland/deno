@@ -1003,6 +1003,8 @@ pub struct ConfigFileJson {
   pub compiler_options: Option<Value>,
   pub import_map: Option<String>,
   pub imports: Option<Value>,
+  pub dependencies: Option<Value>,
+  pub dev_dependencies: Option<Value>,
   pub scopes: Option<Value>,
   pub lint: Option<Value>,
   pub fmt: Option<Value>,
@@ -1415,7 +1417,11 @@ impl ConfigFile {
     sys: &impl FsRead,
   ) -> Result<Option<(Cow<'_, Url>, serde_json::Value)>, ConfigFileError> {
     // has higher precedence over the path
-    if self.json.imports.is_some() || self.json.scopes.is_some() {
+    if self.json.imports.is_some()
+      || self.json.scopes.is_some()
+      || self.json.dependencies.is_some()
+      || self.json.dev_dependencies.is_some()
+    {
       Ok(Some((
         Cow::Borrowed(&self.specifier),
         self.to_import_map_value_from_imports(),
@@ -1448,9 +1454,59 @@ impl ConfigFile {
   }
 
   pub fn to_import_map_value_from_imports(&self) -> Value {
+    fn deps_to_import_map(
+      obj: &serde_json::Map<String, Value>,
+    ) -> serde_json::Map<String, Value> {
+      let mut result = serde_json::Map::with_capacity(obj.len());
+      for (key, value) in obj {
+        // TODO(THIS PR): ensure there is no path on the specifier
+        let Some(value) = value.as_str() else {
+          todo!(); // THIS PR
+        };
+        if let Some((prefix, specifier)) = key.split_once(":") {
+          if matches!(prefix, "npm" | "jsr") {
+            result.insert(
+              specifier.into(),
+              format!("{}:{}@{}", prefix, specifier, value).into(),
+            );
+          } else {
+            todo!(); // THIS PR
+          }
+        } else {
+          result.insert(key.into(), value.into());
+        }
+      }
+      result
+    }
+
     let mut value = serde_json::Map::with_capacity(2);
-    if let Some(imports) = &self.json.imports {
-      value.insert("imports".to_string(), imports.clone());
+    {
+      let imports = self.json.imports.as_ref().and_then(|d| d.as_object());
+      let deps = self.json.dependencies.as_ref().and_then(|d| d.as_object());
+      let dev_deps = self
+        .json
+        .dev_dependencies
+        .as_ref()
+        .and_then(|d| d.as_object());
+      if imports.is_some() || deps.is_some() || dev_deps.is_some() {
+        let capacity = imports.map(|i| i.len()).unwrap_or(0)
+          + deps.map(|i| i.len()).unwrap_or(0)
+          + dev_deps.map(|i| i.len()).unwrap_or(0);
+        let mut result = serde_json::Map::with_capacity(capacity);
+        if let Some(imports) = imports {
+          for (key, value) in imports {
+            result.insert(key.clone(), value.clone().into());
+          }
+        }
+        for deps in [deps, dev_deps] {
+          if let Some(deps) = deps {
+            for (key, value) in deps_to_import_map(deps) {
+              result.insert(key, value);
+            }
+          }
+        }
+        value.insert("imports".to_string(), result.into());
+      }
     }
     if let Some(scopes) = &self.json.scopes {
       value.insert("scopes".to_string(), scopes.clone());
