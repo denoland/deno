@@ -7,6 +7,7 @@ import {
   op_host_recv_ctrl,
   op_host_recv_message,
   op_host_terminate_worker,
+  op_update_worker_permissions,
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
@@ -289,6 +290,14 @@ class Worker extends EventTarget {
       this.#status = "TERMINATED";
       hostTerminateWorker(this.#id);
     }
+  }
+
+  updatePermissions(permissions) {
+    const prefix = "Failed to execute 'updatePermissions' on 'Worker'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+
+    const serializedPermissions = serializePermissions(permissions);
+    op_update_worker_permissions(this.#id, serializedPermissions);
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
