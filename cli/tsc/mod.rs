@@ -24,8 +24,10 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::checksum;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_npm::resolution::PackageReqNotFoundError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
+use deno_resolver::npm::managed::ResolvePkgFolderFromPkgIdError;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use node_resolver::NodeResolutionKind;
@@ -595,6 +597,12 @@ pub enum ResolveError {
   #[class(inherit)]
   #[error("{0}")]
   ResolveNonGraphSpecifierTypes(#[from] ResolveNonGraphSpecifierTypesError),
+  #[class(inherit)]
+  #[error("{0}")]
+  PackageReqNotFound(#[from] PackageReqNotFoundError),
+  #[class(inherit)]
+  #[error("{0}")]
+  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -655,17 +663,23 @@ fn resolve_graph_specifier_types(
     Some(Module::Wasm(module)) => {
       Ok(Some((module.specifier.clone(), MediaType::Dmts)))
     }
-    Some(Module::Npm(module)) => {
-      if let Some(npm) = maybe_npm {
-        let package_folder = npm
+    Some(Module::Npm(_)) => {
+      if let Some(npm) = maybe_npm
+        && let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier)
+      {
+        let managed_resolver = npm
           .npm_resolver
           .as_managed()
-          .unwrap() // should never be byonm because it won't create Module::Npm
-          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
+          // should never be byonm because it won't create Module::Npm
+          .unwrap();
+        let pkg_id = managed_resolver
+          .resolve_pkg_id_from_deno_module_req(req_ref.req())?;
+        let package_folder =
+          managed_resolver.resolve_pkg_folder_from_pkg_id(&pkg_id)?;
         let res_result =
           npm.node_resolver.resolve_package_subpath_from_deno_module(
             &package_folder,
-            module.nv_reference.sub_path(),
+            req_ref.sub_path(),
             Some(referrer),
             resolution_mode,
             NodeResolutionKind::Types,
@@ -674,27 +688,19 @@ fn resolve_graph_specifier_types(
           Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
-              let reqs = npm
-                .npm_resolver
-                .as_managed()
-                .unwrap()
-                .resolution()
-                .package_reqs();
+              let reqs = managed_resolver.resolution().package_reqs();
               if let Some((_, types_nv)) =
                 deno_resolver::npm::find_definitely_typed_package(
-                  module.nv_reference.nv(),
+                  &pkg_id.nv,
                   reqs.iter().map(|tup| (&tup.0, &tup.1)),
                 )
               {
-                let package_folder = npm
-                  .npm_resolver
-                  .as_managed()
-                  .unwrap() // should never be byonm because it won't create Module::Npm
+                let package_folder = managed_resolver
                   .resolve_pkg_folder_from_deno_module(types_nv)?;
                 let res_result =
                   npm.node_resolver.resolve_package_subpath_from_deno_module(
                     &package_folder,
-                    module.nv_reference.sub_path(),
+                    req_ref.sub_path(),
                     Some(referrer),
                     resolution_mode,
                     NodeResolutionKind::Types,
