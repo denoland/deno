@@ -2245,6 +2245,13 @@ fn resolve_bin_entry_value<'a>(
       {
         return Ok(first);
       }
+      let default_bin = package_json.resolve_default_bin_name().ok();
+      if default_bin == Some(bin_name)
+        && bins.len() == 1
+        && let Some(first) = bins.values().next()
+      {
+        return Ok(first);
+      }
       let prefix = package_json
         .name
         .as_ref()
@@ -2257,7 +2264,6 @@ fn resolve_bin_entry_value<'a>(
           prefix
         })
         .unwrap_or_default();
-      let default_bin = package_json.resolve_default_bin_name().ok();
       let keys = bins
         .keys()
         .map(|k| {
@@ -2641,6 +2647,25 @@ mod tests {
         "bin": {
           "bin1": "./value",
           "bin2": "./value",
+        }
+      }));
+      let bins = match pkg_json.resolve_bins().unwrap() {
+        PackageJsonBins::Directory(_) => unreachable!(),
+        PackageJsonBins::Bins(bins) => bins,
+      };
+      assert_eq!(
+        resolve_bin_entry_value(&pkg_json, &bins, "pkg").unwrap(),
+        pkg_json.dir_path().join("./value")
+      );
+    }
+
+    // should resolve when default and only one value
+    {
+      let pkg_json = build_package_json(json!({
+        "name": "pkg",
+        "version": "1.2.3",
+        "bin": {
+          "something": "./value",
         }
       }));
       let bins = match pkg_json.resolve_bins().unwrap() {
