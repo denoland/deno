@@ -12,9 +12,14 @@
     "quotes": "preferSingle"
   },
   "exec": {
+    "cwd": "${configDir}",
     "commands": [{
       "command": "rustfmt --config imports_granularity=item --config group_imports=StdExternalCrate",
-      "exts": ["rs"]
+      "exts": ["rs"],
+      "cacheKeyFiles": [
+        "rust-toolchain.toml",
+        ".rustfmt.toml"
+      ]
     }]
   },
   "excludes": [
