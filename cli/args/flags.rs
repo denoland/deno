@@ -11,6 +11,8 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
+use std::sync::LazyLock;
 
 use clap::Arg;
 use clap::ArgAction;
@@ -22,6 +24,8 @@ use clap::builder::FalseyValueParser;
 use clap::builder::styling::AnsiColor;
 use clap::error::ErrorKind;
 use clap::value_parser;
+use clap_complete::CompletionCandidate;
+use clap_complete::engine::SubcommandCandidates;
 use color_print::cstr;
 use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
@@ -156,9 +160,31 @@ impl CompileFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CompletionsFlags {
-  pub buf: Box<[u8]>,
+#[derive(Clone)]
+pub enum CompletionsFlags {
+  Static(Box<[u8]>),
+  Dynamic(Arc<dyn Fn() -> Result<(), AnyError> + Send + Sync + 'static>),
+}
+
+impl PartialEq for CompletionsFlags {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Static(l0), Self::Static(r0)) => l0 == r0,
+      (Self::Dynamic(l0), Self::Dynamic(r0)) => Arc::ptr_eq(l0, r0),
+      _ => false,
+    }
+  }
+}
+
+impl Eq for CompletionsFlags {}
+
+impl std::fmt::Debug for CompletionsFlags {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Static(arg0) => f.debug_tuple("Static").field(arg0).finish(),
+      Self::Dynamic(_) => f.debug_tuple("Dynamic").finish(),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -2335,11 +2361,19 @@ fn completions_subcommand() -> Command {
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
-    cmd.disable_help_subcommand(true).arg(
-      Arg::new("shell")
-        .value_parser(["bash", "fish", "powershell", "zsh", "fig"])
-        .required_unless_present("help"),
-    )
+    cmd
+      .disable_help_subcommand(true)
+      .arg(
+        Arg::new("shell")
+          .value_parser(["bash", "fish", "powershell", "zsh", "fig"])
+          .required_unless_present("help"),
+      )
+      .arg(
+        Arg::new("dynamic")
+          .long("dynamic")
+          .action(ArgAction::SetTrue)
+           .help("Generate dynamic completions for the given shell (unstable), currently this only provides available tasks for `deno task`."),
+      )
   })
 }
 
@@ -3478,6 +3512,7 @@ Evaluate a task from string:
   )
   .defer(|cmd| {
     cmd
+      .add(SubcommandCandidates::new(complete_available_tasks))
       .allow_external_subcommands(true)
       .subcommand_value_name("TASK")
       .arg(config_arg())
@@ -3513,6 +3548,66 @@ Evaluate a task from string:
       .arg(node_modules_dir_arg())
       .arg(tunnel_arg())
   })
+}
+
+// This is used to pass the parsed flags to the completion function. This is so
+// we can take into account things like the `--config` flag. We could also take into account
+// `--recursive` or `--filter` in the future.
+// The completion function can't take any args, so we use a static instead.
+// This code will only run if we are actually running the completion code.
+static TASK_FLAGS_FOR_COMPLETION: LazyLock<Option<Flags>> =
+  LazyLock::new(|| {
+    let mut flags = Flags::default();
+    let args = std::env::args_os().skip(2);
+    let app = clap_root().ignore_errors(true);
+    let Ok(mut matches) = app.clone().try_get_matches_from(args) else {
+      return None;
+    };
+    match matches.remove_subcommand() {
+      Some((sub, mut matches)) => {
+        if sub == "task" {
+          let _ = task_parse(&mut flags, &mut matches, app);
+          Some(flags)
+        } else {
+          None
+        }
+      }
+      None => None,
+    }
+  });
+
+fn complete_available_tasks_inner() -> Result<Vec<CompletionCandidate>, AnyError>
+{
+  let parsed_flags = TASK_FLAGS_FOR_COMPLETION.clone();
+
+  let flags = parsed_flags.unwrap_or_default();
+
+  let completions = crate::tools::task::get_available_tasks_for_completion(
+    std::sync::Arc::new(flags),
+  )?;
+
+  Ok(
+    completions
+      .into_iter()
+      .map(|c| {
+        let mut candidate = CompletionCandidate::new(c.name);
+        if let Some(description) = c.task.description {
+          candidate = candidate.help(Some(description.into()));
+        }
+        candidate
+      })
+      .collect(),
+  )
+}
+
+fn complete_available_tasks() -> Vec<CompletionCandidate> {
+  match complete_available_tasks_inner() {
+    Ok(candidates) => candidates,
+    Err(e) => {
+      log::debug!("Error during available tasks completion: {e}");
+      vec![]
+    }
+  }
 }
 
 fn test_subcommand() -> Command {
@@ -5214,7 +5309,32 @@ fn completions_parse(
   let mut buf: Vec<u8> = vec![];
   let name = "deno";
 
-  match matches.get_one::<String>("shell").unwrap().as_str() {
+  let dynamic = matches.get_flag("dynamic");
+
+  let shell = matches.get_one::<String>("shell").unwrap().as_str();
+
+  if dynamic && matches!(shell, "bash" | "fish" | "zsh") {
+    let shell = shell.to_string();
+    flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Dynamic(
+      Arc::new(move || {
+        // SAFETY: unavoidable
+        // Clap uses this to detect if it should generate dynamic completions, so if it isn't set, clap
+        // will just bail out instead of actually printing out the completion command.
+        unsafe {
+          std::env::set_var("COMPLETE", &shell);
+        }
+        handle_shell_completion_with_args(std::env::args_os().take(1))?;
+        Ok(())
+      }),
+    ));
+    return;
+  } else if dynamic {
+    log::warn!(
+      "dynamic completions are currently only supported for bash, fish, and zsh"
+    );
+  }
+
+  match shell {
     "bash" => generate(Bash, &mut app, name, &mut buf),
     "fish" => generate(Fish, &mut app, name, &mut buf),
     "powershell" => generate(PowerShell, &mut app, name, &mut buf),
@@ -5223,9 +5343,9 @@ fn completions_parse(
     _ => unreachable!(),
   }
 
-  flags.subcommand = DenoSubcommand::Completions(CompletionsFlags {
-    buf: buf.into_boxed_slice(),
-  });
+  flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Static(
+    buf.into_boxed_slice(),
+  ));
 }
 
 fn coverage_parse(
@@ -5937,6 +6057,25 @@ fn task_parse(
   }
 
   flags.subcommand = DenoSubcommand::Task(task_flags);
+  Ok(())
+}
+
+pub fn handle_shell_completion() -> Result<(), AnyError> {
+  handle_shell_completion_with_args(std::env::args_os())
+}
+
+fn handle_shell_completion_with_args(
+  args: impl IntoIterator<Item = OsString>,
+) -> Result<(), AnyError> {
+  let args = args.into_iter().collect::<Vec<_>>();
+  let app = clap_root();
+
+  let ran_completion = clap_complete::CompleteEnv::with_factory(|| app.clone())
+    .try_complete(args, Some(&std::env::current_dir()?))?;
+
+  // we should only run this function when we're doing completions
+  assert!(ran_completion);
+
   Ok(())
 }
 
@@ -9536,7 +9675,7 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "completions", "zsh"]).unwrap();
 
     match r.subcommand {
-      DenoSubcommand::Completions(CompletionsFlags { buf }) => {
+      DenoSubcommand::Completions(CompletionsFlags::Static(buf)) => {
         assert!(!buf.is_empty())
       }
       _ => unreachable!(),

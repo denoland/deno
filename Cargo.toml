@@ -235,7 +235,7 @@ rand = "=0.8.5"
 rayon = "1.8.0"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
-rusqlite = { version = "0.34.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
+rusqlite = { version = "0.34.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits", "backup"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
 rustls = { version = "=0.23.28", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.8.0"
@@ -302,8 +302,8 @@ lcms2 = "6.1.0"
 # cli
 anstream = "0.6.14"
 bincode = "=1.3.3"
-clap = "=4.5.30"
-clap_complete = "=4.5.45"
+clap = "=4.5.47"
+clap_complete = { version = "=4.5.57", features = ["unstable-dynamic"] }
 clap_complete_fig = "=4.5.2"
 console_static_text = "=0.8.3"
 crossterm = "0.28.1"
