@@ -460,6 +460,9 @@
 "parallel/test-fs-read-empty-buffer.js" = {}
 "parallel/test-fs-read-file-assert-encoding.js" = {}
 "parallel/test-fs-read-file-sync-hostname.js" = {}
+"parallel/test-fs-read-offset-null.js" = {}
+"parallel/test-fs-read-optional-params.js" = {}
+"parallel/test-fs-read-promises-optional-params.js" = {}
 "parallel/test-fs-read-stream-autoClose.js" = {}
 "parallel/test-fs-read-stream-double-close.js" = {}
 "parallel/test-fs-read-stream-encoding.js" = {}
@@ -480,6 +483,7 @@
 "parallel/test-fs-readfile-zero-byte-liar.js" = {}
 "parallel/test-fs-readfilesync-enoent.js" = {}
 "parallel/test-fs-readlink-type-check.js" = {}
+"parallel/test-fs-readSync-optional-params.js" = {}
 "parallel/test-fs-readv-promisify.js" = {}
 "parallel/test-fs-ready-event-stream.js" = {}
 "parallel/test-fs-realpath-buffer-encoding.js" = {}
@@ -498,7 +502,9 @@
 "parallel/test-fs-util-validateoffsetlength.js" = {}
 "parallel/test-fs-write-negativeoffset.js" = {}
 "parallel/test-fs-write-no-fd.js" = {}
+"parallel/test-fs-write-optional-params.js" = {}
 "parallel/test-fs-write-stream-encoding.js" = {}
+"parallel/test-fs-write-sync-optional-params.js" = {}
 "parallel/test-global-console-exists.js" = {}
 "parallel/test-global-domexception.js" = {}
 "parallel/test-global-encoder.js" = {}

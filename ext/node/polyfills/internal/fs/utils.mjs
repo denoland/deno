@@ -1121,19 +1121,21 @@ export const validateStringAfterArrayBufferView = hideStackFrames(
   },
 );
 
-export const validatePosition = hideStackFrames((position) => {
+/** @type {(position: unknown, name: string, length?: number) => asserts position is number | bigint} */
+export const validatePosition = hideStackFrames((position, name, length) => {
   if (typeof position === "number") {
-    validateInteger(position, "position");
+    validateInteger(position, name, -1);
   } else if (typeof position === "bigint") {
-    if (!(position >= -(2n ** 63n) && position <= 2n ** 63n - 1n)) {
+    const maxPosition = 2n ** 63n - 1n - BigInt(length);
+    if (!(position >= -1n && position <= maxPosition)) {
       throw new ERR_OUT_OF_RANGE(
-        "position",
-        `>= ${-(2n ** 63n)} && <= ${2n ** 63n - 1n}`,
+        name,
+        `>= -1 && <= ${maxPosition}`,
         position,
       );
     }
   } else {
-    throw new ERR_INVALID_ARG_TYPE("position", ["integer", "bigint"], position);
+    throw new ERR_INVALID_ARG_TYPE(name, ["integer", "bigint"], position);
   }
 });
 
