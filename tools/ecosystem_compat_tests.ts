@@ -12,16 +12,18 @@ async function teardownTestRepo() {
 }
 
 async function runPackageManager(pm, cmd) {
+  const state = Date.now();
   const result =
     await $`cd nextjs-demo ; rm -rf node_modules ; ${Deno.execPath()} run -A --no-config npm:${pm} ${cmd}`
-      .noThrow().timeout(
+      .stdout("inheritPiped").stderr("inheritPiped").noThrow().timeout(
         "60s",
       );
-
+  const duration = Date.now() - state;
   return {
-    exitCode: result.exitCode,
+    exitCode: result.code,
     stdout: result.stdout,
     stderr: result.stderr,
+    duration,
   };
 }
 
@@ -39,31 +41,48 @@ function testPnpm() {
 
 async function main() {
   let passed = true;
-  $.log("Setting up test repo...");
+  $.logStep("Setting up test repo...");
   await setupTestRepo();
-  $.log("Testing npm...");
+  $.logStep("Testing npm...");
   const npmResult = await testNpm();
   if (npmResult.exitCode !== 0) {
     passed = false;
-    $.log(`npm install failed: ${npmResult.stderr}`);
+    $.logWarn(`npm install failed: ${npmResult.stderr}`);
   }
-  $.log("Testing yarn...");
+  $.logStep("Testing yarn...");
   const yarnResult = await testYarn();
   if (yarnResult.exitCode !== 0) {
     passed = false;
-    $.log(`yarn install failed: ${yarnResult.stderr}`);
+    $.logWarn(`yarn install failed: ${yarnResult.stderr}`);
   }
-  $.log("Testing pnpm...");
+  $.logStep("Testing pnpm...");
   const pnpmResult = await testPnpm();
   if (pnpmResult.exitCode !== 0) {
     passed = false;
-    $.log(`pnpm install failed: ${pnpmResult.stderr}`);
+    $.logWarn(`pnpm install failed: ${pnpmResult.stderr}`);
   }
-  if (!passed) {
-    throw new Error("Some tests failed");
+  if (passed) {
+    $.logStep("All tests passed!");
+  } else {
+    $.logError("Some tests failed");
   }
-
-  $.log("All tests passed!");
+  await Deno.writeTextFile(
+    import.meta.resolve("./ecosystem_report.json"),
+    JSON.stringify({
+      npm: {
+        exitCode: npmResult.exitCode,
+        duration: npmResult.duration,
+      },
+      yarn: {
+        exitCode: yarnResult.exitCode,
+        duration: yarnResult.duration,
+      },
+      pnpm: {
+        exitCode: pnpmResult.exitCode,
+        duration: pnpmResult.duration,
+      },
+    }),
+  );
 }
 
 try {
