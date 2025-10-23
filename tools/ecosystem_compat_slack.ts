@@ -33,28 +33,28 @@ function formatDuration(duration: number) {
 }
 
 function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
-  let mrkdwn = "## Package manager report\n\n";
+  let mrkdwn = "**Package manager report**\n\n";
+  mrkdwn += "```\n";
 
-  mrkdwn += "| OS | npm | yarn | pnpm |\n";
-  mrkdwn += "|----|-----|------|------|\n";
-  for (const [os, report] of Object.entries(ecosystemReports)) {
-    mrkdwn += `| ${os} | `;
-    mrkdwn += `${
-      report.npm.exitCode === 0 ? "✅" : "❌"
-    } code: ${report.npm.exitCode}, duration: ${
-      formatDuration(report.npm.duration)
-    } | `;
-    mrkdwn += `${
-      report.yarn.exitCode === 0 ? "✅" : "❌"
-    } code: ${report.yarn.exitCode}, duration: ${
-      formatDuration(report.yarn.duration)
-    } | `;
-    mrkdwn += `${
-      report.npm.exitCode === 0 ? "✅" : "❌"
-    } code: ${report.pnpm.exitCode}, duration: ${
-      formatDuration(report.pnpm.duration)
-    } |\n`;
+  mrkdwn += "| program | darwin | linux | windows |\n";
+  mrkdwn += "|---------|--------|-------|---------|\n";
+  // TODO: generate the report rows
+  const programs = Object.keys(ecosystemReports["darwin"]);
+
+  for (const program of programs) {
+    mrkdwn += `| ${program} | `;
+    for (const os of ["darwin", "linux", "windows"]) {
+      const report = ecosystemReports[os][program] satisfies PmResult;
+      mrkdwn += `${
+        report.exitCode === 0 ? "✅" : "❌"
+      } code: ${report.exitCode}, duration: ${
+        formatDuration(report.duration)
+      } | `;
+    }
+    mrkdwn += "\n";
   }
+
+  mrkdwn += "```\n";
 
   return [
     {
