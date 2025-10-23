@@ -31,8 +31,8 @@ pub enum DownloadError {
   InvalidDownloadUrl(String, #[source] deno_core::url::ParseError),
   #[error("failed to unpack typescript-go: {0}")]
   UnpackFailed(#[source] AnyError),
-  #[error("failed to rename typescript-go: {0}")]
-  RenameFailed(#[source] std::io::Error),
+  #[error("failed to rename or copy typescript-go from {0} to {1}: {2}")]
+  RenameOrCopyFailed(String, String, #[source] std::io::Error),
   #[error("failed to write zip file to {0}: {1}")]
   WriteZipFailed(String, #[source] std::io::Error),
   #[error("failed to download typescript-go: {0}")]
@@ -162,8 +162,15 @@ pub async fn ensure_tsgo(
       dest_path: temp.path(),
     })
     .map_err(DownloadError::UnpackFailed)?;
-  std::fs::rename(unpacked_path, &bin_path)
-    .map_err(DownloadError::RenameFailed)?;
+  std::fs::rename(&unpacked_path, &bin_path)
+    .or_else(|_| std::fs::copy(&unpacked_path, &bin_path).map(|_| ()))
+    .map_err(|e| {
+      DownloadError::RenameOrCopyFailed(
+        unpacked_path.to_string_lossy().into_owned(),
+        bin_path.to_string_lossy().into_owned(),
+        e,
+      )
+    })?;
 
   Ok(TSGO_PATH.get_or_init(|| bin_path))
 }
