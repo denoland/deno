@@ -32,7 +32,7 @@
         "$ref": "#/$defs/allowDenyPermissionConfig"
       }]
     },
-    "approvedScriptsList": {
+    "allowScriptsList": {
       "type": "array",
       "description": "List of npm package constraints to allow or deny for lifecycle scripts.",
       "items": {
@@ -79,12 +79,12 @@
     }
   },
   "properties": {
-    "approvedScripts": {
+    "allowScripts": {
       "oneOf": [{
         "description": "Whether to allow npm lifecycle scripts.",
         "type": "boolean"
       }, {
-        "$ref": "#/$defs/approvedScriptsList"
+        "$ref": "#/$defs/allowScriptsList"
       }, {
         "type": "object",
         "description": "Allow or deny config for lifecycle scripts.",
@@ -95,12 +95,12 @@
               "description": "Whether to allow running npm lifecycle scripts.",
               "type": "boolean"
             }, {
-              "$ref": "#/$defs/approvedScriptsList"
+              "$ref": "#/$defs/allowScriptsList"
             }]
           },
           "deny": {
             "description": "List of npm package constraints to deny running lifecycle scripts for.",
-            "$ref": "#/$defs/approvedScriptsList"
+            "$ref": "#/$defs/allowScriptsList"
           }
         }
       }]

@@ -1065,7 +1065,7 @@ impl Workspace {
       if member_config.json.approved_scripts.is_some() {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: member_config.specifier.clone(),
-          kind: WorkspaceDiagnosticKind::RootOnlyOption("approvedScripts"),
+          kind: WorkspaceDiagnosticKind::RootOnlyOption("allowScripts"),
         });
       }
       if let Some(value) = &member_config.json.lint

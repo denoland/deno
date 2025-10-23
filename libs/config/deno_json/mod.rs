@@ -2033,7 +2033,7 @@ impl ConfigFile {
         let items: Vec<JsrDepPackageReq> =
           serde_json::from_value(value.clone().into()).map_err(|error| {
             ToInvalidConfigError::Parse {
-              config: "approvedScripts",
+              config: "allowScripts",
               source: error,
             }
           })?;
@@ -2046,7 +2046,7 @@ impl ConfigFile {
         let config: ApprovedScriptsConfig =
           serde_json::from_value(value.clone().into()).map_err(|error| {
             ToInvalidConfigError::Parse {
-              config: "approvedScripts",
+              config: "allowScripts",
               source: error,
             }
           })?;
@@ -2067,7 +2067,7 @@ impl ConfigFile {
       }
       Some(Value::Number(_) | Value::String(_)) => {
         return Err(ToInvalidConfigError::Parse {
-          config: "approvedScripts",
+          config: "allowScripts",
           source: serde_json::Error::custom(
             "expected string array, boolean, or object",
           ),
@@ -2084,7 +2084,7 @@ impl ConfigFile {
       for req in reqs {
         if req.req.version_req.tag().is_some() {
           return Err(ToInvalidConfigError::Parse {
-            config: "approvedScripts",
+            config: "allowScripts",
             source: serde_json::Error::custom(format!(
               "tags are not supported in '{}'",
               req
@@ -3236,7 +3236,7 @@ mod tests {
     assert_eq!(
       get_result(
         r#"{
-        "approvedScripts": true
+        "allowScripts": true
       }"#
       )
       .unwrap(),
@@ -3248,7 +3248,7 @@ mod tests {
     assert_eq!(
       get_result(
         r#"{
-        "approvedScripts": [
+        "allowScripts": [
           "npm:chalk",
           "npm:package@1",
         ]
@@ -3266,7 +3266,7 @@ mod tests {
     assert_eq!(
       get_result(
         r#"{
-        "approvedScripts": {
+        "allowScripts": {
           "allow": [
             "npm:chalk",
             "npm:package@1",
@@ -3293,14 +3293,14 @@ mod tests {
     assert_contains!(
       format!(
         "{:#?}",
-        get_result(r#"{ "approvedScripts": ["npm:chalk@next"] }"#).unwrap_err()
+        get_result(r#"{ "allowScripts": ["npm:chalk@next"] }"#).unwrap_err()
       ),
       "tags are not supported in 'npm:chalk@next'"
     );
     assert_contains!(
       format!(
         "{:#?}",
-        get_result(r#"{ "approvedScripts": { "allow": ["npm:chalk@next"] } }"#)
+        get_result(r#"{ "allowScripts": { "allow": ["npm:chalk@next"] } }"#)
           .unwrap_err()
       ),
       "tags are not supported in 'npm:chalk@next'"
