@@ -416,6 +416,8 @@ impl NpmInfo {
 
     for module in graph.modules() {
       if let Module::Npm(module) = module {
+        // TODO(dsherret): ok to use for now, but we should use the req in the future
+        #[allow(deprecated)]
         let nv = module.nv_reference.nv();
         if let Ok(package) = npm_snapshot.resolve_package_from_deno_module(nv) {
           info.resolved_ids.insert(nv.clone(), package.id.clone());
@@ -599,10 +601,15 @@ impl<'a> GraphDisplayContext<'a> {
     use PackageOrSpecifier::*;
 
     let package_or_specifier = match module.npm() {
-      Some(npm) => match self.npm_info.resolve_package(npm.nv_reference.nv()) {
-        Some(package) => Package(Box::new(package.clone())),
-        None => Specifier(module.specifier().clone()), // should never happen
-      },
+      Some(npm) => {
+        // TODO(dsherret): ok to use for now, but we should use the req in the future
+        #[allow(deprecated)]
+        let nv = npm.nv_reference.nv();
+        match self.npm_info.resolve_package(nv) {
+          Some(package) => Package(Box::new(package.clone())),
+          None => Specifier(module.specifier().clone()), // should never happen
+        }
+      }
       None => Specifier(module.specifier().clone()),
     };
     let was_seen = !self.seen.insert(match &package_or_specifier {

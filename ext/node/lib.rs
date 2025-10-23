@@ -349,8 +349,6 @@ deno_core::extension!(deno_node,
     ops::dns::op_node_getaddrinfo<P>,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_fs_exists<P>,
-    ops::fs::op_node_cp_sync<P>,
-    ops::fs::op_node_cp<P>,
     ops::fs::op_node_lchmod_sync<P>,
     ops::fs::op_node_lchmod<P>,
     ops::fs::op_node_lchown_sync<P>,
@@ -474,6 +472,7 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+    ops::sqlite::op_node_database_backup<P>,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
@@ -501,7 +500,9 @@ deno_core::extension!(deno_node,
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
-    "_fs/_fs_cp.js",
+    "_fs/_fs_cp.ts",
+    "_fs/cp/cp.ts",
+    "_fs/cp/cp_sync.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
     "_fs/_fs_fchmod.ts",
@@ -537,7 +538,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_unlink.ts",
     "_fs/_fs_utimes.ts",
     "_fs/_fs_watch.ts",
-    "_fs/_fs_write.mjs",
+    "_fs/_fs_write.ts",
     "_fs/_fs_writeFile.ts",
     "_fs/_fs_writev.ts",
     "_next_tick.ts",
@@ -881,11 +882,7 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  sys_traits::BaseFsCanonicalize
-  + sys_traits::BaseFsMetadata
-  + sys_traits::BaseFsRead
-  + sys_traits::EnvCurrentDir
-  + Clone
+  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
 {
 }
 

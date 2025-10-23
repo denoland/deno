@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_npm_installer"
-version = "0.12.0"
+version = "0.14.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,6 +20,7 @@ async-trait.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
 capacity_builder.workspace = true
+chrono.workspace = true
 deno_config.workspace = true
 deno_error.workspace = true
 deno_graph.workspace = true

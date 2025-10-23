@@ -11,6 +11,8 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
+use std::sync::LazyLock;
 
 use clap::Arg;
 use clap::ArgAction;
@@ -22,11 +24,14 @@ use clap::builder::FalseyValueParser;
 use clap::builder::styling::AnsiColor;
 use clap::error::ErrorKind;
 use clap::value_parser;
+use clap_complete::CompletionCandidate;
+use clap_complete::engine::SubcommandCandidates;
 use color_print::cstr;
 use deno_bundle_runtime::BundleFormat;
 use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
+use deno_config::deno_json::NewestDependencyDate;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -155,9 +160,31 @@ impl CompileFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CompletionsFlags {
-  pub buf: Box<[u8]>,
+#[derive(Clone)]
+pub enum CompletionsFlags {
+  Static(Box<[u8]>),
+  Dynamic(Arc<dyn Fn() -> Result<(), AnyError> + Send + Sync + 'static>),
+}
+
+impl PartialEq for CompletionsFlags {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Static(l0), Self::Static(r0)) => l0 == r0,
+      (Self::Dynamic(l0), Self::Dynamic(r0)) => Arc::ptr_eq(l0, r0),
+      _ => false,
+    }
+  }
+}
+
+impl Eq for CompletionsFlags {}
+
+impl std::fmt::Debug for CompletionsFlags {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Static(arg0) => f.debug_tuple("Static").field(arg0).finish(),
+      Self::Dynamic(_) => f.debug_tuple("Dynamic").finish(),
+    }
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -687,6 +714,13 @@ impl Default for TypeCheckMode {
   }
 }
 
+fn minutes_duration_or_date_parser(
+  s: &str,
+) -> Result<NewestDependencyDate, clap::Error> {
+  deno_config::parse_minutes_duration_or_date(&sys_traits::impls::RealSys, s)
+    .map_err(|e| clap::Error::raw(clap::error::ErrorKind::InvalidValue, e))
+}
+
 fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   if !s.starts_with("npm:") {
     bail!(
@@ -739,6 +773,7 @@ pub struct Flags {
   pub location: Option<Url>,
   pub lock: Option<String>,
   pub log_level: Option<Level>,
+  pub minimum_dependency_age: Option<NewestDependencyDate>,
   pub no_remote: bool,
   pub no_lock: bool,
   pub no_npm: bool,
@@ -2213,6 +2248,7 @@ Unless --reload is specified, this command will not re-download already cached d
         )
         .arg(allow_import_arg())
         .arg(deny_import_arg())
+        .arg(v8_flags_arg())
       }
     )
 }
@@ -2325,11 +2361,19 @@ fn completions_subcommand() -> Command {
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
-    cmd.disable_help_subcommand(true).arg(
-      Arg::new("shell")
-        .value_parser(["bash", "fish", "powershell", "zsh", "fig"])
-        .required_unless_present("help"),
-    )
+    cmd
+      .disable_help_subcommand(true)
+      .arg(
+        Arg::new("shell")
+          .value_parser(["bash", "fish", "powershell", "zsh", "fig"])
+          .required_unless_present("help"),
+      )
+      .arg(
+        Arg::new("dynamic")
+          .long("dynamic")
+          .action(ArgAction::SetTrue)
+           .help("Generate dynamic completions for the given shell (unstable), currently this only provides available tasks for `deno task`."),
+      )
   })
 }
 
@@ -3009,7 +3053,7 @@ fn jupyter_subcommand() -> Command {
         .conflicts_with("install"))
 }
 
-fn update_and_outdated_args() -> [Arg; 4] {
+fn update_and_outdated_args() -> [Arg; 5] {
   [
     Arg::new("filters")
       .num_args(0..)
@@ -3033,6 +3077,7 @@ fn update_and_outdated_args() -> [Arg; 4] {
       .short('r')
       .action(ArgAction::SetTrue)
       .help("Include all workspace members"),
+    min_dep_age_arg(),
   ]
 }
 
@@ -3467,6 +3512,7 @@ Evaluate a task from string:
   )
   .defer(|cmd| {
     cmd
+      .add(SubcommandCandidates::new(complete_available_tasks))
       .allow_external_subcommands(true)
       .subcommand_value_name("TASK")
       .arg(config_arg())
@@ -3502,6 +3548,66 @@ Evaluate a task from string:
       .arg(node_modules_dir_arg())
       .arg(tunnel_arg())
   })
+}
+
+// This is used to pass the parsed flags to the completion function. This is so
+// we can take into account things like the `--config` flag. We could also take into account
+// `--recursive` or `--filter` in the future.
+// The completion function can't take any args, so we use a static instead.
+// This code will only run if we are actually running the completion code.
+static TASK_FLAGS_FOR_COMPLETION: LazyLock<Option<Flags>> =
+  LazyLock::new(|| {
+    let mut flags = Flags::default();
+    let args = std::env::args_os().skip(2);
+    let app = clap_root().ignore_errors(true);
+    let Ok(mut matches) = app.clone().try_get_matches_from(args) else {
+      return None;
+    };
+    match matches.remove_subcommand() {
+      Some((sub, mut matches)) => {
+        if sub == "task" {
+          let _ = task_parse(&mut flags, &mut matches, app);
+          Some(flags)
+        } else {
+          None
+        }
+      }
+      None => None,
+    }
+  });
+
+fn complete_available_tasks_inner() -> Result<Vec<CompletionCandidate>, AnyError>
+{
+  let parsed_flags = TASK_FLAGS_FOR_COMPLETION.clone();
+
+  let flags = parsed_flags.unwrap_or_default();
+
+  let completions = crate::tools::task::get_available_tasks_for_completion(
+    std::sync::Arc::new(flags),
+  )?;
+
+  Ok(
+    completions
+      .into_iter()
+      .map(|c| {
+        let mut candidate = CompletionCandidate::new(c.name);
+        if let Some(description) = c.task.description {
+          candidate = candidate.help(Some(description.into()));
+        }
+        candidate
+      })
+      .collect(),
+  )
+}
+
+fn complete_available_tasks() -> Vec<CompletionCandidate> {
+  match complete_available_tasks_inner() {
+    Ok(candidates) => candidates,
+    Err(e) => {
+      log::debug!("Error during available tasks completion: {e}");
+      vec![]
+    }
+  }
 }
 
 fn test_subcommand() -> Command {
@@ -3850,6 +3956,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(preload_arg())
+    .arg(min_dep_age_arg())
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
@@ -3866,7 +3973,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-W, --allow-write[=<<PATH>...]</>            Allow file system write access. Optionally specify allowed paths.
                                              <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"</>
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>
+                                            Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
   <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                              <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
@@ -4320,7 +4427,7 @@ fn allow_import_arg() -> Arg {
     .require_equals(true)
     .value_name("IP_OR_HOSTNAME")
     .help(cstr!(
-      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,user.githubusercontent.com:443</>"
+      "Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary. Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>"
     ))
     .value_parser(flags_net::validator)
 }
@@ -4437,6 +4544,13 @@ fn preload_arg() -> Arg {
     .action(ArgAction::Append)
     .help("A list of files that will be executed before the main module")
     .value_hint(ValueHint::FilePath)
+}
+
+fn min_dep_age_arg() -> Arg {
+  Arg::new("minimum-dependency-age")
+    .long("minimum-dependency-age")
+    .value_parser(minutes_duration_or_date_parser)
+    .help("(Unstable) The age in minutes, ISO-8601 duration or RFC3339 absolute timestamp (e.g. '120' for two hours, 'P2D' for two days, '2025-09-16' for cutoff date, '2025-09-16T12:00:00+00:00' for cutoff time, '0' to disable)")
 }
 
 fn ca_file_arg() -> Arg {
@@ -4649,8 +4763,14 @@ fn tunnel_arg() -> Arg {
     .long("tunnel")
     .alias("connected")
     .short('t')
-    .hide(true)
     .num_args(0..=1)
+    .help(cstr!(
+      "Execute tasks with a tunnel to Deno Deploy.
+
+    Create a secure connection between your local machine and Deno Deploy,
+    providing access to centralised environment variables, logging,
+    and serving from your local environment to the public internet"
+    ))
     .require_equals(true)
     .action(ArgAction::SetTrue)
 }
@@ -4994,6 +5114,7 @@ fn outdated_parse(
     recursive,
     kind,
   });
+  min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -5096,6 +5217,7 @@ fn check_parse(
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  v8_flags_arg_parse(flags, matches);
   let files = match matches.remove_many::<String>("file") {
     Some(f) => f.collect(),
     None => vec![".".to_string()], // default
@@ -5187,7 +5309,32 @@ fn completions_parse(
   let mut buf: Vec<u8> = vec![];
   let name = "deno";
 
-  match matches.get_one::<String>("shell").unwrap().as_str() {
+  let dynamic = matches.get_flag("dynamic");
+
+  let shell = matches.get_one::<String>("shell").unwrap().as_str();
+
+  if dynamic && matches!(shell, "bash" | "fish" | "zsh") {
+    let shell = shell.to_string();
+    flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Dynamic(
+      Arc::new(move || {
+        // SAFETY: unavoidable
+        // Clap uses this to detect if it should generate dynamic completions, so if it isn't set, clap
+        // will just bail out instead of actually printing out the completion command.
+        unsafe {
+          std::env::set_var("COMPLETE", &shell);
+        }
+        handle_shell_completion_with_args(std::env::args_os().take(1))?;
+        Ok(())
+      }),
+    ));
+    return;
+  } else if dynamic {
+    log::warn!(
+      "dynamic completions are currently only supported for bash, fish, and zsh"
+    );
+  }
+
+  match shell {
     "bash" => generate(Bash, &mut app, name, &mut buf),
     "fish" => generate(Fish, &mut app, name, &mut buf),
     "powershell" => generate(PowerShell, &mut app, name, &mut buf),
@@ -5196,9 +5343,9 @@ fn completions_parse(
     _ => unreachable!(),
   }
 
-  flags.subcommand = DenoSubcommand::Completions(CompletionsFlags {
-    buf: buf.into_boxed_slice(),
-  });
+  flags.subcommand = DenoSubcommand::Completions(CompletionsFlags::Static(
+    buf.into_boxed_slice(),
+  ));
 }
 
 fn coverage_parse(
@@ -5913,6 +6060,25 @@ fn task_parse(
   Ok(())
 }
 
+pub fn handle_shell_completion() -> Result<(), AnyError> {
+  handle_shell_completion_with_args(std::env::args_os())
+}
+
+fn handle_shell_completion_with_args(
+  args: impl IntoIterator<Item = OsString>,
+) -> Result<(), AnyError> {
+  let args = args.into_iter().collect::<Vec<_>>();
+  let app = clap_root();
+
+  let ran_completion = clap_complete::CompleteEnv::with_factory(|| app.clone())
+    .try_complete(args, Some(&std::env::current_dir()?))?;
+
+  // we should only run this function when we're doing completions
+  assert!(ran_completion);
+
+  Ok(())
+}
+
 fn test_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
@@ -6087,6 +6253,7 @@ fn compile_args_without_check_parse(
   ca_file_arg_parse(flags, matches);
   unsafely_ignore_certificate_errors_parse(flags, matches);
   preload_arg_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6364,6 +6531,10 @@ fn preload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
+fn min_dep_age_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.minimum_dependency_age = matches.remove_one("minimum-dependency-age");
+}
+
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.ca_data = matches.remove_one::<String>("cert").and_then(CaData::parse);
 }
@@ -6596,6 +6767,7 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
+  flags.unstable_config.tsgo = matches.get_flag("unstable-tsgo");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for feature in deno_runtime::UNSTABLE_FEATURES {
@@ -9503,7 +9675,7 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "completions", "zsh"]).unwrap();
 
     match r.subcommand {
-      DenoSubcommand::Completions(CompletionsFlags { buf }) => {
+      DenoSubcommand::Completions(CompletionsFlags::Static(buf)) => {
         assert!(!buf.is_empty())
       }
       _ => unreachable!(),
@@ -12978,6 +13150,27 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           ..Default::default()
         },
         ..Default::default()
+      }
+    );
+  }
+
+  #[test]
+  fn check_with_v8_flags() {
+    let flags =
+      flags_from_vec(svec!["deno", "check", "--v8-flags=--help", "script.ts",])
+        .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Check(CheckFlags {
+          files: svec!["script.ts"],
+          doc: false,
+          doc_only: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        v8_flags: svec!["--help"],
+        ..Flags::default()
       }
     );
   }

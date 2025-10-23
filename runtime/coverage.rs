@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
 use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
@@ -128,9 +127,7 @@ impl CoverageCollector {
     let session = JsRuntimeInspector::create_local_session(
       insp,
       callback,
-      InspectorSessionOptions {
-        kind: InspectorSessionKind::Blocking,
-      },
+      InspectorSessionKind::Blocking,
     );
 
     Self { state, session }

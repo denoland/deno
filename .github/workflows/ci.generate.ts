@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 74;
+const cacheVersion = 77;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04";
@@ -419,7 +419,8 @@ const ci = {
             use_sysroot: true,
             // TODO(ry): Because CI is so slow on for OSX and Windows, we
             // currently run the Web Platform tests only on Linux.
-            wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+            wpt:
+              "${{ !startsWith(github.ref, 'refs/tags/') && (github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'ci-wpt-test')) }}",
           }, {
             ...Runners.linuxX86Xl,
             job: "bench",
@@ -469,6 +470,8 @@ const ci = {
         RUST_BACKTRACE: "full",
         // disable anyhow's library backtrace
         RUST_LIB_BACKTRACE: 0,
+        CI_SKIP_NODE_TEST:
+          "${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'ci-node-test') }}",
       },
       steps: skipJobsIfPrAndMarkedSkip([
         ...cloneRepoStep,

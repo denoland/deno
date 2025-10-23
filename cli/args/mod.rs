@@ -1065,12 +1065,15 @@ impl CliOptions {
         let set_config_permission_name = match &self.flags.subcommand {
           DenoSubcommand::Bench(_) => dir
             .to_bench_permissions_config()?
+            .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Bench", &permissions.base)),
           DenoSubcommand::Compile(_) => dir
             .to_compile_permissions_config()?
+            .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Compile", &permissions.base)),
           DenoSubcommand::Test(_) => dir
             .to_test_permissions_config()?
+            .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Test", &permissions.base)),
           _ => None,
         };
@@ -1208,6 +1211,10 @@ impl CliOptions {
 
   pub fn type_check_mode(&self) -> TypeCheckMode {
     self.flags.type_check_mode
+  }
+
+  pub fn unstable_tsgo(&self) -> bool {
+    self.flags.unstable_config.tsgo || self.workspace().has_unstable("tsgo")
   }
 
   pub fn unsafely_ignore_certificate_errors(&self) -> &Option<Vec<String>> {
@@ -1366,7 +1373,7 @@ impl CliOptions {
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual
-    } else if self.flags.unstable_config.npm_lazy_caching {
+    } else if self.unstable_npm_lazy_caching() {
       NpmCachingStrategy::Lazy
     } else {
       NpmCachingStrategy::Eager

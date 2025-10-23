@@ -60,6 +60,7 @@ const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::util::draw_thread::DrawThread;
+use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::flags_from_vec;
@@ -410,7 +411,16 @@ async fn run_subcommand(
     }
     DenoSubcommand::Completions(completions_flags) => {
       spawn_subcommand(async move {
-        display::write_to_stdout_ignore_sigpipe(&completions_flags.buf)
+        match completions_flags {
+          CompletionsFlags::Static(buf) => {
+            display::write_to_stdout_ignore_sigpipe(&buf)
+              .map_err(AnyError::from)
+          }
+          CompletionsFlags::Dynamic(f) => {
+            f()?;
+            Ok(())
+          }
+        }
       })
     }
     DenoSubcommand::Types => spawn_subcommand(async move {
@@ -562,6 +572,19 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   deno_runtime::exit(70);
 }
 
+fn maybe_setup_permission_broker() {
+  let Ok(socket_path) = std::env::var("DENO_PERMISSION_BROKER_PATH") else {
+    return;
+  };
+  log::warn!(
+    "{} Permission broker is an experimental feature",
+    colors::yellow("Warning")
+  );
+  let broker =
+    deno_runtime::deno_permissions::broker::PermissionBroker::new(socket_path);
+  deno_runtime::deno_permissions::broker::set_broker(broker);
+}
+
 pub fn main() {
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
@@ -577,10 +600,12 @@ pub fn main() {
     deno_subprocess_windows::disable_stdio_inheritance();
     colors::enable_ansi(); // For Windows 10
   }
-  deno_runtime::deno_permissions::set_prompt_callbacks(
+  deno_runtime::deno_permissions::prompter::set_prompt_callbacks(
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
   );
+
+  maybe_setup_permission_broker();
 
   rustls::crypto::aws_lc_rs::default_provider()
     .install_default()
@@ -636,6 +661,13 @@ pub fn main() {
 async fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
 ) -> Result<Flags, AnyError> {
+  // this env var is used by clap to enable dynamic completions, it's set by the shell when
+  // executing deno to get dynamic completions.
+  if std::env::var("COMPLETE").is_ok() {
+    crate::args::handle_shell_completion()?;
+    deno_runtime::exit(0);
+  }
+
   let mut flags = match flags_from_vec(args) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
@@ -657,14 +689,21 @@ async fn resolve_flags_and_init(
     .map(|files| files.iter().map(PathBuf::from).collect());
   load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
 
-  if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
+  if deno_lib::args::has_flag_env_var("DENO_CONNECTED")
+    && matches!(
+      flags.subcommand,
+      DenoSubcommand::Run { .. }
+        | DenoSubcommand::Serve { .. }
+        | DenoSubcommand::Task { .. }
+    )
+  {
     flags.tunnel = true;
   }
 
   // Tunnel sets up env vars and OTEL, so connect before everything else.
   if flags.tunnel {
     if let Err(err) = initialize_tunnel(&flags).await {
-      exit_for_error(err.context("Failed to start with --connected"));
+      exit_for_error(err.context("Failed to start with tunnel"));
     }
     // SAFETY: We're doing this before any threads are created.
     unsafe {

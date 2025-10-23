@@ -34,6 +34,7 @@ use deno_graph::Resolution;
 use deno_lib::args::CaData;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm::resolution::NpmVersionResolver;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::url_to_file_path;
 use deno_resolver::deno_json::CompilerOptionsKey;
@@ -115,6 +116,7 @@ use crate::lsp::diagnostics::generate_module_diagnostics;
 use crate::lsp::lint::LspLinterResolver;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
+use crate::npm::get_types_node_version_req;
 use crate::sys::CliSys;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -589,8 +591,14 @@ impl Inner {
     );
     let jsr_search_api =
       CliJsrSearchApi::new(module_registry.file_fetcher.clone());
-    let npm_search_api =
-      CliNpmSearchApi::new(module_registry.file_fetcher.clone());
+    let npm_search_api = CliNpmSearchApi::new(
+      module_registry.file_fetcher.clone(),
+      Arc::new(NpmVersionResolver {
+        types_node_version_req: Some(get_types_node_version_req()),
+        link_packages: Default::default(),
+        newest_dependency_date_options: Default::default(),
+      }),
+    );
     let config = Config::default();
     let ts_server = Arc::new(TsServer::new(performance.clone()));
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
@@ -839,8 +847,17 @@ impl Inner {
     }
     self.jsr_search_api =
       CliJsrSearchApi::new(self.module_registry.file_fetcher.clone());
-    self.npm_search_api =
-      CliNpmSearchApi::new(self.module_registry.file_fetcher.clone());
+    self.npm_search_api = CliNpmSearchApi::new(
+      self.module_registry.file_fetcher.clone(),
+      Arc::new(NpmVersionResolver {
+        types_node_version_req: Some(get_types_node_version_req()),
+        // todo(dsherret): the npm_search_api should probably be specific
+        // to each workspace so that the link packages can be properly
+        // hooked up
+        link_packages: Default::default(),
+        newest_dependency_date_options: Default::default(),
+      }),
+    );
     self.performance.measure(mark);
   }
 
@@ -1667,10 +1684,20 @@ impl Inner {
       .into_iter()
       .map(|e| (uri_to_url(&e.uri), e))
       .collect::<Vec<_>>();
-    if changes
-      .iter()
-      .any(|(s, _)| self.config.tree.is_watched_file(s))
-    {
+    if changes.iter().any(|(specifier, _)| {
+      let path = specifier.path();
+      !path.contains("/node_modules/")
+        && (path.ends_with("/deno.json")
+          || path.ends_with("/deno.jsonc")
+          || path.ends_with("/package.json")
+          || path.ends_with("/tsconfig.json"))
+        || path.ends_with("/node_modules/.package-lock.json")
+        || path.ends_with("/node_modules/.yarn-integrity.json")
+        || path.ends_with("/node_modules/.modules.yaml")
+        || path.ends_with("/node_modules/.deno/.setup-cache.bin")
+        || self.config.tree.is_watched_file(specifier)
+        || self.compiler_options_resolver.is_watched_file(specifier)
+    }) {
       let mut deno_config_changes = IndexSet::with_capacity(changes.len());
       let mut changed_deno_json = false;
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
@@ -2262,12 +2289,12 @@ impl Inner {
     code_actions.set_preferred_fixes();
     all_actions.extend(code_actions.get_response());
 
+    let kinds = params.context.only.unwrap_or_default();
+
     // Refactor
-    let only = params
-      .context
-      .only
-      .as_ref()
-      .and_then(|values| values.first().map(|v| v.as_str().to_owned()))
+    let only = kinds
+      .first()
+      .map(|v| v.as_str().to_owned())
       .unwrap_or_default();
     let refactor_infos = self
       .ts_server
@@ -2312,6 +2339,60 @@ impl Inner {
         .into_iter()
         .map(CodeActionOrCommand::CodeAction),
     );
+
+    // Organize imports
+    if kinds.is_empty()
+      || kinds.contains(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
+    {
+      let document_has_errors = params.context.diagnostics.iter().any(|d| {
+        // Assume diagnostics without a severity are errors
+        d.severity.is_none_or(|s| s == DiagnosticSeverity::ERROR)
+      });
+      let organize_imports_edit = self
+        .ts_server
+        .organize_imports(self.snapshot(), &module, document_has_errors, token)
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!(
+              "Unable to get organize imports edit from TypeScript: {:#}",
+              err
+            );
+            LspError::internal_error()
+          }
+        })?;
+
+      if !organize_imports_edit.is_empty() {
+        let mut changes_with_modules = IndexMap::new();
+        changes_with_modules.extend(
+          fix_ts_import_changes(&organize_imports_edit, &module, self, token)
+            .map_err(|err| {
+              if token.is_cancelled() {
+                LspError::request_cancelled()
+              } else {
+                error!("Unable to fix import changes: {:#}", err);
+                LspError::internal_error()
+              }
+            })?
+            .into_iter()
+            .map(|c| (c, module.clone())),
+        );
+
+        all_actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+          title: "Organize imports".to_string(),
+          kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
+          edit: file_text_changes_to_workspace_edit(
+            &changes_with_modules,
+            self,
+            token,
+          )?,
+          data: Some(json!({ "uri": params.text_document.uri})),
+          ..Default::default()
+        }));
+      }
+    }
 
     let code_action_disabled_capable =
       self.config.code_action_disabled_capable();
