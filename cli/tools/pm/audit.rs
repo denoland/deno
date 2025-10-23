@@ -130,8 +130,8 @@ mod npm {
   }
 
   pub async fn call_audits_api_inner(
-    npm_url: Url,
-    client: HttpClient,
+    npm_url: &Url,
+    client: &HttpClient,
     body: serde_json::Value,
   ) -> Result<AuditResponse, AnyError> {
     let url = npm_url.join("/-/npm/v1/security/audits").unwrap();
@@ -145,6 +145,75 @@ mod npm {
     Ok(response)
   }
 
+  /// Partition into as few groups as possible so that no partition
+  /// contains two entries with the same `name`.
+  pub fn partition_packages<'a>(
+    pkgs: &'a [NpmPackageId],
+  ) -> Vec<Vec<&'a NpmPackageId>> {
+    // 1) Group by name
+    let mut by_name: HashMap<&str, Vec<&NpmPackageId>> = HashMap::new();
+    for p in pkgs {
+      by_name.entry(&p.nv.name[..]).or_default().push(p);
+    }
+
+    // 2) The minimal number of partitions is the max multiplicity per name
+    let k = by_name.values().map(|v| v.len()).max().unwrap_or(0);
+    if k == 0 {
+      return Vec::new();
+    }
+
+    // 3) Create k partitions
+    let mut partitions: Vec<Vec<&NpmPackageId>> = vec![Vec::new(); k];
+
+    // 4) Round-robin each name-group across the partitions
+    for group in by_name.values() {
+      for (i, item) in group.iter().enumerate() {
+        partitions[i].push(*item);
+      }
+    }
+
+    partitions
+  }
+
+  /// Merges multiple audit responses into a single consolidated response
+  fn merge_responses(responses: Vec<AuditResponse>) -> AuditResponse {
+    let mut merged_advisories = HashMap::new();
+    let mut merged_actions = Vec::new();
+    let mut total_low = 0;
+    let mut total_moderate = 0;
+    let mut total_high = 0;
+    let mut total_critical = 0;
+
+    for response in responses {
+      // Merge advisories (HashMap by advisory ID)
+      for (id, advisory) in response.advisories {
+        merged_advisories.insert(id, advisory);
+      }
+
+      // Merge actions
+      merged_actions.extend(response.actions);
+
+      // Sum up vulnerability counts
+      total_low += response.metadata.vulnerabilities.low;
+      total_moderate += response.metadata.vulnerabilities.moderate;
+      total_high += response.metadata.vulnerabilities.high;
+      total_critical += response.metadata.vulnerabilities.critical;
+    }
+
+    AuditResponse {
+      advisories: merged_advisories,
+      actions: merged_actions,
+      metadata: AuditMetadata {
+        vulnerabilities: AuditVulnerabilities {
+          low: total_low,
+          moderate: total_moderate,
+          high: total_high,
+          critical: total_critical,
+        },
+      },
+    }
+  }
+
   pub async fn call_audits_api(
     audit_flags: AuditFlags,
     npm_url: Url,
@@ -153,6 +222,9 @@ mod npm {
     client: HttpClient,
   ) -> Result<i32, AnyError> {
     let top_level_packages = npm_resolution_snapshot.top_level_packages();
+
+    let top_level_packages_partitions = partition_packages(&top_level_packages);
+
     let mut requires = HashMap::with_capacity(top_level_packages.len());
     let mut dependencies = HashMap::with_capacity(top_level_packages.len());
 
@@ -172,53 +244,62 @@ mod npm {
     let dev_dependencies_snapshot =
       npm_resolution_snapshot.subset(&all_dev_deps);
 
+    let mut responses = Vec::with_capacity(top_level_packages_partitions.len());
     // And now let's construct the request body we need for the npm audits API.
     let seen = &mut HashSet::with_capacity(top_level_packages.len() * 100);
-    for package in top_level_packages {
-      let is_dev = dev_dependencies_snapshot.package_from_id(package).is_some();
-      requires
-        .insert(package.nv.name.to_string(), package.nv.version.to_string());
-      seen.insert(package.nv.clone());
-      let package_deps = get_dependency_descriptors_for_deps(
-        seen,
-        npm_resolution_snapshot,
-        &dev_dependencies_snapshot,
-        package,
-      );
-      dependencies.insert(
-        package.nv.name.to_string(),
-        Box::new(DependencyDescriptor {
-          version: package.nv.version.to_string(),
-          dev: is_dev,
-          requires: package_deps
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.version.to_string()))
-            .collect(),
-          dependencies: package_deps,
-        }),
-      );
+    for partition in top_level_packages_partitions {
+      for package in partition {
+        let is_dev =
+          dev_dependencies_snapshot.package_from_id(package).is_some();
+        requires
+          .insert(package.nv.name.to_string(), package.nv.version.to_string());
+        seen.insert(package.nv.clone());
+        let package_deps = get_dependency_descriptors_for_deps(
+          seen,
+          npm_resolution_snapshot,
+          &dev_dependencies_snapshot,
+          package,
+        );
+        dependencies.insert(
+          package.nv.name.to_string(),
+          Box::new(DependencyDescriptor {
+            version: package.nv.version.to_string(),
+            dev: is_dev,
+            requires: package_deps
+              .iter()
+              .map(|(k, v)| (k.to_string(), v.version.to_string()))
+              .collect(),
+            dependencies: package_deps,
+          }),
+        );
+      }
+
+      let body = serde_json::json!({
+          "dev": false,
+          "install": [],
+          "metadata": {},
+          "remove": [],
+          "requires": requires,
+          "dependencies": dependencies,
+      });
+
+      let audit_response: AuditResponse =
+        match call_audits_api_inner(npm_url.clone(), client.clone(), body).await {
+          Ok(s) => s,
+          Err(err) => {
+            if audit_flags.ignore_registry_errors {
+              log::error!("Failed to get data from the registry: {}", err);
+              return Ok(0);
+            } else {
+              return Err(err);
+            }
+          }
+        };
+      responses.push(audit_response);
     }
 
-    let body = serde_json::json!({
-        "dev": false,
-        "install": [],
-        "metadata": {},
-        "remove": [],
-        "requires": requires,
-        "dependencies": dependencies,
-    });
-
-    let response = match call_audits_api_inner(npm_url, client, body).await {
-      Ok(s) => s,
-      Err(err) => {
-        if audit_flags.ignore_registry_errors {
-          log::error!("Failed to get data from the registry: {}", err);
-          return Ok(0);
-        } else {
-          return Err(err);
-        }
-      }
-    };
+    // Merge all responses into a single response
+    let response = merge_responses(responses);
 
     let vulns = response.metadata.vulnerabilities;
     if vulns.total() == 0 {
