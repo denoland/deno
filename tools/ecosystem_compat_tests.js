@@ -12,33 +12,57 @@ async function teardownTestRepo() {
 }
 
 async function runPackageManager(pm, cmd) {
-  await $`cd nextjs-demo && rm -rf node_modules && ${Deno.execPath()} run -A --no-config npm:${pm} ${cmd}`
-    .timeout(
-      "60s",
-    );
+  const result =
+    await $`cd nextjs-demo ; rm -rf node_modules ; ${Deno.execPath()} run -A --no-config npm:${pm} ${cmd}`
+      .noThrow().timeout(
+        "60s",
+      );
+
+  return {
+    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
-async function testNpm() {
-  await runPackageManager("npm", "install");
+function testNpm() {
+  return runPackageManager("npm", "install");
 }
 
-async function testYarn() {
-  await runPackageManager("yarn", "install");
+function testYarn() {
+  return runPackageManager("yarn", "install");
 }
 
-async function testPnpm() {
-  await runPackageManager("pnpm", "install");
+function testPnpm() {
+  return runPackageManager("pnpm", "install");
 }
 
 async function main() {
+  let passed = true;
   $.log("Setting up test repo...");
   await setupTestRepo();
   $.log("Testing npm...");
-  await testNpm();
+  const npmResult = await testNpm();
+  if (npmResult.exitCode !== 0) {
+    passed = false;
+    $.log(`npm install failed: ${npmResult.stderr}`);
+  }
   $.log("Testing yarn...");
-  await testYarn();
+  const yarnResult = await testYarn();
+  if (yarnResult.exitCode !== 0) {
+    passed = false;
+    $.log(`yarn install failed: ${yarnResult.stderr}`);
+  }
   $.log("Testing pnpm...");
-  await testPnpm();
+  const pnpmResult = await testPnpm();
+  if (pnpmResult.exitCode !== 0) {
+    passed = false;
+    $.log(`pnpm install failed: ${pnpmResult.stderr}`);
+  }
+  if (!passed) {
+    throw new Error("Some tests failed");
+  }
+
   $.log("All tests passed!");
 }
 
