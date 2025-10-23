@@ -159,8 +159,6 @@ Deno.test("tls.connect after-read tls upgrade", async () => {
       socket,
       secureContext: {
         ca: rootCaCert,
-        key: null,
-        cert: null,
         // deno-lint-ignore no-explicit-any
       } as any,
     });
