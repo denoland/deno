@@ -1,0 +1,39 @@
+name: ecosystem_compat_test
+
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: '${{ matrix.runner }}'
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+          - os: windows
+            runner: windows-latest
+          - os: darwin
+            runner: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: canary
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: denoland
+      - name: Run tests
+        run: deno -A tools/ecosystem_compat_tests.ts
+      - name: Post message to slack channel
+        run: deno -A tools/ecosystem_compat_slack.ts
+        env:
+          SLACK_TOKEN: ${{ secrets.NODE_COMPAT_SLACK_TOKEN }} # NodeCompat bot
+          SLACK_CHANNEL: ${{ secrets.NODE_COMPAT_SLACK_CHANNEL }}
