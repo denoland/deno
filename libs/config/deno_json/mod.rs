@@ -1459,20 +1459,62 @@ impl ConfigFile {
     ) -> serde_json::Map<String, Value> {
       let mut result = serde_json::Map::with_capacity(obj.len());
       for (key, value) in obj {
-        // TODO(THIS PR): ensure there is no path on the specifier
         let Some(value) = value.as_str() else {
           todo!(); // THIS PR
         };
-        if let Some((prefix, specifier)) = key.split_once(":") {
+
+        // Parse value which can be:
+        // - "npm:^5" or "jsr:^0.43.2" (prefix:version)
+        // - "npm:tag" (prefix:tag_name)
+        // - "npm:package@11" (prefix:package@version)
+        // - "npm:@scope/package@11" (prefix:@scope/package@version)
+        if let Some((prefix, rest)) = value.split_once(":") {
           if matches!(prefix, "npm" | "jsr") {
-            result.insert(
-              specifier.into(),
-              format!("{}:{}@{}", prefix, specifier, value).into(),
-            );
+            // For scoped packages like "@scope/package@version", we need to find the last @
+            // For regular packages like "package@version", split on @
+            let (package_name, version) = if rest.starts_with('@') {
+              // Scoped package: find the last @ which separates package from version
+              if let Some(last_at) = rest.rfind('@') {
+                if last_at > 0 {
+                  // There's a version specifier
+                  (&rest[..last_at], Some(&rest[last_at + 1..]))
+                } else {
+                  // Just the scoped package, no version
+                  (rest, None)
+                }
+              } else {
+                // Just the scoped package name, no version
+                (rest, None)
+              }
+            } else {
+              // Regular package: split on first @
+              if let Some((pkg, ver)) = rest.split_once('@') {
+                (pkg, Some(ver))
+              } else {
+                (rest, None)
+              }
+            };
+
+            if let Some(version) = version {
+              // alias: "npm:package@version" -> maps to "prefix:package@version"
+              result.insert(
+                key.into(),
+                format!("{}:{}@{}", prefix, package_name, version).into(),
+              );
+            } else {
+              // Cases:
+              // - "npm:^5" -> key is the package, rest is version
+              // - "npm:tag" -> key is the package, rest is tag
+              result.insert(
+                key.into(),
+                format!("{}:{}@{}", prefix, key, rest).into(),
+              );
+            }
           } else {
             todo!(); // THIS PR
           }
         } else {
+          // No prefix, keep as-is
           result.insert(key.into(), value.into());
         }
       }
