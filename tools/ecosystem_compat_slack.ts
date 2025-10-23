@@ -2,7 +2,6 @@
 // deno-lint-ignore-file no-console
 
 import { LogLevel, WebClient } from "npm:@slack/web-api@7.8.0";
-import type { MonthSummary } from "./add_day_summary_to_month_summary.ts";
 
 const token = Deno.env.get("SLACK_TOKEN");
 const channel = Deno.env.get("SLACK_CHANNEL");
@@ -24,6 +23,7 @@ interface EcosystemReport {
   yarn: PmResult;
   pnpm: PmResult;
 }
+
 const client = new WebClient(token, {
   logLevel: LogLevel.DEBUG,
 });
