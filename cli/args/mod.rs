@@ -1065,12 +1065,15 @@ impl CliOptions {
         let set_config_permission_name = match &self.flags.subcommand {
           DenoSubcommand::Bench(_) => dir
             .to_bench_permissions_config()?
+            .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Bench", &permissions.base)),
           DenoSubcommand::Compile(_) => dir
             .to_compile_permissions_config()?
+            .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Compile", &permissions.base)),
           DenoSubcommand::Test(_) => dir
             .to_test_permissions_config()?
+            .filter(|permissions| !permissions.permissions.is_empty())
             .map(|permissions| ("Test", &permissions.base)),
           _ => None,
         };

@@ -247,7 +247,7 @@
               ]
             },
             {
-              "pattern": "^([Nn]ode[Nn]ext)|([Bb]undler))$"
+              "pattern": "^([Nn]ode[Nn]ext|[Bb]undler)$"
             }
           ],
           "markdownDescription": "Specify how TypeScript looks up a file from a given module specifier.\n\nSee more: https://www.typescriptlang.org/tsconfig#moduleResolution"

@@ -69,6 +69,7 @@ function parseFileMode(value, name, def) {
   return value;
 }
 
+/** @type {(buffer: unknown, name?: string) => asserts buffer is ArrayBufferView} */
 const validateBuffer = hideStackFrames((buffer, name = "buffer") => {
   if (!isArrayBufferView(buffer)) {
     throw new codes.ERR_INVALID_ARG_TYPE(
@@ -99,7 +100,14 @@ const validateInteger = hideStackFrames(
   },
 );
 
-/** @typedef {(value: unknown, name: string, options?: number) => asserts value is object} ValidateObject */
+/**
+ * @typedef {{
+ *   allowArray?: boolean,
+ *   allowFunction?: boolean,
+ *   nullable?: boolean,
+ * }} ValidateObjectOptions
+ */
+/** @typedef {(value: unknown, name: string, options?: ValidateObjectOptions) => asserts value is object} ValidateObject */
 /** @type {ValidateObject} */
 const validateObject = hideStackFrames((value, name, options) => {
   const useDefaultOptions = options == null;
