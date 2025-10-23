@@ -1022,7 +1022,6 @@ pub struct ConfigFileJson {
 
   pub name: Option<String>,
   pub version: Option<String>,
-  pub private: Option<bool>,
   pub workspace: Option<Value>,
   pub links: Option<Value>,
   #[serde(rename = "patch")]
@@ -1467,8 +1466,8 @@ impl ConfigFile {
     self.json.name.is_some() && self.json.exports.is_some()
   }
 
-  pub fn is_private_package(&self) -> bool {
-    matches!(self.json.private, Some(true))
+  pub fn should_publish(&self) -> bool {
+    !matches!(self.json.publish, Some(serde_json::Value::Bool(false)))
   }
 
   pub fn is_workspace(&self) -> bool {
@@ -1839,11 +1838,14 @@ impl ConfigFile {
   pub(crate) fn to_publish_config(
     &self,
   ) -> Result<PublishConfig, ToInvalidConfigError> {
-    match self.json.publish.clone() {
+    match &self.json.publish {
+      Some(serde_json::Value::Bool(_)) | None => Ok(PublishConfig {
+        files: self.to_exclude_files_config()?,
+      }),
       Some(config) => {
         let mut exclude_patterns = self.resolve_exclude_patterns()?;
         let mut serialized: SerializedPublishConfig =
-          serde_json::from_value(config).map_err(|error| {
+          serde_json::from_value(config.clone()).map_err(|error| {
             ToInvalidConfigError::Parse {
               config: "publish",
               source: error,
@@ -1859,9 +1861,6 @@ impl ConfigFile {
           }
         })
       }
-      None => Ok(PublishConfig {
-        files: self.to_exclude_files_config()?,
-      }),
     }
   }
 

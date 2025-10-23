@@ -1,7 +1,6 @@
 {
-  "name": "@foo/bar",
+  "name": "@workspace/b",
   "version": "1.0.0",
-  "private": true,
   "exports": {
     ".": "./mod.ts"
   }

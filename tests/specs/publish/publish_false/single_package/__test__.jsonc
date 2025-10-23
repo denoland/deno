@@ -1,4 +1,5 @@
 {
   "args": "publish --token 'sadfasdf'",
-  "output": "private_package.out"
+  "output": "publish.out",
+  "exitCode": 1
 }

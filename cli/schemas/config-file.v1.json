@@ -759,24 +759,30 @@
       }
     },
     "publish": {
-      "description": "Configuration for deno publish",
-      "type": "object",
-      "properties": {
-        "include": {
-          "type": "array",
-          "description": "List of files, directories or globs that will be included in the published package.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "exclude": {
-          "type": "array",
-          "description": "List of files, directories or globs that will be excluded from the published package.",
-          "items": {
-            "type": "string"
+      "oneOf": [{
+        "description": "Configuration for deno publish",
+        "type": "object",
+        "properties": {
+          "include": {
+            "type": "array",
+            "description": "List of files, directories or globs that will be included in the published package.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclude": {
+            "type": "array",
+            "description": "List of files, directories or globs that will be excluded from the published package.",
+            "items": {
+              "type": "string"
+            }
           }
         }
-      }
+      }, {
+        "description": "Disable publishing this package with deno publish",
+        "type": "boolean",
+        "const": "false"
+      }]
     },
     "bench": {
       "description": "Configuration for deno bench",
@@ -857,10 +863,6 @@
     "version": {
       "type": "string",
       "description": "The version of this JSR package."
-    },
-    "private": {
-      "type": "boolean",
-      "description": "Whether this JSR package is private and should not be published."
     },
     "exports": {
       "oneOf": [
