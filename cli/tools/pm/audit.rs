@@ -130,8 +130,8 @@ mod npm {
   }
 
   pub async fn call_audits_api_inner(
-    npm_url: &Url,
     client: &HttpClient,
+    npm_url: Url,
     body: serde_json::Value,
   ) -> Result<AuditResponse, AnyError> {
     let url = npm_url.join("/-/npm/v1/security/audits").unwrap();
@@ -148,7 +148,7 @@ mod npm {
   /// Partition into as few groups as possible so that no partition
   /// contains two entries with the same `name`.
   pub fn partition_packages<'a>(
-    pkgs: &'a [NpmPackageId],
+    pkgs: &'a [&NpmPackageId],
   ) -> Vec<Vec<&'a NpmPackageId>> {
     // 1) Group by name
     let mut by_name: HashMap<&str, Vec<&NpmPackageId>> = HashMap::new();
@@ -221,8 +221,11 @@ mod npm {
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
   ) -> Result<i32, AnyError> {
-    let top_level_packages = npm_resolution_snapshot.top_level_packages();
-
+    let top_level_packages = npm_resolution_snapshot
+      .top_level_packages()
+      .collect::<Vec<_>>();
+    // In deno.json users might define two different versions of the same package - so we need
+    // to partition top level packages into buckets, to check all versions used.
     let top_level_packages_partitions = partition_packages(&top_level_packages);
 
     let mut requires = HashMap::with_capacity(top_level_packages.len());
@@ -283,18 +286,18 @@ mod npm {
           "dependencies": dependencies,
       });
 
-      let audit_response: AuditResponse =
-        match call_audits_api_inner(npm_url.clone(), client.clone(), body).await {
-          Ok(s) => s,
-          Err(err) => {
-            if audit_flags.ignore_registry_errors {
-              log::error!("Failed to get data from the registry: {}", err);
-              return Ok(0);
-            } else {
-              return Err(err);
-            }
+      let r = call_audits_api_inner(&client, npm_url.clone(), body).await;
+      let audit_response: AuditResponse = match r {
+        Ok(s) => s,
+        Err(err) => {
+          if audit_flags.ignore_registry_errors {
+            log::error!("Failed to get data from the registry: {}", err);
+            return Ok(0);
+          } else {
+            return Err(err);
           }
-        };
+        }
+      };
       responses.push(audit_response);
     }
 
