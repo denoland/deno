@@ -33,19 +33,27 @@ function formatDuration(duration: number) {
 }
 
 function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
-  let mrkdwn = "Package manager report\n";
+  let mrkdwn = "## Package manager report\n\n";
 
+  mrkdwn += "| OS | npm | yarn | pnpm |\n";
+  mrkdwn += "|----|-----|------|------|\n";
   for (const [os, report] of Object.entries(ecosystemReports)) {
-    mrkdwn += `*${os}*\n`;
-    mrkdwn += `  *npm*: exit code: ${report.npm.exitCode}, duration: ${
+    mrkdwn += `| ${os} | `;
+    mrkdwn += `${
+      report.npm.exitCode === 0 ? "✅" : "❌"
+    } code: ${report.npm.exitCode}, duration: ${
       formatDuration(report.npm.duration)
-    }\n`;
-    mrkdwn += `  *yarn*: exit code: ${report.yarn.exitCode}, duration: ${
+    } | `;
+    mrkdwn += `${
+      report.yarn.exitCode === 0 ? "✅" : "❌"
+    } code: ${report.yarn.exitCode}, duration: ${
       formatDuration(report.yarn.duration)
-    }\n`;
-    mrkdwn += `  *pnpm*: exit code: ${report.pnpm.exitCode}, duration: ${
+    } | `;
+    mrkdwn += `${
+      report.npm.exitCode === 0 ? "✅" : "❌"
+    } code: ${report.pnpm.exitCode}, duration: ${
       formatDuration(report.pnpm.duration)
-    }\n`;
+    } |\n`;
   }
 
   return [
