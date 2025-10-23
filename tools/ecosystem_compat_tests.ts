@@ -1,6 +1,7 @@
 #!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
 // Copyright 2018-2025 the Deno authors. MIT license.
 import $ from "jsr:@david/dax@^0.42.0";
+import { join } from "./util.js";
 
 async function setupTestRepo() {
   await teardownTestRepo();
@@ -11,7 +12,7 @@ async function teardownTestRepo() {
   await $`rm -rf nextjs-demo`;
 }
 
-async function runPackageManager(pm, cmd) {
+async function runPackageManager(pm: string, cmd: string) {
   const state = Date.now();
   const result =
     await $`cd nextjs-demo ; rm -rf node_modules ; ${Deno.execPath()} run -A --no-config npm:${pm} ${cmd}`
@@ -67,7 +68,7 @@ async function main() {
     $.logError("Some tests failed");
   }
   await Deno.writeTextFile(
-    import.meta.resolve("./ecosystem_report.json"),
+    join(import.meta.dirname!, "ecosystem_report.json"),
     JSON.stringify({
       npm: {
         exitCode: npmResult.exitCode,

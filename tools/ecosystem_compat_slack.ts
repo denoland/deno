@@ -32,18 +32,21 @@ function formatDuration(duration: number) {
   return (duration / 1000).toFixed(2) + "s";
 }
 
-function createMessage(ecosystemReport: EcosystemReport) {
+function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
   let mrkdwn = "Package manager report\n";
 
-  mrkdwn += `*npm*: exit code: ${ecosystemReport.npm.exitCode}, duration: ${
-    formatDuration(ecosystemReport.npm.duration)
-  }\n`;
-  mrkdwn += `*yarn*: exit code: ${ecosystemReport.yarn.exitCode}, duration: ${
-    formatDuration(ecosystemReport.yarn.duration)
-  }\n`;
-  mrkdwn += `*pnpm*: exit code: ${ecosystemReport.pnpm.exitCode}, duration: ${
-    formatDuration(ecosystemReport.pnpm.duration)
-  }\n`;
+  for (const [os, report] of Object.entries(ecosystemReports)) {
+    mrkdwn += `*${os}*\n`;
+    mrkdwn += `  *npm*: exit code: ${report.npm.exitCode}, duration: ${
+      formatDuration(report.npm.duration)
+    }\n`;
+    mrkdwn += `  *yarn*: exit code: ${report.yarn.exitCode}, duration: ${
+      formatDuration(report.yarn.duration)
+    }\n`;
+    mrkdwn += `  *pnpm*: exit code: ${report.pnpm.exitCode}, duration: ${
+      formatDuration(report.pnpm.duration)
+    }\n`;
+  }
 
   return [
     {
@@ -56,17 +59,32 @@ function createMessage(ecosystemReport: EcosystemReport) {
   ];
 }
 
+async function downloadOsReports() {
+  const oses = ["windows", "linux", "darwin"];
+  const reports: Record<string, string> = {};
+  for (const os of oses) {
+    const res = await fetch(
+      `https://dl.deno.land/ecosystem-compat-test/${
+        new Date()
+          .toISOString()
+          .substring(0, 10)
+      }/report-${os}.json`,
+    );
+    if (res.status === 200) {
+      reports[os] = await res.json() satisfies EcosystemReport;
+    }
+  }
+  return reports;
+}
+
 async function main() {
-  const ecosystemReport = await Deno.readTextFile(
-    import.meta.resolve("./ecosystem_report.json"),
-  )
-    .then(JSON.parse) as EcosystemReport;
+  const ecosystemReports = await downloadOsReports();
 
   try {
     const result = await client.chat.postMessage({
       token,
       channel,
-      blocks: createMessage(ecosystemReport),
+      blocks: createMessage(ecosystemReports),
       unfurl_links: false,
       unfurl_media: false,
     });
