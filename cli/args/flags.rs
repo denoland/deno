@@ -50,6 +50,9 @@ use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::UnstableFeatureKind;
 use deno_runtime::deno_permissions::SysDescriptor;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageKind;
+use deno_semver::package::PackageReq;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
 use deno_telemetry::OtelPropagators;
@@ -5042,6 +5045,25 @@ fn allow_scripts_arg_parse(
     flags.allow_scripts = PackagesAllowedScripts::Some(
       parts
         .flat_map(flat_escape_split_commas)
+        .map(|result| {
+          let value = result?;
+          let dep = JsrDepPackageReq::from_str_loose(&value).map_err(|e| {
+            clap::Error::raw(clap::error::ErrorKind::InvalidValue, e)
+          })?;
+          if dep.kind != PackageKind::Npm {
+            return Err(clap::Error::raw(
+              clap::error::ErrorKind::InvalidValue,
+              format!("Only npm package constraints are supported: {}", value),
+            ));
+          }
+          if dep.req.version_req.tag().is_some() {
+            return Err(clap::Error::raw(
+              clap::error::ErrorKind::InvalidValue,
+              format!("Tags are not supported in --allow-scripts: {}", value),
+            ));
+          }
+          Ok(dep.req)
+        })
         .collect::<Result<_, _>>()?,
     );
   }
@@ -12391,13 +12413,26 @@ mod tests {
       (None, Ok(PackagesAllowedScripts::None)),
       (
         Some("--allow-scripts=npm:foo"),
-        Ok(PackagesAllowedScripts::Some(svec!["npm:foo"])),
+        Ok(PackagesAllowedScripts::Some(vec![
+          PackageReq::from_str("npm:foo").unwrap(),
+        ])),
       ),
       (
-        Some("--allow-scripts=npm:foo,npm:bar"),
-        Ok(PackagesAllowedScripts::Some(svec!["npm:foo", "npm:bar"])),
+        Some("--allow-scripts=npm:foo,npm:bar@2"),
+        Ok(PackagesAllowedScripts::Some(vec![
+          PackageReq::from_str("npm:foo").unwrap(),
+          PackageReq::from_str("npm:bar@2").unwrap(),
+        ])),
       ),
       (Some("--allow-scripts=foo"), Err("Invalid package")),
+      (
+        Some("--allow-scripts=npm:foo@next"),
+        Err("Tags are not supported in --allow-scripts: npm:foo@next"),
+      ),
+      (
+        Some("--allow-scripts=jsr:@foo/bar"),
+        Err("Only npm package constraints are supported: jsr:foo@next"),
+      ),
     ];
     for (flag, value) in cases {
       let mut args = svec!["deno", "cache"];

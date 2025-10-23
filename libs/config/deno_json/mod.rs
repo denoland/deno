@@ -21,6 +21,7 @@ use serde::Serialize;
 use serde::de;
 use serde::de::Unexpected;
 use serde::de::Visitor;
+use serde::ser::Error;
 use serde_json::Value;
 use serde_json::json;
 use sys_traits::FsRead;
@@ -49,6 +50,71 @@ pub use permissions::PermissionsObjectWithBase;
 pub use ts::CompilerOptions;
 pub use ts::EmitConfigOptions;
 pub use ts::RawJsxCompilerOptions;
+
+#[derive(Clone, Debug, Hash, PartialEq)]
+pub enum ApprovedScriptsValueConfig {
+  All,
+  Limited(Vec<JsrDepPackageReq>),
+}
+
+impl Default for ApprovedScriptsValueConfig {
+  fn default() -> Self {
+    Self::Limited(Vec::new())
+  }
+}
+
+impl<'de> Deserialize<'de> for ApprovedScriptsValueConfig {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct ApprovedScriptsValueConfigVisitor;
+
+    impl<'de> Visitor<'de> for ApprovedScriptsValueConfigVisitor {
+      type Value = ApprovedScriptsValueConfig;
+
+      fn expecting(
+        &self,
+        formatter: &mut std::fmt::Formatter,
+      ) -> std::fmt::Result {
+        formatter.write_str("a boolean or an array of strings")
+      }
+
+      fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+      where
+        E: de::Error,
+      {
+        if v {
+          Ok(ApprovedScriptsValueConfig::All)
+        } else {
+          Ok(ApprovedScriptsValueConfig::Limited(Vec::new()))
+        }
+      }
+
+      fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+      where
+        A: de::SeqAccess<'de>,
+      {
+        let mut items = Vec::new();
+        while let Some(item) = seq.next_element::<JsrDepPackageReq>()? {
+          items.push(item);
+        }
+        Ok(ApprovedScriptsValueConfig::Limited(items))
+      }
+    }
+
+    deserializer.deserialize_any(ApprovedScriptsValueConfigVisitor)
+  }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Hash, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ApprovedScriptsConfig {
+  #[serde(default)]
+  pub allow: ApprovedScriptsValueConfig,
+  #[serde(default)]
+  pub deny: Vec<JsrDepPackageReq>,
+}
 
 #[derive(Clone, Debug, Default, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -1028,6 +1094,7 @@ pub struct ConfigFileJson {
   pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
+  pub approved_scripts: Option<Value>,
 
   pub name: Option<String>,
   pub version: Option<String>,
@@ -1956,6 +2023,86 @@ impl ConfigFile {
       }
       _ => Ok(None),
     }
+  }
+
+  pub fn to_approved_scripts_config(
+    &self,
+  ) -> Result<ApprovedScriptsConfig, ToInvalidConfigError> {
+    let config = match &self.json.approved_scripts {
+      Some(Value::Array(value)) => {
+        let items: Vec<JsrDepPackageReq> =
+          serde_json::from_value(value.clone().into()).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "approvedScripts",
+              source: error,
+            }
+          })?;
+        ApprovedScriptsConfig {
+          allow: ApprovedScriptsValueConfig::Limited(items),
+          deny: vec![],
+        }
+      }
+      Some(Value::Object(value)) => {
+        let config: ApprovedScriptsConfig =
+          serde_json::from_value(value.clone().into()).map_err(|error| {
+            ToInvalidConfigError::Parse {
+              config: "approvedScripts",
+              source: error,
+            }
+          })?;
+        config
+      }
+      Some(Value::Bool(value)) => {
+        if *value {
+          ApprovedScriptsConfig {
+            allow: ApprovedScriptsValueConfig::All,
+            deny: Vec::new(),
+          }
+        } else {
+          ApprovedScriptsConfig {
+            allow: ApprovedScriptsValueConfig::Limited(Vec::new()),
+            deny: Vec::new(),
+          }
+        }
+      }
+      Some(Value::Number(_) | Value::String(_)) => {
+        return Err(ToInvalidConfigError::Parse {
+          config: "approvedScripts",
+          source: serde_json::Error::custom(
+            "expected string array, boolean, or object",
+          ),
+        });
+      }
+      Some(Value::Null) | None => ApprovedScriptsConfig {
+        allow: ApprovedScriptsValueConfig::Limited(Vec::new()),
+        deny: Vec::new(),
+      },
+    };
+    let ensure_reqs_no_tag = |reqs: &[JsrDepPackageReq]| {
+      // it's too much of a hassle to support tags,
+      // so error if someone uses one
+      for req in reqs {
+        if req.req.version_req.tag().is_some() {
+          return Err(ToInvalidConfigError::Parse {
+            config: "approvedScripts",
+            source: serde_json::Error::custom(format!(
+              "tags are not supported in '{}'",
+              req
+            )),
+          });
+        }
+      }
+      Ok(())
+    };
+    match &config.allow {
+      ApprovedScriptsValueConfig::All => {}
+      ApprovedScriptsValueConfig::Limited(reqs) => {
+        ensure_reqs_no_tag(reqs)?;
+      }
+    }
+    ensure_reqs_no_tag(&config.deny)?;
+
+    Ok(config)
   }
 
   pub fn to_deploy_config(
@@ -3067,5 +3214,96 @@ mod tests {
         expected
       );
     }
+  }
+
+  #[test]
+  fn test_to_approved_scripts() {
+    fn get_result(
+      text: &str,
+    ) -> Result<ApprovedScriptsConfig, ToInvalidConfigError> {
+      let config_specifier = root_url().join("deno.json").unwrap();
+      let config_file = ConfigFile::new(text, config_specifier).unwrap();
+      config_file.to_approved_scripts_config()
+    }
+
+    assert_eq!(
+      get_result(r#"{}"#).unwrap(),
+      ApprovedScriptsConfig {
+        allow: ApprovedScriptsValueConfig::Limited(Vec::new()),
+        deny: vec![],
+      }
+    );
+    assert_eq!(
+      get_result(
+        r#"{
+        "approvedScripts": true
+      }"#
+      )
+      .unwrap(),
+      ApprovedScriptsConfig {
+        allow: ApprovedScriptsValueConfig::All,
+        deny: vec![],
+      }
+    );
+    assert_eq!(
+      get_result(
+        r#"{
+        "approvedScripts": [
+          "npm:chalk",
+          "npm:package@1",
+        ]
+      }"#
+      )
+      .unwrap(),
+      ApprovedScriptsConfig {
+        allow: ApprovedScriptsValueConfig::Limited(Vec::from([
+          JsrDepPackageReq::from_str("npm:chalk").unwrap(),
+          JsrDepPackageReq::from_str("npm:package@1").unwrap(),
+        ])),
+        deny: vec![],
+      }
+    );
+    assert_eq!(
+      get_result(
+        r#"{
+        "approvedScripts": {
+          "allow": [
+            "npm:chalk",
+            "npm:package@1",
+          ],
+          "deny": [
+            "npm:example@1"
+          ]
+        }
+      }"#
+      )
+      .unwrap(),
+      ApprovedScriptsConfig {
+        allow: ApprovedScriptsValueConfig::Limited(Vec::from([
+          JsrDepPackageReq::from_str("npm:chalk").unwrap(),
+          JsrDepPackageReq::from_str("npm:package@1").unwrap(),
+        ])),
+        deny: Vec::from(
+          [JsrDepPackageReq::from_str("npm:example@1").unwrap(),]
+        ),
+      }
+    );
+
+    // tag
+    assert_contains!(
+      format!(
+        "{:#?}",
+        get_result(r#"{ "approvedScripts": ["npm:chalk@next"] }"#).unwrap_err()
+      ),
+      "tags are not supported in 'npm:chalk@next'"
+    );
+    assert_contains!(
+      format!(
+        "{:#?}",
+        get_result(r#"{ "approvedScripts": { "allow": ["npm:chalk@next"] } }"#)
+          .unwrap_err()
+      ),
+      "tags are not supported in 'npm:chalk@next'"
+    );
   }
 }
