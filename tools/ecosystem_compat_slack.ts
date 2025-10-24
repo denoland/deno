@@ -33,38 +33,138 @@ function formatDuration(duration: number) {
 }
 
 function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
-  let mrkdwn = "**Package manager report**\n\n";
-  mrkdwn += "```\n";
+  const elements = [];
 
-  mrkdwn += "| program | darwin | linux | windows |\n";
-  mrkdwn += "|---------|--------|-------|---------|\n";
-  // TODO: generate the report rows
-  const programs = Object.keys(ecosystemReports["darwin"]);
+  elements.push({
+    type: "header",
+    text: {
+      type: "mrkdwn",
+      text: "**Package manager report**\n\n",
+    },
+  });
 
-  for (const program of programs) {
-    mrkdwn += `| ${program} | `;
-    for (const os of ["darwin", "linux", "windows"]) {
-      const report = ecosystemReports[os][program] satisfies PmResult;
-      mrkdwn += `${
-        report.exitCode === 0 ? "✅" : "❌"
-      } code: ${report.exitCode}, duration: ${
-        formatDuration(report.duration)
-      } | `;
-    }
-    mrkdwn += "\n";
-  }
-
-  mrkdwn += "```\n";
-
-  return [
+  const tableHeader = [
     {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: mrkdwn,
-      },
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_section",
+          elements: [
+            {
+              type: "text",
+              text: "Program",
+              style: {
+                bold: true,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_section",
+          elements: [
+            {
+              type: "text",
+              text: "Linux",
+              style: {
+                bold: true,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_section",
+          elements: [
+            {
+              type: "text",
+              text: "macOS",
+              style: {
+                bold: true,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_section",
+          elements: [
+            {
+              type: "text",
+              text: "Windows",
+              style: {
+                bold: true,
+              },
+            },
+          ],
+        },
+      ],
     },
   ];
+
+  const rows = [];
+
+  const programs = Object.keys(ecosystemReports["darwin"]);
+  for (const program of programs) {
+    const row = [
+      {
+        type: "rich_text",
+        elements: [
+          {
+            type: "rich_text_section",
+            elements: [
+              {
+                type: "text",
+                text: program,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    for (const os of ["darwin", "linux", "windows"]) {
+      const report = ecosystemReports[os][program] satisfies PmResult;
+
+      const text = `${
+        report.exitCode === 0 ? "✅" : "❌"
+      } code: ${report.exitCode}, duration: ${formatDuration(report.duration)}`;
+      row.push({
+        type: "rich_text",
+        elements: [
+          {
+            type: "rich_text_section",
+            elements: [
+              {
+                type: "text",
+                text: text,
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    rows.push(row);
+  }
+
+  elements.push({
+    type: "table",
+    rows: [tableHeader, ...rows],
+  });
+  return elements;
 }
 
 async function downloadOsReports() {
