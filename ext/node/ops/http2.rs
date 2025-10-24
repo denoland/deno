@@ -27,6 +27,16 @@ const STREAM_OPTION_GET_TRAILERS: i32 = 0x2;
 // Number of max additional settings, thus settings not implemented by nghttp2
 const MAX_ADDITIONAL_SETTINGS: usize = 10;
 
+// HTTP/2 Padding strategies
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+enum PaddingStrategy {
+  None = 0,
+  Aligned = 1,
+  Max = 2,
+  Callback = 3,
+}
+
 #[repr(usize)]
 enum Http2SettingsIndex {
   IDX_SETTINGS_HEADER_TABLE_SIZE,
@@ -234,6 +244,7 @@ struct Session {
   context: v8::Global<v8::Context>,
   op_state: Rc<RefCell<OpState>>,
   this: v8::Global<v8::Object>,
+  padding_strategy: PaddingStrategy,
 }
 
 struct Http2Callbacks {
@@ -247,6 +258,7 @@ struct Http2Callbacks {
   alt_svc_cb: v8::Global<v8::Function>,
   stream_trailers_cb: v8::Global<v8::Function>,
   stream_close_cb: v8::Global<v8::Function>,
+  origin_frame_cb: v8::Global<v8::Function>,
 }
 
 #[op2]
@@ -260,6 +272,7 @@ pub fn op_http2_callbacks(
   #[global] frame_error_cb: v8::Global<v8::Function>,
   #[global] goaway_data_cb: v8::Global<v8::Function>,
   #[global] alt_svc_cb: v8::Global<v8::Function>,
+  #[global] origin_frame_cb: v8::Global<v8::Function>,
   #[global] stream_trailers_cb: v8::Global<v8::Function>,
   #[global] stream_close_cb: v8::Global<v8::Function>,
 ) {
@@ -272,6 +285,7 @@ pub fn op_http2_callbacks(
     frame_error_cb,
     goaway_data_cb,
     alt_svc_cb,
+    origin_frame_cb,
     stream_trailers_cb,
     stream_close_cb,
   });
@@ -331,7 +345,6 @@ impl Session {
       return;
     }
 
-    // Create the JS headers array
     // [name1, value1, name2, value2...]
     let headers_array = v8::Array::new(scope, (header_count * 2) as i32);
     for (i, (name, value, _flags)) in headers.iter().enumerate() {
@@ -392,7 +405,218 @@ impl Session {
     callback.call(scope, recv.into(), &[arg.into()]);
   }
 
-  fn handle_goaway_frame(&self, frame: *const ffi::nghttp2_frame) {}
+  // Called by OnFrameReceived when a complete GOAWAY frame has been received.
+  fn handle_goaway_frame(&self, frame: *const ffi::nghttp2_frame) {
+    // SAFETY: This method is called by `on_frame_recv`.
+    // The isolate is valid and we are on the same thread as the isolate.
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let goaway_frame = unsafe { (*frame).goaway };
+
+    let error_code = v8::Number::new(scope, goaway_frame.error_code.into());
+    let last_stream_id =
+      v8::Number::new(scope, goaway_frame.last_stream_id.into());
+
+    // Handle optional opaque data
+    let opaque_data = if goaway_frame.opaque_data_len > 0 {
+      let data_slice = unsafe {
+        std::slice::from_raw_parts(
+          goaway_frame.opaque_data,
+          goaway_frame.opaque_data_len,
+        )
+      };
+      let array_buffer = v8::ArrayBuffer::new(scope, data_slice.len());
+      let backing_store = array_buffer.get_backing_store();
+      if let Some(backing_data) = backing_store.data() {
+        unsafe {
+          std::ptr::copy_nonoverlapping(
+            data_slice.as_ptr(),
+            backing_data.as_ptr() as *mut u8,
+            data_slice.len(),
+          );
+        }
+      }
+      v8::Uint8Array::new(scope, array_buffer, 0, data_slice.len())
+        .unwrap()
+        .into()
+    } else {
+      v8::undefined(scope).into()
+    };
+
+    let state = self.op_state.borrow();
+    let callbacks = state.borrow::<Http2Callbacks>();
+    let recv = v8::Local::new(scope, &self.this);
+    let callback = v8::Local::new(scope, &callbacks.goaway_data_cb);
+
+    drop(state);
+
+    callback.call(
+      scope,
+      recv.into(),
+      &[error_code.into(), last_stream_id.into(), opaque_data],
+    );
+  }
+
+  // Called by OnFrameReceived when a complete PRIORITY frame has been
+  // received. Notifies JS land about the priority change. Note that priorities
+  // are considered advisory only, so this has no real effect other than to
+  // simply let user code know that the priority has changed.
+  fn handle_priority_frame(&self, frame: *const ffi::nghttp2_frame) {
+    // SAFETY: This method is called by `on_frame_recv`.
+    // The isolate is valid and we are on the same thread as the isolate.
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let priority_frame = unsafe { (*frame).priority };
+    let id = frame_id(frame);
+    let spec = priority_frame.pri_spec;
+    let stream_id = v8::Number::new(scope, id.into());
+    let parent_stream_id = v8::Number::new(scope, spec.stream_id.into());
+    let weight = v8::Number::new(scope, spec.weight.into());
+    let exclusive = v8::Boolean::new(scope, spec.exclusive != 0);
+
+    let state = self.op_state.borrow();
+    let callbacks = state.borrow::<Http2Callbacks>();
+    let recv = v8::Local::new(scope, &self.this);
+    let callback = v8::Local::new(scope, &callbacks.priority_frame_cb);
+
+    drop(state);
+
+    callback.call(
+      scope,
+      recv.into(),
+      &[
+        stream_id.into(),
+        parent_stream_id.into(),
+        weight.into(),
+        exclusive.into(),
+      ],
+    );
+  }
+
+  // Called by OnFrameReceived when a complete ALTSVC frame has been received.
+  fn handle_alt_svc_frame(&self, frame: *const ffi::nghttp2_frame) {
+    // SAFETY: This method is called by `on_frame_recv`.
+    // The isolate is valid and we are on the same thread as the isolate.
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let id = frame_id(frame);
+
+    let ext = unsafe { (*frame).ext };
+    let altsvc = unsafe { ext.payload as *const ffi::nghttp2_ext_altsvc };
+    let origin_slice = unsafe {
+      std::slice::from_raw_parts((*altsvc).origin, (*altsvc).origin_len)
+    };
+    let field_value_slice = unsafe {
+      std::slice::from_raw_parts(
+        (*altsvc).field_value,
+        (*altsvc).field_value_len,
+      )
+    };
+
+    let origin_str = match std::str::from_utf8(origin_slice) {
+      Ok(s) => v8::String::new(scope, s).unwrap(),
+      Err(_) => v8::String::new(scope, "").unwrap(),
+    };
+    let field_value_str = match std::str::from_utf8(field_value_slice) {
+      Ok(s) => v8::String::new(scope, s).unwrap(),
+      Err(_) => v8::String::new(scope, "").unwrap(),
+    };
+    let state = self.op_state.borrow();
+    let callbacks = state.borrow::<Http2Callbacks>();
+    let recv = v8::Local::new(scope, &self.this);
+    let callback = v8::Local::new(scope, &callbacks.alt_svc_cb);
+
+    drop(state);
+
+    let stream_id = v8::Number::new(scope, id.into());
+    callback.call(
+      scope,
+      recv.into(),
+      &[stream_id.into(), origin_str.into(), field_value_str.into()],
+    );
+  }
+
+  fn handle_origin_frame(&self, frame: *const ffi::nghttp2_frame) {
+    // SAFETY: This method is called by `on_frame_recv`.
+    // The isolate is valid and we are on the same thread as the isolate.
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let ext = unsafe { (*frame).ext };
+    let origin = unsafe { ext.payload as *const ffi::nghttp2_ext_origin };
+    let nov = unsafe { (*origin).nov };
+    let origins_ptr = unsafe { (*origin).ov };
+
+    if nov == 0 {
+      return;
+    }
+
+    let origins_array = v8::Array::new(scope, nov as i32);
+    for i in 0..nov {
+      let entry = unsafe { *origins_ptr.add(i) };
+      let origin_slice =
+        unsafe { std::slice::from_raw_parts(entry.origin, entry.origin_len) };
+      if let Ok(origin_str) = std::str::from_utf8(origin_slice) {
+        let js_string = v8::String::new(scope, origin_str).unwrap();
+        origins_array.set_index(scope, i as u32, js_string.into());
+      }
+    }
+
+    let state = self.op_state.borrow();
+    let callbacks = state.borrow::<Http2Callbacks>();
+    let recv = v8::Local::new(scope, &self.this);
+    let callback = v8::Local::new(scope, &callbacks.origin_frame_cb);
+
+    drop(state);
+
+    callback.call(scope, recv.into(), &[origins_array.into()]);
+  }
+
+  // Used as one of the Padding Strategy functions. Will attempt to ensure
+  // that the total frame size, including header bytes, are 8-byte aligned.
+  // If maxPayloadLen is smaller than the number of bytes necessary to align,
+  // will return maxPayloadLen instead.
+  fn on_dword_aligned_padding(
+    &self,
+    frame_len: usize,
+    max_payload_len: usize,
+  ) -> usize {
+    let r = (frame_len + 9) % 8;
+    if r == 0 {
+      return frame_len; // Already aligned
+    }
+
+    let pad = frame_len + (8 - r);
+    // If maxPayloadLen happens to be less than the calculated pad length,
+    // use the max instead, even tho this means the frame will not be
+    // aligned.
+    std::cmp::min(max_payload_len, pad)
+  }
+
+  // Used as one of the Padding Strategy functions. Uses the maximum amount
+  // of padding allowed for the current frame.
+  fn on_max_frame_size_padding(
+    &self,
+    _frame_len: usize,
+    max_payload_len: usize,
+  ) -> usize {
+    max_payload_len
+  }
 }
 
 pub struct Http2Session {
@@ -814,12 +1038,10 @@ impl Http2Stream {
     callback.call(scope, recv.into(), &[]);
   }
 
-  // Set the trailers flag
   fn set_has_trailers(&self, has_trailers: bool) {
     *self.has_trailers.borrow_mut() = has_trailers;
   }
 
-  // Check if stream has trailers
   fn has_trailers(&self) -> bool {
     *self.has_trailers.borrow()
   }
@@ -923,7 +1145,7 @@ unsafe extern "C" fn on_frame_recv_callback(
       // session.handle_settings_frame(frame);
     }
     ffi::NGHTTP2_PRIORITY => {
-      // session.handle_priority_frame(frame);
+      session.handle_priority_frame(frame);
     }
     ffi::NGHTTP2_GOAWAY => {
       session.handle_goaway_frame(frame);
@@ -932,10 +1154,10 @@ unsafe extern "C" fn on_frame_recv_callback(
       session.handle_ping_frame(frame);
     }
     ffi::NGHTTP2_ALTSVC => {
-      // session.handle_alt_svc_frame(frame);
+      session.handle_alt_svc_frame(frame);
     }
     ffi::NGHTTP2_ORIGIN => {
-      // session.handle_origin_frame(frame);
+      session.handle_origin_frame(frame);
     }
     _ => {}
   }
@@ -1086,6 +1308,32 @@ unsafe extern "C" fn on_stream_read_callback(
   ffi::NGHTTP2_ERR_DEFERRED as _
 }
 
+// Callback to select padding for DATA and HEADERS frames
+unsafe extern "C" fn on_select_padding(
+  session: *mut ffi::nghttp2_session,
+  frame: *const ffi::nghttp2_frame,
+  max_payload_len: usize,
+  user_data: *mut c_void,
+) -> isize {
+  let session = &*(user_data as *mut Session);
+  let padding = unsafe { (*frame).hd.length };
+
+  let result = match session.padding_strategy {
+    PaddingStrategy::None => padding,
+    PaddingStrategy::Max => {
+      session.on_max_frame_size_padding(padding, max_payload_len)
+    }
+    PaddingStrategy::Aligned => {
+      session.on_dword_aligned_padding(padding, max_payload_len)
+    }
+    PaddingStrategy::Callback => {
+      session.on_dword_aligned_padding(padding, max_payload_len)
+    } // Alias for Aligned
+  };
+
+  result as isize
+}
+
 impl Http2Session {
   fn callbacks() -> *mut ffi::nghttp2_session_callbacks {
     let mut callbacks: *mut ffi::nghttp2_session_callbacks =
@@ -1137,6 +1385,10 @@ impl Http2Session {
         callbacks,
         Some(on_frame_send_callback),
       );
+      ffi::nghttp2_session_callbacks_set_select_padding_callback(
+        callbacks,
+        Some(on_select_padding),
+      );
     }
     callbacks
   }
@@ -1168,6 +1420,7 @@ impl Http2Session {
       this,
       outgoing_buffers: Vec::with_capacity(32),
       outgoing_length: 0,
+      padding_strategy: PaddingStrategy::None,
     }));
 
     // SAFETY: inner is owned by Http2Session but
