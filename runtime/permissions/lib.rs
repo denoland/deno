@@ -3733,7 +3733,8 @@ impl PermissionsContainer {
       && (path == OsStr::new("/dev/random")
         || path == OsStr::new("/dev/urandom")
         || path == OsStr::new("/dev/zero")
-        || path == OsStr::new("/dev/null"))
+        || path == OsStr::new("/dev/null")
+        || path == OsStr::new("/dev/tty"))
     {
       return Ok(CheckedPath {
         path: PathWithRequested {

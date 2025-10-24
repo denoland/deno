@@ -457,8 +457,10 @@ pub fn resolve_npm_commands_from_bin_dir(
     .map(|(command_name, path)| {
       (
         command_name.clone(),
-        Rc::new(NodeModulesFileRunCommand { command_name, path })
-          as Rc<dyn ShellCommand>,
+        Rc::new(NodeModulesFileRunCommand {
+          command_name,
+          path: path.path().to_path_buf(),
+        }) as Rc<dyn ShellCommand>,
       )
     })
     .collect()
@@ -476,8 +478,10 @@ fn resolve_managed_npm_commands(
     result.extend(bins.into_iter().map(|(command_name, path)| {
       (
         command_name.clone(),
-        Rc::new(NodeModulesFileRunCommand { command_name, path })
-          as Rc<dyn ShellCommand>,
+        Rc::new(NodeModulesFileRunCommand {
+          command_name,
+          path: path.path().to_path_buf(),
+        }) as Rc<dyn ShellCommand>,
       )
     }));
   }

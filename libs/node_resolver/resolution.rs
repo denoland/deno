@@ -3,6 +3,8 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -22,8 +24,10 @@ use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
 use sys_traits::FsRead;
 use sys_traits::FsReadDir;
+use sys_traits::OpenOptions;
 use url::Url;
 
 use crate::InNpmPackageChecker;
@@ -265,7 +269,7 @@ struct ResolutionConfig {
 
 #[sys_traits::auto_impl]
 pub trait NodeResolverSys:
-  FsCanonicalize + FsMetadata + FsRead + FsReadDir
+  FsCanonicalize + FsMetadata + FsRead + FsReadDir + FsOpen
 {
 }
 
@@ -753,7 +757,7 @@ impl<
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-  ) -> Result<PathBuf, ResolvePkgJsonBinExportError> {
+  ) -> Result<BinValue, ResolvePkgJsonBinExportError> {
     let (pkg_json, items) = self
       .resolve_npm_binary_commands_for_package_with_pkg_json(package_folder)?;
     let path =
@@ -762,13 +766,13 @@ impl<
           message: err.to_string(),
         }
       })?;
-    Ok(path.to_path_buf())
+    Ok(path.clone())
   }
 
   pub fn resolve_npm_binary_commands_for_package(
     &self,
     package_folder: &Path,
-  ) -> Result<BTreeMap<String, PathBuf>, ResolvePkgNpmBinaryCommandsError> {
+  ) -> Result<BTreeMap<String, BinValue>, ResolvePkgNpmBinaryCommandsError> {
     let (_pkg_json, items) = self
       .resolve_npm_binary_commands_for_package_with_pkg_json(package_folder)?;
     Ok(items)
@@ -778,7 +782,7 @@ impl<
     &self,
     package_folder: &Path,
   ) -> Result<
-    (PackageJsonRc, BTreeMap<String, PathBuf>),
+    (PackageJsonRc, BTreeMap<String, BinValue>),
     ResolvePkgNpmBinaryCommandsError,
   > {
     let pkg_json_path = package_folder.join("package.json");
@@ -796,7 +800,26 @@ impl<
       deno_package_json::PackageJsonBins::Directory(path_buf) => {
         self.resolve_npm_commands_from_bin_dir(&path_buf)
       }
-      deno_package_json::PackageJsonBins::Bins(items) => items,
+      deno_package_json::PackageJsonBins::Bins(items) => items
+        .into_iter()
+        .filter_map(|(command, path)| {
+          let file = self.sys.fs_open(&path, OpenOptions::new().read()).ok()?;
+          let mut buf_read = BufReader::new(file);
+          let mut line = String::new();
+          if let Ok(len) = buf_read.read_line(&mut line) {
+            if len > 0 {
+              if let Some(path) = resolve_execution_path_from_npx_shim(
+                Cow::Borrowed(&path),
+                &line,
+              ) {
+                return Some((command, BinValue::JsFile(path)));
+              }
+            }
+          }
+
+          Some((command, BinValue::Executable(path.to_path_buf())))
+        })
+        .collect(),
     };
     Ok((package_json, items))
   }
@@ -804,7 +827,7 @@ impl<
   pub fn resolve_npm_commands_from_bin_dir(
     &self,
     bin_dir: &Path,
-  ) -> BTreeMap<String, PathBuf> {
+  ) -> BTreeMap<String, BinValue> {
     log::debug!("Resolving npm commands in '{}'.", bin_dir.display());
     let mut result = BTreeMap::new();
     match self.sys.fs_read_dir(bin_dir) {
@@ -813,10 +836,10 @@ impl<
           let Ok(entry) = entry else {
             continue;
           };
-          if let Some((command, path)) =
+          if let Some((command, bin_value)) =
             self.resolve_bin_dir_entry_command(entry)
           {
-            result.insert(command, path);
+            result.insert(command, bin_value);
           }
         }
       }
@@ -830,7 +853,7 @@ impl<
   fn resolve_bin_dir_entry_command(
     &self,
     entry: TSys::ReadDirEntry,
-  ) -> Option<(String, PathBuf)> {
+  ) -> Option<(String, BinValue)> {
     if entry.path().extension().is_some() {
       return None; // only look at files without extensions (even on Windows)
     }
@@ -842,19 +865,25 @@ impl<
     } else {
       return None;
     };
-    let text = self.sys.fs_read_to_string_lossy(&path).ok()?;
     let command_name = entry.file_name().to_string_lossy().into_owned();
-    if let Some(path) = resolve_execution_path_from_npx_shim(path, &text) {
-      log::debug!(
-        "Resolved npx command '{}' to '{}'.",
-        command_name,
-        path.display()
-      );
-      Some((command_name, path))
-    } else {
-      log::debug!("Failed resolving npx command '{}'.", command_name);
-      None
+    let file = self.sys.fs_open(&path, OpenOptions::new().read()).ok()?;
+    let mut buf_read = BufReader::new(file);
+    let mut line = String::new();
+    if let Ok(len) = buf_read.read_line(&mut line) {
+      if len > 0 {
+        if let Some(path) =
+          resolve_execution_path_from_npx_shim(path.clone(), &line)
+        {
+          log::debug!(
+            "Resolved npx command '{}' to '{}'.",
+            command_name,
+            path.display()
+          );
+          return Some((command_name, BinValue::JsFile(path)));
+        }
+      }
     }
+    Some((command_name, BinValue::Executable(path.to_path_buf())))
   }
 
   /// Resolves an npm package folder path from the specified referrer.
@@ -2221,9 +2250,9 @@ fn resolve_execution_path_from_npx_shim(
 
 fn resolve_bin_entry_value<'a>(
   package_json: &PackageJson,
-  bins: &'a BTreeMap<String, PathBuf>,
+  bins: &'a BTreeMap<String, BinValue>,
   bin_name: Option<&str>,
-) -> Result<&'a Path, AnyError> {
+) -> Result<&'a BinValue, AnyError> {
   if bins.is_empty() {
     bail!(
       "'{}' did not have a bin property with a string or non-empty object value",
@@ -2233,11 +2262,11 @@ fn resolve_bin_entry_value<'a>(
   let default_bin = package_json.resolve_default_bin_name().ok();
   let searching_bin = bin_name.or(default_bin);
   match searching_bin.and_then(|bin_name| bins.get(bin_name)) {
-    Some(e) => Ok(e),
-    None => {
+    Some(bin) => Ok(bin),
+    _ => {
       if bins.len() > 1
         && let Some(first) = bins.values().next()
-        && bins.values().all(|path| path == first)
+        && bins.values().all(|bin| bin == first)
       {
         return Ok(first);
       }
@@ -2549,6 +2578,21 @@ impl<'a, TSys: FsMetadata> TypesVersions<'a, TSys> {
   }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BinValue {
+  JsFile(PathBuf),
+  Executable(PathBuf),
+}
+
+impl BinValue {
+  pub fn path(&self) -> &Path {
+    match self {
+      BinValue::JsFile(path) => path,
+      BinValue::Executable(path) => path,
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use deno_package_json::PackageJsonBins;
@@ -2561,6 +2605,16 @@ mod tests {
 
   fn build_package_json(json: Value) -> PackageJson {
     PackageJson::load_from_value(PathBuf::from("/package.json"), json).unwrap()
+  }
+
+  fn resolve_bins(package_json: &PackageJson) -> BTreeMap<String, BinValue> {
+    match package_json.resolve_bins().unwrap() {
+      PackageJsonBins::Directory(_) => unreachable!(),
+      PackageJsonBins::Bins(bins) => bins
+        .into_iter()
+        .map(|(k, v)| (k, BinValue::JsFile(v)))
+        .collect(),
+    }
   }
 
   #[test]
@@ -2576,16 +2630,17 @@ mod tests {
           "pkg": "./value3",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, Some("bin1")).unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, Some("bin1"))
+          .unwrap()
+          .path(),
         pkg_json.dir_path().join("./value1")
       );
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg")).unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg"))
+          .unwrap()
+          .path(),
         pkg_json.dir_path().join("./value3")
       );
 
@@ -2616,10 +2671,7 @@ mod tests {
           "bin2": "./value2",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
         resolve_bin_entry_value(&pkg_json, &bins, Some("pkg"))
           .err()
@@ -2645,12 +2697,11 @@ mod tests {
           "bin2": "./value",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg")).unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg"))
+          .unwrap()
+          .path(),
         pkg_json.dir_path().join("./value")
       );
     }
@@ -2664,12 +2715,11 @@ mod tests {
           "something": "./value",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, None).unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, None)
+          .unwrap()
+          .path(),
         pkg_json.dir_path().join("./value")
       );
     }
@@ -2681,10 +2731,7 @@ mod tests {
         "version": "1.2.3",
         "bin": "./value",
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
         resolve_bin_entry_value(&pkg_json, &bins, Some("path"))
           .err()
@@ -2708,10 +2755,7 @@ mod tests {
           "bin2": "./value2",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
         resolve_bin_entry_value(&pkg_json, &bins, Some("pkg"))
           .err()
@@ -2735,10 +2779,7 @@ mod tests {
           "bin2": "./value2",
         }
       }));
-      let bins = match pkg_json.resolve_bins().unwrap() {
-        PackageJsonBins::Directory(_) => unreachable!(),
-        PackageJsonBins::Bins(bins) => bins,
-      };
+      let bins = resolve_bins(&pkg_json);
       assert_eq!(
         resolve_bin_entry_value(&pkg_json, &bins, Some("bin"))
           .err()
