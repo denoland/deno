@@ -1,6 +1,7 @@
 #!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
 // Copyright 2018-2025 the Deno authors. MIT license.
 import $ from "jsr:@david/dax@^0.42.0";
+import { join } from "./util.js";
 
 async function setupTestRepo() {
   await teardownTestRepo();
@@ -11,7 +12,7 @@ async function teardownTestRepo() {
   await $`rm -rf nextjs-demo`;
 }
 
-async function runPackageManager(pm, cmd) {
+async function runPackageManager(pm: string, cmd: string) {
   const state = Date.now();
   const result =
     await $`cd nextjs-demo ; rm -rf node_modules ; ${Deno.execPath()} run -A --no-config npm:${pm} ${cmd}`
@@ -27,61 +28,66 @@ async function runPackageManager(pm, cmd) {
   };
 }
 
-function testNpm() {
-  return runPackageManager("npm", "install");
+async function testNpm() {
+  $.logStep("Testing npm...");
+  const report = await runPackageManager("npm", "install");
+  if (report.exitCode === 0) {
+    $.logStep("npm install succeeded");
+  } else {
+    $.logWarn(`npm install failed: ${report.stderr}`);
+  }
+  return report;
 }
 
-function testYarn() {
-  return runPackageManager("yarn", "install");
+async function testYarn() {
+  $.logStep("Testing yarn...");
+  const report = await runPackageManager("yarn", "install");
+  if (report.exitCode === 0) {
+    $.logStep("yarn install succeeded");
+  } else {
+    $.logWarn(`yarn install failed: ${report.stderr}`);
+  }
+  return report;
 }
 
-function testPnpm() {
-  return runPackageManager("pnpm", "install");
+async function testPnpm() {
+  $.logStep("Testing pnpm...");
+  const report = await runPackageManager("pnpm", "install");
+  if (report.exitCode === 0) {
+    $.logStep("pnpm install succeeded");
+  } else {
+    $.logWarn(`pnpm install failed: ${report.stderr}`);
+  }
+  return report;
 }
 
 async function main() {
-  let passed = true;
   $.logStep("Setting up test repo...");
   await setupTestRepo();
-  $.logStep("Testing npm...");
+
   const npmResult = await testNpm();
-  if (npmResult.exitCode !== 0) {
-    passed = false;
-    $.logWarn(`npm install failed: ${npmResult.stderr}`);
-  }
-  $.logStep("Testing yarn...");
   const yarnResult = await testYarn();
-  if (yarnResult.exitCode !== 0) {
-    passed = false;
-    $.logWarn(`yarn install failed: ${yarnResult.stderr}`);
-  }
-  $.logStep("Testing pnpm...");
   const pnpmResult = await testPnpm();
-  if (pnpmResult.exitCode !== 0) {
-    passed = false;
-    $.logWarn(`pnpm install failed: ${pnpmResult.stderr}`);
-  }
-  if (passed) {
-    $.logStep("All tests passed!");
-  } else {
-    $.logError("Some tests failed");
-  }
+  const reports = {
+    npm: {
+      exitCode: npmResult.exitCode,
+      duration: npmResult.duration,
+    },
+    yarn: {
+      exitCode: yarnResult.exitCode,
+      duration: yarnResult.duration,
+    },
+    pnpm: {
+      exitCode: pnpmResult.exitCode,
+      duration: pnpmResult.duration,
+    },
+  };
+
+  $.logStep("Final report:");
+  $.log(reports);
   await Deno.writeTextFile(
-    import.meta.resolve("./ecosystem_report.json"),
-    JSON.stringify({
-      npm: {
-        exitCode: npmResult.exitCode,
-        duration: npmResult.duration,
-      },
-      yarn: {
-        exitCode: yarnResult.exitCode,
-        duration: yarnResult.duration,
-      },
-      pnpm: {
-        exitCode: pnpmResult.exitCode,
-        duration: pnpmResult.duration,
-      },
-    }),
+    join(import.meta.dirname!, "ecosystem_report.json"),
+    JSON.stringify(reports),
   );
 }
 
