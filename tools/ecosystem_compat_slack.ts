@@ -29,7 +29,7 @@ const client = new WebClient(token, {
 });
 
 function formatDuration(duration: number) {
-  return (duration / 1000).toFixed(2) + "s";
+  return (duration / 1000).toFixed(0) + "s";
 }
 
 function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
@@ -39,7 +39,7 @@ function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: "**Package manager report**\n\n",
+      text: "*Package manager report*\n\n",
     },
   });
 
@@ -140,7 +140,7 @@ function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
 
       const text = `${
         report.exitCode === 0 ? "✅" : "❌"
-      } code: ${report.exitCode}, duration: ${formatDuration(report.duration)}`;
+      } code: ${report.exitCode}, (${formatDuration(report.duration)})`;
       row.push({
         type: "rich_text",
         elements: [
@@ -150,6 +150,9 @@ function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
               {
                 type: "text",
                 text: text,
+                style: {
+                  code: true,
+                },
               },
             ],
           },
