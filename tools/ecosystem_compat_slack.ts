@@ -36,7 +36,7 @@ function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
   const elements = [];
 
   elements.push({
-    type: "header",
+    type: "section",
     text: {
       type: "mrkdwn",
       text: "**Package manager report**\n\n",
