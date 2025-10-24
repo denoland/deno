@@ -303,51 +303,12 @@ const CACHE_URL_PREFIX = "cache:///";
 
 /** Diagnostics that are intentionally ignored when compiling TypeScript in
  * Deno, as they provide misleading or incorrect information. */
-const IGNORED_DIAGNOSTICS = [
-  // TS1452: 'resolution-mode' assertions are only supported when `moduleResolution` is `node16` or `nodenext`.
-  // We specify the resolution mode to be CommonJS for some npm files and this
-  // diagnostic gets generated even though we're using custom module resolution.
-  1452,
-  // Module '...' cannot be imported using this construct. The specifier only resolves to an
-  // ES module, which cannot be imported with 'require'.
-  1471,
-  // TS1479: The current file is a CommonJS module whose imports will produce 'require' calls;
-  // however, the referenced file is an ECMAScript module and cannot be imported with 'require'.
-  1479,
-  // TS1543: Importing a JSON file into an ECMAScript module requires a 'type: \"json\"' import
-  // attribute when 'module' is set to 'NodeNext'.
-  1543,
-  // TS2306: File '.../index.d.ts' is not a module.
-  // We get this for `x-typescript-types` declaration files which don't export
-  // anything. We prefer to treat these as modules with no exports.
-  2306,
-  // TS2688: Cannot find type definition file for '...'.
-  // We ignore because type definition files can end with '.ts'.
-  2688,
-  // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
-  // option to 'node', or to add aliases to the 'paths' option?
-  2792,
-  // TS2307: Cannot find module '{0}' or its corresponding type declarations.
-  2307,
-  // Relative import errors to add an extension
-  2834,
-  2835,
-  // TS5009: Cannot find the common subdirectory path for the input files.
-  5009,
-  // TS5055: Cannot write file
-  // 'http://localhost:4545/subdir/mt_application_x_javascript.j4.js'
-  // because it would overwrite input file.
-  5055,
-  // TypeScript is overly opinionated that only CommonJS modules kinds can
-  // support JSON imports.  Allegedly this was fixed in
-  // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
-  // so we will ignore complaints about this compiler setting.
-  5070,
-  // TS7016: Could not find a declaration file for module '...'. '...'
-  // implicitly has an 'any' type.  This is due to `allowJs` being off by
-  // default but importing of a JavaScript module.
-  7016,
-];
+const TSC_CONSTANTS = ops.op_tsc_constants();
+const IGNORED_DIAGNOSTICS = TSC_CONSTANTS.ignoredDiagnosticCodes;
+const TYPES_NODE_IGNORABLE_NAMES = new Set(
+  TSC_CONSTANTS.typesNodeIgnorableNames,
+);
+const NODE_ONLY_GLOBALS = new Set(TSC_CONSTANTS.nodeOnlyGlobals);
 
 // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
 /** Error thrown on cancellation. */
@@ -851,94 +812,14 @@ export function filterMapDiagnostic(diagnostic) {
 
 // list of globals that should be kept in Node's globalThis
 ts.deno.setNodeOnlyGlobalNames(
-  new Set([
-    "__dirname",
-    "__filename",
-    '"buffer"',
-    "Buffer",
-    "BufferConstructor",
-    "BufferEncoding",
-    "clearImmediate",
-    "clearInterval",
-    "clearTimeout",
-    "console",
-    "Console",
-    "crypto",
-    "ErrorConstructor",
-    "gc",
-    "Global",
-    "localStorage",
-    "queueMicrotask",
-    "RequestInit",
-    "ResponseInit",
-    "sessionStorage",
-    "setImmediate",
-    "setInterval",
-    "setTimeout",
-  ]),
+  NODE_ONLY_GLOBALS,
 );
 // List of globals in @types/node that collide with Deno's types.
 // When the `@types/node` package attempts to assign to these types
 // if the type is already in the global symbol table, then assignment
 // will be a no-op, but if the global type does not exist then the package can
 // create the global.
-const setTypesNodeIgnorableNames = new Set([
-  "AbortController",
-  "AbortSignal",
-  "AsyncIteratorObject",
-  "atob",
-  "Blob",
-  "BroadcastChannel",
-  "btoa",
-  "ByteLengthQueuingStrategy",
-  "CloseEvent",
-  "CompressionStream",
-  "CountQueuingStrategy",
-  "CustomEvent",
-  "DecompressionStream",
-  "Disposable",
-  "DOMException",
-  "Event",
-  "EventSource",
-  "EventTarget",
-  "fetch",
-  "File",
-  "Float32Array",
-  "Float64Array",
-  "FormData",
-  "Headers",
-  "ImportMeta",
-  "MessageChannel",
-  "MessageEvent",
-  "MessagePort",
-  "performance",
-  "PerformanceEntry",
-  "PerformanceMark",
-  "PerformanceMeasure",
-  "ReadableByteStreamController",
-  "ReadableStream",
-  "ReadableStreamBYOBReader",
-  "ReadableStreamBYOBRequest",
-  "ReadableStreamDefaultController",
-  "ReadableStreamDefaultReader",
-  "ReadonlyArray",
-  "Request",
-  "Response",
-  "Storage",
-  "TextDecoder",
-  "TextDecoderStream",
-  "TextEncoder",
-  "TextEncoderStream",
-  "TransformStream",
-  "TransformStreamDefaultController",
-  "URL",
-  "URLPattern",
-  "URLSearchParams",
-  "WebSocket",
-  "WritableStream",
-  "WritableStreamDefaultController",
-  "WritableStreamDefaultWriter",
-]);
+const setTypesNodeIgnorableNames = TYPES_NODE_IGNORABLE_NAMES;
 ts.deno.setTypesNodeIgnorableNames(setTypesNodeIgnorableNames);
 
 /**

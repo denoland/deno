@@ -190,12 +190,12 @@ impl NpmFetchResolver {
       let Some(package_info) = self.package_info(name).await else {
         return Result::<Option<PackageNv>, AnyError>::Ok(None);
       };
-      let version_info =
-        self.version_resolver.resolve_best_package_version_info(
-          &req.version_req,
-          &package_info,
-          Vec::new().into_iter(),
-        )?;
+      let version_resolver =
+        self.version_resolver.get_for_package(&package_info);
+      let version_info = version_resolver.resolve_best_package_version_info(
+        &req.version_req,
+        Vec::new().into_iter(),
+      )?;
       Ok(Some(PackageNv {
         name: name.clone(),
         version: version_info.version.clone(),
@@ -244,7 +244,10 @@ impl NpmFetchResolver {
     &'a self,
     package_info: &'a NpmPackageInfo,
   ) -> NpmPackageVersionInfosIterator<'a> {
-    self.version_resolver.applicable_version_infos(package_info)
+    self
+      .version_resolver
+      .get_for_package(package_info)
+      .applicable_version_infos()
   }
 }
 

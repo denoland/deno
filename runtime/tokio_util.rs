@@ -72,11 +72,11 @@ where
   // function #[inline(always)] to avoid holding the unboxed, unused future on the stack.
 
   #[cfg(debug_assertions)]
-  // SAFETY: this this is guaranteed to be running on a current-thread executor
+  // SAFETY: this is guaranteed to be running on a current-thread executor
   let future = Box::pin(unsafe { MaskFutureAsSend::new(future) });
 
   #[cfg(not(debug_assertions))]
-  // SAFETY: this this is guaranteed to be running on a current-thread executor
+  // SAFETY: this is guaranteed to be running on a current-thread executor
   let future = unsafe { MaskFutureAsSend::new(future) };
 
   #[cfg(tokio_unstable)]

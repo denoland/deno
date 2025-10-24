@@ -526,6 +526,7 @@ impl DepManager {
       pending_changes: Vec::new(),
     }
   }
+
   pub fn from_workspace_dir(
     workspace_dir: &Arc<WorkspaceDirectory>,
     dep_filter: impl DepFilter,
@@ -547,6 +548,7 @@ impl DepManager {
 
     Ok(Self::with_deps_args(deps, args))
   }
+
   pub fn from_workspace(
     workspace: &Arc<Workspace>,
     dep_filter: impl DepFilter,
@@ -739,14 +741,13 @@ impl DepManager {
               self.npm_fetch_resolver.package_info(&semver_req.name).await;
             let latest = info
               .and_then(|info| {
+                let version_resolver =
+                  self.npm_version_resolver.get_for_package(&info);
                 let latest_tag = info.dist_tags.get("latest")?;
-
-                let can_use_latest = self
-                  .npm_version_resolver
+                let can_use_latest = version_resolver
                   .version_req_satisfies_and_matches_newest_dependency_date(
                     &semver_req.version_req,
                     latest_tag,
-                    &info,
                   )
                   .ok()?;
 
@@ -759,21 +760,26 @@ impl DepManager {
                 }
 
                 let lower_bound = &semver_compatible.as_ref()?.version;
-                if latest_tag >= lower_bound {
+                let latest_matches_newest_dep_date =
+                  version_resolver.matches_newest_dependency_date(latest_tag);
+                if latest_matches_newest_dep_date && latest_tag >= lower_bound {
                   Some(latest_tag.clone())
                 } else {
                   latest_version(
-                    Some(latest_tag),
-                    self
-                      .npm_version_resolver
-                      .applicable_version_infos(&info)
-                      .filter_map(|version_info| {
+                    if latest_matches_newest_dep_date {
+                      Some(latest_tag)
+                    } else {
+                      None
+                    },
+                    version_resolver.applicable_version_infos().filter_map(
+                      |version_info| {
                         if version_info.deprecated.is_none() {
                           Some(&version_info.version)
                         } else {
                           None
                         }
-                      }),
+                      },
+                    ),
                   )
                 }
               })
@@ -802,11 +808,17 @@ impl DepManager {
               self.jsr_fetch_resolver.package_info(&semver_req.name).await;
             let latest = info
               .and_then(|info| {
+                let version_resolver = self
+                  .jsr_fetch_resolver
+                  .version_resolver_for_package(&semver_req.name, &info);
                 let lower_bound = &semver_compatible.as_ref()?.version;
                 latest_version(
                   Some(lower_bound),
                   info.versions.iter().filter_map(|(version, version_info)| {
-                    if !version_info.yanked {
+                    if !version_info.yanked
+                      && version_resolver
+                        .matches_newest_dependency_date(version_info)
+                    {
                       Some(version)
                     } else {
                       None
