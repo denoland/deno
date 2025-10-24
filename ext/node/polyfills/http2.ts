@@ -169,6 +169,7 @@ function debugSessionObj(session, message, ...args) {
 // HTTP2 Constants
 const MAX_ADDITIONAL_SETTINGS = 10;
 
+const constants = op_http2_constants();
 const {
   NGHTTP2_CANCEL,
   NGHTTP2_REFUSED_STREAM,
@@ -214,7 +215,7 @@ const {
 
   STREAM_OPTION_EMPTY_PAYLOAD,
   STREAM_OPTION_GET_TRAILERS,
-} = op_http2_constants();
+} = constants;
 
 // Session field indices
 const kSessionUint8FieldCount = 1;
@@ -730,6 +731,30 @@ function onSessionHeaders(
   }
   if (endOfStream) {
     stream.push(null);
+  }
+}
+
+function onPing(payload) {
+  const session = this[kOwner];
+  if (session.destroyed) {
+    return;
+  }
+  session[kUpdateTimer]();
+  debugSessionObj(session, "new ping received");
+  session.emit("ping", payload);
+}
+// Called when the Http2Stream has finished sending data and is ready for
+// trailers to be sent. This will only be called if the { hasOptions: true }
+// option is set.
+function onStreamTrailers() {
+  const stream = this[kOwner];
+  stream[kState].trailersReady = true;
+  if (stream.destroyed || stream.closed) {
+    return;
+  }
+  if (!stream.emit("wantTrailers")) {
+    // There are no listeners, send empty trailing HEADERS frame and close.
+    stream.sendTrailers({});
   }
 }
 
@@ -1845,9 +1870,9 @@ class ServerHttp2Stream extends Http2Stream {
 
 ServerHttp2Stream.prototype[kProceed] = ServerHttp2Stream.prototype.respond;
 
-// Creates the internal binding.Http2Session handle for an Http2Session
+// Creates the internal Http2Session handle for an Http2Session
 // instance. This occurs only after the socket connection has been
-// established. Note: the binding.Http2Session will take over ownership
+// established. Note: the Http2Session will take over ownership
 // of the socket. No other code should read from or write to the socket.
 function setupHandle(socket, type, options) {
   // If the session has been destroyed, go ahead and emit 'connect',
@@ -1979,7 +2004,7 @@ function finishSessionClose(session, error) {
     });
     if (session.closed) {
       // If we're gracefully closing the socket, call resume() so we can detect
-      // the peer closing in case binding.Http2Session is already gone.
+      // the peer closing in case Http2Session is already gone.
       socket.resume();
     }
 
@@ -2954,7 +2979,6 @@ class Http2Server extends net.Server {
 }
 
 function createSecureServer(options, handler) {
-  console.log("creatingSecureServer");
   return new Http2SecureServer(options, handler);
 }
 
@@ -2966,8 +2990,8 @@ function createServer(options, handler) {
   return new Http2Server(options, handler);
 }
 
-op_http2_callbacks(onSessionHeaders);
+op_http2_callbacks(onSessionHeaders, onPing, onStreamTrailers);
 
-export { createSecureServer, createServer };
+export { constants, createSecureServer, createServer };
 
-export default { createServer, createSecureServer };
+export default { constants, createServer, createSecureServer };

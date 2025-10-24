@@ -237,13 +237,19 @@ struct Session {
 }
 
 struct HeadersFrameCb(v8::Global<v8::Function>);
+struct PingFrameCb(v8::Global<v8::Function>);
+struct StreamTrailersCb(v8::Global<v8::Function>);
 
 #[op2]
 pub fn op_http2_callbacks(
   state: &mut OpState,
   #[global] headers_frame_cb: v8::Global<v8::Function>,
+  #[global] ping_frame_cb: v8::Global<v8::Function>,
+  #[global] stream_trailers_cb: v8::Global<v8::Function>,
 ) {
   state.put(HeadersFrameCb(headers_frame_cb));
+  state.put(PingFrameCb(ping_frame_cb));
+  state.put(StreamTrailersCb(stream_trailers_cb));
 }
 
 impl Session {
@@ -321,11 +327,13 @@ impl Session {
 
     drop(state);
 
+    let frame_flags = unsafe { (*frame).hd.flags };
     let handle = v8::Local::new(scope, stream_obj);
     let id_num = v8::Number::new(scope, id.into());
     let cat = v8::null(scope);
-    let flags = v8::null(scope);
+    let flags = v8::Number::new(scope, frame_flags.into());
 
+    // Call headers callback
     callback.call(
       scope,
       recv.into(),
@@ -337,6 +345,27 @@ impl Session {
         headers_array.into(),
       ],
     );
+  }
+
+  fn handle_ping_frame(&self, frame: *const ffi::nghttp2_frame) {
+    // SAFETY: This method is called by `on_frame_recv`.
+    // The isolate is valid and we are on the same thread as the isolate.
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(self.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, self.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let state = self.op_state.borrow();
+    let onheaders_fn = state.borrow::<PingFrameCb>();
+    let recv = v8::Local::new(scope, &self.this);
+    let callback = v8::Local::new(scope, &onheaders_fn.0);
+
+    drop(state);
+
+    let arg = v8::null(scope);
+    // Call ping callback
+    callback.call(scope, recv.into(), &[arg.into()]);
   }
 }
 
@@ -372,7 +401,11 @@ impl Http2SessionDriver {
     self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
-    dbg!(data.len());
+    // TODO(littledivy): make op_read reentrace and implement Http2Scope
+    // Prevent re-entry on same tick
+    tokio::task::yield_now().await;
+    self.send_pending_data().await?;
+
     let nread = match &self.stream {
       NetworkStream::Tcp(stream) => stream.clone().read(data).await?,
       NetworkStream::Tls(stream) => stream.clone().read(data).await?,
@@ -386,7 +419,6 @@ impl Http2SessionDriver {
         nread,
       )
     };
-    dbg!(ret);
 
     // Send any pending data that nghttp2 wants to output
     self.send_pending_data().await?;
@@ -398,7 +430,6 @@ impl Http2SessionDriver {
     self: Rc<Self>,
     data: &[u8],
   ) -> Result<usize, std::io::Error> {
-    dbg!(data.len());
     match &self.stream {
       NetworkStream::Tcp(stream) => stream.clone().write(data).await,
       NetworkStream::Tls(stream) => stream.clone().write(data).await,
@@ -459,6 +490,8 @@ pub struct Http2Stream {
   // Current headers being processed
   current_headers: RefCell<Vec<(String, String, u8)>>,
   current_headers_length: RefCell<usize>,
+  // Flag to indicate if this stream has trailers to send
+  has_trailers: RefCell<bool>,
 }
 
 impl Http2Stream {
@@ -491,6 +524,7 @@ impl Http2Stream {
         pending_data: RefCell::new(bytes::BytesMut::new()),
         current_headers: RefCell::new(Vec::new()),
         current_headers_length: RefCell::new(0),
+        has_trailers: RefCell::new(false),
       },
     );
 
@@ -598,6 +632,12 @@ impl Http2Stream {
 
     let session = unsafe { &*self.session };
 
+    // Check if the stream will have trailers based on options
+    // STREAM_OPTION_GET_TRAILERS = 0x2 from the constants
+    if (options & 0x2) != 0 {
+      self.set_has_trailers(true);
+    }
+
     let mut data_provider = ffi::nghttp2_data_provider {
       source: ffi::nghttp2_data_source {
         ptr: std::ptr::null_mut(),
@@ -644,7 +684,48 @@ impl Http2Stream {
   }
 
   #[fast]
-  fn shutdown(&self) {}
+  fn shutdown(&self) {
+    let session = unsafe { &*self.session };
+    unsafe {
+      ffi::nghttp2_session_resume_data(session.session, self.id);
+    }
+  }
+
+  // Submit informational headers for a stream.
+  fn trailers(&self, #[serde] headers: (String, usize)) -> i32 {
+    let session = unsafe { &*self.session };
+
+    // Sending an empty trailers frame poses problems in Safari, Edge & IE.
+    // Instead we can just send an empty data frame with NGHTTP2_FLAG_END_STREAM
+    // to indicate that the stream is ready to be closed.
+    if headers.1 == 0 {
+      let mut data_provider = ffi::nghttp2_data_provider {
+        source: ffi::nghttp2_data_source {
+          ptr: std::ptr::null_mut(),
+        },
+        read_callback: Some(on_stream_read_callback),
+      };
+
+      unsafe {
+        ffi::nghttp2_submit_data(
+          session.session,
+          ffi::NGHTTP2_FLAG_END_STREAM as u8,
+          self.id,
+          &mut data_provider as *mut _,
+        )
+      }
+    } else {
+      let http2_headers = Http2Headers::from(headers);
+      unsafe {
+        ffi::nghttp2_submit_trailer(
+          session.session,
+          self.id,
+          http2_headers.data(),
+          http2_headers.len(),
+        )
+      }
+    }
+  }
 }
 
 impl Http2Stream {
@@ -679,6 +760,42 @@ impl Http2Stream {
   fn start_headers(&self, category: ffi::nghttp2_headers_category) {
     self.clear_headers();
     // TODO: Store category for later use
+  }
+
+  // Called when stream is ready to send trailers
+  fn on_trailers(&self) {
+    let session = unsafe { &*self.session };
+
+    // SAFETY: This method is called from nghttp2 callback context.
+    // The isolate is valid and we are on the same thread as the isolate.
+    let mut isolate =
+      unsafe { v8::Isolate::from_raw_isolate_ptr(session.isolate) };
+    v8::scope!(let scope, &mut isolate);
+    let context = v8::Local::new(scope, session.context.clone());
+    let scope = &mut v8::ContextScope::new(scope, context);
+
+    let state = session.op_state.borrow();
+    let ontrailers_fn = state.borrow::<StreamTrailersCb>();
+    let callback = v8::Local::new(scope, &ontrailers_fn.0);
+
+    drop(state);
+
+    let stream_obj = session.find_stream_obj(self.id).unwrap();
+    let recv = v8::Local::new(scope, stream_obj);
+
+    self.set_has_trailers(false);
+
+    callback.call(scope, recv.into(), &[]);
+  }
+
+  // Set the trailers flag
+  fn set_has_trailers(&self, has_trailers: bool) {
+    *self.has_trailers.borrow_mut() = has_trailers;
+  }
+
+  // Check if stream has trailers
+  fn has_trailers(&self) -> bool {
+    *self.has_trailers.borrow()
   }
 }
 
@@ -773,6 +890,9 @@ unsafe extern "C" fn on_frame_recv_callback(
     ffi::NGHTTP2_PUSH_PROMISE | ffi::NGHTTP2_HEADERS => {
       session.handle_headers_frame(frame);
     }
+    ffi::NGHTTP2_PING => {
+      session.handle_ping_frame(frame);
+    }
     // TODO
     _ => {}
   }
@@ -797,6 +917,19 @@ unsafe extern "C" fn on_data_chunk_recv_callback(
   len: usize,
   user_data: *mut c_void,
 ) -> i32 {
+  // We should never actually get a 0-length chunk so this check is
+  // only a precaution at this point.
+  if len == 0 {
+    return 0;
+  }
+
+  // Notify nghttp2 that we've consumed a chunk of data on the connection
+  // so that it can send a WINDOW_UPDATE frame. This is a critical part of
+  // the flow control process in http2
+  unsafe {
+    ffi::nghttp2_session_consume_connection(session, len);
+  }
+
   0
 }
 
@@ -881,10 +1014,28 @@ unsafe extern "C" fn on_stream_read_callback(
 
         if pending_data.is_empty() {
           *data_flags |= ffi::NGHTTP2_DATA_FLAG_EOF as u32;
+          // If stream has trailers, don't end stream yet and trigger trailers callback
+          if stream.has_trailers() {
+            *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_END_STREAM as u32;
+            stream.on_trailers();
+          }
         }
 
         return amount as isize;
       }
+    }
+
+    // TODO(littledivy): emit wants write.
+
+    if pending_data.is_empty() {
+      *data_flags |= ffi::NGHTTP2_DATA_FLAG_EOF as u32;
+      // If stream has trailers, don't end stream yet and trigger trailers callback
+      if stream.has_trailers() {
+        *data_flags |= ffi::NGHTTP2_DATA_FLAG_NO_END_STREAM as u32;
+        stream.on_trailers();
+      }
+
+      return 0;
     }
   }
 
@@ -1228,6 +1379,8 @@ pub struct Http2Constants {
   http2_method_get: &'static str,
   http2_method_head: &'static str,
 
+  http_status_ok: u32,
+
   nghttp2_err_frame_size_error: u32,
   nghttp2_session_server: u32,
   nghttp2_session_client: u32,
@@ -1364,6 +1517,8 @@ pub fn op_http2_constants() -> Http2Constants {
     http2_method_delete: "DELETE",
     http2_method_get: "GET",
     http2_method_head: "HEAD",
+
+    http_status_ok: 200,
 
     nghttp2_err_frame_size_error: ffi::NGHTTP2_ERR_FRAME_SIZE_ERROR as u32,
     nghttp2_session_server: 0,
