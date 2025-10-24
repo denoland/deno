@@ -236,20 +236,45 @@ struct Session {
   this: v8::Global<v8::Object>,
 }
 
-struct HeadersFrameCb(v8::Global<v8::Function>);
-struct PingFrameCb(v8::Global<v8::Function>);
-struct StreamTrailersCb(v8::Global<v8::Function>);
+struct Http2Callbacks {
+  session_internal_error_cb: v8::Global<v8::Function>,
+  priority_frame_cb: v8::Global<v8::Function>,
+  settings_frame_cb: v8::Global<v8::Function>,
+  ping_frame_cb: v8::Global<v8::Function>,
+  headers_frame_cb: v8::Global<v8::Function>,
+  frame_error_cb: v8::Global<v8::Function>,
+  goaway_data_cb: v8::Global<v8::Function>,
+  alt_svc_cb: v8::Global<v8::Function>,
+  stream_trailers_cb: v8::Global<v8::Function>,
+  stream_close_cb: v8::Global<v8::Function>,
+}
 
 #[op2]
 pub fn op_http2_callbacks(
   state: &mut OpState,
-  #[global] headers_frame_cb: v8::Global<v8::Function>,
+  #[global] session_internal_error_cb: v8::Global<v8::Function>,
+  #[global] priority_frame_cb: v8::Global<v8::Function>,
+  #[global] settings_frame_cb: v8::Global<v8::Function>,
   #[global] ping_frame_cb: v8::Global<v8::Function>,
+  #[global] headers_frame_cb: v8::Global<v8::Function>,
+  #[global] frame_error_cb: v8::Global<v8::Function>,
+  #[global] goaway_data_cb: v8::Global<v8::Function>,
+  #[global] alt_svc_cb: v8::Global<v8::Function>,
   #[global] stream_trailers_cb: v8::Global<v8::Function>,
+  #[global] stream_close_cb: v8::Global<v8::Function>,
 ) {
-  state.put(HeadersFrameCb(headers_frame_cb));
-  state.put(PingFrameCb(ping_frame_cb));
-  state.put(StreamTrailersCb(stream_trailers_cb));
+  state.put(Http2Callbacks {
+    session_internal_error_cb,
+    priority_frame_cb,
+    settings_frame_cb,
+    ping_frame_cb,
+    headers_frame_cb,
+    frame_error_cb,
+    goaway_data_cb,
+    alt_svc_cb,
+    stream_trailers_cb,
+    stream_close_cb,
+  });
 }
 
 impl Session {
@@ -321,9 +346,9 @@ impl Session {
 
     let stream_obj = self.find_stream_obj(id).unwrap();
     let state = self.op_state.borrow();
-    let onheaders_fn = state.borrow::<HeadersFrameCb>();
+    let callbacks = state.borrow::<Http2Callbacks>();
     let recv = v8::Local::new(scope, &self.this);
-    let callback = v8::Local::new(scope, &onheaders_fn.0);
+    let callback = v8::Local::new(scope, &callbacks.headers_frame_cb);
 
     drop(state);
 
@@ -357,16 +382,17 @@ impl Session {
     let scope = &mut v8::ContextScope::new(scope, context);
 
     let state = self.op_state.borrow();
-    let onheaders_fn = state.borrow::<PingFrameCb>();
+    let callbacks = state.borrow::<Http2Callbacks>();
     let recv = v8::Local::new(scope, &self.this);
-    let callback = v8::Local::new(scope, &onheaders_fn.0);
+    let callback = v8::Local::new(scope, &callbacks.ping_frame_cb);
 
     drop(state);
 
     let arg = v8::null(scope);
-    // Call ping callback
     callback.call(scope, recv.into(), &[arg.into()]);
   }
+
+  fn handle_goaway_frame(&self, frame: *const ffi::nghttp2_frame) {}
 }
 
 pub struct Http2Session {
@@ -775,8 +801,8 @@ impl Http2Stream {
     let scope = &mut v8::ContextScope::new(scope, context);
 
     let state = session.op_state.borrow();
-    let ontrailers_fn = state.borrow::<StreamTrailersCb>();
-    let callback = v8::Local::new(scope, &ontrailers_fn.0);
+    let callbacks = state.borrow::<Http2Callbacks>();
+    let callback = v8::Local::new(scope, &callbacks.stream_trailers_cb);
 
     drop(state);
 
@@ -887,13 +913,30 @@ unsafe extern "C" fn on_frame_recv_callback(
   let type_ = (&*frame).hd.type_;
 
   match type_ as u32 {
+    ffi::NGHTTP2_DATA => {
+      // session.handle_data_frame(frame);
+    }
     ffi::NGHTTP2_PUSH_PROMISE | ffi::NGHTTP2_HEADERS => {
       session.handle_headers_frame(frame);
+    }
+    ffi::NGHTTP2_SETTINGS => {
+      // session.handle_settings_frame(frame);
+    }
+    ffi::NGHTTP2_PRIORITY => {
+      // session.handle_priority_frame(frame);
+    }
+    ffi::NGHTTP2_GOAWAY => {
+      session.handle_goaway_frame(frame);
     }
     ffi::NGHTTP2_PING => {
       session.handle_ping_frame(frame);
     }
-    // TODO
+    ffi::NGHTTP2_ALTSVC => {
+      // session.handle_alt_svc_frame(frame);
+    }
+    ffi::NGHTTP2_ORIGIN => {
+      // session.handle_origin_frame(frame);
+    }
     _ => {}
   }
 

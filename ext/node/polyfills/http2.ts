@@ -365,6 +365,7 @@ function streamListenerRemoved(name) {
       break;
   }
 }
+
 const proxySocketHandler = {
   get(session, prop) {
     switch (prop) {
@@ -429,6 +430,230 @@ const proxySocketHandler = {
     }
   },
 };
+
+function onPing(payload) {
+  const session = this[kOwner];
+  if (session.destroyed) {
+    return;
+  }
+  session[kUpdateTimer]();
+  debugSessionObj(session, "new ping received");
+  session.emit("ping", payload);
+}
+
+// Called when the stream is closed either by sending or receiving an
+// RST_STREAM frame, or through a natural end-of-stream.
+// If the writable and readable sides of the stream are still open at this
+// point, close them. If there is an open fd for file send, close that also.
+// At this point the underlying node::http2:Http2Stream handle is no
+// longer usable so destroy it also.
+function onStreamClose(code) {
+  const stream = this[kOwner];
+  if (!stream || stream.destroyed) {
+    return false;
+  }
+
+  debugStreamObj(
+    stream,
+    "closed with code %d, closed %s, readable %s",
+    code,
+    stream.closed,
+    stream.readable,
+  );
+
+  if (!stream.closed) {
+    closeStream(stream, code, kNoRstStream);
+  }
+
+  stream[kState].fd = -1;
+  // Defer destroy we actually emit end.
+  if (!stream.readable || code !== NGHTTP2_NO_ERROR) {
+    // If errored or ended, we can destroy immediately.
+    stream.destroy();
+  } else {
+    // Wait for end to destroy.
+    stream.on("end", stream[kMaybeDestroy]);
+    // Push a null so the stream can end whenever the client consumes
+    // it completely.
+    stream.push(null);
+
+    // If the user hasn't tried to consume the stream (and this is a server
+    // session) then just dump the incoming data so that the stream can
+    // be destroyed.
+    if (
+      stream[kSession][kType] === NGHTTP2_SESSION_SERVER &&
+      !stream[kState].didRead &&
+      stream.readableFlowing === null
+    ) {
+      stream.resume();
+    } else {
+      stream.read(0);
+    }
+  }
+  return true;
+}
+
+// Called when the remote peer settings have been updated.
+// Resets the cached settings.
+function onSettings() {
+  const session = this[kOwner];
+  if (session.destroyed) {
+    return;
+  }
+  session[kUpdateTimer]();
+  debugSessionObj(session, "new settings received");
+  session[kRemoteSettings] = undefined;
+  session.emit("remoteSettings", session.remoteSettings);
+}
+
+// If the stream exists, an attempt will be made to emit an event
+// on the stream object itself. Otherwise, forward it on to the
+// session (which may, in turn, forward it on to the server)
+function onPriority(id, parent, weight, exclusive) {
+  const session = this[kOwner];
+  if (session.destroyed) {
+    return;
+  }
+  debugStream(
+    id,
+    session[kType],
+    "priority [parent: %d, weight: %d, exclusive: %s]",
+    parent,
+    weight,
+    exclusive,
+  );
+  const emitter = session[kState].streams.get(id) || session;
+  if (!emitter.destroyed) {
+    emitter[kUpdateTimer]();
+    emitter.emit("priority", id, parent, weight, exclusive);
+  }
+}
+
+// Called by the native layer when an error has occurred sending a
+// frame. This should be exceedingly rare.
+function onFrameError(id, type, code) {
+  const session = this[kOwner];
+  if (session.destroyed) {
+    return;
+  }
+  debugSessionObj(
+    session,
+    "error sending frame type %d on stream %d, code: %d",
+    type,
+    id,
+    code,
+  );
+
+  const stream = session[kState].streams.get(id);
+  const emitter = stream || session;
+  emitter[kUpdateTimer]();
+  emitter.emit("frameError", type, code, id);
+
+  // When a frameError happens is not uncommon that a pending GOAWAY
+  // package from nghttp2 is on flight with a correct error code.
+  // We schedule it using setImmediate to give some time for that
+  // package to arrive.
+  setImmediate(() => {
+    stream?.close(code);
+    session.close();
+  });
+}
+
+function onAltSvc(stream, origin, alt) {
+  const session = this[kOwner];
+  if (session.destroyed) {
+    return;
+  }
+  debugSessionObj(
+    session,
+    "altsvc received: stream: %d, origin: %s, alt: %s",
+    stream,
+    origin,
+    alt,
+  );
+  session[kUpdateTimer]();
+  session.emit("altsvc", alt, origin, stream);
+}
+
+function initOriginSet(session) {
+  let originSet = session[kState].originSet;
+  if (originSet === undefined) {
+    const socket = session[kSocket];
+    session[kState].originSet = originSet = new SafeSet();
+    let hostName = socket.servername;
+    if (hostName === null || hostName === false) {
+      if (socket.remoteFamily === "IPv6") {
+        hostName = `[${socket.remoteAddress}]`;
+      } else {
+        hostName = socket.remoteAddress;
+      }
+    }
+    let originString = `https://${hostName}`;
+    if (socket.remotePort != null) {
+      originString += `:${socket.remotePort}`;
+    }
+    // We have to ensure that it is a properly serialized
+    // ASCII origin string. The socket.servername might not
+    // be properly ASCII encoded.
+    originSet.add(getURLOrigin(originString));
+  }
+  return originSet;
+}
+
+function onOrigin(origins) {
+  const session = this[kOwner];
+  if (session.destroyed) {
+    return;
+  }
+  debugSessionObj(session, "origin received: %j", origins);
+  session[kUpdateTimer]();
+  if (!session.encrypted || session.destroyed) {
+    return undefined;
+  }
+  const originSet = initOriginSet(session);
+  for (let n = 0; n < origins.length; n++) {
+    originSet.add(origins[n]);
+  }
+  session.emit("origin", origins);
+}
+
+// Receiving a GOAWAY frame from the connected peer is a signal that no
+// new streams should be created. If the code === NGHTTP2_NO_ERROR, we
+// are going to send our close, but allow existing frames to close
+// normally. If code !== NGHTTP2_NO_ERROR, we are going to send our own
+// close using the same code then destroy the session with an error.
+// The goaway event will be emitted on next tick.
+function onGoawayData(code, lastStreamID, buf) {
+  const session = this[kOwner];
+  if (session.destroyed) {
+    return;
+  }
+  debugSessionObj(
+    session,
+    "goaway %d received [last stream id: %d]",
+    code,
+    lastStreamID,
+  );
+
+  const state = session[kState];
+  state.goawayCode = code;
+  state.goawayLastStreamID = lastStreamID;
+
+  session.emit("goaway", code, lastStreamID, buf);
+  if (code === NGHTTP2_NO_ERROR) {
+    // If this is a no error goaway, begin shutting down.
+    // No new streams permitted, but existing streams may
+    // close naturally on their own.
+    session.close();
+  } else {
+    // However, if the code is not NGHTTP_NO_ERROR, destroy the
+    // session immediately. We destroy with an error but send a
+    // goaway using NGHTTP2_NO_ERROR because there was no error
+    // condition on this side of the session that caused the
+    // shutdown.
+    session.destroy(new ERR_HTTP2_SESSION_ERROR(code), NGHTTP2_NO_ERROR);
+  }
+}
 
 // pingCallback() returns a function that is invoked when an HTTP2 PING
 // frame acknowledgement is received. The ack is either true or false to
@@ -734,15 +959,6 @@ function onSessionHeaders(
   }
 }
 
-function onPing(payload) {
-  const session = this[kOwner];
-  if (session.destroyed) {
-    return;
-  }
-  session[kUpdateTimer]();
-  debugSessionObj(session, "new ping received");
-  session.emit("ping", payload);
-}
 // Called when the Http2Stream has finished sending data and is ready for
 // trailers to be sent. This will only be called if the { hasOptions: true }
 // option is set.
@@ -2990,7 +3206,19 @@ function createServer(options, handler) {
   return new Http2Server(options, handler);
 }
 
-op_http2_callbacks(onSessionHeaders, onPing, onStreamTrailers);
+op_http2_callbacks(
+  onSessionInternalError,
+  onPriority,
+  onSettings,
+  onPing,
+  onSessionHeaders,
+  onFrameError,
+  onGoawayData,
+  onAltSvc,
+  onOrigin,
+  onStreamTrailers,
+  onStreamClose,
+);
 
 export { constants, createSecureServer, createServer };
 
