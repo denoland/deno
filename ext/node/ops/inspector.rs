@@ -167,17 +167,17 @@ where
   })
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 pub fn op_inspector_dispatch(
-  #[cppgc] session: &JSInspectorSession,
+  #[cppgc] inspector: &JSInspectorSession,
   #[string] message: String,
 ) {
-  if let Some(session) = &mut *session.session.borrow_mut() {
+  if let Some(session) = &mut *inspector.session.borrow_mut() {
     session.dispatch(message);
   }
 }
 
 #[op2(fast)]
-pub fn op_inspector_disconnect(#[cppgc] session: &JSInspectorSession) {
-  drop(session.session.borrow_mut().take());
+pub fn op_inspector_disconnect(#[cppgc] inspector: &JSInspectorSession) {
+  inspector.session.borrow_mut().take();
 }
