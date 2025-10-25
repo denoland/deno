@@ -978,7 +978,7 @@ impl<'a> ResolverFactory<'a> {
         tarball_cache.clone(),
         maybe_lockfile,
         maybe_node_modules_path.clone(),
-        LifecycleScriptsConfig::default(),
+        Arc::new(LifecycleScriptsConfig::default()),
         NpmSystemInfo::default(),
         link_packages,
         None,
