@@ -561,6 +561,10 @@ Object.defineProperties(
             });
           }
         });
+      } else {
+        // For empty writes, call callback and emit drain to maintain flow control
+        callback?.();
+        this.emit("drain");
       }
       return false;
     },
