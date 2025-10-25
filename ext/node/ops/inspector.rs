@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
@@ -80,8 +79,6 @@ pub fn op_inspector_emit_protocol_event(
 
 struct JSInspectorSession {
   session: RefCell<Option<deno_core::LocalInspectorSession>>,
-  // Queue for messages that arrive during re-entrant dispatch calls
-  pending_messages: RefCell<VecDeque<String>>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -167,7 +164,6 @@ where
 
   Ok(JSInspectorSession {
     session: RefCell::new(Some(session)),
-    pending_messages: RefCell::new(VecDeque::new()),
   })
 }
 
@@ -176,38 +172,9 @@ pub fn op_inspector_dispatch(
   #[cppgc] inspector: &JSInspectorSession,
   #[string] message: String,
 ) {
-  // Try to take the session. If we can't (because we're in a nested call),
-  // queue the message for later.
-  let mut session_inner = {
-    let mut borrow = inspector.session.borrow_mut();
-    if borrow.is_some() {
-      (*borrow).take()
-    } else {
-      // Session is currently being used by an outer call, queue this message
-      inspector.pending_messages.borrow_mut().push_back(message);
-      return;
-    }
-  };
-
-  // Dispatch the current message
-  if let Some(ref mut s) = session_inner {
-    s.dispatch(message);
+  if let Some(session) = &mut *inspector.session.borrow_mut() {
+    session.dispatch(message);
   }
-
-  // Process any queued messages that arrived during re-entrant calls
-  loop {
-    let next_message = inspector.pending_messages.borrow_mut().pop_front();
-    if let Some(msg) = next_message {
-      if let Some(ref mut s) = session_inner {
-        s.dispatch(msg);
-      }
-    } else {
-      break;
-    }
-  }
-
-  // Put the session back
-  *inspector.session.borrow_mut() = session_inner;
 }
 
 #[op2(fast)]

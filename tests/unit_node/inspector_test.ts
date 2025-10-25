@@ -23,7 +23,7 @@ Deno.test("[node/inspector/promises] - Session constructor should not throw", ()
 
 // Regression test for: https://github.com/denoland/deno/issues/31020
 Deno.test({
-  name: "[node/inspector] - deeply nested session.post() calls (4 levels)",
+  name: "[node/inspector] - deeply nested session.post() calls",
   fn: async () => {
     const session = new Session();
     session.connect();
