@@ -30,3 +30,18 @@ Deno.test("[node/assert] CallTracker correctly exported", () => {
   assert.strictEqual(typeof assert.default.CallTracker, "function");
   assert.strictEqual(assert.CallTracker, assert.default.CallTracker);
 });
+
+Deno.test("[node/assert] error message from strictEqual should be the same as AssertionError message", () => {
+  const { message } = new assert.AssertionError({
+    actual: 1,
+    expected: 2,
+    operator: "strictEqual",
+  });
+
+  assert.throws(
+    () => {
+      assert.strictEqual(1, 2);
+    },
+    { message },
+  );
+});
