@@ -19946,3 +19946,36 @@ fn lsp_push_diagnostics() {
     ]),
   );
 }
+
+#[test]
+#[timeout(300_000)]
+fn lsp_isolated_declarations() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "isolatedDeclarations": true,
+      }
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"export function add(a: number, b: number) {
+  return a + b;
+}
+"#,
+  );
+  let mut client: LspClient = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({ "deno": { "enable": true }}));
+
+  let diagnostics = client.did_open_file(&file);
+  let diagnostics = diagnostics.all();
+  assert_eq!(
+    diagnostics[0].message,
+    "Function must have an explicit return type annotation with --isolatedDeclarations."
+  );
+}

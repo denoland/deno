@@ -201,7 +201,7 @@ indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
 ipnetwork = "0.20.0"
 itertools = "0.14"
-jsonc-parser = { version = "0.26.3", features = ["serde"] }
+jsonc-parser = { version = "0.27.0", features = ["serde"] }
 jupyter_runtime = "=0.19.0"
 lazy-regex = "3"
 libc = "0.2.168"
@@ -277,7 +277,7 @@ tracing-subscriber = "0.3.20"
 twox-hash = { version = "=2.1.0", features = ["std", "xxhash64"], default-features = false }
 typed-arena = "=2.0.2"
 url = { version = "2.5", features = ["serde", "expose_internals"] }
-urlpattern = "0.3.0"
+urlpattern = "0.4.0"
 uuid = { version = "1.3.0", features = ["v4"] }
 walkdir = "=2.5.0"
 weak-table = "0.3.2"
@@ -310,9 +310,9 @@ crossterm = "0.28.1"
 dhat = "0.3.3"
 dissimilar = "=1.0.9"
 dprint-core = "=0.67.4"
-dprint-plugin-json = "=0.20.0"
-dprint-plugin-jupyter = "=0.2.0"
-dprint-plugin-markdown = "=0.19.0"
+dprint-plugin-json = "=0.21.0"
+dprint-plugin-jupyter = "=0.2.1"
+dprint-plugin-markdown = "=0.20.0"
 dprint-plugin-typescript = "=0.95.11"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"

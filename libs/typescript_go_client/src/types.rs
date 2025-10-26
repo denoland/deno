@@ -48,6 +48,7 @@ pub struct ResolveModuleNamePayload {
   pub module_name: String,
   pub containing_file: String,
   pub resolution_mode: ResolutionMode,
+  pub import_attribute_type: Option<String>,
   // redirected_reference: Handle<Project>,
 }
 

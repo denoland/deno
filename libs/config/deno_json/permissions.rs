@@ -141,6 +141,29 @@ pub struct PermissionsObject {
   pub sys: AllowDenyPermissionConfig,
 }
 
+impl PermissionsObject {
+  /// Returns true if the permissions object is empty (no permissions are set).
+  pub fn is_empty(&self) -> bool {
+    self.all.is_none()
+      && self.read.allow.is_none()
+      && self.read.deny.is_none()
+      && self.write.allow.is_none()
+      && self.write.deny.is_none()
+      && self.import.allow.is_none()
+      && self.import.deny.is_none()
+      && self.env.allow.is_none()
+      && self.env.deny.is_none()
+      && self.net.allow.is_none()
+      && self.net.deny.is_none()
+      && self.run.allow.is_none()
+      && self.run.deny.is_none()
+      && self.ffi.allow.is_none()
+      && self.ffi.deny.is_none()
+      && self.sys.allow.is_none()
+      && self.sys.deny.is_none()
+  }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct PermissionsConfig {
   pub sets: IndexMap<String, PermissionsObjectWithBase>,
