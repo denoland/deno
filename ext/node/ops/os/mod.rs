@@ -24,9 +24,6 @@ pub enum OsError {
     #[inherit]
     PermissionCheckError,
   ),
-  #[class(type)]
-  #[error("Failed to get cpu info")]
-  FailedToGetCpuInfo,
   #[class(inherit)]
   #[error("Failed to get user info")]
   FailedToGetUserInfo(
@@ -276,7 +273,7 @@ where
     permissions.check_sys("cpus", "node:os.cpus()")?;
   }
 
-  cpus::cpu_info().ok_or(OsError::FailedToGetCpuInfo)
+  Ok(cpus::cpu_info().unwrap_or_default())
 }
 
 #[op2(stack_trace)]
