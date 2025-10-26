@@ -281,7 +281,7 @@ function readPromise(
   position?: number | null,
 ): Promise<ReadResult> {
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
-    if (typeof length !== 'number' && typeof position !== 'number') {
+    if (typeof length !== "number" && typeof position !== "number") {
       return new Promise((resolve, reject) => {
         readAsync(
           rid,
