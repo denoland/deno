@@ -42,6 +42,7 @@ const {
   SafePromisePrototypeFinally,
   PromiseResolve,
   SafeArrayIterator,
+  Symbol,
   SymbolAsyncDispose,
   Uint8ArrayPrototype,
 } = primordials;
