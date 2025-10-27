@@ -61,7 +61,7 @@ function install(options: {
 }) {
   const args = ["install", ...(options.additionalArgs ?? [])];
   console.error("args", args);
-  const command = new Deno.Command("deno", {
+  const command = new Deno.Command(Deno.execPath(), {
     args,
     stderr: "piped",
     stdout: "piped",
