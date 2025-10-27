@@ -180,7 +180,7 @@ impl<
     self.lifecycle_scripts_config.get_or_try_init(|| {
       let workspace_factory = self.workspace_factory();
       let workspace = &workspace_factory.workspace_directory()?.workspace;
-      let approved_scripts = workspace.approved_scripts()?;
+      let allow_scripts = workspace.allow_scripts()?;
       let args = &self.options.lifecycle_scripts_config;
       Ok(Arc::new(LifecycleScriptsConfig {
         allowed: match &args.allowed {
@@ -188,13 +188,11 @@ impl<
           PackagesAllowedScripts::Some(package_reqs) => {
             PackagesAllowedScripts::Some(package_reqs.clone())
           }
-          PackagesAllowedScripts::None => match approved_scripts.allow {
-            deno_config::deno_json::ApprovedScriptsValueConfig::All => {
+          PackagesAllowedScripts::None => match allow_scripts.allow {
+            deno_config::deno_json::AllowScriptsValueConfig::All => {
               PackagesAllowedScripts::All
             }
-            deno_config::deno_json::ApprovedScriptsValueConfig::Limited(
-              deps,
-            ) => {
+            deno_config::deno_json::AllowScriptsValueConfig::Limited(deps) => {
               let reqs = jsr_deps_to_reqs(deps);
               if reqs.is_empty() {
                 PackagesAllowedScripts::None
@@ -204,7 +202,12 @@ impl<
             }
           },
         },
-        denied: jsr_deps_to_reqs(approved_scripts.deny),
+        denied: match &args.allowed {
+          PackagesAllowedScripts::All | PackagesAllowedScripts::Some(_) => {
+            vec![]
+          }
+          PackagesAllowedScripts::None => jsr_deps_to_reqs(allow_scripts.deny),
+        },
         initial_cwd: args.initial_cwd.clone(),
         root_dir: args.root_dir.clone(),
         explicit_install: args.explicit_install,

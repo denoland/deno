@@ -40,7 +40,7 @@ use url::Url;
 
 use crate::UrlToFilePathError;
 use crate::deno_json;
-use crate::deno_json::ApprovedScriptsConfig;
+use crate::deno_json::AllowScriptsConfig;
 use crate::deno_json::BenchConfig;
 use crate::deno_json::CompileConfig;
 use crate::deno_json::CompilerOptions;
@@ -1062,7 +1062,7 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::RootOnlyOption("workspace"),
         });
       }
-      if member_config.json.approved_scripts.is_some() {
+      if member_config.json.allow_scripts.is_some() {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: member_config.specifier.clone(),
           kind: WorkspaceDiagnosticKind::RootOnlyOption("allowScripts"),
@@ -1468,12 +1468,12 @@ impl Workspace {
       .map(|v| v.unwrap_or_default())
   }
 
-  pub fn approved_scripts(
+  pub fn allow_scripts(
     &self,
-  ) -> Result<ApprovedScriptsConfig, deno_json::ToInvalidConfigError> {
+  ) -> Result<AllowScriptsConfig, deno_json::ToInvalidConfigError> {
     self
       .root_deno_json()
-      .map(|c| c.to_approved_scripts_config())
+      .map(|c| c.to_allow_scripts_config())
       .transpose()
       .map(|v| v.unwrap_or_default())
   }

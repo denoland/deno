@@ -52,18 +52,18 @@ pub use ts::EmitConfigOptions;
 pub use ts::RawJsxCompilerOptions;
 
 #[derive(Clone, Debug, Hash, PartialEq)]
-pub enum ApprovedScriptsValueConfig {
+pub enum AllowScriptsValueConfig {
   All,
   Limited(Vec<JsrDepPackageReq>),
 }
 
-impl Default for ApprovedScriptsValueConfig {
+impl Default for AllowScriptsValueConfig {
   fn default() -> Self {
     Self::Limited(Vec::new())
   }
 }
 
-impl<'de> Deserialize<'de> for ApprovedScriptsValueConfig {
+impl<'de> Deserialize<'de> for AllowScriptsValueConfig {
   fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
   where
     D: Deserializer<'de>,
@@ -71,7 +71,7 @@ impl<'de> Deserialize<'de> for ApprovedScriptsValueConfig {
     struct ApprovedScriptsValueConfigVisitor;
 
     impl<'de> Visitor<'de> for ApprovedScriptsValueConfigVisitor {
-      type Value = ApprovedScriptsValueConfig;
+      type Value = AllowScriptsValueConfig;
 
       fn expecting(
         &self,
@@ -85,9 +85,9 @@ impl<'de> Deserialize<'de> for ApprovedScriptsValueConfig {
         E: de::Error,
       {
         if v {
-          Ok(ApprovedScriptsValueConfig::All)
+          Ok(AllowScriptsValueConfig::All)
         } else {
-          Ok(ApprovedScriptsValueConfig::Limited(Vec::new()))
+          Ok(AllowScriptsValueConfig::Limited(Vec::new()))
         }
       }
 
@@ -99,7 +99,7 @@ impl<'de> Deserialize<'de> for ApprovedScriptsValueConfig {
         while let Some(item) = seq.next_element::<JsrDepPackageReq>()? {
           items.push(item);
         }
-        Ok(ApprovedScriptsValueConfig::Limited(items))
+        Ok(AllowScriptsValueConfig::Limited(items))
       }
     }
 
@@ -109,9 +109,9 @@ impl<'de> Deserialize<'de> for ApprovedScriptsValueConfig {
 
 #[derive(Clone, Debug, Default, Deserialize, Hash, PartialEq)]
 #[serde(default, deny_unknown_fields)]
-pub struct ApprovedScriptsConfig {
+pub struct AllowScriptsConfig {
   #[serde(default)]
-  pub allow: ApprovedScriptsValueConfig,
+  pub allow: AllowScriptsValueConfig,
   #[serde(default)]
   pub deny: Vec<JsrDepPackageReq>,
 }
@@ -1094,7 +1094,7 @@ pub struct ConfigFileJson {
   pub permissions: Option<Value>,
   pub publish: Option<Value>,
   pub deploy: Option<Value>,
-  pub approved_scripts: Option<Value>,
+  pub allow_scripts: Option<Value>,
 
   pub name: Option<String>,
   pub version: Option<String>,
@@ -2025,10 +2025,10 @@ impl ConfigFile {
     }
   }
 
-  pub fn to_approved_scripts_config(
+  pub fn to_allow_scripts_config(
     &self,
-  ) -> Result<ApprovedScriptsConfig, ToInvalidConfigError> {
-    let config = match &self.json.approved_scripts {
+  ) -> Result<AllowScriptsConfig, ToInvalidConfigError> {
+    let config = match &self.json.allow_scripts {
       Some(Value::Array(value)) => {
         let items: Vec<JsrDepPackageReq> =
           serde_json::from_value(value.clone().into()).map_err(|error| {
@@ -2037,13 +2037,13 @@ impl ConfigFile {
               source: error,
             }
           })?;
-        ApprovedScriptsConfig {
-          allow: ApprovedScriptsValueConfig::Limited(items),
+        AllowScriptsConfig {
+          allow: AllowScriptsValueConfig::Limited(items),
           deny: vec![],
         }
       }
       Some(Value::Object(value)) => {
-        let config: ApprovedScriptsConfig =
+        let config: AllowScriptsConfig =
           serde_json::from_value(value.clone().into()).map_err(|error| {
             ToInvalidConfigError::Parse {
               config: "allowScripts",
@@ -2054,13 +2054,13 @@ impl ConfigFile {
       }
       Some(Value::Bool(value)) => {
         if *value {
-          ApprovedScriptsConfig {
-            allow: ApprovedScriptsValueConfig::All,
+          AllowScriptsConfig {
+            allow: AllowScriptsValueConfig::All,
             deny: Vec::new(),
           }
         } else {
-          ApprovedScriptsConfig {
-            allow: ApprovedScriptsValueConfig::Limited(Vec::new()),
+          AllowScriptsConfig {
+            allow: AllowScriptsValueConfig::Limited(Vec::new()),
             deny: Vec::new(),
           }
         }
@@ -2073,8 +2073,8 @@ impl ConfigFile {
           ),
         });
       }
-      Some(Value::Null) | None => ApprovedScriptsConfig {
-        allow: ApprovedScriptsValueConfig::Limited(Vec::new()),
+      Some(Value::Null) | None => AllowScriptsConfig {
+        allow: AllowScriptsValueConfig::Limited(Vec::new()),
         deny: Vec::new(),
       },
     };
@@ -2095,8 +2095,8 @@ impl ConfigFile {
       Ok(())
     };
     match &config.allow {
-      ApprovedScriptsValueConfig::All => {}
-      ApprovedScriptsValueConfig::Limited(reqs) => {
+      AllowScriptsValueConfig::All => {}
+      AllowScriptsValueConfig::Limited(reqs) => {
         ensure_reqs_no_tag(reqs)?;
       }
     }
@@ -3217,19 +3217,19 @@ mod tests {
   }
 
   #[test]
-  fn test_to_approved_scripts() {
+  fn test_to_allow_scripts() {
     fn get_result(
       text: &str,
-    ) -> Result<ApprovedScriptsConfig, ToInvalidConfigError> {
+    ) -> Result<AllowScriptsConfig, ToInvalidConfigError> {
       let config_specifier = root_url().join("deno.json").unwrap();
       let config_file = ConfigFile::new(text, config_specifier).unwrap();
-      config_file.to_approved_scripts_config()
+      config_file.to_allow_scripts_config()
     }
 
     assert_eq!(
       get_result(r#"{}"#).unwrap(),
-      ApprovedScriptsConfig {
-        allow: ApprovedScriptsValueConfig::Limited(Vec::new()),
+      AllowScriptsConfig {
+        allow: AllowScriptsValueConfig::Limited(Vec::new()),
         deny: vec![],
       }
     );
@@ -3240,8 +3240,8 @@ mod tests {
       }"#
       )
       .unwrap(),
-      ApprovedScriptsConfig {
-        allow: ApprovedScriptsValueConfig::All,
+      AllowScriptsConfig {
+        allow: AllowScriptsValueConfig::All,
         deny: vec![],
       }
     );
@@ -3255,8 +3255,8 @@ mod tests {
       }"#
       )
       .unwrap(),
-      ApprovedScriptsConfig {
-        allow: ApprovedScriptsValueConfig::Limited(Vec::from([
+      AllowScriptsConfig {
+        allow: AllowScriptsValueConfig::Limited(Vec::from([
           JsrDepPackageReq::from_str("npm:chalk").unwrap(),
           JsrDepPackageReq::from_str("npm:package@1").unwrap(),
         ])),
@@ -3278,8 +3278,8 @@ mod tests {
       }"#
       )
       .unwrap(),
-      ApprovedScriptsConfig {
-        allow: ApprovedScriptsValueConfig::Limited(Vec::from([
+      AllowScriptsConfig {
+        allow: AllowScriptsValueConfig::Limited(Vec::from([
           JsrDepPackageReq::from_str("npm:chalk").unwrap(),
           JsrDepPackageReq::from_str("npm:package@1").unwrap(),
         ])),
