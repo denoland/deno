@@ -470,7 +470,7 @@ fn process_npm_security_audits_body(
     vuln_high += 1;
   }
   if requires_map_keys.contains(&"@denotest/using-vuln".to_string()) {
-    actions.push(get_action_for_with_vuln2());
+    actions.extend_from_slice(&get_actions_for_with_vuln2());
     advisories.insert(202020, get_advisory_for_with_vuln2());
     vuln_critical += 1;
   }
@@ -528,20 +528,33 @@ fn get_advisory_for_with_vuln1() -> serde_json::Value {
   })
 }
 
-fn get_action_for_with_vuln2() -> serde_json::Value {
-  json!({
-    "isMajor": true,
-    "action": "install",
-    "resolves": [{
-      "id": 202020,
-      "path": "@denotest/using-vuln>@denotest/with-vuln2",
-      "dev": false,
-      "optional": false,
-      "bundled": false,
-    }],
-    "module": "@denotest/with-vuln2",
-    "target": "2.0.0"
-  })
+fn get_actions_for_with_vuln2() -> Vec<serde_json::Value> {
+  vec![
+    json!({
+      "isMajor": true,
+      "action": "install",
+      "resolves": [{
+        "id": 202020,
+        "path": "@denotest/using-vuln>@denotest/with-vuln2",
+        "dev": false,
+        "optional": false,
+        "bundled": false,
+      }],
+      "module": "@denotest/with-vuln2",
+      "target": "2.0.0"
+    }),
+    json!({
+      "action": "review",
+      "resolves": [{
+        "id": 202020,
+        "path": "@denotest/using-vuln>@denotest/with-vuln2",
+        "dev": false,
+        "optional": false,
+        "bundled": false,
+      }],
+      "module": "@denotest/with-vuln2"
+    }),
+  ]
 }
 
 fn get_advisory_for_with_vuln2() -> serde_json::Value {
