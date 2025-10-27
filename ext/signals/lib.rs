@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
+use std::panic;
 
 use signal_hook::consts::*;
 use tokio::sync::watch;
@@ -126,7 +127,7 @@ pub fn register(
 
       #[cfg(unix)]
       {
-        let _ = handle.0.add_signal(signal);
+        let _ = std::panic::catch_unwind(|| handle.0.add_signal(signal));
       }
       #[cfg(windows)]
       {
