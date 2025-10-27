@@ -5,12 +5,18 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
+use std::panic;
 
 use signal_hook::consts::*;
 use tokio::sync::watch;
 
 mod dict;
 pub use dict::*;
+
+#[cfg(unix)]
+const FORBIDDEN: &[i32] = &[SIGKILL, SIGSTOP];
+#[cfg(windows)]
+const FORBIDDEN: &[i32] = &[];
 
 #[cfg(windows)]
 static SIGHUP: i32 = 1;
@@ -121,7 +127,7 @@ pub fn register(
 
       #[cfg(unix)]
       {
-        handle.0.add_signal(signal).unwrap();
+        let _ = std::panic::catch_unwind(|| handle.0.add_signal(signal));
       }
       #[cfg(windows)]
       {

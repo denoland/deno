@@ -89,7 +89,21 @@ export const env:
 
       return envValue;
     },
-    ownKeys: () => ReflectOwnKeys(Deno.env.toObject()),
+    ownKeys: () => {
+      try {
+        const all = Deno.env.toObject();
+        return Object.keys(all).filter(key => {
+          try {
+            Deno.env.get(key);
+            return true;
+          } catch {
+            return false;
+          }
+        });
+      } catch {
+        return [];
+      }
+    },
     getOwnPropertyDescriptor: (_target, name) => {
       const value = denoEnvGet(String(name));
       if (value !== undefined) {
