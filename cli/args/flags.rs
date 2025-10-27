@@ -12501,14 +12501,14 @@ mod tests {
       (
         Some("--allow-scripts=npm:foo"),
         Ok(PackagesAllowedScripts::Some(vec![
-          PackageReq::from_str("npm:foo").unwrap(),
+          PackageReq::from_str("foo").unwrap(),
         ])),
       ),
       (
         Some("--allow-scripts=npm:foo,npm:bar@2"),
         Ok(PackagesAllowedScripts::Some(vec![
-          PackageReq::from_str("npm:foo").unwrap(),
-          PackageReq::from_str("npm:bar@2").unwrap(),
+          PackageReq::from_str("foo").unwrap(),
+          PackageReq::from_str("bar@2").unwrap(),
         ])),
       ),
       (Some("--allow-scripts=foo"), Err("Invalid package")),
@@ -12518,7 +12518,7 @@ mod tests {
       ),
       (
         Some("--allow-scripts=jsr:@foo/bar"),
-        Err("Only npm package constraints are supported: jsr:foo@next"),
+        Err("An 'npm:' specifier is required"),
       ),
     ];
     for (flag, value) in cases {
