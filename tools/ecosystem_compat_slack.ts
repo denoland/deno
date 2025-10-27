@@ -29,44 +29,173 @@ const client = new WebClient(token, {
 });
 
 function formatDuration(duration: number) {
-  return (duration / 1000).toFixed(2) + "s";
+  return (duration / 1000).toFixed(0) + "s";
 }
 
-function createMessage(ecosystemReport: EcosystemReport) {
-  let mrkdwn = "Package manager report\n";
+function createMessage(ecosystemReports: Record<string, EcosystemReport>) {
+  const elements = [];
 
-  mrkdwn += `*npm*: exit code: ${ecosystemReport.npm.exitCode}, duration: ${
-    formatDuration(ecosystemReport.npm.duration)
-  }\n`;
-  mrkdwn += `*yarn*: exit code: ${ecosystemReport.yarn.exitCode}, duration: ${
-    formatDuration(ecosystemReport.yarn.duration)
-  }\n`;
-  mrkdwn += `*pnpm*: exit code: ${ecosystemReport.pnpm.exitCode}, duration: ${
-    formatDuration(ecosystemReport.pnpm.duration)
-  }\n`;
+  elements.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "*Package manager report*\n\n",
+    },
+  });
 
-  return [
+  const tableHeader = [
     {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: mrkdwn,
-      },
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_section",
+          elements: [
+            {
+              type: "text",
+              text: "Program",
+              style: {
+                bold: true,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_section",
+          elements: [
+            {
+              type: "text",
+              text: "Linux",
+              style: {
+                bold: true,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_section",
+          elements: [
+            {
+              type: "text",
+              text: "macOS",
+              style: {
+                bold: true,
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_section",
+          elements: [
+            {
+              type: "text",
+              text: "Windows",
+              style: {
+                bold: true,
+              },
+            },
+          ],
+        },
+      ],
     },
   ];
+
+  const rows = [];
+
+  const programs = Object.keys(ecosystemReports["darwin"]);
+  for (const program of programs) {
+    const row = [
+      {
+        type: "rich_text",
+        elements: [
+          {
+            type: "rich_text_section",
+            elements: [
+              {
+                type: "text",
+                text: program,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    for (const os of ["darwin", "linux", "windows"]) {
+      const report = ecosystemReports[os][program] satisfies PmResult;
+
+      const text = `${
+        report.exitCode === 0 ? "✅" : "❌"
+      } code: ${report.exitCode}, (${formatDuration(report.duration)})`;
+      row.push({
+        type: "rich_text",
+        elements: [
+          {
+            type: "rich_text_section",
+            elements: [
+              {
+                type: "text",
+                text: text,
+                style: {
+                  code: true,
+                },
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    rows.push(row);
+  }
+
+  elements.push({
+    type: "table",
+    rows: [tableHeader, ...rows],
+  });
+  return elements;
+}
+
+async function downloadOsReports() {
+  const oses = ["windows", "linux", "darwin"];
+  const reports: Record<string, string> = {};
+  for (const os of oses) {
+    const res = await fetch(
+      `https://dl.deno.land/ecosystem-compat-test/${
+        new Date()
+          .toISOString()
+          .substring(0, 10)
+      }/report-${os}.json`,
+    );
+    if (res.status === 200) {
+      reports[os] = await res.json() satisfies EcosystemReport;
+    }
+  }
+  return reports;
 }
 
 async function main() {
-  const ecosystemReport = await Deno.readTextFile(
-    import.meta.resolve("./ecosystem_report.json"),
-  )
-    .then(JSON.parse) as EcosystemReport;
+  const ecosystemReports = await downloadOsReports();
 
   try {
     const result = await client.chat.postMessage({
       token,
       channel,
-      blocks: createMessage(ecosystemReport),
+      blocks: createMessage(ecosystemReports),
       unfurl_links: false,
       unfurl_media: false,
     });
