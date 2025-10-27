@@ -14,7 +14,8 @@
 │ Patched:    >=2.0.0
 │ Path:       @denotest/using-vuln>@denotest/with-vuln2
 │ Info:       https://example.com/vuln/202020
-╰ Actions:    install @denotest/with-vuln2@2.0.0 (major upgrade)
+│ Actions:    install @denotest/with-vuln2@2.0.0 (major upgrade)
+╰             review @denotest/with-vuln2
 
 Found 2 vulnerabilities
 Severity: 0 low, 0 moderate, 1 high, 1 critical
