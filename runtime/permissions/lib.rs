@@ -3744,6 +3744,20 @@ impl PermissionsContainer {
       });
     }
 
+    // Allow /dev/tty on unix without requiring the global "all" permission.
+    // The caller (e.g. check_open_with_requested) already enforces read/write
+    // permissions as appropriate, so treating /dev/tty as a normal file here
+    // lets --allow-read/--allow-write succeed when applicable.
+    if cfg!(unix) && path == OsStr::new("/dev/tty") {
+      return Ok(CheckedPath {
+        path: PathWithRequested {
+          path,
+          requested: requested.map(Cow::Owned),
+        },
+        canonicalized,
+      });
+    }
+
     /// We'll allow opening /proc/self/fd/{n} without additional permissions under the following conditions:
     ///
     /// 1. n > 2. This allows for opening bash-style redirections, but not stdio
