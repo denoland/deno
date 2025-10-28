@@ -1,12 +1,17 @@
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_runtime::UnconfiguredRuntime;
 use deno_runtime::deno_permissions::PathQueryDescriptor;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 
 use crate::args::Flags;
 use crate::args::XFlags;
@@ -46,12 +51,11 @@ async fn run_js_file(
   factory: &CliFactory,
   roots: LibWorkerFactoryRoots,
   unconfigured_runtime: Option<UnconfiguredRuntime>,
-  path: &Path,
+  main_module: &deno_core::url::Url,
   npm: bool,
 ) -> Result<i32, AnyError> {
   let cli_options = factory.cli_options()?;
   let preload_modules = cli_options.preload_modules()?;
-  let main_module = deno_path_util::url_from_file_path(path)?;
 
   if npm {
     crate::tools::run::set_npm_user_agent();
@@ -83,7 +87,7 @@ async fn maybe_run_local_npm_bin(
   factory: &CliFactory,
   flags: &Flags,
   roots: LibWorkerFactoryRoots,
-  unconfigured_runtime: Option<UnconfiguredRuntime>,
+  unconfigured_runtime: &mut Option<UnconfiguredRuntime>,
   node_resolver: &CliNodeResolver,
   npm_resolver: &CliNpmResolver,
   command: &str,
@@ -96,15 +100,11 @@ async fn maybe_run_local_npm_bin(
   };
   match bin_value {
     BinValue::JsFile(path_buf) => {
-      return run_js_file(
-        &factory,
-        roots,
-        unconfigured_runtime,
-        &path_buf,
-        true,
-      )
-      .await
-      .map(Some);
+      let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
+      let unconfigured_runtime = unconfigured_runtime.take();
+      return run_js_file(&factory, roots, unconfigured_runtime, &path, true)
+        .await
+        .map(Some);
     }
     BinValue::Executable(path_buf) => {
       permissions.check_run(
@@ -126,10 +126,24 @@ async fn maybe_run_local_npm_bin(
   }
 }
 
+fn create_temp_node_modules_parent_dir(
+  package_req: &PackageReq,
+) -> Result<PathBuf, AnyError> {
+  let temp_dir = std::env::temp_dir()
+    .join("deno_x_nm")
+    .join(package_req.to_string());
+  std::fs::create_dir_all(&temp_dir)?;
+  let package_json_path = temp_dir.join("package.json");
+  std::fs::write(&package_json_path, "{}")?;
+  let deno_json_path = temp_dir.join("deno.json");
+  std::fs::write(&deno_json_path, r#"{"nodeModulesDir": "auto"}"#)?;
+  Ok(temp_dir)
+}
+
 pub async fn run(
   flags: Arc<Flags>,
   x_flags: XFlags,
-  unconfigured_runtime: Option<UnconfiguredRuntime>,
+  mut unconfigured_runtime: Option<UnconfiguredRuntime>,
   roots: LibWorkerFactoryRoots,
 ) -> Result<i32, AnyError> {
   let command = match x_flags.kind {
@@ -155,8 +169,8 @@ pub async fn run(
   let result = maybe_run_local_npm_bin(
     &factory,
     &flags,
-    roots,
-    unconfigured_runtime,
+    roots.clone(),
+    &mut unconfigured_runtime,
     &node_resolver,
     &npm_resolver,
     &command,
@@ -166,7 +180,148 @@ pub async fn run(
     return Ok(exit_code);
   }
 
-  // if command.starts_with(pat)
+  let cli_options = factory.cli_options()?;
+  let cwd = cli_options.initial_cwd();
 
-  Ok(0)
+  let is_file_like = command.starts_with('.')
+    || command.starts_with('/')
+    || command.starts_with('~')
+    || command.starts_with('\\')
+    || Path::new(&command).extension().is_some();
+
+  let thing_to_run = if is_file_like {
+    let url = deno_path_util::resolve_url_or_path(&command, cwd)?;
+    ReqRefOrUrl::Url(url)
+  } else {
+    match deno_core::url::Url::parse(&command) {
+      Ok(url) => {
+        if url.scheme() == "npm" {
+          let req_ref = NpmPackageReqReference::from_specifier(&url)?;
+          ReqRefOrUrl::Npm(req_ref)
+        } else if url.scheme() == "jsr" {
+          let req_ref = JsrPackageReqReference::from_specifier(&url)?;
+          ReqRefOrUrl::Jsr(req_ref)
+        } else {
+          ReqRefOrUrl::Url(url)
+        }
+      }
+      Err(deno_core::url::ParseError::RelativeUrlWithoutBase) => {
+        let new_command = format!("npm:{}", command);
+        let req_ref = NpmPackageReqReference::from_str(&new_command)?;
+        ReqRefOrUrl::Npm(req_ref)
+      }
+      Err(e) => {
+        return Err(e.into());
+      }
+    }
+  };
+
+  match thing_to_run {
+    ReqRefOrUrl::Npm(npm_package_req_reference) => {
+      let mut new_flags = (*flags).clone();
+      new_flags.node_modules_dir =
+        Some(deno_config::deno_json::NodeModulesDirMode::Auto);
+      let temp_dir =
+        create_temp_node_modules_parent_dir(npm_package_req_reference.req())?;
+      let canonicalized_temp_dir = temp_dir
+        .canonicalize()
+        .ok()
+        .map(deno_path_util::strip_unc_prefix);
+      let temp_dir = canonicalized_temp_dir.unwrap_or_else(|| temp_dir);
+
+      let pkg_json = temp_dir.join("package.json");
+      std::fs::write(
+        &pkg_json,
+        format!(
+          "{{\"dependencies\": {{\"{}\": \"{}\"}} }}",
+          npm_package_req_reference.req().name,
+          npm_package_req_reference.req().version_req
+        ),
+      )?;
+      let temp_node_modules = temp_dir.join("node_modules");
+      new_flags.internal.root_node_modules_dir_override =
+        Some(temp_node_modules);
+      new_flags.config_flag = crate::args::ConfigFlag::Path(
+        temp_dir.join("deno.json").to_string_lossy().into_owned(),
+      );
+
+      let new_flags = Arc::new(new_flags);
+      let new_factory = CliFactory::from_flags(new_flags.clone());
+      let bin_name = npm_package_req_reference
+        .sub_path()
+        .unwrap_or_else(|| &npm_package_req_reference.req().name);
+      let new_node_resolver = factory.node_resolver().await?;
+      let new_npm_resolver = new_factory.npm_resolver().await?;
+
+      crate::tools::pm::cache_top_level_deps(&new_factory, None).await?;
+
+      let res = maybe_run_local_npm_bin(
+        &new_factory,
+        &new_flags,
+        roots.clone(),
+        &mut unconfigured_runtime,
+        new_node_resolver,
+        new_npm_resolver,
+        bin_name,
+      )
+      .await?;
+      if let Some(exit_code) = res {
+        return Ok(exit_code);
+      } else {
+        return Err(anyhow::anyhow!("Failed to run command: {}", command));
+      }
+    }
+    ReqRefOrUrl::Jsr(jsr_package_req_reference) => {
+      let mut new_flags = (*flags).clone();
+      new_flags.node_modules_dir =
+        Some(deno_config::deno_json::NodeModulesDirMode::Manual);
+      let temp_dir =
+        create_temp_node_modules_parent_dir(jsr_package_req_reference.req())?;
+      let canonicalized_temp_dir = temp_dir
+        .canonicalize()
+        .ok()
+        .map(deno_path_util::strip_unc_prefix);
+      let temp_dir = canonicalized_temp_dir.unwrap_or_else(|| temp_dir);
+
+      let deno_json = temp_dir.join("deno.json");
+      std::fs::write(
+        &deno_json,
+        format!(
+          "{{ \"nodeModulesDir\": \"auto\", \"imports\": {{ \"{}\": \"{}\" }} }}",
+          jsr_package_req_reference.req().name,
+          format_args!("jsr:{}", jsr_package_req_reference.req())
+        ),
+      )?;
+      let temp_node_modules = temp_dir.join("node_modules");
+      new_flags.internal.root_node_modules_dir_override =
+        Some(temp_node_modules);
+      new_flags.config_flag =
+        crate::args::ConfigFlag::Path(deno_json.to_string_lossy().into_owned());
+
+      let new_flags = Arc::new(new_flags);
+      let new_factory = CliFactory::from_flags(new_flags.clone());
+
+      crate::tools::pm::cache_top_level_deps(&new_factory, None).await?;
+      let url =
+        deno_core::url::Url::parse(&jsr_package_req_reference.to_string())?;
+      run_js_file(&new_factory, roots, None, &url, false).await
+    }
+    ReqRefOrUrl::Url(url) => {
+      let mut new_flags = (*flags).clone();
+      new_flags.node_modules_dir =
+        Some(deno_config::deno_json::NodeModulesDirMode::None);
+
+      let new_flags = Arc::new(new_flags);
+      let new_factory = CliFactory::from_flags(new_flags.clone());
+      run_js_file(&new_factory, roots, None, &url, false).await
+    }
+  }
+
+  // if command.starts_with(pat)
+}
+
+enum ReqRefOrUrl {
+  Npm(NpmPackageReqReference),
+  Jsr(JsrPackageReqReference),
+  Url(deno_core::url::Url),
 }
