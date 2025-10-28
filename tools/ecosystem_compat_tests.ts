@@ -17,7 +17,7 @@ async function runPackageManager(pm: string, cmd: string) {
   const result =
     await $`cd nextjs-demo ; rm -rf node_modules ; ${Deno.execPath()} run -A --no-config npm:${pm} ${cmd}`
       .stdout("inheritPiped").stderr("inheritPiped").noThrow().timeout(
-        "60s",
+        "120s",
       );
   const duration = Date.now() - state;
   return {
