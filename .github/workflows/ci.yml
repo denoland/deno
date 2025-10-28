@@ -97,7 +97,7 @@ jobs:
             job: test
             profile: release
             use_sysroot: true
-            wpt: '${{ !startsWith(github.ref, ''refs/tags/'') && (github.ref == ''refs/heads/main'' || contains(github.event.pull_request.labels.*.name, ''ci-wpt-test'')) }}'
+            wpt: '${{ !startsWith(github.ref, ''refs/tags/'') }}'
           - os: linux
             arch: x86_64
             runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-bench''))) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && ''ghcr.io/cirruslabs/ubuntu-runner-amd64:24.04'' || ''ubuntu-24.04'' }}'
@@ -143,7 +143,6 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
       RUST_LIB_BACKTRACE: 0
-      CI_SKIP_NODE_TEST: '${{ github.event_name == ''pull_request'' && !contains(github.event.pull_request.labels.*.name, ''ci-node-test'') }}'
     steps:
       - name: Configure git
         run: |-
