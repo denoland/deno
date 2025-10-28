@@ -112,6 +112,17 @@ pub struct AddFlags {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AuditFlags {
+  pub severity: String,
+  pub ignore_registry_errors: bool,
+  pub ignore_unfixable: bool,
+  pub dev: bool,
+  pub prod: bool,
+  pub optional: bool,
+  pub ignore: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RemoveFlags {
   pub packages: Vec<String>,
 }
@@ -524,6 +535,7 @@ pub struct BundleFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
+  Audit(AuditFlags),
   Remove(RemoveFlags),
   Bench(BenchFlags),
   Bundle(BundleFlags),
@@ -1527,6 +1539,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
 
       match subcommand.as_str() {
         "add" => add_parse(&mut flags, &mut m)?,
+        "audit" => audit_parse(&mut flags, &mut m)?,
         "remove" => remove_parse(&mut flags, &mut m),
         "bench" => bench_parse(&mut flags, &mut m)?,
         "bundle" => bundle_parse(&mut flags, &mut m)?,
@@ -1789,6 +1802,7 @@ pub fn clap_root() -> Command {
     .defer(|cmd| {
       let cmd = cmd
         .subcommand(add_subcommand())
+        .subcommand(audit_subcommand())
         .subcommand(remove_subcommand())
         .subcommand(bench_subcommand())
         .subcommand(bundle_subcommand())
@@ -1886,6 +1900,52 @@ Or multiple dependencies at once:
       .arg(allow_scripts_arg())
       .args(lock_args())
       .args(default_registry_args())
+  })
+}
+
+fn audit_subcommand() -> Command {
+  command(
+    "audit",
+    cstr!(
+      "Audit currently installed dependencies.
+  <p(245)>deno audit</>
+      
+Show only high and critical severity vulnerabilities
+  <p(245)>deno audit --level=high</>
+
+Don't error if the audit data can't be retrieved from the registry
+  <p(245)>deno audit --ignore-registry-errors</>"
+    ),
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .args(lock_args())
+      .arg(
+        Arg::new("level")
+          .long("level")
+          .alias("audit-level")
+          .alias("severity")
+          .help("Only show advisories with severity greater or equal to the one specified")
+          .value_parser([
+            "low",
+            "moderate",
+            "high",
+            "critical",
+          ]),
+      )
+      .arg(
+        Arg::new("ignore-unfixable")
+          .long("ignore-unfixable")
+          .help("Ignore advisories that don't have any actions to resolve them")
+          .action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("ignore-registry-errors")
+          .long("ignore-registry-errors")
+          .help("Return exit code 0 if remote service(s) responds with an error.")
+          .action(ArgAction::SetTrue)
+      )
   })
 }
 
@@ -5045,6 +5105,33 @@ fn allow_scripts_arg_parse(
         .collect::<Result<_, _>>()?,
     );
   }
+  Ok(())
+}
+
+fn audit_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  lock_args_parse(flags, matches);
+  let severity = matches
+    .remove_one::<String>("level")
+    .unwrap_or_else(|| "low".to_string());
+  let ignore_unfixable = matches.get_flag("ignore-unfixable");
+  let ignore_registry_errors = matches.get_flag("ignore-registry-errors");
+  let dev = true;
+  let prod = true;
+  let optional = true;
+  let ignore = vec![];
+
+  flags.subcommand = DenoSubcommand::Audit(AuditFlags {
+    severity,
+    dev,
+    prod,
+    optional,
+    ignore_registry_errors,
+    ignore_unfixable,
+    ignore,
+  });
   Ok(())
 }
 

@@ -1,0 +1,79 @@
+name: ecosystem_compat_test
+
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: '${{ matrix.runner }}'
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+          - os: windows
+            runner: windows-latest
+          - os: darwin
+            runner: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: canary
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: denoland
+      - name: Run tests
+        run: deno -A tools/ecosystem_compat_tests.ts
+      - name: Upload the report to dl.deno.land
+        run: |-
+          gsutil -h "Cache-Control: public, max-age=3600" cp tools/ecosystem_report.json gs://dl.deno.land/ecosystem-compat-test/$(date +%F)/report-${{matrix.os}}.json
+  summary:
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ always() }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: denoland
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: denoland
+      - name: Post message to slack channel
+        run: deno -A tools/ecosystem_compat_slack.ts
+        env:
+          SLACK_TOKEN: ${{ secrets.NODE_COMPAT_SLACK_TOKEN }} # NodeCompat bot
+          SLACK_CHANNEL: ${{ secrets.NODE_COMPAT_SLACK_CHANNEL }}
