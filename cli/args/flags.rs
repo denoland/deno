@@ -1408,6 +1408,17 @@ static DENO_HELP: &str = cstr!(
 
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
+  let args = if args.len() >= 1 && args[0].as_encoded_bytes().ends_with(b"dx") {
+    let mut new_args = Vec::with_capacity(args.len() + 1);
+    new_args.push(args[0].clone());
+    new_args.push(OsString::from("x"));
+    if args.len() >= 2 {
+      new_args.extend(args.into_iter().skip(1));
+    }
+    new_args
+  } else {
+    args
+  };
   let mut app = clap_root();
   let mut matches =
     app
@@ -6390,13 +6401,6 @@ fn x_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
-  let default_allow_all = matches.get_flag("default-allow-all");
-  if !flags.permissions.has_permission()
-    && flags.permission_set.is_none()
-    && default_allow_all
-  {
-    flags.permissions.allow_all = true;
-  }
   let kind = if matches.get_flag("install-alias") {
     XFlagsKind::InstallAlias
   } else if let Some(mut script_arg) =
@@ -6412,6 +6416,13 @@ fn x_parse(
   } else {
     XFlagsKind::Print
   };
+  let default_allow_all = matches.get_flag("default-allow-all");
+  if !flags.permissions.has_permission()
+    && flags.permission_set.is_none()
+    && default_allow_all
+  {
+    flags.permissions.allow_all = true;
+  }
   flags.subcommand = DenoSubcommand::X(XFlags {
     kind,
     default_allow_all,
