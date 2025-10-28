@@ -8,11 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.5.5 / 2025.10.28
 
-- Revert "fix(ext/node): fileHandle compatibility" (#31103)
-- feat(ext/http): make websocket response headers mutable (#31000)
-- feat(ext/node): impl sqlite 'backup' capability (#29842)
-- feat(ext/node): implement FileHandle.readLines() (#31107)
-- feat(lsp): Add support for `source.organizeImports` (#31016)
 - feat(unstable): ability to exclude packages from minimum dependency age
   constraint (#31031)
 - feat(unstable): ability to only install dependencies older than a certain date
@@ -35,6 +30,7 @@ https://github.com/denoland/deno_install
 - fix(docs): documented allowed subdomain should be gist and not user for
   githubusercontent.com (#30913)
 - fix(ext/http): display localhost url once on windows (#31088)
+- fix(ext/http): make websocket response headers mutable (#31000)
 - fix(ext/node): `dns.resolve6` compatibility (#30974)
 - fix(ext/node): `fs.read/fs.readSync` and `fs.write/fs.writeSync` compatibility
   (#31013)
@@ -43,9 +39,10 @@ https://github.com/denoland/deno_install
   (#30965)
 - fix(ext/node): cpus() should not error when there's no cpu info (#31097)
 - fix(ext/node): false deprecation warning on `crypto.createHmac` (#31025)
-- fix(ext/node): fileHandle compatibility (#31094)
 - fix(ext/node): handle empty writes in chunked HTTP requests (#31066)
 - fix(ext/node): handle multiple calls in inspector.Session.post() (#31067)
+- fix(ext/node): impl sqlite 'backup' capability (#29842)
+- fix(ext/node): implement FileHandle.readLines() (#31107)
 - fix(ext/node): inconsistent error message thrown by AssertionError (#31089)
 - fix(ext/node): make `kReinitializeHandle` work for TLS wrap (#31079)
 - fix(ext/node): process.moduleLoadList as undefined (#31022)
@@ -57,6 +54,7 @@ https://github.com/denoland/deno_install
 - fix(kv): do not error when creating kv db with relative path and `-A` (#31021)
 - fix(lockfile): purged package reqs should be removed from the jsr deps when
   changing workspace config (#30998)
+- fix(lsp): add support for `source.organizeImports` (#31016)
 - fix(lsp): refresh configuration when tsconfig.json is changed (#30993)
 - fix(napi): Fix misused `napi_callback_info` in `CallbackInfo` (#30983)
 - fix(npm): add a deduplication pass and reduce lockfile diffs (#30973)
