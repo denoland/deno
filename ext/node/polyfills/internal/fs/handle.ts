@@ -4,6 +4,8 @@ import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import { Mode, promises, read, ReadStream, write, WriteStream } from "node:fs";
 import type { ReadAsyncOptions } from "node:fs";
+import { createInterface } from "node:readline";
+import type { Interface as ReadlineInterface } from "node:readline";
 import { core, primordials } from "ext:core/mod.js";
 export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
@@ -217,6 +219,13 @@ export class FileHandle extends EventEmitter {
 
   createWriteStream(options?: CreateWriteStreamOptions): WriteStream {
     return new WriteStream(undefined, { ...options, fd: this.fd });
+  }
+
+  readLines(options?: CreateReadStreamOptions): ReadlineInterface {
+    return createInterface({
+      input: this.createReadStream({ ...options, autoClose: false }),
+      crlfDelay: Infinity,
+    });
   }
 
   [SymbolAsyncDispose]() {
