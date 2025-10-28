@@ -969,6 +969,7 @@
 "parallel/test-socket-address.js" = {}
 "parallel/test-socket-write-after-fin-error.js" = {}
 "parallel/test-source-map-enable.js" = {}
+"parallel/test-sqlite-statement-sync-columns.js" = {}
 "parallel/test-stdin-hang.js" = {}
 "parallel/test-stdin-pause-resume-sync.js" = {}
 "parallel/test-stdin-pause-resume.js" = {}
