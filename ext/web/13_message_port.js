@@ -40,7 +40,18 @@ import {
   setEventTargetData,
   setIsTrusted,
 } from "./02_event.js";
-import { isDetachedBuffer } from "./06_streams.js";
+import {
+  isDetachedBuffer,
+  ReadableStreamPrototype,
+  readableStreamTransferReceivingSteps,
+  readableStreamTransferSteps,
+  TransformStreamPrototype,
+  transformStreamTransferReceivingSteps,
+  transformStreamTransferSteps,
+  WritableStreamPrototype,
+  writableStreamTransferReceivingSteps,
+  writableStreamTransferSteps,
+} from "./06_streams.js";
 import { DOMException } from "./01_dom_exception.js";
 
 // counter of how many message ports are actively refed
@@ -391,6 +402,28 @@ function deserializeJsMessageData(messageData) {
           ArrayPrototypePush(arrayBufferIdsInTransferables, index);
           break;
         }
+        case "readableStream": {
+          const port = createMessagePort(transferable.data);
+          const stream = readableStreamTransferReceivingSteps(port);
+          ArrayPrototypePush(transferables, stream);
+          ArrayPrototypePush(hostObjects, stream);
+          break;
+        }
+        case "writableStream": {
+          const port = createMessagePort(transferable.data);
+          const stream = writableStreamTransferReceivingSteps(port);
+          ArrayPrototypePush(transferables, stream);
+          ArrayPrototypePush(hostObjects, stream);
+          break;
+        }
+        case "transformStream": {
+          const portR = createMessagePort(transferable.data[0]);
+          const portW = createMessagePort(transferable.data[1]);
+          const stream = transformStreamTransferReceivingSteps(portR, portW);
+          ArrayPrototypePush(transferables, stream);
+          ArrayPrototypePush(hostObjects, stream);
+          break;
+        }
         default:
           throw new TypeError("Unreachable");
       }
@@ -420,6 +453,7 @@ function deserializeJsMessageData(messageData) {
 function serializeJsMessageData(data, transferables) {
   let options;
   const transferredArrayBuffers = [];
+  const transferredStreams = [];
   if (transferables.length > 0) {
     const hostObjects = [];
     for (let i = 0, j = 0; i < transferables.length; i++) {
@@ -438,6 +472,23 @@ function serializeJsMessageData(data, transferables) {
         ArrayPrototypePush(transferredArrayBuffers, t);
       } else if (t[core.hostObjectBrand]) {
         ArrayPrototypePush(hostObjects, t);
+      } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, t)) {
+        const { port1, port2 } = new MessageChannel();
+        readableStreamTransferSteps(t, port1);
+        ArrayPrototypePush(hostObjects, t);
+        ArrayPrototypePush(transferredStreams, port2);
+      } else if (ObjectPrototypeIsPrototypeOf(WritableStreamPrototype, t)) {
+        const { port1, port2 } = new MessageChannel();
+        writableStreamTransferSteps(t, port1);
+        ArrayPrototypePush(hostObjects, t);
+        ArrayPrototypePush(transferredStreams, port2);
+      } else if (ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, t)) {
+        const { port1: portR1, port2: portR2 } = new MessageChannel();
+        const { port1: portW1, port2: portW2 } = new MessageChannel();
+        transformStreamTransferSteps(t, portR1, portW1);
+        ArrayPrototypePush(hostObjects, t);
+        ArrayPrototypePush(transferredStreams, portR2);
+        ArrayPrototypePush(transferredStreams, portW2);
       }
     }
 
@@ -455,6 +506,7 @@ function serializeJsMessageData(data, transferables) {
   const serializedTransferables = [];
 
   let arrayBufferI = 0;
+  let streamI = 0;
   for (let i = 0; i < transferables.length; ++i) {
     const transferable = transferables[i];
     if (transferable[core.hostObjectBrand]) {
@@ -470,6 +522,43 @@ function serializeJsMessageData(data, transferables) {
         data: transferredArrayBuffers[arrayBufferI],
       });
       arrayBufferI++;
+    } else if (
+      ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, transferable)
+    ) {
+      const port = transferredStreams[streamI];
+      streamI += 1;
+      const id = port[_id];
+      port[_id] = null;
+      ArrayPrototypePush(serializedTransferables, {
+        kind: "readableStream",
+        data: id,
+      });
+    } else if (
+      ObjectPrototypeIsPrototypeOf(WritableStreamPrototype, transferable)
+    ) {
+      const port = transferredStreams[streamI];
+      streamI += 1;
+      const id = port[_id];
+      port[_id] = null;
+      ArrayPrototypePush(serializedTransferables, {
+        kind: "writableStream",
+        data: id,
+      });
+    } else if (
+      ObjectPrototypeIsPrototypeOf(TransformStreamPrototype, transferable)
+    ) {
+      const portR = transferredStreams[streamI];
+      streamI += 1;
+      const portW = transferredStreams[streamI];
+      streamI += 1;
+      const idR = portR[_id];
+      portR[_id] = null;
+      const idW = portW[_id];
+      portW[_id] = null;
+      ArrayPrototypePush(serializedTransferables, {
+        kind: "transformStream",
+        data: [idR, idW],
+      });
     } else {
       throw new DOMException("Value not transferable", "DataCloneError");
     }
