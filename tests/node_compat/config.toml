@@ -301,7 +301,7 @@
 "parallel/test-dgram-send-callback-recursive.js" = {}
 "parallel/test-dgram-send-cb-quelches-error.js" = {}
 "parallel/test-dgram-send-default-host.js" = {}
-\# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
 # "parallel/test-dgram-send-empty-array.js" = { flaky = true }
 # TODO(bartlomieju): disabled for now, because it causes CI failures on main
 # "parallel/test-dgram-send-empty-buffer.js" = { darwin = false, flaky = true }
