@@ -634,8 +634,6 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
       make_program_args(&args, verbatim_arguments)?,
     )
   };
-  eprintln!("Application path: {:?}", application_path);
-  eprintln!("ARGUMENTS: {:?}", arguments);
 
   // Set up process creation
   startup.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
@@ -1490,7 +1488,7 @@ fn make_bat_command_line(
   // Append the arguments.
   // FIXME: This needs tests to ensure that the arguments are properly
   // reconstructed by the batch script by default.
-  for arg in args {
+  for arg in args.iter().skip(1) {
     cmd.push(' ' as u16);
     let arg_bytes = arg.as_encoded_bytes();
     // Disallow \r and \n as they may truncate the arguments.
