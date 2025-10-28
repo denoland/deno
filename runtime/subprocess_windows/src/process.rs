@@ -92,6 +92,7 @@ use windows_sys::Win32::System::Registry::RRF_RT_ANY;
 use windows_sys::Win32::System::Registry::RegCloseKey;
 use windows_sys::Win32::System::Registry::RegGetValueW;
 use windows_sys::Win32::System::Registry::RegOpenKeyExW;
+use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP;
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 use windows_sys::Win32::System::Threading::CREATE_SUSPENDED;
@@ -531,31 +532,6 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
   // Convert file path to UTF-16
   let application = WCString::new(&options.file);
 
-  // Create command line arguments
-  let args: Vec<&OsStr> = options.args.iter().map(|s| s.as_ref()).collect();
-  let verbatim_arguments =
-    (options.flags & uv_process_flags::WindowsVerbatimArguments) != 0;
-
-  let has_bat_extension = |program: &[u16]| {
-    matches!(
-      // Case insensitive "ends_with" of UTF-16 encoded ".bat" or ".cmd"
-      program.len().checked_sub(4).and_then(|i| program.get(i..)),
-      Some(
-        [46, 98 | 66, 97 | 65, 116 | 84] | [46, 99 | 67, 109 | 77, 100 | 68]
-      )
-    )
-  };
-  let is_batch_file = has_bat_extension(application.as_slice_no_nul());
-  let arguments: WCString = if is_batch_file {
-    WCString::from_vec(make_bat_command_line(
-      application.as_slice_no_nul(),
-      &args,
-      !verbatim_arguments,
-    )?)
-  } else {
-    make_program_args(&args, verbatim_arguments)?
-  };
-
   // Create environment block if provided
   let env_saw_path = options.env.have_changed_path();
   let maybe_env = options.env.capture_if_changed();
@@ -625,6 +601,41 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
       "File not found",
     ));
   };
+
+  // Create command line arguments
+  let args: Vec<&OsStr> = options.args.iter().map(|s| s.as_ref()).collect();
+  let verbatim_arguments =
+    (options.flags & uv_process_flags::WindowsVerbatimArguments) != 0;
+
+  let has_bat_extension = |program: &[u16]| {
+    // lifted from https://github.com/rust-lang/rust/blob/bc1d7273dfbc6f8a11c0086fa35f6748a13e8d3c/library/std/src/sys/process/windows.rs#L284
+    // Copyright The Rust Project Contributors - MIT
+    matches!(
+      // Case insensitive "ends_with" of UTF-16 encoded ".bat" or ".cmd"
+      program.len().checked_sub(4).and_then(|i| program.get(i..)),
+      Some(
+        [46, 98 | 66, 97 | 65, 116 | 84] | [46, 99 | 67, 109 | 77, 100 | 68]
+      )
+    )
+  };
+  let is_batch_file = has_bat_extension(application_path.as_slice_no_nul());
+  let (application_path, arguments) = if is_batch_file {
+    (
+      command_prompt()?,
+      WCString::from_vec(make_bat_command_line(
+        application_path.as_slice_no_nul(),
+        &args,
+        !verbatim_arguments,
+      )?),
+    )
+  } else {
+    (
+      application_path,
+      make_program_args(&args, verbatim_arguments)?,
+    )
+  };
+  eprintln!("Application path: {:?}", application_path);
+  eprintln!("ARGUMENTS: {:?}", arguments);
 
   // Set up process creation
   startup.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
@@ -1461,8 +1472,7 @@ fn make_bat_command_line(
   // hence the trailing quote here. It will be closed after all arguments
   // have been added.
   // Using /e:ON enables "command extensions" which is essential for the `%` hack to work.
-  let mut cmd: Vec<u16> =
-    "cmd.exe /e:ON /v:OFF /d /c \"".encode_utf16().collect();
+  let mut cmd: Vec<u16> = "/e:ON /v:OFF /d /c \"".encode_utf16().collect();
 
   // Push the script name surrounded by its quote pair.
   cmd.push(b'"' as u16);
@@ -1590,6 +1600,19 @@ fn ensure_no_nuls<T: AsRef<OsStr>>(s: T) -> crate::io::Result<T> {
   } else {
     Ok(s)
   }
+}
+
+fn command_prompt() -> io::Result<WCString> {
+  let mut buffer =
+    vec![0u16; windows_sys::Win32::Foundation::MAX_PATH as usize];
+  let len =
+    unsafe { GetSystemDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) };
+  if len == 0 {
+    return Err(io::Error::last_os_error());
+  }
+  buffer.truncate(len as usize);
+  buffer.extend("\\cmd.exe".encode_utf16().chain([0]));
+  Ok(WCString::from_vec(buffer))
 }
 
 #[cfg(test)]
