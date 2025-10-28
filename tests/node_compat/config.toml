@@ -135,7 +135,8 @@
 "parallel/test-buffer-zero-fill-cli.js" = {}
 "parallel/test-buffer-zero-fill-reset.js" = {}
 "parallel/test-buffer-zero-fill.js" = {}
-"parallel/test-child-process-can-write-to-stdout.js" = { flaky = true }
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# "parallel/test-child-process-can-write-to-stdout.js" = { flaky = true }
 "parallel/test-child-process-default-options.js" = {}
 "parallel/test-child-process-detached.js" = {}
 "parallel/test-child-process-disconnect.js" = {}
@@ -300,9 +301,12 @@
 "parallel/test-dgram-send-callback-recursive.js" = {}
 "parallel/test-dgram-send-cb-quelches-error.js" = {}
 "parallel/test-dgram-send-default-host.js" = {}
-"parallel/test-dgram-send-empty-array.js" = { flaky = true }
-"parallel/test-dgram-send-empty-buffer.js" = { darwin = false, flaky = true }
-"parallel/test-dgram-send-empty-packet.js" = { darwin = false, flaky = true }
+\# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# "parallel/test-dgram-send-empty-array.js" = { flaky = true }
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# "parallel/test-dgram-send-empty-buffer.js" = { darwin = false, flaky = true }
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# "parallel/test-dgram-send-empty-packet.js" = { darwin = false, flaky = true }
 "parallel/test-dgram-send-error.js" = {}
 "parallel/test-dgram-send-invalid-msg-type.js" = {}
 "parallel/test-dgram-send-multi-buffer-copy.js" = {}
@@ -444,7 +448,8 @@
 # TODO(bartlomieju): crashes constantly on CI, disabling for now
 # "parallel/test-fs-glob.mjs" = {}
 "parallel/test-fs-internal-assertencoding.js" = {}
-"parallel/test-fs-link.js" = { flaky = true }
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# "parallel/test-fs-link.js" = { flaky = true }
 "parallel/test-fs-long-path.js" = {}
 "parallel/test-fs-make-callback.js" = {}
 "parallel/test-fs-makeStatsCallback.js" = {}
@@ -746,7 +751,8 @@
 "parallel/test-microtask-queue-integration.js" = {}
 "parallel/test-microtask-queue-run-immediate.js" = {}
 "parallel/test-microtask-queue-run.js" = {}
-"parallel/test-module-cache.js" = { flaky = true }
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# "parallel/test-module-cache.js" = { flaky = true }
 "parallel/test-module-children.js" = {}
 "parallel/test-module-circular-symlinks.js" = {}
 "parallel/test-module-create-require-multibyte.js" = {}
@@ -978,8 +984,10 @@
 "parallel/test-stdin-script-child-option.js" = {}
 "parallel/test-stdio-pipe-access.js" = {}
 "parallel/test-stdio-pipe-redirect.js" = {}
-"parallel/test-stdio-pipe-stderr.js" = { flaky = true }
-"parallel/test-stdio-undestroy.js" = { flaky = true }
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# "parallel/test-stdio-pipe-stderr.js" = { flaky = true }
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# "parallel/test-stdio-undestroy.js" = { flaky = true }
 "parallel/test-stdout-cannot-be-closed-child-process-pipe.js" = {}
 "parallel/test-stdout-pipeline-destroy.js" = {}
 "parallel/test-stdout-stderr-reading.js" = {}
@@ -1087,7 +1095,8 @@
 "parallel/test-stream-readable-setEncoding-null.js" = {}
 "parallel/test-stream-readable-strategy-option.js" = {}
 "parallel/test-stream-readable-to-web-termination.js" = {}
-"parallel/test-stream-readable-unpipe-resume.js" = { flaky = true }
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# "parallel/test-stream-readable-unpipe-resume.js" = { flaky = true }
 "parallel/test-stream-readable-unshift.js" = {}
 "parallel/test-stream-readable-with-unimplemented-_read.js" = {}
 "parallel/test-stream-readableListening-state.js" = {}
@@ -1174,7 +1183,8 @@
 "parallel/test-streams-highwatermark.js" = {}
 "parallel/test-string-decoder-end.js" = {}
 "parallel/test-string-decoder-fuzz.js" = {}
-"parallel/test-string-decoder.js" = { flaky = true }
+# TODO(bartlomieju): disabled for now, because it causes CI failures on main
+# "parallel/test-string-decoder.js" = { flaky = true }
 "parallel/test-sys.js" = {}
 "parallel/test-timers-api-refs.js" = {}
 "parallel/test-timers-args.js" = {}
