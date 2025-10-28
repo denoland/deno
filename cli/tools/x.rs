@@ -126,18 +126,48 @@ async fn maybe_run_local_npm_bin(
   }
 }
 
+enum XTempDir {
+  Existing(PathBuf),
+  New(PathBuf),
+}
+impl XTempDir {
+  fn path(&self) -> &PathBuf {
+    match self {
+      XTempDir::Existing(path) => path,
+      XTempDir::New(path) => path,
+    }
+  }
+}
+
 fn create_temp_node_modules_parent_dir(
+  prefix: Option<&str>,
   package_req: &PackageReq,
-) -> Result<PathBuf, AnyError> {
+) -> Result<XTempDir, AnyError> {
+  let mut package_req_folder = String::from(prefix.unwrap_or(""));
+  package_req_folder.push_str(&package_req.to_string());
   let temp_dir = std::env::temp_dir()
     .join("deno_x_nm")
-    .join(package_req.to_string());
+    .join(package_req_folder);
+  if temp_dir.exists() {
+    let canonicalized_temp_dir = temp_dir
+      .canonicalize()
+      .ok()
+      .map(deno_path_util::strip_unc_prefix);
+    let temp_dir = canonicalized_temp_dir.unwrap_or_else(|| temp_dir);
+    return Ok(XTempDir::Existing(temp_dir));
+  }
   std::fs::create_dir_all(&temp_dir)?;
   let package_json_path = temp_dir.join("package.json");
   std::fs::write(&package_json_path, "{}")?;
   let deno_json_path = temp_dir.join("deno.json");
   std::fs::write(&deno_json_path, r#"{"nodeModulesDir": "auto"}"#)?;
-  Ok(temp_dir)
+
+  let canonicalized_temp_dir = temp_dir
+    .canonicalize()
+    .ok()
+    .map(deno_path_util::strip_unc_prefix);
+  let temp_dir = canonicalized_temp_dir.unwrap_or_else(|| temp_dir);
+  Ok(XTempDir::New(temp_dir))
 }
 
 pub async fn run(
@@ -218,42 +248,15 @@ pub async fn run(
 
   match thing_to_run {
     ReqRefOrUrl::Npm(npm_package_req_reference) => {
-      let mut new_flags = (*flags).clone();
-      new_flags.node_modules_dir =
-        Some(deno_config::deno_json::NodeModulesDirMode::Auto);
-      let temp_dir =
-        create_temp_node_modules_parent_dir(npm_package_req_reference.req())?;
-      let canonicalized_temp_dir = temp_dir
-        .canonicalize()
-        .ok()
-        .map(deno_path_util::strip_unc_prefix);
-      let temp_dir = canonicalized_temp_dir.unwrap_or_else(|| temp_dir);
+      let (new_flags, new_factory) =
+        autoinstall_package(ReqRef::Npm(&npm_package_req_reference), &flags)
+          .await?;
+      let new_node_resolver = new_factory.node_resolver().await?;
+      let new_npm_resolver = new_factory.npm_resolver().await?;
 
-      let pkg_json = temp_dir.join("package.json");
-      std::fs::write(
-        &pkg_json,
-        format!(
-          "{{\"dependencies\": {{\"{}\": \"{}\"}} }}",
-          npm_package_req_reference.req().name,
-          npm_package_req_reference.req().version_req
-        ),
-      )?;
-      let temp_node_modules = temp_dir.join("node_modules");
-      new_flags.internal.root_node_modules_dir_override =
-        Some(temp_node_modules);
-      new_flags.config_flag = crate::args::ConfigFlag::Path(
-        temp_dir.join("deno.json").to_string_lossy().into_owned(),
-      );
-
-      let new_flags = Arc::new(new_flags);
-      let new_factory = CliFactory::from_flags(new_flags.clone());
       let bin_name = npm_package_req_reference
         .sub_path()
         .unwrap_or_else(|| &npm_package_req_reference.req().name);
-      let new_node_resolver = factory.node_resolver().await?;
-      let new_npm_resolver = new_factory.npm_resolver().await?;
-
-      crate::tools::pm::cache_top_level_deps(&new_factory, None).await?;
 
       let res = maybe_run_local_npm_bin(
         &new_factory,
@@ -268,40 +271,23 @@ pub async fn run(
       if let Some(exit_code) = res {
         return Ok(exit_code);
       } else {
-        return Err(anyhow::anyhow!("Failed to run command: {}", command));
+        let bins = resolve_local_bins(&new_node_resolver, &new_npm_resolver)?;
+        return Err(anyhow::anyhow!(
+          "Unable to choose binary for {}\n  Available bins:\n{}",
+          command,
+          bins
+            .keys()
+            .map(|k| format!("    {}", k))
+            .collect::<Vec<_>>()
+            .join("\n")
+        ));
       }
     }
     ReqRefOrUrl::Jsr(jsr_package_req_reference) => {
-      let mut new_flags = (*flags).clone();
-      new_flags.node_modules_dir =
-        Some(deno_config::deno_json::NodeModulesDirMode::Manual);
-      let temp_dir =
-        create_temp_node_modules_parent_dir(jsr_package_req_reference.req())?;
-      let canonicalized_temp_dir = temp_dir
-        .canonicalize()
-        .ok()
-        .map(deno_path_util::strip_unc_prefix);
-      let temp_dir = canonicalized_temp_dir.unwrap_or_else(|| temp_dir);
+      let (_new_flags, new_factory) =
+        autoinstall_package(ReqRef::Jsr(&jsr_package_req_reference), &flags)
+          .await?;
 
-      let deno_json = temp_dir.join("deno.json");
-      std::fs::write(
-        &deno_json,
-        format!(
-          "{{ \"nodeModulesDir\": \"auto\", \"imports\": {{ \"{}\": \"{}\" }} }}",
-          jsr_package_req_reference.req().name,
-          format_args!("jsr:{}", jsr_package_req_reference.req())
-        ),
-      )?;
-      let temp_node_modules = temp_dir.join("node_modules");
-      new_flags.internal.root_node_modules_dir_override =
-        Some(temp_node_modules);
-      new_flags.config_flag =
-        crate::args::ConfigFlag::Path(deno_json.to_string_lossy().into_owned());
-
-      let new_flags = Arc::new(new_flags);
-      let new_factory = CliFactory::from_flags(new_flags.clone());
-
-      crate::tools::pm::cache_top_level_deps(&new_factory, None).await?;
       let url =
         deno_core::url::Url::parse(&jsr_package_req_reference.to_string())?;
       run_js_file(&new_factory, roots, None, &url, false).await
@@ -310,14 +296,92 @@ pub async fn run(
       let mut new_flags = (*flags).clone();
       new_flags.node_modules_dir =
         Some(deno_config::deno_json::NodeModulesDirMode::None);
+      new_flags.internal.lockfile_skip_write = true;
 
       let new_flags = Arc::new(new_flags);
       let new_factory = CliFactory::from_flags(new_flags.clone());
       run_js_file(&new_factory, roots, None, &url, false).await
     }
   }
+}
 
-  // if command.starts_with(pat)
+async fn autoinstall_package(
+  req_ref: ReqRef<'_>,
+  old_flags: &Flags,
+) -> Result<(Arc<Flags>, CliFactory), AnyError> {
+  fn make_new_flags(old_flags: &Flags, temp_dir: &PathBuf) -> Arc<Flags> {
+    let mut new_flags = (*old_flags).clone();
+    new_flags.node_modules_dir =
+      Some(deno_config::deno_json::NodeModulesDirMode::Manual);
+    let temp_node_modules = temp_dir.join("node_modules");
+    new_flags.internal.root_node_modules_dir_override = Some(temp_node_modules);
+    new_flags.config_flag = crate::args::ConfigFlag::Path(
+      temp_dir.join("deno.json").to_string_lossy().into_owned(),
+    );
+
+    let new_flags = Arc::new(new_flags);
+    new_flags
+  }
+  let temp_dir =
+    create_temp_node_modules_parent_dir(Some(req_ref.prefix()), req_ref.req())?;
+
+  let new_flags = make_new_flags(old_flags, &temp_dir.path());
+  let new_factory = CliFactory::from_flags(new_flags.clone());
+
+  match temp_dir {
+    XTempDir::Existing(_) => Ok((new_flags, new_factory)),
+
+    XTempDir::New(temp_dir) => {
+      match req_ref {
+        ReqRef::Npm(req_ref) => {
+          let pkg_json = temp_dir.join("package.json");
+          std::fs::write(
+            &pkg_json,
+            format!(
+              "{{\"dependencies\": {{\"{}\": \"{}\"}} }}",
+              req_ref.req().name,
+              req_ref.req().version_req
+            ),
+          )?;
+        }
+        ReqRef::Jsr(req_ref) => {
+          let deno_json = temp_dir.join("deno.json");
+          std::fs::write(
+            &deno_json,
+            format!(
+              "{{ \"nodeModulesDir\": \"auto\", \"imports\": {{ \"{}\": \"{}\" }} }}",
+              req_ref.req().name,
+              format_args!("jsr:{}", req_ref.req())
+            ),
+          )?;
+        }
+      }
+
+      crate::tools::pm::cache_top_level_deps(&new_factory, None).await?;
+      Ok((new_flags, new_factory))
+    }
+  }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ReqRef<'a> {
+  Npm(&'a NpmPackageReqReference),
+  Jsr(&'a JsrPackageReqReference),
+}
+impl<'a> ReqRef<'a> {
+  fn req(&self) -> &PackageReq {
+    match self {
+      ReqRef::Npm(req) => req.req(),
+      ReqRef::Jsr(req) => req.req(),
+    }
+  }
+
+  fn prefix(&self) -> &str {
+    match self {
+      ReqRef::Npm(_) => "npm",
+      ReqRef::Jsr(_) => "jsr",
+    }
+  }
 }
 
 enum ReqRefOrUrl {
