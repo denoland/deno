@@ -1563,7 +1563,11 @@ where
     OpenAccessKind::Read,
     "Deno.readFileSync()",
   )?;
-  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
+
+  let options = OpenOptions::read();
+  let buf = fs
+    .read_file_sync(&path, options)
+    .context_path("readfile", &path)?;
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
   Ok(buf.into_owned().into_boxed_slice().into())
@@ -1593,7 +1597,8 @@ where
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
-  let fut = fs.read_file_async(path.as_owned());
+  let options = OpenOptions::read();
+  let fut = fs.read_file_async(path.as_owned(), options);
 
   let buf = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
