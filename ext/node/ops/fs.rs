@@ -6,8 +6,11 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::ToJsBuffer;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_fs::FileSystemRc;
@@ -86,9 +89,9 @@ where
   Ok(fs.exists_async(path.into_owned()).await?)
 }
 
-fn get_open_options(mut flags: i32, mode: u32) -> OpenOptions {
+fn get_open_options(mut flags: i32, mode: Option<u32>) -> OpenOptions {
   let mut options = OpenOptions {
-    mode: Some(mode),
+    mode,
     ..Default::default()
   };
 
@@ -157,7 +160,7 @@ where
   P: NodePermissions + 'static,
 {
   let path = Path::new(path);
-  let options = get_open_options(flags, mode);
+  let options = get_open_options(flags, Some(mode));
 
   let fs = state.borrow::<FileSystemRc>().clone();
   let path = state.borrow_mut::<P>().check_open(
@@ -184,7 +187,7 @@ where
   P: NodePermissions + 'static,
 {
   let path = PathBuf::from(path);
-  let options = get_open_options(flags, mode);
+  let options = get_open_options(flags, Some(mode));
 
   let (fs, path) = {
     let mut state = state.borrow_mut();
@@ -204,6 +207,78 @@ where
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
   Ok(rid)
+}
+
+#[op2(stack_trace)]
+#[serde]
+pub fn op_node_read_file_sync<P>(
+  state: &mut OpState,
+  #[string] path: &str,
+  #[smi] flags: i32,
+) -> Result<ToJsBuffer, FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = Path::new(path);
+  let options = get_open_options(flags, None);
+
+  let path = state.borrow_mut::<P>().check_open(
+    Cow::Borrowed(path),
+    open_options_to_access_kind(&options),
+    Some("node:fs.readFileSync"),
+  )?;
+
+  let fs = state.borrow::<FileSystemRc>().clone();
+  let buf = fs.read_file_sync(&path, options)?;
+
+  Ok(buf.into_owned().into_boxed_slice().into())
+}
+
+#[op2(async, stack_trace)]
+#[serde]
+pub async fn op_node_read_file<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+  #[smi] flags: i32,
+  #[smi] cancel_rid: Option<ResourceId>,
+) -> Result<ToJsBuffer, FsError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = PathBuf::from(path);
+  let options = get_open_options(flags, None);
+
+  let (fs, cancel_handle, path) = {
+    let mut state = state.borrow_mut();
+    let cancel_handle = cancel_rid
+      .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
+    (
+      state.borrow::<FileSystemRc>().clone(),
+      cancel_handle,
+      state.borrow_mut::<P>().check_open(
+        Cow::Owned(path),
+        open_options_to_access_kind(&options),
+        Some("node:fs.readFile"),
+      )?,
+    )
+  };
+
+  let fut = fs.read_file_async(path.as_owned(), options);
+  let buf = if let Some(cancel_handle) = cancel_handle {
+    let res = fut.or_cancel(cancel_handle).await;
+
+    if let Some(cancel_rid) = cancel_rid
+      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
+    {
+      res.close();
+    };
+
+    res.unwrap()?
+  } else {
+    fut.await?
+  };
+
+  Ok(buf.into_owned().into_boxed_slice().into())
 }
 
 #[derive(Debug, Serialize)]
