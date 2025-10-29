@@ -787,7 +787,17 @@ Deno.test(
   async function rejectBatAndCmdFiles() {
     const tempDir = await Deno.makeTempDir();
     Deno.writeTextFileSync(tempDir + "/test.bat", "@echo off\r\necho 1 2 3 %*");
-    for (const ext of [".bat", ".BaT", ".bAT", ".BAT", ".bat."]) {
+    for (
+      const ext of [
+        ".bat",
+        ".BaT",
+        ".bAT",
+        ".BAT",
+        ".bat.",
+        ".bat  ",
+        ".bat . ",
+      ]
+    ) {
       const fileName = tempDir + "/test" + ext;
       const output = await new Deno.Command(fileName, {
         args: ["&calc.exe"],
