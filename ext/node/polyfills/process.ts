@@ -75,6 +75,7 @@ export let arch = "";
 export let platform = isWindows ? "win32" : ""; // initialized during bootstrap
 
 export let pid = 0;
+export let ppid = 0;
 
 let stdin, stdout, stderr;
 
@@ -1027,7 +1028,7 @@ internals.__bootstrapNodeProcess = function (
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
-
+    ppid = Deno.ppid;
     initializeDebugEnv(nodeDebug);
 
     if (getOptionValue("--warnings")) {
