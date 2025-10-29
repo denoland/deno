@@ -726,7 +726,7 @@ pub fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
 fn enhanced_unsupported_import_attribute(err: &ModuleError) -> Option<String> {
   match err.as_kind() {
     ModuleErrorKind::UnsupportedImportAttributeType { kind, .. }
-      if matches!(kind.as_str(), "bytes" | "text") =>
+      if matches!(kind.as_str(), "text") =>
     {
       let mut text = format_deno_graph_error(err);
       text.push_str(&format!(
