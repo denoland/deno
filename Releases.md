@@ -6,6 +6,14 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.5.6 / 2025.10.29
+
+- Revert "chore: update urlpattern (#31054)" (#31117)
+- fix(ext/node): implement StatementSync#columns() method (#31119)
+- fix(windows): re-allow spawning bat and cmd files (#31118)
+- fix(windows): strip periods and trailing slashes when normalizing paths
+  (#31131)
+
 ### 2.5.5 / 2025.10.28
 
 - feat(unstable): ability to exclude packages from minimum dependency age
