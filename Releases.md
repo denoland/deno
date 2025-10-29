@@ -9,8 +9,6 @@ https://github.com/denoland/deno_install
 ### 2.5.6 / 2025.10.29
 
 - Revert "chore: update urlpattern (#31054)" (#31117)
-- Revert "ci: skip running WPT and node compat unless labels present (#…
-  (#31120)
 - fix(ext/node): implement StatementSync#columns() method (#31119)
 - fix(windows): re-allow spawning bat and cmd files (#31118)
 - fix(windows): strip periods and trailing slashes when normalizing paths
