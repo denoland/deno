@@ -27,7 +27,7 @@ async function run(name: string, testConfig: SingleFileConfig) {
   if (error) {
     // on first error, force all tests to run sequentially
     if (originallyRunningConcurrently) {
-      runningConcurrently = true;
+      runningConcurrently = false;
       dynamicConcurrencyLimiter.setMaxConcurrency(1);
       return run(name, testConfig);
     }
