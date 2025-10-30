@@ -1551,20 +1551,21 @@ where
 pub fn op_fs_read_file_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
+  #[smi] flags: Option<i32>,
 ) -> Result<ToJsBuffer, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
   let path = Path::new(path);
+  let options = OpenOptions::from(flags);
 
   let fs = state.borrow::<FileSystemRc>().clone();
   let path = state.borrow::<P>().check_open(
     Cow::Borrowed(path),
-    OpenAccessKind::Read,
+    open_options_to_access_kind(&options),
     "Deno.readFileSync()",
   )?;
 
-  let options = OpenOptions::read();
   let buf = fs
     .read_file_sync(&path, options)
     .context_path("readfile", &path)?;
@@ -1579,11 +1580,13 @@ pub async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
+  #[smi] flags: Option<i32>,
 ) -> Result<ToJsBuffer, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
+  let options = OpenOptions::from(flags);
 
   let (fs, cancel_handle, path) = {
     let state = state.borrow();
@@ -1591,13 +1594,12 @@ where
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
     let path = state.borrow::<P>().check_open(
       Cow::Owned(path),
-      OpenAccessKind::Read,
+      open_options_to_access_kind(&options),
       "Deno.readFile()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
-  let options = OpenOptions::read();
   let fut = fs.read_file_async(path.as_owned(), options);
 
   let buf = if let Some(cancel_handle) = cancel_handle {

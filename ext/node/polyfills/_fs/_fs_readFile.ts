@@ -19,7 +19,7 @@ import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { getOptions, stringToFlags } from "ext:deno_node/internal/fs/utils.mjs";
 import { core } from "ext:core/mod.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { op_node_read_file, op_node_read_file_sync } from "ext:core/ops";
+import { op_fs_read_file_async, op_fs_read_file_sync } from "ext:core/ops";
 
 const defaultOptions = {
   __proto__: null,
@@ -61,10 +61,10 @@ async function readFileAsync(
   }
 
   try {
-    const read = await op_node_read_file(
+    const read = await op_fs_read_file_async(
       path,
-      flagsNumber,
       cancelRid,
+      flagsNumber,
     );
     return read;
   } finally {
@@ -161,7 +161,7 @@ export function readFileSync(
   } else {
     const flagsNumber = stringToFlags(options?.flag, "options.flag");
     try {
-      data = op_node_read_file_sync(path, flagsNumber);
+      data = op_fs_read_file_sync(path, flagsNumber);
     } catch (err) {
       throw denoErrorToNodeError(err, { path, syscall: "open" });
     }

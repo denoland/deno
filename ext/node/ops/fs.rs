@@ -6,11 +6,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_fs::FileSystemRc;
@@ -89,52 +86,9 @@ where
   Ok(fs.exists_async(path.into_owned()).await?)
 }
 
-fn get_open_options(mut flags: i32, mode: Option<u32>) -> OpenOptions {
-  let mut options = OpenOptions {
-    mode,
-    ..Default::default()
-  };
-
-  if (flags & libc::O_APPEND) == libc::O_APPEND {
-    options.append = true;
-    flags &= !libc::O_APPEND;
-  }
-  if (flags & libc::O_CREAT) == libc::O_CREAT {
-    options.create = true;
-    flags &= !libc::O_CREAT;
-  }
-  if (flags & libc::O_EXCL) == libc::O_EXCL {
-    options.create_new = true;
-    options.write = true;
-    flags &= !libc::O_EXCL;
-  }
-  if (flags & libc::O_RDWR) == libc::O_RDWR {
-    options.read = true;
-    options.write = true;
-    flags &= !libc::O_RDWR;
-  }
-  if (flags & libc::O_TRUNC) == libc::O_TRUNC {
-    options.truncate = true;
-    flags &= !libc::O_TRUNC;
-  }
-  if (flags & libc::O_WRONLY) == libc::O_WRONLY {
-    options.write = true;
-    flags &= !libc::O_WRONLY;
-  }
-
-  if flags != 0 {
-    options.custom_flags = Some(flags);
-  }
-
-  if !options.append
-    && !options.create
-    && !options.create_new
-    && !options.read
-    && !options.truncate
-    && !options.write
-  {
-    options.read = true;
-  }
+fn get_open_options(flags: i32, mode: Option<u32>) -> OpenOptions {
+  let mut options = OpenOptions::from(Some(flags));
+  options.mode = mode;
   options
 }
 
@@ -208,79 +162,6 @@ where
     .add(FileResource::new(file, "fsFile".to_string()));
   Ok(rid)
 }
-
-#[op2(stack_trace)]
-#[serde]
-pub fn op_node_read_file_sync<P>(
-  state: &mut OpState,
-  #[string] path: &str,
-  #[smi] flags: i32,
-) -> Result<ToJsBuffer, FsError>
-where
-  P: NodePermissions + 'static,
-{
-  let path = Path::new(path);
-  let options = get_open_options(flags, None);
-
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(path),
-    open_options_to_access_kind(&options),
-    Some("node:fs.readFileSync"),
-  )?;
-
-  let fs = state.borrow::<FileSystemRc>().clone();
-  let buf = fs.read_file_sync(&path, options)?;
-
-  Ok(buf.into_owned().into_boxed_slice().into())
-}
-
-#[op2(async, stack_trace)]
-#[serde]
-pub async fn op_node_read_file<P>(
-  state: Rc<RefCell<OpState>>,
-  #[string] path: String,
-  #[smi] flags: i32,
-  #[smi] cancel_rid: Option<ResourceId>,
-) -> Result<ToJsBuffer, FsError>
-where
-  P: NodePermissions + 'static,
-{
-  let path = PathBuf::from(path);
-  let options = get_open_options(flags, None);
-
-  let (fs, cancel_handle, path) = {
-    let mut state = state.borrow_mut();
-    let cancel_handle = cancel_rid
-      .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    (
-      state.borrow::<FileSystemRc>().clone(),
-      cancel_handle,
-      state.borrow_mut::<P>().check_open(
-        Cow::Owned(path),
-        open_options_to_access_kind(&options),
-        Some("node:fs.readFile"),
-      )?,
-    )
-  };
-
-  let fut = fs.read_file_async(path.as_owned(), options);
-  let buf = if let Some(cancel_handle) = cancel_handle {
-    let res = fut.or_cancel(cancel_handle).await;
-
-    if let Some(cancel_rid) = cancel_rid
-      && let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid)
-    {
-      res.close();
-    };
-
-    res.unwrap()?
-  } else {
-    fut.await?
-  };
-
-  Ok(buf.into_owned().into_boxed_slice().into())
-}
-
 #[derive(Debug, Serialize)]
 pub struct StatFs {
   #[serde(rename = "type")]

@@ -62,6 +62,61 @@ impl OpenOptions {
   }
 }
 
+impl From<Option<i32>> for OpenOptions {
+  fn from(flags: Option<i32>) -> Self {
+    if let Some(mut flags) = flags {
+      let mut options = OpenOptions {
+        ..Default::default()
+      };
+
+      if (flags & libc::O_APPEND) == libc::O_APPEND {
+        options.append = true;
+        flags &= !libc::O_APPEND;
+      }
+      if (flags & libc::O_CREAT) == libc::O_CREAT {
+        options.create = true;
+        flags &= !libc::O_CREAT;
+      }
+      if (flags & libc::O_EXCL) == libc::O_EXCL {
+        options.create_new = true;
+        options.write = true;
+        flags &= !libc::O_EXCL;
+      }
+      if (flags & libc::O_RDWR) == libc::O_RDWR {
+        options.read = true;
+        options.write = true;
+        flags &= !libc::O_RDWR;
+      }
+      if (flags & libc::O_TRUNC) == libc::O_TRUNC {
+        options.truncate = true;
+        flags &= !libc::O_TRUNC;
+      }
+      if (flags & libc::O_WRONLY) == libc::O_WRONLY {
+        options.write = true;
+        flags &= !libc::O_WRONLY;
+      }
+
+      if flags != 0 {
+        options.custom_flags = Some(flags);
+      }
+
+      if !options.append
+        && !options.create
+        && !options.create_new
+        && !options.read
+        && !options.truncate
+        && !options.write
+      {
+        options.read = true;
+      }
+
+      Self { ..options }
+    } else {
+      Self::read()
+    }
+  }
+}
+
 #[derive(Deserialize)]
 pub enum FsFileType {
   #[serde(rename = "file")]
