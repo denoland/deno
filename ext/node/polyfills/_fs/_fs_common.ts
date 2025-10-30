@@ -15,7 +15,6 @@ import {
   notImplemented,
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
-import { type Buffer } from "node:buffer";
 import { assertEncoding } from "ext:deno_node/internal/fs/utils.mjs";
 
 export type CallbackWithError = (err: ErrnoException | null) => void;
@@ -33,13 +32,6 @@ export type BinaryOptionsArgument =
   | BinaryEncodings
   | ({ encoding: BinaryEncodings } & FileOptions);
 export type FileOptionsArgument = Encodings | FileOptions;
-
-export type ReadOptions = {
-  buffer: Buffer | ArrayBufferView;
-  offset: number;
-  length: number;
-  position: number | null;
-};
 
 export interface WriteFileOptions extends FileOptions {
   mode?: number;

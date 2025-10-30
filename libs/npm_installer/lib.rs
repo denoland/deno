@@ -274,7 +274,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
     caching: Option<PackageCaching<'_>>,
   ) -> AddPkgReqsResult {
-    if packages.is_empty() {
+    if packages.is_empty() && !self.npm_resolution.is_pending() {
       return AddPkgReqsResult {
         dependencies_result: Ok(()),
         results: vec![],
@@ -313,7 +313,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       };
 
       if !uncached.is_empty() {
-        result.dependencies_result = self.cache_packages(caching).await;
+        result.dependencies_result =
+          self.fs_installer.cache_packages(caching).await;
         if result.dependencies_result.is_ok() {
           let mut cached_reqs = self.cached_reqs.lock();
           for req in uncached {
@@ -361,8 +362,12 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     &self,
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
-    self.npm_resolution_initializer.ensure_initialized().await?;
-    self.fs_installer.cache_packages(caching).await
+    if self.npm_resolution.is_pending() {
+      self.add_package_reqs(&[], caching).await
+    } else {
+      self.npm_resolution_initializer.ensure_initialized().await?;
+      self.fs_installer.cache_packages(caching).await
+    }
   }
 
   pub fn ensure_no_pkg_json_dep_errors(

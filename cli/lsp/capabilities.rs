@@ -20,8 +20,11 @@ fn code_action_capabilities(
     .and_then(|it| it.code_action.as_ref())
     .and_then(|it| it.code_action_literal_support.as_ref())
     .map(|_| {
-      let mut code_action_kinds =
-        vec![CodeActionKind::QUICKFIX, CodeActionKind::REFACTOR];
+      let mut code_action_kinds = vec![
+        CodeActionKind::QUICKFIX,
+        CodeActionKind::REFACTOR,
+        CodeActionKind::SOURCE_ORGANIZE_IMPORTS,
+      ];
       code_action_kinds.extend(
         ALL_KNOWN_REFACTOR_ACTION_KINDS
           .iter()

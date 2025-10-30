@@ -225,7 +225,7 @@ fn unadded_dependency_message_with_import_map() {
   let mut expected_lsp_messages = Vec::from([
     "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
     "'x' is declared but its value is never read.",
-    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
+    "Import \"@std/fs\" not a dependency and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
   ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
@@ -282,7 +282,7 @@ fn unadded_dependency_message() {
   let mut expected_lsp_messages = Vec::from([
     "`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
     "'x' is declared but its value is never read.",
-    "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
+    "Import \"@std/fs\" not a dependency and not in import map from \"   hint: If you want to use the JSR package, try running `deno add jsr:@std/fs`",
   ]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
@@ -1670,7 +1670,7 @@ fn lsp_hover() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "```typescript\nconst Deno.args: string[]\n```\n\nReturns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.\n\n*@category* - Runtime",
+        "value": "```typescript\nconst Deno.args: string[]\n```\n\nReturns the script arguments to the program.\n\nGive the following command line invocation of Deno:\n\n```sh\ndeno eval \"console.log(Deno.args)\" Sushi Maguro Hamachi\n```\n\nThen `Deno.args` will contain:\n\n```ts\n[ \"Sushi\", \"Maguro\", \"Hamachi\" ]\n```\n\nIf you are looking for a structured way to parse arguments, there is\n[`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from\nthe Deno Standard Library.\n\n*@category* - Runtime",
       },
       "range": {
         "start": { "line": 0, "character": 17 },
@@ -7692,6 +7692,241 @@ fn lsp_quote_style_from_workspace_settings() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_code_actions_organize_imports() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"import { z, y } from "./z.ts";
+import { c, a, b } from "./b.ts";
+import { d } from "./a.ts";
+import unused from "./c.ts";
+
+console.log(b, a, c, d, y, z);
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+
+  // Request "Organize Imports" action
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+
+  let expected = json!([
+    {
+      "title": "Organize imports",
+      "kind": "source.organizeImports",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": {
+              "uri": uri,
+              "version": 1
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 1, "character": 0 }
+                },
+                // All organized imports in the first replacement:
+                // files sorted alphabetically, imports within files sorted alphabetically
+                "newText": concat!(
+                  "import { d } from \"./a.ts\";\n",
+                  "import { a, b, c } from \"./b.ts\";\n",
+                  "import { y, z } from \"./z.ts\";\n",
+                )
+              },
+              {
+                "range": {
+                  "start": { "line": 1, "character": 0 },
+                  "end": { "line": 2, "character": 0 }
+                },
+                // Second line removed (replaced by organized imports above)
+                "newText": ""
+              },
+              {
+                "range": {
+                  "start": { "line": 2, "character": 0 },
+                  "end": { "line": 3, "character": 0 }
+                },
+                // Third line removed (replaced by organized imports above)
+                "newText": ""
+              },
+              {
+                "range": {
+                  "start": { "line": 3, "character": 0 },
+                  "end": { "line": 4, "character": 0 }
+                },
+                // Unused import from "./c.ts" is removed
+                "newText": ""
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "uri": uri
+      }
+    }
+  ]);
+
+  assert_eq!(res, expected);
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_code_actions_organize_imports_already_organized() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let tmp_dir = context.temp_dir();
+  let file = tmp_dir.source_file(
+    "file.ts",
+    r#"import { a, b, c } from "./b.ts";
+
+console.log(a, b, c);
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+
+  // Request "Organize Imports" action
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+
+  assert_eq!(res, json!(null));
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_code_actions_organize_imports_with_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  // File with unordered imports and a type error
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"import { b } from "./b.ts";
+import { a } from "./a.ts";
+import unused from "./c.ts";
+
+// Type error: using undeclared variable
+console.log(undeclaredVariable);
+"#,
+  );
+  let uri = file.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+
+  // Request "Organize Imports" action with diagnostics indicating an error
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 0 }
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 5, "character": 12 },
+              "end": { "line": 5, "character": 29 }
+            },
+            "severity": 1,
+            "message": "Cannot find name 'undeclaredVariable'.",
+            "source": "deno-ts"
+          }
+        ],
+        "only": ["source.organizeImports"]
+      }
+    }),
+  );
+
+  let expected = json!([
+    {
+      "title": "Organize imports",
+      "kind": "source.organizeImports",
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": {
+              "uri": uri,
+              "version": 1
+            },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 0, "character": 0 },
+                  "end": { "line": 1, "character": 0 }
+                },
+                // Imports sorted alphabetically, but unused imports NOT removed due to error
+                "newText": concat!(
+                  "import { a } from \"./a.ts\";\n",
+                  "import { b } from \"./b.ts\";\n",
+                  "import unused from \"./c.ts\";\n",
+                )
+              },
+              {
+                "range": {
+                  "start": { "line": 1, "character": 0 },
+                  "end": { "line": 2, "character": 0 }
+                },
+                "newText": ""
+              },
+              {
+                "range": {
+                  "start": { "line": 2, "character": 0 },
+                  "end": { "line": 3, "character": 0 }
+                },
+                "newText": ""
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "uri": uri
+      }
+    }
+  ]);
+
+  assert_eq!(res, expected);
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -10680,7 +10915,7 @@ fn lsp_completions_node_builtin() {
           "severity": 1,
           "code": "import-node-prefix-missing",
           "source": "deno",
-          "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\n  hint: If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
+          "message": "Import \"fs\" not a dependency\n  hint: If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
           "data": {
             "specifier": "fs"
           },
@@ -17569,6 +17804,48 @@ fn lsp_tsconfig_root_dirs() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_tsconfig_watched() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let file = temp_dir.source_file("main.ts", "document;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 8 },
+        },
+        "severity": 1,
+        "code": 2584,
+        "source": "deno-ts",
+        "message": "Cannot find name 'document'. Do you need to change your target library? Try changing the 'lib' compiler option to include 'dom'.",
+      },
+    ]),
+  );
+  let tsconfig_file = temp_dir.source_file(
+    "tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  client.did_change_watched_files(json!({
+    "changes": [{ "uri": tsconfig_file.uri(), "type": 1 }],
+  }));
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -19164,6 +19441,33 @@ fn do_not_auto_import_from_definitely_typed() {
     client.shutdown();
   }
 }
+#[test]
+#[timeout(300_000)]
+fn lsp_skip_lib_check_graph_errors() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "skipLibCheck": true,
+      },
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "types.d.ts",
+    r#"
+      /// <reference path="./nonexistent.d.ts" />
+      /// <reference path="nonexistent" />
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
 
 #[test]
 #[timeout(300_000)]
@@ -19618,7 +19922,7 @@ fn lsp_push_diagnostics() {
             "severity": 1,
             "code": "import-prefix-missing",
             "source": "deno",
-            "message": "Relative import path \"foo\" not prefixed with / or ./ or ../\n  hint: If you want to use the npm package, try running `deno add npm:foo`",
+            "message": "Import \"foo\" not a dependency\n  hint: If you want to use the npm package, try running `deno add npm:foo`",
           },
         ],
         "version": 1,
@@ -19640,5 +19944,38 @@ fn lsp_push_diagnostics() {
         "version": 1,
       },
     ]),
+  );
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_isolated_declarations() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "isolatedDeclarations": true,
+      }
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"export function add(a: number, b: number) {
+  return a + b;
+}
+"#,
+  );
+  let mut client: LspClient = context.new_lsp_command().build();
+  client.initialize_default();
+  client.change_configuration(json!({ "deno": { "enable": true }}));
+
+  let diagnostics = client.did_open_file(&file);
+  let diagnostics = diagnostics.all();
+  assert_eq!(
+    diagnostics[0].message,
+    "Function must have an explicit return type annotation with --isolatedDeclarations."
   );
 }

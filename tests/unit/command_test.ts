@@ -786,18 +786,27 @@ Deno.test(
   },
   async function rejectBatAndCmdFiles() {
     const tempDir = await Deno.makeTempDir();
-    const fileName = tempDir + "/test.bat";
-    const file = await Deno.open(fileName, {
-      create: true,
-      write: true,
-    });
-
-    await assertRejects(async () => {
-      await new Deno.Command(fileName, {
+    Deno.writeTextFileSync(tempDir + "/test.bat", "@echo off\r\necho 1 2 3 %*");
+    for (
+      const ext of [
+        ".bat",
+        ".BaT",
+        ".bAT",
+        ".BAT",
+        ".bat.",
+        ".bat  ",
+        ".bat . ",
+      ]
+    ) {
+      const fileName = tempDir + "/test" + ext;
+      const output = await new Deno.Command(fileName, {
         args: ["&calc.exe"],
+        stdout: "piped",
       }).output();
-    }, Deno.errors.PermissionDenied);
-    file.close();
+      const stdout = new TextDecoder().decode(output.stdout);
+      // should have calc escaped here instead of executing it
+      assert(stdout.includes(`1 2 3 "&calc.exe\"`), `Text: ${stdout}`);
+    }
   },
 );
 

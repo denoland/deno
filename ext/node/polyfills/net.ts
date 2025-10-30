@@ -1809,6 +1809,9 @@ Object.defineProperty(Socket.prototype, "_handle", {
 Socket.prototype[kReinitializeHandle] = function (handle) {
   this._handle?.close();
 
+  // Make sure TLS wrap works after reinitialize.
+  handle.afterConnectTls = this._handle.afterConnectTls;
+
   this._handle = handle;
   this._handle[ownerSymbol] = this;
 

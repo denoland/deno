@@ -743,7 +743,7 @@ unsafe impl deno_core::GarbageCollected for BrotliDecoder {
 
 fn decoder_param(
   i: u32,
-) -> ffi::decompressor::ffi::interface::BrotliDecoderParameter {
+) -> Option<ffi::decompressor::ffi::interface::BrotliDecoderParameter> {
   const _: () = {
     assert!(
       std::mem::size_of::<
@@ -752,8 +752,11 @@ fn decoder_param(
         == std::mem::size_of::<u32>(),
     );
   };
-  // SAFETY: `i` is a valid u32 value that corresponds to a BrotliDecoderParameter.
-  unsafe { std::mem::transmute(i) }
+  match i {
+    0 => Some(ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION),
+    1 => Some(ffi::decompressor::ffi::interface::BrotliDecoderParameter::BROTLI_DECODER_PARAM_LARGE_WINDOW),
+    _ => None
+  }
 }
 
 #[op2]
@@ -780,11 +783,11 @@ impl BrotliDecoder {
         std::ptr::null_mut(),
       );
       for (i, &value) in params.iter().enumerate() {
-        ffi::decompressor::ffi::BrotliDecoderSetParameter(
-          state,
-          decoder_param(i as u32),
-          value,
-        );
+        if let Some(param) = decoder_param(i as u32) {
+          ffi::decompressor::ffi::BrotliDecoderSetParameter(
+            state, param, value,
+          );
+        }
       }
 
       state
@@ -920,7 +923,7 @@ impl BrotliDecoder {
 }
 
 #[op2(fast)]
-pub fn op_zlib_crc32_string(#[string] data: &str, #[smi] value: u32) -> u32 {
+pub fn op_zlib_crc32_string(#[string] data: &str, value: u32) -> u32 {
   // SAFETY: `data` is a valid buffer.
   unsafe {
     zlib::crc32(value as c_ulong, data.as_ptr(), data.len() as u32) as u32
@@ -928,7 +931,7 @@ pub fn op_zlib_crc32_string(#[string] data: &str, #[smi] value: u32) -> u32 {
 }
 
 #[op2(fast)]
-pub fn op_zlib_crc32(#[buffer] data: &[u8], #[smi] value: u32) -> u32 {
+pub fn op_zlib_crc32(#[buffer] data: &[u8], value: u32) -> u32 {
   // SAFETY: `data` is a valid buffer.
   unsafe {
     zlib::crc32(value as c_ulong, data.as_ptr(), data.len() as u32) as u32

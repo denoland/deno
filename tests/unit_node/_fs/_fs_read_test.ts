@@ -7,11 +7,10 @@ import {
   assertMatch,
   assertStrictEquals,
 } from "@std/assert";
-import { read, readSync } from "node:fs";
-import { open, openSync } from "node:fs";
+import { closeSync, open, openSync, read, readSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import * as path from "@std/path";
-import { closeSync } from "node:fs";
+import { open as openPromise } from "node:fs/promises";
 
 async function readTest<T extends NodeJS.ArrayBufferView>(
   testData: string,
@@ -402,5 +401,116 @@ Deno.test({
         }
       }
     }
+  },
+});
+
+Deno.test({
+  name: "readSync: option object parameter works",
+  fn() {
+    const tmpFile = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(tmpFile, "hello world!");
+
+    const fd = openSync(tmpFile, "r");
+    const buffer = Buffer.alloc(6);
+
+    const bytesRead = readSync(fd, buffer, {
+      offset: 1,
+      length: 5,
+      position: 6,
+    });
+
+    assertStrictEquals(bytesRead, 5);
+    assertStrictEquals(buffer.toString("utf8", 1, 6), "world");
+
+    closeSync(fd);
+    Deno.removeSync(tmpFile);
+  },
+});
+
+Deno.test({
+  name: "read: option object parameter works",
+  async fn() {
+    const tmpFile = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(tmpFile, "hello world!");
+
+    const fd = openSync(tmpFile, "r");
+    const buffer = Buffer.alloc(11);
+
+    // No Buffer in option object
+    await new Promise<void>((resolve, reject) => {
+      read(
+        fd,
+        buffer,
+        {
+          offset: 0,
+          length: 5,
+          position: -1,
+        },
+        (err, bytesRead, data) => {
+          if (err) reject(err);
+
+          assertStrictEquals(bytesRead, 5);
+          assertStrictEquals(data?.toString("utf8", 0, 5), "hello");
+          resolve();
+        },
+      );
+    });
+
+    // Buffer in option object
+    await new Promise<void>((resolve, reject) => {
+      read(
+        fd,
+        {
+          buffer,
+          offset: 6,
+          length: 5,
+          position: 6,
+        },
+        (err, bytesRead, data) => {
+          if (err) reject(err);
+
+          assertStrictEquals(bytesRead, 5);
+          assertStrictEquals(data?.toString("utf8", 6, 11), "world");
+          resolve();
+        },
+      );
+    });
+
+    closeSync(fd);
+    Deno.removeSync(tmpFile);
+  },
+});
+
+Deno.test({
+  name: "FileHandle.read: option object parameter works",
+  async fn() {
+    const tmpFile = Deno.makeTempFileSync();
+    Deno.writeTextFileSync(tmpFile, "hello world!");
+
+    await using file = await openPromise(tmpFile, "r");
+    const buffer = Buffer.alloc(11);
+
+    // Buffer outside the option object
+    const result = await file.read(buffer, {
+      offset: 0,
+      length: 5,
+      position: -1,
+    });
+
+    assertStrictEquals(result.bytesRead, 5);
+    assertStrictEquals(buffer.toString("utf8", 0, 5), "hello");
+
+    // Buffer in option object
+    const result2 = await file.read({
+      buffer,
+      offset: 6,
+      length: 5,
+      position: 6,
+    });
+
+    assertStrictEquals(result2.bytesRead, 5);
+    assertStrictEquals(buffer.toString("utf8", 6, 11), "world");
+
+    Deno.removeSync(tmpFile);
   },
 });

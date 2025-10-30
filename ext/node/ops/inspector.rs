@@ -6,7 +6,6 @@ use std::rc::Rc;
 use deno_core::GarbageCollected;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
 use deno_core::op2;
@@ -158,10 +157,8 @@ where
   let session = JsRuntimeInspector::create_local_session(
     inspector,
     callback,
-    InspectorSessionOptions {
-      kind: InspectorSessionKind::NonBlocking {
-        wait_for_disconnect: false,
-      },
+    InspectorSessionKind::NonBlocking {
+      wait_for_disconnect: false,
     },
   );
 
@@ -170,17 +167,17 @@ where
   })
 }
 
-#[op2(fast)]
+#[op2(fast, reentrant)]
 pub fn op_inspector_dispatch(
-  #[cppgc] session: &JSInspectorSession,
+  #[cppgc] inspector: &JSInspectorSession,
   #[string] message: String,
 ) {
-  if let Some(session) = &mut *session.session.borrow_mut() {
+  if let Some(session) = &mut *inspector.session.borrow_mut() {
     session.dispatch(message);
   }
 }
 
 #[op2(fast)]
-pub fn op_inspector_disconnect(#[cppgc] session: &JSInspectorSession) {
-  drop(session.session.borrow_mut().take());
+pub fn op_inspector_disconnect(#[cppgc] inspector: &JSInspectorSession) {
+  inspector.session.borrow_mut().take();
 }
