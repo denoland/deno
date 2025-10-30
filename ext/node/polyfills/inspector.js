@@ -34,6 +34,8 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 
 const {
+  ArrayPrototypePush,
+  ArrayPrototypeShift,
   SymbolDispose,
   JSONParse,
   JSONStringify,
@@ -44,12 +46,18 @@ class Session extends EventEmitter {
   #connection = null;
   #nextId = 1;
   #messageCallbacks = new SafeMap();
+  #pendingMessages = [];
+  #drainScheduled = false;
+  #isDraining = false;
 
   connect() {
     if (this.#connection) {
       throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
     }
-    this.#connection = op_inspector_connect(false, (m) => this.#onMessage(m));
+    this.#connection = op_inspector_connect(
+      false,
+      (m) => this.#enqueueMessage(m),
+    );
   }
 
   connectToMainThread() {
@@ -59,7 +67,10 @@ class Session extends EventEmitter {
     if (this.#connection) {
       throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
     }
-    this.#connection = op_inspector_connect(true, (m) => this.#onMessage(m));
+    this.#connection = op_inspector_connect(
+      true,
+      (m) => this.#enqueueMessage(m),
+    );
   }
 
   #onMessage(message) {
@@ -86,6 +97,28 @@ class Session extends EventEmitter {
       }
     } catch (error) {
       process.emitWarning(error);
+    }
+  }
+
+  #enqueueMessage(message) {
+    ArrayPrototypePush(this.#pendingMessages, message);
+    if (this.#isDraining) return;
+    if (!this.#drainScheduled) {
+      this.#drainScheduled = true;
+      process.nextTick(() => this.#drainMessages());
+    }
+  }
+
+  #drainMessages() {
+    this.#drainScheduled = false;
+    this.#isDraining = true;
+    try {
+      while (this.#pendingMessages.length > 0) {
+        const nextMessage = ArrayPrototypeShift(this.#pendingMessages);
+        this.#onMessage(nextMessage);
+      }
+    } finally {
+      this.#isDraining = false;
     }
   }
 
@@ -128,6 +161,9 @@ class Session extends EventEmitter {
     }
     this.#messageCallbacks.clear();
     this.#nextId = 1;
+    this.#pendingMessages.length = 0;
+    this.#drainScheduled = false;
+    this.#isDraining = false;
   }
 }
 

@@ -274,10 +274,12 @@ fn discover_workspace_config_files_for_single_dir<
         &pkg_json_path,
       ) {
         Ok(pkg_json) => {
-          log::debug!(
-            "package.json file found at '{}'",
-            pkg_json_path.display()
-          );
+          if pkg_json.is_some() {
+            log::debug!(
+              "package.json file found at '{}'",
+              pkg_json_path.display()
+            );
+          }
           Ok(pkg_json)
         }
         Err(PackageJsonLoadError::Io { source, .. })

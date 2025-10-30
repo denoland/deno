@@ -1295,13 +1295,14 @@ fn new_workspace_factory_options(
     // resolver so it can set up the `node_modules/` directory.
     is_package_manager_subcommand: matches!(
       flags.subcommand,
-      DenoSubcommand::Install(_)
-        | DenoSubcommand::Uninstall(_)
-        | DenoSubcommand::Add(_)
-        | DenoSubcommand::Remove(_)
-        | DenoSubcommand::Init(_)
-        | DenoSubcommand::Outdated(_)
+      DenoSubcommand::Add(_)
+        | DenoSubcommand::Audit(_)
         | DenoSubcommand::Clean(_)
+        | DenoSubcommand::Init(_)
+        | DenoSubcommand::Install(_)
+        | DenoSubcommand::Outdated(_)
+        | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Uninstall(_)
     ),
     no_lock: flags.no_lock
       || matches!(
