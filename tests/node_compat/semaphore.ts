@@ -12,7 +12,7 @@ export class Semaphore {
     this.#maxPermits = maxConcurrency;
   }
 
-  async acquire(): Promise<void> {
+  acquire(): Promise<void> {
     if (this.#usedPermits < this.#maxPermits) {
       this.#usedPermits++;
       return Promise.resolve();
