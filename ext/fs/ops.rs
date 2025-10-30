@@ -1557,7 +1557,11 @@ where
   P: FsPermissions + 'static,
 {
   let path = Path::new(path);
-  let options = OpenOptions::from(flags);
+  let options = if let Some(flags) = flags {
+    OpenOptions::from(flags)
+  } else {
+    OpenOptions::read()
+  };
 
   let fs = state.borrow::<FileSystemRc>().clone();
   let path = state.borrow::<P>().check_open(
@@ -1586,7 +1590,11 @@ where
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
-  let options = OpenOptions::from(flags);
+  let options = if let Some(flags) = flags {
+    OpenOptions::from(flags)
+  } else {
+    OpenOptions::read()
+  };
 
   let (fs, cancel_handle, path) = {
     let state = state.borrow();

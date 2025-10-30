@@ -87,7 +87,7 @@ where
 }
 
 fn get_open_options(flags: i32, mode: Option<u32>) -> OpenOptions {
-  let mut options = OpenOptions::from(Some(flags));
+  let mut options = OpenOptions::from(flags);
   options.mode = mode;
   options
 }
