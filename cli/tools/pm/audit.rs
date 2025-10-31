@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_core::futures::future::join_all;
+use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_resolver::npmrc::npm_registry_url;
@@ -40,14 +41,26 @@ pub async fn audit(
     .get_or_create()
     .context("Failed to create HTTP client")?;
 
-  // socket_dev::call_firewall_api(
-  //   &snapshot,
-  //   http_provider.get_or_create().unwrap(),
-  // )
-  // .await?;
+  let use_socket = audit_flags.socket;
 
-  npm::call_audits_api(audit_flags, npm_url, workspace, &snapshot, http_client)
-    .await
+  let r = npm::call_audits_api(
+    audit_flags,
+    npm_url,
+    workspace,
+    &snapshot,
+    http_client,
+  )
+  .await?;
+
+  if use_socket {
+    socket_dev::call_firewall_api(
+      &snapshot,
+      http_provider.get_or_create().unwrap(),
+    )
+    .await?;
+  }
+
+  Ok(r)
 }
 
 mod npm {
@@ -555,7 +568,7 @@ mod socket_dev {
       })
       .collect::<Vec<_>>();
 
-    // eprintln!("purls {:#?}", purls);
+    eprintln!("purls {:#?}", purls.len());
 
     let futures = purls
       .into_iter()
@@ -572,16 +585,25 @@ mod socket_dev {
       })
       .collect::<Vec<_>>();
 
-    // TODO(bartlomieju): run at most 20 requests at the same time, waiting on socket.dev
-    // to provide a batch API
-    let purl_results = join_all(futures).await;
+    let start = std::time::Instant::now();
+    eprintln!("starting socket requests");
+
+    let purl_results = futures::stream::iter(futures)
+      .buffer_unordered(20)
+      .collect::<Vec<_>>()
+      .await;
+
+    eprintln!(
+      "socket requests took {:?}",
+      std::time::Instant::now() - start
+    );
 
     let mut purl_responses = purl_results
       .into_iter()
       .filter_map(|result| match result {
         Ok(a) => Some(a),
         Err(err) => {
-          log::error!("Failed to get result {:?}", err);
+          log::error!("Failed to get PURL result {:?}", err);
           None
         }
       })
@@ -596,24 +618,7 @@ mod socket_dev {
     let stdout = &mut std::io::stdout();
 
     for response in purl_responses {
-      if let Some(score) = response.score
-        && score.overall <= 0.2
-      {
-        _ = writeln!(
-          stdout,
-          "{}@{} Low score - {}",
-          response.name, response.version, score.overall
-        );
-      }
-      if !response.alerts.is_empty() {
-        for alert in response.alerts.iter() {
-          _ = writeln!(
-            stdout,
-            "{}@{} Alert - {} - {}",
-            response.name, response.version, alert.severity, alert.category
-          );
-        }
-      }
+      _ = writeln!(stdout, "{:?}", response);
     }
 
     Ok(())
