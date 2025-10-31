@@ -17,6 +17,7 @@ import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { errorMap } from "ext:deno_node/internal_binding/uv.ts";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { ERR_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
+import { validateNumber } from "./internal/validators.mjs";
 
 export type BinaryEncodings = "binary";
 
@@ -147,11 +148,21 @@ export function makeMethodsEnumerable(klass: { new (): unknown }) {
  * @param code error code number
  */
 export function getSystemErrorName(code: number): string | undefined {
-  if (typeof code !== "number") {
-    throw new codes.ERR_INVALID_ARG_TYPE("err", "number", code);
-  }
+  validateNumber(code, "err");
   if (code >= 0 || !NumberIsSafeInteger(code)) {
     throw new codes.ERR_OUT_OF_RANGE("err", "a negative integer", code);
   }
   return errorMap.get(code)?.[0];
+}
+
+/**
+ * Returns a system error message from an error code number.
+ * @param code error code number
+ */
+export function getSystemErrorMessage(code: number): string | undefined {
+  validateNumber(code, "err");
+  if (code >= 0 || !NumberIsSafeInteger(code)) {
+    throw new codes.ERR_OUT_OF_RANGE("err", "a negative integer", code);
+  }
+  return errorMap.get(code)?.[1];
 }

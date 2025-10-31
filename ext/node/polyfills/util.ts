@@ -122,6 +122,7 @@ export function inherits<T, U>(
 import {
   _TextDecoder,
   _TextEncoder,
+  getSystemErrorMessage,
   getSystemErrorName,
 } from "ext:deno_node/_utils.ts";
 
@@ -307,7 +308,7 @@ export function getCallSites(
   return capturedTraces;
 }
 
-export { getSystemErrorName, isDeepStrictEqual };
+export { getSystemErrorMessage, getSystemErrorName, isDeepStrictEqual };
 
 export default {
   format,
@@ -316,6 +317,7 @@ export default {
   _extend,
   getCallSites,
   getSystemErrorName,
+  getSystemErrorMessage,
   aborted,
   deprecate,
   callbackify,
