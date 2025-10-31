@@ -3434,6 +3434,7 @@ TypeScript is supported, however it is not type-checked, only transpiled."
           .long("eval-file")
           .num_args(1..)
           .action(ArgAction::Append)
+          .use_value_delimiter(true)
           .help("Evaluates the provided file(s) as scripts when the REPL starts. Accepts file paths and URLs")
           .value_hint(ValueHint::AnyPath),
       )
