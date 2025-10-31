@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        deno-version: [v1.x, canary]
+        deno-version: [v2.x, canary]
         os: [ubuntu-24.04-xl]
 
     steps:
