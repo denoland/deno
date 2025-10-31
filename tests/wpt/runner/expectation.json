@@ -5371,17 +5371,27 @@
     "queuing-strategies-size-function-per-global.window.html": false,
     "transferable": {
       "deserialize-error.window.html": false,
-      "transfer-with-messageport.window.html": false,
-      "readable-stream.html": false,
-      "reason.html": false,
+      "transfer-with-messageport.window.html": true,
+      "readable-stream.html": [
+        "cancel should be propagated to the original",
+        "cancel should abort a pending read()",
+        "transferring a non-serializable chunk should error both sides"
+      ],
+      "reason.html": [
+        "DOMException errors should be preserved"
+      ],
       "service-worker.https.html": false,
       "shared-worker.html": false,
       "transform-stream-members.any.html": true,
       "transform-stream-members.any.worker.html": true,
-      "transform-stream.html": false,
-      "window.html": false,
-      "worker.html": false,
-      "writable-stream.html": false
+      "transform-stream.html": true,
+      "window.html": [
+        "transfer to and from an iframe should work"
+      ],
+      "worker.html": true,
+      "writable-stream.html": [
+        "writing a unclonable object should error the stream"
+      ]
     }
   },
   "user-timing": {
