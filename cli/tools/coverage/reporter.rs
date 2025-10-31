@@ -526,12 +526,14 @@ impl HtmlCoverageReporter {
   /// Creates <head> tag for html report.
   pub fn create_html_head(&self, title: &str) -> String {
     let style_css = include_str!("style.css");
+    let script = include_str!("script.js");
     format!(
       "
       <head>
         <meta charset='utf-8'>
         <title>{title}</title>
         <style>{style_css}</style>
+        <script>{script}</script>
         <meta name='viewport' content='width=device-width, initial-scale=1'>
       </head>"
     )
@@ -555,24 +557,33 @@ impl HtmlCoverageReporter {
     let (branch_total, branch_percent, _) =
       util::calc_coverage_display_info(*branch_hit, *branch_miss);
 
+    let moon_svg = include_str!("moon.svg");
+    let sun_svg = include_str!("sun.svg");
+
     format!(
-      "
-      <div class='pad1'>
-        <h1>{breadcrumb_navigation}</h1>
-        <div class='clearfix'>
-          <div class='fl pad1y space-right2'>
-            <span class='strong'>{branch_percent:.2}%</span>
-            <span class='quiet'>Branches</span>
-            <span class='fraction'>{branch_hit}/{branch_total}</span>
-          </div>
-          <div class='fl pad1y space-right2'>
-            <span class='strong'>{line_percent:.2}%</span>
-            <span class='quiet'>Lines</span>
-            <span class='fraction'>{line_hit}/{line_total}</span>
+      r#"
+      <div class='pad1 flex-header'>
+        <div>
+          <h1>{breadcrumb_navigation}</h1>
+          <div class='clearfix'>
+            <div class='fl pad1y space-right2'>
+              <span class='strong'>{branch_percent:.2}%</span>
+              <span class='quiet'>Branches</span>
+              <span class='fraction'>{branch_hit}/{branch_total}</span>
+            </div>
+            <div class='fl pad1y space-right2'>
+              <span class='strong'>{line_percent:.2}%</span>
+              <span class='quiet'>Lines</span>
+              <span class='fraction'>{line_hit}/{line_total}</span>
+            </div>
           </div>
         </div>
+        <button id="theme-toggle" type="button" aria-label="Toggle dark mode" style="display: none;">
+          {moon_svg}
+          {sun_svg}
+        </button>
       </div>
-      <div class='status-line {line_class}'></div>"
+      <div class='status-line {line_class}'></div>"#
     )
   }
 
