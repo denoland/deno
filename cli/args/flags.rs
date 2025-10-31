@@ -8808,9 +8808,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Repl(ReplFlags {
-          eval_files: Some(vec![
-            "./script.ts".to_string()
-          ]),
+          eval_files: Some(vec!["./script.ts".to_string()]),
           eval: None,
           is_default_command: false,
           json: false,
@@ -8829,10 +8827,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Repl(ReplFlags {
-          eval_files: Some(vec![
-            "./a.ts".to_string(),
-            "./b.ts".to_string()
-          ]),
+          eval_files: Some(vec!["./a.ts".to_string(), "./b.ts".to_string()]),
           eval: None,
           is_default_command: false,
           json: false,
