@@ -94,7 +94,7 @@ pub struct LocalNpmPackageInstaller<
   resolution: Arc<NpmResolutionCell>,
   sys: TSys,
   tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
-  lifecycle_scripts_config: LifecycleScriptsConfig,
+  lifecycle_scripts_config: Arc<LifecycleScriptsConfig>,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
   install_reporter: Option<Arc<dyn crate::InstallReporter>>,
@@ -149,7 +149,7 @@ impl<
     sys: TSys,
     tarball_cache: Arc<TarballCache<THttpClient, TSys>>,
     node_modules_folder: PathBuf,
-    lifecycle_scripts: LifecycleScriptsConfig,
+    lifecycle_scripts: Arc<LifecycleScriptsConfig>,
     system_info: NpmSystemInfo,
     install_reporter: Option<Arc<dyn crate::InstallReporter>>,
   ) -> Self {
