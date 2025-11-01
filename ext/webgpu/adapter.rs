@@ -189,6 +189,7 @@ impl GPUAdapter {
       lost_promise: v8::Global::new(scope, lost_promise),
       limits: SameObject::new(),
       features: SameObject::new(),
+      has_active_capture: std::cell::RefCell::new(false),
     };
     let device = deno_core::cppgc::make_cppgc_object(scope, device);
     let weak_device = v8::Weak::new(scope, device);

@@ -55,6 +55,8 @@ pub struct GPUDevice {
 
   pub error_handler: super::error::ErrorHandler,
   pub lost_promise: v8::Global<v8::Promise>,
+
+  pub has_active_capture: RefCell<bool>,
 }
 
 impl Drop for GPUDevice {
@@ -681,23 +683,6 @@ impl GPUDevice {
 
     Ok(v8::Global::new(scope, val))
   }
-
-  #[fast]
-  fn start_capture(&self) {
-    unsafe {
-      self
-        .instance
-        .device_start_graphics_debugger_capture(self.id)
-    };
-  }
-  #[fast]
-  fn stop_capture(&self) {
-    self
-      .instance
-      .device_poll(self.id, wgpu_types::PollType::wait_indefinitely())
-      .unwrap();
-    unsafe { self.instance.device_stop_graphics_debugger_capture(self.id) };
-  }
 }
 
 impl GPUDevice {
@@ -964,19 +949,41 @@ impl GPUDeviceLostInfo {
 }
 
 #[op2(fast)]
-pub fn op_webgpu_device_start_capture(#[cppgc] device: &GPUDevice) {
+pub fn op_webgpu_device_start_capture(
+  #[cppgc] device: &GPUDevice,
+) -> Result<(), JsErrorBox> {
+  if *device.has_active_capture.borrow() {
+    return Err(JsErrorBox::type_error("capture already started"));
+  }
+
+  // safety: active check is above, other safety concerns are related to the debugger itself
   unsafe {
     device
       .instance
       .device_start_graphics_debugger_capture(device.id);
   }
+
+  *device.has_active_capture.borrow_mut() = true;
+
+  Ok(())
 }
 
 #[op2(fast)]
-pub fn op_webgpu_device_stop_capture(#[cppgc] device: &GPUDevice) {
+pub fn op_webgpu_device_stop_capture(
+  #[cppgc] device: &GPUDevice,
+) -> Result<(), JsErrorBox> {
+  if !*device.has_active_capture.borrow() {
+    return Err(JsErrorBox::type_error("No capture active"));
+  }
+
+  // safety: active check is above, other safety concerns are related to the debugger itself
   unsafe {
     device
       .instance
       .device_stop_graphics_debugger_capture(device.id);
   }
+
+  *device.has_active_capture.borrow_mut() = false;
+
+  Ok(())
 }
