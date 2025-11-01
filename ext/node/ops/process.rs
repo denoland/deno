@@ -2,6 +2,7 @@
 
 use deno_core::OpState;
 use deno_core::op2;
+use deno_core::v8;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 #[cfg(unix)]
@@ -71,8 +72,6 @@ pub fn op_process_abort() {
   std::process::abort();
 }
 
-#[derive(serde::Deserialize)]
-#[serde(untagged)]
 enum Id {
   Number(u32),
   Name(String),
@@ -92,11 +91,32 @@ fn get_group_id(name: &str) -> Result<Gid, ProcessError> {
   }
 }
 
+fn serialize_id<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  value: v8::Local<'a, v8::Value>,
+) -> Result<Id, ProcessError> {
+  if value.is_number() {
+    let num = value.uint32_value(scope).unwrap();
+    return Ok(Id::Number(num));
+  }
+
+  if value.is_string() {
+    let name = value.to_string(scope).unwrap();
+    return Ok(Id::Name(name.to_rust_string_lossy(scope)));
+  }
+
+  Err(ProcessError::Io(std::io::Error::new(
+    std::io::ErrorKind::InvalidInput,
+    "id must be a number or string",
+  )))
+}
+
 #[cfg(not(any(target_os = "android", target_os = "windows")))]
-#[op2(stack_trace)]
-pub fn op_node_process_setegid<P>(
+#[op2(fast, stack_trace)]
+pub fn op_node_process_setegid<P, 'a>(
+  scope: &mut v8::PinScope<'a, '_>,
   state: &mut OpState,
-  #[serde] id: Id,
+  id: v8::Local<'a, v8::Value>,
 ) -> Result<(), ProcessError>
 where
   P: NodePermissions + 'static,
@@ -106,8 +126,8 @@ where
     permissions.check_sys("setegid", "node:process.setegid")?;
   }
 
-  let gid = match id {
-    Id::Number(id) => Gid::from_raw(id),
+  let gid = match serialize_id(scope, id)? {
+    Id::Number(number) => Gid::from_raw(number),
     Id::Name(name) => get_group_id(&name)?,
   };
 
