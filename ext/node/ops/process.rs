@@ -28,6 +28,9 @@ pub enum ProcessError {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class(generic)]
+  #[error("Operation not supported on this platform")]
+  NotSupported,
 }
 
 #[cfg(unix)]
@@ -72,6 +75,7 @@ pub fn op_process_abort() {
   std::process::abort();
 }
 
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
 enum Id {
   Number(u32),
   Name(String),
@@ -91,6 +95,7 @@ fn get_group_id(name: &str) -> Result<Gid, ProcessError> {
   }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
 fn serialize_id<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   value: v8::Local<'a, v8::Value>,
@@ -137,14 +142,14 @@ where
 }
 
 #[cfg(any(target_os = "android", target_os = "windows"))]
-#[op2(stack_trace)]
+#[op2(fast, stack_trace)]
 pub fn op_node_process_setegid<P>(
-  scope: &mut v8::PinScope<'a, '_>,
-  state: &mut OpState,
-  id: v8::Local<'a, v8::Value>,
+  _scope: &mut v8::PinScope<'_, '_>,
+  _state: &mut OpState,
+  _id: v8::Local<'_, v8::Value>,
 ) -> Result<(), ProcessError>
 where
   P: NodePermissions + 'static,
 {
-  unimplemented!()
+  Err(ProcessError::NotSupported)
 }
