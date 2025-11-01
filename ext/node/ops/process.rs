@@ -31,6 +31,9 @@ pub enum ProcessError {
   #[class(generic)]
   #[error("Operation not supported on this platform")]
   NotSupported,
+  #[class(type)]
+  #[error("Invalid {0} parameter")]
+  InvalidParam(String),
 }
 
 #[cfg(unix)]
@@ -110,10 +113,7 @@ fn serialize_id<'a>(
     return Ok(Id::Name(name.to_rust_string_lossy(scope)));
   }
 
-  Err(ProcessError::Io(std::io::Error::new(
-    std::io::ErrorKind::InvalidInput,
-    "id must be a number or string",
-  )))
+  Err(ProcessError::InvalidParam("id".to_string()))
 }
 
 #[cfg(not(any(target_os = "android", target_os = "windows")))]
