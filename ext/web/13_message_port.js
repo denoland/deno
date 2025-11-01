@@ -350,6 +350,10 @@ function opCreateEntangledMessagePort() {
   return op_message_port_create_entangled();
 }
 
+const CURSED_DESERIALIZERS = {
+  DOMException: (obj) => new DOMException(obj.message, obj.name),
+};
+
 /**
  * @param {messagePort.MessageData} messageData
  * @returns {[any, object[]]}
@@ -386,6 +390,7 @@ function deserializeJsMessageData(messageData) {
     options = {
       hostObjects,
       transferredArrayBuffers,
+      deserializers: CURSED_DESERIALIZERS,
     };
   }
 
@@ -501,7 +506,7 @@ function structuredClone(value, options) {
   // Fast-path, avoiding round-trip serialization and deserialization
   if (options.transfer.length === 0) {
     try {
-      return core.structuredClone(value);
+      return core.structuredClone(value, CURSED_DESERIALIZERS);
     } catch (e) {
       if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e)) {
         throw new DOMException(e.message, "DataCloneError");
