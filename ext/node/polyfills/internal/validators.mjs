@@ -147,6 +147,9 @@ const validateInt32 = hideStackFrames(
   },
 );
 
+/**
+ * @type {(value: unknown, name: string, positive?: boolean) => asserts value is number}
+ */
 const validateUint32 = hideStackFrames(
   (value, name, positive) => {
     if (!isUint32(value)) {
