@@ -1363,3 +1363,11 @@ Deno.test({
     setegid!(groupName);
   },
 });
+
+Deno.test({
+  name: "process.setegid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setegid, undefined);
+  },
+});
