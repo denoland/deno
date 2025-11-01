@@ -1074,12 +1074,17 @@ pub async fn run(
     Err(_) => main_module,
   };
 
+  let preload_modules = metadata
+    .preload_modules
+    .iter()
+    .map(|key| root_dir_url.join(key).unwrap())
+    .collect::<Vec<_>>();
+
   let mut worker = worker_factory.create_main_worker(
     WorkerExecutionMode::Run,
     permissions,
     main_module,
-    // TODO(bartlomieju): support preload modules in `deno compile`
-    vec![],
+    preload_modules,
   )?;
 
   let exit_code = worker.run().await?;
