@@ -308,3 +308,46 @@ Deno.test(
     Deno.removeSignalListener("SIGPOLL", i);
   },
 );
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true },
+  },
+  async function killWithIntegerSignal() {
+    let c = 0;
+    const listener = () => {
+      c += 1;
+    };
+    Deno.addSignalListener("SIGUSR1", listener);
+
+    // Send SIGUSR1 using integer signal number (10 on most Unix systems)
+    await delay(1);
+    Deno.kill(Deno.pid, 10);
+    while (c < 1) {
+      await delay(20);
+    }
+
+    Deno.removeSignalListener("SIGUSR1", listener);
+    assertEquals(c, 1);
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { run: true },
+  },
+  function killWithSignalZero() {
+    // This should not throw for the current process
+    Deno.kill(Deno.pid, 0);
+
+    // Test with a non-existent PID (very high number unlikely to exist)
+    assertThrows(
+      () => {
+        Deno.kill(999999, 0);
+      },
+      Deno.errors.NotFound,
+    );
+  },
+);
