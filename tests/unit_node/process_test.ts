@@ -38,7 +38,7 @@ import { execSync } from "node:child_process";
 const testDir = new URL(".", import.meta.url);
 
 function getGroupNameFromSystem(gid: number): string {
-  const stdout = execSync(`getent group ${gid}`).toString();
+  const stdout = execSync(`grep ":${gid}:" /etc/group`).toString();
   const groupInfo = stdout.trim().split(":")[0];
   return groupInfo;
 }
