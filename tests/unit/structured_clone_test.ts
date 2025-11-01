@@ -58,4 +58,9 @@ Deno.test("correct DataCloneError message", () => {
 
   // ab2 should not be detached after above failure
   structuredClone(ab2, { transfer: [ab2] });
+
+  const de = structuredClone(new DOMException("message", "SomeError"));
+  assert(de instanceof DOMException);
+  assertEquals(de.message, "message");
+  assertEquals(de.name, "SomeError");
 });
