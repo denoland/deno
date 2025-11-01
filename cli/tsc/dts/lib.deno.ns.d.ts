@@ -4739,12 +4739,14 @@ declare namespace Deno {
    * Deno.kill(child.pid, "SIGINT");
    * ```
    *
+   * As a special case, a signal of 0 can be used to test for the existence of a process.
+   *
    * Requires `allow-run` permission.
    *
    * @tags allow-run
    * @category Subprocess
    */
-  export function kill(pid: number, signo?: Signal): void;
+  export function kill(pid: number, signo?: Signal | number): void;
 
   /** The type of the resource record to resolve via DNS using
    * {@linkcode Deno.resolveDns}.
