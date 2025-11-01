@@ -18,6 +18,7 @@ use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::error::GPUGenericError;
 use crate::sampler::GPUSampler;
+use crate::texture::GPUTexture;
 use crate::texture::GPUTextureView;
 
 pub struct GPUBindGroup {
@@ -96,7 +97,9 @@ pub(crate) struct GPUBufferBinding {
 
 pub(crate) enum GPUBindingResource {
   Sampler(Ref<GPUSampler>),
+  Texture(Ref<GPUTexture>),
   TextureView(Ref<GPUTextureView>),
+  Buffer(Ref<GPUBuffer>),
   BufferBinding(GPUBufferBinding),
 }
 
@@ -119,6 +122,16 @@ impl<'a> WebIdlConverter<'a> for GPUBindingResource {
     )
     .map(Self::Sampler)
     .or_else(|_| {
+      <Ref<GPUTexture>>::convert(
+        scope,
+        value,
+        prefix.clone(),
+        context.borrowed(),
+        options,
+      )
+      .map(Self::Texture)
+    })
+    .or_else(|_| {
       <Ref<GPUTextureView>>::convert(
         scope,
         value,
@@ -127,6 +140,16 @@ impl<'a> WebIdlConverter<'a> for GPUBindingResource {
         options,
       )
       .map(Self::TextureView)
+    })
+    .or_else(|_| {
+      <Ref<GPUBuffer>>::convert(
+        scope,
+        value,
+        prefix.clone(),
+        context.borrowed(),
+        options,
+      )
+      .map(Self::Buffer)
     })
     .or_else(|_| {
       GPUBufferBinding::convert(scope, value, prefix, context, options)

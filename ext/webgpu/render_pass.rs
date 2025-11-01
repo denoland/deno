@@ -9,6 +9,10 @@ use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::Local;
+use deno_core::v8::PinScope;
+use deno_core::v8::Value;
+use deno_core::webidl::ContextFn;
 use deno_core::webidl::IntOptions;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
@@ -18,6 +22,7 @@ use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::error::GPUGenericError;
 use crate::render_bundle::GPURenderBundle;
+use crate::texture::GPUTexture;
 use crate::texture::GPUTextureView;
 use crate::webidl::GPUColor;
 
@@ -57,6 +62,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(6)]
+  #[undefined]
   fn set_viewport(
     &self,
     #[webidl] x: f32,
@@ -82,6 +88,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(4)]
+  #[undefined]
   fn set_scissor_rect(
     &self,
     #[webidl(options(enforce_range = true))] x: u32,
@@ -103,6 +110,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(1)]
+  #[undefined]
   fn set_blend_constant(&self, #[webidl] color: GPUColor) {
     let err = self
       .instance
@@ -115,6 +123,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(1)]
+  #[undefined]
   fn set_stencil_reference(
     &self,
     #[webidl(options(enforce_range = true))] reference: u32,
@@ -130,6 +139,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(1)]
+  #[undefined]
   fn begin_occlusion_query(
     &self,
     #[webidl(options(enforce_range = true))] query_index: u32,
@@ -145,6 +155,7 @@ impl GPURenderPassEncoder {
   }
 
   #[fast]
+  #[undefined]
   fn end_occlusion_query(&self) {
     let err = self
       .instance
@@ -154,6 +165,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(1)]
+  #[undefined]
   fn execute_bundles(&self, #[webidl] bundles: Vec<Ref<GPURenderBundle>>) {
     let err = self
       .instance
@@ -169,6 +181,7 @@ impl GPURenderPassEncoder {
   }
 
   #[fast]
+  #[undefined]
   fn end(&self) {
     let err = self
       .instance
@@ -177,6 +190,7 @@ impl GPURenderPassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn push_debug_group(&self, #[webidl] group_label: String) {
     let err = self
       .instance
@@ -190,6 +204,7 @@ impl GPURenderPassEncoder {
   }
 
   #[fast]
+  #[undefined]
   fn pop_debug_group(&self) {
     let err = self
       .instance
@@ -198,6 +213,7 @@ impl GPURenderPassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn insert_debug_marker(&self, #[webidl] marker_label: String) {
     let err = self
       .instance
@@ -210,6 +226,7 @@ impl GPURenderPassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn set_bind_group<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
@@ -293,6 +310,7 @@ impl GPURenderPassEncoder {
     Ok(())
   }
 
+  #[undefined]
   fn set_pipeline(
     &self,
     #[webidl] pipeline: Ref<crate::render_pipeline::GPURenderPipeline>,
@@ -305,6 +323,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(2)]
+  #[undefined]
   fn set_index_buffer(
     &self,
     #[webidl] buffer: Ref<GPUBuffer>,
@@ -326,6 +345,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(2)]
+  #[undefined]
   fn set_vertex_buffer(
     &self,
     #[webidl(options(enforce_range = true))] slot: u32,
@@ -347,6 +367,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(1)]
+  #[undefined]
   fn draw(
     &self,
     #[webidl(options(enforce_range = true))] vertex_count: u32,
@@ -368,6 +389,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(1)]
+  #[undefined]
   fn draw_indexed(
     &self,
     #[webidl(options(enforce_range = true))] index_count: u32,
@@ -391,6 +413,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(2)]
+  #[undefined]
   fn draw_indirect(
     &self,
     #[webidl] indirect_buffer: Ref<GPUBuffer>,
@@ -408,6 +431,7 @@ impl GPURenderPassEncoder {
   }
 
   #[required(2)]
+  #[undefined]
   fn draw_indexed_indirect(
     &self,
     #[webidl] indirect_buffer: Ref<GPUBuffer>,
@@ -443,10 +467,10 @@ pub(crate) struct GPURenderPassDescriptor {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPURenderPassColorAttachment {
-  pub view: Ref<GPUTextureView>,
-  /*#[options(enforce_range = true)]
-  pub depth_slice: Option<u32>,*/
-  pub resolve_target: Option<Ref<GPUTextureView>>,
+  pub view: GPUTextureOrView,
+  #[options(enforce_range = true)]
+  pub depth_slice: Option<u32>,
+  pub resolve_target: Option<GPUTextureOrView>,
   pub clear_value: Option<GPUColor>,
   pub load_op: GPULoadOp,
   pub store_op: GPUStoreOp,
@@ -497,7 +521,7 @@ impl From<GPUStoreOp> for wgpu_core::command::StoreOp {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPURenderPassDepthStencilAttachment {
-  pub view: Ref<GPUTextureView>,
+  pub view: GPUTextureOrView,
   pub depth_clear_value: Option<f32>,
   pub depth_load_op: Option<GPULoadOp>,
   pub depth_store_op: Option<GPUStoreOp>,
@@ -520,4 +544,49 @@ pub(crate) struct GPURenderPassTimestampWrites {
   pub beginning_of_pass_write_index: Option<u32>,
   #[options(enforce_range = true)]
   pub end_of_pass_write_index: Option<u32>,
+}
+
+pub(crate) enum GPUTextureOrView {
+  Texture(Ref<GPUTexture>),
+  TextureView(Ref<GPUTextureView>),
+}
+
+impl GPUTextureOrView {
+  pub(crate) fn to_view_id(&self) -> wgpu_core::id::TextureViewId {
+    match self {
+      Self::Texture(texture) => texture.default_view_id(),
+      Self::TextureView(texture_view) => texture_view.id,
+    }
+  }
+}
+
+impl<'a> WebIdlConverter<'a> for GPUTextureOrView {
+  type Options = ();
+
+  fn convert<'b>(
+    scope: &mut PinScope<'a, '_>,
+    value: Local<'a, Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    <Ref<GPUTexture>>::convert(
+      scope,
+      value,
+      prefix.clone(),
+      context.borrowed(),
+      options,
+    )
+    .map(Self::Texture)
+    .or_else(|_| {
+      <Ref<GPUTextureView>>::convert(
+        scope,
+        value,
+        prefix.clone(),
+        context.borrowed(),
+        options,
+      )
+      .map(Self::TextureView)
+    })
+  }
 }
