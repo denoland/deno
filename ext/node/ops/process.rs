@@ -9,6 +9,10 @@ use deno_permissions::PermissionsContainer;
 use nix::unistd::Gid;
 #[cfg(unix)]
 use nix::unistd::Group;
+#[cfg(unix)]
+use nix::unistd::Uid;
+#[cfg(unix)]
+use nix::unistd::User;
 
 use crate::NodePermissions;
 
@@ -144,6 +148,58 @@ where
 #[cfg(any(target_os = "android", target_os = "windows"))]
 #[op2(fast, stack_trace)]
 pub fn op_node_process_setegid<P>(
+  _scope: &mut v8::PinScope<'_, '_>,
+  _state: &mut OpState,
+  _id: v8::Local<'_, v8::Value>,
+) -> Result<(), ProcessError>
+where
+  P: NodePermissions + 'static,
+{
+  Err(ProcessError::NotSupported)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
+fn get_user_id(name: &str) -> Result<Uid, ProcessError> {
+  let user = User::from_name(name)?;
+
+  if let Some(user) = user {
+    Ok(user.uid)
+  } else {
+    Err(ProcessError::UnknownCredential(
+      "User".to_string(),
+      name.to_string(),
+    ))
+  }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
+#[op2(fast, stack_trace)]
+pub fn op_node_process_seteuid<P, 'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  state: &mut OpState,
+  id: v8::Local<'a, v8::Value>,
+) -> Result<(), ProcessError>
+where
+  P: NodePermissions + 'static,
+{
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_sys("seteuid", "node:process.seteuid")?;
+  }
+
+  let uid = match serialize_id(scope, id)? {
+    Id::Number(number) => Uid::from_raw(number),
+    Id::Name(name) => get_user_id(&name)?,
+  };
+
+  nix::unistd::seteuid(uid)?;
+
+  Ok(())
+}
+
+#[cfg(any(target_os = "android", target_os = "windows"))]
+#[op2(fast, stack_trace)]
+pub fn op_node_process_seteuid<P>(
   _scope: &mut v8::PinScope<'_, '_>,
   _state: &mut OpState,
   _id: v8::Local<'_, v8::Value>,
