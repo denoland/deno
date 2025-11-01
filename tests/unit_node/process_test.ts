@@ -1365,6 +1365,19 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.setegid() throws on invalid group",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        setegid!("67?!");
+      },
+      "Group identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
   name: "process.setegid() should be undefined on unsupported platforms",
   ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
   fn() {
