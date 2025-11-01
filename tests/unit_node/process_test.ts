@@ -10,9 +10,11 @@ import process, {
   env,
   execArgv as importedExecArgv,
   execPath as importedExecPath,
+  getegid,
   geteuid,
   pid as importedPid,
   platform as importedPlatform,
+  setegid,
 } from "node:process";
 
 import { Readable } from "node:stream";
@@ -31,8 +33,15 @@ import { stripAnsiCode } from "@std/fmt/colors";
 import * as path from "@std/path";
 import { delay } from "@std/async/delay";
 import { stub } from "@std/testing/mock";
+import { execSync } from "node:child_process";
 
 const testDir = new URL(".", import.meta.url);
+
+function getGroupNameFromSystem(gid: number): string {
+  const stdout = execSync(`grep ":${gid}:" /etc/group`).toString();
+  const groupInfo = stdout.trim().split(":")[0];
+  return groupInfo;
+}
 
 Deno.test({
   name: "process.cwd and process.chdir success",
@@ -1340,4 +1349,38 @@ Deno.test("process.moduleLoadList", () => {
   const moduleLoadList = (process as any).moduleLoadList;
   assert(Array.isArray(moduleLoadList));
   assertEquals(moduleLoadList.length, 0);
+});
+
+Deno.test({
+  name: "process.setegid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalEgid = getegid!();
+    const groupName = getGroupNameFromSystem(originalEgid);
+
+    // only assert that it doesn't throw
+    setegid!(originalEgid);
+    setegid!(groupName);
+  },
+});
+
+Deno.test({
+  name: "process.setegid() throws on invalid group",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        setegid!("67?!");
+      },
+      "Group identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setegid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setegid, undefined);
+  },
 });
