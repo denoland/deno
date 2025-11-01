@@ -139,8 +139,9 @@ where
 #[cfg(any(target_os = "android", target_os = "windows"))]
 #[op2(stack_trace)]
 pub fn op_node_process_setegid<P>(
+  scope: &mut v8::PinScope<'a, '_>,
   state: &mut OpState,
-  #[string] id: &str,
+  id: v8::Local<'a, v8::Value>,
 ) -> Result<(), ProcessError>
 where
   P: NodePermissions + 'static,
