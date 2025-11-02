@@ -51,6 +51,7 @@ pub use crate::timers::TimersPermission;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
+mod locks;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl, deno_console, deno_url ],
@@ -91,6 +92,9 @@ deno_core::extension!(deno_web,
     stream_resource::op_readable_stream_resource_write_sync,
     stream_resource::op_readable_stream_resource_close,
     stream_resource::op_readable_stream_resource_await_close,
+    locks::op_lock_manager_request,
+    locks::op_lock_manager_release,
+    locks::op_lock_manager_query,
   ],
   esm = [
     "00_infra.js",
@@ -111,6 +115,7 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
     "16_image_data.js",
+    "locks.js",
   ],
   lazy_loaded_esm = [ "webtransport.js" ],
   options = {

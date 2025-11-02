@@ -17828,5 +17828,64 @@
     "request-credentials.window.html": false,
     "request-redirect.window.html": false,
     "eventsource-request-cancellation.window.html": false
+  },
+  "web-locks": {
+    "acquire.https.any.html": true,
+    "acquire.https.any.worker.html": true,
+    "bfcache": {
+      "abort.tentative.https.html": false,
+      "held.tentative.https.html": false,
+      "release-across-thread.tentative.https.html": false,
+      "release.tentative.https.html": false
+    },
+    "clientids.https.html": false,
+    "frames.https.html": false,
+    "held.https.any.html": false,
+    "held.https.any.worker.html": false,
+    "idlharness.https.any.html": [
+      "Navigator interface: attribute locks"
+    ],
+    "idlharness.https.any.worker.html": [
+      "WorkerNavigator interface: attribute locks"
+    ],
+    "ifAvailable.https.any.html": true,
+    "ifAvailable.https.any.worker.html": true,
+    "lock-attributes.https.any.html": true,
+    "lock-attributes.https.any.worker.html": true,
+    "mode-exclusive.https.any.html": [
+      "Requests for distinct resources can be granted"
+    ],
+    "mode-exclusive.https.any.worker.html": [
+      "Requests for distinct resources can be granted"
+    ],
+    "mode-mixed.https.any.html": true,
+    "mode-mixed.https.any.worker.html": true,
+    "mode-shared.https.any.html": true,
+    "mode-shared.https.any.worker.html": true,
+    "non-fully-active.https.html": false,
+    "non-secure-context.any.html": false,
+    "non-secure-context.any.worker.html": false,
+    "opaque-origin.https.html": false,
+    "partitioned-web-locks.tentative.https.html": false,
+    "query-empty.https.any.html": true,
+    "query-empty.https.any.worker.html": true,
+    "query-ordering.https.html": false,
+    "query.https.any.html": [
+      "query() returns dictionaries with expected properties"
+    ],
+    "query.https.any.worker.html": [
+      "query() returns dictionaries with expected properties"
+    ],
+    "resource-names.https.any.html": false,
+    "resource-names.https.any.worker.html": false,
+    "secure-context.https.any.html": false,
+    "secure-context.https.any.worker.html": false,
+    "signal.https.any.html": false,
+    "signal.https.any.worker.html": false,
+    "steal.https.any.html": false,
+    "steal.https.any.worker.html": false,
+    "storage-buckets.tentative.https.any.html": false,
+    "storage-buckets.tentative.https.any.worker.html": false,
+    "workers.https.html": false
   }
 }
