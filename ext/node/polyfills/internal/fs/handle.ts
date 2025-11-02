@@ -162,13 +162,15 @@ export class FileHandle extends EventEmitter {
 
   [kUnref]() {
     this[kRefs]--;
-    if (this[kRefs] === 0) {
-      PromisePrototypeThen(
-        this.#close(),
-        this[kCloseResolve],
-        this[kCloseReject],
-      );
+    if (this[kRefs] > 0 || this.fd === -1) {
+      return;
     }
+
+    PromisePrototypeThen(
+      this.#close(),
+      this[kCloseResolve],
+      this[kCloseReject],
+    );
   }
 
   #close(): Promise<void> {
