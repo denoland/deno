@@ -756,14 +756,8 @@ impl<
   ) -> Result<PathBuf, ResolvePkgJsonBinExportError> {
     let (pkg_json, items) = self
       .resolve_npm_binary_commands_for_package_with_pkg_json(package_folder)?;
-    let bin_name = match sub_path {
-      Some(bin_name) => bin_name,
-      None => pkg_json
-        .resolve_default_bin_name()
-        .map_err(ResolvePkgNpmBinaryCommandsError::MissingPkgJsonName)?,
-    };
     let path =
-      resolve_bin_entry_value(&pkg_json, &items, bin_name).map_err(|err| {
+      resolve_bin_entry_value(&pkg_json, &items, sub_path).map_err(|err| {
         ResolvePkgJsonBinExportError::InvalidBinProperty {
           message: err.to_string(),
         }
@@ -2228,7 +2222,7 @@ fn resolve_execution_path_from_npx_shim(
 fn resolve_bin_entry_value<'a>(
   package_json: &PackageJson,
   bins: &'a BTreeMap<String, PathBuf>,
-  bin_name: &str,
+  bin_name: Option<&str>,
 ) -> Result<&'a Path, AnyError> {
   if bins.is_empty() {
     bail!(
@@ -2236,7 +2230,9 @@ fn resolve_bin_entry_value<'a>(
       package_json.path.display()
     );
   }
-  match bins.get(bin_name) {
+  let default_bin = package_json.resolve_default_bin_name().ok();
+  let searching_bin = bin_name.or(default_bin);
+  match searching_bin.and_then(|bin_name| bins.get(bin_name)) {
     Some(e) => Ok(e),
     None => {
       if bins.len() > 1
@@ -2245,6 +2241,13 @@ fn resolve_bin_entry_value<'a>(
       {
         return Ok(first);
       }
+      if bin_name.is_none()
+        && bins.len() == 1
+        && let Some(first) = bins.values().next()
+      {
+        return Ok(first);
+      }
+      let default_bin = package_json.resolve_default_bin_name().ok();
       let prefix = package_json
         .name
         .as_ref()
@@ -2257,7 +2260,6 @@ fn resolve_bin_entry_value<'a>(
           prefix
         })
         .unwrap_or_default();
-      let default_bin = package_json.resolve_default_bin_name().ok();
       let keys = bins
         .keys()
         .map(|k| {
@@ -2273,7 +2275,7 @@ fn resolve_bin_entry_value<'a>(
       bail!(
         "'{}' did not have a bin entry for '{}'{}",
         package_json.path.display(),
-        bin_name,
+        searching_bin.unwrap_or("<unspecified>"),
         if keys.is_empty() {
           "".to_string()
         } else {
@@ -2579,17 +2581,17 @@ mod tests {
         PackageJsonBins::Bins(bins) => bins,
       };
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, "bin1").unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, Some("bin1")).unwrap(),
         pkg_json.dir_path().join("./value1")
       );
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, "pkg").unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg")).unwrap(),
         pkg_json.dir_path().join("./value3")
       );
 
       // should not resolve when specified value does not exist
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, "other")
+        resolve_bin_entry_value(&pkg_json, &bins, Some("other"))
           .err()
           .unwrap()
           .to_string(),
@@ -2619,7 +2621,7 @@ mod tests {
         PackageJsonBins::Bins(bins) => bins,
       };
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, "pkg")
+        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg"))
           .err()
           .unwrap()
           .to_string(),
@@ -2648,7 +2650,26 @@ mod tests {
         PackageJsonBins::Bins(bins) => bins,
       };
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, "pkg").unwrap(),
+        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg")).unwrap(),
+        pkg_json.dir_path().join("./value")
+      );
+    }
+
+    // should resolve when not specified and only one value
+    {
+      let pkg_json = build_package_json(json!({
+        "name": "pkg",
+        "version": "1.2.3",
+        "bin": {
+          "something": "./value",
+        }
+      }));
+      let bins = match pkg_json.resolve_bins().unwrap() {
+        PackageJsonBins::Directory(_) => unreachable!(),
+        PackageJsonBins::Bins(bins) => bins,
+      };
+      assert_eq!(
+        resolve_bin_entry_value(&pkg_json, &bins, None).unwrap(),
         pkg_json.dir_path().join("./value")
       );
     }
@@ -2665,7 +2686,7 @@ mod tests {
         PackageJsonBins::Bins(bins) => bins,
       };
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, "path")
+        resolve_bin_entry_value(&pkg_json, &bins, Some("path"))
           .err()
           .unwrap()
           .to_string(),
@@ -2692,7 +2713,7 @@ mod tests {
         PackageJsonBins::Bins(bins) => bins,
       };
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, "pkg")
+        resolve_bin_entry_value(&pkg_json, &bins, Some("pkg"))
           .err()
           .unwrap()
           .to_string(),
@@ -2719,7 +2740,7 @@ mod tests {
         PackageJsonBins::Bins(bins) => bins,
       };
       assert_eq!(
-        resolve_bin_entry_value(&pkg_json, &bins, "bin")
+        resolve_bin_entry_value(&pkg_json, &bins, Some("bin"))
           .err()
           .unwrap()
           .to_string(),

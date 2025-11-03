@@ -6,6 +6,80 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.5.6 / 2025.10.29
+
+- Revert "chore: update urlpattern (#31054)" (#31117)
+- fix(ext/node): implement StatementSync#columns() method (#31119)
+- fix(windows): re-allow spawning bat and cmd files (#31118)
+- fix(windows): strip periods and trailing slashes when normalizing paths
+  (#31131)
+
+### 2.5.5 / 2025.10.28
+
+- feat(unstable): ability to exclude packages from minimum dependency age
+  constraint (#31031)
+- feat(unstable): ability to only install dependencies older than a certain date
+  (#30752)
+- feat(unstable): ability to specify minimum dependency age in deno.json file
+  (#31007)
+- feat(unstable): add `deno audit` subcommand (#30966)
+- feat(unstable): add process id to permission broker messages (#31050)
+- feat(unstable): dynamic command-line completions for deno task (#30670)
+- feat(unstable): typescript-go integration for deno check (#30920)
+- fix(audit): handle 'review' actions (#31100)
+- fix(check): error when type checking after deduping packages (#31049)
+- fix(check): fall back to copying tsgo binary if rename fails (#31074)
+- fix(check): respect "compilerOptions.skipLibCheck" for graph errors (#30989)
+- fix(check): support isolatedDeclarations (#31061)
+- fix(check): support text and bytes imports with --unstable-tsgo (#31084)
+- fix(cli/args): empty permissions in config should not require -P (#31063)
+- fix(coverage): don't process coverage for blob: urls (#31035)
+- fix(docs): Deno.args example doesn't work (#30969)
+- fix(docs): documented allowed subdomain should be gist and not user for
+  githubusercontent.com (#30913)
+- fix(ext/http): display localhost url once on windows (#31088)
+- fix(ext/http): make websocket response headers mutable (#31000)
+- fix(ext/node): `dns.resolve6` compatibility (#30974)
+- fix(ext/node): `fs.read/fs.readSync` and `fs.write/fs.writeSync` compatibility
+  (#31013)
+- fix(ext/node): `path.matchesGlob` compatibility (#30976)
+- fix(ext/node): checking `Symbol` in `env` should not ask for permission
+  (#30965)
+- fix(ext/node): cpus() should not error when there's no cpu info (#31097)
+- fix(ext/node): false deprecation warning on `crypto.createHmac` (#31025)
+- fix(ext/node): handle empty writes in chunked HTTP requests (#31066)
+- fix(ext/node): handle multiple calls in inspector.Session.post() (#31067)
+- fix(ext/node): impl sqlite 'backup' capability (#29842)
+- fix(ext/node): implement FileHandle.readLines() (#31107)
+- fix(ext/node): inconsistent error message thrown by AssertionError (#31089)
+- fix(ext/node): make `kReinitializeHandle` work for TLS wrap (#31079)
+- fix(ext/node): process.moduleLoadList as undefined (#31022)
+- fix(ext/node): support option object parameter on `fs.write` and
+  `fs.writeSync` (#30999)
+- fix(ext/web): fix promise chain leak of ReadableStream (#30871)
+- fix(fmt/json): support hexadecimal numbers, plus sign on numbers, and words
+  with underscores (#31057)
+- fix(kv): do not error when creating kv db with relative path and `-A` (#31021)
+- fix(lockfile): purged package reqs should be removed from the jsr deps when
+  changing workspace config (#30998)
+- fix(lsp): add support for `source.organizeImports` (#31016)
+- fix(lsp): refresh configuration when tsconfig.json is changed (#30993)
+- fix(napi): Fix misused `napi_callback_info` in `CallbackInfo` (#30983)
+- fix(npm): add a deduplication pass and reduce lockfile diffs (#30973)
+- fix(npm): handle deno run/install of npm package with only directories.bin
+  (#30919)
+- fix(npm): occasional panic when upgrading npm package constraints (#31006)
+- fix(npm): regression resolving npm bin for default when only one entry
+  (#31055)
+- fix(process): case insenstive check for disallowing .bat and .cmd (#30967)
+- fix(rt): prevent `Event` to be overwritten on bootstrap (#30971)
+- fix(unstable): read npm lazy caching from unstable config in deno.json as well
+  (#31026)
+- fix: Deno.serve correctly passes tcpBacklog option (#30748)
+- fix: debug log for package.json being found was incorrect (#31062)
+- fix: regex pattern syntax in config-file.v1.json (#31038)
+- fix: show referrer range in deno_core loader errors (#30981)
+
 ### 2.5.4 / 2025.10.09
 
 - fix(cache): don't try to set up node_modules with node_modules_dir manual in

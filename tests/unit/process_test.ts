@@ -677,3 +677,25 @@ Deno.serve({ signal: ac.signal }, () => new Response("Hello World"));
     await Deno.remove(tempDir);
   },
 );
+
+Deno.test({
+  name: "process.ppid matches parent process",
+  permissions: { run: true, read: true },
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: [
+        "eval",
+        "import { ppid } from 'node:process'; console.log(ppid);",
+      ],
+      stdout: "piped",
+    });
+
+    const { stdout } = await command.output();
+    const stdoutPpid = parseInt(
+      new TextDecoder().decode(stdout).trim(),
+    );
+
+    assertEquals(stdoutPpid, Deno.pid);
+  },
+});

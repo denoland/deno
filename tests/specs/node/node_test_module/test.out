@@ -132,14 +132,9 @@ error: Error: thrown from async throw fail
     at [WILDCARD]
 
 async assertion fail => [WILDLINE]
-error: AssertionError: Values are not strictly equal:
+error: AssertionError: Expected values to be strictly equal:
 
-
-    [Diff] Actual / Expected
-
-
--   true
-+   false
+true !== false
 
     at [WILDCARD]
 
