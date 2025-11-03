@@ -1184,7 +1184,7 @@ const ci = {
       ]),
     },
     lint: {
-      name: "lint debug ${{ matrix.os }}-${{ matrix.arch }}",
+      name: "lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
@@ -1192,10 +1192,16 @@ const ci = {
         matrix: {
           include: [{
             ...Runners.linuxX86,
+            profile: "debug",
+            job: "lint",
           }, {
             ...Runners.macosX86,
+            profile: "debug",
+            job: "lint",
           }, {
             ...Runners.windowsX86,
+            profile: "debug",
+            job: "lint",
           }],
         },
       },

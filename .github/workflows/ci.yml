@@ -748,7 +748,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '79-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   lint:
-    name: 'lint debug ${{ matrix.os }}-${{ matrix.arch }}'
+    name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
@@ -759,12 +759,18 @@ jobs:
           - os: linux
             arch: x86_64
             runner: ubuntu-24.04
+            profile: debug
+            job: lint
           - os: macos
             arch: x86_64
             runner: macos-13
+            profile: debug
+            job: lint
           - os: windows
             arch: x86_64
             runner: windows-2022
+            profile: debug
+            job: lint
     steps:
       - name: Configure git
         run: |-
