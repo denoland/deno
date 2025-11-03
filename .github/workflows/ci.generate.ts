@@ -434,10 +434,6 @@ const ci = {
             profile: "debug",
             use_sysroot: true,
           }, {
-            ...Runners.linuxX86,
-            job: "lint",
-            profile: "debug",
-          }, {
             ...Runners.linuxArm,
             job: "test",
             profile: "debug",
@@ -447,14 +443,6 @@ const ci = {
             profile: "release",
             use_sysroot: true,
             skip_pr: true,
-          }, {
-            ...Runners.macosX86,
-            job: "lint",
-            profile: "debug",
-          }, {
-            ...Runners.windowsX86,
-            job: "lint",
-            profile: "debug",
           }]),
         },
         // Always run main branch builds to completion. This allows the cache to
@@ -526,14 +514,13 @@ const ci = {
         },
         installRustStep,
         {
-          if:
-            "matrix.job == 'lint' || matrix.job == 'test' || matrix.job == 'bench'",
+          if: "matrix.job == 'test' || matrix.job == 'bench'",
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
           withCondition(
             s,
-            "matrix.job != 'lint' && (matrix.os != 'linux' || matrix.arch != 'aarch64')",
+            "matrix.os != 'linux' || matrix.arch != 'aarch64'",
           )
         ),
         {
@@ -683,27 +670,6 @@ const ci = {
             path: "./.ms-playwright",
             key: "playwright-${{ runner.os }}-${{ runner.arch }}",
           },
-        },
-        {
-          name: "test_format.js",
-          if: "matrix.job == 'lint' && matrix.os == 'linux'",
-          run:
-            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
-        },
-        {
-          name: "lint.js",
-          if: "matrix.job == 'lint'",
-          env: {
-            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-          },
-          run:
-            "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
-        },
-        {
-          name: "jsdoc_checker.js",
-          if: "matrix.job == 'lint'",
-          run:
-            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
         },
         {
           name: "Check tracing build",
@@ -1103,7 +1069,7 @@ const ci = {
         {
           name: "Build product size info",
           if:
-            "matrix.job != 'lint' && matrix.profile != 'debug' && github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
+            "matrix.profile != 'debug' && github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))",
           run: [
             'du -hd1 "./target/${{ matrix.profile }}"',
             'du -ha  "./target/${{ matrix.profile }}/deno"',
@@ -1209,14 +1175,50 @@ const ci = {
           // In main branch, always create a fresh cache
           name: "Save cache build output (main)",
           uses: "actions/cache/save@v4",
-          if:
-            "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
+          if: "matrix.job == 'test' && github.ref == 'refs/heads/main'",
           with: {
             path: prCachePath,
             key: prCacheKey,
           },
         },
       ]),
+    },
+    lint: {
+      strategy: {
+        matrix: {
+          include: [{
+            ...Runners.linuxX86,
+          }, {
+            ...Runners.macosX86,
+          }, {
+            ...Runners.windowsX86,
+          }],
+        },
+      },
+      steps: [
+        cloneRepoStep,
+        installRustStep,
+        installDenoStep,
+        {
+          name: "test_format.js",
+          if: "matrix.os == 'linux'",
+          run:
+            "deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
+        },
+        {
+          name: "lint.js",
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+          },
+          run:
+            "deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js",
+        },
+        {
+          name: "jsdoc_checker.js",
+          run:
+            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
+        },
+      ],
     },
     libs: {
       name: "build libs",
