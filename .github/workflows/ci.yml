@@ -388,11 +388,17 @@ jobs:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
         if: '!(matrix.skip)'
-      - name: Check tracing build
-        if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'' && matrix.os == ''linux'' && matrix.arch == ''x86_64'')'
-        run: cargo check -p deno --features=lsp-tracing
+      - name: test_format.js
+        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
+        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
+      - name: lint.js
+        if: '!(matrix.skip) && (matrix.job == ''lint'')'
         env:
-          CARGO_PROFILE_DEV_DEBUG: 0
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+        run: deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js
+      - name: jsdoc_checker.js
+        if: '!(matrix.skip) && (matrix.job == ''lint'')'
+        run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: cargo build --locked --all-targets --features=panic-trace
@@ -869,6 +875,7 @@ jobs:
           cargo check --no-default-features --features package_json -p deno_config
           cargo check --no-default-features --features workspace --features sync -p deno_config
           cargo check --target wasm32-unknown-unknown --all-features -p deno_config
+          cargo check -p deno --features=lsp-tracing
         if: '!(matrix.skip)'
   publish-canary:
     name: publish canary

@@ -681,13 +681,6 @@ const ci = {
           },
         },
         {
-          name: "Check tracing build",
-          if:
-            "matrix.job == 'test' && matrix.profile == 'debug' && matrix.os == 'linux' && matrix.arch == 'x86_64'",
-          run: "cargo check -p deno --features=lsp-tracing",
-          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-        },
-        {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
           run: "cargo build --locked --all-targets --features=panic-trace",
@@ -1266,6 +1259,7 @@ const ci = {
             "cargo check --no-default-features --features package_json -p deno_config",
             "cargo check --no-default-features --features workspace --features sync -p deno_config",
             "cargo check --target wasm32-unknown-unknown --all-features -p deno_config",
+            "cargo check -p deno --features=lsp-tracing",
           ].join("\n"),
         },
       ]),
