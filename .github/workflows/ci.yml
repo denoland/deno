@@ -775,6 +775,8 @@ jobs:
         with:
           fetch-depth: 5
           submodules: false
+      - name: Clone submodule ./tests/util/std
+        run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
       - uses: dsherret/rust-toolchain-file@v1
       - name: Install Deno
         uses: denoland/setup-deno@v2

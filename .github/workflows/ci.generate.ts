@@ -1198,6 +1198,7 @@ const ci = {
       },
       steps: [
         ...cloneRepoSteps,
+        submoduleStep("./tests/util/std"),
         installRustStep,
         installDenoStep,
         {
