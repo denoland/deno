@@ -455,6 +455,7 @@
 "parallel/test-fs-open-numeric-flags.js" = {}
 "parallel/test-fs-open.js" = {}
 "parallel/test-fs-promises-exists.js" = {}
+"parallel/test-fs-promises-file-handle-readLines.mjs" = {}
 "parallel/test-fs-promises-readfile-empty.js" = {}
 "parallel/test-fs-promisified.js" = {}
 "parallel/test-fs-read-empty-buffer.js" = {}
@@ -968,6 +969,7 @@
 "parallel/test-socket-address.js" = {}
 "parallel/test-socket-write-after-fin-error.js" = {}
 "parallel/test-source-map-enable.js" = {}
+"parallel/test-sqlite-statement-sync-columns.js" = {}
 "parallel/test-stdin-hang.js" = {}
 "parallel/test-stdin-pause-resume-sync.js" = {}
 "parallel/test-stdin-pause-resume.js" = {}

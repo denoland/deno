@@ -1551,19 +1551,28 @@ where
 pub fn op_fs_read_file_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
+  #[smi] flags: Option<i32>,
 ) -> Result<ToJsBuffer, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
   let path = Path::new(path);
+  let options = if let Some(flags) = flags {
+    OpenOptions::from(flags)
+  } else {
+    OpenOptions::read()
+  };
 
   let fs = state.borrow::<FileSystemRc>().clone();
   let path = state.borrow::<P>().check_open(
     Cow::Borrowed(path),
-    OpenAccessKind::Read,
+    open_options_to_access_kind(&options),
     "Deno.readFileSync()",
   )?;
-  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
+
+  let buf = fs
+    .read_file_sync(&path, options)
+    .context_path("readfile", &path)?;
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
   Ok(buf.into_owned().into_boxed_slice().into())
@@ -1575,11 +1584,17 @@ pub async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
+  #[smi] flags: Option<i32>,
 ) -> Result<ToJsBuffer, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
+  let options = if let Some(flags) = flags {
+    OpenOptions::from(flags)
+  } else {
+    OpenOptions::read()
+  };
 
   let (fs, cancel_handle, path) = {
     let state = state.borrow();
@@ -1587,13 +1602,13 @@ where
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
     let path = state.borrow::<P>().check_open(
       Cow::Owned(path),
-      OpenAccessKind::Read,
+      open_options_to_access_kind(&options),
       "Deno.readFile()",
     )?;
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
-  let fut = fs.read_file_async(path.as_owned());
+  let fut = fs.read_file_async(path.as_owned(), options);
 
   let buf = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
