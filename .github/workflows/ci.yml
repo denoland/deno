@@ -748,6 +748,11 @@ jobs:
             !./target/*/*.tar.gz
           key: '79-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   lint:
+    name: 'lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
+    needs:
+      - pre_build
+    if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
+    runs-on: '${{ matrix.runner }}'
     strategy:
       matrix:
         include:

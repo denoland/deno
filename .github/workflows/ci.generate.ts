@@ -1181,6 +1181,10 @@ const ci = {
       ]),
     },
     lint: {
+      name: "lint ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}",
+      needs: ["pre_build"],
+      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
+      "runs-on": "${{ matrix.runner }}",
       strategy: {
         matrix: {
           include: [{
