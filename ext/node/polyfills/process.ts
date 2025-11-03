@@ -13,6 +13,7 @@ import {
   op_node_load_env_file,
   op_node_process_kill,
   op_node_process_setegid,
+  op_node_process_seteuid,
   op_process_abort,
 } from "ext:core/ops";
 
@@ -378,7 +379,7 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   return true;
 }
 
-let getgid, getuid, getegid, geteuid, setegid;
+let getgid, getuid, getegid, geteuid, setegid, seteuid;
 
 function wrapIdSetter(
   syscall: string,
@@ -408,10 +409,11 @@ if (!isWindows) {
 
   if (!isAndroid) {
     setegid = wrapIdSetter("setegid", op_node_process_setegid);
+    seteuid = wrapIdSetter("seteuid", op_node_process_seteuid);
   }
 }
 
-export { getegid, geteuid, getgid, getuid, setegid };
+export { getegid, geteuid, getgid, getuid, setegid, seteuid };
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
@@ -822,6 +824,9 @@ process.geteuid = geteuid;
 
 /** This method is removed on Windows */
 process.setegid = setegid;
+
+/** This method is removed on Windows */
+process.seteuid = seteuid;
 
 process.getBuiltinModule = getBuiltinModule;
 

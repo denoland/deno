@@ -15,6 +15,7 @@ import process, {
   pid as importedPid,
   platform as importedPlatform,
   setegid,
+  seteuid,
 } from "node:process";
 
 import { Readable } from "node:stream";
@@ -41,6 +42,12 @@ function getGroupNameFromSystem(gid: number): string {
   const stdout = execSync(`grep ":${gid}:" /etc/group`).toString();
   const groupInfo = stdout.trim().split(":")[0];
   return groupInfo;
+}
+
+function getUserNameFromSystem(uid: number): string {
+  const stdout = execSync(`id -un ${uid}`).toString();
+  const name = stdout.trim();
+  return name;
 }
 
 Deno.test({
@@ -1382,5 +1389,39 @@ Deno.test({
   ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
   fn() {
     assertEquals(process.setegid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.seteuid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalEuid = geteuid!();
+    const userName = getUserNameFromSystem(originalEuid);
+
+    // calling with original euid to ensure it doesn't throw
+    seteuid!(originalEuid);
+    seteuid!(userName);
+  },
+});
+
+Deno.test({
+  name: "process.seteuid() throws on invalid user",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        seteuid!("67?!");
+      },
+      "User identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.seteuid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.seteuid, undefined);
   },
 });
