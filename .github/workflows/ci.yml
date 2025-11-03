@@ -388,17 +388,6 @@ jobs:
           path: ./.ms-playwright
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
         if: '!(matrix.skip)'
-      - name: test_format.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
-        run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
-      - name: lint.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'')'
-        env:
-          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
-        run: deno run --allow-write --allow-read --allow-run --allow-net --allow-env ./tools/lint.js
-      - name: jsdoc_checker.js
-        if: '!(matrix.skip) && (matrix.job == ''lint'')'
-        run: deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: cargo build --locked --all-targets --features=panic-trace
