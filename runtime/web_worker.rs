@@ -301,10 +301,6 @@ impl WebWorkerHandle {
   /// This function will set the termination signal, close the message channel,
   /// and schedule to terminate the isolate after two seconds.
   pub fn terminate(self) {
-    use std::thread::sleep;
-    use std::thread::spawn;
-    use std::time::Duration;
-
     let schedule_termination =
       !self.termination_signal.swap(true, Ordering::SeqCst);
 
@@ -314,21 +310,16 @@ impl WebWorkerHandle {
       // Wake up the worker's event loop so it can terminate.
       self.terminate_waker.wake();
 
-      let has_terminated = self.has_terminated.clone();
-
       // Schedule to terminate the isolate's execution.
-      spawn(move || {
-        sleep(Duration::from_secs(2));
 
-        // A worker's isolate can only be terminated once, so we need a guard
-        // here.
-        let already_terminated = has_terminated.swap(true, Ordering::SeqCst);
+      // A worker's isolate can only be terminated once, so we need a guard
+      // here.
+      let already_terminated = self.has_terminated.swap(true, Ordering::SeqCst);
 
-        if !already_terminated {
-          // Stop javascript execution
-          self.isolate_handle.terminate_execution();
-        }
-      });
+      if !already_terminated {
+        // Stop javascript execution
+        self.isolate_handle.terminate_execution();
+      }
     }
   }
 }

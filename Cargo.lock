@@ -1700,6 +1700,7 @@ dependencies = [
  "pretty_yaml",
  "quick-junit",
  "rand 0.8.5",
+ "rayon",
  "regex",
  "runtimelib",
  "rustc-hash 2.1.1",

@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -243,6 +244,34 @@ impl ModuleInfoCacheModuleAnalyzer<'_> {
   }
 }
 
+struct RayonThreadPool {
+  pool: rayon::ThreadPool,
+}
+
+impl RayonThreadPool {
+  pub fn new() -> Self {
+    Self {
+      pool: rayon::ThreadPoolBuilder::new().build().unwrap(),
+    }
+  }
+
+  pub fn spawn_blocking<F, R>(&self, f: F) -> impl Future<Output = R>
+  where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+  {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    self.pool.spawn(move || {
+      let result = f();
+      let _ = tx.send(result);
+    });
+    async move { rx.await.unwrap() }
+  }
+}
+
+static RAYON_THREAD_POOL: LazyLock<RayonThreadPool> =
+  LazyLock::new(|| RayonThreadPool::new());
+
 #[async_trait::async_trait(?Send)]
 impl deno_graph::analysis::ModuleAnalyzer
   for ModuleInfoCacheModuleAnalyzer<'_>
@@ -262,19 +291,19 @@ impl deno_graph::analysis::ModuleAnalyzer
     }
 
     // otherwise, get the module info from the parsed source cache
-    let module_info = deno_core::unsync::spawn_blocking({
-      let cache = self.parsed_source_cache.clone();
-      let specifier = specifier.clone();
-      move || {
-        let parser = cache.as_capturing_parser();
-        let analyzer = ParserModuleAnalyzer::new(&parser);
-        analyzer
-          .analyze_sync(&specifier, source, media_type)
-          .map_err(JsErrorBox::from_err)
-      }
-    })
-    .await
-    .unwrap()?;
+    let module_info = RAYON_THREAD_POOL
+      .spawn_blocking({
+        let cache = self.parsed_source_cache.clone();
+        let specifier = specifier.clone();
+        move || {
+          let parser = cache.as_capturing_parser();
+          let analyzer = ParserModuleAnalyzer::new(&parser);
+          analyzer
+            .analyze_sync(&specifier, source, media_type)
+            .map_err(JsErrorBox::from_err)
+        }
+      })
+      .await?;
 
     // then attempt to cache it
     self.save_module_info_to_cache(

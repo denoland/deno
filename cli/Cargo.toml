@@ -160,6 +160,7 @@ phf.workspace = true
 pretty_yaml.workspace = true
 quick-junit.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
+rayon.workspace = true
 regex.workspace = true
 rustc-hash.workspace = true
 rustls.workspace = true
