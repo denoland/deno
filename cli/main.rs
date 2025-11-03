@@ -589,6 +589,8 @@ fn maybe_setup_permission_broker() {
 }
 
 pub fn main() {
+  // testing ci caching
+
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
 
