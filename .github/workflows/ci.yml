@@ -761,15 +761,15 @@ jobs:
             arch: x86_64
             runner: windows-2022
     steps:
-      - - name: Configure git
-          run: |-
-            git config --global core.symlinks true
-            git config --global fetch.parallel 32
-        - name: Clone repository
-          uses: actions/checkout@v4
-          with:
-            fetch-depth: 5
-            submodules: false
+      - name: Configure git
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+          submodules: false
       - uses: dsherret/rust-toolchain-file@v1
       - name: Install Deno
         uses: denoland/setup-deno@v2

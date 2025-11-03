@@ -164,7 +164,7 @@ CFLAGS=$CFLAGS
 
 const installBenchTools = "./tools/install_prebuilt.js wrk hyperfine";
 
-const cloneRepoStep = [{
+const cloneRepoSteps = [{
   name: "Configure git",
   run: [
     "git config --global core.symlinks true",
@@ -351,7 +351,7 @@ const ci = {
         skip_build: "${{ steps.check.outputs.skip_build }}",
       },
       steps: onlyIfDraftPr([
-        ...cloneRepoStep,
+        ...cloneRepoSteps,
         {
           id: "check",
           if: "!contains(github.event.pull_request.labels.*.name, 'ci-draft')",
@@ -459,7 +459,7 @@ const ci = {
         RUST_LIB_BACKTRACE: 0,
       },
       steps: skipJobsIfPrAndMarkedSkip([
-        ...cloneRepoStep,
+        ...cloneRepoSteps,
         submoduleStep("./tests/util/std"),
         {
           ...submoduleStep("./tests/wpt/suite"),
@@ -1193,7 +1193,7 @@ const ci = {
         },
       },
       steps: [
-        cloneRepoStep,
+        ...cloneRepoSteps,
         installRustStep,
         installDenoStep,
         {
@@ -1224,7 +1224,7 @@ const ci = {
       "runs-on": ubuntuX86Runner,
       "timeout-minutes": 30,
       steps: skipJobsIfPrAndMarkedSkip([
-        ...cloneRepoStep,
+        ...cloneRepoSteps,
         installRustStep,
         {
           name: "Install wasm target",
