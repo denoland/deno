@@ -21,6 +21,7 @@ const {
   Promise,
   ReflectApply,
   SafeWeakRef,
+  StringPrototypeReplace,
   SymbolFor,
   WeakRefPrototypeDeref,
 } = primordials;
@@ -53,6 +54,11 @@ const kCustomPromisifyArgsSymbol = SymbolFor(
 );
 
 export const customPromisifyArgs = kCustomPromisifyArgsSymbol;
+
+/** @param {string} str */
+export function removeColors(str) {
+  return StringPrototypeReplace(str, colorRegExp, "");
+}
 
 export function promisify(
   original,
@@ -183,4 +189,5 @@ export default {
   normalizeEncoding,
   once,
   promisify,
+  removeColors,
 };

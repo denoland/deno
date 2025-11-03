@@ -546,6 +546,7 @@ impl sys_traits::BaseFsRead for DenoRtSys {
         // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
         // rather than this calling into `deno_fs::FileSystem`
         &CheckedPath::unsafe_new(Cow::Borrowed(path)),
+        OpenOptions::read(),
       )
       .map_err(|err| err.into_io_error())
   }
