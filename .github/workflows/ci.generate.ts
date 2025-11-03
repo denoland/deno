@@ -215,6 +215,49 @@ const installDenoStep = {
   uses: "denoland/setup-deno@v2",
   with: { "deno-version": "v2.x" },
 };
+const cacheCargoHomeStep = {
+  name: "Cache Cargo home",
+  uses: "cirruslabs/cache@v4",
+  with: {
+    // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+    // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
+    path: [
+      "~/.cargo/.crates.toml",
+      "~/.cargo/.crates2.json",
+      "~/.cargo/bin",
+      "~/.cargo/registry/index",
+      "~/.cargo/registry/cache",
+      "~/.cargo/git/db",
+    ].join("\n"),
+    key:
+      `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
+    // We will try to restore from the closest cargo-home we can find
+    "restore-keys":
+      `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
+  },
+};
+const restoreCachePrStep = {
+  // Restore cache from the latest 'main' branch build.
+  name: "Restore cache build output (PR)",
+  uses: "actions/cache/restore@v4",
+  if:
+    "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
+  with: {
+    path: prCachePath,
+    key: "never_saved",
+    "restore-keys": prCacheKeyPrefix,
+  },
+};
+const saveCacheMainStep = {
+  // In main branch, always create a fresh cache
+  name: "Save cache build output (main)",
+  uses: "actions/cache/save@v4",
+  if: "matrix.job == 'test' && github.ref == 'refs/heads/main'",
+  with: {
+    path: prCachePath,
+    key: prCacheKey,
+  },
+};
 
 const authenticateWithGoogleCloud = {
   name: "Authenticate with Google Cloud",
@@ -488,27 +531,7 @@ const ci = {
             "    -czvf target/release/deno_src.tar.gz -C .. deno",
           ].join("\n"),
         },
-        {
-          name: "Cache Cargo home",
-          uses: "cirruslabs/cache@v4",
-          with: {
-            // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
-            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
-            path: [
-              "~/.cargo/.crates.toml",
-              "~/.cargo/.crates2.json",
-              "~/.cargo/bin",
-              "~/.cargo/registry/index",
-              "~/.cargo/registry/cache",
-              "~/.cargo/git/db",
-            ].join("\n"),
-            key:
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-            // We will try to restore from the closest cargo-home we can find
-            "restore-keys":
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
-          },
-        },
+        cacheCargoHomeStep,
         installRustStep,
         {
           if: "matrix.job == 'test' || matrix.job == 'bench'",
@@ -640,18 +663,7 @@ const ci = {
             installBenchTools,
           ].join("\n"),
         },
-        {
-          // Restore cache from the latest 'main' branch build.
-          name: "Restore cache build output (PR)",
-          uses: "actions/cache/restore@v4",
-          if:
-            "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
-          with: {
-            path: prCachePath,
-            key: "never_saved",
-            "restore-keys": prCacheKeyPrefix,
-          },
-        },
+        restoreCachePrStep,
         {
           name: "Apply and update mtime cache",
           if: "!startsWith(github.ref, 'refs/tags/')",
@@ -1168,16 +1180,7 @@ const ci = {
             draft: true,
           },
         },
-        {
-          // In main branch, always create a fresh cache
-          name: "Save cache build output (main)",
-          uses: "actions/cache/save@v4",
-          if: "matrix.job == 'test' && github.ref == 'refs/heads/main'",
-          with: {
-            path: prCachePath,
-            key: prCacheKey,
-          },
-        },
+        saveCacheMainStep,
       ]),
     },
     lint: {
@@ -1199,8 +1202,10 @@ const ci = {
       steps: [
         ...cloneRepoSteps,
         submoduleStep("./tests/util/std"),
+        cacheCargoHomeStep,
         installRustStep,
         installDenoStep,
+        restoreCachePrStep,
         {
           name: "test_format.js",
           if: "matrix.os == 'linux'",
@@ -1220,6 +1225,7 @@ const ci = {
           run:
             "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
         },
+        saveCacheMainStep,
       ],
     },
     libs: {
