@@ -22,13 +22,13 @@ use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
+use deno_core::ModuleLoadOptions;
 use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
-use deno_core::RequestedModuleType;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
@@ -1255,14 +1255,12 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleLoadReferrer>,
-    is_dyn_import: bool,
-    requested_module_type: deno_core::RequestedModuleType,
+    options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     self.0.borrow_mut().clone().unwrap().load(
       module_specifier,
       maybe_referrer,
-      is_dyn_import,
-      requested_module_type,
+      options,
     )
   }
 
@@ -1270,8 +1268,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
-    is_dyn_import: bool,
-    requested_module_type: RequestedModuleType,
+    options: ModuleLoadOptions,
   ) -> std::pin::Pin<
     Box<
       dyn std::prelude::rust_2024::Future<
@@ -1282,8 +1279,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     self.0.borrow_mut().clone().unwrap().prepare_load(
       module_specifier,
       maybe_referrer,
-      is_dyn_import,
-      requested_module_type,
+      options,
     )
   }
 
