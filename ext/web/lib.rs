@@ -52,6 +52,7 @@ pub use crate::timers::TimersPermission;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
+pub use crate::cache::CreateCache;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl, deno_console, deno_url ],

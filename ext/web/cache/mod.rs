@@ -27,7 +27,6 @@ mod lsc_shard;
 mod lscache;
 mod sqlite;
 
-pub use lsc_shard::CacheShard;
 pub use lscache::LscBackend;
 pub use sqlite::SqliteBackedCache;
 use tokio_util::io::StreamReader;

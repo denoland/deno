@@ -326,7 +326,7 @@ fn vary_header_matches(
 fn build_cache_object_key(cache_name: &[u8], request_url: &[u8]) -> String {
   format!(
     "v1/{}/{}",
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(cache_name),
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(request_url),
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode_to_string(cache_name),
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode_to_string(request_url),
   )
 }

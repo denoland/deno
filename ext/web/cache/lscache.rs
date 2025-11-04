@@ -4,7 +4,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use async_stream::try_stream;
-use base64::Engine;
 use bytes::Bytes;
 use deno_core::BufMutView;
 use deno_core::ByteString;
@@ -19,15 +18,15 @@ use http::header::VARY;
 use http_body_util::combinators::UnsyncBoxBody;
 use slab::Slab;
 
-use crate::CacheDeleteRequest;
-use crate::CacheError;
-use crate::CacheMatchRequest;
-use crate::CacheMatchResponseMeta;
-use crate::CachePutRequest;
-use crate::CacheResponseResource;
-use crate::get_header;
-use crate::get_headers_from_vary_header;
-use crate::lsc_shard::CacheShard;
+use super::CacheDeleteRequest;
+use super::CacheError;
+use super::CacheMatchRequest;
+use super::CacheMatchResponseMeta;
+use super::CachePutRequest;
+use super::CacheResponseResource;
+use super::get_header;
+use super::get_headers_from_vary_header;
+use super::lsc_shard::CacheShard;
 
 const REQHDR_PREFIX: &str = "x-lsc-meta-reqhdr-";
 
@@ -326,7 +325,7 @@ fn vary_header_matches(
 fn build_cache_object_key(cache_name: &[u8], request_url: &[u8]) -> String {
   format!(
     "v1/{}/{}",
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(cache_name),
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(request_url),
+    base64_simd::URL_SAFE_NO_PAD.encode_to_string(cache_name),
+    base64_simd::URL_SAFE_NO_PAD.encode_to_string(request_url),
   )
 }
