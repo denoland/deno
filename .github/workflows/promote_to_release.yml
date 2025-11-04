@@ -48,7 +48,7 @@ jobs:
       - name: Run patchver for Windows
         shell: pwsh
         run: |
-          deno install -A -n patchver https://deno.land/x/patchver@0.2.0/cli.ts
+          deno install -g -A -n patchver https://deno.land/x/patchver@0.2.0/cli.ts
           $CHANNEL="${{github.event.inputs.releaseKind}}"
           # Patch deno.exe
           Move-Item -Path "deno.exe" -Destination "deno_original.exe"
