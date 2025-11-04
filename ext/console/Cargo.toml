@@ -1,0 +1,14 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_console"
+version = "0.222.0"
+authors = ["the Deno authors"]
+edition = "2024"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/denoland/deno"
+description = "DEPRECATED: use `deno_web` instead"
+
+[lib]
+path = "lib.rs"
