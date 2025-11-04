@@ -1,8 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod blob;
+mod canvas;
 mod compression;
+mod image_ops;
 mod message_port;
+mod op_create_image_bitmap;
 mod stream_resource;
 mod timers;
 mod url;
@@ -100,7 +103,8 @@ deno_core::extension!(deno_web,
     url::op_url_parse_search_params,
     url::op_url_stringify_search_params,
     urlpattern::op_urlpattern_parse,
-    urlpattern::op_urlpattern_process_match_input
+    urlpattern::op_urlpattern_process_match_input,
+    op_create_image_bitmap::op_create_image_bitmap,
   ],
   esm = [
     "00_infra.js",
@@ -124,7 +128,7 @@ deno_core::extension!(deno_web,
     "00_url.js",
     "01_urlpattern.js"
   ],
-  lazy_loaded_esm = [ "webtransport.js" ],
+  lazy_loaded_esm = [ "webtransport.js", "18_image.js" ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,

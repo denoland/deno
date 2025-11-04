@@ -131,6 +131,7 @@ fs3.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
+image.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }

@@ -1668,6 +1668,7 @@ dependencies = [
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
+ "image",
  "import_map",
  "indexmap 2.9.0",
  "jsonc-parser",
@@ -1884,19 +1885,6 @@ dependencies = [
  "sys_traits",
  "thiserror 2.0.12",
  "url",
-]
-
-[[package]]
-name = "deno_canvas"
-version = "0.90.0"
-dependencies = [
- "bytemuck",
- "deno_core",
- "deno_error",
- "image",
- "lcms2",
- "num-traits",
- "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -2846,7 +2834,6 @@ dependencies = [
  "deno_broadcast_channel",
  "deno_bundle_runtime",
  "deno_cache",
- "deno_canvas",
  "deno_console",
  "deno_core",
  "deno_cron",
@@ -3111,6 +3098,7 @@ version = "0.252.0"
 dependencies = [
  "async-trait",
  "base64-simd",
+ "bytemuck",
  "bytes",
  "deno_bench_util",
  "deno_console",
@@ -3121,6 +3109,9 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "futures",
+ "image",
+ "lcms2",
+ "num-traits",
  "serde",
  "thiserror 2.0.12",
  "tokio",

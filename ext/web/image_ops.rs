@@ -19,7 +19,7 @@ use lcms2::Transform;
 use num_traits::NumCast;
 use num_traits::SaturatingMul;
 
-use crate::CanvasError;
+use crate::canvas::CanvasError;
 
 pub(crate) trait PremultiplyAlpha {
   fn premultiply_alpha(&self) -> Self;
