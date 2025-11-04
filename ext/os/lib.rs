@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
@@ -153,7 +154,9 @@ fn op_set_env(
   #[string] key: &str,
   #[string] value: &str,
 ) -> Result<(), OsError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+  if check_env_with_maybe_exit(state, key)?.is_break() {
+    return Ok(());
+  }
   if key.is_empty() {
     return Err(OsError::EnvEmptyKey);
   }
@@ -170,6 +173,19 @@ fn op_set_env(
   };
   dt_change_notif(scope, key);
   Ok(())
+}
+
+fn check_env_with_maybe_exit(
+  state: &mut OpState,
+  key: &str,
+) -> Result<ControlFlow<()>, PermissionCheckError> {
+  match state.borrow_mut::<PermissionsContainer>().check_env(key) {
+    Ok(()) => Ok(ControlFlow::Continue(())),
+    Err(PermissionCheckError::PermissionDenied(err)) if err.is_ignored => {
+      Ok(ControlFlow::Break(()))
+    }
+    Err(err) => Err(err),
+  }
 }
 
 #[op2(stack_trace)]
@@ -240,16 +256,9 @@ fn op_get_env(
   let skip_permission_check =
     SORTED_NODE_ENV_VAR_ALLOWLIST.binary_search(&key).is_ok();
 
-  if !skip_permission_check
-    && let Err(err) = state.borrow_mut::<PermissionsContainer>().check_env(key)
+  if !skip_permission_check && check_env_with_maybe_exit(state, key)?.is_break()
   {
-    if let PermissionCheckError::PermissionDenied(err) = &err
-      && err.is_ignored
-    {
-      return Ok(None);
-    } else {
-      return Err(err.into());
-    }
+    return Ok(None);
   }
 
   get_env_var(key)
@@ -258,9 +267,11 @@ fn op_get_env(
 #[op2(fast, stack_trace)]
 fn op_delete_env(
   state: &mut OpState,
-  #[string] key: String,
+  #[string] key: &str,
 ) -> Result<(), OsError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+  if check_env_with_maybe_exit(state, key)?.is_break() {
+    return Ok(());
+  }
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
