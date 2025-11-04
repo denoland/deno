@@ -401,7 +401,7 @@ winres = "=0.1.12"
 
 [profile.dev]
 debug = "line-tables-only"
-# opt-level = 1
+opt-level = 1
 
 [profile.release]
 codegen-units = 1
