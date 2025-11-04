@@ -134,7 +134,7 @@ deno_core::extension!(deno_web,
     "17_cache.js",
     "00_url.js",
     "01_urlpattern.js",
-    "00_console.js",
+    "01_console.js",
   ],
   lazy_loaded_esm = [ "webtransport.js" ],
   options = {

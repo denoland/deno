@@ -128,7 +128,7 @@ declare module "ext:deno_web/01_urlpattern.js" {
   const URLPattern: typeof URLPattern;
 }
 
-declare module "ext:deno_web/00_console.js" {
+declare module "ext:deno_web/01_console.js" {
   function createFilteredInspectProxy<TObject>(params: {
     object: TObject;
     keys: (keyof TObject)[];

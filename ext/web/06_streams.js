@@ -99,7 +99,7 @@ import {
   signalAbort,
 } from "./03_abort_signal.js";
 
-import { createFilteredInspectProxy } from "./00_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 import { assert, AssertionError } from "./00_infra.js";
 
 /** @template T */
