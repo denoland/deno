@@ -19,16 +19,16 @@ use rusqlite::params;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
-use crate::CacheDeleteRequest;
-use crate::CacheError;
-use crate::CacheMatchRequest;
-use crate::CacheMatchResponseMeta;
-use crate::CachePutRequest;
-use crate::CacheResponseResource;
-use crate::deserialize_headers;
-use crate::get_header;
-use crate::serialize_headers;
-use crate::vary_header_matches;
+use super::CacheDeleteRequest;
+use super::CacheError;
+use super::CacheMatchRequest;
+use super::CacheMatchResponseMeta;
+use super::CachePutRequest;
+use super::CacheResponseResource;
+use super::deserialize_headers;
+use super::get_header;
+use super::serialize_headers;
+use super::vary_header_matches;
 
 #[derive(Clone)]
 pub struct SqliteBackedCache {

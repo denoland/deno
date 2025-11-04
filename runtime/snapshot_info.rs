@@ -220,11 +220,11 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_web::deno_web::init::<Permissions>(
       Default::default(),
       Default::default(),
+      None,
     ),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::init::<Permissions>(Default::default()),
-    deno_cache::deno_cache::init(None),
     deno_websocket::deno_websocket::init::<Permissions>(),
     deno_webstorage::deno_webstorage::init(None),
     deno_crypto::deno_crypto::init(None),

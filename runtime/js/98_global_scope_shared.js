@@ -7,7 +7,7 @@ import * as timers from "ext:deno_web/02_timers.js";
 import * as base64 from "ext:deno_web/05_base64.js";
 import * as encoding from "ext:deno_web/08_text_encoding.js";
 import * as console from "ext:deno_console/01_console.js";
-import * as caches from "ext:deno_cache/01_cache.js";
+import * as caches from "ext:deno_web/17_cache.js";
 import * as compression from "ext:deno_web/14_compression.js";
 import * as worker from "ext:runtime/11_workers.js";
 import * as performance from "ext:deno_web/15_performance.js";
