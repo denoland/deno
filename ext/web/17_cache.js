@@ -299,3 +299,5 @@ function cacheStorage() {
   }
   return cacheStorageStorage;
 }
+
+export { Cache, CacheStorage, cacheStorage };
