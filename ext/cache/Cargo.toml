@@ -1,0 +1,11 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_cache"
+version = "0.154.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "DEPRECATED: Use deno_web instead"
