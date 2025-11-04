@@ -2,8 +2,8 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::env;
+use std::ffi::OsString;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
@@ -22,10 +22,17 @@ pub mod sys_info;
 
 pub use ops::signal::SignalError;
 
-pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<&str>> = Lazy::new(|| {
-  // The full list of environment variables supported by Node.js is available
-  // at https://nodejs.org/api/cli.html#environment-variables
-  HashSet::from(["NODE_DEBUG", "NODE_OPTIONS", "FORCE_COLOR", "NO_COLOR"])
+// The full list of environment variables supported by Node.js is available
+// at https://nodejs.org/api/cli.html#environment-variables
+const NODE_ENV_VAR_ALLOWLIST: [&str; 4] =
+  ["FORCE_COLOR", "NO_COLOR", "NODE_DEBUG", "NODE_OPTIONS"];
+// TODO(THIS PR): DO NOT DO THIS FOR THE ACTUAL THING because
+// someone could maybe set this env var before this get is triggered
+// which might not be ideal? Not sure.
+static DENY_ENV_TO_NOT_FOUND: Lazy<bool> = Lazy::new(|| {
+  std::env::var_os("DENO_ALLOW_ENV_DEMO")
+    .map(|s| s == "1")
+    .unwrap_or(false)
 });
 
 #[derive(Clone, Default)]
@@ -179,15 +186,39 @@ fn op_set_env(
 fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
-  state.borrow_mut::<PermissionsContainer>().check_env_all()?;
+  fn map_kv(kv: (OsString, OsString)) -> Option<(String, String)> {
+    kv.0
+      .into_string()
+      .ok()
+      .and_then(|key| kv.1.into_string().ok().map(|value| (key, value)))
+  }
 
+  let permissions_container = state.borrow_mut::<PermissionsContainer>();
+  let grant_all = match permissions_container.check_env_all() {
+    Ok(_) => true,
+    Err(err) => {
+      if *DENY_ENV_TO_NOT_FOUND {
+        false
+      } else {
+        return Err(err.into());
+      }
+    }
+  };
   Ok(
     env::vars_os()
-      .filter_map(|(key_os, value_os)| {
-        key_os
-          .into_string()
-          .ok()
-          .and_then(|key| value_os.into_string().ok().map(|value| (key, value)))
+      .filter_map(|kv| {
+        let (k, v) = map_kv(kv)?;
+        let state = if grant_all {
+          deno_permissions::PermissionState::Granted
+        } else {
+          permissions_container.query_env(Some(&k))
+        };
+        match state {
+          deno_permissions::PermissionState::Granted
+          | deno_permissions::PermissionState::GrantedPartial => Some((k, v)),
+          deno_permissions::PermissionState::Prompt
+          | deno_permissions::PermissionState::Denied => None,
+        }
       })
       .collect(),
   )
@@ -223,10 +254,17 @@ fn op_get_env(
   state: &mut OpState,
   #[string] key: &str,
 ) -> Result<Option<String>, OsError> {
-  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(key);
+  let skip_permission_check =
+    NODE_ENV_VAR_ALLOWLIST.binary_search(&key).is_ok();
 
-  if !skip_permission_check {
-    state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+  if !skip_permission_check
+    && let Err(err) = state.borrow_mut::<PermissionsContainer>().check_env(key)
+  {
+    if *DENY_ENV_TO_NOT_FOUND {
+      return Ok(None);
+    } else {
+      return Err(err.into());
+    }
   }
 
   get_env_var(key)
@@ -700,4 +738,19 @@ fn os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
 #[number]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
   os_uptime(state)
+}
+
+#[cfg(test)]
+mod test {
+  use crate::NODE_ENV_VAR_ALLOWLIST;
+
+  #[test]
+  fn ensure_node_env_var_list_sorted() {
+    let mut items = NODE_ENV_VAR_ALLOWLIST
+      .iter()
+      .map(|i| *i)
+      .collect::<Vec<_>>();
+    items.sort();
+    assert_eq!(items, NODE_ENV_VAR_ALLOWLIST);
+  }
 }
