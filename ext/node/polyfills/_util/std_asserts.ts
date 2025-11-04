@@ -25,7 +25,7 @@ const {
   WeakRefPrototypeDeref,
 } = primordials;
 
-import { URLPrototype } from "ext:deno_url/00_url.js";
+import { URLPrototype } from "ext:deno_web/00_url.js";
 
 export class AssertionError extends Error {
   override name = "AssertionError";
