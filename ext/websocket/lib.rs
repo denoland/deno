@@ -588,9 +588,17 @@ pub fn ws_create_server_stream(
   state.resource_table.add(ServerWebSocket::new(ws))
 }
 
-fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
+enum SendBinaryData<'a> {
+  Vec(Vec<u8>),
+  Slice(&'a [u8]),
+}
+
+fn send_binary(state: &mut OpState, rid: ResourceId, data: SendBinaryData) {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
-  let data = data.to_vec();
+  let data = match data {
+    SendBinaryData::Vec(v) => v,
+    SendBinaryData::Slice(v) => v.to_vec(),
+  };
   let len = data.len();
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
@@ -615,16 +623,16 @@ pub fn op_ws_send_binary(
   #[smi] rid: ResourceId,
   #[anybuffer] data: &[u8],
 ) {
-  send_binary(state, rid, data)
+  send_binary(state, rid, SendBinaryData::Slice(data))
 }
 
 #[op2(fast)]
 pub fn op_ws_send_binary_ab(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-  #[arraybuffer] data: &[u8],
+  #[buffer(copy)] data: Vec<u8>,
 ) {
-  send_binary(state, rid, data)
+  send_binary(state, rid, SendBinaryData::Vec(data))
 }
 
 #[op2(fast)]
