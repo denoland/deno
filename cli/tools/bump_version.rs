@@ -19,14 +19,7 @@ use crate::args::VersionFlags;
 use crate::args::VersionIncrement;
 use crate::factory::CliFactory;
 
-#[derive(Debug, Copy, Clone, Hash)]
-enum ConfigKind {
-  DenoJson,
-  PackageJson,
-}
-
 struct ConfigUpdater {
-  _kind: ConfigKind,
   cst: CstRootNode,
   root_object: CstObject,
   path: PathBuf,
@@ -34,10 +27,7 @@ struct ConfigUpdater {
 }
 
 impl ConfigUpdater {
-  fn new(
-    kind: ConfigKind,
-    config_file_path: PathBuf,
-  ) -> Result<Self, AnyError> {
+  fn new(config_file_path: PathBuf) -> Result<Self, AnyError> {
     let config_file_contents = std::fs::read_to_string(&config_file_path)
       .with_context(|| {
         format!("Reading config file '{}'", config_file_path.display())
@@ -48,7 +38,6 @@ impl ConfigUpdater {
       })?;
     let root_object = cst.object_value_or_set();
     Ok(Self {
-      _kind: kind,
       cst,
       root_object,
       path: config_file_path,
@@ -191,15 +180,12 @@ fn find_config_files(
   if let Some(deno_json) = start_dir.maybe_deno_json() {
     let config_path = deno_path_util::url_to_file_path(&deno_json.specifier)
       .context("Failed to convert deno.json URL to path")?;
-    configs.push(ConfigUpdater::new(ConfigKind::DenoJson, config_path)?);
+    configs.push(ConfigUpdater::new(config_path)?);
   }
 
   // Check for package.json
   if let Some(pkg_json) = start_dir.maybe_pkg_json() {
-    configs.push(ConfigUpdater::new(
-      ConfigKind::PackageJson,
-      pkg_json.path.clone(),
-    )?);
+    configs.push(ConfigUpdater::new(pkg_json.path.clone())?);
   }
 
   if configs.is_empty() {
@@ -243,8 +229,8 @@ pub fn bump_version_command(
         info!("No version found in configuration files");
         return Ok(());
       }
-      // Default to 1.0.0 if no version is found but increment is specified
-      Version::parse_standard("1.0.0")
+      // Default to 0.1.0 if no version is found but increment is specified
+      Version::parse_standard("0.1.0")
         .with_context(|| "Failed to create default version")?
     }
   };

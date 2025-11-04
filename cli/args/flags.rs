@@ -1928,7 +1928,7 @@ fn audit_subcommand() -> Command {
     cstr!(
       "Audit currently installed dependencies.
   <p(245)>deno audit</>
-      
+
 Show only high and critical severity vulnerabilities
   <p(245)>deno audit --level=high</>
 
@@ -3959,31 +3959,25 @@ fn bump_version_subcommand() -> Command {
       "Update version in configuration file.
   <p(245)>deno bump-version patch</>  # 1.0.0 -> 1.0.1
   <p(245)>deno bump-version minor</>  # 1.0.0 -> 1.1.0
-  <p(245)>deno bump-version major</>  # 1.0.0 -> 2.0.0
-
-Additional options:
-  <p(245)>deno bump-version patch --dry-run</>        # Show what would change
-  <p(245)>deno bump-version patch --no-git-tag</>     # Don't create git tag
-  <p(245)>deno bump-version patch --git-commit-all</> # Stage and commit all changes"
+  <p(245)>deno bump-version major</>  # 1.0.0 -> 2.0.0"
     ),
     UnstableArgsConfig::None,
   )
   .defer(|cmd| {
-    cmd
-      .arg(
-        Arg::new("increment")
-          .help("Version increment type")
-          .value_parser([
-            "major",
-            "minor",
-            "patch",
-            "premajor",
-            "preminor",
-            "prepatch",
-            "prerelease",
-          ])
-          .index(1),
-      )
+    cmd.arg(
+      Arg::new("increment")
+        .help("Version increment type")
+        .value_parser([
+          "major",
+          "minor",
+          "patch",
+          "premajor",
+          "preminor",
+          "prepatch",
+          "prerelease",
+        ])
+        .index(1),
+    )
   })
 }
 

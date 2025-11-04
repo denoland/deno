@@ -248,10 +248,10 @@ fn deno_version_creates_default_version_when_missing() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Version updated from 1.0.0 to 1.0.1");
+  assert_contains!(output.stderr(), "Version updated from 0.1.0 to 0.1.1");
 
   // Verify version was added
   let deno_json_content = cwd.join("deno.json").read_to_string();
-  assert_contains!(deno_json_content, r#""version": "1.0.1""#);
+  assert_contains!(deno_json_content, r#""version": "0.1.1""#);
   assert_contains!(deno_json_content, r#""name": "test-package""#);
 }
