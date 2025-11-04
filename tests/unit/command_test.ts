@@ -395,6 +395,55 @@ Deno.test(
 );
 
 Deno.test(
+  {
+    permissions: { run: true, read: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function commandKillWithIntegerSignal() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "setTimeout(() => {}, 10000)"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+
+    // Kill with integer signal (9 = SIGKILL)
+    child.kill(9);
+    const status = await child.status;
+
+    assertEquals(status.success, false);
+    assertEquals(status.code, 137);
+    assertEquals(status.signal, "SIGKILL");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { run: true, read: true },
+    ignore: Deno.build.os === "windows",
+  },
+  async function commandKillWithSignalZero() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "setTimeout(() => {}, 10000)"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+
+    // Signal 0 checks if the process exists
+    child.kill(0); // Should not actually kill the process
+
+    // Now kill it for real
+    child.kill("SIGTERM");
+    const status = await child.status;
+
+    assertEquals(status.success, false);
+    assertEquals(status.code, 143);
+    assertEquals(status.signal, "SIGTERM");
+  },
+);
+
+Deno.test(
   { permissions: { run: true, read: true } },
   async function commandAbort() {
     const ac = new AbortController();
