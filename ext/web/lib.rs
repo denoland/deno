@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod blob;
-mod cache;
+pub mod cache;
 mod compression;
 mod message_port;
 mod stream_resource;

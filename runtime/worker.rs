@@ -11,9 +11,9 @@ use std::time::Duration;
 use std::time::Instant;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_cache::CacheImpl;
-use deno_cache::CreateCache;
-use deno_cache::SqliteBackedCache;
+use deno_web::cache::CacheImpl;
+use deno_web::CreateCache;
+use deno_web::cache::SqliteBackedCache;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::InspectorSessionKind;
@@ -399,12 +399,12 @@ impl MainWorker {
         if elems.len() == 2 {
           let endpoint = elems[0];
           let token = elems[1];
-          use deno_cache::CacheShard;
+          use deno_web::cache::CacheShard;
 
           let shard =
             Rc::new(CacheShard::new(endpoint.to_string(), token.to_string()));
           let create_cache_fn = move || {
-            let x = deno_cache::LscBackend::default();
+            let x = deno_web::cache::LscBackend::default();
             x.set_shard(shard.clone());
 
             Ok(CacheImpl::Lsc(x))
@@ -533,6 +533,7 @@ impl MainWorker {
         deno_web::deno_web::args::<PermissionsContainer>(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
+          create_cache,
         ),
         deno_fetch::deno_fetch::args::<PermissionsContainer>(
           deno_fetch::Options {
@@ -546,7 +547,6 @@ impl MainWorker {
             ..Default::default()
           },
         ),
-        deno_cache::deno_cache::args(create_cache),
         deno_websocket::deno_websocket::args::<PermissionsContainer>(),
         deno_webstorage::deno_webstorage::args(
           options.origin_storage_dir.clone(),
@@ -1056,7 +1056,6 @@ fn common_extensions<
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
-    deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),

@@ -1831,33 +1831,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_cache"
-version = "0.153.0"
-dependencies = [
- "async-stream",
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "chrono",
- "deno_core",
- "deno_error",
- "futures",
- "http 1.1.0",
- "http-body 1.0.0",
- "http-body-util",
- "hyper 1.6.0",
- "hyper-util",
- "log",
- "rusqlite",
- "serde",
- "sha2",
- "slab",
- "thiserror 2.0.12",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
 name = "deno_cache_dir"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2844,7 +2817,6 @@ dependencies = [
  "deno_ast",
  "deno_broadcast_channel",
  "deno_bundle_runtime",
- "deno_cache",
  "deno_canvas",
  "deno_console",
  "deno_core",
@@ -3117,9 +3089,11 @@ dependencies = [
 name = "deno_web"
 version = "0.252.0"
 dependencies = [
+ "async-stream",
  "async-trait",
  "base64-simd",
  "bytes",
+ "chrono",
  "deno_bench_util",
  "deno_console",
  "deno_core",
@@ -3130,9 +3104,19 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "futures",
+ "http 1.1.0",
+ "http-body 1.0.0",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "log",
+ "rusqlite",
  "serde",
+ "sha2",
+ "slab",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-util",
  "uuid",
 ]
 
