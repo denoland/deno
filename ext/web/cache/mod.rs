@@ -27,9 +27,9 @@ mod lsc_shard;
 mod lscache;
 mod sqlite;
 
+pub use lsc_shard::CacheShard;
 pub use lscache::LscBackend;
 pub use sqlite::SqliteBackedCache;
-pub use lsc_shard::CacheShard;
 use tokio_util::io::StreamReader;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]

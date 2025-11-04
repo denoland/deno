@@ -37,6 +37,7 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
+pub use crate::cache::CreateCache;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::Transferable;
@@ -52,7 +53,6 @@ pub use crate::timers::TimersPermission;
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
-pub use crate::cache::CreateCache;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl, deno_console, deno_url ],

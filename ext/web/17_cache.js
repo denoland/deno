@@ -299,5 +299,3 @@ function cacheStorage() {
   }
   return cacheStorageStorage;
 }
-
-e

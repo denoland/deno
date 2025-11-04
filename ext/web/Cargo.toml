@@ -22,6 +22,9 @@ chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_error.workspace = true
 deno_permissions.workspace = true
+encoding_rs.workspace = true
+flate2 = { workspace = true, features = ["default"] }
+futures.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
@@ -29,9 +32,6 @@ hyper.workspace = true
 hyper-util.workspace = true
 log.workspace = true
 rusqlite.workspace = true
-encoding_rs.workspace = true
-flate2 = { workspace = true, features = ["default"] }
-futures.workspace = true
 serde.workspace = true
 sha2.workspace = true
 slab.workspace = true
