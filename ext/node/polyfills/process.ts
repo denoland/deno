@@ -12,6 +12,8 @@ import {
   op_geteuid,
   op_node_load_env_file,
   op_node_process_kill,
+  op_node_process_setegid,
+  op_node_process_seteuid,
   op_process_abort,
 } from "ext:core/ops";
 
@@ -24,8 +26,10 @@ import {
   validateNumber,
   validateObject,
   validateString,
+  validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
 import {
+  denoErrorToNodeError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE_RANGE,
   ERR_OUT_OF_RANGE,
@@ -64,7 +68,7 @@ import {
   processTicksAndRejections,
   runNextTicks,
 } from "ext:deno_node/_next_tick.ts";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+import { isAndroid, isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
 import * as denoOs from "ext:deno_os/30_os.js";
 
@@ -75,6 +79,7 @@ export let arch = "";
 export let platform = isWindows ? "win32" : ""; // initialized during bootstrap
 
 export let pid = 0;
+export let ppid = 0;
 
 let stdin, stdout, stderr;
 
@@ -374,16 +379,41 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   return true;
 }
 
-let getgid, getuid, getegid, geteuid;
+let getgid, getuid, getegid, geteuid, setegid, seteuid;
+
+function wrapIdSetter(
+  syscall: string,
+  fn: (id: number | string) => void,
+): (id: number | string) => void {
+  return function (id: number | string) {
+    if (typeof id === "number") {
+      validateUint32(id, "id");
+      id >>>= 0;
+    } else if (typeof id !== "string") {
+      throw new ERR_INVALID_ARG_TYPE("id", ["number", "string"], id);
+    }
+
+    try {
+      fn(id);
+    } catch (err) {
+      throw denoErrorToNodeError(err as Error, { syscall });
+    }
+  };
+}
 
 if (!isWindows) {
   getgid = () => Deno.gid();
   getuid = () => Deno.uid();
   getegid = () => op_getegid();
   geteuid = () => op_geteuid();
+
+  if (!isAndroid) {
+    setegid = wrapIdSetter("setegid", op_node_process_setegid);
+    seteuid = wrapIdSetter("seteuid", op_node_process_seteuid);
+  }
 }
 
-export { getegid, geteuid, getgid, getuid };
+export { getegid, geteuid, getgid, getuid, setegid, seteuid };
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
@@ -792,6 +822,12 @@ process.getegid = getegid;
 /** This method is removed on Windows */
 process.geteuid = geteuid;
 
+/** This method is removed on Windows */
+process.setegid = setegid;
+
+/** This method is removed on Windows */
+process.seteuid = seteuid;
+
 process.getBuiltinModule = getBuiltinModule;
 
 // TODO(kt3k): Implement this when we added -e option to node compat mode
@@ -1027,7 +1063,7 @@ internals.__bootstrapNodeProcess = function (
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
-
+    ppid = Deno.ppid;
     initializeDebugEnv(nodeDebug);
 
     if (getOptionValue("--warnings")) {
