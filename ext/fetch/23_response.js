@@ -22,7 +22,7 @@ import {
 import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
-import { URL } from "ext:deno_url/00_url.js";
+import { URL } from "ext:deno_web/00_url.js";
 import {
   fillHeaders,
   getDecodeSplitHeader,

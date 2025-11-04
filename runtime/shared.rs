@@ -8,7 +8,6 @@ extension!(runtime,
   deps = [
     deno_webidl,
     deno_console,
-    deno_url,
     deno_tls,
     deno_web,
     deno_fetch,
