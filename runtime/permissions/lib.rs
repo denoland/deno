@@ -2441,7 +2441,7 @@ impl SysDescriptor {
       "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
-      | "userInfo" => Ok(Self(kind)),
+      | "userInfo" | "setegid" | "seteuid" => Ok(Self(kind)),
 
       // the underlying permission check changed to `userInfo` to better match the API,
       // alias this to avoid breaking existing projects with `--allow-sys=username`

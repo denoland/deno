@@ -107,7 +107,6 @@ deno_process = { version = "0.36.0", path = "./ext/process" }
 deno_signals = { version = "0.12.0", path = "./ext/signals" }
 deno_telemetry = { version = "0.43.0", path = "./ext/telemetry" }
 deno_tls = { version = "0.208.0", path = "./ext/tls" }
-deno_url = { version = "0.221.0", path = "./ext/url" }
 deno_web = { version = "0.252.0", path = "./ext/web" }
 deno_webgpu = { version = "0.188.0", path = "./ext/webgpu" }
 deno_webidl = { version = "0.221.0", path = "./ext/webidl" }
@@ -462,8 +461,6 @@ opt-level = 3
 [profile.release.package.deno_runtime]
 opt-level = 3
 [profile.release.package.deno_tls]
-opt-level = 3
-[profile.release.package.deno_url]
 opt-level = 3
 [profile.release.package.deno_web]
 opt-level = 3

@@ -6,6 +6,8 @@ mod compression;
 mod message_port;
 mod stream_resource;
 mod timers;
+mod url;
+mod urlpattern;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -55,7 +57,7 @@ use crate::timers::op_now;
 use crate::timers::op_time_origin;
 
 deno_core::extension!(deno_web,
-  deps = [ deno_webidl, deno_console, deno_url ],
+  deps = [ deno_webidl, deno_console ],
   parameters = [P: TimersPermission],
   ops = [
     op_base64_decode,
@@ -99,6 +101,14 @@ deno_core::extension!(deno_web,
     cache::op_cache_put,
     cache::op_cache_match,
     cache::op_cache_delete,
+    url::op_url_reparse,
+    url::op_url_parse,
+    url::op_url_get_serialization,
+    url::op_url_parse_with_base,
+    url::op_url_parse_search_params,
+    url::op_url_stringify_search_params,
+    urlpattern::op_urlpattern_parse,
+    urlpattern::op_urlpattern_process_match_input
   ],
   esm = [
     "00_infra.js",
@@ -120,6 +130,8 @@ deno_core::extension!(deno_web,
     "15_performance.js",
     "16_image_data.js",
     "17_cache.js",
+    "00_url.js",
+    "01_urlpattern.js"
   ],
   lazy_loaded_esm = [ "webtransport.js" ],
   options = {

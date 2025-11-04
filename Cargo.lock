@@ -2496,6 +2496,7 @@ dependencies = [
  "libz-sys",
  "md-5",
  "md4",
+ "nix 0.27.1",
  "node_resolver",
  "num-bigint",
  "num-bigint-dig",
@@ -2842,7 +2843,6 @@ dependencies = [
  "deno_telemetry",
  "deno_terminal 0.2.2",
  "deno_tls",
- "deno_url",
  "deno_web",
  "deno_webgpu",
  "deno_webidl",
@@ -3075,15 +3075,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.221.0"
-dependencies = [
- "deno_bench_util",
- "deno_console",
- "deno_core",
- "deno_error",
- "deno_webidl",
- "urlpattern",
-]
+version = "0.222.0"
 
 [[package]]
 name = "deno_web"
@@ -3099,7 +3091,6 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_permissions",
- "deno_url",
  "deno_webidl",
  "encoding_rs",
  "flate2",
@@ -3117,6 +3108,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
+ "urlpattern",
  "uuid",
 ]
 

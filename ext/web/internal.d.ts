@@ -117,3 +117,13 @@ declare module "ext:deno_web/13_message_port.js" {
     messageData: messagePort.MessageData,
   ): [object, object[]];
 }
+
+declare module "ext:deno_web/00_url.js" {
+  const URL: typeof URL;
+  const URLSearchParams: typeof URLSearchParams;
+  function parseUrlEncoded(bytes: Uint8Array): [string, string][];
+}
+
+declare module "ext:deno_web/01_urlpattern.js" {
+  const URLPattern: typeof URLPattern;
+}

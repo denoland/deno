@@ -21,7 +21,6 @@ pub use deno_process;
 pub use deno_telemetry;
 pub use deno_terminal::colors;
 pub use deno_tls;
-pub use deno_url;
 pub use deno_web;
 pub use deno_webgpu;
 pub use deno_webidl;

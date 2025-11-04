@@ -38,12 +38,12 @@ slab.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+urlpattern.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 deno_bench_util.workspace = true
 deno_console.workspace = true
-deno_url.workspace = true
 deno_webidl.workspace = true
 
 [[bench]]
@@ -52,4 +52,8 @@ harness = false
 
 [[bench]]
 name = "timers_ops"
+harness = false
+
+[[bench]]
+name = "url_ops"
 harness = false
