@@ -528,7 +528,6 @@ impl WebWorker {
         Some(options.main_module.clone()),
       ),
       deno_webgpu::deno_webgpu::init(),
-      deno_canvas::deno_canvas::init(),
       deno_fetch::deno_fetch::init::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),

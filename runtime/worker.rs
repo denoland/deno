@@ -1053,7 +1053,6 @@ fn common_extensions<
     deno_console::deno_console::init(),
     deno_web::deno_web::lazy_init::<PermissionsContainer>(),
     deno_webgpu::deno_webgpu::init(),
-    deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),

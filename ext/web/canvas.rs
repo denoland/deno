@@ -1,10 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-mod image_ops;
-mod op_create_image_bitmap;
 pub use image;
 use image::ColorType;
-use op_create_image_bitmap::op_create_image_bitmap;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CanvasError {
@@ -37,14 +34,7 @@ pub enum CanvasError {
 
 impl CanvasError {
   /// Convert an [`image::ImageError`] to an [`CanvasError::InvalidImage`].
-  fn image_error_to_invalid_image(error: image::ImageError) -> Self {
+  pub(crate) fn image_error_to_invalid_image(error: image::ImageError) -> Self {
     CanvasError::InvalidImage(error)
   }
 }
-
-deno_core::extension!(
-  deno_canvas,
-  deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_create_image_bitmap],
-  lazy_loaded_esm = ["01_image.js"],
-);

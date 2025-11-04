@@ -190,10 +190,10 @@ pub fn op_print(state: &mut OpState, #[string] msg: &str, is_err: bool) {
 pub fn op_jupyter_create_png_from_texture(
   #[cppgc] texture: &deno_runtime::deno_webgpu::texture::GPUTexture,
 ) -> Result<String, JsErrorBox> {
-  use deno_runtime::deno_canvas::image::ExtendedColorType;
-  use deno_runtime::deno_canvas::image::ImageEncoder;
   use deno_runtime::deno_webgpu::error::GPUError;
   use deno_runtime::deno_webgpu::*;
+  use image::ExtendedColorType;
+  use image::ImageEncoder;
   use texture::GPUTextureFormat;
 
   // We only support the 8 bit per pixel formats with 4 channels
@@ -335,8 +335,7 @@ pub fn op_jupyter_create_png_from_texture(
 
   let mut out: Vec<u8> = vec![];
 
-  let img =
-    deno_runtime::deno_canvas::image::codecs::png::PngEncoder::new(&mut out);
+  let img = image::codecs::png::PngEncoder::new(&mut out);
   img
     .write_image(&data, texture.size.width, texture.size.height, color_type)
     .map_err(|e| JsErrorBox::type_error(e.to_string()))?;

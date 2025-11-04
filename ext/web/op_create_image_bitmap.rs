@@ -19,7 +19,7 @@ use image::imageops::FilterType;
 use image::imageops::overlay;
 use image::metadata::Orientation;
 
-use crate::CanvasError;
+use crate::canvas::CanvasError;
 use crate::image_ops::create_image_from_raw_bytes;
 use crate::image_ops::premultiply_alpha as process_premultiply_alpha;
 use crate::image_ops::to_srgb_from_icc_profile;
