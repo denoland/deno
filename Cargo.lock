@@ -1927,13 +1927,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_console"
-version = "0.221.0"
-dependencies = [
- "deno_core",
-]
-
-[[package]]
 name = "deno_core"
 version = "0.363.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2847,7 +2840,6 @@ dependencies = [
  "deno_bundle_runtime",
  "deno_cache",
  "deno_canvas",
- "deno_console",
  "deno_core",
  "deno_cron",
  "deno_crypto",
@@ -3113,7 +3105,6 @@ dependencies = [
  "base64-simd",
  "bytes",
  "deno_bench_util",
- "deno_console",
  "deno_core",
  "deno_error",
  "deno_permissions",

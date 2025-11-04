@@ -33,7 +33,6 @@ fn setup() -> Vec<Extension> {
 
   vec![
     deno_webidl::deno_webidl::init(),
-    deno_console::deno_console::init(),
     deno_web::deno_web::init::<Permissions>(Default::default(), None),
     bench_setup::init(),
   ]

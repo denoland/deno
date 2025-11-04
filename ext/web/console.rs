@@ -2,12 +2,6 @@
 use deno_core::op2;
 use deno_core::v8;
 
-deno_core::extension!(
-  deno_console,
-  ops = [op_preview_entries],
-  esm = ["01_console.js"],
-);
-
 #[op2]
 pub fn op_preview_entries<'s>(
   scope: &mut v8::PinScope<'s, '_>,
