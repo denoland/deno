@@ -810,6 +810,7 @@ pub struct PermissionFlags {
   pub allow_all: bool,
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
+  pub ignore_env: Option<Vec<String>>,
   pub allow_ffi: Option<Vec<String>>,
   pub deny_ffi: Option<Vec<String>>,
   pub allow_net: Option<Vec<String>>,
@@ -832,6 +833,7 @@ impl PermissionFlags {
     self.allow_all
       || self.allow_env.is_some()
       || self.deny_env.is_some()
+      || self.ignore_env.is_some()
       || self.allow_ffi.is_some()
       || self.deny_ffi.is_some()
       || self.allow_net.is_some()
@@ -965,6 +967,17 @@ impl Flags {
       }
       Some(env_denylist) => {
         let s = format!("--deny-env={}", env_denylist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
+    match &self.permissions.ignore_env {
+      Some(env_ignorelist) if env_ignorelist.is_empty() => {
+        args.push("--ignore-env".to_string());
+      }
+      Some(env_ignorelist) => {
+        let s = format!("--ignore-env={}", env_ignorelist.join(","));
         args.push(s);
       }
       _ => {}
@@ -4020,6 +4033,30 @@ fn compile_args_without_check_args(app: Command) -> Command {
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
+  let make_deny_ignore_env_arg = |arg: Arg| {
+    let mut arg = arg
+      .num_args(0..)
+      .use_value_delimiter(true)
+      .require_equals(true)
+      .value_name("VARIABLE_NAME")
+      .long_help("false")
+      .value_parser(|key: &str| {
+        if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+          return Err(format!("invalid key \"{key}\""));
+        }
+
+        Ok(if cfg!(windows) {
+          key.to_uppercase()
+        } else {
+          key.to_string()
+        })
+      })
+      .hide(true);
+    if let Some(requires) = requires {
+      arg = arg.requires(requires)
+    }
+    arg
+  };
   app
     .after_help(cstr!(r#"<y>Permission options:</>
 <y>Docs</>: <c>https://docs.deno.com/go/permissions</>
@@ -4224,33 +4261,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         arg
       }
     )
-    .arg(
-      {
-        let mut arg = Arg::new("deny-env")
-          .long("deny-env")
-          .num_args(0..)
-          .use_value_delimiter(true)
-          .require_equals(true)
-          .value_name("VARIABLE_NAME")
-          .long_help("false")
-          .value_parser(|key: &str| {
-            if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-              return Err(format!("invalid key \"{key}\""));
-            }
-
-            Ok(if cfg!(windows) {
-              key.to_uppercase()
-            } else {
-              key.to_string()
-            })
-          })
-          .hide(true);
-        if let Some(requires) = requires {
-          arg = arg.requires(requires)
-        }
-        arg
-      }
-    )
+    .arg(make_deny_ignore_env_arg(Arg::new("deny-env").long("deny-env")))
+    .arg(make_deny_ignore_env_arg(Arg::new("ignore-env").long("ignore-env")))
     .arg(
       {
         let mut arg = Arg::new("allow-sys")
@@ -6451,6 +6463,11 @@ fn permission_args_parse(
   if let Some(env_wl) = matches.remove_many::<String>("deny-env") {
     flags.permissions.deny_env = Some(env_wl.collect());
     debug!("env denylist: {:#?}", &flags.permissions.deny_env);
+  }
+
+  if let Some(env_wl) = matches.remove_many::<String>("ignore-env") {
+    flags.permissions.ignore_env = Some(env_wl.collect());
+    debug!("env ignorelist: {:#?}", &flags.permissions.ignore_env);
   }
 
   if let Some(run_wl) = matches.remove_many::<String>("allow-run") {
@@ -9037,6 +9054,26 @@ mod tests {
   }
 
   #[test]
+  fn ignore_env_ignorelist() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--ignore-env=HOME", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          ignore_env: Some(svec!["HOME"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn allow_env_allowlist_multiple() {
     let r = flags_from_vec(svec![
       "deno",
@@ -9072,6 +9109,30 @@ mod tests {
         )),
         permissions: PermissionFlags {
           deny_env: Some(svec!["HOME", "PATH"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn deny_env_ignorelist_multiple() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--ignore-env=HOME,PATH",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          ignore_env: Some(svec!["HOME", "PATH"]),
           ..Default::default()
         },
         code_cache_enabled: true,

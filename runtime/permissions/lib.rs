@@ -62,6 +62,7 @@ pub struct PermissionDeniedError {
   pub access: String,
   pub name: &'static str,
   pub custom_message: Option<String>,
+  pub is_ignored: bool,
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -133,6 +134,7 @@ pub enum PermissionState {
   #[default]
   Prompt = 2,
   Denied = 3,
+  Ignored = 4,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -449,6 +451,7 @@ impl PermissionState {
       access: Self::fmt_access(name, info),
       name,
       custom_message: None,
+      is_ignored: false,
     }
   }
 
@@ -498,6 +501,7 @@ impl PermissionState {
               access: Self::fmt_access(name, info().as_deref()),
               name,
               custom_message: message,
+              is_ignored: false,
             }),
             false,
             false,
@@ -531,11 +535,11 @@ impl PermissionState {
         });
         (result, true, is_allow_all)
       }
-      _ => (
-        Err(Self::permission_denied_error(name, info().as_deref())),
-        false,
-        false,
-      ),
+      _ => {
+        let mut err = Self::permission_denied_error(name, info().as_deref());
+        err.is_ignored = matches!(self, PermissionState::Ignored);
+        (Err(err), false, false)
+      }
     }
   }
 }
@@ -547,6 +551,7 @@ impl fmt::Display for PermissionState {
       PermissionState::GrantedPartial => f.pad("granted-partial"),
       PermissionState::Prompt => f.pad("prompt"),
       PermissionState::Denied => f.pad("denied"),
+      PermissionState::Ignored => f.pad("ignored"),
     }
   }
 }
@@ -723,6 +728,8 @@ pub struct UnaryPermission<
   granted_list: HashSet<TAllowDesc>,
   flag_denied_global: bool,
   flag_denied_list: HashSet<TDenyDesc>,
+  flag_ignored_global: bool,
+  flag_ignored_list: HashSet<TDenyDesc>,
   prompt_denied_global: bool,
   prompt_denied_list: HashSet<TDenyDesc>,
   prompt: bool,
@@ -737,6 +744,8 @@ impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Default
       granted_list: Default::default(),
       flag_denied_global: Default::default(),
       flag_denied_list: Default::default(),
+      flag_ignored_global: Default::default(),
+      flag_ignored_list: Default::default(),
       prompt_denied_global: Default::default(),
       prompt_denied_list: Default::default(),
       prompt: Default::default(),
@@ -753,6 +762,8 @@ impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Clone
       granted_list: self.granted_list.clone(),
       flag_denied_global: self.flag_denied_global,
       flag_denied_list: self.flag_denied_list.clone(),
+      flag_ignored_global: self.flag_ignored_global,
+      flag_ignored_list: self.flag_ignored_list.clone(),
       prompt_denied_global: self.prompt_denied_global,
       prompt_denied_list: self.prompt_denied_list.clone(),
       prompt: self.prompt,
@@ -776,7 +787,9 @@ impl<
     self.granted_global
       && !self.flag_denied_global
       && !self.prompt_denied_global
+      && !self.flag_ignored_global
       && self.flag_denied_list.is_empty()
+      && self.flag_ignored_list.is_empty()
       && self.prompt_denied_list.is_empty()
       && !has_broker()
   }
@@ -829,6 +842,8 @@ impl<
   ) -> PermissionState {
     if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
       PermissionState::Denied
+    } else if self.is_flag_ignored(desc) {
+      PermissionState::Ignored
     } else if self.is_granted(desc) {
       match allow_partial {
         AllowPartial::TreatAsGranted => PermissionState::Granted,
@@ -942,6 +957,16 @@ impl<
     }
   }
 
+  fn is_flag_ignored(&self, query: Option<&TAllowDesc::QueryDesc<'_>>) -> bool {
+    match query {
+      Some(query) => {
+        self.flag_ignored_global
+          || self.flag_ignored_list.iter().any(|v| query.matches_deny(v))
+      }
+      None => self.flag_ignored_global,
+    }
+  }
+
   fn is_prompt_denied(
     &self,
     query: Option<&TAllowDesc::QueryDesc<'_>>,
@@ -960,10 +985,14 @@ impl<
     query: Option<&TAllowDesc::QueryDesc<'_>>,
   ) -> bool {
     match query {
-      None => !self.flag_denied_list.is_empty(),
-      Some(query) => {
-        self.flag_denied_list.iter().any(|v| query.overlaps_deny(v))
+      None => {
+        !self.flag_denied_list.is_empty() || !self.flag_ignored_list.is_empty()
       }
+      Some(query) => self
+        .flag_denied_list
+        .iter()
+        .chain(self.flag_ignored_list.iter())
+        .any(|v| query.overlaps_deny(v)),
     }
   }
 
@@ -1048,6 +1077,8 @@ impl<
     perms
       .prompt_denied_list
       .clone_from(&self.prompt_denied_list);
+    perms.flag_ignored_global = self.flag_ignored_global;
+    perms.flag_ignored_list.clone_from(&self.flag_ignored_list);
 
     Ok(perms)
   }
@@ -3008,6 +3039,7 @@ impl Permissions {
 pub struct PermissionsOptions {
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
+  pub ignore_env: Option<Vec<String>>,
   pub allow_net: Option<Vec<String>>,
   pub deny_net: Option<Vec<String>>,
   pub allow_ffi: Option<Vec<String>>,
@@ -3042,6 +3074,21 @@ pub enum PermissionsFromOptionsError {
 }
 
 impl Permissions {
+  pub fn new_unary_with_ignore<
+    TAllow: AllowDescriptor,
+    TDeny: DenyDescriptor,
+  >(
+    allow_list: Option<HashSet<TAllow>>,
+    deny_list: Option<HashSet<TDeny>>,
+    ignore_list: Option<HashSet<TDeny>>,
+    prompt: bool,
+  ) -> UnaryPermission<TAllow, TDeny> {
+    let mut options = Self::new_unary(allow_list, deny_list, prompt);
+    options.flag_ignored_global = global_from_option(ignore_list.as_ref());
+    options.flag_ignored_list = ignore_list.unwrap_or_default();
+    options
+  }
+
   pub fn new_unary<TAllow: AllowDescriptor, TDeny: DenyDescriptor>(
     allow_list: Option<HashSet<TAllow>>,
     deny_list: Option<HashSet<TDeny>>,
@@ -3172,11 +3219,14 @@ impl Permissions {
         })?,
         opts.prompt,
       ),
-      env: Permissions::new_unary(
+      env: Permissions::new_unary_with_ignore(
         parse_maybe_vec(opts.allow_env.as_deref(), |item| {
           parser.parse_env_descriptor(item)
         })?,
         parse_maybe_vec(opts.deny_env.as_deref(), |text| {
+          parser.parse_env_descriptor(text)
+        })?,
+        parse_maybe_vec(opts.ignore_env.as_deref(), |text| {
           parser.parse_env_descriptor(text)
         })?,
         opts.prompt,

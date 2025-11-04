@@ -39,6 +39,8 @@ use crate::util::is_skippable_io_error;
 mod permissions;
 mod ts;
 
+pub use permissions::AllowDenyIgnorePermissionConfig;
+pub use permissions::AllowDenyIgnorePermissionConfigValue;
 pub use permissions::AllowDenyPermissionConfig;
 pub use permissions::AllowDenyPermissionConfigValue;
 pub use permissions::PermissionConfigValue;
