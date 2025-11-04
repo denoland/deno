@@ -9,6 +9,7 @@ use std::hash::Hash;
 use std::io::Write;
 use std::net::IpAddr;
 use std::net::Ipv6Addr;
+use std::net::SocketAddr;
 use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
@@ -1443,6 +1444,16 @@ pub enum HostParseError {
   },
 }
 
+/// Strip IPv6 zone index from an address string if present.
+/// (e.g., fe80::1%eth0 or fe80::1%18)
+fn strip_ipv6_zone_index(addr: &str) -> &str {
+  if let Some(idx) = addr.find('%') {
+    &addr[..idx]
+  } else {
+    addr
+  }
+}
+
 impl Host {
   fn parse_for_query(s: &str) -> Result<Self, HostParseError> {
     Self::parse_inner(s, SubdomainWildcards::Disabled)
@@ -1458,14 +1469,19 @@ impl Host {
     subdomain_wildcards: SubdomainWildcards,
   ) -> Result<Self, HostParseError> {
     if s.starts_with('[') && s.ends_with(']') {
-      let ip = s[1..s.len() - 1]
+      let ip_str = &s[1..s.len() - 1];
+      let ip = strip_ipv6_zone_index(ip_str)
         .parse::<Ipv6Addr>()
         .map_err(|_| HostParseError::InvalidIpv6(s.to_string()))?;
       return Ok(Host::Ip(IpAddr::V6(ip)));
     }
     let (without_trailing_dot, has_trailing_dot) =
       s.strip_suffix('.').map_or((s, false), |s| (s, true));
-    if let Ok(ip) = without_trailing_dot.parse::<IpAddr>() {
+
+    let ip_result =
+      strip_ipv6_zone_index(without_trailing_dot).parse::<IpAddr>();
+
+    if let Ok(ip) = ip_result {
       if has_trailing_dot {
         return Err(HostParseError::InvalidHost(
           without_trailing_dot.to_string(),
@@ -1672,15 +1688,24 @@ impl NetDescriptor {
       return Err(NetDescriptorParseError::Url(hostname.to_string()));
     }
 
+    if let Ok(socket) = hostname.parse::<SocketAddr>() {
+      return Ok(NetDescriptor(
+        Host::Ip(socket.ip()),
+        Some(socket.port().into()),
+      ));
+    }
+
     // If this is a IPv6 address enclosed in square brackets, parse it as such.
     if hostname.starts_with('[') {
       if let Some((ip, after)) = hostname.split_once(']') {
-        let ip = ip[1..].parse::<Ipv6Addr>().map_err(|_| {
-          NetDescriptorParseError::InvalidIpv6 {
-            hostname: hostname.to_string(),
-            ip: ip.to_string(),
-          }
-        })?;
+        let ip_str = &ip[1..];
+        let ip =
+          strip_ipv6_zone_index(ip_str)
+            .parse::<Ipv6Addr>()
+            .map_err(|_| NetDescriptorParseError::InvalidIpv6 {
+              hostname: hostname.to_string(),
+              ip: ip_str.to_string(),
+            })?;
         let port = if let Some(port) = after.strip_prefix(':') {
           let port = port.parse::<u16>().map_err(|_| {
             NetDescriptorParseError::InvalidPort {
@@ -2416,7 +2441,7 @@ impl SysDescriptor {
       "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
-      | "userInfo" => Ok(Self(kind)),
+      | "userInfo" | "setegid" | "seteuid" => Ok(Self(kind)),
 
       // the underlying permission check changed to `userInfo` to better match the API,
       // alias this to avoid breaking existing projects with `--allow-sys=username`
@@ -6416,6 +6441,31 @@ mod tests {
           0, 0, 0, 0, 0, 0xffff, 0x0101, 0x0101,
         )))),
       ),
+      // IPv6 addresses with zone indices
+      (
+        "fe80::1%18",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
+          0xfe80, 0, 0, 0, 0, 0, 0, 1,
+        )))),
+      ),
+      (
+        "[fe80::1%18]",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
+          0xfe80, 0, 0, 0, 0, 0, 0, 1,
+        )))),
+      ),
+      (
+        "fe80::1%eth0",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
+          0xfe80, 0, 0, 0, 0, 0, 0, 1,
+        )))),
+      ),
+      (
+        "[fe80::1%eth0]",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
+          0xfe80, 0, 0, 0, 0, 0, 0, 1,
+        )))),
+      ),
     ];
 
     for (host_str, expected) in hosts {
@@ -6461,6 +6511,31 @@ mod tests {
         "::ffff:1.1.1.1",
         Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
           0, 0, 0, 0, 0, 0xffff, 0x0101, 0x0101,
+        )))),
+      ),
+      // IPv6 addresses with zone indices
+      (
+        "fe80::1%18",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
+          0xfe80, 0, 0, 0, 0, 0, 0, 1,
+        )))),
+      ),
+      (
+        "[fe80::1%18]",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
+          0xfe80, 0, 0, 0, 0, 0, 0, 1,
+        )))),
+      ),
+      (
+        "fe80::1%eth0",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
+          0xfe80, 0, 0, 0, 0, 0, 0, 1,
+        )))),
+      ),
+      (
+        "[fe80::1%eth0]",
+        Some(Host::Ip(IpAddr::V6(Ipv6Addr::new(
+          0xfe80, 0, 0, 0, 0, 0, 0, 1,
         )))),
       ),
     ];
@@ -6530,6 +6605,21 @@ mod tests {
       ),
       ("", None),
       ("deno.land..", None),
+      // IPv6 addresses with zone indices (bracketed with port)
+      (
+        "[fe80::1%18]:1234",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V6(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1))),
+          Some(1234),
+        )),
+      ),
+      (
+        "[fe80::1%eth0]:8080",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V6(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1))),
+          Some(8080),
+        )),
+      ),
     ];
 
     for (input, expected) in cases {
@@ -6607,6 +6697,21 @@ mod tests {
       ),
       ("", None),
       ("deno.land..", None),
+      // IPv6 addresses with zone indices (bracketed with port)
+      (
+        "[fe80::1%18]:1234",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V6(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1))),
+          Some(1234),
+        )),
+      ),
+      (
+        "[fe80::1%eth0]:8080",
+        Some(NetDescriptor(
+          Host::Ip(IpAddr::V6(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1))),
+          Some(8080),
+        )),
+      ),
     ];
 
     for (input, expected) in cases {
