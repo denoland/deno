@@ -201,7 +201,11 @@ fn op_env(
   }
 
   let permissions_container = state.borrow_mut::<PermissionsContainer>();
-  let grant_all = permissions_container.check_env_all().is_ok();
+  let grant_all = match permissions_container.check_env_all() {
+    Ok(()) => true,
+    Err(PermissionCheckError::PermissionDenied(err)) if err.is_ignored => false,
+    Err(err) => return Err(err),
+  };
   Ok(
     env::vars_os()
       .filter_map(|kv| {
