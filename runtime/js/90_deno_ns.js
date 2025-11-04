@@ -10,6 +10,7 @@ import {
 
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
+import { upgradeResponse } from "ext:deno_fetch/23_response.js";
 import * as console from "ext:deno_console/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
@@ -195,6 +196,8 @@ denoNsUnstableById[unstableIds.net] = {
     op_net_listen_udp,
     op_net_listen_unixpacket,
   ),
+  upgradeRequest: serve.upgradeRequest,
+  upgradeResponse,
 };
 
 ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {

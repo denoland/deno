@@ -97,22 +97,29 @@ function createHttpClient(options) {
       options,
       keyPair,
     ),
+    options,
   );
 }
 
 class HttpClient {
   #rid;
+  #allowUpgrades;
 
   /**
    * @param {number} rid
    */
-  constructor(rid) {
+  constructor(rid, options) {
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
+    this.#allowUpgrades = options.allowUpgrades ?? false;
+  }
+
+  get allowUpgrades() {
+    return this.#allowUpgrades;
   }
 
   close() {

@@ -18,6 +18,7 @@ import {
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
 } from "ext:core/ops";
+const { internalRidSymbol } = core;
 const {
   ArrayPrototypePush,
   ArrayPrototypeSplice,
@@ -175,7 +176,7 @@ async function mainFetch(req, recursive, terminator) {
     req.method,
     req.currentUrl(),
     req.headerList,
-    req.clientRid,
+    req.client?.[internalRidSymbol],
     reqBody !== null || reqRid !== null,
     reqBody,
     reqRid,
@@ -219,6 +220,7 @@ async function mainFetch(req, recursive, terminator) {
       return this.urlList[this.urlList.length - 1];
     },
     urlList: req.urlListProcessed,
+    info: resp.info,
   };
   if (redirectStatus(resp.status)) {
     switch (req.redirectMode) {
@@ -235,7 +237,11 @@ async function mainFetch(req, recursive, terminator) {
     }
   }
 
-  if (nullBodyStatus(response.status)) {
+  if (req.client?.allowUpgrades && response.status === 101) {
+    response.body = new InnerBody({ body: resp.responseRid, consumed: false });
+    const { responseRid } = resp;
+    terminator[abortSignal.add](() => core.tryClose(responseRid));
+  } else if (nullBodyStatus(response.status)) {
     core.close(resp.responseRid);
   } else {
     if (req.method === "HEAD" || req.method === "CONNECT") {

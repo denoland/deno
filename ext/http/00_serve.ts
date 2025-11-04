@@ -27,8 +27,10 @@ import {
   op_http_set_response_header,
   op_http_set_response_headers,
   op_http_set_response_trailers,
+  op_http_set_response_upgrade,
   op_http_try_wait,
   op_http_upgrade_raw,
+  op_http_upgrade_raw_with_parsing,
   op_http_upgrade_websocket_next,
   op_http_wait,
 } from "ext:core/ops";
@@ -53,6 +55,8 @@ const {
   Uint8Array,
   Promise,
   Number,
+  SafeRegExp,
+  RegExpPrototypeTest,
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
@@ -143,12 +147,39 @@ const UPGRADE_RESPONSE_SENTINEL = fromInnerResponse(
   "immutable",
 );
 
-function upgradeHttpRaw(req) {
-  const inner = toInnerRequest(req);
-  if (inner?._wantsUpgrade) {
-    return inner._wantsUpgrade("upgradeHttpRaw");
+function upgradeHttpRaw(obj) {
+  const innerRequest = toInnerRequest(obj);
+  if (innerRequest?._wantsUpgrade) {
+    return innerRequest._wantsUpgrade("upgradeRawWithParsing");
   }
+
   throw new TypeError("'upgradeHttpRaw' may only be used with Deno.serve");
+}
+
+const UPGRADE_RE = new SafeRegExp("^upgrade$", "ui");
+
+function upgradeRequest(request, protocol, responseInit) {
+  const innerRequest = toInnerRequest(request);
+  if (innerRequest?._wantsUpgrade) {
+    if (!RegExpPrototypeTest(UPGRADE_RE, request.headers.get("connection"))) {
+      throw new TypeError(
+        "Invalid Header: 'Connection' header must contain 'upgrade'",
+      );
+    }
+
+    const conn = innerRequest._wantsUpgrade("upgradeRaw");
+    const headers = new Headers(responseInit.headers);
+    headers.set("connection", "upgrade");
+    headers.set("upgrade", protocol);
+    const response = new Response(null, {
+      ...responseInit,
+      status: 101,
+      headers,
+    });
+    return { response, conn };
+  }
+
+  throw new TypeError("'upgradeRequest' may only be used with Deno.serve");
 }
 
 function addTrailers(resp, headerList) {
@@ -170,7 +201,7 @@ class InnerRequest {
   constructor(external, context) {
     this.#external = external;
     this.#context = context;
-    this.#upgraded = false;
+    this.#upgraded = null;
     this.#completed = undefined;
   }
 
@@ -206,16 +237,15 @@ class InnerRequest {
       throw new Deno.errors.Http("Already closed");
     }
 
-    if (upgradeType == "upgradeHttpRaw") {
+    if (upgradeType == "upgradeRawWithParsing") {
       const external = this.#external;
-
       this.url();
       this.headerList;
       this.close();
 
       this.#upgraded = true;
 
-      const upgradeRid = op_http_upgrade_raw(external);
+      const upgradeRid = op_http_upgrade_raw_with_parsing(external);
 
       const conn = new UpgradedConn(
         upgradeRid,
@@ -223,7 +253,29 @@ class InnerRequest {
         this.#context.listener.addr,
       );
 
-      return { response: UPGRADE_RESPONSE_SENTINEL, conn };
+      return {
+        response: UPGRADE_RESPONSE_SENTINEL,
+        conn,
+      };
+    }
+
+    if (upgradeType === "upgradeRaw") {
+      const external = this.#external;
+      this.url();
+      this.headerList;
+      this.close();
+
+      this.#upgraded = true;
+
+      const promise = op_http_upgrade_raw(external);
+
+      return PromisePrototypeThen(promise, (upgradeRid) => {
+        return new UpgradedConn(
+          upgradeRid,
+          this.remoteAddr,
+          this.#context.listener.addr,
+        );
+      });
     }
 
     if (upgradeType == "upgradeWebSocket") {
@@ -478,6 +530,13 @@ function fastSyncResponseOrStream(
     return;
   }
 
+  if (typeof body === "number" && status === 101) {
+    PromisePrototypeThen(op_http_set_response_upgrade(req, body), () => {
+      innerRequest?.close(true);
+    });
+    return;
+  }
+
   // At this point in the response it needs to be a stream
   if (!ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
     innerRequest?.close();
@@ -492,6 +551,7 @@ function fastSyncResponseOrStream(
     rid = resourceForReadableStream(stream);
     autoClose = true;
   }
+
   PromisePrototypeThen(
     op_http_set_response_body_resource(req, rid, autoClose, status),
     (success) => {
@@ -1169,4 +1229,5 @@ export {
   serveHttpOnConnection,
   serveHttpOnListener,
   upgradeHttpRaw,
+  upgradeRequest,
 };
