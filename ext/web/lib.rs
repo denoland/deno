@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod blob;
+pub mod cache;
 mod compression;
 mod message_port;
 mod stream_resource;
@@ -38,6 +39,7 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
+pub use crate::cache::CreateCache;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::Transferable;
@@ -93,6 +95,12 @@ deno_core::extension!(deno_web,
     stream_resource::op_readable_stream_resource_write_sync,
     stream_resource::op_readable_stream_resource_close,
     stream_resource::op_readable_stream_resource_await_close,
+    cache::op_cache_storage_open,
+    cache::op_cache_storage_has,
+    cache::op_cache_storage_delete,
+    cache::op_cache_put,
+    cache::op_cache_match,
+    cache::op_cache_delete,
     url::op_url_reparse,
     url::op_url_parse,
     url::op_url_get_serialization,
@@ -121,6 +129,7 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
     "16_image_data.js",
+    "17_cache.js",
     "00_url.js",
     "01_urlpattern.js"
   ],
@@ -128,11 +137,15 @@ deno_core::extension!(deno_web,
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
+    maybe_create_cache: Option<CreateCache>,
   },
   state = |state, options| {
     state.put(options.blob_store);
     if let Some(location) = options.maybe_location {
       state.put(Location(location));
+    }
+    if let Some(create_cache) = options.maybe_create_cache {
+      state.put(create_cache);
     }
     state.put(StartTime::default());
   }
