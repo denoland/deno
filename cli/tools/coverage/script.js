@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 function setTheme(theme, themeToggle) {
   if (theme === "dark") {
     document.documentElement.classList.add("dark");
