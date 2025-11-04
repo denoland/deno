@@ -6,13 +6,22 @@ use deno_bench_util::bencher::Bencher;
 use deno_bench_util::bencher::benchmark_group;
 use deno_core::Extension;
 
+#[derive(Clone)]
+struct Permissions;
+
+impl deno_web::TimersPermission for Permissions {
+  fn allow_hrtime(&mut self) -> bool {
+    false
+  }
+}
+
 fn setup() -> Vec<Extension> {
   deno_core::extension!(
     bench_setup,
     esm_entry_point = "ext:bench_setup/setup",
     esm = ["ext:bench_setup/setup" = {
       source = r#"
-        import { URL } from "ext:deno_url/00_url.js";
+        import { URL } from "ext:deno_web/00_url.js";
         globalThis.URL = URL;
       "#
     }]
@@ -21,7 +30,7 @@ fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::deno_webidl::init(),
     deno_console::deno_console::init(),
-    deno_url::deno_url::init(),
+    deno_web::deno_web::init::<Permissions>(Default::default(), None),
     bench_setup::init(),
   ]
 }

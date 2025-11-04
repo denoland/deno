@@ -523,7 +523,6 @@ impl WebWorker {
       // Web APIs
       deno_webidl::deno_webidl::init(),
       deno_console::deno_console::init(),
-      deno_url::deno_url::init(),
       deno_web::deno_web::init::<PermissionsContainer>(
         services.blob_store,
         Some(options.main_module.clone()),

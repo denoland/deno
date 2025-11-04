@@ -68,7 +68,6 @@ deno_signals.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
-deno_url.workspace = true
 deno_web.workspace = true
 deno_webgpu.workspace = true
 deno_webidl.workspace = true

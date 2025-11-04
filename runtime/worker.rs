@@ -1052,7 +1052,6 @@ fn common_extensions<
     // Web APIs
     deno_webidl::deno_webidl::init(),
     deno_console::deno_console::init(),
-    deno_url::deno_url::init(),
     deno_web::deno_web::lazy_init::<PermissionsContainer>(),
     deno_webgpu::deno_webgpu::init(),
     deno_geometry::deno_geometry::lazy_init(),

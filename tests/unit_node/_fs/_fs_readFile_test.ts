@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { promises, readFile, readFileSync } from "node:fs";
+import { existsSync, promises, readFile, readFileSync } from "node:fs";
 import * as path from "@std/path";
 import { assert, assertEquals, assertMatch } from "@std/assert";
 import { Buffer } from "node:buffer";
@@ -186,4 +186,29 @@ Deno.test("fs.readFileSync binary encoding returns string", () => {
   const data = readFileSync(testData, { encoding: "binary" });
   assertEquals(typeof data, "string");
   assertEquals(data, "hello world");
+});
+
+Deno.test("fs.readFile creates new file when passed 'w+' flag", async () => {
+  const tmpDir = Deno.makeTempDirSync();
+  const filePath = path.join(tmpDir, "newfile.txt");
+  await new Promise((res, rej) => {
+    readFile(filePath, { flag: "w+" }, (err, data) => {
+      if (err) {
+        rej(err);
+      }
+      res(data);
+    });
+  });
+
+  assert(existsSync(filePath));
+  Deno.removeSync(tmpDir, { recursive: true });
+});
+
+Deno.test("fs.readFileSync creates new file when passed 'w+' flag", () => {
+  const tmpDir = Deno.makeTempDirSync();
+  const filePath = path.join(tmpDir, "newfile.txt");
+  readFileSync(filePath, { flag: "w+" });
+
+  assert(existsSync(filePath));
+  Deno.removeSync(tmpDir, { recursive: true });
 });

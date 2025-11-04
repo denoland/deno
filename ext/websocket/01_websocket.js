@@ -49,7 +49,7 @@ const {
   TypeError,
 } = primordials;
 
-import { URL } from "ext:deno_url/00_url.js";
+import { URL } from "ext:deno_web/00_url.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
