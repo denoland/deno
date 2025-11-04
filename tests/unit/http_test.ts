@@ -397,12 +397,11 @@ Deno.test(
   },
 );
 
-/*
 Deno.test(
   { permissions: { net: true } },
   async function httpServerCancelBodyOnResponseFailure() {
     const promise = (async () => {
-      const listener = Deno.listen({ port: listenPort });
+      using listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
       const event = await httpConn.nextRequest();
@@ -434,7 +433,6 @@ Deno.test(
       );
       assert(cancelReason!);
       httpConn!.close();
-      listener.close();
     })();
 
     const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
@@ -442,14 +440,12 @@ Deno.test(
     await promise;
   },
 );
-*/
 
-/*
 Deno.test(
   { permissions: { net: true } },
   async function httpServerNextRequestErrorExposedInResponse() {
     const promise = (async () => {
-      const listener = Deno.listen({ port: listenPort });
+      using listener = Deno.listen({ port: listenPort });
       const conn = await listener.accept();
       const httpConn = Deno.serveHttp(conn);
       const event = await httpConn.nextRequest();
@@ -481,7 +477,6 @@ Deno.test(
       );
       // The error from `op_http_accept` reroutes to `respondWith()`.
       assertEquals(await nextRequestPromise, null);
-      listener.close();
     })();
 
     const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
@@ -489,7 +484,6 @@ Deno.test(
     await promise;
   },
 );
-*/
 
 Deno.test(
   { permissions: { net: true } },
@@ -1055,10 +1049,13 @@ Deno.test(
 
     const errors: Error[] = [];
 
+    let timeout;
     const readable = new ReadableStream({
       async pull(controller) {
         client.close();
-        await delay(1000);
+        await new Promise((resolve) => {
+          timeout = setTimeout(resolve, 1000);
+        });
         controller.enqueue(new TextEncoder().encode(
           "written to the writable side of a TransformStream",
         ));
@@ -1081,6 +1078,8 @@ Deno.test(
       assertEquals(error.name, "Http");
       assert(error.message.includes("connection"));
     }
+
+    clearTimeout(timeout);
   },
 );
 
@@ -2722,7 +2721,6 @@ Deno.test(
 
 Deno.test("proxy with fetch", async () => {
   const listener = Deno.listen({ port: listenPort });
-  const deferred = Promise.withResolvers<void>();
 
   const server = Deno.serve({ port: listenPort + 1 }, (_req) => {
     return new Response("Hello world");
@@ -2744,7 +2742,7 @@ Deno.test("proxy with fetch", async () => {
 
   const originServer = (async () => {
     for await (const conn of listener) {
-      handleHttp(conn);
+      await handleHttp(conn);
       break;
     }
   })();
@@ -2766,11 +2764,9 @@ Deno.test("proxy with fetch", async () => {
     assert(respText.includes("content-length: 11"));
     assert(respText.includes("Hello world"));
     conn.close();
-    deferred.resolve();
   })();
   await proxiedRequest;
   await originServer;
-  await deferred.promise;
   await server.shutdown();
   await server.finished;
   httpConn!.close();

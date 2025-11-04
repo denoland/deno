@@ -19,6 +19,7 @@ const {
   SymbolAsyncIterator,
   SymbolDispose,
   StringPrototypeIncludes,
+  Symbol,
   TypeError,
 } = primordials;
 import { _ws } from "ext:deno_http/02_websocket.ts";
@@ -43,6 +44,8 @@ import {
   InnerRequest,
 } from "./00_serve.ts";
 
+const connErrorSymbol = Symbol("connError");
+
 class HttpConn {
   #context;
 
@@ -65,6 +68,10 @@ class HttpConn {
       }
     } catch (error) {
       this.close();
+      // A connection error seen here would cause disrupted responses to throw
+      // a generic `BadResource` error. Instead store this error and replace
+      // those with it.
+      this[connErrorSymbol] = error;
       if (
         ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) ||
         ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error) ||
@@ -84,7 +91,12 @@ class HttpConn {
     const request = fromInnerRequest(innerRequest, "immutable");
     innerRequest.request = request;
 
-    const respondWith = createRespondWith(req, innerRequest, this.#context);
+    const respondWith = createRespondWith(
+      this,
+      this.#context,
+      req,
+      innerRequest,
+    );
 
     return { request, respondWith };
   }
@@ -122,7 +134,7 @@ class HttpConn {
   }
 }
 
-function createRespondWith(req, innerRequest, context) {
+function createRespondWith(httpConn, context, req, innerRequest) {
   return async function respondWith(response) {
     try {
       response = await response;
@@ -155,8 +167,29 @@ function createRespondWith(req, innerRequest, context) {
         }
       }
 
-      await fastSyncResponseOrStream(req, inner.body, status, innerRequest);
+      const consumed = await fastSyncResponseOrStream(
+        req,
+        inner.body,
+        status,
+        innerRequest,
+        context.serverRid,
+      );
+      if (!consumed) {
+        throw core.buildCustomError(
+          "Http",
+          "The connection closed while writing the response body",
+        );
+      }
     } catch (error) {
+      const connError = httpConn[connErrorSymbol];
+      if (
+        ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
+        connError != null
+      ) {
+        // deno-lint-ignore no-ex-assign
+        error = new connError.constructor(connError.message);
+      }
+
       innerRequest.close(false);
       throw error;
     }

@@ -19,8 +19,8 @@ use flate2::write::GzEncoder;
 use hyper::body::SizeHint;
 use pin_project::pin_project;
 
-/// Simplification for nested types we use for our streams. We provide a way to convert from
-/// this type into Hyper's body [`Frame`].
+/// Simplification for nested types we use for our streams.
+#[derive(Debug)]
 pub enum ResponseStreamResult {
   /// Stream is over.
   EndOfStream,

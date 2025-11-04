@@ -818,6 +818,14 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
   }
 }
 
+const errors = {};
+const errorRegistry = new FinalizationRegistry((h) => {
+  delete errors[h];
+});
+core.registerErrorBuilder("JsValueError", (message) => {
+  return errors[message].deref();
+});
+
 /**
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader
  * @param {any} sink
@@ -850,9 +858,13 @@ async function readableStreamReadFn(reader, sink) {
         promise.resolve(false);
       },
       errorSteps(error) {
+        const key = crypto.randomUUID();
+        errorRegistry.register(error, key);
+        errors[key] = new WeakRef(error);
         const success = op_readable_stream_resource_write_error(
           sink.external,
-          extractStringErrorFromError(error),
+          key,
+          error,
         );
         // We don't cancel the reader if there was an error reading. We'll let the downstream
         // consumer close the resource after it receives the error.
