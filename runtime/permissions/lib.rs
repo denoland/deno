@@ -842,8 +842,6 @@ impl<
   ) -> PermissionState {
     if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
       PermissionState::Denied
-    } else if self.is_flag_ignored(desc) {
-      PermissionState::Ignored
     } else if self.is_granted(desc) {
       match allow_partial {
         AllowPartial::TreatAsGranted => PermissionState::Granted,
@@ -862,6 +860,8 @@ impl<
           }
         }
       }
+    } else if self.is_flag_ignored(desc) {
+      PermissionState::Ignored
     } else if matches!(allow_partial, AllowPartial::TreatAsDenied)
       && self.is_partial_flag_denied(desc)
     {
