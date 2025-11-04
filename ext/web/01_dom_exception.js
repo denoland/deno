@@ -7,7 +7,7 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Error,
   ErrorPrototype,
@@ -93,6 +93,10 @@ class DOMException {
   [_message];
   [_name];
   [_code];
+
+  [core.hostObjectBrand]() {
+    return { type: "DOMException", message: this.message, name: this.name };
+  }
 
   // https://webidl.spec.whatwg.org/#dom-domexception-domexception
   constructor(message = "", name = "Error") {
