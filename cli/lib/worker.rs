@@ -660,7 +660,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       v8_code_cache: shared.code_cache.clone(),
       bundle_provider: shared.bundle_provider.clone(),
     };
-    
+
     let maybe_initial_cwd = shared.options.maybe_initial_cwd.clone();
 
     let options = WorkerOptions {
@@ -700,7 +700,9 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         .unsafely_ignore_certificate_errors
         .clone(),
       seed: shared.options.seed,
-      format_js_error_fn: Some(Arc::new(move |e| format_js_error(e, maybe_initial_cwd.as_ref()))),
+      format_js_error_fn: Some(Arc::new(move |e| {
+        format_js_error(e, maybe_initial_cwd.as_ref())
+      })),
       create_web_worker_cb: shared.create_web_worker_callback(stdio.clone()),
       maybe_inspector_server: shared.maybe_inspector_server.clone(),
       should_break_on_first_statement: shared.options.inspect_brk,
