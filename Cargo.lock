@@ -2086,6 +2086,7 @@ dependencies = [
  "rustls-webpki 0.102.8",
  "serde",
  "serde_json",
+ "sys_traits",
  "thiserror 2.0.12",
  "tokio",
  "tokio-rustls",
