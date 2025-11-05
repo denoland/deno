@@ -418,15 +418,6 @@ impl LanguageServer {
           allow_unknown_jsr_exports: false,
         },
       )?;
-
-      // Update the lockfile on the file system with anything new
-      // found after caching
-      if let Ok(Some(lockfile)) = factory.maybe_lockfile().await
-        && let Err(err) = &lockfile.write_if_changed()
-      {
-        lsp_warn!("{:#}", err);
-      }
-
       Ok(())
     }
 
