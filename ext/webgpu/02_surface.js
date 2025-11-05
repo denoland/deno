@@ -13,7 +13,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   SymbolFor,
 } = primordials;
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
 
 ObjectDefineProperty(GPUCanvasContext, SymbolFor("Deno.privateCustomInspect"), {
   __proto__: null,

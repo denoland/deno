@@ -1050,7 +1050,6 @@ fn common_extensions<
     deno_telemetry::deno_telemetry::init(),
     // Web APIs
     deno_webidl::deno_webidl::init(),
-    deno_console::deno_console::init(),
     deno_web::deno_web::lazy_init::<PermissionsContainer>(),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),

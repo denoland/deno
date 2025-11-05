@@ -25,7 +25,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { assert } from "./00_infra.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 import {
   defineEventHandler,
   Event,

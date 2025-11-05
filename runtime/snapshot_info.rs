@@ -217,7 +217,6 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
   vec![
     deno_telemetry::deno_telemetry::init(),
     deno_webidl::deno_webidl::init(),
-    deno_console::deno_console::init(),
     deno_web::deno_web::init::<Permissions>(
       Default::default(),
       Default::default(),
