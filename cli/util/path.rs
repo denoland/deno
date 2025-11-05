@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 
 use deno_ast::MediaType;
@@ -108,6 +109,25 @@ pub fn relative_specifier(
     format!("./{text}")
   };
   Some(to_percent_decoded_str(&text))
+}
+
+pub fn relative_specifier_path_for_display(
+  from: &ModuleSpecifier,
+  to: &ModuleSpecifier,
+) -> String {
+  if to.scheme() == "file" && from.scheme() == "file" {
+    let relative_specifier = relative_specifier(from, to)
+      .map(|s| Cow::Owned(s))
+      .unwrap_or_else(|| Cow::Borrowed(to.as_str()));
+    let relative_specifier = if relative_specifier.starts_with("../../../") {
+      to.as_str()
+    } else {
+      relative_specifier.trim_start_matches("./")
+    };
+    to_percent_decoded_str(&relative_specifier)
+  } else {
+    to_percent_decoded_str(to.as_str())
+  }
 }
 
 /// Slightly different behaviour than the default matching

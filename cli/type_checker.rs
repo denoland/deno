@@ -44,7 +44,6 @@ use crate::sys::CliSys;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
-use crate::util::path::to_percent_decoded_str;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
@@ -451,12 +450,10 @@ impl DiagnosticsByFolderRealIterator<'_> {
         log::info!(
           "{} {}",
           colors::green("Check"),
-          if root.scheme() == "file" {
-            crate::util::path::relative_specifier(current_dir, root)
-              .unwrap_or_else(|| to_percent_decoded_str(root.as_str()))
-          } else {
-            to_percent_decoded_str(root.as_str())
-          }
+          crate::util::path::relative_specifier_path_for_display(
+            current_dir,
+            root
+          ),
         );
       }
     }
