@@ -842,6 +842,11 @@ impl<
   ) -> PermissionState {
     if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
       PermissionState::Denied
+    } else if desc
+      .map(|desc| self.flag_ignored_list.iter().any(|v| desc.matches_deny(v)))
+      .unwrap_or(false)
+    {
+      PermissionState::Ignored
     } else if self.is_granted(desc) {
       match allow_partial {
         AllowPartial::TreatAsGranted => PermissionState::Granted,
@@ -860,7 +865,7 @@ impl<
           }
         }
       }
-    } else if self.is_flag_ignored(desc) {
+    } else if self.flag_ignored_global {
       PermissionState::Ignored
     } else if matches!(allow_partial, AllowPartial::TreatAsDenied)
       && self.is_partial_flag_denied(desc)
@@ -954,16 +959,6 @@ impl<
           || self.flag_denied_list.iter().any(|v| query.matches_deny(v))
       }
       None => self.flag_denied_global,
-    }
-  }
-
-  fn is_flag_ignored(&self, query: Option<&TAllowDesc::QueryDesc<'_>>) -> bool {
-    match query {
-      Some(query) => {
-        self.flag_ignored_global
-          || self.flag_ignored_list.iter().any(|v| query.matches_deny(v))
-      }
-      None => self.flag_ignored_global,
     }
   }
 
