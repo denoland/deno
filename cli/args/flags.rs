@@ -1360,7 +1360,9 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_SERVE_ADDRESS",
     description: "Override address for Deno.serve",
-    example: Some(r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678")"#),
+    example: Some(
+      r#"("tcp:0.0.0.0:8080", "unix:/tmp/deno.sock", or "vsock:1234:5678")"#,
+    ),
   },
   EnvVar {
     name: "DENO_AUTO_SERVE",
@@ -1369,7 +1371,9 @@ static ENV_VARS: &[EnvVar] = &[
   },
   EnvVar {
     name: "DENO_TLS_CA_STORE",
-    description: cstr!("Comma-separated list of order dependent certificate stores.\nPossible values: \"system\", \"mozilla\" <p(245)>(defaults to \"mozilla\")</>"),
+    description: cstr!(
+      "Comma-separated list of order dependent certificate stores.\nPossible values: \"system\", \"mozilla\" <p(245)>(defaults to \"mozilla\")</>"
+    ),
     example: None,
   },
   EnvVar {
@@ -1425,24 +1429,40 @@ static ENV_VARS: &[EnvVar] = &[
 ];
 
 static ENV_VARIABLES_HELP: LazyLock<String> = LazyLock::new(|| {
-  let mut out = cstr!(r#"<y>Environment variables:</>
+  let mut out = cstr!(
+    r#"<y>Environment variables:</>
 <y>Docs:</> <c>https://docs.deno.com/go/env-vars</>
 
-"#).to_string();
+"#
+  )
+  .to_string();
 
   let longest = ENV_VARS.iter().map(|var| var.name.len()).max().unwrap() + 1;
 
-  out.push_str(&ENV_VARS
-    .iter()
-    .map(|var| {
-      let mut output = color_print::cformat!("  <g>{}</>{}{}", var.name, " ".repeat(longest - var.name.len()), var.description.replace("\n", &format!("\n  {}", " ".repeat(longest))));
-      if let Some(example) = var.example {
-        output.push_str(&color_print::cformat!("\n  {}<p(245)>{}</>", " ".repeat(longest + 1), example));
-      }
-      output
-    })
-    .collect::<Vec<_>>()
-    .join("\n"));
+  out.push_str(
+    &ENV_VARS
+      .iter()
+      .map(|var| {
+        let mut output = color_print::cformat!(
+          "  <g>{}</>{}{}",
+          var.name,
+          " ".repeat(longest - var.name.len()),
+          var
+            .description
+            .replace("\n", &format!("\n  {}", " ".repeat(longest)))
+        );
+        if let Some(example) = var.example {
+          output.push_str(&color_print::cformat!(
+            "\n  {}<p(245)>{}</>",
+            " ".repeat(longest + 1),
+            example
+          ));
+        }
+        output
+      })
+      .collect::<Vec<_>>()
+      .join("\n"),
+  );
 
   out
 });
@@ -5937,10 +5957,10 @@ fn json_reference_parse(
     });
 
     if top_level {
-      out.as_object_mut().unwrap().insert(
-        "env".to_string(),
-        serde_json::to_value(ENV_VARS).unwrap(),
-      );
+      out
+        .as_object_mut()
+        .unwrap()
+        .insert("env".to_string(), serde_json::to_value(ENV_VARS).unwrap());
     }
 
     out
