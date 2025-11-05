@@ -62,7 +62,7 @@ pub struct PermissionDeniedError {
   pub access: String,
   pub name: &'static str,
   pub custom_message: Option<String>,
-  pub is_ignored: bool,
+  pub state: PermissionState,
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -134,7 +134,8 @@ pub enum PermissionState {
   #[default]
   Prompt = 2,
   Denied = 3,
-  Ignored = 4,
+  DeniedPartial = 4,
+  Ignored = 5,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -446,12 +447,13 @@ impl PermissionState {
   fn permission_denied_error(
     name: &'static str,
     info: Option<&str>,
+    state: PermissionState,
   ) -> PermissionDeniedError {
     PermissionDeniedError {
       access: Self::fmt_access(name, info),
       name,
       custom_message: None,
-      is_ignored: false,
+      state,
     }
   }
 
@@ -474,9 +476,14 @@ impl PermissionState {
         Self::log_perm_access(name, || info.map(|i| i.to_string()));
         (Ok(()), true)
       }
-      PromptResponse::Deny => {
-        (Err(Self::permission_denied_error(name, info)), false)
-      }
+      PromptResponse::Deny => (
+        Err(Self::permission_denied_error(
+          name,
+          info,
+          PermissionState::Denied,
+        )),
+        false,
+      ),
     }
   }
 
@@ -501,7 +508,7 @@ impl PermissionState {
               access: Self::fmt_access(name, info().as_deref()),
               name,
               custom_message: message,
-              is_ignored: false,
+              state: PermissionState::Denied,
             }),
             false,
             false,
@@ -535,9 +542,8 @@ impl PermissionState {
         });
         (result, true, is_allow_all)
       }
-      _ => {
-        let mut err = Self::permission_denied_error(name, info().as_deref());
-        err.is_ignored = matches!(self, PermissionState::Ignored);
+      state => {
+        let err = Self::permission_denied_error(name, info().as_deref(), state);
         (Err(err), false, false)
       }
     }
@@ -550,7 +556,9 @@ impl fmt::Display for PermissionState {
       PermissionState::Granted => f.pad("granted"),
       PermissionState::GrantedPartial => f.pad("granted-partial"),
       PermissionState::Prompt => f.pad("prompt"),
-      PermissionState::Denied => f.pad("denied"),
+      PermissionState::Denied | PermissionState::DeniedPartial => {
+        f.pad("denied")
+      }
       PermissionState::Ignored => f.pad("ignored"),
     }
   }
@@ -852,7 +860,7 @@ impl<
         AllowPartial::TreatAsGranted => PermissionState::Granted,
         AllowPartial::TreatAsDenied => {
           if self.is_partial_flag_denied(desc) {
-            PermissionState::Denied
+            PermissionState::DeniedPartial
           } else {
             PermissionState::Granted
           }
@@ -870,7 +878,7 @@ impl<
     } else if matches!(allow_partial, AllowPartial::TreatAsDenied)
       && self.is_partial_flag_denied(desc)
     {
-      PermissionState::Denied
+      PermissionState::DeniedPartial
     } else {
       PermissionState::Prompt
     }
@@ -3780,6 +3788,7 @@ impl PermissionsContainer {
         PermissionState::permission_denied_error(
           "all",
           Some(display_name.as_ref()),
+          PermissionState::Denied,
         )
         .into(),
       )

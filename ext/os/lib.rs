@@ -14,6 +14,7 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionState;
 use deno_permissions::PermissionsContainer;
 use serde::Serialize;
 
@@ -181,7 +182,9 @@ fn check_env_with_maybe_exit(
 ) -> Result<ControlFlow<()>, PermissionCheckError> {
   match state.borrow_mut::<PermissionsContainer>().check_env(key) {
     Ok(()) => Ok(ControlFlow::Continue(())),
-    Err(PermissionCheckError::PermissionDenied(err)) if err.is_ignored => {
+    Err(PermissionCheckError::PermissionDenied(err))
+      if err.state == PermissionState::Ignored =>
+    {
       Ok(ControlFlow::Break(()))
     }
     Err(err) => Err(err),
@@ -203,7 +206,14 @@ fn op_env(
   let permissions_container = state.borrow_mut::<PermissionsContainer>();
   let grant_all = match permissions_container.check_env_all() {
     Ok(()) => true,
-    Err(PermissionCheckError::PermissionDenied(err)) if err.is_ignored => false,
+    Err(PermissionCheckError::PermissionDenied(err)) => match err.state {
+      PermissionState::Granted
+      | PermissionState::Prompt
+      | PermissionState::Denied => return Err(err.into()),
+      PermissionState::GrantedPartial
+      | PermissionState::DeniedPartial
+      | PermissionState::Ignored => false,
+    },
     Err(err) => return Err(err),
   };
   Ok(
@@ -211,16 +221,18 @@ fn op_env(
       .filter_map(|kv| {
         let (k, v) = map_kv(kv)?;
         let state = if grant_all {
-          deno_permissions::PermissionState::Granted
+          PermissionState::Granted
         } else {
           permissions_container.query_env(Some(&k))
         };
         match state {
-          deno_permissions::PermissionState::Granted
-          | deno_permissions::PermissionState::GrantedPartial => Some((k, v)),
-          deno_permissions::PermissionState::Ignored
-          | deno_permissions::PermissionState::Prompt
-          | deno_permissions::PermissionState::Denied => None,
+          PermissionState::Granted | PermissionState::GrantedPartial => {
+            Some((k, v))
+          }
+          PermissionState::Ignored
+          | PermissionState::Prompt
+          | PermissionState::Denied
+          | PermissionState::DeniedPartial => None,
         }
       })
       .collect(),

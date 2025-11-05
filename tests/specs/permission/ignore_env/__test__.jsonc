@@ -15,7 +15,7 @@
     },
     "some_allow_env": {
       "args": "run --ignore-env=VAR1 --allow-env main.ts",
-      "output": "undefined\n2\n"
+      "output": "undefined\n2\n[WILDCARD]"
     }
   }
 }
