@@ -24,6 +24,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "./01_console.js";
+import { DOMException } from "ext:core/ops";
 
 const _name = Symbol("name");
 const _message = Symbol("message");
@@ -87,78 +88,38 @@ const nameToCodeMapping = ObjectCreate(null, {
   DataCloneError: { value: DATA_CLONE_ERR },
 });
 
-// Defined in WebIDL 4.3.
-// https://webidl.spec.whatwg.org/#idl-DOMException
-class DOMException {
-  [_message];
-  [_name];
-  [_code];
-
-  // https://webidl.spec.whatwg.org/#dom-domexception-domexception
-  constructor(message = "", name = "Error") {
-    message = webidl.converters.DOMString(
-      message,
-      "Failed to construct 'DOMException'",
-      "Argument 1",
-    );
-    name = webidl.converters.DOMString(
-      name,
-      "Failed to construct 'DOMException'",
-      "Argument 2",
-    );
-    const code = nameToCodeMapping[name] ?? 0;
-
-    // execute Error constructor to have stack property and [[ErrorData]] internal slot
-    const error = ReflectConstruct(Error, [], new.target);
-    error[_message] = message;
-    error[_name] = name;
-    error[_code] = code;
-    error[webidl.brand] = webidl.brand;
-
-    return error;
-  }
-
-  get message() {
-    webidl.assertBranded(this, DOMExceptionPrototype);
-    return this[_message];
-  }
-
-  get name() {
-    webidl.assertBranded(this, DOMExceptionPrototype);
-    return this[_name];
-  }
-
-  get code() {
-    webidl.assertBranded(this, DOMExceptionPrototype);
-    return this[_code];
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    if (ObjectHasOwn(this, "stack")) {
-      const stack = this.stack;
-      if (typeof stack === "string") {
-        return stack;
-      }
-    }
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this),
-        keys: [
-          "message",
-          "name",
-          "code",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
 ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 
 webidl.configureInterface(DOMException);
 const DOMExceptionPrototype = DOMException.prototype;
+
+ObjectDefineProperty(
+  DOMExceptionPrototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value(inspect, inspectOptions) {
+      if (ObjectHasOwn(this, "stack")) {
+        const stack = this.stack;
+        if (typeof stack === "string") {
+          return stack;
+        }
+      }
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this),
+          keys: [
+            "message",
+            "name",
+            "code",
+          ],
+        }),
+        inspectOptions,
+      );
+    },
+  },
+);
 
 const entries = ObjectEntries({
   INDEX_SIZE_ERR,
