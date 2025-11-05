@@ -12,10 +12,14 @@ import process, {
   execPath as importedExecPath,
   getegid,
   geteuid,
+  getgid,
+  getuid,
   pid as importedPid,
   platform as importedPlatform,
   setegid,
   seteuid,
+  setgid,
+  setuid,
 } from "node:process";
 
 import { Readable } from "node:stream";
@@ -1423,5 +1427,73 @@ Deno.test({
   ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
   fn() {
     assertEquals(process.seteuid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.setgid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalGid = getgid!();
+    const groupName = getGroupNameFromSystem(originalGid);
+
+    // Calling with original gid to ensure it doesn't throw
+    setgid!(originalGid);
+    setgid!(groupName);
+  },
+});
+
+Deno.test({
+  name: "process.setgid() throws on invalid group",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        setgid!("67?!");
+      },
+      "Group identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setgid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setgid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.setuid()",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    const originalUid = getuid!();
+    const userName = getUserNameFromSystem(originalUid);
+
+    // Calling with original uid to ensure it doesn't throw
+    setuid!(originalUid);
+    setuid!(userName);
+  },
+});
+
+Deno.test({
+  name: "process.setuid() throws on invalid user",
+  ignore: Deno.build.os === "windows" || Deno.build.os === "android",
+  fn() {
+    assertThrows(
+      () => {
+        setuid!("67?!");
+      },
+      "User identifier does not exist: 67?!",
+    );
+  },
+});
+
+Deno.test({
+  name: "process.setuid() should be undefined on unsupported platforms",
+  ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
+  fn() {
+    assertEquals(process.setuid, undefined);
   },
 });

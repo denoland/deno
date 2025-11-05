@@ -209,3 +209,79 @@ where
 {
   Err(ProcessError::NotSupported)
 }
+
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
+#[op2(fast, stack_trace)]
+pub fn op_node_process_setgid<P, 'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  state: &mut OpState,
+  id: v8::Local<'a, v8::Value>,
+) -> Result<(), ProcessError>
+where
+  P: NodePermissions + 'static,
+{
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_sys("setgid", "node:process.setgid")?;
+  }
+
+  let gid = match serialize_id(scope, id)? {
+    Id::Number(number) => Gid::from_raw(number),
+    Id::Name(name) => get_group_id(&name)?,
+  };
+
+  nix::unistd::setgid(gid)?;
+
+  Ok(())
+}
+
+#[cfg(any(target_os = "android", target_os = "windows"))]
+#[op2(fast, stack_trace)]
+pub fn op_node_process_setgid<P>(
+  _scope: &mut v8::PinScope<'_, '_>,
+  _state: &mut OpState,
+  _id: v8::Local<'_, v8::Value>,
+) -> Result<(), ProcessError>
+where
+  P: NodePermissions + 'static,
+{
+  Err(ProcessError::NotSupported)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "windows")))]
+#[op2(fast, stack_trace)]
+pub fn op_node_process_setuid<P, 'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  state: &mut OpState,
+  id: v8::Local<'a, v8::Value>,
+) -> Result<(), ProcessError>
+where
+  P: NodePermissions + 'static,
+{
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_sys("setuid", "node:process.setuid")?;
+  }
+
+  let uid = match serialize_id(scope, id)? {
+    Id::Number(number) => Uid::from_raw(number),
+    Id::Name(name) => get_user_id(&name)?,
+  };
+
+  nix::unistd::setuid(uid)?;
+
+  Ok(())
+}
+
+#[cfg(any(target_os = "android", target_os = "windows"))]
+#[op2(fast, stack_trace)]
+pub fn op_node_process_setuid<P>(
+  _scope: &mut v8::PinScope<'_, '_>,
+  _state: &mut OpState,
+  _id: v8::Local<'_, v8::Value>,
+) -> Result<(), ProcessError>
+where
+  P: NodePermissions + 'static,
+{
+  Err(ProcessError::NotSupported)
+}
