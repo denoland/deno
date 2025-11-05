@@ -3474,7 +3474,7 @@ fn emit_failed_readonly_file_system() {
     .new_command()
     .args("run --log-level=debug main.ts")
     .run();
-  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
+  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]main.ts[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }
 
 // todo(dsherret): waiting on fix in https://github.com/servo/rust-url/issues/505
@@ -3582,11 +3582,11 @@ fn test_permission_broker() {
   test_util::assertions::assert_wildcard_match(
     &line,
     r#"[WILDCARD]
-{"v":1,"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
-{"v":1,"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
-{"v":1,"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
-{"v":1,"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
-{"v":1,"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
+{"v":1,"pid":[WILDCARD],"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"pid":[WILDCARD],"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"pid":[WILDCARD],"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
+{"v":1,"pid":[WILDCARD],"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
+{"v":1,"pid":[WILDCARD],"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
 [WILDCARD]"#,
   );
 }

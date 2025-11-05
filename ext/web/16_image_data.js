@@ -3,7 +3,7 @@
 import { primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "./01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,

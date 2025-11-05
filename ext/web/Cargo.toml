@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.250.0"
+version = "0.252.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,24 +14,35 @@ description = "Collection of Web APIs"
 path = "lib.rs"
 
 [dependencies]
+async-stream.workspace = true
 async-trait.workspace = true
 base64-simd.workspace = true
 bytes.workspace = true
+chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_error.workspace = true
 deno_permissions.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+log.workspace = true
+rusqlite.workspace = true
 serde.workspace = true
+sha2.workspace = true
+slab.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
+urlpattern.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-deno_console.workspace = true
-deno_url.workspace = true
 deno_webidl.workspace = true
 
 [[bench]]
@@ -40,4 +51,8 @@ harness = false
 
 [[bench]]
 name = "timers_ops"
+harness = false
+
+[[bench]]
+name = "url_ops"
 harness = false

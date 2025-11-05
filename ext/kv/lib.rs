@@ -63,7 +63,7 @@ pub use crate::interface::*;
 pub const UNSTABLE_FEATURE_NAME: &str = "kv";
 
 deno_core::extension!(deno_kv,
-  deps = [ deno_console, deno_web ],
+  deps = [ deno_web ],
   parameters = [ DBH: DatabaseHandler ],
   ops = [
     op_kv_database_open<DBH>,

@@ -2,36 +2,10 @@
 
 [package]
 name = "deno_cache"
-version = "0.151.0"
+version = "0.154.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 readme = "README.md"
 repository.workspace = true
-description = "Implementation of Cache API for Deno"
-
-[lib]
-path = "lib.rs"
-
-[dependencies]
-async-stream.workspace = true
-async-trait.workspace = true
-base64.workspace = true
-bytes.workspace = true
-chrono = { workspace = true, features = ["now"] }
-deno_core.workspace = true
-deno_error.workspace = true
-futures.workspace = true
-http.workspace = true
-http-body.workspace = true
-http-body-util.workspace = true
-hyper.workspace = true
-hyper-util.workspace = true
-log.workspace = true
-rusqlite.workspace = true
-serde.workspace = true
-sha2.workspace = true
-slab.workspace = true
-thiserror.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
+description = "DEPRECATED: Use deno_web instead"

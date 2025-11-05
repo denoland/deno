@@ -94,7 +94,6 @@ function toNode(
       } else {
         throw new AssertionError({
           operator,
-          message: e.message,
           actual,
           expected,
           stackStartFn,

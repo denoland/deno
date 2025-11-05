@@ -11,24 +11,21 @@ use std::time::Duration;
 use std::time::Instant;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
-use deno_cache::CacheImpl;
-use deno_cache::CreateCache;
-use deno_cache::SqliteBackedCache;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
 use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
+use deno_core::ModuleLoadOptions;
+use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
-use deno_core::RequestedModuleType;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
@@ -49,6 +46,9 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
+use deno_web::CreateCache;
+use deno_web::cache::CacheImpl;
+use deno_web::cache::SqliteBackedCache;
 use log::debug;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -399,12 +399,12 @@ impl MainWorker {
         if elems.len() == 2 {
           let endpoint = elems[0];
           let token = elems[1];
-          use deno_cache::CacheShard;
+          use deno_web::cache::CacheShard;
 
           let shard =
             Rc::new(CacheShard::new(endpoint.to_string(), token.to_string()));
           let create_cache_fn = move || {
-            let x = deno_cache::LscBackend::default();
+            let x = deno_web::cache::LscBackend::default();
             x.set_shard(shard.clone());
 
             Ok(CacheImpl::Lsc(x))
@@ -533,6 +533,7 @@ impl MainWorker {
         deno_web::deno_web::args::<PermissionsContainer>(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
+          create_cache,
         ),
         deno_fetch::deno_fetch::args::<PermissionsContainer>(
           deno_fetch::Options {
@@ -546,7 +547,6 @@ impl MainWorker {
             ..Default::default()
           },
         ),
-        deno_cache::deno_cache::args(create_cache),
         deno_websocket::deno_websocket::args::<PermissionsContainer>(),
         deno_webstorage::deno_webstorage::args(
           options.origin_storage_dir.clone(),
@@ -919,9 +919,7 @@ impl MainWorker {
     JsRuntimeInspector::create_local_session(
       insp,
       cb,
-      InspectorSessionOptions {
-        kind: InspectorSessionKind::Blocking,
-      },
+      InspectorSessionKind::Blocking,
     )
   }
 
@@ -1052,13 +1050,10 @@ fn common_extensions<
     deno_telemetry::deno_telemetry::init(),
     // Web APIs
     deno_webidl::deno_webidl::init(),
-    deno_console::deno_console::init(),
-    deno_url::deno_url::init(),
     deno_web::deno_web::lazy_init::<PermissionsContainer>(),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
-    deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
@@ -1170,7 +1165,7 @@ pub fn create_permissions_stack_trace_callback()
         .iter()
         .map(|frame| {
           deno_core::error::format_frame::<deno_core::error::NoAnsiColors>(
-            frame,
+            frame, None,
           )
         })
         .collect()
@@ -1256,15 +1251,13 @@ impl ModuleLoader for PlaceholderModuleLoader {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    is_dyn_import: bool,
-    requested_module_type: deno_core::RequestedModuleType,
+    maybe_referrer: Option<&ModuleLoadReferrer>,
+    options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     self.0.borrow_mut().clone().unwrap().load(
       module_specifier,
       maybe_referrer,
-      is_dyn_import,
-      requested_module_type,
+      options,
     )
   }
 
@@ -1272,8 +1265,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
-    is_dyn_import: bool,
-    requested_module_type: RequestedModuleType,
+    options: ModuleLoadOptions,
   ) -> std::pin::Pin<
     Box<
       dyn std::prelude::rust_2024::Future<
@@ -1284,8 +1276,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     self.0.borrow_mut().clone().unwrap().prepare_load(
       module_specifier,
       maybe_referrer,
-      is_dyn_import,
-      requested_module_type,
+      options,
     )
   }
 

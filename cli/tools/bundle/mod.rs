@@ -1607,9 +1607,11 @@ impl DenoPluginHandler {
       deno_graph::Module::Wasm(_) => {
         return Err(BundleLoadError::WasmUnsupported);
       }
-      deno_graph::Module::Npm(module) => {
-        let url = self.resolver.resolve_npm_nv_ref(
-          &module.nv_reference,
+      deno_graph::Module::Npm(_) => {
+        let req_ref =
+          NpmPackageReqReference::from_specifier(specifier).unwrap();
+        let url = self.resolver.resolve_managed_npm_req_ref(
+          &req_ref,
           None,
           ResolutionMode::Import,
           NodeResolutionKind::Execution,

@@ -875,6 +875,57 @@ pub struct NodeModulesDirParseError {
   pub source: serde_json::Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewestDependencyDate {
+  Enabled(chrono::DateTime<chrono::Utc>),
+  /// Disable using a minimum dependency date.
+  Disabled,
+}
+
+impl NewestDependencyDate {
+  pub fn into_option(self) -> Option<chrono::DateTime<chrono::Utc>> {
+    match self {
+      Self::Enabled(date_time) => Some(date_time),
+      Self::Disabled => None,
+    }
+  }
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawMinimumDependencyAgeConfig {
+  pub age: serde_json::Value,
+  #[serde(default)]
+  pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct MinimumDependencyAgeConfig {
+  pub age: Option<NewestDependencyDate>,
+  pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+pub enum MinimumDependencyAgeParseError {
+  #[error("Unsupported \"minimumDependencyAge\" value.")]
+  ParseDateOrDuration(
+    #[from]
+    #[source]
+    crate::ParseDateOrDurationError,
+  ),
+  #[error(
+    "Unsupported \"minimumDependencyAge\" value. Expected a string or number."
+  )]
+  ExpectedStringOrNumber,
+  #[error(
+    "Unsupported \"minimumDependencyAge\" value. Could not convert number to i64."
+  )]
+  InvalidNumber,
+  #[error("Unsupported \"minimumDependencyAge\" object.")]
+  UnsupportedObject(#[source] serde_json::Error),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NodeModulesDirMode {
@@ -970,6 +1021,7 @@ pub struct ConfigFileJson {
   pub compile: Option<Value>,
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
+  pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
@@ -1919,6 +1971,68 @@ impl ConfigFile {
         )?))
       }
       None => Ok(None),
+    }
+  }
+
+  pub fn to_minimum_dependency_age_config(
+    &self,
+    sys: &impl sys_traits::SystemTimeNow,
+  ) -> Result<MinimumDependencyAgeConfig, MinimumDependencyAgeParseError> {
+    fn parse_number(
+      minutes: &serde_json::Number,
+      sys: &impl sys_traits::SystemTimeNow,
+    ) -> Result<chrono::DateTime<chrono::Utc>, MinimumDependencyAgeParseError>
+    {
+      match minutes.as_i64() {
+        Some(minutes) => {
+          let now = chrono::DateTime::<chrono::Utc>::from(sys.sys_time_now());
+          Ok(now - chrono::Duration::minutes(minutes))
+        }
+        None => Err(MinimumDependencyAgeParseError::InvalidNumber),
+      }
+    }
+
+    fn parse_date(
+      value: &serde_json::Value,
+      sys: &impl sys_traits::SystemTimeNow,
+    ) -> Result<Option<NewestDependencyDate>, MinimumDependencyAgeParseError>
+    {
+      match value {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::Number(minutes) => Ok(Some(
+          NewestDependencyDate::Enabled(parse_number(minutes, sys)?),
+        )),
+        serde_json::Value::String(value) => Ok(Some(
+          crate::util::parse_minutes_duration_or_date(sys, value)?,
+        )),
+        serde_json::Value::Bool(false) => {
+          Ok(Some(NewestDependencyDate::Disabled))
+        }
+        serde_json::Value::Bool(true)
+        | serde_json::Value::Object(_)
+        | serde_json::Value::Array(_) => {
+          Err(MinimumDependencyAgeParseError::ExpectedStringOrNumber)
+        }
+      }
+    }
+
+    match &self.json.minimum_dependency_age {
+      Some(v) => match v {
+        serde_json::Value::Object(_) => {
+          let obj: RawMinimumDependencyAgeConfig =
+            serde_json::from_value(v.clone())
+              .map_err(MinimumDependencyAgeParseError::UnsupportedObject)?;
+          Ok(MinimumDependencyAgeConfig {
+            age: parse_date(&obj.age, sys)?,
+            exclude: obj.exclude,
+          })
+        }
+        _ => Ok(MinimumDependencyAgeConfig {
+          age: parse_date(v, sys)?,
+          exclude: Default::default(),
+        }),
+      },
+      None => Ok(Default::default()),
     }
   }
 

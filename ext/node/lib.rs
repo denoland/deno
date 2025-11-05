@@ -457,6 +457,10 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_ipc_ref,
     ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
+    ops::process::op_node_process_setegid<P>,
+    ops::process::op_node_process_seteuid<P>,
+    ops::process::op_node_process_setgid<P>,
+    ops::process::op_node_process_setuid<P>,
     ops::process::op_process_abort,
     ops::tls::op_get_root_certificates,
     ops::tls::op_tls_peer_certificate,
@@ -472,6 +476,7 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+    ops::sqlite::op_node_database_backup<P>,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
@@ -537,7 +542,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_unlink.ts",
     "_fs/_fs_utimes.ts",
     "_fs/_fs_watch.ts",
-    "_fs/_fs_write.mjs",
+    "_fs/_fs_write.ts",
     "_fs/_fs_writeFile.ts",
     "_fs/_fs_writev.ts",
     "_next_tick.ts",
@@ -550,8 +555,6 @@ deno_core::extension!(deno_node,
     "_util/async.ts",
     "_util/os.ts",
     "_util/std_asserts.ts",
-    "_util/std_fmt_colors.ts",
-    "_util/std_testing_diff.ts",
     "_utils.ts",
     "_zlib_binding.mjs",
     "assertion_error.ts",
@@ -881,11 +884,7 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  sys_traits::BaseFsCanonicalize
-  + sys_traits::BaseFsMetadata
-  + sys_traits::BaseFsRead
-  + sys_traits::EnvCurrentDir
-  + Clone
+  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
 {
 }
 
