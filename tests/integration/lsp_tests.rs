@@ -14026,32 +14026,26 @@ console.log(snake_case);
 #[timeout(300_000)]
 fn lsp_code_actions_lint_fixes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir
+    .source_file("file.ts", "// Copyright x-y. MIT licence.\nwindow;\n");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": "file:///a/file.ts",
-      "languageId": "typescript",
-      "version": 1,
-      "text": "window;",
-    }
-  }));
+  let diagnostics = client.did_open_file(&file);
   let diagnostics = diagnostics.all();
   let diagnostic = &diagnostics[0];
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
+      "textDocument": { "uri": file.uri() },
       "range": {
-        "start": { "line": 0, "character": 0 },
-        "end": { "line": 0, "character": 6 }
+        "start": { "line": 1, "character": 0 },
+        "end": { "line": 1, "character": 6 },
       },
       "context": {
         "diagnostics": [diagnostic],
-        "only": ["quickfix"]
-      }
+        "only": ["quickfix"],
+      },
     }),
   );
   assert_eq!(
@@ -14062,61 +14056,61 @@ fn lsp_code_actions_lint_fixes() {
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 6 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 6 },
             },
-            "newText": "globalThis"
-          }]
-        }
-      }
+            "newText": "globalThis",
+          }],
+        },
+      },
     }, {
       "title": "Disable no-window for this line",
       "kind": "quickfix",
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 },
             },
-            "newText": "// deno-lint-ignore no-window\n"
-          }]
-        }
-      }
+            "newText": "// deno-lint-ignore no-window\n",
+          }],
+        },
+      },
     }, {
       "title": "Disable no-window for the entire file",
       "kind": "quickfix",
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 },
             },
-            "newText": "// deno-lint-ignore-file no-window\n"
-          }]
-        }
-      }
+            "newText": "// deno-lint-ignore-file no-window\n",
+          }],
+        },
+      },
     }, {
       "title": "Ignore lint errors for the entire file",
       "kind": "quickfix",
       "diagnostics": [diagnostic],
       "edit": {
         "changes": {
-          "file:///a/file.ts": [{
+          file.uri().as_str(): [{
             "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 },
             },
-            "newText": "// deno-lint-ignore-file\n"
-          }]
-        }
-      }
-    }])
+            "newText": "// deno-lint-ignore-file\n",
+          }],
+        },
+      },
+    }]),
   );
   client.shutdown();
 }
