@@ -11,7 +11,6 @@ members = [
   "ext/broadcast_channel",
   "ext/bundle",
   "ext/canvas",
-  "ext/console",
   "ext/cron",
   "ext/crypto",
   "ext/fetch",
@@ -90,7 +89,6 @@ denokv_sqlite = { default-features = false, version = "0.12.0" }
 deno_broadcast_channel = { version = "0.215.0", path = "./ext/broadcast_channel" }
 deno_bundle_runtime = { version = "0.8.0", path = "./ext/bundle" }
 deno_canvas = { version = "0.90.0", path = "./ext/canvas" }
-deno_console = { version = "0.221.0", path = "./ext/console" }
 deno_cron = { version = "0.101.0", path = "./ext/cron" }
 deno_crypto = { version = "0.235.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.245.0", path = "./ext/fetch" }

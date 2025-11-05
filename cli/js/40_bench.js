@@ -7,7 +7,7 @@ import {
   pledgePermissions,
   restorePermissions,
 } from "ext:cli/40_test_common.js";
-import { Console } from "ext:deno_console/01_console.js";
+import { Console } from "ext:deno_web/01_console.js";
 import { setExitHandler } from "ext:deno_os/30_os.js";
 const {
   op_register_bench,

@@ -34,7 +34,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { createFilteredInspectProxy } from "./01_console.js";
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
