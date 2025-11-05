@@ -69,7 +69,7 @@ Deno.test(function urlPatternFlagsRegression() {
 });
 
 Deno.test(function urlPatternIgnoreCase() {
-  let p = new URLPattern({ pathname: "/test" }, { ignoreCase: true });
+  const p = new URLPattern({ pathname: "/test" }, { ignoreCase: true });
   assert(p.test("/test", "http://localhost"));
   assert(p.test("/TeSt", "http://localhost"));
 });
