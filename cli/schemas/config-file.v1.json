@@ -16,6 +16,17 @@
         "items": { "type": "string" }
       }]
     },
+    "allowDenyIgnorePermissionConfig": {
+      "allOf": [
+        { "$ref": "#/$defs/allowDenyPermissionConfig" },
+        {
+          "type": "object",
+          "properties": {
+            "ignore": { "$ref": "#/$defs/permissionConfigValue" }
+          }
+        }
+      ]
+    },
     "allowDenyPermissionConfig": {
       "type": "object",
       "description": "Object form to allow and/or deny permissions.",
