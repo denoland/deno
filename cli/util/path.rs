@@ -117,14 +117,14 @@ pub fn relative_specifier_path_for_display(
 ) -> String {
   if to.scheme() == "file" && from.scheme() == "file" {
     let relative_specifier = relative_specifier(from, to)
-      .map(|s| Cow::Owned(s))
+      .map(Cow::Owned)
       .unwrap_or_else(|| Cow::Borrowed(to.as_str()));
     let relative_specifier = if relative_specifier.starts_with("../../../") {
       to.as_str()
     } else {
       relative_specifier.trim_start_matches("./")
     };
-    to_percent_decoded_str(&relative_specifier)
+    to_percent_decoded_str(relative_specifier)
   } else {
     to_percent_decoded_str(to.as_str())
   }
