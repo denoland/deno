@@ -26,7 +26,7 @@ pub use ops::signal::SignalError;
 // The full list of environment variables supported by Node.js is available
 // at https://nodejs.org/api/cli.html#environment-variables
 const SORTED_NODE_ENV_VAR_ALLOWLIST: [&str; 4] =
-  ["FORCE_COLOR", "NO_COLOR", "NODE_DEBUG", "NODE_OPTIONS"];
+  ["FORCE_COLOR", "NODE_DEBUG", "NODE_OPTIONS", "NO_COLOR"];
 
 #[derive(Clone, Default)]
 pub struct ExitCode(Arc<AtomicI32>);
