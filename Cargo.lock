@@ -1891,7 +1891,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.365.0"
+version = "0.366.0"
 dependencies = [
  "anyhow",
  "az",
@@ -2612,7 +2612,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.241.0"
+version = "0.242.0"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro-rules",
@@ -8246,7 +8246,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.274.0"
+version = "0.275.0"
 dependencies = [
  "deno_error",
  "num-bigint",
