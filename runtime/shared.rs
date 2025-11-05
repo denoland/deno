@@ -7,12 +7,9 @@ use deno_core::extension;
 extension!(runtime,
   deps = [
     deno_webidl,
-    deno_console,
-    deno_url,
     deno_tls,
     deno_web,
     deno_fetch,
-    deno_cache,
     deno_websocket,
     deno_webstorage,
     deno_crypto,

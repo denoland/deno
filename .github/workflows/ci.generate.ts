@@ -1181,6 +1181,12 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
+      "timeout-minutes": 30,
+      defaults: {
+        run: {
+          shell: "bash",
+        },
+      },
       strategy: {
         matrix: {
           include: [{

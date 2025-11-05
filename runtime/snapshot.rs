@@ -27,13 +27,10 @@ pub fn create_runtime_snapshot(
   let mut extensions: Vec<Extension> = vec![
     deno_telemetry::deno_telemetry::lazy_init(),
     deno_webidl::deno_webidl::lazy_init(),
-    deno_console::deno_console::lazy_init(),
-    deno_url::deno_url::lazy_init(),
     deno_web::deno_web::lazy_init::<Permissions>(),
     deno_webgpu::deno_webgpu::lazy_init(),
     deno_canvas::deno_canvas::lazy_init(),
     deno_fetch::deno_fetch::lazy_init::<Permissions>(),
-    deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init::<Permissions>(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
