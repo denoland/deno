@@ -823,7 +823,7 @@ testing[WILDCARD]this
     .args("compile --output binary main.ts")
     .run()
     .assert_exit_code(0)
-    .assert_matches_text("Check file:///[WILDLINE]/main.ts\nCompile file:///[WILDLINE]/main.ts to binary[WILDLINE]\n");
+    .assert_matches_text("Check main.ts\nCompile main.ts to binary[WILDLINE]\n");
 
   context
     .new_command()
