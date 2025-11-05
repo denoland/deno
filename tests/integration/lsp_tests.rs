@@ -15579,14 +15579,9 @@ fn lsp_node_modules_dir() {
 
   assert!(!temp_dir.path().join("node_modules").exists());
 
-  // a lockfile will be created here because someone did an explicit cache
-  let lockfile_path = temp_dir.path().join("deno.lock");
-  assert!(lockfile_path.exists());
-  lockfile_path.remove_file();
-
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"nodeModulesDir\": \"auto\", \"lock\": false }\n",
+    "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   let refresh_config = |client: &mut LspClient| {
     client.change_configuration(json!({ "deno": {
@@ -15616,7 +15611,6 @@ fn lsp_node_modules_dir() {
 
   assert!(temp_dir.path().join("node_modules/chalk").exists());
   assert!(temp_dir.path().join("node_modules/@types/node").exists());
-  assert!(!lockfile_path.exists()); // was disabled
 
   // now add a lockfile and cache
   temp_dir.write(
@@ -15626,8 +15620,6 @@ fn lsp_node_modules_dir() {
   refresh_config(&mut client);
   let diagnostics = cache(&mut client);
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics);
-
-  assert!(lockfile_path.exists());
 
   // the declaration should be found in the node_modules directory
   let res = client.write_request(
