@@ -11,7 +11,6 @@ import { primordials } from "ext:core/mod.js";
 const {
   ErrorPrototype,
   ObjectDefineProperty,
-  ObjectCreate,
   ObjectEntries,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
