@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: anthropics/claude-code-action@v1
         with:
+          github_token: ${{ secrets.DENOBOT_PAT }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             REPO: ${{ github.repository }}
