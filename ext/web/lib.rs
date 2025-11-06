@@ -556,6 +556,8 @@ impl DOMException {
       },
     );
 
+    v8::Exception::capture_stack_trace(scope.get_current_context(), err);
+
     err
   }
 
