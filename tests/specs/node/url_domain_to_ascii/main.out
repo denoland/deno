@@ -1,0 +1,6 @@
+Valid domain: example.com
+Valid unicode: xn--mnchen-3ya.de
+Valid punycode: xn--mnchen-3ya.de
+Invalid punycode with unicode: 
+Invalid punycode prefix only: 
+Empty string: 
