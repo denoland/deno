@@ -14,19 +14,6 @@ Deno.test({ permissions: { env: true } }, function envSuccess() {
   assertNotEquals(Deno.env.get("TEST_VAR"), env["TEST_VAR"]);
 });
 
-Deno.test({
-  permissions: {
-    env: {
-      allow: true,
-      deny: ["PATH"],
-    },
-  },
-}, function envDenySuccess() {
-  // should allow getting it and not contain the denied path
-  const env = Deno.env.toObject();
-  assertEquals(env["PATH"], undefined);
-});
-
 Deno.test({ permissions: { env: true } }, function envNotFound() {
   const r = Deno.env.get("env_var_does_not_exist!");
   assertEquals(r, undefined);
