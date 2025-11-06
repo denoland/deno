@@ -82,6 +82,7 @@ struct AnsiColors;
 impl deno_core::error::ErrorFormat for AnsiColors {
   fn fmt_element(
     element: deno_core::error::ErrorElement,
+    _in_extension_code: bool,
     s: &str,
   ) -> std::borrow::Cow<'_, str> {
     use deno_core::error::ErrorElement::*;
