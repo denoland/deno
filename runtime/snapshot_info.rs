@@ -217,10 +217,11 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
   vec![
     deno_telemetry::deno_telemetry::init(),
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::init::<Permissions>(
+    deno_web::deno_web::init::<Permissions, deno_web::InMemoryBroadcastChannel>(
       Default::default(),
       Default::default(),
       None,
+      deno_web::InMemoryBroadcastChannel::default(),
     ),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
@@ -228,9 +229,6 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_websocket::deno_websocket::init::<Permissions>(),
     deno_webstorage::deno_webstorage::init(None),
     deno_crypto::deno_crypto::init(None),
-    deno_broadcast_channel::deno_broadcast_channel::init(
-      deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-    ),
     deno_ffi::deno_ffi::init::<Permissions>(None),
     deno_net::deno_net::init::<Permissions>(None, None),
     deno_tls::deno_tls::init(),

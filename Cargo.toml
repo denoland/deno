@@ -8,7 +8,6 @@ members = [
   "cli/lib",
   "cli/rt",
   "cli/snapshot",
-  "ext/broadcast_channel",
   "ext/bundle",
   "ext/canvas",
   "ext/cron",
@@ -86,7 +85,6 @@ denokv_remote = "0.12.0"
 denokv_sqlite = { default-features = false, version = "0.12.0" }
 
 # exts
-deno_broadcast_channel = { version = "0.215.0", path = "./ext/broadcast_channel" }
 deno_bundle_runtime = { version = "0.8.0", path = "./ext/bundle" }
 deno_canvas = { version = "0.90.0", path = "./ext/canvas" }
 deno_cron = { version = "0.101.0", path = "./ext/cron" }
@@ -437,8 +435,6 @@ opt-level = 3
 [profile.release.package.bytes]
 opt-level = 3
 [profile.release.package.deno_bench_util]
-opt-level = 3
-[profile.release.package.deno_broadcast_channel]
 opt-level = 3
 [profile.release.package.deno_core]
 opt-level = 3

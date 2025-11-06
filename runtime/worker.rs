@@ -10,7 +10,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
-use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::InspectorSessionKind;
@@ -47,6 +46,7 @@ use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
 use deno_web::CreateCache;
+use deno_web::InMemoryBroadcastChannel;
 use deno_web::cache::CacheImpl;
 use deno_web::cache::SqliteBackedCache;
 use log::debug;
@@ -530,10 +530,14 @@ impl MainWorker {
 
     js_runtime
       .lazy_init_extensions(vec![
-        deno_web::deno_web::args::<PermissionsContainer>(
+        deno_web::deno_web::args::<
+          PermissionsContainer,
+          InMemoryBroadcastChannel,
+        >(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
           create_cache,
+          services.broadcast_channel.clone(),
         ),
         deno_fetch::deno_fetch::args::<PermissionsContainer>(
           deno_fetch::Options {
@@ -552,9 +556,6 @@ impl MainWorker {
           options.origin_storage_dir.clone(),
         ),
         deno_crypto::deno_crypto::args(options.seed),
-        deno_broadcast_channel::deno_broadcast_channel::args(
-          services.broadcast_channel.clone(),
-        ),
         deno_ffi::deno_ffi::args::<PermissionsContainer>(
           services.deno_rt_native_addon_loader.clone(),
         ),
@@ -1050,16 +1051,16 @@ fn common_extensions<
     deno_telemetry::deno_telemetry::init(),
     // Web APIs
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::lazy_init::<PermissionsContainer>(),
+    deno_web::deno_web::lazy_init::<
+      PermissionsContainer,
+      InMemoryBroadcastChannel,
+    >(),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
     deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
-    deno_broadcast_channel::deno_broadcast_channel::lazy_init::<
-      InMemoryBroadcastChannel,
-    >(),
     deno_ffi::deno_ffi::lazy_init::<PermissionsContainer>(),
     deno_net::deno_net::lazy_init::<PermissionsContainer>(),
     deno_tls::deno_tls::init(),
