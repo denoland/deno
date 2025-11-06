@@ -1796,19 +1796,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_broadcast_channel"
-version = "0.215.0"
-dependencies = [
- "async-trait",
- "deno_core",
- "deno_error",
- "deno_features",
- "thiserror 2.0.12",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "deno_bundle_runtime"
 version = "0.8.0"
 dependencies = [
@@ -1818,6 +1805,33 @@ dependencies = [
  "deno_web",
  "regex",
  "serde",
+]
+
+[[package]]
+name = "deno_cache"
+version = "0.153.0"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "deno_core",
+ "deno_error",
+ "futures",
+ "http 1.1.0",
+ "http-body 1.0.0",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "log",
+ "rusqlite",
+ "serde",
+ "sha2",
+ "slab",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -2799,8 +2813,8 @@ dependencies = [
  "async-trait",
  "color-print",
  "deno_ast",
- "deno_broadcast_channel",
  "deno_bundle_runtime",
+ "deno_cache",
  "deno_canvas",
  "deno_core",
  "deno_cron",
@@ -3063,32 +3077,21 @@ version = "0.222.0"
 name = "deno_web"
 version = "0.252.0"
 dependencies = [
- "async-stream",
  "async-trait",
  "base64-simd",
  "bytes",
- "chrono",
  "deno_bench_util",
  "deno_core",
  "deno_error",
+ "deno_features",
  "deno_permissions",
  "deno_webidl",
  "encoding_rs",
  "flate2",
  "futures",
- "http 1.1.0",
- "http-body 1.0.0",
- "http-body-util",
- "hyper 1.6.0",
- "hyper-util",
- "log",
- "rusqlite",
  "serde",
- "sha2",
- "slab",
  "thiserror 2.0.12",
  "tokio",
- "tokio-util",
  "urlpattern",
  "uuid",
 ]
