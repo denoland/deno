@@ -189,7 +189,7 @@ jobs:
           python-version: 3.11
         if: '!(matrix.skip) && (matrix.os != ''linux'' || matrix.arch != ''aarch64'')'
       - name: Remove unused versions of Python
-        if: '!(matrix.skip) && (matrix.os != ''linux'' || matrix.arch != ''aarch64'' && (matrix.os == ''windows''))'
+        if: '!(matrix.skip) && ((matrix.os != ''linux'' || matrix.arch != ''aarch64'') && (matrix.os == ''windows''))'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
