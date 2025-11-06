@@ -299,9 +299,16 @@ function withCondition(
   step: Record<string, unknown>,
   condition: string,
 ): Record<string, unknown> {
+  function maybeParens(condition: string) {
+    if (condition.includes("&&") || condition.includes("||")) {
+      return `(${condition})`;
+    } else {
+      return condition;
+    }
+  }
   return {
     ...step,
-    if: "if" in step ? `${condition} && (${step.if})` : condition,
+    if: "if" in step ? `${maybeParens(condition)} && (${step.if})` : condition,
   };
 }
 
