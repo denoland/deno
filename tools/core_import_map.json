@@ -505,6 +505,7 @@
     "ext:core/mod.js": "../../deno_core/core/core.d.ts",
     "ext:core/ops": "./ops.d.ts",
     "ext:deno_web/01_broadcast_channel.js": "../ext/deno_web/01_broadcast_channel.js",
+    "ext:deno_cache/01_cache.js": "../ext/cache/01_cache.js",
     "ext:deno_canvas/01_image.js": "../ext/canvas/01_image.js",
     "ext:deno_web/01_console.js": "../ext/console/01_console.js",
     "ext:deno_cron/01_cron.ts": "../ext/cron/01_cron.ts",

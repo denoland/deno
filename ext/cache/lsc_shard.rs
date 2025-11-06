@@ -18,7 +18,7 @@ use hyper_util::client::legacy::Client;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::tokio::TokioExecutor;
 
-use super::CacheError;
+use crate::CacheError;
 
 type ClientBody =
   Either<UnsyncBoxBody<Bytes, CacheError>, UnsyncBoxBody<Bytes, Infallible>>;
