@@ -11,6 +11,9 @@ use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
+use deno_cache::CacheImpl;
+use deno_cache::CreateCache;
+use deno_cache::SqliteBackedCache;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
@@ -52,9 +55,6 @@ use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use deno_web::Transferable;
-use deno_web::cache::CacheImpl;
-use deno_web::cache::CreateCache;
-use deno_web::cache::SqliteBackedCache;
 use deno_web::create_entangled_message_port;
 use deno_web::serialize_transferables;
 use log::debug;
@@ -487,12 +487,12 @@ impl WebWorker {
         if elems.len() == 2 {
           let endpoint = elems[0];
           let token = elems[1];
-          use deno_web::cache::CacheShard;
+          use deno_cache::CacheShard;
 
           let shard =
             Rc::new(CacheShard::new(endpoint.to_string(), token.to_string()));
           let create_cache_fn = move || {
-            let x = deno_web::cache::LscBackend::default();
+            let x = deno_cache::LscBackend::default();
             x.set_shard(shard.clone());
 
             Ok(CacheImpl::Lsc(x))
@@ -525,7 +525,6 @@ impl WebWorker {
       deno_web::deno_web::init::<PermissionsContainer, InMemoryBroadcastChannel>(
         services.blob_store,
         Some(options.main_module.clone()),
-        create_cache,
         services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
@@ -541,6 +540,7 @@ impl WebWorker {
           ..Default::default()
         },
       ),
+      deno_cache::deno_cache::init(create_cache),
       deno_websocket::deno_websocket::init::<PermissionsContainer>(),
       deno_webstorage::deno_webstorage::init(None).disable(),
       deno_crypto::deno_crypto::init(options.seed),

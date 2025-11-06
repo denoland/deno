@@ -14,11 +14,9 @@ description = "Collection of Web APIs"
 path = "lib.rs"
 
 [dependencies]
-async-stream.workspace = true
 async-trait.workspace = true
 base64-simd.workspace = true
 bytes.workspace = true
-chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_error.workspace = true
 deno_features.workspace = true
@@ -26,19 +24,9 @@ deno_permissions.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
-http.workspace = true
-http-body.workspace = true
-http-body-util.workspace = true
-hyper.workspace = true
-hyper-util.workspace = true
-log.workspace = true
-rusqlite.workspace = true
 serde.workspace = true
-sha2.workspace = true
-slab.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
 urlpattern.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 
