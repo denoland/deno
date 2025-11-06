@@ -619,51 +619,59 @@ pub fn main() {
     .unwrap();
 
   let args: Vec<_> = env::args_os().collect();
-  let initial_cwd =
-    match std::env::current_dir().with_context(|| "Failed getting cwd.") {
-      Ok(cwd) => Some(cwd),
-      Err(err) => {
-        log::error!("Failed getting cwd: {err}");
-        None
-      }
-    };
-  let initial_cwd_clone = initial_cwd.clone();
   let future = async move {
     let roots = LibWorkerFactoryRoots::default();
 
     #[cfg(unix)]
-    let (waited_unconfigured_runtime, waited_args) =
+    let (waited_unconfigured_runtime, waited_args, waited_cwd) =
       match wait_for_start(&args, roots.clone()) {
         Some(f) => match f.await {
           Ok(v) => match v {
-            Some((u, a)) => (Some(u), Some(a)),
-            None => (None, None),
+            Some((u, a, c)) => (Some(u), Some(a), Some(c)),
+            None => (None, None, None),
           },
           Err(e) => {
             panic!("Failure from control sock: {e}");
           }
         },
-        None => (None, None),
+        None => (None, None, None),
       };
 
     #[cfg(not(unix))]
-    let (waited_unconfigured_runtime, waited_args) = (None, None);
+    let (waited_unconfigured_runtime, waited_args, waited_cwd) =
+      (None, None, None);
 
     let args = waited_args.unwrap_or(args);
+    let initial_cwd = waited_cwd.map(Some).unwrap_or_else(|| {
+      match std::env::current_dir().with_context(|| "Failed getting cwd.") {
+        Ok(cwd) => Some(cwd),
+        Err(err) => {
+          log::error!("Failed getting cwd: {err}");
+          None
+        }
+      }
+    });
 
     // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
     // initialize the V8 platform on a parent thread of all threads that will spawn
     // V8 isolates.
-    let flags = resolve_flags_and_init(args, initial_cwd_clone).await?;
+    let flags = match resolve_flags_and_init(args, initial_cwd.clone()).await {
+      Ok(flags) => flags,
+      Err(err) => return (Err(err), initial_cwd),
+    };
 
     if waited_unconfigured_runtime.is_none() {
       init_v8(&flags);
     }
 
-    run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await
+    (
+      run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await,
+      initial_cwd,
+    )
   };
 
-  let result = create_and_run_current_thread_with_maybe_metrics(future);
+  let (result, initial_cwd) =
+    create_and_run_current_thread_with_maybe_metrics(future);
 
   #[cfg(feature = "dhat-heap")]
   drop(profiler);
@@ -834,7 +842,7 @@ fn wait_for_start(
 ) -> Option<
   impl Future<
     Output = Result<
-      Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>)>,
+      Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>, PathBuf)>,
       AnyError,
     >,
   > + use<>,
@@ -953,7 +961,7 @@ fn wait_for_start(
 
     let cmd: Start = deno_core::serde_json::from_slice(&buf)?;
 
-    std::env::set_current_dir(cmd.cwd)?;
+    std::env::set_current_dir(&cmd.cwd)?;
 
     for (k, v) in cmd.env {
       // SAFETY: We're doing this before any threads are created.
@@ -965,7 +973,7 @@ fn wait_for_start(
       .chain(cmd.args.into_iter().map(Into::into))
       .collect();
 
-    Ok(Some((unconfigured, args)))
+    Ok(Some((unconfigured, args, PathBuf::from(cmd.cwd))))
   })
 }
 
