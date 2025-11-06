@@ -405,6 +405,19 @@ impl RunFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum XFlagsKind {
+  InstallAlias,
+  Command(String),
+  Print,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct XFlags {
+  pub kind: XFlagsKind,
+  pub default_allow_all: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServeFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
@@ -571,6 +584,7 @@ pub enum DenoSubcommand {
   Vendor,
   Publish(PublishFlags),
   Help(HelpFlags),
+  X(XFlags),
 }
 
 impl DenoSubcommand {
@@ -1525,6 +1539,17 @@ static DENO_HELP: &str = cstr!(
 
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
+  let args = if args.len() >= 1 && args[0].as_encoded_bytes().ends_with(b"dx") {
+    let mut new_args = Vec::with_capacity(args.len() + 1);
+    new_args.push(args[0].clone());
+    new_args.push(OsString::from("x"));
+    if args.len() >= 2 {
+      new_args.extend(args.into_iter().skip(1));
+    }
+    new_args
+  } else {
+    args
+  };
   let mut app = clap_root();
   let mut matches =
     app
@@ -1702,6 +1727,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
         "upgrade" => upgrade_parse(&mut flags, &mut m),
         "vendor" => vendor_parse(&mut flags, &mut m),
         "publish" => publish_parse(&mut flags, &mut m)?,
+        "x" => x_parse(&mut flags, &mut m)?,
         _ => unreachable!(),
       }
     }
@@ -1963,7 +1989,8 @@ pub fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(update_subcommand())
         .subcommand(upgrade_subcommand())
-        .subcommand(vendor_subcommand());
+        .subcommand(vendor_subcommand())
+        .subcommand(x_subcommand());
 
       let help = help_subcommand(&cmd);
       cmd.subcommand(help)
@@ -3406,6 +3433,32 @@ The installation root is determined, in order of precedence:
           .action(ArgAction::Append)
       )
       .args(lock_args())
+  })
+}
+
+fn x_subcommand() -> Command {
+  command(
+    "x",
+    cstr!("Execute a binary from npm or jsr, like npx"),
+    UnstableArgsConfig::ResolutionAndRuntime,
+  )
+  .defer(|cmd| {
+    runtime_args(cmd, true, true, true)
+      .arg(script_arg().trailing_var_arg(true))
+      .arg(
+        Arg::new("default-allow-all")
+          .long("default-allow-all")
+          .help("Allow all permissions by default")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(check_arg(false))
+      .arg(env_file_arg())
+      .arg(
+        Arg::new("install-alias")
+          .long("install-alias")
+          .action(ArgAction::SetTrue)
+          .conflicts_with("script_arg"),
+      )
   })
 }
 
@@ -6500,6 +6553,39 @@ fn compile_args_without_check_parse(
   unsafely_ignore_certificate_errors_parse(flags, matches);
   preload_arg_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
+  Ok(())
+}
+
+fn x_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> clap::error::Result<()> {
+  let kind = if matches.get_flag("install-alias") {
+    XFlagsKind::InstallAlias
+  } else if let Some(mut script_arg) =
+    matches.remove_many::<String>("script_arg")
+  {
+    if let Some(command) = script_arg.next() {
+      flags.argv.extend(script_arg);
+      runtime_args_parse(flags, matches, true, true, true)?;
+      XFlagsKind::Command(command)
+    } else {
+      XFlagsKind::Print
+    }
+  } else {
+    XFlagsKind::Print
+  };
+  let default_allow_all = matches.get_flag("default-allow-all");
+  if !flags.permissions.has_permission()
+    && flags.permission_set.is_none()
+    && default_allow_all
+  {
+    flags.permissions.allow_all = true;
+  }
+  flags.subcommand = DenoSubcommand::X(XFlags {
+    kind,
+    default_allow_all,
+  });
   Ok(())
 }
 
