@@ -70,6 +70,7 @@ pub struct StatementSync {
 
   pub use_big_ints: Cell<bool>,
   pub allow_bare_named_params: Cell<bool>,
+  pub allow_unknown_named_params: Cell<bool>,
 
   pub is_iter_finished: bool,
 }
@@ -487,6 +488,10 @@ impl StatementSync {
             }
 
             if r == 0 {
+              if self.allow_unknown_named_params.get() {
+                continue;
+              }
+
               return Err(SqliteError::UnknownNamedParameter(
                 key_c.into_string().unwrap(),
               ));
@@ -759,6 +764,16 @@ impl StatementSync {
     #[validate(validators::allow_bare_named_params_bool)] enabled: bool,
   ) -> Result<(), SqliteError> {
     self.allow_bare_named_params.set(enabled);
+    Ok(())
+  }
+
+  #[fast]
+  #[undefined]
+  fn set_allow_unknown_named_params(
+    &self,
+    #[validate(validators::allow_unknown_named_params_bool)] enabled: bool,
+  ) -> Result<(), SqliteError> {
+    self.allow_unknown_named_params.set(enabled);
     Ok(())
   }
 

@@ -101,6 +101,20 @@ pub(super) fn allow_bare_named_params_bool(
   ))
 }
 
+pub(super) fn allow_unknown_named_params_bool(
+  _: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> Result<(), Error> {
+  if value.is_boolean() {
+    return Ok(());
+  }
+
+  Err(Error::InvalidArgType(
+    "The \"allowUnknownNamedParameters\" argument must be a boolean.",
+  ))
+}
+
+
 pub(super) fn read_big_ints_bool(
   _: &mut v8::PinScope<'_, '_>,
   value: v8::Local<v8::Value>,
