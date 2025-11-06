@@ -16,6 +16,11 @@
     "some_allow_env": {
       "args": "run --ignore-env=VAR1 --allow-env main.ts",
       "output": "undefined\n2\n[WILDCARD]"
+    },
+    "deny_env": {
+      "args": "run --deny-env --ignore-env=VAR1 main.ts",
+      "output": "undefined\nerror:[WILDCARD]",
+      "exitCode": 1
     }
   }
 }
