@@ -529,6 +529,7 @@ fn name_to_code_mapping(name: &str) -> u32 {
 impl DOMException {
   // https://webidl.spec.whatwg.org/#dom-domexception-domexception
   #[constructor]
+  #[reentrant]
   fn new<'s>(
     scope: &'s mut v8::PinScope<'_, '_>,
     #[string] message: String,
@@ -537,6 +538,7 @@ impl DOMException {
     let name = name.unwrap_or_else(|| "Error".to_string());
     let code = name_to_code_mapping(&name);
 
+    // TODO: gus will modify v8
     let dom_exp = deno_core::cppgc::make_cppgc_object(
       scope,
       DOMException {
