@@ -769,7 +769,7 @@ impl StatementSync {
 
   #[fast]
   #[undefined]
-  fn set_allow_unknown_named_params(
+  fn set_allow_unknown_named_parameters(
     &self,
     #[validate(validators::allow_unknown_named_params_bool)] enabled: bool,
   ) -> Result<(), SqliteError> {
