@@ -114,7 +114,6 @@ pub(super) fn allow_unknown_named_params_bool(
   ))
 }
 
-
 pub(super) fn read_big_ints_bool(
   _: &mut v8::PinScope<'_, '_>,
   value: v8::Local<v8::Value>,
