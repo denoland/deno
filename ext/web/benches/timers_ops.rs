@@ -32,7 +32,12 @@ fn setup() -> Vec<Extension> {
 
   vec![
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::init::<Permissions>(Default::default(), None, None),
+    deno_web::deno_web::init::<Permissions, deno_web::InMemoryBroadcastChannel>(
+      Default::default(),
+      None,
+      None,
+      Default::default(),
+    ),
     bench_setup::init(),
   ]
 }
