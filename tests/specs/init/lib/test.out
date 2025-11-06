@@ -6,7 +6,7 @@ Download http://127.0.0.1:4250/@std/assert/1.0.0/assert_equals.ts
 Download http://127.0.0.1:4250/@std/assert/1.0.0/assert.ts
 Download http://127.0.0.1:4250/@std/assert/1.0.0/fail.ts
 [UNORDERED_END]
-Check file:///[WILDLINE]/mod_test.ts
+Check [WILDCARD]mod_test.ts
 running 1 test from ./mod_test.ts
 addTest ... ok ([WILDLINE])
 

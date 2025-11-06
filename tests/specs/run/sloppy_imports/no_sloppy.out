@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/main.ts
+Check [WILDCARD]main.ts
 TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/a.js'. Maybe change the extension to '.ts' or run with --sloppy-imports
     at file:///[WILDLINE]/main.ts:1:20
 
