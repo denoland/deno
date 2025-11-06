@@ -463,6 +463,7 @@ pub struct DOMException {
   code: u32,
 }
 
+// SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for DOMException {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
@@ -474,11 +475,9 @@ unsafe impl GarbageCollected for DOMException {
 // Defined in WebIDL 4.3.
 // https://webidl.spec.whatwg.org/#idl-DOMException
 const INDEX_SIZE_ERR: u32 = 1;
-const DOMSTRING_SIZE_ERR: u32 = 2;
 const HIERARCHY_REQUEST_ERR: u32 = 3;
 const WRONG_DOCUMENT_ERR: u32 = 4;
 const INVALID_CHARACTER_ERR: u32 = 5;
-const NO_DATA_ALLOWED_ERR: u32 = 6;
 const NO_MODIFICATION_ALLOWED_ERR: u32 = 7;
 const NOT_FOUND_ERR: u32 = 8;
 const NOT_SUPPORTED_ERR: u32 = 9;
@@ -488,7 +487,6 @@ const SYNTAX_ERR: u32 = 12;
 const INVALID_MODIFICATION_ERR: u32 = 13;
 const NAMESPACE_ERR: u32 = 14;
 const INVALID_ACCESS_ERR: u32 = 15;
-const VALIDATION_ERR: u32 = 16;
 const TYPE_MISMATCH_ERR: u32 = 17;
 const SECURITY_ERR: u32 = 18;
 const NETWORK_ERR: u32 = 19;
