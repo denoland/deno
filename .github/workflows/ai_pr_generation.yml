@@ -120,4 +120,4 @@ jobs:
             You have access to the full repository and can use git, cargo, and gh CLI commands.
 
           claude_args: |
-            --allow-dangerously-skip-permissions --dangerously-skip-permissions --allowedTools "Bash(git:*),Bash(cargo test:*),Bash(cargo build:*),Bash(cargo check:*),Bash(gh pr:*),Bash(gh issue:*),Bash(grep:*),Bash(find:*)"
+            --dangerously-skip-permissions --allowed-tools "*"
