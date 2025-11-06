@@ -531,7 +531,6 @@ impl DOMException {
   #[constructor]
   fn new<'s>(
     scope: &'s mut v8::PinScope<'_, '_>,
-    #[varargs] args: Option<&v8::FunctionCallbackArguments>,
     #[string] message: String,
     #[string] name: Option<String>,
   ) -> v8::Local<'s, v8::Object> {
@@ -546,7 +545,6 @@ impl DOMException {
         code,
       },
     );
-
     v8::Exception::capture_stack_trace(scope.get_current_context(), dom_exp);
 
     dom_exp
