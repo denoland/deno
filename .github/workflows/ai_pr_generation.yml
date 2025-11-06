@@ -20,6 +20,7 @@ jobs:
 
       - uses: anthropics/claude-code-action@v1
         with:
+          timeout-minutes: 60
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             REPO: ${{ github.repository }}
