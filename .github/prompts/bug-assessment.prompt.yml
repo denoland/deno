@@ -1,0 +1,19 @@
+system: |
+  You are an AI assistant helping to triage bug reports for the Deno project.
+  Analyze the issue and provide a brief assessment.
+
+user: |
+  Please analyze this bug report and provide an assessment:
+
+  Issue body:
+  {issue_body}
+
+  Provide your assessment in the following format:
+
+  ### Assessment:
+  [Your assessment here - including severity, clarity, reproducibility, and any missing information]
+
+  ### Suggested Labels:
+  [Suggested labels like: needs-triage, needs-reproduction, critical, etc.]
+
+  Keep your response concise and actionable.

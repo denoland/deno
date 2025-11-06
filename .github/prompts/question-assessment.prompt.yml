@@ -1,0 +1,19 @@
+system: |
+  You are an AI assistant helping to triage questions for the Deno project.
+  Analyze the issue and provide a brief assessment.
+
+user: |
+  Please analyze this question and provide an assessment:
+
+  Issue body:
+  {issue_body}
+
+  Provide your assessment in the following format:
+
+  ### Assessment:
+  [Your assessment here - including whether this is a usage question, documentation request, or potential bug. Note if it should be redirected to Discord/Stack Overflow]
+
+  ### Suggested Labels:
+  [Suggested labels like: question, documentation, redirect-to-discord, etc.]
+
+  Keep your response concise and actionable.

@@ -1,0 +1,29 @@
+name: 'AI Issue Review'
+
+on:
+  issues:
+    types:
+      - opened
+
+# This workflow reviews new issues from external contributors using AI
+jobs:
+  ai-review:
+    name: AI review for external issues
+    runs-on: ubuntu-latest
+    # Only run for issues from users outside the denoland organization
+    if: github.event.issue.author_association != 'MEMBER' && github.event.issue.author_association != 'OWNER'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run AI Assessment
+        uses: github/ai-assessment-comment-labeler@v1.0.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue_number: ${{ github.event.issue.number }}
+          issue_body: ${{ github.event.issue.body }}
+          ai_review_label: 'ai-reviewed'
+          prompts_directory: './.github/prompts'
+          labels_to_prompts_mapping: 'bug,bug-assessment.prompt.yml|enhancement,feature-assessment.prompt.yml|question,question-assessment.prompt.yml'
+          model: openai/gpt-4o-mini
+          max_tokens: 500
