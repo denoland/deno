@@ -538,15 +538,8 @@ impl DOMException {
     let name = name.unwrap_or_else(|| "Error".to_string());
     let code = name_to_code_mapping(&name);
 
-    let target = args.unwrap().new_target();
-    let message_str = v8::String::new(scope, &message).unwrap();
-    let err = v8::Exception::error(scope, message_str);
-    let err = v8::Local::<v8::Object>::try_from(err).unwrap();
-    err.set_prototype(scope, target);
-
-    deno_core::cppgc::wrap_object(
+    let dom_exp = deno_core::cppgc::make_cppgc_object(
       scope,
-      err,
       DOMException {
         message,
         name,
@@ -554,9 +547,9 @@ impl DOMException {
       },
     );
 
-    v8::Exception::capture_stack_trace(scope.get_current_context(), err);
+    v8::Exception::capture_stack_trace(scope.get_current_context(), dom_exp);
 
-    err
+    dom_exp
   }
 
   #[getter]
