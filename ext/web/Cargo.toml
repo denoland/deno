@@ -21,6 +21,7 @@ bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_error.workspace = true
+deno_features.workspace = true
 deno_permissions.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
