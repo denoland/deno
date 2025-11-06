@@ -758,6 +758,10 @@ impl MainWorker {
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
     let undefined = v8::undefined(scope);
     bootstrap_fn.call(scope, undefined.into(), &[args]);
+    deno_core::set_wasm_streaming_callback(
+      scope,
+      deno_fetch::handle_wasm_streaming,
+    );
     if let Some(exception) = scope.exception() {
       let error = JsError::from_v8_exception(scope, exception);
       panic!("Bootstrap exception: {error}");

@@ -17,9 +17,6 @@ import * as response from "ext:deno_fetch/23_response.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
 import * as eventSource from "ext:deno_fetch/27_eventsource.js";
 
-// Set up the callback for Wasm streaming ops
-Deno.core.setWasmStreamingCallback(fetch.handleWasmStreaming);
-
 Object.defineProperty(globalThis, "fetch", {
   value: fetch.fetch,
   enumerable: true,

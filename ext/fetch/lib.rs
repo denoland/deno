@@ -5,6 +5,7 @@ mod fs_fetch_handler;
 mod proxy;
 #[cfg(test)]
 mod tests;
+mod wasm_streaming;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -94,6 +95,7 @@ use tower::Service;
 use tower::ServiceExt;
 use tower::retry;
 use tower_http::decompression::Decompression;
+pub use wasm_streaming::handle_wasm_streaming;
 
 #[derive(Clone)]
 pub struct Options {

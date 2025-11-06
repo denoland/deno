@@ -90,6 +90,7 @@ impl deno_core::error::ErrorFormat for AnsiColors {
       }
       LineNumber | ColumnNumber => colors::yellow(s).to_string().into(),
       FunctionName | PromiseAll => colors::italic_bold(s).to_string().into(),
+      WorkingDirPath => colors::gray(s).to_string().into(),
     }
   }
 }
