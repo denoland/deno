@@ -267,7 +267,11 @@ Deno.test("[node/sqlite] StatementSync unknown named parameters should throw", (
     "INSERT INTO foo (variable1, variable2) VALUES (:variable1, :variable2) RETURNING id",
   );
 
-  assertThrows(stmt.run({ variable1: "bar", variable2: 1, variable3: "baz" }));
+  assertThrows(() =>
+    stmt.run(
+      { variable1: "bar", variable2: 1, variable3: "baz" },
+    )
+  );
 
   db.close();
 });
