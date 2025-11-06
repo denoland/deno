@@ -301,7 +301,7 @@ function withCondition(
 ): Record<string, unknown> {
   return {
     ...step,
-    if: "if" in step ? `${condition} && (${step.if})` : condition,
+    if: "if" in step ? `(${condition}) && (${step.if})` : condition,
   };
 }
 

@@ -38,7 +38,7 @@ jobs:
           submodules: false
         if: github.event.pull_request.draft == true
       - id: check
-        if: 'github.event.pull_request.draft == true && (!contains(github.event.pull_request.labels.*.name, ''ci-draft''))'
+        if: '(github.event.pull_request.draft == true) && (!contains(github.event.pull_request.labels.*.name, ''ci-draft''))'
         run: |-
           GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
           echo Commit message: $GIT_MESSAGE
@@ -145,16 +145,16 @@ jobs:
         if: '!(matrix.skip)'
       - name: Clone submodule ./tests/wpt/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/wpt/suite
-        if: '!(matrix.skip) && (matrix.wpt)'
+        if: (!(matrix.skip)) && (matrix.wpt)
       - name: Clone submodule ./tests/node_compat/runner/suite
         run: git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite
-        if: '!(matrix.skip) && (matrix.job == ''test'')'
+        if: (!(matrix.skip)) && (matrix.job == 'test')
       - name: Clone submodule ./cli/bench/testdata/lsp_benchdata
         run: git submodule update --init --recursive --depth=1 -- ./cli/bench/testdata/lsp_benchdata
-        if: '!(matrix.skip) && (matrix.job == ''bench'')'
+        if: (!(matrix.skip)) && (matrix.job == 'bench')
       - name: 'Create source tarballs (release, linux)'
         if: |-
-          !(matrix.skip) && (matrix.os == 'linux' &&
+          (!(matrix.skip)) && (matrix.os == 'linux' &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
@@ -178,7 +178,7 @@ jobs:
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
-      - if: '!(matrix.skip) && (matrix.job == ''test'' || matrix.job == ''bench'')'
+      - if: (!(matrix.skip)) && (matrix.job == 'test' || matrix.job == 'bench')
         name: Install Deno
         uses: denoland/setup-deno@v2
         with:
@@ -187,22 +187,22 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-        if: '!(matrix.skip) && (matrix.os != ''linux'' || matrix.arch != ''aarch64'')'
+        if: (!(matrix.skip)) && (matrix.os != 'linux' || matrix.arch != 'aarch64')
       - name: Remove unused versions of Python
-        if: '!(matrix.skip) && (matrix.os != ''linux'' || matrix.arch != ''aarch64'' && (matrix.os == ''windows''))'
+        if: (!(matrix.skip)) && ((matrix.os != 'linux' || matrix.arch != 'aarch64') && (matrix.os == 'windows'))
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
             Where-Object { Test-Path "$_\python.exe" } |
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
-      - if: '!(matrix.skip) && (matrix.job == ''bench'' || matrix.job == ''test'')'
+      - if: (!(matrix.skip)) && (matrix.job == 'bench' || matrix.job == 'test')
         name: Install Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
       - if: |-
-          !(matrix.skip) && (matrix.profile == 'release' &&
+          (!(matrix.skip)) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
@@ -216,7 +216,7 @@ jobs:
           create_credentials_file: true
       - name: Setup gcloud (unix)
         if: |-
-          !(matrix.skip) && (matrix.os != 'windows' &&
+          (!(matrix.skip)) && (matrix.os != 'windows' &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
@@ -227,7 +227,7 @@ jobs:
           project_id: denoland
       - name: Setup gcloud (windows)
         if: |-
-          !(matrix.skip) && (matrix.os == 'windows' &&
+          (!(matrix.skip)) && (matrix.os == 'windows' &&
           matrix.profile == 'release' &&
           matrix.job == 'test' &&
           github.repository == 'denoland/deno' &&
@@ -240,12 +240,12 @@ jobs:
           project_id: denoland
       - name: Configure canary build
         if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
+          (!(matrix.skip)) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main')
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
-      - if: '!(matrix.skip) && (matrix.use_sysroot)'
+      - if: (!(matrix.skip)) && (matrix.use_sysroot)
         name: Set up incremental LTO and sysroot build
         run: |-
           # Setting up sysroot
@@ -332,19 +332,19 @@ jobs:
           which curl
           cat /etc/hosts
           rm ~/.curlrc || true
-        if: '!(matrix.skip) && (matrix.os == ''macos'')'
+        if: (!(matrix.skip)) && (matrix.os == 'macos')
       - name: Install macOS aarch64 lld
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js ld64.lld
-        if: '!(matrix.skip) && (matrix.os == ''macos'' && matrix.arch == ''aarch64'')'
+        if: (!(matrix.skip)) && (matrix.os == 'macos' && matrix.arch == 'aarch64')
       - name: Install rust-codesign
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: |-
           ./tools/install_prebuilt.js rcodesign
           echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-        if: '!(matrix.skip) && (matrix.os == ''macos'')'
+        if: (!(matrix.skip)) && (matrix.os == 'macos')
       - name: Log versions
         run: |-
           echo '*** Python'
@@ -361,13 +361,13 @@ jobs:
           command -v dpkg && dpkg -l || echo 'No dpkg found or bad executable'
         if: '!(matrix.skip)'
       - name: Install benchmark tools
-        if: '!(matrix.skip) && (matrix.job == ''bench'')'
+        if: (!(matrix.skip)) && (matrix.job == 'bench')
         env:
           GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
         run: ./tools/install_prebuilt.js wrk hyperfine
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
-        if: '!(matrix.skip) && (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(matrix.skip)) && (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/''))'
         with:
           path: |-
             ./target
@@ -378,7 +378,7 @@ jobs:
           key: never_saved
           restore-keys: '79-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
-        if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(matrix.skip)) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
         with:
           cache-path: ./target
@@ -389,13 +389,13 @@ jobs:
           key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
         if: '!(matrix.skip)'
       - name: Build debug
-        if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
+        if: (!(matrix.skip)) && (matrix.job == 'test' && matrix.profile == 'debug')
         run: cargo build --locked --all-targets --features=panic-trace
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Build release
         if: |-
-          !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
+          (!(matrix.skip)) && ((matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
           github.repository == 'denoland/deno'))
         run: |-
@@ -403,16 +403,16 @@ jobs:
           cargo build --release --locked --all-targets --features=panic-trace
           df -h
       - name: Check deno binary
-        if: '!(matrix.skip) && (matrix.job == ''test'')'
+        if: (!(matrix.skip)) && (matrix.job == 'test')
         run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
         env:
           NO_COLOR: 1
       - name: Check deno binary (in sysroot)
-        if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.use_sysroot)'
+        if: (!(matrix.skip)) && (matrix.job == 'test' && matrix.use_sysroot)
         run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'
       - name: Generate symcache
         if: |-
-          !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
+          (!(matrix.skip)) && ((matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
           github.repository == 'denoland/deno'))
         run: |-
@@ -423,7 +423,7 @@ jobs:
           NO_COLOR: 1
       - name: Upload PR artifact (linux)
         if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
+          (!(matrix.skip)) && (matrix.job == 'test' &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
           (github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
@@ -434,7 +434,7 @@ jobs:
           path: target/release/deno
       - name: Pre-release (linux)
         if: |-
-          !(matrix.skip) && (matrix.os == 'linux' &&
+          (!(matrix.skip)) && (matrix.os == 'linux' &&
           (matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno')
@@ -450,7 +450,7 @@ jobs:
           ./deno types > lib.deno.d.ts
       - name: Pre-release (mac)
         if: |-
-          !(matrix.skip) && (matrix.os == 'macos' &&
+          (!(matrix.skip)) && (matrix.os == 'macos' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno')
@@ -470,7 +470,7 @@ jobs:
           shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum
       - name: Authenticate with Azure (windows)
         if: |-
-          !(matrix.skip) && (matrix.os == 'windows' &&
+          (!(matrix.skip)) && (matrix.os == 'windows' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
@@ -483,7 +483,7 @@ jobs:
           enable-AzPSSession: true
       - name: Code sign deno.exe (windows)
         if: |-
-          !(matrix.skip) && (matrix.os == 'windows' &&
+          (!(matrix.skip)) && (matrix.os == 'windows' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
@@ -507,7 +507,7 @@ jobs:
           exclude-azure-cli-credential: false
       - name: Verify signature (windows)
         if: |-
-          !(matrix.skip) && (matrix.os == 'windows' &&
+          (!(matrix.skip)) && (matrix.os == 'windows' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
@@ -519,7 +519,7 @@ jobs:
           & $SignToolPath verify /pa /v target\release\deno.exe
       - name: Pre-release (windows)
         if: |-
-          !(matrix.skip) && (matrix.os == 'windows' &&
+          (!(matrix.skip)) && (matrix.os == 'windows' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno')
@@ -532,7 +532,7 @@ jobs:
           target/release/deno.exe -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-pc-windows-msvc.symcache
       - name: Upload canary to dl.deno.land
         if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
+          (!(matrix.skip)) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main')
@@ -545,14 +545,14 @@ jobs:
           rm canary-latest.txt gha-creds-*.json
       - name: Autobahn testsuite
         if: |-
-          !(matrix.skip) && ((matrix.os == 'linux' && matrix.arch != 'aarch64') &&
+          (!(matrix.skip)) && ((matrix.os == 'linux' && matrix.arch != 'aarch64') &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           !startsWith(github.ref, 'refs/tags/'))
         run: target/release/deno run -A --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
       - name: 'Test (full, debug)'
         if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
+          (!(matrix.skip)) && (matrix.job == 'test' &&
           matrix.profile == 'debug' &&
           !startsWith(github.ref, 'refs/tags/') &&
           matrix.os == 'linux')
@@ -561,7 +561,7 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: 'Test (fast, debug)'
         if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
+          (!(matrix.skip)) && (matrix.job == 'test' &&
           matrix.profile == 'debug' &&
           (startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux'))
         run: |-
@@ -571,21 +571,21 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test (release)
         if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
+          (!(matrix.skip)) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
           (matrix.use_sysroot || (
           github.repository == 'denoland/deno' &&
           !startsWith(github.ref, 'refs/tags/'))))
         run: cargo test --release --locked --features=panic-trace
       - name: Ensure no git changes
-        if: '!(matrix.skip) && (matrix.job == ''test'' && github.event_name == ''pull_request'')'
+        if: (!(matrix.skip)) && (matrix.job == 'test' && github.event_name == 'pull_request')
         run: "if [[ -n \"$(git status --porcelain)\" ]]; then\necho \"❌ Git working directory is dirty. Ensure `cargo test` is not modifying git tracked files.\"\necho \"\"\necho \"\U0001F4CB Status:\"\ngit status\necho \"\"\nexit 1\nfi"
       - name: Configure hosts file for WPT
-        if: '!(matrix.skip) && (matrix.wpt)'
+        if: (!(matrix.skip)) && (matrix.wpt)
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
         working-directory: tests/wpt/suite/
       - name: Run web platform tests (debug)
-        if: '!(matrix.skip) && (matrix.wpt && matrix.profile == ''debug'')'
+        if: (!(matrix.skip)) && (matrix.wpt && matrix.profile == 'debug')
         env:
           DENO_BIN: ./target/debug/deno
         run: |-
@@ -594,7 +594,7 @@ jobs:
           deno run -RWNE --allow-run --lock=tools/deno.lock.json --config tests/config/deno.json --unsafely-ignore-certificate-errors \
               ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"
       - name: Run web platform tests (release)
-        if: '!(matrix.skip) && (matrix.wpt && matrix.profile == ''release'')'
+        if: (!(matrix.skip)) && (matrix.wpt && matrix.profile == 'release')
         env:
           DENO_BIN: ./target/release/deno
         run: |-
@@ -605,7 +605,7 @@ jobs:
       - name: Upload wpt results to dl.deno.land
         continue-on-error: true
         if: |-
-          !(matrix.skip) && (matrix.wpt &&
+          (!(matrix.skip)) && (matrix.wpt &&
           matrix.os == 'linux' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
@@ -619,7 +619,7 @@ jobs:
       - name: Upload wpt results to wpt.fyi
         continue-on-error: true
         if: |-
-          !(matrix.skip) && (matrix.wpt &&
+          (!(matrix.skip)) && (matrix.wpt &&
           matrix.os == 'linux' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
@@ -632,11 +632,11 @@ jobs:
           ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
       - name: Run benchmarks
-        if: '!(matrix.skip) && (matrix.job == ''bench'' && !startsWith(github.ref, ''refs/tags/''))'
+        if: '(!(matrix.skip)) && (matrix.job == ''bench'' && !startsWith(github.ref, ''refs/tags/''))'
         run: cargo bench --locked
       - name: Post Benchmarks
         if: |-
-          !(matrix.skip) && (matrix.job == 'bench' &&
+          (!(matrix.skip)) && (matrix.job == 'bench' &&
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))
         env:
@@ -653,19 +653,19 @@ jobs:
           git commit --message "Update benchmarks"
           git push origin gh-pages
       - name: Build product size info
-        if: '!(matrix.skip) && (matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')))'
+        if: '(!(matrix.skip)) && (matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')))'
         run: |-
           du -hd1 "./target/${{ matrix.profile }}"
           du -ha  "./target/${{ matrix.profile }}/deno"
           du -ha  "./target/${{ matrix.profile }}/denort"
       - name: Worker info
-        if: '!(matrix.skip) && (matrix.job == ''bench'')'
+        if: (!(matrix.skip)) && (matrix.job == 'bench')
         run: |-
           cat /proc/cpuinfo
           cat /proc/meminfo
       - name: Upload release to dl.deno.land (unix)
         if: |-
-          !(matrix.skip) && (matrix.os != 'windows' &&
+          (!(matrix.skip)) && (matrix.os != 'windows' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
@@ -676,7 +676,7 @@ jobs:
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
       - name: Upload release to dl.deno.land (windows)
         if: |-
-          !(matrix.skip) && (matrix.os == 'windows' &&
+          (!(matrix.skip)) && (matrix.os == 'windows' &&
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
@@ -689,7 +689,7 @@ jobs:
           gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.symcache gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/
       - name: Create release notes
         if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
+          (!(matrix.skip)) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/'))
@@ -699,7 +699,7 @@ jobs:
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@v0.1.15
         if: |-
-          !(matrix.skip) && (matrix.job == 'test' &&
+          (!(matrix.skip)) && (matrix.job == 'test' &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno' &&
           startsWith(github.ref, 'refs/tags/'))
@@ -733,7 +733,7 @@ jobs:
           draft: true
       - name: Save cache build output (main)
         uses: actions/cache/save@v4
-        if: '!(matrix.skip) && (matrix.job == ''test'' && github.ref == ''refs/heads/main'')'
+        if: (!(matrix.skip)) && (matrix.job == 'test' && github.ref == 'refs/heads/main')
         with:
           path: |-
             ./target
