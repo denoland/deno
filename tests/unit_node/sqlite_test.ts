@@ -257,6 +257,40 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
   db.close();
 });
 
+Deno.test("[node/sqlite] StatementSync unknown named parameters should throw", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(
+    "CREATE TABLE foo (id INTEGER PRIMARY KEY, variable1 TEXT NOT NULL, variable2 INT NOT NULL)",
+  );
+
+  const stmt = db.prepare(
+    "INSERT INTO foo (variable1, variable2) VALUES (:variable1, :variable2) RETURNING id",
+  );
+
+  assertThrows(stmt.run({ variable1: "bar", variable2: 1, variable3: "baz" }));
+
+  db.close();
+});
+
+// https://github.com/denoland/deno/issues/31196
+Deno.test("[node/sqlite] StatementSync unknown named parameters can be ignored", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(
+    "CREATE TABLE foo (id INTEGER PRIMARY KEY, variable1 TEXT NOT NULL, variable2 INT NOT NULL)",
+  );
+
+  const stmt = db.prepare(
+    "INSERT INTO foo (variable1, variable2) VALUES (:variable1, :variable2) RETURNING id",
+  );
+  stmt.setAllowUnknownNamedParameters(true);
+
+  const result = stmt.run({ variable1: "bar", variable2: 1, variable3: "baz" });
+
+  assertEquals(result, { lastInsertRowid: 1, changes: 1 });
+
+  db.close();
+});
+
 Deno.test("[node/sqlite] StatementSync#iterate", () => {
   const db = new DatabaseSync(":memory:");
   const stmt = db.prepare("SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3");
