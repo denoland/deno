@@ -856,16 +856,14 @@ impl<
     } else if desc
       .map(|desc| self.flag_denied_list.iter().any(|v| desc.matches_deny(v)))
       .unwrap_or(false)
-    {
-      PermissionState::Denied
-    } else if desc
-      .map(|desc| {
-        self
-          .prompt_denied_list
-          .iter()
-          .any(|v| desc.stronger_than_deny(v))
-      })
-      .unwrap_or(false)
+      || desc
+        .map(|desc| {
+          self
+            .prompt_denied_list
+            .iter()
+            .any(|v| desc.stronger_than_deny(v))
+        })
+        .unwrap_or(false)
     {
       PermissionState::Denied
     } else if desc
@@ -980,26 +978,6 @@ impl<
       }
     }
     self.query_desc(desc, AllowPartial::TreatAsPartialGranted)
-  }
-
-  fn is_granted(&self, query: Option<&TAllowDesc::QueryDesc<'_>>) -> bool {
-    match query {
-      Some(query) => {
-        self.granted_global
-          || self.granted_list.iter().any(|v| query.matches_allow(v))
-      }
-      None => self.granted_global,
-    }
-  }
-
-  fn is_flag_denied(&self, query: Option<&TAllowDesc::QueryDesc<'_>>) -> bool {
-    match query {
-      Some(query) => {
-        self.flag_denied_global
-          || self.flag_denied_list.iter().any(|v| query.matches_deny(v))
-      }
-      None => self.flag_denied_global,
-    }
   }
 
   fn is_partial_flag_denied(
