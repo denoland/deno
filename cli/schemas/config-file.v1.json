@@ -17,15 +17,14 @@
       }]
     },
     "allowDenyIgnorePermissionConfig": {
-      "allOf": [
-        { "$ref": "#/$defs/allowDenyPermissionConfig" },
-        {
-          "type": "object",
-          "properties": {
-            "ignore": { "$ref": "#/$defs/permissionConfigValue" }
-          }
-        }
-      ]
+      "type": "object",
+      "description": "Object form to allow, deny, and/or ignore permissions.",
+      "additionalProperties": false,
+      "properties": {
+        "allow": { "$ref": "#/$defs/permissionConfigValue" },
+        "deny": { "$ref": "#/$defs/permissionConfigValue" },
+        "ignore": { "$ref": "#/$defs/permissionConfigValue" }
+      }
     },
     "allowDenyPermissionConfig": {
       "type": "object",
