@@ -6381,6 +6381,32 @@ mod tests {
         )
         .is_ok()
     );
+    {
+      let mut perms = Permissions::none_without_prompt();
+      perms.env = UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_unary(
+          Some(Vec::from([
+            EnvDescriptor::new(Cow::Borrowed("PREFIX_ALLOWED*")),
+            EnvDescriptor::new(Cow::Borrowed("PREFIX_EXPLICIT_ALLOWED")),
+          ])),
+          Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("PREFIX*"))])),
+          false,
+        )
+      };
+      assert_eq!(
+        perms.env.query(Some("PREFIX_TEST")),
+        PermissionState::Denied
+      );
+      assert_eq!(
+        perms.env.query(Some("PREFIX_ALLOWED_TEST")),
+        PermissionState::Granted
+      );
+      assert_eq!(
+        perms.env.query(Some("PREFIX_EXPLICIT_ALLOWED")),
+        PermissionState::Granted
+      );
+    }
   }
 
   #[test]
