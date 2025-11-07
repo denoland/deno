@@ -29,7 +29,7 @@ parking_lot.workspace = true
 percent-encoding = { workspace = true, features = [] }
 serde.workspace = true
 serde_json.workspace = true
-sys_traits.workspace = true
+sys_traits = { workspace = true, features = ["libc", "real", "winapi"] }
 thiserror.workspace = true
 url.workspace = true
 which.workspace = true

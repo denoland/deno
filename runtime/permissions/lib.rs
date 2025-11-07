@@ -877,7 +877,10 @@ impl<
       && self.is_partial_flag_denied(desc)
     {
       PermissionState::DeniedPartial
-    } else if self.flag_denied_global || self.prompt_denied_global {
+    } else if self.flag_denied_global
+      || self.prompt_denied_global
+      || desc.is_none() && !self.prompt_denied_list.is_empty()
+    {
       PermissionState::Denied
     } else if self.granted_global {
       self.query_allowed_desc(desc, allow_partial)
