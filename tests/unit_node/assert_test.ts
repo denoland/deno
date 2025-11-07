@@ -45,3 +45,72 @@ Deno.test("[node/assert] error message from strictEqual should be the same as As
     { message },
   );
 });
+
+Deno.test("[node/assert] deepStrictEqual with Number objects", () => {
+  // Different Number objects should throw
+  assert.throws(
+    () => {
+      assert.deepStrictEqual(new Number(1), new Number(2));
+    },
+    assert.AssertionError,
+  );
+
+  // Same Number objects should not throw
+  assert.doesNotThrow(() => {
+    assert.deepStrictEqual(new Number(1), new Number(1));
+  });
+
+  // Number object vs primitive should throw
+  assert.throws(
+    () => {
+      assert.deepStrictEqual(new Number(1), 1);
+    },
+    assert.AssertionError,
+  );
+});
+
+Deno.test("[node/assert] deepStrictEqual with String objects", () => {
+  // Different String objects should throw
+  assert.throws(
+    () => {
+      assert.deepStrictEqual(new String("hello"), new String("world"));
+    },
+    assert.AssertionError,
+  );
+
+  // Same String objects should not throw
+  assert.doesNotThrow(() => {
+    assert.deepStrictEqual(new String("hello"), new String("hello"));
+  });
+
+  // String object vs primitive should throw
+  assert.throws(
+    () => {
+      assert.deepStrictEqual(new String("hello"), "hello");
+    },
+    assert.AssertionError,
+  );
+});
+
+Deno.test("[node/assert] deepStrictEqual with Boolean objects", () => {
+  // Different Boolean objects should throw
+  assert.throws(
+    () => {
+      assert.deepStrictEqual(new Boolean(true), new Boolean(false));
+    },
+    assert.AssertionError,
+  );
+
+  // Same Boolean objects should not throw
+  assert.doesNotThrow(() => {
+    assert.deepStrictEqual(new Boolean(true), new Boolean(true));
+  });
+
+  // Boolean object vs primitive should throw
+  assert.throws(
+    () => {
+      assert.deepStrictEqual(new Boolean(true), true);
+    },
+    assert.AssertionError,
+  );
+});

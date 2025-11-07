@@ -1,0 +1,8 @@
+error: Uncaught (in promise) AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
++ [Number: 1]
+- [Number: 2]
+
+    at deepStrictEqual ([WILDCARD])
+    at file://[WILDCARD]/test.mjs:3:8
