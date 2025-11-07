@@ -1530,8 +1530,14 @@ impl PathDescriptor {
     self.path.cmp(&other.path)
   }
 
-  fn cmp_allow_deny(&self, _other: &PathDescriptor) -> Ordering {
-    Ordering::Greater
+  fn cmp_allow_deny(&self, other: &PathDescriptor) -> Ordering {
+    if other.path.starts_with(&self.path) {
+      Ordering::Greater
+    } else if self.path.starts_with(&other.path) {
+      Ordering::Less
+    } else {
+      Ordering::Greater
+    }
   }
 
   fn cmp_deny_deny(&self, other: &PathDescriptor) -> Ordering {
@@ -5750,11 +5756,26 @@ mod tests {
       },
     )
     .unwrap();
+    let read_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_read()
+    };
+    let write_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_write()
+    };
+    let ffi_query = |path: &str| {
+      parser
+        .parse_path_query(Cow::Owned(PathBuf::from(path)))
+        .unwrap()
+        .into_ffi()
+    };
     #[rustfmt::skip]
     {
-      let read_query = |path: &str| parser.parse_path_query(Cow::Owned(PathBuf::from(path))).unwrap().into_read();
-      let write_query = |path: &str| parser.parse_path_query(Cow::Owned(PathBuf::from(path))).unwrap().into_write();
-      let ffi_query = |path: &str| parser.parse_path_query(Cow::Owned(PathBuf::from(path))).unwrap().into_ffi();
       assert_eq!(perms1.read.query(None), PermissionState::Granted);
       assert_eq!(perms1.read.query(Some(&read_query("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.read.query(None), PermissionState::Prompt);
@@ -5839,6 +5860,30 @@ mod tests {
       assert_eq!(perms4.import.query(None), PermissionState::GrantedPartial);
       assert_eq!(perms4.import.query(Some(&ImportDescriptor(NetDescriptor(Host::must_parse("example.com"), Some(443))))), PermissionState::Denied);
       assert_eq!(perms4.import.query(Some(&ImportDescriptor(NetDescriptor(Host::must_parse("deno.land"), Some(443))))), PermissionState::Granted);
+    };
+    #[rustfmt::skip]
+    {
+      let perms = Permissions::from_options(
+        &parser,
+        &PermissionsOptions {
+          allow_read: Some(svec!["/foo/specific"]),
+          deny_read: Some(svec!["/foo"]),
+          allow_write: Some(svec!["/foo/specific"]),
+          deny_write: Some(svec!["/foo"]),
+          allow_ffi: Some(svec!["/foo/specific"]),
+          deny_ffi: Some(svec!["/foo"]),
+          ..Default::default()
+        },
+      )
+      .unwrap();
+      assert_eq!(perms.read.query(Some(&read_query("/foo"))), PermissionState::Denied);
+      assert_eq!(perms.read.query(Some(&read_query("/"))), PermissionState::Prompt);
+      assert_eq!(perms.read.query(Some(&read_query("/foo/specific"))), PermissionState::Granted);
+      assert_eq!(perms.read.query(Some(&read_query("/foo/specific/data.txt"))), PermissionState::Granted);
+      assert_eq!(perms.write.query(Some(&write_query("/foo"))), PermissionState::Denied);
+      assert_eq!(perms.write.query(Some(&write_query("/foo/specific"))), PermissionState::Granted);
+      assert_eq!(perms.ffi.query(Some(&ffi_query("/foo"))), PermissionState::Denied);
+      assert_eq!(perms.ffi.query(Some(&ffi_query("/foo/specific"))), PermissionState::Granted);
     };
   }
 
