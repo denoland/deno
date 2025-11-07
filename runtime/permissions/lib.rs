@@ -3290,16 +3290,13 @@ pub enum PermissionsFromOptionsError {
 }
 
 impl Permissions {
-  pub fn new_unary_with_ignore<
-    TAllow: AllowDescriptor,
-    TDeny: DenyDescriptor,
-  >(
+  pub fn new_unary_with_ignore<TAllow: AllowDescriptor>(
     // TODO(THIS PR): No need for HashSet here
     allow_list: Option<HashSet<TAllow>>,
-    deny_list: Option<HashSet<TDeny>>,
-    ignore_list: Option<HashSet<TDeny>>,
+    deny_list: Option<HashSet<TAllow::DenyDesc>>,
+    ignore_list: Option<HashSet<TAllow::DenyDesc>>,
     prompt: bool,
-  ) -> UnaryPermission<TAllow, TDeny> {
+  ) -> UnaryPermission<TAllow, TAllow::DenyDesc> {
     let mut options = Self::new_unary(allow_list, deny_list, prompt);
     options.flag_ignored_global = global_from_option(ignore_list.as_ref());
     for item in ignore_list.unwrap_or_default() {
@@ -3310,21 +3307,23 @@ impl Permissions {
     options
   }
 
-  pub fn new_unary<TAllow: AllowDescriptor, TDeny: DenyDescriptor>(
+  pub fn new_unary<TAllow: AllowDescriptor>(
     allow_list: Option<HashSet<TAllow>>,
-    deny_list: Option<HashSet<TDeny>>,
+    deny_list: Option<HashSet<TAllow::DenyDesc>>,
     prompt: bool,
-  ) -> UnaryPermission<TAllow, TDeny> {
+  ) -> UnaryPermission<TAllow, TAllow::DenyDesc> {
     let mut descriptors = UnaryPermissionDescriptors::default();
+    let granted_global = global_from_option(allow_list.as_ref());
+    let flag_denied_global = global_from_option(deny_list.as_ref());
     for item in allow_list.unwrap_or_default() {
       descriptors.insert(UnaryPermissionDesc::Granted(item));
     }
     for item in deny_list.unwrap_or_default() {
       descriptors.insert(UnaryPermissionDesc::FlagDenied(item));
     }
-    UnaryPermission::<TAllow, TDeny> {
-      granted_global: global_from_option(allow_list.as_ref()),
-      flag_denied_global: global_from_option(deny_list.as_ref()),
+    UnaryPermission::<TAllow, TAllow::DenyDesc> {
+      granted_global,
+      flag_denied_global,
       descriptors,
       prompt,
       ..Default::default()
