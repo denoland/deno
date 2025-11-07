@@ -1621,11 +1621,6 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.env.deny.as_ref()),
       &identity,
     ),
-    ignore_env: handle_deny(
-      flags.ignore_env.as_ref(),
-      config.and_then(|c| c.permissions.env.ignore.as_ref()),
-      &identity,
-    ),
     allow_net: handle_allow(
       flags.allow_all,
       config.and_then(|c| c.permissions.all),
@@ -1716,7 +1711,6 @@ fn flags_to_permissions_options(
 
 #[cfg(test)]
 mod test {
-  use deno_config::deno_json::AllowDenyIgnorePermissionConfig;
   use deno_config::deno_json::AllowDenyPermissionConfig;
   use deno_config::deno_json::PermissionsObject;
   use pretty_assertions::assert_eq;
@@ -1829,15 +1823,12 @@ mod test {
               "example.com".to_string(),
             ])),
           },
-          env: AllowDenyIgnorePermissionConfig {
+          env: AllowDenyPermissionConfig {
             allow: Some(PermissionConfigValue::Some(vec![
               "env-allow".to_string(),
             ])),
             deny: Some(PermissionConfigValue::Some(vec![
               "env-deny".to_string(),
-            ])),
-            ignore: Some(PermissionConfigValue::Some(vec![
-              "env-ignore".to_string(),
             ])),
           },
           net: AllowDenyPermissionConfig {
@@ -1883,7 +1874,6 @@ mod test {
         PermissionsOptions {
           allow_env: Some(vec!["env-allow".to_string()]),
           deny_env: Some(vec!["env-deny".to_string()]),
-          ignore_env: Some(vec!["env-ignore".to_string()]),
           allow_net: Some(vec!["net-allow".to_string()]),
           deny_net: Some(vec!["net-deny".to_string()]),
           allow_ffi: Some(vec![
@@ -1983,7 +1973,6 @@ mod test {
         PermissionsOptions {
           allow_env: Some(vec![]),
           deny_env: None,
-          ignore_env: None,
           allow_net: Some(vec![]),
           deny_net: None,
           allow_ffi: Some(vec![]),

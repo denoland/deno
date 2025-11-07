@@ -16,16 +16,6 @@
         "items": { "type": "string" }
       }]
     },
-    "allowDenyIgnorePermissionConfig": {
-      "type": "object",
-      "description": "Object form to allow, deny, and/or ignore permissions.",
-      "additionalProperties": false,
-      "properties": {
-        "allow": { "$ref": "#/$defs/permissionConfigValue" },
-        "deny": { "$ref": "#/$defs/permissionConfigValue" },
-        "ignore": { "$ref": "#/$defs/permissionConfigValue" }
-      }
-    },
     "allowDenyPermissionConfig": {
       "type": "object",
       "description": "Object form to allow and/or deny permissions.",
