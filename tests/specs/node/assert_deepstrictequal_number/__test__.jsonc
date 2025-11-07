@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "number_objects_different_values": {
+      "args": "run test.mjs",
+      "output": "test.out",
+      "exitCode": 1
+    }
+  }
+}
