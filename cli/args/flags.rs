@@ -4153,30 +4153,6 @@ fn compile_args_without_check_args(app: Command) -> Command {
 }
 
 fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
-  let make_deny_ignore_env_arg = |arg: Arg| {
-    let mut arg = arg
-      .num_args(0..)
-      .use_value_delimiter(true)
-      .require_equals(true)
-      .value_name("VARIABLE_NAME")
-      .long_help("false")
-      .value_parser(|key: &str| {
-        if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-          return Err(format!("invalid key \"{key}\""));
-        }
-
-        Ok(if cfg!(windows) {
-          key.to_uppercase()
-        } else {
-          key.to_string()
-        })
-      })
-      .hide(true);
-    if let Some(requires) = requires {
-      arg = arg.requires(requires)
-    }
-    arg
-  };
   app
     .after_help(cstr!(r#"<y>Permission options:</>
 <y>Docs</>: <c>https://docs.deno.com/go/permissions</>

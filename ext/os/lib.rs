@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
-use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
@@ -155,9 +154,7 @@ fn op_set_env(
   #[string] key: &str,
   #[string] value: &str,
 ) -> Result<(), OsError> {
-  if check_env_with_maybe_exit(state, key)?.is_break() {
-    return Ok(());
-  }
+  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
   if key.is_empty() {
     return Err(OsError::EnvEmptyKey);
   }
@@ -174,21 +171,6 @@ fn op_set_env(
   };
   dt_change_notif(scope, key);
   Ok(())
-}
-
-fn check_env_with_maybe_exit(
-  state: &mut OpState,
-  key: &str,
-) -> Result<ControlFlow<()>, PermissionCheckError> {
-  match state.borrow_mut::<PermissionsContainer>().check_env(key) {
-    Ok(()) => Ok(ControlFlow::Continue(())),
-    Err(PermissionCheckError::PermissionDenied(err))
-      if err.state == PermissionState::Ignored =>
-    {
-      Ok(ControlFlow::Break(()))
-    }
-    Err(err) => Err(err),
-  }
 }
 
 #[op2(stack_trace)]
@@ -210,9 +192,7 @@ fn op_env(
       PermissionState::Granted
       | PermissionState::Prompt
       | PermissionState::Denied => return Err(err.into()),
-      PermissionState::GrantedPartial
-      | PermissionState::DeniedPartial
-      | PermissionState::Ignored => false,
+      PermissionState::GrantedPartial | PermissionState::DeniedPartial => false,
     },
     Err(err) => return Err(err),
   };
@@ -229,8 +209,7 @@ fn op_env(
           PermissionState::Granted | PermissionState::GrantedPartial => {
             Some((k, v))
           }
-          PermissionState::Ignored
-          | PermissionState::Prompt
+          PermissionState::Prompt
           | PermissionState::Denied
           | PermissionState::DeniedPartial => None,
         }
@@ -272,9 +251,8 @@ fn op_get_env(
   let skip_permission_check =
     SORTED_NODE_ENV_VAR_ALLOWLIST.binary_search(&key).is_ok();
 
-  if !skip_permission_check && check_env_with_maybe_exit(state, key)?.is_break()
-  {
-    return Ok(None);
+  if !skip_permission_check {
+    state.borrow_mut::<PermissionsContainer>().check_env(key)?
   }
 
   get_env_var(key)
@@ -285,9 +263,7 @@ fn op_delete_env(
   state: &mut OpState,
   #[string] key: &str,
 ) -> Result<(), OsError> {
-  if check_env_with_maybe_exit(state, key)?.is_break() {
-    return Ok(());
-  }
+  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
