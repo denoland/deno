@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt;
@@ -624,7 +625,7 @@ impl UnitPermission {
 
 /// A normalized environment variable name. On Windows this will
 /// be uppercase and on other platforms it will stay as-is.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Ord, PartialOrd)]
 pub struct EnvVarName {
   inner: String,
 }
@@ -687,9 +688,21 @@ impl PartialEq<EnvVarNameRef<'_>> for EnvVarName {
 pub trait AllowDescriptor: Debug + Eq + Clone + Hash {
   type QueryDesc<'a>: QueryDescriptor<AllowDesc = Self, DenyDesc = Self::DenyDesc>;
   type DenyDesc: DenyDescriptor;
+
+  fn cmp_allow(&self, _other: &Self) -> Ordering {
+    Ordering::Equal
+  }
+
+  fn cmp_deny(&self, _other: &Self::DenyDesc) -> Ordering {
+    Ordering::Equal
+  }
 }
 
-pub trait DenyDescriptor: Debug + Eq + Clone + Hash {}
+pub trait DenyDescriptor: Debug + Eq + Clone + Hash {
+  fn cmp_deny(&self, _other: &Self) -> Ordering {
+    Ordering::Equal
+  }
+}
 
 pub trait QueryDescriptor: Debug {
   type AllowDesc: AllowDescriptor;
@@ -727,19 +740,175 @@ fn format_display_name(display_name: Cow<'_, str>) -> Cow<'_, str> {
   }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum AllowOrDenyDescRef<'a, TAllowDesc: AllowDescriptor> {
+  Allow(&'a TAllowDesc),
+  Deny(&'a TAllowDesc::DenyDesc),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum UnaryPermissionDesc<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor>
+{
+  Granted(TAllowDesc),
+  FlagDenied(TDenyDesc),
+  FlagIgnored(TDenyDesc),
+  PromptDenied(TDenyDesc),
+}
+
+impl<TAllowDesc: AllowDescriptor> std::cmp::PartialOrd
+  for UnaryPermissionDesc<TAllowDesc, TAllowDesc::DenyDesc>
+{
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl<TAllowDesc: AllowDescriptor> std::cmp::Ord
+  for UnaryPermissionDesc<TAllowDesc, TAllowDesc::DenyDesc>
+{
+  fn cmp(&self, other: &Self) -> Ordering {
+    match self.allow_or_deny_desc() {
+      AllowOrDenyDescRef::Allow(self_desc) => {
+        match other.allow_or_deny_desc() {
+          AllowOrDenyDescRef::Allow(other_desc) => {
+            self_desc.cmp_allow(other_desc)
+          }
+          AllowOrDenyDescRef::Deny(other_desc) => {
+            match self_desc.cmp_deny(other_desc) {
+              Ordering::Equal => {
+                self.kind_precedence().cmp(&other.kind_precedence())
+              }
+              ord => ord,
+            }
+          }
+        }
+      }
+      AllowOrDenyDescRef::Deny(self_desc) => match other.allow_or_deny_desc() {
+        AllowOrDenyDescRef::Allow(other_desc) => {
+          match other_desc.cmp_deny(self_desc) {
+            Ordering::Equal => {
+              self.kind_precedence().cmp(&other.kind_precedence())
+            }
+            // flip because we compred to other to self above
+            Ordering::Less => Ordering::Greater,
+            Ordering::Greater => Ordering::Less,
+          }
+        }
+        AllowOrDenyDescRef::Deny(other_desc) => self_desc.cmp_deny(other_desc),
+      },
+    }
+  }
+}
+
+impl<TAllowDesc: AllowDescriptor>
+  UnaryPermissionDesc<TAllowDesc, TAllowDesc::DenyDesc>
+{
+  fn allow_or_deny_desc(&self) -> AllowOrDenyDescRef<'_, TAllowDesc> {
+    match self {
+      UnaryPermissionDesc::Granted(desc) => AllowOrDenyDescRef::Allow(desc),
+      UnaryPermissionDesc::FlagDenied(desc)
+      | UnaryPermissionDesc::FlagIgnored(desc)
+      | UnaryPermissionDesc::PromptDenied(desc) => {
+        AllowOrDenyDescRef::Deny(desc)
+      }
+    }
+  }
+
+  fn kind_precedence(&self) -> u8 {
+    match self {
+      UnaryPermissionDesc::FlagDenied(_) => 0,
+      UnaryPermissionDesc::PromptDenied(_) => 1,
+      UnaryPermissionDesc::FlagIgnored(_) => 2,
+      UnaryPermissionDesc::Granted(_) => 3,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct UnaryPermissionDescriptors<
+  TAllowDesc: AllowDescriptor,
+  TDenyDesc: DenyDescriptor,
+> {
+  inner: Vec<UnaryPermissionDesc<TAllowDesc, TDenyDesc>>,
+  has_flag_denied: bool,
+  has_prompt_denied: bool,
+  has_flag_ignored: bool,
+}
+
+impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Default
+  for UnaryPermissionDescriptors<TAllowDesc, TDenyDesc>
+{
+  fn default() -> Self {
+    Self {
+      inner: Default::default(),
+      has_flag_denied: false,
+      has_prompt_denied: false,
+      has_flag_ignored: false,
+    }
+  }
+}
+
+impl<TAllowDesc: AllowDescriptor>
+  UnaryPermissionDescriptors<TAllowDesc, TAllowDesc::DenyDesc>
+{
+  pub fn has_any_denied_or_ignored(&self) -> bool {
+    self.has_flag_denied || self.has_prompt_denied || self.has_flag_ignored
+  }
+
+  pub fn has_prompt_denied(&self) -> bool {
+    self.has_prompt_denied
+  }
+
+  pub fn insert(
+    &mut self,
+    item: UnaryPermissionDesc<TAllowDesc, TAllowDesc::DenyDesc>,
+  ) {
+    match &item {
+      UnaryPermissionDesc::Granted(_) => {}
+      UnaryPermissionDesc::FlagDenied(_) => {
+        self.has_flag_denied = true;
+      }
+      UnaryPermissionDesc::FlagIgnored(_) => {
+        self.has_flag_ignored = true;
+      }
+      UnaryPermissionDesc::PromptDenied(_) => {
+        self.has_prompt_denied = true;
+      }
+    }
+    if let Err(insert_index) = self.inner.binary_search(&item) {
+      self.inner.insert(insert_index, item);
+    }
+  }
+
+  pub fn revoke_granted(&mut self, desc: &TAllowDesc::QueryDesc<'_>) {
+    self.inner.retain(|v| match v {
+      UnaryPermissionDesc::Granted(v) => !desc.revokes(v),
+      UnaryPermissionDesc::FlagDenied(_)
+      | UnaryPermissionDesc::FlagIgnored(_)
+      | UnaryPermissionDesc::PromptDenied(_) => true,
+    })
+  }
+
+  pub fn revoke_all_granted(&mut self) {
+    self.inner.retain(|v| match v {
+      UnaryPermissionDesc::Granted(_) => false,
+      UnaryPermissionDesc::FlagDenied(_)
+      | UnaryPermissionDesc::FlagIgnored(_)
+      | UnaryPermissionDesc::PromptDenied(_) => true,
+    })
+  }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub struct UnaryPermission<
   TAllowDesc: AllowDescriptor,
   TDenyDesc: DenyDescriptor,
 > {
   granted_global: bool,
-  granted_list: HashSet<TAllowDesc>,
   flag_denied_global: bool,
-  flag_denied_list: HashSet<TDenyDesc>,
   flag_ignored_global: bool,
-  flag_ignored_list: HashSet<TDenyDesc>,
   prompt_denied_global: bool,
-  prompt_denied_list: HashSet<TDenyDesc>,
+  descriptors: UnaryPermissionDescriptors<TAllowDesc, TDenyDesc>,
   prompt: bool,
 }
 
@@ -749,13 +918,10 @@ impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Default
   fn default() -> Self {
     UnaryPermission {
       granted_global: Default::default(),
-      granted_list: Default::default(),
       flag_denied_global: Default::default(),
-      flag_denied_list: Default::default(),
       flag_ignored_global: Default::default(),
-      flag_ignored_list: Default::default(),
       prompt_denied_global: Default::default(),
-      prompt_denied_list: Default::default(),
+      descriptors: Default::default(),
       prompt: Default::default(),
     }
   }
@@ -767,13 +933,10 @@ impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Clone
   fn clone(&self) -> Self {
     Self {
       granted_global: self.granted_global,
-      granted_list: self.granted_list.clone(),
       flag_denied_global: self.flag_denied_global,
-      flag_denied_list: self.flag_denied_list.clone(),
       flag_ignored_global: self.flag_ignored_global,
-      flag_ignored_list: self.flag_ignored_list.clone(),
       prompt_denied_global: self.prompt_denied_global,
-      prompt_denied_list: self.prompt_denied_list.clone(),
+      descriptors: self.descriptors.clone(),
       prompt: self.prompt,
     }
   }
@@ -796,9 +959,7 @@ impl<
       && !self.flag_denied_global
       && !self.prompt_denied_global
       && !self.flag_ignored_global
-      && self.flag_denied_list.is_empty()
-      && self.flag_ignored_list.is_empty()
-      && self.prompt_denied_list.is_empty()
+      && !self.descriptors.has_any_denied_or_ignored()
       && !has_broker()
   }
 
@@ -860,7 +1021,7 @@ impl<
       PermissionState::DeniedPartial
     } else if self.flag_denied_global
       || desc.is_none()
-        && (self.prompt_denied_global || !self.prompt_denied_list.is_empty())
+        && (self.prompt_denied_global || self.descriptors.has_prompt_denied())
     {
       PermissionState::Denied
     } else if self.granted_global {
@@ -876,20 +1037,31 @@ impl<
     allow_partial: AllowPartial,
   ) -> Option<PermissionState> {
     let desc = desc?;
-    if self.flag_ignored_list.iter().any(|v| desc.matches_deny(v)) {
-      Some(PermissionState::Ignored)
-    } else if self.flag_denied_list.iter().any(|v| desc.matches_deny(v))
-      || self
-        .prompt_denied_list
-        .iter()
-        .any(|v| desc.stronger_than_deny(v))
-    {
-      Some(PermissionState::Denied)
-    } else if self.granted_list.iter().any(|v| desc.matches_allow(v)) {
-      Some(self.query_allowed_desc(Some(desc), allow_partial))
-    } else {
-      None
+    for item in &self.descriptors.inner {
+      match item {
+        UnaryPermissionDesc::Granted(v) => {
+          if desc.matches_allow(v) {
+            return Some(self.query_allowed_desc(Some(desc), allow_partial));
+          }
+        }
+        UnaryPermissionDesc::FlagDenied(v) => {
+          if desc.matches_deny(v) {
+            return Some(PermissionState::Denied);
+          }
+        }
+        UnaryPermissionDesc::FlagIgnored(v) => {
+          if desc.matches_deny(v) {
+            return Some(PermissionState::Ignored);
+          }
+        }
+        UnaryPermissionDesc::PromptDenied(v) => {
+          if desc.stronger_than_deny(v) {
+            return Some(PermissionState::Denied);
+          }
+        }
+      }
     }
+    None
   }
 
   fn query_allowed_desc(
@@ -969,14 +1141,14 @@ impl<
   ) -> PermissionState {
     match desc {
       Some(desc) => {
-        self.granted_list.retain(|v| !desc.revokes(v));
+        self.descriptors.revoke_granted(desc);
       }
       None => {
         self.granted_global = false;
         // Revoke global is a special case where the entire granted list is
         // cleared. It's inconsistent with the granular case where only
         // descriptors stronger than the revoked one are purged.
-        self.granted_list.clear();
+        self.descriptors.revoke_all_granted();
       }
     }
     self.query_desc(desc, AllowPartial::TreatAsPartialGranted)
@@ -988,13 +1160,14 @@ impl<
   ) -> bool {
     match query {
       None => {
-        !self.flag_denied_list.is_empty() || !self.flag_ignored_list.is_empty()
+        self.descriptors.has_flag_denied || self.descriptors.has_flag_ignored
       }
-      Some(query) => self
-        .flag_denied_list
-        .iter()
-        .chain(self.flag_ignored_list.iter())
-        .any(|v| query.overlaps_deny(v)),
+      Some(query) => self.descriptors.inner.iter().any(|desc| match desc {
+        UnaryPermissionDesc::FlagIgnored(v)
+        | UnaryPermissionDesc::FlagDenied(v) => query.overlaps_deny(v),
+        UnaryPermissionDesc::Granted(_)
+        | UnaryPermissionDesc::PromptDenied(_) => false,
+      }),
     }
   }
 
@@ -1012,26 +1185,31 @@ impl<
       }
       None => None,
     };
-    Self::list_insert(desc, &mut self.granted_global, &mut self.granted_list);
+    Self::list_insert(
+      desc.map(UnaryPermissionDesc::Granted),
+      &mut self.granted_global,
+      &mut self.descriptors,
+    );
     true
   }
 
   fn insert_prompt_denied(&mut self, desc: Option<TDenyDesc>) {
     Self::list_insert(
-      desc,
+      desc.map(UnaryPermissionDesc::PromptDenied),
       &mut self.prompt_denied_global,
-      &mut self.prompt_denied_list,
+      &mut self.descriptors,
     );
   }
 
-  fn list_insert<T: Hash + Eq>(
-    desc: Option<T>,
+  fn list_insert(
+    desc: Option<UnaryPermissionDesc<TAllowDesc, TDenyDesc>>,
     list_global: &mut bool,
-    list: &mut HashSet<T>,
+    descriptors: &mut UnaryPermissionDescriptors<TAllowDesc, TDenyDesc>,
   ) {
     match desc {
       Some(desc) => {
-        list.insert(desc);
+        // TODO(THIS PR): uncomment once compiling
+        //self.descriptors.insert(desc);
       }
       None => *list_global = true,
     }
@@ -1059,28 +1237,34 @@ impl<
       }
       ChildUnaryPermissionArg::NotGranted => {}
       ChildUnaryPermissionArg::GrantedList(granted_list) => {
-        perms.granted_list = granted_list
-          .iter()
-          .filter_map(|i| parse(i).transpose())
-          .collect::<Result<_, E>>()?;
-        if !perms.granted_list.iter().all(|desc| {
-          TAllowDesc::QueryDesc::from_allow(desc)
+        for result in granted_list.iter().filter_map(|i| parse(i).transpose()) {
+          let desc = result?;
+          if TAllowDesc::QueryDesc::from_allow(&desc)
             .check_in_permission(self, None)
-            .is_ok()
-        }) {
-          return Err(ChildPermissionError::Escalation);
+            .is_err()
+          {
+            return Err(ChildPermissionError::Escalation);
+          }
+          perms.descriptors.insert(UnaryPermissionDesc::Granted(desc));
         }
       }
     }
     perms.flag_denied_global = self.flag_denied_global;
     perms.prompt_denied_global = self.prompt_denied_global;
     perms.prompt = self.prompt;
-    perms.flag_denied_list.clone_from(&self.flag_denied_list);
-    perms
-      .prompt_denied_list
-      .clone_from(&self.prompt_denied_list);
     perms.flag_ignored_global = self.flag_ignored_global;
-    perms.flag_ignored_list.clone_from(&self.flag_ignored_list);
+    for item in &self.descriptors.inner {
+      match item {
+        UnaryPermissionDesc::Granted(_) => {
+          // ignore
+        }
+        UnaryPermissionDesc::FlagDenied(_)
+        | UnaryPermissionDesc::FlagIgnored(_)
+        | UnaryPermissionDesc::PromptDenied(_) => {
+          perms.descriptors.insert(item.clone());
+        }
+      }
+    }
 
     Ok(perms)
   }
@@ -1921,6 +2105,22 @@ pub enum EnvDescriptor {
   PrefixPattern(EnvVarName),
 }
 
+fn cmp_env_descriptor(a: &EnvDescriptor, b: &EnvDescriptor) -> Ordering {
+  match a {
+    EnvDescriptor::Name(self_name) => match b {
+      EnvDescriptor::Name(other_name) => self_name.cmp(other_name),
+      EnvDescriptor::PrefixPattern(_) => Ordering::Less,
+    },
+    EnvDescriptor::PrefixPattern(self_pattern) => match b {
+      EnvDescriptor::Name(_) => Ordering::Greater,
+      // for patterns, prefer more specific items first
+      EnvDescriptor::PrefixPattern(other_pattern) => {
+        other_pattern.cmp(self_pattern)
+      }
+    },
+  }
+}
+
 impl EnvDescriptor {
   pub fn new(env: Cow<'_, str>) -> Self {
     if let Some(prefix_pattern) = env.as_ref().strip_suffix('*') {
@@ -1934,9 +2134,21 @@ impl EnvDescriptor {
 impl AllowDescriptor for EnvDescriptor {
   type QueryDesc<'a> = EnvQueryDescriptor<'a>;
   type DenyDesc = EnvDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    cmp_env_descriptor(self, other)
+  }
+
+  fn cmp_deny(&self, other: &Self::DenyDesc) -> Ordering {
+    cmp_env_descriptor(self, other)
+  }
 }
 
-impl DenyDescriptor for EnvDescriptor {}
+impl DenyDescriptor for EnvDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    cmp_env_descriptor(self, other)
+  }
+}
 
 #[derive(Clone, Debug)]
 enum EnvQueryDescriptorInner<'a> {
@@ -3082,6 +3294,7 @@ impl Permissions {
     TAllow: AllowDescriptor,
     TDeny: DenyDescriptor,
   >(
+    // TODO(THIS PR): No need for HashSet here
     allow_list: Option<HashSet<TAllow>>,
     deny_list: Option<HashSet<TDeny>>,
     ignore_list: Option<HashSet<TDeny>>,
@@ -3089,7 +3302,11 @@ impl Permissions {
   ) -> UnaryPermission<TAllow, TDeny> {
     let mut options = Self::new_unary(allow_list, deny_list, prompt);
     options.flag_ignored_global = global_from_option(ignore_list.as_ref());
-    options.flag_ignored_list = ignore_list.unwrap_or_default();
+    for item in ignore_list.unwrap_or_default() {
+      options
+        .descriptors
+        .insert(UnaryPermissionDesc::FlagIgnored(item));
+    }
     options
   }
 
@@ -3098,11 +3315,17 @@ impl Permissions {
     deny_list: Option<HashSet<TDeny>>,
     prompt: bool,
   ) -> UnaryPermission<TAllow, TDeny> {
+    let mut descriptors = UnaryPermissionDescriptors::default();
+    for item in allow_list.unwrap_or_default() {
+      descriptors.insert(UnaryPermissionDesc::Granted(item));
+    }
+    for item in deny_list.unwrap_or_default() {
+      descriptors.insert(UnaryPermissionDesc::FlagDenied(item));
+    }
     UnaryPermission::<TAllow, TDeny> {
       granted_global: global_from_option(allow_list.as_ref()),
-      granted_list: allow_list.unwrap_or_default(),
       flag_denied_global: global_from_option(deny_list.as_ref()),
-      flag_denied_list: deny_list.unwrap_or_default(),
+      descriptors,
       prompt,
       ..Default::default()
     }
@@ -6860,6 +7083,32 @@ mod tests {
     .unwrap();
 
     assert!(perms.env.check_all().is_err());
+  }
+
+  #[test]
+  fn test_env_sorting() {
+    let mut items = vec![
+      EnvDescriptor::new("TEST".into()),
+      EnvDescriptor::new("TEST*".into()),
+      EnvDescriptor::new("TEST2*".into()),
+      EnvDescriptor::new("TEST_TEST".into()),
+    ];
+    items.sort();
+    assert_eq!(
+      items
+        .into_iter()
+        .map(|i| match i {
+          EnvDescriptor::Name(name) => name.inner,
+          EnvDescriptor::PrefixPattern(name) => format!("{}*", name.inner),
+        })
+        .collect::<Vec<_>>(),
+      vec![
+        "TEST".to_string(),
+        "TEST_TEST".to_string(),
+        "TEST2*".to_string(),
+        "TEST*".to_string(),
+      ]
+    )
   }
 
   #[test]
