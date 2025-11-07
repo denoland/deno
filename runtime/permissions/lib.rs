@@ -389,7 +389,7 @@ impl AsRef<Path> for CheckedPathBuf {
 /// `TreatAsGranted` is used in place of `TreatAsPartialGranted` when we don't
 /// want to wastefully check for partial denials when, say, checking read
 /// access for a file.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[allow(clippy::enum_variant_names)]
 enum AllowPartial {
   TreatAsGranted,
@@ -848,29 +848,10 @@ impl<
     desc: Option<&TAllowDesc::QueryDesc<'_>>,
     allow_partial: AllowPartial,
   ) -> PermissionState {
-    if desc
-      .map(|desc| self.flag_ignored_list.iter().any(|v| desc.matches_deny(v)))
-      .unwrap_or(false)
+    if let Some(state) =
+      self.query_allowed_desc_for_exact_match(desc, allow_partial)
     {
-      PermissionState::Ignored
-    } else if desc
-      .map(|desc| self.flag_denied_list.iter().any(|v| desc.matches_deny(v)))
-      .unwrap_or(false)
-      || desc
-        .map(|desc| {
-          self
-            .prompt_denied_list
-            .iter()
-            .any(|v| desc.stronger_than_deny(v))
-        })
-        .unwrap_or(false)
-    {
-      PermissionState::Denied
-    } else if desc
-      .map(|desc| self.granted_list.iter().any(|v| desc.matches_allow(v)))
-      .unwrap_or(false)
-    {
-      self.query_allowed_desc(desc, allow_partial)
+      state
     } else if self.flag_ignored_global {
       PermissionState::Ignored
     } else if matches!(allow_partial, AllowPartial::TreatAsDenied)
@@ -886,6 +867,28 @@ impl<
       self.query_allowed_desc(desc, allow_partial)
     } else {
       PermissionState::Prompt
+    }
+  }
+
+  fn query_allowed_desc_for_exact_match(
+    &self,
+    desc: Option<&TAllowDesc::QueryDesc<'_>>,
+    allow_partial: AllowPartial,
+  ) -> Option<PermissionState> {
+    let desc = desc?;
+    if self.flag_ignored_list.iter().any(|v| desc.matches_deny(v)) {
+      Some(PermissionState::Ignored)
+    } else if self.flag_denied_list.iter().any(|v| desc.matches_deny(v))
+      || self
+        .prompt_denied_list
+        .iter()
+        .any(|v| desc.stronger_than_deny(v))
+    {
+      Some(PermissionState::Denied)
+    } else if self.granted_list.iter().any(|v| desc.matches_allow(v)) {
+      Some(self.query_allowed_desc(Some(desc), allow_partial))
+    } else {
+      None
     }
   }
 
@@ -6065,6 +6068,42 @@ mod tests {
         )
         .is_ok()
     );
+  }
+
+  #[test]
+  fn test_env_ignore() {
+    set_prompter(Box::new(TestPrompter));
+    let _prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
+    {
+      let mut perms = Permissions::none_without_prompt();
+      perms.env = UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_unary_with_ignore(
+          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
+            "ALLOWED_*",
+          ))])),
+          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
+            "DENIED_*",
+          ))])),
+          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
+            "IGNORED_*",
+          ))])),
+          false,
+        )
+      };
+      assert_eq!(
+        perms.env.query(Some("ALLOWED_TEST")),
+        PermissionState::Granted
+      );
+      assert_eq!(
+        perms.env.query(Some("IGNORED_TEST")),
+        PermissionState::Ignored
+      );
+      assert_eq!(
+        perms.env.query(Some("DENIED_TEST")),
+        PermissionState::Denied
+      );
+    }
   }
 
   #[test]
