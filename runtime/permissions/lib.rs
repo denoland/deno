@@ -859,8 +859,8 @@ impl<
     {
       PermissionState::DeniedPartial
     } else if self.flag_denied_global
-      || self.prompt_denied_global
-      || desc.is_none() && !self.prompt_denied_list.is_empty()
+      || desc.is_none()
+        && (self.prompt_denied_global || !self.prompt_denied_list.is_empty())
     {
       PermissionState::Denied
     } else if self.granted_global {
