@@ -842,6 +842,10 @@ impl<TAllowDesc: AllowDescriptor> UnaryPermissionDescriptors<TAllowDesc> {
     }
   }
 
+  pub fn iter(&self) -> impl Iterator<Item = &UnaryPermissionDesc<TAllowDesc>> {
+    self.inner.iter()
+  }
+
   pub fn has_any_denied_or_ignored(&self) -> bool {
     self.has_flag_denied || self.has_prompt_denied || self.has_flag_ignored
   }
@@ -1018,7 +1022,7 @@ impl<
     allow_partial: AllowPartial,
   ) -> Option<PermissionState> {
     let desc = desc?;
-    for item in &self.descriptors.inner {
+    for item in self.descriptors.iter() {
       match item {
         UnaryPermissionDesc::Granted(v) => {
           if desc.matches_allow(v) {
@@ -1143,7 +1147,7 @@ impl<
       None => {
         self.descriptors.has_flag_denied || self.descriptors.has_flag_ignored
       }
-      Some(query) => self.descriptors.inner.iter().any(|desc| match desc {
+      Some(query) => self.descriptors.iter().any(|desc| match desc {
         UnaryPermissionDesc::FlagIgnored(v)
         | UnaryPermissionDesc::FlagDenied(v) => query.overlaps_deny(v),
         UnaryPermissionDesc::Granted(_)
@@ -1233,7 +1237,7 @@ impl<
     perms.prompt_denied_global = self.prompt_denied_global;
     perms.prompt = self.prompt;
     perms.flag_ignored_global = self.flag_ignored_global;
-    for item in &self.descriptors.inner {
+    for item in self.descriptors.iter() {
       match item {
         UnaryPermissionDesc::Granted(_) => {
           // ignore
@@ -6857,7 +6861,6 @@ mod tests {
         .lock()
         .run
         .descriptors
-        .inner
         .iter()
         .filter_map(|d| match d {
           UnaryPermissionDesc::Granted(d) => Some(d.clone()),
@@ -6914,7 +6917,6 @@ mod tests {
         .lock()
         .write
         .descriptors
-        .inner
         .iter()
         .filter_map(|d| match d {
           UnaryPermissionDesc::FlagDenied(d) => Some(d.clone()),
@@ -6926,7 +6928,6 @@ mod tests {
         .lock()
         .write
         .descriptors
-        .inner
         .iter()
         .filter_map(|d| match d {
           UnaryPermissionDesc::FlagDenied(d) => Some(d.clone()),
