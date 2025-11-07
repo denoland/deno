@@ -172,7 +172,7 @@ file_test_runner = "0.7.3"
 filetime = "0.2.16"
 flaky_test = "=0.2.2"
 flate2 = { version = "1.0.30", default-features = false }
-fqdn = "0.3.4"
+fqdn = "0.4.6"
 fs3 = "0.5.0"
 futures = "0.3.31"
 glob = "0.3.1"

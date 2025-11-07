@@ -689,19 +689,12 @@ pub trait AllowDescriptor: Debug + Eq + Clone + Hash {
   type QueryDesc<'a>: QueryDescriptor<AllowDesc = Self, DenyDesc = Self::DenyDesc>;
   type DenyDesc: DenyDescriptor;
 
-  fn cmp_allow(&self, _other: &Self) -> Ordering {
-    Ordering::Equal
-  }
-
-  fn cmp_deny(&self, _other: &Self::DenyDesc) -> Ordering {
-    Ordering::Equal
-  }
+  fn cmp_allow(&self, other: &Self) -> Ordering;
+  fn cmp_deny(&self, other: &Self::DenyDesc) -> Ordering;
 }
 
 pub trait DenyDescriptor: Debug + Eq + Clone + Hash {
-  fn cmp_deny(&self, _other: &Self) -> Ordering {
-    Ordering::Equal
-  }
+  fn cmp_deny(&self, other: &Self) -> Ordering;
 }
 
 pub trait QueryDescriptor: Debug {
@@ -719,7 +712,7 @@ pub trait QueryDescriptor: Debug {
   /// Generic check function to check this descriptor against a `UnaryPermission`.
   fn check_in_permission(
     &self,
-    perm: &mut UnaryPermission<Self::AllowDesc, Self::DenyDesc>,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError>;
 
@@ -747,16 +740,15 @@ enum AllowOrDenyDescRef<'a, TAllowDesc: AllowDescriptor> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-enum UnaryPermissionDesc<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor>
-{
+enum UnaryPermissionDesc<TAllowDesc: AllowDescriptor> {
   Granted(TAllowDesc),
-  FlagDenied(TDenyDesc),
-  FlagIgnored(TDenyDesc),
-  PromptDenied(TDenyDesc),
+  FlagDenied(TAllowDesc::DenyDesc),
+  FlagIgnored(TAllowDesc::DenyDesc),
+  PromptDenied(TAllowDesc::DenyDesc),
 }
 
 impl<TAllowDesc: AllowDescriptor> std::cmp::PartialOrd
-  for UnaryPermissionDesc<TAllowDesc, TAllowDesc::DenyDesc>
+  for UnaryPermissionDesc<TAllowDesc>
 {
   fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
     Some(self.cmp(other))
@@ -764,7 +756,7 @@ impl<TAllowDesc: AllowDescriptor> std::cmp::PartialOrd
 }
 
 impl<TAllowDesc: AllowDescriptor> std::cmp::Ord
-  for UnaryPermissionDesc<TAllowDesc, TAllowDesc::DenyDesc>
+  for UnaryPermissionDesc<TAllowDesc>
 {
   fn cmp(&self, other: &Self) -> Ordering {
     match self.allow_or_deny_desc() {
@@ -800,9 +792,7 @@ impl<TAllowDesc: AllowDescriptor> std::cmp::Ord
   }
 }
 
-impl<TAllowDesc: AllowDescriptor>
-  UnaryPermissionDesc<TAllowDesc, TAllowDesc::DenyDesc>
-{
+impl<TAllowDesc: AllowDescriptor> UnaryPermissionDesc<TAllowDesc> {
   fn allow_or_deny_desc(&self) -> AllowOrDenyDescRef<'_, TAllowDesc> {
     match self {
       UnaryPermissionDesc::Granted(desc) => AllowOrDenyDescRef::Allow(desc),
@@ -825,18 +815,15 @@ impl<TAllowDesc: AllowDescriptor>
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-struct UnaryPermissionDescriptors<
-  TAllowDesc: AllowDescriptor,
-  TDenyDesc: DenyDescriptor,
-> {
-  inner: Vec<UnaryPermissionDesc<TAllowDesc, TDenyDesc>>,
+struct UnaryPermissionDescriptors<TAllowDesc: AllowDescriptor> {
+  inner: Vec<UnaryPermissionDesc<TAllowDesc>>,
   has_flag_denied: bool,
   has_prompt_denied: bool,
   has_flag_ignored: bool,
 }
 
-impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Default
-  for UnaryPermissionDescriptors<TAllowDesc, TDenyDesc>
+impl<TAllowDesc: AllowDescriptor> Default
+  for UnaryPermissionDescriptors<TAllowDesc>
 {
   fn default() -> Self {
     Self {
@@ -848,9 +835,7 @@ impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Default
   }
 }
 
-impl<TAllowDesc: AllowDescriptor>
-  UnaryPermissionDescriptors<TAllowDesc, TAllowDesc::DenyDesc>
-{
+impl<TAllowDesc: AllowDescriptor> UnaryPermissionDescriptors<TAllowDesc> {
   pub fn has_any_denied_or_ignored(&self) -> bool {
     self.has_flag_denied || self.has_prompt_denied || self.has_flag_ignored
   }
@@ -859,10 +844,7 @@ impl<TAllowDesc: AllowDescriptor>
     self.has_prompt_denied
   }
 
-  pub fn insert(
-    &mut self,
-    item: UnaryPermissionDesc<TAllowDesc, TAllowDesc::DenyDesc>,
-  ) {
+  pub fn insert(&mut self, item: UnaryPermissionDesc<TAllowDesc>) {
     match &item {
       UnaryPermissionDesc::Granted(_) => {}
       UnaryPermissionDesc::FlagDenied(_) => {
@@ -900,21 +882,16 @@ impl<TAllowDesc: AllowDescriptor>
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct UnaryPermission<
-  TAllowDesc: AllowDescriptor,
-  TDenyDesc: DenyDescriptor,
-> {
+pub struct UnaryPermission<TAllowDesc: AllowDescriptor> {
   granted_global: bool,
   flag_denied_global: bool,
   flag_ignored_global: bool,
   prompt_denied_global: bool,
-  descriptors: UnaryPermissionDescriptors<TAllowDesc, TDenyDesc>,
+  descriptors: UnaryPermissionDescriptors<TAllowDesc>,
   prompt: bool,
 }
 
-impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Default
-  for UnaryPermission<TAllowDesc, TDenyDesc>
-{
+impl<TAllowDesc: AllowDescriptor> Default for UnaryPermission<TAllowDesc> {
   fn default() -> Self {
     UnaryPermission {
       granted_global: Default::default(),
@@ -927,9 +904,7 @@ impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Default
   }
 }
 
-impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Clone
-  for UnaryPermission<TAllowDesc, TDenyDesc>
-{
+impl<TAllowDesc: AllowDescriptor> Clone for UnaryPermission<TAllowDesc> {
   fn clone(&self) -> Self {
     Self {
       granted_global: self.granted_global,
@@ -945,7 +920,7 @@ impl<TAllowDesc: AllowDescriptor, TDenyDesc: DenyDescriptor> Clone
 impl<
   TAllowDesc: AllowDescriptor<DenyDesc = TDenyDesc>,
   TDenyDesc: DenyDescriptor,
-> UnaryPermission<TAllowDesc, TDenyDesc>
+> UnaryPermission<TAllowDesc>
 {
   pub fn allow_all() -> Self {
     Self {
@@ -1202,14 +1177,13 @@ impl<
   }
 
   fn list_insert(
-    desc: Option<UnaryPermissionDesc<TAllowDesc, TDenyDesc>>,
+    desc: Option<UnaryPermissionDesc<TAllowDesc>>,
     list_global: &mut bool,
-    descriptors: &mut UnaryPermissionDescriptors<TAllowDesc, TDenyDesc>,
+    descriptors: &mut UnaryPermissionDescriptors<TAllowDesc>,
   ) {
     match desc {
       Some(desc) => {
-        // TODO(THIS PR): uncomment once compiling
-        //self.descriptors.insert(desc);
+        descriptors.insert(desc);
       }
       None => *list_global = true,
     }
@@ -1219,7 +1193,7 @@ impl<
     &mut self,
     flag: ChildUnaryPermissionArg,
     parse: impl Fn(&str) -> Result<Option<TAllowDesc>, E>,
-  ) -> Result<UnaryPermission<TAllowDesc, TDenyDesc>, ChildPermissionError>
+  ) -> Result<UnaryPermission<TAllowDesc>, ChildPermissionError>
   where
     ChildPermissionError: From<E>,
   {
@@ -1421,7 +1395,7 @@ impl QueryDescriptor for ReadQueryDescriptor<'_> {
 
   fn check_in_permission(
     &self,
-    perm: &mut UnaryPermission<Self::AllowDesc, Self::DenyDesc>,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -1545,6 +1519,18 @@ impl PathDescriptor {
   pub fn into_path_buf(self) -> PathBuf {
     self.path
   }
+
+  fn cmp_allow_allow(&self, other: &PathDescriptor) -> Ordering {
+    self.path.cmp(&other.path)
+  }
+
+  fn cmp_allow_deny(&self, _other: &PathDescriptor) -> Ordering {
+    Ordering::Greater
+  }
+
+  fn cmp_deny_deny(&self, other: &PathDescriptor) -> Ordering {
+    self.path.cmp(&other.path)
+  }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -1553,9 +1539,21 @@ pub struct ReadDescriptor(pub PathDescriptor);
 impl AllowDescriptor for ReadDescriptor {
   type QueryDesc<'a> = ReadQueryDescriptor<'a>;
   type DenyDesc = ReadDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    self.0.cmp_allow_allow(&other.0)
+  }
+
+  fn cmp_deny(&self, other: &Self::DenyDesc) -> Ordering {
+    self.0.cmp_allow_deny(&other.0)
+  }
 }
 
-impl DenyDescriptor for ReadDescriptor {}
+impl DenyDescriptor for ReadDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    self.0.cmp_deny_deny(&other.0)
+  }
+}
 
 #[derive(Clone, Debug)]
 pub struct WriteQueryDescriptor<'a>(pub PathQueryDescriptor<'a>);
@@ -1586,7 +1584,7 @@ impl QueryDescriptor for WriteQueryDescriptor<'_> {
 
   fn check_in_permission(
     &self,
-    perm: &mut UnaryPermission<Self::AllowDesc, Self::DenyDesc>,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -1624,9 +1622,21 @@ pub struct WriteDescriptor(pub PathDescriptor);
 impl AllowDescriptor for WriteDescriptor {
   type QueryDesc<'a> = WriteQueryDescriptor<'a>;
   type DenyDesc = WriteDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    self.0.cmp_allow_allow(&other.0)
+  }
+
+  fn cmp_deny(&self, other: &Self::DenyDesc) -> Ordering {
+    self.0.cmp_allow_deny(&other.0)
+  }
 }
 
-impl DenyDescriptor for WriteDescriptor {}
+impl DenyDescriptor for WriteDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    self.0.cmp_deny_deny(&other.0)
+  }
+}
 
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
 pub enum SubdomainWildcards {
@@ -1635,7 +1645,7 @@ pub enum SubdomainWildcards {
   Disabled,
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub enum Host {
   Fqdn(FQDN),
   FqdnWithSubdomainWildcard(FQDN),
@@ -1746,7 +1756,7 @@ impl Host {
   }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub struct NetDescriptor(pub Host, pub Option<u32>);
 
 impl QueryDescriptor for NetDescriptor {
@@ -1775,7 +1785,7 @@ impl QueryDescriptor for NetDescriptor {
 
   fn check_in_permission(
     &self,
-    perm: &mut UnaryPermission<Self::AllowDesc, Self::DenyDesc>,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -1826,9 +1836,21 @@ impl QueryDescriptor for NetDescriptor {
 impl AllowDescriptor for NetDescriptor {
   type QueryDesc<'a> = NetDescriptor;
   type DenyDesc = NetDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    self.cmp(other)
+  }
+
+  fn cmp_deny(&self, _other: &Self::DenyDesc) -> Ordering {
+    Ordering::Greater
+  }
 }
 
-impl DenyDescriptor for NetDescriptor {}
+impl DenyDescriptor for NetDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    self.cmp(other)
+  }
+}
 
 impl NetDescriptor {
   pub fn into_import(self) -> ImportDescriptor {
@@ -2044,7 +2066,7 @@ impl QueryDescriptor for ImportDescriptor {
 
   fn check_in_permission(
     &self,
-    perm: &mut UnaryPermission<Self::AllowDesc, Self::DenyDesc>,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -2091,9 +2113,21 @@ impl ImportDescriptor {
 impl AllowDescriptor for ImportDescriptor {
   type QueryDesc<'a> = ImportDescriptor;
   type DenyDesc = ImportDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    self.0.cmp(&other.0)
+  }
+
+  fn cmp_deny(&self, _other: &Self::DenyDesc) -> Ordering {
+    Ordering::Greater
+  }
 }
 
-impl DenyDescriptor for ImportDescriptor {}
+impl DenyDescriptor for ImportDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    self.0.cmp(&other.0)
+  }
+}
 
 #[derive(Debug, thiserror::Error)]
 #[error("Empty env not allowed")]
@@ -2217,7 +2251,7 @@ impl QueryDescriptor for EnvQueryDescriptor<'_> {
 
   fn check_in_permission(
     &self,
-    perm: &mut UnaryPermission<Self::AllowDesc, Self::DenyDesc>,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -2442,7 +2476,7 @@ impl QueryDescriptor for RunQueryDescriptor<'_> {
 
   fn check_in_permission(
     &self,
-    perm: &mut UnaryPermission<Self::AllowDesc, Self::DenyDesc>,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -2579,6 +2613,17 @@ impl AllowRunDescriptor {
 impl AllowDescriptor for AllowRunDescriptor {
   type QueryDesc<'a> = RunQueryDescriptor<'a>;
   type DenyDesc = DenyRunDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    self.0.cmp_allow_allow(&other.0)
+  }
+
+  fn cmp_deny(&self, other: &Self::DenyDesc) -> Ordering {
+    match other {
+      DenyRunDescriptor::Name(_) => Ordering::Less,
+      DenyRunDescriptor::Path(_) => Ordering::Greater,
+    }
+  }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -2591,7 +2636,22 @@ pub enum DenyRunDescriptor {
   Path(PathDescriptor),
 }
 
-impl DenyDescriptor for DenyRunDescriptor {}
+impl DenyDescriptor for DenyRunDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    match self {
+      DenyRunDescriptor::Name(self_name) => match other {
+        DenyRunDescriptor::Name(other_name) => self_name.cmp(other_name),
+        DenyRunDescriptor::Path(_) => Ordering::Greater,
+      },
+      DenyRunDescriptor::Path(self_path) => match other {
+        DenyRunDescriptor::Name(_) => Ordering::Less,
+        DenyRunDescriptor::Path(other_path) => {
+          self_path.cmp_deny_deny(other_path)
+        }
+      },
+    }
+  }
+}
 
 impl DenyRunDescriptor {
   pub fn parse(text: &str, cwd: &Path) -> Self {
@@ -2677,7 +2737,7 @@ pub enum SysDescriptorParseError {
   Empty, // Error
 }
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub struct SysDescriptor(String);
 
 impl SysDescriptor {
@@ -2728,7 +2788,7 @@ impl QueryDescriptor for SysDescriptor {
 
   fn check_in_permission(
     &self,
-    perm: &mut UnaryPermission<Self::AllowDesc, Self::DenyDesc>,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -2763,9 +2823,21 @@ impl QueryDescriptor for SysDescriptor {
 impl AllowDescriptor for SysDescriptor {
   type QueryDesc<'a> = SysDescriptor;
   type DenyDesc = SysDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    self.cmp(other)
+  }
+
+  fn cmp_deny(&self, _other: &Self::DenyDesc) -> Ordering {
+    Ordering::Greater
+  }
 }
 
-impl DenyDescriptor for SysDescriptor {}
+impl DenyDescriptor for SysDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    self.cmp(other)
+  }
+}
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct FfiQueryDescriptor<'a>(pub PathQueryDescriptor<'a>);
@@ -2796,7 +2868,7 @@ impl QueryDescriptor for FfiQueryDescriptor<'_> {
 
   fn check_in_permission(
     &self,
-    perm: &mut UnaryPermission<Self::AllowDesc, Self::DenyDesc>,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
     api_name: Option<&str>,
   ) -> Result<(), PermissionDeniedError> {
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -2834,11 +2906,23 @@ pub struct FfiDescriptor(pub PathDescriptor);
 impl AllowDescriptor for FfiDescriptor {
   type QueryDesc<'a> = FfiQueryDescriptor<'a>;
   type DenyDesc = FfiDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    self.0.cmp_allow_allow(&other.0)
+  }
+
+  fn cmp_deny(&self, other: &Self::DenyDesc) -> Ordering {
+    self.0.cmp_allow_deny(&other.0)
+  }
 }
 
-impl DenyDescriptor for FfiDescriptor {}
+impl DenyDescriptor for FfiDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    self.0.cmp_deny_deny(&other.0)
+  }
+}
 
-impl UnaryPermission<ReadDescriptor, ReadDescriptor> {
+impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, desc: Option<&ReadQueryDescriptor>) -> PermissionState {
     self.query_desc(desc, AllowPartial::TreatAsPartialGranted)
   }
@@ -2897,7 +2981,7 @@ impl UnaryPermission<ReadDescriptor, ReadDescriptor> {
   }
 }
 
-impl UnaryPermission<WriteDescriptor, WriteDescriptor> {
+impl UnaryPermission<WriteDescriptor> {
   pub fn query(&self, path: Option<&WriteQueryDescriptor>) -> PermissionState {
     self.query_desc(path, AllowPartial::TreatAsPartialGranted)
   }
@@ -2956,7 +3040,7 @@ impl UnaryPermission<WriteDescriptor, WriteDescriptor> {
   }
 }
 
-impl UnaryPermission<NetDescriptor, NetDescriptor> {
+impl UnaryPermission<NetDescriptor> {
   pub fn query(&self, host: Option<&NetDescriptor>) -> PermissionState {
     self.query_desc(host, AllowPartial::TreatAsPartialGranted)
   }
@@ -2992,7 +3076,7 @@ impl UnaryPermission<NetDescriptor, NetDescriptor> {
   }
 }
 
-impl UnaryPermission<ImportDescriptor, ImportDescriptor> {
+impl UnaryPermission<ImportDescriptor> {
   pub fn query(&self, host: Option<&ImportDescriptor>) -> PermissionState {
     self.query_desc(host, AllowPartial::TreatAsPartialGranted)
   }
@@ -3031,7 +3115,7 @@ impl UnaryPermission<ImportDescriptor, ImportDescriptor> {
   }
 }
 
-impl UnaryPermission<EnvDescriptor, EnvDescriptor> {
+impl UnaryPermission<EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
     self.query_desc(
       env
@@ -3084,7 +3168,7 @@ impl UnaryPermission<EnvDescriptor, EnvDescriptor> {
   }
 }
 
-impl UnaryPermission<SysDescriptor, SysDescriptor> {
+impl UnaryPermission<SysDescriptor> {
   pub fn query(&self, kind: Option<&SysDescriptor>) -> PermissionState {
     self.query_desc(kind, AllowPartial::TreatAsPartialGranted)
   }
@@ -3120,7 +3204,7 @@ impl UnaryPermission<SysDescriptor, SysDescriptor> {
   }
 }
 
-impl UnaryPermission<AllowRunDescriptor, DenyRunDescriptor> {
+impl UnaryPermission<AllowRunDescriptor> {
   pub fn query(&self, cmd: Option<&RunQueryDescriptor>) -> PermissionState {
     self.query_desc(cmd, AllowPartial::TreatAsPartialGranted)
   }
@@ -3171,7 +3255,7 @@ impl UnaryPermission<AllowRunDescriptor, DenyRunDescriptor> {
   }
 }
 
-impl UnaryPermission<FfiDescriptor, FfiDescriptor> {
+impl UnaryPermission<FfiDescriptor> {
   pub fn query(&self, path: Option<&FfiQueryDescriptor>) -> PermissionState {
     self.query_desc(path, AllowPartial::TreatAsPartialGranted)
   }
@@ -3228,14 +3312,14 @@ impl UnaryPermission<FfiDescriptor, FfiDescriptor> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Permissions {
   // WARNING: update the methods below if ever adding anything here
-  pub read: UnaryPermission<ReadDescriptor, ReadDescriptor>,
-  pub write: UnaryPermission<WriteDescriptor, WriteDescriptor>,
-  pub net: UnaryPermission<NetDescriptor, NetDescriptor>,
-  pub env: UnaryPermission<EnvDescriptor, EnvDescriptor>,
-  pub sys: UnaryPermission<SysDescriptor, SysDescriptor>,
-  pub run: UnaryPermission<AllowRunDescriptor, DenyRunDescriptor>,
-  pub ffi: UnaryPermission<FfiDescriptor, FfiDescriptor>,
-  pub import: UnaryPermission<ImportDescriptor, ImportDescriptor>,
+  pub read: UnaryPermission<ReadDescriptor>,
+  pub write: UnaryPermission<WriteDescriptor>,
+  pub net: UnaryPermission<NetDescriptor>,
+  pub env: UnaryPermission<EnvDescriptor>,
+  pub sys: UnaryPermission<SysDescriptor>,
+  pub run: UnaryPermission<AllowRunDescriptor>,
+  pub ffi: UnaryPermission<FfiDescriptor>,
+  pub import: UnaryPermission<ImportDescriptor>,
 }
 
 impl Permissions {
@@ -3291,12 +3375,11 @@ pub enum PermissionsFromOptionsError {
 
 impl Permissions {
   pub fn new_unary_with_ignore<TAllow: AllowDescriptor>(
-    // TODO(THIS PR): No need for HashSet here
     allow_list: Option<HashSet<TAllow>>,
     deny_list: Option<HashSet<TAllow::DenyDesc>>,
     ignore_list: Option<HashSet<TAllow::DenyDesc>>,
     prompt: bool,
-  ) -> UnaryPermission<TAllow, TAllow::DenyDesc> {
+  ) -> UnaryPermission<TAllow> {
     let mut options = Self::new_unary(allow_list, deny_list, prompt);
     options.flag_ignored_global = global_from_option(ignore_list.as_ref());
     for item in ignore_list.unwrap_or_default() {
@@ -3311,7 +3394,7 @@ impl Permissions {
     allow_list: Option<HashSet<TAllow>>,
     deny_list: Option<HashSet<TAllow::DenyDesc>>,
     prompt: bool,
-  ) -> UnaryPermission<TAllow, TAllow::DenyDesc> {
+  ) -> UnaryPermission<TAllow> {
     let mut descriptors = UnaryPermissionDescriptors::default();
     let granted_global = global_from_option(allow_list.as_ref());
     let flag_denied_global = global_from_option(deny_list.as_ref());
@@ -3321,7 +3404,7 @@ impl Permissions {
     for item in deny_list.unwrap_or_default() {
       descriptors.insert(UnaryPermissionDesc::FlagDenied(item));
     }
-    UnaryPermission::<TAllow, TAllow::DenyDesc> {
+    UnaryPermission::<TAllow> {
       granted_global,
       flag_denied_global,
       descriptors,
@@ -6326,6 +6409,36 @@ mod tests {
         PermissionState::Denied
       );
     }
+    {
+      let mut perms = Permissions::none_without_prompt();
+      perms.env = UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_unary_with_ignore(
+          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
+            "PREFIX_ALLOWED*",
+          ))])),
+          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
+            "PREFIX*",
+          ))])),
+          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
+            "PREFIX_IGNORED*",
+          ))])),
+          false,
+        )
+      };
+      assert_eq!(
+        perms.env.query(Some("PREFIX_TEST")),
+        PermissionState::Denied
+      );
+      assert_eq!(
+        perms.env.query(Some("PREFIX_IGNORED_TEST")),
+        PermissionState::Ignored
+      );
+      assert_eq!(
+        perms.env.query(Some("PREFIX_ALLOWED_TEST")),
+        PermissionState::Granted
+      );
+    }
   }
 
   #[test]
@@ -6670,7 +6783,18 @@ mod tests {
       worker_perms.inner.lock().clone()
     );
     assert_eq!(
-      main_perms.inner.lock().run.granted_list,
+      main_perms
+        .inner
+        .lock()
+        .run
+        .descriptors
+        .inner
+        .iter()
+        .filter_map(|d| match d {
+          UnaryPermissionDesc::Granted(d) => Some(d.clone()),
+          _ => None,
+        })
+        .collect::<HashSet<_>>(),
       HashSet::from([
         AllowRunDescriptor(PathDescriptor::new_known_absolute(Cow::Owned(
           PathBuf::from("/bar")
@@ -6716,8 +6840,30 @@ mod tests {
       .create_child_permissions(ChildPermissionsArg::none())
       .unwrap();
     assert_eq!(
-      worker_perms.inner.lock().write.flag_denied_list.clone(),
-      main_perms.inner.lock().write.flag_denied_list
+      worker_perms
+        .inner
+        .lock()
+        .write
+        .descriptors
+        .inner
+        .iter()
+        .filter_map(|d| match d {
+          UnaryPermissionDesc::FlagDenied(d) => Some(d.clone()),
+          _ => None,
+        })
+        .collect::<HashSet<_>>(),
+      main_perms
+        .inner
+        .lock()
+        .write
+        .descriptors
+        .inner
+        .iter()
+        .filter_map(|d| match d {
+          UnaryPermissionDesc::FlagDenied(d) => Some(d.clone()),
+          _ => None,
+        })
+        .collect::<HashSet<_>>()
     );
   }
 
@@ -7092,7 +7238,7 @@ mod tests {
       EnvDescriptor::new("TEST2*".into()),
       EnvDescriptor::new("TEST_TEST".into()),
     ];
-    items.sort();
+    items.sort_by(|a, b| a.cmp_allow(b));
     assert_eq!(
       items
         .into_iter()
