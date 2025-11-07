@@ -6312,7 +6312,7 @@ mod tests {
     perms.env = UnaryPermission {
       granted_global: false,
       ..Permissions::new_unary(
-        Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed("HOME"))])),
+        Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("HOME"))])),
         None,
         false,
       )
