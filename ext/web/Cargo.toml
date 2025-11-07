@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.248.0"
+version = "0.252.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,6 +19,7 @@ base64-simd.workspace = true
 bytes.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+deno_features.workspace = true
 deno_permissions.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
@@ -26,12 +27,11 @@ futures.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+urlpattern.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-deno_console.workspace = true
-deno_url.workspace = true
 deno_webidl.workspace = true
 
 [[bench]]
@@ -40,4 +40,8 @@ harness = false
 
 [[bench]]
 name = "timers_ops"
+harness = false
+
+[[bench]]
+name = "url_ops"
 harness = false

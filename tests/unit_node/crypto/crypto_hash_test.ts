@@ -142,3 +142,20 @@ Deno.test("[node/crypto.hash] shake-256 alias", () => {
   const d = hash("shake-256", "Node.js", "base64url");
   assertEquals(d, "JdelDxiwp92tkk9jYjEFPMlHD0gC8bMbYtHRCIM6TTQ");
 });
+
+Deno.test("[node/crypto.createHmac] should not print deprecation warning", async () => {
+  const script =
+    'import crypto from "node:crypto"; crypto.createHmac("SHA256", "foo")';
+
+  const child = new Deno.Command(Deno.execPath(), {
+    args: ["eval", script],
+    stdout: "piped",
+    stderr: "piped",
+  }).spawn();
+
+  const { code, stderr } = await child.output();
+  assertEquals(code, 0);
+
+  const decodedStderr = new TextDecoder().decode(stderr).trim();
+  assertEquals(decodedStderr, "");
+});

@@ -65,11 +65,11 @@ pub enum PackageCaching<'a> {
   All,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
 /// The set of npm packages that are allowed to run lifecycle scripts.
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub enum PackagesAllowedScripts {
   All,
-  Some(Vec<String>),
+  Some(Vec<PackageReq>),
   #[default]
   None,
 }
@@ -78,6 +78,7 @@ pub enum PackagesAllowedScripts {
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct LifecycleScriptsConfig {
   pub allowed: PackagesAllowedScripts,
+  pub denied: Vec<PackageReq>,
   pub initial_cwd: PathBuf,
   pub root_dir: PathBuf,
   /// Part of an explicit `deno install`
@@ -182,7 +183,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     tarball_cache: Arc<deno_npm_cache::TarballCache<TNpmCacheHttpClient, TSys>>,
     maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
     maybe_node_modules_path: Option<PathBuf>,
-    lifecycle_scripts: LifecycleScriptsConfig,
+    lifecycle_scripts: Arc<LifecycleScriptsConfig>,
     system_info: NpmSystemInfo,
     workspace_link_packages: WorkspaceNpmLinkPackagesRc,
     install_reporter: Option<Arc<dyn InstallReporter>>,
@@ -274,7 +275,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     packages: &[PackageReq],
     caching: Option<PackageCaching<'_>>,
   ) -> AddPkgReqsResult {
-    if packages.is_empty() {
+    if packages.is_empty() && !self.npm_resolution.is_pending() {
       return AddPkgReqsResult {
         dependencies_result: Ok(()),
         results: vec![],
@@ -313,7 +314,8 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       };
 
       if !uncached.is_empty() {
-        result.dependencies_result = self.cache_packages(caching).await;
+        result.dependencies_result =
+          self.fs_installer.cache_packages(caching).await;
         if result.dependencies_result.is_ok() {
           let mut cached_reqs = self.cached_reqs.lock();
           for req in uncached {
@@ -361,8 +363,12 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     &self,
     caching: PackageCaching<'_>,
   ) -> Result<(), JsErrorBox> {
-    self.npm_resolution_initializer.ensure_initialized().await?;
-    self.fs_installer.cache_packages(caching).await
+    if self.npm_resolution.is_pending() {
+      self.add_package_reqs(&[], caching).await
+    } else {
+      self.npm_resolution_initializer.ensure_initialized().await?;
+      self.fs_installer.cache_packages(caching).await
+    }
   }
 
   pub fn ensure_no_pkg_json_dep_errors(

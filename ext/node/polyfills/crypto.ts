@@ -329,7 +329,7 @@ function createHmac(
   key: string | ArrayBuffer | KeyObject,
   options?: TransformOptions,
 ) {
-  return Hmac(hmac, key, options);
+  return Hmac_(hmac, key, options);
 }
 
 function createSign(algorithm: string, options?: WritableOptions): Sign {

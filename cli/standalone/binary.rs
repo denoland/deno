@@ -716,6 +716,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     output_vfs(&vfs, display_output_filename);
 
+    let preload_modules = self
+      .cli_options
+      .preload_modules()?
+      .into_iter()
+      .map(|s| root_dir_url.specifier_key(&s).into_owned())
+      .collect::<Vec<_>>();
+
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: self.cli_options.seed(),
@@ -736,6 +743,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_data,
       env_vars_from_env_file,
       entrypoint_key: root_dir_url.specifier_key(entrypoint).into_owned(),
+      preload_modules,
       workspace_resolver: SerializedWorkspaceResolver {
         import_map: self.workspace_resolver.maybe_import_map().map(|i| {
           SerializedWorkspaceResolverImportMap {
@@ -788,6 +796,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
         raw_imports: self.cli_options.unstable_raw_imports(),
         sloppy_imports: self.cli_options.unstable_sloppy_imports(),
+        tsgo: self.cli_options.unstable_tsgo(),
       },
       otel_config: self.cli_options.otel_config(),
       vfs_case_sensitivity: vfs.case_sensitivity,

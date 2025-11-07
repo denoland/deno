@@ -18,7 +18,7 @@ import {
   copyFilePromise,
   copyFileSync,
 } from "ext:deno_node/_fs/_fs_copy.ts";
-import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.js";
+import { cp, cpPromise, cpSync } from "ext:deno_node/_fs/_fs_cp.ts";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
 import { fchmod, fchmodSync } from "ext:deno_node/_fs/_fs_fchmod.ts";
@@ -123,7 +123,7 @@ import {
   watchPromise,
 } from "ext:deno_node/_fs/_fs_watch.ts";
 // @deno-types="./_fs/_fs_write.d.ts"
-import { write, writeSync } from "ext:deno_node/_fs/_fs_write.mjs";
+import { write, writeSync } from "ext:deno_node/_fs/_fs_write.ts";
 // @deno-types="./_fs/_fs_writev.d.ts"
 import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.ts";
 import { readv, readvSync } from "ext:deno_node/_fs/_fs_readv.ts";

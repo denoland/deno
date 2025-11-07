@@ -53,7 +53,9 @@ use hyper_utils::run_server_with_acceptor;
 use super::https::SupportedHttpVersions;
 use super::https::get_tls_listener_stream;
 use super::testdata_path;
+use crate::PathRef;
 use crate::TEST_SERVERS_COUNT;
+use crate::prebuilt_path;
 
 pub(crate) const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -154,6 +156,13 @@ pub async fn run_all_servers() {
   // for serving node header files to node-gyp in tests
   let node_js_mirror_server_fut =
     nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
+
+  if let Err(e) = ensure_tsgo_prebuilt().await {
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!("failed to ensure tsgo prebuilt: {e}");
+    }
+  }
 
   let mut futures = vec![
     redirect_server_fut.boxed_local(),
@@ -1474,4 +1483,74 @@ pub fn custom_headers(
   }
 
   response
+}
+
+#[allow(unused)]
+mod tsgo {
+  include!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../cli/tsc/go/tsgo_version.rs"
+  ));
+}
+
+const TSGO_PLATFORM: &str = tsgo_platform();
+const fn tsgo_platform() -> &'static str {
+  match (
+    std::env::consts::OS.as_bytes(),
+    std::env::consts::ARCH.as_bytes(),
+  ) {
+    (b"windows", b"x86_64") => "windows-x64",
+    (b"macos", b"x86_64") => "macos-x64",
+    (b"macos", b"aarch64") => "macos-arm64",
+    (b"linux", b"x86_64") => "linux-x64",
+    (b"linux", b"aarch64") => "linux-arm64",
+    _ => {
+      panic!("unsupported platform");
+    }
+  }
+}
+pub fn tsgo_prebuilt_path() -> PathRef {
+  if let Ok(path) = std::env::var("DENO_TSGO_PATH") {
+    return PathRef::new(path);
+  }
+  let folder = match std::env::consts::OS {
+    "linux" => "linux64",
+    "windows" => "win",
+    "macos" | "apple" => "mac",
+    _ => panic!("unsupported platform"),
+  };
+  prebuilt_path().join(folder).join(format!(
+    "tsgo-{}-{}",
+    tsgo::VERSION,
+    TSGO_PLATFORM
+  ))
+}
+
+pub async fn ensure_tsgo_prebuilt() -> Result<(), anyhow::Error> {
+  let tsgo_path = tsgo_prebuilt_path();
+  if tsgo_path.exists() {
+    return Ok(());
+  }
+
+  let archive_name =
+    format!("typescript-go-{}-{}.zip", tsgo::VERSION, TSGO_PLATFORM);
+
+  let url = format!("{}/{archive_name}", tsgo::DOWNLOAD_BASE_URL);
+
+  let response = reqwest::get(url).await?;
+  let bytes = response.bytes().await?;
+
+  let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
+  if !tsgo_path.parent().exists() {
+    tsgo_path.parent().create_dir_all();
+  }
+  archive.extract(tsgo_path.parent().as_path())?;
+
+  if cfg!(windows) {
+    std::fs::rename(tsgo_path.parent().join("tsgo.exe"), tsgo_path)?;
+  } else {
+    std::fs::rename(tsgo_path.parent().join("tsgo"), tsgo_path)?;
+  }
+
+  Ok(())
 }

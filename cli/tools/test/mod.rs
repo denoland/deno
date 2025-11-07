@@ -306,6 +306,7 @@ impl From<&TestDescription> for TestFailureDescription {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct TestFailureFormatOptions {
   pub hide_stacktraces: bool,
+  pub initial_cwd: Option<Url>,
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -497,6 +498,8 @@ pub struct TestPlan {
   pub used_only: bool,
 }
 
+// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize)]
 pub enum TestStdioStream {
   Stdout,
@@ -603,6 +606,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
   let failure_format_options = TestFailureFormatOptions {
     hide_stacktraces: options.hide_stacktraces,
+    initial_cwd: Some(options.cwd.clone()),
   };
   let reporter: Box<dyn TestReporter> = match &options.reporter {
     TestReporterConfig::Dot => Box::new(DotTestReporter::new(
@@ -635,6 +639,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
       junit_path.to_string(),
       TestFailureFormatOptions {
         hide_stacktraces: options.hide_stacktraces,
+        initial_cwd: Some(options.cwd.clone()),
       },
     ));
     return Box::new(CompoundTestReporter::new(vec![reporter, junit]));

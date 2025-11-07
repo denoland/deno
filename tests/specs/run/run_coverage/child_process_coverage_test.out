@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]child_process_coverage_test.ts
+Check [WILDCARD]child_process_coverage_test.ts
 running 2 tests from ./child_process_coverage_test.ts
 foo 1 0 ... ok ([WILDLINE]s)
 foo 0 1 ... ok ([WILDLINE]s)

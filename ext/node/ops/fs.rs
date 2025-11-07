@@ -86,106 +86,9 @@ where
   Ok(fs.exists_async(path.into_owned()).await?)
 }
 
-#[op2(fast, stack_trace)]
-pub fn op_node_cp_sync<P>(
-  state: &mut OpState,
-  #[string] path: &str,
-  #[string] new_path: &str,
-) -> Result<(), FsError>
-where
-  P: NodePermissions + 'static,
-{
-  let path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(path)),
-    OpenAccessKind::Read,
-    Some("node:fs.cpSync"),
-  )?;
-  let new_path = state.borrow_mut::<P>().check_open(
-    Cow::Borrowed(Path::new(new_path)),
-    OpenAccessKind::WriteNoFollow,
-    Some("node:fs.cpSync"),
-  )?;
-
-  let fs = state.borrow::<FileSystemRc>();
-  fs.cp_sync(&path, &new_path)?;
-  Ok(())
-}
-
-#[op2(async, stack_trace)]
-pub async fn op_node_cp<P>(
-  state: Rc<RefCell<OpState>>,
-  #[string] path: String,
-  #[string] new_path: String,
-) -> Result<(), FsError>
-where
-  P: NodePermissions + 'static,
-{
-  let (fs, path, new_path) = {
-    let mut state = state.borrow_mut();
-    let path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(path)),
-      OpenAccessKind::Read,
-      Some("node:fs.cpSync"),
-    )?;
-    let new_path = state.borrow_mut::<P>().check_open(
-      Cow::Owned(PathBuf::from(new_path)),
-      OpenAccessKind::WriteNoFollow,
-      Some("node:fs.cpSync"),
-    )?;
-    (state.borrow::<FileSystemRc>().clone(), path, new_path)
-  };
-
-  fs.cp_async(path.into_owned(), new_path.into_owned())
-    .await?;
-  Ok(())
-}
-
-fn get_open_options(mut flags: i32, mode: u32) -> OpenOptions {
-  let mut options = OpenOptions {
-    mode: Some(mode),
-    ..Default::default()
-  };
-
-  if (flags & libc::O_APPEND) == libc::O_APPEND {
-    options.append = true;
-    flags &= !libc::O_APPEND;
-  }
-  if (flags & libc::O_CREAT) == libc::O_CREAT {
-    options.create = true;
-    flags &= !libc::O_CREAT;
-  }
-  if (flags & libc::O_EXCL) == libc::O_EXCL {
-    options.create_new = true;
-    options.write = true;
-    flags &= !libc::O_EXCL;
-  }
-  if (flags & libc::O_RDWR) == libc::O_RDWR {
-    options.read = true;
-    options.write = true;
-    flags &= !libc::O_RDWR;
-  }
-  if (flags & libc::O_TRUNC) == libc::O_TRUNC {
-    options.truncate = true;
-    flags &= !libc::O_TRUNC;
-  }
-  if (flags & libc::O_WRONLY) == libc::O_WRONLY {
-    options.write = true;
-    flags &= !libc::O_WRONLY;
-  }
-
-  if flags != 0 {
-    options.custom_flags = Some(flags);
-  }
-
-  if !options.append
-    && !options.create
-    && !options.create_new
-    && !options.read
-    && !options.truncate
-    && !options.write
-  {
-    options.read = true;
-  }
+fn get_open_options(flags: i32, mode: Option<u32>) -> OpenOptions {
+  let mut options = OpenOptions::from(flags);
+  options.mode = mode;
   options
 }
 
@@ -211,7 +114,7 @@ where
   P: NodePermissions + 'static,
 {
   let path = Path::new(path);
-  let options = get_open_options(flags, mode);
+  let options = get_open_options(flags, Some(mode));
 
   let fs = state.borrow::<FileSystemRc>().clone();
   let path = state.borrow_mut::<P>().check_open(
@@ -238,7 +141,7 @@ where
   P: NodePermissions + 'static,
 {
   let path = PathBuf::from(path);
-  let options = get_open_options(flags, mode);
+  let options = get_open_options(flags, Some(mode));
 
   let (fs, path) = {
     let mut state = state.borrow_mut();
@@ -259,7 +162,6 @@ where
     .add(FileResource::new(file, "fsFile".to_string()));
   Ok(rid)
 }
-
 #[derive(Debug, Serialize)]
 pub struct StatFs {
   #[serde(rename = "type")]

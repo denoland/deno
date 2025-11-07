@@ -1144,10 +1144,8 @@ async fn test_watch_doc() {
   "#,
   );
 
-  assert_eq!(
-    skip_restarting_line(&mut stderr_lines).await,
-    format!("Check {foo_file_url}$3-6.ts")
-  );
+  let file_regex = lazy_regex::lazy_regex!(r"Check [^\n]*foo\.ts\$3-6\.ts");
+  assert!(file_regex.is_match(&skip_restarting_line(&mut stderr_lines).await),);
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
     "TS2322 [ERROR]: Type 'number' is not assignable to type 'string'."
@@ -1214,10 +1212,9 @@ async fn test_watch_doc() {
   );
 
   wait_contains("running 1 test from", &mut stdout_lines).await;
-  assert_contains!(
-    next_line(&mut stdout_lines).await.unwrap(),
-    &format!("{foo_file_url}$3-8.ts ... ok")
-  );
+
+  let file_regex = lazy_regex::lazy_regex!(r"[^\n]*foo\.ts\$3-8\.ts");
+  assert!(file_regex.is_match(&next_line(&mut stdout_lines).await.unwrap()));
   wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
 
   wait_contains("Test finished", &mut stderr_lines).await;
