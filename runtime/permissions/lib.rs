@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::Debug;
@@ -836,6 +835,13 @@ impl<TAllowDesc: AllowDescriptor> Default
 }
 
 impl<TAllowDesc: AllowDescriptor> UnaryPermissionDescriptors<TAllowDesc> {
+  pub fn with_capacity(capacity: usize) -> Self {
+    Self {
+      inner: Vec::with_capacity(capacity),
+      ..Default::default()
+    }
+  }
+
   pub fn has_any_denied_or_ignored(&self) -> bool {
     self.has_flag_denied || self.has_prompt_denied || self.has_flag_ignored
   }
@@ -3375,42 +3381,44 @@ pub enum PermissionsFromOptionsError {
 
 impl Permissions {
   pub fn new_unary_with_ignore<TAllow: AllowDescriptor>(
-    allow_list: Option<HashSet<TAllow>>,
-    deny_list: Option<HashSet<TAllow::DenyDesc>>,
-    ignore_list: Option<HashSet<TAllow::DenyDesc>>,
+    allow_list: Option<Vec<TAllow>>,
+    deny_list: Option<Vec<TAllow::DenyDesc>>,
+    ignore_list: Option<Vec<TAllow::DenyDesc>>,
     prompt: bool,
   ) -> UnaryPermission<TAllow> {
-    let mut options = Self::new_unary(allow_list, deny_list, prompt);
-    options.flag_ignored_global = global_from_option(ignore_list.as_ref());
-    for item in ignore_list.unwrap_or_default() {
-      options
-        .descriptors
-        .insert(UnaryPermissionDesc::FlagIgnored(item));
-    }
-    options
-  }
-
-  pub fn new_unary<TAllow: AllowDescriptor>(
-    allow_list: Option<HashSet<TAllow>>,
-    deny_list: Option<HashSet<TAllow::DenyDesc>>,
-    prompt: bool,
-  ) -> UnaryPermission<TAllow> {
-    let mut descriptors = UnaryPermissionDescriptors::default();
+    let mut descriptors = UnaryPermissionDescriptors::with_capacity(
+      allow_list.as_ref().map(|v| v.len()).unwrap_or(0)
+        + ignore_list.as_ref().map(|v| v.len()).unwrap_or(0)
+        + deny_list.as_ref().map(|v| v.len()).unwrap_or(0),
+    );
     let granted_global = global_from_option(allow_list.as_ref());
     let flag_denied_global = global_from_option(deny_list.as_ref());
+    let flag_ignored_global = global_from_option(ignore_list.as_ref());
     for item in allow_list.unwrap_or_default() {
       descriptors.insert(UnaryPermissionDesc::Granted(item));
     }
     for item in deny_list.unwrap_or_default() {
       descriptors.insert(UnaryPermissionDesc::FlagDenied(item));
     }
+    for item in ignore_list.unwrap_or_default() {
+      descriptors.insert(UnaryPermissionDesc::FlagIgnored(item));
+    }
     UnaryPermission::<TAllow> {
       granted_global,
       flag_denied_global,
+      flag_ignored_global,
       descriptors,
       prompt,
       ..Default::default()
     }
+  }
+
+  pub fn new_unary<TAllow: AllowDescriptor>(
+    allow_list: Option<Vec<TAllow>>,
+    deny_list: Option<Vec<TAllow::DenyDesc>>,
+    prompt: bool,
+  ) -> UnaryPermission<TAllow> {
+    Self::new_unary_with_ignore(allow_list, deny_list, None, prompt)
   }
 
   pub const fn new_all(allow_state: bool) -> UnitPermission {
@@ -3430,15 +3438,15 @@ impl Permissions {
     fn resolve_allow_run(
       parser: &dyn PermissionDescriptorParser,
       allow_run: &[String],
-    ) -> Result<HashSet<AllowRunDescriptor>, PermissionsFromOptionsError> {
-      let mut new_allow_run = HashSet::with_capacity(allow_run.len());
+    ) -> Result<Vec<AllowRunDescriptor>, PermissionsFromOptionsError> {
+      let mut new_allow_run = Vec::with_capacity(allow_run.len());
       for unresolved in allow_run {
         if unresolved.is_empty() {
           return Err(PermissionsFromOptionsError::RunEmptyCommandName);
         }
         match parser.parse_allow_run_descriptor(unresolved)? {
           AllowRunDescriptorParseResult::Descriptor(descriptor) => {
-            new_allow_run.insert(descriptor);
+            new_allow_run.push(descriptor);
           }
           AllowRunDescriptorParseResult::Unresolved(err) => {
             log::info!(
@@ -3456,7 +3464,7 @@ impl Permissions {
     fn parse_maybe_vec<T: Eq + PartialEq + Hash, E>(
       items: Option<&[String]>,
       parse: impl Fn(&str) -> Result<T, E>,
-    ) -> Result<Option<HashSet<T>>, PermissionsFromOptionsError>
+    ) -> Result<Option<Vec<T>>, PermissionsFromOptionsError>
     where
       PermissionsFromOptionsError: From<E>,
     {
@@ -3465,7 +3473,7 @@ impl Permissions {
           items
             .iter()
             .map(|item| parse(item))
-            .collect::<Result<HashSet<_>, _>>()?,
+            .collect::<Result<Vec<_>, _>>()?,
         )),
         None => Ok(None),
       }
@@ -4819,7 +4827,7 @@ const fn unit_permission_from_flag_bools(
   }
 }
 
-fn global_from_option<T>(flag: Option<&HashSet<T>>) -> bool {
+fn global_from_option<T>(flag: Option<&Vec<T>>) -> bool {
   matches!(flag, Some(v) if v.is_empty())
 }
 
@@ -6325,7 +6333,7 @@ mod tests {
     perms.env = UnaryPermission {
       granted_global: false,
       ..Permissions::new_unary(
-        Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed("HOME_*"))])),
+        Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("HOME_*"))])),
         None,
         false,
       )
@@ -6384,15 +6392,9 @@ mod tests {
       perms.env = UnaryPermission {
         granted_global: false,
         ..Permissions::new_unary_with_ignore(
-          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
-            "ALLOWED_*",
-          ))])),
-          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
-            "DENIED_*",
-          ))])),
-          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
-            "IGNORED_*",
-          ))])),
+          Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("ALLOWED_*"))])),
+          Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("DENIED_*"))])),
+          Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("IGNORED_*"))])),
           false,
         )
       };
@@ -6414,13 +6416,11 @@ mod tests {
       perms.env = UnaryPermission {
         granted_global: false,
         ..Permissions::new_unary_with_ignore(
-          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
+          Some(Vec::from([EnvDescriptor::new(Cow::Borrowed(
             "PREFIX_ALLOWED*",
           ))])),
-          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
-            "PREFIX*",
-          ))])),
-          Some(HashSet::from([EnvDescriptor::new(Cow::Borrowed(
+          Some(Vec::from([EnvDescriptor::new(Cow::Borrowed("PREFIX*"))])),
+          Some(Vec::from([EnvDescriptor::new(Cow::Borrowed(
             "PREFIX_IGNORED*",
           ))])),
           false,
@@ -6717,11 +6717,9 @@ mod tests {
         .lock()
         .clone(),
       Permissions {
-        env: Permissions::new_unary(Some(HashSet::new()), None, false),
+        env: Permissions::new_unary(Some(Vec::new()), None, false),
         net: Permissions::new_unary(
-          Some(HashSet::from([
-            NetDescriptor::parse_for_list("foo").unwrap()
-          ])),
+          Some(Vec::from([NetDescriptor::parse_for_list("foo").unwrap()])),
           None,
           false
         ),
@@ -6794,8 +6792,8 @@ mod tests {
           UnaryPermissionDesc::Granted(d) => Some(d.clone()),
           _ => None,
         })
-        .collect::<HashSet<_>>(),
-      HashSet::from([
+        .collect::<Vec<_>>(),
+      Vec::from([
         AllowRunDescriptor(PathDescriptor::new_known_absolute(Cow::Owned(
           PathBuf::from("/bar")
         ))),
@@ -6851,7 +6849,7 @@ mod tests {
           UnaryPermissionDesc::FlagDenied(d) => Some(d.clone()),
           _ => None,
         })
-        .collect::<HashSet<_>>(),
+        .collect::<Vec<_>>(),
       main_perms
         .inner
         .lock()
@@ -6863,7 +6861,7 @@ mod tests {
           UnaryPermissionDesc::FlagDenied(d) => Some(d.clone()),
           _ => None,
         })
-        .collect::<HashSet<_>>()
+        .collect::<Vec<_>>()
     );
   }
 
