@@ -182,7 +182,7 @@ pub struct SerializeCtx {
 /// This is the internal context used to allocate and fill the buffer. The point
 /// is to be able to write absolute offsets directly in place.
 ///
-/// The typical workflow is to reserve all necessary space for the currrent
+/// The typical workflow is to reserve all necessary space for the current
 /// node with placeholders for the offsets of the child nodes. Once child
 /// nodes have been traversed, we know their offsets and can replace the
 /// placeholder values with the actual ones.

@@ -2030,7 +2030,7 @@ declare namespace Deno {
     }
 
     /**
-     * Static class initializiation block.
+     * Static class initialization block.
      * @category Linter
      * @experimental
      */
