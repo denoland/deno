@@ -813,7 +813,6 @@ pub struct PermissionFlags {
   pub allow_all: bool,
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
-  pub ignore_env: Option<Vec<String>>,
   pub allow_ffi: Option<Vec<String>>,
   pub deny_ffi: Option<Vec<String>>,
   pub allow_net: Option<Vec<String>>,
@@ -836,7 +835,6 @@ impl PermissionFlags {
     self.allow_all
       || self.allow_env.is_some()
       || self.deny_env.is_some()
-      || self.ignore_env.is_some()
       || self.allow_ffi.is_some()
       || self.deny_ffi.is_some()
       || self.allow_net.is_some()
@@ -4359,7 +4357,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
     )
     .arg(
       {
-        let mut arg = Arg::new("deny-env").long("deny-env")
+        let mut arg = Arg::new("deny-env")
+          .long("deny-env")
           .num_args(0..)
           .use_value_delimiter(true)
           .require_equals(true)
