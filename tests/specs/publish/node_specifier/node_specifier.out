@@ -4,9 +4,9 @@ Download http://localhost:4260/undici-types
 Download http://localhost:4260/@types/node/node-[WILDLINE].tgz
 Download http://localhost:4260/undici-types/undici-types-[WILDLINE].tgz
 [UNORDERED_END]
-Check file:///[WILDCARD]/mod.ts
+Check [WILDCARD]mod.ts
 Checking for slow types in the public API...
-Check file:///[WILDCARD]/publish/node_specifier/mod.ts
+Check [WILDCARD]mod.ts
 Publishing @foo/bar@1.0.0 ...
 Successfully published @foo/bar@1.0.0
 Visit http://127.0.0.1:4250/@foo/bar@1.0.0 for details

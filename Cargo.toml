@@ -8,8 +8,8 @@ members = [
   "cli/lib",
   "cli/rt",
   "cli/snapshot",
-  "ext/broadcast_channel",
   "ext/bundle",
+  "ext/cache",
   "ext/canvas",
   "ext/cron",
   "ext/crypto",
@@ -61,7 +61,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.50.3", features = ["transpiling"] }
-deno_core = { version = "0.365.0" }
+deno_core = { version = "0.367.0" }
 
 deno_cache_dir = "=0.25.0"
 deno_doc = "=0.186.0"
@@ -86,8 +86,8 @@ denokv_remote = "0.12.0"
 denokv_sqlite = { default-features = false, version = "0.12.0" }
 
 # exts
-deno_broadcast_channel = { version = "0.215.0", path = "./ext/broadcast_channel" }
 deno_bundle_runtime = { version = "0.8.0", path = "./ext/bundle" }
+deno_cache = { version = "0.153.0", path = "./ext/cache" }
 deno_canvas = { version = "0.90.0", path = "./ext/canvas" }
 deno_cron = { version = "0.101.0", path = "./ext/cron" }
 deno_crypto = { version = "0.235.0", path = "./ext/crypto" }
@@ -437,8 +437,6 @@ opt-level = 3
 [profile.release.package.bytes]
 opt-level = 3
 [profile.release.package.deno_bench_util]
-opt-level = 3
-[profile.release.package.deno_broadcast_channel]
 opt-level = 3
 [profile.release.package.deno_core]
 opt-level = 3

@@ -189,7 +189,7 @@ jobs:
           python-version: 3.11
         if: '!(matrix.skip) && (matrix.os != ''linux'' || matrix.arch != ''aarch64'')'
       - name: Remove unused versions of Python
-        if: '!(matrix.skip) && (matrix.os != ''linux'' || matrix.arch != ''aarch64'' && (matrix.os == ''windows''))'
+        if: '!(matrix.skip) && ((matrix.os != ''linux'' || matrix.arch != ''aarch64'') && (matrix.os == ''windows''))'
         shell: pwsh
         run: |-
           $env:PATH -split ";" |
@@ -748,6 +748,10 @@ jobs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
     runs-on: '${{ matrix.runner }}'
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
         include:

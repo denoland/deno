@@ -1,7 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod blob;
-pub mod cache;
+
+mod broadcast_channel;
 mod compression;
 mod console;
 mod message_port;
@@ -40,7 +41,8 @@ use crate::blob::op_blob_read_part;
 use crate::blob::op_blob_remove_part;
 use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
-pub use crate::cache::CreateCache;
+pub use crate::broadcast_channel::BroadcastChannel;
+pub use crate::broadcast_channel::InMemoryBroadcastChannel;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::Transferable;
@@ -59,7 +61,7 @@ use crate::timers::op_time_origin;
 
 deno_core::extension!(deno_web,
   deps = [ deno_webidl ],
-  parameters = [P: TimersPermission],
+  parameters = [P: TimersPermission, BC: BroadcastChannel],
   ops = [
     op_base64_decode,
     op_base64_encode,
@@ -96,12 +98,6 @@ deno_core::extension!(deno_web,
     stream_resource::op_readable_stream_resource_write_sync,
     stream_resource::op_readable_stream_resource_close,
     stream_resource::op_readable_stream_resource_await_close,
-    cache::op_cache_storage_open,
-    cache::op_cache_storage_has,
-    cache::op_cache_storage_delete,
-    cache::op_cache_put,
-    cache::op_cache_match,
-    cache::op_cache_delete,
     url::op_url_reparse,
     url::op_url_parse,
     url::op_url_get_serialization,
@@ -111,6 +107,10 @@ deno_core::extension!(deno_web,
     urlpattern::op_urlpattern_parse,
     urlpattern::op_urlpattern_process_match_input,
     console::op_preview_entries,
+    broadcast_channel::op_broadcast_subscribe<BC>,
+    broadcast_channel::op_broadcast_unsubscribe<BC>,
+    broadcast_channel::op_broadcast_send<BC>,
+    broadcast_channel::op_broadcast_recv<BC>,
   ],
   esm = [
     "00_infra.js",
@@ -131,26 +131,24 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
     "16_image_data.js",
-    "17_cache.js",
     "00_url.js",
     "01_urlpattern.js",
     "01_console.js",
+    "01_broadcast_channel.js"
   ],
   lazy_loaded_esm = [ "webtransport.js" ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
-    maybe_create_cache: Option<CreateCache>,
+    bc: BC,
   },
   state = |state, options| {
     state.put(options.blob_store);
     if let Some(location) = options.maybe_location {
       state.put(Location(location));
     }
-    if let Some(create_cache) = options.maybe_create_cache {
-      state.put(create_cache);
-    }
     state.put(StartTime::default());
+    state.put(options.bc);
   }
 );
 
