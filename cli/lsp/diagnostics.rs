@@ -935,7 +935,7 @@ fn diagnose_resolution(
           if module.media_type == MediaType::Json {
             match maybe_assert_type {
               // The module has the correct assertion type, no diagnostic
-              Some("json" | "text" | "bytes") => (),
+              Some("json" | "jsonc" | "json5" | "text" | "bytes") => (),
               // The dynamic import statement is missing an attribute type, which
               // we might not be able to statically detect, therefore we will
               // not provide a potentially incorrect diagnostic.

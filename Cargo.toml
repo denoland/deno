@@ -53,6 +53,11 @@ members = [
 ]
 exclude = ["tests/util/std/hash/_wasm"]
 
+[patch.crates-io]
+deno_graph = { path = "../deno_graph" }
+eszip = { path = "../eszip" }
+deno_doc = { path = "../deno_doc" }
+
 [workspace.package]
 authors = ["the Deno authors"]
 edition = "2024"
@@ -60,16 +65,16 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.50.3", features = ["transpiling"] }
+deno_ast = { version = "=0.51.0", features = ["transpiling"] }
 deno_core = { version = "0.367.0" }
 
-deno_cache_dir = "=0.25.0"
+deno_cache_dir = "=0.26.1"
 deno_doc = "=0.186.0"
 deno_error = "=0.7.0"
 deno_graph = { version = "=0.103.1", default-features = false }
-deno_lint = "=0.80.0"
+deno_lint = "=0.81.0"
 deno_lockfile = "=0.32.2"
-deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
+deno_media_type = { version = "=0.3.2", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_npm = "=0.42.0"
 deno_path_util = "=0.6.4"
@@ -196,6 +201,7 @@ indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
 ipnetwork = "0.20.0"
 itertools = "0.14"
+json5 = "0.4.1"
 jsonc-parser = { version = "0.27.0", features = ["serde"] }
 jupyter_runtime = "=0.19.0"
 lazy-regex = "3"
@@ -308,7 +314,7 @@ dprint-core = "=0.67.4"
 dprint-plugin-json = "=0.21.0"
 dprint-plugin-jupyter = "=0.2.1"
 dprint-plugin-markdown = "=0.20.0"
-dprint-plugin-typescript = "=0.95.11"
+dprint-plugin-typescript = "=0.95.12"
 env_logger = "=0.11.6"
 fancy-regex = "=0.14.0"
 libsui = "0.10.0"

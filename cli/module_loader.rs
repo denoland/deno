@@ -1236,7 +1236,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let graph = self.0.graph_container.graph();
     let code = match graph.get(&resolve_url(file_name).ok()?) {
       Some(deno_graph::Module::Js(module)) => &module.source.text,
-      Some(deno_graph::Module::Json(module)) => &module.source.text,
+      Some(deno_graph::Module::Independent(module)) => &module.source.text,
       _ => return None,
     };
     // Do NOT use .lines(): it skips the terminating empty line.

@@ -103,7 +103,7 @@ pub fn create_validate_import_attributes_callback(
       let valid_attribute = |kind: &str| {
         enable_raw_imports.load(Ordering::Relaxed)
           && matches!(kind, "bytes" | "text")
-          || matches!(kind, "json")
+          || matches!(kind, "json" | "jsonc" | "json5")
       };
       for (key, value) in attributes {
         let msg = if key != "type" {
@@ -125,6 +125,107 @@ pub fn create_validate_import_attributes_callback(
         scope.throw_exception(exception);
         return;
       }
+    },
+  )
+}
+
+pub const BOM_CHAR: &[u8] = &[0xef, 0xbb, 0xbf];
+
+/// Strips the byte order mark from the provided text if it exists.
+fn strip_bom(source_code: &[u8]) -> &[u8] {
+  if source_code.starts_with(BOM_CHAR) {
+    &source_code[BOM_CHAR.len()..]
+  } else {
+    source_code
+  }
+}
+
+// TODO(nayeemrmn): Export this from deno_core.
+type CustomModuleEvaluationCb = Box<
+  dyn Fn(
+    &mut v8::PinScope,
+    Cow<'_, str>,
+    &deno_core::FastString,
+    deno_core::ModuleSourceCode,
+  ) -> Result<
+    deno_core::CustomModuleEvaluationKind,
+    deno_error::JsErrorBox,
+  >,
+>;
+
+pub fn create_custom_module_evaluation_cb() -> CustomModuleEvaluationCb {
+  Box::new(
+    |scope, module_type, module_name, code| match module_type.as_ref() {
+      "jsonc" => {
+        let json_str = jsonc_parser::parse_to_serde_value(
+          deno_core::ModuleSource::get_string_source(code).as_str(),
+          &Default::default(),
+        )
+        .map_err(|err| {
+          deno_error::JsErrorBox::type_error(format!(
+            "Couldn't parse jsonc file \"{module_name}\": {err}"
+          ))
+        })?
+        .ok_or_else(|| {
+          deno_error::JsErrorBox::type_error(format!(
+            "Empty jsonc file: {module_name}"
+          ))
+        })?
+        .to_string();
+        let json_str = v8::String::new_from_utf8(
+          scope,
+          strip_bom(json_str.as_bytes()),
+          v8::NewStringType::Normal,
+        )
+        .unwrap();
+        v8::tc_scope!(let tc_scope, scope);
+        let parsed_json = v8::json::parse(tc_scope, json_str).ok_or_else(|| {
+          assert!(tc_scope.has_caught());
+          deno_error::JsErrorBox::type_error(format!(
+            "Internal error: A jsonc file was successfully converted to json, but the output could not be parsed by v8: {module_name}",
+          ))
+        })?;
+        let parsed_json = v8::Global::new(tc_scope, parsed_json);
+        Ok(deno_core::CustomModuleEvaluationKind::Synthetic(
+          parsed_json,
+        ))
+      }
+      "json5" => {
+        let json5_str = deno_core::ModuleSource::get_string_source(code);
+        json5::from_str::<serde_json::Value>(json5_str.as_str()).map_err(
+          |err| {
+            deno_error::JsErrorBox::type_error(format!(
+              "Couldn't parse json5 file \"{module_name}\": {err}"
+            ))
+          },
+        )?;
+        let expr_str = format!("({json5_str})");
+        let expr_str = v8::String::new_from_utf8(
+          scope,
+          strip_bom(expr_str.as_bytes()),
+          v8::NewStringType::Normal,
+        )
+        .unwrap();
+        v8::tc_scope!(let tc_scope, scope);
+        let script =
+          v8::Script::compile(tc_scope, expr_str, None).ok_or_else(|| {
+            assert!(tc_scope.has_caught());
+            deno_error::JsErrorBox::type_error(format!(
+              "Internal error: A json5 file was validated, but the output could not be parsed by v8: {module_name}",
+            ))
+          })?;
+        let result = script.run(tc_scope).ok_or_else(|| {
+          assert!(tc_scope.has_caught());
+          deno_error::JsErrorBox::type_error(format!(
+            "Internal error: A json5 file was validated, but the output could not be evaluated by v8: {module_name}",
+          ))
+        })?;
+        let result = v8::Global::new(tc_scope, result);
+        Ok(deno_core::CustomModuleEvaluationKind::Synthetic(result))
+      }
+      module_type => Err(deno_error::JsErrorBox::type_error(format!(
+        "\"{module_type}\" is not a valid module type."
+      ))),
     },
   )
 }
@@ -1147,7 +1248,7 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
       .then(create_permissions_stack_trace_callback),
     extension_code_cache: None,
     v8_platform: None,
-    custom_module_evaluation_cb: None,
+    custom_module_evaluation_cb: Some(create_custom_module_evaluation_cb()),
     eval_context_code_cache_cbs: None,
   });
 

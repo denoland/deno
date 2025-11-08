@@ -16,13 +16,12 @@ pub fn module_type_from_media_and_requested_type(
   match requested_module_type {
     RequestedModuleType::Text => ModuleType::Text,
     RequestedModuleType::Bytes => ModuleType::Bytes,
-    RequestedModuleType::None
-    | RequestedModuleType::Other(_)
-    | RequestedModuleType::Json => match media_type {
+    RequestedModuleType::None | RequestedModuleType::Json => match media_type {
       MediaType::Json => ModuleType::Json,
       MediaType::Wasm => ModuleType::Wasm,
       _ => ModuleType::JavaScript,
     },
+    RequestedModuleType::Other(t) => ModuleType::Other(t.clone()),
   }
 }
 
@@ -66,6 +65,12 @@ pub fn as_deno_resolver_requested_module_type(
     }
     RequestedModuleType::Bytes => {
       deno_resolver::loader::RequestedModuleType::Bytes
+    }
+    RequestedModuleType::Other(Cow::Borrowed("jsonc")) => {
+      deno_resolver::loader::RequestedModuleType::Jsonc
+    }
+    RequestedModuleType::Other(Cow::Borrowed("json5")) => {
+      deno_resolver::loader::RequestedModuleType::Json5
     }
     RequestedModuleType::Other(text) => {
       deno_resolver::loader::RequestedModuleType::Other(text)

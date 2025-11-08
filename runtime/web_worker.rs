@@ -72,6 +72,7 @@ use crate::worker::FormatJsErrorFn;
 use crate::worker::MEMORY_TRIM_HANDLER_ENABLED;
 #[cfg(target_os = "linux")]
 use crate::worker::SIGUSR2_RX;
+use crate::worker::create_custom_module_evaluation_cb;
 use crate::worker::create_op_metrics;
 use crate::worker::create_validate_import_attributes_callback;
 
@@ -659,7 +660,7 @@ impl WebWorker {
       v8_platform: None,
       is_main: false,
       wait_for_inspector_disconnect_callback: None,
-      custom_module_evaluation_cb: None,
+      custom_module_evaluation_cb: Some(create_custom_module_evaluation_cb()),
       eval_context_code_cache_cbs: None,
     });
 
