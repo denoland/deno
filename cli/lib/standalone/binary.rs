@@ -87,6 +87,7 @@ pub struct Metadata {
   pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint_key: String,
   pub preload_modules: Vec<String>,
+  pub require_modules: Vec<String>,
   pub node_modules: Option<NodeModules>,
   pub unstable_config: UnstableConfig,
   pub otel_config: OtelConfig,
