@@ -4624,14 +4624,6 @@ impl TscSpecifierMap {
     if !specifier.as_str().ends_with(ts_extension) {
       specifier += media_type.as_ts_extension();
     }
-    if original.as_str().contains("temp.jso") {
-      dbg!(
-        original.as_str(),
-        &specifier,
-        media_type,
-        MediaType::from_path(Path::new(&specifier))
-      );
-    }
     if specifier != original.as_str() {
       self
         .normalized_specifiers
