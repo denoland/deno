@@ -28,6 +28,7 @@ pub struct CjsTracker<
 > {
   is_cjs_resolver: IsCjsResolver<TInNpmPackageChecker, TSys>,
   known: MaybeDashMap<Url, ResolutionMode>,
+  require_modules: Vec<Url>,
 }
 
 impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
@@ -37,6 +38,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
     in_npm_pkg_checker: TInNpmPackageChecker,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     mode: IsCjsResolutionMode,
+    require_modules: Vec<Url>,
   ) -> Self {
     Self {
       is_cjs_resolver: IsCjsResolver::new(
@@ -45,6 +47,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
         mode,
       ),
       known: Default::default(),
+      require_modules,
     }
   }
 
@@ -135,10 +138,12 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
     media_type: MediaType,
     is_script: Option<bool>,
   ) -> Option<ResolutionMode> {
+    let is_from_require = self.require_modules.contains(specifier);
     self.is_cjs_resolver.get_known_mode_with_is_script(
       specifier,
       media_type,
       is_script,
+      is_from_require,
       &self.known,
     )
   }
@@ -223,6 +228,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
     specifier: &Url,
     media_type: MediaType,
     is_script: Option<bool>,
+    is_from_require: bool,
     known_cache: &MaybeDashMap<Url, ResolutionMode>,
   ) -> Option<ResolutionMode> {
     if specifier.scheme() != "file" {
@@ -257,6 +263,10 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => {
+        if is_from_require {
+          return Some(ResolutionMode::Require);
+        }
+
         if let Some(value) = known_cache.get(specifier).map(|v| *v) {
           if value == ResolutionMode::Require && is_script == Some(false) {
             // we now know this is actually esm

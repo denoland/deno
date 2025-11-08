@@ -498,7 +498,7 @@ pub async fn run_benchmarks(
     return Ok(());
   }
 
-  let preload_modules = cli_options.preload_modules()?;
+  let preload_modules = cli_options.all_preload_modules()?;
   let log_level = cli_options.log_level();
   let worker_factory =
     Arc::new(factory.create_cli_main_worker_factory().await?);
@@ -636,7 +636,7 @@ pub async fn run_benchmarks_with_watch(
         }
 
         let log_level = cli_options.log_level();
-        let preload_modules = cli_options.preload_modules()?;
+        let preload_modules = cli_options.all_preload_modules()?;
         bench_specifiers(
           worker_factory,
           cli_options,

@@ -849,6 +849,11 @@ pub async fn run(
     node_resolution_sys,
     node_resolver::NodeResolverOptions::default(),
   ));
+  let require_modules = metadata
+    .require_modules
+    .iter()
+    .map(|key| root_dir_url.join(key).unwrap())
+    .collect::<Vec<_>>();
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
@@ -859,6 +864,7 @@ pub async fn run(
     } else {
       IsCjsResolutionMode::ExplicitTypeCommonJs
     },
+    require_modules,
   ));
   let npm_req_resolver = Arc::new(NpmReqResolver::new(NpmReqResolverOptions {
     sys: sys.clone(),
@@ -1077,11 +1083,19 @@ pub async fn run(
     Err(_) => main_module,
   };
 
-  let preload_modules = metadata
+  let mut preload_modules = metadata
     .preload_modules
     .iter()
     .map(|key| root_dir_url.join(key).unwrap())
     .collect::<Vec<_>>();
+
+  let require_modules = metadata
+    .require_modules
+    .iter()
+    .map(|key| root_dir_url.join(key).unwrap())
+    .collect::<Vec<_>>();
+
+  preload_modules.extend(require_modules);
 
   let mut worker = worker_factory.create_main_worker(
     WorkerExecutionMode::Run,

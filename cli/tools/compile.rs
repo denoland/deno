@@ -436,7 +436,7 @@ fn get_module_roots_and_include_paths(
     }
   }
 
-  for preload_module in cli_options.preload_modules()? {
+  for preload_module in cli_options.all_preload_modules()? {
     module_roots.push(preload_module);
   }
 
