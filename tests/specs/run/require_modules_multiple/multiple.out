@@ -1,0 +1,6 @@
+require_first.js loading
+require_second.js loading
+main_multiple.ts starts
+First: first
+Second: second
+main_multiple.ts finished

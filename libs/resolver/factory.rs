@@ -682,6 +682,8 @@ pub struct ResolverFactoryOptions {
   /// Known good version requirement to use for the `@types/node` package
   /// when the version is unspecified or "latest".
   pub types_node_version_req: Option<VersionReq>,
+  /// Modules loaded via --require flag that should always be treated as CommonJS
+  pub require_modules: Vec<Url>,
 }
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
@@ -848,6 +850,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         self.in_npm_package_checker()?.clone(),
         self.pkg_json_resolver().clone(),
         self.options.is_cjs_resolution_mode,
+        self.options.require_modules.clone(),
       )))
     })
   }

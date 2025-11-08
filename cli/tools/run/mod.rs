@@ -90,7 +90,7 @@ pub async fn run_script(
       node_resolver.clone(),
     ),
   ))?;
-  let preload_modules = cli_options.preload_modules()?;
+  let preload_modules = cli_options.all_preload_modules()?;
 
   if main_module.scheme() == "npm" {
     set_npm_user_agent();
@@ -126,7 +126,7 @@ pub async fn run_from_stdin(
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
-  let preload_modules = cli_options.preload_modules()?;
+  let preload_modules = cli_options.all_preload_modules()?;
 
   maybe_npm_install(&factory).await?;
 
@@ -190,7 +190,7 @@ async fn run_with_watch(
         );
         let cli_options = factory.cli_options()?;
         let main_module = cli_options.resolve_main_module()?;
-        let preload_modules = cli_options.preload_modules()?;
+        let preload_modules = cli_options.all_preload_modules()?;
 
         if main_module.scheme() == "npm" {
           set_npm_user_agent();
@@ -230,7 +230,7 @@ pub async fn eval_command(
   let cli_options = factory.cli_options()?;
   let file_fetcher = factory.file_fetcher()?;
   let main_module = cli_options.resolve_main_module()?;
-  let preload_modules = cli_options.preload_modules()?;
+  let preload_modules = cli_options.all_preload_modules()?;
 
   maybe_npm_install(&factory).await?;
 
@@ -307,7 +307,7 @@ pub async fn run_eszip(
 
   let mode = WorkerExecutionMode::Run;
   let main_module = resolve_url_or_path(entrypoint, cli_options.initial_cwd())?;
-  let preload_modules = cli_options.preload_modules()?;
+  let preload_modules = cli_options.all_preload_modules()?;
 
   let worker_factory = factory
     .create_cli_main_worker_factory_with_roots(roots)

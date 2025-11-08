@@ -1581,7 +1581,7 @@ pub async fn run_tests(
 
   let worker_factory =
     Arc::new(factory.create_cli_main_worker_factory().await?);
-  let preload_modules = cli_options.preload_modules()?;
+  let preload_modules = cli_options.all_preload_modules()?;
 
   // Run tests
   test_specifiers(
@@ -1793,7 +1793,7 @@ pub async fn run_tests_with_watch(
 
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
-        let preload_modules = cli_options.preload_modules()?;
+        let preload_modules = cli_options.all_preload_modules()?;
 
         test_specifiers(
           worker_factory,
