@@ -16,7 +16,10 @@ import {
   ERR_INVALID_RETURN_VALUE,
   ERR_MISSING_ARGS,
 } from "ext:deno_node/internal/errors.ts";
-import { isDeepEqual, isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
+import {
+  isDeepEqual,
+  isDeepStrictEqual,
+} from "ext:deno_node/internal/util/comparisons.ts";
 import { primordials } from "ext:core/mod.js";
 import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
 import { deprecate } from "node:util";
@@ -454,8 +457,8 @@ function isPartialDeepStrictEqual(actual: unknown, expected: unknown): boolean {
     if (!Array.isArray(actual)) {
       return false;
     }
-    return expected.every(expectedItem => 
-      actual.some(actualItem => isDeepStrictEqual(actualItem, expectedItem))
+    return expected.every((expectedItem) =>
+      actual.some((actualItem) => isDeepStrictEqual(actualItem, expectedItem))
     );
   }
 
@@ -464,7 +467,7 @@ function isPartialDeepStrictEqual(actual: unknown, expected: unknown): boolean {
     if (typeof actual !== "object" || actual === null) {
       return false;
     }
-    
+
     // Ensure both are the same type (both arrays or both objects)
     if (Array.isArray(actual) !== Array.isArray(expected)) {
       return false;
@@ -474,7 +477,9 @@ function isPartialDeepStrictEqual(actual: unknown, expected: unknown): boolean {
       if (!(key in actual)) {
         return false;
       }
-      if (!isPartialDeepStrictEqual((actual as any)[key], (expected as any)[key])) {
+      if (
+        !isPartialDeepStrictEqual((actual as any)[key], (expected as any)[key])
+      ) {
         return false;
       }
     }
