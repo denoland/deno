@@ -230,12 +230,12 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
-            if (!this.#exited) {
+          if (!this.#exited) {
             this.#exited = true;
             this.emit("exit", 1);
           }
           return;
-        } /* falls through */
+        }
         case 2: { // Error
           this.#handleError(data);
           break;
