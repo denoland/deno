@@ -99,6 +99,7 @@ class NodeWorker extends EventEmitter {
   #messagePromise = undefined;
   #controlPromise = undefined;
   #workerOnline = false;
+  #exited = false;
   // "RUNNING" | "CLOSED" | "TERMINATED"
   // "TERMINATED" means that any controls or messages received will be
   // discarded. "CLOSED" means that we have received a control
@@ -229,6 +230,11 @@ class NodeWorker extends EventEmitter {
       switch (type) {
         case 1: { // TerminalError
           this.#status = "CLOSED";
+            if (!this.#exited) {
+            this.#exited = true;
+            this.emit("exit", 1);
+          }
+          return;
         } /* falls through */
         case 2: { // Error
           this.#handleError(data);
@@ -237,6 +243,10 @@ class NodeWorker extends EventEmitter {
         case 3: { // Close
           debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
+          if (!this.#exited) {
+            this.#exited = true;
+            this.emit("exit", 0);
+          }
           return;
         }
         default: {
@@ -314,7 +324,6 @@ class NodeWorker extends EventEmitter {
     if (this.#status !== "TERMINATED") {
       this.#status = "TERMINATED";
       op_host_terminate_worker(this.#id);
-      this.emit("exit", 0);
     }
     return PromiseResolve(0);
   }
