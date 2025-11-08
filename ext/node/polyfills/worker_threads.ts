@@ -321,10 +321,18 @@ class NodeWorker extends EventEmitter {
 
   // https://nodejs.org/api/worker_threads.html#workerterminate
   terminate() {
-    if (this.#status !== "TERMINATED") {
-      this.#status = "TERMINATED";
-      op_host_terminate_worker(this.#id);
+   if (this.#status === "TERMINATED") {
+    return PromiseResolve(0);
+   }
+
+    this.#status = "TERMINATED";
+    op_host_terminate_worker(this.#id);
+
+    if (!this.#exited) {
+    this.#exited = true;
+    this.emit("exit", 0);
     }
+
     return PromiseResolve(0);
   }
 
