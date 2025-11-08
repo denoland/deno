@@ -16,7 +16,7 @@ import {
   ERR_INVALID_RETURN_VALUE,
   ERR_MISSING_ARGS,
 } from "ext:deno_node/internal/errors.ts";
-import { isDeepEqual } from "ext:deno_node/internal/util/comparisons.ts";
+import { isDeepEqual, isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
 import { primordials } from "ext:core/mod.js";
 import { CallTracker } from "ext:deno_node/internal/assert/calltracker.js";
 import { deprecate } from "node:util";
@@ -394,7 +394,7 @@ function deepStrictEqual(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  if (!asserts.equal(actual, expected)) {
+  if (!isDeepStrictEqual(actual, expected)) {
     throw new AssertionError({
       message,
       actual,
@@ -417,6 +417,72 @@ function notDeepStrictEqual(
     () => asserts.assertNotEquals(actual, expected),
     { message, actual, expected, operator: "deepNotStrictEqual" },
   );
+}
+
+function partialDeepStrictEqual(
+  actual: unknown,
+  expected: unknown,
+  message?: string | Error,
+) {
+  if (arguments.length < 2) {
+    throw new ERR_MISSING_ARGS("actual", "expected");
+  }
+
+  if (!isPartialDeepStrictEqual(actual, expected)) {
+    throw new AssertionError({
+      message,
+      actual,
+      expected,
+      operator: "partialDeepStrictEqual",
+    });
+  }
+}
+
+function isPartialDeepStrictEqual(actual: unknown, expected: unknown): boolean {
+  // If expected is null or undefined, it's always a subset
+  if (expected === null || expected === undefined) {
+    return true;
+  }
+
+  // If actual is null/undefined but expected is not, it's not a subset
+  if (actual === null || actual === undefined) {
+    return false;
+  }
+
+  // For arrays, check if all elements in expected exist in actual
+  if (Array.isArray(expected)) {
+    if (!Array.isArray(actual)) {
+      return false;
+    }
+    return expected.every(expectedItem => 
+      actual.some(actualItem => isDeepStrictEqual(actualItem, expectedItem))
+    );
+  }
+
+  // For objects, check if all properties in expected exist in actual with same values
+  if (typeof expected === "object" && expected !== null) {
+    if (typeof actual !== "object" || actual === null) {
+      return false;
+    }
+    
+    // Ensure both are the same type (both arrays or both objects)
+    if (Array.isArray(actual) !== Array.isArray(expected)) {
+      return false;
+    }
+
+    for (const key in expected) {
+      if (!(key in actual)) {
+        return false;
+      }
+      if (!isPartialDeepStrictEqual((actual as any)[key], (expected as any)[key])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // For primitives, use strict equality
+  return isDeepStrictEqual(actual, expected);
 }
 
 let warned = false;
@@ -966,9 +1032,8 @@ Object.assign(strict, {
   match,
   notDeepEqual: notDeepStrictEqual,
   notDeepStrictEqual,
-  notEqual: notStrictEqual,
-  notStrictEqual,
   ok,
+  partialDeepStrictEqual,
   rejects,
   strict,
   strictEqual,
@@ -992,6 +1057,7 @@ export default Object.assign(assert, {
   notEqual,
   notStrictEqual,
   ok,
+  partialDeepStrictEqual,
   rejects,
   strict,
   strictEqual,
@@ -1015,6 +1081,7 @@ export {
   notEqual,
   notStrictEqual,
   ok,
+  partialDeepStrictEqual,
   rejects,
   strict,
   strictEqual,

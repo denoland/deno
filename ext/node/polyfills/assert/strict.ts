@@ -17,6 +17,7 @@ export {
   notEqual,
   notStrictEqual,
   ok,
+  partialDeepStrictEqual,
   rejects,
   strictEqual,
   throws,

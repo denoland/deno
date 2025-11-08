@@ -1450,6 +1450,10 @@ export type ServerResponse = {
 
   flushHeaders(): void;
   _implicitHeader(): void;
+  writeEarlyHints(
+    hints: Record<string, string | string[]>,
+    callback?: () => void,
+  ): void;
 
   // Undocumented field used by `npm:light-my-request`.
   _header: string;
@@ -1699,6 +1703,7 @@ ServerResponse.prototype.writeHead = function (
     | Array<string>,
 ) {
   this.statusCode = status;
+  this.headersSent = true;
 
   let headers = null;
   if (typeof statusMessageOrHeaders === "string") {
@@ -1859,6 +1864,30 @@ ServerResponse.prototype.writeContinue = function writeContinue(cb) {
   if (cb) {
     nextTick(cb);
   }
+};
+
+ServerResponse.prototype.writeEarlyHints = function writeEarlyHints(
+  this: ServerResponse,
+  hints: Record<string, string | string[]>,
+  callback?: () => void,
+) {
+  if (this.headersSent) {
+    throw new ERR_HTTP_HEADERS_SENT("writeEarlyHints");
+  }
+
+  // Validate hints parameter
+  if (typeof hints !== "object" || hints === null) {
+    throw new ERR_INVALID_ARG_TYPE("hints", "object", hints);
+  }
+
+  // Early hints are sent as HTTP 103 Early Hints response
+  // In Deno's implementation, we'll simulate this by calling the callback
+  // immediately since we don't have native HTTP/2 push support
+  if (callback) {
+    nextTick(callback);
+  }
+
+  return this;
 };
 
 Object.defineProperty(ServerResponse.prototype, "connection", {
