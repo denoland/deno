@@ -298,13 +298,13 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       && let Some(caching) = caching
     {
       result.dependencies_result =
-        self.check_cache_packages(packages, caching).await;
+        self.maybe_cache_packages(packages, caching).await;
     }
 
     result
   }
 
-  async fn check_cache_packages(
+  async fn maybe_cache_packages(
     &self,
     packages: &[PackageReq],
     caching: PackageCaching<'_>,
@@ -351,7 +351,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     {
       // ensure it's cached though
       if let Some(caching) = cache_strategy.as_package_caching(reqs) {
-        self.check_cache_packages(reqs, caching).await?;
+        self.maybe_cache_packages(reqs, caching).await?;
       }
       return Ok(());
     }
