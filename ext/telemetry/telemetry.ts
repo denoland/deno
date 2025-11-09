@@ -81,13 +81,14 @@ let ISOLATE_METRICS = false;
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
-enum SpanKind {
-  INTERNAL = 0,
-  SERVER = 1,
-  CLIENT = 2,
-  PRODUCER = 3,
-  CONSUMER = 4,
-}
+const SpanKind = {
+  INTERNAL: 0,
+  SERVER: 1,
+  CLIENT: 2,
+  PRODUCER: 3,
+  CONSUMER: 4,
+} as const;
+type SpanKind = (typeof SpanKind)[keyof typeof SpanKind];
 
 interface TraceState {
   set(key: string, value: string): TraceState;
@@ -104,11 +105,12 @@ interface SpanContext {
   traceState?: TraceState;
 }
 
-enum SpanStatusCode {
-  UNSET = 0,
-  OK = 1,
-  ERROR = 2,
-}
+const SpanStatusCode = {
+  UNSET: 0,
+  OK: 1,
+  ERROR: 2,
+} as const;
+type SpanStatusCode = (typeof SpanStatusCode)[keyof typeof SpanStatusCode];
 
 interface SpanStatus {
   code: SpanStatusCode;
@@ -252,11 +254,13 @@ interface OtelSpan {
   end(endTime: number): void;
 }
 
-enum SpanAttributesLocation {
-  SELF = 0,
-  LAST_EVENT = 1,
-  LAST_LINK = 2,
-}
+const SpanAttributesLocation = {
+  SELF: 0,
+  LAST_EVENT: 1,
+  LAST_LINK: 2,
+} as const;
+type SpanAttributesLocation =
+  (typeof SpanAttributesLocation)[keyof typeof SpanAttributesLocation];
 
 function spanAddAttributes(
   span: OtelSpan,
@@ -670,10 +674,11 @@ interface MetricOptions {
   advice?: MetricAdvice;
 }
 
-enum ValueType {
-  INT = 0,
-  DOUBLE = 1,
-}
+const ValueType = {
+  INT: 0,
+  DOUBLE: 1,
+} as const;
+type ValueType = (typeof ValueType)[keyof typeof ValueType];
 
 interface MetricAdvice {
   /**
@@ -1256,12 +1261,12 @@ const BAGGAGE_MAX_PER_NAME_VALUE_PAIRS = 4096;
 const BAGGAGE_MAX_TOTAL_LENGTH = 8192;
 
 class NonRecordingSpan implements Span {
-  constructor(
-    private readonly _spanContext: SpanContext = INVALID_SPAN_CONTEXT,
-  ) {}
+  #spanContext: SpanContext = INVALID_SPAN_CONTEXT;
+
+  constructor() {}
 
   spanContext(): SpanContext {
-    return this._spanContext;
+    return this.#spanContext;
   }
 
   setAttribute(_key: string, _value: unknown): this {
@@ -1382,34 +1387,34 @@ function validateValue(value: string): boolean {
 }
 
 class TraceStateClass implements TraceState {
-  private _internalState: Map<string, string> = new SafeMap();
+  #internalState: Map<string, string> = new SafeMap();
 
   constructor(rawTraceState?: string) {
-    if (rawTraceState) this._parse(rawTraceState);
+    if (rawTraceState) this.#parse(rawTraceState);
   }
 
   set(key: string, value: string): TraceStateClass {
-    const traceState = this._clone();
-    if (traceState._internalState.has(key)) {
-      traceState._internalState.delete(key);
+    const traceState = this.#clone();
+    if (traceState.#internalState.has(key)) {
+      traceState.#internalState.delete(key);
     }
-    traceState._internalState.set(key, value);
+    traceState.#internalState.set(key, value);
     return traceState;
   }
 
   unset(key: string): TraceStateClass {
-    const traceState = this._clone();
-    traceState._internalState.delete(key);
+    const traceState = this.#clone();
+    traceState.#internalState.delete(key);
     return traceState;
   }
 
   get(key: string): string | undefined {
-    return this._internalState.get(key);
+    return this.#internalState.get(key);
   }
 
   serialize(): string {
     return ArrayPrototypeJoin(
-      ArrayPrototypeReduce(this._keys(), (agg: string[], key) => {
+      ArrayPrototypeReduce(this.#keys(), (agg: string[], key) => {
         ArrayPrototypePush(
           agg,
           key + LIST_MEMBER_KEY_VALUE_SPLITTER + this.get(key),
@@ -1420,9 +1425,9 @@ class TraceStateClass implements TraceState {
     );
   }
 
-  private _parse(rawTraceState: string) {
+  #parse(rawTraceState: string) {
     if (rawTraceState.length > MAX_TRACE_STATE_LEN) return;
-    this._internalState = ArrayPrototypeReduce(
+    this.#internalState = ArrayPrototypeReduce(
       ArrayPrototypeReverse(
         StringPrototypeSplit(rawTraceState, LIST_MEMBERS_SEPARATOR),
       ),
@@ -1445,11 +1450,11 @@ class TraceStateClass implements TraceState {
     );
 
     // Because of the reverse() requirement, trunc must be done after map is created
-    if (this._internalState.size > MAX_TRACE_STATE_ITEMS) {
-      this._internalState = new SafeMap(
+    if (this.#internalState.size > MAX_TRACE_STATE_ITEMS) {
+      this.#internalState = new SafeMap(
         ArrayPrototypeSlice(
           ArrayPrototypeReverse(
-            ArrayFrom(MapPrototypeEntries(this._internalState)),
+            ArrayFrom(MapPrototypeEntries(this.#internalState)),
           ),
           0,
           MAX_TRACE_STATE_ITEMS,
@@ -1458,15 +1463,15 @@ class TraceStateClass implements TraceState {
     }
   }
 
-  private _keys(): string[] {
+  #keys(): string[] {
     return ArrayPrototypeReverse(
-      ArrayFrom(MapPrototypeKeys(this._internalState)),
+      ArrayFrom(MapPrototypeKeys(this.#internalState)),
     );
   }
 
-  private _clone(): TraceStateClass {
+  #clone(): TraceStateClass {
     const traceState = new TraceStateClass();
-    traceState._internalState = new SafeMap(this._internalState);
+    traceState.#internalState = new SafeMap(this.#internalState);
     return traceState;
   }
 }
