@@ -65,6 +65,7 @@ const {
   SafeFinalizationRegistry,
   SafePromiseAll,
   SafeWeakMap,
+  SafeWeakRef,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype,
   String,
@@ -818,12 +819,13 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
   }
 }
 
-const errors = {};
-const errorRegistry = new FinalizationRegistry((h) => {
-  delete errors[h];
+/** @type Record<string, WeakRef<Error>> */
+const REGISTERED_ERRORS = { __proto__: null };
+const ERROR_REGISTRY = new SafeFinalizationRegistry((h) => {
+  delete REGISTERED_ERRORS[h];
 });
 core.registerErrorBuilder("JsValueError", (message) => {
-  return errors[message].deref();
+  return REGISTERED_ERRORS[message].deref();
 });
 
 /**
@@ -859,10 +861,11 @@ async function readableStreamReadFn(reader, sink) {
       },
       errorSteps(error) {
         const key = crypto.randomUUID();
-        errorRegistry.register(error, key);
-        errors[key] = new WeakRef(error);
+        ERROR_REGISTRY.register(error, key);
+        REGISTERED_ERRORS[key] = new SafeWeakRef(error);
         const success = op_readable_stream_resource_write_error(
           sink.external,
+          // extractStringErrorFromError(error),
           key,
           error,
         );

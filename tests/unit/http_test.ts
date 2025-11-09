@@ -429,9 +429,8 @@ Deno.test(
           );
         },
         Deno.errors.Http,
-        cancelReason!,
       );
-      assert(cancelReason!);
+      assert(cancelReason!, "cancelReason should be set");
       httpConn!.close();
     })();
 

@@ -27,6 +27,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::StringOrBuffer;
 use deno_core::external;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
@@ -738,7 +739,6 @@ pub async fn op_http_set_response_body_resource(
   #[smi] stream_rid: ResourceId,
   auto_close: bool,
   status: u16,
-  #[smi] join_handle_rid: ResourceId,
 ) -> Result<bool, HttpNextError> {
   let http =
     // SAFETY: op is called with external.
@@ -772,23 +772,78 @@ pub async fn op_http_set_response_body_resource(
     },
   );
 
-  if join_handle_rid == 0 {
-    Ok(http.response_body_finished().await?)
-  } else {
-    let join_handle = state
-      .borrow_mut()
-      .resource_table
-      .get::<HttpJoinHandle>(join_handle_rid)?;
+  Ok(http.response_body_finished().await.unwrap_or(false))
+}
 
-    tokio::select! {
-      biased;
-      consumed = http.response_body_finished() => {
-        Ok(consumed?)
-      }
-      res = join_handle.closed() => {
-        res?;
-        Ok(false)
-      }
+#[op2(async)]
+pub async fn op_http_set_response_body_legacy(
+  state: Rc<RefCell<OpState>>,
+  external: *const c_void,
+  #[smi] join_handle_rid: ResourceId,
+  status: u16,
+  #[serde] static_body: Option<StringOrBuffer>,
+  #[smi] stream_rid: ResourceId,
+  stream_auto_close: bool,
+) -> Result<bool, HttpNextError> {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_set_response_body_resource") };
+
+  let join_handle = state
+    .borrow_mut()
+    .resource_table
+    .get::<HttpJoinHandle>(join_handle_rid)?;
+
+  *http.needs_close_after_finish() = true;
+
+  match static_body {
+    Some(StringOrBuffer::String(s)) if !s.is_empty() => {
+      set_response(http.clone(), Some(s.len()), status, false, |compression| {
+        ResponseBytesInner::from_vec(compression, s.into_bytes())
+      });
+    }
+    Some(StringOrBuffer::Buffer(b)) if !b.is_empty() => {
+      set_response(http.clone(), Some(b.len()), status, false, |compression| {
+        ResponseBytesInner::from_vec(compression, b.to_vec())
+      });
+    }
+    None if stream_rid != 0 => {
+      let resource = {
+        let mut state = state.borrow_mut();
+        if stream_auto_close {
+          state.resource_table.take_any(stream_rid)?
+        } else {
+          state.resource_table.get_any(stream_rid)?
+        }
+      };
+
+      set_response(
+        http.clone(),
+        resource.size_hint().1.map(|s| s as usize),
+        status,
+        true,
+        move |compression| {
+          ResponseBytesInner::from_resource(
+            compression,
+            resource,
+            stream_auto_close,
+          )
+        },
+      );
+    }
+    _ => {
+      set_promise_complete(http.clone(), status);
+    }
+  }
+
+  tokio::select! {
+    biased;
+    consumed = http.response_body_finished() => {
+      Ok(consumed?)
+    }
+    res = join_handle.closed() => {
+      res?;
+      Ok(false)
     }
   }
 }
@@ -1052,6 +1107,7 @@ impl HttpLifetime {
 }
 
 struct HttpJoinHandle {
+  #[allow(clippy::type_complexity)]
   join_handle:
     Shared<Pin<Box<dyn Future<Output = Result<(), Arc<HttpNextError>>>>>>,
   lifetime: HttpLifetime,

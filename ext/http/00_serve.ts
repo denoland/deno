@@ -449,14 +449,13 @@ function fastSyncResponseOrStream(
   req,
   respBody,
   status,
-  innerRequest,
-  serverRid,
+  innerRequest: InnerRequest,
 ) {
   if (respBody === null || respBody === undefined) {
     // Don't set the body
     innerRequest?.close();
     op_http_set_promise_complete(req, status);
-    return true;
+    return;
   }
 
   const stream = respBody.streamOrStatic;
@@ -470,13 +469,13 @@ function fastSyncResponseOrStream(
   if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
     innerRequest?.close();
     op_http_set_response_body_bytes(req, body, status);
-    return true;
+    return;
   }
 
   if (typeof body === "string") {
     innerRequest?.close();
     op_http_set_response_body_text(req, body, status);
-    return true;
+    return;
   }
 
   // At this point in the response it needs to be a stream
@@ -493,23 +492,11 @@ function fastSyncResponseOrStream(
     rid = resourceForReadableStream(stream);
     autoClose = true;
   }
-  return PromisePrototypeThen(
-    op_http_set_response_body_resource(
-      req,
-      rid,
-      autoClose,
-      status,
-      serverRid,
-    ),
-    (consumed) => {
-      innerRequest?.close(consumed);
+  PromisePrototypeThen(
+    op_http_set_response_body_resource(req, rid, autoClose, status),
+    (success) => {
+      innerRequest?.close(success);
       op_http_close_after_finish(req);
-      return consumed;
-    },
-    (e) => {
-      innerRequest?.close(false);
-      op_http_close_after_finish(req);
-      throw e;
     },
   );
 }
@@ -614,7 +601,7 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    fastSyncResponseOrStream(req, inner.body, status, innerRequest, 0);
+    fastSyncResponseOrStream(req, inner.body, status, innerRequest);
   };
 
   if (TRACING_ENABLED) {
@@ -1178,7 +1165,6 @@ function registerDeclarativeServer(exports) {
 export {
   addTrailers,
   CallbackContext,
-  fastSyncResponseOrStream,
   InnerRequest,
   registerDeclarativeServer,
   serve,

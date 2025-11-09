@@ -37,17 +37,43 @@ pub enum StreamResourceError {
   #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
-  #[class("JsValueError")]
-  #[error("{message}")]
-  Js {
-    message: String,
-    ref_into_js: RefIntoJs,
-  },
+  #[class(inherit)]
+  #[error(transparent)]
+  Js(#[from] JsValueError),
 }
 
-#[derive(Debug)]
-pub struct RefIntoJs {
-  handle: tokio::sync::oneshot::Sender<()>,
+#[derive(deno_error::JsError, Debug)]
+#[class("JsValueError")]
+pub struct JsValueError {
+  message: String,
+  _handle: tokio::sync::oneshot::Sender<()>,
+}
+
+impl JsValueError {
+  fn new<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    error: v8::Local<'s, v8::Object>,
+    message: String,
+  ) -> Self {
+    let error = v8::Global::new(scope, error);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    deno_core::unsync::spawn(async move {
+      // keep gc reference to `error` until `tx` is dropped
+      let _ = rx.await;
+      drop(error);
+    });
+    Self {
+      message,
+      _handle: tx,
+    }
+  }
+}
+
+impl std::error::Error for JsValueError {}
+impl std::fmt::Display for JsValueError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(&self.message)
+  }
 }
 
 // How many buffers we'll allow in the channel before we stop allowing writes.
@@ -588,18 +614,9 @@ pub fn op_readable_stream_resource_write_error<'s>(
   error: v8::Local<'s, v8::Object>,
 ) -> bool {
   let sender = get_sender(sender);
-  let error = v8::Global::new(scope, error);
-  let (tx, rx) = tokio::sync::oneshot::channel();
-  deno_core::unsync::spawn(async move {
-    // keep gc reference to `error` until RefIntoJs is dropped
-    let _ = rx.await;
-    drop(error);
-  });
+  let error = JsValueError::new(scope, error, message);
   // We can always write an error, no polling required
-  sender.write_error(StreamResourceError::Js {
-    message,
-    ref_into_js: RefIntoJs { handle: tx },
-  });
+  sender.write_error(error.into());
   !sender.closed()
 }
 

@@ -7,8 +7,10 @@ const {
   internalRidSymbol,
 } = core;
 import {
+  op_http_close_after_finish,
   op_http_serve_on,
   op_http_set_promise_complete,
+  op_http_set_response_body_legacy,
   op_http_set_response_header,
   op_http_set_response_headers,
   op_http_try_wait,
@@ -21,6 +23,7 @@ const {
   StringPrototypeIncludes,
   Symbol,
   TypeError,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 import { _ws } from "ext:deno_http/02_websocket.ts";
 import {
@@ -39,10 +42,11 @@ import {
   _serverHandleIdleTimeout,
 } from "ext:deno_websocket/01_websocket.js";
 import {
-  CallbackContext,
-  fastSyncResponseOrStream,
-  InnerRequest,
-} from "./00_serve.ts";
+  getReadableStreamResourceBacking,
+  ReadableStreamPrototype,
+  resourceForReadableStream,
+} from "ext:deno_web/06_streams.js";
+import { CallbackContext, InnerRequest } from "./00_serve.ts";
 
 const connErrorSymbol = Symbol("connError");
 
@@ -167,20 +171,59 @@ function createRespondWith(httpConn, context, req, innerRequest) {
         }
       }
 
-      const consumed = await fastSyncResponseOrStream(
-        req,
-        inner.body,
-        status,
-        innerRequest,
-        context.serverRid,
-      );
-      if (!consumed) {
-        throw core.buildCustomError(
-          "Http",
-          "The connection closed while writing the response body",
+      let staticBody = null;
+      let streamRid = 0;
+      let streamAutoClose = false;
+      if (inner.body != null) {
+        const stream = inner.body.streamOrStatic;
+        const body = stream.body;
+        if (body !== undefined) {
+          stream.consumed = true;
+        }
+
+        if (
+          typeof body === "string" ||
+          TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array"
+        ) {
+          staticBody = body;
+        } else {
+          if (!ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
+            throw new TypeError("Invalid response");
+          }
+
+          const resourceBacking = getReadableStreamResourceBacking(stream);
+          if (resourceBacking) {
+            streamRid = resourceBacking.rid;
+            streamAutoClose = resourceBacking.autoClose;
+          } else {
+            streamRid = resourceForReadableStream(stream);
+            streamAutoClose = true;
+          }
+        }
+      }
+
+      try {
+        const consumed = await op_http_set_response_body_legacy(
+          req,
+          context.serverRid,
+          status,
+          staticBody,
+          streamRid,
+          streamAutoClose,
         );
+        innerRequest.close(consumed);
+        if (!consumed) {
+          throw core.buildCustomError(
+            "Http",
+            "The connection closed while writing the response body",
+          );
+        }
+      } finally {
+        op_http_close_after_finish(req);
       }
     } catch (error) {
+      innerRequest.close(false);
+
       const connError = httpConn[connErrorSymbol];
       if (
         ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
@@ -190,7 +233,6 @@ function createRespondWith(httpConn, context, req, innerRequest) {
         error = new connError.constructor(connError.message);
       }
 
-      innerRequest.close(false);
       throw error;
     }
   };
