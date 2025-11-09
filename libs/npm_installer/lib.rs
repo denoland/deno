@@ -297,50 +297,65 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     if result.dependencies_result.is_ok()
       && let Some(caching) = caching
     {
-      // the async mutex is unfortunate, but needed to handle the edge case where two workers
-      // try to cache the same package at the same time. we need to hold the lock while we cache
-      // and since that crosses an await point, we need the async mutex.
-      //
-      // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
-      // while caching typically takes micro or milli seconds.
-      let _permit = self.install_queue.acquire().await;
-      let uncached = {
-        let cached_reqs = self.cached_reqs.lock();
-        packages
-          .iter()
-          .filter(|req| !cached_reqs.contains(req))
-          .collect::<Vec<_>>()
-      };
-
-      if !uncached.is_empty() {
-        result.dependencies_result =
-          self.fs_installer.cache_packages(caching).await;
-        if result.dependencies_result.is_ok() {
-          let mut cached_reqs = self.cached_reqs.lock();
-          for req in uncached {
-            cached_reqs.insert(req.clone());
-          }
-        }
-      }
+      result.dependencies_result =
+        self.check_cache_packages(packages, caching).await;
     }
 
     result
   }
 
+  async fn check_cache_packages(
+    &self,
+    packages: &[PackageReq],
+    caching: PackageCaching<'_>,
+  ) -> Result<(), JsErrorBox> {
+    // the async mutex is unfortunate, but needed to handle the edge case where two workers
+    // try to cache the same package at the same time. we need to hold the lock while we cache
+    // and since that crosses an await point, we need the async mutex.
+    //
+    // should have a negligible perf impact because acquiring the lock is still in the order of nanoseconds
+    // while caching typically takes micro or milli seconds.
+    let _permit = self.install_queue.acquire().await;
+    let uncached = {
+      let cached_reqs = self.cached_reqs.lock();
+      packages
+        .iter()
+        .filter(|req| !cached_reqs.contains(req))
+        .collect::<Vec<_>>()
+    };
+
+    if uncached.is_empty() {
+      return Ok(());
+    }
+    let result = self.fs_installer.cache_packages(caching).await;
+    if result.is_ok() {
+      let mut cached_reqs = self.cached_reqs.lock();
+      for req in uncached {
+        cached_reqs.insert(req.clone());
+      }
+    }
+    result
+  }
+
   pub async fn inject_synthetic_types_node_package(
     &self,
+    cache_strategy: graph::NpmCachingStrategy,
   ) -> Result<(), JsErrorBox> {
     self.npm_resolution_initializer.ensure_initialized().await?;
 
     // don't inject this if it's already been added
+    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     if self
       .npm_resolution
       .any_top_level_package(|id| id.nv.name == "@types/node")
     {
+      // ensure it's cached though
+      if let Some(caching) = cache_strategy.as_package_caching(reqs) {
+        self.check_cache_packages(reqs, caching).await?;
+      }
       return Ok(());
     }
 
-    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
     self
       .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
       .await?;
