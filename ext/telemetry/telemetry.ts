@@ -1261,9 +1261,12 @@ const BAGGAGE_MAX_PER_NAME_VALUE_PAIRS = 4096;
 const BAGGAGE_MAX_TOTAL_LENGTH = 8192;
 
 class NonRecordingSpan implements Span {
-  #spanContext: SpanContext = INVALID_SPAN_CONTEXT;
-
-  constructor() {}
+  #spanContext: SpanContext;
+  constructor(
+    spanContext: SpanContext = INVALID_SPAN_CONTEXT,
+  ) {
+    this.#spanContext = spanContext;
+  }
 
   spanContext(): SpanContext {
     return this.#spanContext;
