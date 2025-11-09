@@ -474,13 +474,18 @@ function isPartialDeepStrictEqual(actual: unknown, expected: unknown): boolean {
     }
 
     for (const key in expected) {
-      if (!(key in actual)) {
-        return false;
-      }
-      if (
-        !isPartialDeepStrictEqual((actual as any)[key], (expected as any)[key])
-      ) {
-        return false;
+      if (Object.hasOwn(expected, key)) {
+        if (!(key in actual)) {
+          return false;
+        }
+        if (
+          !isPartialDeepStrictEqual(
+            (actual as Record<string, unknown>)[key],
+            (expected as Record<string, unknown>)[key],
+          )
+        ) {
+          return false;
+        }
       }
     }
     return true;
