@@ -3,16 +3,27 @@ name: AI PR Generation
 on:
   issues:
     types: [labeled]
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       issue_number:
         description: 'Issue number or URL to work on'
         required: true
         type: string
+      pr_number:
+        description: 'PR number to update based on feedback (optional)'
+        required: false
+        type: string
 
 jobs:
   generate-pr:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ai:generate-pr'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'ai:generate-pr' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, '@claude'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -24,7 +35,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Determine mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "issue_comment" ] && [ "${{ github.event.issue.pull_request }}" != "" ]; then
+            echo "type=pr_comment" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.pr_number }}" ]; then
+            echo "type=pr_comment" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
+          else
+            echo "type=issue" >> $GITHUB_OUTPUT
+          fi
+
       - name: Get issue details
+        if: steps.mode.outputs.type == 'issue'
         id: issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -50,13 +75,108 @@ jobs:
           fi
 
       - name: Decode issue body
+        if: steps.mode.outputs.type == 'issue'
         id: decoded
         run: |
           echo "body<<EOF" >> $GITHUB_OUTPUT
           echo "${{ steps.issue.outputs.body }}" | base64 -d >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - uses: anthropics/claude-code-action@v1
+      - name: Get PR details and feedback
+        if: steps.mode.outputs.type == 'pr_comment'
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUM="${{ steps.mode.outputs.pr_number }}"
+
+          # Get PR details
+          PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,headRefName,baseRefName,author --repo ${{ github.repository }})
+          echo "number=$(echo "$PR_JSON" | jq -r '.number')" >> $GITHUB_OUTPUT
+          echo "title=$(echo "$PR_JSON" | jq -r '.title')" >> $GITHUB_OUTPUT
+          echo "branch=$(echo "$PR_JSON" | jq -r '.headRefName')" >> $GITHUB_OUTPUT
+          echo "base_branch=$(echo "$PR_JSON" | jq -r '.baseRefName')" >> $GITHUB_OUTPUT
+
+          # Get all comments on the PR
+          COMMENTS=$(gh pr view "$PR_NUM" --comments --json comments --repo ${{ github.repository }} | jq -r '.comments[] | "**\(.author.login)** (\(.createdAt)):\n\(.body)\n---"')
+          echo "comments<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMENTS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Get the diff
+          DIFF=$(gh pr diff "$PR_NUM" --repo ${{ github.repository }})
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Handle PR feedback
+        if: steps.mode.outputs.type == 'pr_comment'
+        uses: anthropics/claude-code-action@v1
+        with:
+          timeout-minutes: 60
+          github_token: ${{ secrets.DENOBOT_PAT }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
+            PR TITLE: ${{ steps.pr.outputs.title }}
+            PR BRANCH: ${{ steps.pr.outputs.branch }}
+            BASE BRANCH: ${{ steps.pr.outputs.base_branch }}
+
+            CONVERSATION / FEEDBACK:
+            ${{ steps.pr.outputs.comments }}
+
+            CURRENT PR DIFF:
+            ```diff
+            ${{ steps.pr.outputs.diff }}
+            ```
+
+            You have been asked to address feedback on this pull request. Your goal is to:
+
+            1. **Understand the feedback**: Carefully read all the comments on the PR to understand what changes are being requested.
+
+            2. **Checkout the PR branch**: Make sure you are working on the correct branch:
+               - Run `git fetch origin ${{ steps.pr.outputs.branch }}`
+               - Run `git checkout ${{ steps.pr.outputs.branch }}`
+
+            3. **Review the current changes**: Look at the diff above to understand what changes have already been made.
+
+            4. **Address the feedback**: Make the necessary changes to address all the comments and feedback:
+               - Follow the feedback precisely
+               - Maintain consistency with existing code style and patterns
+               - If feedback is unclear, add a comment to the PR asking for clarification
+               - Ensure your changes don't introduce new bugs or regressions
+
+            5. **Test your changes**: Run relevant tests to verify your updates work:
+               - Run existing tests that might be affected
+               - Verify the changes manually if possible
+               - If tests fail, debug and fix them
+
+            6. **Commit and push**: Once your changes are ready:
+               - Stage your changes with `git add`
+               - Commit with a clear message describing what feedback you addressed
+               - Push to the PR branch: `git push origin ${{ steps.pr.outputs.branch }}`
+               - The push will automatically update the PR
+
+            7. **Respond to comments**: After pushing your changes, add a comment to the PR summarizing:
+               - What feedback you addressed
+               - What changes you made
+               - Any questions or clarifications needed
+
+            Important notes:
+            - You are updating an existing PR, not creating a new one
+            - Make sure to work on branch `${{ steps.pr.outputs.branch }}`, not main
+            - Be thorough in addressing all feedback points
+            - If you cannot address certain feedback, explain why in a comment
+            - Use `gh pr comment ${{ steps.pr.outputs.number }}` to add comments to the PR
+
+            You have access to the full repository and can use git, cargo, and gh CLI commands.
+          claude_args: |
+            --dangerously-skip-permissions --allowed-tools "*"
+
+      - name: Handle issue
+        if: steps.mode.outputs.type == 'issue'
+        uses: anthropics/claude-code-action@v1
         with:
           timeout-minutes: 60
           github_token: ${{ secrets.DENOBOT_PAT }}
