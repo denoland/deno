@@ -792,7 +792,9 @@ impl ModuleGraphBuilder {
       && graph.has_node_specifier
       && graph.graph_kind().include_types()
     {
-      npm_installer.inject_synthetic_types_node_package().await?;
+      npm_installer
+        .inject_synthetic_types_node_package(options.npm_caching)
+        .await?;
     }
 
     Ok(())

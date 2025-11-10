@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [{
+    // will create a deno.lock file
+    "args": "check",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "clean",
+    "output": "[WILDCARD]"
+  }, {
+    // this should ensure the package gets cached
+    "args": "check",
+    "output": "[WILDCARD]"
+  }]
+}

@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use deno_error::JsErrorBox;
@@ -19,6 +20,21 @@ pub enum NpmCachingStrategy {
   Eager,
   Lazy,
   Manual,
+}
+
+impl NpmCachingStrategy {
+  pub fn as_package_caching<'a>(
+    &self,
+    package_reqs: &'a [PackageReq],
+  ) -> Option<PackageCaching<'a>> {
+    match self {
+      NpmCachingStrategy::Eager => Some(PackageCaching::All),
+      NpmCachingStrategy::Lazy => {
+        Some(PackageCaching::Only(Cow::Borrowed(package_reqs)))
+      }
+      NpmCachingStrategy::Manual => None,
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -88,13 +104,7 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
         let result = npm_installer
           .add_package_reqs_raw(
             package_reqs,
-            match self.npm_caching {
-              NpmCachingStrategy::Eager => Some(PackageCaching::All),
-              NpmCachingStrategy::Lazy => {
-                Some(PackageCaching::Only(package_reqs.into()))
-              }
-              NpmCachingStrategy::Manual => None,
-            },
+            self.npm_caching.as_package_caching(package_reqs),
           )
           .await;
 
