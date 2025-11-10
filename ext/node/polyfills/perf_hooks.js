@@ -28,7 +28,29 @@ performance.eventLoopUtilization = () => {
 performance.nodeTiming = {};
 
 // TODO(bartlomieju):
-performance.timerify = () => notImplemented("timerify from performance");
+
+performance.timerify = (fn) => {
+  if (typeof fn !== "function") {
+    throw new TypeError("The 'fn' argument must be of type function");
+  }
+
+  const wrapped = (...args) => {
+    let start = performance.now();
+    let result = fn(...args);
+    let end = performance.now();
+
+    performance.measure(`timerify(${fn.name || "anonymous"})`, { start, end });
+
+    return result;
+  };
+
+  Object.defineProperty(wrapped, "name", {
+    value: fn.name || "wrapped",
+    configurable: true,
+  });
+
+  return wrapped;
+};
 
 // TODO(bartlomieju):
 performance.markResourceTiming = () => {};
