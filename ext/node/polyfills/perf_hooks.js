@@ -3,7 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
+
 import { performance, PerformanceEntry } from "ext:deno_web/15_performance.js";
 import { EldHistogram } from "ext:core/ops";
 
@@ -28,7 +28,29 @@ performance.eventLoopUtilization = () => {
 performance.nodeTiming = {};
 
 // TODO(bartlomieju):
-performance.timerify = () => notImplemented("timerify from performance");
+performance.timerify = (fn) => {
+  if (typeof fn !== "function") {
+    throw new TypeError("The 'fn' argument must be of type function");
+  }
+
+  const wrapped = (...args) => {
+    const start = performance.now();
+    const result = fn(...args);
+    const end = performance.now();
+
+    performance.measure(`timerify(${fn.name || "anonymous"})`, { start, end });
+
+    return result;
+  };
+
+  Object.defineProperty(wrapped, "name", {
+    value: fn.name || "wrapped",
+    configurable: true,
+  });
+
+  return wrapped;
+};
+
 
 // TODO(bartlomieju):
 performance.markResourceTiming = () => {};
