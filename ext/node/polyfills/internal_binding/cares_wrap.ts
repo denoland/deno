@@ -182,23 +182,6 @@ function fqdnToHostname(fqdn: string): string {
   return fqdn.replace(/\.$/, "");
 }
 
-function compressIPv6(address: string): string {
-  const formatted = address.replace(/\b(?:0+:){2,}/, ":");
-  const finalAddress = formatted
-    .split(":")
-    .map((octet) => {
-      if (octet.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-        // decimal
-        return Number(octet.replaceAll(".", "")).toString(16);
-      }
-
-      return octet.replace(/\b0+/g, "");
-    })
-    .join(":");
-
-  return finalAddress;
-}
-
 export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   #servers: [string, number][] = [];
   #timeout: number;
@@ -293,7 +276,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         }),
         this.#query(name, "AAAA").then(({ ret }) => {
           (ret as string[]).forEach((record) =>
-            records.push({ type: "AAAA", address: compressIPv6(record) })
+            records.push({ type: "AAAA", address: record })
           );
         }),
         this.#query(name, "CAA").then(({ ret }) => {
@@ -406,11 +389,9 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
       let recordsWithTtl;
       if (req.ttl) {
         recordsWithTtl = (ret as Deno.RecordWithTtl[]).map((val) => ({
-          address: compressIPv6(val?.data as string),
+          address: val?.data as string,
           ttl: val?.ttl,
         }));
-      } else {
-        ret = (ret as string[]).map((record) => compressIPv6(record));
       }
 
       req.oncomplete(code, recordsWithTtl ?? ret);

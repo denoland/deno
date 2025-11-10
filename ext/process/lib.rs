@@ -752,21 +752,6 @@ fn compute_run_cmd_and_check_permissions(
       command: arg_cmd.to_string(),
       error: Box::new(e),
     })?;
-  #[cfg(windows)]
-  if let Some(ext) = cmd.extension()
-    && (ext == "bat" || ext == "cmd")
-  {
-    return Err(ProcessError::SpawnFailed {
-      command: arg_cmd.to_string(),
-      error: Box::new(
-        std::io::Error::new(
-          std::io::ErrorKind::PermissionDenied,
-          "Use a shell to execute .bat or .cmd files",
-        )
-        .into(),
-      ),
-    });
-  }
   check_run_permission(
     state,
     &RunQueryDescriptor::Path(
@@ -1062,11 +1047,18 @@ fn op_spawn_sync(
   })
 }
 
-#[op2(fast)]
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum SignalArg {
+  String(String),
+  Int(i32),
+}
+
+#[op2(stack_trace)]
 fn op_spawn_kill(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-  #[string] signal: String,
+  #[serde] signal: SignalArg,
 ) -> Result<(), ProcessError> {
   if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
     deprecated::kill(child_resource.1 as i32, &signal)?;
@@ -1277,20 +1269,32 @@ mod deprecated {
   }
 
   #[cfg(unix)]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
-    let signo = deno_signals::signal_str_to_int(signal)
-      .map_err(SignalError::InvalidSignalStr)?;
+  pub fn kill(pid: i32, signal: &SignalArg) -> Result<(), ProcessError> {
+    let signo = match signal {
+      SignalArg::Int(n) => *n,
+      SignalArg::String(s) => deno_signals::signal_str_to_int(s)
+        .map_err(SignalError::InvalidSignalStr)?,
+    };
     use nix::sys::signal::Signal;
     use nix::sys::signal::kill as unix_kill;
     use nix::unistd::Pid;
-    let sig =
-      Signal::try_from(signo).map_err(|e| ProcessError::Nix(JsNixError(e)))?;
-    unix_kill(Pid::from_raw(pid), Some(sig))
+
+    // Signal 0 is special, it checks if the process exists without sending a signal
+    let sig = if signo == 0 {
+      None
+    } else {
+      Some(
+        Signal::try_from(signo)
+          .map_err(|e| ProcessError::Nix(JsNixError(e)))?,
+      )
+    };
+
+    unix_kill(Pid::from_raw(pid), sig)
       .map_err(|e| ProcessError::Nix(JsNixError(e)))
   }
 
   #[cfg(not(unix))]
-  pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
+  pub fn kill(pid: i32, signal: &SignalArg) -> Result<(), ProcessError> {
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
 
@@ -1304,10 +1308,15 @@ mod deprecated {
     use winapi::um::processthreadsapi::TerminateProcess;
     use winapi::um::winnt::PROCESS_TERMINATE;
 
-    if !matches!(signal, "SIGKILL" | "SIGTERM") {
+    let signal_str = match signal {
+      SignalArg::Int(n) => n.to_string(),
+      SignalArg::String(s) => s.clone(),
+    };
+
+    if !matches!(signal_str.as_str(), "SIGKILL" | "SIGTERM") {
       Err(
         SignalError::InvalidSignalStr(deno_signals::InvalidSignalStrError(
-          signal.to_string(),
+          signal_str,
         ))
         .into(),
       )
@@ -1340,11 +1349,11 @@ mod deprecated {
     }
   }
 
-  #[op2(fast, stack_trace)]
+  #[op2(stack_trace)]
   pub fn op_kill(
     state: &mut OpState,
     #[smi] pid: i32,
-    #[string] signal: String,
+    #[serde] signal: SignalArg,
     #[string] api_name: String,
   ) -> Result<(), ProcessError> {
     state

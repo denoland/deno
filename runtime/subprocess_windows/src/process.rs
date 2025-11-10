@@ -92,6 +92,7 @@ use windows_sys::Win32::System::Registry::RRF_RT_ANY;
 use windows_sys::Win32::System::Registry::RegCloseKey;
 use windows_sys::Win32::System::Registry::RegGetValueW;
 use windows_sys::Win32::System::Registry::RegOpenKeyExW;
+use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP;
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 use windows_sys::Win32::System::Threading::CREATE_SUSPENDED;
@@ -529,13 +530,7 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
   }
 
   // Convert file path to UTF-16
-  let application = Some(WCString::new(&options.file));
-
-  // Create command line arguments
-  let args: Vec<&OsStr> = options.args.iter().map(|s| s.as_ref()).collect();
-  let verbatim_arguments =
-    (options.flags & uv_process_flags::WindowsVerbatimArguments) != 0;
-  let arguments = make_program_args(&args, verbatim_arguments)?;
+  let application = WCString::new(&options.file);
 
   // Create environment block if provided
   let env_saw_path = options.env.have_changed_path();
@@ -596,7 +591,7 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
 
   // Search for the executable
   let Some(application_path) = search_path(
-    application.as_ref().map(|s| s.as_slice_no_nul()).unwrap(),
+    application.as_slice_no_nul(),
     cwd.as_slice_no_nul(),
     path.as_deref(),
     options.flags,
@@ -605,6 +600,39 @@ pub fn spawn(options: &SpawnOptions) -> Result<ChildProcess, std::io::Error> {
       std::io::ErrorKind::NotFound,
       "File not found",
     ));
+  };
+
+  // Create command line arguments
+  let args: Vec<&OsStr> = options.args.iter().map(|s| s.as_ref()).collect();
+  let verbatim_arguments =
+    (options.flags & uv_process_flags::WindowsVerbatimArguments) != 0;
+
+  let has_bat_extension = |program: &[u16]| {
+    // lifted from https://github.com/rust-lang/rust/blob/bc1d7273dfbc6f8a11c0086fa35f6748a13e8d3c/library/std/src/sys/process/windows.rs#L284
+    // Copyright The Rust Project Contributors - MIT
+    matches!(
+      // Case insensitive "ends_with" of UTF-16 encoded ".bat" or ".cmd"
+      program.len().checked_sub(4).and_then(|i| program.get(i..)),
+      Some(
+        [46, 98 | 66, 97 | 65, 116 | 84] | [46, 99 | 67, 109 | 77, 100 | 68]
+      )
+    )
+  };
+  let is_batch_file = has_bat_extension(application_path.as_slice_no_nul());
+  let (application_path, arguments) = if is_batch_file {
+    (
+      command_prompt()?,
+      WCString::from_vec(make_bat_command_line(
+        application_path.as_slice_no_nul(),
+        &args,
+        !verbatim_arguments,
+      )?),
+    )
+  } else {
+    (
+      application_path,
+      make_program_args(&args, verbatim_arguments)?,
+    )
   };
 
   // Set up process creation
@@ -1360,6 +1388,7 @@ pub struct ProcessKillError {
   uv_error: i32,
   sys_error: Option<u32>,
 }
+
 impl ProcessKillError {
   pub fn as_uv_error(&self) -> i32 {
     self.uv_error
@@ -1427,6 +1456,161 @@ pub fn process_kill(pid: i32, signum: i32) -> Result<(), ProcessKillError> {
 
     result
   }
+}
+
+// lifted from https://github.com/rust-lang/rust/blob/bc1d7273dfbc6f8a11c0086fa35f6748a13e8d3c/library/std/src/sys/args/windows.rs#L293
+// Copyright The Rust Project Contributors - MIT
+fn make_bat_command_line(
+  script: &[u16],
+  args: &[&OsStr],
+  force_quotes: bool,
+) -> io::Result<Vec<u16>> {
+  // Set the start of the command line to `cmd.exe /c "`
+  // It is necessary to surround the command in an extra pair of quotes,
+  // hence the trailing quote here. It will be closed after all arguments
+  // have been added.
+  // Using /e:ON enables "command extensions" which is essential for the `%` hack to work.
+  let mut cmd: Vec<u16> = "/e:ON /v:OFF /d /c \"".encode_utf16().collect();
+
+  // Push the script name surrounded by its quote pair.
+  cmd.push(b'"' as u16);
+  // Windows file names cannot contain a `"` character or end with `\\`.
+  // If the script name does then return an error.
+  if script.contains(&(b'"' as u16)) || script.last() == Some(&(b'\\' as u16)) {
+    return Err(std::io::Error::new(
+      io::ErrorKind::InvalidInput,
+      "Windows file names may not contain `\"` or end with `\\`",
+    ));
+  }
+  cmd.extend_from_slice(script.strip_suffix(&[0]).unwrap_or(script));
+  cmd.push(b'"' as u16);
+
+  // Append the arguments.
+  // FIXME: This needs tests to ensure that the arguments are properly
+  // reconstructed by the batch script by default.
+  for arg in args.iter().skip(1) {
+    cmd.push(' ' as u16);
+    let arg_bytes = arg.as_encoded_bytes();
+    // Disallow \r and \n as they may truncate the arguments.
+    const DISALLOWED: &[u8] = b"\r\n";
+    if arg_bytes.iter().any(|c| DISALLOWED.contains(c)) {
+      return Err(std::io::Error::new(
+        io::ErrorKind::InvalidInput,
+        r#"batch file arguments are invalid"#,
+      ));
+    }
+    append_bat_arg(&mut cmd, arg, force_quotes)?;
+  }
+
+  // Close the quote we left opened earlier.
+  cmd.push(b'"' as u16);
+
+  Ok(cmd)
+}
+
+// lifted from https://github.com/rust-lang/rust/blob/bc1d7273dfbc6f8a11c0086fa35f6748a13e8d3c/library/std/src/sys/args/windows.rs#L220C1-L291C2
+// Copyright The Rust Project Contributors - MIT
+fn append_bat_arg(
+  cmd: &mut Vec<u16>,
+  arg: &OsStr,
+  mut quote: bool,
+) -> io::Result<()> {
+  ensure_no_nuls(arg)?;
+  // If an argument has 0 characters then we need to quote it to ensure
+  // that it actually gets passed through on the command line or otherwise
+  // it will be dropped entirely when parsed on the other end.
+  //
+  // We also need to quote the argument if it ends with `\` to guard against
+  // bat usage such as `"%~2"` (i.e. force quote arguments) otherwise a
+  // trailing slash will escape the closing quote.
+  if arg.is_empty() || arg.as_encoded_bytes().last() == Some(&b'\\') {
+    quote = true;
+  }
+  for cp in arg.encode_wide() {
+    if let Some(cp) = char::decode_utf16([cp]).next().and_then(|r| r.ok()) {
+      // Rather than trying to find every ascii symbol that must be quoted,
+      // we assume that all ascii symbols must be quoted unless they're known to be good.
+      // We also quote Unicode control blocks for good measure.
+      // Note an unquoted `\` is fine so long as the argument isn't otherwise quoted.
+      static UNQUOTED: &str = r"#$*+-./:?@\_";
+      let ascii_needs_quotes =
+        cp.is_ascii() && !(cp.is_ascii_alphanumeric() || UNQUOTED.contains(cp));
+      if ascii_needs_quotes || cp.is_control() {
+        quote = true;
+      }
+    }
+  }
+
+  if quote {
+    cmd.push('"' as u16);
+  }
+  // Loop through the string, escaping `\` only if followed by `"`.
+  // And escaping `"` by doubling them.
+  let mut backslashes: usize = 0;
+  for x in arg.encode_wide() {
+    if x == '\\' as u16 {
+      backslashes += 1;
+    } else {
+      if x == '"' as u16 {
+        // Add n backslashes to total 2n before internal `"`.
+        cmd.extend((0..backslashes).map(|_| '\\' as u16));
+        // Appending an additional double-quote acts as an escape.
+        cmd.push(b'"' as u16)
+      } else if x == '%' as u16 || x == '\r' as u16 {
+        // yt-dlp hack: replaces `%` with `%%cd:~,%` to stop %VAR% being expanded as an environment variable.
+        //
+        // # Explanation
+        //
+        // cmd supports extracting a substring from a variable using the following syntax:
+        //     %variable:~start_index,end_index%
+        //
+        // In the above command `cd` is used as the variable and the start_index and end_index are left blank.
+        // `cd` is a built-in variable that dynamically expands to the current directory so it's always available.
+        // Explicitly omitting both the start and end index creates a zero-length substring.
+        //
+        // Therefore it all resolves to nothing. However, by doing this no-op we distract cmd.exe
+        // from potentially expanding %variables% in the argument.
+        cmd.extend_from_slice(&[
+          '%' as u16, '%' as u16, 'c' as u16, 'd' as u16, ':' as u16,
+          '~' as u16, ',' as u16,
+        ]);
+      }
+      backslashes = 0;
+    }
+    cmd.push(x);
+  }
+  if quote {
+    // Add n backslashes to total 2n before ending `"`.
+    cmd.extend((0..backslashes).map(|_| '\\' as u16));
+    cmd.push('"' as u16);
+  }
+  Ok(())
+}
+
+// lifted from https://github.com/rust-lang/rust/blob/bc1d7273dfbc6f8a11c0086fa35f6748a13e8d3c/library/std/src/sys/pal/windows/mod.rs#L289
+// Copyright The Rust Project Contributors - MIT
+fn ensure_no_nuls<T: AsRef<OsStr>>(s: T) -> crate::io::Result<T> {
+  if s.as_ref().encode_wide().any(|b| b == 0) {
+    Err(std::io::Error::new(
+      io::ErrorKind::InvalidInput,
+      "nul byte found in provided data",
+    ))
+  } else {
+    Ok(s)
+  }
+}
+
+fn command_prompt() -> io::Result<WCString> {
+  let mut buffer =
+    vec![0u16; windows_sys::Win32::Foundation::MAX_PATH as usize];
+  let len =
+    unsafe { GetSystemDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) };
+  if len == 0 {
+    return Err(io::Error::last_os_error());
+  }
+  buffer.truncate(len as usize);
+  buffer.extend("\\cmd.exe".encode_utf16().chain([0]));
+  Ok(WCString::from_vec(buffer))
 }
 
 #[cfg(test)]

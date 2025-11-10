@@ -10,6 +10,8 @@ use std::sync::OnceLock;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_core::FastString;
+use deno_core::ModuleLoadOptions;
+use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
@@ -375,9 +377,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
   fn load(
     &self,
     original_specifier: &Url,
-    maybe_referrer: Option<&Url>,
-    _is_dynamic: bool,
-    requested_module_type: RequestedModuleType,
+    maybe_referrer: Option<&ModuleLoadReferrer>,
+    options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     if original_specifier.scheme() == "data" {
       let data_url_text =
@@ -404,7 +405,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     if self.shared.node_resolver.in_npm_package(original_specifier) {
       let shared = self.shared.clone();
       let original_specifier = original_specifier.clone();
-      let maybe_referrer = maybe_referrer.cloned();
+      let maybe_referrer = maybe_referrer.map(|r| r.specifier.clone());
       return deno_core::ModuleLoadResponse::Async(
         async move {
           let code_source = shared
@@ -412,11 +413,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .load(
               Cow::Borrowed(&original_specifier),
               maybe_referrer.as_ref(),
-              &as_deno_resolver_requested_module_type(&requested_module_type),
+              &as_deno_resolver_requested_module_type(
+                &options.requested_module_type,
+              ),
             )
             .await
             .map_err(JsErrorBox::from_err)?;
-          let code_cache_entry = match requested_module_type {
+          let code_cache_entry = match options.requested_module_type {
             RequestedModuleType::None => shared.get_code_cache(
               &code_source.specifier,
               code_source.source.as_bytes(),
@@ -429,7 +432,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           Ok(deno_core::ModuleSource::new_with_redirect(
             module_type_from_media_and_requested_type(
               code_source.media_type,
-              &requested_module_type,
+              &options.requested_module_type,
             ),
             loaded_module_source_to_module_source_code(code_source.source),
             &original_specifier,
@@ -443,17 +446,17 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     match self.shared.modules.read(original_specifier) {
       Ok(Some(module)) => {
-        match requested_module_type {
+        match options.requested_module_type {
           RequestedModuleType::Text | RequestedModuleType::Bytes => {
             let module_source = DenoCompileModuleSource::Bytes(module.data);
             return deno_core::ModuleLoadResponse::Sync(Ok(
               deno_core::ModuleSource::new_with_redirect(
-                match requested_module_type {
+                match options.requested_module_type {
                   RequestedModuleType::Text => ModuleType::Text,
                   RequestedModuleType::Bytes => ModuleType::Bytes,
                   _ => unreachable!(),
                 },
-                match requested_module_type {
+                match options.requested_module_type {
                   RequestedModuleType::Text => module_source.into_for_v8(),
                   RequestedModuleType::Bytes => {
                     ModuleSourceCode::Bytes(module_source.into_bytes_for_v8())
@@ -1027,6 +1030,7 @@ pub async fn run(
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     enable_raw_imports: metadata.unstable_config.raw_imports,
+    maybe_initial_cwd: None,
   };
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
@@ -1073,12 +1077,17 @@ pub async fn run(
     Err(_) => main_module,
   };
 
+  let preload_modules = metadata
+    .preload_modules
+    .iter()
+    .map(|key| root_dir_url.join(key).unwrap())
+    .collect::<Vec<_>>();
+
   let mut worker = worker_factory.create_main_worker(
     WorkerExecutionMode::Run,
     permissions,
     main_module,
-    // TODO(bartlomieju): support preload modules in `deno compile`
-    vec![],
+    preload_modules,
   )?;
 
   let exit_code = worker.run().await?;

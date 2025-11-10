@@ -82,7 +82,12 @@ impl GraphDiagnosticsCollector {
                 let maybe_version = graph
                   .get(&resolution.specifier)
                   .and_then(|m| m.npm())
-                  .map(|n| n.nv_reference.nv().version.clone());
+                  .map(|n| {
+                    // TODO(dsherret): ok to use for now, but we should use the req in the future
+                    #[allow(deprecated)]
+                    let nv = n.nv_reference.nv();
+                    nv.version.clone()
+                  });
                 diagnostics_collector.push(
                   PublishDiagnostic::MissingConstraint {
                     specifier: resolution.specifier.clone(),

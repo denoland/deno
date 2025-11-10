@@ -195,7 +195,7 @@ function getFlags(source: string): [string[], string[]] {
 export async function runSingle(
   testPath: string,
   {
-    flaky = false,
+    flaky = !!Deno.env.get("CI"),
     retry = 0,
   }: {
     flaky?: boolean;

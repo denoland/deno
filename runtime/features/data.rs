@@ -224,4 +224,12 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     config_option: ConfigFileOption::SameAsFlagName,
     env_var: None,
   },
+  UnstableFeatureDescription {
+    name: "tsgo",
+    help_text: "Enable unstable TypeScript Go integration",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Cli,
+    config_option: ConfigFileOption::SameAsFlagName,
+    env_var: Some("DENO_UNSTABLE_TSGO"),
+  },
 ];

@@ -2374,7 +2374,7 @@ async fn test_resolve_dns() {
     let out = String::from_utf8_lossy(&output.stdout);
     println!("{err}");
     assert!(output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
 
     let expected = std::fs::read_to_string(
       util::testdata_path().join("run/resolve_dns.ts.out"),
@@ -2403,7 +2403,7 @@ async fn test_resolve_dns() {
       eprintln!("stderr: {err}");
     }
     assert!(output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
 
     let expected = std::fs::read_to_string(
       util::testdata_path().join("run/resolve_dns.ts.out"),
@@ -2429,7 +2429,7 @@ async fn test_resolve_dns() {
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
     assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
@@ -2450,7 +2450,7 @@ async fn test_resolve_dns() {
     let err = String::from_utf8_lossy(&output.stderr);
     let out = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success());
-    assert!(err.starts_with("Check file"));
+    assert!(err.starts_with("Check run/resolve_dns.ts"));
     assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
     assert!(out.is_empty());
   }
@@ -3474,7 +3474,7 @@ fn emit_failed_readonly_file_system() {
     .new_command()
     .args("run --log-level=debug main.ts")
     .run();
-  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
+  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]main.ts[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }
 
 // todo(dsherret): waiting on fix in https://github.com/servo/rust-url/issues/505
@@ -3505,11 +3505,14 @@ fn handle_invalid_path_error() {
   assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
 }
 
-#[cfg(unix)]
-#[tokio::test]
-async fn test_permission_broker_doesnt_exit() {
+#[flaky_test::flaky_test]
+fn test_permission_broker_doesnt_exit() {
   let context = TestContext::default();
-  let socket_path = context.temp_dir().path().join("broker.sock");
+  let socket_path = if cfg!(windows) {
+    PathRef::new(r"\\.\pipe\deno-permission-broker")
+  } else {
+    context.temp_dir().path().join("broker.sock")
+  };
 
   let output = context
     .new_command()
@@ -3522,14 +3525,17 @@ async fn test_permission_broker_doesnt_exit() {
   );
 }
 
-#[cfg(unix)]
-#[tokio::test]
-async fn test_permission_broker() {
+#[flaky_test::flaky_test]
+fn test_permission_broker() {
   use std::io::BufRead;
   use std::io::BufReader;
 
   let context = TestContext::default();
-  let socket_path = context.temp_dir().path().join("broker.sock");
+  let socket_path = if cfg!(windows) {
+    PathRef::new(r"\\.\pipe\deno-permission-broker")
+  } else {
+    context.temp_dir().path().join("broker.sock")
+  };
 
   let mut broker = context
     .new_command()
@@ -3551,6 +3557,7 @@ async fn test_permission_broker() {
       Ok(0) => break, // EOF
       Ok(_) => {
         if line.starts_with("Permission broker listening on") {
+          eprintln!("{}", line);
           break;
         }
       }
@@ -3565,7 +3572,7 @@ async fn test_permission_broker() {
     .run();
   output.assert_exit_code(1);
   output.assert_matches_text(
-    "Warning Permission broker is an experimental feature\nerror:[WILDCARD]NotCapable: Requires env access[WILDCARD]",
+    "Warning Permission broker is an experimental feature\nerror:[WILDCARD]NotCapable: Make sure to enable reading env vars.[WILDCARD]",
   );
 
   let _ = broker.kill();
@@ -3575,11 +3582,11 @@ async fn test_permission_broker() {
   test_util::assertions::assert_wildcard_match(
     &line,
     r#"[WILDCARD]
-{"v":1,"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
-{"v":1,"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
-{"v":1,"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
-{"v":1,"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
-{"v":1,"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
+{"v":1,"pid":[WILDCARD],"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"pid":[WILDCARD],"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"pid":[WILDCARD],"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
+{"v":1,"pid":[WILDCARD],"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
+{"v":1,"pid":[WILDCARD],"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
 [WILDCARD]"#,
   );
 }

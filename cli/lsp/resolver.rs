@@ -955,9 +955,10 @@ impl<'a> ResolverFactory<'a> {
       let npm_version_resolver = Arc::new(NpmVersionResolver {
         types_node_version_req: Some(get_types_node_version_req()),
         link_packages: link_packages.0.clone(),
-        newest_dependency_date: None,
+        newest_dependency_date_options: Default::default(),
       });
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
+        Default::default(),
         npm_version_resolver,
         registry_info_provider.clone(),
         None,
@@ -977,7 +978,7 @@ impl<'a> ResolverFactory<'a> {
         tarball_cache.clone(),
         maybe_lockfile,
         maybe_node_modules_path.clone(),
-        LifecycleScriptsConfig::default(),
+        Arc::new(LifecycleScriptsConfig::default()),
         NpmSystemInfo::default(),
         link_packages,
         None,

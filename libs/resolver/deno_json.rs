@@ -492,6 +492,7 @@ struct MemoizedValues {
   module: OnceCell<CompilerOptionsModule>,
   module_resolution: OnceCell<CompilerOptionsModuleResolution>,
   check_js: OnceCell<bool>,
+  skip_lib_check: OnceCell<bool>,
   base_url: OnceCell<Option<Url>>,
   paths: OnceCell<CompilerOptionsPaths>,
   root_dirs: OnceCell<Vec<Url>>,
@@ -586,6 +587,15 @@ impl CompilerOptionsData {
         let parsed =
           parse_compiler_options(object, Some(source.specifier.as_ref()));
         result.compiler_options.merge_object_mut(parsed.options);
+        if matches!(typ, CompilerOptionsType::Check { .. })
+          && let Some(compiler_options) =
+            result.compiler_options.0.as_object_mut()
+          && compiler_options.get("isolatedDeclarations")
+            == Some(&serde_json::Value::Bool(true))
+        {
+          compiler_options.insert("declaration".into(), true.into());
+          compiler_options.insert("allowJs".into(), false.into());
+        }
         if let Some(ignored) = parsed.maybe_ignored {
           result.ignored_options.push(ignored);
         }
@@ -770,6 +780,24 @@ impl CompilerOptionsData {
             .0
             .as_object()?
             .get("checkJs")?
+            .as_bool()
+        })
+        .unwrap_or(false)
+    })
+  }
+
+  pub fn skip_lib_check(&self) -> bool {
+    *self.memoized.skip_lib_check.get_or_init(|| {
+      self
+        .sources
+        .iter()
+        .rev()
+        .find_map(|s| {
+          s.compiler_options
+            .as_ref()?
+            .0
+            .as_object()?
+            .get("skipLibCheck")?
             .as_bool()
         })
         .unwrap_or(false)

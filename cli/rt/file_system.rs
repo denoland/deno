@@ -546,6 +546,7 @@ impl sys_traits::BaseFsRead for DenoRtSys {
         // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
         // rather than this calling into `deno_fs::FileSystem`
         &CheckedPath::unsafe_new(Cow::Borrowed(path)),
+        OpenOptions::read(),
       )
       .map_err(|err| err.into_io_error())
   }
@@ -1449,13 +1450,13 @@ impl FileBackedVfsMetadata {
       blksize: 0,
       size: self.len,
       dev: 0,
-      ino: 0,
+      ino: None,
       mode: 0,
-      nlink: 0,
+      nlink: None,
       uid: 0,
       gid: 0,
       rdev: 0,
-      blocks: 0,
+      blocks: None,
       is_block_device: false,
       is_char_device: false,
       is_fifo: false,

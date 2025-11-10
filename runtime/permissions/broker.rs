@@ -3,7 +3,6 @@
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
-use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU32;
@@ -11,15 +10,18 @@ use std::sync::atomic::AtomicU32;
 use parking_lot::Mutex;
 
 use super::BrokerResponse;
+use crate::ipc_pipe::IpcPipe;
 
 // TODO(bartlomieju): currently randomly selected exit code, it should
 // be documented
 static BROKER_EXIT_CODE: i32 = 87;
 
 static PERMISSION_BROKER: OnceLock<PermissionBroker> = OnceLock::new();
+static PID: OnceLock<u32> = OnceLock::new();
 
 pub fn set_broker(broker: PermissionBroker) {
   assert!(PERMISSION_BROKER.set(broker).is_ok());
+  assert!(PID.set(std::process::id()).is_ok());
 }
 
 pub fn has_broker() -> bool {
@@ -27,8 +29,10 @@ pub fn has_broker() -> bool {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PermissionBrokerRequest<'a> {
   v: u32,
+  pid: u32,
   id: u32,
   datetime: String,
   permission: &'a str,
@@ -36,19 +40,22 @@ struct PermissionBrokerRequest<'a> {
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PermissionBrokerResponse {
   id: u32,
   result: String,
+  reason: Option<String>,
 }
 
 pub struct PermissionBroker {
-  stream: Mutex<UnixStream>,
+  stream: Mutex<IpcPipe>,
   next_id: AtomicU32,
 }
 
 impl PermissionBroker {
   pub fn new(socket_path: impl Into<PathBuf>) -> Self {
-    let stream = match UnixStream::connect(socket_path.into()) {
+    let socket_path = socket_path.into();
+    let stream = match IpcPipe::connect(&socket_path) {
       Ok(s) => s,
       Err(err) => {
         log::error!("Failed to create permission broker: {:?}", err);
@@ -57,7 +64,7 @@ impl PermissionBroker {
     };
     Self {
       stream: Mutex::new(stream),
-      next_id: AtomicU32::new(1),
+      next_id: std::sync::atomic::AtomicU32::new(1),
     }
   }
 
@@ -72,6 +79,7 @@ impl PermissionBroker {
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let request = PermissionBrokerRequest {
       v: 1,
+      pid: *PID.get().unwrap(),
       id,
       datetime: chrono::Utc::now().to_rfc3339(),
       permission,
@@ -101,7 +109,9 @@ impl PermissionBroker {
 
     let prompt_response = match response.result.as_str() {
       "allow" => BrokerResponse::Allow,
-      "deny" => BrokerResponse::Deny,
+      "deny" => BrokerResponse::Deny {
+        message: response.reason,
+      },
       _ => {
         return Err(std::io::Error::other(
           "Permission broker unknown result variant",

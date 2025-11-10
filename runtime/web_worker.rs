@@ -11,7 +11,6 @@ use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 
-use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -52,6 +51,7 @@ use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
+use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use deno_web::Transferable;
@@ -522,11 +522,10 @@ impl WebWorker {
       deno_telemetry::deno_telemetry::init(),
       // Web APIs
       deno_webidl::deno_webidl::init(),
-      deno_console::deno_console::init(),
-      deno_url::deno_url::init(),
-      deno_web::deno_web::init::<PermissionsContainer>(
+      deno_web::deno_web::init::<PermissionsContainer, InMemoryBroadcastChannel>(
         services.blob_store,
         Some(options.main_module.clone()),
+        services.broadcast_channel,
       ),
       deno_webgpu::deno_webgpu::init(),
       deno_canvas::deno_canvas::init(),
@@ -545,9 +544,6 @@ impl WebWorker {
       deno_websocket::deno_websocket::init::<PermissionsContainer>(),
       deno_webstorage::deno_webstorage::init(None).disable(),
       deno_crypto::deno_crypto::init(options.seed),
-      deno_broadcast_channel::deno_broadcast_channel::init(
-        services.broadcast_channel,
-      ),
       deno_ffi::deno_ffi::init::<PermissionsContainer>(
         services.deno_rt_native_addon_loader.clone(),
       ),

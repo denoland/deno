@@ -15,6 +15,11 @@
         "grant",
         "deny"
       ]
+    },
+    "reason": {
+      "type": "string",
+      "description": "Optional message to display to the user on deny. This will override the default error message text."
     }
-  }
+  },
+  "required": ["id", "result"]
 }
