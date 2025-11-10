@@ -946,7 +946,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/worker_threads] 'online' fires before first user message (pollMessages)",
+  name:
+    "[node/worker_threads] 'online' fires before first user message (pollMessages)",
   async fn() {
     const wt = await import("node:worker_threads");
     let gotOnline = false;
