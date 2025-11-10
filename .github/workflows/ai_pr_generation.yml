@@ -23,8 +23,15 @@ jobs:
       github.event.label.name == 'ai:generate-pr' ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request != null &&
-       contains(github.event.comment.body, '@claude'))
+       contains(github.event.comment.body, '@claude') &&
+       github.event.comment.user.type != 'Bot' &&
+       (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'))
     runs-on: ubuntu-latest
+    concurrency:
+      group: ai-pr-${{ github.event.issue.number }}${{ inputs.pr_number }}${{ inputs.issue_number }}
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
@@ -38,7 +45,7 @@ jobs:
       - name: Determine mode
         id: mode
         run: |
-          if [ "${{ github.event_name }}" = "issue_comment" ] && [ "${{ github.event.issue.pull_request }}" != "" ]; then
+          if [ "${{ github.event_name }}" = "issue_comment" ] && [ "${{ github.event.issue.pull_request != null }}" = "true" ]; then
             echo "type=pr_comment" >> $GITHUB_OUTPUT
             echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.pr_number }}" ]; then
@@ -51,13 +58,27 @@ jobs:
       - name: Get issue details
         if: steps.mode.outputs.type == 'issue'
         id: issue
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_ISSUE_TITLE: ${{ github.event.issue.title }}
+          EVENT_ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          EVENT_ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             # Extract issue number from input (handles both URLs and plain numbers)
             ISSUE_INPUT="${{ inputs.issue_number }}"
-            ISSUE_NUM=$(echo "$ISSUE_INPUT" | grep -oE '[0-9]+$' || echo "$ISSUE_INPUT")
+            ISSUE_NUM=$(echo "$ISSUE_INPUT" | grep -oE '[0-9]+$')
+
+            if [ -z "$ISSUE_NUM" ]; then
+              echo "Error: Could not extract issue number from input: $ISSUE_INPUT"
+              exit 1
+            fi
+
+            if ! [[ "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
+              echo "Error: Invalid issue number format: $ISSUE_NUM"
+              exit 1
+            fi
 
             # Fetch issue details
             ISSUE_JSON=$(gh issue view "$ISSUE_NUM" --json number,title,body,author --repo ${{ github.repository }})
@@ -65,19 +86,32 @@ jobs:
             echo "title=$(echo "$ISSUE_JSON" | jq -r '.title')" >> $GITHUB_OUTPUT
             echo "author=$(echo "$ISSUE_JSON" | jq -r '.author.login')" >> $GITHUB_OUTPUT
             # Handle multiline body by base64 encoding
-            echo "body=$(echo "$ISSUE_JSON" | jq -r '.body' | base64 -w 0)" >> $GITHUB_OUTPUT
+            echo "body=$(echo "$ISSUE_JSON" | jq -r '.body' | base64 | tr -d '\n')" >> $GITHUB_OUTPUT
           else
-            # Use event data for label trigger
+            # Use event data for label trigger - use env vars to prevent injection
             echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-            echo "title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
-            echo "author=${{ github.event.issue.user.login }}" >> $GITHUB_OUTPUT
-            echo "body=$(echo '${{ github.event.issue.body }}' | base64 -w 0)" >> $GITHUB_OUTPUT
+            echo "title=$(printf '%s' "$EVENT_ISSUE_TITLE" | base64 | tr -d '\n')" >> $GITHUB_OUTPUT
+            echo "author=$EVENT_ISSUE_AUTHOR" >> $GITHUB_OUTPUT
+            echo "body=$(printf '%s' "$EVENT_ISSUE_BODY" | base64 | tr -d '\n')" >> $GITHUB_OUTPUT
           fi
 
-      - name: Decode issue body
+      - name: Decode issue data
         if: steps.mode.outputs.type == 'issue'
         id: decoded
         run: |
+          # Decode title
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            echo "title<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ steps.issue.outputs.title }}" | base64 -d >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            # workflow_dispatch path - title from gh is not encoded
+            echo "title<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ steps.issue.outputs.title }}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+          # Decode body
           echo "body<<EOF" >> $GITHUB_OUTPUT
           echo "${{ steps.issue.outputs.body }}" | base64 -d >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -85,29 +119,65 @@ jobs:
       - name: Get PR details and feedback
         if: steps.mode.outputs.type == 'pr_comment'
         id: pr
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_NUM="${{ steps.mode.outputs.pr_number }}"
 
+          # Validate PR number is numeric
+          if ! [[ "$PR_NUM" =~ ^[0-9]+$ ]]; then
+            echo "Error: Invalid PR number format: $PR_NUM"
+            exit 1
+          fi
+
           # Get PR details
-          PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,headRefName,baseRefName,author --repo ${{ github.repository }})
+          PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,headRefName,baseRefName,author,state --repo ${{ github.repository }}) || {
+            echo "Error: Failed to fetch PR #$PR_NUM"
+            exit 1
+          }
+
+          # Check PR state
+          PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
+          if [ "$PR_STATE" != "OPEN" ]; then
+            echo "Error: PR #$PR_NUM is $PR_STATE, not OPEN"
+            exit 1
+          fi
+
           echo "number=$(echo "$PR_JSON" | jq -r '.number')" >> $GITHUB_OUTPUT
           echo "title=$(echo "$PR_JSON" | jq -r '.title')" >> $GITHUB_OUTPUT
           echo "branch=$(echo "$PR_JSON" | jq -r '.headRefName')" >> $GITHUB_OUTPUT
           echo "base_branch=$(echo "$PR_JSON" | jq -r '.baseRefName')" >> $GITHUB_OUTPUT
 
-          # Get all comments on the PR
-          COMMENTS=$(gh pr view "$PR_NUM" --comments --json comments --repo ${{ github.repository }} | jq -r '.comments[] | "**\(.author.login)** (\(.createdAt)):\n\(.body)\n---"')
-          echo "comments<<EOF" >> $GITHUB_OUTPUT
+          # Get all comments on the PR with unique delimiter
+          COMMENTS=$(gh pr view "$PR_NUM" --json comments --repo ${{ github.repository }} | jq -r '
+            if (.comments | length) == 0 then
+              "No comments yet."
+            else
+              .comments[] | "**\(.author.login)** (\(.createdAt)):\n\(.body)\n---"
+            end
+          ')
+          DELIMITER_COMMENTS="EOF_COMMENTS_${{ github.run_id }}_${{ github.run_attempt }}_COMMENTS"
+          echo "comments<<$DELIMITER_COMMENTS" >> $GITHUB_OUTPUT
           echo "$COMMENTS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "$DELIMITER_COMMENTS" >> $GITHUB_OUTPUT
 
-          # Get the diff
-          DIFF=$(gh pr diff "$PR_NUM" --repo ${{ github.repository }})
-          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          # Get the diff with unique delimiter
+          DIFF=$(gh pr diff "$PR_NUM" --repo ${{ github.repository }}) || {
+            echo "Error: Failed to fetch diff for PR #$PR_NUM"
+            exit 1
+          }
+
+          # Check diff size
+          DIFF_SIZE=${#DIFF}
+          if [ $DIFF_SIZE -gt 500000 ]; then
+            DIFF="[Diff too large to include - $DIFF_SIZE bytes. Review the PR directly at ${{ github.server_url }}/${{ github.repository }}/pull/$PR_NUM/files]"
+          fi
+
+          DELIMITER_DIFF="EOF_DIFF_${{ github.run_id }}_${{ github.run_attempt }}_DIFF"
+          echo "diff<<$DELIMITER_DIFF" >> $GITHUB_OUTPUT
           echo "$DIFF" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "$DELIMITER_DIFF" >> $GITHUB_OUTPUT
 
       - name: Handle PR feedback
         if: steps.mode.outputs.type == 'pr_comment'
@@ -184,7 +254,7 @@ jobs:
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ steps.issue.outputs.number }}
-            TITLE: ${{ steps.issue.outputs.title }}
+            TITLE: ${{ steps.decoded.outputs.title }}
             BODY: ${{ steps.decoded.outputs.body }}
             AUTHOR: ${{ steps.issue.outputs.author }}
 
@@ -241,3 +311,14 @@ jobs:
 
           claude_args: |
             --dangerously-skip-permissions --allowed-tools "*"
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.mode.outputs.type }}" = "pr_comment" ] && [ -n "${{ steps.pr.outputs.number }}" ]; then
+            gh pr comment ${{ steps.pr.outputs.number }} --repo ${{ github.repository }} --body "❌ Failed to process feedback. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          elif [ "${{ steps.mode.outputs.type }}" = "issue" ] && [ -n "${{ steps.issue.outputs.number }}" ]; then
+            gh issue comment ${{ steps.issue.outputs.number }} --repo ${{ github.repository }} --body "❌ Failed to generate PR. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          fi
