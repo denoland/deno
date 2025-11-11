@@ -10,7 +10,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
-use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
@@ -22,13 +21,13 @@ use deno_core::JsRuntimeInspector;
 use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
+use deno_core::ModuleLoadOptions;
 use deno_core::ModuleLoadReferrer;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
-use deno_core::RequestedModuleType;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
@@ -49,6 +48,7 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
+use deno_web::InMemoryBroadcastChannel;
 use log::debug;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -530,9 +530,13 @@ impl MainWorker {
 
     js_runtime
       .lazy_init_extensions(vec![
-        deno_web::deno_web::args::<PermissionsContainer>(
+        deno_web::deno_web::args::<
+          PermissionsContainer,
+          InMemoryBroadcastChannel,
+        >(
           services.blob_store.clone(),
           options.bootstrap.location.clone(),
+          services.broadcast_channel.clone(),
         ),
         deno_fetch::deno_fetch::args::<PermissionsContainer>(
           deno_fetch::Options {
@@ -552,9 +556,6 @@ impl MainWorker {
           options.origin_storage_dir.clone(),
         ),
         deno_crypto::deno_crypto::args(options.seed),
-        deno_broadcast_channel::deno_broadcast_channel::args(
-          services.broadcast_channel.clone(),
-        ),
         deno_ffi::deno_ffi::args::<PermissionsContainer>(
           services.deno_rt_native_addon_loader.clone(),
         ),
@@ -1050,9 +1051,10 @@ fn common_extensions<
     deno_telemetry::deno_telemetry::init(),
     // Web APIs
     deno_webidl::deno_webidl::init(),
-    deno_console::deno_console::init(),
-    deno_url::deno_url::init(),
-    deno_web::deno_web::lazy_init::<PermissionsContainer>(),
+    deno_web::deno_web::lazy_init::<
+      PermissionsContainer,
+      InMemoryBroadcastChannel,
+    >(),
     deno_webgpu::deno_webgpu::init(),
     deno_canvas::deno_canvas::init(),
     deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
@@ -1060,9 +1062,6 @@ fn common_extensions<
     deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
     deno_webstorage::deno_webstorage::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
-    deno_broadcast_channel::deno_broadcast_channel::lazy_init::<
-      InMemoryBroadcastChannel,
-    >(),
     deno_ffi::deno_ffi::lazy_init::<PermissionsContainer>(),
     deno_net::deno_net::lazy_init::<PermissionsContainer>(),
     deno_tls::deno_tls::init(),
@@ -1255,14 +1254,12 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleLoadReferrer>,
-    is_dyn_import: bool,
-    requested_module_type: deno_core::RequestedModuleType,
+    options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     self.0.borrow_mut().clone().unwrap().load(
       module_specifier,
       maybe_referrer,
-      is_dyn_import,
-      requested_module_type,
+      options,
     )
   }
 
@@ -1270,8 +1267,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     &self,
     module_specifier: &ModuleSpecifier,
     maybe_referrer: Option<String>,
-    is_dyn_import: bool,
-    requested_module_type: RequestedModuleType,
+    options: ModuleLoadOptions,
   ) -> std::pin::Pin<
     Box<
       dyn std::prelude::rust_2024::Future<
@@ -1282,8 +1278,7 @@ impl ModuleLoader for PlaceholderModuleLoader {
     self.0.borrow_mut().clone().unwrap().prepare_load(
       module_specifier,
       maybe_referrer,
-      is_dyn_import,
-      requested_module_type,
+      options,
     )
   }
 

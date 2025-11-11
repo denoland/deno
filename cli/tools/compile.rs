@@ -72,11 +72,27 @@ pub async fn compile(
     graph
   };
 
+  let initial_cwd =
+    deno_path_util::url_from_directory_path(cli_options.initial_cwd())?;
+
   log::info!(
     "{} {} to {}",
     colors::green("Compile"),
-    entrypoint,
-    output_path.display(),
+    crate::util::path::relative_specifier_path_for_display(
+      &initial_cwd,
+      entrypoint
+    ),
+    {
+      if let Ok(output_path) = deno_path_util::url_from_file_path(&output_path)
+      {
+        crate::util::path::relative_specifier_path_for_display(
+          &initial_cwd,
+          &output_path,
+        )
+      } else {
+        output_path.display().to_string()
+      }
+    }
   );
   validate_output_path(&output_path)?;
 

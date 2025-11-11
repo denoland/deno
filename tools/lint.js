@@ -63,6 +63,7 @@ async function dlint() {
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
+    ":!:cli/tools/coverage/script.js",
     ":!:cli/tools/doc/prism.css",
     ":!:cli/tools/doc/prism.js",
     ":!:cli/tsc/dts/**",

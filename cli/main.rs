@@ -63,7 +63,7 @@ use self::util::draw_thread::DrawThread;
 use crate::args::CompletionsFlags;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::flags_from_vec;
+use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::get_default_v8_flags;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
@@ -565,9 +565,13 @@ fn exit_with_message(message: &str, code: i32) -> ! {
   deno_runtime::exit(code);
 }
 
-fn exit_for_error(error: AnyError) -> ! {
+fn exit_for_error(error: AnyError, initial_cwd: Option<&std::path::Path>) -> ! {
   let error_string = match js_error_downcast_ref(&error) {
-    Some(e) => format_js_error(e),
+    Some(e) => {
+      let initial_cwd = initial_cwd
+        .and_then(|cwd| deno_path_util::url_from_directory_path(cwd).ok());
+      format_js_error(e, initial_cwd.as_ref())
+    }
     None => format!("{error:?}"),
   };
 
@@ -626,50 +630,68 @@ pub fn main() {
     let roots = LibWorkerFactoryRoots::default();
 
     #[cfg(unix)]
-    let (waited_unconfigured_runtime, waited_args) =
+    let (waited_unconfigured_runtime, waited_args, waited_cwd) =
       match wait_for_start(&args, roots.clone()) {
         Some(f) => match f.await {
           Ok(v) => match v {
-            Some((u, a)) => (Some(u), Some(a)),
-            None => (None, None),
+            Some((u, a, c)) => (Some(u), Some(a), Some(c)),
+            None => (None, None, None),
           },
           Err(e) => {
             panic!("Failure from control sock: {e}");
           }
         },
-        None => (None, None),
+        None => (None, None, None),
       };
 
     #[cfg(not(unix))]
-    let (waited_unconfigured_runtime, waited_args) = (None, None);
+    let (waited_unconfigured_runtime, waited_args, waited_cwd) =
+      (None, None, None);
 
     let args = waited_args.unwrap_or(args);
+    let initial_cwd = waited_cwd.map(Some).unwrap_or_else(|| {
+      match std::env::current_dir().with_context(|| "Failed getting cwd.") {
+        Ok(cwd) => Some(cwd),
+        Err(err) => {
+          log::error!("Failed getting cwd: {err}");
+          None
+        }
+      }
+    });
 
     // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
     // initialize the V8 platform on a parent thread of all threads that will spawn
     // V8 isolates.
-    let flags = resolve_flags_and_init(args).await?;
+    let flags = match resolve_flags_and_init(args, initial_cwd.clone()).await {
+      Ok(flags) => flags,
+      Err(err) => return (Err(err), initial_cwd),
+    };
 
     if waited_unconfigured_runtime.is_none() {
       init_v8(&flags);
     }
 
-    run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await
+    (
+      run_subcommand(Arc::new(flags), waited_unconfigured_runtime, roots).await,
+      initial_cwd,
+    )
   };
 
-  let result = create_and_run_current_thread_with_maybe_metrics(future);
+  let (result, initial_cwd) =
+    create_and_run_current_thread_with_maybe_metrics(future);
 
   #[cfg(feature = "dhat-heap")]
   drop(profiler);
 
   match result {
     Ok(exit_code) => deno_runtime::exit(exit_code),
-    Err(err) => exit_for_error(err),
+    Err(err) => exit_for_error(err, initial_cwd.as_deref()),
   }
 }
 
 async fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
+  initial_cwd: Option<std::path::PathBuf>,
 ) -> Result<Flags, AnyError> {
   // this env var is used by clap to enable dynamic completions, it's set by the shell when
   // executing deno to get dynamic completions.
@@ -678,17 +700,18 @@ async fn resolve_flags_and_init(
     deno_runtime::exit(0);
   }
 
-  let mut flags = match flags_from_vec(args) {
-    Ok(flags) => flags,
-    Err(err @ clap::Error { .. })
-      if err.kind() == clap::error::ErrorKind::DisplayVersion =>
-    {
-      // Ignore results to avoid BrokenPipe errors.
-      let _ = err.print();
-      deno_runtime::exit(0);
-    }
-    Err(err) => exit_for_error(AnyError::from(err)),
-  };
+  let mut flags =
+    match flags_from_vec_with_initial_cwd(args, initial_cwd.clone()) {
+      Ok(flags) => flags,
+      Err(err @ clap::Error { .. })
+        if err.kind() == clap::error::ErrorKind::DisplayVersion =>
+      {
+        // Ignore results to avoid BrokenPipe errors.
+        let _ = err.print();
+        deno_runtime::exit(0);
+      }
+      Err(err) => exit_for_error(AnyError::from(err), initial_cwd.as_deref()),
+    };
   // preserve already loaded env variables
   if flags.subcommand.watch_flags().is_some() {
     WatchEnvTracker::snapshot();
@@ -713,7 +736,10 @@ async fn resolve_flags_and_init(
   // Tunnel sets up env vars and OTEL, so connect before everything else.
   if flags.tunnel {
     if let Err(err) = initialize_tunnel(&flags).await {
-      exit_for_error(err.context("Failed to start with tunnel"));
+      exit_for_error(
+        err.context("Failed to start with tunnel"),
+        initial_cwd.as_deref(),
+      );
     }
     // SAFETY: We're doing this before any threads are created.
     unsafe {
@@ -823,7 +849,7 @@ fn wait_for_start(
 ) -> Option<
   impl Future<
     Output = Result<
-      Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>)>,
+      Option<(UnconfiguredRuntime, Vec<std::ffi::OsString>, PathBuf)>,
       AnyError,
     >,
   > + use<>,
@@ -942,7 +968,7 @@ fn wait_for_start(
 
     let cmd: Start = deno_core::serde_json::from_slice(&buf)?;
 
-    std::env::set_current_dir(cmd.cwd)?;
+    std::env::set_current_dir(&cmd.cwd)?;
 
     for (k, v) in cmd.env {
       // SAFETY: We're doing this before any threads are created.
@@ -954,7 +980,7 @@ fn wait_for_start(
       .chain(cmd.args.into_iter().map(Into::into))
       .collect();
 
-    Ok(Some((unconfigured, args)))
+    Ok(Some((unconfigured, args, PathBuf::from(cmd.cwd))))
   })
 }
 

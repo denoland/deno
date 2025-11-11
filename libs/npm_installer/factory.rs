@@ -14,6 +14,9 @@ use deno_resolver::factory::WorkspaceFactory;
 use deno_resolver::factory::WorkspaceFactorySys;
 use deno_resolver::lockfile::LockfileLock;
 use deno_resolver::lockfile::LockfileNpmPackageInfoApiAdapter;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageKind;
+use deno_semver::package::PackageReq;
 use futures::FutureExt;
 
 use crate::LifecycleScriptsConfig;
@@ -77,6 +80,7 @@ pub struct NpmInstallerFactory<
   resolver_factory: Arc<ResolverFactory<TSys>>,
   has_js_execution_started_flag: HasJsExecutionStartedFlagRc,
   http_client: Arc<TNpmCacheHttpClient>,
+  lifecycle_scripts_config: Deferred<Arc<LifecycleScriptsConfig>>,
   lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
   reporter: TReporter,
   lockfile_npm_package_info_provider:
@@ -117,6 +121,7 @@ impl<
       resolver_factory,
       has_js_execution_started_flag: Default::default(),
       http_client,
+      lifecycle_scripts_config: Default::default(),
       lifecycle_scripts_executor,
       reporter,
       lockfile_npm_package_info_provider: Default::default(),
@@ -152,6 +157,62 @@ impl<
         .await?;
     }
     Ok(())
+  }
+
+  pub fn lifecycle_scripts_config(
+    &self,
+  ) -> Result<&Arc<LifecycleScriptsConfig>, anyhow::Error> {
+    use crate::PackagesAllowedScripts;
+
+    fn jsr_deps_to_reqs(deps: Vec<JsrDepPackageReq>) -> Vec<PackageReq> {
+      deps
+        .into_iter()
+        .filter_map(|p| {
+          if p.kind == PackageKind::Npm {
+            Some(p.req)
+          } else {
+            None
+          }
+        })
+        .collect::<Vec<_>>()
+    }
+
+    self.lifecycle_scripts_config.get_or_try_init(|| {
+      let workspace_factory = self.workspace_factory();
+      let workspace = &workspace_factory.workspace_directory()?.workspace;
+      let allow_scripts = workspace.allow_scripts()?;
+      let args = &self.options.lifecycle_scripts_config;
+      Ok(Arc::new(LifecycleScriptsConfig {
+        allowed: match &args.allowed {
+          PackagesAllowedScripts::All => PackagesAllowedScripts::All,
+          PackagesAllowedScripts::Some(package_reqs) => {
+            PackagesAllowedScripts::Some(package_reqs.clone())
+          }
+          PackagesAllowedScripts::None => match allow_scripts.allow {
+            deno_config::deno_json::AllowScriptsValueConfig::All => {
+              PackagesAllowedScripts::All
+            }
+            deno_config::deno_json::AllowScriptsValueConfig::Limited(deps) => {
+              let reqs = jsr_deps_to_reqs(deps);
+              if reqs.is_empty() {
+                PackagesAllowedScripts::None
+              } else {
+                PackagesAllowedScripts::Some(reqs)
+              }
+            }
+          },
+        },
+        denied: match &args.allowed {
+          PackagesAllowedScripts::All | PackagesAllowedScripts::Some(_) => {
+            vec![]
+          }
+          PackagesAllowedScripts::None => jsr_deps_to_reqs(allow_scripts.deny),
+        },
+        initial_cwd: args.initial_cwd.clone(),
+        root_dir: args.root_dir.clone(),
+        explicit_install: args.explicit_install,
+      }))
+    })
   }
 
   pub fn lockfile_npm_package_info_provider(
@@ -309,7 +370,7 @@ impl<
             workspace_factory
               .node_modules_dir_path()?
               .map(|p| p.to_path_buf()),
-            self.options.lifecycle_scripts_config.clone(),
+            self.lifecycle_scripts_config()?.clone(),
             self.resolver_factory.npm_system_info().clone(),
             workspace_npm_link_packages.clone(),
             self.install_reporter.clone(),

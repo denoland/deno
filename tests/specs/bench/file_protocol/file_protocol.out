@@ -1,4 +1,4 @@
-Check file://[WILDCARD]/file_protocol.ts
+Check [WILDCARD]file_protocol.ts
     CPU | [WILDCARD]
 Runtime | Deno [WILDCARD] ([WILDCARD])
 
