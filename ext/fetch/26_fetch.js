@@ -30,8 +30,6 @@ const {
   SafePromisePrototypeFinally,
   String,
   StringPrototypeEndsWith,
-  StringPrototypeStartsWith,
-  StringPrototypeToLowerCase,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
