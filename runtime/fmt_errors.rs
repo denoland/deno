@@ -266,6 +266,8 @@ fn format_js_error_inner(
     0,
   ));
 
+  let at_dimmed = Cow::Owned(colors::dimmed_gray("at ").to_string());
+  let at_normal = Cow::Borrowed("at ");
   for frame in &js_error.frames {
     let is_ext = stack_frame_is_ext(frame);
     if filter_frames
@@ -280,11 +282,7 @@ fn format_js_error_inner(
     write!(
       s,
       "\n    {}{}",
-      if is_ext {
-        Cow::Owned(colors::dimmed_gray("at ").to_string())
-      } else {
-        Cow::Borrowed("at ")
-      },
+      if is_ext { &at_dimmed } else { &at_normal },
       format_frame::<AnsiColors>(frame, initial_cwd)
     )
     .unwrap();
