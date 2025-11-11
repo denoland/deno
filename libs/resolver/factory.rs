@@ -163,7 +163,7 @@ pub enum ConfigDiscoveryOption {
   Disabled,
 }
 
-/// Resolves the JSR regsitry URL to use for the given system.
+/// Resolves the JSR registry URL to use for the given system.
 pub fn resolve_jsr_url(sys: &impl sys_traits::EnvVar) -> Url {
   let env_var_name = "JSR_URL";
   if let Ok(registry_url) = sys.env_var(env_var_name) {
@@ -210,7 +210,7 @@ pub struct WorkspaceFactoryOptions {
   pub node_modules_dir: Option<NodeModulesDirMode>,
   pub no_lock: bool,
   pub no_npm: bool,
-  /// The process sate if using ext/node and the current process was "forked".
+  /// The process state if using ext/node and the current process was "forked".
   /// This value is found at `deno_lib::args::NPM_PROCESS_STATE`
   /// but in most scenarios this can probably just be `None`.
   pub npm_process_state: Option<NpmProcessStateOptions>,
