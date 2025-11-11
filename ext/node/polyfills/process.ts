@@ -1015,17 +1015,14 @@ function synchronizeListeners() {
   }
 }
 
-// Overwrites the 1st and 2nd items with getters.
-Object.defineProperty(argv, "0", { get: () => argv0 });
-Object.defineProperty(argv, "1", {
-  get: () => {
-    if (Deno.mainModule?.startsWith("file:")) {
-      return pathFromURL(new URL(Deno.mainModule));
-    } else {
-      return join(Deno.cwd(), "$deno$node.mjs");
-    }
-  },
-});
+// Replace getter-based argv definition with real string array (Node.js compatible)
+argv[0] = Deno.execPath();
+
+if (Deno.mainModule?.startsWith("file:")) {
+  argv[1] = pathFromURL(new URL(Deno.mainModule));
+} else {
+  argv[1] = join(Deno.cwd(), "$deno$node.mjs");
+}
 
 internals.dispatchProcessBeforeExitEvent = dispatchProcessBeforeExitEvent;
 internals.dispatchProcessExitEvent = dispatchProcessExitEvent;
