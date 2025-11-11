@@ -123,6 +123,7 @@ pub struct AuditFlags {
   pub prod: bool,
   pub optional: bool,
   pub ignore: Vec<String>,
+  pub socket: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -2056,6 +2057,9 @@ fn audit_subcommand() -> Command {
 Show only high and critical severity vulnerabilities
   <p(245)>deno audit --level=high</>
 
+Check against socket.dev vulnerability database
+  <p(245)>deno audit --socket</>
+
 Don't error if the audit data can't be retrieved from the registry
   <p(245)>deno audit --ignore-registry-errors</>"
     ),
@@ -2081,6 +2085,12 @@ Don't error if the audit data can't be retrieved from the registry
         Arg::new("ignore-unfixable")
           .long("ignore-unfixable")
           .help("Ignore advisories that don't have any actions to resolve them")
+          .action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("socket")
+          .long("socket")
+          .help("Check against socket.dev vulnerability database")
           .action(ArgAction::SetTrue)
       )
       .arg(
@@ -5280,6 +5290,7 @@ fn audit_parse(
     .unwrap_or_else(|| "low".to_string());
   let ignore_unfixable = matches.get_flag("ignore-unfixable");
   let ignore_registry_errors = matches.get_flag("ignore-registry-errors");
+  let socket = matches.get_flag("socket");
   let dev = true;
   let prod = true;
   let optional = true;
@@ -5293,6 +5304,7 @@ fn audit_parse(
     ignore_registry_errors,
     ignore_unfixable,
     ignore,
+    socket,
   });
   Ok(())
 }
