@@ -4,8 +4,9 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 
 use base64::Engine;
+use deno_core::FromV8;
 use deno_core::GarbageCollected;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
@@ -1644,7 +1645,7 @@ pub fn op_node_create_ed_raw(
   KeyObjectHandle::new_ed_raw(curve, key, is_public)
 }
 
-#[derive(serde::Deserialize)]
+#[derive(FromV8)]
 pub struct RsaJwkKey {
   n: String,
   e: String,
@@ -1656,7 +1657,7 @@ pub struct RsaJwkKey {
 #[op2]
 #[cppgc]
 pub fn op_node_create_rsa_jwk(
-  #[serde] jwk: RsaJwkKey,
+  #[from_v8] jwk: RsaJwkKey,
   is_public: bool,
 ) -> Result<KeyObjectHandle, RsaJwkError> {
   KeyObjectHandle::new_rsa_jwk(jwk, is_public)
@@ -2365,18 +2366,18 @@ pub async fn op_node_generate_dh_key_async(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_node_dh_keys_generate_and_export(
   #[buffer] prime: Option<&[u8]>,
   #[smi] prime_len: usize,
   #[smi] generator: usize,
-) -> (ToJsBuffer, ToJsBuffer) {
+) -> (Uint8Array, Uint8Array) {
   let prime = prime
     .map(|p| p.into())
     .unwrap_or_else(|| Prime::generate(prime_len));
   let dh = dh::DiffieHellman::new(prime, generator);
-  let private_key = dh.private_key.into_vec().into_boxed_slice();
-  let public_key = dh.public_key.into_vec().into_boxed_slice();
+  let private_key = dh.private_key.into_vec();
+  let public_key = dh.public_key.into_vec();
   (private_key.into(), public_key.into())
 }
 

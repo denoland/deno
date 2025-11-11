@@ -156,7 +156,7 @@ impl TransferredResource for MessagePort {
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_message_port_create_entangled(
   state: &mut OpState,
 ) -> (ResourceId, ResourceId) {

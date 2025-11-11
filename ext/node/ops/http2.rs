@@ -18,9 +18,9 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::error::ResourceError;
 use deno_core::op2;
-use deno_core::serde::Serialize;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::take_network_stream_resource;
 use h2;
@@ -139,7 +139,7 @@ pub enum Http2Error {
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_http2_connect(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -260,7 +260,7 @@ pub async fn op_http2_accept(
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_http2_send_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -314,7 +314,7 @@ pub async fn op_http2_poll_client_connection(
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_http2_client_request(
   state: Rc<RefCell<OpState>>,
   #[smi] client_rid: ResourceId,
@@ -428,16 +428,16 @@ pub async fn op_http2_client_send_trailers(
   Ok(())
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct Http2ClientResponse {
+  #[to_v8(serde)]
   headers: Vec<(ByteString, ByteString)>,
   body_rid: ResourceId,
   status_code: u16,
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_http2_client_get_response(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
@@ -510,7 +510,7 @@ fn poll_data_or_trailers(
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_http2_client_get_response_body_chunk(
   state: Rc<RefCell<OpState>>,
   #[smi] body_rid: ResourceId,

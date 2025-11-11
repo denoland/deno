@@ -5,7 +5,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use deno_core::FromV8;
 use deno_core::OpState;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_error::JsErrorBox;
@@ -53,36 +56,29 @@ pub trait BundleProvider: Send + Sync {
   ) -> Result<BuildResponse, AnyError>;
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Eq, PartialEq, Default, FromV8)]
 pub struct BundleOptions {
   pub entrypoints: Vec<String>,
-  #[serde(default)]
   pub output_path: Option<String>,
-  #[serde(default)]
   pub output_dir: Option<String>,
-  #[serde(default)]
+  #[from_v8(default)]
   pub external: Vec<String>,
-  #[serde(default)]
+  #[from_v8(serde, default)]
   pub format: BundleFormat,
-  #[serde(default)]
+  #[from_v8(default)]
   pub minify: bool,
-  #[serde(default)]
+  #[from_v8(default)]
   pub code_splitting: bool,
-  #[serde(default = "tru")]
+  #[from_v8(default = true)]
   pub inline_imports: bool,
-  #[serde(default)]
+  #[from_v8(serde, default)]
   pub packages: PackageHandling,
-  #[serde(default)]
+  #[from_v8(serde)]
   pub sourcemap: Option<SourceMapType>,
-  #[serde(default)]
+  #[from_v8(serde, default)]
   pub platform: BundlePlatform,
-  #[serde(default = "tru")]
+  #[from_v8(default = true)]
   pub write: bool,
-}
-
-fn tru() -> bool {
-  true
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Copy, Default, serde::Deserialize)]
@@ -147,16 +143,14 @@ impl std::fmt::Display for PackageHandling {
     }
   }
 }
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, FromV8, ToV8)]
 pub struct Message {
   pub text: String,
   pub location: Option<Location>,
   pub notes: Vec<Note>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, FromV8, ToV8)]
 pub struct PartialMessage {
   pub id: Option<String>,
   pub plugin_name: Option<String>,
@@ -166,28 +160,24 @@ pub struct PartialMessage {
   pub detail: Option<u32>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, ToV8)]
 pub struct BuildOutputFile {
   pub path: String,
-  pub contents: Option<Vec<u8>>,
+  pub contents: Option<Uint8Array>,
   pub hash: String,
 }
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, ToV8)]
 pub struct BuildResponse {
   pub errors: Vec<Message>,
   pub warnings: Vec<Message>,
   pub output_files: Option<Vec<BuildOutputFile>>,
 }
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, FromV8, ToV8)]
 pub struct Note {
   pub text: String,
   pub location: Option<Location>,
 }
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, FromV8, ToV8)]
 pub struct Location {
   pub file: String,
   pub namespace: Option<String>,
@@ -223,10 +213,10 @@ pub struct OnLoadOptions {
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_bundle(
   state: Rc<RefCell<OpState>>,
-  #[serde] options: BundleOptions,
+  #[from_v8] options: BundleOptions,
 ) -> Result<BuildResponse, JsErrorBox> {
   // eprintln!("op_bundle: {:?}", options);
   let provider = {

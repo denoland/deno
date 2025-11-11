@@ -2,7 +2,7 @@
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use curve25519_dalek::montgomery::MontgomeryPoint;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
@@ -129,10 +129,10 @@ pub fn op_crypto_import_pkcs8_x25519(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_crypto_export_spki_x25519(
   #[buffer] pubkey: &[u8],
-) -> Result<ToJsBuffer, X25519Error> {
+) -> Result<Uint8Array, X25519Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierRef {
       // id-X25519
@@ -150,10 +150,10 @@ pub fn op_crypto_export_spki_x25519(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_crypto_export_pkcs8_x25519(
   #[buffer] pkey: &[u8],
-) -> Result<ToJsBuffer, X25519Error> {
+) -> Result<Uint8Array, X25519Error> {
   use rsa::pkcs1::der::Encode;
 
   // This should probably use OneAsymmetricKey instead

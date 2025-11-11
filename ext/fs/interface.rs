@@ -13,19 +13,24 @@ use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 use serde::Deserialize;
-use serde::Serialize;
 
-#[derive(Deserialize, Default, Debug, Clone, Copy)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
+#[derive(deno_core::FromV8, Default, Debug, Clone, Copy)]
 pub struct OpenOptions {
+  #[from_v8(default)]
   pub read: bool,
+  #[from_v8(default)]
   pub write: bool,
+  #[from_v8(default)]
   pub create: bool,
+  #[from_v8(default)]
   pub truncate: bool,
+  #[from_v8(default)]
   pub append: bool,
+  #[from_v8(default)]
   pub create_new: bool,
+  #[from_v8(default)]
   pub custom_flags: Option<i32>,
+  #[from_v8(default)]
   pub mode: Option<u32>,
 }
 
@@ -125,8 +130,7 @@ pub enum FsFileType {
 }
 
 /// WARNING: This is part of the public JS Deno API.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, deno_core::ToV8)]
 pub struct FsDirEntry {
   pub name: String,
   pub is_file: bool,

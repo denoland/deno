@@ -9,8 +9,6 @@ use deno_core::op2;
 use deno_permissions::OpenAccessKind;
 use rusqlite::Connection;
 use rusqlite::backup;
-use serde::Deserialize;
-use serde::Serialize;
 
 use super::DatabaseSync;
 use super::SqliteError;
@@ -18,26 +16,27 @@ use crate::NodePermissions;
 
 const DEFAULT_BACKUP_RATE: c_int = 5;
 
-#[derive(Serialize, Deserialize)]
+#[derive(deno_core::FromV8)]
 struct BackupOptions {
+  #[allow(dead_code)]
   source: Option<String>,
+  #[allow(dead_code)]
   target: Option<String>,
   rate: Option<c_int>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(deno_core::ToV8)]
 struct BackupResult {
-  #[serde(rename = "totalPages")]
   total_pages: c_int,
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_node_database_backup<P>(
   state: &mut OpState,
   #[cppgc] source_db: &DatabaseSync,
   #[string] path: &str,
-  #[serde] options: Option<BackupOptions>,
+  #[from_v8] options: Option<BackupOptions>,
 ) -> Result<BackupResult, SqliteError>
 where
   P: NodePermissions + 'static,

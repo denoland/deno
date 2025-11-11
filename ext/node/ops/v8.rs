@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 
 use deno_core::FastString;
 use deno_core::GarbageCollected;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::v8;
 use deno_error::JsErrorBox;
@@ -165,8 +165,8 @@ pub fn op_v8_set_treat_array_buffer_views_as_host_objects(
 }
 
 #[op2]
-#[serde]
-pub fn op_v8_release_buffer(#[cppgc] ser: &Serializer) -> ToJsBuffer {
+#[to_v8]
+pub fn op_v8_release_buffer(#[cppgc] ser: &Serializer) -> Uint8Array {
   ser.inner.release().into()
 }
 
@@ -388,7 +388,7 @@ pub fn op_v8_read_uint32(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_v8_read_uint64(
   #[cppgc] deser: &Deserializer,
 ) -> Result<(u32, u32), JsErrorBox> {

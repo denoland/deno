@@ -8,11 +8,11 @@ use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::op2;
 use ipnetwork::IpNetwork;
 use ipnetwork::Ipv4Network;
 use ipnetwork::Ipv6Network;
-use serde::Serialize;
 
 pub struct BlockListResource {
   blocklist: RefCell<BlockList>,
@@ -27,7 +27,7 @@ unsafe impl deno_core::GarbageCollected for BlockListResource {
   }
 }
 
-#[derive(Serialize)]
+#[derive(ToV8)]
 struct SocketAddressSerialization(String, String);
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -73,7 +73,7 @@ pub fn op_socket_address_parse(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_socket_address_get_serialization(
   state: &mut OpState,
 ) -> SocketAddressSerialization {

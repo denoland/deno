@@ -2,7 +2,7 @@
 
 use aws_lc_rs::rand::SecureRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use elliptic_curve::rand_core::OsRng;
@@ -68,10 +68,10 @@ pub enum GenerateKeyOptions {
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_crypto_generate_key(
   #[serde] opts: GenerateKeyOptions,
-) -> Result<ToJsBuffer, GenerateKeyError> {
+) -> Result<Uint8Array, GenerateKeyError> {
   let fun = || match opts {
     GenerateKeyOptions::Rsa {
       modulus_length,

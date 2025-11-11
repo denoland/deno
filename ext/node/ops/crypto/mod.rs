@@ -6,7 +6,7 @@ use aws_lc_rs::signature::Ed25519KeyPair;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
@@ -93,7 +93,7 @@ pub fn op_node_create_hash(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_node_get_hashes() -> Vec<&'static str> {
   digest::Hash::get_hashes()
 }
@@ -165,12 +165,12 @@ pub enum PrivateEncryptDecryptError {
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_node_private_encrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
-) -> Result<ToJsBuffer, PrivateEncryptDecryptError> {
+) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
   let mut rng = rand::thread_rng();
@@ -192,12 +192,12 @@ pub fn op_node_private_encrypt(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_node_private_decrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
-) -> Result<ToJsBuffer, PrivateEncryptDecryptError> {
+) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
   match padding {
@@ -208,12 +208,12 @@ pub fn op_node_private_decrypt(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_node_public_encrypt(
   #[serde] key: StringOrBuffer,
   #[serde] msg: StringOrBuffer,
   #[smi] padding: u32,
-) -> Result<ToJsBuffer, PrivateEncryptDecryptError> {
+) -> Result<Uint8Array, PrivateEncryptDecryptError> {
   let key = RsaPublicKey::from_public_key_pem((&key).try_into()?)?;
 
   let mut rng = rand::thread_rng();
@@ -270,7 +270,7 @@ pub fn op_node_cipheriv_encrypt(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_node_cipheriv_final(
   state: &mut OpState,
   #[smi] rid: u32,
@@ -498,14 +498,14 @@ pub fn op_node_pbkdf2_validate(
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_node_pbkdf2_async(
   #[anybuffer] password: JsBuffer,
   #[anybuffer] salt: JsBuffer,
   #[smi] iterations: u32,
   #[string] digest: String,
   #[number] keylen: usize,
-) -> Result<ToJsBuffer, Pbkdf2Error> {
+) -> Result<Uint8Array, Pbkdf2Error> {
   spawn_blocking(move || {
     let mut derived_key = vec![0; keylen];
     pbkdf2_sync(&password, &salt, iterations, &digest, &mut derived_key)
@@ -520,8 +520,8 @@ pub fn op_node_fill_random(#[buffer] buf: &mut [u8]) {
 }
 
 #[op2(async)]
-#[serde]
-pub async fn op_node_fill_random_async(#[smi] len: i32) -> ToJsBuffer {
+#[to_v8]
+pub async fn op_node_fill_random_async(#[smi] len: i32) -> Uint8Array {
   spawn_blocking(move || {
     let mut buf = vec![0u8; len as usize];
     rand::thread_rng().fill(&mut buf[..]);
@@ -583,14 +583,14 @@ pub fn op_node_hkdf(
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_node_hkdf_async(
   #[string] digest_algorithm: String,
   #[cppgc] handle: &KeyObjectHandle,
   #[buffer] salt: JsBuffer,
   #[buffer] info: JsBuffer,
   #[number] okm_len: usize,
-) -> Result<ToJsBuffer, HkdfError> {
+) -> Result<Uint8Array, HkdfError> {
   let handle = handle.clone();
   spawn_blocking(move || {
     let mut okm = vec![0u8; okm_len];
@@ -601,12 +601,12 @@ pub async fn op_node_hkdf_async(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_node_dh_compute_secret(
   #[buffer] prime: JsBuffer,
   #[buffer] private_key: JsBuffer,
   #[buffer] their_public_key: JsBuffer,
-) -> ToJsBuffer {
+) -> Uint8Array {
   let pubkey: BigUint = BigUint::from_bytes_be(their_public_key.as_ref());
   let privkey: BigUint = BigUint::from_bytes_be(private_key.as_ref());
   let primei: BigUint = BigUint::from_bytes_be(prime.as_ref());
@@ -691,7 +691,7 @@ pub enum ScryptAsyncError {
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_node_scrypt_async(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
@@ -700,7 +700,7 @@ pub async fn op_node_scrypt_async(
   #[smi] block_size: u32,
   #[smi] parallelization: u32,
   #[smi] maxmem: u32,
-) -> Result<ToJsBuffer, ScryptAsyncError> {
+) -> Result<Uint8Array, ScryptAsyncError> {
   spawn_blocking(move || {
     let mut output_buffer = vec![0u8; keylen as usize];
 
@@ -963,21 +963,21 @@ pub fn op_node_ecdh_compute_public_key(
 }
 
 #[inline]
-fn gen_prime(size: usize) -> ToJsBuffer {
+fn gen_prime(size: usize) -> Uint8Array {
   primes::Prime::generate(size).0.to_bytes_be().into()
 }
 
 #[op2]
-#[serde]
-pub fn op_node_gen_prime(#[number] size: usize) -> ToJsBuffer {
+#[to_v8]
+pub fn op_node_gen_prime(#[number] size: usize) -> Uint8Array {
   gen_prime(size)
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_node_gen_prime_async(
   #[number] size: usize,
-) -> Result<ToJsBuffer, tokio::task::JoinError> {
+) -> Result<Uint8Array, tokio::task::JoinError> {
   spawn_blocking(move || gen_prime(size)).await
 }
 

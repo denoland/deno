@@ -236,7 +236,7 @@ impl Storage {
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 fn op_webstorage_iterate_keys(
   #[cppgc] storage: &Storage,
   state: &mut OpState,

@@ -6,6 +6,7 @@ use deno_ast::ParseDiagnostic;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_lint::diagnostic::LintDiagnostic;
@@ -227,7 +228,7 @@ fn op_lint_create_serialized_ast(
   Ok(lint::serialize_ast_to_buffer(&parsed_source, &utf16_map))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(FromV8)]
 struct LintReportFix {
   text: String,
   range: (usize, usize),
@@ -254,7 +255,7 @@ fn op_lint_report(
   #[string] hint: Option<String>,
   #[smi] start_utf16: usize,
   #[smi] end_utf16: usize,
-  #[serde] fix: Vec<LintReportFix>,
+  #[from_v8] fix: Vec<LintReportFix>,
 ) -> Result<(), LintReportError> {
   let container = state.borrow_mut::<LintPluginContainer>();
   container.report(id, message, hint, start_utf16, end_utf16, fix)?;

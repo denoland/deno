@@ -17,7 +17,7 @@ use ctr::Ctr32BE;
 use ctr::Ctr64BE;
 use ctr::Ctr128BE;
 use deno_core::JsBuffer;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use rand::rngs::OsRng;
@@ -101,11 +101,11 @@ pub enum EncryptError {
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_crypto_encrypt(
   #[serde] opts: EncryptOptions,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, EncryptError> {
+) -> Result<Uint8Array, EncryptError> {
   let key = opts.key;
   let fun = move || match opts.algorithm {
     EncryptAlgorithm::RsaOaep { hash, label } => {

@@ -1907,8 +1907,6 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.367.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35bc5bd853f22f22954aff45968f059e5f727755f1818dafba6c19cf1c6a43c2"
 dependencies = [
  "anyhow",
  "az",
@@ -2630,17 +2628,15 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.243.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70093389f10651aada28d3b535e115aca21888d357e0346ba67ee63600a48218"
 dependencies = [
  "indexmap 2.9.0",
- "proc-macro-rules",
  "proc-macro2",
  "quote",
  "stringcase",
  "strum 0.27.1",
  "strum_macros 0.27.1",
  "syn 2.0.87",
+ "syn-match",
  "thiserror 2.0.12",
 ]
 
@@ -7158,29 +7154,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proc-macro-rules"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07c277e4e643ef00c1233393c673f655e3672cf7eb3ba08a00bdd0ea59139b5f"
-dependencies = [
- "proc-macro-rules-macros",
- "proc-macro2",
- "syn 2.0.87",
-]
-
-[[package]]
-name = "proc-macro-rules-macros"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "207fffb0fe655d1d47f6af98cc2793405e85929bdbc420d685554ff07be27ac7"
-dependencies = [
- "once_cell",
- "proc-macro2",
- "quote",
- "syn 2.0.87",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8255,8 +8228,6 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.276.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d64a436af65a4fb070cd22d69d80bd97f5a9c67d31c2d0809a9fe0e84c59096"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -9143,6 +9114,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "syn-match"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "783c4140d7ed89f37116e865b49e5a9fdd28608b9071a9dd1e158b50fc0a31fc"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
 ]
 
 [[package]]

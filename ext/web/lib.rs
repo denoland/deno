@@ -18,8 +18,8 @@ use std::sync::Arc;
 pub use blob::BlobError;
 pub use compression::CompressionError;
 use deno_core::ByteString;
-use deno_core::ToJsBuffer;
 use deno_core::U16String;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -178,8 +178,8 @@ pub enum WebError {
 }
 
 #[op2]
-#[serde]
-fn op_base64_decode(#[string] input: String) -> Result<ToJsBuffer, WebError> {
+#[to_v8]
+fn op_base64_decode(#[string] input: String) -> Result<Uint8Array, WebError> {
   let mut s = input.into_bytes();
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);

@@ -18,7 +18,7 @@ use deno_core::FastString;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_error::JsErrorBox;
@@ -33,7 +33,6 @@ use deno_permissions::PermissionCheckError;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
-use serde::Deserialize;
 use serde::Serialize;
 
 use crate::FsPermissions;
@@ -148,16 +147,21 @@ where
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
-#[derive(Deserialize, Default, Debug, Clone, Copy)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
+#[derive(deno_core::FromV8, Default, Debug, Clone, Copy)]
 struct FsOpenOptions {
+  #[from_v8(default)]
   read: bool,
+  #[from_v8(default)]
   write: bool,
+  #[from_v8(default)]
   create: bool,
+  #[from_v8(default)]
   truncate: bool,
+  #[from_v8(default)]
   append: bool,
+  #[from_v8(default)]
   create_new: bool,
+  #[from_v8(default)]
   mode: Option<u32>,
 }
 
@@ -181,7 +185,7 @@ impl From<FsOpenOptions> for OpenOptions {
 pub fn op_fs_open_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
-  #[serde] options: Option<FsOpenOptions>,
+  #[from_v8] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError>
 where
   P: FsPermissions + 'static,
@@ -210,7 +214,7 @@ where
 pub async fn op_fs_open_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-  #[serde] options: Option<FsOpenOptions>,
+  #[from_v8] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError>
 where
   P: FsPermissions + 'static,
@@ -753,7 +757,7 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_fs_read_dir_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -774,7 +778,7 @@ where
 }
 
 #[op2(async, stack_trace)]
-#[serde]
+#[to_v8]
 pub async fn op_fs_read_dir_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1547,12 +1551,12 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_fs_read_file_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
   #[smi] flags: Option<i32>,
-) -> Result<ToJsBuffer, FsOpsError>
+) -> Result<Uint8Array, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1575,17 +1579,17 @@ where
     .context_path("readfile", &path)?;
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
-  Ok(buf.into_owned().into_boxed_slice().into())
+  Ok(buf.into_owned().to_vec().into())
 }
 
 #[op2(async, stack_trace)]
-#[serde]
+#[to_v8]
 pub async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
   #[smi] flags: Option<i32>,
-) -> Result<ToJsBuffer, FsOpsError>
+) -> Result<Uint8Array, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1625,7 +1629,7 @@ where
   };
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
-  Ok(buf.into_owned().into_boxed_slice().into())
+  Ok(buf.into_owned().to_vec().into())
 }
 
 #[op2(stack_trace)]

@@ -17,6 +17,7 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -43,7 +44,6 @@ use deno_tls::rustls::pki_types::ServerName;
 pub use rustls_tokio_stream::TlsStream;
 pub use rustls_tokio_stream::TlsStreamRead;
 pub use rustls_tokio_stream::TlsStreamWrite;
-use serde::Deserialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -226,8 +226,7 @@ impl Resource for TlsStreamResource {
   }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct ConnectTlsArgs {
   cert_file: Option<String>,
   ca_certs: Vec<String>,
@@ -236,8 +235,7 @@ pub struct ConnectTlsArgs {
   unsafely_disable_hostname_verification: Option<bool>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct StartTlsArgs {
   rid: ResourceId,
   ca_certs: Vec<String>,
@@ -311,10 +309,10 @@ pub fn op_tls_cert_resolver_resolve_error(
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
-  #[serde] args: StartTlsArgs,
+  #[from_v8] args: StartTlsArgs,
   #[cppgc] key_pair: Option<&TlsKeysHolder>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
@@ -405,11 +403,11 @@ where
 }
 
 #[op2(async, stack_trace)]
-#[serde]
+#[to_v8]
 pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
-  #[serde] addr: IpAddr,
-  #[serde] args: ConnectTlsArgs,
+  #[from_v8] addr: IpAddr,
+  #[from_v8] args: ConnectTlsArgs,
   #[cppgc] key_pair: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
@@ -507,22 +505,21 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
   reuse_port: bool,
-  #[serde(default)]
+  #[from_v8(default)]
   load_balanced: bool,
   tcp_backlog: i32,
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
-  #[serde] args: ListenTlsArgs,
+  #[from_v8] addr: IpAddr,
+  #[from_v8] args: ListenTlsArgs,
   #[cppgc] keys: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr), NetError>
 where
@@ -583,7 +580,7 @@ where
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_net_accept_tls(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

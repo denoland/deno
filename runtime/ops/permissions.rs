@@ -2,10 +2,10 @@
 
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
+use deno_core::FromV8;
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::op2;
-use serde::Deserialize;
-use serde::Serialize;
 
 deno_core::extension!(
   deno_permissions,
@@ -16,7 +16,7 @@ deno_core::extension!(
   ],
 );
 
-#[derive(Deserialize)]
+#[derive(FromV8)]
 pub struct PermissionArgs {
   name: String,
   path: Option<String>,
@@ -26,7 +26,7 @@ pub struct PermissionArgs {
   command: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(ToV8)]
 pub struct PermissionStatus {
   state: String,
   partial: bool,
@@ -65,10 +65,10 @@ pub enum PermissionError {
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_query_permission(
   state: &mut OpState,
-  #[serde] args: PermissionArgs,
+  #[from_v8] args: PermissionArgs,
 ) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
@@ -86,10 +86,10 @@ pub fn op_query_permission(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_revoke_permission(
   state: &mut OpState,
-  #[serde] args: PermissionArgs,
+  #[from_v8] args: PermissionArgs,
 ) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
@@ -107,10 +107,10 @@ pub fn op_revoke_permission(
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_request_permission(
   state: &mut OpState,
-  #[serde] args: PermissionArgs,
+  #[from_v8] args: PermissionArgs,
 ) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {

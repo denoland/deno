@@ -13,11 +13,13 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::FromV8;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::op2;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
@@ -59,7 +61,7 @@ pub struct TlsHandshakeInfo {
     Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, FromV8, ToV8, Deserialize, Serialize)]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -183,7 +185,7 @@ pub(crate) fn accept_err(e: std::io::Error) -> NetError {
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_net_accept_tcp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -251,7 +253,7 @@ pub async fn op_net_recv_udp(
 pub async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[serde] addr: IpAddr,
+  #[from_v8] addr: IpAddr,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, NetError>
 where
@@ -469,7 +471,7 @@ impl NetPermToken {
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_net_get_ips_from_perm_token(
   #[cppgc] token: &NetPermToken,
 ) -> Vec<String> {
@@ -477,10 +479,10 @@ pub fn op_net_get_ips_from_perm_token(
 }
 
 #[op2(async, stack_trace)]
-#[serde]
+#[to_v8]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
-  #[serde] addr: IpAddr,
+  #[from_v8] addr: IpAddr,
   #[cppgc] net_perm_token: Option<&NetPermToken>,
   #[smi] resource_abort_id: Option<ResourceId>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
@@ -571,10 +573,10 @@ impl Resource for UdpSocketResource {
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[from_v8] addr: IpAddr,
   reuse_port: bool,
   load_balanced: bool,
   tcp_backlog: i32,
@@ -672,10 +674,10 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_net_listen_udp<NP>(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[from_v8] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), NetError>
@@ -687,10 +689,10 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[from_v8] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), NetError>
@@ -702,7 +704,7 @@ where
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(async, stack_trace)]
-#[serde]
+#[to_v8]
 pub async fn op_net_connect_vsock<NP>(
   state: Rc<RefCell<OpState>>,
   #[smi] cid: u32,
@@ -764,7 +766,7 @@ where
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_net_listen_vsock<NP>(
   state: &mut OpState,
   #[smi] cid: u32,
@@ -811,7 +813,7 @@ where
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_net_accept_vsock(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -860,7 +862,7 @@ pub fn op_net_accept_vsock() -> Result<(), NetError> {
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_net_listen_tunnel(
   state: &mut OpState,
 ) -> Result<(ResourceId, IpAddr), NetError> {
@@ -876,7 +878,7 @@ pub fn op_net_listen_tunnel(
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_net_accept_tunnel(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -948,45 +950,39 @@ pub enum DnsRecordData {
   Txt(Vec<String>),
 }
 
-#[derive(Serialize, Eq, PartialEq, Debug)]
-#[serde()]
+#[derive(ToV8, Eq, PartialEq, Debug)]
 pub struct DnsRecordWithTtl {
+  #[to_v8(serde)]
   pub data: DnsRecordData,
   pub ttl: u32,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct ResolveAddrArgs {
   cancel_rid: Option<ResourceId>,
   query: String,
+  #[from_v8(serde)]
   record_type: RecordType,
   options: Option<ResolveDnsOption>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct ResolveDnsOption {
   name_server: Option<NameServer>,
 }
 
-fn default_port() -> u16 {
-  53
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct NameServer {
   ip_addr: String,
-  #[serde(default = "default_port")]
+  #[from_v8(default = 53)]
   port: u16,
 }
 
 #[op2(async, stack_trace)]
-#[serde]
+#[to_v8]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
-  #[serde] args: ResolveAddrArgs,
+  #[from_v8] args: ResolveAddrArgs,
 ) -> Result<Vec<DnsRecordWithTtl>, NetError>
 where
   NP: NetPermissions + 'static,

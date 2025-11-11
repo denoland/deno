@@ -34,11 +34,13 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
+use deno_core::FromV8;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -87,8 +89,6 @@ use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
-use serde::Deserialize;
-use serde::Serialize;
 use tower::BoxError;
 use tower::Service;
 use tower::ServiceExt;
@@ -286,8 +286,7 @@ impl FetchHandler for DefaultFileFetchHandler {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct FetchReturn {
   pub request_rid: ResourceId,
   pub cancel_handle_rid: Option<ResourceId>,
@@ -484,7 +483,7 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::large_enum_variant)]
 #[allow(clippy::result_large_err)]
@@ -667,14 +666,15 @@ where
   })
 }
 
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, ToV8)]
 pub struct FetchResponse {
   pub status: u16,
   pub status_text: String,
+  #[to_v8(serde)]
   pub headers: Vec<(ByteString, ByteString)>,
   pub url: String,
   pub response_rid: ResourceId,
+  #[to_v8(serde)]
   pub content_length: Option<u64>,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
@@ -684,7 +684,7 @@ pub struct FetchResponse {
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -899,24 +899,22 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, FromV8)]
 pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
+  #[from_v8(serde)]
   proxy: Option<Proxy>,
+  #[from_v8(serde)]
   pool_max_idle_per_host: Option<usize>,
+  #[from_v8(serde)]
   pool_idle_timeout: Option<serde_json::Value>,
-  #[serde(default = "default_true")]
+  #[from_v8(default = true)]
   http1: bool,
-  #[serde(default = "default_true")]
+  #[from_v8(default = true)]
   http2: bool,
-  #[serde(default)]
+  #[from_v8(default)]
   allow_host: bool,
   local_address: Option<String>,
-}
-
-fn default_true() -> bool {
-  true
 }
 
 #[op2(stack_trace)]
@@ -924,7 +922,7 @@ fn default_true() -> bool {
 #[allow(clippy::result_large_err)]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  #[serde] mut args: CreateHttpClientArgs,
+  #[from_v8] mut args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
 ) -> Result<ResourceId, FetchError>
 where

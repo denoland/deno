@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::url::Url;
@@ -11,8 +12,6 @@ use deno_fetch::data_url::DataUrl;
 use deno_web::BlobStore;
 use http_body_util::BodyExt;
 use hyper::body::Bytes;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WorkerThreadType;
@@ -75,19 +74,18 @@ pub enum SyncFetchError {
   Other(#[inherit] deno_error::JsErrorBox),
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct SyncFetchScript {
   url: String,
   script: String,
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 #[allow(clippy::result_large_err)]
 pub fn op_worker_sync_fetch(
   state: &mut OpState,
-  #[serde] scripts: Vec<String>,
+  #[from_v8] scripts: Vec<String>,
   loose_mime_checks: bool,
 ) -> Result<Vec<SyncFetchScript>, SyncFetchError> {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();

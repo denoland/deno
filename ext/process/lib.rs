@@ -25,7 +25,8 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
@@ -45,7 +46,6 @@ use deno_subprocess_windows::Command;
 #[cfg(windows)]
 use deno_subprocess_windows::Stdio as StdStdio;
 use serde::Deserialize;
-use serde::Serialize;
 #[cfg(unix)]
 use tokio::process::Child as AsyncChild;
 
@@ -290,8 +290,7 @@ pub struct ChildStdio {
   stderr: StdioOrRid,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct ChildStatus {
   success: bool,
   code: i32,
@@ -331,12 +330,11 @@ impl TryFrom<ExitStatus> for ChildStatus {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct SpawnOutput {
   status: ChildStatus,
-  stdout: Option<ToJsBuffer>,
-  stderr: Option<ToJsBuffer>,
+  stdout: Option<Uint8Array>,
+  stderr: Option<Uint8Array>,
 }
 
 type CreateCommand = (
@@ -595,8 +593,7 @@ fn create_command(
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 struct Child {
   rid: ResourceId,
   pid: u32,
@@ -961,7 +958,7 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 fn op_spawn_child(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
@@ -979,7 +976,7 @@ fn op_spawn_child(
 
 #[op2(async)]
 #[allow(clippy::await_holding_refcell_ref)]
-#[serde]
+#[to_v8]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1003,7 +1000,7 @@ async fn op_spawn_wait(
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
@@ -1068,6 +1065,7 @@ fn op_spawn_kill(
 }
 
 mod deprecated {
+  use deno_core::FromV8;
   #[cfg(windows)]
   use deno_subprocess_windows::Child;
   #[cfg(not(windows))]
@@ -1075,14 +1073,16 @@ mod deprecated {
 
   use super::*;
 
-  #[derive(Deserialize)]
-  #[serde(rename_all = "camelCase")]
+  #[derive(FromV8)]
   pub struct RunArgs {
     cmd: Vec<String>,
     cwd: Option<String>,
     env: Vec<(String, String)>,
+    #[from_v8(serde)]
     stdin: StdioOrRid,
+    #[from_v8(serde)]
     stdout: StdioOrRid,
+    #[from_v8(serde)]
     stderr: StdioOrRid,
   }
 
@@ -1102,8 +1102,7 @@ mod deprecated {
     }
   }
 
-  #[derive(Serialize)]
-  #[serde(rename_all = "camelCase")]
+  #[derive(ToV8)]
   // TODO(@AaronO): maybe find a more descriptive name or a convention for return structs
   pub struct RunInfo {
     rid: ResourceId,
@@ -1114,10 +1113,10 @@ mod deprecated {
   }
 
   #[op2(stack_trace)]
-  #[serde]
+  #[to_v8]
   pub fn op_run(
     state: &mut OpState,
-    #[serde] run_args: RunArgs,
+    #[from_v8] run_args: RunArgs,
   ) -> Result<RunInfo, ProcessError> {
     let args = run_args.cmd;
     let cmd = args.first().ok_or(ProcessError::MissingCmd)?;
@@ -1228,8 +1227,7 @@ mod deprecated {
     })
   }
 
-  #[derive(Serialize)]
-  #[serde(rename_all = "camelCase")]
+  #[derive(ToV8)]
   pub struct ProcessStatus {
     got_signal: bool,
     exit_code: i32,
@@ -1237,7 +1235,7 @@ mod deprecated {
   }
 
   #[op2(async)]
-  #[serde]
+  #[to_v8]
   pub async fn op_run_status(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,

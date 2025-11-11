@@ -4,7 +4,7 @@ use aws_lc_rs::signature::Ed25519KeyPair;
 use aws_lc_rs::signature::KeyPair;
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use rand::RngCore;
@@ -127,10 +127,10 @@ pub fn op_crypto_import_pkcs8_ed25519(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_crypto_export_spki_ed25519(
   #[buffer] pubkey: &[u8],
-) -> Result<ToJsBuffer, Ed25519Error> {
+) -> Result<Uint8Array, Ed25519Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierOwned {
       // id-Ed25519
@@ -148,10 +148,10 @@ pub fn op_crypto_export_spki_ed25519(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_crypto_export_pkcs8_ed25519(
   #[buffer] pkey: &[u8],
-) -> Result<ToJsBuffer, Ed25519Error> {
+) -> Result<Uint8Array, Ed25519Error> {
   use rsa::pkcs1::der::Encode;
 
   // This should probably use OneAsymmetricKey instead

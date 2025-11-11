@@ -23,6 +23,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::error::ResourceError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
@@ -30,7 +31,6 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::stream::Peekable;
 use deno_core::op2;
-use deno_core::serde::Serialize;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
@@ -56,14 +56,15 @@ use hyper_util::rt::TokioIo;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, ToV8)]
 pub struct NodeHttpResponse {
   pub status: u16,
   pub status_text: String,
+  #[to_v8(serde)]
   pub headers: Vec<(ByteString, ByteString)>,
   pub url: String,
   pub response_rid: ResourceId,
+  #[to_v8(serde)]
   pub content_length: Option<u64>,
   pub error: Option<String>,
 }
@@ -71,11 +72,11 @@ pub struct NodeHttpResponse {
 type CancelableResponseResult =
   Result<Result<http::Response<Incoming>, hyper::Error>, Canceled>;
 
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8, Debug)]
 struct InformationalResponse {
   status: u16,
   status_text: String,
+  #[to_v8(serde)]
   headers: Vec<(ByteString, ByteString)>,
   version_major: u16,
   version_minor: u16,
@@ -152,7 +153,7 @@ pub enum ConnError {
 }
 
 #[op2(async, stack_trace)]
-#[serde]
+#[to_v8]
 // This is triggering a known false positive for explicit drop(state) calls.
 // See https://rust-lang.github.io/rust-clippy/master/index.html#await_holding_refcell_ref
 #[allow(clippy::await_holding_refcell_ref)]
@@ -307,7 +308,7 @@ where
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_node_http_await_information(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -328,7 +329,7 @@ pub async fn op_node_http_await_information(
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_node_http_await_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -376,7 +377,7 @@ pub async fn op_node_http_await_response(
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_node_http_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

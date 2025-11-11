@@ -1710,7 +1710,7 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
   if let Ok(val) = std::env::var("DENO_SERVE_ADDRESS") {
     return parse_serve_address(&val);

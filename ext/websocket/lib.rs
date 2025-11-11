@@ -16,7 +16,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn;
@@ -50,7 +50,6 @@ use http::header::SEC_WEBSOCKET_VERSION;
 use http::header::UPGRADE;
 use hyper_util::client::legacy::connect::Connection;
 use once_cell::sync::Lazy;
-use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadHalf;
@@ -161,8 +160,7 @@ where
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(deno_core::ToV8)]
 pub struct CreateResponse {
   rid: ResourceId,
   protocol: String,
@@ -419,7 +417,7 @@ fn populate_common_request_headers(
 }
 
 #[op2(async, stack_trace)]
-#[serde]
+#[to_v8]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
   #[string] api_name: String,
@@ -757,15 +755,15 @@ pub async fn op_ws_close(
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_ws_get_buffer(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Option<ToJsBuffer> {
+) -> Option<Uint8Array> {
   let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
     return None;
   };
-  resource.buffer.take().map(ToJsBuffer::from)
+  resource.buffer.take().map(Uint8Array::from)
 }
 
 #[op2]

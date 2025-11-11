@@ -58,7 +58,7 @@ pub struct UnixListenArgs {
 }
 
 #[op2(async)]
-#[serde]
+#[to_v8]
 pub async fn op_net_accept_unix(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -90,7 +90,7 @@ pub async fn op_net_accept_unix(
 }
 
 #[op2(async, stack_trace)]
-#[serde]
+#[to_v8]
 pub async fn op_net_connect_unix<NP>(
   state: Rc<RefCell<OpState>>,
   #[string] address_path: String,
@@ -179,7 +179,7 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
   #[string] address_path: &str,
@@ -232,7 +232,7 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_net_listen_unixpacket<NP>(
   state: &mut OpState,
   #[string] path: &str,
@@ -245,7 +245,7 @@ where
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_node_unstable_net_listen_unixpacket<NP>(
   state: &mut OpState,
   #[string] path: &str,

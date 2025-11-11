@@ -1074,7 +1074,7 @@ impl Drop for HttpJoinHandle {
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
@@ -1130,7 +1130,7 @@ where
 }
 
 #[op2]
-#[serde]
+#[to_v8]
 pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,

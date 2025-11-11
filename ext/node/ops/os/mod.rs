@@ -3,6 +3,7 @@
 use std::mem::MaybeUninit;
 
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::op2;
 use deno_permissions::PermissionCheckError;
 use sys_traits::EnvHomeDir;
@@ -66,7 +67,7 @@ where
   priority::set_priority(pid, priority).map_err(OsError::Priority)
 }
 
-#[derive(serde::Serialize)]
+#[derive(ToV8)]
 pub struct UserInfo {
   username: String,
   homedir: String,
@@ -206,7 +207,7 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
 }
 
 #[op2(stack_trace)]
-#[serde]
+#[to_v8]
 pub fn op_node_os_user_info<P>(
   state: &mut OpState,
   #[smi] uid: u32,
