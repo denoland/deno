@@ -391,7 +391,7 @@ pub struct Env {
   pub last_error: napi_extended_error_info,
   pub last_exception: Option<v8::Global<v8::Value>>,
   pub global: v8::Global<v8::Object>,
-  pub buffer_constructor: v8::Global<v8::Function>,
+  pub create_buffer: v8::Global<v8::Function>,
   pub report_error: v8::Global<v8::Function>,
 }
 
@@ -404,7 +404,7 @@ impl Env {
     isolate_ptr: v8::UnsafeRawIsolatePtr,
     context: v8::Global<v8::Context>,
     global: v8::Global<v8::Object>,
-    buffer_constructor: v8::Global<v8::Function>,
+    create_buffer: v8::Global<v8::Function>,
     report_error: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
     cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
@@ -414,7 +414,7 @@ impl Env {
       isolate_ptr,
       context: context.into_raw(),
       global,
-      buffer_constructor,
+      create_buffer,
       report_error,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
@@ -559,7 +559,7 @@ fn op_napi_open<NP, 'scope>(
   op_state: Rc<RefCell<OpState>>,
   #[string] path: &str,
   global: v8::Local<'scope, v8::Object>,
-  buffer_constructor: v8::Local<'scope, v8::Function>,
+  create_buffer: v8::Local<'scope, v8::Function>,
   report_error: v8::Local<'scope, v8::Function>,
 ) -> Result<v8::Local<'scope, v8::Value>, NApiError>
 where
@@ -605,7 +605,7 @@ where
     unsafe { isolate.as_raw_isolate_ptr() },
     v8::Global::new(scope, ctx),
     v8::Global::new(scope, global),
-    v8::Global::new(scope, buffer_constructor),
+    v8::Global::new(scope, create_buffer),
     v8::Global::new(scope, report_error),
     async_work_sender,
     cleanup_hooks,
