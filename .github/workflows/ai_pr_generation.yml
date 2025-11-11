@@ -30,7 +30,7 @@ jobs:
         github.event.comment.author_association == 'COLLABORATOR'))
     runs-on: ubuntu-latest
     concurrency:
-      group: ai-pr-${{ github.event.issue.number }}${{ inputs.pr_number }}${{ inputs.issue_number }}
+      group: ai-pr-${{ github.event.issue.number || 'none' }}-${{ inputs.pr_number || 'none' }}-${{ inputs.issue_number || 'none' }}
       cancel-in-progress: false
     permissions:
       contents: write
@@ -131,8 +131,8 @@ jobs:
             exit 1
           fi
 
-          # Get PR details
-          PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,headRefName,baseRefName,author,state --repo ${{ github.repository }}) || {
+          # Get PR details including fork information
+          PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,headRefName,baseRefName,author,state,headRepository,headRepositoryOwner --repo ${{ github.repository }}) || {
             echo "Error: Failed to fetch PR #$PR_NUM"
             exit 1
           }
@@ -146,8 +146,36 @@ jobs:
 
           echo "number=$(echo "$PR_JSON" | jq -r '.number')" >> $GITHUB_OUTPUT
           echo "title=$(echo "$PR_JSON" | jq -r '.title')" >> $GITHUB_OUTPUT
-          echo "branch=$(echo "$PR_JSON" | jq -r '.headRefName')" >> $GITHUB_OUTPUT
-          echo "base_branch=$(echo "$PR_JSON" | jq -r '.baseRefName')" >> $GITHUB_OUTPUT
+
+          # Check if PR is from a fork
+          HEAD_REPO_OWNER=$(echo "$PR_JSON" | jq -r '.headRepositoryOwner.login')
+          BASE_REPO_OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+
+          if [ "$HEAD_REPO_OWNER" != "$BASE_REPO_OWNER" ]; then
+            echo "is_fork=true" >> $GITHUB_OUTPUT
+            echo "head_repo_owner=$HEAD_REPO_OWNER" >> $GITHUB_OUTPUT
+            echo "head_repo_name=$(echo "$PR_JSON" | jq -r '.headRepository.name')" >> $GITHUB_OUTPUT
+          else
+            echo "is_fork=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Validate and extract branch names
+          HEAD_BRANCH=$(echo "$PR_JSON" | jq -r '.headRefName')
+          BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.baseRefName')
+
+          # Validate branch names contain only safe characters
+          if ! [[ "$HEAD_BRANCH" =~ ^[a-zA-Z0-9/_.-]+$ ]]; then
+            echo "Error: Invalid characters in head branch name: $HEAD_BRANCH"
+            exit 1
+          fi
+
+          if ! [[ "$BASE_BRANCH" =~ ^[a-zA-Z0-9/_.-]+$ ]]; then
+            echo "Error: Invalid characters in base branch name: $BASE_BRANCH"
+            exit 1
+          fi
+
+          echo "branch=$HEAD_BRANCH" >> $GITHUB_OUTPUT
+          echo "base_branch=$BASE_BRANCH" >> $GITHUB_OUTPUT
 
           # Get all comments on the PR with unique delimiter
           COMMENTS=$(gh pr view "$PR_NUM" --json comments --repo ${{ github.repository }} | jq -r '
@@ -168,9 +196,11 @@ jobs:
             exit 1
           }
 
-          # Check diff size
+          # Limit diff to 500KB to avoid exceeding GitHub Actions output limits (1MB)
+          # and to keep the prompt size manageable for the AI
+          MAX_DIFF_SIZE=500000
           DIFF_SIZE=${#DIFF}
-          if [ $DIFF_SIZE -gt 500000 ]; then
+          if [ $DIFF_SIZE -gt $MAX_DIFF_SIZE ]; then
             DIFF="[Diff too large to include - $DIFF_SIZE bytes. Review the PR directly at ${{ github.server_url }}/${{ github.repository }}/pull/$PR_NUM/files]"
           fi
 
@@ -192,6 +222,7 @@ jobs:
             PR TITLE: ${{ steps.pr.outputs.title }}
             PR BRANCH: ${{ steps.pr.outputs.branch }}
             BASE BRANCH: ${{ steps.pr.outputs.base_branch }}
+            IS FORK: ${{ steps.pr.outputs.is_fork }}
 
             CONVERSATION / FEEDBACK:
             ${{ steps.pr.outputs.comments }}
@@ -205,9 +236,17 @@ jobs:
 
             1. **Understand the feedback**: Carefully read all the comments on the PR to understand what changes are being requested.
 
-            2. **Checkout the PR branch**: Make sure you are working on the correct branch:
-               - Run `git fetch origin ${{ steps.pr.outputs.branch }}`
-               - Run `git checkout ${{ steps.pr.outputs.branch }}`
+            2. **Checkout the PR branch**:
+               ${{ steps.pr.outputs.is_fork == 'true' && format('
+               WARNING: This PR is from a fork ({0}/{1}). You cannot push directly to this branch.
+               Instead, you should:
+               - Add a comment to the PR explaining what changes are needed
+               - Provide code snippets or suggestions
+               - Or ask the PR author to make the changes
+               - DO NOT attempt to push to the fork branch as it will fail', steps.pr.outputs.head_repo_owner, steps.pr.outputs.head_repo_name) || format('
+               This PR is from the main repository. Checkout the branch:
+               - Run `git fetch origin {0}`
+               - Run `git checkout {0}`', steps.pr.outputs.branch) }}
 
             3. **Review the current changes**: Look at the diff above to understand what changes have already been made.
 
@@ -217,28 +256,28 @@ jobs:
                - If feedback is unclear, add a comment to the PR asking for clarification
                - Ensure your changes don't introduce new bugs or regressions
 
-            5. **Test your changes**: Run relevant tests to verify your updates work:
+            5. **Test your changes**: ${{ steps.pr.outputs.is_fork == 'false' && 'Run relevant tests to verify your updates work:
                - Run existing tests that might be affected
                - Verify the changes manually if possible
-               - If tests fail, debug and fix them
+               - If tests fail, debug and fix them' || 'Since this is a fork PR, you cannot run tests directly. Review the changes carefully.' }}
 
-            6. **Commit and push**: Once your changes are ready:
+            6. **Commit and push**: ${{ steps.pr.outputs.is_fork == 'false' && format('Once your changes are ready:
                - Stage your changes with `git add`
                - Commit with a clear message describing what feedback you addressed
-               - Push to the PR branch: `git push origin ${{ steps.pr.outputs.branch }}`
-               - The push will automatically update the PR
+               - Push to the PR branch: `git push origin {0}`
+               - The push will automatically update the PR', steps.pr.outputs.branch) || 'Since this is a fork PR, you cannot push changes. Skip this step.' }}
 
-            7. **Respond to comments**: After pushing your changes, add a comment to the PR summarizing:
+            7. **Respond to comments**: Add a comment to the PR summarizing:
                - What feedback you addressed
-               - What changes you made
+               - What changes you made (or what changes you recommend for fork PRs)
                - Any questions or clarifications needed
+               - Use `gh pr comment ${{ steps.pr.outputs.number }}` to add comments
 
             Important notes:
-            - You are updating an existing PR, not creating a new one
-            - Make sure to work on branch `${{ steps.pr.outputs.branch }}`, not main
+            - You are ${{ steps.pr.outputs.is_fork == 'false' && 'updating an existing PR, not creating a new one' || 'reviewing a fork PR - you can only comment, not push changes' }}
+            - ${{ steps.pr.outputs.is_fork == 'false' && format('Make sure to work on branch `{0}`, not main', steps.pr.outputs.branch) || 'For fork PRs, provide detailed feedback in comments with code suggestions' }}
             - Be thorough in addressing all feedback points
             - If you cannot address certain feedback, explain why in a comment
-            - Use `gh pr comment ${{ steps.pr.outputs.number }}` to add comments to the PR
 
             You have access to the full repository and can use git, cargo, and gh CLI commands.
           claude_args: |
