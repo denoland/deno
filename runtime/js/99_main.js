@@ -543,6 +543,16 @@ const NOT_IMPORTED_OPS = [
   "op_deploy_token_get",
   "op_deploy_token_set",
   "op_deploy_token_delete",
+  
+  "op_load",
+  "op_is_node_file",
+  "op_emit",
+  "op_respond",
+  "op_libs",
+  "op_create_hash",
+  "op_remap_specifier",
+  "op_resolve",
+  "op_tsc_constants",
 ];
 
 function removeImportedOps() {
