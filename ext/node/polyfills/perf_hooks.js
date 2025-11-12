@@ -23,7 +23,6 @@ performance.eventLoopUtilization = () => {
   return { idle: 0, active: 0, utilization: 0 };
 };
 
-
 performance.nodeTiming = {};
 
 performance.timerify = (fn) => {
