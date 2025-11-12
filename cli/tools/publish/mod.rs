@@ -1094,7 +1094,7 @@ fn collect_excluded_module_diagnostics(
     .modules()
     .filter_map(|m| match m {
       deno_graph::Module::Js(_)
-      | deno_graph::Module::Json(_)
+      | deno_graph::Module::Independent(_)
       | deno_graph::Module::Wasm(_) => Some(m.specifier()),
       deno_graph::Module::Npm(_)
       | deno_graph::Module::Node(_)

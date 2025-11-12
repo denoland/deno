@@ -446,6 +446,14 @@ impl<'a> DenoCompileModuleData<'a> {
         ModuleType::Json,
         into_string_unsafe(self.is_valid_utf8, data),
       ),
+      MediaType::Jsonc => (
+        ModuleType::Other(Cow::Borrowed("jsonc")),
+        into_string_unsafe(self.is_valid_utf8, data),
+      ),
+      MediaType::Json5 => (
+        ModuleType::Other(Cow::Borrowed("json5")),
+        into_string_unsafe(self.is_valid_utf8, data),
+      ),
       MediaType::Wasm => {
         (ModuleType::Wasm, DenoCompileModuleSource::Bytes(data))
       }

@@ -133,6 +133,7 @@ http-body.workspace = true
 http-body-util.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
+json5.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 jupyter-protocol = "0.8.0"
 jupyter_runtime = { package = "runtimelib", version = "=0.28.0", default-features = false, features = ["tokio-runtime", "aws-lc-rs"] }

@@ -481,7 +481,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           }
           (Some(original_bytes), m.media_type)
         }
-        deno_graph::Module::Json(m) => {
+        deno_graph::Module::Independent(m) => {
           let original_bytes = match m.source.try_get_original_bytes() {
             Some(bytes) => bytes,
             None => {

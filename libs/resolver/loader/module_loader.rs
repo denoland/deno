@@ -4,8 +4,8 @@ use std::borrow::Cow;
 
 use boxed_error::Boxed;
 use deno_ast::ModuleKind;
+use deno_graph::IndependentModule;
 use deno_graph::JsModule;
-use deno_graph::JsonModule;
 use deno_graph::ModuleGraph;
 use deno_graph::WasmModule;
 use deno_media_type::MediaType;
@@ -409,7 +409,7 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
       })?;
 
     match maybe_module {
-      Some(deno_graph::Module::Json(JsonModule {
+      Some(deno_graph::Module::Independent(IndependentModule {
         source,
         media_type,
         specifier,
@@ -474,7 +474,9 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
             MediaType::JavaScript
             | MediaType::Unknown
             | MediaType::Mjs
-            | MediaType::Json => source.text.clone(),
+            | MediaType::Json
+            | MediaType::Jsonc
+            | MediaType::Json5 => source.text.clone(),
             MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
               Default::default()
             }

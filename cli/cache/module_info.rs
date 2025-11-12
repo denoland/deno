@@ -305,12 +305,14 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
     Dcts => 10,
     Tsx => 11,
     Json => 12,
-    Wasm => 13,
-    Css => 14,
-    Html => 15,
-    SourceMap => 16,
-    Sql => 17,
-    Unknown => 18,
+    Jsonc => 13,
+    Json5 => 14,
+    Wasm => 15,
+    Css => 16,
+    Html => 17,
+    SourceMap => 18,
+    Sql => 19,
+    Unknown => 20,
   }
 }
 

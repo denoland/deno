@@ -199,7 +199,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
         self.check_based_on_pkg_json(specifier).unwrap_or(ResolutionMode::Import)
       }
       MediaType::Wasm |
-      MediaType::Json => ResolutionMode::Import,
+      MediaType::Json | MediaType::Jsonc | MediaType::Json5 => ResolutionMode::Import,
       MediaType::JavaScript
       | MediaType::Jsx
       | MediaType::TypeScript
@@ -246,7 +246,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
         }
       }
       MediaType::Wasm |
-      MediaType::Json => Some(ResolutionMode::Import),
+      MediaType::Json | MediaType::Jsonc | MediaType::Json5 => Some(ResolutionMode::Import),
       MediaType::JavaScript
       | MediaType::Jsx
       | MediaType::TypeScript

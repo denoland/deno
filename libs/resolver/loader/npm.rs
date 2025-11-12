@@ -196,6 +196,8 @@ impl<
       }
       RequestedModuleType::None
       | RequestedModuleType::Json
+      | RequestedModuleType::Jsonc
+      | RequestedModuleType::Json5
       | RequestedModuleType::Other(_) => {
         if media_type.is_emittable() {
           return Err(NpmModuleLoadError::StrippingTypesNodeModules(

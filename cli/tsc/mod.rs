@@ -513,6 +513,8 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
     MediaType::Dcts => 3,
     MediaType::Tsx => 4,
     MediaType::Json => 6,
+    MediaType::Jsonc => 6,
+    MediaType::Json5 => 6,
     MediaType::SourceMap
     | MediaType::Css
     | MediaType::Html
@@ -657,8 +659,14 @@ fn resolve_graph_specifier_types(
     Some(Module::Js(module)) => {
       Ok(Some((module.specifier.clone(), module.media_type)))
     }
-    Some(Module::Json(module)) => {
-      Ok(Some((module.specifier.clone(), module.media_type)))
+    Some(Module::Independent(module)) => {
+      let media_type = match module.media_type {
+        MediaType::Json | MediaType::Jsonc | MediaType::Json5 => {
+          MediaType::Json
+        }
+        _ => module.media_type,
+      };
+      Ok(Some((module.specifier.clone(), media_type)))
     }
     Some(Module::Wasm(module)) => {
       Ok(Some((module.specifier.clone(), MediaType::Dmts)))
@@ -951,7 +959,7 @@ pub fn resolve_specifier_for_tsc(
   let resolved_dep = referrer_module
     .and_then(|m| match m {
       Module::Js(m) => m.dependencies_prefer_fast_check().get(&specifier),
-      Module::Json(_) => None,
+      Module::Independent(_) => None,
       Module::Wasm(m) => m.dependencies.get(&specifier),
       Module::Npm(_) | Module::Node(_) | Module::External(_) => None,
     })
@@ -1144,9 +1152,18 @@ pub fn load_for_tsc<T: LoadContent, M: Mapper>(
               .unwrap_or(T::from_arc_str(module.source.text.clone())),
           )
         }
-        Module::Json(module) => {
-          media_type = MediaType::Json;
-          Some(T::from_arc_str(module.source.text.clone()))
+        Module::Independent(module) => {
+          match module.media_type {
+            MediaType::Jsonc | MediaType::Json5 => {
+              media_type = MediaType::Json;
+              Some(T::from_arc_str(module.source.text.clone()))
+            }
+            // Expecting `MediaType::Json`.
+            _ => {
+              media_type = module.media_type;
+              Some(T::from_arc_str(module.source.text.clone()))
+            }
+          }
         }
         Module::Wasm(module) => {
           media_type = MediaType::Dts;

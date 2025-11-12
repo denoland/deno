@@ -304,7 +304,7 @@ impl<
       }
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),
-      Some(Module::Json(module)) => module.specifier.clone(),
+      Some(Module::Independent(module)) => module.specifier.clone(),
       Some(Module::Wasm(module)) => module.specifier.clone(),
       Some(Module::External(module)) => {
         node_resolver::resolve_specifier_into_node_modules(

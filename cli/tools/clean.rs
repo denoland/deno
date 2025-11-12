@@ -240,7 +240,7 @@ async fn clean_except(
         deno_graph::Module::Js(js_module) => {
           keep.insert(&js_module.specifier);
         }
-        deno_graph::Module::Json(json_module) => {
+        deno_graph::Module::Independent(json_module) => {
           keep.insert(&json_module.specifier);
         }
         deno_graph::Module::Wasm(wasm_module) => {

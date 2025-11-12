@@ -783,7 +783,7 @@ impl<'a> GraphWalker<'a> {
         Module::Wasm(module) => {
           maybe_module_dependencies = Some(&module.dependencies);
         }
-        Module::Json(_) | Module::Npm(_) => {}
+        Module::Independent(_) | Module::Npm(_) => {}
         Module::External(module) => {
           // NPM files for `"nodeModulesDir": "manual"`.
           let media_type = MediaType::from_specifier(&module.specifier);
@@ -881,6 +881,8 @@ impl<'a> GraphWalker<'a> {
             }
           }
           MediaType::Json
+          | MediaType::Jsonc
+          | MediaType::Json5
           | MediaType::Wasm
           | MediaType::Css
           | MediaType::Html
@@ -913,7 +915,7 @@ impl<'a> GraphWalker<'a> {
         // which is hashed below
         None
       }
-      Module::Json(module) => {
+      Module::Independent(module) => {
         if let Some(hasher) = &mut self.maybe_hasher {
           hasher.write_str(module.specifier.as_str());
           hasher.write_str(&module.source.text);
@@ -997,6 +999,8 @@ fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
     | MediaType::Dmts
     | MediaType::Tsx
     | MediaType::Json
+    | MediaType::Jsonc
+    | MediaType::Json5
     | MediaType::Wasm
     | MediaType::Css
     | MediaType::Html

@@ -145,6 +145,10 @@ impl OpenDocument {
     self.language_id.is_diagnosable()
   }
 
+  pub fn is_diagnosable_or_typed(&self) -> bool {
+    self.language_id.is_diagnosable_or_typed()
+  }
+
   pub fn is_file_like(&self) -> bool {
     uri_is_file_like(&self.uri)
   }
@@ -1714,7 +1718,8 @@ pub enum LanguageId {
   TypeScript,
   Tsx,
   Json,
-  JsonC,
+  Jsonc,
+  Json5,
   Markdown,
   Html,
   Css,
@@ -1739,7 +1744,8 @@ impl LanguageId {
       LanguageId::TypeScript => Some("ts"),
       LanguageId::Tsx => Some("tsx"),
       LanguageId::Json => Some("json"),
-      LanguageId::JsonC => Some("jsonc"),
+      LanguageId::Jsonc => Some("jsonc"),
+      LanguageId::Json5 => Some("json5"),
       LanguageId::Markdown => Some("md"),
       LanguageId::Html => Some("html"),
       LanguageId::Css => Some("css"),
@@ -1759,14 +1765,16 @@ impl LanguageId {
 
   pub fn as_content_type(&self) -> Option<&'static str> {
     match self {
-      LanguageId::JavaScript => Some("application/javascript"),
-      LanguageId::Jsx => Some("text/jsx"),
-      LanguageId::TypeScript => Some("application/typescript"),
-      LanguageId::Tsx => Some("text/tsx"),
-      LanguageId::Json | LanguageId::JsonC => Some("application/json"),
+      LanguageId::JavaScript => MediaType::JavaScript.as_content_type(),
+      LanguageId::Jsx => MediaType::Jsx.as_content_type(),
+      LanguageId::TypeScript => MediaType::TypeScript.as_content_type(),
+      LanguageId::Tsx => MediaType::Tsx.as_content_type(),
+      LanguageId::Json => MediaType::Json.as_content_type(),
+      LanguageId::Jsonc => MediaType::Jsonc.as_content_type(),
+      LanguageId::Json5 => MediaType::Json5.as_content_type(),
       LanguageId::Markdown => Some("text/markdown"),
-      LanguageId::Html => Some("text/html"),
-      LanguageId::Css => Some("text/css"),
+      LanguageId::Html => MediaType::Html.as_content_type(),
+      LanguageId::Css => MediaType::Css.as_content_type(),
       LanguageId::Scss => None,
       LanguageId::Sass => None,
       LanguageId::Less => None,
@@ -1787,6 +1795,19 @@ impl LanguageId {
       Self::JavaScript | Self::Jsx | Self::TypeScript | Self::Tsx
     )
   }
+
+  fn is_diagnosable_or_typed(&self) -> bool {
+    matches!(
+      self,
+      Self::JavaScript
+        | Self::Jsx
+        | Self::TypeScript
+        | Self::Tsx
+        | Self::Json
+        | Self::Jsonc
+        | Self::Json5
+    )
+  }
 }
 
 impl FromStr for LanguageId {
@@ -1799,7 +1820,8 @@ impl FromStr for LanguageId {
       "typescript" => Ok(Self::TypeScript),
       "typescriptreact" | "tsx" => Ok(Self::Tsx),
       "json" => Ok(Self::Json),
-      "jsonc" => Ok(Self::JsonC),
+      "jsonc" => Ok(Self::Jsonc),
+      "json5" => Ok(Self::Json5),
       "markdown" => Ok(Self::Markdown),
       "html" => Ok(Self::Html),
       "css" => Ok(Self::Css),

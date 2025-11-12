@@ -243,12 +243,14 @@ fn serialize_media_type(media_type: MediaType) -> u8 {
     MediaType::Dcts => 9,
     MediaType::Tsx => 10,
     MediaType::Json => 11,
-    MediaType::Wasm => 12,
-    MediaType::Css => 13,
-    MediaType::Html => 14,
-    MediaType::SourceMap => 15,
-    MediaType::Sql => 16,
-    MediaType::Unknown => 17,
+    MediaType::Jsonc => 12,
+    MediaType::Json5 => 13,
+    MediaType::Wasm => 14,
+    MediaType::Css => 15,
+    MediaType::Html => 16,
+    MediaType::SourceMap => 17,
+    MediaType::Sql => 18,
+    MediaType::Unknown => 19,
   }
 }
 

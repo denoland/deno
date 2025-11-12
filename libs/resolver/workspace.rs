@@ -543,6 +543,8 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
             | MediaType::Dcts
             | MediaType::Tsx
             | MediaType::Json
+            | MediaType::Jsonc
+            | MediaType::Json5
             | MediaType::Wasm
             | MediaType::Css
             | MediaType::Html

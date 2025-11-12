@@ -27,6 +27,8 @@ pub enum AllowJsonImports {
 pub enum RequestedModuleType<'a> {
   None,
   Json,
+  Jsonc,
+  Json5,
   Text,
   Bytes,
   Other(&'a str),

@@ -81,6 +81,8 @@ http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 indexmap.workspace = true
+json5.workspace = true
+jsonc-parser.workspace = true
 libc.workspace = true
 log.workspace = true
 notify.workspace = true
@@ -89,6 +91,7 @@ regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

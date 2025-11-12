@@ -1661,6 +1661,7 @@ dependencies = [
  "http-body-util",
  "import_map",
  "indexmap 2.9.0",
+ "json5",
  "jsonc-parser",
  "jupyter-protocol",
  "keyring",
@@ -1744,9 +1745,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.50.3"
+version = "0.51.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c6fca2bd99b9f4ac51e548a34b74f8e397d94694a6ced184315922156f70ed0"
+checksum = "c72e0409b3dbd60a5bf296cbc273a8e36bb3a3aab6abac389f1891e187d5ce14"
 dependencies = [
  "base64 0.22.1",
  "capacity_builder",
@@ -1837,9 +1838,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.25.0"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19ab8c76d18a8a7511825bfb93e8b35e79b3dd8404a48c570c536db2a3c88855"
+checksum = "dd048472e451169f443461ab1a6362186af32c6a8b2204de219a7834fc231a28"
 dependencies = [
  "async-trait",
  "base32",
@@ -2011,8 +2012,6 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.186.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92de7919430e4bd66edace9ca4ca1dba7599ddf627bfa35a8c919b99ed5f54cf"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2164,8 +2163,6 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.103.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "293db685464cf8a18785e32d6fdcfffb78a864465d8e9017bfb005ccacc560a8"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -2335,9 +2332,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.80.0"
+version = "0.81.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "816be0fe885ac88b200d73d99f8c9557278ff416acf8abc1661b46837f09a303"
+checksum = "aa4da1c0d215a8d89f28b9c8778795683c975e76255d7f00049447d6f04fe93d"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -2374,9 +2371,9 @@ dependencies = [
 
 [[package]]
 name = "deno_media_type"
-version = "0.2.9"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0ec0dada9dc5ac4733b4175d36f6a150b7dd68fab46db35cb1ef00dd7366acb"
+checksum = "757b57d3e748bb5fc98cb010f33b0ed03f6aa3a7c70166cbdd529c1809ca3118"
 dependencies = [
  "data-url",
  "encoding_rs",
@@ -2852,6 +2849,8 @@ dependencies = [
  "hyper 1.6.0",
  "hyper-util",
  "indexmap 2.9.0",
+ "json5",
+ "jsonc-parser",
  "libc",
  "log",
  "nix 0.27.1",
@@ -2863,6 +2862,7 @@ dependencies = [
  "rustyline",
  "same-file",
  "serde",
+ "serde_json",
  "sys_traits",
  "test_server",
  "thiserror 2.0.12",
@@ -3639,9 +3639,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.95.11"
+version = "0.95.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74aa5df06eb156f7df91bf17a0ca65fd349dfa22463c3eab0a019bab20df12df"
+checksum = "ed62468ffd2bc0a759497022c7e20ec08f15d74057ad17c0bfa5b3ca657e8c8d"
 dependencies = [
  "anyhow",
  "capacity_builder",
@@ -3931,8 +3931,6 @@ dependencies = [
 [[package]]
 name = "eszip"
 version = "0.104.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dde1007099ac5d0184579513aa0d5484ad25d9638a21c7c26203548aebe40d9b"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5550,6 +5548,17 @@ checksum = "1cfaf33c695fc6e08064efbc1f72ec937429614f25eef83af942d0e227c3a28f"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "json5"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96b0db21af676c1ce64250b5f40f3ce2cf27e4e47cb91ed91eb6fe9350b430c1"
+dependencies = [
+ "pest",
+ "pest_derive",
+ "serde",
 ]
 
 [[package]]

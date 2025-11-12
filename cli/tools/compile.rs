@@ -366,6 +366,8 @@ fn get_module_roots_and_include_paths(
       | MediaType::Dcts
       | MediaType::Tsx
       | MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::Wasm => true,
       MediaType::Css
       | MediaType::Html

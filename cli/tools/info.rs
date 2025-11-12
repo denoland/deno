@@ -503,7 +503,7 @@ impl<'a> GraphDisplayContext<'a> {
       Ok(Some(root)) => {
         let maybe_cache_info = match root {
           Module::Js(module) => module.maybe_cache_info.as_ref(),
-          Module::Json(module) => module.maybe_cache_info.as_ref(),
+          Module::Independent(module) => module.maybe_cache_info.as_ref(),
           Module::Wasm(module) => module.maybe_cache_info.as_ref(),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         };
@@ -526,7 +526,7 @@ impl<'a> GraphDisplayContext<'a> {
           .map(|m| {
             let size = match m {
               Module::Js(module) => module.size(),
-              Module::Json(module) => module.size(),
+              Module::Independent(module) => module.size(),
               Module::Wasm(module) => module.size(),
               Module::Node(_) | Module::Npm(_) | Module::External(_) => 0,
             };
@@ -635,7 +635,7 @@ impl<'a> GraphDisplayContext<'a> {
         }
         Specifier(_) => match module {
           Module::Js(module) => Some(module.size() as u64),
-          Module::Json(module) => Some(module.size() as u64),
+          Module::Independent(module) => Some(module.size() as u64),
           Module::Wasm(module) => Some(module.size() as u64),
           Module::Node(_) | Module::Npm(_) | Module::External(_) => None,
         },
@@ -667,7 +667,7 @@ impl<'a> GraphDisplayContext<'a> {
               tree_node.children.extend(self.build_dep_info(dep));
             }
           }
-          Module::Json(_)
+          Module::Independent(_)
           | Module::Npm(_)
           | Module::Node(_)
           | Module::External(_) => {}

@@ -1128,17 +1128,15 @@ impl Inner {
             | MediaType::Dmts
             | MediaType::Dcts
             | MediaType::Json
+            | MediaType::Jsonc
+            | MediaType::Json5
             | MediaType::Tsx => {}
             MediaType::Wasm
             | MediaType::SourceMap
             | MediaType::Css
             | MediaType::Html
             | MediaType::Sql
-            | MediaType::Unknown => {
-              if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
-                continue;
-              }
-            }
+            | MediaType::Unknown => continue,
           }
           dir_files.insert(path);
         }
@@ -1335,7 +1333,7 @@ impl Inner {
       params.text_document.text.into(),
       None,
     );
-    if document.is_diagnosable() {
+    if document.is_diagnosable_or_typed() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info();
       self.project_changed(
@@ -1380,7 +1378,7 @@ impl Inner {
       }
     }
     if let Some(document) = document
-      && document.is_diagnosable()
+      && document.is_diagnosable_or_typed()
     {
       self.refresh_dep_info();
       self.project_changed(
@@ -1504,7 +1502,7 @@ impl Inner {
         return;
       }
     };
-    if document.is_diagnosable() {
+    if document.is_diagnosable_or_typed() {
       self.refresh_dep_info();
       self.project_changed(
         vec![(Document::Open(document), ChangeKind::Closed)],
@@ -1524,7 +1522,7 @@ impl Inner {
     );
     let diagnosable_documents = documents
       .into_iter()
-      .filter(|d| d.is_diagnosable())
+      .filter(|d| d.is_diagnosable_or_typed())
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
       self.check_semantic_tokens_capabilities();
@@ -1552,7 +1550,7 @@ impl Inner {
     );
     let diagnosable_documents = documents
       .into_iter()
-      .filter(|(d, _)| d.is_diagnosable())
+      .filter(|(d, _)| d.is_diagnosable_or_typed())
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
       self.refresh_dep_info();
@@ -1601,7 +1599,7 @@ impl Inner {
       .close_notebook_document(&params.notebook_document.uri);
     let diagnosable_documents = documents
       .into_iter()
-      .filter(|d| d.is_diagnosable())
+      .filter(|d| d.is_diagnosable_or_typed())
       .collect::<Vec<_>>();
     if !diagnosable_documents.is_empty() {
       self.refresh_dep_info();

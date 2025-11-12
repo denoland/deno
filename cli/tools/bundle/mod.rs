@@ -776,6 +776,8 @@ fn requested_type_from_map(
   let type_ = map.get("type").map(|s| s.as_str());
   match type_ {
     Some("json") => RequestedModuleType::Json,
+    Some("jsonc") => RequestedModuleType::Jsonc,
+    Some("json5") => RequestedModuleType::Json5,
     Some("bytes") => RequestedModuleType::Bytes,
     Some("text") => RequestedModuleType::Text,
     Some(other) => RequestedModuleType::Other(other),
@@ -1109,6 +1111,12 @@ pub enum BundleLoadError {
   #[error("Emit error")]
   Emit(#[from] deno_ast::EmitError),
   #[class(generic)]
+  #[error("{}", if let Self::Jsonc(Some(err)) = &self { Cow::Owned(format!("Couldn't parse jsonc file: {err}")) } else { Cow::Borrowed("Empty jsonc file") })]
+  Jsonc(#[from] Option<jsonc_parser::errors::ParseError>),
+  #[class(generic)]
+  #[error("{}", if let Self::Json5(err) = &self { format!("Couldn't parse json5 file: {err}") } else { unreachable!() })]
+  Json5(#[from] json5::Error),
+  #[class(generic)]
   #[error("Prepare module load error")]
   PrepareModuleLoad(#[from] crate::module_loader::PrepareModuleLoadError),
 
@@ -1396,6 +1404,8 @@ impl DenoPluginHandler {
             }
             RequestedModuleType::None
             | RequestedModuleType::Json
+            | RequestedModuleType::Jsonc
+            | RequestedModuleType::Json5
             | RequestedModuleType::Other(_) => {
               if media_type.is_emittable() {
                 let str = String::from_utf8_lossy(&file.source);
@@ -1475,6 +1485,25 @@ impl DenoPluginHandler {
       }
       Some(RequestedModuleType::Json) => {
         return Ok((source.to_vec(), esbuild_client::BuiltinLoader::Json));
+      }
+      Some(RequestedModuleType::Jsonc) => {
+        let jsonc_str = String::from_utf8_lossy(source);
+        let json_str =
+          jsonc_parser::parse_to_serde_value(&jsonc_str, &Default::default())
+            .map_err(|err| BundleLoadError::Jsonc(Some(err)))?
+            .ok_or_else(|| BundleLoadError::Jsonc(None))?
+            .to_string();
+        return Ok((
+          json_str.into_bytes(),
+          esbuild_client::BuiltinLoader::Json,
+        ));
+      }
+      Some(RequestedModuleType::Json5) => {
+        let json5_str = String::from_utf8_lossy(source);
+        json5::from_str::<serde_json::Value>(&json5_str)
+          .map_err(BundleLoadError::Json5)?;
+        let js_str = format!("export default ({json5_str});");
+        return Ok((js_str.into_bytes(), esbuild_client::BuiltinLoader::Js));
       }
       Some(RequestedModuleType::Other(_) | RequestedModuleType::None)
       | None => {}
@@ -1599,7 +1628,7 @@ impl DenoPluginHandler {
         js_module.media_type,
         media_type_to_loader(js_module.media_type),
       ),
-      deno_graph::Module::Json(json_module) => (
+      deno_graph::Module::Independent(json_module) => (
         json_module.specifier.clone(),
         deno_ast::MediaType::Json,
         esbuild_client::BuiltinLoader::Json,
@@ -1662,6 +1691,8 @@ fn media_type_to_loader(
     Sql => esbuild_client::BuiltinLoader::Text,
     Wasm => esbuild_client::BuiltinLoader::Binary,
     Unknown => esbuild_client::BuiltinLoader::Binary,
+    // TODO(This PR): Investigate.
+    Jsonc | Json5 => esbuild_client::BuiltinLoader::Json,
     // _ => esbuild_client::BuiltinLoader::External,
   }
 }
