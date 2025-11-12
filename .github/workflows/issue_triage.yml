@@ -15,13 +15,12 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event.issue.author_association != 'MEMBER' && github.event.issue.author_association != 'OWNER')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
       issues: write
       id-token: write
     steps:
       - uses: anthropics/claude-code-action@v1
         with:
+          mode: auto
           github_token: ${{ secrets.DENOBOT_PAT }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
@@ -32,7 +31,7 @@ jobs:
             BODY: {1}
             AUTHOR: {2}', github.event.issue.title, github.event.issue.body, github.event.issue.user.login) }}
 
-            This is ${{ github.event_name == 'workflow_dispatch' && 'an existing' || 'a new' }} issue${{ github.event_name == 'issues' && ' from an external contributor' || '' }}. Please analyze it and:
+            This is a new issue from an external contributor. Please analyze it and:
 
             1. **Categorize the issue type**: Determine if it's a:
                - Bug report
