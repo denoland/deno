@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/index.cts
+Check [WILDCARD]index.cts
 TS2322 [ERROR]: Type '"mjs"' is not assignable to type '"value"'.
   const value: "value" = mod.kind;
         ~~~~~

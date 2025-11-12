@@ -1030,6 +1030,7 @@ pub async fn run(
     no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     enable_raw_imports: metadata.unstable_config.raw_imports,
+    maybe_initial_cwd: None,
   };
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
