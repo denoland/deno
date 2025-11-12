@@ -7887,6 +7887,65 @@ mod tests {
       &parse_granted("/prefix456"),
       Ordering::Less,
     );
+
+    // Test two deny types with different descriptors (non-equal paths)
+    check_comparison(
+      &parse_flag_denied("/aaa"),
+      &parse_prompt_denied("/bbb"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_flag_denied("/xyz"),
+      &parse_prompt_denied("/abc"),
+      Ordering::Greater,
+    );
+    check_comparison(
+      &parse_prompt_denied("/foo/bar"),
+      &parse_flag_denied("/foo/baz"),
+      Ordering::Less,
+    );
+
+    // Test transitivity: FlagDenied < PromptDenied < Granted with same path
+    check_comparison(
+      &parse_flag_denied("/test"),
+      &parse_prompt_denied("/test"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_prompt_denied("/test"),
+      &parse_granted("/test"),
+      Ordering::Less,
+    );
+    // Transitive: FlagDenied < Granted
+    check_comparison(
+      &parse_flag_denied("/test"),
+      &parse_granted("/test"),
+      Ordering::Less,
+    );
+
+    // Test mixed types with sibling paths
+    check_comparison(
+      &parse_granted("/foo/bar"),
+      &parse_prompt_denied("/foo/baz"),
+      Ordering::Greater,
+    );
+    check_comparison(
+      &parse_flag_denied("/foo/aaa"),
+      &parse_granted("/foo/zzz"),
+      Ordering::Less,
+    );
+
+    // Test PromptDenied(child) vs FlagDenied(parent)
+    check_comparison(
+      &parse_prompt_denied("/foo/bar/baz"),
+      &parse_flag_denied("/foo"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_prompt_denied("/a/b/c"),
+      &parse_flag_denied("/a/b"),
+      Ordering::Less,
+    );
   }
 
   #[test]
@@ -8051,6 +8110,25 @@ mod tests {
       &parse_granted("/prefix456"),
       Ordering::Less,
     );
+
+    // Test two deny types with different descriptors
+    check_comparison(
+      &parse_flag_denied("/aaa"),
+      &parse_prompt_denied("/bbb"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_prompt_denied("/foo/bar"),
+      &parse_flag_denied("/foo/baz"),
+      Ordering::Less,
+    );
+
+    // Test PromptDenied(child) vs FlagDenied(parent)
+    check_comparison(
+      &parse_prompt_denied("/foo/bar/baz"),
+      &parse_flag_denied("/foo"),
+      Ordering::Less,
+    );
   }
 
   #[test]
@@ -8198,6 +8276,37 @@ mod tests {
       &parse_granted("10.0.0.1"),
       Ordering::Greater,
     );
+
+    // Test IPv6 addresses
+    check_comparison(
+      &parse_granted("[::1]:8080"),
+      &parse_granted("[::1]"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_granted("[2001:db8::1]"),
+      &parse_granted("[::1]"),
+      Ordering::Greater,
+    );
+
+    // Test two deny types with different hosts
+    check_comparison(
+      &parse_flag_denied("aaa.com"),
+      &parse_prompt_denied("bbb.com"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_prompt_denied("example.com:8080"),
+      &parse_flag_denied("example.com:9000"),
+      Ordering::Less,
+    );
+
+    // Test PromptDenied(specific) vs FlagDenied(general)
+    check_comparison(
+      &parse_prompt_denied("sub.example.com"),
+      &parse_flag_denied("example.com"),
+      Ordering::Less,
+    );
   }
 
   #[test]
@@ -8316,6 +8425,18 @@ mod tests {
       &parse_granted("HOME"),
       Ordering::Greater,
     );
+
+    // Test two deny types with different variables
+    check_comparison(
+      &parse_flag_denied("AAA"),
+      &parse_prompt_denied("ZZZ"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_prompt_denied("HOME"),
+      &parse_flag_denied("PATH"),
+      Ordering::Less,
+    );
   }
 
   #[test]
@@ -8433,6 +8554,18 @@ mod tests {
       &parse_granted("loadavg"),
       &parse_granted("hostname"),
       Ordering::Greater,
+    );
+
+    // Test two deny types with different kinds
+    check_comparison(
+      &parse_flag_denied("cpus"),
+      &parse_prompt_denied("uid"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_prompt_denied("hostname"),
+      &parse_flag_denied("osRelease"),
+      Ordering::Less,
     );
   }
 
@@ -8598,6 +8731,25 @@ mod tests {
       &parse_granted("/lib/native2.so"),
       Ordering::Less,
     );
+
+    // Test two deny types with different paths
+    check_comparison(
+      &parse_flag_denied("/aaa/lib.so"),
+      &parse_prompt_denied("/bbb/lib.so"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_prompt_denied("/foo/bar.so"),
+      &parse_flag_denied("/foo/baz.so"),
+      Ordering::Less,
+    );
+
+    // Test PromptDenied(child) vs FlagDenied(parent)
+    check_comparison(
+      &parse_prompt_denied("/foo/bar/lib.so"),
+      &parse_flag_denied("/foo"),
+      Ordering::Less,
+    );
   }
 
   #[test]
@@ -8734,6 +8886,25 @@ mod tests {
       &parse_granted("deno.land:9000"),
       &parse_granted("deno.land:8080"),
       Ordering::Greater,
+    );
+
+    // Test two deny types with different hosts
+    check_comparison(
+      &parse_flag_denied("aaa.land"),
+      &parse_prompt_denied("zzz.land"),
+      Ordering::Less,
+    );
+    check_comparison(
+      &parse_prompt_denied("deno.land:8080"),
+      &parse_flag_denied("deno.land:9000"),
+      Ordering::Less,
+    );
+
+    // Test PromptDenied(specific) vs FlagDenied(general)
+    check_comparison(
+      &parse_prompt_denied("sub.deno.land"),
+      &parse_flag_denied("deno.land"),
+      Ordering::Less,
     );
   }
 
